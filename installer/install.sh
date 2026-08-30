@@ -180,3 +180,56 @@ install_vm_manager() {
 	systemctl daemon-reload
 	systemctl enable --now recasa-vm-sidecar.service
 }
+
+install_ui() {
+	(
+		cd "$SRC_DIR/ui"
+		pnpm install --frozen-lockfile
+		pnpm run build
+	)
+	mkdir -p /var/lib/recasa/www
+	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/recasa/www/." /var/lib/recasa/www/
+}
+
+LEGACY_SERVICE_UNITS="casaos-message-bus.service casaos.service casaos-gateway.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service"
+
+start_core_services() {
+	systemctl daemon-reload
+	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
+		systemctl start "$unit"
+	done
+}
+
+print_summary() {
+	echo ""
+	echo "Recasa install complete."
+	echo ""
+	echo "Services:"
+	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
+		systemctl is-active --quiet "$unit" && echo "  [running] $unit" || echo "  [NOT running] $unit"
+	done
+	if [ "$WITH_VM" = "yes" ]; then
+		systemctl is-active --quiet recasa-vm-sidecar.service && echo "  [running] recasa-vm-sidecar.service" || echo "  [NOT running] recasa-vm-sidecar.service"
+	else
+		echo "  VM Manager was not installed. Run 'recasa vm enable' to add it later."
+	fi
+	echo ""
+	echo "Open http://$(hostname -I | awk '{print $1}')/ in a browser to finish setup."
+}
+
+main() {
+	check_distro
+	parse_args "$@"
+	prompt_vm_manager
+	install_build_deps
+	clone_repo
+	install_core_services
+	if [ "$WITH_VM" = "yes" ]; then
+		install_vm_manager
+	fi
+	install_ui
+	start_core_services
+	print_summary
+}
+
+main "$@"
