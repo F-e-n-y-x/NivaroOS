@@ -299,10 +299,9 @@ export default {
 			e.target.src = defaultAppIcon
 		},
 		maxRowsPerCol() {
-			const bottomMargin = 24
-			const canvasTop = this.$refs.canvas ? this.$refs.canvas.getBoundingClientRect().top : 130
-			const available = window.innerHeight - canvasTop - bottomMargin
-			return Math.max(3, Math.floor(available / (CELL_H + GAP)))
+			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : (window.innerHeight - 120)
+			const available = Math.max(CELL_H, canvasHeight - 16)
+			return Math.max(1, Math.floor(available / (CELL_H + GAP)))
 		},
 
 		getSkCount() {
@@ -882,6 +881,13 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.desktop-app-section {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	overflow: hidden;
+}
+
 .app-list-skeleton {
 	display: flex;
 	flex-wrap: wrap;
@@ -889,8 +895,11 @@ export default {
 }
 
 .app-canvas {
-	position: relative;
+	position: absolute;
+	inset: 0;
 	width: 100%;
+	height: 100%;
+	overflow: hidden;
 }
 
 .app-slot {

@@ -1,25 +1,17 @@
 <template>
-	<div v-if="!isLoading" class="out-container">
-		<!-- Content Start -->
-		<div class="contents contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
-			<div class="container home-container pt-4">
-				<div class="main-content">
-					<!-- MainContent Start -->
-					<div class="contextmenu-canvas">
-						<!-- Apps Grid Start -->
-						<section>
-							<app-section ref="apps"></app-section>
-						</section>
-						<!-- Apps Grid End -->
-					</div>
-					<!-- MainContent End -->
-				</div>
+	<div v-if="!isLoading" class="desktop-viewport contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
+		<div class="desktop-workspace">
+			<div class="desktop-canvas-area contextmenu-canvas">
+				<!-- Apps Grid Start -->
+				<app-section ref="apps"></app-section>
+				<!-- Apps Grid End -->
+			</div>
 
-				<!-- Right-side hardware widgets floating over the desktop -->
+			<!-- Right-side floating hardware widgets -->
+			<div class="desktop-sidebar-area">
 				<side-bar v-if="!hardwareInfoLoading"></side-bar>
 			</div>
 		</div>
-		<!-- Content End -->
 	</div>
 </template>
 
@@ -214,62 +206,42 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.out-container {
-	position: relative;
-	height: 100%;
+.desktop-viewport {
+	position: fixed;
+	inset: 0;
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+	user-select: none;
+	-webkit-user-select: none;
 }
 
-.container.home-container {
+.desktop-workspace {
 	display: flex;
 	align-items: flex-start;
-	max-width: none;
-	margin: 0 1.25rem;
+	width: 100%;
+	height: 100%;
+	padding: 1.25rem 1.5rem calc(80px + 1rem) 1.5rem;
+	overflow: hidden;
+	gap: 1.5rem;
 }
 
-.contents {
-	flex: 1;
-	overflow-y: auto;
-	overflow-x: hidden;
-	height: calc(100% - 4rem);
-}
-
-.main-content {
-	z-index: 10;
+.desktop-canvas-area {
 	flex: 1 1 auto;
+	height: 100%;
+	position: relative;
+	overflow: hidden;
 	min-width: 0;
 }
 
-@media screen and (max-width: 480px) {
-	.main-content {
-		width: 100%;
-	}
-}
-
-.dark-bg {
-	position: fixed;
-	transition: all 0.3s ease;
-	left: 0;
-	top: 0;
-	width: 100%;
+.desktop-sidebar-area {
+	flex: 0 0 auto;
 	height: 100%;
-	background-color: rgba(0, 0, 0, 1);
-	z-index: 19;
-	opacity: 0;
-	visibility: hidden;
+	overflow: visible;
+	z-index: 10;
 
-	&.open {
-		opacity: 1;
-		visibility: visible;
-	}
-}
-
-@media screen and (max-width: 480px) {
-	.contents {
-		height: calc(100vh - 4rem) !important;
-	}
-
-	.container {
-		height: 100%;
+	@media screen and (max-width: 480px) {
+		display: none;
 	}
 }
 </style>
