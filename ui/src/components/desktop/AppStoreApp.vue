@@ -16,7 +16,7 @@
 					:class="{ 'is-active': activeTab === 'discover' }"
 					@click="switchTab('discover')"
 				>
-					<b-icon icon="compass-outline" size="is-16" class="nav-icon"></b-icon>
+					<span class="nav-icon"><i class="mdi mdi-compass-outline"></i></span>
 					<span class="nav-label">{{ $t('Discover') }}</span>
 				</button>
 
@@ -25,7 +25,7 @@
 					:class="{ 'is-active': activeTab === 'all' }"
 					@click="switchTab('all')"
 				>
-					<b-icon icon="view-grid-outline" size="is-16" class="nav-icon"></b-icon>
+					<span class="nav-icon"><i class="mdi mdi-view-grid-outline"></i></span>
 					<span class="nav-label">{{ $t('All Apps') }}</span>
 					<span class="nav-count">{{ allAppsList.length }}</span>
 				</button>
@@ -42,7 +42,7 @@
 						:class="{ 'is-active': activeTab === 'category' && currentCate.name === cat.name }"
 						@click="selectCategory(cat)"
 					>
-						<b-icon :icon="getCateIcon(cat.name)" size="is-16" class="nav-icon"></b-icon>
+						<span class="nav-icon"><i :class="'mdi mdi-' + getCateIcon(cat.name)"></i></span>
 						<span class="nav-label">{{ cat.name }}</span>
 						<span class="nav-count">{{ cat.count }}</span>
 					</button>
@@ -57,7 +57,7 @@
 					:class="{ 'is-active': activeTab === 'installed' }"
 					@click="switchTab('installed')"
 				>
-					<b-icon icon="check-circle-outline" size="is-16" class="nav-icon"></b-icon>
+					<span class="nav-icon"><i class="mdi mdi-check-circle-outline"></i></span>
 					<span class="nav-label">{{ $t('Installed') }}</span>
 					<span class="nav-count">{{ installedList.length }}</span>
 				</button>
@@ -65,12 +65,12 @@
 
 			<div class="sidebar-footer">
 				<button class="footer-btn custom-install-btn" @click="openCustomInstall">
-					<b-icon icon="plus-circle-outline" size="is-16"></b-icon>
+					<i class="mdi mdi-plus-circle-outline footer-icon"></i>
 					<span>{{ $t('Custom Install') }}</span>
 				</button>
 
 				<button class="footer-btn sources-btn" @click="showSourcesModal = true">
-					<b-icon icon="source-branch" size="is-16"></b-icon>
+					<i class="mdi mdi-source-branch footer-icon"></i>
 					<span>{{ $t('App Sources') }}</span>
 				</button>
 			</div>
@@ -81,7 +81,7 @@
 			<!-- Top Toolbar -->
 			<header class="main-header">
 				<div class="search-wrapper">
-					<b-icon icon="magnify" class="search-icon" size="is-18"></b-icon>
+					<i class="mdi mdi-magnify search-icon"></i>
 					<input
 						v-model="searchQuery"
 						type="text"
@@ -90,7 +90,7 @@
 						@input="onSearchInput"
 					/>
 					<button v-if="searchQuery" class="clear-search-btn" @click="clearSearch">
-						<b-icon icon="close-circle" size="is-14"></b-icon>
+						<i class="mdi mdi-close-circle"></i>
 					</button>
 				</div>
 
@@ -99,9 +99,9 @@
 					<b-dropdown v-model="currentAuthor" aria-role="list" class="source-dropdown">
 						<template #trigger="{ active }">
 							<button class="filter-btn">
-								<b-icon icon="storefront-outline" size="is-14"></b-icon>
+								<i class="mdi mdi-storefront-outline"></i>
 								<span>{{ currentAuthor.name }}</span>
-								<b-icon :icon="active ? 'chevron-up' : 'chevron-down'" size="is-14"></b-icon>
+								<i :class="'mdi ' + (active ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
 							</button>
 						</template>
 						<b-dropdown-item
@@ -118,9 +118,9 @@
 					<b-dropdown v-model="currentSort" aria-role="list" class="sort-dropdown">
 						<template #trigger="{ active }">
 							<button class="filter-btn">
-								<b-icon icon="sort-variant" size="is-14"></b-icon>
+								<i class="mdi mdi-sort-variant"></i>
 								<span>{{ currentSort.name }}</span>
-								<b-icon :icon="active ? 'chevron-up' : 'chevron-down'" size="is-14"></b-icon>
+								<i :class="'mdi ' + (active ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
 							</button>
 						</template>
 						<b-dropdown-item
@@ -135,7 +135,7 @@
 
 					<!-- Refresh Button -->
 					<button class="icon-btn refresh-btn" :class="{ 'is-spinning': isLoading }" :title="$t('Refresh Store')" @click="refreshStore">
-						<b-icon icon="refresh" size="is-18"></b-icon>
+						<i class="mdi mdi-refresh"></i>
 					</button>
 				</div>
 			</header>
@@ -158,7 +158,7 @@
 
 								<div class="hero-content">
 									<div class="hero-badge">
-										<b-icon icon="star" size="is-12"></b-icon>
+										<i class="mdi mdi-star"></i>
 										<span>{{ $t('FEATURED APPLICATION') }}</span>
 									</div>
 									<div class="hero-app-info">
@@ -175,7 +175,7 @@
 											class="hero-action-btn is-open"
 											@click="openThirdContainerByAppInfo(item)"
 										>
-											<b-icon icon="launch" size="is-16"></b-icon>
+											<i class="mdi mdi-launch"></i>
 											<span>{{ $t('Open App') }}</span>
 										</button>
 										<button
@@ -185,13 +185,13 @@
 											:class="{ 'is-loading': item.id === currentInstallId }"
 											@click="installApp(item.id, item)"
 										>
-											<b-icon v-if="item.id !== currentInstallId" icon="download" size="is-16"></b-icon>
+											<i v-if="item.id !== currentInstallId" class="mdi mdi-download"></i>
 											<span v-if="item.id !== currentInstallId">{{ $t('Install Now') }}</span>
 											<span v-else>{{ $t('Installing...') }}</span>
 										</button>
 										<button class="hero-details-btn" @click="showAppDetail(item.id)">
 											<span>{{ $t('View Details') }}</span>
-											<b-icon icon="chevron-right" size="is-14"></b-icon>
+											<i class="mdi mdi-chevron-right"></i>
 										</button>
 									</div>
 								</div>
@@ -209,10 +209,10 @@
 
 							<!-- Carousel Navigation & Indicators -->
 							<button class="carousel-arrow is-prev" @click="prevHero" :title="$t('Previous')">
-								<b-icon icon="chevron-left" size="is-18"></b-icon>
+								<i class="mdi mdi-chevron-left"></i>
 							</button>
 							<button class="carousel-arrow is-next" @click="nextHero" :title="$t('Next')">
-								<b-icon icon="chevron-right" size="is-18"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 
 							<div class="carousel-dots" v-if="featuredList.length > 1">
@@ -252,7 +252,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -304,7 +304,7 @@
 							</div>
 							<button class="see-all-btn" @click="selectCategoryByName('Media')">
 								<span>{{ $t('See All') }}</span>
-								<b-icon icon="chevron-right" size="is-14"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 						<div class="app-grid">
@@ -324,7 +324,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -376,7 +376,7 @@
 							</div>
 							<button class="see-all-btn" @click="selectCategoryByName('AI')">
 								<span>{{ $t('See All') }}</span>
-								<b-icon icon="chevron-right" size="is-14"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 						<div class="app-grid">
@@ -396,7 +396,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -448,7 +448,7 @@
 							</div>
 							<button class="see-all-btn" @click="selectCategoryByName('Developer')">
 								<span>{{ $t('See All') }}</span>
-								<b-icon icon="chevron-right" size="is-14"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 						<div class="app-grid">
@@ -468,7 +468,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -520,7 +520,7 @@
 							</div>
 							<button class="see-all-btn" @click="selectCategoryByName('Networking')">
 								<span>{{ $t('See All') }}</span>
-								<b-icon icon="chevron-right" size="is-14"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 						<div class="app-grid">
@@ -540,7 +540,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -592,7 +592,7 @@
 							</div>
 							<button class="see-all-btn" @click="selectCategoryByName('Productivity')">
 								<span>{{ $t('See All') }}</span>
-								<b-icon icon="chevron-right" size="is-14"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 						<div class="app-grid">
@@ -612,7 +612,7 @@
 										@error="onBannerError($event, item)"
 									/>
 									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 									</div>
 								</div>
 
@@ -684,7 +684,7 @@
 
 					<!-- Empty State -->
 					<div v-else-if="displayAppsList.length === 0" class="empty-state">
-						<b-icon icon="package-variant" size="is-48" class="empty-icon"></b-icon>
+						<i class="mdi mdi-package-variant empty-icon"></i>
 						<h4 class="empty-title">{{ $t('No applications found') }}</h4>
 						<p class="empty-desc">{{ $t('Try searching with different keywords or select a different category.') }}</p>
 						<button v-if="searchQuery" class="empty-action-btn" @click="clearSearch">
@@ -710,7 +710,7 @@
 									@error="onBannerError($event, item)"
 								/>
 								<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-									<b-icon :icon="getCateIcon(item.category)" size="is-28" class="placeholder-icon"></b-icon>
+									<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
 								</div>
 							</div>
 
@@ -761,12 +761,12 @@
 				<div class="drawer-panel">
 					<header class="drawer-header">
 						<button class="back-btn" @click="closeAppDetail">
-							<b-icon icon="arrow-left" size="is-16"></b-icon>
+							<i class="mdi mdi-arrow-left"></i>
 							<span>{{ $t('Back to Store') }}</span>
 						</button>
 						<div class="drawer-header-spacer"></div>
 						<button class="drawer-close-btn" @click="closeAppDetail">
-							<b-icon icon="close" size="is-18"></b-icon>
+							<i class="mdi mdi-close"></i>
 						</button>
 					</header>
 
@@ -789,7 +789,7 @@
 										class="detail-action-btn is-open"
 										@click="openThirdContainerByAppInfo(selectedAppDetail)"
 									>
-										<b-icon icon="launch" size="is-16"></b-icon>
+										<i class="mdi mdi-launch"></i>
 										<span>{{ $t('Open App') }}</span>
 									</button>
 									<button
@@ -799,7 +799,7 @@
 										:class="{ 'is-loading': selectedAppDetail.id === currentInstallId }"
 										@click="installApp(selectedAppDetail.id, selectedAppDetail)"
 									>
-										<b-icon v-if="selectedAppDetail.id !== currentInstallId" icon="download" size="is-16"></b-icon>
+										<i v-if="selectedAppDetail.id !== currentInstallId" class="mdi mdi-download"></i>
 										<span v-if="selectedAppDetail.id !== currentInstallId">{{ $t('Install App') }}</span>
 										<span v-else>{{ $t('Installing...') }}</span>
 									</button>
@@ -819,7 +819,7 @@
 								>
 									<img :src="img" :alt="'Screenshot ' + (sidx + 1)" loading="lazy" />
 									<div class="screenshot-hover-overlay">
-										<b-icon icon="magnify-plus-outline" size="is-24"></b-icon>
+										<i class="mdi mdi-magnify-plus-outline"></i>
 									</div>
 								</div>
 							</div>
@@ -864,7 +864,7 @@
 		<transition name="fade">
 			<div v-if="activeLightboxImage" class="lightbox-overlay" @click="activeLightboxImage = null">
 				<button class="lightbox-close-btn" @click="activeLightboxImage = null">
-					<b-icon icon="close" size="is-24"></b-icon>
+					<i class="mdi mdi-close"></i>
 				</button>
 				<img :src="activeLightboxImage" class="lightbox-img" alt="Enlarged screenshot" @click.stop />
 			</div>
@@ -877,7 +877,7 @@
 					<header class="custom-install-header">
 						<h3 class="custom-install-title">{{ $t('Custom Docker Compose Install') }}</h3>
 						<button class="drawer-close-btn" @click="showCustomInstallModal = false">
-							<b-icon icon="close" size="is-18"></b-icon>
+							<i class="mdi mdi-close"></i>
 						</button>
 					</header>
 					<div class="custom-install-body">
@@ -913,7 +913,7 @@
 					<header class="sources-header">
 						<h3 class="sources-title">{{ $t('App Store Sources') }}</h3>
 						<button class="drawer-close-btn" @click="showSourcesModal = false">
-							<b-icon icon="close" size="is-18"></b-icon>
+							<i class="mdi mdi-close"></i>
 						</button>
 					</header>
 					<div class="sources-body">
@@ -934,7 +934,7 @@
 									<span class="source-name">{{ src.name || src.url || src }}</span>
 								</div>
 								<button class="delete-source-btn" @click="removeStoreSource(src)">
-									<b-icon icon="delete-outline" size="is-16"></b-icon>
+									<i class="mdi mdi-delete-outline"></i>
 								</button>
 							</div>
 						</div>
@@ -1132,15 +1132,15 @@ export default {
 			const n = (name || '').toLowerCase().trim()
 			if (n === 'all') return 'view-grid-outline'
 			if (n.includes('ai') || n.includes('llm') || n.includes('gpt')) return 'robot-outline'
-			if (n.includes('dev') || n.includes('code') || n.includes('it')) return 'code-braces'
+			if (n.includes('dev') || n.includes('code') || n.includes('it')) return 'code-tags'
 			if (n.includes('media') || n.includes('video') || n.includes('music') || n.includes('audio')) return 'movie-open-outline'
 			if (n.includes('home') || n.includes('automation') || n.includes('iot')) return 'home-outline'
 			if (n.includes('network') || n.includes('dns') || n.includes('vpn')) return 'lan-connect'
 			if (n.includes('product') || n.includes('office') || n.includes('note')) return 'clipboard-text-outline'
-			if (n.includes('finance') || n.includes('money') || n.includes('budget')) return 'cash-multiple'
+			if (n.includes('finance') || n.includes('money') || n.includes('budget')) return 'wallet-outline'
 			if (n.includes('social') || n.includes('chat') || n.includes('forum')) return 'forum-outline'
 			if (n.includes('cloud') || n.includes('storage') || n.includes('sync')) return 'cloud-outline'
-			if (n.includes('util') || n.includes('tool') || n.includes('other')) return 'wrench-outline'
+			if (n.includes('util') || n.includes('tool') || n.includes('other')) return 'cube-outline'
 			return 'cube-outline'
 		},
 		getGradientBg(str) {
@@ -1401,7 +1401,7 @@ export default {
 	border-right: 1px solid #e2e8f0;
 	display: flex;
 	flex-direction: column;
-	padding: 1.25rem 0.875rem;
+	padding: 1rem 0.75rem;
 	user-select: none;
 }
 
@@ -1409,26 +1409,26 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
-	padding: 0.25rem 0.5rem 1.125rem;
+	padding: 0.25rem 0.5rem 1rem;
 	border-bottom: 1px solid #f1f5f9;
-	margin-bottom: 0.75rem;
+	margin-bottom: 0.625rem;
 }
 
 .brand-icon {
-	width: 34px;
-	height: 34px;
-	filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.06));
+	width: 32px;
+	height: 32px;
+	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
 }
 
 .brand-title {
-	font-size: 1rem;
+	font-size: 0.9375rem;
 	font-weight: 700;
 	line-height: 1.2;
 	color: #1e293b;
 }
 
 .brand-subtitle {
-	font-size: 0.75rem;
+	font-size: 0.6875rem;
 	font-weight: 400;
 	color: #94a3b8;
 }
@@ -1436,13 +1436,13 @@ export default {
 .sidebar-nav {
 	flex: 1;
 	overflow-y: auto;
-	padding-right: 0.25rem;
+	padding-right: 0.15rem;
 	display: flex;
 	flex-direction: column;
-	gap: 0.25rem;
+	gap: 0.15rem;
 
 	&::-webkit-scrollbar {
-		width: 4px;
+		width: 3px;
 	}
 	&::-webkit-scrollbar-thumb {
 		background: #cbd5e1;
@@ -1453,22 +1453,37 @@ export default {
 .nav-item {
 	display: flex;
 	align-items: center;
-	gap: 0.75rem;
+	gap: 0.65rem;
 	width: 100%;
-	padding: 0.55rem 0.75rem;
-	border-radius: 0.5rem;
+	padding: 0.45rem 0.65rem;
+	border-radius: 0.375rem;
 	border: none;
 	background: transparent;
 	color: #475569;
-	font-size: 0.84375rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
 	cursor: pointer;
 	text-align: left;
 	transition: all 0.15s ease;
 
 	.nav-icon {
-		color: #64748b;
+		width: 18px;
+		height: 18px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		flex-shrink: 0;
+		color: #64748b;
+		transition: color 0.15s ease;
+
+		i.mdi {
+			font-size: 15px;
+			line-height: 1;
+			display: inline-block;
+			text-rendering: geometricPrecision;
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
+		}
 	}
 
 	&:hover {
@@ -1476,7 +1491,7 @@ export default {
 		color: #0f172a;
 
 		.nav-icon {
-			color: #334155;
+			color: #1e293b;
 		}
 	}
 
@@ -1490,7 +1505,7 @@ export default {
 		}
 
 		.nav-count {
-			background: rgba(255, 255, 255, 0.25);
+			background: rgba(255, 255, 255, 0.22);
 			color: #ffffff;
 		}
 	}
@@ -1506,46 +1521,52 @@ export default {
 .nav-count {
 	font-size: 0.6875rem;
 	font-weight: 500;
-	padding: 0.1rem 0.45rem;
+	padding: 0.05rem 0.4rem;
 	border-radius: 9999px;
 	background: #f1f5f9;
 	color: #64748b;
 }
 
 .nav-section-header {
-	font-size: 0.6875rem;
+	font-size: 0.625rem;
 	font-weight: 700;
-	letter-spacing: 0.06em;
+	letter-spacing: 0.08em;
 	color: #94a3b8;
-	padding: 0.75rem 0.75rem 0.25rem;
+	padding: 0.625rem 0.65rem 0.25rem;
+	text-transform: uppercase;
 }
 
 .category-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.15rem;
+	gap: 0.1rem;
 }
 
 .sidebar-footer {
-	padding-top: 0.875rem;
+	padding-top: 0.75rem;
 	border-top: 1px solid #f1f5f9;
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 0.4rem;
 }
 
 .footer-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.5rem;
+	gap: 0.45rem;
 	width: 100%;
-	padding: 0.55rem;
-	border-radius: 0.5rem;
-	font-size: 0.8125rem;
+	padding: 0.45rem;
+	border-radius: 0.375rem;
+	font-size: 0.78125rem;
 	font-weight: 600;
 	cursor: pointer;
 	transition: all 0.15s ease;
+
+	.footer-icon {
+		font-size: 15px;
+		line-height: 1;
+	}
 
 	&.custom-install-btn {
 		background: #eff6ff;
@@ -1582,7 +1603,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.875rem 1.75rem;
+	padding: 0.75rem 1.5rem;
 	background: #ffffff;
 	border-bottom: 1px solid #e2e8f0;
 	gap: 1rem;
@@ -1600,16 +1621,17 @@ export default {
 	position: absolute;
 	left: 0.875rem;
 	color: #94a3b8;
+	font-size: 16px;
 	pointer-events: none;
 }
 
 .search-input {
 	width: 100%;
-	padding: 0.55rem 2.25rem 0.55rem 2.5rem;
-	border-radius: 0.5rem;
+	padding: 0.5rem 2.25rem 0.5rem 2.35rem;
+	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
 	background: #f8fafc;
-	font-size: 0.84375rem;
+	font-size: 0.8125rem;
 	color: #0f172a;
 	outline: none;
 	transition: all 0.15s ease;
@@ -1617,7 +1639,7 @@ export default {
 	&:focus {
 		border-color: #2563eb;
 		background: #ffffff;
-		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 	}
 }
 
@@ -1627,6 +1649,7 @@ export default {
 	border: none;
 	background: transparent;
 	color: #94a3b8;
+	font-size: 14px;
 	cursor: pointer;
 
 	&:hover {
@@ -1637,22 +1660,26 @@ export default {
 .header-actions {
 	display: flex;
 	align-items: center;
-	gap: 0.625rem;
+	gap: 0.5rem;
 }
 
 .filter-btn {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
-	padding: 0.45rem 0.8rem;
-	border-radius: 0.5rem;
+	gap: 0.35rem;
+	padding: 0.4rem 0.75rem;
+	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
 	color: #334155;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 500;
 	cursor: pointer;
 	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 14px;
+	}
 
 	&:hover {
 		background: #f1f5f9;
@@ -1663,21 +1690,24 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 34px;
-	height: 34px;
-	border-radius: 0.5rem;
+	width: 32px;
+	height: 32px;
+	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
 	color: #475569;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
+	i.mdi {
+		font-size: 16px;
+	}
+
 	&:hover {
 		background: #f1f5f9;
 		color: #0f172a;
 	}
 
-	&.is-spinning .icon,
 	&.is-spinning i {
 		display: inline-block;
 		animation: spin 0.8s linear infinite;
@@ -1693,32 +1723,32 @@ export default {
 .main-body {
 	flex: 1;
 	overflow-y: auto;
-	padding: 1.5rem 1.75rem 2.5rem;
+	padding: 1.25rem 1.5rem 2.5rem;
 }
 
 /* Discover Section & Hero Banner */
 .hero-carousel-wrapper {
-	margin-bottom: 2.25rem;
+	margin-bottom: 2rem;
 }
 
 .hero-carousel {
 	position: relative;
-	height: 250px;
-	border-radius: 1rem;
+	height: 240px;
+	border-radius: 0.875rem;
 	overflow: hidden;
 	background: #0f172a;
-	box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+	box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.12);
 }
 
 .hero-slide {
 	position: absolute;
 	inset: 0;
 	opacity: 0;
-	transition: opacity 0.4s ease;
+	transition: opacity 0.35s ease;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 2rem 2.75rem;
+	padding: 1.75rem 2.5rem;
 	pointer-events: none;
 
 	&.is-active {
@@ -1730,44 +1760,48 @@ export default {
 .hero-ambient-glow {
 	position: absolute;
 	inset: 0;
-	background: radial-gradient(circle at 80% 50%, rgba(37, 99, 235, 0.25) 0%, rgba(15, 23, 42, 0.95) 70%);
+	background: radial-gradient(circle at 80% 50%, rgba(37, 99, 235, 0.22) 0%, rgba(15, 23, 42, 0.96) 70%);
 	z-index: 1;
 }
 
 .hero-content {
 	position: relative;
 	z-index: 2;
-	max-width: 480px;
+	max-width: 460px;
 	color: #ffffff;
 }
 
 .hero-badge {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
-	padding: 0.2rem 0.55rem;
+	gap: 0.3rem;
+	padding: 0.15rem 0.5rem;
 	border-radius: 9999px;
-	background: rgba(234, 179, 8, 0.2);
-	border: 1px solid rgba(234, 179, 8, 0.4);
+	background: rgba(234, 179, 8, 0.18);
+	border: 1px solid rgba(234, 179, 8, 0.35);
 	color: #fde047;
-	font-size: 0.6875rem;
+	font-size: 0.65625rem;
 	font-weight: 700;
 	letter-spacing: 0.05em;
-	margin-bottom: 0.75rem;
+	margin-bottom: 0.625rem;
+
+	i.mdi {
+		font-size: 12px;
+	}
 }
 
 .hero-app-info {
 	display: flex;
 	align-items: center;
-	gap: 0.875rem;
-	margin-bottom: 0.625rem;
+	gap: 0.75rem;
+	margin-bottom: 0.5rem;
 }
 
 .hero-app-icon {
-	width: 48px;
-	height: 48px;
-	border-radius: 0.75rem;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	width: 44px;
+	height: 44px;
+	border-radius: 0.625rem;
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
 	background: #ffffff;
 	padding: 2px;
 	flex-shrink: 0;
@@ -1779,46 +1813,50 @@ export default {
 }
 
 .hero-app-title {
-	font-size: 1.375rem;
+	font-size: 1.25rem;
 	font-weight: 700;
 	color: #ffffff;
 	line-height: 1.2;
 }
 
 .hero-app-meta {
-	font-size: 0.75rem;
+	font-size: 0.71875rem;
 	color: #94a3b8;
 	font-weight: 400;
 }
 
 .hero-app-tagline {
-	font-size: 0.84375rem;
+	font-size: 0.8125rem;
 	color: #cbd5e1;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
-	line-height: 1.45;
-	margin-bottom: 1.125rem;
+	line-height: 1.4;
+	margin-bottom: 1rem;
 }
 
 .hero-actions {
 	display: flex;
 	align-items: center;
-	gap: 0.75rem;
+	gap: 0.625rem;
 }
 
 .hero-action-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.4rem;
-	padding: 0.55rem 1.25rem;
+	gap: 0.35rem;
+	padding: 0.45rem 1.125rem;
 	border-radius: 9999px;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 600;
 	border: none;
 	cursor: pointer;
 	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 14px;
+	}
 
 	&.is-install {
 		background: #2563eb;
@@ -1843,15 +1881,19 @@ export default {
 .hero-details-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
-	padding: 0.55rem 0.875rem;
+	gap: 0.2rem;
+	padding: 0.45rem 0.75rem;
 	border-radius: 9999px;
 	background: transparent;
 	color: #cbd5e1;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 500;
 	border: none;
 	cursor: pointer;
+
+	i.mdi {
+		font-size: 13px;
+	}
 
 	&:hover {
 		color: #ffffff;
@@ -1861,12 +1903,12 @@ export default {
 .hero-preview-box {
 	position: relative;
 	z-index: 2;
-	width: 270px;
-	height: 160px;
-	border-radius: 0.875rem;
+	width: 250px;
+	height: 145px;
+	border-radius: 0.75rem;
 	overflow: hidden;
-	box-shadow: 0 14px 28px rgba(0, 0, 0, 0.45);
-	border: 1px solid rgba(255, 255, 255, 0.15);
+	box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.12);
 	cursor: pointer;
 	transition: transform 0.2s ease;
 	background: #0f172a;
@@ -1888,8 +1930,8 @@ export default {
 	top: 50%;
 	transform: translateY(-50%);
 	z-index: 5;
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
 	border-radius: 50%;
 	background: rgba(15, 23, 42, 0.6);
 	backdrop-filter: blur(4px);
@@ -1901,25 +1943,29 @@ export default {
 	cursor: pointer;
 	transition: all 0.15s ease;
 
+	i.mdi {
+		font-size: 16px;
+	}
+
 	&:hover {
 		background: rgba(15, 23, 42, 0.9);
 	}
 
 	&.is-prev {
-		left: 0.875rem;
+		left: 0.75rem;
 	}
 	&.is-next {
-		right: 0.875rem;
+		right: 0.75rem;
 	}
 }
 
 .carousel-dots {
 	position: absolute;
-	bottom: 0.875rem;
-	right: 1.5rem;
+	bottom: 0.75rem;
+	right: 1.25rem;
 	z-index: 5;
 	display: flex;
-	gap: 0.4rem;
+	gap: 0.35rem;
 }
 
 .carousel-dot {
@@ -1932,32 +1978,32 @@ export default {
 	transition: all 0.2s ease;
 
 	&.is-active {
-		width: 18px;
+		width: 16px;
 		background: #ffffff;
 	}
 }
 
 /* Sections */
 .section-block {
-	margin-bottom: 2.25rem;
+	margin-bottom: 2rem;
 }
 
 .section-header {
 	display: flex;
 	align-items: flex-end;
 	justify-content: space-between;
-	margin-bottom: 1rem;
+	margin-bottom: 0.875rem;
 }
 
 .section-title {
-	font-size: 1.125rem;
+	font-size: 1.0625rem;
 	font-weight: 700;
 	color: #0f172a;
-	margin-bottom: 0.15rem;
+	margin-bottom: 0.125rem;
 }
 
 .section-subtitle {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 400;
 	color: #64748b;
 }
@@ -1965,13 +2011,17 @@ export default {
 .see-all-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: 0.2rem;
 	background: transparent;
 	border: none;
 	color: #2563eb;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 600;
 	cursor: pointer;
+
+	i.mdi {
+		font-size: 13px;
+	}
 
 	&:hover {
 		color: #1d4ed8;
@@ -1979,18 +2029,18 @@ export default {
 }
 
 .catalog-header {
-	margin-bottom: 1rem;
+	margin-bottom: 0.875rem;
 }
 
 .catalog-title {
-	font-size: 1.25rem;
+	font-size: 1.1875rem;
 	font-weight: 700;
 	color: #0f172a;
-	margin-bottom: 0.15rem;
+	margin-bottom: 0.125rem;
 }
 
 .catalog-subtitle {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 400;
 	color: #64748b;
 }
@@ -1999,13 +2049,13 @@ export default {
 .app-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-	gap: 1.25rem;
+	gap: 1.125rem;
 }
 
 .app-card {
 	background: #ffffff;
 	border: 1px solid #e2e8f0;
-	border-radius: 0.875rem;
+	border-radius: 0.75rem;
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
@@ -2015,11 +2065,11 @@ export default {
 
 	&:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 10px 20px -3px rgba(0, 0, 0, 0.08);
+		box-shadow: 0 8px 18px -3px rgba(0, 0, 0, 0.08);
 		border-color: #cbd5e1;
 
 		.card-banner-img {
-			transform: scale(1.03);
+			transform: scale(1.02);
 		}
 	}
 }
@@ -2027,7 +2077,7 @@ export default {
 .card-banner {
 	position: relative;
 	width: 100%;
-	height: 148px;
+	height: 145px;
 	overflow: hidden;
 	background: #0f172a;
 }
@@ -2049,11 +2099,12 @@ export default {
 }
 
 .placeholder-icon {
-	color: rgba(255, 255, 255, 0.35);
+	color: rgba(255, 255, 255, 0.3);
+	font-size: 28px;
 }
 
 .app-card-body {
-	padding: 1rem;
+	padding: 0.875rem;
 	display: flex;
 	flex-direction: column;
 	flex: 1;
@@ -2061,16 +2112,16 @@ export default {
 
 .app-card-top {
 	display: flex;
-	gap: 0.75rem;
-	margin-bottom: 0.5rem;
+	gap: 0.65rem;
+	margin-bottom: 0.45rem;
 }
 
 .app-icon {
-	width: 44px;
-	height: 44px;
-	border-radius: 0.625rem;
+	width: 40px;
+	height: 40px;
+	border-radius: 0.5rem;
 	object-fit: cover;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 	flex-shrink: 0;
 	background: #f8fafc;
 	padding: 2px;
@@ -2083,7 +2134,7 @@ export default {
 }
 
 .app-title {
-	font-size: 0.9375rem;
+	font-size: 0.875rem;
 	font-weight: 600;
 	color: #0f172a;
 	white-space: nowrap;
@@ -2093,7 +2144,7 @@ export default {
 }
 
 .app-author {
-	font-size: 0.75rem;
+	font-size: 0.71875rem;
 	font-weight: 400;
 	color: #94a3b8;
 	white-space: nowrap;
@@ -2103,15 +2154,15 @@ export default {
 }
 
 .app-tagline {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 400;
 	color: #64748b;
-	line-height: 1.45;
+	line-height: 1.4;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
-	margin-bottom: 0.75rem;
+	margin-bottom: 0.65rem;
 	flex: 1;
 }
 
@@ -2119,32 +2170,32 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding-top: 0.625rem;
+	padding-top: 0.55rem;
 	border-top: 1px solid #f1f5f9;
-	gap: 0.5rem;
+	gap: 0.4rem;
 }
 
 .app-meta-group {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
+	gap: 0.35rem;
 	min-width: 0;
 	flex: 1;
 	overflow: hidden;
 }
 
 .app-cat-pill {
-	font-size: 0.6875rem;
+	font-size: 0.65625rem;
 	font-weight: 500;
 	color: #475569;
 	background: #f1f5f9;
-	padding: 0.15rem 0.5rem;
+	padding: 0.125rem 0.45rem;
 	border-radius: 9999px;
 	white-space: nowrap;
 }
 
 .app-arch-text {
-	font-size: 0.6875rem;
+	font-size: 0.65625rem;
 	color: #94a3b8;
 	font-weight: 400;
 	white-space: nowrap;
@@ -2153,9 +2204,9 @@ export default {
 }
 
 .card-btn {
-	padding: 0.35rem 0.95rem;
+	padding: 0.3rem 0.875rem;
 	border-radius: 9999px;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 600;
 	border: none;
 	cursor: pointer;
@@ -2190,8 +2241,8 @@ export default {
 
 .install-spinner {
 	display: inline-block;
-	width: 13px;
-	height: 13px;
+	width: 12px;
+	height: 12px;
 	border: 2px solid rgba(255, 255, 255, 0.3);
 	border-radius: 50%;
 	border-top-color: #ffffff;
@@ -2205,15 +2256,15 @@ export default {
 
 .skeleton-banner {
 	width: 100%;
-	height: 148px;
+	height: 145px;
 	background: #e2e8f0;
 	animation: pulse 1.5s infinite;
 }
 
 .skeleton-icon {
-	width: 44px;
-	height: 44px;
-	border-radius: 0.625rem;
+	width: 40px;
+	height: 40px;
+	border-radius: 0.5rem;
 	background: #e2e8f0;
 	animation: pulse 1.5s infinite;
 }
@@ -2222,13 +2273,13 @@ export default {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 0.4rem;
 }
 
 .skeleton-line {
-	height: 12px;
+	height: 11px;
 	background: #e2e8f0;
-	border-radius: 4px;
+	border-radius: 3px;
 	animation: pulse 1.5s infinite;
 
 	&.is-title {
@@ -2238,8 +2289,8 @@ export default {
 		width: 90%;
 	}
 	&.is-tag {
-		width: 50px;
-		margin-top: 0.5rem;
+		width: 45px;
+		margin-top: 0.4rem;
 	}
 }
 
@@ -2251,30 +2302,31 @@ export default {
 /* Empty State */
 .empty-state {
 	text-align: center;
-	padding: 4rem 2rem;
+	padding: 3.5rem 2rem;
 	color: #64748b;
 }
 
 .empty-icon {
 	color: #cbd5e1;
-	margin-bottom: 1rem;
+	font-size: 40px;
+	margin-bottom: 0.75rem;
 }
 
 .empty-title {
-	font-size: 1.125rem;
+	font-size: 1.0625rem;
 	font-weight: 600;
 	color: #334155;
-	margin-bottom: 0.5rem;
+	margin-bottom: 0.4rem;
 }
 
 .empty-desc {
-	font-size: 0.875rem;
-	margin-bottom: 1.5rem;
+	font-size: 0.8125rem;
+	margin-bottom: 1.25rem;
 }
 
 .empty-action-btn {
-	padding: 0.5rem 1.25rem;
-	border-radius: 0.5rem;
+	padding: 0.45rem 1.125rem;
+	border-radius: 0.375rem;
 	background: #2563eb;
 	color: #ffffff;
 	border: none;
@@ -2294,11 +2346,11 @@ export default {
 }
 
 .drawer-panel {
-	width: 660px;
+	width: 640px;
 	max-width: 90%;
 	height: 100%;
 	background: #ffffff;
-	box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+	box-shadow: -10px 0 30px rgba(0, 0, 0, 0.12);
 	display: flex;
 	flex-direction: column;
 }
@@ -2306,20 +2358,24 @@ export default {
 .drawer-header {
 	display: flex;
 	align-items: center;
-	padding: 1rem 1.5rem;
+	padding: 0.875rem 1.25rem;
 	border-bottom: 1px solid #e2e8f0;
 }
 
 .back-btn {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
+	gap: 0.35rem;
 	background: transparent;
 	border: none;
 	color: #475569;
-	font-size: 0.875rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
 	cursor: pointer;
+
+	i.mdi {
+		font-size: 15px;
+	}
 
 	&:hover {
 		color: #0f172a;
@@ -2334,13 +2390,17 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
 	border-radius: 50%;
 	border: none;
 	background: #f1f5f9;
 	color: #64748b;
 	cursor: pointer;
+
+	i.mdi {
+		font-size: 16px;
+	}
 
 	&:hover {
 		background: #e2e8f0;
@@ -2351,22 +2411,22 @@ export default {
 .drawer-content {
 	flex: 1;
 	overflow-y: auto;
-	padding: 1.75rem 2rem 3rem;
+	padding: 1.5rem 1.75rem 3rem;
 }
 
 .detail-hero {
 	display: flex;
-	gap: 1.5rem;
-	margin-bottom: 2rem;
-	padding-bottom: 1.5rem;
+	gap: 1.25rem;
+	margin-bottom: 1.75rem;
+	padding-bottom: 1.25rem;
 	border-bottom: 1px solid #f1f5f9;
 }
 
 .detail-icon {
-	width: 72px;
-	height: 72px;
-	border-radius: 1rem;
-	box-shadow: 0 6px 14px -2px rgba(0, 0, 0, 0.08);
+	width: 64px;
+	height: 64px;
+	border-radius: 0.875rem;
+	box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.08);
 	flex-shrink: 0;
 	border: 1px solid #f1f5f9;
 }
@@ -2376,30 +2436,30 @@ export default {
 }
 
 .detail-title {
-	font-size: 1.375rem;
+	font-size: 1.25rem;
 	font-weight: 700;
 	color: #0f172a;
-	margin-bottom: 0.25rem;
+	margin-bottom: 0.2rem;
 }
 
 .detail-tagline {
-	font-size: 0.875rem;
+	font-size: 0.8125rem;
 	color: #64748b;
-	margin-bottom: 0.75rem;
+	margin-bottom: 0.65rem;
 	line-height: 1.4;
 }
 
 .detail-meta-row {
 	display: flex;
-	gap: 0.5rem;
-	margin-bottom: 1.125rem;
+	gap: 0.4rem;
+	margin-bottom: 1rem;
 	flex-wrap: wrap;
 }
 
 .detail-pill {
-	font-size: 0.75rem;
+	font-size: 0.71875rem;
 	font-weight: 500;
-	padding: 0.2rem 0.6rem;
+	padding: 0.15rem 0.55rem;
 	border-radius: 9999px;
 	background: #eff6ff;
 	color: #2563eb;
@@ -2417,19 +2477,23 @@ export default {
 
 .detail-actions {
 	display: flex;
-	gap: 0.75rem;
+	gap: 0.625rem;
 }
 
 .detail-action-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.5rem;
-	padding: 0.55rem 1.35rem;
+	gap: 0.4rem;
+	padding: 0.45rem 1.25rem;
 	border-radius: 9999px;
-	font-size: 0.84375rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
 	border: none;
 	cursor: pointer;
+
+	i.mdi {
+		font-size: 14px;
+	}
 
 	&.is-install {
 		background: #2563eb;
@@ -2452,24 +2516,24 @@ export default {
 }
 
 .detail-section {
-	margin-bottom: 2rem;
+	margin-bottom: 1.75rem;
 }
 
 .detail-section-title {
-	font-size: 1rem;
+	font-size: 0.9375rem;
 	font-weight: 700;
 	color: #0f172a;
-	margin-bottom: 0.875rem;
+	margin-bottom: 0.75rem;
 }
 
 .screenshots-gallery {
 	display: flex;
-	gap: 1rem;
+	gap: 0.875rem;
 	overflow-x: auto;
-	padding-bottom: 0.5rem;
+	padding-bottom: 0.4rem;
 
 	&::-webkit-scrollbar {
-		height: 6px;
+		height: 5px;
 	}
 	&::-webkit-scrollbar-thumb {
 		background: #cbd5e1;
@@ -2480,13 +2544,13 @@ export default {
 .screenshot-item {
 	position: relative;
 	flex-shrink: 0;
-	width: 270px;
-	height: 155px;
-	border-radius: 0.75rem;
+	width: 250px;
+	height: 145px;
+	border-radius: 0.625rem;
 	overflow: hidden;
 	border: 1px solid #e2e8f0;
 	cursor: pointer;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.04);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 	transition: transform 0.15s ease;
 
 	&:hover {
@@ -2513,20 +2577,21 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	font-size: 20px;
 	opacity: 0;
 	transition: opacity 0.2s ease;
 }
 
 .detail-description {
 	background: #f8fafc;
-	border-radius: 0.75rem;
-	padding: 1.125rem;
+	border-radius: 0.625rem;
+	padding: 1rem;
 	border: 1px solid #e2e8f0;
 }
 
 .description-text {
-	font-size: 0.84375rem;
-	line-height: 1.6;
+	font-size: 0.8125rem;
+	line-height: 1.55;
 	color: #334155;
 	white-space: pre-line;
 }
@@ -2534,28 +2599,28 @@ export default {
 .specs-grid {
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);
-	gap: 0.875rem;
+	gap: 0.75rem;
 }
 
 .spec-card {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
-	border-radius: 0.625rem;
-	padding: 0.75rem 0.875rem;
+	border-radius: 0.5rem;
+	padding: 0.65rem 0.75rem;
 	display: flex;
 	flex-direction: column;
-	gap: 0.2rem;
+	gap: 0.15rem;
 }
 
 .spec-label {
-	font-size: 0.6875rem;
+	font-size: 0.65625rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	color: #94a3b8;
 }
 
 .spec-value {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 600;
 	color: #1e293b;
 }
@@ -2577,7 +2642,7 @@ export default {
 .lightbox-img {
 	max-width: 90vw;
 	max-height: 90vh;
-	border-radius: 0.75rem;
+	border-radius: 0.625rem;
 	box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 	object-fit: contain;
 }
@@ -2586,8 +2651,8 @@ export default {
 	position: absolute;
 	top: 1.5rem;
 	right: 1.5rem;
-	width: 44px;
-	height: 44px;
+	width: 38px;
+	height: 38px;
 	border-radius: 50%;
 	border: none;
 	background: rgba(255, 255, 255, 0.2);
@@ -2595,6 +2660,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	font-size: 20px;
 	cursor: pointer;
 
 	&:hover {
@@ -2615,11 +2681,11 @@ export default {
 }
 
 .custom-install-panel, .sources-panel {
-	width: 560px;
+	width: 540px;
 	max-width: 90%;
 	background: #ffffff;
-	border-radius: 0.875rem;
-	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+	border-radius: 0.75rem;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.18);
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -2629,35 +2695,35 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 1.125rem 1.35rem;
+	padding: 1rem 1.25rem;
 	border-bottom: 1px solid #e2e8f0;
 }
 
 .custom-install-title, .sources-title {
-	font-size: 1.0625rem;
+	font-size: 1rem;
 	font-weight: 700;
 	color: #0f172a;
 }
 
 .custom-install-body, .sources-body {
-	padding: 1.35rem;
+	padding: 1.25rem;
 }
 
 .custom-install-desc {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	color: #64748b;
-	margin-bottom: 0.875rem;
+	margin-bottom: 0.75rem;
 }
 
 .compose-textarea {
 	width: 100%;
-	border-radius: 0.5rem;
+	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
 	background: #0f172a;
 	color: #38bdf8;
 	font-family: monospace;
-	font-size: 0.8125rem;
-	padding: 0.75rem;
+	font-size: 0.78125rem;
+	padding: 0.65rem;
 	outline: none;
 	resize: vertical;
 
@@ -2670,15 +2736,15 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	gap: 0.75rem;
-	padding: 0.875rem 1.35rem;
+	gap: 0.625rem;
+	padding: 0.75rem 1.25rem;
 	border-top: 1px solid #e2e8f0;
 	background: #f8fafc;
 }
 
 .footer-cancel-btn {
-	padding: 0.45rem 0.875rem;
-	border-radius: 0.5rem;
+	padding: 0.4rem 0.8rem;
+	border-radius: 0.375rem;
 	background: transparent;
 	border: 1px solid #cbd5e1;
 	color: #475569;
@@ -2687,8 +2753,8 @@ export default {
 }
 
 .footer-deploy-btn, .footer-done-btn {
-	padding: 0.45rem 1.125rem;
-	border-radius: 0.5rem;
+	padding: 0.4rem 1rem;
+	border-radius: 0.375rem;
 	background: #2563eb;
 	border: none;
 	color: #ffffff;
@@ -2704,15 +2770,15 @@ export default {
 .add-source-box {
 	display: flex;
 	gap: 0.5rem;
-	margin-bottom: 1.125rem;
+	margin-bottom: 1rem;
 }
 
 .source-input {
 	flex: 1;
-	padding: 0.55rem 0.75rem;
-	border-radius: 0.5rem;
+	padding: 0.45rem 0.65rem;
+	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	outline: none;
 
 	&:focus {
@@ -2721,13 +2787,13 @@ export default {
 }
 
 .add-source-btn {
-	padding: 0.55rem 0.875rem;
-	border-radius: 0.5rem;
+	padding: 0.45rem 0.75rem;
+	border-radius: 0.375rem;
 	background: #2563eb;
 	color: #ffffff;
 	border: none;
 	font-weight: 600;
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	cursor: pointer;
 	white-space: nowrap;
 
@@ -2740,8 +2806,8 @@ export default {
 .sources-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.4rem;
-	max-height: 180px;
+	gap: 0.35rem;
+	max-height: 160px;
 	overflow-y: auto;
 }
 
@@ -2749,14 +2815,14 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.5rem 0.75rem;
+	padding: 0.45rem 0.65rem;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
-	border-radius: 0.5rem;
+	border-radius: 0.375rem;
 }
 
 .source-name {
-	font-size: 0.8125rem;
+	font-size: 0.78125rem;
 	font-weight: 500;
 	color: #334155;
 	word-break: break-all;
@@ -2767,7 +2833,8 @@ export default {
 	background: transparent;
 	color: #ef4444;
 	cursor: pointer;
-	padding: 0.25rem;
+	padding: 0.2rem;
+	font-size: 15px;
 
 	&:hover {
 		color: #dc2626;
@@ -2777,9 +2844,9 @@ export default {
 /* Responsive Adaptations */
 .appstore-app.is-compact {
 	.appstore-sidebar {
-		width: 64px;
-		min-width: 64px;
-		padding: 0.875rem 0.4rem;
+		width: 56px;
+		min-width: 56px;
+		padding: 0.75rem 0.35rem;
 
 		.brand-info, .nav-label, .nav-count, .nav-section-header, .footer-btn span {
 			display: none;
@@ -2787,16 +2854,16 @@ export default {
 
 		.nav-item, .footer-btn {
 			justify-content: center;
-			padding: 0.55rem;
+			padding: 0.45rem;
 		}
 	}
 
 	.main-header {
-		padding: 0.75rem 1rem;
+		padding: 0.65rem 0.875rem;
 	}
 
 	.main-body {
-		padding: 1rem 1rem 2rem;
+		padding: 0.875rem 0.875rem 1.75rem;
 	}
 
 	.hero-preview-box {
