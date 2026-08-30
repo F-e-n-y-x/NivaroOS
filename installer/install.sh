@@ -49,8 +49,16 @@ select_addons() {
 		WITH_VM=no
 		return
 	fi
+	if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+		WITH_VM=no
+		return
+	fi
 	local chosen
-	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
+	if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+		chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}" </dev/tty)"
+	else
+		chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
+	fi
 	local i id upper
 	for i in "${!ADDON_IDS[@]}"; do
 		id="${ADDON_IDS[$i]}"
@@ -61,6 +69,36 @@ select_addons() {
 			declare -g "WITH_${upper}=no"
 		fi
 	done
+}
+
+GUM_VERSION="2.0.0"
+
+install_gum() {
+	if command -v gum >/dev/null 2>&1; then
+		return
+	fi
+	local arch gum_arch
+	arch="$(dpkg --print-architecture)"
+	case "$arch" in
+		amd64) gum_arch=x86_64 ;;
+		arm64) gum_arch=arm64 ;;
+		*)
+			echo "error: unsupported architecture '$arch' for gum install" >&2
+			exit 1
+			;;
+	esac
+	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
+	curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"
+	tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum"
+	install -m 0755 /tmp/gum /usr/local/bin/gum
+	rm -f "/tmp/${tarball}" /tmp/gum
+}
+
+print_banner() {
+	gum style \
+		--border double --align center --width 50 --margin "1 2" --padding "1 4" \
+		--border-foreground 212 --foreground 212 --bold \
+		"NIVAROOS" "Self-hosted personal cloud & container platform"
 }
 
 install_build_deps() {
@@ -239,39 +277,11 @@ print_summary() {
 	echo "Open http://$(hostname -I | awk '{print $1}')/ in a browser to finish setup."
 }
 
-GUM_VERSION="2.0.0"
-
-install_gum() {
-	if command -v gum >/dev/null 2>&1; then
-		return
-	fi
-	local arch gum_arch
-	arch="$(dpkg --print-architecture)"
-	case "$arch" in
-		amd64) gum_arch=x86_64 ;;
-		arm64) gum_arch=arm64 ;;
-		*)
-			echo "error: unsupported architecture '$arch' for gum install" >&2
-			exit 1
-			;;
-	esac
-	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
-	curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"
-	tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum"
-	install -m 0755 /tmp/gum /usr/local/bin/gum
-	rm -f "/tmp/${tarball}" /tmp/gum
-}
-
-print_banner() {
-	gum style \
-		--border double --align center --width 50 --margin "1 2" --padding "1 4" \
-		--border-foreground 212 --foreground 212 --bold \
-		"NIVAROOS" "Self-hosted personal cloud & container platform"
-}
-
 main() {
 	check_distro
 	parse_args "$@"
+	install_gum
+	print_banner
 	select_addons
 	install_build_deps
 	clone_repo
@@ -284,9 +294,7 @@ main() {
 	print_summary
 }
 
-# Guarded so this file can be safely `source`d (e.g. to test individual
-# functions in isolation) without triggering a real install - main only runs
-# when this file is executed directly, not when it's sourced into another shell.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+# Guarded so this file can be safely sourced without triggering a real install
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ] || [ -z "${BASH_SOURCE[0]:-}" ]; then
 	main "$@"
 fi
