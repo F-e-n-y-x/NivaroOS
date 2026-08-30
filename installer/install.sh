@@ -90,6 +90,12 @@ install_go_toolchain() {
 	rm -f /tmp/go1.23.4.tar.gz
 	export PATH="/usr/local/go/bin:$PATH"
 	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/recasa-go.sh
+	# /etc/profile.d only helps interactive login shells. Symlink into /usr/bin
+	# too so `go` is always resolvable - e.g. for `recasa-cli vm enable`'s own
+	# `go build` invocation, run later via a plain `docker exec`/non-interactive
+	# `ssh host cmd`-style call that never sources /etc/profile.
+	ln -sf /usr/local/go/bin/go /usr/bin/go
+	ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 }
 
 clone_repo() {
@@ -106,6 +112,9 @@ CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-si
 install_service() {
 	local name="$1"
 	local bin_name="recasa-$name"
+	if [ "$name" = "core" ]; then
+		bin_name="recasa"
+	fi
 	(
 		cd "$SRC_DIR/services/$name"
 		go build -o "/usr/bin/$bin_name" .
@@ -140,7 +149,7 @@ UNIT_EOF
 install_cli() {
 	(
 		cd "$SRC_DIR/cli"
-		go build -o /usr/bin/recasa .
+		go build -o /usr/bin/recasa-cli .
 	)
 }
 
@@ -172,6 +181,9 @@ UNIT_EOF
 }
 
 install_vm_manager() {
+	# recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
+	# and needs a C compiler to do so; neither is installed by install_build_deps().
+	apt-get install -y libvirt-dev gcc
 	(
 		cd "$SRC_DIR/services/vm-sidecar"
 		go build -o /usr/bin/recasa-vm-sidecar .
@@ -211,7 +223,7 @@ print_summary() {
 	if [ "$WITH_VM" = "yes" ]; then
 		systemctl is-active --quiet recasa-vm-sidecar.service && echo "  [running] recasa-vm-sidecar.service" || echo "  [NOT running] recasa-vm-sidecar.service"
 	else
-		echo "  VM Manager was not installed. Run 'recasa vm enable' to add it later."
+		echo "  VM Manager was not installed. Run 'recasa-cli vm enable' to add it later."
 	fi
 	echo ""
 	echo "Open http://$(hostname -I | awk '{print $1}')/ in a browser to finish setup."

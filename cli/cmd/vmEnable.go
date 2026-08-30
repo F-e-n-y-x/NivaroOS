@@ -47,6 +47,16 @@ var vmEnableCmd = &cobra.Command{
 			return fmt.Errorf("%s not found - run the Recasa installer first: %w", recasaSrcDir, err)
 		}
 
+		// recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
+		// and needs a C compiler to do so. The base install (--without-vm) never
+		// installs either, since it doesn't need to.
+		deps := exec.Command("apt-get", "install", "-y", "libvirt-dev", "gcc")
+		deps.Stdout = os.Stdout
+		deps.Stderr = os.Stderr
+		if err := deps.Run(); err != nil {
+			return fmt.Errorf("installing libvirt-dev and gcc: %w", err)
+		}
+
 		build := exec.Command("go", "build", "-o", "/usr/bin/recasa-vm-sidecar", ".")
 		build.Dir = recasaSrcDir + "/services/vm-sidecar"
 		build.Stdout = os.Stdout
