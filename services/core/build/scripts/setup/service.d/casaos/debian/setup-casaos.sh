@@ -16,7 +16,7 @@ set -e
 APP_NAME="casaos"
 
 # copy config files
-CONF_PATH=/etc/casaos
+CONF_PATH=/etc/recasa
 OLD_CONF_PATH=/etc/casaos.conf
 CONF_FILE=${CONF_PATH}/${APP_NAME}.conf
 CONF_FILE_SAMPLE=${CONF_PATH}/${APP_NAME}.conf.sample
