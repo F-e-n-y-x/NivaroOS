@@ -52,3 +52,51 @@ prompt_vm_manager() {
 		*) WITH_VM=no ;;
 	esac
 }
+
+install_build_deps() {
+	apt-get update
+	apt-get install -y git nodejs curl
+
+	if ! command -v go >/dev/null 2>&1 || ! go_version_ok; then
+		install_go_toolchain
+	fi
+
+	if ! command -v pnpm >/dev/null 2>&1; then
+		corepack enable
+		corepack prepare pnpm@9.0.6 --activate
+	fi
+}
+
+go_version_ok() {
+	local ver
+	ver="$(go version | awk '{print $3}' | sed 's/^go//')"
+	printf '%s\n%s\n' "1.23.4" "$ver" | sort -V -C
+}
+
+install_go_toolchain() {
+	local arch go_arch
+	arch="$(dpkg --print-architecture)"
+	case "$arch" in
+		amd64) go_arch=amd64 ;;
+		arm64) go_arch=arm64 ;;
+		*)
+			echo "error: unsupported architecture '$arch' for Go toolchain install" >&2
+			exit 1
+			;;
+	esac
+	curl -fsSL "https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz" -o /tmp/go1.23.4.tar.gz
+	rm -rf /usr/local/go
+	tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz
+	rm -f /tmp/go1.23.4.tar.gz
+	export PATH="/usr/local/go/bin:$PATH"
+	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/recasa-go.sh
+}
+
+clone_repo() {
+	if [ -d "$SRC_DIR/.git" ]; then
+		echo "found existing checkout at $SRC_DIR, skipping clone"
+		return
+	fi
+	mkdir -p "$(dirname "$SRC_DIR")"
+	git clone "$REPO_URL" "$SRC_DIR"
+}
