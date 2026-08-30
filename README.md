@@ -1,49 +1,104 @@
-# Recasa
+<p align="center">
+  <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="Recasa Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
+</p>
+
+<h1 align="center">Recasa</h1>
 
 <p align="center">
-  <strong>A modern, self-hosted personal cloud OS and application platform.</strong><br>
-  Desktop-class multitasking, Docker container orchestration, KVM virtual machines, file management, and a rich ZimaOS-inspired App Store — all served in one unified web workspace.
+  <strong>A modern, self-hosted personal cloud OS and container platform.</strong><br>
+  Desktop-class multitasking, Docker container studio, KVM virtual machines, file management, and a rich ZimaOS-inspired App Store — all in one unified, windowed web workspace.
 </p>
+
+<p align="center">
+  <a href="https://github.com/F-e-n-y-x/recasa/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/recasa?color=2563eb&style=flat-square" alt="Release"></a>
+  <a href="https://github.com/F-e-n-y-x/recasa/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-orange?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
+</p>
+
+---
+
+## ⚡ Quick Install
+
+Install Recasa on any clean **Debian 12+** or **Ubuntu 22.04+** system with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash
+```
+
+### Automated / Unattended Installation
+
+```bash
+# Install minimal stack (without KVM Virtual Machine Manager)
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash -s -- --without-vm --yes
+
+# Install full stack including KVM Virtual Machine Manager & noVNC
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash -s -- --with-vm --yes
+```
+
+#### Installer Flags & Options
+
+| Flag | Description |
+| :--- | :--- |
+| `--with-vm` | Automatically installs QEMU/KVM packages and enables the VM Manager sidecar. |
+| `--without-vm` | Skips QEMU/KVM packages for a lighter installation. |
+| `-y`, `--yes` | Unattended installation (accepts all defaults without interactive prompts). |
+
+Once installation finishes, open your browser and navigate to `http://<your-server-ip>` to access your desktop!
 
 ---
 
 ## ✨ Key Features
 
 ### 🪟 Desktop Multitasking & Window Management
-- **Native Windowed Experience**: Run multiple applications side-by-side with full window controls (minimize, maximize, drag, resize handles, and taskbar docking).
-- **Session Persistence**: Restores open windows, sizes, and screen positions seamlessly across reloads.
-- **Glassmorphic Theme**: Modern translucent blur effects, custom wallpaper styling, and desktop background customization synchronized with the login screen.
+- **Native Windowed Experience**: Run multiple applications side-by-side with complete window controls (minimize, maximize, drag, resize handles, and dock pinning).
+- **Session Persistence**: Restores open windows, sizes, and desktop grid coordinates automatically across page reloads.
+- **Glassmorphism & Personalization**: Modern frosted-glass themes, customizable backdrop blur intensity, custom wallpaper uploads, and login screen wallpaper synchronization.
 
 ### 🛍️ ZimaOS-Inspired Windowed App Store
-- **Modern Desktop App Store**: Runs inside a dedicated resizable window with responsive breakpoints.
-- **Discover & Curated Collections**:
-  - Hero spotlight carousel with animated app highlights and preview cards.
-  - Curated category rows for **Media & Entertainment**, **AI & Next-Gen LLMs**, **Developer & DevOps**, **Networking & Privacy**, and **Productivity & Cloud**.
-- **Screenshot Previews & Lightbox**: 16:9 high-resolution card banners and an interactive in-window screenshot lightbox.
-- **In-Window Detail Drawer**: Specifications, minimum RAM requirements, mapped ports, volumes, and architecture compatibility (`amd64`, `arm64`).
-- **Custom Compose Deployer**: Integrated Docker Compose YAML editor for 1-click deployments of custom container stacks.
-- **Store Sources Manager**: Add community repositories and custom app store sources.
+- **Windowed Catalog Browser**: Responsive grid with categories, instant search over 400+ self-hosted applications, and source repository managers.
+- **Discover & Spotlight Carousel**:
+  - Hero carousel with animated app highlights, tags, and quick-action triggers.
+  - Curated rows for **Media & Streaming**, **AI & LLMs**, **Developer & DevOps Tools**, and **Networking**.
+- **16:9 Screenshots & Lightbox**: High-resolution screenshot galleries with interactive full-screen lightbox previews.
+- **In-Window Detail Drawer**: In-depth app overview, memory requirements, developer info, architecture compatibility (`amd64`, `arm64`), and port specifications.
 
-### 🖥️ Virtual Machine Manager
-- **KVM / QEMU Virtualization**: Create, edit, and run full Linux/Windows virtual machines.
-- **Built-in noVNC Console**: Integrated web VNC console for direct graphical and terminal access to VMs in windowed or standalone view.
-- **Resource Allocation**: Configure vCPUs, RAM, virtual disks, network bridges, and boot ISOs.
+### 🐳 Container Studio & Bidirectional YAML Sync
+- **Dedicated Container Studio**: Replaces legacy dialogs with a modern card-based container configuration workspace.
+- **Card-Based Visual Editor**:
+  - General & Image configuration with quick tag selectors (`:latest`, `:alpine`, `:stable`).
+  - Web UI portal routing and scheme configuration (`http://` / `https://`).
+  - Dynamic Port Mappings (Host ➔ Container, TCP/UDP).
+  - Storage & Volume Mounts (Host Path ➔ Container Path, `rw`/`ro` modes).
+  - Environment Variables (Monospace key-value pairs).
+  - Advanced Options: Network drivers (`bridge`, `host`, custom networks), restart policies, memory limits, root privileged container toggles, and hardware device passthrough (`/dev/dri`).
+- **Live Two-Way Compose YAML Sync**: Real-time bidirectional updates between the visual form and dark monospace Compose code editor.
+- **Import & Export**: Convert `docker run` commands or drag-and-drop `.yaml` compose files directly into the studio, or export `.yaml` files with one click.
+
+### 🚀 Real-time Download & Install Experience
+- **Floating Global Install HUD**: Sleek glassmorphic download progress card floating above the desktop dock showing live pulling/extracting stages, progress bars, and success badges.
+- **Desktop Grid Live Downloading Tile**: New container apps appear immediately on your desktop grid while downloading with animated SVG circular progress rings.
+- **In-Store Live Progress**: Quick install buttons throughout the catalog show real-time percentage progress.
+
+### 🖥️ KVM Virtual Machine Manager
+- **QEMU / KVM Virtualization**: Create, configure, and manage full Linux and Windows virtual machines.
+- **Integrated noVNC Console**: Web-based graphical and terminal access to VMs directly within a movable desktop window or standalone mode.
+- **Hardware Sizing**: Adjust vCPUs, RAM, virtual disks, ISO boot media, and network interfaces.
 
 ### 📁 Files & Storage Hub
-- **File Management**: Tree navigation, drag-and-drop uploads, batch downloads, search, and granular permissions.
-- **Built-in File Viewers**: Preview images, videos, audio, code files with syntax highlighting, PDFs, and Office documents (`.docx`, `.xlsx`).
-- **Storage Pools & Network Shares**: Manage local disks, storage pools, and mount external SMB/NFS storage.
+- **Modern File Browser**: Fast tree navigation, drag-and-drop transfers, batch operations, breadcrumbs, and search.
+- **Built-in File Previews**: View images, video streaming, audio, markdown, syntax-highlighted source code, PDFs, and Office documents (`.docx`, `.xlsx`).
+- **Drive & USB Notifications**: Native snackbar alerts for newly attached storage devices with one-click navigation to Files.
 
-### ⚙️ System Settings & User Management
-- **Appearance Customization**: Custom wallpaper uploads, login screen background sync, glassmorphism blur intensity, and dock customization.
-- **System Metrics**: Real-time CPU, RAM, disk, and network I/O dashboards.
-- **Terminal & Logs**: In-browser interactive SSH/terminal and live container logging.
+### ⚙️ System Metrics & Monitoring
+- **Desktop Telemetry Widgets**: Translucent real-time CPU (per-core), RAM, GPU, Disk I/O, and Network traffic monitors.
+- **In-Browser Terminal**: Full interactive SSH / terminal console in a resizable window.
 
 ---
 
 ## 🏗️ Architecture & Services
 
-Recasa is structured into modular, decoupled backend microservices communicating over a message bus and unified gateway:
+Recasa is engineered as a modular microservices architecture communicating via a unified message bus and reverse-proxy gateway:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -72,36 +127,36 @@ Recasa is structured into modular, decoupled backend microservices communicating
 
 | Service | Directory | Description |
 | :--- | :--- | :--- |
-| **Gateway** | `services/gateway` | High-performance reverse proxy routing UI static assets and API requests. |
-| **Core** | `services/core` | Core platform daemon, hardware monitoring, notifications, and legacy API handlers. |
-| **User Service** | `services/user` | Authentication, JWT sessions, user profiles, and public wallpaper endpoints. |
-| **App Management** | `services/app-management` | Docker container and Docker Compose lifecycle, 400+ app store catalog indexing. |
-| **Local Storage** | `services/local-storage` | Disk detection, partition formatting, storage pool allocation, and mount management. |
-| **Message Bus** | `services/message-bus` | Real-time event broadcasting and WebSocket messaging bus. |
-| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket proxy. |
-| **Frontend UI** | `ui/` | Desktop-class responsive Vue.js Single Page Application. |
+| **Gateway** | `services/gateway` | High-performance reverse proxy routing UI static assets and API endpoints. |
+| **Core Daemon** | `services/core` | System management daemon, hardware monitoring, notifications, and legacy API handlers. |
+| **User Service** | `services/user` | User authentication, JWT sessions, profiles, and wallpaper preferences. |
+| **App Management** | `services/app-management` | Docker container and Compose lifecycle orchestrator with 400+ app catalog indexer. |
+| **Local Storage** | `services/local-storage` | Block storage detection, filesystem formatting, storage pool allocation, and mount management. |
+| **Message Bus** | `services/message-bus` | Real-time event broker and WebSocket broadcasting daemon. |
+| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. |
+| **Frontend UI** | `ui/` | Responsive windowed desktop Single Page Application. |
 
 ---
 
-## 🚀 Building & Developing
+## 🛠️ Development & Building from Source
 
 ### Prerequisites
-- **Go**: `1.21+`
+- **Go**: `1.21+` (or `1.23+`)
 - **Node.js**: `18+` or `20+`
-- **pnpm**: `8+` or `9+`
-- **Docker Engine**: `20.10+` and `docker compose`
+- **pnpm**: `9+`
+- **Docker Engine**: `20.10+` with `docker compose`
 
-### 1. Build Frontend UI
+### 1. Build the Frontend UI
 ```bash
 cd ui
 pnpm install
 pnpm run build
 ```
-The compiled assets will be placed into `ui/build/sysroot/var/lib/recasa/www/`.
+Compiled production assets are output to `ui/build/sysroot/var/lib/recasa/www/`.
 
-### 2. Build Backend Services
+### 2. Build Backend Go Services
 ```bash
-# Core
+# Core Daemon
 cd services/core && go build -o /usr/local/bin/recasa-core cmd/main.go
 
 # Gateway
@@ -123,7 +178,7 @@ cd services/message-bus && go build -o /usr/local/bin/recasa-message-bus cmd/mai
 cd services/vm-sidecar && go build -o /usr/local/bin/recasa-vm-sidecar cmd/main.go
 ```
 
-### 3. Run Tests
+### 3. Run Test Suites
 ```bash
 # Frontend Unit Tests (Vitest)
 cd ui && pnpm vitest run
@@ -136,6 +191,17 @@ cd services/common && go test ./...
 
 ---
 
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+1. Fork the project repository.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
+
+---
+
 ## 📄 License
 
-This project is licensed under the Apache License 2.0.
+Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE) for more information.
