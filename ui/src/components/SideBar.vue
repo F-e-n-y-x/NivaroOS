@@ -1,20 +1,8 @@
 <template>
 	<div v-if="!isLoading" class="side-bar">
-		<!-- Overflow column first in the DOM (so it lands to the LEFT of
-		the primary column in normal row flow) - rendered once it has
-		widgets OR a drag is in progress (so it exists as a real drop
-		target you can drag a widget into on purpose, not only spilled
-		into automatically), collapsing away again the rest of the time
-		so an unused column doesn't permanently reserve layout width. -->
-		<draggable v-if="column2Widgets.length || isDragging" v-model="column2Widgets" tag="div" class="widgets-column"
-			v-bind="dragOptions" @start="isDragging = true" @end="isDragging = false">
-			<div v-for="w in column2Widgets" :key="`widgets_${w.name}`" class="widget-slot">
-				<component :is="w.app"></component>
-			</div>
-		</draggable>
-		<draggable v-model="column1Widgets" tag="div" class="widgets-column" v-bind="dragOptions"
+		<draggable v-model="allWidgets" tag="div" class="widgets-column" v-bind="dragOptions"
 			@start="isDragging = true" @end="isDragging = false">
-			<div v-for="w in column1Widgets" :key="`widgets_${w.name}`" class="widget-slot">
+			<div v-for="w in allWidgets" :key="`widgets_${w.name}`" class="widget-slot">
 				<component :is="w.app"></component>
 			</div>
 		</draggable>
@@ -126,6 +114,17 @@ export default {
 		column2Widgets: {
 			get() { return this.columns[1] },
 			set(newOrder) { this.queueReorder('col2', newOrder) }
+		},
+		allWidgets: {
+			get() { return this.orderedVisible },
+			set(newOrder) {
+				const names = newOrder.map(w => w.name)
+				this.positions = names.map(n => {
+					const found = this.positions.find(p => p.name === n)
+					return found || { name: n }
+				})
+				this.saveData()
+			}
 		},
 		dragOptions() {
 			return {
@@ -265,19 +264,9 @@ export default {
 
 <style lang="scss">
 .side-bar {
-	// A plain flex row of one or two columns, not a floating overlay -
-	// normal document flow, scrolls with the page as a sibling of
-	// .main-content (see Home.vue). Width is driven entirely by however
-	// many .widgets-column children actually render (1 or 2, via v-if on
-	// the overflow column above) - .main-content (flex: 1 1 auto there)
-	// takes whatever's left. Deliberately no background/border here - each
-	// widget carries its own (see _widgets.scss's .widget), so this reads
-	// as a loose column of widgets floating over the desktop, not a
-	// distinct bar/panel.
 	display: flex;
 	flex-direction: row;
 	align-items: flex-start;
-	gap: 1rem;
 	flex: 0 0 auto;
 
 	@include until(480px) {
@@ -286,26 +275,15 @@ export default {
 }
 
 .widgets-column {
-	flex: 0 0 20rem;
-	width: 20rem;
+	flex: 0 0 18rem;
+	width: 18rem;
 	display: flex;
 	flex-direction: column;
-	gap: 1rem;
-	// An empty column (nothing has overflowed into it yet) still needs a
-	// real vertical drop area to drag a widget into on purpose - with zero
-	// children a flex column otherwise collapses to 0 height.
+	gap: 0.75rem;
 	min-height: 4rem;
-	// Safety net for when a widget's real content runs past the rough
-	// ESTIMATED_HEIGHT the column-split math uses - scrolls internally
-	// rather than visibly overflowing into whatever's below (in
-	// particular, the bottom-right date/time pill this column shares an
-	// edge with). Matches TOP_MARGIN_PX + BOTTOM_MARGIN_PX above (24px +
-	// 80px = 104px = 6.5rem) so this cap agrees with the JS split logic
-	// instead of allowing more room than that math ever intended.
-	max-height: calc(100vh - 6.5rem);
+	height: calc(100vh - 7rem);
 	overflow-y: auto;
-	// Same reasoning as _widgets.scss's .widget scrollbar handling - avoid
-	// a visible scrollbar track on an otherwise-transparent column.
+	overflow-x: hidden;
 	scrollbar-width: none;
 	&::-webkit-scrollbar {
 		display: none;
@@ -315,18 +293,13 @@ export default {
 .widget-slot {
 	cursor: grab;
 	user-select: none;
+	flex-shrink: 0;
 
-	// _widgets.scss's base .widget has margin-bottom: 1rem, meant for a
-	// plain stacked list with no other spacing mechanism - .widgets-column
-	// already spaces items via flex gap, so this would double up.
 	> .widget {
 		margin-bottom: 0 !important;
 	}
 }
 
-// Sortable.js's classes for the item currently being dragged (chosen) and
-// the placeholder left at the drop target while it follows the cursor
-// (ghost) - see dragOptions above.
 .widget-chosen {
 	cursor: grabbing;
 }

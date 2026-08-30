@@ -113,31 +113,42 @@
 }
 
 .app-card {
-	aspect-ratio: 1 / 1;
+	width: 100%;
+	height: 100%;
+	background: transparent;
+	border-radius: 12px;
+
 	.loading-background {
 		background: none !important;
 		border-radius: $backDropBorderRadius;
 		transform: translate3d(0, 0, 0);
 	}
 
-	// No highlight box at all, hover or selected - a zoom animation on
-	// the icon/content is the only hover feedback.
 	> .blur-background {
 		opacity: 0;
+		display: none;
 	}
 
-	// .common-card's own :hover rule adds a box-shadow across the whole
-	// cell - kill it here too.
 	&:hover {
 		box-shadow: none;
 	}
 
 	.cards-content {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
 		transition: transform 0.15s ease;
 	}
 
 	&:hover .cards-content {
-		transform: scale(1.08);
+		transform: scale(1.05);
+	}
+
+	a, p {
+		color: #ffffff;
+		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6);
 	}
 }
 

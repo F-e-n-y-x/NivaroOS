@@ -1,12 +1,12 @@
 <template>
-	<div class="home-section has-text-left">
+	<div class="desktop-app-section">
 		<!-- App List Start -->
 		<div v-if="isLoading" class="app-list-skeleton">
 			<div v-for="index in skCount" :id="'app-' + index" :key="'app-' + index">
 				<app-card-skeleton :index="index"></app-card-skeleton>
 			</div>
 		</div>
-		<div v-else ref="canvas" class="app-canvas contextmenu-canvas" :class="{ 'is-dragging': !!draggingName }" :style="{ height: canvasHeight + 'px' }"
+		<div v-else ref="canvas" class="app-canvas contextmenu-canvas" :class="{ 'is-dragging': !!draggingName }"
 			@mousedown.self="startMarquee">
 			<div class="drop-grid"></div>
 			<div v-if="dragPreviewStyle" class="drop-preview" :style="dragPreviewStyle"></div>
@@ -159,9 +159,9 @@ const builtInApplications = [
 ]
 
 const orderConfig = 'app_order'
-const CELL_W = 120
-const CELL_H = 120
-const GAP = 16
+const CELL_W = 88
+const CELL_H = 96
+const GAP = 8
 const SNAP = CELL_W + GAP
 
 export default {
@@ -392,20 +392,40 @@ export default {
 
 		reconcileAppPositions(appList, saved) {
 			const knownNames = appList.map(i => i.name)
-			const canvasWidth = this.$refs.canvas ? this.$refs.canvas.clientWidth : window.innerWidth
-			const isOnCanvas = p => p.x >= 0 && p.x <= Math.max(0, canvasWidth - CELL_W)
-			const kept = saved.filter(p => knownNames.includes(p.name) && Number.isInteger(p.x) && Number.isInteger(p.y) && isOnCanvas(p))
-			const keptNames = kept.map(p => p.name)
+			const canvasWidth = this.$refs.canvas ? this.$refs.canvas.clientWidth : (window.innerWidth - 360)
+			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : (window.innerHeight - 120)
 			const maxRows = this.maxRowsPerCol()
 
+			const isOnCanvas = p => (
+				Number.isInteger(p.x) &&
+				Number.isInteger(p.y) &&
+				p.x >= 0 &&
+				p.x <= Math.max(0, canvasWidth - CELL_W) &&
+				p.y >= 0 &&
+				p.y <= Math.max(0, canvasHeight - CELL_H)
+			)
+
+			const placedRects = []
 			const rectOf = p => ({ left: p.x, top: p.y, right: p.x + CELL_W, bottom: p.y + CELL_H })
 			const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
-			const placedRects = kept.map(rectOf)
+
+			const kept = []
+			for (const p of saved) {
+				if (knownNames.includes(p.name) && isOnCanvas(p) && !kept.some(k => k.name === p.name)) {
+					const rect = rectOf(p)
+					if (!placedRects.some(r => overlaps(rect, r))) {
+						placedRects.push(rect)
+						kept.push(p)
+					}
+				}
+			}
+
+			const keptNames = kept.map(p => p.name)
 
 			const firstFreeCell = () => {
 				for (let col = 0; ; col++) {
 					for (let row = 0; row < maxRows; row++) {
-						const x = col * (CELL_W + GAP)
+						const x = col * SNAP
 						const y = row * (CELL_H + GAP)
 						const rect = rectOf({ x, y })
 						if (!placedRects.some(r => overlaps(rect, r))) {
@@ -445,7 +465,8 @@ export default {
 			}
 			return {
 				width: CELL_W + 'px',
-				transform: `translate(${left}px, ${top}px)`,
+				height: CELL_H + 'px',
+				transform: `translate3d(${left}px, ${top}px, 0)`,
 				zIndex: (isDragging || isGroupMember) ? 50 : 1
 			}
 		},
@@ -593,9 +614,12 @@ export default {
 
 		placeItem(name, rawX, rawY) {
 			const canvasWidth = this.$refs.canvas ? this.$refs.canvas.clientWidth : window.innerWidth
+			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : window.innerHeight
 			const maxLeft = Math.max(0, canvasWidth - CELL_W)
+			const maxTop = Math.max(0, canvasHeight - CELL_H)
+			const ROW_H = CELL_H + GAP
 			const targetX = Math.min(maxLeft, Math.max(0, Math.round(rawX / SNAP) * SNAP))
-			const targetY = Math.max(0, Math.round(rawY / SNAP) * SNAP)
+			const targetY = Math.min(maxTop, Math.max(0, Math.round(rawY / ROW_H) * ROW_H))
 
 			const others = this.positions.filter(p => p.name !== name)
 			const rectOf = p => ({ left: p.x, top: p.y, right: p.x + CELL_W, bottom: p.y + CELL_H })
@@ -617,7 +641,7 @@ export default {
 						const testX = col * SNAP
 						if (testX > maxLeft) continue
 						for (let row = 0; row < maxRows; row++) {
-							const testY = row * SNAP
+							const testY = row * ROW_H
 							const testRect = rectOf({ x: testX, y: testY })
 							if (!others.some(p => overlaps(testRect, rectOf(p)))) {
 								finalX = testX
@@ -640,7 +664,7 @@ export default {
 			let col = 0
 			let row = 0
 			order.forEach(name => {
-				arranged.push({ name, x: col * SNAP, y: row * SNAP })
+				arranged.push({ name, x: col * SNAP, y: row * (CELL_H + GAP) })
 				row++
 				if (row >= maxRows) {
 					row = 0
@@ -891,7 +915,8 @@ export default {
 .app-list-skeleton {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.5rem;
+	gap: 1rem;
+	padding: 0.5rem;
 }
 
 .app-canvas {
@@ -906,16 +931,33 @@ export default {
 	position: absolute;
 	top: 0;
 	left: 0;
-	cursor: grab;
-	transition: transform 0.15s ease;
+	width: 88px;
+	height: 96px;
+	cursor: pointer;
 	user-select: none;
+	-webkit-user-select: none;
 	-webkit-user-drag: none;
+	transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 12px;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
 
 	&.dragging {
 		cursor: grabbing;
 		transition: none;
 		opacity: 0.85;
 		pointer-events: none;
+	}
+
+	&.selected {
+		border-radius: 12px;
+		background: rgba(59, 130, 246, 0.25);
+		box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.6) inset;
 	}
 
 	img {
@@ -960,21 +1002,17 @@ export default {
 	z-index: 40;
 }
 
-.app-slot.selected {
-	border-radius: 12px;
-	background: rgba(80, 160, 255, 0.18);
-	box-shadow: 0 0 0 1px rgba(80, 160, 255, 0.6) inset;
-}
-
 .installing-app-slot {
 	pointer-events: none;
 	opacity: 0.85;
+	width: 100%;
+	height: 100%;
 }
 
 .installing-icon-box {
 	position: relative;
-	width: 64px;
-	height: 64px;
+	width: 56px;
+	height: 56px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -992,8 +1030,8 @@ export default {
 .installing-ring-wrap {
 	position: absolute;
 	inset: -4px;
-	width: 72px;
-	height: 72px;
+	width: 64px;
+	height: 64px;
 	pointer-events: none;
 }
 
