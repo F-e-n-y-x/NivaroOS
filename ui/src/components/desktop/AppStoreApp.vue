@@ -153,7 +153,6 @@
 								class="hero-slide"
 								:class="{ 'is-active': currentHeroIndex === idx }"
 							>
-								<!-- Clean subtle ambient glow layer -->
 								<div class="hero-ambient-glow"></div>
 
 								<div class="hero-content">
@@ -206,7 +205,6 @@
 									</div>
 								</div>
 
-								<!-- Right preview image in hero -->
 								<div class="hero-preview-box" @click="showAppDetail(item.id)">
 									<img
 										:src="item.thumbnail || item.screenshots[0] || item.icon"
@@ -217,7 +215,6 @@
 								</div>
 							</div>
 
-							<!-- Carousel Navigation & Indicators -->
 							<button class="carousel-arrow is-prev" @click="prevHero" :title="$t('Previous')">
 								<i class="mdi mdi-chevron-left"></i>
 							</button>
@@ -237,7 +234,7 @@
 						</div>
 					</div>
 
-					<!-- Section: Spotlight Picks -->
+					<!-- Spotlight Picks -->
 					<div v-if="recommendList.length > 0" class="section-block">
 						<div class="section-header">
 							<div>
@@ -476,7 +473,7 @@
 						</div>
 					</div>
 
-					<!-- Section: Developer & DevOps -->
+					<!-- Section: Developer Tools -->
 					<div v-if="devApps.length > 0" class="section-block">
 						<div class="section-header">
 							<div>
@@ -666,22 +663,26 @@
 			</div>
 		</main>
 
-		<!-- Mode 2: Windowed Container & Compose Installer View -->
+		<!-- Mode 2: Custom Modern Container Studio & Installer View -->
 		<main v-else-if="viewMode === 'installer'" class="appstore-installer">
+			<!-- Header Toolbar -->
 			<header class="installer-header">
 				<div class="installer-header-left">
 					<button class="back-to-store-btn" @click="viewMode = 'store'">
 						<i class="mdi mdi-arrow-left"></i>
 						<span>{{ $t('Back to Store') }}</span>
 					</button>
-					<div class="installer-title-group">
-						<h3 class="installer-title">{{ currentInstallTitle }}</h3>
-						<span class="installer-badge">{{ installerTab === 'form' ? $t('Form Customizer') : $t('YAML Editor') }}</span>
+					<div class="installer-app-badge">
+						<img :src="formState.icon || defaultAppIcon" class="installer-app-icon" @error="onFormIconError" />
+						<div class="installer-app-info">
+							<h3 class="installer-app-title">{{ formState.title || formState.appName || $t('Custom Container') }}</h3>
+							<span class="installer-app-sub">{{ formState.image || 'docker:image' }}</span>
+						</div>
 					</div>
 				</div>
 
+				<!-- Center Mode Switcher -->
 				<div class="installer-header-center">
-					<!-- Form vs YAML Switcher -->
 					<div class="view-switch-pills">
 						<button
 							class="view-pill-btn"
@@ -689,7 +690,7 @@
 							@click="switchInstallerTab('form')"
 						>
 							<i class="mdi mdi-form-select"></i>
-							<span>{{ $t('Form View') }}</span>
+							<span>{{ $t('Visual Editor') }}</span>
 						</button>
 						<button
 							class="view-pill-btn"
@@ -697,13 +698,14 @@
 							@click="switchInstallerTab('yaml')"
 						>
 							<i class="mdi mdi-code-braces"></i>
-							<span>{{ $t('YAML Editor') }}</span>
+							<span>{{ $t('Compose YAML') }}</span>
 						</button>
 					</div>
 				</div>
 
+				<!-- Right Action Tools -->
 				<div class="installer-header-right">
-					<button class="tool-action-btn" :title="$t('Import Docker CLI / Compose')" @click="openImportModal">
+					<button class="tool-action-btn" :title="$t('Import Docker CLI or Compose YAML')" @click="openImportModal">
 						<i class="mdi mdi-import"></i>
 						<span>{{ $t('Import') }}</span>
 					</button>
@@ -716,47 +718,336 @@
 
 			<!-- Installer Body -->
 			<div class="installer-body">
-				<!-- Form View (ComposeConfig) -->
-				<div v-if="installerTab === 'form'" class="compose-config-wrapper">
-					<ComposeConfig
-						ref="composeConfig"
-						:cap-array="capArray"
-						:docker-compose-commands="customComposeYaml"
-						:errInfo="errInfo"
-						:networks="networks"
-						:state="'install'"
-						:total-memory="totalMemory"
-						@updateDockerComposeCommands="onComposeCommandsUpdated"
-						@updateMainName="name => (currentInstallTitle = name)"
-					></ComposeConfig>
+				<!-- Tab 1: Visual Form Editor -->
+				<div v-if="installerTab === 'form'" class="installer-form-layout">
+					<!-- Section 1: Identity & Image -->
+					<div class="installer-card">
+						<div class="card-title-row">
+							<div class="card-icon-pill is-blue"><i class="mdi mdi-docker"></i></div>
+							<div>
+								<h4 class="card-heading">{{ $t('General & Image Configuration') }}</h4>
+								<span class="card-caption">{{ $t('Define container name, image source, and identity metadata') }}</span>
+							</div>
+						</div>
+
+						<div class="form-grid-2">
+							<div class="form-group">
+								<label class="form-label">{{ $t('Display Name') }} <span class="req">*</span></label>
+								<input v-model="formState.title" type="text" class="form-input" :placeholder="$t('e.g., Nextcloud')" />
+							</div>
+							<div class="form-group">
+								<label class="form-label">{{ $t('Container Name') }} <span class="req">*</span></label>
+								<input v-model="formState.containerName" type="text" class="form-input" :placeholder="$t('e.g., nextcloud')" />
+							</div>
+						</div>
+
+						<div class="form-grid-2 mt-3">
+							<div class="form-group">
+								<label class="form-label">{{ $t('Docker Image') }} <span class="req">*</span></label>
+								<div class="input-with-tags">
+									<input v-model="formState.image" type="text" class="form-input" :placeholder="$t('e.g., nextcloud:latest')" />
+								</div>
+								<div class="quick-tags">
+									<span class="quick-tag-label">{{ $t('Quick Tags:') }}</span>
+									<button class="quick-tag-btn" @click="appendImageTag('latest')">:latest</button>
+									<button class="quick-tag-btn" @click="appendImageTag('alpine')">:alpine</button>
+									<button class="quick-tag-btn" @click="appendImageTag('stable')">:stable</button>
+								</div>
+							</div>
+
+							<div class="form-group">
+								<label class="form-label">{{ $t('Category') }}</label>
+								<select v-model="formState.category" class="form-select">
+									<option value="Productivity">{{ $t('Productivity') }}</option>
+									<option value="Media">{{ $t('Media & Streaming') }}</option>
+									<option value="AI">{{ $t('AI & LLMs') }}</option>
+									<option value="Developer">{{ $t('Developer & DevOps') }}</option>
+									<option value="Networking">{{ $t('Networking & Privacy') }}</option>
+									<option value="Home">{{ $t('Home Automation') }}</option>
+									<option value="Finance">{{ $t('Finance & Crypto') }}</option>
+									<option value="Social">{{ $t('Social & Chat') }}</option>
+									<option value="Utilities">{{ $t('Utilities') }}</option>
+									<option value="Others">{{ $t('Others') }}</option>
+								</select>
+							</div>
+						</div>
+
+						<div class="form-group mt-3">
+							<label class="form-label">{{ $t('Icon URL') }}</label>
+							<div class="icon-input-row">
+								<img :src="formState.icon || defaultAppIcon" class="icon-preview-thumb" @error="onFormIconError" />
+								<input v-model="formState.icon" type="text" class="form-input" :placeholder="$t('https://icon.casaos.io/main/all/app.png')" />
+							</div>
+						</div>
+					</div>
+
+					<!-- Section 2: Web UI & Access -->
+					<div class="installer-card">
+						<div class="card-title-row">
+							<div class="card-icon-pill is-emerald"><i class="mdi mdi-web"></i></div>
+							<div class="card-title-left">
+								<h4 class="card-heading">{{ $t('Web UI & Dashboard Access') }}</h4>
+								<span class="card-caption">{{ $t('Configure the web portal and direct access port in Recasa') }}</span>
+							</div>
+							<div class="card-toggle-wrap">
+								<b-switch v-model="formState.webUI.enabled" type="is-success">{{ $t('Enable Web UI') }}</b-switch>
+							</div>
+						</div>
+
+						<div v-if="formState.webUI.enabled" class="form-grid-3 mt-3">
+							<div class="form-group">
+								<label class="form-label">{{ $t('Protocol') }}</label>
+								<select v-model="formState.webUI.scheme" class="form-select">
+									<option value="http">http://</option>
+									<option value="https">https://</option>
+								</select>
+							</div>
+							<div class="form-group">
+								<label class="form-label">{{ $t('Port') }}</label>
+								<input v-model="formState.webUI.port" type="text" class="form-input" :placeholder="$t('e.g., 80 or 8080')" />
+							</div>
+							<div class="form-group">
+								<label class="form-label">{{ $t('Index Path [Optional]') }}</label>
+								<input v-model="formState.webUI.index" type="text" class="form-input" :placeholder="$t('/index.html or /login')" />
+							</div>
+						</div>
+					</div>
+
+					<!-- Section 3: Port Mappings -->
+					<div class="installer-card">
+						<div class="card-title-row">
+							<div class="card-icon-pill is-indigo"><i class="mdi mdi-lan-connect"></i></div>
+							<div>
+								<h4 class="card-heading">{{ $t('Port Mappings') }}</h4>
+								<span class="card-caption">{{ $t('Expose internal container services to your host network') }}</span>
+							</div>
+						</div>
+
+						<div class="dynamic-list mt-3">
+							<div v-for="(p, pidx) in formState.ports" :key="'port-' + pidx" class="dynamic-row">
+								<div class="dynamic-field">
+									<span class="field-mini-label">{{ $t('Host Port') }}</span>
+									<input v-model="p.host" type="text" class="form-input is-sm" placeholder="8080" />
+								</div>
+								<span class="row-arrow">➔</span>
+								<div class="dynamic-field">
+									<span class="field-mini-label">{{ $t('Container Port') }}</span>
+									<input v-model="p.container" type="text" class="form-input is-sm" placeholder="80" />
+								</div>
+								<div class="dynamic-field is-protocol">
+									<span class="field-mini-label">{{ $t('Protocol') }}</span>
+									<select v-model="p.protocol" class="form-select is-sm">
+										<option value="TCP">TCP</option>
+										<option value="UDP">UDP</option>
+									</select>
+								</div>
+								<button class="delete-row-btn" @click="removePort(pidx)">
+									<i class="mdi mdi-delete-outline"></i>
+								</button>
+							</div>
+
+							<button class="add-row-btn" @click="addPort">
+								<i class="mdi mdi-plus"></i>
+								<span>{{ $t('Add Port Mapping') }}</span>
+							</button>
+						</div>
+					</div>
+
+					<!-- Section 4: Volumes & Storage -->
+					<div class="installer-card">
+						<div class="card-title-row">
+							<div class="card-icon-pill is-amber"><i class="mdi mdi-folder-multiple-outline"></i></div>
+							<div>
+								<h4 class="card-heading">{{ $t('Storage & Volume Mounts') }}</h4>
+								<span class="card-caption">{{ $t('Bind local host directories for configuration persistence and media') }}</span>
+							</div>
+						</div>
+
+						<div class="dynamic-list mt-3">
+							<div v-for="(v, vidx) in formState.volumes" :key="'vol-' + vidx" class="dynamic-row">
+								<div class="dynamic-field is-wide">
+									<span class="field-mini-label">{{ $t('Host Path') }}</span>
+									<input v-model="v.host" type="text" class="form-input is-sm" placeholder="/DATA/AppData/app/config" />
+								</div>
+								<span class="row-arrow">➔</span>
+								<div class="dynamic-field is-wide">
+									<span class="field-mini-label">{{ $t('Container Path') }}</span>
+									<input v-model="v.container" type="text" class="form-input is-sm" placeholder="/config" />
+								</div>
+								<div class="dynamic-field is-mode">
+									<span class="field-mini-label">{{ $t('Mode') }}</span>
+									<select v-model="v.mode" class="form-select is-sm">
+										<option value="rw">Read / Write (rw)</option>
+										<option value="ro">Read-Only (ro)</option>
+									</select>
+								</div>
+								<button class="delete-row-btn" @click="removeVolume(vidx)">
+									<i class="mdi mdi-delete-outline"></i>
+								</button>
+							</div>
+
+							<button class="add-row-btn" @click="addVolume">
+								<i class="mdi mdi-plus"></i>
+								<span>{{ $t('Add Volume Mount') }}</span>
+							</button>
+						</div>
+					</div>
+
+					<!-- Section 5: Environment Variables -->
+					<div class="installer-card">
+						<div class="card-title-row">
+							<div class="card-icon-pill is-purple"><i class="mdi mdi-code-tags"></i></div>
+							<div>
+								<h4 class="card-heading">{{ $t('Environment Variables') }}</h4>
+								<span class="card-caption">{{ $t('Inject configuration keys, passwords, and timezone values') }}</span>
+							</div>
+						</div>
+
+						<div class="dynamic-list mt-3">
+							<div v-for="(e, eidx) in formState.envs" :key="'env-' + eidx" class="dynamic-row">
+								<div class="dynamic-field is-wide">
+									<span class="field-mini-label">{{ $t('Key / Name') }}</span>
+									<input v-model="e.key" type="text" class="form-input is-sm is-mono" placeholder="TZ" />
+								</div>
+								<span class="row-arrow">=</span>
+								<div class="dynamic-field is-wide">
+									<span class="field-mini-label">{{ $t('Value') }}</span>
+									<input v-model="e.value" type="text" class="form-input is-sm is-mono" placeholder="UTC" />
+								</div>
+								<button class="delete-row-btn" @click="removeEnv(eidx)">
+									<i class="mdi mdi-delete-outline"></i>
+								</button>
+							</div>
+
+							<button class="add-row-btn" @click="addEnv">
+								<i class="mdi mdi-plus"></i>
+								<span>{{ $t('Add Environment Variable') }}</span>
+							</button>
+						</div>
+					</div>
+
+					<!-- Section 6: Advanced & Hardware -->
+					<div class="installer-card">
+						<div class="card-title-row is-clickable" @click="showAdvanced = !showAdvanced">
+							<div class="card-icon-pill is-slate"><i class="mdi mdi-cog-outline"></i></div>
+							<div class="card-title-left">
+								<h4 class="card-heading">{{ $t('Advanced & Hardware Configuration') }}</h4>
+								<span class="card-caption">{{ $t('Network drivers, restart policy, memory limits, and GPU / hardware devices') }}</span>
+							</div>
+							<button class="accordion-toggle-btn">
+								<i :class="'mdi ' + (showAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
+							</button>
+						</div>
+
+						<div v-if="showAdvanced" class="advanced-body mt-4">
+							<div class="form-grid-3">
+								<div class="form-group">
+									<label class="form-label">{{ $t('Network Driver') }}</label>
+									<select v-model="formState.network" class="form-select">
+										<option value="bridge">bridge (Isolated NAT)</option>
+										<option value="host">host (Direct Host Networking)</option>
+										<option v-for="net in networkOptions" :key="net" :value="net">{{ net }}</option>
+									</select>
+								</div>
+
+								<div class="form-group">
+									<label class="form-label">{{ $t('Restart Policy') }}</label>
+									<select v-model="formState.restart" class="form-select">
+										<option value="unless-stopped">unless-stopped (Recommended)</option>
+										<option value="always">always</option>
+										<option value="on-failure">on-failure</option>
+										<option value="no">no</option>
+									</select>
+								</div>
+
+								<div class="form-group">
+									<label class="form-label">{{ $t('Memory Limit (MB)') }}</label>
+									<input v-model="formState.memoryLimit" type="text" class="form-input" placeholder="0 (Unlimited)" />
+								</div>
+							</div>
+
+							<div class="form-group mt-3">
+								<label class="form-label">{{ $t('Privileged Container') }}</label>
+								<div class="switch-row">
+									<b-switch v-model="formState.privileged" type="is-danger">{{ $t('Grant container full root access to host devices & kernel') }}</b-switch>
+								</div>
+							</div>
+
+							<div class="form-group mt-3">
+								<label class="form-label">{{ $t('Container Command / Entrypoint') }}</label>
+								<input v-model="formState.command" type="text" class="form-input is-mono" placeholder="e.g., sh -c 'npm start'" />
+							</div>
+
+							<!-- Devices Section -->
+							<div class="mt-4">
+								<label class="form-label">{{ $t('Hardware Device Passthrough') }}</label>
+								<div class="dynamic-list">
+									<div v-for="(dev, didx) in formState.devices" :key="'dev-' + didx" class="dynamic-row">
+										<div class="dynamic-field is-wide">
+											<span class="field-mini-label">{{ $t('Host Device') }}</span>
+											<input v-model="dev.host" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
+										</div>
+										<span class="row-arrow">➔</span>
+										<div class="dynamic-field is-wide">
+											<span class="field-mini-label">{{ $t('Container Device') }}</span>
+											<input v-model="dev.container" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
+										</div>
+										<button class="delete-row-btn" @click="removeDevice(didx)">
+											<i class="mdi mdi-delete-outline"></i>
+										</button>
+									</div>
+									<button class="add-row-btn" @click="addDevice">
+										<i class="mdi mdi-plus"></i>
+										<span>{{ $t('Add Device Passthrough') }}</span>
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
 				</div>
 
-				<!-- YAML Editor View -->
-				<div v-else class="yaml-editor-wrapper">
+				<!-- Tab 2: Direct YAML Editor -->
+				<div v-else class="yaml-studio-wrapper">
+					<div class="yaml-studio-bar">
+						<div class="yaml-stat">
+							<i class="mdi mdi-file-document-outline"></i>
+							<span>docker-compose.yml</span>
+						</div>
+						<button class="copy-yaml-btn" @click="copyYAML">
+							<i class="mdi mdi-content-copy"></i>
+							<span>{{ $t('Copy Code') }}</span>
+						</button>
+					</div>
 					<textarea
 						v-model="customComposeYaml"
-						class="yaml-editor-textarea"
+						class="yaml-studio-textarea"
 						spellcheck="false"
 						placeholder="version: '3.8'&#10;services:&#10;  app:&#10;    image: nginx:alpine&#10;    ports:&#10;      - '8080:80'"
 					></textarea>
 				</div>
 			</div>
 
-			<!-- Installer Footer -->
+			<!-- Installer Bottom Footer -->
 			<footer class="installer-footer">
-				<button class="installer-cancel-btn" @click="viewMode = 'store'">
-					{{ $t('Cancel') }}
-				</button>
-				<button
-					class="installer-deploy-btn"
-					:class="{ 'is-loading': isDeployingCustom }"
-					:disabled="!customComposeYaml.trim()"
-					@click="installFromInstaller"
-				>
-					<i v-if="!isDeployingCustom" class="mdi mdi-check-circle-outline"></i>
-					<span v-if="!isDeployingCustom">{{ $t('Install Container') }}</span>
-					<span v-else>{{ $t('Deploying Container...') }}</span>
-				</button>
+				<div class="installer-footer-info">
+					<i class="mdi mdi-information-outline"></i>
+					<span>{{ $t('Docker 20.10+ · Container configurations are fully persistent and managed via Recasa Compose.') }}</span>
+				</div>
+				<div class="installer-footer-btns">
+					<button class="installer-cancel-btn" @click="viewMode = 'store'">
+						{{ $t('Cancel') }}
+					</button>
+					<button
+						class="installer-deploy-btn"
+						:class="{ 'is-loading': isDeployingCustom }"
+						:disabled="!isFormValid"
+						@click="installFromInstaller"
+					>
+						<i v-if="!isDeployingCustom" class="mdi mdi-check-circle-outline"></i>
+						<span v-if="!isDeployingCustom">{{ $t('Install Container') }}</span>
+						<span v-else>{{ $t('Deploying Container...') }}</span>
+					</button>
+				</div>
 			</footer>
 		</main>
 
@@ -928,14 +1219,14 @@
 
 <script>
 import appStoreIcon from '@/assets/img/app/appstore.svg'
+import defaultAppIcon from '@/assets/img/app/default.svg'
 import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import debounce from 'lodash/debounce'
-import { parse } from 'yaml'
 import YAML from 'yaml'
 import FileSaver from 'file-saver'
-import ComposeConfig from '@/components/Apps/ComposeConfig.vue'
+import copy from 'clipboard-copy'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
@@ -952,82 +1243,43 @@ const GRADIENTS = [
 	'linear-gradient(135deg, #431407 0%, #1e293b 100%)'
 ]
 
-const CAP_ARRAY = [
-	'AUDIT_CONTROL',
-	'AUDIT_READ',
-	'BLOCK_SUSPEND',
-	'BPF',
-	'CHECKPOINT_RESTORE',
-	'DAC_READ_SEARCH',
-	'IPC_LOCK',
-	'IPC_OWNER',
-	'LEASE',
-	'LINUX_IMMUTABLE',
-	'MAC_ADMIN',
-	'MAC_OVERRIDE',
-	'NET_ADMIN',
-	'NET_BROADCAST',
-	'PERFMON',
-	'SYS_ADMIN',
-	'SYS_BOOT',
-	'SYS_MODULE',
-	'SYS_NICE',
-	'SYS_PACCT',
-	'SYS_PTRACE',
-	'SYS_RAWIO',
-	'SYS_RESOURCE',
-	'SYS_TIME',
-	'SYS_TTY_CONFIG',
-	'SYSLOG',
-	'WAKE_ALARM'
-]
-
-const DEFAULT_COMPOSE_TEMPLATE = `name: custom-app
-services:
-  app:
-    image: nginx:latest
-    container_name: custom-app
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    volumes:
-      - /DATA/AppData/custom-app:/data
-    environment:
-      - TZ=UTC
-    x-casaos:
-      envs:
-        - container: TZ
-          description:
-            en_us: Timezone
-      ports:
-        - container: "80"
-          description:
-            en_us: Web UI Port
-      volumes:
-        - container: /data
-          description:
-            en_us: Data Directory
-x-casaos:
-  architectures:
-    - amd64
-    - arm64
-  main: app
-  description:
-    en_us: Custom Docker Container
-  tagline:
-    en_us: Custom container application
-  title:
-    custom: Custom App
-    en_us: Custom App
-  icon: https://icon.casaos.io/main/all/default.png
-  category: Others
-`
+function createDefaultFormState() {
+	return {
+		appName: 'custom-app',
+		mainService: 'app',
+		title: 'Custom App',
+		icon: 'https://icon.casaos.io/main/all/default.png',
+		category: 'Others',
+		tagline: 'Custom container application',
+		description: 'Custom Docker Container deployed via Recasa Studio',
+		image: 'nginx:latest',
+		containerName: 'custom-app',
+		webUI: {
+			enabled: true,
+			scheme: 'http',
+			port: '8080',
+			index: ''
+		},
+		ports: [
+			{ host: '8080', container: '80', protocol: 'TCP' }
+		],
+		volumes: [
+			{ host: '/DATA/AppData/custom-app', container: '/data', mode: 'rw' }
+		],
+		envs: [
+			{ key: 'TZ', value: 'UTC' }
+		],
+		devices: [],
+		network: 'bridge',
+		restart: 'unless-stopped',
+		privileged: false,
+		command: '',
+		memoryLimit: ''
+	}
+}
 
 export default {
 	name: 'AppStoreApp',
-	components: {
-		ComposeConfig
-	},
 	mixins: [business_OpenThirdApp, business_ShowNewAppTag],
 	props: {
 		storeId: {
@@ -1042,8 +1294,10 @@ export default {
 	data() {
 		return {
 			appStoreIcon,
-			viewMode: 'store',
-			installerTab: 'form',
+			defaultAppIcon,
+			viewMode: 'store', // 'store' or 'installer'
+			installerTab: 'form', // 'form' or 'yaml'
+			showAdvanced: false,
 			activeTab: 'discover',
 			isLoading: false,
 			searchQuery: '',
@@ -1066,19 +1320,17 @@ export default {
 			recommendList: [],
 			installedList: [],
 			currentInstallId: '',
-			currentInstallTitle: '',
 			currentHeroIndex: 0,
 			heroTimer: null,
 			selectedAppDetail: null,
 			activeLightboxImage: null,
-			customComposeYaml: DEFAULT_COMPOSE_TEMPLATE,
+			formState: createDefaultFormState(),
+			customComposeYaml: '',
 			isDeployingCustom: false,
 			showSourcesModal: false,
 			newSourceUrl: '',
 			storeSourcesList: [],
 			networks: [],
-			capArray: CAP_ARRAY,
-			errInfo: {},
 			width: 1040,
 			resizeObserver: null
 		}
@@ -1093,8 +1345,14 @@ export default {
 		totalAppCount() {
 			return this.allAppsList.length
 		},
-		totalMemory() {
-			return this.$store.state.hardwareInfo?.ram?.total || 4096
+		networkOptions() {
+			return (this.networks || []).map(n => n.name).filter(n => n && n !== 'bridge' && n !== 'host')
+		},
+		isFormValid() {
+			if (this.installerTab === 'yaml') {
+				return Boolean(this.customComposeYaml && this.customComposeYaml.trim())
+			}
+			return Boolean(this.formState.title && this.formState.image && this.formState.containerName)
 		},
 		arch() {
 			const rawArch = this.$store.state.hardwareInfo?.cpu?.arch || 'x86_64'
@@ -1111,12 +1369,6 @@ export default {
 		},
 		devApps() {
 			return this.allAppsList.filter(item => item.category === 'Developer').slice(0, 6)
-		},
-		networkApps() {
-			return this.allAppsList.filter(item => item.category === 'Networking').slice(0, 6)
-		},
-		productivityApps() {
-			return this.allAppsList.filter(item => item.category === 'Productivity').slice(0, 6)
 		},
 		currentViewTitle() {
 			if (this.searchQuery) return `${this.$t('Search Results for')} "${this.searchQuery}"`
@@ -1159,6 +1411,16 @@ export default {
 			if (!this.selectedAppDetail) return []
 			const links = this.selectedAppDetail.screenshot_link || []
 			return Array.isArray(links) ? links.filter(Boolean) : [links]
+		}
+	},
+	watch: {
+		formState: {
+			handler() {
+				if (this.viewMode === 'installer' && this.installerTab === 'form') {
+					this.customComposeYaml = this.formDataToYaml(this.formState)
+				}
+			},
+			deep: true
 		}
 	},
 	created() {
@@ -1225,7 +1487,10 @@ export default {
 			return item.architectures.includes(this.arch)
 		},
 		onIconError(e) {
-			e.target.src = require('@/assets/img/app/default.svg')
+			e.target.src = defaultAppIcon
+		},
+		onFormIconError(e) {
+			e.target.src = defaultAppIcon
 		},
 		onBannerError(e, item) {
 			e.target.style.display = 'none'
@@ -1392,7 +1657,7 @@ export default {
 				if (res.status === 200 && res.data) {
 					let composeJSON = null
 					try {
-						composeJSON = parse(res.data)
+						composeJSON = YAML.parse(res.data)
 					} catch (err) {
 						console.warn('Failed to parse YAML', err)
 					}
@@ -1466,10 +1731,10 @@ export default {
 				})
 			}
 		},
-		/* Windowed Installer & Customizer Methods */
+		/* Custom Modern Container Studio Methods */
 		openCustomInstall() {
-			this.currentInstallTitle = this.$t('Custom Container')
-			this.customComposeYaml = DEFAULT_COMPOSE_TEMPLATE
+			this.formState = createDefaultFormState()
+			this.customComposeYaml = this.formDataToYaml(this.formState)
 			this.selectedAppDetail = null
 			this.viewMode = 'installer'
 			this.installerTab = 'form'
@@ -1484,8 +1749,13 @@ export default {
 					}
 				})
 				if (res.status === 200 && res.data) {
-					this.currentInstallTitle = item?.title || id
 					this.customComposeYaml = res.data
+					const parsedState = this.yamlToFormData(res.data)
+					if (parsedState) {
+						if (item?.title) parsedState.title = item.title
+						if (item?.icon) parsedState.icon = item.icon
+						this.formState = parsedState
+					}
 					this.selectedAppDetail = null
 					this.viewMode = 'installer'
 					this.installerTab = 'form'
@@ -1501,10 +1771,45 @@ export default {
 			}
 		},
 		switchInstallerTab(tab) {
+			if (tab === 'yaml') {
+				this.customComposeYaml = this.formDataToYaml(this.formState)
+			} else if (tab === 'form') {
+				const parsed = this.yamlToFormData(this.customComposeYaml)
+				if (parsed) {
+					this.formState = parsed
+				}
+			}
 			this.installerTab = tab
 		},
-		onComposeCommandsUpdated(commands) {
-			this.customComposeYaml = commands
+		appendImageTag(tag) {
+			const parts = (this.formState.image || '').split(':')
+			const base = parts[0] || 'nginx'
+			this.formState.image = `${base}:${tag}`
+		},
+		addPort() {
+			this.formState.ports.push({ host: '', container: '', protocol: 'TCP' })
+		},
+		removePort(idx) {
+			this.formState.ports.splice(idx, 1)
+		},
+		addVolume() {
+			const name = this.formState.appName || this.formState.containerName || 'app'
+			this.formState.volumes.push({ host: `/DATA/AppData/${name}/data`, container: '/data', mode: 'rw' })
+		},
+		removeVolume(idx) {
+			this.formState.volumes.splice(idx, 1)
+		},
+		addEnv() {
+			this.formState.envs.push({ key: '', value: '' })
+		},
+		removeEnv(idx) {
+			this.formState.envs.splice(idx, 1)
+		},
+		addDevice() {
+			this.formState.devices.push({ host: '/dev/dri', container: '/dev/dri' })
+		},
+		removeDevice(idx) {
+			this.formState.devices.splice(idx, 1)
 		},
 		openImportModal() {
 			this.$buefy.modal.open({
@@ -1517,38 +1822,41 @@ export default {
 				events: {
 					importInsert: (yaml) => {
 						this.customComposeYaml = yaml
+						const parsed = this.yamlToFormData(yaml)
+						if (parsed) {
+							this.formState = parsed
+						}
 					}
 				}
 			})
 		},
 		exportYAML() {
 			try {
-				const blob = new Blob([this.customComposeYaml], { type: 'text/yaml;charset=utf-8' })
-				const filename = `${this.currentInstallTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || 'compose'}.yaml`
+				const yamlOut = this.installerTab === 'form' ? this.formDataToYaml(this.formState) : this.customComposeYaml
+				const blob = new Blob([yamlOut], { type: 'text/yaml;charset=utf-8' })
+				const filename = `${(this.formState.title || this.formState.appName || 'compose').replace(/[^a-zA-Z0-9_-]/g, '_')}.yaml`
 				FileSaver.saveAs(blob, filename)
 			} catch (e) {
 				console.error('Export failed', e)
 			}
 		},
-		async installFromInstaller() {
-			if (this.installerTab === 'form' && this.$refs.composeConfig) {
-				try {
-					const valid = await this.$refs.composeConfig.checkStep()
-					if (Array.isArray(valid) && !valid.every(v => v === true)) {
-						this.$buefy.toast.open({
-							message: this.$t('Please confirm all required fields in the form.'),
-							type: 'is-danger',
-							position: 'is-top',
-							duration: 4000
-						})
-						return
-					}
-				} catch (err) {
-					console.warn('Form validation check error', err)
-				}
+		copyYAML() {
+			try {
+				copy(this.customComposeYaml)
+				this.$buefy.toast.open({
+					message: this.$t('Compose YAML copied to clipboard'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000
+				})
+			} catch (e) {
+				console.error('Copy failed', e)
 			}
+		},
+		async installFromInstaller() {
+			const finalYaml = this.installerTab === 'form' ? this.formDataToYaml(this.formState) : this.customComposeYaml
 
-			if (!this.customComposeYaml.trim()) {
+			if (!finalYaml.trim()) {
 				this.$buefy.toast.open({
 					message: this.$t('No Docker Compose configuration to deploy'),
 					type: 'is-warning',
@@ -1559,10 +1867,10 @@ export default {
 
 			this.isDeployingCustom = true
 			try {
-				const res = await this.$openAPI.appManagement.compose.installComposeApp(this.customComposeYaml, false, true)
+				const res = await this.$openAPI.appManagement.compose.installComposeApp(finalYaml, false, true)
 				if (res.status === 200) {
 					this.$buefy.toast.open({
-						message: this.$t('Application installation started!'),
+						message: this.$t('Application installation started for {title}!', { title: this.formState.title || this.formState.appName }),
 						type: 'is-success',
 						position: 'is-top',
 						duration: 4000
@@ -1573,7 +1881,6 @@ export default {
 						this.fetchStoreList()
 					}, 4000)
 				} else {
-					this.errInfo = res.data || {}
 					this.$buefy.toast.open({
 						message: res.data?.message || this.$t('Installation failed'),
 						type: 'is-warning',
@@ -1591,6 +1898,205 @@ export default {
 			} finally {
 				this.isDeployingCustom = false
 			}
+		},
+		yamlToFormData(yamlStr) {
+			try {
+				const doc = YAML.parse(yamlStr) || {}
+				const services = doc.services || {}
+				const mainKey = doc['x-casaos']?.main || Object.keys(services)[0] || 'app'
+				const service = services[mainKey] || {}
+
+				const titleObj = doc['x-casaos']?.title
+				const title = (typeof titleObj === 'object' ? (titleObj.custom || titleObj.en_us || titleObj['en-US']) : titleObj) || doc.name || mainKey
+				const icon = doc['x-casaos']?.icon || ''
+				const category = doc['x-casaos']?.category || 'Others'
+				const tagline = doc['x-casaos']?.tagline?.en_us || ''
+				const description = doc['x-casaos']?.description?.en_us || ''
+
+				const rawPorts = service.ports || []
+				const ports = rawPorts.map(p => {
+					if (typeof p === 'string' || typeof p === 'number') {
+						const parts = String(p).split('/')
+						const proto = (parts[1] || 'TCP').toUpperCase()
+						const hostAndCont = parts[0].split(':')
+						if (hostAndCont.length >= 2) {
+							return { host: hostAndCont[0], container: hostAndCont[1], protocol: proto }
+						} else {
+							return { host: hostAndCont[0], container: hostAndCont[0], protocol: proto }
+						}
+					} else if (p && typeof p === 'object') {
+						return { host: String(p.published || p.target), container: String(p.target), protocol: (p.protocol || 'TCP').toUpperCase() }
+					}
+					return { host: '', container: '', protocol: 'TCP' }
+				}).filter(p => p.container)
+
+				const rawVols = service.volumes || []
+				const volumes = rawVols.map(v => {
+					if (typeof v === 'string') {
+						const parts = v.split(':')
+						return { host: parts[0] || '', container: parts[1] || '', mode: parts[2] || 'rw' }
+					} else if (v && typeof v === 'object') {
+						return { host: v.source || '', container: v.target || '', mode: v.read_only ? 'ro' : 'rw' }
+					}
+					return { host: '', container: '', mode: 'rw' }
+				}).filter(v => v.container)
+
+				const rawEnvs = service.environment || []
+				const envs = []
+				if (Array.isArray(rawEnvs)) {
+					rawEnvs.forEach(e => {
+						const eq = e.indexOf('=')
+						if (eq > -1) {
+							envs.push({ key: e.slice(0, eq), value: e.slice(eq + 1) })
+						} else {
+							envs.push({ key: e, value: '' })
+						}
+					})
+				} else if (rawEnvs && typeof rawEnvs === 'object') {
+					Object.entries(rawEnvs).forEach(([k, val]) => {
+						envs.push({ key: k, value: String(val) })
+					})
+				}
+
+				const rawDevs = service.devices || []
+				const devices = rawDevs.map(d => {
+					if (typeof d === 'string') {
+						const parts = d.split(':')
+						return { host: parts[0] || '', container: parts[1] || parts[0] || '' }
+					}
+					return { host: '', container: '' }
+				}).filter(d => d.host)
+
+				const scheme = doc['x-casaos']?.scheme || 'http'
+				const portMap = doc['x-casaos']?.port_map || (ports[0]?.container || '')
+				const index = doc['x-casaos']?.index || ''
+
+				return {
+					appName: doc.name || mainKey,
+					mainService: mainKey,
+					title: title,
+					icon: icon,
+					category: category,
+					tagline: tagline,
+					description: description,
+					image: service.image || '',
+					containerName: service.container_name || doc.name || mainKey,
+					webUI: {
+						enabled: Boolean(portMap),
+						scheme: scheme,
+						port: portMap,
+						index: index
+					},
+					ports: ports,
+					volumes: volumes,
+					envs: envs,
+					devices: devices,
+					network: service.network_mode || (service.networks ? service.networks[0] : 'bridge') || 'bridge',
+					restart: service.restart || 'unless-stopped',
+					privileged: Boolean(service.privileged),
+					command: Array.isArray(service.command) ? service.command.join(' ') : (service.command || ''),
+					memoryLimit: service.deploy?.resources?.limits?.memory || ''
+				}
+			} catch (e) {
+				console.error('Failed to parse compose YAML to form', e)
+				return null
+			}
+		},
+		formDataToYaml(form) {
+			const mainKey = form.mainService || form.appName || 'app'
+			const safeName = (form.appName || form.containerName || 'custom-app').toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+
+			const service = {
+				image: form.image || 'nginx:latest',
+				container_name: form.containerName || safeName,
+				restart: form.restart || 'unless-stopped'
+			}
+
+			if (form.network === 'host') {
+				service.network_mode = 'host'
+			} else if (form.network && form.network !== 'bridge') {
+				service.networks = [form.network]
+			}
+
+			if (form.ports && form.ports.length > 0 && form.network !== 'host') {
+				service.ports = form.ports
+					.filter(p => p.container)
+					.map(p => {
+						const proto = p.protocol && p.protocol !== 'TCP' ? `/${p.protocol.toLowerCase()}` : ''
+						if (p.host) {
+							return `${p.host}:${p.container}${proto}`
+						}
+						return `${p.container}${proto}`
+					})
+			}
+
+			if (form.volumes && form.volumes.length > 0) {
+				service.volumes = form.volumes
+					.filter(v => v.container)
+					.map(v => {
+						const mode = v.mode ? `:${v.mode}` : ''
+						return `${v.host || '/DATA/AppData/' + safeName}:${v.container}${mode}`
+					})
+			}
+
+			if (form.envs && form.envs.length > 0) {
+				service.environment = form.envs
+					.filter(e => e.key)
+					.map(e => `${e.key}=${e.value || ''}`)
+			}
+
+			if (form.devices && form.devices.length > 0) {
+				service.devices = form.devices
+					.filter(d => d.host)
+					.map(d => `${d.host}:${d.container || d.host}`)
+			}
+
+			if (form.privileged) {
+				service.privileged = true
+			}
+
+			if (form.command && form.command.trim()) {
+				service.command = form.command.trim()
+			}
+
+			if (form.memoryLimit && String(form.memoryLimit).trim() && String(form.memoryLimit) !== '0') {
+				const mem = isNaN(form.memoryLimit) ? form.memoryLimit : `${form.memoryLimit}M`
+				service.deploy = {
+					resources: {
+						limits: {
+							memory: mem
+						}
+					}
+				}
+			}
+
+			const doc = {
+				name: safeName,
+				services: {
+					[mainKey]: service
+				},
+				'x-casaos': {
+					architectures: ['amd64', 'arm64'],
+					main: mainKey,
+					title: {
+						custom: form.title || safeName,
+						en_us: form.title || safeName
+					},
+					icon: form.icon || 'https://icon.casaos.io/main/all/default.png',
+					tagline: {
+						en_us: form.tagline || ''
+					},
+					description: {
+						en_us: form.description || ''
+					},
+					category: form.category || 'Others',
+					port_map: form.webUI?.enabled ? String(form.webUI.port || '') : '',
+					scheme: form.webUI?.scheme || 'http',
+					index: form.webUI?.index || ''
+				}
+			}
+
+			return YAML.stringify(doc)
 		},
 		async addStoreSource() {
 			if (!this.newSourceUrl.trim()) return
@@ -2560,13 +3066,13 @@ export default {
 	animation: spin 0.8s linear infinite;
 }
 
-/* Windowed Installer View */
+/* Custom Modern Container Studio & Installer View */
 .appstore-installer {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	background: #ffffff;
+	background: #f1f5f9;
 	overflow: hidden;
 }
 
@@ -2574,7 +3080,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.75rem 1.25rem;
+	padding: 0.75rem 1.5rem;
 	border-bottom: 1px solid #e2e8f0;
 	background: #ffffff;
 	gap: 1rem;
@@ -2590,7 +3096,7 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	padding: 0.35rem 0.65rem;
+	padding: 0.4rem 0.75rem;
 	border-radius: 0.375rem;
 	border: 1px solid #e2e8f0;
 	background: #f8fafc;
@@ -2610,40 +3116,54 @@ export default {
 	}
 }
 
-.installer-title-group {
+.installer-app-badge {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.65rem;
 }
 
-.installer-title {
-	font-size: 1rem;
+.installer-app-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 0.375rem;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	padding: 2px;
+	object-fit: cover;
+}
+
+.installer-app-info {
+	display: flex;
+	flex-direction: column;
+}
+
+.installer-app-title {
+	font-size: 0.9375rem;
 	font-weight: 700;
 	color: #0f172a;
+	line-height: 1.2;
 }
 
-.installer-badge {
-	font-size: 0.65625rem;
-	font-weight: 600;
-	padding: 0.1rem 0.45rem;
-	border-radius: 9999px;
-	background: #eff6ff;
-	color: #2563eb;
+.installer-app-sub {
+	font-size: 0.6875rem;
+	color: #64748b;
+	font-family: monospace;
 }
 
 .view-switch-pills {
 	display: inline-flex;
 	align-items: center;
 	background: #f1f5f9;
-	padding: 2px;
+	padding: 3px;
 	border-radius: 0.5rem;
+	border: 1px solid #e2e8f0;
 }
 
 .view-pill-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	padding: 0.3rem 0.75rem;
+	padding: 0.35rem 0.875rem;
 	border-radius: 0.375rem;
 	border: none;
 	background: transparent;
@@ -2654,12 +3174,12 @@ export default {
 	transition: all 0.15s ease;
 
 	i.mdi {
-		font-size: 14px;
+		font-size: 15px;
 	}
 
 	&.is-active {
 		background: #ffffff;
-		color: #0f172a;
+		color: #2563eb;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 	}
 }
@@ -2674,7 +3194,7 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	padding: 0.35rem 0.65rem;
+	padding: 0.4rem 0.75rem;
 	border-radius: 0.375rem;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
@@ -2685,7 +3205,7 @@ export default {
 	transition: all 0.15s ease;
 
 	i.mdi {
-		font-size: 14px;
+		font-size: 15px;
 	}
 
 	&:hover {
@@ -2697,52 +3217,375 @@ export default {
 .installer-body {
 	flex: 1;
 	overflow-y: auto;
-	padding: 1rem 1.25rem;
-	background: #f8fafc;
+	padding: 1.25rem 1.75rem 2.5rem;
 }
 
-.compose-config-wrapper {
-	height: 100%;
+/* Card-Based Visual Editor */
+.installer-form-layout {
+	max-width: 960px;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
 
-	::v-deep section {
-		height: auto !important;
-		min-height: 100%;
+.installer-card {
+	background: #ffffff;
+	border-radius: 0.75rem;
+	border: 1px solid #e2e8f0;
+	padding: 1.25rem 1.5rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.card-title-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin-bottom: 0.5rem;
+
+	&.is-clickable {
+		cursor: pointer;
+		margin-bottom: 0;
 	}
 }
 
-.yaml-editor-wrapper {
-	height: 100%;
-	min-height: 380px;
+.card-title-left {
+	flex: 1;
 }
 
-.yaml-editor-textarea {
+.card-icon-pill {
+	width: 32px;
+	height: 32px;
+	border-radius: 0.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	flex-shrink: 0;
+
+	&.is-blue { background: #eff6ff; color: #2563eb; }
+	&.is-emerald { background: #ecfdf5; color: #059669; }
+	&.is-indigo { background: #eef2ff; color: #4f46e5; }
+	&.is-amber { background: #fffbeb; color: #d97706; }
+	&.is-purple { background: #faf5ff; color: #9333ea; }
+	&.is-slate { background: #f1f5f9; color: #475569; }
+}
+
+.card-heading {
+	font-size: 0.9375rem;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.2;
+}
+
+.card-caption {
+	font-size: 0.75rem;
+	color: #64748b;
+}
+
+.card-toggle-wrap {
+	margin-left: auto;
+}
+
+.accordion-toggle-btn {
+	background: transparent;
+	border: none;
+	color: #64748b;
+	font-size: 20px;
+	cursor: pointer;
+}
+
+/* Forms & Inputs */
+.form-grid-2 {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 1rem;
+}
+
+.form-grid-3 {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 1rem;
+}
+
+.form-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.form-label {
+	font-size: 0.78125rem;
+	font-weight: 600;
+	color: #334155;
+
+	.req {
+		color: #ef4444;
+	}
+}
+
+.form-input, .form-select {
 	width: 100%;
+	padding: 0.5rem 0.75rem;
+	border-radius: 0.375rem;
+	border: 1px solid #cbd5e1;
+	background: #f8fafc;
+	font-size: 0.8125rem;
+	color: #0f172a;
+	outline: none;
+	transition: all 0.15s ease;
+
+	&:focus {
+		border-color: #2563eb;
+		background: #ffffff;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+	}
+
+	&.is-sm {
+		padding: 0.4rem 0.6rem;
+		font-size: 0.78125rem;
+	}
+
+	&.is-mono {
+		font-family: monospace;
+	}
+}
+
+.quick-tags {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin-top: 0.25rem;
+}
+
+.quick-tag-label {
+	font-size: 0.6875rem;
+	color: #94a3b8;
+}
+
+.quick-tag-btn {
+	background: #f1f5f9;
+	border: 1px solid #e2e8f0;
+	color: #475569;
+	border-radius: 0.25rem;
+	padding: 0.1rem 0.35rem;
+	font-size: 0.6875rem;
+	font-family: monospace;
+	cursor: pointer;
+
+	&:hover {
+		background: #e2e8f0;
+		color: #0f172a;
+	}
+}
+
+.icon-input-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.icon-preview-thumb {
+	width: 38px;
+	height: 38px;
+	border-radius: 0.5rem;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	padding: 2px;
+	object-fit: cover;
+	flex-shrink: 0;
+}
+
+/* Dynamic Rows (Ports, Volumes, Envs) */
+.dynamic-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.dynamic-row {
+	display: flex;
+	align-items: flex-end;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border-radius: 0.5rem;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+}
+
+.dynamic-field {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+
+	&.is-wide {
+		flex: 2;
+	}
+
+	&.is-protocol {
+		flex: 0 0 90px;
+	}
+
+	&.is-mode {
+		flex: 0 0 160px;
+	}
+}
+
+.field-mini-label {
+	font-size: 0.65625rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: #94a3b8;
+}
+
+.row-arrow {
+	color: #94a3b8;
+	font-size: 14px;
+	margin-bottom: 0.5rem;
+}
+
+.delete-row-btn {
+	background: transparent;
+	border: none;
+	color: #94a3b8;
+	font-size: 18px;
+	cursor: pointer;
+	padding: 0.35rem;
+	margin-bottom: 0.2rem;
+	border-radius: 0.25rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	&:hover {
+		background: #fee2e2;
+		color: #ef4444;
+	}
+}
+
+.add-row-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	width: 100%;
+	padding: 0.5rem;
+	border-radius: 0.5rem;
+	border: 1px dashed #cbd5e1;
+	background: #ffffff;
+	color: #2563eb;
+	font-size: 0.78125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 15px;
+	}
+
+	&:hover {
+		background: #eff6ff;
+		border-color: #93c5fd;
+	}
+}
+
+/* YAML Studio */
+.yaml-studio-wrapper {
+	max-width: 960px;
+	margin: 0 auto;
 	height: 100%;
-	min-height: 420px;
-	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	border-radius: 0.75rem;
+	overflow: hidden;
+	border: 1px solid #1e293b;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.yaml-studio-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.5rem 1rem;
+	background: #090d16;
+	border-bottom: 1px solid #1e293b;
+}
+
+.yaml-stat {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.75rem;
+	font-family: monospace;
+	color: #94a3b8;
+}
+
+.copy-yaml-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.25rem 0.55rem;
+	border-radius: 0.25rem;
+	border: 1px solid #334155;
+	background: #1e293b;
+	color: #cbd5e1;
+	font-size: 0.6875rem;
+	cursor: pointer;
+
+	&:hover {
+		background: #334155;
+		color: #ffffff;
+	}
+}
+
+.yaml-studio-textarea {
+	flex: 1;
+	min-height: 480px;
+	width: 100%;
+	padding: 1.25rem;
 	background: #0f172a;
 	color: #38bdf8;
 	font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
 	font-size: 0.8125rem;
-	line-height: 1.55;
-	border-radius: 0.5rem;
-	border: 1px solid #1e293b;
+	line-height: 1.6;
+	border: none;
 	outline: none;
 	resize: none;
 }
 
+/* Installer Footer */
 .installer-footer {
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
-	gap: 0.75rem;
-	padding: 0.75rem 1.25rem;
+	justify-content: space-between;
+	padding: 0.875rem 1.75rem;
 	border-top: 1px solid #e2e8f0;
 	background: #ffffff;
+	gap: 1rem;
+}
+
+.installer-footer-info {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.75rem;
+	color: #64748b;
+
+	i.mdi {
+		color: #2563eb;
+		font-size: 15px;
+	}
+}
+
+.installer-footer-btns {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
 }
 
 .installer-cancel-btn {
-	padding: 0.45rem 1rem;
+	padding: 0.45rem 1.125rem;
 	border-radius: 0.375rem;
 	background: transparent;
 	border: 1px solid #cbd5e1;
@@ -2760,8 +3603,8 @@ export default {
 .installer-deploy-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.4rem;
-	padding: 0.45rem 1.25rem;
+	gap: 0.45rem;
+	padding: 0.45rem 1.5rem;
 	border-radius: 0.375rem;
 	background: #2563eb;
 	border: none;
@@ -2772,7 +3615,7 @@ export default {
 	transition: background 0.15s ease;
 
 	i.mdi {
-		font-size: 15px;
+		font-size: 16px;
 	}
 
 	&:hover {
