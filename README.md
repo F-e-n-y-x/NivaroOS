@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="Recasa Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
+  <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="NivaroOS Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
 </p>
 
-<h1 align="center">Recasa</h1>
+<h1 align="center">NivaroOS</h1>
 
 <p align="center">
   <strong>A modern, self-hosted personal cloud OS and container platform.</strong><br>
@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/F-e-n-y-x/recasa/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/recasa?color=2563eb&style=flat-square" alt="Release"></a>
-  <a href="https://github.com/F-e-n-y-x/recasa/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/F-e-n-y-x/nivaroos/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/nivaroos?color=2563eb&style=flat-square" alt="Release"></a>
+  <a href="https://github.com/F-e-n-y-x/nivaroos/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-orange?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
 </p>
@@ -20,20 +20,20 @@
 
 ## ⚡ Quick Install
 
-Install Recasa on any clean **Debian 12+** or **Ubuntu 22.04+** system with a single command:
+Install NivaroOS on any clean **Debian 12+** or **Ubuntu 22.04+** system with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash
 ```
 
 ### Automated / Unattended Installation
 
 ```bash
 # Install minimal stack (without KVM Virtual Machine Manager)
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash -s -- --without-vm --yes
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash -s -- --without-vm --yes
 
 # Install full stack including KVM Virtual Machine Manager & noVNC
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/recasa/master/installer/install.sh | sudo bash -s -- --with-vm --yes
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash -s -- --with-vm --yes
 ```
 
 #### Installer Flags & Options
@@ -98,16 +98,16 @@ Once installation finishes, open your browser and navigate to `http://<your-serv
 
 ## 🏗️ Architecture & Services
 
-Recasa is engineered as a modular microservices architecture communicating via a unified message bus and reverse-proxy gateway:
+NivaroOS is engineered as a modular microservices architecture communicating via a unified message bus and reverse-proxy gateway:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                          Recasa UI                          │
+│                          NivaroOS UI                          │
 │         (Vue 2.7 / Vue CLI / Buefy / MDI / Webpack 5)       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ HTTP / WebSocket (:80)
 ┌──────────────────────────────▼──────────────────────────────┐
-│                    Recasa Gateway Proxy                     │
+│                    NivaroOS Gateway Proxy                     │
 │                  (services/gateway - Go)                    │
 └──────┬──────────┬──────────┬──────────┬──────────┬──────────┘
        │          │          │          │          │
@@ -152,30 +152,30 @@ cd ui
 pnpm install
 pnpm run build
 ```
-Compiled production assets are output to `ui/build/sysroot/var/lib/recasa/www/`.
+Compiled production assets are output to `ui/build/sysroot/var/lib/nivaroos/www/`.
 
 ### 2. Build Backend Go Services
 ```bash
 # Core Daemon
-cd services/core && go build -o /usr/local/bin/recasa-core cmd/main.go
+cd services/core && go build -o /usr/local/bin/nivaroos-core cmd/main.go
 
 # Gateway
-cd services/gateway && go build -o /usr/local/bin/recasa-gateway cmd/main.go
+cd services/gateway && go build -o /usr/local/bin/nivaroos-gateway cmd/main.go
 
 # User Service
-cd services/user && go build -o /usr/local/bin/recasa-user cmd/main.go
+cd services/user && go build -o /usr/local/bin/nivaroos-user cmd/main.go
 
 # App Management
-cd services/app-management && go build -o /usr/local/bin/recasa-app-management cmd/main.go
+cd services/app-management && go build -o /usr/local/bin/nivaroos-app-management cmd/main.go
 
 # Local Storage
-cd services/local-storage && go build -o /usr/local/bin/recasa-local-storage cmd/main.go
+cd services/local-storage && go build -o /usr/local/bin/nivaroos-local-storage cmd/main.go
 
 # Message Bus
-cd services/message-bus && go build -o /usr/local/bin/recasa-message-bus cmd/main.go
+cd services/message-bus && go build -o /usr/local/bin/nivaroos-message-bus cmd/main.go
 
 # VM Sidecar
-cd services/vm-sidecar && go build -o /usr/local/bin/recasa-vm-sidecar cmd/main.go
+cd services/vm-sidecar && go build -o /usr/local/bin/nivaroos-vm-sidecar cmd/main.go
 ```
 
 ### 3. Run Test Suites

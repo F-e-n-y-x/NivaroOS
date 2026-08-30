@@ -20,7 +20,7 @@
 						{{ mergeStorageList.length }}
 					</span>
 				</span>
-				<span class="tree-node-label one-line">{{ $t('Recasa HD') }}</span>
+				<span class="tree-node-label one-line">{{ $t('NivaroOS HD') }}</span>
 				<b-icon
 					v-if="testMergeMiss > 0"
 					class="warn"
@@ -187,7 +187,7 @@ export default {
 	},
 
 	methods: {
-		// Whether the "merge fs" (Recasa HD) feature is available on this box.
+		// Whether the "merge fs" (NivaroOS HD) feature is available on this box.
 		async checkMergerFunction() {
 			try {
 				const hasMergeState = await this.$api.local_storage.getMergerfsInfo().then((res) => res.status)
@@ -453,7 +453,7 @@ export default {
 			}
 			this.$buefy.dialog.confirm({
 				title: this.$t('Data Protected'),
-				message: this.$t('Changing internal files may break the structure of the Recasa HD'),
+				message: this.$t('Changing internal files may break the structure of the NivaroOS HD'),
 				confirmText: this.$t('Continue'),
 				cancelText: this.$t('Cancel'),
 				iconPack: 'casa',

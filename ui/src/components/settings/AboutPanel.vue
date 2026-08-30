@@ -61,7 +61,7 @@
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="downloads-outline" pack="casa" size="is-20"></b-icon>
 				<div class="row-label">
-					{{ needUpdate ? `${$t('Update available')}: ${latestVersion}` : $t('Recasa is up to date') }}
+					{{ needUpdate ? `${$t('Update available')}: ${latestVersion}` : $t('NivaroOS is up to date') }}
 				</div>
 				<div class="row-control">
 					<b-button v-if="needUpdate" rounded size="is-small" type="is-dark" :loading="updating" @click="applyUpdate">
@@ -74,7 +74,7 @@
 		<h3 class="setting-card-title">{{ $t('Error logs') }}</h3>
 		<div class="setting-card">
 			<div class="setting-row log-header-row">
-				<div class="row-label">{{ $t('Recent Recasa log lines') }}</div>
+				<div class="row-label">{{ $t('Recent NivaroOS log lines') }}</div>
 				<div class="row-control">
 					<b-button rounded size="is-small" @click="loadLogs">{{ $t('Refresh') }}</b-button>
 				</div>

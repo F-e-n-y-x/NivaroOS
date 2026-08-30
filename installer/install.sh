@@ -17,7 +17,7 @@ check_distro() {
 	case "$ID" in
 		debian|ubuntu) ;;
 		*)
-			echo "error: unsupported distro '$ID' - Recasa's installer supports Debian and Ubuntu only" >&2
+			echo "error: unsupported distro '$ID' - NivaroOS's installer supports Debian and Ubuntu only" >&2
 			exit 1
 			;;
 	esac
@@ -114,7 +114,7 @@ clone_repo() {
 		return
 	fi
 	mkdir -p "$(dirname "$SRC_DIR")"
-	gum spin --show-output --title "Cloning Recasa..." -- git clone "$REPO_URL" "$SRC_DIR"
+	gum spin --show-output --title "Cloning NivaroOS..." -- git clone "$REPO_URL" "$SRC_DIR"
 }
 
 CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-sidecar"
@@ -145,7 +145,7 @@ write_gpu_sidecar_unit() {
 	cat > "$GPU_SIDECAR_UNIT" <<'UNIT_EOF'
 [Unit]
 After=network.target
-Description=Recasa GPU Sidecar
+Description=NivaroOS GPU Sidecar
 
 [Service]
 ExecStart=/usr/bin/recasa-gpu-sidecar
@@ -179,7 +179,7 @@ write_vm_sidecar_unit() {
 	cat > "$VM_SIDECAR_UNIT" <<'UNIT_EOF'
 [Unit]
 After=network.target recasa-message-bus.service
-Description=Recasa VM Sidecar
+Description=NivaroOS VM Sidecar
 
 [Service]
 ExecStart=/usr/bin/recasa-vm-sidecar
@@ -224,7 +224,7 @@ start_core_services() {
 
 print_summary() {
 	echo ""
-	echo "Recasa install complete."
+	echo "NivaroOS install complete."
 	echo ""
 	echo "Services:"
 	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
@@ -266,7 +266,7 @@ print_banner() {
 	gum style \
 		--border double --align center --width 50 --margin "1 2" --padding "1 4" \
 		--border-foreground 212 --foreground 212 --bold \
-		"RECASA" "Self-hosted home server platform"
+		"NIVAROOS" "Self-hosted personal cloud & container platform"
 }
 
 main() {

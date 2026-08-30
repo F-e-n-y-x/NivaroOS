@@ -25,7 +25,7 @@
 					<b-button v-if="isContainerApp && item.overrideUrl" expanded tag="a" type="is-text" @click="openApp(item)">{{
 						$t('Open') }}</b-button>
 					<b-button v-if="isContainerApp" expanded tag="a" type="is-text" @click="closeMenuThen('importApp', item, false)">{{
-						$t('Import to Recasa') }}</b-button>
+						$t('Import to NivaroOS') }}</b-button>
 					<b-button v-else-if="item.status === 'running'" expanded tag="a" type="is-text" @click="openApp(item)">{{
 						$t('Open') }}</b-button>
 					<b-button v-else expanded tag="a" type="is-text" @click="openApp(item)">{{

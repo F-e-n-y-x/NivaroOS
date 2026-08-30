@@ -1,7 +1,7 @@
 <template>
 	<div class="account-list">
 		<div class="account-inline-form panel-header">
-			<p class="hint">{{ $t('Other people with full admin access to this Recasa - everyone has the same permission level, there is no separate role yet.') }}</p>
+			<p class="hint">{{ $t('Other people with full admin access to this NivaroOS system - everyone has the same permission level, there is no separate role yet.') }}</p>
 			<button class="add-button" type="button" :title="$t('Add admin account')" @click="showAddForm = !showAddForm">
 				<b-icon :icon="showAddForm ? 'close-outline' : 'add-outline'" pack="casa" size="is-20"></b-icon>
 			</button>
@@ -28,7 +28,7 @@
 			</div>
 		</div>
 
-		<div v-if="!otherUsers.length" class="account-empty">{{ $t('No other Recasa users yet - your own account is managed above.') }}</div>
+		<div v-if="!otherUsers.length" class="account-empty">{{ $t('No other NivaroOS users yet - your own account is managed above.') }}</div>
 	</div>
 </template>
 

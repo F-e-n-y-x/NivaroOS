@@ -1025,7 +1025,7 @@
 			<footer class="installer-footer">
 				<div class="installer-footer-info">
 					<i class="mdi mdi-information-outline"></i>
-					<span>{{ $t('Docker 20.10+ · Container configurations are fully persistent and managed via Recasa Compose.') }}</span>
+					<span>{{ $t('Docker 20.10+ · Container configurations are fully persistent and managed via NivaroOS Compose.') }}</span>
 				</div>
 				<div class="installer-footer-btns">
 					<button class="installer-cancel-btn" @click="viewMode = 'store'">
@@ -1245,7 +1245,7 @@ function createDefaultFormState() {
 		icon: 'https://icon.casaos.io/main/all/default.png',
 		category: 'Others',
 		tagline: 'Custom container application',
-		description: 'Custom Docker Container deployed via Recasa Studio',
+		description: 'Custom Docker Container deployed via NivaroOS Studio',
 		image: 'nginx:latest',
 		containerName: 'custom-app',
 		webUI: {

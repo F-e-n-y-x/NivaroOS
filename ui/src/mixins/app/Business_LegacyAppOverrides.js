@@ -4,7 +4,7 @@
  * compressed image) with roundness, and (container apps only) a custom
  * URL to open on click. Purely display metadata stored in per-user
  * custom storage, keyed by app name. Never touches app-management/
- * containers - "Import to Recasa" is a separate, explicit action.
+ * containers - "Import to NivaroOS" is a separate, explicit action.
  */
 const overridesConfig = 'legacy_app_overrides'
 

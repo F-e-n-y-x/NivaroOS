@@ -44,7 +44,7 @@
 			modifiers: { offset: { offset: '0,4px' } }
 		}" enter-active-class="fade-enter-active" leave-active-class="" transition='fade' trigger="hover">
 			<div class="popper  tooltip-content">
-				{{ $t('Share Recasa') }}
+				{{ $t('Share NivaroOS') }}
 			</div>
 			<a slot="reference" @click="showShareModal">
 				<b-icon icon="chat" pack="casa"></b-icon>

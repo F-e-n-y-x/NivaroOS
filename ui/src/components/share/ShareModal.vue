@@ -3,7 +3,7 @@
 		<!-- Modal-Card Header Start -->
 		<header class="modal-card-head">
 			<div class="is-flex-grow-1">
-				<h3 class="title is-3">{{ $t('Share Recasa') }}</h3>
+				<h3 class="title is-3">{{ $t('Share NivaroOS') }}</h3>
 			</div>
 			<div>
 				<button class="delete" type="button" @click="$emit('close')"/>

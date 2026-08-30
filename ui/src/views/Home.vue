@@ -161,8 +161,8 @@ export default {
 
 		rssConfirm() {
 			this.$buefy.dialog.confirm({
-				title: this.$t('Show news feed from Recasa Blog'),
-				message: this.$t('Recasa dashboard will get the the latest news feed of https://blog.casaos.io via Internet, which might leave your visit records to the site. Do you accept?'),
+				title: this.$t('Show news feed from NivaroOS Blog'),
+				message: this.$t('NivaroOS dashboard will get the the latest news feed of https://blog.casaos.io via Internet, which might leave your visit records to the site. Do you accept?'),
 				type: 'is-dark',
 				confirmText: this.$t('Accept'),
 				cancelText: this.$t('Cancel'),
