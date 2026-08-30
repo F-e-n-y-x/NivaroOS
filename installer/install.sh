@@ -54,8 +54,8 @@ prompt_vm_manager() {
 }
 
 install_build_deps() {
-	apt-get update
-	apt-get install -y git nodejs curl
+	gum spin --show-output --title "Updating package lists..." -- apt-get update
+	gum spin --show-output --title "Installing git, nodejs, curl..." -- apt-get install -y git nodejs curl
 
 	if ! command -v go >/dev/null 2>&1 || ! go_version_ok; then
 		install_go_toolchain
@@ -104,7 +104,7 @@ clone_repo() {
 		return
 	fi
 	mkdir -p "$(dirname "$SRC_DIR")"
-	git clone "$REPO_URL" "$SRC_DIR"
+	gum spin --show-output --title "Cloning Recasa..." -- git clone "$REPO_URL" "$SRC_DIR"
 }
 
 CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-sidecar"
@@ -117,7 +117,7 @@ install_service() {
 	fi
 	(
 		cd "$SRC_DIR/services/$name"
-		go build -o "/usr/bin/$bin_name" .
+		gum spin --show-output --title "Building $bin_name..." -- go build -o "/usr/bin/$bin_name" .
 	)
 	if [ -d "$SRC_DIR/services/$name/build/sysroot" ]; then
 		cp -a "$SRC_DIR/services/$name/build/sysroot/." /
@@ -149,7 +149,7 @@ UNIT_EOF
 install_cli() {
 	(
 		cd "$SRC_DIR/cli"
-		go build -o /usr/bin/recasa-cli .
+		gum spin --show-output --title "Building recasa-cli..." -- go build -o /usr/bin/recasa-cli .
 	)
 }
 
@@ -183,10 +183,10 @@ UNIT_EOF
 install_vm_manager() {
 	# recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
 	# and needs a C compiler to do so; neither is installed by install_build_deps().
-	apt-get install -y libvirt-dev gcc
+	gum spin --show-output --title "Installing libvirt-dev, gcc..." -- apt-get install -y libvirt-dev gcc
 	(
 		cd "$SRC_DIR/services/vm-sidecar"
-		go build -o /usr/bin/recasa-vm-sidecar .
+		gum spin --show-output --title "Building recasa-vm-sidecar..." -- go build -o /usr/bin/recasa-vm-sidecar .
 	)
 	write_vm_sidecar_unit
 	systemctl daemon-reload
@@ -196,8 +196,8 @@ install_vm_manager() {
 install_ui() {
 	(
 		cd "$SRC_DIR/ui"
-		pnpm install --frozen-lockfile
-		pnpm run build
+		gum spin --show-output --title "Installing UI dependencies..." -- pnpm install --frozen-lockfile
+		gum spin --show-output --title "Building the web UI..." -- pnpm run build
 	)
 	mkdir -p /var/lib/recasa/www
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/recasa/www/." /var/lib/recasa/www/
