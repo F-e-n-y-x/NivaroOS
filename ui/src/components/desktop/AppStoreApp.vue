@@ -13,8 +13,8 @@
 			<div class="sidebar-nav">
 				<button
 					class="nav-item"
-					:class="{ 'is-active': activeTab === 'discover' }"
-					@click="switchTab('discover')"
+					:class="{ 'is-active': viewMode === 'store' && activeTab === 'discover' }"
+					@click="switchToStoreTab('discover')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-compass-outline"></i></span>
 					<span class="nav-label">{{ $t('Discover') }}</span>
@@ -22,8 +22,8 @@
 
 				<button
 					class="nav-item"
-					:class="{ 'is-active': activeTab === 'all' }"
-					@click="switchTab('all')"
+					:class="{ 'is-active': viewMode === 'store' && activeTab === 'all' }"
+					@click="switchToStoreTab('all')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-view-grid-outline"></i></span>
 					<span class="nav-label">{{ $t('All Apps') }}</span>
@@ -39,7 +39,7 @@
 						v-for="cat in cateMenu"
 						:key="cat.id"
 						class="nav-item category-item"
-						:class="{ 'is-active': activeTab === 'category' && currentCate.name === cat.name }"
+						:class="{ 'is-active': viewMode === 'store' && activeTab === 'category' && currentCate.name === cat.name }"
 						@click="selectCategory(cat)"
 					>
 						<span class="nav-icon"><i :class="'mdi mdi-' + getCateIcon(cat.name)"></i></span>
@@ -54,8 +54,8 @@
 
 				<button
 					class="nav-item"
-					:class="{ 'is-active': activeTab === 'installed' }"
-					@click="switchTab('installed')"
+					:class="{ 'is-active': viewMode === 'store' && activeTab === 'installed' }"
+					@click="switchToStoreTab('installed')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-check-circle-outline"></i></span>
 					<span class="nav-label">{{ $t('Installed') }}</span>
@@ -64,7 +64,7 @@
 			</div>
 
 			<div class="sidebar-footer">
-				<button class="footer-btn custom-install-btn" @click="openCustomInstall">
+				<button class="footer-btn custom-install-btn" :class="{ 'is-active': viewMode === 'installer' }" @click="openCustomInstall">
 					<i class="mdi mdi-plus footer-icon"></i>
 					<span>{{ $t('Custom Install') }}</span>
 				</button>
@@ -76,8 +76,8 @@
 			</div>
 		</aside>
 
-		<!-- Main Content Area -->
-		<main class="appstore-main">
+		<!-- Mode 1: Main App Store Browser -->
+		<main v-if="viewMode === 'store'" class="appstore-main">
 			<!-- Top Toolbar -->
 			<header class="main-header">
 				<div class="search-wrapper">
@@ -178,19 +178,29 @@
 											<i class="mdi mdi-launch"></i>
 											<span>{{ $t('Open App') }}</span>
 										</button>
-										<button
-											v-else
-											class="hero-action-btn is-install"
-											:disabled="!isArchCompatible(item)"
-											:class="{ 'is-loading': item.id === currentInstallId }"
-											@click="installApp(item.id, item)"
-										>
-											<i v-if="item.id !== currentInstallId" class="mdi mdi-download"></i>
-											<span v-if="item.id !== currentInstallId">{{ $t('Install Now') }}</span>
-											<span v-else>{{ $t('Installing...') }}</span>
-										</button>
+										<template v-else>
+											<button
+												class="hero-action-btn is-install"
+												:disabled="!isArchCompatible(item)"
+												:class="{ 'is-loading': item.id === currentInstallId }"
+												@click="installApp(item.id, item)"
+											>
+												<i v-if="item.id !== currentInstallId" class="mdi mdi-download"></i>
+												<span v-if="item.id !== currentInstallId">{{ $t('Quick Install') }}</span>
+												<span v-else>{{ $t('Installing...') }}</span>
+											</button>
+											<button
+												class="hero-action-btn is-customize"
+												:disabled="!isArchCompatible(item)"
+												@click="openCustomizeForApp(item.id, item)"
+												:title="$t('Customize ports, volumes, and settings before installing')"
+											>
+												<i class="mdi mdi-tune-variant"></i>
+												<span>{{ $t('Customize') }}</span>
+											</button>
+										</template>
 										<button class="hero-details-btn" @click="showAppDetail(item.id)">
-											<span>{{ $t('View Details') }}</span>
+											<span>{{ $t('Details') }}</span>
 											<i class="mdi mdi-chevron-right"></i>
 										</button>
 									</div>
@@ -227,7 +237,7 @@
 						</div>
 					</div>
 
-					<!-- Section: Spotlight Picks (Top 4 Featured with Clean Banners) -->
+					<!-- Section: Spotlight Picks -->
 					<div v-if="recommendList.length > 0" class="section-block">
 						<div class="section-header">
 							<div>
@@ -278,16 +288,25 @@
 											>
 												{{ $t('Open') }}
 											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
+											<div v-else class="card-btn-split">
+												<button
+													class="card-btn is-install"
+													:disabled="!isArchCompatible(item)"
+													:class="{ 'is-loading': item.id === currentInstallId }"
+													@click="installApp(item.id, item)"
+												>
+													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
+													<span v-else class="install-spinner"></span>
+												</button>
+												<button
+													class="card-btn-cog"
+													:disabled="!isArchCompatible(item)"
+													:title="$t('Customize & Install')"
+													@click="openCustomizeForApp(item.id, item)"
+												>
+													<i class="mdi mdi-tune-variant"></i>
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -350,16 +369,25 @@
 											>
 												{{ $t('Open') }}
 											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
+											<div v-else class="card-btn-split">
+												<button
+													class="card-btn is-install"
+													:disabled="!isArchCompatible(item)"
+													:class="{ 'is-loading': item.id === currentInstallId }"
+													@click="installApp(item.id, item)"
+												>
+													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
+													<span v-else class="install-spinner"></span>
+												</button>
+												<button
+													class="card-btn-cog"
+													:disabled="!isArchCompatible(item)"
+													:title="$t('Customize & Install')"
+													@click="openCustomizeForApp(item.id, item)"
+												>
+													<i class="mdi mdi-tune-variant"></i>
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -422,16 +450,25 @@
 											>
 												{{ $t('Open') }}
 											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
+											<div v-else class="card-btn-split">
+												<button
+													class="card-btn is-install"
+													:disabled="!isArchCompatible(item)"
+													:class="{ 'is-loading': item.id === currentInstallId }"
+													@click="installApp(item.id, item)"
+												>
+													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
+													<span v-else class="install-spinner"></span>
+												</button>
+												<button
+													class="card-btn-cog"
+													:disabled="!isArchCompatible(item)"
+													:title="$t('Customize & Install')"
+													@click="openCustomizeForApp(item.id, item)"
+												>
+													<i class="mdi mdi-tune-variant"></i>
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -494,160 +531,25 @@
 											>
 												{{ $t('Open') }}
 											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Section: Networking & Privacy -->
-					<div v-if="networkApps.length > 0" class="section-block">
-						<div class="section-header">
-							<div>
-								<h3 class="section-title">{{ $t('Networking & Privacy') }}</h3>
-								<span class="section-subtitle">{{ $t('Ad blocking, DNS servers, VPNs, reverse proxies, and traffic monitors') }}</span>
-							</div>
-							<button class="see-all-btn" @click="selectCategoryByName('Networking')">
-								<span>{{ $t('See All') }}</span>
-								<i class="mdi mdi-chevron-right"></i>
-							</button>
-						</div>
-						<div class="app-grid">
-							<div
-								v-for="item in networkApps"
-								:key="'net-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Section: Productivity & Storage -->
-					<div v-if="productivityApps.length > 0" class="section-block">
-						<div class="section-header">
-							<div>
-								<h3 class="section-title">{{ $t('Productivity & Cloud Storage') }}</h3>
-								<span class="section-subtitle">{{ $t('Sync files, manage tasks, password managers, and document management') }}</span>
-							</div>
-							<button class="see-all-btn" @click="selectCategoryByName('Productivity')">
-								<span>{{ $t('See All') }}</span>
-								<i class="mdi mdi-chevron-right"></i>
-							</button>
-						</div>
-						<div class="app-grid">
-							<div
-								v-for="item in productivityApps"
-								:key="'prod-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<button
-												v-else
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
-												@click="installApp(item.id, item)"
-											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
-											</button>
+											<div v-else class="card-btn-split">
+												<button
+													class="card-btn is-install"
+													:disabled="!isArchCompatible(item)"
+													:class="{ 'is-loading': item.id === currentInstallId }"
+													@click="installApp(item.id, item)"
+												>
+													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
+													<span v-else class="install-spinner"></span>
+												</button>
+												<button
+													class="card-btn-cog"
+													:disabled="!isArchCompatible(item)"
+													:title="$t('Customize & Install')"
+													@click="openCustomizeForApp(item.id, item)"
+												>
+													<i class="mdi mdi-tune-variant"></i>
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -736,16 +638,25 @@
 										>
 											{{ $t('Open') }}
 										</button>
-										<button
-											v-else
-											class="card-btn is-install"
-											:disabled="!isArchCompatible(item)"
-											:class="{ 'is-loading': item.id === currentInstallId }"
-											@click="installApp(item.id, item)"
-										>
-											<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-											<span v-else class="install-spinner"></span>
-										</button>
+										<div v-else class="card-btn-split">
+											<button
+												class="card-btn is-install"
+												:disabled="!isArchCompatible(item)"
+												:class="{ 'is-loading': item.id === currentInstallId }"
+												@click="installApp(item.id, item)"
+											>
+												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
+												<span v-else class="install-spinner"></span>
+											</button>
+											<button
+												class="card-btn-cog"
+												:disabled="!isArchCompatible(item)"
+												:title="$t('Customize & Install')"
+												@click="openCustomizeForApp(item.id, item)"
+											>
+												<i class="mdi mdi-tune-variant"></i>
+											</button>
+										</div>
 									</div>
 								</div>
 							</div>
@@ -753,6 +664,100 @@
 					</div>
 				</section>
 			</div>
+		</main>
+
+		<!-- Mode 2: Windowed Container & Compose Installer View -->
+		<main v-else-if="viewMode === 'installer'" class="appstore-installer">
+			<header class="installer-header">
+				<div class="installer-header-left">
+					<button class="back-to-store-btn" @click="viewMode = 'store'">
+						<i class="mdi mdi-arrow-left"></i>
+						<span>{{ $t('Back to Store') }}</span>
+					</button>
+					<div class="installer-title-group">
+						<h3 class="installer-title">{{ currentInstallTitle }}</h3>
+						<span class="installer-badge">{{ installerTab === 'form' ? $t('Form Customizer') : $t('YAML Editor') }}</span>
+					</div>
+				</div>
+
+				<div class="installer-header-center">
+					<!-- Form vs YAML Switcher -->
+					<div class="view-switch-pills">
+						<button
+							class="view-pill-btn"
+							:class="{ 'is-active': installerTab === 'form' }"
+							@click="switchInstallerTab('form')"
+						>
+							<i class="mdi mdi-form-select"></i>
+							<span>{{ $t('Form View') }}</span>
+						</button>
+						<button
+							class="view-pill-btn"
+							:class="{ 'is-active': installerTab === 'yaml' }"
+							@click="switchInstallerTab('yaml')"
+						>
+							<i class="mdi mdi-code-braces"></i>
+							<span>{{ $t('YAML Editor') }}</span>
+						</button>
+					</div>
+				</div>
+
+				<div class="installer-header-right">
+					<button class="tool-action-btn" :title="$t('Import Docker CLI / Compose')" @click="openImportModal">
+						<i class="mdi mdi-import"></i>
+						<span>{{ $t('Import') }}</span>
+					</button>
+					<button class="tool-action-btn" :title="$t('Export Compose File')" @click="exportYAML">
+						<i class="mdi mdi-export-variant"></i>
+						<span>{{ $t('Export') }}</span>
+					</button>
+				</div>
+			</header>
+
+			<!-- Installer Body -->
+			<div class="installer-body">
+				<!-- Form View (ComposeConfig) -->
+				<div v-if="installerTab === 'form'" class="compose-config-wrapper">
+					<ComposeConfig
+						ref="composeConfig"
+						:cap-array="capArray"
+						:docker-compose-commands="customComposeYaml"
+						:errInfo="errInfo"
+						:networks="networks"
+						:state="'install'"
+						:total-memory="totalMemory"
+						@updateDockerComposeCommands="onComposeCommandsUpdated"
+						@updateMainName="name => (currentInstallTitle = name)"
+					></ComposeConfig>
+				</div>
+
+				<!-- YAML Editor View -->
+				<div v-else class="yaml-editor-wrapper">
+					<textarea
+						v-model="customComposeYaml"
+						class="yaml-editor-textarea"
+						spellcheck="false"
+						placeholder="version: '3.8'&#10;services:&#10;  app:&#10;    image: nginx:alpine&#10;    ports:&#10;      - '8080:80'"
+					></textarea>
+				</div>
+			</div>
+
+			<!-- Installer Footer -->
+			<footer class="installer-footer">
+				<button class="installer-cancel-btn" @click="viewMode = 'store'">
+					{{ $t('Cancel') }}
+				</button>
+				<button
+					class="installer-deploy-btn"
+					:class="{ 'is-loading': isDeployingCustom }"
+					:disabled="!customComposeYaml.trim()"
+					@click="installFromInstaller"
+				>
+					<i v-if="!isDeployingCustom" class="mdi mdi-check-circle-outline"></i>
+					<span v-if="!isDeployingCustom">{{ $t('Install Container') }}</span>
+					<span v-else>{{ $t('Deploying Container...') }}</span>
+				</button>
+			</footer>
 		</main>
 
 		<!-- In-Window App Detail Drawer -->
@@ -792,17 +797,26 @@
 										<i class="mdi mdi-launch"></i>
 										<span>{{ $t('Open App') }}</span>
 									</button>
-									<button
-										v-else
-										class="detail-action-btn is-install"
-										:disabled="!isArchCompatible(selectedAppDetail)"
-										:class="{ 'is-loading': selectedAppDetail.id === currentInstallId }"
-										@click="installApp(selectedAppDetail.id, selectedAppDetail)"
-									>
-										<i v-if="selectedAppDetail.id !== currentInstallId" class="mdi mdi-download"></i>
-										<span v-if="selectedAppDetail.id !== currentInstallId">{{ $t('Install App') }}</span>
-										<span v-else>{{ $t('Installing...') }}</span>
-									</button>
+									<template v-else>
+										<button
+											class="detail-action-btn is-install"
+											:disabled="!isArchCompatible(selectedAppDetail)"
+											:class="{ 'is-loading': selectedAppDetail.id === currentInstallId }"
+											@click="installApp(selectedAppDetail.id, selectedAppDetail)"
+										>
+											<i v-if="selectedAppDetail.id !== currentInstallId" class="mdi mdi-download"></i>
+											<span v-if="selectedAppDetail.id !== currentInstallId">{{ $t('Quick Install') }}</span>
+											<span v-else>{{ $t('Installing...') }}</span>
+										</button>
+										<button
+											class="detail-action-btn is-customize"
+											:disabled="!isArchCompatible(selectedAppDetail)"
+											@click="openCustomizeForApp(selectedAppDetail.id, selectedAppDetail)"
+										>
+											<i class="mdi mdi-tune-variant"></i>
+											<span>{{ $t('Customize & Install') }}</span>
+										</button>
+									</template>
 								</div>
 							</div>
 						</div>
@@ -870,42 +884,6 @@
 			</div>
 		</transition>
 
-		<!-- In-Window Custom Install Modal -->
-		<transition name="fade">
-			<div v-if="showCustomInstallModal" class="custom-install-overlay" @click.self="showCustomInstallModal = false">
-				<div class="custom-install-panel">
-					<header class="custom-install-header">
-						<h3 class="custom-install-title">{{ $t('Custom Docker Compose Install') }}</h3>
-						<button class="drawer-close-btn" @click="showCustomInstallModal = false">
-							<i class="mdi mdi-close"></i>
-						</button>
-					</header>
-					<div class="custom-install-body">
-						<p class="custom-install-desc">
-							{{ $t('Paste or write a Docker Compose configuration (YAML) to deploy any custom container application.') }}
-						</p>
-						<textarea
-							v-model="customComposeYaml"
-							class="compose-textarea"
-							placeholder="version: '3.8'&#10;services:&#10;  app:&#10;    image: nginx:alpine&#10;    ports:&#10;      - '8080:80'"
-							rows="14"
-						></textarea>
-					</div>
-					<footer class="custom-install-footer">
-						<button class="footer-cancel-btn" @click="showCustomInstallModal = false">{{ $t('Cancel') }}</button>
-						<button
-							class="footer-deploy-btn"
-							:class="{ 'is-loading': isDeployingCustom }"
-							:disabled="!customComposeYaml.trim()"
-							@click="deployCustomCompose"
-						>
-							{{ $t('Deploy App') }}
-						</button>
-					</footer>
-				</div>
-			</div>
-		</transition>
-
 		<!-- In-Window Sources Management Modal -->
 		<transition name="fade">
 			<div v-if="showSourcesModal" class="sources-overlay" @click.self="showSourcesModal = false">
@@ -955,6 +933,9 @@ import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import debounce from 'lodash/debounce'
 import { parse } from 'yaml'
+import YAML from 'yaml'
+import FileSaver from 'file-saver'
+import ComposeConfig from '@/components/Apps/ComposeConfig.vue'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
@@ -971,8 +952,82 @@ const GRADIENTS = [
 	'linear-gradient(135deg, #431407 0%, #1e293b 100%)'
 ]
 
+const CAP_ARRAY = [
+	'AUDIT_CONTROL',
+	'AUDIT_READ',
+	'BLOCK_SUSPEND',
+	'BPF',
+	'CHECKPOINT_RESTORE',
+	'DAC_READ_SEARCH',
+	'IPC_LOCK',
+	'IPC_OWNER',
+	'LEASE',
+	'LINUX_IMMUTABLE',
+	'MAC_ADMIN',
+	'MAC_OVERRIDE',
+	'NET_ADMIN',
+	'NET_BROADCAST',
+	'PERFMON',
+	'SYS_ADMIN',
+	'SYS_BOOT',
+	'SYS_MODULE',
+	'SYS_NICE',
+	'SYS_PACCT',
+	'SYS_PTRACE',
+	'SYS_RAWIO',
+	'SYS_RESOURCE',
+	'SYS_TIME',
+	'SYS_TTY_CONFIG',
+	'SYSLOG',
+	'WAKE_ALARM'
+]
+
+const DEFAULT_COMPOSE_TEMPLATE = `name: custom-app
+services:
+  app:
+    image: nginx:latest
+    container_name: custom-app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /DATA/AppData/custom-app:/data
+    environment:
+      - TZ=UTC
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_us: Timezone
+      ports:
+        - container: "80"
+          description:
+            en_us: Web UI Port
+      volumes:
+        - container: /data
+          description:
+            en_us: Data Directory
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: app
+  description:
+    en_us: Custom Docker Container
+  tagline:
+    en_us: Custom container application
+  title:
+    custom: Custom App
+    en_us: Custom App
+  icon: https://icon.casaos.io/main/all/default.png
+  category: Others
+`
+
 export default {
 	name: 'AppStoreApp',
+	components: {
+		ComposeConfig
+	},
 	mixins: [business_OpenThirdApp, business_ShowNewAppTag],
 	props: {
 		storeId: {
@@ -987,6 +1042,8 @@ export default {
 	data() {
 		return {
 			appStoreIcon,
+			viewMode: 'store',
+			installerTab: 'form',
 			activeTab: 'discover',
 			isLoading: false,
 			searchQuery: '',
@@ -1009,16 +1066,19 @@ export default {
 			recommendList: [],
 			installedList: [],
 			currentInstallId: '',
+			currentInstallTitle: '',
 			currentHeroIndex: 0,
 			heroTimer: null,
 			selectedAppDetail: null,
 			activeLightboxImage: null,
-			showCustomInstallModal: false,
-			customComposeYaml: '',
+			customComposeYaml: DEFAULT_COMPOSE_TEMPLATE,
 			isDeployingCustom: false,
 			showSourcesModal: false,
 			newSourceUrl: '',
 			storeSourcesList: [],
+			networks: [],
+			capArray: CAP_ARRAY,
+			errInfo: {},
 			width: 1040,
 			resizeObserver: null
 		}
@@ -1032,6 +1092,9 @@ export default {
 		},
 		totalAppCount() {
 			return this.allAppsList.length
+		},
+		totalMemory() {
+			return this.$store.state.hardwareInfo?.ram?.total || 4096
 		},
 		arch() {
 			const rawArch = this.$store.state.hardwareInfo?.cpu?.arch || 'x86_64'
@@ -1114,7 +1177,11 @@ export default {
 		})
 		this.resizeObserver.observe(this.$el)
 
-		await this.initStore()
+		await Promise.all([
+			this.initStore(),
+			this.fetchNetworks()
+		])
+
 		this.startHeroAutoplay()
 
 		if (this.initialMode === 'custom') {
@@ -1166,7 +1233,7 @@ export default {
 		startHeroAutoplay() {
 			if (this.heroTimer) clearInterval(this.heroTimer)
 			this.heroTimer = setInterval(() => {
-				if (this.featuredList.length > 1) {
+				if (this.featuredList.length > 1 && this.viewMode === 'store') {
 					this.nextHero()
 				}
 			}, 7000)
@@ -1190,6 +1257,16 @@ export default {
 				console.error('Failed to init app store', e)
 			} finally {
 				this.isLoading = false
+			}
+		},
+		async fetchNetworks() {
+			try {
+				const res = await this.$openAPI.appManagement.compose.dockerNetworks()
+				if (res && res.data && res.data.data) {
+					this.networks = res.data.data
+				}
+			} catch (e) {
+				console.warn('Failed to load docker networks', e)
 			}
 		},
 		async fetchCategories() {
@@ -1266,13 +1343,15 @@ export default {
 				duration: 2000
 			})
 		},
-		switchTab(tab) {
+		switchToStoreTab(tab) {
+			this.viewMode = 'store'
 			this.activeTab = tab
 			if (tab !== 'category') {
 				this.currentCate = { id: 0, name: 'All', count: 0 }
 			}
 		},
 		selectCategory(cat) {
+			this.viewMode = 'store'
 			this.activeTab = 'category'
 			this.currentCate = cat
 		},
@@ -1387,37 +1466,127 @@ export default {
 				})
 			}
 		},
+		/* Windowed Installer & Customizer Methods */
 		openCustomInstall() {
-			this.customComposeYaml = ''
-			this.showCustomInstallModal = true
+			this.currentInstallTitle = this.$t('Custom Container')
+			this.customComposeYaml = DEFAULT_COMPOSE_TEMPLATE
+			this.selectedAppDetail = null
+			this.viewMode = 'installer'
+			this.installerTab = 'form'
 		},
-		async deployCustomCompose() {
-			if (!this.customComposeYaml.trim()) return
+		async openCustomizeForApp(id, item) {
+			this.isLoading = true
+			try {
+				const res = await this.$openAPI.appManagement.appStore.composeApp(id, {
+					headers: {
+						'content-type': 'application/yaml',
+						accept: 'application/yaml'
+					}
+				})
+				if (res.status === 200 && res.data) {
+					this.currentInstallTitle = item?.title || id
+					this.customComposeYaml = res.data
+					this.selectedAppDetail = null
+					this.viewMode = 'installer'
+					this.installerTab = 'form'
+				}
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: this.$t('Failed to load app compose configuration') + ': ' + (e.response?.data?.message || e.message),
+					type: 'is-danger',
+					position: 'is-top'
+				})
+			} finally {
+				this.isLoading = false
+			}
+		},
+		switchInstallerTab(tab) {
+			this.installerTab = tab
+		},
+		onComposeCommandsUpdated(commands) {
+			this.customComposeYaml = commands
+		},
+		openImportModal() {
+			this.$buefy.modal.open({
+				parent: this,
+				component: () => import('@/components/forms/ImportPanel.vue'),
+				hasModalCard: true,
+				customClass: 'import-panel-modal',
+				trapFocus: true,
+				canCancel: ['escape', 'x', 'outside'],
+				events: {
+					importInsert: (yaml) => {
+						this.customComposeYaml = yaml
+					}
+				}
+			})
+		},
+		exportYAML() {
+			try {
+				const blob = new Blob([this.customComposeYaml], { type: 'text/yaml;charset=utf-8' })
+				const filename = `${this.currentInstallTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || 'compose'}.yaml`
+				FileSaver.saveAs(blob, filename)
+			} catch (e) {
+				console.error('Export failed', e)
+			}
+		},
+		async installFromInstaller() {
+			if (this.installerTab === 'form' && this.$refs.composeConfig) {
+				try {
+					const valid = await this.$refs.composeConfig.checkStep()
+					if (Array.isArray(valid) && !valid.every(v => v === true)) {
+						this.$buefy.toast.open({
+							message: this.$t('Please confirm all required fields in the form.'),
+							type: 'is-danger',
+							position: 'is-top',
+							duration: 4000
+						})
+						return
+					}
+				} catch (err) {
+					console.warn('Form validation check error', err)
+				}
+			}
+
+			if (!this.customComposeYaml.trim()) {
+				this.$buefy.toast.open({
+					message: this.$t('No Docker Compose configuration to deploy'),
+					type: 'is-warning',
+					position: 'is-top'
+				})
+				return
+			}
+
 			this.isDeployingCustom = true
 			try {
 				const res = await this.$openAPI.appManagement.compose.installComposeApp(this.customComposeYaml, false, true)
 				if (res.status === 200) {
-					this.showCustomInstallModal = false
 					this.$buefy.toast.open({
-						message: this.$t('Custom app deployed successfully!'),
+						message: this.$t('Application installation started!'),
 						type: 'is-success',
 						position: 'is-top',
-						duration: 3000
+						duration: 4000
 					})
-					this.fetchStoreList()
+					this.viewMode = 'store'
+					this.activeTab = 'installed'
+					setTimeout(() => {
+						this.fetchStoreList()
+					}, 4000)
 				} else {
+					this.errInfo = res.data || {}
 					this.$buefy.toast.open({
-						message: res.data?.message || this.$t('Deploy failed'),
+						message: res.data?.message || this.$t('Installation failed'),
 						type: 'is-warning',
-						position: 'is-top'
+						position: 'is-top',
+						duration: 5000
 					})
 				}
 			} catch (e) {
 				this.$buefy.toast.open({
-					message: this.$t('Deploy error') + ': ' + (e.response?.data?.message || e.message || e),
+					message: this.$t('Install error') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
 					position: 'is-top',
-					duration: 4000
+					duration: 5000
 				})
 			} finally {
 				this.isDeployingCustom = false
@@ -1654,9 +1823,14 @@ export default {
 			color: #2563eb;
 		}
 
-		&:hover {
-			background: #dbeafe;
-			border-color: #93c5fd;
+		&:hover, &.is-active {
+			background: #2563eb;
+			color: #ffffff;
+			border-color: #2563eb;
+
+			.footer-icon {
+				color: #ffffff;
+			}
 		}
 	}
 
@@ -1926,14 +2100,14 @@ export default {
 .hero-actions {
 	display: flex;
 	align-items: center;
-	gap: 0.625rem;
+	gap: 0.5rem;
 }
 
 .hero-action-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	padding: 0.45rem 1.125rem;
+	padding: 0.45rem 1rem;
 	border-radius: 9999px;
 	font-size: 0.78125rem;
 	font-weight: 600;
@@ -1954,6 +2128,17 @@ export default {
 		}
 	}
 
+	&.is-customize {
+		background: rgba(255, 255, 255, 0.15);
+		color: #ffffff;
+		border: 1px solid rgba(255, 255, 255, 0.25);
+		backdrop-filter: blur(8px);
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.25);
+		}
+	}
+
 	&.is-open {
 		background: rgba(255, 255, 255, 0.2);
 		color: #ffffff;
@@ -1969,7 +2154,7 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.2rem;
-	padding: 0.45rem 0.75rem;
+	padding: 0.45rem 0.65rem;
 	border-radius: 9999px;
 	background: transparent;
 	color: #cbd5e1;
@@ -2132,7 +2317,7 @@ export default {
 	color: #64748b;
 }
 
-/* App Cards Grid with Clean Thumbnail Banners */
+/* App Cards Grid */
 .app-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -2326,6 +2511,45 @@ export default {
 	}
 }
 
+.card-btn-split {
+	display: inline-flex;
+	align-items: center;
+	border-radius: 9999px;
+	overflow: hidden;
+	background: #2563eb;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+	.card-btn.is-install {
+		border-radius: 0;
+		padding: 0.3rem 0.7rem;
+	}
+
+	.card-btn-cog {
+		background: #1d4ed8;
+		color: #ffffff;
+		border: none;
+		padding: 0.3rem 0.45rem;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: background 0.15s ease;
+
+		i.mdi {
+			font-size: 13px;
+		}
+
+		&:hover {
+			background: #1e40af;
+		}
+
+		&:disabled {
+			background: #cbd5e1;
+			cursor: not-allowed;
+		}
+	}
+}
+
 .install-spinner {
 	display: inline-block;
 	width: 12px;
@@ -2334,6 +2558,231 @@ export default {
 	border-radius: 50%;
 	border-top-color: #ffffff;
 	animation: spin 0.8s linear infinite;
+}
+
+/* Windowed Installer View */
+.appstore-installer {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: #ffffff;
+	overflow: hidden;
+}
+
+.installer-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.75rem 1.25rem;
+	border-bottom: 1px solid #e2e8f0;
+	background: #ffffff;
+	gap: 1rem;
+}
+
+.installer-header-left {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+
+.back-to-store-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.35rem 0.65rem;
+	border-radius: 0.375rem;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #475569;
+	font-size: 0.78125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 15px;
+	}
+
+	&:hover {
+		background: #f1f5f9;
+		color: #0f172a;
+	}
+}
+
+.installer-title-group {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.installer-title {
+	font-size: 1rem;
+	font-weight: 700;
+	color: #0f172a;
+}
+
+.installer-badge {
+	font-size: 0.65625rem;
+	font-weight: 600;
+	padding: 0.1rem 0.45rem;
+	border-radius: 9999px;
+	background: #eff6ff;
+	color: #2563eb;
+}
+
+.view-switch-pills {
+	display: inline-flex;
+	align-items: center;
+	background: #f1f5f9;
+	padding: 2px;
+	border-radius: 0.5rem;
+}
+
+.view-pill-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.3rem 0.75rem;
+	border-radius: 0.375rem;
+	border: none;
+	background: transparent;
+	color: #64748b;
+	font-size: 0.78125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 14px;
+	}
+
+	&.is-active {
+		background: #ffffff;
+		color: #0f172a;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	}
+}
+
+.installer-header-right {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.tool-action-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.35rem 0.65rem;
+	border-radius: 0.375rem;
+	border: 1px solid #cbd5e1;
+	background: #ffffff;
+	color: #475569;
+	font-size: 0.78125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	i.mdi {
+		font-size: 14px;
+	}
+
+	&:hover {
+		background: #f1f5f9;
+		color: #0f172a;
+	}
+}
+
+.installer-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 1rem 1.25rem;
+	background: #f8fafc;
+}
+
+.compose-config-wrapper {
+	height: 100%;
+
+	::v-deep section {
+		height: auto !important;
+		min-height: 100%;
+	}
+}
+
+.yaml-editor-wrapper {
+	height: 100%;
+	min-height: 380px;
+}
+
+.yaml-editor-textarea {
+	width: 100%;
+	height: 100%;
+	min-height: 420px;
+	padding: 1rem;
+	background: #0f172a;
+	color: #38bdf8;
+	font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	border-radius: 0.5rem;
+	border: 1px solid #1e293b;
+	outline: none;
+	resize: none;
+}
+
+.installer-footer {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem;
+	padding: 0.75rem 1.25rem;
+	border-top: 1px solid #e2e8f0;
+	background: #ffffff;
+}
+
+.installer-cancel-btn {
+	padding: 0.45rem 1rem;
+	border-radius: 0.375rem;
+	background: transparent;
+	border: 1px solid #cbd5e1;
+	color: #475569;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+
+	&:hover {
+		background: #f1f5f9;
+		color: #0f172a;
+	}
+}
+
+.installer-deploy-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.45rem 1.25rem;
+	border-radius: 0.375rem;
+	background: #2563eb;
+	border: none;
+	color: #ffffff;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.15s ease;
+
+	i.mdi {
+		font-size: 15px;
+	}
+
+	&:hover {
+		background: #1d4ed8;
+	}
+
+	&:disabled {
+		background: #cbd5e1;
+		cursor: not-allowed;
+	}
 }
 
 /* Skeletons */
@@ -2591,6 +3040,16 @@ export default {
 		}
 	}
 
+	&.is-customize {
+		background: #eff6ff;
+		color: #2563eb;
+		border: 1px solid #bfdbfe;
+
+		&:hover {
+			background: #dbeafe;
+		}
+	}
+
 	&.is-open {
 		background: #eff6ff;
 		color: #2563eb;
@@ -2755,8 +3214,8 @@ export default {
 	}
 }
 
-/* Modals */
-.custom-install-overlay, .sources-overlay {
+/* Sources Modal */
+.sources-overlay {
 	position: absolute;
 	inset: 0;
 	background: rgba(15, 23, 42, 0.45);
@@ -2767,7 +3226,7 @@ export default {
 	z-index: 110;
 }
 
-.custom-install-panel, .sources-panel {
+.sources-panel {
 	width: 540px;
 	max-width: 90%;
 	background: #ffffff;
@@ -2778,7 +3237,7 @@ export default {
 	overflow: hidden;
 }
 
-.custom-install-header, .sources-header {
+.sources-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -2786,40 +3245,17 @@ export default {
 	border-bottom: 1px solid #e2e8f0;
 }
 
-.custom-install-title, .sources-title {
+.sources-title {
 	font-size: 1rem;
 	font-weight: 700;
 	color: #0f172a;
 }
 
-.custom-install-body, .sources-body {
+.sources-body {
 	padding: 1.25rem;
 }
 
-.custom-install-desc {
-	font-size: 0.78125rem;
-	color: #64748b;
-	margin-bottom: 0.75rem;
-}
-
-.compose-textarea {
-	width: 100%;
-	border-radius: 0.375rem;
-	border: 1px solid #cbd5e1;
-	background: #0f172a;
-	color: #38bdf8;
-	font-family: monospace;
-	font-size: 0.78125rem;
-	padding: 0.65rem;
-	outline: none;
-	resize: vertical;
-
-	&:focus {
-		border-color: #2563eb;
-	}
-}
-
-.custom-install-footer, .sources-footer {
+.sources-footer {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
@@ -2829,17 +3265,7 @@ export default {
 	background: #f8fafc;
 }
 
-.footer-cancel-btn {
-	padding: 0.4rem 0.8rem;
-	border-radius: 0.375rem;
-	background: transparent;
-	border: 1px solid #cbd5e1;
-	color: #475569;
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.footer-deploy-btn, .footer-done-btn {
+.footer-done-btn {
 	padding: 0.4rem 1rem;
 	border-radius: 0.375rem;
 	background: #2563eb;
@@ -2847,11 +3273,6 @@ export default {
 	color: #ffffff;
 	font-weight: 600;
 	cursor: pointer;
-
-	&:disabled {
-		background: #cbd5e1;
-		cursor: not-allowed;
-	}
 }
 
 .add-source-box {
