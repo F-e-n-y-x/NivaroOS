@@ -65,7 +65,7 @@
 
 			<div class="sidebar-footer">
 				<button class="footer-btn custom-install-btn" @click="openCustomInstall">
-					<i class="mdi mdi-plus-circle-outline footer-icon"></i>
+					<i class="mdi mdi-plus footer-icon"></i>
 					<span>{{ $t('Custom Install') }}</span>
 				</button>
 
@@ -1556,16 +1556,22 @@ export default {
 	justify-content: center;
 	gap: 0.45rem;
 	width: 100%;
-	padding: 0.45rem;
+	height: 32px;
+	padding: 0 0.65rem;
 	border-radius: 0.375rem;
 	font-size: 0.78125rem;
 	font-weight: 600;
 	cursor: pointer;
 	transition: all 0.15s ease;
+	line-height: 1;
 
 	.footer-icon {
 		font-size: 15px;
 		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		vertical-align: middle;
 	}
 
 	&.custom-install-btn {
@@ -1573,8 +1579,13 @@ export default {
 		color: #2563eb;
 		border: 1px solid #bfdbfe;
 
+		.footer-icon {
+			color: #2563eb;
+		}
+
 		&:hover {
 			background: #dbeafe;
+			border-color: #93c5fd;
 		}
 	}
 
@@ -1583,9 +1594,14 @@ export default {
 		color: #64748b;
 		border: 1px solid #e2e8f0;
 
+		.footer-icon {
+			color: #64748b;
+		}
+
 		&:hover {
 			background: #f1f5f9;
 			color: #334155;
+			border-color: #cbd5e1;
 		}
 	}
 }
