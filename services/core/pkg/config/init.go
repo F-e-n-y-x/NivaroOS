@@ -80,6 +80,12 @@ func InitSetup(config string, sample string) {
 	mapTo("system", SystemConfigInfo)
 	mapTo("file", FileSettingInfo)
 	mapTo("common", CommonInfo)
+
+	if _, err := os.Stat(CommonInfo.RuntimePath); os.IsNotExist(err) {
+		if _, err := os.Stat("/var/run/casaos"); err == nil {
+			CommonInfo.RuntimePath = "/var/run/casaos"
+		}
+	}
 }
 
 // 映射

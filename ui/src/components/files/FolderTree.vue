@@ -197,8 +197,10 @@ export default {
 		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.getNewList)
 		document.addEventListener('mousedown', this.onOutsideMenuClick)
 
-		this.shortcutList = this.$store.state.shortcutData
-		this.dataList = [...this.initFolders, ...this.shortcutList]
+		this.shortcutList = this.$store.state.shortcutData || []
+		const initPaths = new Set(this.initFolders.map((f) => f.path))
+		const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
+		this.dataList = [...this.initFolders, ...uniqueShortcuts]
 	},
 
 	beforeDestroy() {
@@ -214,11 +216,13 @@ export default {
 			const newList = await this.$api.folder.getList(this.rootDataList[0].path)
 			const dataList = await this.$api.folder.getList(this.initFolders[0].path)
 
-			this.shortcutList = this.$store.state.shortcutData
+			this.shortcutList = this.$store.state.shortcutData || []
+			const initPaths = new Set(this.initFolders.map((f) => f.path))
+			const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
 
-			this.dataList = [...this.initFolders, ...this.shortcutList]
+			this.dataList = [...this.initFolders, ...uniqueShortcuts]
 			let contactList = []
-			contactList.push(...newList.data.data.content, ...dataList.data.data.content, ...this.shortcutList)
+			contactList.push(...(newList.data?.data?.content || []), ...(dataList.data?.data?.content || []), ...uniqueShortcuts)
 			this.dataList.forEach((dir) => {
 				dir.icon = dir.icon == 'folder' ? 'folder-outline' : dir.icon
 				dir.visible = contactList.some((item) => item.path == dir.path && item.is_dir)

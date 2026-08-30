@@ -108,6 +108,25 @@ _____             _____ _____
 		const blur = localStorage.getItem('uiBackdropBlur');
 		if (alpha !== null) document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha);
 		if (blur !== null) document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`);
+
+		this.$api.users.getUserStatus().then(res => {
+			if (res.data.success === 200 && res.data.data) {
+				const data = res.data.data
+				if (data.wallpaper && data.wallpaper.path) {
+					this.$store.commit('SET_WALLPAPER', data.wallpaper)
+				}
+				if (data.appearance) {
+					if (data.appearance.alpha !== undefined && data.appearance.alpha !== null) {
+						document.documentElement.style.setProperty('--ui-backdrop-alpha', data.appearance.alpha)
+						localStorage.setItem('uiBackdropAlpha', data.appearance.alpha)
+					}
+					if (data.appearance.blur !== undefined && data.appearance.blur !== null) {
+						document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
+						localStorage.setItem('uiBackdropBlur', data.appearance.blur)
+					}
+				}
+			}
+		}).catch(() => {})
 	},
 	methods: {
 		/**

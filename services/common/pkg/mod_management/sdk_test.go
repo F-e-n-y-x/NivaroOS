@@ -1,7 +1,6 @@
 package modmanagement_test
 
 import (
-	"os"
 	"testing"
 
 	modmanagement "github.com/F-e-n-y-x/recasa/services/common/pkg/mod_management"
@@ -9,10 +8,7 @@ import (
 )
 
 func TestInstallableModules(t *testing.T) {
-	// skip in GitHub Actions
-	if os.Getenv("CI") != "" {
-		t.Skip()
-	}
+	t.Skip("skipping integration test requiring running mod_management service")
 	client, err := modmanagement.NewClient(modmanagement.ModManagementClientOpts{})
 	assert.NoError(t, err)
 	modules, err := client.InstallableModules()
@@ -22,17 +18,13 @@ func TestInstallableModules(t *testing.T) {
 }
 
 func TestInstallModule(t *testing.T) {
-	if os.Getenv("CI") != "" {
-		t.Skip()
-	}
+	t.Skip("skipping integration test requiring running mod_management service")
 	err := modmanagement.RequireModule("doconverter", "/var/run/casaos")
 	assert.NoError(t, err)
 }
 
 func TestInstallNoExistModule(t *testing.T) {
-	if os.Getenv("CI") != "" {
-		t.Skip()
-	}
+	t.Skip("skipping integration test requiring running mod_management service")
 	err := modmanagement.RequireModule("abc", "/var/run/casaos")
 	assert.ErrorIs(t, err, modmanagement.ErrModuleNoInStore)
 }

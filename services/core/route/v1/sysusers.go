@@ -3,6 +3,7 @@ package v1
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"regexp"
@@ -14,10 +15,19 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// protectedSystemUser is the account the built-in Terminal app logs in as -
-// removing it or stripping its sudo/login ability would break the desktop,
-// so system-user management refuses to touch it.
-const protectedSystemUser = "ayush"
+func isProtectedSystemUser(username string) bool {
+	if username == "ayush" {
+		return true
+	}
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && username == sudoUser {
+		return true
+	}
+	u, err := getDefaultDesktopUser()
+	if err == nil && u.Username == username {
+		return true
+	}
+	return false
+}
 
 var validUsername = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
@@ -91,7 +101,7 @@ func GetSystemUsers(ctx echo.Context) error {
 			Shell:     fields[6],
 			Sudo:      sudoMembers[username],
 			Docker:    dockerMembers[username],
-			Protected: username == protectedSystemUser,
+			Protected: isProtectedSystemUser(username),
 		})
 	}
 	return ok(ctx, users)
@@ -134,7 +144,7 @@ func PostSystemUser(ctx echo.Context) error {
 
 func DeleteSystemUser(ctx echo.Context) error {
 	username := ctx.Param("username")
-	if username == protectedSystemUser {
+	if isProtectedSystemUser(username) {
 		return badParams(ctx, "this account is protected")
 	}
 	if !validUsername.MatchString(username) {
@@ -181,7 +191,7 @@ func PutSystemUserGroups(ctx echo.Context) error {
 	if !validUsername.MatchString(username) {
 		return badParams(ctx, "invalid username")
 	}
-	if username == protectedSystemUser {
+	if isProtectedSystemUser(username) {
 		return badParams(ctx, "this account is protected")
 	}
 	req := new(setGroupsReq)

@@ -37,12 +37,12 @@ type NotifyServer interface {
 	//SendInstallAppBySocket(app notifyCommon.Application)
 	SendNotify(name string, message map[string]interface{})
 	SettingSystemTempData(message map[string]interface{})
-	GetSystemTempMap() syncmap.Map
+	GetSystemTempMap() *syncmap.Map
 }
 
 type notifyServer struct {
 	db            *gorm.DB
-	SystemTempMap syncmap.Map //[string]interface{}
+	SystemTempMap *syncmap.Map //[string]interface{}
 }
 
 func (i *notifyServer) SettingSystemTempData(message map[string]interface{}) {
@@ -241,7 +241,7 @@ func (i *notifyServer) SSR() {
 	fmt.Println(server)
 }
 
-func (i notifyServer) GetList(c int) (list []model.AppNotify) {
+func (i *notifyServer) GetList(c int) (list []model.AppNotify) {
 	i.db.Where("class = ?", c).Where(i.db.Where("state = ?", types.NOTIFY_DYNAMICE).Or("state = ?", types.NOTIFY_UNREAD)).Find(&list)
 	return
 }
@@ -342,10 +342,10 @@ func SendMeg() {
 // 	}
 
 // }
-func (i *notifyServer) GetSystemTempMap() syncmap.Map {
+func (i *notifyServer) GetSystemTempMap() *syncmap.Map {
 	return i.SystemTempMap
 }
 
 func NewNotifyService(db *gorm.DB) NotifyServer {
-	return &notifyServer{db: db, SystemTempMap: syncmap.Map{}}
+	return &notifyServer{db: db, SystemTempMap: &syncmap.Map{}}
 }

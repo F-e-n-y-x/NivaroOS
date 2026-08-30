@@ -127,6 +127,7 @@ func handleConsole(store *LibvirtStore) http.HandlerFunc {
 				break
 			}
 		}
+		_ = tcpConn.Close()
 		<-done
 	}
 }

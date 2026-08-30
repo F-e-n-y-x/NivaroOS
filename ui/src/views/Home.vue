@@ -80,6 +80,7 @@ export default {
 	created() {
 		this.getHardwareInfo();
 		this.getWallpaperConfig();
+		this.getAppearanceConfig();
 		this.getConfig();
 
 		this.$store.commit('SET_ACCESS_ID', nanoid());
@@ -196,6 +197,22 @@ export default {
 					})
 				}
 			})
+		},
+
+		getAppearanceConfig() {
+			this.$api.users.getCustomStorage('appearance').then(res => {
+				if (res.data.success === 200 && res.data.data) {
+					const { alpha, blur } = res.data.data
+					if (alpha !== undefined && alpha !== null) {
+						document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
+						localStorage.setItem('uiBackdropAlpha', alpha)
+					}
+					if (blur !== undefined && blur !== null) {
+						document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`)
+						localStorage.setItem('uiBackdropBlur', blur)
+					}
+				}
+			}).catch(() => {})
 		},
 
 		// one-off

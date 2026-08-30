@@ -143,8 +143,18 @@ export default {
 			this.$emit('close')
 		},
 		saveChange() {
+			let cleanPath = this.path
+			if (cleanPath && cleanPath.includes('path=')) {
+				try {
+					const urlObj = new URL(cleanPath, 'http://localhost')
+					const extracted = urlObj.searchParams.get('path')
+					if (extracted) {
+						cleanPath = extracted
+					}
+				} catch (e) {}
+			}
 			let data = {
-				path: this.path,
+				path: cleanPath,
 				from: this.from
 			}
 			this.isLoading = true

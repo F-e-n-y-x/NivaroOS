@@ -39,6 +39,7 @@
 import FilesApp from '@/components/files/FilesApp.vue'
 import TerminalPanel from '@/components/logsAndTerminal/TerminalPanel.vue'
 import SettingsApp from './SettingsApp.vue'
+import AppStoreApp from './AppStoreApp.vue'
 import LegacyAppEditPanel from '@/components/Apps/LegacyAppEditPanel.vue'
 import VmManagerApp from './VmManagerApp.vue'
 import ImageViewer from '@/components/files/viewers/ImageViewer.vue'
@@ -58,6 +59,7 @@ const COMPONENT_REGISTRY = {
 	CreateVmModal,
 	EditVmModal,
 	SettingsApp,
+	AppStoreApp,
 	LegacyAppEditPanel,
 	VmManagerApp,
 	ImageViewer,

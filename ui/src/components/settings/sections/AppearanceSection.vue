@@ -70,15 +70,41 @@ export default {
 			const blur = localStorage.getItem('uiBackdropBlur')
 			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 100
 			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 0
+
+			this.$api.users.getCustomStorage('appearance').then(res => {
+				if (res.data.success === 200 && res.data.data) {
+					const { alpha, blur } = res.data.data
+					if (alpha !== undefined && alpha !== null) {
+						this.backdropAlphaPct = Math.round(parseFloat(alpha) * 100)
+						document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
+						localStorage.setItem('uiBackdropAlpha', alpha)
+					}
+					if (blur !== undefined && blur !== null) {
+						this.backdropBlurPx = parseFloat(blur)
+						document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`)
+						localStorage.setItem('uiBackdropBlur', blur)
+					}
+				}
+			}).catch(() => {})
+		},
+		saveAppearanceSettings() {
+			clearTimeout(this._saveTimer)
+			this._saveTimer = setTimeout(() => {
+				const alpha = this.backdropAlphaPct / 100
+				const blur = this.backdropBlurPx
+				this.$api.users.setCustomStorage('appearance', { alpha, blur }).catch(() => {})
+			}, 300)
 		},
 		applyBackdropAlpha() {
 			const alpha = this.backdropAlphaPct / 100
 			document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
 			localStorage.setItem('uiBackdropAlpha', alpha)
+			this.saveAppearanceSettings()
 		},
 		applyBackdropBlur() {
 			document.documentElement.style.setProperty('--ui-backdrop-blur', `${this.backdropBlurPx}px`)
 			localStorage.setItem('uiBackdropBlur', this.backdropBlurPx)
+			this.saveAppearanceSettings()
 		},
 		rangeStyle(value, min, max) {
 			return { '--pct': `${((value - min) / (max - min)) * 100}%` }

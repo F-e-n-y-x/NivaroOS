@@ -49,8 +49,19 @@ export default {
 	},
 	methods: {
 		parseUrl(serverUrl) {
-			// serverUrl.replace('/ui', '');
-			let newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`)
+			if (!serverUrl) return '';
+			if (serverUrl.startsWith('data:') || serverUrl.startsWith('blob:')) {
+				return serverUrl;
+			}
+			// Built-in assets bundled in the UI
+			if (serverUrl.startsWith('/img/') || serverUrl.startsWith('img/') || serverUrl.startsWith('./') || serverUrl.startsWith('assets/')) {
+				return serverUrl;
+			}
+			// Gallery, uploaded, or server-hosted files use the unauthenticated public wallpaper endpoint
+			if (serverUrl.includes('/v3/file') || serverUrl.includes('/DATA/') || serverUrl.includes('/var/lib/') || serverUrl.includes('/users/image') || serverUrl.includes('/v1/users/wallpaper')) {
+				return `${this.$protocol}//${this.$baseURL}/v1/users/wallpaper`;
+			}
+			let newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`);
 			newUrl = newUrl.replace('/ui', '').replace('/user/', '/users/');
 			return newUrl;
 		},

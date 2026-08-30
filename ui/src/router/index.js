@@ -34,12 +34,29 @@ const needInit = async () => {
 	}
 	try {
 		let userStatusRes = await api.users.getUserStatus();
-		if (userStatusRes.data.success === 200 && !userStatusRes.data.data.initialized) {
-			store.commit('SET_NEED_INITIALIZATION', true)
-			store.commit('SET_INIT_KEY', userStatusRes.data.data.key)
-			localStorage.removeItem("access_token");
-			localStorage.removeItem("refresh_token");
-			return true
+		if (userStatusRes.data.success === 200) {
+			const data = userStatusRes.data.data
+			if (data.wallpaper && data.wallpaper.path) {
+				store.commit('SET_WALLPAPER', data.wallpaper)
+			}
+			if (data.appearance) {
+				if (data.appearance.alpha !== undefined && data.appearance.alpha !== null) {
+					document.documentElement.style.setProperty('--ui-backdrop-alpha', data.appearance.alpha)
+					localStorage.setItem('uiBackdropAlpha', data.appearance.alpha)
+				}
+				if (data.appearance.blur !== undefined && data.appearance.blur !== null) {
+					document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
+					localStorage.setItem('uiBackdropBlur', data.appearance.blur)
+				}
+			}
+			if (!data.initialized) {
+				store.commit('SET_NEED_INITIALIZATION', true)
+				store.commit('SET_INIT_KEY', data.key)
+				localStorage.removeItem("access_token");
+				localStorage.removeItem("refresh_token");
+				return true
+			}
+			return false
 		} else {
 			return false
 		}
@@ -75,7 +92,6 @@ router.beforeEach(async (to, from, next) => {
 					case "/logout":
 						localStorage.removeItem("access_token");
 						localStorage.removeItem("refresh_token");
-						localStorage.removeItem("wallpaper");
 						localStorage.removeItem("user");
 						next('/login');
 						break;

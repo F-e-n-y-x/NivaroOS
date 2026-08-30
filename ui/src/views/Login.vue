@@ -80,17 +80,35 @@ export default {
 		// session yet, which is the normal/expected case for a fresh
 		// login.
 		refreshWallpaper() {
-			if (!localStorage.getItem('access_token')) return
-			this.$api.users.getCustomStorage(wallpaperConfig).then(res => {
-				if (res.data.success === 200 && res.data.data != "") {
-					this.$store.commit('SET_WALLPAPER', {
-						path: res.data.data.path,
-						from: res.data.data.from
-					})
+			this.$api.users.getUserStatus().then(res => {
+				if (res.data.success === 200) {
+					const data = res.data.data
+					if (data.wallpaper && data.wallpaper.path) {
+						this.$store.commit('SET_WALLPAPER', data.wallpaper)
+					}
+					if (data.appearance) {
+						if (data.appearance.alpha !== undefined && data.appearance.alpha !== null) {
+							document.documentElement.style.setProperty('--ui-backdrop-alpha', data.appearance.alpha)
+							localStorage.setItem('uiBackdropAlpha', data.appearance.alpha)
+						}
+						if (data.appearance.blur !== undefined && data.appearance.blur !== null) {
+							document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
+							localStorage.setItem('uiBackdropBlur', data.appearance.blur)
+						}
+					}
 				}
-			}).catch(() => {
-				// No valid session yet - keep showing the cached wallpaper.
-			})
+			}).catch(() => {})
+
+			if (localStorage.getItem('access_token')) {
+				this.$api.users.getCustomStorage(wallpaperConfig).then(res => {
+					if (res.data.success === 200 && res.data.data != "") {
+						this.$store.commit('SET_WALLPAPER', {
+							path: res.data.data.path,
+							from: res.data.data.from
+						})
+					}
+				}).catch(() => {})
+			}
 		},
 
 		async login() {

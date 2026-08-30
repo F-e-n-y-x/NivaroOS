@@ -254,7 +254,7 @@ export default {
 				})
 			} catch (error) {
 				this.isLoading = false
-				console.log(error.reponse.message)
+				console.log(error.response?.data?.message || error.message || error)
 			}
 
 			// Merger Storage
@@ -300,7 +300,7 @@ export default {
 				})
 			} catch (error) {
 				this.isLoading = false
-				console.log(error.reponse.message)
+				console.log(error.response?.data?.message || error.message || error)
 			}
 		},
 		// Network Storage
@@ -321,7 +321,7 @@ export default {
 				})
 			} catch (error) {
 				this.isLoading = false
-				console.log(error.reponse.message)
+				console.log(error.response?.data?.message || error.message || error)
 			}
 		},
 		// USB Storage
@@ -347,7 +347,7 @@ export default {
 				})
 			} catch (error) {
 				this.isLoading = false
-				console.log(error.reponse.message)
+				console.log(error.response?.data?.message || error.message || error)
 			}
 		},
 		// Cloud Storage
@@ -368,7 +368,7 @@ export default {
 					}
 				})
 			} catch (error) {
-				console.log(error.reponse.message)
+				console.log(error.response?.data?.message || error.message || error)
 			}
 		},
 
@@ -548,7 +548,7 @@ export default {
 						})
 					})
 					.catch((error) => {
-						console.log(error.reponse.message)
+						console.log(error.response?.data?.message || error.message || error)
 					})
 			}, 500)
 		},

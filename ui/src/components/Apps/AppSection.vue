@@ -820,35 +820,15 @@ export default {
 			if (mode === 'custom') {
 				this.$messageBus('apps_custominstall')
 			}
-			this.isShowing = true
-
-			const networks = await this.$api.container.getNetworks()
-			const memory = this.$store.state.hardwareInfo.mem
-			const configData = {
-				networks: networks.data.data,
-				memory: memory
-			}
-			this.isShowing = false
-			this.$buefy.modal.open({
-				parent: this,
-				component: AppPanel,
-				hasModalCard: true,
-				customClass: 'app-panel',
-				trapFocus: true,
-				canCancel: ['escape'],
-				scroll: 'keep',
-				animation: 'zoom-in',
-				events: {
-					updateState: () => {
-						this.getList()
-					}
-				},
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'appstore',
+				title: this.$t('App Store'),
+				component: 'AppStoreApp',
+				width: 1040,
+				height: 720,
 				props: {
-					id: '0',
-					state: 'install',
-					configData: configData,
 					storeId: storeId,
-					settingData: mode !== 'custom' ? undefined : {}
+					initialMode: mode
 				}
 			})
 		},

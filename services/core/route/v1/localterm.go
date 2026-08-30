@@ -1,11 +1,13 @@
 package v1
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -15,11 +17,40 @@ import (
 	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils"
 )
 
-// localTermUser is the desktop user the built-in Terminal app logs in as.
-// Since CasaOS itself runs as root, dropping privileges to this user needs
-// no password - same as how a real desktop terminal just opens a shell in
-// your own session.
-const localTermUser = "ayush"
+func getDefaultDesktopUser() (*user.User, error) {
+	// Try primary desktop user candidates
+	candidates := []string{"ayush"}
+	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
+		candidates = append([]string{sudoUser}, candidates...)
+	}
+	for _, username := range candidates {
+		if u, err := user.Lookup(username); err == nil {
+			return u, nil
+		}
+	}
+
+	// Search for the first regular login user (UID 1000..59999)
+	out, err := exec.Command("getent", "passwd").Output()
+	if err == nil {
+		scanner := bufio.NewScanner(strings.NewReader(string(out)))
+		for scanner.Scan() {
+			fields := strings.Split(scanner.Text(), ":")
+			if len(fields) >= 7 {
+				uid, err := strconv.Atoi(fields[2])
+				if err == nil && uid >= 1000 && uid < 60000 {
+					shell := fields[6]
+					if !strings.HasSuffix(shell, "nologin") && !strings.HasSuffix(shell, "false") {
+						if u, err := user.Lookup(fields[0]); err == nil {
+							return u, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return user.Current()
+}
 
 type localTermMsg struct {
 	Type string `json:"type"`
@@ -38,7 +69,7 @@ func WsLocalTerm(ctx echo.Context) error {
 	cols, _ := strconv.Atoi(utils.DefaultQuery(ctx, "cols", "120"))
 	rows, _ := strconv.Atoi(utils.DefaultQuery(ctx, "rows", "32"))
 
-	u, err := user.Lookup(localTermUser)
+	u, err := getDefaultDesktopUser()
 	if err != nil {
 		_ = wsConn.WriteMessage(websocket.TextMessage, []byte("local terminal user not found: "+err.Error()))
 		return nil

@@ -17,6 +17,7 @@
 		<button v-for="win in extraWindows" :key="win.id" class="dock-item" :title="win.title" @click="toggleWindow(win)">
 			<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'FilesApp'" :src="filesIcon" class="dock-icon" :alt="win.title" />
+			<img v-else-if="win.component === 'AppStoreApp'" :src="appStoreIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'TerminalPanel'" :src="terminalIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 			<div v-else class="dock-icon dock-icon-generic">
@@ -30,6 +31,7 @@
 <script>
 import events from '@/events/events'
 import filesIcon from '@/assets/img/app/files.svg'
+import appStoreIcon from '@/assets/img/app/appstore.svg'
 import settingsIcon from '@/assets/img/app/settings.png'
 import terminalIcon from '@/assets/img/app/terminal.png'
 import vmManagerIcon from '@/assets/img/app/vm-manager.png'
@@ -42,6 +44,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 
 const PINNED = [
 	{ id: 'files', label: 'Files', icon: filesIcon },
+	{ id: 'appstore', label: 'App Store', icon: appStoreIcon },
 	{ id: 'terminal', label: 'Terminal', icon: terminalIcon },
 	{ id: 'vms', label: 'VMs', icon: vmManagerIcon },
 	{ id: 'settings', label: 'Settings', icon: settingsIcon }
@@ -173,6 +176,10 @@ export default {
 			if (id === 'files') {
 				this.$store.commit('OPEN_WINDOW', {
 					id: 'files', title: this.$t('Files'), component: 'FilesApp', width: 960, height: 620
+				})
+			} else if (id === 'appstore') {
+				this.$store.commit('OPEN_WINDOW', {
+					id: 'appstore', title: this.$t('App Store'), component: 'AppStoreApp', width: 1040, height: 720
 				})
 			} else if (id === 'terminal') {
 				this.$store.commit('OPEN_WINDOW', {

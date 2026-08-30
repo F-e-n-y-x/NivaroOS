@@ -27,8 +27,10 @@ func InitRouter() *gin.Engine {
 	r.POST("/v1/users/login", v1.PostUserLogin)
 	r.GET("/v1/users/name", v1.GetUserAllUsername) // all/name
 	r.POST("/v1/users/refresh", v1.PostUserRefreshToken)
-	// No short-term modifications
 	r.GET("/v1/users/image", v1.GetUserImage)
+	r.GET("/v1/users/wallpaper", v1.GetPublicWallpaper)
+	r.HEAD("/v1/users/wallpaper", v1.GetPublicWallpaper)
+	r.GET("/v1/users/appearance", v1.GetPublicAppearance)
 
 	r.GET("/v1/users/status", v1.GetUserStatus) // init/check
 

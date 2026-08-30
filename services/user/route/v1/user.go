@@ -815,6 +815,95 @@ func DeleteUserAll(c *gin.Context) {
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
+// GetPublicWallpaper serves the currently configured wallpaper without authentication.
+func GetPublicWallpaper(c *gin.Context) {
+	entries, err := os.ReadDir(config.AppInfo.UserDataPath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, model.Result{Success: common_err.FILE_DOES_NOT_EXIST, Message: "No wallpaper found"})
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			wpJsonPath := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "wallpaper.json")
+			if file.Exists(wpJsonPath) {
+				wpData := file.ReadFullFile(wpJsonPath)
+				if gjson.ValidBytes(wpData) {
+					parsed := gjson.ParseBytes(wpData)
+					wpPath := parsed.Get("path").String()
+
+					// If path is a URL containing path= parameter, extract the real filesystem path
+					if strings.Contains(wpPath, "path=") {
+						u, err := url2.Parse(wpPath)
+						if err == nil {
+							realPath := u.Query().Get("path")
+							if realPath != "" {
+								wpPath = realPath
+							}
+						}
+					}
+
+					// If it points to a local file on disk
+					if file.Exists(wpPath) {
+						c.Header("Cache-Control", "no-cache")
+						c.File(wpPath)
+						return
+					}
+
+					// Check user uploaded wallpaper in user data folder
+					userWpPng := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "wallpaper.png")
+					if file.Exists(userWpPng) {
+						c.Header("Cache-Control", "no-cache")
+						c.File(userWpPng)
+						return
+					}
+
+					// If it's a built-in asset path
+					if wpPath != "" {
+						c.JSON(http.StatusOK, model.Result{
+							Success: common_err.SUCCESS,
+							Message: common_err.GetMsg(common_err.SUCCESS),
+							Data:    map[string]string{"path": wpPath},
+						})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusNotFound, model.Result{Success: common_err.FILE_DOES_NOT_EXIST, Message: "No wallpaper found"})
+}
+
+// GetPublicAppearance returns the saved appearance settings (alpha, blur) without authentication.
+func GetPublicAppearance(c *gin.Context) {
+	entries, err := os.ReadDir(config.AppInfo.UserDataPath)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				appJsonPath := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "appearance.json")
+				if file.Exists(appJsonPath) {
+					appData := file.ReadFullFile(appJsonPath)
+					if gjson.ValidBytes(appData) {
+						c.JSON(http.StatusOK, model.Result{
+							Success: common_err.SUCCESS,
+							Message: common_err.GetMsg(common_err.SUCCESS),
+							Data:    json2.RawMessage(string(appData)),
+						})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, model.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    map[string]interface{}{"alpha": 1.0, "blur": 0},
+	})
+}
+
 // @Summary 检查是否进入引导状态
 // @Produce  application/json
 // @Accept application/json
@@ -823,7 +912,7 @@ func DeleteUserAll(c *gin.Context) {
 // @Success 200 {string} string "ok"
 // @Router /sys/init/check [get]
 func GetUserStatus(c *gin.Context) {
-	data := make(map[string]interface{}, 2)
+	data := make(map[string]interface{}, 4)
 
 	if service.MyService.User().GetUserCount() > 0 {
 		data["initialized"] = true
@@ -839,6 +928,46 @@ func GetUserStatus(c *gin.Context) {
 		logger.Error("NvidiaGPUInfoList error", zap.Error(err))
 	}
 	data["gpus"] = len(gpus)
+
+	// Return saved wallpaper and appearance for login/welcome screens so
+	// browsers on reload, new session, or cache-clear show the configured settings.
+	entries, err := os.ReadDir(config.AppInfo.UserDataPath)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				wpPath := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "wallpaper.json")
+				if data["wallpaper"] == nil && file.Exists(wpPath) {
+					wpData := file.ReadFullFile(wpPath)
+					if gjson.ValidBytes(wpData) {
+						parsed := gjson.ParseBytes(wpData)
+						rawPath := parsed.Get("path").String()
+						from := parsed.Get("from").String()
+						if strings.Contains(rawPath, "path=") {
+							u, err := url2.Parse(rawPath)
+							if err == nil {
+								realPath := u.Query().Get("path")
+								if realPath != "" {
+									rawPath = realPath
+								}
+							}
+						}
+						data["wallpaper"] = map[string]string{
+							"path": rawPath,
+							"from": from,
+						}
+					}
+				}
+				appPath := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "appearance.json")
+				if data["appearance"] == nil && file.Exists(appPath) {
+					appData := file.ReadFullFile(appPath)
+					if gjson.ValidBytes(appData) {
+						data["appearance"] = json2.RawMessage(string(appData))
+					}
+				}
+			}
+		}
+	}
+
 	c.JSON(common_err.SUCCESS,
 		model.Result{
 			Success: common_err.SUCCESS,
