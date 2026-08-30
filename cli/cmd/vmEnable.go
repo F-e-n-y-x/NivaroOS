@@ -49,7 +49,17 @@ var vmEnableCmd = &cobra.Command{
 
 		// recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
 		// and needs a C compiler to do so. The base install (--without-vm) never
-		// installs either, since it doesn't need to.
+		// installs either, since it doesn't need to. This command is meant to be
+		// run long after the initial install, so the apt cache may be stale -
+		// update it first rather than risk a resolve failure for a since-removed
+		// package version.
+		update := exec.Command("apt-get", "update")
+		update.Stdout = os.Stdout
+		update.Stderr = os.Stderr
+		if err := update.Run(); err != nil {
+			return fmt.Errorf("apt-get update: %w", err)
+		}
+
 		deps := exec.Command("apt-get", "install", "-y", "libvirt-dev", "gcc")
 		deps.Stdout = os.Stdout
 		deps.Stderr = os.Stderr
