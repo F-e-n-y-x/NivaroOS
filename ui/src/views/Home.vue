@@ -1,7 +1,7 @@
 <template>
-	<div v-if="!isLoading" class="relative h-full flex flex-col">
+	<div v-if="!isLoading" class="out-container">
 		<!-- Content Start -->
-		<div class="overflow-y-auto overflow-x-hidden flex-1 contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
+		<div class="contents contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
 			<div class="container home-container pt-4">
 				<div class="main-content">
 					<!-- MainContent Start -->
@@ -28,7 +28,6 @@ import SideBar from '@/components/SideBar.vue'
 import AppSection from '@/components/Apps/AppSection.vue'
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
-import { nanoid } from 'nanoid'
 
 const wallpaperConfig = 'wallpaper'
 
@@ -41,15 +40,16 @@ export default {
 	},
 	data() {
 		return {
+			barData: {
+				recommend_switch: true,
+				rss_switch: false
+			},
+			tokens: {
+				token: '',
+				refresh_token: ''
+			},
 			isLoading: true,
-			hardwareInfoLoading: true,
-			user_id: localStorage.getItem('user_id') ? localStorage.getItem('user_id') : 1,
-			barData: {}
-		}
-	},
-	provide() {
-		return {
-			homeShowFiles: this.showFiles
+			hardwareInfoLoading: true
 		}
 	},
 	computed: {
@@ -58,12 +58,12 @@ export default {
 		}
 	},
 	created() {
+		this.isLoading = true
+		this.hardwareInfoLoading = true
 		this.getHardwareInfo()
+		this.getConfig()
 		this.getWallpaperConfig()
 		this.getAppearanceConfig()
-		this.getConfig()
-
-		this.$store.commit('SET_ACCESS_ID', nanoid())
 	},
 	mounted() {
 		window.addEventListener('resize', this.onResize)
@@ -162,7 +162,7 @@ export default {
 		rssConfirm() {
 			this.$buefy.dialog.confirm({
 				title: this.$t('Show news feed from NivaroOS Blog'),
-				message: this.$t('NivaroOS dashboard will get the the latest news feed of https://blog.casaos.io via Internet, which might leave your visit records to the site. Do you accept?'),
+				message: this.$t('NivaroOS dashboard will get the latest news feed via Internet. Do you accept?'),
 				type: 'is-dark',
 				confirmText: this.$t('Accept'),
 				cancelText: this.$t('Cancel'),
@@ -191,6 +191,10 @@ export default {
 			})
 		}
 	},
+	beforeDestroy() {
+		window.removeEventListener('resize', this.onResize)
+		this.$EventBus.$off('casaUI:openStorageManager')
+	},
 	sockets: {
 		'local-storage:disk:added'(res) {
 			const props = res.Properties || {}
@@ -210,8 +214,62 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.main-content {
+.out-container {
+	position: relative;
+	height: 100%;
+}
+
+.container.home-container {
+	display: flex;
+	align-items: flex-start;
+	max-width: none;
+	margin: 0 1.25rem;
+}
+
+.contents {
 	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	height: calc(100% - 4rem);
+}
+
+.main-content {
+	z-index: 10;
+	flex: 1 1 auto;
 	min-width: 0;
+}
+
+@media screen and (max-width: 480px) {
+	.main-content {
+		width: 100%;
+	}
+}
+
+.dark-bg {
+	position: fixed;
+	transition: all 0.3s ease;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 1);
+	z-index: 19;
+	opacity: 0;
+	visibility: hidden;
+
+	&.open {
+		opacity: 1;
+		visibility: visible;
+	}
+}
+
+@media screen and (max-width: 480px) {
+	.contents {
+		height: calc(100vh - 4rem) !important;
+	}
+
+	.container {
+		height: 100%;
+	}
 }
 </style>

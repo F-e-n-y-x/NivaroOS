@@ -882,9 +882,79 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.app-list-skeleton {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
 .app-canvas {
 	position: relative;
 	width: 100%;
+}
+
+.app-slot {
+	position: absolute;
+	top: 0;
+	left: 0;
+	cursor: grab;
+	transition: transform 0.15s ease;
+	user-select: none;
+	-webkit-user-drag: none;
+
+	&.dragging {
+		cursor: grabbing;
+		transition: none;
+		opacity: 0.85;
+		pointer-events: none;
+	}
+
+	img {
+		-webkit-user-drag: none;
+		user-drag: none;
+	}
+}
+
+.drop-grid {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+	background-image: radial-gradient(rgba(255, 255, 255, 0.35) 1.5px, transparent 1.5px);
+	background-size: 20px 20px;
+}
+
+.app-canvas.is-dragging .drop-grid {
+	opacity: 1;
+}
+
+.drop-preview {
+	position: absolute;
+	top: 0;
+	left: 0;
+	border: 2px dashed rgba(255, 255, 255, 0.6);
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.08);
+	pointer-events: none;
+	transition: transform 0.05s linear;
+	z-index: 2;
+}
+
+.marquee-box {
+	position: absolute;
+	top: 0;
+	left: 0;
+	border: 1px solid rgba(80, 160, 255, 0.8);
+	background: rgba(80, 160, 255, 0.15);
+	pointer-events: none;
+	z-index: 40;
+}
+
+.app-slot.selected {
+	border-radius: 12px;
+	background: rgba(80, 160, 255, 0.18);
+	box-shadow: 0 0 0 1px rgba(80, 160, 255, 0.6) inset;
 }
 
 .installing-app-slot {
