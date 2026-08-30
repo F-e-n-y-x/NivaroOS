@@ -229,23 +229,6 @@ print_summary() {
 	echo "Open http://$(hostname -I | awk '{print $1}')/ in a browser to finish setup."
 }
 
-main() {
-	check_distro
-	parse_args "$@"
-	prompt_vm_manager
-	install_build_deps
-	clone_repo
-	install_core_services
-	if [ "$WITH_VM" = "yes" ]; then
-		install_vm_manager
-	fi
-	install_ui
-	start_core_services
-	print_summary
-}
-
-main "$@"
-
 GUM_VERSION="2.0.0"
 
 install_gum() {
@@ -275,3 +258,25 @@ print_banner() {
 		--border-foreground 212 --foreground 212 --bold \
 		"RECASA" "Self-hosted home server platform"
 }
+
+main() {
+	check_distro
+	parse_args "$@"
+	prompt_vm_manager
+	install_build_deps
+	clone_repo
+	install_core_services
+	if [ "$WITH_VM" = "yes" ]; then
+		install_vm_manager
+	fi
+	install_ui
+	start_core_services
+	print_summary
+}
+
+# Guarded so this file can be safely `source`d (e.g. to test individual
+# functions in isolation) without triggering a real install - main only runs
+# when this file is executed directly, not when it's sourced into another shell.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+	main "$@"
+fi
