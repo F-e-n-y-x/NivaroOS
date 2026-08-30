@@ -1,0 +1,74 @@
+/************************************
+*
+* Widgets
+*
+*************************************/
+
+.widget {
+	border-radius: $backDropBorderRadius;
+	position: relative;
+	// position:relative alone doesn't make this a stacking context, so
+	// without an explicit z-index here, this card's own inner z-indexed
+	// elements (.widget-content: 10, .widget-header: 4, the network
+	// dropdown button: 200, etc.) would escape it and compete directly
+	// with siblings at the .widgets-column level (e.g. the next widget
+	// down, or Sortable's dragged/ghost item during a reorder). z-index: 0
+	// contains all of that inside the card.
+	z-index: 0;
+	margin-bottom: 1rem;
+	transition: all 0.3s;
+
+	.columns {
+		margin-bottom: 0;
+	}
+	
+	&:hover {
+		box-shadow: 0px 0px 17px 0px rgba(0, 0, 0, 0.2);
+	}
+	
+	.widget-content {
+		padding: 1rem 1.25rem;
+		position: relative;
+		z-index: 10;
+	}
+	
+	.widget-header {
+		margin-right: -0.25rem;
+		align-items: center;
+		position: relative;
+		z-index: 4;
+		
+		.widget-title {
+			color: $grey-100;
+			font-size: 1.125rem;
+			line-height: 1.75rem;
+			font-weight: 500;
+		}
+		
+		.widget-icon-button {
+			width: 1.5rem;
+			height: 1.5rem;
+			cursor: pointer;
+		}
+	}
+}
+
+.last-block {
+	margin-bottom: 0;
+	
+	&.widget {
+		margin-bottom: 0;
+	}
+	
+	.widget {
+		margin-bottom: 0;
+	}
+}
+
+
+.is-noscroll,
+.is-clipped {
+	.widget {
+		backdrop-filter: none !important;
+	}
+}

@@ -1,0 +1,1296 @@
+<!-- src/components/desktop/vm/VmConsolePanel.vue -->
+<!--
+	The one console UI, shared by every place a VM's display can be
+	opened: a proper desktop window (VmList's "Console" action, via
+	DesktopWindow's COMPONENT_REGISTRY), and a standalone browser tab
+	(VmConsoleStandalone.vue, "Open in New Tab"). Building this once
+	instead of three slightly-different copies is deliberate: every
+	previous copy used Buefy's <b-dropdown> for its power menu, which
+	across several rounds of testing in this app's "desktop window"
+	context turned out unreliable (three-dot menu, standalone-tab power
+	menu) for reasons never fully pinned down - replaced here with a
+	plain boolean-toggled menu (the same pattern ContextMenu.vue already
+	uses reliably elsewhere in Files), closed on outside click.
+-->
+<template>
+	<div class="vm-console-panel">
+		<div class="console-toolbar">
+			<!-- Only shown standalone (own browser tab, no window chrome of
+			     its own) - hosted in a desktop window, this is a duplicate
+			     of the window's own titlebar, which already carries the
+			     icon, name, and connection pill (see DesktopWindow.vue). -->
+			<div v-if="showClose" class="vm-identity">
+				<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
+				<span class="vm-name">{{ vmName }}</span>
+				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
+			</div>
+			<div class="toolbar-actions">
+				<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send Ctrl+Alt+Del to the VM')" @click="sendCtrlAltDel">
+					<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon>
+					<span>Ctrl+Alt+Del</span>
+				</button>
+				<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Paste clipboard text into the VM')" @click="pasteClipboard">
+					<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
+					<span>{{ $t('Paste') }}</span>
+				</button>
+				<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
+					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
+					<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
+				</button>
+				<div ref="qualityMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" @click="qualityMenuOpen = !qualityMenuOpen">
+						<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
+						<span>{{ qualityModeLabel }}</span>
+						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+					</button>
+					<div v-if="qualityMenuOpen" class="power-menu quality-menu">
+						<button v-for="q in qualityOptions" :key="q.mode" class="power-menu-item quality-menu-item" :class="{ active: qualityMode === q.mode }" @click="setQualityMode(q.mode)">
+							<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
+							<span class="quality-menu-text">
+								<span class="quality-menu-title">{{ $t(q.label) }}</span>
+								<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
+							</span>
+							<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+						</button>
+					</div>
+				</div>
+				<div ref="powerMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" @click="powerMenuOpen = !powerMenuOpen">
+						<b-icon icon="power" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Power') }}</span>
+						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+					</button>
+					<div v-if="powerMenuOpen" class="power-menu">
+						<button v-if="vmState !== 'running'" class="power-menu-item" @click="runAction('startVM')">
+							<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
+						</button>
+						<template v-else>
+							<button class="power-menu-item" @click="runAction('shutdownVM')">
+								<b-icon icon="power" custom-size="mdi-16px"></b-icon><span>{{ $t('Shutdown') }}</span>
+							</button>
+							<button class="power-menu-item" @click="runAction('resetVM')">
+								<b-icon icon="restart" custom-size="mdi-16px"></b-icon><span>{{ $t('Reset') }}</span>
+							</button>
+							<button class="power-menu-item is-danger" @click="runAction('forceOffVM')">
+								<b-icon icon="power-plug-off-outline" custom-size="mdi-16px"></b-icon><span>{{ $t('Force off') }}</span>
+							</button>
+						</template>
+					</div>
+				</div>
+				<div ref="usbMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" @click="usbMenuOpen = !usbMenuOpen">
+						<b-icon icon="usb" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('USB') }}</span>
+					</button>
+					<div v-if="usbMenuOpen" class="device-menu">
+						<p class="device-menu-title">{{ $t('USB Devices') }}</p>
+						<p v-if="loadingHostCaps" class="device-menu-hint">{{ $t('Loading host devices...') }}</p>
+						<p v-else-if="!hostUsbDevices.length" class="device-menu-hint">{{ $t('No USB devices found on the host.') }}</p>
+						<label v-for="dev in hostUsbDevices" :key="dev.vendor_id + ':' + dev.product_id" class="device-menu-row" :class="{ active: isUsbAttached(dev) }">
+							<div class="device-row-icon" :class="{ active: isUsbAttached(dev) }">
+								<b-icon icon="usb" size="is-small"></b-icon>
+							</div>
+							<span class="device-menu-desc">{{ dev.description || (dev.vendor_id + ':' + dev.product_id) }}</span>
+							<input type="checkbox" class="device-menu-checkbox" :checked="isUsbAttached(dev)" :disabled="usbBusy" @change="toggleUsbDevice(dev, $event.target.checked)" />
+						</label>
+					</div>
+				</div>
+				<div ref="diskMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" @click="diskMenuOpen = !diskMenuOpen">
+						<b-icon icon="harddisk" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Disks') }}</span>
+					</button>
+					<div v-if="diskMenuOpen" class="device-menu">
+						<p class="device-menu-title">{{ $t('Boot ISO') }}</p>
+						<div class="device-menu-row disk-row">
+							<div class="device-row-icon" :class="{ active: !!isoFileName }">
+								<b-icon icon="disc" size="is-small"></b-icon>
+							</div>
+							<span class="device-menu-desc">{{ isoFileName || $t('No ISO loaded') }}</span>
+							<button v-if="isoFileName" class="device-menu-detach" :disabled="diskBusy" :title="$t('Eject')" @click="ejectBootISO">
+								<b-icon icon="eject-outline" size="is-small"></b-icon>
+							</button>
+						</div>
+						<div class="device-menu-add">
+							<select v-model="selectedISO" class="device-menu-select" :disabled="diskBusy || !availableISOs.length">
+								<option value="" disabled>{{ availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available') }}</option>
+								<option v-for="iso in availableISOs" :key="iso.name" :value="iso.name">{{ iso.name }}</option>
+							</select>
+							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">{{ $t('Insert') }}</button>
+						</div>
+						<p class="device-menu-title device-menu-title-divided">{{ $t('Attached Disks') }}</p>
+						<p v-if="!(vm && vm.disks && vm.disks.length)" class="device-menu-hint">{{ $t('No virtual disks yet') }}</p>
+						<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
+							<div class="device-row-icon active">
+								<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
+							</div>
+							<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
+							<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
+								<b-icon icon="eject-outline" size="is-small"></b-icon>
+							</button>
+						</div>
+					</div>
+				</div>
+				<button class="toolbar-btn" :class="{ active: keyboardOpen }" @click="keyboardOpen = !keyboardOpen">
+					<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
+					<span>{{ $t('Keyboard') }}</span>
+				</button>
+				<button class="toolbar-btn" @click="toggleFullscreen">
+					<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
+					<span>{{ $t('Fullscreen') }}</span>
+				</button>
+				<button v-if="showClose" class="toolbar-btn" @click="$emit('close')">
+					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
+					<span>{{ $t('Close') }}</span>
+				</button>
+			</div>
+		</div>
+		<div ref="screen" class="console-screen"></div>
+		<div v-if="status !== 'connected'" class="console-status">
+			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+			<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
+			<span>{{ statusText }}</span>
+			<button v-if="status === 'disconnected'" class="reconnect-btn" @click="connect">{{ $t('Reconnect') }}</button>
+		</div>
+
+		<div v-if="keyboardOpen" ref="keyboard" class="on-screen-keyboard" :style="keyboardStyle">
+			<div class="osk-header" @pointerdown="startKeyboardDrag">
+				<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
+				<span class="osk-title">{{ $t('Keyboard') }}</span>
+				<button type="button" class="osk-close" :title="$t('Close')" @click="keyboardOpen = false">
+					<b-icon icon="close" size="is-small"></b-icon>
+				</button>
+			</div>
+			<div class="osk-keys">
+				<div class="osk-alpha">
+					<div v-for="(row, i) in keyboardRows" :key="'a' + i" class="osk-row">
+						<button
+							v-for="key in row"
+							:key="key.code"
+							type="button"
+							class="osk-key"
+							:style="keyStyle(key)"
+							:class="{ active: key.sticky && stickyState(key.sticky) }"
+							@click="pressKey(key)"
+						>{{ keyLabel(key) }}</button>
+					</div>
+				</div>
+				<div class="osk-side">
+					<div class="osk-row osk-fn-spacer"></div>
+					<div v-for="(row, i) in navRows" :key="'n' + i" class="osk-row">
+						<button
+							v-for="key in row"
+							:key="key.code"
+							type="button"
+							class="osk-key"
+							:style="keyStyle(key)"
+							@click="pressKey(key)"
+						>{{ keyLabel(key) }}</button>
+					</div>
+					<div class="osk-side-fill"></div>
+					<div v-for="(row, i) in arrowRows" :key="'r' + i" class="osk-row">
+						<button
+							v-for="(key, j) in row"
+							:key="j"
+							type="button"
+							class="osk-key"
+							:class="{ 'osk-key-empty': !key }"
+							:style="keyStyle(key || { u: 1 })"
+							:disabled="!key"
+							@click="key && pressKey(key)"
+						>{{ key ? keyLabel(key) : '' }}</button>
+					</div>
+				</div>
+				<div class="osk-shortcuts-col">
+					<button
+						v-for="s in shortcuts"
+						:key="s.key"
+						type="button"
+						class="osk-key osk-shortcut-btn"
+						:style="keyStyle({ u: 1 })"
+						:title="$t(s.label)"
+						@click="sendShortcut(s.key)"
+					>
+						<b-icon :icon="s.icon" size="is-small"></b-icon>
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="console-statusbar">
+			<span class="statusbar-item" :class="{ 'is-live': status === 'connected' }">
+				<span class="activity-dot"></span>{{ statusText }}
+			</span>
+			<span class="statusbar-item"><b-icon :icon="networkIcon" size="is-small"></b-icon>{{ networkSummary }}</span>
+			<span class="statusbar-item"><b-icon icon="harddisk" size="is-small"></b-icon>{{ diskSummary }}</span>
+			<span v-if="vm && vm.iso_path" class="statusbar-item"><b-icon icon="disc" size="is-small"></b-icon>{{ isoFileName }}</span>
+			<span v-if="vm && vm.usb_devices && vm.usb_devices.length" class="statusbar-item"><b-icon icon="usb" size="is-small"></b-icon>{{ vm.usb_devices.length }}</span>
+		</div>
+	</div>
+</template>
+
+<script>
+import RFB from '@novnc/novnc'
+import { vmSidecar } from '@/api/vmSidecar'
+
+const STATE_POLL_MS = 3000
+
+// noVNC's own qualityLevel (0-9, JPEG quality - higher looks better but
+// sends more data) and compressionLevel (0-9, zlib - higher shrinks the
+// stream further at the cost of CPU) trade actual network bandwidth for
+// picture quality, unlike the Fit/1:1 toggle which only changes local
+// canvas scaling and sends no less data either way.
+const QUALITY_PRESETS = {
+	high: { qualityLevel: 9, compressionLevel: 1 },
+	balanced: { qualityLevel: 6, compressionLevel: 2 },
+	low: { qualityLevel: 2, compressionLevel: 8 },
+}
+
+const QUALITY_OPTIONS = [
+	{ mode: 'high', icon: 'high-definition', label: 'High Quality', desc: 'Sharpest picture, most data' },
+	{ mode: 'balanced', icon: 'tune-vertical', label: 'Balanced', desc: 'Good picture, moderate data' },
+	{ mode: 'low', icon: 'speedometer-slow', label: 'Low Bandwidth', desc: 'Softer picture, least lag' },
+]
+
+// Standard X11 keysym values (keysymdef.h) for keys that aren't plain
+// printable characters - stable, decades-old constants, not something
+// noVNC's public API (just the RFB class) exposes a table for itself.
+const SPECIAL_KEYSYMS = {
+	Backspace: 0xff08,
+	Tab: 0xff09,
+	Enter: 0xff0d,
+	Escape: 0xff1b,
+	CapsLock: 0xffe5,
+	Shift: 0xffe1,
+	Control: 0xffe3,
+	Alt: 0xffe9,
+	Super: 0xffeb,
+	ArrowLeft: 0xff51,
+	ArrowUp: 0xff52,
+	ArrowRight: 0xff53,
+	ArrowDown: 0xff54,
+	Delete: 0xffff,
+	Home: 0xff50,
+	End: 0xff57,
+	Insert: 0xff63,
+	PageUp: 0xff55,
+	PageDown: 0xff56,
+	Menu: 0xff67,
+	F1: 0xffbe,
+	F2: 0xffbf,
+	F3: 0xffc0,
+	F4: 0xffc1,
+	F5: 0xffc2,
+	F6: 0xffc3,
+	F7: 0xffc4,
+	F8: 0xffc5,
+	F9: 0xffc6,
+	F10: 0xffc7,
+	F11: 0xffc8,
+	F12: 0xffc9,
+}
+
+// One-click Ctrl+<letter> chords for the guest, since there's no host
+// keyboard to physically hold Ctrl down while tapping another key.
+// Its own vertical column at the far right, one key per row, each the
+// same 1u size as a normal letter key.
+const SHORTCUTS = [
+	{ key: 'c', label: 'Copy', icon: 'content-copy' },
+	{ key: 'x', label: 'Cut', icon: 'content-cut' },
+	{ key: 'v', label: 'Paste', icon: 'content-paste' },
+	{ key: 'z', label: 'Undo', icon: 'undo' },
+	{ key: 'a', label: 'Select All', icon: 'select-all' },
+]
+
+// Printable keys give both their base and shift-held character - X11
+// keysyms for the whole ASCII printable range are numerically identical
+// to the character's own code point, so sending one is just
+// `char.charCodeAt(0)` once the right character (base vs shift) is
+// picked - no separate keysym table needed for these.
+// Each key's `u` is its width in keyboard "units" (1u = a normal letter
+// key) - real keycap proportions, not an even flex-stretch split. This is
+// what makes rows of different lengths (15 keys in the number row, 6 in
+// the nav cluster) still line up into a recognizable keyboard silhouette
+// instead of each row stretching to fill the same total width.
+const KEYBOARD_ROWS = [
+	[
+		{ code: 'Escape', special: 'Escape', label: 'Esc' },
+		// gapBefore groups F1-4/F5-8/F9-12 the way a real function row
+		// does, and not incidentally - it's also what stretches this row
+		// out to the same total width as the number row below it (13
+		// keys vs. that row's 15), so F12 actually lines up flush with
+		// the side column instead of stopping ~5rem short of it.
+		{ code: 'F1', special: 'F1', label: 'F1', gapBefore: 1.7 }, { code: 'F2', special: 'F2', label: 'F2' }, { code: 'F3', special: 'F3', label: 'F3' },
+		{ code: 'F4', special: 'F4', label: 'F4' }, { code: 'F5', special: 'F5', label: 'F5', gapBefore: 1.7 }, { code: 'F6', special: 'F6', label: 'F6' },
+		{ code: 'F7', special: 'F7', label: 'F7' }, { code: 'F8', special: 'F8', label: 'F8' }, { code: 'F9', special: 'F9', label: 'F9', gapBefore: 1.7 },
+		{ code: 'F10', special: 'F10', label: 'F10' }, { code: 'F11', special: 'F11', label: 'F11' }, { code: 'F12', special: 'F12', label: 'F12' },
+	],
+	[
+		{ code: 'Backquote', base: '`', shift: '~' }, { code: 'Digit1', base: '1', shift: '!' }, { code: 'Digit2', base: '2', shift: '@' },
+		{ code: 'Digit3', base: '3', shift: '#' }, { code: 'Digit4', base: '4', shift: '$' }, { code: 'Digit5', base: '5', shift: '%' },
+		{ code: 'Digit6', base: '6', shift: '^' }, { code: 'Digit7', base: '7', shift: '&' }, { code: 'Digit8', base: '8', shift: '*' },
+		{ code: 'Digit9', base: '9', shift: '(' }, { code: 'Digit0', base: '0', shift: ')' }, { code: 'Minus', base: '-', shift: '_' },
+		{ code: 'Equal', base: '=', shift: '+' }, { code: 'Backspace', special: 'Backspace', label: '⌫', u: 2 },
+	],
+	[
+		{ code: 'Tab', special: 'Tab', label: 'Tab', u: 1.5 }, { code: 'KeyQ', base: 'q', shift: 'Q' }, { code: 'KeyW', base: 'w', shift: 'W' },
+		{ code: 'KeyE', base: 'e', shift: 'E' }, { code: 'KeyR', base: 'r', shift: 'R' }, { code: 'KeyT', base: 't', shift: 'T' },
+		{ code: 'KeyY', base: 'y', shift: 'Y' }, { code: 'KeyU', base: 'u', shift: 'U' }, { code: 'KeyI', base: 'i', shift: 'I' },
+		{ code: 'KeyO', base: 'o', shift: 'O' }, { code: 'KeyP', base: 'p', shift: 'P' }, { code: 'BracketLeft', base: '[', shift: '{' },
+		{ code: 'BracketRight', base: ']', shift: '}' }, { code: 'Backslash', base: '\\', shift: '|', u: 1.5 },
+	],
+	[
+		{ code: 'CapsLock', special: 'CapsLock', label: 'Caps', u: 1.75 }, { code: 'KeyA', base: 'a', shift: 'A' }, { code: 'KeyS', base: 's', shift: 'S' },
+		{ code: 'KeyD', base: 'd', shift: 'D' }, { code: 'KeyF', base: 'f', shift: 'F' }, { code: 'KeyG', base: 'g', shift: 'G' },
+		{ code: 'KeyH', base: 'h', shift: 'H' }, { code: 'KeyJ', base: 'j', shift: 'J' }, { code: 'KeyK', base: 'k', shift: 'K' },
+		{ code: 'KeyL', base: 'l', shift: 'L' }, { code: 'Semicolon', base: ';', shift: ':' }, { code: 'Quote', base: "'", shift: '"' },
+		{ code: 'Enter', special: 'Enter', label: 'Enter', u: 2.25 },
+	],
+	[
+		{ code: 'ShiftLeft', special: 'Shift', label: 'Shift', sticky: 'shiftActive', u: 2.25 }, { code: 'KeyZ', base: 'z', shift: 'Z' }, { code: 'KeyX', base: 'x', shift: 'X' },
+		{ code: 'KeyC', base: 'c', shift: 'C' }, { code: 'KeyV', base: 'v', shift: 'V' }, { code: 'KeyB', base: 'b', shift: 'B' },
+		{ code: 'KeyN', base: 'n', shift: 'N' }, { code: 'KeyM', base: 'm', shift: 'M' }, { code: 'Comma', base: ',', shift: '<' },
+		{ code: 'Period', base: '.', shift: '>' }, { code: 'Slash', base: '/', shift: '?' }, { code: 'ShiftRight', special: 'Shift', label: 'Shift', sticky: 'shiftActive', u: 2.75 },
+	],
+	[
+		{ code: 'ControlLeft', special: 'Control', label: 'Ctrl', sticky: 'ctrlActive', u: 1.25 }, { code: 'MetaLeft', special: 'Super', label: '⊞', sticky: 'superActive', u: 1.25 },
+		{ code: 'AltLeft', special: 'Alt', label: 'Alt', sticky: 'altActive', u: 1.25 },
+		{ code: 'Space', base: ' ', label: 'Space', u: 6.25 },
+		{ code: 'AltRight', special: 'Alt', label: 'Alt', sticky: 'altActive', u: 1.25 }, { code: 'MetaRight', special: 'Super', label: '⊞', sticky: 'superActive', u: 1.25 },
+		{ code: 'ContextMenu', special: 'Menu', label: '☰', u: 1.25 }, { code: 'ControlRight', special: 'Control', label: 'Ctrl', sticky: 'ctrlActive', u: 1.25 },
+	],
+]
+
+// The nav/arrow clusters sit in their own column to the right of the main
+// block (osk-side), same as a real keyboard - not inline at the end of
+// whichever row happened to have room.
+const NAV_ROWS = [
+	[
+		{ code: 'Insert', special: 'Insert', label: 'Ins' }, { code: 'Home', special: 'Home', label: 'Home' }, { code: 'PageUp', special: 'PageUp', label: 'PgUp' },
+	],
+	[
+		{ code: 'Delete', special: 'Delete', label: 'Del' }, { code: 'End', special: 'End', label: 'End' }, { code: 'PageDown', special: 'PageDown', label: 'PgDn' },
+	],
+]
+
+// `null` cells render as invisible placeholders, so the arrow cluster
+// keeps its familiar inverted-T shape instead of a solid 2x3 block.
+const ARROW_ROWS = [
+	[null, { code: 'ArrowUp', special: 'ArrowUp', label: '▲' }, null],
+	[
+		{ code: 'ArrowLeft', special: 'ArrowLeft', label: '◀' },
+		{ code: 'ArrowDown', special: 'ArrowDown', label: '▼' },
+		{ code: 'ArrowRight', special: 'ArrowRight', label: '▶' },
+	],
+]
+
+export default {
+	name: 'vm-console-panel',
+	props: {
+		vmName: { type: String, required: true },
+		// Default false: as a desktop window, the shared titlebar already
+		// has its own close button - a second one here would be redundant.
+		// The standalone browser-tab wrapper explicitly opts in, since
+		// there's nothing else to close a tab with.
+		showClose: { type: Boolean, default: false },
+	},
+	data() {
+		return {
+			rfb: null,
+			status: 'connecting',
+			vmState: null,
+			vm: null,
+			scaleToFit: true,
+			// The VNC stream's own encoding quality/compression trade-off -
+			// distinct from both the VM's display resolution (a libvirt
+			// hardware hint) and the Fit/1:1 toggle above (a local view
+			// setting). This is what actually trades picture quality for
+			// less lag on a slow connection, since it changes how much data
+			// noVNC asks the sidecar's VNC server to send per frame.
+			qualityMode: 'balanced',
+			qualityOptions: QUALITY_OPTIONS,
+			qualityMenuOpen: false,
+			powerMenuOpen: false,
+			statePollTimer: null,
+			usbMenuOpen: false,
+			diskMenuOpen: false,
+			loadingHostCaps: false,
+			hostUsbDevices: [],
+			usbBusy: false,
+			diskBusy: false,
+			availableISOs: [],
+			selectedISO: '',
+			keyboardOpen: false,
+			// null until the user drags it once - the default position comes
+			// from CSS (centered, docked near the bottom); once set, this
+			// pins it at an explicit spot instead so it stays wherever it
+			// was dropped, including across a close/reopen of the panel.
+			keyboardPos: null,
+			keyboardRows: KEYBOARD_ROWS,
+			navRows: NAV_ROWS,
+			arrowRows: ARROW_ROWS,
+			shortcuts: SHORTCUTS,
+			shiftActive: false,
+			ctrlActive: false,
+			altActive: false,
+			superActive: false,
+		}
+	},
+	computed: {
+		statusText() {
+			return (
+				{
+					connecting: this.$t('Connecting...'),
+					connected: this.$t('Connected'),
+					disconnected: this.$t('Disconnected'),
+				}[this.status] || this.status
+			)
+		},
+		networkIcon() {
+			return this.vm && this.vm.network_mode && this.vm.network_mode.startsWith('bridge:') ? 'lan-connect' : 'lan'
+		},
+		networkSummary() {
+			if (!this.vm || !this.vm.network_mode) return this.$t('None')
+			return this.vm.network_mode.startsWith('bridge:') ? this.vm.network_mode.replace('bridge:', '') : this.$t('NAT')
+		},
+		diskSummary() {
+			const disks = (this.vm && this.vm.disks) || []
+			if (!disks.length) return this.$t('None')
+			const totalGiB = disks.reduce((sum, d) => sum + (d.gib || 0), 0)
+			return `${disks.length} · ${totalGiB} GiB`
+		},
+		isoFileName() {
+			const path = this.vm && this.vm.iso_path
+			return path ? path.slice(path.lastIndexOf('/') + 1) : ''
+		},
+		keyboardStyle() {
+			if (!this.keyboardPos) return {}
+			return { left: this.keyboardPos.x + 'px', top: this.keyboardPos.y + 'px', bottom: 'auto', transform: 'none' }
+		},
+		qualityModeLabel() {
+			return (
+				{
+					high: this.$t('High Quality'),
+					balanced: this.$t('Balanced'),
+					low: this.$t('Low Bandwidth'),
+				}[this.qualityMode] || this.qualityMode
+			)
+		},
+	},
+	mounted() {
+		this.connect()
+		this.pollState()
+		this.statePollTimer = setInterval(this.pollState, STATE_POLL_MS)
+		document.addEventListener('mousedown', this.onOutsideClick)
+		// A keyboard position dragged into place is just raw left/top px -
+		// nothing re-clamps it if the desktop window is then resized
+		// smaller (or fullscreen is toggled), so it can end up sitting
+		// partway or fully outside the new, shrunk bounds. Watching this
+		// panel's own size (not the keyboard's) catches every case that
+		// actually changes the available space.
+		this.panelResizeObserver = new ResizeObserver(() => this.clampKeyboardPos())
+		this.panelResizeObserver.observe(this.$el)
+	},
+	beforeDestroy() {
+		if (this.rfb) this.rfb.disconnect()
+		clearInterval(this.statePollTimer)
+		document.removeEventListener('mousedown', this.onOutsideClick)
+		if (this.panelResizeObserver) this.panelResizeObserver.disconnect()
+	},
+	methods: {
+		connect() {
+			this.status = 'connecting'
+			this.rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
+			this.rfb.scaleViewport = this.scaleToFit
+			Object.assign(this.rfb, QUALITY_PRESETS[this.qualityMode])
+			this.rfb.addEventListener('connect', () => {
+				this.status = 'connected'
+			})
+			this.rfb.addEventListener('disconnect', () => {
+				this.status = 'disconnected'
+			})
+		},
+		async pollState() {
+			try {
+				const vm = await vmSidecar.getVM(this.vmName)
+				this.vm = vm
+				this.vmState = vm.state
+			} catch (e) {
+				// VM may have just been deleted, or the sidecar is briefly
+				// unreachable - keep showing the last known state rather than
+				// flipping the power menu around on a transient error.
+			}
+		},
+		sendCtrlAltDel() {
+			if (this.rfb) this.rfb.sendCtrlAltDel()
+		},
+		async pasteClipboard() {
+			try {
+				const text = await navigator.clipboard.readText()
+				if (this.rfb && text) this.rfb.clipboardPasteFrom(text)
+			} catch (e) {
+				this.$buefy.toast.open({ message: this.$t('Could not read the clipboard'), type: 'is-danger' })
+			}
+		},
+		toggleScale() {
+			this.scaleToFit = !this.scaleToFit
+			if (this.rfb) this.rfb.scaleViewport = this.scaleToFit
+		},
+		setQualityMode(mode) {
+			this.qualityMode = mode
+			this.qualityMenuOpen = false
+			if (this.rfb) Object.assign(this.rfb, QUALITY_PRESETS[mode])
+		},
+		toggleFullscreen() {
+			if (document.fullscreenElement) {
+				document.exitFullscreen()
+			} else {
+				this.$el.requestFullscreen()
+			}
+		},
+		onOutsideClick(event) {
+			if (this.powerMenuOpen && this.$refs.powerMenuWrapper && !this.$refs.powerMenuWrapper.contains(event.target)) {
+				this.powerMenuOpen = false
+			}
+			if (this.usbMenuOpen && this.$refs.usbMenuWrapper && !this.$refs.usbMenuWrapper.contains(event.target)) {
+				this.usbMenuOpen = false
+			}
+			if (this.diskMenuOpen && this.$refs.diskMenuWrapper && !this.$refs.diskMenuWrapper.contains(event.target)) {
+				this.diskMenuOpen = false
+			}
+			if (this.qualityMenuOpen && this.$refs.qualityMenuWrapper && !this.$refs.qualityMenuWrapper.contains(event.target)) {
+				this.qualityMenuOpen = false
+			}
+		},
+		async runAction(method) {
+			this.powerMenuOpen = false
+			try {
+				await vmSidecar[method](this.vmName)
+				await this.pollState()
+				// A fresh start (or a reboot cycling the VNC server) has no
+				// listening console yet the instant the API call returns -
+				// give it a moment, then reconnect if we're not already.
+				if (method === 'startVM' && this.status !== 'connected') {
+					setTimeout(() => this.connect(), 2000)
+				}
+			} catch (e) {
+				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+			}
+		},
+		isUsbAttached(dev) {
+			return ((this.vm && this.vm.usb_devices) || []).some((d) => d.vendor_id.replace('0x', '') === dev.vendor_id.replace('0x', '') && d.product_id.replace('0x', '') === dev.product_id.replace('0x', ''))
+		},
+		async loadHostUsbDevices() {
+			this.loadingHostCaps = true
+			try {
+				const caps = await vmSidecar.getHostCapabilities()
+				this.hostUsbDevices = caps.usb_devices || []
+			} catch (e) {
+				this.hostUsbDevices = []
+			} finally {
+				this.loadingHostCaps = false
+			}
+		},
+		async toggleUsbDevice(dev, attach) {
+			this.usbBusy = true
+			try {
+				if (attach) {
+					await vmSidecar.attachUSBDevice(this.vmName, { vendor_id: dev.vendor_id, product_id: dev.product_id })
+				} else {
+					await vmSidecar.detachUSBDevice(this.vmName, dev.vendor_id, dev.product_id)
+				}
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+			} finally {
+				this.usbBusy = false
+			}
+		},
+		async detachDiskConfirm(disk) {
+			this.$buefy.dialog.confirm({
+				title: this.$t('Detach Disk'),
+				message: this.$t('Detach') + ` ${disk.target}? ` + this.$t('The backing file is kept, not deleted - only unplug a disk the guest has safely unmounted, the same risk as unplugging a live USB drive.'),
+				confirmText: this.$t('Detach'),
+				type: 'is-danger',
+				onConfirm: async () => {
+					this.diskBusy = true
+					try {
+						await vmSidecar.detachDisk(this.vmName, disk.target)
+						await this.pollState()
+					} catch (e) {
+						this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+					} finally {
+						this.diskBusy = false
+					}
+				},
+			})
+		},
+		async ejectBootISO() {
+			this.diskBusy = true
+			try {
+				await vmSidecar.ejectCDROM(this.vmName)
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+			} finally {
+				this.diskBusy = false
+			}
+		},
+		async loadAvailableISOs() {
+			try {
+				this.availableISOs = await vmSidecar.listISOs()
+			} catch (e) {
+				this.availableISOs = []
+			}
+		},
+		async insertBootISO() {
+			if (!this.selectedISO) return
+			this.diskBusy = true
+			try {
+				// The sidecar always serves ISOs from this one fixed
+				// directory (defaultISODir) - same convention the create-VM
+				// wizard's file picker uses as its start-path.
+				await vmSidecar.insertCDROM(this.vmName, `/DATA/VMs/isos/${this.selectedISO}`)
+				this.selectedISO = ''
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+			} finally {
+				this.diskBusy = false
+			}
+		},
+		stickyState(prop) {
+			return this[prop]
+		},
+		// Fixed-unit key width (see KEYBOARD_ROWS's comment) - not a flex
+		// stretch, so a key is the same width in every row it appears in.
+		keyStyle(key) {
+			const KEY_REM = 2.3
+			const GAP_REM = 0.25
+			const u = key.u || 1
+			const style = { width: `${u * KEY_REM + (u - 1) * GAP_REM}rem` }
+			if (key.gapBefore) style.marginLeft = `${key.gapBefore}rem`
+			return style
+		},
+		// Drags the floating keyboard by its header, like a real window -
+		// pointer events (not separate mouse/touch handlers) so this works
+		// the same with a mouse, a trackpad, or a touchscreen.
+		startKeyboardDrag(event) {
+			// Pointer capture (not document-level listeners) - the VNC
+			// canvas underneath handles pointer events itself to relay
+			// clicks to the VM, and can consume a pointerup before it ever
+			// bubbles to document. Losing that event left the pointermove
+			// listener attached forever, so the keyboard kept following the
+			// mouse anywhere on the page long after the drag should've
+			// ended - exactly the "keyboard moves anywhere, even outside
+			// the console" bug. Capture guarantees this element keeps
+			// getting every event for this pointer regardless of what's
+			// underneath it.
+			const header = event.currentTarget
+			header.setPointerCapture(event.pointerId)
+			const panelRect = this.$el.getBoundingClientRect()
+			const kbEl = header.parentElement
+			const kbRect = kbEl.getBoundingClientRect()
+			const offsetX = event.clientX - kbRect.left
+			const offsetY = event.clientY - kbRect.top
+			const onMove = (e) => {
+				const maxX = panelRect.width - kbRect.width
+				const maxY = panelRect.height - kbRect.height
+				const x = Math.max(0, Math.min(e.clientX - panelRect.left - offsetX, maxX))
+				const y = Math.max(0, Math.min(e.clientY - panelRect.top - offsetY, maxY))
+				this.keyboardPos = { x, y }
+			}
+			const onUp = () => {
+				header.releasePointerCapture(event.pointerId)
+				header.removeEventListener('pointermove', onMove)
+				header.removeEventListener('pointerup', onUp)
+				header.removeEventListener('pointercancel', onUp)
+			}
+			header.addEventListener('pointermove', onMove)
+			header.addEventListener('pointerup', onUp)
+			header.addEventListener('pointercancel', onUp)
+		},
+		// Re-pins a dragged keyboard back inside the current panel bounds -
+		// called on every panel resize (window resize, fullscreen toggle)
+		// so a position that was valid before stays valid after.
+		clampKeyboardPos() {
+			if (!this.keyboardPos || !this.$refs.keyboard) return
+			const panelRect = this.$el.getBoundingClientRect()
+			const kbRect = this.$refs.keyboard.getBoundingClientRect()
+			const maxX = Math.max(0, panelRect.width - kbRect.width)
+			const maxY = Math.max(0, panelRect.height - kbRect.height)
+			const x = Math.max(0, Math.min(this.keyboardPos.x, maxX))
+			const y = Math.max(0, Math.min(this.keyboardPos.y, maxY))
+			if (x !== this.keyboardPos.x || y !== this.keyboardPos.y) {
+				this.keyboardPos = { x, y }
+			}
+		},
+		keyLabel(key) {
+			if (key.special) return key.label
+			return this.shiftActive ? key.shift || key.base : key.base
+		},
+		pressKey(key) {
+			if (!this.rfb) return
+			if (key.sticky) {
+				this[key.sticky] = !this[key.sticky]
+				this.rfb.sendKey(SPECIAL_KEYSYMS[key.special], key.code, this[key.sticky])
+				return
+			}
+			if (key.special) {
+				const keysym = SPECIAL_KEYSYMS[key.special]
+				this.rfb.sendKey(keysym, key.code, true)
+				this.rfb.sendKey(keysym, key.code, false)
+				return
+			}
+			const ch = this.shiftActive ? key.shift || key.base : key.base
+			const keysym = ch.charCodeAt(0)
+			this.rfb.sendKey(keysym, key.code, true)
+			this.rfb.sendKey(keysym, key.code, false)
+		},
+		// A one-click Ctrl+<letter> chord - there's no host key to physically
+		// hold down while tapping another one on a click-only keyboard.
+		sendShortcut(letter) {
+			if (!this.rfb) return
+			const ctrl = SPECIAL_KEYSYMS.Control
+			const code = 'Key' + letter.toUpperCase()
+			const keysym = letter.charCodeAt(0)
+			this.rfb.sendKey(ctrl, 'ControlLeft', true)
+			this.rfb.sendKey(keysym, code, true)
+			this.rfb.sendKey(keysym, code, false)
+			this.rfb.sendKey(ctrl, 'ControlLeft', false)
+		},
+	},
+	watch: {
+		// The desktop window's own titlebar shows the connection pill now
+		// (see DesktopWindow.vue) - it has no other way to know this
+		// state, since it mounts this panel generically like any window
+		// content.
+		status: {
+			immediate: true,
+			handler(val) {
+				this.$emit('status-change', val)
+			},
+		},
+		keyboardOpen(open) {
+			// $refs.keyboard doesn't exist until this v-if's DOM lands -
+			// covers a resize that happened while it was closed.
+			if (open) this.$nextTick(this.clampKeyboardPos)
+		},
+		usbMenuOpen(open) {
+			if (open) this.loadHostUsbDevices()
+		},
+		diskMenuOpen(open) {
+			if (open) this.loadAvailableISOs()
+		},
+	},
+}
+</script>
+
+<style lang="scss" scoped>
+.vm-console-panel {
+	position: absolute;
+	inset: 0;
+	background: #000;
+	display: flex;
+	flex-direction: column;
+	color: #fff;
+}
+.console-toolbar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	background: #1a1a1a;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	flex-wrap: wrap;
+}
+.vm-identity {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.vm-name {
+	font-weight: 600;
+}
+.status-pill {
+	font-size: 0.7rem;
+	padding: 0.1rem 0.5rem;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.7);
+
+	&.is-connected {
+		background: rgba(72, 199, 116, 0.2);
+		color: #48c774;
+	}
+	&.is-connecting {
+		background: rgba(255, 221, 87, 0.15);
+		color: #ffdd57;
+	}
+	&.is-disconnected {
+		background: rgba(255, 56, 96, 0.15);
+		color: #ff3860;
+	}
+}
+.toolbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex-wrap: wrap;
+}
+.toolbar-btn {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: none;
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	padding: 0.4rem 0.6rem;
+	border-radius: 6px;
+	cursor: pointer;
+	white-space: nowrap;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.15);
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+.menu-wrapper {
+	position: relative;
+}
+.power-menu {
+	position: absolute;
+	top: calc(100% + 0.3rem);
+	right: 0;
+	z-index: 30;
+	background: #262626;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	padding: 0.3rem;
+	min-width: 9rem;
+	display: flex;
+	flex-direction: column;
+}
+.power-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	border: none;
+	background: none;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.8rem;
+	padding: 0.4rem 0.5rem;
+	border-radius: 5px;
+	cursor: pointer;
+	text-align: left;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+	&.is-danger {
+		color: #ff6b6b;
+	}
+	&.active {
+		background: rgba(255, 255, 255, 0.14);
+		font-weight: 600;
+	}
+}
+.quality-menu {
+	min-width: 14rem;
+}
+.quality-menu-item {
+	align-items: flex-start;
+	gap: 0.6rem;
+	padding: 0.5rem;
+}
+.quality-menu-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	min-width: 0;
+}
+.quality-menu-title {
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+.quality-menu-desc {
+	font-size: 0.68rem;
+	color: rgba(255, 255, 255, 0.5);
+	white-space: normal;
+}
+.quality-menu-check {
+	margin-left: auto;
+	flex-shrink: 0;
+	color: #48c774;
+}
+.console-screen {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+.console-status {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.75rem;
+	color: rgba(255, 255, 255, 0.7);
+
+	// Buefy's <b-icon> wraps every glyph in a Bulma .icon span fixed at
+	// 1.5rem (24px) by default - custom-size only scales the glyph's own
+	// font-size, so the mdi-36px icons here overflowed their own wrapper
+	// unless it's resized to match.
+	::v-deep .icon {
+		width: 2.25rem;
+		height: 2.25rem;
+	}
+}
+.reconnect-btn {
+	border: none;
+	background: #3273dc;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	padding: 0.5rem 1rem;
+	border-radius: 6px;
+	cursor: pointer;
+
+	&:hover {
+		background: #2366d1;
+	}
+}
+.toolbar-btn.active {
+	background: rgba(255, 255, 255, 0.28);
+}
+.device-menu {
+	position: absolute;
+	top: calc(100% + 0.3rem);
+	right: 0;
+	z-index: 30;
+	background: #262626;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	padding: 0.6rem;
+	width: 18rem;
+	max-height: 20rem;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+.device-menu-title {
+	font-size: 0.7rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: rgba(255, 255, 255, 0.45);
+	margin: 0 0 0.2rem;
+}
+.device-menu-hint {
+	font-size: 0.75rem;
+	color: rgba(255, 255, 255, 0.45);
+	margin: 0.2rem 0;
+}
+.device-menu-row {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.4rem;
+	border-radius: 6px;
+	cursor: pointer;
+	color: #fff;
+	font-size: 0.78rem;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.06);
+	}
+	&.active {
+		background: rgba(50, 115, 220, 0.12);
+	}
+	&.disk-row {
+		cursor: default;
+		&:hover {
+			background: none;
+		}
+		&.active {
+			background: rgba(50, 115, 220, 0.12);
+		}
+	}
+}
+// Same round icon-badge treatment as the Disks/Network Adapters/Hardware
+// Passthrough rows elsewhere in this app, scaled down to fit this menu's
+// compact width.
+.device-row-icon {
+	flex-shrink: 0;
+	width: 1.9rem;
+	height: 1.9rem;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(255, 255, 255, 0.08);
+	color: rgba(255, 255, 255, 0.5);
+
+	&.active {
+		background: rgba(50, 115, 220, 0.25);
+		color: #7fb0f5;
+	}
+}
+.device-menu-checkbox {
+	flex-shrink: 0;
+	width: 1.05rem;
+	height: 1.05rem;
+	cursor: pointer;
+}
+.device-menu-title-divided {
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.device-menu-desc {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.device-menu-detach {
+	flex-shrink: 0;
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.5);
+	cursor: pointer;
+	display: flex;
+	padding: 0.25rem;
+	border-radius: 5px;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 56, 96, 0.2);
+		color: #ff6b6b;
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+.device-menu-add {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	margin-top: 0.4rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.device-menu-select {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 2rem;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 5px;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	padding: 0 0.4rem;
+
+	&:disabled {
+		opacity: 0.4;
+	}
+	option {
+		background: #262626;
+		color: #fff;
+	}
+}
+.device-menu-attach-btn {
+	margin-left: auto;
+	border: none;
+	background: #3273dc;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 600;
+	padding: 0.35rem 0.7rem;
+	border-radius: 6px;
+	cursor: pointer;
+
+	&:hover:not(:disabled) {
+		background: #2366d1;
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+// A floating overlay, not a docked panel - it sits on top of the console
+// screen (and can overlap the statusbar) so it behaves like an on-screen
+// keyboard laid over whatever's underneath, the same way a real external
+// keyboard doesn't resize the monitor's picture to make room for itself.
+.on-screen-keyboard {
+	position: absolute;
+	left: 50%;
+	bottom: 1rem;
+	transform: translateX(-50%);
+	z-index: 40;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	width: fit-content;
+	max-width: calc(100% - 2rem);
+	overflow-x: auto;
+	padding: 0.5rem 0.75rem 0.75rem;
+	background: #2b2b2b;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 12px;
+	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+}
+.osk-header {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding-bottom: 0.35rem;
+	margin-bottom: 0.15rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.6);
+}
+.osk-title {
+	font-size: 0.72rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	flex: 1 1 auto;
+}
+.osk-close {
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.6);
+	cursor: pointer;
+	display: flex;
+	padding: 0.15rem;
+	border-radius: 4px;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: #fff;
+	}
+}
+.osk-keys {
+	display: flex;
+	gap: 0.6rem;
+}
+.osk-alpha {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+.osk-side {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+// Keeps the nav cluster (Ins/Home/PgUp/Del/End/PgDn) starting at the
+// number row's height, not the function row's - same as a real keyboard,
+// where that block sits below the F-keys, not level with them.
+.osk-fn-spacer {
+	height: 2.3rem;
+	visibility: hidden;
+}
+// Pushes the arrow cluster down to the bottom, level with the shift and
+// modifier rows, instead of it sitting right under the nav cluster.
+.osk-side-fill {
+	flex: 1 1 auto;
+	min-height: 0.25rem;
+}
+.osk-shortcuts-col {
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	gap: 0.25rem;
+}
+.osk-shortcut-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.osk-row {
+	display: flex;
+	gap: 0.25rem;
+}
+.osk-key {
+	flex: 0 0 auto;
+	border: none;
+	border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+	background: #454545;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	padding: 0.55rem 0.25rem;
+	border-radius: 5px;
+	cursor: pointer;
+	min-width: 0;
+
+	&:hover {
+		background: #4f4f4f;
+	}
+	&:active {
+		background: #3a3a3a;
+		border-bottom-width: 0;
+		transform: translateY(2px);
+	}
+	&.osk-key-empty {
+		visibility: hidden;
+		pointer-events: none;
+	}
+	&.active {
+		background: #7a7a7a;
+		border-bottom-color: rgba(0, 0, 0, 0.25);
+	}
+}
+.console-statusbar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.35rem 0.85rem;
+	background: #1a1a1a;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	font-size: 0.72rem;
+	color: rgba(255, 255, 255, 0.55);
+	flex-wrap: wrap;
+
+	::v-deep .icon {
+		width: 1rem;
+		height: 1rem;
+		margin-right: 0.25rem;
+	}
+}
+.statusbar-item {
+	display: flex;
+	align-items: center;
+	white-space: nowrap;
+}
+.activity-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.3);
+	margin-right: 0.4rem;
+	flex-shrink: 0;
+}
+.statusbar-item.is-live .activity-dot {
+	background: #48c774;
+	box-shadow: 0 0 4px #48c774;
+}
+</style>

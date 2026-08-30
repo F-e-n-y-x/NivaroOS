@@ -1,0 +1,13 @@
+[Unit]
+After=network.target
+Description=Recasa Gateway
+
+[Service]
+ExecStartPre=/usr/bin/recasa-gateway -v
+ExecStart=/usr/bin/recasa-gateway
+PIDFile=/var/run/recasa/gateway.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

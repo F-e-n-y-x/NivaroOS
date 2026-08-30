@@ -1,0 +1,149 @@
+/************************************
+*
+* Cards
+*
+*************************************/
+
+.common-card {
+	border-radius: $backDropBorderRadius;
+
+	color: $white;
+	position: relative;
+
+	transition: all 0.3s;
+
+	.buttons {
+		min-height: 2.375rem;
+	}
+
+	// The 3-dot menu no longer has a visible trigger at all - it's
+	// right-click only now (see handleCardContextMenu). .action-btn
+	// stays in the DOM (needed for the b-dropdown ref) but permanently
+	// hidden via its own base rule below.
+	&:hover {
+		box-shadow: 0px 0px 17px 0px rgba(0, 0, 0, 0.2);
+	}
+
+	.info {
+		flex: 1;
+		margin-right: 1rem;
+		color: white;
+	}
+
+	.simg {
+		img {
+			border-radius: 4px;
+		}
+	}
+
+	.icon-img {
+		position: relative;
+
+		&.stop img {
+			filter: grayscale(100%);
+		}
+
+		img {
+			border-radius: 8px;
+			margin: 0 auto;
+		}
+	}
+
+	.b-image-wrapper {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		&.stop img {
+			filter: grayscale(100%);
+		}
+
+		img {
+			border-radius: 8px;
+			margin: 0 auto;
+		}
+	}
+
+	.action-btn {
+		position: absolute;
+		right: 0.5rem;
+		top: 1rem;
+		visibility: hidden;
+		opacity: 0;
+		transition: all 0.2s;
+		outline: none;
+		z-index: 20;
+
+		// A plain icon glyph with no backdrop was nearly invisible against
+		// busy wallpapers now that the highlight box is hover-only too -
+		// give it a small round chip for contrast.
+		> p {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 1.5rem;
+			height: 1.5rem;
+			border-radius: 50%;
+			background: rgba(0, 0, 0, 0.35);
+		}
+	}
+
+	.one-line {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 1;
+		overflow: hidden;
+	}
+
+	.two-line {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		overflow: hidden;
+	}
+
+	a {
+		color: white;
+
+		p {
+			color: white;
+		}
+	}
+}
+
+.app-card {
+	aspect-ratio: 1 / 1;
+	.loading-background {
+		background: none !important;
+		border-radius: $backDropBorderRadius;
+		transform: translate3d(0, 0, 0);
+	}
+
+	// No highlight box at all, hover or selected - a zoom animation on
+	// the icon/content is the only hover feedback.
+	> .blur-background {
+		opacity: 0;
+	}
+
+	// .common-card's own :hover rule adds a box-shadow across the whole
+	// cell - kill it here too.
+	&:hover {
+		box-shadow: none;
+	}
+
+	.cards-content {
+		transition: transform 0.15s ease;
+	}
+
+	&:hover .cards-content {
+		transform: scale(1.08);
+	}
+}
+
+.is-noscroll,
+.is-clipped {
+	.common-card {
+		backdrop-filter: none !important;
+	}
+}

@@ -1,0 +1,43 @@
+.DS_Store
+node_modules
+/dist
+/build
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# warnings
+unused-files.json
+
+# package manager
+#.yarnrc.yml
+#!/releases/yarn**
+.yarn/*
+!.yarn/releases
+
+# turbo
+.turbo
+
+# git worktrees (superpowers:using-git-worktrees)
+.worktrees
+
+# subagent-driven-development scratch workspace (ledgers, briefs, reports)
+.superpowers
+
+/packages/icewhale*

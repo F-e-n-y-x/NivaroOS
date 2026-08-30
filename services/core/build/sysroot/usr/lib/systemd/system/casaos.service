@@ -1,0 +1,13 @@
+[Unit]
+After=casaos-message-bus.service
+After=rclone.service
+Description=Recasa Main Service
+
+[Service]
+ExecStart=/usr/bin/recasa -c /etc/recasa/casaos.conf
+PIDFile=/var/run/recasa/casaos.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

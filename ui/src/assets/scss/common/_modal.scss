@@ -1,0 +1,240 @@
+/************************************
+*
+* Modal
+*
+*************************************/
+
+
+.modal-card {
+    background: rgba(255, 255, 255, 1);
+    border-radius: $backDropBorderRadius;
+
+    .close-container {
+        position: absolute;
+        right: 2rem;
+        top: 2rem;
+    }
+
+    .modal-close-container {
+        padding-left: 1rem;
+        margin-left: .5rem;
+        position: relative;
+        height: 100%;
+    }
+
+    .modal-close-container-line {
+        &:before {
+            content: '';
+            position: absolute;
+            border-left: #363636 2px solid;
+            height: 1rem;
+            left: 0;
+        }
+    }
+
+    .modal-card-head,
+    .modal-card-body,
+    .modal-card-foot {
+        position: relative;
+        background-color: transparent;
+        border: none;
+    }
+
+    .modal-card-head {
+        padding: 1.25rem 1.25rem .5rem 1.5rem;
+        border-bottom: 1px solid rgb(228 233 237);
+    }
+
+    .modal-card-body {
+        padding: 1rem 1.5rem;
+
+        .loading-overlay .loading-icon:after {
+            -webkit-animation: spinAround 500ms infinite linear;
+            animation: spinAround 500ms infinite linear;
+            border: 4px solid #000000;
+            border-radius: 9999px;
+            border-width: .2rem;
+            border-right-color: transparent;
+            border-top-color: transparent;
+            content: '';
+            display: block;
+            position: absolute;
+            top: calc(50% - 1.25rem);
+            left: calc(50% - 1.25rem);
+            width: 2.5rem;
+            height: 2.5rem;
+
+        }
+
+        .button.is-static,
+        .input,
+        .textarea,
+        .select select,
+        .file-cta,
+        .file-name,
+        .pagination-previous,
+        .pagination-next,
+        .pagination-link,
+        .pagination-ellipsis {
+            font-size: .875rem;
+            height: 2.714em;
+            border: 1px solid #CFCFCF !important;
+            border-radius: 4px;
+
+            &:focus {
+                box-shadow: none;
+            }
+        }
+
+        .media {
+            padding: 0rem;
+        }
+
+        .media-content {
+            p {
+                word-wrap: break-word;
+
+                div {
+                    word-wrap: break-word;
+                }
+            }
+        }
+
+        .tab-content {
+            overflow: hidden;
+        }
+
+        .title {
+            overflow: hidden;
+        }
+
+        .field:last-child {
+            margin-bottom: .5rem;
+        }
+
+        .field-body {
+            .field:last-child {
+                margin-bottom: 0rem;
+            }
+        }
+
+        .port-item:not(:last-child) {
+            .field {
+                margin-bottom: 0;
+            }
+        }
+    }
+
+    .modal-card-foot {
+        padding: .75rem 1.5rem 1.5rem 1.5rem;
+        border-top: 1px solid rgba(133, 149, 163, .1215686275);
+
+        .button {
+            border-radius: 9999px;
+            padding-left: calc(1em + .25em);
+            padding-right: calc(1em + .25em);
+        }
+    }
+}
+
+.terminal-modal {
+    .close-container {
+        position: absolute;
+        right: 2rem;
+        top: 2rem;
+    }
+
+    .tab-content {
+        padding: 0;
+    }
+
+    // Tabs
+    .tabs {
+        width: 14rem !important;
+
+        &.is-toggle {
+            ul {
+                background: rgba(60, 60, 67, .05);
+                box-shadow: inset 0px 0px 4px rgba(0, 0, 0, .1);
+                border-radius: 6px;
+
+                li {
+                    flex: none;
+
+                    a {
+                        font-size: .875rem;
+                        padding: .2rem 1.5rem;
+                        min-width: 7rem;
+                        border-radius: 6px;
+                        border: none;
+
+                        &:hover {
+                            background-color: transparent;
+                        }
+                    }
+
+                    &.is-active {
+                        a {
+                            background: #FFFFFF;
+                            border: .5px solid rgba(0, 0, 0, .2);
+                            color: #000000;
+                            z-index: 1;
+                            box-shadow: 0px .5px 1px rgba(0, 0, 0, .2);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+.modal-background {
+    background: rgba(0, 0, 0, .8);
+}
+
+@media screen and (min-width: 769px) {
+    .terminal-modal {
+        .modal-card {
+            width: 50rem;
+        }
+    }
+}
+
+/************************************
+*
+* Dialog
+*
+*************************************/
+
+.dialog {
+    .modal-card {
+        background-color: #FFFFFF !important;
+
+        .modal-card-head {
+            height: 3.5rem;
+            padding: 1.25rem 1.25rem .5rem 1.5rem;
+            border-bottom: 1px solid rgba(133, 149, 163, .1215686275);
+
+            .modal-card-title {
+                font-size: 1rem;
+            }
+        }
+
+        .modal-card-body {
+            border: none;
+        }
+
+        .media {
+            align-items: center;
+
+            .media-content {
+                font-size: .875rem;
+            }
+        }
+
+        .modal-card-foot {
+            gap: .5rem;
+        }
+    }
+}
+

@@ -1,0 +1,13 @@
+[common]
+RuntimePath = /var/run/recasa
+
+[app]
+LogPath = /var/log/recasa/
+LogSaveName = app-management
+LogFileExt = log
+AppStorePath = /var/lib/recasa/appstore
+AppsPath = /var/lib/recasa/apps
+
+[server]
+appstore = https://casaos.app/store/main.zip
+appstore = https://github.com/bigbeartechworld/big-bear-casaos/archive/refs/heads/master.zip

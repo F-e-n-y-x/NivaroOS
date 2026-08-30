@@ -1,0 +1,109 @@
+/* Custom cursor set (user-provided .cur files from
+/DATA/recasa_icons/cursor/dark, plus wait.cur/appstarting.cur - single
+frames extracted from the source .ani files, since CSS cursor doesn't
+support animated cursor formats at all). All carry their own hotspot
+metadata, so no manual x/y offset is needed.
+
+Plain static CSS, not run through webpack - .cur references as url()s
+inside a bundled Vue SFC style block get intercepted by css-loader as
+module imports and fail to resolve, since these files live in public/,
+not src/. Interactive elements have their own UA-default cursor that
+doesn't inherit from ancestors, so each needs an explicit rule rather
+than one on <html>.
+
+Every rule below is !important: this build has no separate extracted
+app CSS file, so every component's own <style> block gets injected via
+JS at runtime, landing AFTER this stylesheet (a plain <link> parsed
+during the initial HTML load) regardless of source order in the repo -
+and several components (AppSection.vue/SideBar.vue's .app-slot/
+.widget-slot, DesktopWindow.vue's .window-titlebar/.resize-*) declare
+their own plain `cursor: grab` etc. on the exact same selectors for
+their own (non-custom-cursor) reasons. DesktopWindow's are also scoped,
+which compiles to a higher-specificity attribute-selector rule that
+would win even with matching load order. Without !important here, none
+of those elements would ever actually show the custom cursor.
+
+sizenesw.cur is intentionally unused - every resizable window/panel in
+this app only has bottom/right/corner (bottom-right) resize handles, so
+there's no top-right/bottom-left diagonal that would ever need it. */
+html, body {
+	cursor: url('/cursors/arrow.cur'), auto !important;
+}
+
+a, button, [role="button"], .is-clickable, .dock-item, .nav-item, .b-tabs .tab-item a {
+	cursor: url('/cursors/hand.cur'), pointer !important;
+}
+
+input, textarea, .input, .textarea {
+	cursor: url('/cursors/ibeam.cur'), text !important;
+}
+
+/* Precision drag/edit tools */
+input[type="range"] {
+	cursor: url('/cursors/nwpen.cur'), pointer !important;
+}
+
+.icon-editor-viewport {
+	cursor: url('/cursors/crosshair.cur'), move !important;
+}
+
+/* Move/resize */
+.widget-slot, .app-slot, .window-titlebar {
+	cursor: url('/cursors/sizeall.cur'), grab !important;
+}
+
+.widget-slot.dragging, .app-slot.dragging {
+	cursor: url('/cursors/sizeall.cur'), grabbing !important;
+}
+
+.resize-right, .resize-left {
+	cursor: url('/cursors/sizewe.cur'), ew-resize !important;
+}
+
+.resize-bottom, .resize-top {
+	cursor: url('/cursors/sizens.cur'), ns-resize !important;
+}
+
+/* Windows can be resized from all 4 corners - top-left/bottom-right
+follow the same diagonal (sizenwse), top-right/bottom-left the other
+(sizenesw). This is the only real use for sizenesw.cur in this app -
+every other draggable/resizable surface only has one diagonal. */
+.resize-corner-br, .resize-corner-tl {
+	cursor: url('/cursors/sizenwse.cur'), nwse-resize !important;
+}
+
+.resize-corner-tr, .resize-corner-bl {
+	cursor: url('/cursors/sizenesw.cur'), nesw-resize !important;
+}
+
+/* Disabled/unavailable */
+button:disabled, input:disabled, .is-disabled, [disabled] {
+	cursor: url('/cursors/no.cur'), not-allowed !important;
+}
+
+/* Loading/busy */
+.loading-overlay, .b-loading {
+	cursor: url('/cursors/wait.cur'), wait !important;
+}
+
+/* An app icon mid start/stop transition (AppCard's dotClass) - this is
+literally what Windows' "appstarting" cursor means (a specific app is
+launching), as distinct from the generic wait.cur above. */
+.is-64x64.disabled {
+	cursor: url('/cursors/appstarting.cur'), progress !important;
+}
+
+/* Help/info hints */
+.casa-question-outline {
+	cursor: url('/cursors/help.cur'), help !important;
+}
+
+/* Account/user avatar */
+.edit-avatar, .user-avatar {
+	cursor: url('/cursors/person.cur'), pointer !important;
+}
+
+/* "Pin to dock" - matches the action's own icon/meaning */
+.pin-dock-btn {
+	cursor: url('/cursors/pin.cur'), pointer !important;
+}

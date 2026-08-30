@@ -1,0 +1,13 @@
+[Unit]
+After=casaos-message-bus.service
+Description=Recasa User Service
+
+[Service]
+ExecStartPre=/usr/bin/recasa-user -v
+ExecStart=/usr/bin/recasa-user -c /etc/recasa/user-service.conf
+PIDFile=/var/run/recasa/user-service.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

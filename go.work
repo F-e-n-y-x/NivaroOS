@@ -1,0 +1,21 @@
+go 1.23.4
+
+use ./services/common
+
+use ./services/core
+
+use ./services/app-management
+
+use ./services/gateway
+
+use ./services/user
+
+use ./services/local-storage
+
+use ./services/message-bus
+
+use ./services/vm-sidecar
+
+use ./services/gpu-sidecar
+
+use ./cli

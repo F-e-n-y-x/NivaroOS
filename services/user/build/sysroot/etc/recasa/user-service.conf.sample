@@ -1,0 +1,9 @@
+[common]
+RuntimePath=/var/run/recasa
+
+[app]
+LogPath = /var/log/recasa
+LogSaveName = user-service
+LogFileExt = log
+DBPath     = /var/lib/recasa/db
+UserDataPath = /var/lib/recasa
