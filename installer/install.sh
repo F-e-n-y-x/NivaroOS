@@ -100,3 +100,56 @@ clone_repo() {
 	mkdir -p "$(dirname "$SRC_DIR")"
 	git clone "$REPO_URL" "$SRC_DIR"
 }
+
+CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-sidecar"
+
+install_service() {
+	local name="$1"
+	local bin_name="recasa-$name"
+	(
+		cd "$SRC_DIR/services/$name"
+		go build -o "/usr/bin/$bin_name" .
+	)
+	if [ -d "$SRC_DIR/services/$name/build/sysroot" ]; then
+		cp -a "$SRC_DIR/services/$name/build/sysroot/." /
+	fi
+	local setup_script
+	setup_script="$(find "$SRC_DIR/services/$name/build/scripts/setup/script.d" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | sort | head -1)"
+	if [ -n "$setup_script" ]; then
+		bash "$setup_script"
+	fi
+}
+
+GPU_SIDECAR_UNIT=/usr/lib/systemd/system/recasa-gpu-sidecar.service
+
+write_gpu_sidecar_unit() {
+	cat > "$GPU_SIDECAR_UNIT" <<'UNIT_EOF'
+[Unit]
+After=network.target
+Description=Recasa GPU Sidecar
+
+[Service]
+ExecStart=/usr/bin/recasa-gpu-sidecar
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
+}
+
+install_cli() {
+	(
+		cd "$SRC_DIR/cli"
+		go build -o /usr/bin/recasa .
+	)
+}
+
+install_core_services() {
+	for name in $CORE_SERVICES; do
+		install_service "$name"
+	done
+	write_gpu_sidecar_unit
+	systemctl daemon-reload
+	systemctl enable --now recasa-gpu-sidecar.service
+	install_cli
+}
