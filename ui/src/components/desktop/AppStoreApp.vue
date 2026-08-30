@@ -180,13 +180,12 @@
 										<template v-else>
 											<button
 												class="hero-action-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
+												:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+												:class="{ 'is-loading': isAppInstalling(item.id) }"
 												@click="installApp(item.id, item)"
 											>
-												<i v-if="item.id !== currentInstallId" class="mdi mdi-download"></i>
-												<span v-if="item.id !== currentInstallId">{{ $t('Quick Install') }}</span>
-												<span v-else>{{ $t('Installing...') }}</span>
+												<i v-if="!isAppInstalling(item.id)" class="mdi mdi-download"></i>
+												<span>{{ getInstallButtonText(item.id) }}</span>
 											</button>
 											<button
 												class="hero-action-btn is-customize"
@@ -288,12 +287,11 @@
 											<div v-else class="card-btn-split">
 												<button
 													class="card-btn is-install"
-													:disabled="!isArchCompatible(item)"
-													:class="{ 'is-loading': item.id === currentInstallId }"
+													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+													:class="{ 'is-loading': isAppInstalling(item.id) }"
 													@click="installApp(item.id, item)"
 												>
-													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-													<span v-else class="install-spinner"></span>
+													<span>{{ getInstallButtonText(item.id) }}</span>
 												</button>
 												<button
 													class="card-btn-cog"
@@ -369,12 +367,11 @@
 											<div v-else class="card-btn-split">
 												<button
 													class="card-btn is-install"
-													:disabled="!isArchCompatible(item)"
-													:class="{ 'is-loading': item.id === currentInstallId }"
+													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+													:class="{ 'is-loading': isAppInstalling(item.id) }"
 													@click="installApp(item.id, item)"
 												>
-													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-													<span v-else class="install-spinner"></span>
+													<span>{{ getInstallButtonText(item.id) }}</span>
 												</button>
 												<button
 													class="card-btn-cog"
@@ -450,12 +447,11 @@
 											<div v-else class="card-btn-split">
 												<button
 													class="card-btn is-install"
-													:disabled="!isArchCompatible(item)"
-													:class="{ 'is-loading': item.id === currentInstallId }"
+													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+													:class="{ 'is-loading': isAppInstalling(item.id) }"
 													@click="installApp(item.id, item)"
 												>
-													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-													<span v-else class="install-spinner"></span>
+													<span>{{ getInstallButtonText(item.id) }}</span>
 												</button>
 												<button
 													class="card-btn-cog"
@@ -531,12 +527,11 @@
 											<div v-else class="card-btn-split">
 												<button
 													class="card-btn is-install"
-													:disabled="!isArchCompatible(item)"
-													:class="{ 'is-loading': item.id === currentInstallId }"
+													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+													:class="{ 'is-loading': isAppInstalling(item.id) }"
 													@click="installApp(item.id, item)"
 												>
-													<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-													<span v-else class="install-spinner"></span>
+													<span>{{ getInstallButtonText(item.id) }}</span>
 												</button>
 												<button
 													class="card-btn-cog"
@@ -638,12 +633,11 @@
 										<div v-else class="card-btn-split">
 											<button
 												class="card-btn is-install"
-												:disabled="!isArchCompatible(item)"
-												:class="{ 'is-loading': item.id === currentInstallId }"
+												:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
+												:class="{ 'is-loading': isAppInstalling(item.id) }"
 												@click="installApp(item.id, item)"
 											>
-												<span v-if="item.id !== currentInstallId">{{ $t('Install') }}</span>
-												<span v-else class="install-spinner"></span>
+												<span>{{ getInstallButtonText(item.id) }}</span>
 											</button>
 											<button
 												class="card-btn-cog"
@@ -1044,8 +1038,8 @@
 						@click="installFromInstaller"
 					>
 						<i v-if="!isDeployingCustom" class="mdi mdi-check-circle-outline"></i>
-						<span v-if="!isDeployingCustom">{{ $t('Install Container') }}</span>
-						<span v-else>{{ $t('Deploying Container...') }}</span>
+						<span v-if="!isDeployingCustom">{{ formState.isEditing ? $t('Save & Apply Settings') : $t('Install Container') }}</span>
+						<span v-else>{{ formState.isEditing ? $t('Applying Settings...') : $t('Deploying Container...') }}</span>
 					</button>
 				</div>
 			</footer>
@@ -1091,13 +1085,12 @@
 									<template v-else>
 										<button
 											class="detail-action-btn is-install"
-											:disabled="!isArchCompatible(selectedAppDetail)"
-											:class="{ 'is-loading': selectedAppDetail.id === currentInstallId }"
+											:disabled="!isArchCompatible(selectedAppDetail) || isAppInstalling(selectedAppDetail.id)"
+											:class="{ 'is-loading': isAppInstalling(selectedAppDetail.id) }"
 											@click="installApp(selectedAppDetail.id, selectedAppDetail)"
 										>
-											<i v-if="selectedAppDetail.id !== currentInstallId" class="mdi mdi-download"></i>
-											<span v-if="selectedAppDetail.id !== currentInstallId">{{ $t('Quick Install') }}</span>
-											<span v-else>{{ $t('Installing...') }}</span>
+											<i v-if="!isAppInstalling(selectedAppDetail.id)" class="mdi mdi-download"></i>
+											<span>{{ getInstallButtonText(selectedAppDetail.id) }}</span>
 										</button>
 										<button
 											class="detail-action-btn is-customize"
@@ -1245,6 +1238,7 @@ const GRADIENTS = [
 
 function createDefaultFormState() {
 	return {
+		isEditing: false,
 		appName: 'custom-app',
 		mainService: 'app',
 		title: 'Custom App',
@@ -1289,14 +1283,18 @@ export default {
 		initialMode: {
 			type: String,
 			default: ''
+		},
+		initialAppName: {
+			type: String,
+			default: ''
 		}
 	},
 	data() {
 		return {
 			appStoreIcon,
 			defaultAppIcon,
-			viewMode: 'store', // 'store' or 'installer'
-			installerTab: 'form', // 'form' or 'yaml'
+			viewMode: 'store',
+			installerTab: 'form',
 			showAdvanced: false,
 			activeTab: 'discover',
 			isLoading: false,
@@ -1319,7 +1317,7 @@ export default {
 			allAppsList: [],
 			recommendList: [],
 			installedList: [],
-			currentInstallId: '',
+			installingMap: {}, // { appName: progressNumber }
 			currentHeroIndex: 0,
 			heroTimer: null,
 			selectedAppDetail: null,
@@ -1446,7 +1444,9 @@ export default {
 
 		this.startHeroAutoplay()
 
-		if (this.initialMode === 'custom') {
+		if (this.initialMode === 'edit' && this.initialAppName) {
+			this.openEditForInstalledApp(this.initialAppName)
+		} else if (this.initialMode === 'custom') {
 			this.openCustomInstall()
 		}
 	},
@@ -1457,6 +1457,16 @@ export default {
 	methods: {
 		i18n(text) {
 			return ice_i18n(text)
+		},
+		isAppInstalling(id) {
+			return this.installingMap[id] !== undefined
+		},
+		getInstallButtonText(id) {
+			const p = this.installingMap[id]
+			if (p !== undefined) {
+				return p > 0 ? `${p}%` : this.$t('Installing...')
+			}
+			return this.$t('Install')
 		},
 		getCateIcon(name) {
 			const n = (name || '').toLowerCase().trim()
@@ -1645,8 +1655,9 @@ export default {
 			this.selectedAppDetail = null
 		},
 		async installApp(id, item) {
-			if (this.currentInstallId) return
-			this.currentInstallId = id
+			if (this.installingMap[id] !== undefined) return
+			this.$set(this.installingMap, id, 5)
+
 			try {
 				const res = await this.$openAPI.appManagement.appStore.composeApp(id, {
 					headers: {
@@ -1673,7 +1684,7 @@ export default {
 							animation: 'zoom-in',
 							events: {
 								submit: async () => {
-									await this.executeInstall(res.data, item || { title: id })
+									await this.executeInstall(res.data, item || { title: id, id })
 								}
 							},
 							props: {
@@ -1681,13 +1692,13 @@ export default {
 							}
 						})
 					} else {
-						await this.executeInstall(res.data, item || { title: id })
+						await this.executeInstall(res.data, item || { title: id, id })
 					}
 				} else {
 					throw new Error(this.$t('Failed to fetch application compose configuration'))
 				}
 			} catch (e) {
-				this.currentInstallId = ''
+				this.$delete(this.installingMap, id)
 				this.$buefy.toast.open({
 					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
@@ -1710,6 +1721,7 @@ export default {
 						duration: 3000
 					})
 				} else {
+					this.$delete(this.installingMap, item.id)
 					this.$buefy.toast.open({
 						message: installRes.data?.message || this.$t('Installation failed'),
 						type: 'is-warning',
@@ -1717,12 +1729,8 @@ export default {
 						duration: 4000
 					})
 				}
-				setTimeout(() => {
-					this.fetchStoreList()
-					this.currentInstallId = ''
-				}, 6000)
 			} catch (e) {
-				this.currentInstallId = ''
+				this.$delete(this.installingMap, item.id)
 				this.$buefy.toast.open({
 					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
@@ -1739,6 +1747,37 @@ export default {
 			this.viewMode = 'installer'
 			this.installerTab = 'form'
 		},
+		async openEditForInstalledApp(name) {
+			this.isLoading = true
+			try {
+				const res = await this.$openAPI.appManagement.compose.myComposeApp(name, {
+					headers: {
+						'content-type': 'application/yaml',
+						accept: 'application/yaml'
+					}
+				})
+				if (res.status === 200 && res.data) {
+					this.customComposeYaml = res.data
+					const parsedState = this.yamlToFormData(res.data)
+					if (parsedState) {
+						parsedState.isEditing = true
+						parsedState.appName = name
+						this.formState = parsedState
+					}
+					this.selectedAppDetail = null
+					this.viewMode = 'installer'
+					this.installerTab = 'form'
+				}
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: this.$t('Failed to load container configuration') + ': ' + (e.response?.data?.message || e.message),
+					type: 'is-danger',
+					position: 'is-top'
+				})
+			} finally {
+				this.isLoading = false
+			}
+		},
 		async openCustomizeForApp(id, item) {
 			this.isLoading = true
 			try {
@@ -1754,6 +1793,7 @@ export default {
 					if (parsedState) {
 						if (item?.title) parsedState.title = item.title
 						if (item?.icon) parsedState.icon = item.icon
+						parsedState.isEditing = false
 						this.formState = parsedState
 					}
 					this.selectedAppDetail = null
@@ -1776,6 +1816,7 @@ export default {
 			} else if (tab === 'form') {
 				const parsed = this.yamlToFormData(this.customComposeYaml)
 				if (parsed) {
+					parsed.isEditing = this.formState.isEditing
 					this.formState = parsed
 				}
 			}
@@ -1867,10 +1908,16 @@ export default {
 
 			this.isDeployingCustom = true
 			try {
-				const res = await this.$openAPI.appManagement.compose.installComposeApp(finalYaml, false, true)
+				let res
+				if (this.formState.isEditing) {
+					res = await this.$openAPI.appManagement.compose.applyComposeAppSettings(this.formState.appName, finalYaml, false, true)
+				} else {
+					res = await this.$openAPI.appManagement.compose.installComposeApp(finalYaml, false, true)
+				}
+
 				if (res.status === 200) {
 					this.$buefy.toast.open({
-						message: this.$t('Application installation started for {title}!', { title: this.formState.title || this.formState.appName }),
+						message: this.formState.isEditing ? this.$t('Container settings saved successfully!') : this.$t('Application installation started!'),
 						type: 'is-success',
 						position: 'is-top',
 						duration: 4000
@@ -1882,7 +1929,7 @@ export default {
 					}, 4000)
 				} else {
 					this.$buefy.toast.open({
-						message: res.data?.message || this.$t('Installation failed'),
+						message: res.data?.message || this.$t('Operation failed'),
 						type: 'is-warning',
 						position: 'is-top',
 						duration: 5000
@@ -1890,7 +1937,7 @@ export default {
 				}
 			} catch (e) {
 				this.$buefy.toast.open({
-					message: this.$t('Install error') + ': ' + (e.response?.data?.message || e.message || e),
+					message: this.$t('Error') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 5000
@@ -2121,6 +2168,32 @@ export default {
 				await this.refreshStore()
 			} catch (e) {
 				console.error('Failed to remove store source', e)
+			}
+		}
+	},
+	sockets: {
+		'app:install-progress'(res) {
+			const props = res.Properties || {}
+			const name = props['app:name'] || props.name
+			const rawProgress = props['app:progress'] || props.progress || '0'
+			const num = parseInt(rawProgress, 10)
+			if (name && !isNaN(num)) {
+				this.$set(this.installingMap, name, num)
+			}
+		},
+		'app:install-end'(res) {
+			const props = res.Properties || {}
+			const name = props['app:name'] || props.name
+			if (name) {
+				this.$delete(this.installingMap, name)
+			}
+			this.fetchStoreList()
+		},
+		'app:install-error'(res) {
+			const props = res.Properties || {}
+			const name = props['app:name'] || props.name
+			if (name) {
+				this.$delete(this.installingMap, name)
 			}
 		}
 	}
@@ -2632,6 +2705,10 @@ export default {
 		&:hover {
 			background: #1d4ed8;
 		}
+
+		&.is-loading {
+			background: #3b82f6;
+		}
 	}
 
 	&.is-customize {
@@ -3000,8 +3077,8 @@ export default {
 		}
 
 		&:disabled {
-			background: #e2e8f0;
-			color: #94a3b8;
+			background: #93c5fd;
+			color: #ffffff;
 			cursor: not-allowed;
 		}
 	}
@@ -3054,16 +3131,6 @@ export default {
 			cursor: not-allowed;
 		}
 	}
-}
-
-.install-spinner {
-	display: inline-block;
-	width: 12px;
-	height: 12px;
-	border: 2px solid rgba(255, 255, 255, 0.3);
-	border-radius: 50%;
-	border-top-color: #ffffff;
-	animation: spin 0.8s linear infinite;
 }
 
 /* Custom Modern Container Studio & Installer View */
@@ -3396,7 +3463,7 @@ export default {
 	flex-shrink: 0;
 }
 
-/* Dynamic Rows (Ports, Volumes, Envs) */
+/* Dynamic Rows */
 .dynamic-list {
 	display: flex;
 	flex-direction: column;
@@ -3880,6 +3947,10 @@ export default {
 
 		&:hover {
 			background: #1d4ed8;
+		}
+
+		&.is-loading {
+			background: #3b82f6;
 		}
 	}
 

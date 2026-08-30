@@ -10,6 +10,7 @@
 		<date-time-pill></date-time-pill>
 		<drag-drop-menu></drag-drop-menu>
 		<file-operation-status></file-operation-status>
+		<container-install-status></container-install-status>
 	</div>
 </template>
 
@@ -19,6 +20,7 @@ import Dock from './Dock.vue'
 import DateTimePill from './DateTimePill.vue'
 import DragDropMenu from './DragDropMenu.vue'
 import FileOperationStatus from './FileOperationStatus.vue'
+import ContainerInstallStatus from './ContainerInstallStatus.vue'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 
 const WINDOWS_STORAGE_KEY = 'casaos_open_windows'
@@ -34,7 +36,8 @@ export default {
 		Dock,
 		DateTimePill,
 		DragDropMenu,
-		FileOperationStatus
+		FileOperationStatus,
+		ContainerInstallStatus
 	},
 	computed: {
 		windows() {
