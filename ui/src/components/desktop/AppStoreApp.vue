@@ -954,6 +954,7 @@ import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import debounce from 'lodash/debounce'
+import { parse } from 'yaml'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
@@ -1303,13 +1304,75 @@ export default {
 			if (this.currentInstallId) return
 			this.currentInstallId = id
 			try {
-				await this.$openAPI.appManagement.compose.installComposeApp(id)
-				this.$buefy.toast.open({
-					message: this.$t('Installation started for {title}', { title: item.title }),
-					type: 'is-info',
-					position: 'is-top',
-					duration: 3000
+				const res = await this.$openAPI.appManagement.appStore.composeApp(id, {
+					headers: {
+						'content-type': 'application/yaml',
+						accept: 'application/yaml'
+					}
 				})
+				if (res.status === 200 && res.data) {
+					let composeJSON = null
+					try {
+						composeJSON = parse(res.data)
+					} catch (err) {
+						console.warn('Failed to parse YAML', err)
+					}
+
+					if (composeJSON && composeJSON['x-casaos']?.tips?.before_install?.en_us) {
+						this.$buefy.modal.open({
+							parent: this,
+							component: () => import('@/components/Apps/TipEditorModal.vue'),
+							hasModalCard: true,
+							trapFocus: true,
+							canCancel: [''],
+							scroll: 'keep',
+							animation: 'zoom-in',
+							events: {
+								submit: async () => {
+									await this.executeInstall(res.data, item || { title: id })
+								}
+							},
+							props: {
+								composeData: composeJSON
+							}
+						})
+					} else {
+						await this.executeInstall(res.data, item || { title: id })
+					}
+				} else {
+					throw new Error(this.$t('Failed to fetch application compose configuration'))
+				}
+			} catch (e) {
+				this.currentInstallId = ''
+				this.$buefy.toast.open({
+					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 4000
+				})
+			}
+		},
+		async executeInstall(yamlData, item) {
+			try {
+				if (this.$messageBus) {
+					this.$messageBus('appstore_install', item?.title || '')
+				}
+				const installRes = await this.$openAPI.appManagement.compose.installComposeApp(yamlData, false, true)
+				if (installRes.status === 200) {
+					this.$buefy.toast.open({
+						message: this.$t('Installation started for {title}', { title: item?.title || 'app' }),
+						type: 'is-success',
+						position: 'is-top',
+						duration: 3000
+					})
+				} else {
+					this.$buefy.toast.open({
+						message: installRes.data?.message || this.$t('Installation failed'),
+						type: 'is-warning',
+						position: 'is-top',
+						duration: 4000
+					})
+				}
 				setTimeout(() => {
 					this.fetchStoreList()
 					this.currentInstallId = ''
@@ -1317,7 +1380,7 @@ export default {
 			} catch (e) {
 				this.currentInstallId = ''
 				this.$buefy.toast.open({
-					message: this.$t('Installation failed') + ': ' + (e.message || e),
+					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 4000
@@ -1332,18 +1395,26 @@ export default {
 			if (!this.customComposeYaml.trim()) return
 			this.isDeployingCustom = true
 			try {
-				await this.$openAPI.appManagement.compose.applyComposeApp(this.customComposeYaml)
-				this.showCustomInstallModal = false
-				this.$buefy.toast.open({
-					message: this.$t('Custom app deployed successfully!'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 3000
-				})
-				this.fetchStoreList()
+				const res = await this.$openAPI.appManagement.compose.installComposeApp(this.customComposeYaml, false, true)
+				if (res.status === 200) {
+					this.showCustomInstallModal = false
+					this.$buefy.toast.open({
+						message: this.$t('Custom app deployed successfully!'),
+						type: 'is-success',
+						position: 'is-top',
+						duration: 3000
+					})
+					this.fetchStoreList()
+				} else {
+					this.$buefy.toast.open({
+						message: res.data?.message || this.$t('Deploy failed'),
+						type: 'is-warning',
+						position: 'is-top'
+					})
+				}
 			} catch (e) {
 				this.$buefy.toast.open({
-					message: this.$t('Deploy error') + ': ' + (e.message || e),
+					message: this.$t('Deploy error') + ': ' + (e.response?.data?.message || e.message || e),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 4000
