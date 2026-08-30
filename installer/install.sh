@@ -245,3 +245,33 @@ main() {
 }
 
 main "$@"
+
+GUM_VERSION="2.0.0"
+
+install_gum() {
+	if command -v gum >/dev/null 2>&1; then
+		return
+	fi
+	local arch gum_arch
+	arch="$(dpkg --print-architecture)"
+	case "$arch" in
+		amd64) gum_arch=x86_64 ;;
+		arm64) gum_arch=arm64 ;;
+		*)
+			echo "error: unsupported architecture '$arch' for gum install" >&2
+			exit 1
+			;;
+	esac
+	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
+	curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"
+	tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum"
+	install -m 0755 /tmp/gum /usr/local/bin/gum
+	rm -f "/tmp/${tarball}" /tmp/gum
+}
+
+print_banner() {
+	gum style \
+		--border double --align center --width 50 --margin "1 2" --padding "1 4" \
+		--border-foreground 212 --foreground 212 --bold \
+		"RECASA" "Self-hosted home server platform"
+}
