@@ -114,7 +114,7 @@ install_service() {
 		cp -a "$SRC_DIR/services/$name/build/sysroot/." /
 	fi
 	local setup_script
-	setup_script="$(find "$SRC_DIR/services/$name/build/scripts/setup/script.d" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | sort | head -1)"
+	setup_script="$(find "$SRC_DIR/services/$name/build/scripts/setup/script.d" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | sort | head -1 || true)"
 	if [ -n "$setup_script" ]; then
 		bash "$setup_script"
 	fi
@@ -191,7 +191,7 @@ install_ui() {
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/recasa/www/." /var/lib/recasa/www/
 }
 
-LEGACY_SERVICE_UNITS="casaos-message-bus.service casaos.service casaos-gateway.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service"
+LEGACY_SERVICE_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service"
 
 start_core_services() {
 	systemctl daemon-reload
