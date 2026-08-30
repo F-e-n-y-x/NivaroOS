@@ -153,3 +153,30 @@ install_core_services() {
 	systemctl enable --now recasa-gpu-sidecar.service
 	install_cli
 }
+
+VM_SIDECAR_UNIT=/usr/lib/systemd/system/recasa-vm-sidecar.service
+
+write_vm_sidecar_unit() {
+	cat > "$VM_SIDECAR_UNIT" <<'UNIT_EOF'
+[Unit]
+After=network.target recasa-message-bus.service
+Description=Recasa VM Sidecar
+
+[Service]
+ExecStart=/usr/bin/recasa-vm-sidecar
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
+}
+
+install_vm_manager() {
+	(
+		cd "$SRC_DIR/services/vm-sidecar"
+		go build -o /usr/bin/recasa-vm-sidecar .
+	)
+	write_vm_sidecar_unit
+	systemctl daemon-reload
+	systemctl enable --now recasa-vm-sidecar.service
+}
