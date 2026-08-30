@@ -38,7 +38,10 @@ parse_args() {
 	done
 }
 
-prompt_vm_manager() {
+ADDON_IDS=(vm)
+ADDON_LABELS=("VM Manager - create and manage virtual machines")
+
+select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		return
 	fi
@@ -46,11 +49,18 @@ prompt_vm_manager() {
 		WITH_VM=no
 		return
 	fi
-	read -r -p "Install VM Manager (VM creation/management)? [y/N] " reply
-	case "$reply" in
-		[Yy]*) WITH_VM=yes ;;
-		*) WITH_VM=no ;;
-	esac
+	local chosen
+	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
+	local i id upper
+	for i in "${!ADDON_IDS[@]}"; do
+		id="${ADDON_IDS[$i]}"
+		upper="$(printf '%s' "$id" | tr '[:lower:]' '[:upper:]')"
+		if printf '%s\n' "$chosen" | grep -qF "${ADDON_LABELS[$i]}"; then
+			declare -g "WITH_${upper}=yes"
+		else
+			declare -g "WITH_${upper}=no"
+		fi
+	done
 }
 
 install_build_deps() {
@@ -262,7 +272,7 @@ print_banner() {
 main() {
 	check_distro
 	parse_args "$@"
-	prompt_vm_manager
+	select_addons
 	install_build_deps
 	clone_repo
 	install_core_services
