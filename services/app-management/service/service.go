@@ -14,11 +14,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	jsoniter "github.com/json-iterator/go"
 	"go.uber.org/zap"
 )

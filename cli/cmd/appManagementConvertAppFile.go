@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/app_management"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/app_management"
 	"github.com/alecthomas/chroma/quick"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"

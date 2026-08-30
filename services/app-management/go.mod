@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/app-management
+module github.com/F-e-n-y-x/NivaroOS/services/app-management
 
 go 1.21
 
@@ -219,7 +219,7 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/compose-spec/compose-go v1.20.2
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/docker/cli v24.0.7+incompatible
@@ -248,4 +248,4 @@ require (
 // Override for e2e tests
 replace github.com/cucumber/godog => github.com/laurazard/godog v0.0.0-20220922095256-4c4b17abdae7
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

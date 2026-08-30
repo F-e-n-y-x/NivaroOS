@@ -14,11 +14,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/command"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/core/service/model"
-	model2 "github.com/F-e-n-y-x/recasa/services/core/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/command"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"gorm.io/gorm"
 )
 

@@ -13,7 +13,7 @@ package config
 import (
 	"path/filepath"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 )
 
 var CasaOSConfigFilePath = filepath.Join(constants.DefaultConfigPath, "casaos.conf")

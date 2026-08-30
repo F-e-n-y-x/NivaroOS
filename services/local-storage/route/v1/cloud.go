@@ -4,12 +4,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/drivers/dropbox"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/drivers/google_drive"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/utils/httper"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/dropbox"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/google_drive"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
 )
 

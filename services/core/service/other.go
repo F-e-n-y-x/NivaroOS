@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/go-resty/resty/v2"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	exec2 "github.com/F-e-n-y-x/recasa/services/common/utils/exec"
+	exec2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/exec"
 )
 
 // Deprecated: This method is not safe, sould have ensure input.

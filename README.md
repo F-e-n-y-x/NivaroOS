@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/F-e-n-y-x/nivaroos/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/nivaroos?color=2563eb&style=flat-square" alt="Release"></a>
-  <a href="https://github.com/F-e-n-y-x/nivaroos/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/F-e-n-y-x/NivaroOS/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/NivaroOS?color=2563eb&style=flat-square" alt="Release"></a>
+  <a href="https://github.com/F-e-n-y-x/NivaroOS/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-orange?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
 </p>
@@ -23,17 +23,17 @@
 Install NivaroOS on any clean **Debian 12+** or **Ubuntu 22.04+** system with a single command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 ```
 
 ### Automated / Unattended Installation
 
 ```bash
 # Install minimal stack (without KVM Virtual Machine Manager)
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash -s -- --without-vm --yes
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash -s -- --without-vm --yes
 
 # Install full stack including KVM Virtual Machine Manager & noVNC
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/nivaroos/master/installer/install.sh | sudo bash -s -- --with-vm --yes
+curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash -s -- --with-vm --yes
 ```
 
 #### Installer Flags & Options

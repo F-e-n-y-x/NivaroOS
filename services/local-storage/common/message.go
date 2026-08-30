@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
 	"github.com/pilebones/go-udev/netlink"
 )
 

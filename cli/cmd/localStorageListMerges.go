@@ -25,7 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/local_storage"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/local_storage"
 )
 
 // localStorageListMergesCmd represents the localStorageListMerges command

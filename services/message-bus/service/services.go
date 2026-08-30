@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/F-e-n-y-x/recasa/services/message-bus/repository"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
 )
 
 type Services struct {

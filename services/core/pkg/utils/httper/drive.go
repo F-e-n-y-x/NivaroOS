@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )

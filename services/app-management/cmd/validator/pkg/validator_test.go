@@ -3,8 +3,8 @@ package pkg_test
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/cmd/validator/pkg"
-	utils_logger "github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/validator/pkg"
+	utils_logger "github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/stretchr/testify/assert"
 )
 

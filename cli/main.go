@@ -22,7 +22,7 @@ limitations under the License.
 package main
 
 import (
-	"github.com/F-e-n-y-x/recasa/cli/cmd"
+	"github.com/F-e-n-y-x/NivaroOS/cli/cmd"
 )
 
 var (

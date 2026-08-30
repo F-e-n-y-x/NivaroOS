@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/tidwall/gjson"
 )
 

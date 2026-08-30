@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/common"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/model"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/pilebones/go-udev/netlink"
 	"go.uber.org/zap"
 )

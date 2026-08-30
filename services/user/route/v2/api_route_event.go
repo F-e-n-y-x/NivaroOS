@@ -3,8 +3,8 @@ package v2
 import (
 	"net/http"
 
-	codegen "github.com/F-e-n-y-x/recasa/services/user/codegen/user_service"
-	"github.com/F-e-n-y-x/recasa/services/user/service"
+	codegen "github.com/F-e-n-y-x/NivaroOS/services/user/codegen/user_service"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"github.com/labstack/echo/v4"
 )
 

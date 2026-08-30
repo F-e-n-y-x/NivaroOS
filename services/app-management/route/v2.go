@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 
-	v2Route "github.com/F-e-n-y-x/recasa/services/app-management/route/v2"
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/jwt"
+	v2Route "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v2"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"

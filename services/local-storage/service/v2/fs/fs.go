@@ -1,6 +1,6 @@
 package fs
 
-import "github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
+import "github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
 
 type Extension interface {
 	GetFSType() string

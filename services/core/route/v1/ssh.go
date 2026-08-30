@@ -7,17 +7,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	sshHelper "github.com/F-e-n-y-x/recasa/services/common/utils/ssh"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	sshHelper "github.com/F-e-n-y-x/NivaroOS/services/common/utils/ssh"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils"
 	"github.com/labstack/echo/v4"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 
-	modelCommon "github.com/F-e-n-y-x/recasa/services/common/model"
+	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 )
 
 var upgrader = websocket.Upgrader{

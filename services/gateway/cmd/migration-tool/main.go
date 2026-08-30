@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	interfaces "github.com/F-e-n-y-x/recasa/services/common"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/systemctl"
-	"github.com/F-e-n-y-x/recasa/services/gateway/common"
+	interfaces "github.com/F-e-n-y-x/NivaroOS/services/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/gateway/common"
 )
 
 const (

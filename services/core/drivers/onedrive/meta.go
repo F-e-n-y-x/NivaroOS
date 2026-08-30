@@ -1,7 +1,7 @@
 package onedrive
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/core/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/internal/driver"
 )
 
 const ICONURL = "./img/driver/OneDrive.svg"

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/message-bus/model"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/repository"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/goleak"

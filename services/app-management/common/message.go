@@ -1,8 +1,8 @@
 package common
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 )
 
 // common properties

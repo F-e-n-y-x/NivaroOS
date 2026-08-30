@@ -15,15 +15,15 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"go.uber.org/zap"
 
-	model1 "github.com/F-e-n-y-x/recasa/services/local-storage/model"
-	model2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
+	model1 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
 )
 

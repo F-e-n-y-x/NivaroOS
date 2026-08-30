@@ -1,8 +1,8 @@
 package route
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/message-bus/codegen"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
 	jsoniter "github.com/json-iterator/go"
 )
 

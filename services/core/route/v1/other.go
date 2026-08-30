@@ -3,9 +3,9 @@ package v1
 import (
 	"fmt"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/labstack/echo/v4"
 )
 

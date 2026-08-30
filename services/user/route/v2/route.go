@@ -1,6 +1,6 @@
 package v2
 
-import codegen "github.com/F-e-n-y-x/recasa/services/user/codegen/user_service"
+import codegen "github.com/F-e-n-y-x/NivaroOS/services/user/codegen/user_service"
 
 type UserService struct{}
 

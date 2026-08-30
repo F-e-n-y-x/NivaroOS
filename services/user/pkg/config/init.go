@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
-	"github.com/F-e-n-y-x/recasa/services/user/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
 	"gopkg.in/ini.v1"
 )
 

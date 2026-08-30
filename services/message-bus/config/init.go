@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/common"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"gopkg.in/ini.v1"
 )
 

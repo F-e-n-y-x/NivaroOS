@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Product name is **Recasa** everywhere a user or developer sees it; "CasaOS" must not appear in any binary name, systemd unit, config/data path, Go module path, npm package name, or user-visible UI string produced by this plan (exceptions: `docs/` historical specs, `BACKLOG.md`, and third-party App Store catalog URLs — see spec).
-- Go module path root: `github.com/F-e-n-y-x/recasa/services/<name>` (one module per service, tied together with a root `go.work` — never merge into a single module).
+- Go module path root: `github.com/F-e-n-y-x/NivaroOS/services/<name>` (one module per service, tied together with a root `go.work` — never merge into a single module).
 - Binary/systemd-unit naming: `recasa` (core), `recasa-gateway`, `recasa-user`, `recasa-app-management`, `recasa-local-storage`, `recasa-message-bus`, `recasa-vm-sidecar`, `recasa-gpu-sidecar`.
 - Config dir `/etc/recasa`, data dir `/var/lib/recasa`, log dir `/var/log/recasa`, shell helpers `/usr/share/recasa/shell` (all replacing their `casaos`-named equivalents in code defaults — this plan does not create these directories on disk or touch the live host).
 - Three upstream ties must be fully removed, not just documented: (1) the `get.casaos.io` self-update `curl | bash` path in `services/core`, (2) the `@icewhale/casaos-openapi` / `@icewhale/casaos-appmanagement-openapi` npm registry dependencies, (3) every one of the 8 services' `github.com/IceWhaleTech/CasaOS-Common` public-registry dependency, replaced by a locally forked `services/common` module.
@@ -100,7 +100,7 @@ git log --oneline
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/common`, importable by every later service task via `go.work` (no `replace` directives needed — `go.work`'s `use` entry resolves it locally as long as each consumer's `go.mod` requires the exact module path `github.com/F-e-n-y-x/recasa/services/common`).
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/common`, importable by every later service task via `go.work` (no `replace` directives needed — `go.work`'s `use` entry resolves it locally as long as each consumer's `go.mod` requires the exact module path `github.com/F-e-n-y-x/NivaroOS/services/common`).
 
 - [ ] **Step 1: Copy the cached source out (module cache is read-only)**
 
@@ -115,8 +115,8 @@ rm -f /root/recasa/services/common/go.sum
 
 ```bash
 cd /root/recasa/services/common
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-Common#module github.com/F-e-n-y-x/recasa/services/common#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-Common#module github.com/F-e-n-y-x/NivaroOS/services/common#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
 ```
 
 - [ ] **Step 3: Add it to the workspace and verify it builds standalone**
@@ -153,8 +153,8 @@ git commit -q -m "Fork CasaOS-Common into services/common, rename module path"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/core`, binary name `recasa`.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/core`, binary name `recasa`.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -167,10 +167,10 @@ rm -rf /root/recasa/services/core/.git
 
 ```bash
 cd /root/recasa/services/core
-sed -i 's#^module github.com/IceWhaleTech/CasaOS$#module github.com/F-e-n-y-x/recasa/services/core#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS$#module github.com/F-e-n-y-x/NivaroOS/services/core#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config/data path defaults**
@@ -253,8 +253,8 @@ git commit -q -m "Migrate services/core (was CasaOS): rename module, paths, remo
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/app-management`, binaries `recasa-app-management`, `recasa-app-management-migration-tool`, `recasa-app-management-validator`.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/app-management`, binaries `recasa-app-management`, `recasa-app-management-migration-tool`, `recasa-app-management-validator`.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -267,11 +267,11 @@ rm -rf /root/recasa/services/app-management/.git
 
 ```bash
 cd /root/recasa/services/app-management
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-AppManagement$#module github.com/F-e-n-y-x/recasa/services/app-management#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-AppManagement' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-AppManagement#github.com/F-e-n-y-x/recasa/services/app-management#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-AppManagement$#module github.com/F-e-n-y-x/NivaroOS/services/app-management#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-AppManagement' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-AppManagement#github.com/F-e-n-y-x/NivaroOS/services/app-management#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config/data path defaults (do not touch the App Store catalog URLs — those stay, per spec)**
@@ -342,8 +342,8 @@ git commit -q -m "Migrate services/app-management (was CasaOS-AppManagement)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/gateway`, binaries `recasa-gateway`, `recasa-gateway-migration-tool`.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/gateway`, binaries `recasa-gateway`, `recasa-gateway-migration-tool`.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -356,11 +356,11 @@ rm -rf /root/recasa/services/gateway/.git
 
 ```bash
 cd /root/recasa/services/gateway
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-Gateway$#module github.com/F-e-n-y-x/recasa/services/gateway#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-Gateway' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Gateway#github.com/F-e-n-y-x/recasa/services/gateway#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-Gateway$#module github.com/F-e-n-y-x/NivaroOS/services/gateway#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-Gateway' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Gateway#github.com/F-e-n-y-x/NivaroOS/services/gateway#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config path defaults**
@@ -419,8 +419,8 @@ git commit -q -m "Migrate services/gateway (was CasaOS-Gateway)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/user`, binaries `recasa-user`, `recasa-user-migration-tool`.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/user`, binaries `recasa-user`, `recasa-user-migration-tool`.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -433,11 +433,11 @@ rm -rf /root/recasa/services/user/.git
 
 ```bash
 cd /root/recasa/services/user
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-UserService$#module github.com/F-e-n-y-x/recasa/services/user#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-UserService' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-UserService#github.com/F-e-n-y-x/recasa/services/user#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-UserService$#module github.com/F-e-n-y-x/NivaroOS/services/user#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-UserService' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-UserService#github.com/F-e-n-y-x/NivaroOS/services/user#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config path defaults**
@@ -504,8 +504,8 @@ git commit -q -m "Migrate services/user (was CasaOS-UserService)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/local-storage`, binaries `recasa-local-storage`, `recasa-local-storage-migration-tool`.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/local-storage`, binaries `recasa-local-storage`, `recasa-local-storage-migration-tool`.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -518,11 +518,11 @@ rm -rf /root/recasa/services/local-storage/.git
 
 ```bash
 cd /root/recasa/services/local-storage
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-LocalStorage$#module github.com/F-e-n-y-x/recasa/services/local-storage#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-LocalStorage' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-LocalStorage#github.com/F-e-n-y-x/recasa/services/local-storage#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-LocalStorage$#module github.com/F-e-n-y-x/NivaroOS/services/local-storage#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-LocalStorage' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-LocalStorage#github.com/F-e-n-y-x/NivaroOS/services/local-storage#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config path defaults**
@@ -590,8 +590,8 @@ git commit -q -m "Migrate services/local-storage (was CasaOS-LocalStorage)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/message-bus`, binaries `recasa-message-bus`, `recasa-message-bus-migration-tool`; its `api/message_bus/openapi.yaml` is the file Tasks 3, 4, 6, 7, and 11 point their `go:generate` directives at.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/message-bus`, binaries `recasa-message-bus`, `recasa-message-bus-migration-tool`; its `api/message_bus/openapi.yaml` is the file Tasks 3, 4, 6, 7, and 11 point their `go:generate` directives at.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -604,11 +604,11 @@ rm -rf /root/recasa/services/message-bus/.git
 
 ```bash
 cd /root/recasa/services/message-bus
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-MessageBus$#module github.com/F-e-n-y-x/recasa/services/message-bus#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-MessageBus' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-MessageBus#github.com/F-e-n-y-x/recasa/services/message-bus#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-MessageBus$#module github.com/F-e-n-y-x/NivaroOS/services/message-bus#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-MessageBus' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-MessageBus#github.com/F-e-n-y-x/NivaroOS/services/message-bus#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Rename config path defaults**
@@ -678,7 +678,7 @@ git commit -q -m "Migrate services/message-bus (was CasaOS-MessageBus)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/vm-sidecar`, binary `recasa-vm-sidecar`. This module has no CasaOS-Common dependency (written from scratch for this fork) and no upstream ties to remove — this task is a pure rename.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/vm-sidecar`, binary `recasa-vm-sidecar`. This module has no CasaOS-Common dependency (written from scratch for this fork) and no upstream ties to remove — this task is a pure rename.
 
 - [ ] **Step 1: Copy the tree**
 
@@ -691,8 +691,8 @@ rm -rf /root/recasa/services/vm-sidecar/.git
 
 ```bash
 cd /root/recasa/services/vm-sidecar
-sed -i 's#^module github.com/F-e-n-y-x/casaos-vm-sidecar$#module github.com/F-e-n-y-x/recasa/services/vm-sidecar#' go.mod
-grep -rl 'github.com/F-e-n-y-x/casaos-vm-sidecar' --include=*.go . | xargs -r sed -i 's#github.com/F-e-n-y-x/casaos-vm-sidecar#github.com/F-e-n-y-x/recasa/services/vm-sidecar#g'
+sed -i 's#^module github.com/F-e-n-y-x/casaos-vm-sidecar$#module github.com/F-e-n-y-x/NivaroOS/services/vm-sidecar#' go.mod
+grep -rl 'github.com/F-e-n-y-x/casaos-vm-sidecar' --include=*.go . | xargs -r sed -i 's#github.com/F-e-n-y-x/casaos-vm-sidecar#github.com/F-e-n-y-x/NivaroOS/services/vm-sidecar#g'
 ```
 
 - [ ] **Step 3: Rename the systemd unit description string and any config path defaults**
@@ -734,7 +734,7 @@ git commit -q -m "Migrate services/vm-sidecar (was extras/casaos-vm-sidecar)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Produces: Go module `github.com/F-e-n-y-x/recasa/services/gpu-sidecar`, binary `recasa-gpu-sidecar`. Same shape as Task 9 — pure rename, no upstream ties.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/services/gpu-sidecar`, binary `recasa-gpu-sidecar`. Same shape as Task 9 — pure rename, no upstream ties.
 
 - [ ] **Step 1: Copy the tree**
 
@@ -747,8 +747,8 @@ rm -rf /root/recasa/services/gpu-sidecar/.git
 
 ```bash
 cd /root/recasa/services/gpu-sidecar
-sed -i 's#^module github.com/F-e-n-y-x/casaos-gpu-sidecar$#module github.com/F-e-n-y-x/recasa/services/gpu-sidecar#' go.mod
-grep -rl 'github.com/F-e-n-y-x/casaos-gpu-sidecar' --include=*.go . | xargs -r sed -i 's#github.com/F-e-n-y-x/casaos-gpu-sidecar#github.com/F-e-n-y-x/recasa/services/gpu-sidecar#g'
+sed -i 's#^module github.com/F-e-n-y-x/casaos-gpu-sidecar$#module github.com/F-e-n-y-x/NivaroOS/services/gpu-sidecar#' go.mod
+grep -rl 'github.com/F-e-n-y-x/casaos-gpu-sidecar' --include=*.go . | xargs -r sed -i 's#github.com/F-e-n-y-x/casaos-gpu-sidecar#github.com/F-e-n-y-x/NivaroOS/services/gpu-sidecar#g'
 ```
 
 - [ ] **Step 3: Rename any unit-description/log-prefix strings**
@@ -790,8 +790,8 @@ git commit -q -m "Migrate services/gpu-sidecar (was extras/casaos-gpu-sidecar)"
 - Modify: `/root/recasa/go.work`
 
 **Interfaces:**
-- Consumes: `github.com/F-e-n-y-x/recasa/services/common` from Task 2.
-- Produces: Go module `github.com/F-e-n-y-x/recasa/cli`, binary `recasa-cli` — this is the base Sub-project B builds the install/feature-toggle subcommands onto; this task only renames it.
+- Consumes: `github.com/F-e-n-y-x/NivaroOS/services/common` from Task 2.
+- Produces: Go module `github.com/F-e-n-y-x/NivaroOS/cli`, binary `recasa-cli` — this is the base Sub-project B builds the install/feature-toggle subcommands onto; this task only renames it.
 
 - [ ] **Step 1: Copy the tree, dropping the nested repo**
 
@@ -804,11 +804,11 @@ rm -rf /root/recasa/cli/.git
 
 ```bash
 cd /root/recasa/cli
-sed -i 's#^module github.com/IceWhaleTech/CasaOS-CLI$#module github.com/F-e-n-y-x/recasa/cli#' go.mod
-grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/recasa/services/common#g'
-grep -rl 'github.com/IceWhaleTech/CasaOS-CLI' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-CLI#github.com/F-e-n-y-x/recasa/cli#g'
+sed -i 's#^module github.com/IceWhaleTech/CasaOS-CLI$#module github.com/F-e-n-y-x/NivaroOS/cli#' go.mod
+grep -rl 'github.com/IceWhaleTech/CasaOS-Common' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-Common#github.com/F-e-n-y-x/NivaroOS/services/common#g'
+grep -rl 'github.com/IceWhaleTech/CasaOS-CLI' --include=*.go . | xargs -r sed -i 's#github.com/IceWhaleTech/CasaOS-CLI#github.com/F-e-n-y-x/NivaroOS/cli#g'
 go mod edit -droprequire=github.com/IceWhaleTech/CasaOS-Common
-go mod edit -require=github.com/F-e-n-y-x/recasa/services/common@v0.0.0-00010101000000-000000000000
+go mod edit -require=github.com/F-e-n-y-x/NivaroOS/services/common@v0.0.0-00010101000000-000000000000
 ```
 
 - [ ] **Step 3: Repoint all five `go:generate` directives at the now-local sibling modules**
@@ -1197,7 +1197,7 @@ git commit -q -m "Final residual-branding sweep"
 - None created — this is a git/GitHub operation on the already-built `/root/recasa` tree.
 
 **Interfaces:**
-- Produces: `https://github.com/F-e-n-y-x/recasa`, containing exactly one commit with the full final tree from Task 17.
+- Produces: `https://github.com/F-e-n-y-x/NivaroOS`, containing exactly one commit with the full final tree from Task 17.
 
 - [ ] **Step 1: Confirm the working tree is clean before squashing**
 
@@ -1225,21 +1225,21 @@ Expected: `git log --oneline` shows exactly one commit.
 - [ ] **Step 3: Create the new GitHub repo**
 
 ```bash
-gh repo create F-e-n-y-x/recasa --private --description "Self-hosted home server platform (standalone, decoupled from CasaOS)"
+gh repo create F-e-n-y-x/NivaroOS --private --description "Self-hosted home server platform (standalone, decoupled from CasaOS)"
 ```
 
 - [ ] **Step 4: Push**
 
 ```bash
 cd /root/recasa
-git remote add origin https://github.com/F-e-n-y-x/recasa.git
+git remote add origin https://github.com/F-e-n-y-x/NivaroOS.git
 git push -u origin master
 ```
 
 - [ ] **Step 5: Verify on GitHub**
 
 ```bash
-gh repo view F-e-n-y-x/recasa --json name,description,defaultBranchRef
+gh repo view F-e-n-y-x/NivaroOS --json name,description,defaultBranchRef
 ```
 
 Expected: `name` is `recasa`, `defaultBranchRef.name` is `master`.
@@ -1252,4 +1252,4 @@ No further commit needed — this task's own steps constitute its verification.
 
 - **Spec coverage:** naming scheme (Global Constraints + every migration task), repo layout (Task 1's structure + Tasks 2–13), decoupling — self-update removed (Task 3 Step 4), npm clients vendored (Task 13), CasaOS-Common forked (Task 2, wired into every consumer task) — windowed UI audit (Task 15), single-commit push (Task 18). All spec sections have a task.
 - **Placeholder scan:** every step carries a real command using strings verified against this exact codebase (config path defaults, binary names, module paths, `go:generate` URLs) — no "similar to Task N" shorthand; each per-service task repeats its own full commands since an executor may work tasks out of order.
-- **Type/name consistency:** module path root `github.com/F-e-n-y-x/recasa/...` and binary names are used identically across every task; `services/common`'s pseudo-version string (`v0.0.0-00010101000000-000000000000`) is the same literal in every consumer task's `go mod edit -require`.
+- **Type/name consistency:** module path root `github.com/F-e-n-y-x/NivaroOS/...` and binary names are used identically across every task; `services/common`'s pseudo-version string (`v0.0.0-00010101000000-000000000000`) is the same literal in every consumer task's `go mod edit -require`.

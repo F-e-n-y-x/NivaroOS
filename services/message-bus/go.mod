@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/message-bus
+module github.com/F-e-n-y-x/NivaroOS/services/message-bus
 
 go 1.21
 
@@ -60,7 +60,7 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/deepmap/oapi-codegen v1.12.4
@@ -91,4 +91,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

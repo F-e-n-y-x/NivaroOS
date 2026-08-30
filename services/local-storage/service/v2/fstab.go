@@ -1,9 +1,9 @@
 package v2
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/fstab"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/fstab"
 	"go.uber.org/zap"
 )
 

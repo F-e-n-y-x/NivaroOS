@@ -3,9 +3,9 @@ package service
 import (
 	"io/ioutil"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/httper"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 	"go.uber.org/zap"
 )
 

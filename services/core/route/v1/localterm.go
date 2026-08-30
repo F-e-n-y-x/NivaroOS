@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils"
 )
 
 func getDefaultDesktopUser() (*user.User, error) {

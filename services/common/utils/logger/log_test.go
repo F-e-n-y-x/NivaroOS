@@ -3,7 +3,7 @@ package logger_test
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zapcore"
 )

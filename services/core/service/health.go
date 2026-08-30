@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/utils/port"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 )
 
 type HealthService interface {

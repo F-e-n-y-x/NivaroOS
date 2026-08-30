@@ -29,10 +29,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/jwt"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

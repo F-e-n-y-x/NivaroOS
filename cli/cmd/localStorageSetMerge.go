@@ -22,8 +22,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/local_storage"
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/local_storage"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/spf13/cobra"
 )
 

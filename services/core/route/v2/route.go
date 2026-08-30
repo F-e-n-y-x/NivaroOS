@@ -1,8 +1,8 @@
 package v2
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/core/codegen"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
 type CasaOS struct {

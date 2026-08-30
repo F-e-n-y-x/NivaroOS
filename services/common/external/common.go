@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	http2 "github.com/F-e-n-y-x/recasa/services/common/utils/http"
+	http2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 )
 
 func getAddress(addressFile string) (string, error) {

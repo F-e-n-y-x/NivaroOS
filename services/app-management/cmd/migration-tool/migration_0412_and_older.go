@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	interfaces "github.com/F-e-n-y-x/recasa/services/common"
+	interfaces "github.com/F-e-n-y-x/NivaroOS/services/common"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 )
 
 type migrationTool0412AndOlder struct{}

@@ -22,7 +22,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/casaos"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/casaos"
 	"github.com/spf13/cobra"
 )
 

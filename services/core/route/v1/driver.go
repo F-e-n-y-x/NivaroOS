@@ -1,11 +1,11 @@
 package v1
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/dropbox"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/google_drive"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/onedrive"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/dropbox"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/google_drive"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/onedrive"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/labstack/echo/v4"
 )
 

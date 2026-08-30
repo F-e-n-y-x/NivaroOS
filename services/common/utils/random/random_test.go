@@ -3,7 +3,7 @@ package random_test
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/random"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/random"
 )
 
 func TestString(t *testing.T) {

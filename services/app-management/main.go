@@ -14,18 +14,18 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/app-management/route"
-	"github.com/F-e-n-y-x/recasa/services/app-management/service"
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/route"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/coreos/go-systemd/daemon"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
-	util_http "github.com/F-e-n-y-x/recasa/services/common/utils/http"
+	util_http "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 )
 
 var (

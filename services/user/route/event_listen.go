@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	message_bus "github.com/F-e-n-y-x/recasa/services/user/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/user/model"
-	"github.com/F-e-n-y-x/recasa/services/user/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/user/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	message_bus "github.com/F-e-n-y-x/NivaroOS/services/user/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"go.uber.org/zap"
 	"golang.org/x/net/websocket"
 )

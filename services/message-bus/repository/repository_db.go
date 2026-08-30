@@ -3,7 +3,7 @@ package repository
 import (
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/message-bus/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

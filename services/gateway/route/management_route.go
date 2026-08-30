@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/jwt"
-	"github.com/F-e-n-y-x/recasa/services/gateway/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
+	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
 	"github.com/labstack/echo/v4"
 	echo_middleware "github.com/labstack/echo/v4/middleware"
 )

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
 	"gopkg.in/yaml.v3"
 )
 

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
-	"github.com/F-e-n-y-x/recasa/services/core/codegen"
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/httper"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 	"github.com/labstack/echo/v4"
 	"github.com/tidwall/gjson"
 )

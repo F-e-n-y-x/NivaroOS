@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/random"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/random"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"

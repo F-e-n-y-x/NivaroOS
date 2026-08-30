@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/common_err"
-	modelCommon "github.com/F-e-n-y-x/recasa/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/labstack/echo/v4"
 )
 

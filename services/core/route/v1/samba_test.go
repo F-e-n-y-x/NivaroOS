@@ -15,7 +15,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	v1 "github.com/F-e-n-y-x/recasa/services/core/route/v1"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	"github.com/golang/mock/gomock"
 	"github.com/labstack/echo/v4"
 	"gotest.tools/assert"

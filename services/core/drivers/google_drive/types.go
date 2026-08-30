@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	log "github.com/sirupsen/logrus"
 )
 

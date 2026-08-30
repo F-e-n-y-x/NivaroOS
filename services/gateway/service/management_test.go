@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/common/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"gotest.tools/assert"
 )
 

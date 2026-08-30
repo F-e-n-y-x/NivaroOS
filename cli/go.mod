@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/cli
+module github.com/F-e-n-y-x/NivaroOS/cli
 
 go 1.21
 
@@ -49,10 +49,10 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/googollee/go-socket.io v1.7.0
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../services/common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../services/common

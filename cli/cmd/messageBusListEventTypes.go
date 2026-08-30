@@ -25,7 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/message_bus"
 )
 
 // messageBusListEventTypesCmd represents the messageBusListEventTypes command

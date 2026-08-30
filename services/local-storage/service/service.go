@@ -1,11 +1,11 @@
 package service
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/config"
-	v2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/v2"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/v2/wrapper"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	v2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/wrapper"
 	"github.com/patrickmn/go-cache"
 	"gorm.io/gorm"
 )

@@ -9,19 +9,19 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
-	"github.com/F-e-n-y-x/recasa/services/app-management/service"
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	pkg_utils "github.com/F-e-n-y-x/recasa/services/app-management/pkg/utils"
+	pkg_utils "github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/utils"
 )
 
 func (a *AppManagement) AppStoreList(ctx echo.Context) error {

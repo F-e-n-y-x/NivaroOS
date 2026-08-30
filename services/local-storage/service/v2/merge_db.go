@@ -1,9 +1,9 @@
 package v2
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/sqlite"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
-	model2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
 )
 
 func init() {

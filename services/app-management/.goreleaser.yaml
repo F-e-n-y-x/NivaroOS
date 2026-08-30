@@ -12,7 +12,7 @@ builds:
     binary: build/sysroot/usr/bin/recasa-app-management
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/recasa/services/app-management/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
         - cmd: upx --best --lzma -v --no-progress build/sysroot/usr/bin/appfile2compose
           output: true
@@ -38,7 +38,7 @@ builds:
     binary: build/sysroot/usr/bin/recasa-app-management
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/recasa/services/app-management/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
         # - cmd: upx --best --lzma -v --no-progress build/sysroot/usr/bin/appfile2compose
         #   output: true
@@ -64,7 +64,7 @@ builds:
     binary: build/sysroot/usr/bin/recasa-app-management
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/recasa/services/app-management/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
         - cmd: upx --best --lzma -v --no-progress build/sysroot/usr/bin/appfile2compose
           output: true

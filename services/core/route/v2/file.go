@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/recasa/services/core/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
 	"github.com/labstack/echo/v4"
 )
 

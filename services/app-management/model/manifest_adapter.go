@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/samber/lo"
 )

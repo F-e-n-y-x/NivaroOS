@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 )
 
 func IsNeedUpdate(version model.Version) (bool, model.Version) {

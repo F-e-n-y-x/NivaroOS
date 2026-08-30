@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/jwt"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 )
 
 const (

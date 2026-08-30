@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
-	v2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/v2"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
+	v2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2"
 
 	"github.com/labstack/echo/v4"
 )

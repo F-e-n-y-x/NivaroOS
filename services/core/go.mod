@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/core
+module github.com/F-e-n-y-x/NivaroOS/services/core
 
 go 1.21
 
@@ -47,7 +47,7 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/benbjohnson/clock v1.3.1 // indirect
@@ -126,4 +126,4 @@ require (
 	mvdan.cc/sh/v3 v3.7.0 // indirect
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/model"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 	"gopkg.in/ini.v1"
 )
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	interfaces "github.com/F-e-n-y-x/recasa/services/common"
+	interfaces "github.com/F-e-n-y-x/NivaroOS/services/common"
 )
 
 type migrationTool struct{}

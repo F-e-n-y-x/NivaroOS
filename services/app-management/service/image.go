@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	client2 "github.com/docker/docker/client"

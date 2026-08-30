@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/user
+module github.com/F-e-n-y-x/NivaroOS/services/user
 
 go 1.21
 
@@ -27,7 +27,7 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/benbjohnson/clock v1.3.1 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
@@ -91,4 +91,4 @@ require (
 	modernc.org/sqlite v1.21.2 // indirect
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

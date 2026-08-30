@@ -18,8 +18,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
 func SendAllHardwareStatusBySocket() {

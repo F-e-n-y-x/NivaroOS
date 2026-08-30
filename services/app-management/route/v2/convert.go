@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
 	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v3"
 )

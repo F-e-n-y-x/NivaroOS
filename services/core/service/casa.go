@@ -4,9 +4,9 @@ import (
 	json2 "encoding/json"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/httper"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 	"github.com/tidwall/gjson"
 )
 

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/codegen/mod_management"
-	"github.com/F-e-n-y-x/recasa/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/codegen/mod_management"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	"github.com/tidwall/gjson"
 )
 

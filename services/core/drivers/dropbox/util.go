@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/base"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/base"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"gopkg.in/yaml.v3"
 )
 

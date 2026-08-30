@@ -16,9 +16,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/go-ini/ini"
 )
 

@@ -3,7 +3,7 @@ package pkg
 import (
 	"errors"
 
-	"github.com/F-e-n-y-x/recasa/services/gateway/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/gateway/common"
 )
 
 func GetGatewayPort() (int, error) {

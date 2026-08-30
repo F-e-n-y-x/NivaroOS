@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 )
 
 var (

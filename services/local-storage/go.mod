@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/local-storage
+module github.com/F-e-n-y-x/NivaroOS/services/local-storage
 
 go 1.21
 
@@ -48,7 +48,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.0.0 // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v0.9.0 // indirect
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/Max-Sum/base32768 v0.0.0-20230304063302-18e6ce5945fd // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Unknwon/goconfig v1.0.0 // indirect
@@ -209,4 +209,4 @@ require (
 	storj.io/uplink v1.10.0 // indirect
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

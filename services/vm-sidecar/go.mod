@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/vm-sidecar
+module github.com/F-e-n-y-x/NivaroOS/services/vm-sidecar
 
 go 1.23.4
 

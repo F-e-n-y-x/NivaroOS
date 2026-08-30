@@ -11,7 +11,7 @@
 package service
 
 import (
-	model2 "github.com/F-e-n-y-x/recasa/services/core/service/model"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"gorm.io/gorm"
 )
 

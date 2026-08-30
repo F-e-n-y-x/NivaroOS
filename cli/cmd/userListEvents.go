@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/user_service"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/user_service"
 	"github.com/spf13/cobra"
 )
 

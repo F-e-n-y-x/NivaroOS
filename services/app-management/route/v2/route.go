@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/labstack/echo/v4"
 )
 

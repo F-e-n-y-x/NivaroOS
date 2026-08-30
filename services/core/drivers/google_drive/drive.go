@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/base"
-	"github.com/F-e-n-y-x/recasa/services/core/internal/driver"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/base"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )

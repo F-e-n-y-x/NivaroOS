@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 )
 
 const (

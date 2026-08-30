@@ -1,9 +1,9 @@
 package service
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/user/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/user/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
 	"gorm.io/gorm"
 )
 

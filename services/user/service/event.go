@@ -3,7 +3,7 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/F-e-n-y-x/recasa/services/user/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
 	"gorm.io/gorm"
 )
 

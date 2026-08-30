@@ -4,8 +4,8 @@ import (
 	"crypto/ecdsa"
 	"os"
 
-	v1 "github.com/F-e-n-y-x/recasa/services/user/route/v1"
-	"github.com/F-e-n-y-x/recasa/services/user/service"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/user/route/v1"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )

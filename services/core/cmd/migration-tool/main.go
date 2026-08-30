@@ -15,12 +15,12 @@ import (
 	"fmt"
 	"os"
 
-	interfaces "github.com/F-e-n-y-x/recasa/services/common"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/systemctl"
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/sqlite"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	interfaces "github.com/F-e-n-y-x/NivaroOS/services/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/sqlite"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"gorm.io/gorm"
 )
 

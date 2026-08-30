@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/mholt/archiver/v3"
 	"go.uber.org/zap"
 )

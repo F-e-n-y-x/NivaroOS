@@ -3,7 +3,7 @@ package service_test
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/stretchr/testify/assert"
 )
 

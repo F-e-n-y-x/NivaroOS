@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"go.uber.org/zap"
 )
 

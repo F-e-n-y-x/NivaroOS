@@ -4,9 +4,9 @@ import (
 	"crypto/ecdsa"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/config"
-	v1 "github.com/F-e-n-y-x/recasa/services/local-storage/route/v1"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/route/v1"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"

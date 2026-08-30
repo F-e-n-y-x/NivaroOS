@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/v2/wrapper"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/wrapper"
 	"gotest.tools/v3/assert"
 
 	"github.com/moby/sys/mountinfo"

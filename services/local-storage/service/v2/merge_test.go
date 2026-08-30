@@ -3,8 +3,8 @@ package v2
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/sqlite"
-	model2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
 	"gorm.io/gorm"
 	"gotest.tools/v3/assert"
 )

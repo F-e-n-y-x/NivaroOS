@@ -3,7 +3,7 @@ package docker_test
 import (
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"gotest.tools/v3/assert"
 )
 

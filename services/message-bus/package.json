@@ -9,7 +9,7 @@
     "publish": "npm publish --access public",
     "start": "yarn generate:ts && yarn build"
   },
-  "homepage": "https://github.com/F-e-n-y-x/recasa#readme",
+  "homepage": "https://github.com/F-e-n-y-x/NivaroOS#readme",
   "description": "Casaos-MessageBus Typescript+Axios SDK",
   "keywords": [
     "Recasa",

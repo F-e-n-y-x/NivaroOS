@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/F-e-n-y-x/recasa.git"
+REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
 SRC_DIR="/opt/recasa/src"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 WITH_VM=""

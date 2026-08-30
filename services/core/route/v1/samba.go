@@ -18,17 +18,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/samba"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/common_err"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
-	model2 "github.com/F-e-n-y-x/recasa/services/core/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/samba"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 )
 
 // service

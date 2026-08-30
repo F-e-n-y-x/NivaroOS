@@ -3,7 +3,7 @@ package gredis
 import (
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/gomodule/redigo/redis"
 )
 

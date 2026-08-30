@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/httper"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/httper"
 	"github.com/labstack/echo/v4"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"

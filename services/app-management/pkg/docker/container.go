@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"

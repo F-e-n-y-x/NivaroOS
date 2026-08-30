@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	v1 "github.com/F-e-n-y-x/recasa/services/app-management/route/v1"
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/jwt"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v1"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/labstack/echo/v4"
 	echo_middleware "github.com/labstack/echo/v4/middleware"
 )

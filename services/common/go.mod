@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/common
+module github.com/F-e-n-y-x/NivaroOS/services/common
 
 go 1.21
 

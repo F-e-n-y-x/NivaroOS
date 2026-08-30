@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/utils/downloadHelper"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/utils/downloadHelper"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 )

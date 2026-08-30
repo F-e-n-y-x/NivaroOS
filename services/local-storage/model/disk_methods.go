@@ -3,7 +3,7 @@ package model
 import (
 	"path/filepath"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 )
 
 const defaultMountPath = "/mnt"

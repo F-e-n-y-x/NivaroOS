@@ -3,7 +3,7 @@ package driver
 import (
 	"context"
 
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 )
 
 type Driver interface {

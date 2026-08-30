@@ -5,11 +5,11 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	v2 "github.com/F-e-n-y-x/recasa/services/app-management/route/v2"
-	"github.com/F-e-n-y-x/recasa/services/app-management/service"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	v2 "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v2"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/compose-spec/compose-go/types"
 )
 

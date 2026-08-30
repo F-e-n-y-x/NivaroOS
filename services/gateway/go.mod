@@ -1,4 +1,4 @@
-module github.com/F-e-n-y-x/recasa/services/gateway
+module github.com/F-e-n-y-x/NivaroOS/services/gateway
 
 go 1.21
 
@@ -36,7 +36,7 @@ require (
 )
 
 require (
-	github.com/F-e-n-y-x/recasa/services/common v0.0.0-00010101000000-000000000000
+	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
@@ -64,4 +64,4 @@ require (
 	gotest.tools/v3 v3.5.1
 )
 
-replace github.com/F-e-n-y-x/recasa/services/common => ../common
+replace github.com/F-e-n-y-x/NivaroOS/services/common => ../common

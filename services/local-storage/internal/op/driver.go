@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/internal/conf"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/conf"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/driver"
 	"github.com/pkg/errors"
 )
 

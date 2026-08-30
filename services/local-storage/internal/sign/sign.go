@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/sign"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sign"
 )
 
 var once sync.Once

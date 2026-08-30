@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/common"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	timeutils "github.com/F-e-n-y-x/recasa/services/common/utils/time"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	timeutils "github.com/F-e-n-y-x/NivaroOS/services/common/utils/time"
 	"gopkg.in/yaml.v3"
 
 	"github.com/docker/cli/cli/command"

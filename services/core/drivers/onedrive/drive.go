@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 
-	"github.com/F-e-n-y-x/recasa/services/core/internal/driver"
-	"github.com/F-e-n-y-x/recasa/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"go.uber.org/zap"
 )
 

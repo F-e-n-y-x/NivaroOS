@@ -72,8 +72,8 @@ are in scope only for branding-string cleanup, not removal.
 | Concept | Old | New |
 |---|---|---|
 | Product name | CasaOS | Recasa |
-| GitHub repo | (8 separate forks + meta repo) | `F-e-n-y-x/recasa` (single repo) |
-| Go module path root | `github.com/IceWhaleTech/CasaOS*` | `github.com/F-e-n-y-x/recasa/services/<name>` |
+| GitHub repo | (8 separate forks + meta repo) | `F-e-n-y-x/NivaroOS` (single repo) |
+| Go module path root | `github.com/IceWhaleTech/CasaOS*` | `github.com/F-e-n-y-x/NivaroOS/services/<name>` |
 | Core binary | `casaos` | `recasa` |
 | Service binaries | `casaos-gateway`, `casaos-user-service`, `casaos-app-management`, `casaos-local-storage`, `casaos-message-bus`, `casaos-vm-sidecar`, `casaos-gpu-sidecar` | `recasa-gateway`, `recasa-user`, `recasa-app-management`, `recasa-local-storage`, `recasa-message-bus`, `recasa-vm-sidecar`, `recasa-gpu-sidecar` |
 | systemd units | `casaos*.service` | `recasa*.service` (same suffix mapping as binaries above) |

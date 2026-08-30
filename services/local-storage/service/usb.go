@@ -3,9 +3,9 @@ package service
 import (
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/config"
-	command2 "github.com/F-e-n-y-x/recasa/services/local-storage/pkg/utils/command"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	command2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/command"
 	"github.com/shirou/gopsutil/host"
 	"go.uber.org/zap"
 )

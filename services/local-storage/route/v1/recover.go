@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/drivers/dropbox"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/drivers/google_drive"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/dropbox"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/google_drive"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

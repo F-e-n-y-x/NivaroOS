@@ -1,6 +1,6 @@
 package repository
 
-import "github.com/F-e-n-y-x/recasa/services/message-bus/model"
+import "github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 
 type Repository interface {
 	GetEventTypes() ([]model.EventType, error)

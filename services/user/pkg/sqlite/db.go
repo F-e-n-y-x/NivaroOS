@@ -12,10 +12,10 @@ package sqlite
 import (
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/user/model"
-	"github.com/F-e-n-y-x/recasa/services/user/pkg/utils/file"
-	model2 "github.com/F-e-n-y-x/recasa/services/user/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/file"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
 	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
 	"gorm.io/gorm"

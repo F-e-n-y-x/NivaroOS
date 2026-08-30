@@ -24,7 +24,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/app_management"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/app_management"
 	"github.com/mitchellh/mapstructure"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"

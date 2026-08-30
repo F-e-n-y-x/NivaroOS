@@ -1,7 +1,7 @@
 package idevice
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 )
 
 func GetOSRelease(name []string) (map[string]string, error) {

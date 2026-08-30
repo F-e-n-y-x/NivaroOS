@@ -13,8 +13,8 @@ package service
 import (
 	"fmt"
 
-	"github.com/F-e-n-y-x/recasa/services/core/service/model"
-	model2 "github.com/F-e-n-y-x/recasa/services/core/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/moby/sys/mount"
 	"golang.org/x/sys/unix"
 	"gorm.io/gorm"

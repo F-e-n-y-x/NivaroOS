@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/internal/driver"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/model"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )

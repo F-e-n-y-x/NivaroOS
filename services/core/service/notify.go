@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/common"
-	model2 "github.com/F-e-n-y-x/recasa/services/core/model"
-	"github.com/F-e-n-y-x/recasa/services/core/model/notify"
-	"github.com/F-e-n-y-x/recasa/services/core/service/model"
-	"github.com/F-e-n-y-x/recasa/services/core/types"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/model/notify"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
 	"go.uber.org/zap"
 	"golang.org/x/sync/syncmap"
 

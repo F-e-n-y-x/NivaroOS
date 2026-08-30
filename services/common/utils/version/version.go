@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/ini.v1"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	_ "github.com/mattn/go-sqlite3" // nolint
 )
 

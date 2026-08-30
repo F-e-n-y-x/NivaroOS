@@ -9,14 +9,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/constants"
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/config"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/pkg/utils/merge"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service"
-	model2 "github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/v2/fs"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/merge"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/fs"
 
 	"github.com/labstack/echo/v4"
 )

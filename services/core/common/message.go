@@ -1,7 +1,7 @@
 package common
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/core/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen/message_bus"
 )
 
 // devtype -> action -> event

@@ -1,8 +1,8 @@
 package google_drive
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/local-storage/internal/driver"
-	"github.com/F-e-n-y-x/recasa/services/local-storage/internal/op"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/driver"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/internal/op"
 )
 
 const ICONURL = "./img/driver/GoogleDrive.svg"

@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
 )
 
 type ContextKey string

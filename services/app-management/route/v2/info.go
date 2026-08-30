@@ -3,9 +3,9 @@ package v2
 import (
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/codegen"
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/labstack/echo/v4"
 )
 

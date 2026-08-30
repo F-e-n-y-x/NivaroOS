@@ -20,7 +20,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/message_bus"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/websocket"
 )

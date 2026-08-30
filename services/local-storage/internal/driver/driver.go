@@ -3,7 +3,7 @@ package driver
 import (
 	"context"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
 )
 
 type Driver interface {

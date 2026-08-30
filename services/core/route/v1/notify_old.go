@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/services/core/service"
-	"github.com/F-e-n-y-x/recasa/services/core/types"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 )

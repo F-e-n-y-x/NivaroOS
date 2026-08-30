@@ -21,7 +21,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/F-e-n-y-x/recasa/cli/codegen/app_management"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/app_management"
 	"github.com/spf13/cobra"
 )
 

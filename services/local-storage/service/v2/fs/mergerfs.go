@@ -3,7 +3,7 @@ package fs
 import (
 	"strings"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
 )
 
 const (

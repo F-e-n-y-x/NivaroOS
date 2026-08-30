@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/message-bus/model"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/repository"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
 	"go.uber.org/goleak"
 	"gotest.tools/assert"
 )

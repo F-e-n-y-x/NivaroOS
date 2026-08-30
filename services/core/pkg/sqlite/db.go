@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/file"
-	model2 "github.com/F-e-n-y-x/recasa/services/core/service/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )

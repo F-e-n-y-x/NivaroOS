@@ -3,7 +3,7 @@ package config
 import (
 	"log"
 
-	"github.com/F-e-n-y-x/recasa/services/local-storage/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
 	"gopkg.in/ini.v1"
 )
 

@@ -3,7 +3,7 @@ package modmanagement_test
 import (
 	"testing"
 
-	modmanagement "github.com/F-e-n-y-x/recasa/services/common/pkg/mod_management"
+	modmanagement "github.com/F-e-n-y-x/NivaroOS/services/common/pkg/mod_management"
 	"github.com/stretchr/testify/assert"
 )
 

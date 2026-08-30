@@ -9,7 +9,7 @@
     "generate:ts": "npx openapi-typescript-codegen --input ./api/app_management/openapi.yaml --output ./generate",
     "start": "yarn generate:local && yarn build"
   },
-  "homepage": "https://github.com/F-e-n-y-x/recasa#readme",
+  "homepage": "https://github.com/F-e-n-y-x/NivaroOS#readme",
   "description": "Casaos-AppManagement Typescript+Axios SDK",
   "keywords": [
     "Recasa",

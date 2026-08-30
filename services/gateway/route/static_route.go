@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/F-e-n-y-x/recasa/services/gateway/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
 	"github.com/labstack/echo/v4"
 	echo_middleware "github.com/labstack/echo/v4/middleware"
 )

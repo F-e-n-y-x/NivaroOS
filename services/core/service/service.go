@@ -11,9 +11,9 @@
 package service
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/common/external"
-	"github.com/F-e-n-y-x/recasa/services/core/codegen/message_bus"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen/message_bus"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
 	"gorm.io/gorm"

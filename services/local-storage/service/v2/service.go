@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"github.com/F-e-n-y-x/recasa/services/local-storage/service/v2/wrapper"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/wrapper"
 	"gorm.io/gorm"
 )
 

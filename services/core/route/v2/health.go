@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/F-e-n-y-x/recasa/services/core/codegen"
-	"github.com/F-e-n-y-x/recasa/services/core/pkg/utils/file"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/labstack/echo/v4"
 	"github.com/mholt/archiver/v3"
 )

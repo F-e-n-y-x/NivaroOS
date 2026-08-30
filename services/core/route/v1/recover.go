@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils/logger"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/dropbox"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/google_drive"
-	"github.com/F-e-n-y-x/recasa/services/core/drivers/onedrive"
-	"github.com/F-e-n-y-x/recasa/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/dropbox"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/google_drive"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/onedrive"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 )

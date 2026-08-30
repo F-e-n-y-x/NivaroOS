@@ -3,9 +3,9 @@ package out
 import (
 	"time"
 
-	"github.com/F-e-n-y-x/recasa/services/common/utils"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/codegen"
-	"github.com/F-e-n-y-x/recasa/services/message-bus/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 )
 
 func EventAdapter(event model.Event) codegen.Event {

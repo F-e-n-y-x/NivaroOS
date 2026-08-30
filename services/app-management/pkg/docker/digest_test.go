@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/F-e-n-y-x/recasa/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/docker/distribution/manifest/manifestlist"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
