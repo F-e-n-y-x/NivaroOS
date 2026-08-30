@@ -7,15 +7,21 @@
 			<h2 class="section-title">{{ $t('Set up virtualization') }}</h2>
 			<p class="mb-4">{{ $t('QEMU/KVM and libvirt are required to create and run VMs.') }}</p>
 
-			<div v-if="status.missing_packages && status.missing_packages.length" class="mb-4">
-				<p class="has-text-weight-semibold">{{ $t('Missing packages') }}:</p>
-				<ul class="vm-setup-missing">
-					<li v-for="pkg in status.missing_packages" :key="pkg">{{ pkg }}</li>
-				</ul>
+			<div v-if="unreachable" class="has-text-centered mb-4">
+				<p class="has-text-danger mb-4">{{ $t('VM Manager is not installed.') }}</p>
+				<p>{{ $t('Run') }} <code>recasa vm enable</code> {{ $t('on the server to install it.') }}</p>
 			</div>
-			<p v-if="!status.libvirt_reachable" class="has-text-danger mb-4">
-				{{ $t('libvirtd is not reachable.') }}
-			</p>
+			<template v-else>
+				<div v-if="status.missing_packages && status.missing_packages.length" class="mb-4">
+					<p class="has-text-weight-semibold">{{ $t('Missing packages') }}:</p>
+					<ul class="vm-setup-missing">
+						<li v-for="pkg in status.missing_packages" :key="pkg">{{ pkg }}</li>
+					</ul>
+				</div>
+				<p v-if="!status.libvirt_reachable" class="has-text-danger mb-4">
+					{{ $t('libvirtd is not reachable.') }}
+				</p>
+			</template>
 
 			<b-message v-if="installResult && !installResult.success" type="is-danger" :closable="false">
 				<strong>{{ installResult.step }}</strong>
@@ -39,6 +45,7 @@ export default {
 			checking: true,
 			installing: false,
 			status: { missing_packages: [], libvirt_reachable: false, ready: false },
+			unreachable: false,
 			installResult: null
 		}
 	},
@@ -50,7 +57,10 @@ export default {
 			this.checking = true
 			try {
 				this.status = await vmSidecar.getSetupStatus()
+				this.unreachable = false
 				if (this.status.ready) this.$emit('ready')
+			} catch (e) {
+				this.unreachable = true
 			} finally {
 				this.checking = false
 			}
