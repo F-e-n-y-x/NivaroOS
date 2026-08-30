@@ -294,7 +294,4 @@ main() {
 	print_summary
 }
 
-# Guarded so this file can be safely sourced without triggering a real install
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ] || [ -z "${BASH_SOURCE[0]:-}" ]; then
-	main "$@"
-fi
+main "$@" 
