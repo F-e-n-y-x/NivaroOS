@@ -15,74 +15,91 @@
 
 		<transition name="pop-up">
 			<div v-if="menuOpen" class="quick-control-menu" @click.stop>
-				<!-- User Profile Header -->
-				<div class="menu-user-card">
-					<div class="user-avatar-wrap">
-						<div class="user-avatar-fallback">{{ userInitial }}</div>
+				<!-- Top Header: User Profile + Quick Actions -->
+				<div class="menu-top-header">
+					<div class="user-profile-left">
+						<div class="user-avatar">{{ userInitial }}</div>
+						<div class="user-meta">
+							<span class="user-name">{{ userName }}</span>
+							<span class="user-badge">{{ $t('Signed in') }}</span>
+						</div>
 					</div>
-					<div class="user-info">
-						<span class="user-name">{{ userName }}</span>
-						<span class="user-status">{{ $t('Signed in') }}</span>
+					<div class="header-actions-right">
+						<button type="button" class="hdr-btn" :title="$t('Settings')" @click="openSettings('system')">
+							<b-icon icon="cog-outline" pack="mdi" size="is-16"></b-icon>
+						</button>
+						<button type="button" class="hdr-btn is-logout" :title="$t('Sign out')" @click="logout">
+							<b-icon icon="logout" pack="mdi" size="is-16"></b-icon>
+						</button>
 					</div>
-					<button type="button" class="signout-btn" :title="$t('Sign out')" @click="logout">
-						<b-icon icon="logout" pack="mdi" size="is-16"></b-icon>
-						<span>{{ $t('Sign out') }}</span>
-					</button>
 				</div>
 
 				<div class="menu-divider"></div>
 
-				<!-- Clock & Calendar Glance -->
-				<div class="menu-clock-glance">
-					<div class="glance-time">{{ timeText }}</div>
-					<div class="glance-date">
+				<!-- Digital Clock Glance -->
+				<div class="clock-hero-card">
+					<div class="hero-time">{{ timeText }}</div>
+					<div class="hero-date">
 						<i class="mdi mdi-calendar-blank-outline mr-1"></i>{{ fullDateText }}
 					</div>
 				</div>
 
 				<div class="menu-divider"></div>
 
-				<!-- Quick App Shortcuts -->
-				<div class="shortcuts-grid">
-					<button type="button" class="shortcut-tile" @click="openSettings('system')">
-						<div class="shortcut-icon-box is-blue">
-							<b-icon icon="cog-outline" pack="mdi" size="is-20"></b-icon>
+				<!-- Mini Interactive Calendar -->
+				<div class="calendar-widget">
+					<!-- Calendar Nav Header -->
+					<div class="cal-nav-header">
+						<span class="cal-month-year">{{ calendarMonthYear }}</span>
+						<div class="cal-nav-controls">
+							<button type="button" class="cal-btn-today" @click="goToToday">
+								{{ $t('Today') }}
+							</button>
+							<button type="button" class="cal-arrow-btn" :title="$t('Previous Month')" @click="prevMonth">
+								<b-icon icon="chevron-left" pack="mdi" size="is-16"></b-icon>
+							</button>
+							<button type="button" class="cal-arrow-btn" :title="$t('Next Month')" @click="nextMonth">
+								<b-icon icon="chevron-right" pack="mdi" size="is-16"></b-icon>
+							</button>
 						</div>
-						<span class="shortcut-name">{{ $t('Settings') }}</span>
-					</button>
+					</div>
 
-					<button type="button" class="shortcut-tile" @click="openSettings('packages')">
-						<div class="shortcut-icon-box is-indigo">
-							<b-icon icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
-						</div>
-						<span class="shortcut-name">{{ $t('Packages') }}</span>
-					</button>
+					<!-- Weekday Header -->
+					<div class="cal-weekdays-grid">
+						<span v-for="(dayName, idx) in weekdays" :key="idx" class="cal-weekday-label">
+							{{ dayName }}
+						</span>
+					</div>
 
-					<button type="button" class="shortcut-tile" @click="openTerminal">
-						<div class="shortcut-icon-box is-slate">
-							<b-icon icon="console" pack="mdi" size="is-20"></b-icon>
-						</div>
-						<span class="shortcut-name">{{ $t('Terminal') }}</span>
-					</button>
-
-					<button type="button" class="shortcut-tile" @click="openFiles">
-						<div class="shortcut-icon-box is-amber">
-							<b-icon icon="folder-outline" pack="mdi" size="is-20"></b-icon>
-						</div>
-						<span class="shortcut-name">{{ $t('Files') }}</span>
-					</button>
+					<!-- Days Grid (7x6) -->
+					<div class="cal-days-grid">
+						<button
+							v-for="(day, idx) in calendarDays"
+							:key="idx"
+							type="button"
+							class="cal-day-cell"
+							:class="{
+								'is-today': day.isToday,
+								'is-selected': day.isSelected && !day.isToday,
+								'is-other-month': !day.isCurrentMonth
+							}"
+							@click="selectDay(day)"
+						>
+							<span class="day-num">{{ day.dayNumber }}</span>
+						</button>
+					</div>
 				</div>
 
 				<div class="menu-divider"></div>
 
-				<!-- Power Actions -->
-				<div class="power-actions-row">
-					<button type="button" class="power-btn is-restart" @click="restart">
-						<b-icon icon="restart" pack="mdi" size="is-18"></b-icon>
+				<!-- Power Actions Footer -->
+				<div class="power-actions-footer">
+					<button type="button" class="pwr-btn is-restart" @click="restart">
+						<b-icon icon="restart" pack="mdi" size="is-16"></b-icon>
 						<span>{{ $t('Restart') }}</span>
 					</button>
-					<button type="button" class="power-btn is-shutdown" @click="shutdown">
-						<b-icon icon="power" pack="mdi" size="is-18"></b-icon>
+					<button type="button" class="pwr-btn is-shutdown" @click="shutdown">
+						<b-icon icon="power" pack="mdi" size="is-16"></b-icon>
 						<span>{{ $t('Shutdown') }}</span>
 					</button>
 				</div>
@@ -113,7 +130,9 @@ export default {
 			timeText: '',
 			dateText: '',
 			customText: '',
-			menuOpen: false
+			menuOpen: false,
+			currentViewingDate: new Date(),
+			selectedDate: new Date()
 		}
 	},
 	computed: {
@@ -146,6 +165,76 @@ export default {
 			} catch (e) {
 				return this.dateText
 			}
+		},
+		calendarMonthYear() {
+			const options = { month: 'long', year: 'numeric' }
+			try {
+				return this.currentViewingDate.toLocaleDateString(this.lang, options)
+			} catch (e) {
+				return `${this.currentViewingDate.toLocaleString('default', { month: 'long' })} ${this.currentViewingDate.getFullYear()}`
+			}
+		},
+		weekdays() {
+			return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+		},
+		calendarDays() {
+			const year = this.currentViewingDate.getFullYear()
+			const month = this.currentViewingDate.getMonth()
+
+			const firstDayOfMonth = new Date(year, month, 1)
+			const startingDayOfWeek = firstDayOfMonth.getDay() // 0 = Sunday
+
+			const lastDayOfMonth = new Date(year, month + 1, 0)
+			const totalDaysInMonth = lastDayOfMonth.getDate()
+
+			const lastDayOfPrevMonth = new Date(year, month, 0).getDate()
+
+			const days = []
+			const today = new Date()
+			const isSameDay = (d1, d2) =>
+				d1 && d2 &&
+				d1.getFullYear() === d2.getFullYear() &&
+				d1.getMonth() === d2.getMonth() &&
+				d1.getDate() === d2.getDate()
+
+			// Previous month padding days
+			for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+				const d = new Date(year, month - 1, lastDayOfPrevMonth - i)
+				days.push({
+					dayNumber: lastDayOfPrevMonth - i,
+					date: d,
+					isCurrentMonth: false,
+					isToday: isSameDay(d, today),
+					isSelected: isSameDay(d, this.selectedDate)
+				})
+			}
+
+			// Current month days
+			for (let i = 1; i <= totalDaysInMonth; i++) {
+				const d = new Date(year, month, i)
+				days.push({
+					dayNumber: i,
+					date: d,
+					isCurrentMonth: true,
+					isToday: isSameDay(d, today),
+					isSelected: isSameDay(d, this.selectedDate)
+				})
+			}
+
+			// Next month padding days to fill 42 cells (6 rows x 7 cols)
+			const remainingCells = 42 - days.length
+			for (let i = 1; i <= remainingCells; i++) {
+				const d = new Date(year, month + 1, i)
+				days.push({
+					dayNumber: i,
+					date: d,
+					isCurrentMonth: false,
+					isToday: isSameDay(d, today),
+					isSelected: isSameDay(d, this.selectedDate)
+				})
+			}
+
+			return days
 		}
 	},
 	watch: {
@@ -187,6 +276,26 @@ export default {
 		closeMenu() {
 			this.menuOpen = false
 		},
+		prevMonth() {
+			const d = new Date(this.currentViewingDate)
+			d.setMonth(d.getMonth() - 1)
+			this.currentViewingDate = d
+		},
+		nextMonth() {
+			const d = new Date(this.currentViewingDate)
+			d.setMonth(d.getMonth() + 1)
+			this.currentViewingDate = d
+		},
+		goToToday() {
+			this.currentViewingDate = new Date()
+			this.selectedDate = new Date()
+		},
+		selectDay(day) {
+			this.selectedDate = day.date
+			if (!day.isCurrentMonth) {
+				this.currentViewingDate = new Date(day.date)
+			}
+		},
 		openSettings(section = 'system') {
 			this.menuOpen = false
 			this.$store.commit('OPEN_WINDOW', {
@@ -196,26 +305,6 @@ export default {
 				width: 780,
 				height: 560,
 				props: { section }
-			})
-		},
-		openTerminal() {
-			this.menuOpen = false
-			this.$store.commit('OPEN_WINDOW', {
-				id: 'terminal',
-				title: this.$t('Terminal'),
-				component: 'TerminalApp',
-				width: 800,
-				height: 500
-			})
-		},
-		openFiles() {
-			this.menuOpen = false
-			this.$store.commit('OPEN_WINDOW', {
-				id: 'files',
-				title: this.$t('Files'),
-				component: 'FilesApp',
-				width: 900,
-				height: 580
 			})
 		},
 		logout() {
@@ -289,7 +378,7 @@ export default {
 	position: absolute;
 	right: 0;
 	bottom: calc(100% + 0.75rem);
-	width: 19rem;
+	width: 20rem;
 	background: rgba(255, 255, 255, 0.96);
 	backdrop-filter: blur(30px) saturate(190%);
 	border: 1px solid rgba(226, 232, 240, 0.95);
@@ -302,20 +391,23 @@ export default {
 	gap: 0.65rem;
 }
 
-.menu-user-card {
+.menu-top-header {
 	display: flex;
 	align-items: center;
-	gap: 0.65rem;
+	justify-content: space-between;
 	padding: 0.15rem 0.25rem;
 }
 
-.user-avatar-wrap {
-	flex-shrink: 0;
+.user-profile-left {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	min-width: 0;
 }
 
-.user-avatar-fallback {
-	width: 2.25rem;
-	height: 2.25rem;
+.user-avatar {
+	width: 2rem;
+	height: 2rem;
 	border-radius: 50%;
 	background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 	color: #ffffff;
@@ -323,19 +415,19 @@ export default {
 	align-items: center;
 	justify-content: center;
 	font-weight: 700;
-	font-size: 0.9rem;
-	box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+	font-size: 0.85rem;
+	box-shadow: 0 2px 5px rgba(37, 99, 235, 0.25);
+	flex-shrink: 0;
 }
 
-.user-info {
+.user-meta {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	flex: 1;
 }
 
 .user-name {
-	font-size: 0.875rem;
+	font-size: 0.85rem;
 	font-weight: 600;
 	color: #1e293b;
 	line-height: 1.2;
@@ -344,34 +436,45 @@ export default {
 	text-overflow: ellipsis;
 }
 
-.user-status {
-	font-size: 0.7rem;
+.user-badge {
+	font-size: 0.6875rem;
 	color: #64748b;
 	font-weight: 400;
 }
 
-.signout-btn {
-	margin-left: auto;
-	border: 1px solid #fee2e2;
-	background: #fff5f5;
-	color: #ef4444;
-	border-radius: 999px;
-	padding: 0.25rem 0.65rem;
-	font-size: 0.725rem;
-	font-weight: 600;
-	cursor: pointer;
-	display: inline-flex;
+.header-actions-right {
+	display: flex;
 	align-items: center;
-	gap: 0.3rem;
+	gap: 0.35rem;
+}
+
+.hdr-btn {
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #64748b;
+	border-radius: 50%;
+	width: 1.85rem;
+	height: 1.85rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
 	transition: all 0.12s ease;
 
 	&:hover {
+		background: #f1f5f9;
+		color: #1e293b;
+		border-color: #cbd5e1;
+	}
+
+	&.is-logout:hover {
 		background: #fee2e2;
 		color: #dc2626;
+		border-color: #fca5a5;
 	}
 }
 
-.menu-clock-glance {
+.clock-hero-card {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 12px;
@@ -379,7 +482,7 @@ export default {
 	text-align: center;
 }
 
-.glance-time {
+.hero-time {
 	font-size: 1.5rem;
 	font-weight: 700;
 	color: #1e293b;
@@ -387,7 +490,7 @@ export default {
 	line-height: 1.15;
 }
 
-.glance-date {
+.hero-date {
 	font-size: 0.75rem;
 	font-weight: 500;
 	color: #64748b;
@@ -397,74 +500,133 @@ export default {
 	justify-content: center;
 }
 
-.shortcuts-grid {
-	display: grid;
-	grid-template-columns: repeat(4, 1fr);
+/* Mini Calendar Styling */
+.calendar-widget {
+	display: flex;
+	flex-direction: column;
 	gap: 0.45rem;
 }
 
-.shortcut-tile {
-	border: 1px solid #f1f5f9;
-	background: #f8fafc;
-	border-radius: 10px;
-	padding: 0.55rem 0.25rem;
+.cal-nav-header {
 	display: flex;
-	flex-direction: column;
 	align-items: center;
-	gap: 0.35rem;
+	justify-content: space-between;
+	padding: 0 0.2rem;
+}
+
+.cal-month-year {
+	font-size: 0.85rem;
+	font-weight: 700;
+	color: #1e293b;
+}
+
+.cal-nav-controls {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.cal-btn-today {
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #475569;
+	border-radius: 6px;
+	padding: 0.15rem 0.45rem;
+	font-size: 0.7rem;
+	font-weight: 600;
 	cursor: pointer;
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: #ffffff;
-		border-color: #cbd5e1;
-		transform: translateY(-1px);
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+		background: #f1f5f9;
+		color: #1e293b;
 	}
 }
 
-.shortcut-icon-box {
-	width: 2rem;
-	height: 2rem;
-	border-radius: 8px;
+.cal-arrow-btn {
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #64748b;
+	border-radius: 6px;
+	width: 1.5rem;
+	height: 1.5rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	cursor: pointer;
+	transition: all 0.12s ease;
 
-	&.is-blue {
-		background: rgba(37, 99, 235, 0.1);
-		color: #2563eb;
-	}
-	&.is-indigo {
-		background: rgba(99, 102, 241, 0.1);
-		color: #6366f1;
-	}
-	&.is-slate {
-		background: rgba(15, 23, 42, 0.08);
+	&:hover {
+		background: #f1f5f9;
 		color: #1e293b;
 	}
-	&.is-amber {
-		background: rgba(245, 158, 11, 0.12);
-		color: #d97706;
+}
+
+.cal-weekdays-grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	text-align: center;
+}
+
+.cal-weekday-label {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	color: #94a3b8;
+	text-transform: uppercase;
+	padding: 0.2rem 0;
+}
+
+.cal-days-grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 0.15rem;
+}
+
+.cal-day-cell {
+	border: none;
+	background: transparent;
+	border-radius: 50%;
+	aspect-ratio: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	font-size: 0.775rem;
+	font-weight: 500;
+	color: #1e293b;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: #f1f5f9;
+	}
+
+	&.is-other-month {
+		color: #cbd5e1;
+	}
+
+	&.is-selected {
+		background: rgba(37, 99, 235, 0.12);
+		color: #2563eb;
+		font-weight: 600;
+	}
+
+	&.is-today {
+		background: #2563eb;
+		color: #ffffff;
+		font-weight: 700;
+		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
 	}
 }
 
-.shortcut-name {
-	font-size: 0.6875rem;
-	font-weight: 600;
-	color: #475569;
-	white-space: nowrap;
-}
-
-.power-actions-row {
+.power-actions-footer {
 	display: flex;
 	gap: 0.5rem;
 }
 
-.power-btn {
+.pwr-btn {
 	flex: 1;
 	border: none;
-	padding: 0.55rem 0.75rem;
+	padding: 0.5rem 0.75rem;
 	border-radius: 10px;
 	font-size: 0.775rem;
 	font-weight: 600;
