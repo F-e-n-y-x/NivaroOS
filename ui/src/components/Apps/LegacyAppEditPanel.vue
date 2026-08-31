@@ -128,7 +128,7 @@
 
 		<!-- Tab Workspace Bodies -->
 		<div class="editor-tab-body">
-			<!-- 1. App Store Icon Catalog (Clean Normal Background) -->
+			<!-- 1. App Store Icon Catalog (Clean Normal Background - No Checkerboard) -->
 			<div v-if="iconTab === 'store'" class="tab-pane-full">
 				<div class="search-bar-row">
 					<b-input
@@ -166,37 +166,50 @@
 				</div>
 			</div>
 
-			<!-- 2. Combined Custom Image (Upload + URL) -->
-			<div v-else-if="iconTab === 'custom'" class="tab-pane-centered">
-				<div class="custom-image-card">
-					<!-- Upload Dropzone Section -->
-					<div class="dropzone-area" @click="$refs.iconFile.click()">
-						<div class="dropzone-icon-circle">
-							<i class="mdi mdi-cloud-upload-outline"></i>
-						</div>
-						<div class="dropzone-title">{{ $t('Upload Image File') }}</div>
-						<div class="dropzone-desc">{{ $t('Drag and drop an image file here, or click to browse') }}</div>
-						<div class="dropzone-badge">PNG, SVG, JPG, WebP</div>
+			<!-- 2. Dual Source Custom Icon Studio (Upload File + Image URL) -->
+			<div v-else-if="iconTab === 'custom'" class="tab-pane-custom-grid">
+				<!-- Left Card: Local File Upload -->
+				<div class="import-card dropzone-card" @click="$refs.iconFile.click()">
+					<div class="card-icon-bubble is-blue">
+						<i class="mdi mdi-cloud-upload-outline"></i>
 					</div>
-					<input
-						ref="iconFile"
-						accept="image/*"
-						style="display: none"
-						type="file"
-						@change="handleIconFile"
-					/>
-
-					<!-- Separator -->
-					<div class="custom-image-divider">
-						<span>{{ $t('OR USE IMAGE URL') }}</span>
+					<h3 class="import-card-title">{{ $t('Upload Image File') }}</h3>
+					<p class="import-card-desc">{{ $t('Drag and drop an image file here, or click to browse local files') }}</p>
+					
+					<div class="drop-btn-wrap">
+						<button type="button" class="btn-browse">
+							<i class="mdi mdi-folder-open-outline mr-1"></i>{{ $t('Browse Files') }}
+						</button>
 					</div>
 
-					<!-- URL Input Section -->
-					<div class="url-sub-row">
+					<div class="format-tags">
+						<span class="fmt-tag">PNG</span>
+						<span class="fmt-tag">SVG</span>
+						<span class="fmt-tag">WEBP</span>
+						<span class="fmt-tag">JPG</span>
+					</div>
+				</div>
+				<input
+					ref="iconFile"
+					accept="image/*"
+					style="display: none"
+					type="file"
+					@change="handleIconFile"
+				/>
+
+				<!-- Right Card: Web Image URL -->
+				<div class="import-card url-card">
+					<div class="card-icon-bubble is-purple">
+						<i class="mdi mdi-link-variant"></i>
+					</div>
+					<h3 class="import-card-title">{{ $t('Import from Web URL') }}</h3>
+					<p class="import-card-desc">{{ $t('Paste a direct link to an online PNG, SVG, or website favicon') }}</p>
+					
+					<div class="url-input-group mt-2">
 						<b-input
 							v-model="inputUrl"
-							:placeholder="$t('https://example.com/icon.png')"
-							icon="link"
+							:placeholder="$t('https://example.com/icon.svg')"
+							icon="web"
 							size="is-small"
 							expanded
 							@keyup.enter.native="applyCustomUrl"
@@ -205,10 +218,25 @@
 							type="is-primary"
 							size="is-small"
 							:loading="isCompressing"
+							:disabled="!inputUrl.trim()"
 							@click="applyCustomUrl"
 						>
-							<i class="mdi mdi-download mr-1"></i>{{ $t('Load') }}
+							<i class="mdi mdi-check mr-1"></i>{{ $t('Apply') }}
 						</b-button>
+					</div>
+
+					<div class="url-quick-helpers">
+						<button
+							v-if="inputUrl"
+							type="button"
+							class="helper-link"
+							@click="inputUrl = ''"
+						>
+							<i class="mdi mdi-close-circle-outline mr-1"></i>{{ $t('Clear') }}
+						</button>
+						<span v-else class="helper-hint">
+							<i class="mdi mdi-information-outline mr-1"></i>{{ $t('Supports CDN, GitHub raw & web icons') }}
+						</span>
 					</div>
 				</div>
 			</div>
@@ -726,6 +754,13 @@ export default {
 			this.iconZoom = 1
 			this.iconPanX = 0
 			this.iconPanY = 0
+			this.$buefy.toast.open({
+				message: `<i class="mdi mdi-check-circle-outline mr-1"></i> ${this.$t('Image URL loaded')}`,
+				type: 'is-dark',
+				position: 'is-top',
+				duration: 1500,
+				queue: false
+			})
 		},
 
 		generateBadgeIcon(gradient) {
@@ -793,6 +828,13 @@ export default {
 					this.iconPanX = 0
 					this.iconPanY = 0
 					this.isCompressing = false
+					this.$buefy.toast.open({
+						message: `<i class="mdi mdi-check-circle-outline mr-1"></i> ${this.$t('Image file uploaded')}`,
+						type: 'is-dark',
+						position: 'is-top',
+						duration: 1500,
+						queue: false
+					})
 				}
 				img.src = reader.result
 			}
@@ -1302,95 +1344,167 @@ export default {
 	}
 }
 
-/* Tab 2: Combined Custom Image (Upload + URL) */
-.custom-image-card {
-	width: 100%;
-	max-width: 440px;
-	background: #f8fafc;
+/* Tab 2: Dual Source Custom Grid (Upload + URL) */
+.tab-pane-custom-grid {
+	flex: 1 1 auto;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 1rem;
+	padding: 1.25rem;
+	align-items: stretch;
+	max-width: 660px;
+	margin: 0 auto;
+}
+
+.import-card {
+	background: #ffffff;
 	border: 1px solid #e2e8f0;
 	border-radius: 12px;
-	padding: 1.25rem 1.5rem;
+	padding: 1.25rem 1.1rem;
 	display: flex;
 	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	transition: all 0.18s ease;
+
+	&.dropzone-card {
+		border: 2px dashed #cbd5e1;
+		cursor: pointer;
+		background: #ffffff;
+
+		&:hover {
+			border-color: #2563eb;
+			background: #eff6ff;
+			transform: translateY(-2px);
+			box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+
+			.btn-browse {
+				background: #2563eb;
+				color: #ffffff;
+				border-color: #2563eb;
+			}
+		}
+	}
+
+	&.url-card {
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+
+		&:hover {
+			border-color: #cbd5e1;
+			box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+		}
+	}
 }
 
-.dropzone-area {
-	border: 2px dashed #cbd5e1;
-	border-radius: 10px;
-	padding: 1.25rem 1rem;
-	text-align: center;
-	cursor: pointer;
-	background: #ffffff;
-	transition: all 0.15s ease;
+.card-icon-bubble {
+	width: 44px;
+	height: 44px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.35rem;
+	margin-bottom: 0.6rem;
 
-	.dropzone-icon-circle {
-		width: 44px;
-		height: 44px;
-		border-radius: 50%;
+	&.is-blue {
 		background: #eff6ff;
 		color: #2563eb;
-		font-size: 1.4rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin: 0 auto 0.4rem;
 	}
 
-	.dropzone-title {
-		font-size: 0.85rem;
-		font-weight: 700;
-		color: #0f172a;
-		margin-bottom: 0.15rem;
+	&.is-purple {
+		background: #f5f3ff;
+		color: #7c3aed;
 	}
+}
 
-	.dropzone-desc {
-		font-size: 0.72rem;
-		color: #64748b;
-		margin-bottom: 0.5rem;
-	}
+.import-card-title {
+	font-size: 0.85rem;
+	font-weight: 700;
+	color: #0f172a;
+	margin: 0 0 0.25rem;
+}
 
-	.dropzone-badge {
-		display: inline-block;
-		font-size: 0.65rem;
-		font-weight: 600;
-		color: #475569;
-		background: #e2e8f0;
-		padding: 0.1rem 0.45rem;
-		border-radius: 9999px;
-	}
+.import-card-desc {
+	font-size: 0.72rem;
+	color: #64748b;
+	line-height: 1.35;
+	margin: 0 0 0.85rem;
+	min-height: 2.2rem;
+}
+
+.drop-btn-wrap {
+	margin-bottom: 0.85rem;
+}
+
+.btn-browse {
+	border: 1px solid #cbd5e1;
+	background: #f8fafc;
+	color: #334155;
+	border-radius: 6px;
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 0.35rem 0.85rem;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	transition: all 0.15s ease;
+	pointer-events: none;
+}
+
+.format-tags {
+	display: flex;
+	gap: 0.25rem;
+	flex-wrap: wrap;
+	justify-content: center;
+}
+
+.fmt-tag {
+	font-size: 0.62rem;
+	font-weight: 700;
+	color: #64748b;
+	background: #f1f5f9;
+	padding: 0.1rem 0.4rem;
+	border-radius: 4px;
+	letter-spacing: 0.02em;
+}
+
+.url-input-group {
+	width: 100%;
+	display: flex;
+	gap: 0.35rem;
+	align-items: center;
+}
+
+.url-quick-helpers {
+	width: 100%;
+	margin-top: 0.65rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.helper-hint {
+	font-size: 0.65rem;
+	color: #94a3b8;
+	display: inline-flex;
+	align-items: center;
+}
+
+.helper-link {
+	border: none;
+	background: transparent;
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: #ef4444;
+	cursor: pointer;
+	padding: 0;
+	display: inline-flex;
+	align-items: center;
 
 	&:hover {
-		border-color: #2563eb;
-		background: #eff6ff;
+		text-decoration: underline;
 	}
-}
-
-.custom-image-divider {
-	display: flex;
-	align-items: center;
-	text-align: center;
-	margin: 1rem 0;
-
-	&::before,
-	&::after {
-		content: '';
-		flex: 1;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	span {
-		padding: 0 0.75rem;
-		font-size: 0.68rem;
-		font-weight: 700;
-		color: #94a3b8;
-		letter-spacing: 0.05em;
-	}
-}
-
-.url-sub-row {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
 }
 
 /* Tab 3: Crop Studio (Light-Grey Transparency Checkerboard) */
