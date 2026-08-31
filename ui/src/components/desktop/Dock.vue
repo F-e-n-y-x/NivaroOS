@@ -49,7 +49,8 @@
 				<img v-else-if="win.component === 'FilesApp' || win.component === 'FolderWindow'" :src="getBuiltinIcon('Files')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app/default.svg')" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
@@ -312,7 +313,21 @@ export default {
 				const win = target.data
 				title = win.title
 				status = win.minimized ? this.$t('Minimized') : this.$t('Active')
-				icon = this.isViewerWindow(win) ? this.viewerIconUrl : (win.component === 'FilesApp' ? this.getBuiltinIcon('Files') : null)
+				if (this.isViewerWindow(win)) {
+					icon = this.viewerIconUrl
+				} else if (win.component === 'FilesApp' || win.component === 'FolderWindow') {
+					icon = this.getBuiltinIcon('Files')
+				} else if (win.component === 'AppStoreApp') {
+					icon = this.getBuiltinIcon('App Store')
+				} else if (win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow') {
+					icon = this.getBuiltinIcon('Terminal')
+				} else if (win.component === 'SettingsApp') {
+					icon = this.getBuiltinIcon('Settings')
+				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
+					icon = this.vmConsoleIconUrl
+				} else if (win.component === 'LegacyAppEditPanel' && win.props && win.props.item) {
+					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app/default.svg')
+				}
 			}
 
 			this.ctxMenu = {

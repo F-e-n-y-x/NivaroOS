@@ -35,7 +35,7 @@ export default {
 	flex-shrink: 0;
 	width: 13.5rem;
 	padding: 1.25rem 0.75rem;
-	background: #fafafa;
+	background: #ffffff;
 	border-right: 1px solid rgba(0, 0, 0, 0.06);
 	display: flex;
 	flex-direction: column;
@@ -75,7 +75,7 @@ export default {
 	gap: 0.75rem;
 	border: none;
 	background: transparent;
-	color: rgba(44, 62, 80, 0.75);
+	color: #475569;
 	padding: 0.6rem 0.85rem;
 	font-size: 0.85rem;
 	font-weight: 500;
@@ -86,24 +86,23 @@ export default {
 	transition: background 0.12s ease, color 0.12s ease;
 
 	.icon {
-		color: rgba(44, 62, 80, 0.5);
+		color: #94a3b8;
 		transition: color 0.12s ease;
 	}
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.04);
-		color: #2c3e50;
+		background: #f8fafc;
+		color: #0f172a;
 
 		.icon {
-			color: #2c3e50;
+			color: #0f172a;
 		}
 	}
 
 	&.active {
-		background: #ffffff;
-		color: #2c3e50;
+		background: #f1f5f9;
+		color: #0f172a;
 		font-weight: 600;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 
 		.icon {
 			color: #2563eb;
