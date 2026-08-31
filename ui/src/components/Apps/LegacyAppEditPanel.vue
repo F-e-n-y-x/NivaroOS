@@ -47,14 +47,39 @@
 				</div>
 
 				<div v-if="showUrlField" class="field-row mt-2">
-					<label class="field-lbl">{{ $t('Web UI URL') }}</label>
+					<div class="is-flex is-align-items-center is-justify-content-between mb-1">
+						<label class="field-lbl mb-0">{{ $t('Web UI URL') }}</label>
+						<a v-if="url" :href="url" target="_blank" class="test-url-link">
+							<i class="mdi mdi-open-in-new mr-1"></i>{{ $t('Test URL') }}
+						</a>
+					</div>
 					<b-input
 						v-model="url"
-						:placeholder="$t('http://localhost:8080 or /app-path')"
+						:placeholder="urlPlaceholder"
 						size="is-small"
 						icon="link-variant"
 						expanded
 					></b-input>
+
+					<!-- URL Suggestions from Docker Container / Host -->
+					<div v-if="urlSuggestions.length" class="url-suggestions-wrap mt-1">
+						<span class="sugg-hint">
+							<i class="mdi mdi-lightbulb-on-outline mr-1"></i>{{ $t('Detected:') }}
+						</span>
+						<div class="sugg-pills">
+							<button
+								v-for="sugg in urlSuggestions"
+								:key="sugg"
+								type="button"
+								class="sugg-pill"
+								:class="{ 'is-active': url === sugg }"
+								:title="$t('Click to apply URL')"
+								@click="url = sugg"
+							>
+								{{ sugg }}
+							</button>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -383,6 +408,7 @@ export default {
 		return {
 			name: '',
 			url: '',
+			urlSuggestions: [],
 			icon: '',
 			iconRaw: '',
 			iconZoom: 1,
@@ -411,6 +437,12 @@ export default {
 	computed: {
 		showUrlField() {
 			return this.item.app_type === 'container' || this.item.app_type === 'LinkApp'
+		},
+		currentHost() {
+			return window.location.hostname || 'localhost'
+		},
+		urlPlaceholder() {
+			return `http://${this.currentHost}:8080`
 		},
 		originalName() {
 			return (this.item.title && ice_i18n({ ...this.item.title, custom: undefined })) || this.item.name
@@ -474,6 +506,7 @@ export default {
 			this.inputUrl = this.iconRaw
 		}
 		this.fetchStoreIcons()
+		this.fetchContainerSuggestions()
 	},
 	beforeDestroy() {
 		this.stopDrag()
@@ -482,6 +515,73 @@ export default {
 		isCurrentIcon(src) {
 			return (this.iconRaw || this.icon) === src
 		},
+		async fetchContainerSuggestions() {
+			const suggestions = new Set()
+			const host = window.location.hostname || 'localhost'
+
+			// 1. Direct item properties
+			if (this.item.port) {
+				suggestions.add(`http://${host}:${this.item.port}`)
+			}
+			if (this.item.port_map) {
+				suggestions.add(`http://${host}:${this.item.port_map}`)
+			}
+
+			// 2. Ports array on item
+			if (Array.isArray(this.item.ports)) {
+				this.item.ports.forEach(p => {
+					if (typeof p === 'string') {
+						const match = p.match(/^(\d+):/)
+						if (match) suggestions.add(`http://${host}:${match[1]}`)
+					} else if (p && p.host) {
+						suggestions.add(`http://${host}:${p.host}`)
+					} else if (p && p.published) {
+						suggestions.add(`http://${host}:${p.published}`)
+					}
+				})
+			}
+
+			// 3. Query Compose App Details if available
+			if (this.$openAPI?.appManagement?.compose?.myComposeApp && this.item.name) {
+				try {
+					const res = await this.$openAPI.appManagement.compose.myComposeApp(this.item.name)
+					const data = res.data?.data
+					if (data) {
+						if (data.store_info?.port_map) {
+							const scheme = data.store_info.scheme || 'http'
+							const index = data.store_info.index || ''
+							suggestions.add(`${scheme}://${host}:${data.store_info.port_map}${index}`)
+						}
+						const services = data.compose?.services || {}
+						Object.values(services).forEach(svc => {
+							if (Array.isArray(svc.ports)) {
+								svc.ports.forEach(p => {
+									if (typeof p === 'string') {
+										const match = p.match(/^(\d+):/)
+										if (match) suggestions.add(`http://${host}:${match[1]}`)
+									} else if (typeof p === 'number') {
+										suggestions.add(`http://${host}:${p}`)
+									} else if (p && p.published) {
+										suggestions.add(`http://${host}:${p.published}`)
+									}
+								})
+							}
+						})
+					}
+				} catch (e) {
+					// Fallback
+				}
+			}
+
+			// 4. Default common ports if none found for container
+			if (!suggestions.size && this.showUrlField) {
+				suggestions.add(`http://${host}`)
+				suggestions.add(`http://${host}:8080`)
+			}
+
+			this.urlSuggestions = Array.from(suggestions).filter(Boolean)
+		},
+
 		async fetchStoreIcons() {
 			this.loadingStoreIcons = true
 			try {
@@ -848,6 +948,67 @@ export default {
 		&:hover {
 			color: #475569;
 		}
+	}
+}
+
+.url-suggestions-wrap {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.sugg-hint {
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: #64748b;
+	display: inline-flex;
+	align-items: center;
+
+	i {
+		color: #eab308;
+	}
+}
+
+.sugg-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+}
+
+.sugg-pill {
+	border: 1px solid #cbd5e1;
+	background: #f8fafc;
+	border-radius: 4px;
+	padding: 0.12rem 0.4rem;
+	font-size: 0.65rem;
+	font-family: monospace;
+	font-weight: 600;
+	color: #2563eb;
+	cursor: pointer;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: #eff6ff;
+		border-color: #2563eb;
+	}
+
+	&.is-active {
+		background: #2563eb;
+		color: #ffffff;
+		border-color: #2563eb;
+	}
+}
+
+.test-url-link {
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: #2563eb;
+	display: inline-flex;
+	align-items: center;
+
+	&:hover {
+		text-decoration: underline;
 	}
 }
 
