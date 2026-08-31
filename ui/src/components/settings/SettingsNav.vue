@@ -35,7 +35,7 @@ export default {
 	flex-shrink: 0;
 	width: 13.5rem;
 	padding: 1.25rem 0.75rem;
-	background: rgba(0, 0, 0, 0.015);
+	background: #fafafa;
 	border-right: 1px solid rgba(0, 0, 0, 0.06);
 	display: flex;
 	flex-direction: column;

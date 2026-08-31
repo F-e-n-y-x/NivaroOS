@@ -59,15 +59,16 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.65rem;
-	background: #fff;
-	border-radius: 14px;
-	border: 1px solid rgba(0, 0, 0, 0.06);
-	padding: 0.75rem 1rem;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	background: #f8fafc;
+	border-radius: 12px;
+	border: 1px solid #e2e8f0;
+	padding: 0.65rem 1rem;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 
 	&.is-focused {
-		border-color: hsla(208, 100%, 50%, 0.4);
-		box-shadow: 0 0 0 3px hsla(208, 100%, 50%, 0.12);
+		border-color: #2563eb;
+		background: #ffffff;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 	}
 }
 

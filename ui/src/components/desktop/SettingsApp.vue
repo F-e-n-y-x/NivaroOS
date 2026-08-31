@@ -98,7 +98,7 @@ export default {
 .settings-app {
 	display: flex;
 	height: 100%;
-	background: #F7F7F7;
+	background: #ffffff;
 	color: #2c3e50;
 	font-family: $family-sans-serif;
 }
@@ -108,13 +108,14 @@ export default {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	background: #F7F7F7;
+	background: #ffffff;
 }
 
 .settings-content {
 	flex: 1;
 	overflow-y: auto;
 	padding: 1.5rem 2.25rem 3rem;
+	background: #ffffff;
 
 	&.is-narrow {
 		padding: 1rem 1rem 2rem;
