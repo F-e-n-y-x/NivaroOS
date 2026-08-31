@@ -261,20 +261,28 @@ start_core_services() {
 }
 
 print_summary() {
-	echo ""
-	echo "NivaroOS install complete."
-	echo ""
-	echo "Services:"
+	local lines=()
+	lines+=("NivaroOS installed successfully!")
+	lines+=("")
 	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
-		systemctl is-active --quiet "$unit" && echo "  [running] $unit" || echo "  [NOT running] $unit"
+		if systemctl is-active --quiet "$unit"; then
+			lines+=("✓ $unit")
+		else
+			lines+=("✗ $unit (not running)")
+		fi
 	done
 	if [ "$WITH_VM" = "yes" ]; then
-		systemctl is-active --quiet recasa-vm-sidecar.service && echo "  [running] recasa-vm-sidecar.service" || echo "  [NOT running] recasa-vm-sidecar.service"
+		if systemctl is-active --quiet recasa-vm-sidecar.service; then
+			lines+=("✓ recasa-vm-sidecar.service")
+		else
+			lines+=("✗ recasa-vm-sidecar.service (not running)")
+		fi
 	else
-		echo "  VM Manager was not installed. Run 'recasa-cli vm enable' to add it later."
+		lines+=("○ VM Manager not installed - run 'recasa-cli vm enable' to add it later")
 	fi
-	echo ""
-	echo "Open http://$(hostname -I | awk '{print $1}')/ in a browser to finish setup."
+	lines+=("")
+	lines+=("Open http://$(hostname -I | awk '{print $1}')/ to finish setup.")
+	gum style --border double --padding "1 2" --border-foreground 212 "${lines[@]}"
 }
 
 main() {
