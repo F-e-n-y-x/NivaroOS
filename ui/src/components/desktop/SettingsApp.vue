@@ -29,12 +29,12 @@ import UpdatesSection, { ROWS as UPDATES_ROWS } from '@/components/settings/sect
 import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
-	{ id: 'system', label: 'System', icon: 'system-outline', rows: SYSTEM_ROWS },
-	{ id: 'updates', label: 'Updates', icon: 'update', pack: 'mdi', rows: UPDATES_ROWS },
-	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', rows: NETWORK_ROWS },
-	{ id: 'storage', label: 'Storage', icon: 'storage-other', rows: STORAGE_ROWS },
-	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', rows: APPEARANCE_ROWS },
-	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', rows: USERS_ROWS }
+	{ id: 'system', label: 'System', icon: 'system-outline', pack: 'casa', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.12)', rows: SYSTEM_ROWS },
+	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: APPEARANCE_ROWS },
+	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
+	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
+	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', pack: 'casa', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)', rows: USERS_ROWS },
+	{ id: 'updates', label: 'Updates', icon: 'update', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
 ]
 
 export default {
@@ -98,8 +98,8 @@ export default {
 .settings-app {
 	display: flex;
 	height: 100%;
-	background: #f7f7f7;
-	color: #2c3e50;
+	background: #f8fafc;
+	color: #0f172a;
 	font-family: $family-sans-serif;
 }
 
@@ -108,12 +108,13 @@ export default {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
+	background: #f8fafc;
 }
 
 .settings-content {
 	flex: 1;
-	overflow: auto;
-	padding: 1.75rem 2rem 2.5rem;
+	overflow-y: auto;
+	padding: 1.5rem 2.25rem 3rem;
 
 	&.is-narrow {
 		padding: 1rem 1rem 2rem;

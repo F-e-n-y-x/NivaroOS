@@ -41,9 +41,10 @@
 // on the page's gray background - rows inside are separated by a divider,
 // not by gaps, so a group reads as one unit (ZimaOS-style grouping).
 .setting-card {
-	background: #fff;
+	background: #ffffff;
 	border-radius: 14px;
-	border: 1px solid rgba(0, 0, 0, 0.06);
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
 	margin-bottom: 1.25rem;
 	overflow: hidden;
 
@@ -53,12 +54,12 @@
 }
 
 .setting-card-title {
-	font-size: 0.7rem;
+	font-size: 0.725rem;
 	font-weight: 700;
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	color: hsla(208, 16%, 42%, 1);
-	padding: 0.9rem 1.25rem 0.4rem;
+	letter-spacing: 0.04em;
+	color: #64748b;
+	padding: 1rem 1.25rem 0.45rem;
 }
 
 .settings-tabs {
@@ -81,9 +82,14 @@
 .setting-row {
 	display: flex;
 	align-items: center;
-	padding: 1rem 1.25rem;
-	min-height: 2.5rem;
+	padding: 0.95rem 1.25rem;
+	min-height: 2.75rem;
 	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	transition: background 0.12s ease;
+
+	&:hover {
+		background: rgba(0, 0, 0, 0.015);
+	}
 
 	&:last-child {
 		border-bottom: none;
@@ -91,8 +97,8 @@
 
 	.row-icon {
 		flex-shrink: 0;
-		margin-right: 0.75rem;
-		color: hsla(208, 16%, 42%, 1);
+		margin-right: 0.85rem;
+		color: #64748b;
 	}
 
 	.row-label {
@@ -100,11 +106,48 @@
 		font-size: 0.875rem;
 	}
 
+	.setting-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #0f172a;
+	}
+
+	.setting-desc {
+		font-size: 0.75rem;
+		color: #64748b;
+		margin-top: 0.1rem;
+		line-height: 1.3;
+	}
+
 	.row-control {
 		display: flex;
 		align-items: center;
 		flex-shrink: 0;
 	}
+}
+
+.datetime-preview-pill {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.3rem 0.85rem;
+	background: rgba(37, 99, 235, 0.08);
+	color: #2563eb;
+	border-radius: 9999px;
+	font-size: 0.825rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+.port-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.2rem 0.6rem;
+	background: rgba(0, 0, 0, 0.05);
+	color: #0f172a;
+	border-radius: 6px;
+	font-family: $family-monospace;
+	font-size: 0.825rem;
+	font-weight: 600;
 }
 
 // A .setting-row that lives directly in a card (no icon column) gets

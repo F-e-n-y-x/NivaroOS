@@ -61,6 +61,7 @@ export default {
 		this.getConfig()
 		this.getWallpaperConfig()
 		this.getAppearanceConfig()
+		this.getDateTimeConfig()
 	},
 	mounted() {
 		window.addEventListener('resize', this.onResize)
@@ -152,6 +153,18 @@ export default {
 						document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`)
 						localStorage.setItem('uiBackdropBlur', blur)
 					}
+				}
+			}).catch(() => {})
+		},
+
+		getDateTimeConfig() {
+			this.$api.users.getCustomStorage('datetime_format').then(res => {
+				if (res.data && res.data.success === 200 && res.data.data) {
+					const { timeFormat, showSeconds, dateFormatStyle, customDateTimeFormat } = res.data.data
+					if (timeFormat) this.$store.commit('SET_TIME_FORMAT', timeFormat)
+					if (showSeconds !== undefined) this.$store.commit('SET_SHOW_SECONDS', showSeconds)
+					if (dateFormatStyle) this.$store.commit('SET_DATE_FORMAT_STYLE', dateFormatStyle)
+					if (customDateTimeFormat !== undefined) this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', customDateTimeFormat)
 				}
 			}).catch(() => {})
 		},

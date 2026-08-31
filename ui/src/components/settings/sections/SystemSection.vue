@@ -6,17 +6,61 @@
 		<div class="setting-card">
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="language-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Language') }}</div>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Language') }}</div>
+					<div class="setting-desc">{{ $t('Display language for NivaroOS') }}</div>
+				</div>
 				<div class="row-control">
 					<b-select v-model="barData.lang" class="set-select" size="is-small" @input="saveBarData">
-						<option v-for="lang in languages" :key="lang.lang" :value="lang.lang">{{ lang.name }}</option>
+						<option v-for="(lang, key) in languages" :key="key" :value="key">{{ lang.lang_name }}</option>
 					</b-select>
+				</div>
+			</div>
+
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="magnify" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Search Engine') }}</div>
+					<div class="setting-desc">{{ $t('Default web search engine for search bar') }}</div>
+				</div>
+				<div class="row-control">
+					<b-select v-model="barData.search_engine" class="set-select" size="is-small" @input="saveBarData">
+						<option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
+						<option value="https://www.google.com/search?q=">Google</option>
+						<option value="https://www.bing.com/search?q=">Bing</option>
+						<option value="https://www.baidu.com/s?wd=">Baidu</option>
+					</b-select>
+				</div>
+			</div>
+
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="bullhorn-outline" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('App Store Recommendations') }}</div>
+					<div class="setting-desc">{{ $t('Show curated popular apps and highlights') }}</div>
+				</div>
+				<div class="row-control">
+					<b-switch v-model="barData.recommend_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
+				</div>
+			</div>
+
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="rss" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('News & Updates Feed') }}</div>
+					<div class="setting-desc">{{ $t('Receive announcements on desktop') }}</div>
+				</div>
+				<div class="row-control">
+					<b-switch v-model="barData.rss_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
 				</div>
 			</div>
 
 			<div v-if="hasNotImportedApps" class="setting-row">
 				<b-icon class="row-icon" icon="docker-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Show other Docker container app(s)') }}</div>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Show other Docker container app(s)') }}</div>
+					<div class="setting-desc">{{ $t('Display unmanaged containers on the home grid') }}</div>
+				</div>
 				<div class="row-control">
 					<b-switch v-model="barData.existing_apps_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
 				</div>
@@ -24,10 +68,13 @@
 
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="port-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('WebUI Port') }}</div>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('WebUI Port') }}</div>
+					<div class="setting-desc">{{ $t('HTTP port used to access NivaroOS') }}</div>
+				</div>
 				<div class="row-control">
 					<template v-if="!editingPort">
-						<span class="mr-2">{{ port }}</span>
+						<span class="port-badge mr-2">{{ port }}</span>
 						<b-button rounded size="is-small" @click="startEditPort">{{ $t('Change') }}</b-button>
 					</template>
 					<template v-else>
@@ -43,11 +90,18 @@
 			<p v-if="portError" class="error-note">{{ portError }}</p>
 
 			<div class="setting-row">
-				<b-icon class="row-icon has-text-red" icon="restart-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label has-text-red">{{ $t('Restart or Shutdown') }}</div>
+				<b-icon class="row-icon has-text-danger" icon="restart-outline" pack="casa" size="is-20"></b-icon>
+				<div class="row-label has-text-danger">
+					<div class="setting-title">{{ $t('Power Management') }}</div>
+					<div class="setting-desc">{{ $t('Reboot or gracefully power off the host system') }}</div>
+				</div>
 				<div class="row-control">
-					<b-button class="mr-2" rounded size="is-small" @click="confirmPower('Restart', '#window-settings')">{{ $t('Restart') }}</b-button>
-					<b-button rounded size="is-small" type="is-danger" @click="confirmPower('Shutdown', '#window-settings')">{{ $t('Shutdown') }}</b-button>
+					<b-button class="mr-2" rounded size="is-small" @click="confirmPower('Restart', '#window-settings')">
+						<i class="mdi mdi-restart mr-1"></i>{{ $t('Restart') }}
+					</b-button>
+					<b-button rounded size="is-small" type="is-danger" @click="confirmPower('Shutdown', '#window-settings')">
+						<i class="mdi mdi-power mr-1"></i>{{ $t('Shutdown') }}
+					</b-button>
 				</div>
 			</div>
 		</div>
@@ -55,16 +109,25 @@
 		<h3 class="setting-card-title">{{ $t('Date & Time') }}</h3>
 		<div class="setting-card">
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="time-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Preview') }}</div>
+				<b-icon class="row-icon" icon="clock-outline" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Live Preview') }}</div>
+					<div class="setting-desc">{{ $t('Appearance on top right taskbar pill') }}</div>
+				</div>
 				<div class="row-control">
-					<span class="datetime-preview">{{ previewText }}</span>
+					<span class="datetime-preview-pill">
+						<i class="mdi mdi-clock-check-outline mr-1"></i>
+						{{ previewText }}
+					</span>
 				</div>
 			</div>
 
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="time-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Time format') }}</div>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Time format') }}</div>
+					<div class="setting-desc">{{ $t('Choose between 12-hour AM/PM and 24-hour clock') }}</div>
+				</div>
 				<div class="row-control">
 					<div class="segmented-control">
 						<button v-for="opt in timeFormatOptions" :key="opt.value" type="button" class="segmented-option"
@@ -76,8 +139,11 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="time-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Show seconds') }}</div>
+				<b-icon class="row-icon" icon="timer-sand" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Show seconds') }}</div>
+					<div class="setting-desc">{{ $t('Display real-time seconds ticking') }}</div>
+				</div>
 				<div class="row-control">
 					<b-switch :value="showSeconds" :disabled="!!customDateTimeFormat" class="is-flex-direction-row-reverse mr-0"
 						type="is-dark" @input="setShowSeconds"></b-switch>
@@ -85,8 +151,11 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="time-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Date format') }}</div>
+				<b-icon class="row-icon" icon="calendar-month-outline" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Date format') }}</div>
+					<div class="setting-desc">{{ $t('Choose date verbosity level') }}</div>
+				</div>
 				<div class="row-control">
 					<div class="segmented-control">
 						<button v-for="opt in dateFormatOptions" :key="opt.value" type="button" class="segmented-option"
@@ -98,8 +167,11 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="control-outline" pack="casa" size="is-20"></b-icon>
-				<div class="row-label">{{ $t('Custom format') }}</div>
+				<b-icon class="row-icon" icon="code-braces" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Custom format pattern') }}</div>
+					<div class="setting-desc">{{ $t('Advanced strftime pattern (overrides presets)') }}</div>
+				</div>
 				<div class="row-control">
 					<b-input v-model="customFormatInput" size="is-small" class="custom-format-input"
 						:placeholder="$t('e.g. %F %H:%M:%S')" @input="setCustomFormat"></b-input>
@@ -138,15 +210,17 @@ import { formatTime, formatDate, formatStrftime, STRFTIME_TOKEN_LIST, STRFTIME_S
 export const ROWS = [
 	{ label: 'Date & Time' },
 	{ label: 'Language' },
-	{ label: 'Show other Docker container app(s)' },
+	{ label: 'Search Engine' },
+	{ label: 'App Store Recommendations' },
+	{ label: 'News & Updates Feed' },
 	{ label: 'WebUI Port' },
 	{ label: 'Restart or Shutdown' },
 	{ label: 'About' }
 ]
 
 const TIME_FORMAT_OPTIONS = [
-	{ value: 'HH:MM', label: '24-hour' },
-	{ value: 'h:MM TT', label: '12-hour' }
+	{ value: 'HH:MM', label: '24-hour (14:30)' },
+	{ value: 'h:MM TT', label: '12-hour (2:30 PM)' }
 ]
 
 const DATE_FORMAT_OPTIONS = [
@@ -157,22 +231,23 @@ const DATE_FORMAT_OPTIONS = [
 
 export default {
 	name: 'system-section',
-	mixins: [mixin, systemPower],
 	components: { AboutPanel },
+	mixins: [mixin, systemPower],
 	data() {
 		return {
 			barData: {
-				lang: this.getLangFromBrowser ? this.getLangFromBrowser() : 'en_us',
-				recommend_switch: true,
+				lang: 'en_us',
 				existing_apps_switch: true,
-				rss_switch: false
+				recommend_switch: true,
+				rss_switch: false,
+				search_engine: 'https://duckduckgo.com/?q='
 			},
-			languages: Object.entries(messages).map(([key, value]) => ({ lang: key, name: value.lang_name })),
 			port: '',
-			editingPort: false,
 			portInput: '',
+			editingPort: false,
 			savingPort: false,
 			portError: '',
+			languages: messages,
 			timeFormatOptions: TIME_FORMAT_OPTIONS,
 			dateFormatOptions: DATE_FORMAT_OPTIONS,
 			customFormatInput: this.$store.state.customDateTimeFormat,
@@ -209,6 +284,7 @@ export default {
 	created() {
 		this.getPort()
 		this.getBarData()
+		this.loadDateTimeSettings()
 		this.previewTimer = setInterval(() => {
 			this.now = new Date()
 		}, 1000)
@@ -217,22 +293,56 @@ export default {
 		clearInterval(this.previewTimer)
 	},
 	methods: {
+		async loadDateTimeSettings() {
+			try {
+				const res = await this.$api.users.getCustomStorage('datetime_format')
+				if (res.data && res.data.success === 200 && res.data.data) {
+					const data = res.data.data
+					if (data.timeFormat) this.$store.commit('SET_TIME_FORMAT', data.timeFormat)
+					if (data.dateFormatStyle) this.$store.commit('SET_DATE_FORMAT_STYLE', data.dateFormatStyle)
+					if (data.showSeconds !== undefined) this.$store.commit('SET_SHOW_SECONDS', data.showSeconds)
+					if (data.customDateTimeFormat !== undefined) {
+						this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', data.customDateTimeFormat)
+						this.customFormatInput = data.customDateTimeFormat
+					}
+				}
+			} catch (e) {
+				// Fallback to existing store
+			}
+		},
+		async persistDateTimeSettings() {
+			const payload = {
+				timeFormat: this.timeFormat,
+				dateFormatStyle: this.dateFormatStyle,
+				showSeconds: this.showSeconds,
+				customDateTimeFormat: this.customDateTimeFormat
+			}
+			try {
+				await this.$api.users.setCustomStorage('datetime_format', payload)
+			} catch (e) {
+				console.error('Failed to save datetime settings', e)
+			}
+		},
 		setTimeFormat(value) {
 			this.$store.commit('SET_TIME_FORMAT', value)
+			this.persistDateTimeSettings()
 		},
 		setShowSeconds(value) {
 			this.$store.commit('SET_SHOW_SECONDS', value)
+			this.persistDateTimeSettings()
 		},
 		setDateFormatStyle(value) {
 			this.$store.commit('SET_DATE_FORMAT_STYLE', value)
+			this.persistDateTimeSettings()
 		},
 		setCustomFormat(value) {
 			this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', value.trim())
+			this.persistDateTimeSettings()
 		},
 		getBarData() {
 			this.$api.users.getCustomStorage('system').then(res => {
 				if (res.data.success === 200 && res.data.data !== '') {
-					this.barData = res.data.data
+					this.barData = Object.assign({}, this.barData, res.data.data)
 				}
 			})
 		},
