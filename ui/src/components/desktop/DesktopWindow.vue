@@ -3,7 +3,7 @@
 	:id="'window-' + win.id"
 	:style="windowStyle"
 	class="desktop-window"
-	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow', 'window-minimized': win.minimized }"
+	:class="{ 'window-dark': isDarkWindow, 'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp'].includes(win.component), 'window-minimized': win.minimized }"
 	@mousedown="focus"
 	@drop.stop
 >
@@ -302,8 +302,9 @@ export default {
 	// listing (icons, thumbnails, text) reads better against a flat
 	// background than through the global blur/alpha settings.
 	&.window-opaque {
-		background: #fff;
-		backdrop-filter: none;
+		background: #ffffff !important;
+		backdrop-filter: none !important;
+		-webkit-backdrop-filter: none !important;
 	}
 
 	// Terminal's content is black by convention (real terminal apps
