@@ -7,6 +7,7 @@
 
 			<div ref="content" class="settings-content" :class="{ 'is-narrow': narrow }">
 				<system-section v-if="activeSection === 'system'"></system-section>
+				<packages-section v-else-if="activeSection === 'packages'"></packages-section>
 				<updates-section v-else-if="activeSection === 'updates'"></updates-section>
 				<network-section v-else-if="activeSection === 'network'"></network-section>
 				<storage-section v-else-if="activeSection === 'storage'"></storage-section>
@@ -26,10 +27,12 @@ import NetworkSection, { ROWS as NETWORK_ROWS } from '@/components/settings/sect
 import StorageSection, { ROWS as STORAGE_ROWS } from '@/components/settings/sections/StorageSection.vue'
 import SystemSection, { ROWS as SYSTEM_ROWS } from '@/components/settings/sections/SystemSection.vue'
 import UpdatesSection, { ROWS as UPDATES_ROWS } from '@/components/settings/sections/UpdatesSection.vue'
+import PackagesSection, { ROWS as PACKAGES_ROWS } from '@/components/settings/sections/PackagesSection.vue'
 import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
 	{ id: 'system', label: 'System', icon: 'system-outline', pack: 'casa', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.12)', rows: SYSTEM_ROWS },
+	{ id: 'packages', label: 'Package Manager', icon: 'package-variant-closed', pack: 'mdi', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)', rows: PACKAGES_ROWS },
 	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: APPEARANCE_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
@@ -47,7 +50,8 @@ export default {
 		NetworkSection,
 		StorageSection,
 		SystemSection,
-		UpdatesSection
+		UpdatesSection,
+		PackagesSection
 	},
 	props: {
 		section: {

@@ -174,5 +174,37 @@ const sys = {
 	getPackageUpgradeStatus() {
 		return api.get(`${PREFIX}/packages/upgrade/status`);
 	},
+
+	// APT Package Management
+	searchAptPackages(query) {
+		return api.get(`${PREFIX}/apt/search?q=${encodeURIComponent(query)}`);
+	},
+	getInstalledAptPackages(query = '') {
+		return api.get(`${PREFIX}/apt/installed${query ? '?q=' + encodeURIComponent(query) : ''}`);
+	},
+	getUpgradableAptPackages() {
+		return api.get(`${PREFIX}/apt/upgradable`);
+	},
+	installAptPackages(packages, reinstall = false) {
+		return api.post(`${PREFIX}/apt/install`, { packages, reinstall });
+	},
+	uninstallAptPackages(packages, purge = false) {
+		return api.post(`${PREFIX}/apt/uninstall`, { packages, purge });
+	},
+	upgradeAptPackages(packages = []) {
+		return api.post(`${PREFIX}/apt/upgrade`, { packages });
+	},
+	updateAptRepositories() {
+		return api.post(`${PREFIX}/apt/update`);
+	},
+	getAptSources() {
+		return api.get(`${PREFIX}/apt/sources`);
+	},
+	addAptSource(source, file = 'custom.list') {
+		return api.post(`${PREFIX}/apt/sources`, { source, file });
+	},
+	deleteAptSource(file, line) {
+		return api.delete(`${PREFIX}/apt/sources`, { data: { file, line } });
+	},
 }
 export default sys;

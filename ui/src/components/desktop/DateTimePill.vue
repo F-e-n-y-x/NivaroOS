@@ -18,6 +18,10 @@
 				<b-icon icon="system-outline" pack="casa" size="is-20"></b-icon>
 				{{ $t('Open Settings') }}
 			</button>
+			<button type="button" class="pill-menu-item" @click="logout">
+				<b-icon icon="logout" pack="mdi" size="is-20"></b-icon>
+				{{ $t('Sign out') }}
+			</button>
 			<div class="pill-menu-sep"></div>
 			<button type="button" class="pill-menu-item" @click="restart">
 				<b-icon icon="restart-outline" pack="casa" size="is-20"></b-icon>
@@ -118,6 +122,11 @@ export default {
 				id: 'settings', title: this.$t('Settings'), component: 'SettingsApp', width: 760, height: 540,
 				props: { section: 'system' }
 			})
+		},
+		logout() {
+			this.menuOpen = false
+			this.$messageBus('account_setting_logout')
+			this.$router.push('/logout')
 		},
 		restart() {
 			this.menuOpen = false
