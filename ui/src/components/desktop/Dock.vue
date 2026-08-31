@@ -43,6 +43,9 @@ import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverride
 import business_DockPins from '@/mixins/app/Business_DockPins'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 
+import viewerIcon from '@/assets/img/app/viewer.png'
+import vmIcon from '@/assets/img/app/vm.png'
+
 const PINNED = [
 	{ id: 'files', label: 'Files', icon: filesIcon },
 	{ id: 'appstore', label: 'App Store', icon: appStoreIcon },
@@ -55,7 +58,7 @@ const PINNED = [
 // its own extra (unpinned) window, see DesktopWindow.vue's COMPONENT_REGISTRY.
 const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer']
 
-// All VM Manager windows share the same /DATA/recasa_icons/vm.png icon in
+// All VM Manager windows share the same VM icon in
 // the taskbar - the console, and the Create/Edit VM windows alike.
 const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
 
@@ -73,16 +76,11 @@ export default {
 			const pinnedIds = this.pinned.map(p => p.id)
 			return this.windows.filter(w => !pinnedIds.includes(w.id))
 		},
-		// A real file on disk (user-placed at /DATA/recasa_icon/viewer.png),
-		// not a bundled frontend asset - served the same way any other file
-		// is (getFileUrl()'s own /v3/file URL shape, from src/mixins/mixin.js).
 		viewerIconUrl() {
-			const path = encodeURIComponent('/DATA/recasa_icons/viewer.png')
-			return `/v3/file?path=${path}&token=${this.$store.state.access_token}`
+			return viewerIcon
 		},
 		vmConsoleIconUrl() {
-			const path = encodeURIComponent('/DATA/recasa_icons/vm.png')
-			return `/v3/file?path=${path}&token=${this.$store.state.access_token}`
+			return vmIcon
 		}
 	},
 	created() {

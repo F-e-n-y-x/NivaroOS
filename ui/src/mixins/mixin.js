@@ -90,24 +90,13 @@ export const mixin = {
 		//
 		getIconFile(item) {
 			const isDir = (has(item, 'is_dir') || has(item, "isFolder")) ? item.is_dir : false;
-			// Real file on disk (user-placed at /DATA/recasa_icons/desktop.svg,
-			// made to match the other bundled filebrowser icons' own style/
-			// sizing - a raster PNG at a fixed pixel size didn't scale cleanly
-			// the way every other icon here, all SVGs, does), same /v3/file
-			// URL shape getFileUrl() itself uses - not a bundled asset like
-			// every other case below, since this one specific folder (created
-			// by the drag-and-drop-to-desktop feature) has a custom icon.
-			if (isDir && item.path === '/DATA/Desktop') {
-				const path = encodeURIComponent('/DATA/recasa_icons/desktop.svg')
-				return `/v3/file?path=${path}&token=${this.$store.state.access_token}`
-			}
-			if (isDir && item.path === '/DATA/VMs') {
-				const path = encodeURIComponent('/DATA/recasa_icons/vm-folder.svg')
-				return `/v3/file?path=${path}&token=${this.$store.state.access_token}`
-			}
 			let icon = "unknown";
 			if (isDir) {
-				if (item.type == "application") {
+				if (item.path === '/DATA/Desktop' || item.name === 'Desktop') {
+					icon = "folder-desktop"
+				} else if (item.path === '/DATA/VMs' || item.name === 'VMs') {
+					icon = "folder-vms"
+				} else if (item.type == "application") {
 					icon = "folder-application"
 				} else if (item.type == "usb") {
 					icon = "folder-usb"
