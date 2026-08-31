@@ -1,10 +1,11 @@
 /*
  * Which apps (built-ins and third-party apps) show up as launcher icons
  * in the bottom dock - a plain list of app names in per-user custom storage.
+ * Default: Files and App Store only.
  */
 const pinsConfig = 'dock_pinned_apps'
 
-export const DEFAULT_PINS = ['Files', 'App Store', 'Terminal', 'VMs', 'Settings']
+export const DEFAULT_PINS = ['Files', 'App Store']
 
 export const SYSTEM_NAME_MAP = {
 	files: 'Files',

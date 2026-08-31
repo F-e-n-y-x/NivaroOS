@@ -438,10 +438,11 @@ export default {
 					this.loadDockItems()
 					this.$EventBus.$emit(events.RELOAD_APP_LIST)
 					this.$buefy.toast.open({
-						message: this.$t('Removed from taskbar'),
-						type: 'is-info',
+						message: `<i class="mdi mdi-pin-off-outline mr-1"></i> ${this.$t('Removed from taskbar')}`,
+						type: 'is-dark',
 						position: 'is-top',
-						duration: 2000
+						duration: 2000,
+						queue: false
 					})
 				})
 			} else if (action === 'close') {
@@ -459,10 +460,11 @@ export default {
 					this.loadDockItems()
 					this.$EventBus.$emit(events.RELOAD_APP_LIST)
 					this.$buefy.toast.open({
-						message: this.$t('Pinned to taskbar'),
-						type: 'is-info',
+						message: `<i class="mdi mdi-pin-outline mr-1"></i> ${this.$t('Pinned to taskbar')}`,
+						type: 'is-dark',
 						position: 'is-top',
-						duration: 2000
+						duration: 2000,
+						queue: false
 					})
 				})
 			} else if (action === 'close') {
@@ -496,10 +498,11 @@ export default {
 				this.loadDockItems()
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
 				this.$buefy.toast.open({
-					message: this.$t('Taskbar reset to default'),
-					type: 'is-success',
+					message: `<i class="mdi mdi-restore mr-1"></i> ${this.$t('Taskbar reset to default')}`,
+					type: 'is-dark',
 					position: 'is-top',
-					duration: 2000
+					duration: 2000,
+					queue: false
 				})
 			})
 		}

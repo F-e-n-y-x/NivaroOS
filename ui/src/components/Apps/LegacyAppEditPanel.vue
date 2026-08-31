@@ -13,29 +13,79 @@
 
 				<b-field :label="$t('Icon')">
 					<div class="icon-field">
-						<div :style="{ borderRadius: iconRadius + '%' }" class="icon-preview" :title="$t('Click to edit')"
-							@click="showIconEditor = true">
-							<img :src="icon || fallbackIcon">
+						<div
+							:style="{ borderRadius: iconRadius + '%' }"
+							class="icon-preview"
+							:title="$t('Click to edit')"
+							@click="showIconEditor = true"
+						>
+							<img :src="icon || fallbackIcon" :alt="name || originalName">
 							<span class="icon-preview-edit-hint">{{ $t('Edit') }}</span>
 						</div>
 
 						<div class="icon-field-controls">
 							<div class="source-toggle">
+								<button :class="{ active: iconTab === 'suggestions' }" type="button" @click="iconTab = 'suggestions'">
+									<i class="mdi mdi-shopping-outline mr-1"></i>
+									{{ $t('App Store') }}
+								</button>
 								<button :class="{ active: iconTab === 'url' }" type="button" @click="iconTab = 'url'">
+									<i class="mdi mdi-link-variant mr-1"></i>
 									{{ $t('URL') }}
 								</button>
 								<button :class="{ active: iconTab === 'upload' }" type="button" @click="iconTab = 'upload'">
+									<i class="mdi mdi-upload-outline mr-1"></i>
 									{{ $t('Upload') }}
 								</button>
 							</div>
 
-							<b-input v-if="iconTab === 'url'" v-model="icon" :loading="isCompressing"
-								:placeholder="$t('Icon URL')" class="mt-2" expanded @blur="compressIconUrl"></b-input>
-							<b-button v-else :loading="isCompressing" class="mt-2" expanded @click="$refs.iconFile.click()">
-								{{ $t('Choose file') }}
-							</b-button>
-							<input ref="iconFile" accept="image/*" style="display: none" type="file"
-								@change="handleIconFile">
+							<!-- 1. App Store Suggestions Tab -->
+							<div v-if="iconTab === 'suggestions'" class="store-suggestions-container mt-2">
+								<b-input
+									v-model="storeSearch"
+									:placeholder="$t('Search App Store icons...')"
+									icon="magnify"
+									size="is-small"
+									class="mb-2"
+								></b-input>
+
+								<div class="store-icons-grid" :class="{ 'is-loading': loadingStoreIcons }">
+									<div
+										v-for="app in filteredStoreApps"
+										:key="app.id || app.title"
+										class="store-icon-card"
+										:class="{ 'is-selected': (iconRaw || icon) === app.icon }"
+										:title="app.title"
+										@click="selectStoreIcon(app)"
+									>
+										<img :src="app.icon" class="store-icon-thumb" :alt="app.title" loading="lazy" />
+										<span class="store-icon-name">{{ app.title }}</span>
+									</div>
+									<div v-if="!filteredStoreApps.length" class="has-text-grey is-size-7 is-flex-grow-1 p-3 has-text-centered">
+										{{ $t('No matching icons found') }}
+									</div>
+								</div>
+							</div>
+
+							<!-- 2. Direct URL Input Tab -->
+							<b-input
+								v-else-if="iconTab === 'url'"
+								v-model="icon"
+								:loading="isCompressing"
+								:placeholder="$t('Icon URL')"
+								class="mt-2"
+								expanded
+								@blur="compressIconUrl"
+							></b-input>
+
+							<!-- 3. Upload File Tab -->
+							<div v-else class="mt-2">
+								<b-button :loading="isCompressing" expanded @click="$refs.iconFile.click()">
+									<i class="mdi mdi-image-outline mr-1"></i>
+									{{ $t('Choose image file') }}
+								</b-button>
+								<input ref="iconFile" accept="image/*" style="display: none" type="file" @change="handleIconFile">
+							</div>
 						</div>
 					</div>
 				</b-field>
@@ -45,12 +95,17 @@
 			<div class="is-flex-grow-1"></div>
 			<div>
 				<b-button :label="$t('Cancel')" rounded @click="$emit('close')" />
-				<b-button :label="$t('Save')" expaned rounded type="is-primary" @click="save" />
+				<b-button :label="$t('Save')" expanded rounded type="is-primary" @click="save" />
 			</div>
 		</footer>
 
-		<b-modal v-model="showIconEditor" :can-cancel="['escape', 'outside']" animation="zoom-in" aria-modal
-				 has-modal-card>
+		<b-modal
+			v-model="showIconEditor"
+			:can-cancel="['escape', 'outside']"
+			animation="zoom-in"
+			aria-modal
+			has-modal-card
+		>
 			<template #default>
 				<icon-editor-modal
 					v-if="icon || iconRaw"
@@ -74,6 +129,30 @@ import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverride
 import events from '@/events/events'
 
 const ICON_MAX_DIM = 256
+
+const POPULAR_STORE_ICONS = [
+	{ title: 'Nextcloud', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/icon.png' },
+	{ title: 'Plex', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/icon.png' },
+	{ title: 'Jellyfin', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.png' },
+	{ title: 'Home Assistant', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/HomeAssistant/icon.png' },
+	{ title: 'AdGuard Home', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/icon.png' },
+	{ title: 'Transmission', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Transmission/icon.png' },
+	{ title: 'qBittorrent', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/icon.png' },
+	{ title: 'Nginx Proxy Manager', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/NginxProxyManager/icon.png' },
+	{ title: 'Portainer', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Portainer/icon.png' },
+	{ title: 'Vaultwarden', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/icon.png' },
+	{ title: 'Pi-hole', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Pi-hole/icon.png' },
+	{ title: 'Tailscale', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Tailscale/icon.png' },
+	{ title: 'Syncthing', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.png' },
+	{ title: 'Photoprism', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/icon.png' },
+	{ title: 'Calibre-web', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Calibre-web/icon.png' },
+	{ title: 'Emby', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/icon.png' },
+	{ title: 'Grafana', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Grafana/icon.png' },
+	{ title: 'Uptime Kuma', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/UptimeKuma/icon.png' },
+	{ title: 'Duplicati', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Duplicati/icon.png' },
+	{ title: 'Paperless-ngx', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Paperless-ngx/icon.png' },
+	{ title: 'Node-RED', icon: 'https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Node-RED/icon.png' }
+]
 
 export default {
 	mixins: [business_LegacyAppOverrides],
@@ -100,7 +179,10 @@ export default {
 			iconOffsetX: 0,
 			iconOffsetY: 0,
 			iconRadius: 0,
-			iconTab: 'url',
+			iconTab: 'suggestions',
+			storeSearch: '',
+			storeApps: [...POPULAR_STORE_ICONS],
+			loadingStoreIcons: false,
 			isCompressing: false,
 			showIconEditor: false,
 			fallbackIcon: require('@/assets/img/app/default.svg')
@@ -112,6 +194,11 @@ export default {
 		},
 		originalName() {
 			return (this.item.title && ice_i18n({ ...this.item.title, custom: undefined })) || this.item.name
+		},
+		filteredStoreApps() {
+			if (!this.storeSearch.trim()) return this.storeApps
+			const q = this.storeSearch.trim().toLowerCase()
+			return this.storeApps.filter(app => app.title.toLowerCase().includes(q))
 		}
 	},
 	created() {
@@ -132,8 +219,41 @@ export default {
 			this.iconOffsetY = 0
 			this.iconRadius = this.item.iconRadius || 0
 		}
+		this.fetchStoreIcons()
 	},
 	methods: {
+		async fetchStoreIcons() {
+			this.loadingStoreIcons = true
+			try {
+				const res = await this.$openAPI.appManagement.appStore.composeAppStoreInfoList()
+				const list = res.data?.data?.list || {}
+				const dynamicApps = Object.keys(list).map(id => ({
+					id,
+					title: ice_i18n(list[id].title) || id,
+					icon: list[id].icon
+				})).filter(a => a.icon)
+				if (dynamicApps.length) {
+					// Merge dynamic apps with popular list, avoiding duplicates
+					const map = new Map()
+					POPULAR_STORE_ICONS.forEach(a => map.set(a.title.toLowerCase(), a))
+					dynamicApps.forEach(a => map.set(a.title.toLowerCase(), a))
+					this.storeApps = Array.from(map.values())
+				}
+			} catch (e) {
+				// Keep popular icons fallback
+			} finally {
+				this.loadingStoreIcons = false
+			}
+		},
+
+		selectStoreIcon(app) {
+			this.icon = app.icon
+			this.iconRaw = app.icon
+			this.iconZoom = 1
+			this.iconOffsetX = 0
+			this.iconOffsetY = 0
+		},
+
 		resizeImageToDataUrl(img) {
 			const scale = Math.min(1, ICON_MAX_DIM / Math.max(img.width, img.height))
 			const canvas = document.createElement('canvas')
@@ -257,13 +377,14 @@ export default {
 	height: 5rem;
 	flex-shrink: 0;
 	overflow: hidden;
-	background: #f5f5f5;
-	border: 1px solid #e0e0e0;
+	background: #0f172a;
+	border: 1px solid #cbd5e1;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	transition: all 0.15s ease;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 
 	img {
 		width: 100%;
@@ -275,7 +396,7 @@ export default {
 	.icon-preview-edit-hint {
 		position: absolute;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.55);
+		background: rgba(0, 0, 0, 0.6);
 		color: #fff;
 		font-size: 0.75rem;
 		font-weight: 600;
@@ -301,18 +422,20 @@ export default {
 
 .source-toggle {
 	display: inline-flex;
-	border: 1px solid #e0e0e0;
-	border-radius: 6px;
+	border: 1px solid #cbd5e1;
+	border-radius: 8px;
 	overflow: hidden;
 
 	button {
 		border: none;
-		background: #fafafa;
+		background: #f8fafc;
 		padding: 0.35rem 0.85rem;
 		font-size: 0.8rem;
 		cursor: pointer;
-		color: #666;
+		color: #475569;
 		transition: all 0.15s ease;
+		display: inline-flex;
+		align-items: center;
 
 		&.active {
 			background: #2563eb;
@@ -320,5 +443,65 @@ export default {
 			font-weight: 600;
 		}
 	}
+}
+
+.store-suggestions-container {
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	padding: 0.5rem;
+	background: #f8fafc;
+}
+
+.store-icons-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+	gap: 0.5rem;
+	max-height: 175px;
+	overflow-y: auto;
+	padding: 0.25rem;
+}
+
+.store-icon-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 0.4rem 0.25rem;
+	border-radius: 8px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	text-align: center;
+
+	&:hover {
+		border-color: #2563eb;
+		transform: translateY(-2px);
+		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+	}
+
+	&.is-selected {
+		border-color: #2563eb;
+		background: #eff6ff;
+		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+	}
+}
+
+.store-icon-thumb {
+	width: 36px;
+	height: 36px;
+	border-radius: 8px;
+	object-fit: cover;
+	margin-bottom: 0.25rem;
+}
+
+.store-icon-name {
+	font-size: 0.65rem;
+	font-weight: 500;
+	color: #475569;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	width: 100%;
+	display: block;
 }
 </style>

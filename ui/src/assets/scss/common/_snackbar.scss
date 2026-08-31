@@ -1,5 +1,8 @@
 // Snackbar
 .notices {
+	z-index: 100005 !important;
+	pointer-events: none !important;
+
 	.snackbar {
 		border: 1px solid $grey-300 !important;
 		padding: 0.625rem 1.25rem;
@@ -94,44 +97,58 @@
 			}
 		}
 	}
-}
 
-// Modern Glassmorphic Toast Notifications
-.notices {
-	z-index: 100005 !important;
-
+	// Modern Glassmorphic Toast Notifications
 	.toast {
 		display: inline-flex !important;
 		align-items: center !important;
-		padding: 0.5rem 1.15rem !important;
+		gap: 0.5rem !important;
+		padding: 0.6rem 1.35rem !important;
 		border-radius: 9999px !important;
-		font-size: 0.8125rem !important;
-		font-weight: 500 !important;
-		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
-		backdrop-filter: blur(20px) saturate(180%) !important;
-		-webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+		font-size: 0.875rem !important;
+		font-weight: 600 !important;
+		color: #ffffff !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+		backdrop-filter: blur(24px) saturate(180%) !important;
+		-webkit-backdrop-filter: blur(24px) saturate(180%) !important;
 		opacity: 1 !important;
 		pointer-events: auto !important;
 		transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 
+		*,
+		.text,
+		p,
+		span {
+			color: #ffffff !important;
+			font-size: 0.875rem !important;
+			font-weight: 600 !important;
+		}
+
+		i,
+		.mdi {
+			font-size: 1.15rem !important;
+			color: #ffffff !important;
+			line-height: 1 !important;
+		}
+
 		&.is-info,
 		&.is-dark,
 		&.is-primary {
-			background: rgba(15, 23, 42, 0.9) !important;
+			background: rgba(15, 23, 42, 0.95) !important;
 			color: #ffffff !important;
-			border: 1px solid rgba(255, 255, 255, 0.2) !important;
+			border: 1px solid rgba(255, 255, 255, 0.25) !important;
 		}
 
 		&.is-success {
-			background: rgba(16, 105, 52, 0.92) !important;
+			background: rgba(16, 105, 52, 0.95) !important;
 			color: #ffffff !important;
-			border: 1px solid rgba(255, 255, 255, 0.25) !important;
+			border: 1px solid rgba(255, 255, 255, 0.3) !important;
 		}
 
 		&.is-danger {
-			background: rgba(185, 28, 28, 0.92) !important;
+			background: rgba(185, 28, 28, 0.95) !important;
 			color: #ffffff !important;
-			border: 1px solid rgba(255, 255, 255, 0.25) !important;
+			border: 1px solid rgba(255, 255, 255, 0.3) !important;
 		}
 	}
 }

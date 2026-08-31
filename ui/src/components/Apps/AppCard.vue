@@ -333,10 +333,13 @@ export default {
 			this.setDockPinned(name, next).then(() => {
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
 				this.$buefy.toast.open({
-					message: next ? this.$t('Pinned to taskbar') : this.$t('Removed from taskbar'),
-					type: 'is-info',
+					message: next
+						? `<i class="mdi mdi-pin-outline mr-1"></i> ${this.$t('Pinned to taskbar')}`
+						: `<i class="mdi mdi-pin-off-outline mr-1"></i> ${this.$t('Removed from taskbar')}`,
+					type: 'is-dark',
 					position: 'is-top',
-					duration: 2000
+					duration: 2000,
+					queue: false
 				})
 			})
 			if (this.$refs.dro) this.$refs.dro.isActive = false
