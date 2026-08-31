@@ -244,24 +244,6 @@ cd services/common && go test ./...
 
 ## 👥 Authors & Contributors
 
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/F-e-n-y-x">
-        <img src="https://github.com/F-e-n-y-x.png?size=120" width="100px;" alt="Ayush" style="border-radius: 50%;" /><br />
-        <sub><b>Ayush</b></sub>
-      </a>
-      <br />
-      <sub><a href="mailto:ayushsoni2911@gmail.com">ayushsoni2911@gmail.com</a></sub>
-      <br />
-      <a href="https://github.com/F-e-n-y-x/NivaroOS/commits?author=Ayush" title="Code">💻</a>
-      <a href="https://github.com/F-e-n-y-x/NivaroOS/commits?author=Ayush" title="Design">🎨</a>
-      <a href="https://github.com/F-e-n-y-x/NivaroOS/commits?author=Ayush" title="Architecture">🏗️</a>
-      <a href="https://github.com/F-e-n-y-x/NivaroOS/commits?author=Ayush" title="Maintenance">🚧</a>
-    </td>
-  </tr>
-</table>
-
 - **Ayush** ([@F-e-n-y-x](https://github.com/F-e-n-y-x) · [ayushsoni2911@gmail.com](mailto:ayushsoni2911@gmail.com)) — Lead Developer & Project Creator
 - **NivaroOS Community Contributors**
 
