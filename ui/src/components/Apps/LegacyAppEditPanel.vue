@@ -583,16 +583,16 @@ export default {
 		async fetchContainerSuggestions() {
 			const suggestions = new Set()
 			const host = window.location.hostname || 'localhost'
+			const identifiers = [
+				this.item.name,
+				this.originalName,
+				this.item.id,
+				this.item.title?.en_us
+			].filter(Boolean)
 
 			// 1. Direct item properties
-			if (this.item.port) {
-				suggestions.add(`http://${host}:${this.item.port}`)
-			}
-			if (this.item.port_map) {
-				suggestions.add(`http://${host}:${this.item.port_map}`)
-			}
-
-			// 2. Ports array on item
+			if (this.item.port) suggestions.add(`http://${host}:${this.item.port}`)
+			if (this.item.port_map) suggestions.add(`http://${host}:${this.item.port_map}`)
 			if (Array.isArray(this.item.ports)) {
 				this.item.ports.forEach(p => {
 					if (typeof p === 'string') {
@@ -606,45 +606,85 @@ export default {
 				})
 			}
 
-			// 3. Query Compose App Details if available
-			if (this.$openAPI?.appManagement?.compose?.myComposeApp && this.item.name) {
-				try {
-					const res = await this.$openAPI.appManagement.compose.myComposeApp(this.item.name)
-					const data = res.data?.data
-					if (data) {
-						if (data.store_info?.port_map) {
-							const scheme = data.store_info.scheme || 'http'
-							const index = data.store_info.index || ''
-							suggestions.add(`${scheme}://${host}:${data.store_info.port_map}${index}`)
-						}
-						const services = data.compose?.services || {}
-						Object.values(services).forEach(svc => {
-							if (Array.isArray(svc.ports)) {
-								svc.ports.forEach(p => {
-									if (typeof p === 'string') {
-										const match = p.match(/^(\d+):/)
-										if (match) suggestions.add(`http://${host}:${match[1]}`)
-									} else if (typeof p === 'number') {
-										suggestions.add(`http://${host}:${p}`)
-									} else if (p && p.published) {
-										suggestions.add(`http://${host}:${p.published}`)
+			// 2. Query Docker Container API ($api.container.getInfo)
+			if (this.$api?.container?.getInfo) {
+				for (const id of identifiers) {
+					try {
+						const res = await this.$api.container.getInfo(id)
+						const data = res.data?.data
+						if (data) {
+							const proto = data.protocol || (data.port_map === '443' || data.port_map === '9443' ? 'https' : 'http')
+							const idx = data.index || ''
+							const hostIp = data.host || host
+
+							if (data.port_map) {
+								suggestions.add(`${proto}://${hostIp}:${data.port_map}${idx}`)
+							}
+
+							if (Array.isArray(data.ports)) {
+								data.ports.forEach(p => {
+									if (p && p.host) {
+										const pProto = (p.host === '443' || p.host === '8443' || p.host === '9443' || p.protocol === 'https') ? 'https' : 'http'
+										suggestions.add(`${pProto}://${hostIp}:${p.host}${idx}`)
 									}
 								})
 							}
-						})
+							break
+						}
+					} catch (e) {
+						// Continue checking
 					}
-				} catch (e) {
-					// Fallback
 				}
 			}
 
-			// 4. Default common ports if none found for container
+			// 3. Query Compose App Details ($openAPI.appManagement.compose.myComposeApp)
+			if (this.$openAPI?.appManagement?.compose?.myComposeApp) {
+				for (const id of identifiers) {
+					try {
+						const res = await this.$openAPI.appManagement.compose.myComposeApp(id)
+						const data = res.data?.data
+						if (data) {
+							if (data.store_info?.port_map) {
+								const scheme = data.store_info.scheme || 'http'
+								const index = data.store_info.index || ''
+								suggestions.add(`${scheme}://${host}:${data.store_info.port_map}${index}`)
+							}
+							const services = data.compose?.services || {}
+							Object.values(services).forEach(svc => {
+								if (Array.isArray(svc.ports)) {
+									svc.ports.forEach(p => {
+										if (typeof p === 'string') {
+											const match = p.match(/^(\d+):/)
+											if (match) suggestions.add(`http://${host}:${match[1]}`)
+										} else if (typeof p === 'number') {
+											suggestions.add(`http://${host}:${p}`)
+										} else if (p && p.published) {
+											suggestions.add(`http://${host}:${p.published}`)
+										}
+									})
+								}
+							})
+							break
+						}
+					} catch (e) {
+						// Fallback
+					}
+				}
+			}
+
+			// 4. Default fallback if none found
 			if (!suggestions.size && this.showUrlField) {
 				suggestions.add(`http://${host}`)
 				suggestions.add(`http://${host}:8080`)
 			}
 
-			this.urlSuggestions = Array.from(suggestions).filter(Boolean)
+			const list = Array.from(suggestions).filter(Boolean)
+			this.urlSuggestions = list
+
+			// Auto prefill if URL is empty and a suggestion was found
+			if (!this.url && list.length > 0) {
+				this.url = list[0]
+			}
 		},
 
 		async fetchStoreIcons() {
