@@ -1,43 +1,43 @@
 <template>
-	<div class="app-studio-window">
-		<div class="app-studio-body">
-			<!-- Left Column: Live Icon Editor & Preview Studio -->
-			<div class="studio-sidebar">
-				<div class="studio-sidebar-header">
-					<span class="studio-section-title">{{ $t('Icon & Preview') }}</span>
-					<button class="btn-text-sm" type="button" @click="resetTransforms">
+	<div class="app-studio-root">
+		<div class="studio-content-layout">
+			<!-- LEFT COLUMN: Live Preview & Canvas Studio -->
+			<div class="studio-left-pane">
+				<div class="pane-section-header">
+					<span class="pane-title">{{ $t('Icon Preview') }}</span>
+					<button class="btn-link" type="button" @click="resetTransforms">
 						<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset') }}
 					</button>
 				</div>
 
-				<!-- Interactive Pan & Zoom Viewport -->
+				<!-- Interactive Viewport -->
 				<div
 					ref="viewport"
-					class="studio-viewport"
-					:class="{ 'is-draggable': zoom > 1, 'is-dragging': dragging }"
+					class="studio-canvas"
+					:class="{ 'is-draggable': iconZoom > 1, 'is-dragging': dragging }"
 					@mousedown="startDrag"
 					@touchstart="startDrag"
 				>
-					<div class="studio-crop-box" :style="{ borderRadius: iconRadius + '%' }">
+					<div class="studio-crop-layer" :style="{ borderRadius: iconRadius + '%' }">
 						<img
 							ref="previewImg"
 							:src="iconRaw || icon || fallbackIcon"
 							:style="imgTransformStyle"
 							draggable="false"
-							class="studio-icon-img"
+							class="studio-source-img"
 							@load="onImageLoaded"
 						/>
 					</div>
-					<div v-if="zoom > 1" class="drag-hint">
+					<div v-if="iconZoom > 1" class="canvas-drag-badge">
 						<i class="mdi mdi-cursor-move mr-1"></i>{{ $t('Drag to reposition') }}
 					</div>
 				</div>
 
-				<!-- Studio Controls: Zoom & Roundness -->
-				<div class="studio-controls-card">
+				<!-- Zoom & Roundness Controls -->
+				<div class="studio-sliders-box">
 					<!-- Zoom Slider -->
-					<div class="control-row">
-						<div class="control-label">
+					<div class="slider-row">
+						<div class="slider-label">
 							<i class="mdi mdi-magnify-plus-outline"></i>
 							<span>{{ $t('Zoom') }}</span>
 						</div>
@@ -47,16 +47,16 @@
 							min="1"
 							step="0.02"
 							type="range"
-							class="studio-slider"
+							class="range-slider"
 						/>
-						<span class="control-badge">{{ Math.round(iconZoom * 100) }}%</span>
+						<span class="slider-val">{{ Math.round(iconZoom * 100) }}%</span>
 					</div>
 
 					<!-- Roundness Slider -->
-					<div class="control-row">
-						<div class="control-label">
+					<div class="slider-row">
+						<div class="slider-label">
 							<i class="mdi mdi-rounded-corner"></i>
-							<span>{{ $t('Roundness') }}</span>
+							<span>{{ $t('Corners') }}</span>
 						</div>
 						<input
 							v-model.number="iconRadius"
@@ -64,18 +64,18 @@
 							min="0"
 							step="1"
 							type="range"
-							class="studio-slider"
+							class="range-slider"
 						/>
-						<span class="control-badge">{{ iconRadius }}%</span>
+						<span class="slider-val">{{ iconRadius }}%</span>
 					</div>
 
 					<!-- Quick Roundness Presets -->
-					<div class="preset-pills">
+					<div class="preset-buttons-row">
 						<button
 							v-for="p in roundnessPresets"
 							:key="p.value"
 							type="button"
-							class="preset-pill"
+							class="btn-preset"
 							:class="{ active: iconRadius === p.value }"
 							@click="iconRadius = p.value"
 						>
@@ -84,50 +84,57 @@
 					</div>
 				</div>
 
-				<!-- Desktop Miniature Simulation -->
-				<div class="desktop-mini-preview">
-					<div class="mini-card-icon" :style="{ borderRadius: iconRadius + '%' }">
+				<!-- Miniature Desktop Representation -->
+				<div class="mini-desktop-sample">
+					<div class="mini-app-tile" :style="{ borderRadius: iconRadius + '%' }">
 						<img :src="iconRaw || icon || fallbackIcon" :style="imgTransformStyle" draggable="false" />
 					</div>
-					<div class="mini-card-title">{{ displayName }}</div>
+					<div class="mini-app-name">{{ displayName }}</div>
 				</div>
 			</div>
 
-			<!-- Right Column: App Information & Icon Sources -->
-			<div class="studio-main">
-				<!-- 1. App General Info Card -->
-				<div class="studio-card mb-4">
-					<div class="card-title-row">
-						<span class="card-heading">{{ $t('General Details') }}</span>
+			<!-- RIGHT COLUMN: Metadata & Source Selection -->
+			<div class="studio-right-pane">
+				<!-- App Info Details -->
+				<div class="pane-card mb-3">
+					<div class="card-heading-row">
+						<span class="card-title">{{ $t('Application Info') }}</span>
 					</div>
 
-					<b-field :label="$t('Display Name')" class="mb-3">
-						<b-input
-							v-model="name"
-							:placeholder="originalName"
-							icon="pencil-outline"
-							expanded
-						></b-input>
-					</b-field>
-
-					<b-field v-if="showUrlField" :label="$t('Web UI URL')" class="mb-0">
-						<b-input
-							v-model="url"
-							:placeholder="$t('e.g. http://192.168.1.50:8080 or /my-app')"
-							icon="link-variant"
-							expanded
-						></b-input>
-					</b-field>
+					<div class="columns is-mobile is-variable is-2 mb-0">
+						<div class="column" :class="{ 'is-6': showUrlField, 'is-12': !showUrlField }">
+							<b-field :label="$t('Display Title')">
+								<b-input
+									v-model="name"
+									:placeholder="originalName"
+									size="is-small"
+									icon="pencil-outline"
+									expanded
+								></b-input>
+							</b-field>
+						</div>
+						<div v-if="showUrlField" class="column is-6">
+							<b-field :label="$t('Web UI URL')">
+								<b-input
+									v-model="url"
+									:placeholder="$t('http://... or /path')"
+									size="is-small"
+									icon="link-variant"
+									expanded
+								></b-input>
+							</b-field>
+						</div>
+					</div>
 				</div>
 
-				<!-- 2. Icon Selection Card -->
-				<div class="studio-card">
-					<div class="card-title-row">
-						<span class="card-heading">{{ $t('Select Icon') }}</span>
-						<div class="source-nav-tabs">
+				<!-- Icon Source Picker -->
+				<div class="pane-card is-flex-grow-1">
+					<div class="card-heading-row">
+						<span class="card-title">{{ $t('Choose Icon Source') }}</span>
+						<div class="source-segmented-control">
 							<button
 								type="button"
-								class="nav-tab"
+								class="seg-btn"
 								:class="{ active: iconTab === 'store' }"
 								@click="iconTab = 'store'"
 							>
@@ -135,7 +142,7 @@
 							</button>
 							<button
 								type="button"
-								class="nav-tab"
+								class="seg-btn"
 								:class="{ active: iconTab === 'url' }"
 								@click="iconTab = 'url'"
 							>
@@ -143,7 +150,7 @@
 							</button>
 							<button
 								type="button"
-								class="nav-tab"
+								class="seg-btn"
 								:class="{ active: iconTab === 'upload' }"
 								@click="iconTab = 'upload'"
 							>
@@ -151,50 +158,51 @@
 							</button>
 							<button
 								type="button"
-								class="nav-tab"
-								:class="{ active: iconTab === 'palette' }"
-								@click="iconTab = 'palette'"
+								class="seg-btn"
+								:class="{ active: iconTab === 'badges' }"
+								@click="iconTab = 'badges'"
 							>
-								<i class="mdi mdi-palette-outline mr-1"></i>{{ $t('Badges') }}
+								<i class="mdi mdi-palette-outline mr-1"></i>{{ $t('Monogram') }}
 							</button>
 						</div>
 					</div>
 
-					<!-- Tab A: App Store Suggestions Grid -->
-					<div v-if="iconTab === 'store'" class="tab-pane">
+					<!-- Tab 1: App Store Catalog -->
+					<div v-if="iconTab === 'store'" class="tab-content-box">
 						<b-input
 							v-model="storeSearch"
 							:placeholder="$t('Search App Store icons...')"
 							icon="magnify"
 							size="is-small"
-							class="mb-3"
+							class="mb-2"
 							clearable
 						></b-input>
 
-						<div class="store-grid-wrapper" :class="{ 'is-loading': loadingStoreIcons }">
+						<div class="store-icons-scroll-grid" :class="{ 'is-loading': loadingStoreIcons }">
 							<div
 								v-for="app in filteredStoreApps"
 								:key="app.id || app.title"
-								class="store-icon-tile"
-								:class="{ 'is-active': isCurrentIcon(app.icon) }"
+								class="store-app-tile"
+								:class="{ 'is-selected': isCurrentIcon(app.icon) }"
 								:title="app.title"
 								@click="selectStoreIcon(app)"
 							>
-								<img :src="app.icon" class="tile-icon" :alt="app.title" loading="lazy" />
-								<span class="tile-label">{{ app.title }}</span>
+								<img :src="app.icon" class="store-app-icon" :alt="app.title" loading="lazy" />
+								<span class="store-app-title">{{ app.title }}</span>
 							</div>
-							<div v-if="!filteredStoreApps.length" class="empty-state">
-								{{ $t('No matching App Store icons found') }}
+							<div v-if="!filteredStoreApps.length" class="empty-hint">
+								{{ $t('No matching icons found') }}
 							</div>
 						</div>
 					</div>
 
-					<!-- Tab B: Direct Image URL -->
-					<div v-else-if="iconTab === 'url'" class="tab-pane">
-						<b-field :label="$t('Image Address (PNG, SVG, JPG, WebP)')">
+					<!-- Tab 2: URL Input -->
+					<div v-else-if="iconTab === 'url'" class="tab-content-box p-3">
+						<b-field :label="$t('Image URL (PNG, SVG, JPG, WebP)')">
 							<b-input
 								v-model="inputUrl"
-								:placeholder="$t('Paste an image URL here...')"
+								:placeholder="$t('https://example.com/logo.png')"
+								size="is-small"
 								icon="link"
 								expanded
 								@blur="applyCustomUrl"
@@ -205,20 +213,20 @@
 							type="is-primary"
 							outlined
 							size="is-small"
-							:loading="isCompressing"
 							class="mt-2"
+							:loading="isCompressing"
 							@click="applyCustomUrl"
 						>
 							<i class="mdi mdi-check mr-1"></i>{{ $t('Load Image') }}
 						</b-button>
 					</div>
 
-					<!-- Tab C: File Upload -->
-					<div v-else-if="iconTab === 'upload'" class="tab-pane">
-						<div class="upload-dropzone" @click="$refs.iconFile.click()">
-							<i class="mdi mdi-cloud-upload-outline dropzone-icon"></i>
-							<div class="dropzone-text">{{ $t('Click to browse or drop an image') }}</div>
-							<div class="dropzone-sub">PNG, SVG, JPG, WebP (auto-optimized)</div>
+					<!-- Tab 3: Upload Image File -->
+					<div v-else-if="iconTab === 'upload'" class="tab-content-box p-3">
+						<div class="upload-box" @click="$refs.iconFile.click()">
+							<i class="mdi mdi-cloud-upload-outline upload-box-icon"></i>
+							<div class="upload-box-text">{{ $t('Click to browse image file') }}</div>
+							<div class="upload-box-sub">PNG, SVG, JPG, WebP</div>
 						</div>
 						<input
 							ref="iconFile"
@@ -229,40 +237,42 @@
 						/>
 					</div>
 
-					<!-- Tab D: Monogram Badge Generator -->
-					<div v-else-if="iconTab === 'palette'" class="tab-pane">
-						<div class="badge-grid">
+					<!-- Tab 4: Monogram Badge Generator -->
+					<div v-else-if="iconTab === 'badges'" class="tab-content-box p-3">
+						<div class="monogram-grid">
 							<button
 								v-for="(bg, idx) in badgeGradients"
 								:key="idx"
 								type="button"
-								class="badge-tile"
+								class="monogram-tile"
 								:style="{ background: bg }"
 								@click="generateBadgeIcon(bg)"
 							>
 								<span>{{ badgeLetter }}</span>
 							</button>
 						</div>
-						<div class="badge-hint">{{ $t('Generates a clean minimalist letter monogram icon') }}</div>
+						<div class="monogram-hint">
+							{{ $t('Generates a clean gradient monogram icon with the initial letter') }}
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
 
 		<!-- Window Footer -->
-		<footer class="app-studio-footer">
+		<footer class="app-studio-footer-bar">
 			<button
 				v-if="override"
 				type="button"
-				class="btn-reset-overrides"
+				class="btn-reset-danger"
 				@click="resetAllOverrides"
 			>
 				<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset to Defaults') }}
 			</button>
 			<div class="is-flex-grow-1"></div>
-			<div class="is-flex" style="gap: 0.75rem;">
-				<b-button rounded @click="$emit('close')">{{ $t('Cancel') }}</b-button>
-				<b-button type="is-primary" rounded :loading="isSaving" @click="save">
+			<div class="footer-actions">
+				<b-button size="is-small" rounded @click="$emit('close')">{{ $t('Cancel') }}</b-button>
+				<b-button type="is-primary" size="is-small" rounded :loading="isSaving" @click="save">
 					{{ $t('Save Changes') }}
 				</b-button>
 			</div>
@@ -275,7 +285,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
 
-const VIEWPORT_SIZE = 190
+const VIEWPORT_SIZE = 160
 const OUTPUT_SIZE = 256
 
 const POPULAR_STORE_ICONS = [
@@ -347,10 +357,10 @@ export default {
 			dragStart: null,
 			badgeGradients: BADGE_GRADIENTS,
 			roundnessPresets: [
-				{ label: 'Square (0%)', value: 0 },
-				{ label: 'Squircle (18%)', value: 18 },
-				{ label: 'Smooth (30%)', value: 30 },
-				{ label: 'Circle (50%)', value: 50 }
+				{ label: '0%', value: 0 },
+				{ label: '15%', value: 15 },
+				{ label: '25%', value: 25 },
+				{ label: '50%', value: 50 }
 			],
 			fallbackIcon: require('@/assets/img/app/default.svg')
 		}
@@ -433,7 +443,7 @@ export default {
 					this.storeApps = Array.from(map.values())
 				}
 			} catch (e) {
-				// Fallback to popular icons
+				// Keep fallback
 			} finally {
 				this.loadingStoreIcons = false
 			}
@@ -463,7 +473,6 @@ export default {
 			canvas.height = OUTPUT_SIZE
 			const ctx = canvas.getContext('2d')
 
-			// Parse gradient stops or draw
 			const grad = ctx.createLinearGradient(0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
 			if (gradient.includes('#2563eb')) {
 				grad.addColorStop(0, '#2563eb')
@@ -658,26 +667,27 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.app-studio-window {
+.app-studio-root {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
 	background: #f8fafc;
 	color: #0f172a;
 	user-select: none;
+	overflow: hidden;
 }
 
-.app-studio-body {
+.studio-content-layout {
 	flex: 1 1 auto;
 	display: flex;
 	overflow: hidden;
 }
 
-/* Left Column: Live Studio */
-.studio-sidebar {
-	width: 275px;
+/* Left Pane: Preview Studio */
+.studio-left-pane {
+	width: 255px;
 	flex-shrink: 0;
-	padding: 1.25rem;
+	padding: 1rem;
 	background: #ffffff;
 	border-right: 1px solid #e2e8f0;
 	display: flex;
@@ -685,23 +695,25 @@ export default {
 	overflow-y: auto;
 }
 
-.studio-sidebar-header {
+.pane-section-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 0.85rem;
+	margin-bottom: 0.65rem;
 }
 
-.studio-section-title {
-	font-size: 0.875rem;
+.pane-title {
+	font-size: 0.8125rem;
 	font-weight: 700;
 	color: #0f172a;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }
 
-.btn-text-sm {
+.btn-link {
 	border: none;
 	background: transparent;
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: #2563eb;
 	cursor: pointer;
@@ -712,17 +724,17 @@ export default {
 	}
 }
 
-/* Viewport */
-.studio-viewport {
+/* Canvas Viewport */
+.studio-canvas {
 	position: relative;
-	width: 190px;
-	height: 190px;
-	margin: 0 auto 1rem;
+	width: 160px;
+	height: 160px;
+	margin: 0 auto 0.75rem;
 	border-radius: 14px;
 	overflow: hidden;
 	background-color: #0f172a;
 	background-image: repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%);
-	background-size: 16px 16px;
+	background-size: 14px 14px;
 	background-position: 50% 50%;
 	border: 1px solid rgba(15, 23, 42, 0.3);
 	box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.45);
@@ -737,7 +749,7 @@ export default {
 	}
 }
 
-.studio-crop-box {
+.studio-crop-layer {
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
@@ -745,10 +757,10 @@ export default {
 	align-items: center;
 	justify-content: center;
 	transition: border-radius 0.12s ease;
-	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 6px 20px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-.studio-icon-img {
+.studio-source-img {
 	width: 100% !important;
 	height: 100% !important;
 	max-width: none !important;
@@ -758,91 +770,92 @@ export default {
 	display: block;
 }
 
-.drag-hint {
+.canvas-drag-badge {
 	position: absolute;
-	bottom: 6px;
+	bottom: 5px;
 	left: 50%;
 	transform: translateX(-50%);
-	background: rgba(15, 23, 42, 0.85);
+	background: rgba(15, 23, 42, 0.88);
 	color: #ffffff;
-	font-size: 0.65rem;
+	font-size: 0.625rem;
 	font-weight: 500;
-	padding: 0.15rem 0.45rem;
+	padding: 0.15rem 0.4rem;
 	border-radius: 9999px;
 	pointer-events: none;
 	white-space: nowrap;
-	backdrop-filter: blur(8px);
+	backdrop-filter: blur(6px);
 }
 
-/* Controls */
-.studio-controls-card {
+/* Sliders Box */
+.studio-sliders-box {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
-	border-radius: 10px;
-	padding: 0.75rem;
-	margin-bottom: 1rem;
+	border-radius: 8px;
+	padding: 0.6rem;
+	margin-bottom: 0.75rem;
 }
 
-.control-row {
+.slider-row {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	margin-bottom: 0.6rem;
+	gap: 0.4rem;
+	margin-bottom: 0.45rem;
 
-	&:last-child {
+	&:last-of-type {
 		margin-bottom: 0;
 	}
 }
 
-.control-label {
-	width: 5.5rem;
-	font-size: 0.75rem;
+.slider-label {
+	width: 4.8rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: #475569;
 	display: flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: 0.2rem;
 
 	i {
-		font-size: 0.95rem;
+		font-size: 0.875rem;
 		color: #64748b;
 	}
 }
 
-.studio-slider {
+.range-slider {
 	flex: 1;
 	accent-color: #2563eb;
 	cursor: pointer;
 	height: 4px;
 }
 
-.control-badge {
-	width: 2.5rem;
+.slider-val {
+	width: 2.2rem;
 	text-align: right;
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	font-weight: 700;
 	color: #2563eb;
 }
 
-.preset-pills {
+.preset-buttons-row {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 0.35rem;
-	margin-top: 0.6rem;
-	padding-top: 0.6rem;
+	gap: 0.25rem;
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
 	border-top: 1px dashed #e2e8f0;
 }
 
-.preset-pill {
+.btn-preset {
+	flex: 1;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
-	border-radius: 6px;
-	padding: 0.2rem 0.45rem;
-	font-size: 0.68rem;
-	font-weight: 500;
+	border-radius: 5px;
+	padding: 0.15rem 0.2rem;
+	font-size: 0.65rem;
+	font-weight: 600;
 	color: #475569;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: all 0.12s ease;
+	text-align: center;
 
 	&:hover {
 		border-color: #2563eb;
@@ -853,16 +866,15 @@ export default {
 		background: #2563eb;
 		color: #ffffff;
 		border-color: #2563eb;
-		font-weight: 600;
 	}
 }
 
-/* Miniature Desktop Preview */
-.desktop-mini-preview {
+/* Miniature Desktop Sample */
+.mini-desktop-sample {
 	margin-top: auto;
-	padding: 0.75rem;
-	background: rgba(241, 245, 249, 0.7);
-	border-radius: 10px;
+	padding: 0.5rem;
+	background: #f1f5f9;
+	border-radius: 8px;
 	border: 1px solid #e2e8f0;
 	display: flex;
 	flex-direction: column;
@@ -870,12 +882,12 @@ export default {
 	text-align: center;
 }
 
-.mini-card-icon {
-	width: 44px;
-	height: 44px;
+.mini-app-tile {
+	width: 36px;
+	height: 36px;
 	overflow: hidden;
-	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-	margin-bottom: 0.35rem;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+	margin-bottom: 0.25rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -888,8 +900,8 @@ export default {
 	}
 }
 
-.mini-card-title {
-	font-size: 0.75rem;
+.mini-app-name {
+	font-size: 0.7rem;
 	font-weight: 600;
 	color: #1e293b;
 	white-space: nowrap;
@@ -898,57 +910,59 @@ export default {
 	max-width: 100%;
 }
 
-/* Right Column: Main Content */
-.studio-main {
+/* Right Pane: Main Details */
+.studio-right-pane {
 	flex: 1 1 auto;
-	padding: 1.25rem;
+	padding: 1rem;
 	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
 }
 
-.studio-card {
+.pane-card {
 	background: #ffffff;
 	border: 1px solid #e2e8f0;
-	border-radius: 12px;
-	padding: 1rem;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	border-radius: 10px;
+	padding: 0.85rem;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.card-title-row {
+.card-heading-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 0.85rem;
+	margin-bottom: 0.65rem;
 }
 
-.card-heading {
-	font-size: 0.875rem;
+.card-title {
+	font-size: 0.8125rem;
 	font-weight: 700;
 	color: #0f172a;
 }
 
-.source-nav-tabs {
+.source-segmented-control {
 	display: inline-flex;
 	border: 1px solid #e2e8f0;
-	border-radius: 8px;
+	border-radius: 6px;
 	background: #f8fafc;
 	padding: 2px;
 }
 
-.nav-tab {
+.seg-btn {
 	border: none;
 	background: transparent;
-	padding: 0.3rem 0.7rem;
-	font-size: 0.75rem;
+	padding: 0.25rem 0.55rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: #64748b;
-	border-radius: 6px;
+	border-radius: 4px;
 	cursor: pointer;
 	transition: all 0.12s ease;
 	display: inline-flex;
 	align-items: center;
 
 	i {
-		font-size: 0.95rem;
+		font-size: 0.85rem;
 	}
 
 	&:hover {
@@ -962,52 +976,58 @@ export default {
 	}
 }
 
-/* Store Grid */
-.store-grid-wrapper {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-	gap: 0.5rem;
-	max-height: 230px;
-	overflow-y: auto;
-	padding: 0.25rem;
+.tab-content-box {
+	display: flex;
+	flex-direction: column;
+	min-height: 180px;
 }
 
-.store-icon-tile {
+/* Store Grid */
+.store-icons-scroll-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+	gap: 0.45rem;
+	max-height: 190px;
+	overflow-y: auto;
+	padding: 0.2rem;
+}
+
+.store-app-tile {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 0.45rem 0.25rem;
-	border-radius: 8px;
+	padding: 0.35rem 0.2rem;
+	border-radius: 6px;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: all 0.12s ease;
 	text-align: center;
 
 	&:hover {
 		border-color: #2563eb;
 		transform: translateY(-2px);
 		background: #ffffff;
-		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
 	}
 
-	&.is-active {
+	&.is-selected {
 		border-color: #2563eb;
 		background: #eff6ff;
 		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 	}
 }
 
-.tile-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 8px;
+.store-app-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
 	object-fit: cover;
-	margin-bottom: 0.25rem;
+	margin-bottom: 0.2rem;
 }
 
-.tile-label {
-	font-size: 0.65rem;
+.store-app-title {
+	font-size: 0.625rem;
 	font-weight: 500;
 	color: #475569;
 	white-space: nowrap;
@@ -1016,19 +1036,19 @@ export default {
 	width: 100%;
 }
 
-.empty-state {
+.empty-hint {
 	grid-column: 1 / -1;
-	padding: 1.5rem;
+	padding: 1rem;
 	text-align: center;
 	color: #94a3b8;
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
 }
 
-/* Upload Dropzone */
-.upload-dropzone {
+/* Upload Box */
+.upload-box {
 	border: 2px dashed #cbd5e1;
-	border-radius: 10px;
-	padding: 2rem 1.5rem;
+	border-radius: 8px;
+	padding: 1.5rem 1rem;
 	text-align: center;
 	cursor: pointer;
 	background: #f8fafc;
@@ -1040,78 +1060,76 @@ export default {
 	}
 }
 
-.dropzone-icon {
-	font-size: 2.25rem;
+.upload-box-icon {
+	font-size: 2rem;
 	color: #2563eb;
-	margin-bottom: 0.4rem;
+	margin-bottom: 0.3rem;
 	display: block;
 }
 
-.dropzone-text {
-	font-size: 0.875rem;
+.upload-box-text {
+	font-size: 0.8125rem;
 	font-weight: 600;
 	color: #1e293b;
-	margin-bottom: 0.2rem;
 }
 
-.dropzone-sub {
-	font-size: 0.75rem;
+.upload-box-sub {
+	font-size: 0.7rem;
 	color: #64748b;
 }
 
-/* Badges Grid */
-.badge-grid {
+/* Monogram Grid */
+.monogram-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-	gap: 0.6rem;
-	margin-bottom: 0.75rem;
+	grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+	gap: 0.5rem;
+	margin-bottom: 0.6rem;
 }
 
-.badge-tile {
-	width: 48px;
-	height: 48px;
-	border-radius: 10px;
+.monogram-tile {
+	width: 44px;
+	height: 44px;
+	border-radius: 8px;
 	border: none;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: #ffffff;
-	font-size: 1.25rem;
+	font-size: 1.15rem;
 	font-weight: 700;
-	transition: transform 0.15s ease, box-shadow 0.15s ease;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+	transition: transform 0.12s ease;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
 
 	&:hover {
-		transform: scale(1.1);
-		box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
+		transform: scale(1.08);
 	}
 }
 
-.badge-hint {
-	font-size: 0.75rem;
+.monogram-hint {
+	font-size: 0.7rem;
 	color: #64748b;
 }
 
-/* Footer */
-.app-studio-footer {
+/* Footer Bar */
+.app-studio-footer-bar {
 	flex-shrink: 0;
-	padding: 0.75rem 1.25rem;
+	padding: 0.65rem 1rem;
 	border-top: 1px solid #e2e8f0;
 	background: #ffffff;
 	display: flex;
 	align-items: center;
 }
 
-.btn-reset-overrides {
+.btn-reset-danger {
 	border: none;
 	background: transparent;
-	font-size: 0.8125rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	color: #dc2626;
 	cursor: pointer;
-	padding: 0.35rem 0.5rem;
-	border-radius: 6px;
+	padding: 0.3rem 0.45rem;
+	border-radius: 5px;
 	display: inline-flex;
 	align-items: center;
 	transition: background 0.12s ease;
@@ -1119,5 +1137,10 @@ export default {
 	&:hover {
 		background: #fee2e2;
 	}
+}
+
+.footer-actions {
+	display: flex;
+	gap: 0.5rem;
 }
 </style>
