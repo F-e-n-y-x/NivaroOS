@@ -56,7 +56,7 @@ export default {
 
 .nav-title {
 	font-size: 0.6875rem;
-	font-weight: 700;
+	font-weight: 500;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: #94a3b8;
@@ -78,7 +78,7 @@ export default {
 	color: #475569;
 	padding: 0.6rem 0.85rem;
 	font-size: 0.85rem;
-	font-weight: 500;
+	font-weight: 400;
 	border-radius: 9px;
 	text-align: left;
 	cursor: pointer;
@@ -102,7 +102,7 @@ export default {
 	&.active {
 		background: #f1f5f9;
 		color: #1e293b;
-		font-weight: 600;
+		font-weight: 500;
 
 		.icon {
 			color: #2563eb;

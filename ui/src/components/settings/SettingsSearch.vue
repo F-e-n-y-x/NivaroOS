@@ -156,7 +156,7 @@ export default {
 
 .result-label {
 	flex: 1;
-	font-weight: 600;
+	font-weight: 400;
 }
 
 .result-section {
@@ -167,6 +167,6 @@ export default {
 	background: rgba(0, 0, 0, 0.045);
 	color: rgba(44, 62, 80, 0.6);
 	font-size: 0.7rem;
-	font-weight: 600;
+	font-weight: 400;
 }
 </style>
