@@ -32,5 +32,9 @@ const events = {
 	ARRANGE_APPS: 'arrangeApps',
 	SET_WIDGET_HIDDEN: 'setWidgetHidden',
 	SET_STORAGE_WIDGET_HIDDEN_MOUNTS: 'setStorageWidgetHiddenMounts',
+	REMOVE_FROM_FOLDER: 'removeFromFolder',
+	GET_APP_LIST: 'getAppList',
+	SHOW_CONFIG_PANEL: 'showConfigPanel',
+	SHOW_CONTAINER_PANEL: 'showContainerPanel',
 };
 export default events;

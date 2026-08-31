@@ -277,6 +277,20 @@ export default {
 			this.arrangeApps()
 		})
 
+		// FolderWindow events (folder open in windowed mode)
+		this.$EventBus.$on(events.REMOVE_FROM_FOLDER, ({ item, folderId }) => {
+			this.handleRemoveFromFolder({ item, folderId })
+		})
+		this.$EventBus.$on(events.GET_APP_LIST, () => {
+			this.getList()
+		})
+		this.$EventBus.$on(events.SHOW_CONFIG_PANEL, (item) => {
+			this.showConfigPanel(item)
+		})
+		this.$EventBus.$on(events.SHOW_CONTAINER_PANEL, (item) => {
+			this.showContainerPanel(item)
+		})
+
 		this.ListRefreshTimer = setInterval(() => {
 			this.getList()
 		}, 8000)
@@ -287,6 +301,10 @@ export default {
 		this.$EventBus.$off(events.SHOW_EXTERNAL_LINK_PANEL)
 		this.$EventBus.$off(events.SHOW_CREATE_FOLDER_PROMPT)
 		this.$EventBus.$off(events.ARRANGE_APPS)
+		this.$EventBus.$off(events.REMOVE_FROM_FOLDER)
+		this.$EventBus.$off(events.GET_APP_LIST)
+		this.$EventBus.$off(events.SHOW_CONFIG_PANEL)
+		this.$EventBus.$off(events.SHOW_CONTAINER_PANEL)
 		window.removeEventListener('resize', this.getSkCount)
 		clearInterval(this.ListRefreshTimer)
 	},
@@ -368,6 +386,15 @@ export default {
 					const refreshed = folderPseudoItems.find(f => f.name === this.activeFolder.id)
 					this.activeFolder = refreshed ? refreshed.folderData : null
 				}
+
+				// Sync any open FolderWindow windows with fresh folder data
+				folderPseudoItems.forEach(f => {
+					const winId = `folder-${f.folderData.id}`
+					const win = this.$store.state.windows.find(w => w.id === winId)
+					if (win) {
+						this.$store.commit('OPEN_WINDOW', { id: winId, title: f.folderData.name, component: 'FolderWindow', props: { folder: f.folderData } })
+					}
+				})
 
 				this.appList = allApps
 
@@ -676,8 +703,18 @@ export default {
 		},
 
 		openFolder(folder) {
-			this.activeFolder = folder
-			this.showFolderModal = true
+			// Open each folder as its own resizable window rather than a
+			// full-page modal overlay. Each folder gets a stable window ID
+			// (folder-<id>) so re-clicking the same folder just focuses/
+			// un-minimizes its existing window instead of opening a duplicate.
+			this.$store.commit('OPEN_WINDOW', {
+				id: `folder-${folder.id}`,
+				title: folder.name,
+				component: 'FolderWindow',
+				props: { folder },
+				width: 520,
+				height: 380
+			})
 		},
 
 		async createFolderPrompt() {

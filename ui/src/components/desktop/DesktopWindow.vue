@@ -51,6 +51,7 @@ import PdfViewer from '@/components/files/viewers/PdfViewer.vue'
 import VmConsolePanel from './vm/VmConsolePanel.vue'
 import CreateVmModal from './vm/CreateVmModal.vue'
 import EditVmModal from './vm/EditVmModal.vue'
+import FolderWindow from './FolderWindow.vue'
 
 const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -67,7 +68,8 @@ const COMPONENT_REGISTRY = {
 	CodeEditor,
 	DocViewer,
 	ExcelViewer,
-	PdfViewer
+	PdfViewer,
+	FolderWindow
 }
 
 const MIN_WIDTH = 360
