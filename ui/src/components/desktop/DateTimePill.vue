@@ -26,10 +26,10 @@
 					</div>
 					<div class="header-actions-right">
 						<button type="button" class="hdr-btn" :title="$t('Settings')" @click="openSettings('system')">
-							<b-icon icon="cog-outline" pack="mdi" size="is-18"></b-icon>
+							<i class="mdi mdi-cog-outline"></i>
 						</button>
 						<button type="button" class="hdr-btn is-logout" :title="$t('Sign out')" @click="logout">
-							<b-icon icon="logout" pack="mdi" size="is-18"></b-icon>
+							<i class="mdi mdi-logout"></i>
 						</button>
 					</div>
 				</div>
@@ -56,10 +56,10 @@
 								{{ $t('Today') }}
 							</button>
 							<button type="button" class="cal-arrow-btn" :title="$t('Previous Month')" @click="prevMonth">
-								<b-icon icon="chevron-left" pack="mdi" size="is-18"></b-icon>
+								<i class="mdi mdi-chevron-left"></i>
 							</button>
 							<button type="button" class="cal-arrow-btn" :title="$t('Next Month')" @click="nextMonth">
-								<b-icon icon="chevron-right" pack="mdi" size="is-18"></b-icon>
+								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
 					</div>
@@ -95,11 +95,11 @@
 				<!-- Power Actions Footer -->
 				<div class="power-actions-footer">
 					<button type="button" class="pwr-btn is-restart" @click="restart">
-						<b-icon icon="restart" pack="mdi" size="is-16"></b-icon>
+						<i class="mdi mdi-restart pwr-icon"></i>
 						<span>{{ $t('Restart') }}</span>
 					</button>
 					<button type="button" class="pwr-btn is-shutdown" @click="shutdown">
-						<b-icon icon="power" pack="mdi" size="is-16"></b-icon>
+						<i class="mdi mdi-power pwr-icon"></i>
 						<span>{{ $t('Shutdown') }}</span>
 					</button>
 				</div>
@@ -380,18 +380,16 @@ export default {
 	right: 0;
 	bottom: calc(100% + 0.75rem);
 	width: 20rem;
-	background-color: $backDropColor;
-	backdrop-filter: $backDropBlur;
-	-webkit-backdrop-filter: $backDropBlur;
-	border: $backDropBorder;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
 	border-radius: 18px;
-	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35), $backDropShadow;
+	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.05);
 	padding: 0.9rem;
 	user-select: none;
 	display: flex;
 	flex-direction: column;
 	gap: 0.65rem;
-	color: $white;
+	color: #1e293b;
 }
 
 .menu-top-header {
@@ -419,7 +417,7 @@ export default {
 	justify-content: center;
 	font-weight: 700;
 	font-size: 0.875rem;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+	box-shadow: 0 2px 5px rgba(37, 99, 235, 0.25);
 	flex-shrink: 0;
 }
 
@@ -432,7 +430,7 @@ export default {
 .user-name {
 	font-size: 0.875rem;
 	font-weight: 600;
-	color: #ffffff;
+	color: #1e293b;
 	line-height: 1.2;
 	white-space: nowrap;
 	overflow: hidden;
@@ -441,7 +439,7 @@ export default {
 
 .user-badge {
 	font-size: 0.6875rem;
-	color: rgba(255, 255, 255, 0.7);
+	color: #64748b;
 	font-weight: 400;
 }
 
@@ -452,34 +450,45 @@ export default {
 }
 
 .hdr-btn {
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	background: rgba(255, 255, 255, 0.1);
-	color: #ffffff;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #64748b;
 	border-radius: 50%;
 	width: 2rem;
 	height: 2rem;
-	display: flex;
+	min-width: 2rem;
+	min-height: 2rem;
+	padding: 0;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
 	transition: all 0.15s ease;
+	outline: none;
+
+	i {
+		font-size: 1.05rem;
+		line-height: 1;
+		display: inline-block;
+	}
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.22);
-		border-color: rgba(255, 255, 255, 0.3);
+		background: #f1f5f9;
+		color: #1e293b;
+		border-color: #cbd5e1;
 		transform: translateY(-1px);
 	}
 
 	&.is-logout:hover {
-		background: rgba(239, 68, 68, 0.25);
-		color: #f87171;
-		border-color: rgba(239, 68, 68, 0.4);
+		background: #fee2e2;
+		color: #dc2626;
+		border-color: #fca5a5;
 	}
 }
 
 .clock-hero-card {
-	background: rgba(255, 255, 255, 0.08);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
 	border-radius: 12px;
 	padding: 0.75rem 0.85rem;
 	text-align: center;
@@ -488,7 +497,7 @@ export default {
 .hero-time {
 	font-size: 1.6rem;
 	font-weight: 700;
-	color: #ffffff;
+	color: #1e293b;
 	font-variant-numeric: tabular-nums;
 	line-height: 1.15;
 }
@@ -496,7 +505,7 @@ export default {
 .hero-date {
 	font-size: 0.75rem;
 	font-weight: 500;
-	color: rgba(255, 255, 255, 0.8);
+	color: #64748b;
 	margin-top: 0.25rem;
 	display: flex;
 	align-items: center;
@@ -520,7 +529,7 @@ export default {
 .cal-month-year {
 	font-size: 0.875rem;
 	font-weight: 700;
-	color: #ffffff;
+	color: #1e293b;
 }
 
 .cal-nav-controls {
@@ -530,9 +539,9 @@ export default {
 }
 
 .cal-btn-today {
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	background: rgba(255, 255, 255, 0.1);
-	color: #ffffff;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #475569;
 	border-radius: 6px;
 	padding: 0.15rem 0.5rem;
 	font-size: 0.7rem;
@@ -541,25 +550,39 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.22);
+		background: #f1f5f9;
+		color: #1e293b;
+		border-color: #cbd5e1;
 	}
 }
 
 .cal-arrow-btn {
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	background: rgba(255, 255, 255, 0.1);
-	color: #ffffff;
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #64748b;
 	border-radius: 6px;
 	width: 1.6rem;
 	height: 1.6rem;
-	display: flex;
+	min-width: 1.6rem;
+	min-height: 1.6rem;
+	padding: 0;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
 	transition: all 0.15s ease;
+	outline: none;
+
+	i {
+		font-size: 1.1rem;
+		line-height: 1;
+		display: inline-block;
+	}
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.22);
+		background: #f1f5f9;
+		color: #1e293b;
+		border-color: #cbd5e1;
 	}
 }
 
@@ -572,7 +595,7 @@ export default {
 .cal-weekday-label {
 	font-size: 0.6875rem;
 	font-weight: 600;
-	color: rgba(255, 255, 255, 0.55);
+	color: #94a3b8;
 	text-transform: uppercase;
 	padding: 0.2rem 0;
 }
@@ -594,29 +617,29 @@ export default {
 	cursor: pointer;
 	font-size: 0.775rem;
 	font-weight: 500;
-	color: #ffffff;
+	color: #1e293b;
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.18);
+		background: #f1f5f9;
 	}
 
 	&.is-other-month {
-		color: rgba(255, 255, 255, 0.3);
+		color: #cbd5e1;
 	}
 
 	&.is-selected {
-		background: rgba(59, 130, 246, 0.35);
-		border: 1px solid rgba(96, 165, 250, 0.8);
-		color: #ffffff;
+		background: rgba(37, 99, 235, 0.12);
+		border: 1px solid rgba(37, 99, 235, 0.4);
+		color: #2563eb;
 		font-weight: 600;
 	}
 
 	&.is-today {
-		background: #3b82f6;
+		background: #2563eb;
 		color: #ffffff;
 		font-weight: 700;
-		box-shadow: 0 2px 8px rgba(37, 99, 235, 0.45);
+		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
 	}
 }
 
@@ -627,42 +650,56 @@ export default {
 
 .pwr-btn {
 	flex: 1;
-	border: 1px solid rgba(255, 255, 255, 0.14);
-	padding: 0.5rem 0.75rem;
+	border: 1px solid #e2e8f0;
+	padding: 0.55rem 0.75rem;
 	border-radius: 10px;
 	font-size: 0.775rem;
 	font-weight: 600;
 	cursor: pointer;
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.4rem;
+	gap: 0.45rem;
 	transition: all 0.15s ease;
+	line-height: 1;
+
+	.pwr-icon {
+		font-size: 1.05rem;
+		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	span {
+		line-height: 1;
+	}
 
 	&.is-restart {
-		background: rgba(255, 255, 255, 0.1);
-		color: #ffffff;
+		background: #f8fafc;
+		color: #1e293b;
 
 		&:hover {
-			background: rgba(255, 255, 255, 0.2);
+			background: #f1f5f9;
+			border-color: #cbd5e1;
 		}
 	}
 
 	&.is-shutdown {
-		background: rgba(239, 68, 68, 0.2);
-		border-color: rgba(239, 68, 68, 0.35);
-		color: #fca5a5;
+		background: #fee2e2;
+		border-color: #fecaca;
+		color: #dc2626;
 
 		&:hover {
-			background: rgba(239, 68, 68, 0.35);
-			color: #ffffff;
+			background: #fca5a5;
+			color: #991b1b;
 		}
 	}
 }
 
 .menu-divider {
 	height: 1px;
-	background: rgba(255, 255, 255, 0.12);
+	background: #f1f5f9;
 	margin: 0 0.15rem;
 }
 

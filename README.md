@@ -242,6 +242,13 @@ cd services/common && go test ./...
 
 ---
 
+## 👥 Authors & Contributors
+
+- **Ayush** ([ayushsoni2911@gmail.com](mailto:ayushsoni2911@gmail.com)) — Lead Developer & Maintainer
+- **NivaroOS Contributors**
+
+---
+
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!
@@ -256,3 +263,4 @@ Contributions, issues, and feature requests are welcome!
 ## 📄 License
 
 Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE) for more information.
+
