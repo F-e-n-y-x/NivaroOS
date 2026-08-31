@@ -15,7 +15,7 @@
 
 		<transition name="pop-up">
 			<div v-if="menuOpen" class="quick-control-menu" @click.stop>
-				<!-- Top Header: User Profile + Quick Actions -->
+				<!-- Top Header: User Profile + System Actions -->
 				<div class="menu-top-header">
 					<div class="user-profile-left">
 						<div class="user-avatar">{{ userInitial }}</div>
@@ -26,10 +26,10 @@
 					</div>
 					<div class="header-actions-right">
 						<button type="button" class="hdr-btn" :title="$t('Settings')" @click="openSettings('system')">
-							<b-icon icon="cog-outline" pack="mdi" size="is-16"></b-icon>
+							<b-icon icon="cog-outline" pack="mdi" size="is-18"></b-icon>
 						</button>
 						<button type="button" class="hdr-btn is-logout" :title="$t('Sign out')" @click="logout">
-							<b-icon icon="logout" pack="mdi" size="is-16"></b-icon>
+							<b-icon icon="logout" pack="mdi" size="is-18"></b-icon>
 						</button>
 					</div>
 				</div>
@@ -56,10 +56,10 @@
 								{{ $t('Today') }}
 							</button>
 							<button type="button" class="cal-arrow-btn" :title="$t('Previous Month')" @click="prevMonth">
-								<b-icon icon="chevron-left" pack="mdi" size="is-16"></b-icon>
+								<b-icon icon="chevron-left" pack="mdi" size="is-18"></b-icon>
 							</button>
 							<button type="button" class="cal-arrow-btn" :title="$t('Next Month')" @click="nextMonth">
-								<b-icon icon="chevron-right" pack="mdi" size="is-16"></b-icon>
+								<b-icon icon="chevron-right" pack="mdi" size="is-18"></b-icon>
 							</button>
 						</div>
 					</div>
@@ -182,7 +182,7 @@ export default {
 			const month = this.currentViewingDate.getMonth()
 
 			const firstDayOfMonth = new Date(year, month, 1)
-			const startingDayOfWeek = firstDayOfMonth.getDay() // 0 = Sunday
+			const startingDayOfWeek = firstDayOfMonth.getDay()
 
 			const lastDayOfMonth = new Date(year, month + 1, 0)
 			const totalDaysInMonth = lastDayOfMonth.getDate()
@@ -337,20 +337,21 @@ export default {
 	align-items: center;
 	gap: 0.6rem;
 	padding: 0.6rem 1.1rem;
-	border: 1px solid rgba(255, 255, 255, 0.14);
-	color: #ffffff;
-	background: rgba(15, 23, 42, 0.65);
-	backdrop-filter: blur(20px) saturate(180%);
+	border: $backDropBorder;
+	color: $white;
+	background-color: $backDropColor;
+	backdrop-filter: $backDropBlur;
+	-webkit-backdrop-filter: $backDropBlur;
 	border-radius: 999px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
 	white-space: nowrap;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
 	&:hover,
 	&.is-active {
-		background: rgba(15, 23, 42, 0.85);
-		border-color: rgba(255, 255, 255, 0.25);
+		filter: brightness(1.15);
+		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), $backDropShadow;
 		transform: translateY(-1px);
 	}
 }
@@ -379,23 +380,25 @@ export default {
 	right: 0;
 	bottom: calc(100% + 0.75rem);
 	width: 20rem;
-	background: rgba(255, 255, 255, 0.96);
-	backdrop-filter: blur(30px) saturate(190%);
-	border: 1px solid rgba(226, 232, 240, 0.95);
+	background-color: $backDropColor;
+	backdrop-filter: $backDropBlur;
+	-webkit-backdrop-filter: $backDropBlur;
+	border: $backDropBorder;
 	border-radius: 18px;
-	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.35), $backDropShadow;
 	padding: 0.9rem;
 	user-select: none;
 	display: flex;
 	flex-direction: column;
 	gap: 0.65rem;
+	color: $white;
 }
 
 .menu-top-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.15rem 0.25rem;
+	padding: 0.1rem 0.15rem;
 }
 
 .user-profile-left {
@@ -406,8 +409,8 @@ export default {
 }
 
 .user-avatar {
-	width: 2rem;
-	height: 2rem;
+	width: 2.1rem;
+	height: 2.1rem;
 	border-radius: 50%;
 	background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 	color: #ffffff;
@@ -415,8 +418,8 @@ export default {
 	align-items: center;
 	justify-content: center;
 	font-weight: 700;
-	font-size: 0.85rem;
-	box-shadow: 0 2px 5px rgba(37, 99, 235, 0.25);
+	font-size: 0.875rem;
+	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
 	flex-shrink: 0;
 }
 
@@ -427,9 +430,9 @@ export default {
 }
 
 .user-name {
-	font-size: 0.85rem;
+	font-size: 0.875rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: #ffffff;
 	line-height: 1.2;
 	white-space: nowrap;
 	overflow: hidden;
@@ -438,54 +441,54 @@ export default {
 
 .user-badge {
 	font-size: 0.6875rem;
-	color: #64748b;
+	color: rgba(255, 255, 255, 0.7);
 	font-weight: 400;
 }
 
 .header-actions-right {
 	display: flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: 0.4rem;
 }
 
 .hdr-btn {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #64748b;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.1);
+	color: #ffffff;
 	border-radius: 50%;
-	width: 1.85rem;
-	height: 1.85rem;
+	width: 2rem;
+	height: 2rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	transition: all 0.12s ease;
+	transition: all 0.15s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-		border-color: #cbd5e1;
+		background: rgba(255, 255, 255, 0.22);
+		border-color: rgba(255, 255, 255, 0.3);
+		transform: translateY(-1px);
 	}
 
 	&.is-logout:hover {
-		background: #fee2e2;
-		color: #dc2626;
-		border-color: #fca5a5;
+		background: rgba(239, 68, 68, 0.25);
+		color: #f87171;
+		border-color: rgba(239, 68, 68, 0.4);
 	}
 }
 
 .clock-hero-card {
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
 	border-radius: 12px;
-	padding: 0.65rem 0.85rem;
+	padding: 0.75rem 0.85rem;
 	text-align: center;
 }
 
 .hero-time {
-	font-size: 1.5rem;
+	font-size: 1.6rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: #ffffff;
 	font-variant-numeric: tabular-nums;
 	line-height: 1.15;
 }
@@ -493,8 +496,8 @@ export default {
 .hero-date {
 	font-size: 0.75rem;
 	font-weight: 500;
-	color: #64748b;
-	margin-top: 0.2rem;
+	color: rgba(255, 255, 255, 0.8);
+	margin-top: 0.25rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -515,50 +518,48 @@ export default {
 }
 
 .cal-month-year {
-	font-size: 0.85rem;
+	font-size: 0.875rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: #ffffff;
 }
 
 .cal-nav-controls {
 	display: flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: 0.3rem;
 }
 
 .cal-btn-today {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #475569;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.1);
+	color: #ffffff;
 	border-radius: 6px;
-	padding: 0.15rem 0.45rem;
+	padding: 0.15rem 0.5rem;
 	font-size: 0.7rem;
 	font-weight: 600;
 	cursor: pointer;
-	transition: all 0.12s ease;
+	transition: all 0.15s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
+		background: rgba(255, 255, 255, 0.22);
 	}
 }
 
 .cal-arrow-btn {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #64748b;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.1);
+	color: #ffffff;
 	border-radius: 6px;
-	width: 1.5rem;
-	height: 1.5rem;
+	width: 1.6rem;
+	height: 1.6rem;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	transition: all 0.12s ease;
+	transition: all 0.15s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
+		background: rgba(255, 255, 255, 0.22);
 	}
 }
 
@@ -571,7 +572,7 @@ export default {
 .cal-weekday-label {
 	font-size: 0.6875rem;
 	font-weight: 600;
-	color: #94a3b8;
+	color: rgba(255, 255, 255, 0.55);
 	text-transform: uppercase;
 	padding: 0.2rem 0;
 }
@@ -593,28 +594,29 @@ export default {
 	cursor: pointer;
 	font-size: 0.775rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: #ffffff;
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: #f1f5f9;
+		background: rgba(255, 255, 255, 0.18);
 	}
 
 	&.is-other-month {
-		color: #cbd5e1;
+		color: rgba(255, 255, 255, 0.3);
 	}
 
 	&.is-selected {
-		background: rgba(37, 99, 235, 0.12);
-		color: #2563eb;
+		background: rgba(59, 130, 246, 0.35);
+		border: 1px solid rgba(96, 165, 250, 0.8);
+		color: #ffffff;
 		font-weight: 600;
 	}
 
 	&.is-today {
-		background: #2563eb;
+		background: #3b82f6;
 		color: #ffffff;
 		font-weight: 700;
-		box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+		box-shadow: 0 2px 8px rgba(37, 99, 235, 0.45);
 	}
 }
 
@@ -625,7 +627,7 @@ export default {
 
 .pwr-btn {
 	flex: 1;
-	border: none;
+	border: 1px solid rgba(255, 255, 255, 0.14);
 	padding: 0.5rem 0.75rem;
 	border-radius: 10px;
 	font-size: 0.775rem;
@@ -635,30 +637,32 @@ export default {
 	align-items: center;
 	justify-content: center;
 	gap: 0.4rem;
-	transition: all 0.12s ease;
+	transition: all 0.15s ease;
 
 	&.is-restart {
-		background: #f1f5f9;
-		color: #1e293b;
+		background: rgba(255, 255, 255, 0.1);
+		color: #ffffff;
 
 		&:hover {
-			background: #e2e8f0;
+			background: rgba(255, 255, 255, 0.2);
 		}
 	}
 
 	&.is-shutdown {
-		background: #fee2e2;
-		color: #dc2626;
+		background: rgba(239, 68, 68, 0.2);
+		border-color: rgba(239, 68, 68, 0.35);
+		color: #fca5a5;
 
 		&:hover {
-			background: #fecaca;
+			background: rgba(239, 68, 68, 0.35);
+			color: #ffffff;
 		}
 	}
 }
 
 .menu-divider {
 	height: 1px;
-	background: #f1f5f9;
+	background: rgba(255, 255, 255, 0.12);
 	margin: 0 0.15rem;
 }
 
