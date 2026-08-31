@@ -137,8 +137,8 @@ import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import { isArchive as isArchiveFile } from '@/utils/files/archive'
 
-const MENU_WIDTH = 215
-const MENU_HEIGHT = 400
+const MENU_WIDTH = 224
+const MENU_HEIGHT = 380
 
 export default {
 	name: 'files-context-menu',
@@ -165,22 +165,24 @@ export default {
 	},
 	mounted() {
 		document.addEventListener('mousedown', this.onOutsideClick)
+		window.addEventListener('blur', this.close)
+		window.addEventListener('resize', this.close)
 	},
 	beforeDestroy() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
+		window.removeEventListener('blur', this.close)
+		window.removeEventListener('resize', this.close)
 	},
 	methods: {
 		open(event, item, boundsEl, selectedItems = []) {
 			this.item = item
 			this.selectedItems = Array.isArray(selectedItems) ? selectedItems : []
-			const bounds = boundsEl.getBoundingClientRect()
-			const scrollLeft = boundsEl.scrollLeft
-			const scrollTop = boundsEl.scrollTop
-			const rawX = event.clientX - bounds.left + scrollLeft
-			const rawY = event.clientY - bounds.top + scrollTop
 			const menuHeight = this.isMultiSelect ? 240 : (item ? MENU_HEIGHT : 260)
-			this.x = Math.max(scrollLeft + 4, Math.min(rawX, scrollLeft + bounds.width - MENU_WIDTH - 8))
-			this.y = Math.max(scrollTop + 4, Math.min(rawY, scrollTop + bounds.height - menuHeight - 8))
+			const maxLeft = Math.max(12, window.innerWidth - MENU_WIDTH - 16)
+			const maxTop = Math.max(12, window.innerHeight - menuHeight - 80) // Stay above taskbar
+
+			this.x = Math.max(12, Math.min(maxLeft, event.clientX))
+			this.y = Math.max(12, Math.min(maxTop, event.clientY))
 			this.visible = true
 		},
 		close() {
