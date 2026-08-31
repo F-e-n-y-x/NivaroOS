@@ -53,6 +53,29 @@
 			</div>
 		</div>
 
+		<!-- Authors & Contributors -->
+		<h3 class="setting-card-title">{{ $t('Authors & Project Info') }}</h3>
+		<div class="setting-card">
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="account-circle-outline" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">Ayush</div>
+				<div class="row-control">
+					<a href="mailto:ayushsoni2911@gmail.com" class="is-size-7 text-muted mr-3">ayushsoni2911@gmail.com</a>
+					<span class="tag is-primary is-light is-rounded is-size-7">{{ $t('Lead Developer') }}</span>
+				</div>
+			</div>
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="github" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">{{ $t('GitHub Repository') }}</div>
+				<div class="row-control">
+					<a href="https://github.com/F-e-n-y-x/NivaroOS" target="_blank" class="is-size-7 has-text-link">
+						github.com/F-e-n-y-x/NivaroOS
+						<b-icon icon="open-in-new" pack="mdi" size="is-14" class="ml-1"></b-icon>
+					</a>
+				</div>
+			</div>
+		</div>
+
 		<!-- System Logs -->
 		<h3 class="setting-card-title">{{ $t('System Logs') }}</h3>
 		<div class="setting-card">
