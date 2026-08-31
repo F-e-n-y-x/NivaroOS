@@ -11,18 +11,6 @@
 				<span class="badge">{{ m.fstype }}</span>
 			</div>
 		</div>
-
-		<div class="row-label-heading mt-4">{{ $t('Extra mount points') }}</div>
-		<p v-if="!mounts.length" class="hint">{{ $t('No extra mount points configured.') }}</p>
-		<div v-for="m in mounts" :key="m.mount_point" class="user-row">
-			<div class="user-main">
-				<div class="user-name">{{ m.mount_point }}</div>
-				<span class="badge">{{ m.source }} &middot; {{ m.fstype }}</span>
-			</div>
-			<b-button rounded size="is-small" type="is-danger" outlined @click="confirmUnmount(m)">
-				{{ $t('Unmount') }}
-			</b-button>
-		</div>
 		<p v-if="error" class="error-note">{{ error }}</p>
 	</div>
 </template>
@@ -32,45 +20,21 @@ export default {
 	name: 'storage-pools-panel',
 	data() {
 		return {
-			mounts: [],
 			merges: [],
 			mergeEnabled: false,
 			error: ''
 		}
 	},
 	created() {
-		this.loadMounts()
 		this.loadMerges()
 	},
 	methods: {
-		loadMounts() {
-			this.$api.local_storage.get().then(res => {
-				this.mounts = (res.data && res.data.data) || []
-			}).catch(() => {
-				this.mounts = []
-			})
-		},
 		loadMerges() {
 			this.$api.local_storage.getMergerfsInfo().then(res => {
 				this.mergeEnabled = true
 				this.merges = (res.data && res.data.data) || []
 			}).catch(() => {
 				this.mergeEnabled = false
-			})
-		},
-		confirmUnmount(mount) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
-				title: this.$t('Unmount'),
-				message: this.$t('Unmount {path}?', { path: mount.mount_point }),
-				type: 'is-danger',
-				confirmText: this.$t('Unmount'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: () => {
-					this.$api.local_storage.delete({ mount_point: mount.mount_point }).then(() => this.loadMounts()).catch(e => {
-						this.error = e.response && e.response.data && e.response.data.message ? e.response.data.message : this.$t('Failed to unmount')
-					})
-				}
 			})
 		}
 	}
