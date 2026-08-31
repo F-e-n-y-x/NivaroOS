@@ -55,6 +55,18 @@ export default {
 			type: String,
 			required: true
 		},
+		initialZoom: {
+			type: Number,
+			default: 1
+		},
+		initialOffsetX: {
+			type: Number,
+			default: 0
+		},
+		initialOffsetY: {
+			type: Number,
+			default: 0
+		},
 		initialRadius: {
 			type: Number,
 			default: 0
@@ -62,10 +74,10 @@ export default {
 	},
 	data() {
 		return {
-			zoom: 1,
-			offsetX: 0,
-			offsetY: 0,
-			radius: this.initialRadius,
+			zoom: this.initialZoom || 1,
+			offsetX: this.initialOffsetX || 0,
+			offsetY: this.initialOffsetY || 0,
+			radius: this.initialRadius || 0,
 			imageLoaded: false,
 			naturalWidth: 0,
 			naturalHeight: 0,
@@ -167,10 +179,24 @@ export default {
 				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
 				ctx.restore()
 
-				this.$emit('apply', { dataUrl: canvas.toDataURL('image/png'), radius: this.radius })
+				this.$emit('apply', {
+					dataUrl: canvas.toDataURL('image/png'),
+					rawSrc: this.src,
+					zoom: this.zoom,
+					offsetX: this.offsetX,
+					offsetY: this.offsetY,
+					radius: this.radius
+				})
 			} catch (e) {
 				// Cross-origin image fallback
-				this.$emit('apply', { dataUrl: null, radius: this.radius })
+				this.$emit('apply', {
+					dataUrl: null,
+					rawSrc: this.src,
+					zoom: this.zoom,
+					offsetX: this.offsetX,
+					offsetY: this.offsetY,
+					radius: this.radius
+				})
 			}
 			this.$emit('close')
 		}

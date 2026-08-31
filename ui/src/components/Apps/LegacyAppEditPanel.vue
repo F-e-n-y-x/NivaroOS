@@ -1,7 +1,5 @@
 <template>
 	<div class="legacy-app-edit-window">
-		<!-- No header here - this opens as a real desktop window, whose
-		titlebar (title + close/minimize) is provided by DesktopWindow. -->
 		<section class="edit-body">
 			<div class="node-card">
 				<b-field :label="$t('Name')">
@@ -54,8 +52,16 @@
 		<b-modal v-model="showIconEditor" :can-cancel="['escape', 'outside']" animation="zoom-in" aria-modal
 				 has-modal-card>
 			<template #default>
-				<icon-editor-modal v-if="icon" :initial-radius="iconRadius" :src="icon" @apply="handleIconEdited"
-					@close="showIconEditor = false"></icon-editor-modal>
+				<icon-editor-modal
+					v-if="icon || iconRaw"
+					:initial-radius="iconRadius"
+					:initial-zoom="iconZoom"
+					:initial-offset-x="iconOffsetX"
+					:initial-offset-y="iconOffsetY"
+					:src="iconRaw || icon"
+					@apply="handleIconEdited"
+					@close="showIconEditor = false"
+				></icon-editor-modal>
 			</template>
 		</b-modal>
 	</div>
@@ -67,12 +73,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
 
-// Icons render at 64px CSS (32px in this panel's own preview); 192px
-// covers up to 3x-DPI displays sharply while staying tiny on disk -
-// far smaller than most source images (especially pasted URLs, which
-// are often full-size logos), which is what actually matters for
-// dashboard load time.
-const ICON_MAX_DIM = 192
+const ICON_MAX_DIM = 256
 
 export default {
 	mixins: [business_LegacyAppOverrides],
@@ -94,6 +95,10 @@ export default {
 			name: '',
 			url: '',
 			icon: '',
+			iconRaw: '',
+			iconZoom: 1,
+			iconOffsetX: 0,
+			iconOffsetY: 0,
 			iconRadius: 0,
 			iconTab: 'url',
 			isCompressing: false,
@@ -102,15 +107,9 @@ export default {
 		}
 	},
 	computed: {
-		// Only container/legacy apps have no real launch behavior of
-		// their own to open a click-through URL for - v1/v2 apps already
-		// launch normally, so editing them is icon-only.
 		showUrlField() {
 			return this.item.app_type === 'container'
 		},
-		// The app's real name, unaffected by any rename override - shown
-		// as the input's placeholder so an empty field clearly means
-		// "use the default name" rather than looking blank/broken.
 		originalName() {
 			return (this.item.title && ice_i18n({ ...this.item.title, custom: undefined })) || this.item.name
 		}
@@ -120,9 +119,18 @@ export default {
 			this.name = this.override.title || ''
 			this.url = this.override.url || ''
 			this.icon = this.override.icon || ''
+			this.iconRaw = this.override.iconRaw || this.override.icon || this.item.icon || ''
+			this.iconZoom = this.override.iconZoom !== undefined ? this.override.iconZoom : 1
+			this.iconOffsetX = this.override.iconOffsetX || 0
+			this.iconOffsetY = this.override.iconOffsetY || 0
 			this.iconRadius = this.override.iconRadius || 0
 		} else {
 			this.icon = this.item.icon || ''
+			this.iconRaw = this.item.icon || ''
+			this.iconZoom = 1
+			this.iconOffsetX = 0
+			this.iconOffsetY = 0
+			this.iconRadius = this.item.iconRadius || 0
 		}
 	},
 	methods: {
@@ -144,7 +152,12 @@ export default {
 			reader.onload = () => {
 				const img = new Image()
 				img.onload = () => {
-					this.icon = this.resizeImageToDataUrl(img)
+					const dataUrl = this.resizeImageToDataUrl(img)
+					this.icon = dataUrl
+					this.iconRaw = dataUrl
+					this.iconZoom = 1
+					this.iconOffsetX = 0
+					this.iconOffsetY = 0
 					this.isCompressing = false
 				}
 				img.src = reader.result
@@ -152,22 +165,23 @@ export default {
 			reader.readAsDataURL(file)
 		},
 
-		// Best-effort: pasted icon URLs are often full-size logos hosted
-		// elsewhere. Try to fetch+resize+cache them locally the same way
-		// as an upload; most icon hosts don't allow cross-origin canvas
-		// reads, in which case this silently keeps the plain URL instead
-		// (still works, just isn't resized/cached).
 		compressIconUrl() {
 			if (!this.icon || this.icon.startsWith('data:')) return
 			const url = this.icon
+			this.iconRaw = url
+			this.iconZoom = 1
+			this.iconOffsetX = 0
+			this.iconOffsetY = 0
 			this.isCompressing = true
 			const img = new Image()
 			img.crossOrigin = 'anonymous'
 			img.onload = () => {
 				try {
-					this.icon = this.resizeImageToDataUrl(img)
+					const dataUrl = this.resizeImageToDataUrl(img)
+					this.icon = dataUrl
+					this.iconRaw = dataUrl
 				} catch (e) {
-					// Tainted canvas (no CORS) - keep the original URL.
+					// Keep original URL
 				}
 				this.isCompressing = false
 			}
@@ -177,13 +191,13 @@ export default {
 			img.src = url
 		},
 
-		// Only the crop gets baked into the icon itself - roundness is
-		// kept as separate metadata and applied live via CSS wherever
-		// the icon renders (see AppCard.vue), so it stays adjustable
-		// every time instead of compounding on re-edit.
-		handleIconEdited({ dataUrl, radius }) {
+		handleIconEdited({ dataUrl, rawSrc, zoom, offsetX, offsetY, radius }) {
 			if (dataUrl) this.icon = dataUrl
-			this.iconRadius = radius
+			if (rawSrc) this.iconRaw = rawSrc
+			this.iconZoom = zoom !== undefined ? zoom : 1
+			this.iconOffsetX = offsetX || 0
+			this.iconOffsetY = offsetY || 0
+			this.iconRadius = radius || 0
 		},
 
 		save() {
@@ -191,6 +205,10 @@ export default {
 				title: this.name,
 				url: this.url,
 				icon: this.icon,
+				iconRaw: this.iconRaw,
+				iconZoom: this.iconZoom,
+				iconOffsetX: this.iconOffsetX,
+				iconOffsetY: this.iconOffsetY,
 				iconRadius: this.iconRadius
 			}).then(() => {
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
@@ -218,77 +236,87 @@ export default {
 .edit-footer {
 	flex-shrink: 0;
 	padding: 0.75rem 1.5rem;
-	border-top: 1px solid rgb(228 233 237);
+	border-top: 1px solid #f0f0f0;
+	background: #fafafa;
+}
 
-	.button + .button {
-		margin-left: 0.5rem;
-	}
+.node-card {
+	max-width: 32rem;
+	margin: 0 auto;
 }
 
 .icon-field {
 	display: flex;
+	gap: 1.25rem;
 	align-items: flex-start;
-	gap: 0.9rem;
-	width: 100%;
 }
 
 .icon-preview {
 	position: relative;
+	width: 5rem;
+	height: 5rem;
 	flex-shrink: 0;
-	width: 56px;
-	height: 56px;
 	overflow: hidden;
-	background: repeating-conic-gradient(#00000010 0% 25%, transparent 0% 50%) 50% / 12px 12px;
-	border: 1px solid rgba(0, 0, 0, 0.12);
+	background: #f5f5f5;
+	border: 1px solid #e0e0e0;
 	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s ease;
 
 	img {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		display: block;
 	}
 
 	.icon-preview-edit-hint {
 		position: absolute;
 		inset: 0;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		font-size: 0.75rem;
+		font-weight: 600;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.65rem;
-		color: #fff;
-		background: rgba(0, 0, 0, 0.45);
 		opacity: 0;
 		transition: opacity 0.15s ease;
 	}
 
-	&:hover .icon-preview-edit-hint {
-		opacity: 1;
+	&:hover {
+		border-color: #2563eb;
+		.icon-preview-edit-hint {
+			opacity: 1;
+		}
 	}
 }
 
 .icon-field-controls {
-	flex: 1;
+	flex: 1 1 auto;
 	min-width: 0;
 }
 
 .source-toggle {
 	display: inline-flex;
-	padding: 2px;
-	background: rgba(0, 0, 0, 0.06);
-	border-radius: 8px;
+	border: 1px solid #e0e0e0;
+	border-radius: 6px;
+	overflow: hidden;
 
 	button {
 		border: none;
-		background: transparent;
-		padding: 0.3rem 0.85rem;
-		border-radius: 6px;
-		font-size: 0.75rem;
+		background: #fafafa;
+		padding: 0.35rem 0.85rem;
+		font-size: 0.8rem;
 		cursor: pointer;
-		color: inherit;
+		color: #666;
+		transition: all 0.15s ease;
 
 		&.active {
-			background: #fff;
-			box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+			background: #2563eb;
+			color: #fff;
 			font-weight: 600;
 		}
 	}
