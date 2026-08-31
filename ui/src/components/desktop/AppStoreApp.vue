@@ -2668,6 +2668,7 @@ export default {
 .hero-app-tagline {
 	font-size: 0.8125rem;
 	color: #cbd5e1;
+	text-shadow: none !important;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
@@ -2917,6 +2918,11 @@ export default {
 	cursor: pointer;
 	transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	text-shadow: none !important;
+
+	* {
+		text-shadow: none !important;
+	}
 
 	&:hover {
 		transform: translateY(-2px);
@@ -3013,6 +3019,7 @@ export default {
 	font-weight: 400;
 	color: #64748b;
 	line-height: 1.4;
+	text-shadow: none !important;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
@@ -4054,6 +4061,7 @@ export default {
 	line-height: 1.55;
 	color: #334155;
 	white-space: pre-line;
+	text-shadow: none !important;
 }
 
 .specs-grid {
