@@ -17,44 +17,6 @@
 				</div>
 			</div>
 
-			<div class="setting-row">
-				<b-icon class="row-icon" icon="magnify" pack="mdi" size="is-20"></b-icon>
-				<div class="row-label">
-					<div class="setting-title">{{ $t('Search Engine') }}</div>
-					<div class="setting-desc">{{ $t('Default web search engine for search bar') }}</div>
-				</div>
-				<div class="row-control">
-					<b-select v-model="barData.search_engine" class="set-select" size="is-small" @input="saveBarData">
-						<option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
-						<option value="https://www.google.com/search?q=">Google</option>
-						<option value="https://www.bing.com/search?q=">Bing</option>
-						<option value="https://www.baidu.com/s?wd=">Baidu</option>
-					</b-select>
-				</div>
-			</div>
-
-			<div class="setting-row">
-				<b-icon class="row-icon" icon="bullhorn-outline" pack="mdi" size="is-20"></b-icon>
-				<div class="row-label">
-					<div class="setting-title">{{ $t('App Store Recommendations') }}</div>
-					<div class="setting-desc">{{ $t('Show curated popular apps and highlights') }}</div>
-				</div>
-				<div class="row-control">
-					<b-switch v-model="barData.recommend_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
-				</div>
-			</div>
-
-			<div class="setting-row">
-				<b-icon class="row-icon" icon="rss" pack="mdi" size="is-20"></b-icon>
-				<div class="row-label">
-					<div class="setting-title">{{ $t('News & Updates Feed') }}</div>
-					<div class="setting-desc">{{ $t('Receive announcements on desktop') }}</div>
-				</div>
-				<div class="row-control">
-					<b-switch v-model="barData.rss_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
-				</div>
-			</div>
-
 			<div v-if="hasNotImportedApps" class="setting-row">
 				<b-icon class="row-icon" icon="docker-outline" pack="casa" size="is-20"></b-icon>
 				<div class="row-label">
@@ -210,9 +172,6 @@ import { formatTime, formatDate, formatStrftime, STRFTIME_TOKEN_LIST, STRFTIME_S
 export const ROWS = [
 	{ label: 'Date & Time' },
 	{ label: 'Language' },
-	{ label: 'Search Engine' },
-	{ label: 'App Store Recommendations' },
-	{ label: 'News & Updates Feed' },
 	{ label: 'WebUI Port' },
 	{ label: 'Restart or Shutdown' },
 	{ label: 'About' }

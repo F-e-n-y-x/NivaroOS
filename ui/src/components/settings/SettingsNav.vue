@@ -7,14 +7,12 @@
 			<button
 				v-for="s in sections"
 				:key="s.id"
-				class="nav-item"
+				class="nav-item hover-effect _is-radius"
 				:class="{ active: activeSection === s.id }"
 				:title="compact ? $t(s.label) : null"
 				@click="$emit('select', s.id)"
 			>
-				<div class="icon-badge" :style="{ '--icon-color': s.color || '#2563eb', '--icon-bg': s.bg || 'rgba(37, 99, 235, 0.12)' }">
-					<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-18"></b-icon>
-				</div>
+				<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-20"></b-icon>
 				<span v-if="!compact" class="nav-label">{{ $t(s.label) }}</span>
 			</button>
 		</nav>
@@ -35,93 +33,87 @@ export default {
 <style lang="scss" scoped>
 .settings-nav {
 	flex-shrink: 0;
-	width: 14rem;
-	padding: 1.25rem 0.85rem;
-	background: rgba(255, 255, 255, 0.65);
-	backdrop-filter: blur(24px) saturate(180%);
-	-webkit-backdrop-filter: blur(24px) saturate(180%);
-	border-right: 1px solid rgba(0, 0, 0, 0.07);
+	width: 13.5rem;
+	padding: 1.25rem 0.75rem;
+	background: rgba(0, 0, 0, 0.015);
+	border-right: 1px solid rgba(0, 0, 0, 0.06);
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 0.35rem;
 	overflow-y: auto;
 	user-select: none;
 
 	&.is-compact {
-		width: 4.5rem;
+		width: 4rem;
 		align-items: center;
 		padding: 1.25rem 0.4rem;
 	}
 }
 
 .nav-header {
-	padding: 0.25rem 0.65rem 0.5rem;
+	padding: 0.25rem 0.65rem 0.4rem;
 }
 
 .nav-title {
-	font-size: 1.15rem;
+	font-size: 0.7rem;
 	font-weight: 700;
-	letter-spacing: -0.02em;
-	color: #0f172a;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: rgba(0, 0, 0, 0.4);
 }
 
 .nav-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.25rem;
+	gap: 0.2rem;
 	width: 100%;
 }
 
 .nav-item {
-	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
 	border: none;
 	background: transparent;
-	color: #475569;
-	padding: 0.55rem 0.75rem;
-	font-size: 0.875rem;
+	color: rgba(44, 62, 80, 0.75);
+	padding: 0.6rem 0.85rem;
+	font-size: 0.85rem;
 	font-weight: 500;
-	border-radius: 10px;
+	border-radius: 9px;
 	text-align: left;
 	cursor: pointer;
 	width: 100%;
-	transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+	transition: background 0.12s ease, color 0.12s ease;
 
-	.icon-badge {
-		flex-shrink: 0;
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 7px;
-		background: var(--icon-bg);
-		color: var(--icon-color);
-		transition: all 0.15s ease;
+	.icon {
+		color: rgba(44, 62, 80, 0.5);
+		transition: color 0.12s ease;
 	}
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.04);
-		color: #0f172a;
+		color: #2c3e50;
+
+		.icon {
+			color: #2c3e50;
+		}
 	}
 
 	&.active {
 		background: #ffffff;
-		color: #0f172a;
+		color: #2c3e50;
 		font-weight: 600;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 
-		.icon-badge {
-			transform: scale(1.05);
+		.icon {
+			color: #2563eb;
 		}
 	}
 }
 
 .is-compact .nav-item {
 	justify-content: center;
-	padding: 0.6rem 0.4rem;
+	padding: 0.6rem;
 }
 
 .nav-label {

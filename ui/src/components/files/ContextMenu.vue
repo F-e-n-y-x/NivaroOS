@@ -15,118 +15,118 @@
 					<span>{{ selectedItems.length }} {{ $t('items selected') }}</span>
 				</div>
 			</div>
-			<div class="menu-sep"></div>
-			<button class="menu-item" @click="act('copy-selection')">
-				<i class="mdi mdi-content-copy menu-icon"></i>
-				<span class="menu-label">{{ $t('Copy') }} ({{ selectedItems.length }})</span>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('copy-selection')">
+				<i class="mdi mdi-content-copy ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Copy') }} ({{ selectedItems.length }})</span>
 			</button>
-			<button class="menu-item" @click="act('cut-selection')">
-				<i class="mdi mdi-content-cut menu-icon"></i>
-				<span class="menu-label">{{ $t('Cut') }} ({{ selectedItems.length }})</span>
+			<button class="ctx-item" @click="act('cut-selection')">
+				<i class="mdi mdi-content-cut ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Cut') }} ({{ selectedItems.length }})</span>
 			</button>
-			<button class="menu-item" @click="act('download-selection')">
-				<i class="mdi mdi-download-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Download') }}</span>
+			<button class="ctx-item" @click="act('download-selection')">
+				<i class="mdi mdi-download-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Download') }}</span>
 			</button>
-			<button class="menu-item" @click="act('compress-selection')">
-				<i class="mdi mdi-folder-zip-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Compress to Zip') }}</span>
+			<button class="ctx-item" @click="act('compress-selection')">
+				<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
 			</button>
-			<div class="menu-sep"></div>
-			<button class="menu-item is-danger" @click="act('delete-selection')">
-				<i class="mdi mdi-trash-can-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Delete') }} ({{ selectedItems.length }})</span>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item is-danger" @click="act('delete-selection')">
+				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Delete') }} ({{ selectedItems.length }})</span>
 			</button>
 		</template>
 
 		<!-- 2. SINGLE ITEM CONTEXT MENU (when right clicking a single file or folder) -->
 		<template v-else-if="item">
-			<button class="menu-item" @click="act('open')">
-				<i class="mdi mdi-open-in-app menu-icon"></i>
-				<span class="menu-label">{{ $t('Open') }}</span>
+			<button class="ctx-item" @click="act('open')">
+				<i class="mdi mdi-open-in-app ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
 			</button>
-			<button v-if="item.is_dir" class="menu-item" @click="act('open-new-tab')">
-				<i class="mdi mdi-tab-plus menu-icon"></i>
-				<span class="menu-label">{{ $t('Open in New Tab') }}</span>
+			<button v-if="item.is_dir" class="ctx-item" @click="act('open-new-tab')">
+				<i class="mdi mdi-tab-plus ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open in New Tab') }}</span>
 			</button>
-			<div class="menu-sep"></div>
-			<button class="menu-item" @click="act('rename')">
-				<i class="mdi mdi-pencil-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Rename') }}</span>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('rename')">
+				<i class="mdi mdi-pencil-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Rename') }}</span>
 			</button>
-			<button class="menu-item" @click="act('copy')">
-				<i class="mdi mdi-content-copy menu-icon"></i>
-				<span class="menu-label">{{ $t('Copy') }}</span>
+			<button class="ctx-item" @click="act('copy')">
+				<i class="mdi mdi-content-copy ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Copy') }}</span>
 			</button>
-			<button class="menu-item" @click="act('cut')">
-				<i class="mdi mdi-content-cut menu-icon"></i>
-				<span class="menu-label">{{ $t('Cut') }}</span>
+			<button class="ctx-item" @click="act('cut')">
+				<i class="mdi mdi-content-cut ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Cut') }}</span>
 			</button>
-			<button class="menu-item" @click="act('download')">
-				<i class="mdi mdi-download-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Download') }}</span>
+			<button class="ctx-item" @click="act('download')">
+				<i class="mdi mdi-download-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Download') }}</span>
 			</button>
-			<button class="menu-item" @click="act('compress')">
-				<i class="mdi mdi-folder-zip-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Compress to Zip') }}</span>
+			<button class="ctx-item" @click="act('compress')">
+				<i class="mdi mdi-folder-zip-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Compress to Zip') }}</span>
 			</button>
-			<button v-if="isArchive" class="menu-item" @click="act('extract')">
-				<i class="mdi mdi-archive-arrow-down-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Extract') }}</span>
+			<button v-if="isArchive" class="ctx-item" @click="act('extract')">
+				<i class="mdi mdi-archive-arrow-down-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Extract') }}</span>
 			</button>
 			<template v-if="item.is_dir">
-				<div class="menu-sep"></div>
-				<button class="menu-item" @click="act('favorite')">
-					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="menu-icon"></i>
-					<span class="menu-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" @click="act('favorite')">
+					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
+					<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
 				</button>
-				<button class="menu-item" @click="act('share')">
-					<i class="mdi mdi-share-variant-outline menu-icon"></i>
-					<span class="menu-label">{{ $t('Share') }}</span>
+				<button class="ctx-item" @click="act('share')">
+					<i class="mdi mdi-share-variant-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Share') }}</span>
 				</button>
 			</template>
-			<div class="menu-sep"></div>
-			<button class="menu-item is-danger" @click="act('delete')">
-				<i class="mdi mdi-trash-can-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Delete') }}</span>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item is-danger" @click="act('delete')">
+				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Delete') }}</span>
 			</button>
-			<button class="menu-item" @click="act('detail')">
-				<i class="mdi mdi-information-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Detail') }}</span>
+			<button class="ctx-item" @click="act('detail')">
+				<i class="mdi mdi-information-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Detail') }}</span>
 			</button>
 		</template>
 
 		<!-- 3. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
 		<template v-else>
-			<button class="menu-item" @click="act('new-folder')">
-				<i class="mdi mdi-folder-plus-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('New Folder') }}</span>
+			<button class="ctx-item" @click="act('new-folder')">
+				<i class="mdi mdi-folder-plus-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('New Folder') }}</span>
 			</button>
-			<button class="menu-item" @click="act('new-file')">
-				<i class="mdi mdi-file-plus-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('New File') }}</span>
+			<button class="ctx-item" @click="act('new-file')">
+				<i class="mdi mdi-file-plus-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('New File') }}</span>
 			</button>
-			<button class="menu-item" @click="act('upload')">
-				<i class="mdi mdi-upload-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Upload') }}</span>
+			<button class="ctx-item" @click="act('upload')">
+				<i class="mdi mdi-upload-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Upload') }}</span>
 			</button>
-			<div class="menu-sep"></div>
-			<button v-if="hasClipboard" class="menu-item" @click="act('paste')">
-				<i class="mdi mdi-content-paste menu-icon"></i>
-				<span class="menu-label">{{ $t('Paste') }}</span>
+			<div class="ctx-divider"></div>
+			<button v-if="hasClipboard" class="ctx-item" @click="act('paste')">
+				<i class="mdi mdi-content-paste ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Paste') }}</span>
 			</button>
-			<button class="menu-item" @click="act('select-all')">
-				<i class="mdi mdi-select-all menu-icon"></i>
-				<span class="menu-label">{{ $t('Select All') }}</span>
+			<button class="ctx-item" @click="act('select-all')">
+				<i class="mdi mdi-select-all ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Select All') }}</span>
 			</button>
-			<button class="menu-item" @click="act('reload')">
-				<i class="mdi mdi-refresh menu-icon"></i>
-				<span class="menu-label">{{ $t('Refresh') }}</span>
+			<button class="ctx-item" @click="act('reload')">
+				<i class="mdi mdi-refresh ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Refresh') }}</span>
 			</button>
-			<div class="menu-sep"></div>
-			<button class="menu-item" @click="act('open-window')">
-				<i class="mdi mdi-open-in-new menu-icon"></i>
-				<span class="menu-label">{{ $t('Open in New Window') }}</span>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('open-window')">
+				<i class="mdi mdi-open-in-new ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open in New Window') }}</span>
 			</button>
 		</template>
 	</div>
@@ -323,20 +323,20 @@ export default {
 <style lang="scss" scoped>
 .files-context-menu {
 	position: absolute;
-	z-index: 100;
-	width: 220px;
-	background: rgba(255, 255, 255, 0.95);
+	z-index: 10000;
+	width: 224px;
+	background: rgba(255, 255, 255, 0.88);
 	backdrop-filter: blur(24px) saturate(180%);
 	-webkit-backdrop-filter: blur(24px) saturate(180%);
-	border: 1px solid rgba(0, 0, 0, 0.09);
+	border: 1px solid rgba(255, 255, 255, 0.65);
 	border-radius: 12px;
 	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
 	padding: 0.35rem;
-	animation: filesCtxFade 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 	user-select: none;
+	animation: ctxFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes filesCtxFade {
+@keyframes ctxFadeIn {
 	from {
 		opacity: 0;
 		transform: scale(0.96) translateY(-4px);
@@ -348,14 +348,14 @@ export default {
 }
 
 .ctx-header {
-	padding: 0.25rem 0.4rem 0.15rem;
+	padding: 0.25rem 0.4rem 0.25rem;
 }
 
 .ctx-badge {
 	display: inline-flex;
 	align-items: center;
 	padding: 0.25rem 0.55rem;
-	background: rgba(37, 99, 235, 0.09);
+	background: rgba(37, 99, 235, 0.08);
 	color: #2563eb;
 	border-radius: 6px;
 	font-size: 0.775rem;
@@ -364,34 +364,32 @@ export default {
 	width: 100%;
 }
 
-.menu-item {
+.ctx-item {
 	display: flex;
 	align-items: center;
 	gap: 0.65rem;
 	width: 100%;
-	text-align: left;
-	padding: 0.44rem 0.7rem;
-	border: none;
-	background: none;
-	cursor: pointer;
+	padding: 0.45rem 0.65rem;
 	border-radius: 7px;
 	font-family: inherit;
 	font-size: 0.8125rem;
 	font-weight: 500;
 	color: #1e293b;
 	transition: all 0.12s ease;
+	cursor: pointer;
+	border: none;
+	background: transparent;
+	text-align: left;
 
-	.menu-icon {
-		font-size: 1.15rem;
-		width: 1.25rem;
-		text-align: center;
+	.ctx-icon {
+		font-size: 1.1rem;
 		color: #475569;
 		flex-shrink: 0;
 		line-height: 1;
 		transition: color 0.12s ease;
 	}
 
-	.menu-label {
+	.ctx-label {
 		flex: 1;
 		white-space: nowrap;
 		overflow: hidden;
@@ -402,7 +400,7 @@ export default {
 		background: #2563eb;
 		color: #ffffff;
 
-		.menu-icon {
+		.ctx-icon {
 			color: #ffffff;
 		}
 	}
@@ -410,7 +408,7 @@ export default {
 	&.is-danger {
 		color: #dc2626;
 
-		.menu-icon {
+		.ctx-icon {
 			color: #dc2626;
 		}
 
@@ -418,7 +416,7 @@ export default {
 			background: #dc2626;
 			color: #ffffff;
 
-			.menu-icon {
+			.ctx-icon {
 				color: #ffffff;
 			}
 		}
@@ -429,7 +427,7 @@ export default {
 	}
 }
 
-.menu-sep {
+.ctx-divider {
 	height: 1px;
 	margin: 0.35rem 0.4rem;
 	background: rgba(0, 0, 0, 0.08);

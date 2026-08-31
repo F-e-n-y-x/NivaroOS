@@ -98,8 +98,8 @@ export default {
 .settings-app {
 	display: flex;
 	height: 100%;
-	background: #f8fafc;
-	color: #0f172a;
+	background: #F7F7F7;
+	color: #2c3e50;
 	font-family: $family-sans-serif;
 }
 
@@ -108,7 +108,7 @@ export default {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	background: #f8fafc;
+	background: #F7F7F7;
 }
 
 .settings-content {
