@@ -37,7 +37,7 @@
 						$t('Import to NivaroOS') }}</b-button>
 					<b-button v-else-if="item.status === 'running'" expanded tag="a" type="is-text" @click="openApp(item)">{{
 						$t('Open') }}</b-button>
-					<b-button v-else expanded tag="a" type="is-text" @click="openApp(item)">{{
+					<b-button v-else-if="!isContainerApp" expanded tag="a" type="is-text" @click="openApp(item)">{{
 						$t('launch-and-open') }}</b-button>
 					<b-button v-if="isV2App" expanded icon-pack="casa" icon-right="question-outline" size="is-16"
 						type="is-text" @click="openTips(item.name)">

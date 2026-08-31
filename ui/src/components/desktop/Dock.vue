@@ -65,41 +65,59 @@
 			</div>
 			<div v-if="ctxMenu.title" class="ctx-divider"></div>
 
-			<!-- 1. Pinned Item Actions (Built-in or User App) -->
+			<!-- 1. Pinned Item Actions -->
 			<template v-if="ctxMenu.target && ctxMenu.target.type === 'item'">
-				<button class="ctx-item" @click="handleItemAction('toggle')">
-					<i class="mdi mdi-open-in-app ctx-icon"></i>
-					<span class="ctx-label">{{ isItemOpen(ctxMenu.target.data) ? (isItemMinimized(ctxMenu.target.data) ? $t('Restore') : $t('Bring to Front')) : $t('Open') }}</span>
-				</button>
+				<!-- Built-in system desktop window actions -->
+				<template v-if="isBuiltinApp(ctxMenu.target.data)">
+					<button class="ctx-item" @click="handleItemAction('toggle')">
+						<i class="mdi mdi-open-in-app ctx-icon"></i>
+						<span class="ctx-label">{{ isItemOpen(ctxMenu.target.data) ? (isItemMinimized(ctxMenu.target.data) ? $t('Restore') : $t('Bring to Front')) : $t('Open') }}</span>
+					</button>
 
-				<button v-if="isMultiWindowApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('newWindow')">
-					<i class="mdi mdi-plus-box-multiple-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('New Window') }}</span>
-				</button>
+					<button v-if="isMultiWindowApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('newWindow')">
+						<i class="mdi mdi-plus-box-multiple-outline ctx-icon"></i>
+						<span class="ctx-label">{{ $t('New Window') }}</span>
+					</button>
 
-				<button v-if="!isBuiltinApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('edit')">
-					<i class="mdi mdi-pencil-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Edit Settings') }}</span>
-				</button>
+					<div class="ctx-divider"></div>
 
-				<button v-if="!isBuiltinApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('restart')">
-					<i class="mdi mdi-restart ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Restart App') }}</span>
-				</button>
+					<button class="ctx-item" @click="handleItemAction('unpin')">
+						<i class="mdi mdi-pin-off-outline ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
+					</button>
 
-				<div class="ctx-divider"></div>
+					<div v-if="isItemOpen(ctxMenu.target.data)" class="ctx-divider"></div>
 
-				<button class="ctx-item" @click="handleItemAction('unpin')">
-					<i class="mdi mdi-pin-off-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
-				</button>
+					<button v-if="isItemOpen(ctxMenu.target.data)" class="ctx-item is-danger" @click="handleItemAction('close')">
+						<i class="mdi mdi-close ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Close Window') }}</span>
+					</button>
+				</template>
 
-				<div v-if="isItemOpen(ctxMenu.target.data)" class="ctx-divider"></div>
+				<!-- Docker / Web App Container Actions (External Web Services) -->
+				<template v-else>
+					<button class="ctx-item" @click="handleItemAction('toggle')">
+						<i class="mdi mdi-open-in-new ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Open') }}</span>
+					</button>
 
-				<button v-if="isItemOpen(ctxMenu.target.data)" class="ctx-item is-danger" @click="handleItemAction('close')">
-					<i class="mdi mdi-close ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Close Window') }}</span>
-				</button>
+					<button class="ctx-item" @click="handleItemAction('edit')">
+						<i class="mdi mdi-pencil-outline ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Edit Settings') }}</span>
+					</button>
+
+					<button v-if="ctxMenu.target.data.app_type !== 'LinkApp' && ctxMenu.target.data.app_type !== 'container'" class="ctx-item" @click="handleItemAction('restart')">
+						<i class="mdi mdi-restart ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Restart App') }}</span>
+					</button>
+
+					<div class="ctx-divider"></div>
+
+					<button class="ctx-item" @click="handleItemAction('unpin')">
+						<i class="mdi mdi-pin-off-outline ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
+					</button>
+				</template>
 			</template>
 
 			<!-- 2. Running Extra Window Actions -->
@@ -339,7 +357,6 @@ export default {
 		isItemOpen(item) {
 			if (item.id && this.findWindow(item.id)) return true
 			if (this.findWindow(item.name)) return true
-			if (item.app_type !== 'system' && item.status === 'running') return true
 			return false
 		},
 		isItemMinimized(item) {
