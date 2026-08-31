@@ -115,12 +115,12 @@
 			<b-tooltip :always="isActiveTooltip" :animated="true" :label="tooltipLabel" :triggers="tooltipTriger"
 				animation="fade1" class="in-card" type="is-white">
 
-				<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column pt-4 pb-3px img-c">
+				<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 					<div class="is-flex is-justify-content-center">
 						<div class="is-relative">
 							<b-image :class="dotClass(item.status, isLoading)"
 								:style="item.iconRadius ? { borderRadius: item.iconRadius + '%', overflow: 'hidden' } : null"
-								:src="item.icon" :src-fallback="require('@/assets/img/app/default.svg')" class="is-64x64"
+								:src="item.icon" :src-fallback="require('@/assets/img/app/default.svg')" class="is-52x52"
 								webp-fallback=".jpg" @click.native="openApp(item)"></b-image>
 							<!-- Unstable-->
 							<cTooltip v-if="newAppIds.includes(item.name)" class="__position" content="NEW"></cTooltip>
@@ -128,14 +128,14 @@
 
 						<!-- Loading Bar Start -->
 						<b-loading :active="isLoading" :can-cancel="false" :is-full-page="false"
-							class="has-background-gray-800 op80 is-64x64"
-							style="top: auto;bottom: auto; right: auto; left: auto; border-radius: 11.5px">
+							class="has-background-gray-800 op80 is-52x52"
+							style="top: auto;bottom: auto; right: auto; left: auto; border-radius: 10px">
 							<img :src="require('@/assets/img/loading/waiting-white.svg')" alt="loading" class="is-20x20" />
 						</b-loading>
 						<!-- Loading Bar End -->
 					</div>
 
-					<p class="mt-3 one-line">
+					<p class="app-label one-line">
 						<a class="one-line" style="cursor:default">
 							{{ i18n(item.title) }}
 						</a>
@@ -1110,5 +1110,27 @@ export default {
 			background: hsla(208, 100%, 45%, 1);
 		}
 	}
+}
+
+.icon-cell {
+	width: 100%;
+	height: 100%;
+	padding: 6px 4px 4px;
+	box-sizing: border-box;
+	justify-content: center;
+	gap: 0;
+}
+
+.app-label {
+	margin-top: 4px;
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: #fff;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+	line-height: 1.2;
+	max-width: 84px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 </style>
