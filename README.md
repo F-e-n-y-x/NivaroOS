@@ -52,7 +52,7 @@ Once installation finishes, open your browser and navigate to `http://<your-serv
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/uninstall.sh | sudo bash
 ```
 
-Stops and removes all NivaroOS services, binaries, and config, and deletes the cloned source under `/opt/recasa`. Your app data, VM disks, and files under `/DATA` are left untouched, so you can re-run the install command above for a clean reinstall. To also wipe `/DATA` (irreversible), add `--purge-data` - run interactively so you're asked to type `DELETE` to confirm, or pass `--yes` too for a non-interactive purge.
+Stops and removes all NivaroOS services, binaries, and config, and deletes the cloned source under `/opt/nivaroos`. Your app data, VM disks, and files under `/DATA` are left untouched, so you can re-run the install command above for a clean reinstall. To also wipe `/DATA` (irreversible), add `--purge-data` - run interactively so you're asked to type `DELETE` to confirm, or pass `--yes` too for a non-interactive purge.
 
 The Go toolchain, Node.js/pnpm, and `gum` are left in place since the installer doesn't own them.
 
@@ -135,7 +135,7 @@ NivaroOS is engineered as a modular microservices architecture communicating via
                └─────────────────┘
 
                ┌─────────────────────────────┐
-               │  recasa-cli (admin CLI)     │
+               │  nivaroos-cli (admin CLI)   │
                │  talks to the same APIs,    │
                │  independent of the UI      │
                └─────────────────────────────┘
@@ -151,27 +151,27 @@ NivaroOS is engineered as a modular microservices architecture communicating via
 | **Message Bus** | `services/message-bus` | Real-time event broker and WebSocket broadcasting daemon. |
 | **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. Optional at install time. |
 | **GPU Sidecar** | `services/gpu-sidecar` | NVIDIA GPU stats (utilization, memory, temperature, processes) for the desktop telemetry widget. |
-| **CLI** | `cli/` | `recasa-cli` — a standalone admin command-line tool for managing services and toggling optional add-ons after install. |
+| **CLI** | `cli/` | `nivaroos-cli` — a standalone admin command-line tool for managing services and toggling optional add-ons after install. |
 | **Frontend UI** | `ui/` | Responsive windowed desktop Single Page Application. |
 
 ---
 
 ## 🖥️ Command-Line Interface
 
-Every install also gets `recasa-cli`, an admin CLI independent of the web UI:
+Every install also gets `nivaroos-cli`, an admin CLI independent of the web UI:
 
 ```bash
-recasa-cli --help
+nivaroos-cli --help
 ```
 
 Optional add-ons (currently just VM Manager) can be toggled after the fact, without re-running the installer:
 
 ```bash
-recasa-cli vm enable    # builds and starts the VM Manager service
-recasa-cli vm disable   # stops it (VM disk images under /DATA/VMs are left untouched)
+nivaroos-cli vm enable    # builds and starts the VM Manager service
+nivaroos-cli vm disable   # stops it (VM disk images under /DATA/VMs are left untouched)
 ```
 
-`recasa-cli` also has command groups for app management, the gateway, local storage, the message bus, users, and health checks — see `recasa-cli <group> --help` for each.
+`nivaroos-cli` also has command groups for app management, the gateway, local storage, the message bus, users, and health checks — see `nivaroos-cli <group> --help` for each.
 
 ---
 
@@ -189,37 +189,37 @@ cd ui
 pnpm install
 pnpm run build
 ```
-Compiled production assets are output to `ui/build/sysroot/var/lib/recasa/www/`.
+Compiled production assets are output to `ui/build/sysroot/var/lib/nivaroos/www/`.
 
 ### 2. Build Backend Go Services & CLI
 Every service's `main.go` lives at its module root (no `cmd/` subdirectory), so each builds with a plain `go build .`:
 ```bash
-# Core Daemon (binary is named "recasa", no suffix - it owns the legacy API)
-cd services/core && go build -o /usr/local/bin/recasa .
+# Core Daemon (binary is named "nivaroos", no suffix - it owns the legacy API)
+cd services/core && go build -o /usr/local/bin/nivaroos .
 
 # Gateway
-cd services/gateway && go build -o /usr/local/bin/recasa-gateway .
+cd services/gateway && go build -o /usr/local/bin/nivaroos-gateway .
 
 # User Service
-cd services/user && go build -o /usr/local/bin/recasa-user .
+cd services/user && go build -o /usr/local/bin/nivaroos-user .
 
 # App Management
-cd services/app-management && go build -o /usr/local/bin/recasa-app-management .
+cd services/app-management && go build -o /usr/local/bin/nivaroos-app-management .
 
 # Local Storage
-cd services/local-storage && go build -o /usr/local/bin/recasa-local-storage .
+cd services/local-storage && go build -o /usr/local/bin/nivaroos-local-storage .
 
 # Message Bus
-cd services/message-bus && go build -o /usr/local/bin/recasa-message-bus .
+cd services/message-bus && go build -o /usr/local/bin/nivaroos-message-bus .
 
 # GPU Sidecar
-cd services/gpu-sidecar && go build -o /usr/local/bin/recasa-gpu-sidecar .
+cd services/gpu-sidecar && go build -o /usr/local/bin/nivaroos-gpu-sidecar .
 
 # VM Sidecar (optional - needs libvirt-dev and gcc for its cgo bindings)
-cd services/vm-sidecar && go build -o /usr/local/bin/recasa-vm-sidecar .
+cd services/vm-sidecar && go build -o /usr/local/bin/nivaroos-vm-sidecar .
 
 # CLI
-cd cli && go build -o /usr/local/bin/recasa-cli .
+cd cli && go build -o /usr/local/bin/nivaroos-cli .
 ```
 
 Each service also has its own `go generate ./...` step for its OpenAPI-derived `codegen/` package, already committed to this repo - only re-run it if you change an API spec.

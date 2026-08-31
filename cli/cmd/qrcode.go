@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Recasa
+Copyright © 2023 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 // qrcodeCmd represents the qrcode command
 var qrcodeCmd = &cobra.Command{
 	Use:   "qrcode",
-	Short: "show qrcode to Recasa WebUI",
+	Short: "show qrcode to NivaroOS WebUI",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rootURL, err := rootCmd.PersistentFlags().GetString(FlagRootURL)
 		if err != nil {

@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Recasa
+Copyright © 2023 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import (
 // healthcheckLogsCmd represents the healthcheckLogs command
 var healthcheckLogsCmd = &cobra.Command{
 	Use:     "logs",
-	Short:   "get all `casaos-*` logs and save to a ZIP file",
+	Short:   "get all `nivaroos-*` logs and save to a ZIP file",
 	Aliases: []string{"log"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rootURL, err := rootCmd.PersistentFlags().GetString(FlagRootURL)
@@ -69,13 +69,13 @@ var healthcheckLogsCmd = &cobra.Command{
 		}
 
 		if outDir == "" {
-			outDir, err = os.MkdirTemp("", "recasa-cli-*")
+			outDir, err = os.MkdirTemp("", "nivaroos-cli-*")
 			if err != nil {
 				return err
 			}
 		}
 
-		zipFilePath := fmt.Sprintf("%s/recasa-%s-logs-%s.zip", outDir, Version, time.Now().Format("20060102150405"))
+		zipFilePath := fmt.Sprintf("%s/nivaroos-%s-logs-%s.zip", outDir, Version, time.Now().Format("20060102150405"))
 
 		if err := os.WriteFile(zipFilePath, response.Body, 0o600); err != nil {
 			return err

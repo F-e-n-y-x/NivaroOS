@@ -1,4 +1,4 @@
-# CasaOS Fork — Feature Backlog
+# NivaroOS Fork — Feature Backlog
 
 Queued after Milestone 1 (fork building + swapped in, matching current
 install — see docs/superpowers/specs/2026-08-19-casaos-fork-milestone1-design.md).

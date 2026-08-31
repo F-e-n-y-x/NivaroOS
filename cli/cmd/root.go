@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 Recasa
+Copyright © 2022 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ const (
 	GatewayPath = "/etc/nivaroos/gateway.ini"
 
 	DefaultTimeout = 10 * time.Second
-	RootGroupID    = "recasa-cli"
+	RootGroupID    = "nivaroos-cli"
 )
 
 var (
@@ -53,8 +53,8 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "recasa-cli",
-	Short: "A command line interface for Recasa",
+	Use:   "nivaroos-cli",
+	Short: "A command line interface for NivaroOS",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
@@ -72,7 +72,7 @@ func Execute() {
 func init() {
 	url := ""
 
-	rootCmd.PersistentFlags().StringP(FlagRootURL, "u", "", "root url of Recasa API")
+	rootCmd.PersistentFlags().StringP(FlagRootURL, "u", "", "root url of NivaroOS API")
 
 	if rootCmd.PersistentFlags().Changed(FlagRootURL) {
 		url = rootCmd.PersistentFlags().Lookup(FlagRootURL).Value.String()

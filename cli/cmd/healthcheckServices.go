@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Recasa
+Copyright © 2023 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import (
 // healthcheckServicesCmd represents the healthcheckServices command
 var healthcheckServicesCmd = &cobra.Command{
 	Use:     "services",
-	Short:   "get running status of each `casaos-*` service",
+	Short:   "get running status of each `nivaroos-*` service",
 	Aliases: []string{"svc", "service"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rootURL, err := rootCmd.PersistentFlags().GetString(FlagRootURL)
