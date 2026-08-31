@@ -8,7 +8,7 @@ before:
     - go test -race -v ./...
 builds:
   - id: casaos-local-storage-amd64
-    binary: build/sysroot/usr/bin/recasa-local-storage
+    binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -29,7 +29,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-local-storage-arm64
-    binary: build/sysroot/usr/bin/recasa-local-storage
+    binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -50,7 +50,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-local-storage-arm-7
-    binary: build/sysroot/usr/bin/recasa-local-storage
+    binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -73,7 +73,7 @@ builds:
     goarm:
       - "7"
   - id: casaos-local-storage-migration-tool-amd64
-    binary: build/sysroot/usr/bin/recasa-local-storage-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -95,7 +95,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-local-storage-migration-tool-arm64
-    binary: build/sysroot/usr/bin/recasa-local-storage-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -117,7 +117,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-local-storage-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/recasa-local-storage-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"

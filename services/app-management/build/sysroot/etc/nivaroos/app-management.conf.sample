@@ -1,12 +1,12 @@
 [common]
-RuntimePath = /var/run/recasa
+RuntimePath = /var/run/nivaroos
 
 [app]
-LogPath = /var/log/recasa/
+LogPath = /var/log/nivaroos/
 LogSaveName = app-management
 LogFileExt = log
-AppStorePath = /var/lib/recasa/appstore
-AppsPath = /var/lib/recasa/apps
+AppStorePath = /var/lib/nivaroos/appstore
+AppsPath = /var/lib/nivaroos/apps
 
 [server]
 appstore = https://casaos.app/store/main.zip

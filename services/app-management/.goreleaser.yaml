@@ -9,7 +9,7 @@ before:
     - go test -race -v ./... -timeout 30m
 builds:
   - id: casaos-app-management-amd64
-    binary: build/sysroot/usr/bin/recasa-app-management
+    binary: build/sysroot/usr/bin/nivaroos-app-management
     hooks:
       post:
         - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
@@ -35,7 +35,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-app-management-arm64
-    binary: build/sysroot/usr/bin/recasa-app-management
+    binary: build/sysroot/usr/bin/nivaroos-app-management
     hooks:
       post:
         - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
@@ -61,7 +61,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-app-management-arm-7
-    binary: build/sysroot/usr/bin/recasa-app-management
+    binary: build/sysroot/usr/bin/nivaroos-app-management
     hooks:
       post:
         - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
@@ -89,7 +89,7 @@ builds:
     goarm:
       - "7"
   - id: casaos-app-management-migration-tool-amd64
-    binary: build/sysroot/usr/bin/recasa-app-management-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-app-management-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -111,7 +111,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-app-management-migration-tool-arm64
-    binary: build/sysroot/usr/bin/recasa-app-management-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-app-management-migration-tool
     # hooks:
     #   post:
     #     - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -133,7 +133,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-app-management-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/recasa-app-management-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-app-management-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -157,7 +157,7 @@ builds:
     goarm:
       - "7"
   - id: casaos-app-management-validator-amd64
-    binary: build/sysroot/usr/bin/recasa-app-management-validator
+    binary: build/sysroot/usr/bin/nivaroos-app-management-validator
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"

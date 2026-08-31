@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	localStorageConfigDirPath  = "/etc/recasa"
-	localStorageConfigFilePath = "/etc/recasa/local-storage.conf"
+	localStorageConfigDirPath  = "/etc/nivaroos"
+	localStorageConfigFilePath = "/etc/nivaroos/local-storage.conf"
 	localStorageName           = "casaos-local-storage.service"
 	localStorageNameShort      = "local-storage"
 )
 
-//go:embedded ../../build/sysroot/etc/recasa/local-storage.conf.sample
+//go:embedded ../../build/sysroot/etc/nivaroos/local-storage.conf.sample
 // var _localStorageConfigFileSample string
 
 var (

@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	messageBusConfigDirPath  = "/etc/recasa"
-	messageBusConfigFilePath = "/etc/recasa/message-bus.conf"
+	messageBusConfigDirPath  = "/etc/nivaroos"
+	messageBusConfigFilePath = "/etc/nivaroos/message-bus.conf"
 	messageBusName           = "casaos-message-bus.service"
 	messageBusNameShort      = "message-bus"
 )
 
-//go:embedded ../../build/sysroot/etc/recasa/message-bus.conf.sample
+//go:embedded ../../build/sysroot/etc/nivaroos/message-bus.conf.sample
 // var _messageBusConfigFileSample string
 
 var (

@@ -4,8 +4,8 @@ set -euo pipefail
 # Mirrors install.sh's LEGACY_SERVICE_UNITS + the units it writes itself
 # (GPU_SIDECAR_UNIT / VM_SIDECAR_UNIT) - keep these two lists in sync if
 # either script's service list changes.
-SRC_DIR="/opt/recasa/src"
-ALL_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service recasa-gpu-sidecar.service recasa-vm-sidecar.service rclone.service"
+SRC_DIR="/opt/nivaroos/src"
+ALL_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service"
 
 PURGE_DATA=""
 YES=""
@@ -40,24 +40,24 @@ remove_unit_files() {
 		/usr/lib/systemd/system/casaos-app-management.service \
 		/usr/lib/systemd/system/casaos-app-management.service.buildroot \
 		/usr/lib/systemd/system/casaos-local-storage.service \
-		/usr/lib/systemd/system/recasa-gpu-sidecar.service \
-		/usr/lib/systemd/system/recasa-vm-sidecar.service \
+		/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
+		/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 		/usr/lib/systemd/system/rclone.service
 	systemctl daemon-reload
 }
 
 remove_binaries() {
 	rm -f \
-		/usr/bin/recasa /usr/bin/recasa-gateway /usr/bin/recasa-user \
-		/usr/bin/recasa-app-management /usr/bin/recasa-local-storage \
-		/usr/bin/recasa-message-bus /usr/bin/recasa-vm-sidecar \
-		/usr/bin/recasa-gpu-sidecar /usr/bin/recasa-cli \
+		/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
+		/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
+		/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-vm-sidecar \
+		/usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-cli \
 		/usr/local/bin/mergerfs.ctl
 }
 
 remove_dirs() {
-	rm -rf /etc/recasa /usr/share/recasa /var/lib/recasa "$(dirname "$SRC_DIR")"
-	rm -f /etc/profile.d/recasa-go.sh
+	rm -rf /etc/nivaroos /usr/share/nivaroos /var/lib/nivaroos "$(dirname "$SRC_DIR")"
+	rm -f /etc/profile.d/nivaroos-go.sh
 }
 
 purge_data() {

@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	userServiceConfigDirPath  = "/etc/recasa"
-	userServiceConfigFilePath = "/etc/recasa/user-service.conf"
+	userServiceConfigDirPath  = "/etc/nivaroos"
+	userServiceConfigFilePath = "/etc/nivaroos/user-service.conf"
 	userServiceName           = "casaos-user-service.service"
 	userServiceNameShort      = "user-service"
 )
 
-//go:embedded ../../build/sysroot/etc/recasa/user-service.conf.sample
+//go:embedded ../../build/sysroot/etc/nivaroos/user-service.conf.sample
 //var _userServiceConfigFileSample string
 
 var (

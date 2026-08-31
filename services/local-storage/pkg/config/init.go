@@ -9,15 +9,15 @@ import (
 
 var (
 	CommonInfo = &model.CommonModel{
-		RuntimePath: "/var/run/recasa",
+		RuntimePath: "/var/run/nivaroos",
 	}
 
 	AppInfo = &model.APPModel{
-		DBPath:      "/var/lib/recasa",
-		LogPath:     "/var/log/recasa",
+		DBPath:      "/var/lib/nivaroos",
+		LogPath:     "/var/log/nivaroos",
 		LogSaveName: "local-storage",
 		LogFileExt:  "log",
-		ShellPath:   "/usr/share/recasa/shell",
+		ShellPath:   "/usr/share/nivaroos/shell",
 	}
 
 	ServerInfo = &model.ServerModel{

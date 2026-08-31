@@ -157,7 +157,7 @@ func (s *LocalStorage) InitMerge(ctx echo.Context) error {
 
 			dir, _ := ioutil.ReadDir(constants.DefaultFilePath)
 			if len(dir) > 0 {
-				message := "Please make sure the /var/lib/recasa/files directory is empty"
+				message := "Please make sure the /var/lib/nivaroos/files directory is empty"
 				return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 			}
 
@@ -166,7 +166,7 @@ func (s *LocalStorage) InitMerge(ctx echo.Context) error {
 			err := os.Rename(m.MountPoint, constants.DefaultFilePath)
 			if err != nil {
 				fmt.Println(err)
-				message := "move " + m.MountPoint + " to /var/lib/recasa/files failed"
+				message := "move " + m.MountPoint + " to /var/lib/nivaroos/files failed"
 				return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 			}
 		}

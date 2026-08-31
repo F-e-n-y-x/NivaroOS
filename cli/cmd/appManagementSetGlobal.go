@@ -34,7 +34,7 @@ var appManagementSetGlobalCmd = &cobra.Command{
 This is useful for compose apps that need the same environment variables. Instead of specifying
 an environment variable multiple time for each app, it can be set globally for convenience.
 
-Global environment variables are stored at 'env' file at Recasa configuration path, e.g. /etc/recasa/env
+Global environment variables are stored at 'env' file at Recasa configuration path, e.g. /etc/nivaroos/env
 
 Note: If the compose app already has an environment variable with identical name defined in its
       docker-compose.yaml file, then the global environment variable will be ignored.

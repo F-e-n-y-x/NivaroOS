@@ -37,7 +37,7 @@ const (
 	FlagForce   = "force"
 	FlagRootURL = "root-url"
 
-	GatewayPath = "/etc/recasa/gateway.ini"
+	GatewayPath = "/etc/nivaroos/gateway.ini"
 
 	DefaultTimeout = 10 * time.Second
 	RootGroupID    = "recasa-cli"

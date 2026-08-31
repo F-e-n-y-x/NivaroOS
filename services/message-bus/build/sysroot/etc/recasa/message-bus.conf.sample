@@ -1,7 +1,0 @@
-[common]
-RuntimePath=/var/run/recasa
-
-[app]
-LogPath=/var/log/recasa
-LogSaveName=message-bus
-LogFileExt=log

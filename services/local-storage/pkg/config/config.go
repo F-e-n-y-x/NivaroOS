@@ -1,5 +1,5 @@
 package config
 
 const (
-	LocalStorageConfigFilePath = "/etc/recasa/local-storage.conf"
+	LocalStorageConfigFilePath = "/etc/nivaroos/local-storage.conf"
 )

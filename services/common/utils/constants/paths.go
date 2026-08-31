@@ -1,10 +1,10 @@
 package constants
 
 const (
-	DefaultConfigPath   = "/etc/recasa"
-	DefaultConstantPath = "/usr/share/recasa"
-	DefaultDataPath     = "/var/lib/recasa"
-	DefaultFilePath     = "/var/lib/recasa/files"
-	DefaultLogPath      = "/var/log/recasa"
-	DefaultRuntimePath  = "/var/run/recasa"
+	DefaultConfigPath   = "/etc/nivaroos"
+	DefaultConstantPath = "/usr/share/nivaroos"
+	DefaultDataPath     = "/var/lib/nivaroos"
+	DefaultFilePath     = "/var/lib/nivaroos/files"
+	DefaultLogPath      = "/var/log/nivaroos"
+	DefaultRuntimePath  = "/var/run/nivaroos"
 )

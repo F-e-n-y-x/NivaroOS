@@ -29,7 +29,7 @@ var (
 		LogPath:      constants.DefaultLogPath,
 		LogSaveName:  common.SERVICENAME,
 		LogFileExt:   "log",
-		ShellPath:    "/usr/share/recasa/shell",
+		ShellPath:    "/usr/share/nivaroos/shell",
 		UserDataPath: filepath.Join(constants.DefaultDataPath, "conf"),
 	}
 	CommonInfo = &model.CommonModel{

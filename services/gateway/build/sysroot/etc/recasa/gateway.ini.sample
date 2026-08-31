@@ -1,5 +1,0 @@
-[common]
-runtimepath=/var/run/recasa
-
-[gateway]
-port=

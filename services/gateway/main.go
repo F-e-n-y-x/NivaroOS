@@ -42,7 +42,7 @@ var (
 
 	ErrCheckURLNotOK = errors.New("check url did not return 200 OK")
 
-	//go:embed build/sysroot/etc/recasa/gateway.ini.sample
+	//go:embed build/sysroot/etc/nivaroos/gateway.ini.sample
 	_confSample string
 )
 

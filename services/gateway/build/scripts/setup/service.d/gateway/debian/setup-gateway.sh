@@ -7,7 +7,7 @@ readonly APP_NAME="casaos-gateway"
 readonly APP_NAME_SHORT="gateway"
 
 # copy config files
-readonly CONF_PATH=/etc/recasa
+readonly CONF_PATH=/etc/nivaroos
 readonly CONF_FILE=${CONF_PATH}/${APP_NAME_SHORT}.ini
 readonly CONF_FILE_SAMPLE=${CONF_PATH}/${APP_NAME_SHORT}.ini.sample
 

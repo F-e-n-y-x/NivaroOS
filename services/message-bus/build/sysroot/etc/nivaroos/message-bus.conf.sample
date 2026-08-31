@@ -1,0 +1,7 @@
+[common]
+RuntimePath=/var/run/nivaroos
+
+[app]
+LogPath=/var/log/nivaroos
+LogSaveName=message-bus
+LogFileExt=log

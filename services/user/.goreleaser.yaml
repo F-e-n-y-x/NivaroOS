@@ -9,7 +9,7 @@ before:
     - go test -race -v ./...
 builds:
   - id: casaos-user-service-amd64
-    binary: build/sysroot/usr/bin/recasa-user
+    binary: build/sysroot/usr/bin/nivaroos-user
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -30,7 +30,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-user-service-arm64
-    binary: build/sysroot/usr/bin/recasa-user
+    binary: build/sysroot/usr/bin/nivaroos-user
     # hooks:
     #   post:
     #     - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -51,7 +51,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-user-service-arm-7
-    binary: build/sysroot/usr/bin/recasa-user
+    binary: build/sysroot/usr/bin/nivaroos-user
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -74,7 +74,7 @@ builds:
     goarm:
       - "7"
   - id: casaos-user-service-migration-tool-amd64
-    binary: build/sysroot/usr/bin/recasa-user-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -96,7 +96,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-user-service-migration-tool-arm64
-    binary: build/sysroot/usr/bin/recasa-user-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     # hooks:
     #   post:
     #     - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -118,7 +118,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-user-service-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/recasa-user-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"

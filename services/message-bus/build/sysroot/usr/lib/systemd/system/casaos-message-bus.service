@@ -3,9 +3,9 @@ After=casaos-gateway.service
 Description=Recasa Message Bus Service
 
 [Service]
-ExecStartPre=/usr/bin/recasa-message-bus -v
-ExecStart=/usr/bin/recasa-message-bus -c /etc/recasa/message-bus.conf
-PIDFile=/var/run/recasa/message-bus.pid
+ExecStartPre=/usr/bin/nivaroos-message-bus -v
+ExecStart=/usr/bin/nivaroos-message-bus -c /etc/nivaroos/message-bus.conf
+PIDFile=/var/run/nivaroos/message-bus.pid
 Restart=always
 Type=notify
 

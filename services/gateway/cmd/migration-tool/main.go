@@ -16,7 +16,7 @@ const (
 	gatewayServiceNameShort = "gateway"
 )
 
-//go:embedded ../../build/sysroot/etc/recasa/gateway.ini.sample
+//go:embedded ../../build/sysroot/etc/nivaroos/gateway.ini.sample
 //var _gatewayINISample string
 
 var (

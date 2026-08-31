@@ -47,7 +47,7 @@ var (
 	//go:embed api/casaos/openapi.yaml
 	_docYAML string
 
-	//go:embed build/sysroot/etc/recasa/casaos.conf.sample
+	//go:embed build/sysroot/etc/nivaroos/casaos.conf.sample
 	_confSample string
 
 	configFlag  = flag.String("c", "", "config address")

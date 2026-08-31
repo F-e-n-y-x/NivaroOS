@@ -3,9 +3,9 @@ After=casaos-message-bus.service
 Description=Recasa User Service
 
 [Service]
-ExecStartPre=/usr/bin/recasa-user -v
-ExecStart=/usr/bin/recasa-user -c /etc/recasa/user-service.conf
-PIDFile=/var/run/recasa/user-service.pid
+ExecStartPre=/usr/bin/nivaroos-user -v
+ExecStart=/usr/bin/nivaroos-user -c /etc/nivaroos/user-service.conf
+PIDFile=/var/run/nivaroos/user-service.pid
 Restart=always
 Type=notify
 

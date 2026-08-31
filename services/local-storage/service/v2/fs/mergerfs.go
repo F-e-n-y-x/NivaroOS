@@ -11,7 +11,7 @@ const (
 	MergerFSFullName       = "fuse.mergerfs"
 	MergerFSDefaultOptions = "defaults,allow_other,use_ino,category.create=mfs,moveonenospc=true,minfreespace=1M"
 
-	MergerFSExtendedKeySource = "mergerfs.src" // corresponding value could be for example: /var/lib/recasa/files
+	MergerFSExtendedKeySource = "mergerfs.src" // corresponding value could be for example: /var/lib/nivaroos/files
 
 )
 

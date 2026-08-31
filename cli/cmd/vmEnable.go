@@ -23,21 +23,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const recasaSrcDir = "/opt/recasa/src"
+const recasaSrcDir = "/opt/nivaroos/src"
 
 const vmSidecarUnitContent = `[Unit]
-After=network.target recasa-message-bus.service
+After=network.target casaos-message-bus.service
 Description=Recasa VM Sidecar
 
 [Service]
-ExecStart=/usr/bin/recasa-vm-sidecar
+ExecStart=/usr/bin/nivaroos-vm-sidecar
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 `
 
-const vmSidecarUnitPath = "/usr/lib/systemd/system/recasa-vm-sidecar.service"
+const vmSidecarUnitPath = "/usr/lib/systemd/system/nivaroos-vm-sidecar.service"
 
 var vmEnableCmd = &cobra.Command{
 	Use:   "enable",
@@ -47,7 +47,7 @@ var vmEnableCmd = &cobra.Command{
 			return fmt.Errorf("%s not found - run the Recasa installer first: %w", recasaSrcDir, err)
 		}
 
-		// recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
+		// nivaroos-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
 		// and needs a C compiler to do so. The base install (--without-vm) never
 		// installs either, since it doesn't need to. This command is meant to be
 		// run long after the initial install, so the apt cache may be stale -
@@ -67,12 +67,12 @@ var vmEnableCmd = &cobra.Command{
 			return fmt.Errorf("installing libvirt-dev and gcc: %w", err)
 		}
 
-		build := exec.Command("go", "build", "-o", "/usr/bin/recasa-vm-sidecar", ".")
+		build := exec.Command("go", "build", "-o", "/usr/bin/nivaroos-vm-sidecar", ".")
 		build.Dir = recasaSrcDir + "/services/vm-sidecar"
 		build.Stdout = os.Stdout
 		build.Stderr = os.Stderr
 		if err := build.Run(); err != nil {
-			return fmt.Errorf("building recasa-vm-sidecar: %w", err)
+			return fmt.Errorf("building nivaroos-vm-sidecar: %w", err)
 		}
 
 		if err := os.WriteFile(vmSidecarUnitPath, []byte(vmSidecarUnitContent), 0o644); err != nil {
@@ -81,7 +81,7 @@ var vmEnableCmd = &cobra.Command{
 
 		for _, args := range [][]string{
 			{"daemon-reload"},
-			{"enable", "--now", "recasa-vm-sidecar.service"},
+			{"enable", "--now", "nivaroos-vm-sidecar.service"},
 		} {
 			c := exec.Command("systemctl", args...)
 			c.Stdout = os.Stdout

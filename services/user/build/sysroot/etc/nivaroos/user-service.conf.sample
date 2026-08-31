@@ -1,0 +1,9 @@
+[common]
+RuntimePath=/var/run/nivaroos
+
+[app]
+LogPath = /var/log/nivaroos
+LogSaveName = user-service
+LogFileExt = log
+DBPath     = /var/lib/nivaroos/db
+UserDataPath = /var/lib/nivaroos

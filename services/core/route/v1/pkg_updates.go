@@ -137,9 +137,9 @@ func PostSystemPackageUpgrade(ctx echo.Context) error {
 	pkgMu.Unlock()
 
 	go func() {
-		logFile, err := os.OpenFile("/var/log/recasa-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		logFile, err := os.OpenFile("/var/log/nivaroos-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
-			logFile, _ = os.OpenFile("/tmp/recasa-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			logFile, _ = os.OpenFile("/tmp/nivaroos-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		}
 		if logFile != nil {
 			defer logFile.Close()

@@ -11,9 +11,9 @@ const events = require('./src/events/message_bus.js');
 const fs = require('fs');
 const path = require('path');
 
-const outPath = '../build/sysroot/var/lib/recasa/';
+const outPath = '../build/sysroot/var/lib/nivaroos/';
 const outName = 'ui-message-bus.json';
-const registerShellPath = '../build/sysroot/etc/recasa/start.d/';
+const registerShellPath = '../build/sysroot/etc/nivaroos/start.d/';
 const array = [];
 
 // Parse the event to array

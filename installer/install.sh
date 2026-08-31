@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
-SRC_DIR="/opt/recasa/src"
+SRC_DIR="/opt/nivaroos/src"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 WITH_VM=""
 YES=""
@@ -166,9 +166,9 @@ install_go_toolchain() {
 	esac
 	run_step "Installing the Go toolchain..." "curl -fsSL https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz -o /tmp/go1.23.4.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz && rm -f /tmp/go1.23.4.tar.gz"
 	export PATH="/usr/local/go/bin:$PATH"
-	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/recasa-go.sh
+	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/nivaroos-go.sh
 	# /etc/profile.d only helps interactive login shells. Symlink into /usr/bin
-	# too so `go` is always resolvable - e.g. for `recasa-cli vm enable`'s own
+	# too so `go` is always resolvable - e.g. for `nivaroos-cli vm enable`'s own
 	# `go build` invocation, run later via a plain `docker exec`/non-interactive
 	# `ssh host cmd`-style call that never sources /etc/profile.
 	ln -sf /usr/local/go/bin/go /usr/bin/go
@@ -192,9 +192,9 @@ CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-si
 
 install_service() {
 	local name="$1"
-	local bin_name="recasa-$name"
+	local bin_name="nivaroos-$name"
 	if [ "$name" = "core" ]; then
-		bin_name="recasa"
+		bin_name="nivaroos"
 	fi
 	(
 		cd "$SRC_DIR/services/$name"
@@ -210,7 +210,7 @@ install_service() {
 	fi
 }
 
-GPU_SIDECAR_UNIT=/usr/lib/systemd/system/recasa-gpu-sidecar.service
+GPU_SIDECAR_UNIT=/usr/lib/systemd/system/nivaroos-gpu-sidecar.service
 
 write_gpu_sidecar_unit() {
 	cat > "$GPU_SIDECAR_UNIT" <<'UNIT_EOF'
@@ -219,7 +219,7 @@ After=network.target
 Description=NivaroOS GPU Sidecar
 
 [Service]
-ExecStart=/usr/bin/recasa-gpu-sidecar
+ExecStart=/usr/bin/nivaroos-gpu-sidecar
 Restart=always
 
 [Install]
@@ -230,7 +230,7 @@ UNIT_EOF
 install_cli() {
 	(
 		cd "$SRC_DIR/cli"
-		run_step "Building recasa-cli..." go build -o /usr/bin/recasa-cli .
+		run_step "Building nivaroos-cli..." go build -o /usr/bin/nivaroos-cli .
 	)
 }
 
@@ -240,20 +240,20 @@ install_core_services() {
 	done
 	write_gpu_sidecar_unit
 	systemctl daemon-reload
-	systemctl enable --now recasa-gpu-sidecar.service
+	systemctl enable --now nivaroos-gpu-sidecar.service
 	install_cli
 }
 
-VM_SIDECAR_UNIT=/usr/lib/systemd/system/recasa-vm-sidecar.service
+VM_SIDECAR_UNIT=/usr/lib/systemd/system/nivaroos-vm-sidecar.service
 
 write_vm_sidecar_unit() {
 	cat > "$VM_SIDECAR_UNIT" <<'UNIT_EOF'
 [Unit]
-After=network.target recasa-message-bus.service
+After=network.target casaos-message-bus.service
 Description=NivaroOS VM Sidecar
 
 [Service]
-ExecStart=/usr/bin/recasa-vm-sidecar
+ExecStart=/usr/bin/nivaroos-vm-sidecar
 Restart=always
 
 [Install]
@@ -262,16 +262,16 @@ UNIT_EOF
 }
 
 install_vm_manager() {
-	# recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
+	# nivaroos-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
 	# and needs a C compiler to do so; neither is installed by install_build_deps().
 	run_step "Installing libvirt-dev, gcc..." apt-get install -y libvirt-dev gcc
 	(
 		cd "$SRC_DIR/services/vm-sidecar"
-		run_step "Building recasa-vm-sidecar..." go build -o /usr/bin/recasa-vm-sidecar .
+		run_step "Building nivaroos-vm-sidecar..." go build -o /usr/bin/nivaroos-vm-sidecar .
 	)
 	write_vm_sidecar_unit
 	systemctl daemon-reload
-	systemctl enable --now recasa-vm-sidecar.service
+	systemctl enable --now nivaroos-vm-sidecar.service
 }
 
 install_ui() {
@@ -280,15 +280,15 @@ install_ui() {
 		run_step "Installing UI dependencies (first run may take a minute)..." pnpm install --frozen-lockfile
 		run_step "Building the web UI..." pnpm run build
 	)
-	mkdir -p /var/lib/recasa/www
-	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/recasa/www/." /var/lib/recasa/www/
+	mkdir -p /var/lib/nivaroos/www
+	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/nivaroos/www/." /var/lib/nivaroos/www/
 }
 
 LEGACY_SERVICE_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service"
 
 start_core_services() {
 	systemctl daemon-reload
-	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
+	for unit in $LEGACY_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
 		systemctl start "$unit"
 	done
 }
@@ -297,7 +297,7 @@ print_summary() {
 	local lines=()
 	lines+=("NivaroOS installed successfully!")
 	lines+=("")
-	for unit in $LEGACY_SERVICE_UNITS recasa-gpu-sidecar.service; do
+	for unit in $LEGACY_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
 		if systemctl is-active --quiet "$unit"; then
 			lines+=("✓ $unit")
 		else
@@ -305,13 +305,13 @@ print_summary() {
 		fi
 	done
 	if [ "$WITH_VM" = "yes" ]; then
-		if systemctl is-active --quiet recasa-vm-sidecar.service; then
-			lines+=("✓ recasa-vm-sidecar.service")
+		if systemctl is-active --quiet nivaroos-vm-sidecar.service; then
+			lines+=("✓ nivaroos-vm-sidecar.service")
 		else
-			lines+=("✗ recasa-vm-sidecar.service (not running)")
+			lines+=("✗ nivaroos-vm-sidecar.service (not running)")
 		fi
 	else
-		lines+=("○ VM Manager not installed - run 'recasa-cli vm enable' to add it later")
+		lines+=("○ VM Manager not installed - run 'nivaroos-cli vm enable' to add it later")
 	fi
 	lines+=("")
 	lines+=("Open http://$(hostname -I | awk '{print $1}')/ to finish setup.")

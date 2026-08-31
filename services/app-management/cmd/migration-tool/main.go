@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	appManagementConfigDirPath  = "/etc/recasa"
-	appManagementConfigFilePath = "/etc/recasa/app-management.conf"
+	appManagementConfigDirPath  = "/etc/nivaroos"
+	appManagementConfigFilePath = "/etc/nivaroos/app-management.conf"
 	appManagementName           = "casaos-app-management.service"
 	appManagementNameShort      = "app-management"
 )
 
-//go:embedded ../../build/sysroot/etc/recasa/app-management.conf.sample
+//go:embedded ../../build/sysroot/etc/nivaroos/app-management.conf.sample
 //var _appManagementConfigFileSample string
 
 var (

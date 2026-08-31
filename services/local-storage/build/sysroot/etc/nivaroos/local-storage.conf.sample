@@ -1,0 +1,13 @@
+[common]
+RuntimePath=/var/run/nivaroos
+
+[app]
+LogPath=/var/log/nivaroos
+LogSaveName=local-storage
+LogFileExt=log
+DBPath=/var/lib/nivaroos/db
+ShellPath=/usr/share/nivaroos/shell
+
+[server]
+USBAutoMount=
+EnableMergerFS=false

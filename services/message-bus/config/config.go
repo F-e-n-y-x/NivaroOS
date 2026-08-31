@@ -1,5 +1,5 @@
 package config
 
 const (
-	MessageBusConfigFilePath = "/etc/recasa/message-bus.conf"
+	MessageBusConfigFilePath = "/etc/nivaroos/message-bus.conf"
 )

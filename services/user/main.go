@@ -43,7 +43,7 @@ var (
 	//go:embed api/user-service/openapi.yaml
 	_docYAML string
 
-	//go:embed build/sysroot/etc/recasa/user-service.conf.sample
+	//go:embed build/sysroot/etc/nivaroos/user-service.conf.sample
 	_confSample string
 )
 

@@ -9,7 +9,7 @@ before:
     - go test -race -v ./...
 builds:
   - id: casaos-message-bus-amd64
-    binary: build/sysroot/usr/bin/recasa-message-bus
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -30,7 +30,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-message-bus-arm64
-    binary: build/sysroot/usr/bin/recasa-message-bus
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     # hooks:
     #   post:
     #     - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -51,7 +51,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-message-bus-arm-7
-    binary: build/sysroot/usr/bin/recasa-message-bus
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -74,7 +74,7 @@ builds:
     goarm:
       - "7"
   - id: casaos-message-bus-migration-tool-amd64
-    binary: build/sysroot/usr/bin/recasa-message-bus-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -96,7 +96,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-message-bus-migration-tool-arm64
-    binary: build/sysroot/usr/bin/recasa-message-bus-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     # hooks:
     #   post:
     #     - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -118,7 +118,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-message-bus-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/recasa-message-bus-migration-tool
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"

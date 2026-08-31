@@ -28,11 +28,11 @@ var vmDisableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Stop and disable the VM Manager service (does not delete VM data)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c := exec.Command("systemctl", "disable", "--now", "recasa-vm-sidecar.service")
+		c := exec.Command("systemctl", "disable", "--now", "nivaroos-vm-sidecar.service")
 		out, err := c.CombinedOutput()
 		if err != nil && !strings.Contains(string(out), "not found") && !strings.Contains(string(out), "does not exist") {
 			fmt.Fprint(os.Stderr, string(out))
-			return fmt.Errorf("systemctl disable --now recasa-vm-sidecar.service: %w", err)
+			return fmt.Errorf("systemctl disable --now nivaroos-vm-sidecar.service: %w", err)
 		}
 		fmt.Println("VM Manager is disabled. VM disk images under /DATA/VMs were left untouched.")
 		return nil

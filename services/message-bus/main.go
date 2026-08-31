@@ -42,7 +42,7 @@ var (
 	//go:embed api/message_bus/openapi.yaml
 	_docYAML string
 
-	//go:embed build/sysroot/etc/recasa/message-bus.conf.sample
+	//go:embed build/sysroot/etc/nivaroos/message-bus.conf.sample
 	_confSample string
 )
 

@@ -1,16 +1,16 @@
 [app]
 PAGE_SIZE = 10
 RuntimeRootPath = runtime/
-LogPath = /var/log/recasa/
+LogPath = /var/log/nivaroos/
 LogSaveName = log
 LogFileExt = log
 DateStrFormat = 20060102
 DateTimeFormat = 2006-01-02 15:04:05
 TimeFormat = 15:04:05
 DateFormat = 2006-01-02
-DBPath     = /var/lib/recasa
-ShellPath  = /usr/share/recasa/shell
-UserDataPath = /var/lib/recasa/conf
+DBPath     = /var/lib/nivaroos
+ShellPath  = /usr/share/nivaroos/shell
+UserDataPath = /var/lib/nivaroos/conf
 
 [server]
 RunMode = release

@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	dockerRootDirFilePath             = "/var/lib/recasa/docker_root"
+	dockerRootDirFilePath             = "/var/lib/nivaroos/docker_root"
 	dockerDaemonConfigurationFilePath = "/etc/docker/daemon.json"
 )
 

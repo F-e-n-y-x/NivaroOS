@@ -124,7 +124,7 @@ func (c *systemService) GetDeviceInfo() model.DeviceInfo {
 }
 
 func (c *systemService) GenreateSystemEntry() {
-	modelsPath := "/var/lib/recasa/www/modules"
+	modelsPath := "/var/lib/nivaroos/www/modules"
 	entryFileName := "entry.json"
 	entryFilePath := filepath.Join(config.AppInfo.DBPath, "db", entryFileName)
 	file.IsNotExistCreateFile(entryFilePath)
@@ -153,7 +153,7 @@ func (c *systemService) GenreateSystemEntry() {
 }
 
 func (c *systemService) GetSystemEntry() string {
-	modelsPath := "/var/lib/recasa/www/modules"
+	modelsPath := "/var/lib/nivaroos/www/modules"
 	entryFileName := "entry.json"
 	dir, err := os.ReadDir(modelsPath)
 	if err != nil {

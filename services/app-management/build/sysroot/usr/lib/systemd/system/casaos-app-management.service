@@ -4,9 +4,9 @@ After=docker.service
 Description=Recasa App Management Service
 
 [Service]
-ExecStartPre=/usr/bin/recasa-app-management -v
-ExecStart=/usr/bin/recasa-app-management -c /etc/recasa/app-management.conf
-PIDFile=/var/run/recasa/app-management.pid
+ExecStartPre=/usr/bin/nivaroos-app-management -v
+ExecStart=/usr/bin/nivaroos-app-management -c /etc/nivaroos/app-management.conf
+PIDFile=/var/run/nivaroos/app-management.pid
 Restart=always
 Type=notify
 

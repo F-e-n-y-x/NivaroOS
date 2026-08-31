@@ -4,8 +4,8 @@ After=rclone.service
 Description=Recasa Main Service
 
 [Service]
-ExecStart=/usr/bin/recasa -c /etc/recasa/casaos.conf
-PIDFile=/var/run/recasa/casaos.pid
+ExecStart=/usr/bin/nivaroos -c /etc/nivaroos/casaos.conf
+PIDFile=/var/run/nivaroos/casaos.pid
 Restart=always
 Type=notify
 

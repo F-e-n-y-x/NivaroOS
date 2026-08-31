@@ -9,7 +9,7 @@ before:
     - go test -race -v ./...
 builds:
   - id: casaos-cli-amd64
-    binary: build/sysroot/usr/bin/recasa-cli
+    binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -30,7 +30,7 @@ builds:
     goarch:
       - amd64
   - id: casaos-cli-arm64
-    binary: build/sysroot/usr/bin/recasa-cli
+    binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
@@ -51,7 +51,7 @@ builds:
     goarch:
       - arm64
   - id: casaos-cli-arm-7
-    binary: build/sysroot/usr/bin/recasa-cli
+    binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
         - upx --best --lzma -v --no-progress "{{ .Path }}"
