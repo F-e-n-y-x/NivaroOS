@@ -231,7 +231,7 @@ export default {
 		// 	this.initNetwork = data.data
 		// 	this.buildDatas(this.initNetwork)
 		// },
-		"casaos:system:utilization"(res) {
+		"nivaroos:system:utilization"(res) {
 			let data = res.Properties
 			this.initNetwork = JSON.parse(data.sys_net)
 			this.buildDatas(this.initNetwork)

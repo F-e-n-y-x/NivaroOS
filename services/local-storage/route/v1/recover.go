@@ -28,7 +28,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Code cannot be empty"
 			logger.Error("Then code is empty: ", zap.String("code", add.Code), zap.Any("name", "google_drive"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 
@@ -44,7 +44,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Initialization failure"
 			logger.Error("Then init error: ", zap.Error(err), zap.Any("name", "google_drive"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 
@@ -54,7 +54,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Failed to get user information"
 			logger.Error("Then get user info error: ", zap.Error(err), zap.Any("name", "google_drive"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		dmap := make(map[string]interface{})
@@ -65,7 +65,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Failed to get rclone config"
 			logger.Error("Then get config error: ", zap.Error(err), zap.Any("name", "google_drive"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		for _, v := range configs.Remotes {
@@ -83,7 +83,7 @@ func GetRecoverStorage(c *gin.Context) {
 				}
 				notify["status"] = "warn"
 				notify["message"] = "The same configuration has been added"
-				service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+				service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 				return
 			}
 		}
@@ -106,7 +106,7 @@ func GetRecoverStorage(c *gin.Context) {
 		notify["status"] = "success"
 		notify["message"] = "Success"
 		notify["driver"] = "GoogleDrive"
-		fmt.Println(service.MyService.Notify().SendNotify("casaos:file:recover", notify))
+		fmt.Println(service.MyService.Notify().SendNotify("nivaroos:file:recover", notify))
 	} else if t == "Dropbox" {
 		add := dropbox.Addition{}
 		add.Code = c.Query("code")
@@ -115,7 +115,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Code cannot be empty"
 			logger.Error("Then code is empty error: ", zap.String("code", add.Code), zap.Any("name", "dropbox"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		add.RootFolderID = ""
@@ -129,7 +129,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Initialization failure"
 			logger.Error("Then init error: ", zap.Error(err), zap.Any("name", "dropbox"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		username, err := dropbox.GetUserInfo(c)
@@ -138,7 +138,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Failed to get user information"
 			logger.Error("Then get user information: ", zap.Error(err), zap.Any("name", "dropbox"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		dmap := make(map[string]interface{})
@@ -150,7 +150,7 @@ func GetRecoverStorage(c *gin.Context) {
 			notify["status"] = "fail"
 			notify["message"] = "Failed to get rclone config"
 			logger.Error("Then get config error: ", zap.Error(err), zap.Any("name", "dropbox"))
-			service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+			service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 			return
 		}
 		for _, v := range configs.Remotes {
@@ -170,7 +170,7 @@ func GetRecoverStorage(c *gin.Context) {
 
 				notify["status"] = "warn"
 				notify["message"] = "The same configuration has been added"
-				service.MyService.Notify().SendNotify("casaos:file:recover", notify)
+				service.MyService.Notify().SendNotify("nivaroos:file:recover", notify)
 				return
 			}
 		}
@@ -202,7 +202,7 @@ func GetRecoverStorage(c *gin.Context) {
 		notify["status"] = "success"
 		notify["message"] = "Success"
 		notify["driver"] = "Dropbox"
-		fmt.Println(service.MyService.Notify().SendNotify("casaos:file:recover", notify))
+		fmt.Println(service.MyService.Notify().SendNotify("nivaroos:file:recover", notify))
 
 	}
 

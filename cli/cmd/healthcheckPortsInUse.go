@@ -22,7 +22,7 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/casaos"
+	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/nivaroos"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +39,7 @@ var healthcheckPortsInUseCmd = &cobra.Command{
 
 		url := fmt.Sprintf("http://%s/%s", rootURL, BasePathCasaOS)
 
-		client, err := casaos.NewClientWithResponses(url)
+		client, err := nivaroos.NewClientWithResponses(url)
 		if err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ var healthcheckPortsInUseCmd = &cobra.Command{
 		}
 
 		if response.StatusCode() != http.StatusOK {
-			var baseResponse casaos.BaseResponse
+			var baseResponse nivaroos.BaseResponse
 			if err := json.Unmarshal(response.Body, &baseResponse); err != nil {
 				return fmt.Errorf("%s - %s", response.Status(), response.Body)
 			}

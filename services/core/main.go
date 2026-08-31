@@ -1,4 +1,4 @@
-//go:generate bash -c "mkdir -p codegen && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,server,spec -package codegen api/casaos/openapi.yaml > codegen/casaos_api.go"
+//go:generate bash -c "mkdir -p codegen && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,server,spec -package codegen api/nivaroos/openapi.yaml > codegen/nivaroos_api.go"
 //go:generate bash -c "mkdir -p codegen/message_bus && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,client -package message_bus ../message-bus/api/message_bus/openapi.yaml > codegen/message_bus/api.go"
 package main
 
@@ -44,7 +44,7 @@ var (
 	//go:embed api/index.html
 	_docHTML string
 
-	//go:embed api/casaos/openapi.yaml
+	//go:embed api/nivaroos/openapi.yaml
 	_docYAML string
 
 	//go:embed build/sysroot/etc/nivaroos/casaos.conf.sample

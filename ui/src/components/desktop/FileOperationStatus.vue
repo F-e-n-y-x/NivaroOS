@@ -4,7 +4,7 @@
 	WindowManager.vue), same reasoning as DragDropMenu.vue: a task's
 	source and destination can be in entirely different windows/tabs,
 	so this can't live inside any one Files window. Reuses the same
-	casaos:file:operate socket event ContentView.vue listens to for its
+	nivaroos:file:operate socket event ContentView.vue listens to for its
 	own real-time-refresh fix (see that file's `sockets` block) - this
 	is the same backend data, just rendered as a progress list instead
 	of a refresh trigger. Transfer speed isn't sent by the backend
@@ -59,7 +59,7 @@ export default {
 		},
 	},
 	sockets: {
-		'casaos:file:operate'(res) {
+		'nivaroos:file:operate'(res) {
 			let fileOperate
 			try {
 				fileOperate = JSON.parse(res.Properties.file_operate)

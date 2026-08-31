@@ -71,7 +71,7 @@ func SendAllHardwareStatusBySocket() {
 		body[key.(string)] = value
 		return true
 	})
-	service.MyService.Notify().SendNotify("casaos:system:utilization", body)
+	service.MyService.Notify().SendNotify("nivaroos:system:utilization", body)
 }
 
 // func MonitoryUSB() {

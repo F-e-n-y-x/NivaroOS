@@ -227,7 +227,7 @@ export default {
 	// paste() used to) meant the listing didn't yet reflect what had
 	// actually landed on disk.
 	sockets: {
-		'casaos:file:operate'(res) {
+		'nivaroos:file:operate'(res) {
 			let fileOperate
 			try {
 				fileOperate = JSON.parse(res.Properties.file_operate)

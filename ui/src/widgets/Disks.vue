@@ -158,7 +158,7 @@ export default {
 		},
 	},
 	sockets: {
-		"casaos:system:utilization"(res) {
+		"nivaroos:system:utilization"(res) {
 			this.usbDisks = JSON.parse(res.Properties.sys_usb)
 		}
 	}

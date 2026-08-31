@@ -1,7 +1,7 @@
 <!-- src/components/files/OperationTray.vue -->
 <!--
 	Shows live progress for in-flight copy/move operations, backed by the
-	same 'casaos:file:operate' message-bus broadcast ContentView already
+	same 'nivaroos:file:operate' message-bus broadcast ContentView already
 	listens to (there, only to know when to reload() a folder's listing).
 	The backend (service/notify.go's SendFileOperateNotify) polls its
 	FileQueue every 3s while any task is running and broadcasts each
@@ -65,7 +65,7 @@ export default {
 		},
 	},
 	sockets: {
-		'casaos:file:operate'(res) {
+		'nivaroos:file:operate'(res) {
 			let fileOperate
 			try {
 				fileOperate = JSON.parse(res.Properties.file_operate)

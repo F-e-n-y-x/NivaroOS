@@ -184,7 +184,7 @@ export default {
 		},
 	},
 	sockets: {
-		"casaos:system:utilization"(res) {
+		"nivaroos:system:utilization"(res) {
 			let data = res.Properties;
 			let mem = JSON.parse(data.sys_mem);
 			this.updateCharts(mem);

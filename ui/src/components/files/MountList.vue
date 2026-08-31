@@ -552,7 +552,7 @@ export default {
 					})
 			}, 500)
 		},
-		'casaos:file:recover'(data) {
+		'nivaroos:file:recover'(data) {
 			data = data.Properties
 			let toastType
 			const reg = /^["|'](.*)["|']$/g
