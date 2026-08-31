@@ -55,11 +55,11 @@ export default {
 }
 
 .nav-title {
-	font-size: 0.7rem;
+	font-size: 0.6875rem;
 	font-weight: 700;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
-	color: rgba(0, 0, 0, 0.4);
+	color: #94a3b8;
 }
 
 .nav-list {
@@ -92,16 +92,16 @@ export default {
 
 	&:hover {
 		background: #f8fafc;
-		color: #0f172a;
+		color: #1e293b;
 
 		.icon {
-			color: #0f172a;
+			color: #1e293b;
 		}
 	}
 
 	&.active {
 		background: #f1f5f9;
-		color: #0f172a;
+		color: #1e293b;
 		font-weight: 600;
 
 		.icon {

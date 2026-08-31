@@ -74,7 +74,7 @@ export default {
 
 .search-icon {
 	flex-shrink: 0;
-	color: hsla(208, 16%, 42%, 1);
+	color: #94a3b8;
 }
 
 .search-input {
@@ -84,11 +84,12 @@ export default {
 	outline: none;
 	background: transparent;
 	font-family: inherit;
-	font-size: 0.9rem;
-	color: #2c3e50;
+	font-size: 0.875rem;
+	font-weight: 400;
+	color: #1e293b;
 
 	&::placeholder {
-		color: rgba(44, 62, 80, 0.4);
+		color: #94a3b8;
 	}
 }
 
@@ -99,7 +100,7 @@ export default {
 	border-radius: 50%;
 	border: none;
 	background: rgba(0, 0, 0, 0.05);
-	color: rgba(44, 62, 80, 0.6);
+	color: #64748b;
 	display: flex;
 	align-items: center;
 	justify-content: center;

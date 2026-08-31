@@ -99,7 +99,7 @@ export default {
 	display: flex;
 	height: 100%;
 	background: #ffffff;
-	color: #2c3e50;
+	color: #0f172a;
 	font-family: $family-sans-serif;
 }
 

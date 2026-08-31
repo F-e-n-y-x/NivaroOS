@@ -373,7 +373,7 @@ export default {
 .datetime-preview {
 	font-size: 0.85rem;
 	font-weight: 600;
-	color: rgba(44, 62, 80, 0.8);
+	color: #1e293b;
 }
 
 .custom-format-input {
@@ -396,10 +396,10 @@ export default {
 .format-chip {
 	padding: 0.15rem 0.5rem;
 	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.045);
-	color: rgba(44, 62, 80, 0.65);
+	background: #f1f5f9;
+	color: #475569;
 	font-family: $family-monospace;
-	font-size: 0.7rem;
+	font-size: 0.725rem;
 	white-space: nowrap;
 }
 </style>

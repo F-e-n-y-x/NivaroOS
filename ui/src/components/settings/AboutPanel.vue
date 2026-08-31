@@ -201,19 +201,20 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: #64748b;
 	margin-left: 0.35rem;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.1);
+		background: rgba(0, 0, 0, 0.09);
+		color: #1e293b;
 	}
 
 	&.is-confirm {
-		background: hsla(140, 60%, 45%, 0.15);
-		color: hsla(140, 60%, 32%, 1);
+		background: rgba(16, 185, 129, 0.15);
+		color: #059669;
 
 		&:hover {
-			background: hsla(140, 60%, 45%, 0.25);
+			background: rgba(16, 185, 129, 0.25);
 		}
 	}
 }
@@ -223,13 +224,14 @@ export default {
 	width: 0.5rem;
 	height: 0.5rem;
 	border-radius: 50%;
-	background: hsla(140, 60%, 45%, 1);
+	background: #10b981;
 	margin-right: 0.4rem;
 }
 
 .log-header-row {
 	.row-label {
-		font-weight: 600;
+		font-weight: 500;
+		color: #1e293b;
 	}
 }
 
@@ -237,10 +239,13 @@ export default {
 	margin: 0 1.25rem 1.25rem;
 	max-height: 14rem;
 	overflow: auto;
-	background: rgba(0, 0, 0, 0.03);
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
 	border-radius: 8px;
 	padding: 0.75rem;
-	font-size: 0.7rem;
+	font-family: $family-monospace;
+	font-size: 0.725rem;
+	color: #334155;
 	white-space: pre-wrap;
 	word-break: break-word;
 }
