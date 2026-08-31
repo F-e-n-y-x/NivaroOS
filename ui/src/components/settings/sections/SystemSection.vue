@@ -151,19 +151,23 @@
 
 		<about-panel></about-panel>
 
-		<b-modal v-model="showPowerModal" :can-cancel="false" scroll="clip" width="20rem">
-			<b-message @close="resetPowerModal">
-				<template #header>
-					{{ $t(powerTitle) }}
-				</template>
-				<div>{{ $t(powerMessage) }}</div>
-			</b-message>
-		</b-modal>
+		<settings-overlay
+			:active="showPowerModal"
+			:title="$t(powerTitle)"
+			width="22rem"
+			@close="resetPowerModal"
+		>
+			<div class="p-2">{{ $t(powerMessage) }}</div>
+			<template #footer>
+				<b-button rounded size="is-small" type="is-primary" @click="resetPowerModal">{{ $t('OK') }}</b-button>
+			</template>
+		</settings-overlay>
 	</section>
 </template>
 
 <script>
 import AboutPanel from '@/components/settings/AboutPanel.vue'
+import SettingsOverlay from '@/components/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
 import systemPower from '@/mixins/systemPower'
 import messages from '@/assets/lang'
@@ -173,8 +177,8 @@ export const ROWS = [
 	{ label: 'Date & Time' },
 	{ label: 'Language' },
 	{ label: 'WebUI Port' },
-	{ label: 'Restart or Shutdown' },
-	{ label: 'About' }
+	{ label: 'System Restart / Shutdown' },
+	{ label: 'About NivaraOS' }
 ]
 
 const TIME_FORMAT_OPTIONS = [
@@ -190,7 +194,7 @@ const DATE_FORMAT_OPTIONS = [
 
 export default {
 	name: 'system-section',
-	components: { AboutPanel },
+	components: { AboutPanel, SettingsOverlay },
 	mixins: [mixin, systemPower],
 	data() {
 		return {

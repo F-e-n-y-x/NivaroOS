@@ -292,63 +292,205 @@
 			</div>
 		</div>
 
-		<!-- Add Source Modal -->
-		<b-modal v-model="showAddSourceModal" :width="520" scroll="clip">
-			<div class="modal-card">
-				<header class="modal-card-head">
-					<p class="modal-card-title">{{ $t('Add APT Repository Source') }}</p>
-					<button type="button" class="delete" @click="showAddSourceModal = false"></button>
-				</header>
-				<section class="modal-card-body">
-					<b-field :label="$t('Source Line (e.g. deb http://deb.debian.org/debian trixie main)')">
-						<b-input
-							v-model="newSourceLine"
-							placeholder="deb https://... trixie main contrib non-free"
-						></b-input>
-					</b-field>
-					<b-field :label="$t('List File Name')">
-						<b-input
-							v-model="newSourceFile"
-							placeholder="custom.list"
-						></b-input>
-					</b-field>
-				</section>
-				<footer class="modal-card-foot is-justify-content-flex-end">
-					<b-button rounded size="is-small" @click="showAddSourceModal = false">{{ $t('Cancel') }}</b-button>
-					<b-button
-						rounded
-						size="is-small"
-						type="is-primary"
-						:disabled="!newSourceLine.trim()"
-						:loading="addingSource"
-						@click="submitAddSource"
+		<!-- Add Source Overlay -->
+		<settings-overlay
+			:active="showAddSourceModal"
+			:title="$t('Add APT Repository Source')"
+			width="34rem"
+			@close="showAddSourceModal = false"
+		>
+			<div class="add-source-body">
+				<!-- Input Mode Toggle -->
+				<div class="segmented-control mb-3">
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: sourceInputMode === 'structured' }"
+						@click="sourceInputMode = 'structured'"
 					>
-						{{ $t('Add Repository') }}
-					</b-button>
-				</footer>
-			</div>
-		</b-modal>
+						<i class="mdi mdi-form-select mr-1"></i>{{ $t('Structured Builder') }}
+					</button>
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: sourceInputMode === 'raw' }"
+						@click="sourceInputMode = 'raw'"
+					>
+						<i class="mdi mdi-code-tags mr-1"></i>{{ $t('Raw APT Line') }}
+					</button>
+				</div>
 
-		<!-- Operation Output Log Modal -->
-		<b-modal v-model="showLogModal" :width="640" scroll="clip">
-			<div class="modal-card">
-				<header class="modal-card-head">
-					<p class="modal-card-title">{{ logTitle }}</p>
-					<button type="button" class="delete" @click="showLogModal = false"></button>
-				</header>
-				<section class="modal-card-body p-0">
-					<pre class="terminal-output">{{ logContent }}</pre>
-				</section>
-				<footer class="modal-card-foot is-justify-content-flex-end">
-					<b-button rounded size="is-small" type="is-primary" @click="showLogModal = false">{{ $t('Done') }}</b-button>
-				</footer>
+				<div v-if="sourceInputMode === 'structured'" class="source-builder-grid">
+					<!-- Type -->
+					<div class="form-field-group">
+						<label class="form-label">{{ $t('Package Type') }}</label>
+						<div class="segmented-control is-inline">
+							<button
+								type="button"
+								class="segmented-option"
+								:class="{ active: sourceType === 'deb' }"
+								@click="sourceType = 'deb'"
+							>
+								{{ $t('Binary (deb)') }}
+							</button>
+							<button
+								type="button"
+								class="segmented-option"
+								:class="{ active: sourceType === 'deb-src' }"
+								@click="sourceType = 'deb-src'"
+							>
+								{{ $t('Source (deb-src)') }}
+							</button>
+						</div>
+					</div>
+
+					<!-- URL -->
+					<div class="form-field-group">
+						<label class="form-label">{{ $t('Repository URL / Mirror') }}</label>
+						<b-input
+							v-model="sourceUri"
+							placeholder="https://deb.debian.org/debian"
+							icon="server-network"
+							pack="mdi"
+							size="is-small"
+						></b-input>
+					</div>
+
+					<!-- Suite / Distro -->
+					<div class="form-field-group">
+						<label class="form-label">{{ $t('Distribution / Suite') }}</label>
+						<b-input
+							v-model="sourceSuite"
+							placeholder="e.g. trixie, bookworm, stable"
+							size="is-small"
+						></b-input>
+					</div>
+
+					<!-- Components -->
+					<div class="form-field-group">
+						<label class="form-label">{{ $t('Repository Components') }}</label>
+						<div class="component-chips-wrap mb-2">
+							<button
+								v-for="c in availableComponents"
+								:key="c"
+								type="button"
+								class="comp-toggle-chip"
+								:class="{ selected: sourceSelectedComponents.includes(c) }"
+								@click="toggleComponent(c)"
+							>
+								<i v-if="sourceSelectedComponents.includes(c)" class="mdi mdi-check mr-1"></i>
+								{{ c }}
+							</button>
+						</div>
+						<b-input
+							v-model="customComponentsInput"
+							placeholder="Additional components (optional, space-separated)"
+							size="is-small"
+						></b-input>
+					</div>
+				</div>
+
+				<div v-else class="form-field-group">
+					<label class="form-label">{{ $t('Complete APT Source Line') }}</label>
+					<b-input
+						v-model="newSourceLine"
+						type="textarea"
+						rows="2"
+						placeholder="deb [signed-by=/path/to/key.gpg] https://download.docker.com/linux/debian bookworm stable"
+					></b-input>
+				</div>
+
+				<!-- Target List File -->
+				<div class="form-field-group mt-3">
+					<label class="form-label">{{ $t('Save to File (/etc/apt/sources.list.d/)') }}</label>
+					<b-input
+						v-model="newSourceFile"
+						placeholder="custom.list"
+						size="is-small"
+					></b-input>
+				</div>
+
+				<!-- Live Preview -->
+				<div v-if="finalSourceLine" class="live-preview-box mt-3">
+					<div class="preview-label">
+						<i class="mdi mdi-eye-outline mr-1"></i>{{ $t('Generated Line Preview') }}
+					</div>
+					<code class="preview-code">{{ finalSourceLine }}</code>
+				</div>
 			</div>
-		</b-modal>
+
+			<template #footer>
+				<b-button rounded size="is-small" @click="showAddSourceModal = false">{{ $t('Cancel') }}</b-button>
+				<b-button
+					rounded
+					size="is-small"
+					type="is-primary"
+					:disabled="!finalSourceLine"
+					:loading="addingSource"
+					@click="submitAddSource"
+				>
+					{{ $t('Add Repository') }}
+				</b-button>
+			</template>
+		</settings-overlay>
+
+		<!-- Operation Output Log Overlay -->
+		<settings-overlay
+			:active="showLogModal"
+			:title="logTitle"
+			width="38rem"
+			body-class="p-0"
+			@close="showLogModal = false"
+		>
+			<pre class="terminal-output">{{ logContent }}</pre>
+
+			<template #footer>
+				<b-button rounded size="is-small" type="is-primary" @click="showLogModal = false">{{ $t('Done') }}</b-button>
+			</template>
+		</settings-overlay>
+
+		<!-- Uninstall Confirm Overlay -->
+		<settings-overlay
+			:active="!!uninstallTarget"
+			:title="$t('Uninstall Package')"
+			width="24rem"
+			@close="uninstallTarget = null"
+		>
+			<div>
+				{{ $t('Are you sure you want to uninstall') }} <strong class="has-text-dark">{{ uninstallTarget }}</strong>?
+			</div>
+			<template #footer>
+				<b-button rounded size="is-small" @click="uninstallTarget = null">{{ $t('Cancel') }}</b-button>
+				<b-button rounded size="is-small" type="is-danger" :loading="processingPkg === uninstallTarget" @click="performUninstall">
+					{{ $t('Uninstall') }}
+				</b-button>
+			</template>
+		</settings-overlay>
+
+		<!-- Delete Source Confirm Overlay -->
+		<settings-overlay
+			:active="!!deleteSourceTarget"
+			:title="$t('Remove Repository Source')"
+			width="26rem"
+			@close="deleteSourceTarget = null"
+		>
+			<div v-if="deleteSourceTarget">
+				{{ $t('Remove repository source from') }} <strong class="has-text-dark">{{ getFilename(deleteSourceTarget.file) }}:{{ deleteSourceTarget.line }}</strong>?
+				<div class="is-size-7 text-muted mt-2">{{ deleteSourceTarget.raw }}</div>
+			</div>
+			<template #footer>
+				<b-button rounded size="is-small" @click="deleteSourceTarget = null">{{ $t('Cancel') }}</b-button>
+				<b-button rounded size="is-small" type="is-danger" @click="performDeleteSource">
+					{{ $t('Remove') }}
+				</b-button>
+			</template>
+		</settings-overlay>
 	</section>
 </template>
 
 <script>
 import debounce from 'lodash/debounce'
+import SettingsOverlay from '@/components/settings/SettingsOverlay.vue'
 
 export const ROWS = [
 	{ label: 'Search & Install Packages' },
@@ -359,6 +501,9 @@ export const ROWS = [
 
 export default {
 	name: 'packages-section',
+	components: {
+		SettingsOverlay
+	},
 	data() {
 		return {
 			activeTab: 'search',
@@ -385,6 +530,13 @@ export default {
 			loadingSources: false,
 			sourcesList: [],
 			showAddSourceModal: false,
+			sourceInputMode: 'structured',
+			sourceType: 'deb',
+			sourceUri: '',
+			sourceSuite: '',
+			sourceSelectedComponents: ['main'],
+			availableComponents: ['main', 'contrib', 'non-free', 'non-free-firmware', 'universe', 'multiverse'],
+			customComponentsInput: '',
 			newSourceLine: '',
 			newSourceFile: 'custom.list',
 			addingSource: false,
@@ -392,7 +544,22 @@ export default {
 
 			showLogModal: false,
 			logTitle: '',
-			logContent: ''
+			logContent: '',
+			uninstallTarget: null,
+			deleteSourceTarget: null
+		}
+	},
+	computed: {
+		finalSourceLine() {
+			if (this.sourceInputMode === 'raw') {
+				return this.newSourceLine.trim()
+			}
+			const uri = this.sourceUri.trim()
+			const suite = this.sourceSuite.trim()
+			if (!uri || !suite) return ''
+			const custom = this.customComponentsInput.trim() ? this.customComponentsInput.trim().split(/\s+/) : []
+			const allComps = [...new Set([...this.sourceSelectedComponents, ...custom])].filter(Boolean)
+			return `${this.sourceType} ${uri} ${suite} ${allComps.join(' ')}`.trim()
 		}
 	},
 	created() {
@@ -528,36 +695,34 @@ export default {
 		},
 
 		confirmUninstall(name) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
-				title: this.$t('Uninstall Package'),
-				message: this.$t('Are you sure you want to uninstall <b>{name}</b>?', { name }),
-				type: 'is-danger',
-				confirmText: this.$t('Uninstall'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: () => {
-					this.processingPkg = name
-					this.$api.sys.uninstallAptPackages([name])
-						.then(res => {
-							this.processingPkg = null
-							this.$buefy.toast.open({ message: this.$t('Package uninstalled successfully'), type: 'is-success' })
-							this.onSearchInput()
-							this.fetchInstalled()
-							if (res.data.data && res.data.data.output) {
-								this.logTitle = `${this.$t('Uninstall')}: ${name}`
-								this.logContent = res.data.data.output
-								this.showLogModal = true
-							}
-						})
-						.catch(err => {
-							this.processingPkg = null
-							const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Uninstall failed')
-							this.logTitle = `${this.$t('Uninstall Failed')}: ${name}`
-							this.logContent = msg
-							this.showLogModal = true
-						})
-				}
-			})
+			this.uninstallTarget = name
+		},
+
+		performUninstall() {
+			const name = this.uninstallTarget
+			if (!name) return
+			this.processingPkg = name
+			this.$api.sys.uninstallAptPackages([name])
+				.then(res => {
+					this.processingPkg = null
+					this.uninstallTarget = null
+					this.$buefy.toast.open({ message: this.$t('Package uninstalled successfully'), type: 'is-success' })
+					this.onSearchInput()
+					this.fetchInstalled()
+					if (res.data.data && res.data.data.output) {
+						this.logTitle = `${this.$t('Uninstall')}: ${name}`
+						this.logContent = res.data.data.output
+						this.showLogModal = true
+					}
+				})
+				.catch(err => {
+					this.processingPkg = null
+					this.uninstallTarget = null
+					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Uninstall failed')
+					this.logTitle = `${this.$t('Uninstall Failed')}: ${name}`
+					this.logContent = msg
+					this.showLogModal = true
+				})
 		},
 
 		upgradeSingle(name) {
@@ -606,14 +771,28 @@ export default {
 				})
 		},
 
+		toggleComponent(comp) {
+			const idx = this.sourceSelectedComponents.indexOf(comp)
+			if (idx === -1) {
+				this.sourceSelectedComponents.push(comp)
+			} else {
+				this.sourceSelectedComponents.splice(idx, 1)
+			}
+		},
+
 		submitAddSource() {
-			if (!this.newSourceLine.trim()) return
+			const line = this.finalSourceLine
+			if (!line) return
 			this.addingSource = true
-			this.$api.sys.addAptSource(this.newSourceLine, this.newSourceFile)
+			this.$api.sys.addAptSource(line, this.newSourceFile)
 				.then(() => {
 					this.addingSource = false
 					this.showAddSourceModal = false
 					this.newSourceLine = ''
+					this.sourceUri = ''
+					this.sourceSuite = ''
+					this.sourceSelectedComponents = ['main']
+					this.customComponentsInput = ''
 					this.$buefy.toast.open({ message: this.$t('Repository added successfully'), type: 'is-success' })
 					this.fetchSources()
 				})
@@ -625,30 +804,114 @@ export default {
 		},
 
 		deleteSource(source) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
-				title: this.$t('Remove Repository Source'),
-				message: this.$t('Remove source line from <b>{file}</b>?', { file: source.file }),
-				type: 'is-danger',
-				confirmText: this.$t('Remove'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: () => {
-					this.$api.sys.deleteAptSource(source.file, source.line)
-						.then(() => {
-							this.$buefy.toast.open({ message: this.$t('Source removed'), type: 'is-success' })
-							this.fetchSources()
-						})
-						.catch(() => {
-							this.$buefy.toast.open({ message: this.$t('Failed to remove source'), type: 'is-danger' })
-						})
-				}
-			})
+			this.deleteSourceTarget = source
+		},
+
+		performDeleteSource() {
+			const source = this.deleteSourceTarget
+			if (!source) return
+			this.$api.sys.deleteAptSource(source.file, source.line)
+				.then(() => {
+					this.deleteSourceTarget = null
+					this.$buefy.toast.open({ message: this.$t('Source removed'), type: 'is-success' })
+					this.fetchSources()
+				})
+				.catch(() => {
+					this.deleteSourceTarget = null
+					this.$buefy.toast.open({ message: this.$t('Failed to remove source'), type: 'is-danger' })
+				})
 		}
 	}
 }
 </script>
 
 <style lang="scss" scoped>
+.add-source-body {
+	display: flex;
+	flex-direction: column;
+}
+
+.form-field-group {
+	margin-bottom: 0.85rem;
+
+	&:last-child {
+		margin-bottom: 0;
+	}
+}
+
+.form-label {
+	display: block;
+	font-size: 0.775rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 0.35rem;
+}
+
+.component-chips-wrap {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.comp-toggle-chip {
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	color: #64748b;
+	padding: 0.25rem 0.65rem;
+	border-radius: 999px;
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+	user-select: none;
+	display: inline-flex;
+	align-items: center;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: #f1f5f9;
+		color: #1e293b;
+		border-color: #cbd5e1;
+	}
+
+	&.selected {
+		background: rgba(37, 99, 235, 0.1);
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.35);
+		font-weight: 600;
+	}
+}
+
+.live-preview-box {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 0.65rem 0.85rem;
+}
+
+.preview-label {
+	font-size: 0.7rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #64748b;
+	margin-bottom: 0.3rem;
+	display: flex;
+	align-items: center;
+}
+
+.preview-code {
+	display: block;
+	font-family: $family-monospace;
+	font-size: 0.75rem;
+	color: #1e293b;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	padding: 0.4rem 0.6rem;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
 .tab-badge {
 	display: inline-flex;
 	align-items: center;

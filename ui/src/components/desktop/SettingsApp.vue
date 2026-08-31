@@ -102,8 +102,11 @@ export default {
 .settings-app {
 	display: flex;
 	height: 100%;
+	width: 100%;
+	position: relative;
+	overflow: hidden;
 	background: #ffffff;
-	color: #0f172a;
+	color: #1e293b;
 	font-family: $family-sans-serif;
 }
 
