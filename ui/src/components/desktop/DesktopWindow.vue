@@ -414,69 +414,74 @@ export default {
 
 .resize-handle {
 	position: absolute;
+	z-index: 100;
 }
 
 .resize-right {
-	top: 0.5rem;
+	top: 0;
 	right: 0;
-	bottom: 0.5rem;
-	width: 6px;
+	bottom: 0;
+	width: 8px;
 	cursor: ew-resize;
 }
 
 .resize-left {
-	top: 0.5rem;
+	top: 0;
 	left: 0;
-	bottom: 0.5rem;
-	width: 6px;
+	bottom: 0;
+	width: 8px;
 	cursor: ew-resize;
 }
 
 .resize-bottom {
-	left: 0.5rem;
-	right: 0.5rem;
+	left: 0;
+	right: 0;
 	bottom: 0;
-	height: 6px;
+	height: 8px;
 	cursor: ns-resize;
 }
 
 .resize-top {
-	left: 0.5rem;
-	right: 0.5rem;
+	left: 0;
+	right: 0;
 	top: 0;
-	height: 6px;
+	height: 8px;
 	cursor: ns-resize;
 }
 
 .resize-corner-br {
 	right: 0;
 	bottom: 0;
-	width: 14px;
-	height: 14px;
+	width: 18px;
+	height: 18px;
 	cursor: nwse-resize;
+	z-index: 101;
 }
 
 .resize-corner-tl {
 	left: 0;
 	top: 0;
-	width: 14px;
-	height: 14px;
+	width: 18px;
+	height: 18px;
 	cursor: nwse-resize;
+	z-index: 101;
 }
 
 .resize-corner-tr {
 	right: 0;
 	top: 0;
-	width: 14px;
-	height: 14px;
+	width: 18px;
+	height: 18px;
 	cursor: nesw-resize;
+	z-index: 101;
 }
 
 .resize-corner-bl {
 	left: 0;
 	bottom: 0;
-	width: 14px;
-	height: 14px;
+	width: 18px;
+	height: 18px;
 	cursor: nesw-resize;
+	z-index: 101;
 }
 </style>

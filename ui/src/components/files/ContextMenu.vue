@@ -1,7 +1,7 @@
 <!-- src/components/files/ContextMenu.vue -->
 <template>
 	<div
-		v-if="visible"
+		v-show="visible"
 		ref="menu"
 		class="files-context-menu"
 		:style="{ top: y + 'px', left: x + 'px' }"
@@ -164,12 +164,16 @@ export default {
 		}
 	},
 	mounted() {
+		document.body.appendChild(this.$el)
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('resize', this.close)
 	},
 	beforeDestroy() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('resize', this.close)
+		if (this.$el && this.$el.parentNode) {
+			this.$el.parentNode.removeChild(this.$el)
+		}
 	},
 	methods: {
 		open(event, item, boundsEl, selectedItems = []) {
@@ -179,20 +183,14 @@ export default {
 			this.item = item
 			this.selectedItems = Array.isArray(selectedItems) ? selectedItems : []
 			const menuHeight = this.isMultiSelect ? 240 : (item ? MENU_HEIGHT : 260)
-			const container = boundsEl || (this.$el && this.$el.parentElement) || document.body
-			const bounds = container.getBoundingClientRect()
-			const scrollLeft = container.scrollLeft || 0
-			const scrollTop = container.scrollTop || 0
+			const clientX = event && typeof event.clientX === 'number' ? event.clientX : 100
+			const clientY = event && typeof event.clientY === 'number' ? event.clientY : 100
 
-			const rawX = event.clientX - bounds.left + scrollLeft
-			const rawY = event.clientY - bounds.top + scrollTop
+			const maxLeft = Math.max(12, window.innerWidth - MENU_WIDTH - 16)
+			const maxTop = Math.max(12, window.innerHeight - menuHeight - 80) // Stay above taskbar
 
-			// Clamping inside the visible scroll viewport
-			const maxX = scrollLeft + bounds.width - MENU_WIDTH - 12
-			const maxY = scrollTop + bounds.height - menuHeight - 12
-
-			this.x = Math.max(scrollLeft + 8, Math.min(rawX, maxX))
-			this.y = Math.max(scrollTop + 8, Math.min(rawY, maxY))
+			this.x = Math.max(12, Math.min(maxLeft, clientX))
+			this.y = Math.max(12, Math.min(maxTop, clientY))
 			this.visible = true
 		},
 		close() {
@@ -335,8 +333,8 @@ export default {
 
 <style lang="scss" scoped>
 .files-context-menu {
-	position: absolute;
-	z-index: 10000;
+	position: fixed;
+	z-index: 999999;
 	width: 224px;
 	background: rgba(255, 255, 255, 0.88);
 	backdrop-filter: blur(24px) saturate(180%);
