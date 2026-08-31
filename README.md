@@ -109,20 +109,26 @@ NivaroOS is engineered as a modular microservices architecture communicating via
 ┌──────────────────────────────▼──────────────────────────────┐
 │                    NivaroOS Gateway Proxy                     │
 │                  (services/gateway - Go)                    │
-└──────┬──────────┬──────────┬──────────┬──────────┬──────────┘
-       │          │          │          │          │
-┌──────▼──┐ ┌─────▼───┐ ┌────▼───┐ ┌────▼───┐ ┌────▼──────┐
-│  Core   │ │  User   │ │  App   │ │ Local  │ │    VM     │
-│ Daemon  │ │ Service │ │  Mgmt  │ │Storage │ │  Sidecar  │
-│ (v1/v2) │ │ (Auth)  │ │(Docker)│ │(Disks) │ │ (KVM/VNC) │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └──────────┘
-       ▲          ▲          ▲          ▲
-       └──────────┴─────┬────┴──────────┘
+└──────┬──────────┬──────────┬──────────┬──────────┬──────┬───┘
+       │          │          │          │          │      │
+┌──────▼──┐ ┌─────▼───┐ ┌────▼───┐ ┌────▼───┐ ┌────▼──┐ ┌─▼──────┐
+│  Core   │ │  User   │ │  App   │ │ Local  │ │  VM   │ │  GPU   │
+│ Daemon  │ │ Service │ │  Mgmt  │ │Storage │ │Sidecar│ │Sidecar │
+│ (v1/v2) │ │ (Auth)  │ │(Docker)│ │(Disks) │ │(KVM)  │ │(nvidia)│
+└─────────┘ └─────────┘ └─────────┘ └─────────┘ └──────┘ └────────┘
+       ▲          ▲          ▲          ▲          ▲
+       └──────────┴─────┬────┴──────────┴──────────┘
                         │ Message Bus (Socket.IO)
                ┌────────▼────────┐
                │   Message Bus   │
                │ (services/msg)  │
                └─────────────────┘
+
+               ┌─────────────────────────────┐
+               │  recasa-cli (admin CLI)     │
+               │  talks to the same APIs,    │
+               │  independent of the UI      │
+               └─────────────────────────────┘
 ```
 
 | Service | Directory | Description |
@@ -133,15 +139,36 @@ NivaroOS is engineered as a modular microservices architecture communicating via
 | **App Management** | `services/app-management` | Docker container and Compose lifecycle orchestrator with 400+ app catalog indexer. |
 | **Local Storage** | `services/local-storage` | Block storage detection, filesystem formatting, storage pool allocation, and mount management. |
 | **Message Bus** | `services/message-bus` | Real-time event broker and WebSocket broadcasting daemon. |
-| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. |
+| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. Optional at install time. |
+| **GPU Sidecar** | `services/gpu-sidecar` | NVIDIA GPU stats (utilization, memory, temperature, processes) for the desktop telemetry widget. |
+| **CLI** | `cli/` | `recasa-cli` — a standalone admin command-line tool for managing services and toggling optional add-ons after install. |
 | **Frontend UI** | `ui/` | Responsive windowed desktop Single Page Application. |
+
+---
+
+## 🖥️ Command-Line Interface
+
+Every install also gets `recasa-cli`, an admin CLI independent of the web UI:
+
+```bash
+recasa-cli --help
+```
+
+Optional add-ons (currently just VM Manager) can be toggled after the fact, without re-running the installer:
+
+```bash
+recasa-cli vm enable    # builds and starts the VM Manager service
+recasa-cli vm disable   # stops it (VM disk images under /DATA/VMs are left untouched)
+```
+
+`recasa-cli` also has command groups for app management, the gateway, local storage, the message bus, users, and health checks — see `recasa-cli <group> --help` for each.
 
 ---
 
 ## 🛠️ Development & Building from Source
 
 ### Prerequisites
-- **Go**: `1.21+` (or `1.23+`)
+- **Go**: `1.23.4+`
 - **Node.js**: `18+` or `20+`
 - **pnpm**: `9+`
 - **Docker Engine**: `20.10+` with `docker compose`
@@ -152,31 +179,40 @@ cd ui
 pnpm install
 pnpm run build
 ```
-Compiled production assets are output to `ui/build/sysroot/var/lib/nivaroos/www/`.
+Compiled production assets are output to `ui/build/sysroot/var/lib/recasa/www/`.
 
-### 2. Build Backend Go Services
+### 2. Build Backend Go Services & CLI
+Every service's `main.go` lives at its module root (no `cmd/` subdirectory), so each builds with a plain `go build .`:
 ```bash
-# Core Daemon
-cd services/core && go build -o /usr/local/bin/nivaroos-core cmd/main.go
+# Core Daemon (binary is named "recasa", no suffix - it owns the legacy API)
+cd services/core && go build -o /usr/local/bin/recasa .
 
 # Gateway
-cd services/gateway && go build -o /usr/local/bin/nivaroos-gateway cmd/main.go
+cd services/gateway && go build -o /usr/local/bin/recasa-gateway .
 
 # User Service
-cd services/user && go build -o /usr/local/bin/nivaroos-user cmd/main.go
+cd services/user && go build -o /usr/local/bin/recasa-user .
 
 # App Management
-cd services/app-management && go build -o /usr/local/bin/nivaroos-app-management cmd/main.go
+cd services/app-management && go build -o /usr/local/bin/recasa-app-management .
 
 # Local Storage
-cd services/local-storage && go build -o /usr/local/bin/nivaroos-local-storage cmd/main.go
+cd services/local-storage && go build -o /usr/local/bin/recasa-local-storage .
 
 # Message Bus
-cd services/message-bus && go build -o /usr/local/bin/nivaroos-message-bus cmd/main.go
+cd services/message-bus && go build -o /usr/local/bin/recasa-message-bus .
 
-# VM Sidecar
-cd services/vm-sidecar && go build -o /usr/local/bin/nivaroos-vm-sidecar cmd/main.go
+# GPU Sidecar
+cd services/gpu-sidecar && go build -o /usr/local/bin/recasa-gpu-sidecar .
+
+# VM Sidecar (optional - needs libvirt-dev and gcc for its cgo bindings)
+cd services/vm-sidecar && go build -o /usr/local/bin/recasa-vm-sidecar .
+
+# CLI
+cd cli && go build -o /usr/local/bin/recasa-cli .
 ```
+
+Each service also has its own `go generate ./...` step for its OpenAPI-derived `codegen/` package, already committed to this repo - only re-run it if you change an API spec.
 
 ### 3. Run Test Suites
 ```bash
@@ -184,8 +220,13 @@ cd services/vm-sidecar && go build -o /usr/local/bin/nivaroos-vm-sidecar cmd/mai
 cd ui && pnpm vitest run
 
 # Backend Go Services Unit Tests
-cd services/app-management && go test ./...
 cd services/core && go test ./...
+cd services/app-management && go test ./...
+cd services/gateway && go test ./...
+cd services/user && go test ./...
+cd services/local-storage && go test ./...
+cd services/message-bus && go test ./...
+cd services/vm-sidecar && go test ./...
 cd services/common && go test ./...
 ```
 
