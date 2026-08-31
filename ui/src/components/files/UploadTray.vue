@@ -56,6 +56,7 @@
 <script>
 import Uploader from 'simple-uploader.js'
 import { formatSize } from '@/utils/formatSize'
+import events from '@/events/events'
 
 // Ported from src/components/filebrowser/FilePanel.vue:728-791
 // (getTargetUrl/setUploaderOpts) - see the task-15 report for the specific
@@ -172,6 +173,8 @@ export default {
 				tracked.status = 'success'
 				tracked.progress = 100
 			}
+			this.$emit('uploaded')
+			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 		})
 
 		this.uploaderInstance.on('fileError', (rootFile, file, message) => {
@@ -191,9 +194,8 @@ export default {
 		this.uploaderInstance.on('complete', () => {
 			this.status = 'completed'
 			this.totalSpeed = 0
-			// eslint-disable-next-line no-console
-			console.log('[DEBUG UploadTray complete] emitting uploaded, currentPath =', this.currentPath)
 			this.$emit('uploaded')
+			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 			const hasError = this.trackedFiles.some((file) => file.status === 'error')
 			if (!hasError) {
 				setTimeout(() => {

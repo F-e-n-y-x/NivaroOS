@@ -86,6 +86,7 @@
 <script>
 import { classifyWidth } from '@/utils/files/breakpoints'
 import { mixin } from '@/mixins/mixin'
+import events from '@/events/events'
 import FilesToolbar from './Toolbar.vue'
 import FilesTabBar from './TabBar.vue'
 import FilesSidebar from './Sidebar.vue'
@@ -286,6 +287,8 @@ export default {
 		},
 		onDialogCreated() {
 			this.activeContentView && this.activeContentView.reload()
+			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 400)
 			this.activeDialog = null
 		},
 		onShareCreated() {
@@ -430,6 +433,9 @@ export default {
 			this.deleteItem(this.dialogItem)
 			this.activeContentView && this.activeContentView.reload()
 			this.activeContentView && this.activeContentView.clearSelection()
+			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 400)
+			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 1200)
 			this.activeDialog = null
 			this.dialogItem = null
 		},

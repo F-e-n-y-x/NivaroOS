@@ -15,6 +15,8 @@
 </template>
 
 <script>
+import events from '@/events/events'
+
 const MENU_WIDTH = 140
 const MENU_HEIGHT = 80
 
@@ -60,15 +62,13 @@ export default {
 					style: 'overwrite',
 				})
 				.then((res) => {
-					if (res.data.success !== 200) {
+					if (res.data.success === 200) {
+						this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+						setTimeout(() => this.$EventBus.$emit(events.RELOAD_FILE_LIST), 400)
+						setTimeout(() => this.$EventBus.$emit(events.RELOAD_FILE_LIST), 1200)
+					} else {
 						this.$buefy.toast.open({ message: res.data.message, type: 'is-danger' })
 					}
-					// No reload() here - the backend runs copy/move as a
-					// background job (PostOperateFileOrDir just enqueues it
-					// and returns immediately), so any ContentView actually
-					// showing `targetPath` reloads itself once the
-					// `casaos:file:operate` socket event reports that task
-					// as finished, same as paste().
 				})
 		},
 	},

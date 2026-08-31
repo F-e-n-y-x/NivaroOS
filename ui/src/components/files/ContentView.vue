@@ -21,43 +21,49 @@
 		</div>
 		<div
 			v-else
-			ref="itemsEl"
-			class="items"
-			:class="[viewMode, { 'single-column': filesController.breakpoints.singleColumnGrid }]"
-			@mousedown.left.prevent="onDragSelectionStart"
+			ref="scrollArea"
+			class="items-scroll-area scrollbars-light"
 			@contextmenu.self.prevent="openBlankContextMenu"
 		>
-			<template v-if="viewMode === 'grid' || viewMode === 'grid-large'">
-				<grid-item
-					v-for="item in listing"
-					:key="item.path"
-					ref="itemEl"
-					:item="item"
-					:large="viewMode === 'grid-large'"
-					:single-column="filesController.breakpoints.singleColumnGrid"
-					:selected="selection.includes(item.path)"
-					@open="openItem"
-					@select="onItemClick(item, $event)"
-					@contextmenu="openContextMenu(item, $event)"
-					@dragstart="onItemDragStart"
-					@drop-item="onDropOnItem"
-				></grid-item>
-			</template>
-			<template v-else>
-				<list-row
-					v-for="item in listing"
-					:key="item.path"
-					ref="itemEl"
-					:item="item"
-					:selected="selection.includes(item.path)"
-					@open="openItem"
-					@select="onItemClick(item, $event)"
-					@contextmenu="openContextMenu(item, $event)"
-					@dragstart="onItemDragStart"
-					@drop-item="onDropOnItem"
-				></list-row>
-			</template>
-			<div v-if="dragBox" class="drag-select-box" :style="dragBoxStyle"></div>
+			<div
+				ref="itemsEl"
+				class="items"
+				:class="[viewMode, { 'single-column': filesController.breakpoints.singleColumnGrid }]"
+				@mousedown.left.prevent="onDragSelectionStart"
+				@contextmenu.self.prevent="openBlankContextMenu"
+			>
+				<template v-if="viewMode === 'grid' || viewMode === 'grid-large'">
+					<grid-item
+						v-for="item in listing"
+						:key="item.path"
+						ref="itemEl"
+						:item="item"
+						:large="viewMode === 'grid-large'"
+						:single-column="filesController.breakpoints.singleColumnGrid"
+						:selected="selection.includes(item.path)"
+						@open="openItem"
+						@select="onItemClick(item, $event)"
+						@contextmenu="openContextMenu(item, $event)"
+						@dragstart="onItemDragStart"
+						@drop-item="onDropOnItem"
+					></grid-item>
+				</template>
+				<template v-else>
+					<list-row
+						v-for="item in listing"
+						:key="item.path"
+						ref="itemEl"
+						:item="item"
+						:selected="selection.includes(item.path)"
+						@open="openItem"
+						@select="onItemClick(item, $event)"
+						@contextmenu="openContextMenu(item, $event)"
+						@dragstart="onItemDragStart"
+						@drop-item="onDropOnItem"
+					></list-row>
+				</template>
+				<div v-if="dragBox" class="drag-select-box" :style="dragBoxStyle"></div>
+			</div>
 		</div>
 		<files-context-menu
 			ref="ctxMenu"
@@ -109,6 +115,7 @@ import FilesContextMenu from './ContextMenu.vue'
 import UploadTray from './UploadTray.vue'
 import { toggleSelect, selectRange, summarize } from '@/utils/files/selection'
 import { isFilesDragEvent, getFilesDragData, setFilesDragData } from '@/utils/files/dragDrop'
+import events from '@/events/events'
 
 // Minimum drag distance (px) before a mousedown+move is treated as a
 // selection-rectangle drag rather than a plain click on empty space.
@@ -203,8 +210,10 @@ export default {
 		// window), which was a real regression caught in review.
 		this.focusRoot()
 		this.fetchMountTypes()
+		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.reload)
 	},
 	beforeDestroy() {
+		this.$EventBus.$off(events.RELOAD_FILE_LIST, this.reload)
 		window.removeEventListener('mousemove', this.onDragSelectionMove)
 		window.removeEventListener('mouseup', this.onDragSelectionEnd)
 	},
@@ -327,10 +336,10 @@ export default {
 				this.lastClickedPath = item.path
 			}
 			const selectedItems = this.listing.filter((i) => this.selection.includes(i.path))
-			this.$refs.ctxMenu.open(event, item, this.$el, selectedItems)
+			this.$refs.ctxMenu.open(event, item, this.$refs.scrollArea || this.$el, selectedItems)
 		},
 		openBlankContextMenu(event) {
-			this.$refs.ctxMenu.open(event, null, this.$el)
+			this.$refs.ctxMenu.open(event, null, this.$refs.scrollArea || this.$el)
 		},
 		onItemClick(item, event) {
 			if (event.shiftKey && this.lastClickedPath) {
@@ -568,6 +577,10 @@ export default {
 				.then((res) => {
 					if (res.data.success === 200) {
 						this.$store.commit('SET_OPERATE_OBJECT', null)
+						this.reload()
+						this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+						setTimeout(() => this.reload(), 400)
+						setTimeout(() => this.reload(), 1200)
 					} else {
 						this.$buefy.toast.open({
 							message: res.data.message,
@@ -585,49 +598,46 @@ export default {
 	flex: 1 1 auto;
 	min-width: 0;
 	min-height: 0;
-	overflow: auto;
+	display: flex;
+	flex-direction: column;
 	position: relative;
-	padding: 0.75rem;
 	outline: none;
+	overflow: hidden;
+
 	&.is-drag-over {
 		outline: 2px dashed rgba(50, 115, 220, 0.6);
 		outline-offset: -2px;
 	}
 }
+
+.empty-state-wrap {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow-y: auto;
+}
+
+.items-scroll-area {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	padding: 0.75rem;
+	position: relative;
+}
+
 .items {
 	position: relative;
-	// .items only sizes itself to wrap its own rows by default - the space
-	// below the last row belongs to .content-view's own background instead,
-	// which has no drag-select mousedown handler at all, making that area
-	// (very commonly clicked, especially in a sparsely-filled folder) do
-	// nothing. Filling the visible height guarantees drag-select actually
-	// owns the whole pane, not just the rows themselves.
 	min-height: 100%;
 }
 .items.grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
-	// min-height: 100% (above) makes this container taller than its rows
-	// need - grid's default align-content stretches row tracks (and then
-	// align-items stretches each item) to fill that leftover height,
-	// bloating icons to fill the whole pane. Pin rows to the top instead.
 	align-content: start;
-	// Grid items default to stretching to fill their whole cell, including
-	// whatever leftover space 1fr columns distribute beyond an item's own
-	// content width - since grid-item stops mousedown propagation, that
-	// stretched-but-visually-empty area would swallow rubber-band-select
-	// drags started anywhere except past the very last item.
-	// justify-items: start (below) fixes that, but the leftover-space
-	// margin it opens up is window-width-dependent - at some widths 1fr
-	// hands a column zero extra space, leaving only this explicit gap as
-	// guaranteed real empty ground. It has to be wide enough on its own
-	// (not the old 0.25rem/0.5rem) to reliably catch a drag regardless of
-	// window size.
 	gap: 0.6rem 0.85rem;
 	justify-items: start;
-	// A single column has no horizontal leftover-space problem to guard
-	// against (there's only one item per row), and it should still look
-	// like a full-width row rather than a small left-aligned box.
 	&.single-column { grid-template-columns: 1fr; justify-items: stretch; }
 }
 .items.grid-large {
@@ -651,19 +661,14 @@ export default {
 }
 
 .content-status-bar {
-	position: sticky;
-	bottom: -0.75rem;
-	margin: 0.75rem -0.75rem -0.75rem -0.75rem;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.4rem 1rem;
+	padding: 0.35rem 1rem;
 	font-size: 0.75rem;
 	color: #64748b;
 	border-top: 1px solid rgba(0, 0, 0, 0.06);
-	background: rgba(255, 255, 255, 0.7);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
+	background: #ffffff;
 	user-select: none;
 	flex-shrink: 0;
 	z-index: 15;
