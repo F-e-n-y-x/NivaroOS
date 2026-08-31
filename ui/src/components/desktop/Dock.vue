@@ -1,6 +1,6 @@
 <template>
-	<div class="dock-container" @contextmenu.prevent.stop="openDockContextMenu($event, { type: 'dock' })">
-		<div class="dock">
+	<div class="dock-wrapper">
+		<div class="dock" @contextmenu.prevent.stop="openDockContextMenu($event, { type: 'dock' })">
 			<!-- 1. Built-in Pinned Apps -->
 			<button
 				v-for="p in visiblePinned"
@@ -237,7 +237,7 @@ export default {
 			this.ctxMenu.visible = false
 		},
 		openDockContextMenu(event, target) {
-			const menuWidth = 210
+			const menuWidth = 215
 			const maxLeft = Math.max(12, window.innerWidth - menuWidth - 16)
 			const left = Math.max(12, Math.min(maxLeft, event.clientX - menuWidth / 2))
 			const bottom = Math.max(76, window.innerHeight - event.clientY + 12)
@@ -480,15 +480,15 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.dock-container {
+.dock-wrapper {
+	display: contents;
+}
+
+.dock {
 	position: fixed;
 	left: 50%;
 	bottom: 0.9rem;
 	transform: translateX(-50%);
-	z-index: 500;
-}
-
-.dock {
 	display: flex;
 	align-items: flex-end;
 	gap: 0.65rem;
@@ -499,6 +499,7 @@ export default {
 	border: $backDropBorder;
 	border-radius: 22px;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
+	z-index: 99990;
 }
 
 .dock-sep {
@@ -562,17 +563,17 @@ export default {
 /* Dock Right Click Menu */
 .dock-context-menu {
 	position: fixed;
-	width: 210px;
-	background: rgba(255, 255, 255, 0.92);
+	width: 215px;
+	background: rgba(255, 255, 255, 0.95);
 	backdrop-filter: blur(24px) saturate(180%);
 	-webkit-backdrop-filter: blur(24px) saturate(180%);
 	border: 1px solid rgba(255, 255, 255, 0.65);
 	border-radius: 12px;
-	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1);
 	padding: 0.35rem;
 	user-select: none;
 	animation: dockCtxFade 0.12s cubic-bezier(0.16, 1, 0.3, 1);
-	z-index: 10000;
+	z-index: 100000;
 }
 
 @keyframes dockCtxFade {
@@ -613,7 +614,7 @@ export default {
 	align-items: center;
 	gap: 0.65rem;
 	width: 100%;
-	padding: 0.42rem 0.65rem;
+	padding: 0.44rem 0.7rem;
 	border-radius: 7px;
 	font-family: inherit;
 	font-size: 0.8125rem;
@@ -626,7 +627,9 @@ export default {
 	text-align: left;
 
 	.ctx-icon {
-		font-size: 1.05rem;
+		font-size: 1.15rem;
+		width: 1.25rem;
+		text-align: center;
 		color: #475569;
 		flex-shrink: 0;
 		line-height: 1;
