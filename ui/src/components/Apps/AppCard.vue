@@ -31,54 +31,64 @@
 				</b-dropdown-item>
 
 				<b-dropdown-item v-else :focusable="false" aria-role="menu-item" custom>
-					<b-button v-if="isContainerApp && item.overrideUrl" expanded tag="a" type="is-text" @click="openApp(item)">{{
-						$t('Open') }}</b-button>
-					<b-button v-if="isContainerApp" expanded tag="a" type="is-text" @click="closeMenuThen('importApp', item, false)">{{
-						$t('Import to NivaroOS') }}</b-button>
-					<b-button v-else-if="item.status === 'running'" expanded tag="a" type="is-text" @click="openApp(item)">{{
-						$t('Open') }}</b-button>
-					<b-button v-else-if="!isContainerApp" expanded tag="a" type="is-text" @click="openApp(item)">{{
-						$t('launch-and-open') }}</b-button>
-					<b-button v-if="isV2App" expanded icon-pack="casa" icon-right="question-outline" size="is-16"
-						type="is-text" @click="openTips(item.name)">
+					<b-button v-if="isContainerApp && item.overrideUrl" expanded tag="a" type="is-text" @click="openApp(item)">
+						<i class="mdi mdi-open-in-new mr-2"></i>
+						{{ $t('Open') }}
+					</b-button>
+					<b-button v-if="isContainerApp" expanded tag="a" type="is-text" @click="closeMenuThen('importApp', item, false)">
+						<i class="mdi mdi-download-box-outline mr-2"></i>
+						{{ $t('Import to NivaroOS') }}
+					</b-button>
+					<b-button v-else-if="item.status === 'running'" expanded tag="a" type="is-text" @click="openApp(item)">
+						<i class="mdi mdi-open-in-new mr-2"></i>
+						{{ $t('Open') }}
+					</b-button>
+					<b-button v-else-if="!isContainerApp" expanded tag="a" type="is-text" @click="openApp(item)">
+						<i class="mdi mdi-play-circle-outline mr-2"></i>
+						{{ $t('launch-and-open') }}
+					</b-button>
+					<b-button v-if="isV2App" expanded size="is-16" type="is-text" @click="openTips(item.name)">
+						<i class="mdi mdi-lightbulb-on-outline mr-2"></i>
 						{{ $t('Tips') }}
 					</b-button>
-					<b-button v-if="isV2App || isLinkApp" expanded type="is-text" @click="configApp()">{{
-						$t('Setting')
-					}}
+					<b-button v-if="isV2App || isLinkApp" expanded type="is-text" @click="configApp()">
+						<i class="mdi mdi-tune-variant mr-2"></i>
+						{{ $t('Setting') }}
 					</b-button>
 
-					<!-- Rename/icon/roundness - available for every app type,
-					not tied to what kind of app it is. -->
+					<!-- Rename/icon/roundness - available for every app type -->
 					<b-button expanded type="is-text" @click="closeMenuThen('editLegacyApp', item)">
+						<i class="mdi mdi-pencil-outline mr-2"></i>
 						{{ $t('Edit') }}
 					</b-button>
 
-					<b-button v-if="isV2App && !item.is_uncontrolled" expanded type="is-text" @click="checkAppVersion(item.name)">{{
-						$t('Check then update')
-					}}
+					<b-button v-if="isV2App && !item.is_uncontrolled" expanded type="is-text" @click="checkAppVersion(item.name)">
+						<i class="mdi mdi-update mr-2"></i>
+						{{ $t('Check then update') }}
 						<b-loading :active="isCheckThenUpdate || isUpdating" :is-full-page="false">
 							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
 						</b-loading>
 					</b-button>
 
-					<b-button v-if="isV1App" expanded type="is-text" @click="exportYAML(item)">{{
-						$t('Export as Compose')
-					}}
+					<b-button v-if="isV1App" expanded type="is-text" @click="exportYAML(item)">
+						<i class="mdi mdi-file-export-outline mr-2"></i>
+						{{ $t('Export as Compose') }}
 					</b-button>
 
-					<b-button v-if="isV1App" :loading="isRebuilding" expanded type="is-text" @click="rebuild(item)">{{
-						$t('Rebuild')
-					}}
+					<b-button v-if="isV1App" :loading="isRebuilding" expanded type="is-text" @click="rebuild(item)">
+						<i class="mdi mdi-hammer-wrench mr-2"></i>
+						{{ $t('Rebuild') }}
 					</b-button>
 
 					<b-button v-if="isLinkApp" class="mb-1" expanded type="is-text" @click="uninstallApp(true)">
+						<i class="mdi mdi-delete-outline mr-2"></i>
 						{{ $t('Delete') }}
 						<b-loading v-model="isUninstalling" :is-full-page="false">
 							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
 						</b-loading>
 					</b-button>
 					<b-button v-else-if="!isContainerApp" class="has-text-red" expanded type="is-text" @click="uninstallConfirm">
+						<i class="mdi mdi-trash-can-outline mr-2"></i>
 						{{ $t('Uninstall') }}
 						<b-loading v-model="isUninstalling" :is-full-page="false">
 							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
@@ -109,9 +119,11 @@
 					</b-button>
 
 					<b-button v-if="!folderId" expanded type="is-text" @click="closeMenuThen('addToFolder', item)">
+						<i class="mdi mdi-folder-plus-outline mr-2"></i>
 						{{ $t('Add to folder') }}
 					</b-button>
 					<b-button v-if="folderId" expanded type="is-text" @click="closeMenuThen('removeFromFolder', { item, folderId })">
+						<i class="mdi mdi-folder-remove-outline mr-2"></i>
 						{{ $t('Remove from folder') }}
 					</b-button>
 

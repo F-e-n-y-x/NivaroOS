@@ -38,19 +38,45 @@
 					<template #trigger>
 						<b-icon icon="dots-vertical" custom-size="mdi-18px"></b-icon>
 					</template>
-					<b-dropdown-item v-if="singleItem" aria-role="menuitem" @click="$emit('rename-selection')">{{ $t('Rename') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('copy-selection')">{{ $t('Copy') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('move-selection')">{{ $t('Cut') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('download-selection')">{{ $t('Download') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('compress-selection')">{{ $t('Compress to Zip') }}</b-dropdown-item>
-					<b-dropdown-item v-if="singleArchiveItem" aria-role="menuitem" @click="$emit('extract-selection')">{{ $t('Extract') }}</b-dropdown-item>
-					<b-dropdown-item v-if="singleItem" aria-role="menuitem" @click="$emit('open-selection-window')">{{ $t('New Window') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('delete-selection')">{{ $t('Delete') }}</b-dropdown-item>
-					<b-dropdown-item v-if="hasClipboard" aria-role="menuitem" @click="$emit('paste')">{{ $t('Paste') }}</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" @click="$emit('new-folder')">{{ $t('New Folder') }}</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" @click="$emit('new-file')">{{ $t('New File') }}</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" @click="$emit('upload')">{{ $t('Upload') }}</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" @click="$emit('set-view', nextViewMode)">{{ viewModeLabel }}</b-dropdown-item>
+					<b-dropdown-item v-if="singleItem" aria-role="menuitem" @click="$emit('rename-selection')">
+						<i class="mdi mdi-pencil-outline mr-2"></i>{{ $t('Rename') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('copy-selection')">
+						<i class="mdi mdi-content-copy mr-2"></i>{{ $t('Copy') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('move-selection')">
+						<i class="mdi mdi-content-cut mr-2"></i>{{ $t('Cut') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('download-selection')">
+						<i class="mdi mdi-download-outline mr-2"></i>{{ $t('Download') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" @click="$emit('compress-selection')">
+						<i class="mdi mdi-folder-zip-outline mr-2"></i>{{ $t('Compress to Zip') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="singleArchiveItem" aria-role="menuitem" @click="$emit('extract-selection')">
+						<i class="mdi mdi-archive-arrow-down-outline mr-2"></i>{{ $t('Extract') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="singleItem" aria-role="menuitem" @click="$emit('open-selection-window')">
+						<i class="mdi mdi-open-in-new mr-2"></i>{{ $t('New Window') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasSelection" aria-role="menuitem" class="has-text-danger" @click="$emit('delete-selection')">
+						<i class="mdi mdi-trash-can-outline mr-2"></i>{{ $t('Delete') }}
+					</b-dropdown-item>
+					<b-dropdown-item v-if="hasClipboard" aria-role="menuitem" @click="$emit('paste')">
+						<i class="mdi mdi-content-paste mr-2"></i>{{ $t('Paste') }}
+					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="$emit('new-folder')">
+						<i class="mdi mdi-folder-plus-outline mr-2"></i>{{ $t('New Folder') }}
+					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="$emit('new-file')">
+						<i class="mdi mdi-file-plus-outline mr-2"></i>{{ $t('New File') }}
+					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="$emit('upload')">
+						<i class="mdi mdi-upload-outline mr-2"></i>{{ $t('Upload') }}
+					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="$emit('set-view', nextViewMode)">
+						<i class="mdi mdi-view-grid-outline mr-2"></i>{{ viewModeLabel }}
+					</b-dropdown-item>
 				</b-dropdown>
 			</template>
 			<template v-else>

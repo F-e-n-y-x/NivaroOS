@@ -834,8 +834,8 @@ export default {
 
 /* Dark Authentic Transparency Checkerboard */
 .dark-checkerboard {
-	background-color: #1e293b;
-	background-image: repeating-conic-gradient(#0f172a 0% 25%, #1e293b 0% 50%);
+	background-color: #334155;
+	background-image: repeating-conic-gradient(#1e293b 0% 25%, #334155 0% 50%);
 	background-size: 14px 14px;
 	background-position: 0 0;
 }

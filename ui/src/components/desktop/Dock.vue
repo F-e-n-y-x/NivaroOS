@@ -102,6 +102,11 @@
 						<span class="ctx-label">{{ $t('Open') }}</span>
 					</button>
 
+					<button v-if="ctxMenu.target.data.app_type === 'container'" class="ctx-item" @click="handleItemAction('import')">
+						<i class="mdi mdi-download-box-outline ctx-icon"></i>
+						<span class="ctx-label">{{ $t('Import to NivaroOS') }}</span>
+					</button>
+
 					<button class="ctx-item" @click="handleItemAction('edit')">
 						<i class="mdi mdi-pencil-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Edit Settings') }}</span>
@@ -438,6 +443,8 @@ export default {
 				}
 			} else if (action === 'edit') {
 				this.$EventBus.$emit(events.SHOW_CONFIG_PANEL, item)
+			} else if (action === 'import') {
+				this.$EventBus.$emit(events.SHOW_CONTAINER_PANEL, item)
 			} else if (action === 'restart') {
 				this.$messageBus('apps_restart', item.name)
 				const req = item.app_type === 'v2app'

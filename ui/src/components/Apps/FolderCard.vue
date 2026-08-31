@@ -9,9 +9,16 @@
 					<p role="button"></p>
 				</template>
 				<b-dropdown-item :focusable="false" aria-role="menu-item" custom>
-					<b-button expanded type="is-text" @click="closeMenuThen('rename', folder)">{{ $t('Rename') }}</b-button>
-					<b-button expanded type="is-text" @click="closeMenuThen('editIcon', folder)">{{ $t('Edit icon') }}</b-button>
+					<b-button expanded type="is-text" @click="closeMenuThen('rename', folder)">
+						<i class="mdi mdi-pencil-outline mr-2"></i>
+						{{ $t('Rename') }}
+					</b-button>
+					<b-button expanded type="is-text" @click="closeMenuThen('editIcon', folder)">
+						<i class="mdi mdi-image-edit-outline mr-2"></i>
+						{{ $t('Edit icon') }}
+					</b-button>
 					<b-button class="has-text-red" expanded type="is-text" @click="closeMenuThen('delete', folder)">
+						<i class="mdi mdi-trash-can-outline mr-2"></i>
 						{{ $t('Delete folder') }}
 					</b-button>
 				</b-dropdown-item>
