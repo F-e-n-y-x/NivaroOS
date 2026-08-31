@@ -20,19 +20,19 @@
 
 		<div class="blur-background"></div>
 		<div class="cards-content" @click="$emit('open', folder)">
-			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column pt-4 pb-3px img-c">
+			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 				<div class="is-flex is-justify-content-center">
-					<div v-if="folder.icon" class="folder-custom-icon is-64x64" :style="{ borderRadius: (folder.iconRadius || 0) + '%' }">
+					<div v-if="folder.icon" class="folder-custom-icon is-52x52" :style="{ borderRadius: (folder.iconRadius || 0) + '%' }">
 						<img :src="folder.icon">
 					</div>
-					<div v-else class="folder-icon-grid is-64x64">
+					<div v-else class="folder-icon-grid is-52x52">
 						<div v-for="i in 4" :key="i" class="folder-icon-cell">
 							<b-image v-if="previewApps[i - 1]" :src="previewApps[i - 1].icon"
 								:src-fallback="require('@/assets/img/app/default.svg')" webp-fallback=".jpg"></b-image>
 						</div>
 					</div>
 				</div>
-				<p class="mt-3 one-line">
+				<p class="app-label one-line">
 					<a class="one-line" style="cursor:default">{{ folder.name }}</a>
 				</p>
 			</div>
@@ -130,5 +130,27 @@ export default {
 		height: 100%;
 		object-fit: cover;
 	}
+}
+
+.icon-cell {
+	width: 100%;
+	height: 100%;
+	padding: 6px 4px 4px;
+	box-sizing: border-box;
+	justify-content: center;
+	gap: 0;
+}
+
+.app-label {
+	margin-top: 4px;
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: #fff;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+	line-height: 1.2;
+	max-width: 84px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 </style>

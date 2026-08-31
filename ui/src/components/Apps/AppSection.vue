@@ -27,10 +27,10 @@
 				
 				<!-- Live Downloading / Installing App Tile -->
 				<div v-else-if="item.app_type === 'installing'" class="installing-app-slot common-card is-flex is-align-items-center is-justify-content-center">
-					<div class="cards-content has-text-centered is-flex is-justify-content-center is-flex-direction-column pt-4 pb-3px">
+					<div class="cards-content has-text-centered is-flex is-justify-content-center is-flex-direction-column" style="padding:6px 4px 4px;width:100%;height:100%">
 						<div class="is-flex is-justify-content-center is-relative">
 							<div class="installing-icon-box">
-								<img :src="item.icon || defaultAppIcon" class="is-64x64 installing-icon" @error="onIconError" />
+								<img :src="item.icon || defaultAppIcon" class="is-52x52 installing-icon" @error="onIconError" />
 								<div class="installing-ring-wrap">
 									<svg class="progress-ring-svg" viewBox="0 0 72 72">
 										<circle class="ring-track" cx="36" cy="36" r="32"></circle>
@@ -45,7 +45,7 @@
 								</div>
 							</div>
 						</div>
-						<p class="mt-3 one-line">
+						<p class="app-label one-line" style="margin-top:4px">
 							<span class="one-line installing-title">{{ item.title || item.name }}</span>
 						</p>
 						<span class="installing-badge">{{ item.progress ? (item.progress + '%') : $t('Installing...') }}</span>
@@ -1011,8 +1011,8 @@ export default {
 
 .installing-icon-box {
 	position: relative;
-	width: 56px;
-	height: 56px;
+	width: 52px;
+	height: 52px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1030,8 +1030,8 @@ export default {
 .installing-ring-wrap {
 	position: absolute;
 	inset: -4px;
-	width: 64px;
-	height: 64px;
+	width: 60px;
+	height: 60px;
 	pointer-events: none;
 }
 

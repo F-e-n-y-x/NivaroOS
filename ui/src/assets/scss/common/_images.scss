@@ -26,6 +26,17 @@
 		width: 54px;
 	}
 	
+	&.is-52x52 {
+		height: 52px;
+		width: 52px;
+
+		img {
+			height: 52px;
+			width: 52px !important;
+			max-height: 52px !important;
+		}
+	}
+
 	&.is-64x64 {
 		height: 64px;
 		width: 64px;
