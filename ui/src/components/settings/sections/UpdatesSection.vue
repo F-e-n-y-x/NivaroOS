@@ -3,15 +3,9 @@
 		<h2 class="section-title">{{ $t('Updates & Maintenance') }}</h2>
 
 		<!-- ==================== NIVAROOS UPDATES ==================== -->
-		<h3 class="setting-card-title is-flex is-align-items-center is-justify-content-between">
-			<span class="is-flex is-align-items-center">
-				<i class="mdi mdi-update mr-2 section-card-icon"></i>
-				{{ $t('NivaroOS System Update') }}
-			</span>
-			<b-button rounded size="is-small" :loading="checkingNivaro" :disabled="checkingNivaro || nivaroUpdating" @click="checkNivaroUpdates">
-				<i class="mdi mdi-refresh mr-1"></i>
-				{{ $t('Check for updates') }}
-			</b-button>
+		<h3 class="setting-card-title is-flex is-align-items-center">
+			<i class="mdi mdi-update mr-2 section-card-icon"></i>
+			{{ $t('NivaroOS System Update') }}
 		</h3>
 
 		<div class="setting-card update-studio-card">
@@ -33,14 +27,18 @@
 					</div>
 				</div>
 
-				<div>
+				<div class="is-flex is-align-items-center gap-2">
+					<b-button rounded size="is-small" :loading="checkingNivaro" :disabled="checkingNivaro || nivaroUpdating" @click="checkNivaroUpdates">
+						<i class="mdi mdi-refresh mr-1"></i>
+						{{ $t('Check for updates') }}
+					</b-button>
 					<b-button v-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
 						<i class="mdi mdi-download mr-1"></i>
 						{{ $t('Update NivaroOS') }}
 					</b-button>
 					<span v-else class="tag is-success is-light is-rounded">
 						<i class="mdi mdi-check mr-1"></i>
-						{{ $t('Latest build') }}
+						{{ $t('Up to date') }}
 					</span>
 				</div>
 			</div>
@@ -78,21 +76,9 @@
 		</div>
 
 		<!-- ==================== LINUX SYSTEM PACKAGES (APT) ==================== -->
-		<h3 class="setting-card-title is-flex is-align-items-center is-justify-content-between mt-4">
-			<span class="is-flex is-align-items-center">
-				<i class="mdi mdi-package-variant mr-2 section-card-icon"></i>
-				{{ $t('Linux System Packages (APT)') }}
-			</span>
-			<div class="buttons are-small mb-0">
-				<b-button rounded size="is-small" :loading="checkingApt" :disabled="checkingApt || aptUpgrading" @click="refreshAptPackages">
-					<i class="mdi mdi-refresh mr-1"></i>
-					{{ $t('Check for OS updates') }}
-				</b-button>
-				<b-button v-if="pkgCount > 0" rounded size="is-small" type="is-primary" :loading="aptUpgrading" @click="openSystemUpgradeWindow">
-					<i class="mdi mdi-arrow-up-bold-circle mr-1"></i>
-					{{ $t('Upgrade All Packages') }} ({{ pkgCount }})
-				</b-button>
-			</div>
+		<h3 class="setting-card-title is-flex is-align-items-center mt-4">
+			<i class="mdi mdi-package-variant mr-2 section-card-icon"></i>
+			{{ $t('Linux System Packages (APT)') }}
 		</h3>
 
 		<div class="setting-card update-studio-card">
@@ -118,10 +104,14 @@
 					</div>
 				</div>
 
-				<div class="is-flex is-align-items-center">
-					<b-button v-if="pkgCount > 0" rounded size="is-small" type="is-dark" @click="openSystemUpgradeWindow">
-						<i class="mdi mdi-console mr-1"></i>
-						{{ $t('Open Updater Window') }}
+				<div class="is-flex is-align-items-center gap-2">
+					<b-button rounded size="is-small" :loading="checkingApt" :disabled="checkingApt || aptUpgrading" @click="refreshAptPackages">
+						<i class="mdi mdi-refresh mr-1"></i>
+						{{ $t('Check for OS updates') }}
+					</b-button>
+					<b-button v-if="pkgCount > 0" rounded size="is-small" type="is-primary" :loading="aptUpgrading" @click="openSystemUpgradeWindow">
+						<i class="mdi mdi-arrow-up-bold-circle mr-1"></i>
+						{{ $t('Upgrade All Packages') }} ({{ pkgCount }})
 					</b-button>
 					<span v-else class="tag is-success is-light is-rounded">
 						<i class="mdi mdi-check mr-1"></i>
