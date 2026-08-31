@@ -35,6 +35,7 @@
 				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app/default.svg')" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
 				</div>
