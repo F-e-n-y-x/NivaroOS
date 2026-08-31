@@ -83,6 +83,28 @@ export default {
 	methods: {
 		open(event) {
 			const target = event.target
+
+			// Walk up from the target — if we're inside an app card, folder card,
+			// or any dropdown, this is NOT a bare-canvas right-click.
+			let el = target
+			while (el && el !== document.body) {
+				const cls = el.getAttribute ? (el.getAttribute('class') || '') : ''
+				if (
+					cls.includes('app-card') ||
+					cls.includes('folder-card') ||
+					cls.includes('common-card') ||
+					cls.includes('dropdown') ||
+					cls.includes('app-slot') ||
+					cls.includes('installing-app-slot') ||
+					cls.includes('dock-item') ||
+					cls.includes('dock-context-menu') ||
+					el.tagName === 'BUTTON'
+				) {
+					return // Not a canvas click — let the app's own handler deal with it
+				}
+				el = el.parentElement
+			}
+
 			const className = target?.getAttribute ? target.getAttribute('class') || '' : ''
 			const isDesktopCanvas =
 				className.includes('contextmenu-canvas') ||

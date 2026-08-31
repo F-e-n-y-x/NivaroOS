@@ -95,27 +95,6 @@
 						</b-loading>
 					</b-button>
 
-					<!-- Start / Stop / Restart — v1, v2 and external container apps -->
-				<div v-if="!isLinkApp" class="gap">
-					<div class="columns is-gapless _b-bor is-flex">
-						<div class="column is-flex is-justify-content-center is-align-items-center">
-							<b-button :loading="isRestarting" expanded type="is-text" @click="restartApp"
-								:disabled="item.status != 'running'"
-								:title="$t('Restart')">
-								<b-icon custom-size="is-size-20px" icon="restart-outline" pack="casa"></b-icon>
-							</b-button>
-						</div>
-						<div class="column is-flex is-justify-content-center is-align-items-center">
-							<b-button :class="item.status" :loading="isStarting" class="has-text-red" expanded
-								type="is-text" @click="toggle(item)"
-								:title="item.status === 'running' ? $t('Stop') : $t('Start')">
-								<b-icon custom-size="is-size-20px" icon="shutdown-outline" pack="casa"
-									:custom-class="shutDownClass"></b-icon>
-							</b-button>
-						</div>
-					</div>
-				</div>
-
 					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
 						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
 						{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}
@@ -130,6 +109,20 @@
 						{{ $t('Remove from folder') }}
 					</b-button>
 
+					<!-- Start / Stop / Restart — at the bottom for all non-link app types -->
+					<template v-if="!isLinkApp">
+						<hr class="dropdown-divider" style="margin: 4px 0;" />
+						<b-button :loading="isRestarting" expanded type="is-text" @click="restartApp"
+							:disabled="item.status != 'running'">
+							<i class="mdi mdi-restart mr-2"></i>
+							{{ $t('Restart') }}
+						</b-button>
+						<b-button :class="item.status === 'running' ? 'has-text-red' : ''" :loading="isStarting"
+							expanded type="is-text" @click="toggle(item)">
+							<i :class="item.status === 'running' ? 'mdi mdi-stop-circle-outline mr-2' : 'mdi mdi-play-circle-outline mr-2'"></i>
+							{{ item.status === 'running' ? $t('Stop') : $t('Start') }}
+						</b-button>
+					</template>
 				</b-dropdown-item>
 			</b-dropdown>
 		</div>

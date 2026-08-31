@@ -3,18 +3,24 @@
 		<div class="dock" @contextmenu.prevent.stop="openDockContextMenu($event, { type: 'dock' })">
 			<!-- Pinned Apps (Built-ins and User Apps in exact pinned order) -->
 			<button
-				v-for="item in dockItems"
+				v-for="(item, idx) in dockItems"
 				:key="'dock-' + item.name"
 				class="dock-item"
+				:class="{
+					'dock-drag-over': dragOverIndex === idx && dragSrcIndex !== idx,
+					'dock-dragging': dragSrcIndex === idx
+				}"
 				:title="displayName(item)"
 				@click="launchItem(item)"
 				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'item', data: item })"
+				@pointerdown="onDockPointerDown($event, idx)"
 			>
 				<img
 					:src="item.icon"
 					class="dock-icon"
 					:style="{ borderRadius: item.iconRadius ? item.iconRadius + '%' : '12px' }"
 					:alt="displayName(item)"
+					draggable="false"
 				/>
 				<span class="dock-dot" v-if="isItemOpen(item)" :class="{ minimized: isItemMinimized(item) }"></span>
 			</button>
@@ -214,7 +220,15 @@ export default {
 				icon: null,
 				iconRadius: 0,
 				target: null
-			}
+			},
+			// Dock drag-to-reorder state
+			dragSrcIndex: -1,
+			dragOverIndex: -1,
+			_dockDragHoldTimer: null,
+			_dockDragActive: false,
+			_dockGhost: null,
+			_dockBoundPointerMove: null,
+			_dockBoundPointerUp: null
 		}
 	},
 	computed: {
@@ -249,6 +263,120 @@ export default {
 		window.removeEventListener('resize', this.closeCtxMenu)
 	},
 	methods: {
+		// ── Dock drag-to-reorder ────────────────────────────────────────────
+		onDockPointerDown(event, idx) {
+			if (event.button !== 0) return // only left-button
+			// Hold for 350ms to start drag; a short tap is just a click
+			this._dockDragHoldTimer = setTimeout(() => {
+				this._startDockDrag(event, idx)
+			}, 350)
+			// If the pointer moves more than a few pixels before the timer fires,
+			// cancel — this is a scroll or accidental nudge, not a hold.
+			const startX = event.clientX
+			const startY = event.clientY
+			const cancelOnMove = (e) => {
+				if (Math.abs(e.clientX - startX) > 6 || Math.abs(e.clientY - startY) > 6) {
+					clearTimeout(this._dockDragHoldTimer)
+					window.removeEventListener('pointermove', cancelOnMove)
+					window.removeEventListener('pointerup', cancelOnUp)
+				}
+			}
+			const cancelOnUp = () => {
+				clearTimeout(this._dockDragHoldTimer)
+				window.removeEventListener('pointermove', cancelOnMove)
+				window.removeEventListener('pointerup', cancelOnUp)
+			}
+			window.addEventListener('pointermove', cancelOnMove)
+			window.addEventListener('pointerup', cancelOnUp)
+		},
+
+		_startDockDrag(event, idx) {
+			this._dockDragActive = true
+			this.dragSrcIndex = idx
+			this.dragOverIndex = idx
+
+			// Create a floating ghost clone of the dock icon
+			const srcBtn = this.$el.querySelectorAll('.dock-item')[idx]
+			if (srcBtn) {
+				const ghost = srcBtn.cloneNode(true)
+				ghost.style.cssText = `
+					position: fixed;
+					pointer-events: none;
+					z-index: 999999;
+					opacity: 0.85;
+					transform: scale(1.25);
+					transition: none;
+					border-radius: 12px;
+					box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+				`
+				const r = srcBtn.getBoundingClientRect()
+				ghost.style.left = r.left + 'px'
+				ghost.style.top = r.top + 'px'
+				ghost.style.width = r.width + 'px'
+				ghost.style.height = r.height + 'px'
+				document.body.appendChild(ghost)
+				this._dockGhost = ghost
+			}
+
+			this._dockBoundPointerMove = this._onDockDragMove.bind(this)
+			this._dockBoundPointerUp = this._onDockDragEnd.bind(this)
+			window.addEventListener('pointermove', this._dockBoundPointerMove)
+			window.addEventListener('pointerup', this._dockBoundPointerUp)
+		},
+
+		_onDockDragMove(event) {
+			if (!this._dockDragActive) return
+
+			// Move ghost
+			if (this._dockGhost) {
+				const g = this._dockGhost
+				const halfW = g.offsetWidth / 2
+				const halfH = g.offsetHeight / 2
+				g.style.left = (event.clientX - halfW) + 'px'
+				g.style.top = (event.clientY - halfH) + 'px'
+			}
+
+			// Determine which dock slot the pointer is hovering over
+			const btns = Array.from(this.$el.querySelectorAll('.dock-item:not(.dock-extra)'))
+			for (let i = 0; i < btns.length; i++) {
+				const r = btns[i].getBoundingClientRect()
+				if (event.clientX >= r.left && event.clientX <= r.right &&
+					event.clientY >= r.top - 20 && event.clientY <= r.bottom + 20) {
+					this.dragOverIndex = i
+					break
+				}
+			}
+		},
+
+		_onDockDragEnd() {
+			if (!this._dockDragActive) return
+			this._dockDragActive = false
+
+			// Remove ghost
+			if (this._dockGhost) {
+				document.body.removeChild(this._dockGhost)
+				this._dockGhost = null
+			}
+
+			// Reorder if position changed
+			const src = this.dragSrcIndex
+			const dst = this.dragOverIndex
+			if (src !== -1 && dst !== -1 && src !== dst) {
+				const newItems = [...this.dockItems]
+				const [moved] = newItems.splice(src, 1)
+				newItems.splice(dst, 0, moved)
+				this.dockItems = newItems
+				// Persist the new order as a plain array of names
+				this.$api.users.setCustomStorage('dock_pinned_apps', newItems.map(i => i.name))
+			}
+
+			this.dragSrcIndex = -1
+			this.dragOverIndex = -1
+			window.removeEventListener('pointermove', this._dockBoundPointerMove)
+			window.removeEventListener('pointerup', this._dockBoundPointerUp)
+		},
+		// ── End dock drag ───────────────────────────────────────────────────
+
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
 			if (override && override.icon) return override.icon
@@ -638,6 +766,20 @@ export default {
 
 	&.minimized {
 		opacity: 0.4;
+	}
+}
+
+/* Dock drag-to-reorder visual feedback */
+.dock-item.dock-dragging {
+	opacity: 0.35;
+	transform: scale(0.9) !important;
+	filter: grayscale(0.3);
+}
+
+.dock-item.dock-drag-over {
+	transform: translateY(-14px) scale(1.22) !important;
+	.dock-icon {
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.7), 0 6px 20px rgba(0, 0, 0, 0.3);
 	}
 }
 

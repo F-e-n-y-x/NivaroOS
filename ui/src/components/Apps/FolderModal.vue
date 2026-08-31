@@ -1,5 +1,5 @@
 <template>
-	<div class="modal-card folder-modal-card">
+	<div class="modal-card folder-modal-card" @contextmenu.stop>
 		<header class="modal-card-head">
 			<div class="is-flex-grow-1">
 				<h3 class="title is-header">{{ folder.name }}</h3>
