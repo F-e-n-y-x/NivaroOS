@@ -6,6 +6,7 @@ SRC_DIR="/opt/recasa/src"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 WITH_VM=""
 YES=""
+STEP_NUM=0
 
 check_distro() {
 	if [ ! -f "$OS_RELEASE_FILE" ]; then
@@ -38,6 +39,28 @@ parse_args() {
 	done
 }
 
+# Runs a command with a clean gum spinner instead of raw scrolling output.
+# On success, the command's own output is discarded (kept in a temp log that
+# gets deleted) - on failure, that log is dumped in full before exiting, so
+# nothing useful is ever actually lost, it's just hidden until it's relevant.
+run_step() {
+	local title="$1"
+	shift
+	STEP_NUM=$((STEP_NUM + 1))
+	local log
+	log="$(mktemp)"
+	if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "$* >'${log}' 2>&1"; then
+		rm -f "$log"
+	else
+		echo "" >&2
+		gum style --foreground 196 --bold "✗ Step ${STEP_NUM} failed: ${title}" >&2
+		echo "" >&2
+		cat "$log" >&2
+		rm -f "$log"
+		exit 1
+	fi
+}
+
 ADDON_IDS=(vm)
 ADDON_LABELS=("VM Manager - create and manage virtual machines")
 
@@ -45,20 +68,17 @@ select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		return
 	fi
-	if [ -n "$YES" ]; then
-		WITH_VM=no
-		return
-	fi
-	if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+	# A curl-piped install (or --yes) never gets an interactive menu - stdin
+	# is the script itself in that case, so reading it for a menu answer
+	# would silently corrupt/truncate the rest of the install. Default to
+	# a minimal install instead; --with-vm or a direct, downloaded run of
+	# this script (real terminal, real stdin) are how you opt in.
+	if [ -n "$YES" ] || [ ! -t 0 ]; then
 		WITH_VM=no
 		return
 	fi
 	local chosen
-	if [ -e /dev/tty ] && [ -r /dev/tty ]; then
-		chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}" </dev/tty)"
-	else
-		chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
-	fi
+	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
 	local i id upper
 	for i in "${!ADDON_IDS[@]}"; do
 		id="${ADDON_IDS[$i]}"
@@ -102,8 +122,8 @@ print_banner() {
 }
 
 install_build_deps() {
-	gum spin --show-output --title "Updating package lists..." -- apt-get update
-	gum spin --show-output --title "Installing git, nodejs, curl..." -- apt-get install -y git nodejs curl
+	run_step "Updating package lists..." apt-get update
+	run_step "Installing git, nodejs, curl..." apt-get install -y git nodejs curl
 
 	if ! command -v go >/dev/null 2>&1 || ! go_version_ok; then
 		install_go_toolchain
@@ -132,10 +152,7 @@ install_go_toolchain() {
 			exit 1
 			;;
 	esac
-	curl -fsSL "https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz" -o /tmp/go1.23.4.tar.gz
-	rm -rf /usr/local/go
-	tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz
-	rm -f /tmp/go1.23.4.tar.gz
+	run_step "Installing the Go toolchain..." "curl -fsSL https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz -o /tmp/go1.23.4.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz && rm -f /tmp/go1.23.4.tar.gz"
 	export PATH="/usr/local/go/bin:$PATH"
 	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/recasa-go.sh
 	# /etc/profile.d only helps interactive login shells. Symlink into /usr/bin
@@ -148,11 +165,11 @@ install_go_toolchain() {
 
 clone_repo() {
 	if [ -d "$SRC_DIR/.git" ]; then
-		echo "found existing checkout at $SRC_DIR, skipping clone"
+		gum style --foreground 245 "Found existing checkout at $SRC_DIR, skipping clone."
 		return
 	fi
 	mkdir -p "$(dirname "$SRC_DIR")"
-	gum spin --show-output --title "Cloning NivaroOS..." -- git clone "$REPO_URL" "$SRC_DIR"
+	run_step "Cloning NivaroOS..." git clone "$REPO_URL" "$SRC_DIR"
 }
 
 CORE_SERVICES="core app-management gateway user local-storage message-bus gpu-sidecar"
@@ -165,7 +182,7 @@ install_service() {
 	fi
 	(
 		cd "$SRC_DIR/services/$name"
-		gum spin --show-output --title "Building $bin_name..." -- go build -o "/usr/bin/$bin_name" .
+		run_step "Building $bin_name (first run may take a minute)..." go build -o "/usr/bin/$bin_name" .
 	)
 	if [ -d "$SRC_DIR/services/$name/build/sysroot" ]; then
 		cp -a "$SRC_DIR/services/$name/build/sysroot/." /
@@ -197,7 +214,7 @@ UNIT_EOF
 install_cli() {
 	(
 		cd "$SRC_DIR/cli"
-		gum spin --show-output --title "Building recasa-cli..." -- go build -o /usr/bin/recasa-cli .
+		run_step "Building recasa-cli..." go build -o /usr/bin/recasa-cli .
 	)
 }
 
@@ -231,10 +248,10 @@ UNIT_EOF
 install_vm_manager() {
 	# recasa-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
 	# and needs a C compiler to do so; neither is installed by install_build_deps().
-	gum spin --show-output --title "Installing libvirt-dev, gcc..." -- apt-get install -y libvirt-dev gcc
+	run_step "Installing libvirt-dev, gcc..." apt-get install -y libvirt-dev gcc
 	(
 		cd "$SRC_DIR/services/vm-sidecar"
-		gum spin --show-output --title "Building recasa-vm-sidecar..." -- go build -o /usr/bin/recasa-vm-sidecar .
+		run_step "Building recasa-vm-sidecar..." go build -o /usr/bin/recasa-vm-sidecar .
 	)
 	write_vm_sidecar_unit
 	systemctl daemon-reload
@@ -244,8 +261,8 @@ install_vm_manager() {
 install_ui() {
 	(
 		cd "$SRC_DIR/ui"
-		gum spin --show-output --title "Installing UI dependencies..." -- pnpm install --frozen-lockfile
-		gum spin --show-output --title "Building the web UI..." -- pnpm run build
+		run_step "Installing UI dependencies (first run may take a minute)..." pnpm install --frozen-lockfile
+		run_step "Building the web UI..." pnpm run build
 	)
 	mkdir -p /var/lib/recasa/www
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/recasa/www/." /var/lib/recasa/www/
@@ -302,4 +319,4 @@ main() {
 	print_summary
 }
 
-main "$@" 
+main "$@"
