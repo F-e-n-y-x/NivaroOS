@@ -3,12 +3,12 @@
 		<!-- Top Hero: App Identity & Live Preview -->
 		<div class="editor-hero-section">
 			<div
-				class="hero-icon-preview"
+				class="hero-icon-preview dark-checkerboard"
 				:style="{ borderRadius: iconRadius + '%' }"
 				:title="$t('Click to fine-tune crop and zoom')"
 				@click="iconTab = 'studio'"
 			>
-				<div class="hero-crop-box">
+				<div class="hero-crop-box" :style="{ borderRadius: iconRadius + '%' }">
 					<img
 						ref="heroPreviewImg"
 						:src="iconRaw || icon || fallbackIcon"
@@ -72,26 +72,18 @@
 			<button
 				type="button"
 				class="tab-btn"
+				:class="{ active: iconTab === 'custom' }"
+				@click="iconTab = 'custom'"
+			>
+				<i class="mdi mdi-image-plus-outline mr-1"></i>{{ $t('Upload / URL') }}
+			</button>
+			<button
+				type="button"
+				class="tab-btn"
 				:class="{ active: iconTab === 'studio' }"
 				@click="iconTab = 'studio'"
 			>
 				<i class="mdi mdi-crop-free mr-1"></i>{{ $t('Crop & Fine-Tune') }}
-			</button>
-			<button
-				type="button"
-				class="tab-btn"
-				:class="{ active: iconTab === 'upload' }"
-				@click="iconTab = 'upload'"
-			>
-				<i class="mdi mdi-upload-outline mr-1"></i>{{ $t('Upload Image') }}
-			</button>
-			<button
-				type="button"
-				class="tab-btn"
-				:class="{ active: iconTab === 'url' }"
-				@click="iconTab = 'url'"
-			>
-				<i class="mdi mdi-link-variant mr-1"></i>{{ $t('Image URL') }}
 			</button>
 			<button
 				type="button"
@@ -127,7 +119,7 @@
 						:title="app.title"
 						@click="selectStoreIcon(app)"
 					>
-						<div class="catalog-thumb-box">
+						<div class="catalog-thumb-box dark-checkerboard">
 							<img :src="app.icon" class="catalog-thumb" :alt="app.title" loading="lazy" />
 							<div v-if="isCurrentIcon(app.icon)" class="check-badge">
 								<i class="mdi mdi-check"></i>
@@ -138,18 +130,65 @@
 
 					<div v-if="!filteredStoreApps.length" class="empty-results-box">
 						<i class="mdi mdi-file-search-outline"></i>
-						<span>{{ $t('No matching icons found') }}</span>
+						<span>{{ $t('No matching icons found for') }} "{{ storeSearch }}"</span>
 					</div>
 				</div>
 			</div>
 
-			<!-- 2. Interactive Crop, Zoom & Roundness Studio -->
+			<!-- 2. Combined Custom Image (Upload + URL) -->
+			<div v-else-if="iconTab === 'custom'" class="tab-pane-centered">
+				<div class="custom-image-card">
+					<!-- Upload Dropzone Section -->
+					<div class="dropzone-area" @click="$refs.iconFile.click()">
+						<div class="dropzone-icon-circle">
+							<i class="mdi mdi-cloud-upload-outline"></i>
+						</div>
+						<div class="dropzone-title">{{ $t('Upload Image File') }}</div>
+						<div class="dropzone-desc">{{ $t('Drag and drop an image file here, or click to browse') }}</div>
+						<div class="dropzone-badge">PNG, SVG, JPG, WebP</div>
+					</div>
+					<input
+						ref="iconFile"
+						accept="image/*"
+						style="display: none"
+						type="file"
+						@change="handleIconFile"
+					/>
+
+					<!-- Separator -->
+					<div class="custom-image-divider">
+						<span>{{ $t('OR USE IMAGE URL') }}</span>
+					</div>
+
+					<!-- URL Input Section -->
+					<div class="url-sub-row">
+						<b-input
+							v-model="inputUrl"
+							:placeholder="$t('https://example.com/icon.png')"
+							icon="link"
+							size="is-small"
+							expanded
+							@keyup.enter.native="applyCustomUrl"
+						></b-input>
+						<b-button
+							type="is-primary"
+							size="is-small"
+							:loading="isCompressing"
+							@click="applyCustomUrl"
+						>
+							<i class="mdi mdi-download mr-1"></i>{{ $t('Load') }}
+						</b-button>
+					</div>
+				</div>
+			</div>
+
+			<!-- 3. Interactive Crop, Zoom & Roundness Studio -->
 			<div v-else-if="iconTab === 'studio'" class="tab-pane-studio">
 				<!-- Left: Large Interactive Canvas -->
 				<div class="studio-canvas-col">
 					<div
 						ref="viewport"
-						class="interactive-viewport"
+						class="interactive-viewport dark-checkerboard"
 						:class="{ 'is-draggable': iconZoom > 1, 'is-dragging': dragging }"
 						@mousedown="startDrag"
 						@touchstart="startDrag"
@@ -241,51 +280,7 @@
 				</div>
 			</div>
 
-			<!-- 3. Upload Image -->
-			<div v-else-if="iconTab === 'upload'" class="tab-pane-centered">
-				<div class="dropzone-card" @click="$refs.iconFile.click()">
-					<div class="dropzone-icon-circle">
-						<i class="mdi mdi-cloud-upload-outline"></i>
-					</div>
-					<div class="dropzone-title">{{ $t('Upload Custom Icon Image') }}</div>
-					<div class="dropzone-desc">{{ $t('Drag and drop an image file here, or click to browse') }}</div>
-					<div class="dropzone-badge">PNG, SVG, JPG, WebP</div>
-				</div>
-				<input
-					ref="iconFile"
-					accept="image/*"
-					style="display: none"
-					type="file"
-					@change="handleIconFile"
-				/>
-			</div>
-
-			<!-- 4. Direct URL -->
-			<div v-else-if="iconTab === 'url'" class="tab-pane-centered">
-				<div class="url-input-card">
-					<b-field :label="$t('Direct Image Address')">
-						<b-input
-							v-model="inputUrl"
-							:placeholder="$t('https://example.com/logo.png')"
-							icon="link"
-							expanded
-							@keyup.enter.native="applyCustomUrl"
-						></b-input>
-					</b-field>
-					<div class="is-flex is-justify-content-flex-end mt-2">
-						<b-button
-							type="is-primary"
-							size="is-small"
-							:loading="isCompressing"
-							@click="applyCustomUrl"
-						>
-							<i class="mdi mdi-download mr-1"></i>{{ $t('Load Image') }}
-						</b-button>
-					</div>
-				</div>
-			</div>
-
-			<!-- 5. Monogram Badges -->
+			<!-- 4. Monogram Badges -->
 			<div v-else-if="iconTab === 'badges'" class="tab-pane-centered">
 				<div class="monogram-picker-card">
 					<div class="monogram-desc mb-3">
@@ -737,6 +732,14 @@ export default {
 	overflow: hidden;
 }
 
+/* Dark Authentic Transparency Checkerboard */
+.dark-checkerboard {
+	background-color: #1e293b;
+	background-image: repeating-conic-gradient(#0f172a 0% 25%, #1e293b 0% 50%);
+	background-size: 14px 14px;
+	background-position: 0 0;
+}
+
 /* Hero Section */
 .editor-hero-section {
 	flex-shrink: 0;
@@ -756,9 +759,8 @@ export default {
 	min-height: 60px;
 	flex-shrink: 0;
 	overflow: hidden;
-	background: #0f172a;
 	border: 1px solid #cbd5e1;
-	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
 	cursor: pointer;
 	transition: all 0.15s ease;
 
@@ -938,19 +940,20 @@ export default {
 		position: relative;
 		width: 38px;
 		height: 38px;
+		border-radius: 8px;
+		overflow: hidden;
 		margin-bottom: 0.25rem;
 
 		.catalog-thumb {
 			width: 100%;
 			height: 100%;
-			border-radius: 8px;
 			object-fit: cover;
 		}
 
 		.check-badge {
 			position: absolute;
-			top: -4px;
-			right: -4px;
+			top: -2px;
+			right: -2px;
 			width: 15px;
 			height: 15px;
 			border-radius: 50%;
@@ -1004,7 +1007,98 @@ export default {
 	}
 }
 
-/* Tab 2: Crop Studio */
+/* Tab 2: Combined Custom Image (Upload + URL) */
+.custom-image-card {
+	width: 100%;
+	max-width: 440px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 1.25rem 1.5rem;
+	display: flex;
+	flex-direction: column;
+}
+
+.dropzone-area {
+	border: 2px dashed #cbd5e1;
+	border-radius: 10px;
+	padding: 1.25rem 1rem;
+	text-align: center;
+	cursor: pointer;
+	background: #ffffff;
+	transition: all 0.15s ease;
+
+	.dropzone-icon-circle {
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		background: #eff6ff;
+		color: #2563eb;
+		font-size: 1.4rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 0.4rem;
+	}
+
+	.dropzone-title {
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: #0f172a;
+		margin-bottom: 0.15rem;
+	}
+
+	.dropzone-desc {
+		font-size: 0.72rem;
+		color: #64748b;
+		margin-bottom: 0.5rem;
+	}
+
+	.dropzone-badge {
+		display: inline-block;
+		font-size: 0.65rem;
+		font-weight: 600;
+		color: #475569;
+		background: #e2e8f0;
+		padding: 0.1rem 0.45rem;
+		border-radius: 9999px;
+	}
+
+	&:hover {
+		border-color: #2563eb;
+		background: #eff6ff;
+	}
+}
+
+.custom-image-divider {
+	display: flex;
+	align-items: center;
+	text-align: center;
+	margin: 1rem 0;
+
+	&::before,
+	&::after {
+		content: '';
+		flex: 1;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	span {
+		padding: 0 0.75rem;
+		font-size: 0.68rem;
+		font-weight: 700;
+		color: #94a3b8;
+		letter-spacing: 0.05em;
+	}
+}
+
+.url-sub-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+/* Tab 3: Crop Studio */
 .tab-pane-studio {
 	flex: 1 1 auto;
 	display: flex;
@@ -1030,11 +1124,7 @@ export default {
 	height: 160px;
 	border-radius: 14px;
 	overflow: hidden;
-	background-color: #0f172a;
-	background-image: repeating-conic-gradient(rgba(255, 255, 255, 0.08) 0% 25%, transparent 0% 50%);
-	background-size: 14px 14px;
-	background-position: 50% 50%;
-	border: 1px solid rgba(15, 23, 42, 0.3);
+	border: 1px solid rgba(15, 23, 42, 0.4);
 	box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.45);
 	user-select: none;
 
@@ -1055,7 +1145,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	transition: border-radius 0.12s ease;
-	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.35);
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .canvas-source-img {
@@ -1218,68 +1308,6 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 1.25rem;
-}
-
-.dropzone-card {
-	width: 100%;
-	max-width: 380px;
-	border: 2px dashed #cbd5e1;
-	border-radius: 12px;
-	padding: 1.75rem 1.25rem;
-	text-align: center;
-	cursor: pointer;
-	background: #f8fafc;
-	transition: all 0.15s ease;
-
-	.dropzone-icon-circle {
-		width: 48px;
-		height: 48px;
-		border-radius: 50%;
-		background: #eff6ff;
-		color: #2563eb;
-		font-size: 1.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin: 0 auto 0.6rem;
-	}
-
-	.dropzone-title {
-		font-size: 0.875rem;
-		font-weight: 700;
-		color: #0f172a;
-		margin-bottom: 0.2rem;
-	}
-
-	.dropzone-desc {
-		font-size: 0.75rem;
-		color: #64748b;
-		margin-bottom: 0.6rem;
-	}
-
-	.dropzone-badge {
-		display: inline-block;
-		font-size: 0.68rem;
-		font-weight: 600;
-		color: #475569;
-		background: #e2e8f0;
-		padding: 0.12rem 0.5rem;
-		border-radius: 9999px;
-	}
-
-	&:hover {
-		border-color: #2563eb;
-		background: #eff6ff;
-	}
-}
-
-.url-input-card {
-	width: 100%;
-	max-width: 380px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
-	border-radius: 12px;
 	padding: 1.25rem;
 }
 
