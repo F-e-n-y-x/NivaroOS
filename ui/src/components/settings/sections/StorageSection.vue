@@ -1,16 +1,8 @@
 <template>
 	<section class="settings-section">
 		<h2 class="section-title">{{ $t('Storage') }}</h2>
-
-		<h3 class="setting-card-title">{{ $t('Disks & USB') }}</h3>
-		<div class="setting-card">
-			<disks-panel></disks-panel>
-		</div>
-
-		<h3 class="setting-card-title">{{ $t('Storage Pools') }}</h3>
-		<div class="setting-card">
-			<storage-pools-panel></storage-pools-panel>
-		</div>
+		<disks-panel></disks-panel>
+		<storage-pools-panel></storage-pools-panel>
 	</section>
 </template>
 

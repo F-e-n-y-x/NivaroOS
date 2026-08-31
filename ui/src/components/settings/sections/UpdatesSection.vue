@@ -6,20 +6,18 @@
 		<h3 class="setting-card-title">{{ $t('NivaroOS System Update') }}</h3>
 		<div class="setting-card">
 			<!-- Main Status Row -->
-			<div class="setting-row update-hero-row">
-				<div class="update-hero-icon" :class="{ 'is-update-available': hasNivaroUpdate, 'is-up-to-date': !hasNivaroUpdate }">
-					<i :class="hasNivaroUpdate ? 'mdi mdi-cloud-download' : 'mdi mdi-check-circle'"></i>
-				</div>
+			<div class="setting-row">
+				<b-icon class="row-icon" :icon="hasNivaroUpdate ? 'cloud-download-outline' : 'check-circle-outline'" pack="mdi" size="is-20" :class="{ 'has-text-success': !hasNivaroUpdate, 'has-text-primary': hasNivaroUpdate }"></b-icon>
 				<div class="row-label">
-					<div class="update-hero-title">
+					<div class="setting-title">
 						{{ hasNivaroUpdate ? $t('New NivaroOS update available') : $t('NivaroOS is up to date') }}
 					</div>
-					<div class="update-hero-meta">
-						<span>{{ $t('Installed') }}: <strong>{{ currentVersion || 'v0.4.5' }}</strong></span>
+					<div class="setting-desc">
+						<span>{{ $t('Installed') }}: {{ currentVersion || 'v0.4.5' }}</span>
 						<span class="mx-2">&middot;</span>
-						<span>{{ $t('Latest') }}: <strong>{{ latestGithubVersion || latestVersion || currentVersion || 'v0.4.5' }}</strong></span>
+						<span>{{ $t('Latest') }}: {{ latestGithubVersion || latestVersion || currentVersion || 'v0.4.5' }}</span>
 						<span class="mx-2">&middot;</span>
-						<span class="text-muted">{{ $t('Checked') }}: {{ lastNivaroCheckTime || $t('Just now') }}</span>
+						<span>{{ $t('Checked') }}: {{ lastNivaroCheckTime || $t('Just now') }}</span>
 					</div>
 				</div>
 				<div class="row-control">
@@ -55,7 +53,7 @@
 			<!-- Release Notes Accordion -->
 			<div v-if="githubReleaseNotes" class="update-inset-box mt-0">
 				<div class="release-notes-head is-flex is-align-items-center is-justify-content-between" @click="showChangelog = !showChangelog">
-					<span class="font-semibold is-size-7">{{ $t('Release Highlights & Changelog') }}</span>
+					<span class="is-size-7 text-muted">{{ $t('Release Highlights & Changelog') }}</span>
 					<i :class="showChangelog ? 'mdi mdi-chevron-up' : 'mdi mdi-chevron-down'"></i>
 				</div>
 				<div v-if="showChangelog" class="release-notes-body">
@@ -65,10 +63,11 @@
 
 			<!-- Footer Row: GitHub link -->
 			<div class="setting-row sub-row">
+				<b-icon class="row-icon" icon="github" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<a href="https://github.com/F-e-n-y-x/NivaroOS/releases" target="_blank" rel="noopener noreferrer" class="github-link is-flex is-align-items-center">
-						<i class="mdi mdi-open-in-new mr-1"></i>
 						{{ $t('View releases and changelog on GitHub') }}
+						<b-icon icon="open-in-new" pack="mdi" size="is-14" class="ml-1"></b-icon>
 					</a>
 				</div>
 			</div>
@@ -78,22 +77,20 @@
 		<h3 class="setting-card-title">{{ $t('Linux System Packages (APT)') }}</h3>
 		<div class="setting-card">
 			<!-- Main Status Row -->
-			<div class="setting-row update-hero-row">
-				<div class="update-hero-icon" :class="{ 'is-update-available': pkgCount > 0, 'is-up-to-date': pkgCount === 0 }">
-					<i :class="pkgCount > 0 ? 'mdi mdi-package-down' : 'mdi mdi-check-circle'"></i>
-				</div>
+			<div class="setting-row">
+				<b-icon class="row-icon" :icon="pkgCount > 0 ? 'package-down' : 'check-circle-outline'" pack="mdi" size="is-20" :class="{ 'has-text-success': pkgCount === 0, 'has-text-primary': pkgCount > 0 }"></b-icon>
 				<div class="row-label">
-					<div class="update-hero-title">
+					<div class="setting-title">
 						{{ pkgCount > 0 ? `${pkgCount} ${$t('package updates available')}` : $t('All system packages are up to date') }}
 					</div>
-					<div class="update-hero-meta">
-						<span v-if="securityCount > 0" class="has-text-danger font-semibold">
+					<div class="setting-desc">
+						<span v-if="securityCount > 0" class="has-text-danger">
 							<i class="mdi mdi-shield-alert mr-1"></i>
 							{{ securityCount }} {{ $t('security updates') }}
 						</span>
 						<span v-else>{{ $t('Debian / Linux base system packages') }}</span>
 						<span class="mx-2">&middot;</span>
-						<span class="text-muted">{{ $t('Checked') }}: {{ lastAptCheckTime || $t('Just now') }}</span>
+						<span>{{ $t('Checked') }}: {{ lastAptCheckTime || $t('Just now') }}</span>
 					</div>
 				</div>
 				<div class="row-control">
@@ -126,16 +123,17 @@
 
 			<!-- Upgradable Package List Rows -->
 			<div v-if="filteredPackages.length > 0" class="package-list-wrapper">
-				<div v-for="pkg in filteredPackages" :key="pkg.name" class="setting-row package-item-row">
+				<div v-for="pkg in filteredPackages" :key="pkg.name" class="setting-row">
+					<b-icon class="row-icon" :icon="pkg.is_security ? 'shield-alert-outline' : 'package-up'" pack="mdi" size="is-20" :class="{ 'has-text-danger': pkg.is_security }"></b-icon>
 					<div class="row-label">
-						<div class="package-name-line is-flex is-align-items-center">
-							<span class="font-semibold">{{ pkg.name }}</span>
+						<div class="setting-title is-flex is-align-items-center">
+							<span>{{ pkg.name }}</span>
 							<span v-if="pkg.is_security" class="tag is-danger is-light is-rounded ml-2 is-size-7">
 								<i class="mdi mdi-shield mr-1"></i>{{ $t('Security') }}
 							</span>
 							<span class="setting-chip ml-2">{{ pkg.arch }}</span>
-							<span v-if="pkg.suite" class="suite-tag ml-2">{{ pkg.suite }}</span>
 						</div>
+						<div class="setting-desc">{{ pkg.suite }}</div>
 					</div>
 					<div class="row-control">
 						<div class="package-version-badge">

@@ -1,59 +1,79 @@
 <template>
 	<div class="disks-panel">
-		<div class="row-label-heading">{{ $t('Available disks') }}</div>
-		<p v-if="!avail.length" class="hint">{{ $t('No unformatted disks detected.') }}</p>
-		<div v-for="d in avail" :key="d.path">
-			<div class="user-row">
-				<div class="user-main">
-					<div class="user-name">{{ d.path }}</div>
-					<span class="badge">{{ formatSize(d.size) }} &middot; {{ d.disk_type }}</span>
+		<!-- Available Disks -->
+		<h3 class="setting-card-title">{{ $t('Available Disks') }}</h3>
+		<div class="setting-card">
+			<div v-for="d in avail" :key="d.path">
+				<div class="setting-row">
+					<b-icon class="row-icon" icon="storage-other" pack="casa" size="is-20"></b-icon>
+					<div class="row-label">
+						<div class="setting-title">{{ d.path }}</div>
+						<div class="setting-desc">{{ formatSize(d.size) }} &middot; {{ d.disk_type }}</div>
+					</div>
+					<div class="row-control">
+						<button class="icon-button mr-2" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
+							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
+						</button>
+						<b-button rounded size="is-small" type="is-dark" :loading="busyPath === d.path" @click="confirmAdd(d)">
+							{{ $t('Use for storage') }}
+						</b-button>
+					</div>
 				</div>
-				<div class="row-actions">
-					<button class="icon-button" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
-						<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
-					</button>
-					<b-button rounded size="is-small" type="is-dark" :loading="busyPath === d.path" @click="confirmAdd(d)">
-						{{ $t('Use for storage') }}
+				<drive-details-panel v-if="expandedPath === d.path" :disk="d" @close="expandedPath = ''"></drive-details-panel>
+			</div>
+			<div v-if="!avail.length" class="account-empty">{{ $t('No unformatted disks detected.') }}</div>
+		</div>
+
+		<!-- Mounted Disks -->
+		<h3 class="setting-card-title">{{ $t('Mounted Disks') }}</h3>
+		<div class="setting-card">
+			<div v-for="d in mountedDisks" :key="d.path">
+				<div class="setting-row">
+					<b-icon class="row-icon" icon="storage-other" pack="casa" size="is-20"></b-icon>
+					<div class="row-label">
+						<div class="setting-title">{{ d.path }}</div>
+						<div class="setting-desc">{{ formatSize(d.size) }} &middot; {{ d.disk_type }} &middot; {{ d.health === 'true' ? $t('Healthy') : $t('Check disk') }}</div>
+					</div>
+					<div class="row-control">
+						<button class="icon-button mr-2" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
+							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
+						</button>
+						<b-button rounded size="is-small" type="is-danger" outlined :loading="busyPath === d.path" @click="confirmRemove(d)">
+							{{ $t('Remove') }}
+						</b-button>
+					</div>
+				</div>
+				<drive-details-panel v-if="expandedPath === d.path" :disk="d" @close="expandedPath = ''"></drive-details-panel>
+			</div>
+			<div v-if="!mountedDisks.length" class="account-empty">{{ $t('No mounted disks.') }}</div>
+		</div>
+
+		<!-- USB Drives -->
+		<h3 class="setting-card-title">{{ $t('USB Drives & Automount') }}</h3>
+		<div class="setting-card">
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="usb-outline" pack="casa" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Automount USB Drive') }}</div>
+					<div class="setting-desc">{{ $t('Automatically mount external USB drives when connected') }}</div>
+				</div>
+				<div class="row-control">
+					<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="toggleAutoMount"></b-switch>
+				</div>
+			</div>
+			<div v-for="u in usb" :key="u.name" class="setting-row">
+				<b-icon class="row-icon" icon="usb-outline" pack="casa" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ u.name }}</div>
+					<div class="setting-desc">{{ formatSize(u.size) }}</div>
+				</div>
+				<div class="row-control">
+					<b-button v-for="c in u.children" :key="c.mount_point" rounded size="is-small" type="is-danger" outlined class="ml-2" @click="confirmEject(c)">
+						{{ $t('Eject {mount}', { mount: c.mount_point }) }}
 					</b-button>
 				</div>
 			</div>
-			<drive-details-panel v-if="expandedPath === d.path" :disk="d" @close="expandedPath = ''"></drive-details-panel>
-		</div>
-
-		<div class="row-label-heading mt-4">{{ $t('Mounted disks') }}</div>
-		<div v-for="d in mountedDisks" :key="d.path">
-			<div class="user-row">
-				<div class="user-main">
-					<div class="user-name">{{ d.path }}</div>
-					<span class="badge">{{ formatSize(d.size) }} &middot; {{ d.disk_type }} &middot; {{ d.health === 'true' ? $t('Healthy') : $t('Check disk') }}</span>
-				</div>
-				<div class="row-actions">
-					<button class="icon-button" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
-						<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
-					</button>
-					<b-button rounded size="is-small" type="is-danger" outlined :loading="busyPath === d.path" @click="confirmRemove(d)">
-						{{ $t('Remove') }}
-					</b-button>
-				</div>
-			</div>
-			<drive-details-panel v-if="expandedPath === d.path" :disk="d" @close="expandedPath = ''"></drive-details-panel>
-		</div>
-
-		<div class="row-label-heading mt-4">{{ $t('USB drives') }}</div>
-		<div class="toggle-row">
-			<b-icon class="row-icon" icon="usb-outline" pack="casa" size="is-20"></b-icon>
-			<div class="row-label">{{ $t('Automount USB Drive') }}</div>
-			<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="toggleAutoMount"></b-switch>
-		</div>
-		<p v-if="!usb.length" class="hint">{{ $t('No USB drives connected.') }}</p>
-		<div v-for="u in usb" :key="u.name" class="user-row">
-			<div class="user-main">
-				<div class="user-name">{{ u.name }}</div>
-				<span class="badge">{{ formatSize(u.size) }}</span>
-			</div>
-			<b-button v-for="c in u.children" :key="c.mount_point" rounded size="is-small" type="is-danger" outlined @click="confirmEject(c)">
-				{{ $t('Eject {mount}', { mount: c.mount_point }) }}
-			</b-button>
+			<div v-if="!usb.length" class="account-empty">{{ $t('No USB drives connected.') }}</div>
 		</div>
 		<p v-if="error" class="error-note">{{ error }}</p>
 	</div>
@@ -183,65 +203,10 @@ export default {
 	padding: 1.25rem;
 }
 
-.hint {
+.error-note {
+	padding: 0 1.25rem 0.75rem;
+	color: #ef4444;
 	font-size: 0.75rem;
-	opacity: 0.6;
-	margin-bottom: 0.25rem;
-}
-
-.mt-4 {
-	margin-top: 1.5rem;
-}
-
-.user-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem;
-	padding: 0.6rem 0;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-.toggle-row {
-	display: flex;
-	align-items: center;
-	gap: 0.65rem;
-	padding: 0.6rem 0;
-	margin-bottom: 0.6rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-
-	.row-icon {
-		color: hsla(208, 16%, 42%, 1);
-	}
-
-	.row-label {
-		flex: 1;
-		font-size: 0.85rem;
-		font-weight: 500;
-	}
-}
-
-.user-main {
-	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
-}
-
-.user-name {
-	font-weight: 500;
-	font-size: 0.85rem;
-}
-
-.badge {
-	font-size: 0.7rem;
-	opacity: 0.6;
-}
-
-.row-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	flex-shrink: 0;
 }
 
 .icon-button {
@@ -258,7 +223,8 @@ export default {
 	color: rgba(44, 62, 80, 0.6);
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.1);
+		background: rgba(0, 0, 0, 0.09);
+		color: #1e293b;
 	}
 }
 </style>

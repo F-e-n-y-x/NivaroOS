@@ -84,52 +84,50 @@
 			</div>
 
 			<div v-else-if="searchResults.length" class="setting-card">
-				<div class="pkg-list">
-					<div v-for="pkg in searchResults" :key="pkg.name" class="pkg-row">
-						<div class="pkg-main">
-							<div class="pkg-name-row">
-								<span class="pkg-name">{{ pkg.name }}</span>
-								<span v-if="pkg.installed" class="badge-installed">
-									<i class="mdi mdi-check-circle mr-1"></i>{{ $t('Installed') }}
-									<span v-if="pkg.version">({{ pkg.version }})</span>
-								</span>
-							</div>
-							<div class="pkg-desc">{{ pkg.description }}</div>
+				<div v-for="pkg in searchResults" :key="pkg.name" class="setting-row">
+					<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
+					<div class="row-label">
+						<div class="setting-title is-flex is-align-items-center">
+							<span>{{ pkg.name }}</span>
+							<span v-if="pkg.installed" class="tag is-success is-light is-rounded is-size-7 ml-2">
+								<i class="mdi mdi-check mr-1"></i>{{ $t('Installed') }}
+							</span>
 						</div>
-						<div class="pkg-actions">
-							<template v-if="pkg.installed">
-								<b-button
-									rounded
-									size="is-small"
-									type="is-danger"
-									outlined
-									:loading="processingPkg === pkg.name"
-									@click="confirmUninstall(pkg.name)"
-								>
-									<i class="mdi mdi-trash-can-outline mr-1"></i>{{ $t('Uninstall') }}
-								</b-button>
-								<b-button
-									rounded
-									size="is-small"
-									class="ml-2"
-									:loading="processingPkg === pkg.name"
-									@click="installPackage(pkg.name, true)"
-								>
-									<i class="mdi mdi-refresh mr-1"></i>{{ $t('Reinstall') }}
-								</b-button>
-							</template>
-							<template v-else>
-								<b-button
-									rounded
-									size="is-small"
-									type="is-primary"
-									:loading="processingPkg === pkg.name"
-									@click="installPackage(pkg.name)"
-								>
-									<i class="mdi mdi-download mr-1"></i>{{ $t('Install') }}
-								</b-button>
-							</template>
-						</div>
+						<div class="setting-desc">{{ pkg.description || $t('No description available') }}</div>
+					</div>
+					<div class="row-control">
+						<template v-if="pkg.installed">
+							<b-button
+								rounded
+								size="is-small"
+								type="is-danger"
+								outlined
+								:loading="processingPkg === pkg.name"
+								@click="confirmUninstall(pkg.name)"
+							>
+								<i class="mdi mdi-trash-can-outline mr-1"></i>{{ $t('Uninstall') }}
+							</b-button>
+							<b-button
+								rounded
+								size="is-small"
+								class="ml-2"
+								:loading="processingPkg === pkg.name"
+								@click="installPackage(pkg.name, true)"
+							>
+								<i class="mdi mdi-refresh mr-1"></i>{{ $t('Reinstall') }}
+							</b-button>
+						</template>
+						<template v-else>
+							<b-button
+								rounded
+								size="is-small"
+								type="is-primary"
+								:loading="processingPkg === pkg.name"
+								@click="installPackage(pkg.name)"
+							>
+								<i class="mdi mdi-download mr-1"></i>{{ $t('Install') }}
+							</b-button>
+						</template>
 					</div>
 				</div>
 			</div>
@@ -160,21 +158,17 @@
 				<div v-if="loadingInstalled" class="p-5 has-text-centered text-muted">
 					<b-icon icon="loading" pack="mdi" size="is-medium" custom-class="mdi-spin"></b-icon>
 				</div>
-				<div v-else-if="!installedList.length" class="empty-state">
-					<div class="text-muted is-size-7">{{ $t('No installed packages found.') }}</div>
+				<div v-else-if="!installedList.length" class="account-empty">
+					{{ $t('No installed packages found.') }}
 				</div>
-				<div v-else class="pkg-list">
-					<div v-for="pkg in installedList" :key="pkg.name" class="pkg-row">
-						<div class="pkg-main">
-							<div class="pkg-name-row">
-								<span class="pkg-name">{{ pkg.name }}</span>
-								<span class="pkg-version">{{ pkg.version }}</span>
-								<span v-if="pkg.size" class="pkg-size">{{ formatBytes(pkg.size) }}</span>
-								<span v-if="pkg.section" class="pkg-section">{{ pkg.section }}</span>
-							</div>
-							<div class="pkg-desc">{{ pkg.description }}</div>
+				<div v-else>
+					<div v-for="pkg in installedList" :key="pkg.name" class="setting-row">
+						<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
+						<div class="row-label">
+							<div class="setting-title">{{ pkg.name }}</div>
+							<div class="setting-desc">{{ pkg.version }} &middot; {{ formatBytes(pkg.size) }} &middot; {{ pkg.description }}</div>
 						</div>
-						<div class="pkg-actions">
+						<div class="row-control">
 							<b-button
 								rounded
 								size="is-small"
@@ -213,24 +207,17 @@
 				<div v-if="loadingUpgrades" class="p-5 has-text-centered text-muted">
 					<b-icon icon="loading" pack="mdi" size="is-medium" custom-class="mdi-spin"></b-icon>
 				</div>
-				<div v-else-if="!upgradable.length" class="empty-state">
-					<i class="mdi mdi-check-circle is-size-2 text-success"></i>
-					<div class="mt-2 text-muted is-size-7">{{ $t('All APT system packages are up to date.') }}</div>
+				<div v-else-if="!upgradable.length" class="account-empty">
+					{{ $t('All APT system packages are up to date.') }}
 				</div>
-				<div v-else class="pkg-list">
-					<div v-for="pkg in upgradable" :key="pkg.name" class="pkg-row">
-						<div class="pkg-main">
-							<div class="pkg-name-row">
-								<span class="pkg-name">{{ pkg.name }}</span>
-								<span class="pkg-arch">{{ pkg.arch }}</span>
-							</div>
-							<div class="upgrade-meta">
-								<span class="old-ver">{{ pkg.current_version }}</span>
-								<i class="mdi mdi-arrow-right mx-2 text-muted"></i>
-								<span class="new-ver">{{ pkg.candidate_version }}</span>
-							</div>
+				<div v-else>
+					<div v-for="pkg in upgradable" :key="pkg.name" class="setting-row">
+						<b-icon class="row-icon" icon="package-up" pack="mdi" size="is-20"></b-icon>
+						<div class="row-label">
+							<div class="setting-title">{{ pkg.name }}</div>
+							<div class="setting-desc">{{ pkg.current_version }} &rarr; <span class="has-text-success">{{ pkg.candidate_version }}</span> ({{ pkg.arch }})</div>
 						</div>
-						<div class="pkg-actions">
+						<div class="row-control">
 							<b-button
 								rounded
 								size="is-small"
@@ -260,32 +247,23 @@
 				<div v-if="loadingSources" class="p-5 has-text-centered text-muted">
 					<b-icon icon="loading" pack="mdi" size="is-medium" custom-class="mdi-spin"></b-icon>
 				</div>
-				<div v-else-if="!sourcesList.length" class="empty-state">
-					<div class="text-muted is-size-7">{{ $t('No repository sources configured.') }}</div>
+				<div v-else-if="!sourcesList.length" class="account-empty">
+					{{ $t('No repository sources configured.') }}
 				</div>
-				<div v-else class="sources-list">
-					<div v-for="(s, idx) in sourcesList" :key="s.file + s.line + idx" class="source-row">
-						<div class="source-main">
-							<div class="source-header">
-								<span class="source-type" :class="s.type">{{ s.type }}</span>
-								<span class="source-uri">{{ s.uri }}</span>
-								<span class="source-suite">{{ s.suite }}</span>
-								<span class="source-file">{{ getFilename(s.file) }}:{{ s.line }}</span>
+				<div v-else>
+					<div v-for="(s, idx) in sourcesList" :key="s.file + s.line + idx" class="setting-row">
+						<b-icon class="row-icon" icon="source-repository" pack="mdi" size="is-20"></b-icon>
+						<div class="row-label">
+							<div class="setting-title">
+								<span class="setting-chip mr-2" :class="s.type">{{ s.type }}</span>
+								{{ s.uri }}
 							</div>
-							<div class="source-components">
-								<span v-for="c in s.components" :key="c" class="comp-chip">{{ c }}</span>
-							</div>
+							<div class="setting-desc">{{ s.suite }} &middot; {{ (s.components || []).join(', ') }} &middot; {{ getFilename(s.file) }}:{{ s.line }}</div>
 						</div>
-						<div class="source-actions">
-							<b-button
-								rounded
-								size="is-small"
-								type="is-danger"
-								outlined
-								@click="deleteSource(s)"
-							>
-								<i class="mdi mdi-trash-can-outline"></i>
-							</b-button>
+						<div class="row-control">
+							<button class="icon-button" type="button" :title="$t('Delete source')" @click="deleteSource(s)">
+								<b-icon icon="trash-can-outline" pack="mdi" size="is-16"></b-icon>
+							</button>
 						</div>
 					</div>
 				</div>

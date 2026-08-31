@@ -132,19 +132,43 @@
 				<b-icon class="row-icon" icon="code-braces" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Custom format pattern') }}</div>
-					<div class="setting-desc">{{ $t('Advanced strftime pattern (overrides presets)') }}</div>
+					<div class="setting-desc">{{ $t('Advanced strftime pattern (overrides presets, e.g. %F %H:%M:%S)') }}</div>
 				</div>
 				<div class="row-control">
-					<b-input v-model="customFormatInput" size="is-small" class="custom-format-input"
-						:placeholder="$t('e.g. %F %H:%M:%S')" @input="setCustomFormat"></b-input>
+					<div class="is-flex is-align-items-center">
+						<b-input
+							v-model="customFormatInput"
+							size="is-small"
+							class="custom-format-input"
+							:placeholder="$t('e.g. %F %T')"
+							@input="onCustomFormatChange"
+						></b-input>
+						<button
+							v-if="customFormatInput"
+							class="icon-button ml-2"
+							type="button"
+							:title="$t('Clear custom format')"
+							@click="clearCustomFormat"
+						>
+							<b-icon icon="close-outline" pack="casa" size="is-16"></b-icon>
+						</button>
+						<button
+							class="icon-button ml-2"
+							:class="{ 'has-text-link': showFormatGuide }"
+							type="button"
+							:title="$t('Format tokens guide')"
+							@click="showFormatGuide = !showFormatGuide"
+						>
+							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
+						</button>
+					</div>
 				</div>
 			</div>
-			<div class="format-hint">
-				<div class="format-hint-row">
-					<span v-for="tok in strftimeTokens" :key="tok" class="format-chip">{{ tok }}</span>
-				</div>
-				<div class="format-hint-row">
-					<span v-for="s in strftimeShortcuts" :key="s.token" class="format-chip">{{ s.token }} = {{ s.meaning }}</span>
+			<div v-if="showFormatGuide" class="format-guide-box">
+				<div class="format-guide-chips">
+					<span v-for="s in strftimeShortcuts" :key="s.token" class="format-chip" @click="appendToken(s.token)">
+						<code>{{ s.token }}</code> {{ s.meaning }}
+					</span>
 				</div>
 			</div>
 		</div>
@@ -214,6 +238,7 @@ export default {
 			timeFormatOptions: TIME_FORMAT_OPTIONS,
 			dateFormatOptions: DATE_FORMAT_OPTIONS,
 			customFormatInput: this.$store.state.customDateTimeFormat,
+			showFormatGuide: false,
 			strftimeTokens: STRFTIME_TOKEN_LIST,
 			strftimeShortcuts: STRFTIME_SHORTCUTS,
 			now: new Date(),
@@ -298,9 +323,21 @@ export default {
 			this.$store.commit('SET_DATE_FORMAT_STYLE', value)
 			this.persistDateTimeSettings()
 		},
-		setCustomFormat(value) {
-			this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', value.trim())
+		onCustomFormatChange(value) {
+			const str = value !== null && value !== undefined ? String(value) : ''
+			this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', str)
 			this.persistDateTimeSettings()
+		},
+		clearCustomFormat() {
+			this.customFormatInput = ''
+			this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', '')
+			this.persistDateTimeSettings()
+		},
+		appendToken(tok) {
+			const curr = this.customFormatInput || ''
+			const spacer = curr.length && !curr.endsWith(' ') ? ' ' : ''
+			this.customFormatInput = curr + spacer + tok
+			this.onCustomFormatChange(this.customFormatInput)
 		},
 		getBarData() {
 			this.$api.users.getCustomStorage('system').then(res => {
@@ -381,29 +418,70 @@ export default {
 }
 
 .custom-format-input {
-	width: 12rem;
+	width: 13rem;
 }
 
-.format-hint {
-	padding: 0 1.25rem 1.1rem;
+.icon-button {
+	border: none;
+	background: rgba(0, 0, 0, 0.05);
+	width: 1.6rem;
+	height: 1.6rem;
+	border-radius: 50%;
 	display: flex;
-	flex-direction: column;
-	gap: 0.4rem;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	color: #64748b;
+	transition: background 0.12s ease, color 0.12s ease;
+
+	&:hover {
+		background: rgba(0, 0, 0, 0.09);
+		color: #1e293b;
+	}
+
+	&.is-confirm {
+		background: rgba(16, 185, 129, 0.15);
+		color: #059669;
+
+		&:hover {
+			background: rgba(16, 185, 129, 0.25);
+		}
+	}
 }
 
-.format-hint-row {
+.format-guide-box {
+	padding: 0.75rem 1.25rem 1rem;
+	background: #f8fafc;
+	border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.format-guide-chips {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.4rem;
 }
 
 .format-chip {
-	padding: 0.15rem 0.5rem;
+	padding: 0.2rem 0.55rem;
 	border-radius: 6px;
-	background: #f1f5f9;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
 	color: #475569;
-	font-family: $family-monospace;
 	font-size: 0.725rem;
-	white-space: nowrap;
+	cursor: pointer;
+	transition: all 0.12s ease;
+
+	code {
+		background: transparent;
+		color: #2563eb;
+		font-weight: 600;
+		padding: 0;
+	}
+
+	&:hover {
+		border-color: #2563eb;
+		background: rgba(37, 99, 235, 0.05);
+		color: #1e293b;
+	}
 }
 </style>
