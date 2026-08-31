@@ -13,6 +13,9 @@ body,
 html {
     overflow: hidden;
     font-family: $family-sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 
@@ -34,8 +37,11 @@ html {
 
 @font-face {
 	font-family: 'BrittiSans';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
 	src: url('../fonts/britti-sans-regular.woff') format('woff');
-  }
+}
 
 @media screen and (max-width: 1024px) {
     .container {
