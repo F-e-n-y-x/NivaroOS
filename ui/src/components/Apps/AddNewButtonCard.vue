@@ -9,7 +9,7 @@
 					<div
 					class="has-text-centered is-flex is-justify-content-center is-flex-direction-column pt-3 pb-3 img-c">
 						<a class="is-flex is-justify-content-center">
-							<b-image :src="require('@/assets/img/app/appstore.svg')" class="is-64x64"></b-image>
+							<b-image :src="require('@/assets/img/app/appstore.png')" class="is-64x64"></b-image>
 						</a>
 						<p class="mt-3 one-line">
 							<a class="one-line">

@@ -1211,7 +1211,7 @@
 </template>
 
 <script>
-import appStoreIcon from '@/assets/img/app/appstore.svg'
+import appStoreIcon from '@/assets/img/app/appstore.png'
 import defaultAppIcon from '@/assets/img/app/default.svg'
 import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'

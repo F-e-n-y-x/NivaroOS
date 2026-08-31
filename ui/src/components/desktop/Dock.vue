@@ -32,7 +32,7 @@
 <script>
 import events from '@/events/events'
 import filesIcon from '@/assets/img/app/files.svg'
-import appStoreIcon from '@/assets/img/app/appstore.svg'
+import appStoreIcon from '@/assets/img/app/appstore.png'
 import settingsIcon from '@/assets/img/app/settings.png'
 import terminalIcon from '@/assets/img/app/terminal.png'
 import vmManagerIcon from '@/assets/img/app/vm-manager.png'

@@ -120,7 +120,7 @@ const builtInApplications = [
 		id: '1',
 		name: 'App Store',
 		title: { en_us: 'App Store' },
-		icon: require(`@/assets/img/app/appstore.svg`),
+		icon: require(`@/assets/img/app/appstore.png`),
 		status: 'running',
 		app_type: 'system'
 	},
