@@ -3,12 +3,18 @@
 		<!-- Top Hero: App Identity & Live Preview -->
 		<div class="editor-hero-section">
 			<div
-				class="hero-icon-preview dark-checkerboard"
+				class="hero-icon-preview"
 				:style="{ borderRadius: iconRadius + '%' }"
 				:title="$t('Click to fine-tune crop and zoom')"
 				@click="iconTab = 'studio'"
 			>
-				<div class="hero-crop-box" :style="{ borderRadius: iconRadius + '%' }">
+				<div
+					class="hero-crop-box"
+					:style="{
+						backgroundColor: (iconBgColor && iconBgColor !== 'transparent') ? iconBgColor : 'transparent',
+						borderRadius: iconRadius + '%'
+					}"
+				>
 					<img
 						ref="heroPreviewImg"
 						:src="iconRaw || icon || fallbackIcon"
@@ -122,7 +128,7 @@
 
 		<!-- Tab Workspace Bodies -->
 		<div class="editor-tab-body">
-			<!-- 1. App Store Icon Catalog -->
+			<!-- 1. App Store Icon Catalog (Clean Normal Background) -->
 			<div v-if="iconTab === 'store'" class="tab-pane-full">
 				<div class="search-bar-row">
 					<b-input
@@ -144,7 +150,7 @@
 						:title="app.title"
 						@click="selectStoreIcon(app)"
 					>
-						<div class="catalog-thumb-box dark-checkerboard">
+						<div class="catalog-thumb-box">
 							<img :src="app.icon" class="catalog-thumb" :alt="app.title" loading="lazy" />
 							<div v-if="isCurrentIcon(app.icon)" class="check-badge">
 								<i class="mdi mdi-check"></i>
@@ -207,18 +213,24 @@
 				</div>
 			</div>
 
-			<!-- 3. Interactive Crop, Zoom & Roundness Studio -->
+			<!-- 3. Interactive Crop, Zoom & Roundness Studio (Light-Grey Transparency Checkerboard ONLY here) -->
 			<div v-else-if="iconTab === 'studio'" class="tab-pane-studio">
-				<!-- Left: Large Interactive Canvas -->
+				<!-- Left: Large Interactive Canvas with Light-Grey Checkerboard -->
 				<div class="studio-canvas-col">
 					<div
 						ref="viewport"
-						class="interactive-viewport dark-checkerboard"
+						class="interactive-viewport transparency-checkerboard"
 						:class="{ 'is-draggable': iconZoom > 1, 'is-dragging': dragging }"
 						@mousedown="startDrag"
 						@touchstart="startDrag"
 					>
-						<div class="canvas-crop-layer" :style="{ borderRadius: iconRadius + '%' }">
+						<div
+							class="canvas-crop-layer"
+							:style="{
+								backgroundColor: (iconBgColor && iconBgColor !== 'transparent') ? iconBgColor : 'transparent',
+								borderRadius: iconRadius + '%'
+							}"
+						>
 							<img
 								ref="canvasImg"
 								:src="iconRaw || icon || fallbackIcon"
@@ -232,7 +244,7 @@
 							<i class="mdi mdi-cursor-move mr-1"></i>{{ $t('Drag image to reposition') }}
 						</div>
 					</div>
-					<div class="canvas-caption">{{ $t('Use sliders on the right to adjust zoom and corner curvature') }}</div>
+					<div class="canvas-caption">{{ $t('Adjust zoom scale, corner curvature, and background plate color') }}</div>
 				</div>
 
 				<!-- Right: Controls -->
@@ -265,7 +277,7 @@
 					</div>
 
 					<!-- Roundness Slider -->
-					<div class="control-box mt-3">
+					<div class="control-box mt-2">
 						<div class="control-header">
 							<div class="control-title">
 								<i class="mdi mdi-rounded-corner mr-1"></i>
@@ -297,9 +309,48 @@
 						</div>
 					</div>
 
-					<div class="studio-actions-row mt-3">
+					<!-- Background Color Picker -->
+					<div class="control-box mt-2">
+						<div class="control-header">
+							<div class="control-title">
+								<i class="mdi mdi-palette-outline mr-1"></i>
+								<span>{{ $t('Background Plate Color') }}</span>
+							</div>
+							<span class="control-val">{{ (!iconBgColor || iconBgColor === 'transparent') ? $t('None') : iconBgColor }}</span>
+						</div>
+						<div class="color-palette-row">
+							<button
+								type="button"
+								class="color-dot is-none"
+								:class="{ active: !iconBgColor || iconBgColor === 'transparent' }"
+								:title="$t('Transparent (None)')"
+								@click="iconBgColor = 'transparent'"
+							>
+								<i class="mdi mdi-circle-off-outline"></i>
+							</button>
+							<button
+								v-for="c in colorPalettePresets"
+								:key="c.value"
+								type="button"
+								class="color-dot"
+								:style="{ backgroundColor: c.value }"
+								:class="{ active: iconBgColor === c.value }"
+								:title="c.label"
+								@click="iconBgColor = c.value"
+							>
+								<i v-if="iconBgColor === c.value" class="mdi mdi-check" :class="{ 'is-dark-check': c.value === '#ffffff' }"></i>
+							</button>
+							<!-- Custom Color Picker -->
+							<label class="color-picker-label" :title="$t('Custom Color')">
+								<input v-model="iconBgColor" type="color" class="custom-color-input" />
+								<i class="mdi mdi-eyedropper"></i>
+							</label>
+						</div>
+					</div>
+
+					<div class="studio-actions-row mt-2">
 						<button class="btn-reset-transforms" type="button" @click="resetTransforms">
-							<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset Zoom & Crop') }}
+							<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset All Icon Edits') }}
 						</button>
 					</div>
 				</div>
@@ -415,6 +466,7 @@ export default {
 			iconPanX: 0,
 			iconPanY: 0,
 			iconRadius: 0,
+			iconBgColor: 'transparent',
 			iconTab: 'store',
 			inputUrl: '',
 			storeSearch: '',
@@ -430,6 +482,17 @@ export default {
 				{ label: '15%', value: 15 },
 				{ label: '25%', value: 25 },
 				{ label: '50%', value: 50 }
+			],
+			colorPalettePresets: [
+				{ label: 'White', value: '#ffffff' },
+				{ label: 'Slate Dark', value: '#0f172a' },
+				{ label: 'Charcoal', value: '#1e293b' },
+				{ label: 'Blue', value: '#2563eb' },
+				{ label: 'Indigo', value: '#4f46e5' },
+				{ label: 'Purple', value: '#7c3aed' },
+				{ label: 'Emerald', value: '#059669' },
+				{ label: 'Amber', value: '#d97706' },
+				{ label: 'Red', value: '#dc2626' }
 			],
 			fallbackIcon: require('@/assets/img/app/default.svg')
 		}
@@ -486,6 +549,7 @@ export default {
 			this.iconRaw = this.override.iconRaw || this.override.icon || this.item.icon || ''
 			this.iconZoom = this.override.iconZoom !== undefined ? this.override.iconZoom : 1
 			this.iconRadius = this.override.iconRadius || 0
+			this.iconBgColor = this.override.iconBgColor || 'transparent'
 			if (this.override.iconPanX !== undefined) {
 				this.iconPanX = this.override.iconPanX
 				this.iconPanY = this.override.iconPanY || 0
@@ -501,6 +565,7 @@ export default {
 			this.iconPanX = 0
 			this.iconPanY = 0
 			this.iconRadius = this.item.iconRadius || 0
+			this.iconBgColor = this.item.iconBgColor || 'transparent'
 		}
 		if (this.iconRaw && !this.iconRaw.startsWith('data:')) {
 			this.inputUrl = this.iconRaw
@@ -718,6 +783,7 @@ export default {
 			this.iconPanX = 0
 			this.iconPanY = 0
 			this.iconRadius = 0
+			this.iconBgColor = 'transparent'
 		},
 
 		startDrag(e) {
@@ -763,6 +829,22 @@ export default {
 			try {
 				const img = this.$refs.canvasImg || this.$refs.heroPreviewImg
 				if (!img) return this.iconRaw || this.icon
+
+				// If custom background plate color is selected
+				if (this.iconBgColor && this.iconBgColor !== 'transparent') {
+					const radiusPx = (this.iconRadius / 100) * (OUTPUT_SIZE / 2)
+					ctx.save()
+					ctx.beginPath()
+					if (ctx.roundRect) {
+						ctx.roundRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE, radiusPx)
+					} else {
+						ctx.rect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+					}
+					ctx.fillStyle = this.iconBgColor
+					ctx.fill()
+					ctx.clip()
+				}
+
 				const maxPan = (this.iconZoom - 1) * (OUTPUT_SIZE / 2)
 				const pxX = this.iconPanX * maxPan
 				const pxY = this.iconPanY * maxPan
@@ -773,6 +855,10 @@ export default {
 				ctx.scale(this.iconZoom, this.iconZoom)
 				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
 				ctx.restore()
+
+				if (this.iconBgColor && this.iconBgColor !== 'transparent') {
+					ctx.restore()
+				}
 
 				return canvas.toDataURL('image/png')
 			} catch (e) {
@@ -804,7 +890,8 @@ export default {
 				iconZoom: this.iconZoom,
 				iconPanX: this.iconPanX,
 				iconPanY: this.iconPanY,
-				iconRadius: this.iconRadius
+				iconRadius: this.iconRadius,
+				iconBgColor: this.iconBgColor
 			})
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 			this.isSaving = false
@@ -832,10 +919,10 @@ export default {
 	overflow: hidden;
 }
 
-/* Dark Authentic Transparency Checkerboard */
-.dark-checkerboard {
-	background-color: #334155;
-	background-image: repeating-conic-gradient(#1e293b 0% 25%, #334155 0% 50%);
+/* Light-Grey (Close to White) Authentic Transparency Checkerboard (Used ONLY in Studio Viewport) */
+.transparency-checkerboard {
+	background-color: #ffffff;
+	background-image: repeating-conic-gradient(#e2e8f0 0% 25%, #ffffff 0% 50%);
 	background-size: 14px 14px;
 	background-position: 0 0;
 }
@@ -859,8 +946,9 @@ export default {
 	min-height: 60px;
 	flex-shrink: 0;
 	overflow: hidden;
+	background: #f8fafc;
 	border: 1px solid #cbd5e1;
-	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 	cursor: pointer;
 	transition: all 0.15s ease;
 
@@ -871,6 +959,7 @@ export default {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		transition: background-color 0.15s ease, border-radius 0.12s ease;
 	}
 
 	.hero-img {
@@ -1062,7 +1151,7 @@ export default {
 	background: #ffffff;
 }
 
-/* Tab 1: App Store Catalog */
+/* Tab 1: App Store Catalog (Clean Normal Background - No Checkerboard) */
 .tab-pane-full {
 	flex: 1 1 auto;
 	display: flex;
@@ -1102,8 +1191,13 @@ export default {
 		width: 38px;
 		height: 38px;
 		border-radius: 8px;
+		background: #ffffff;
+		border: 1px solid #f1f5f9;
 		overflow: hidden;
 		margin-bottom: 0.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 
 		.catalog-thumb {
 			width: 100%;
@@ -1259,7 +1353,7 @@ export default {
 	gap: 0.5rem;
 }
 
-/* Tab 3: Crop Studio */
+/* Tab 3: Crop Studio (Light-Grey Transparency Checkerboard) */
 .tab-pane-studio {
 	flex: 1 1 auto;
 	display: flex;
@@ -1285,8 +1379,8 @@ export default {
 	height: 160px;
 	border-radius: 14px;
 	overflow: hidden;
-	border: 1px solid rgba(15, 23, 42, 0.4);
-	box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.45);
+	border: 1px solid #cbd5e1;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 	user-select: none;
 
 	&.is-draggable {
@@ -1305,8 +1399,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: border-radius 0.12s ease;
-	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 4px 16px rgba(0, 0, 0, 0.35);
+	transition: background-color 0.15s ease, border-radius 0.12s ease;
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
 .canvas-source-img {
@@ -1355,14 +1449,14 @@ export default {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 10px;
-	padding: 0.75rem 0.85rem;
+	padding: 0.65rem 0.85rem;
 }
 
 .control-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 0.4rem;
+	margin-bottom: 0.35rem;
 }
 
 .control-title {
@@ -1444,6 +1538,79 @@ export default {
 		background: #2563eb;
 		color: #ffffff;
 		border-color: #2563eb;
+	}
+}
+
+/* Background Color Palette */
+.color-palette-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.color-dot {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.15);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	color: #ffffff;
+	font-size: 0.7rem;
+	transition: transform 0.12s ease, box-shadow 0.12s ease;
+
+	&.is-none {
+		background: #f1f5f9;
+		color: #64748b;
+		border-style: dashed;
+		border-color: #cbd5e1;
+	}
+
+	&:hover {
+		transform: scale(1.15);
+	}
+
+	&.active {
+		transform: scale(1.1);
+		box-shadow: 0 0 0 2px #2563eb;
+	}
+
+	.is-dark-check {
+		color: #0f172a;
+	}
+}
+
+.color-picker-label {
+	width: 20px;
+	height: 20px;
+	border-radius: 50%;
+	border: 1px solid #cbd5e1;
+	background: #ffffff;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	color: #475569;
+	font-size: 0.7rem;
+	overflow: hidden;
+
+	&:hover {
+		border-color: #2563eb;
+		color: #2563eb;
+	}
+
+	.custom-color-input {
+		position: absolute;
+		opacity: 0;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		cursor: pointer;
 	}
 }
 
