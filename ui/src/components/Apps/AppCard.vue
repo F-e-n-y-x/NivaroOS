@@ -365,10 +365,14 @@ export default {
 		openSystemApps(item) {
 			switch (item.name) {
 				case "App Store":
-					this.openAppStore()
+					this.$store.commit('OPEN_WINDOW', {
+						id: 'appstore', title: this.$t('App Store'), component: 'AppStoreApp', width: 1040, height: 720
+					})
 					break;
 				case "Files":
-					this.homeShowFiles()
+					this.$store.commit('OPEN_WINDOW', {
+						id: 'files', title: this.$t('Files'), component: 'FilesApp', width: 960, height: 620
+					})
 					break;
 				case "Settings":
 					this.$store.commit('OPEN_WINDOW', {

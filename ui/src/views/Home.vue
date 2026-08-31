@@ -49,6 +49,11 @@ export default {
 			return this.$store.state.sidebarOpen
 		}
 	},
+	provide() {
+		return {
+			homeShowFiles: this.showFiles
+		}
+	},
 	created() {
 		this.isLoading = true
 		this.hardwareInfoLoading = true
