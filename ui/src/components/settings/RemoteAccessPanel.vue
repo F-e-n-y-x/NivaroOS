@@ -26,7 +26,7 @@
 				<h3 class="setting-card-title">{{ $t('Tailnet devices') }}</h3>
 				<div class="setting-card">
 					<div v-for="p in peers" :key="p.hostName" class="setting-row">
-						<b-icon class="row-icon" icon="devices" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="laptop" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ p.hostName }}</div>
 							<div class="setting-desc">
@@ -53,7 +53,7 @@
 
 				<div v-if="showAdvanced" class="setting-card">
 					<div class="setting-row">
-						<b-icon class="row-icon" icon="routes" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="transit-connection-variant" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ $t('Accept routes from other devices') }}</div>
 							<div class="setting-desc">{{ $t('Allow routing traffic through other tailnet nodes') }}</div>
@@ -75,7 +75,7 @@
 						</div>
 					</div>
 					<div class="setting-row">
-						<b-icon class="row-icon" icon="console" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="console-line" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ $t('Run Tailscale SSH server') }}</div>
 							<div class="setting-desc">{{ $t('Secure SSH access authenticated via Tailscale') }}</div>
@@ -97,7 +97,7 @@
 						</div>
 					</div>
 					<div class="setting-row">
-						<b-icon class="row-icon" icon="lan" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="lan-connect" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ $t('Allow LAN access when using an exit node') }}</div>
 							<div class="setting-desc">{{ $t('Maintain local network access while tunneling traffic') }}</div>

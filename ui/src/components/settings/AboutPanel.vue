@@ -60,7 +60,6 @@
 				<b-icon class="row-icon" icon="account-circle-outline" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">Ayush</div>
 				<div class="row-control">
-					<a href="mailto:ayushsoni2911@gmail.com" class="is-size-7 text-muted mr-3">ayushsoni2911@gmail.com</a>
 					<span class="tag is-primary is-light is-rounded is-size-7">{{ $t('Lead Developer') }}</span>
 				</div>
 			</div>

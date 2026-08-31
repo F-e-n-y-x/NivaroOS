@@ -34,7 +34,7 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="opacity" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="circle-opacity" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Window transparency') }}</div>
 					<div class="setting-desc">{{ $t('Background opacity for windows and panels') }}</div>
@@ -49,7 +49,7 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="blur" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="blur-radial" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Window blur') }}</div>
 					<div class="setting-desc">{{ $t('Frosted glass blur effect strength') }}</div>
@@ -64,7 +64,7 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="refresh" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="restore" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Reset to Defaults') }}</div>
 					<div class="setting-desc">{{ $t('Restore standard transparency and blur values') }}</div>

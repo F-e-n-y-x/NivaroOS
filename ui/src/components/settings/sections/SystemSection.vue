@@ -71,7 +71,7 @@
 		<h3 class="setting-card-title">{{ $t('Date & Time') }}</h3>
 		<div class="setting-card">
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="clock-outline" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="time-outline" pack="casa" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Live Preview') }}</div>
 					<div class="setting-desc">{{ $t('Appearance on top right taskbar pill') }}</div>
@@ -101,7 +101,7 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="timer-sand" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="timer-outline" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Show seconds') }}</div>
 					<div class="setting-desc">{{ $t('Display real-time seconds ticking') }}</div>
@@ -129,7 +129,7 @@
 			</div>
 
 			<div class="setting-row">
-				<b-icon class="row-icon" icon="code-braces" pack="mdi" size="is-20"></b-icon>
+				<b-icon class="row-icon" icon="code-tags" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Custom format pattern') }}</div>
 					<div class="setting-desc">{{ $t('Advanced strftime pattern (overrides presets, e.g. %F %H:%M:%S)') }}</div>
