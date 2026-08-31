@@ -49,7 +49,19 @@ run_step() {
 	STEP_NUM=$((STEP_NUM + 1))
 	local log
 	log="$(mktemp)"
-	if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "$* >'${log}' 2>&1"; then
+	# gum spin is a full-screen (bubbletea) program that probes the terminal
+	# for feature support and reads the reply on its own stdin. Over
+	# `curl | bash`, fd 0 for the whole script is the tail end of that pipe,
+	# not the real terminal - gum still writes the probe to the terminal
+	# (fd 1), but can't read the terminal's reply back through the dead
+	# pipe, so it comes out on screen as literal garbage. Point gum's stdin
+	# at /dev/tty (the real terminal) instead when one exists.
+	local tty_in=/dev/null
+	if exec 3</dev/tty 2>/dev/null; then
+		exec 3<&-
+		tty_in=/dev/tty
+	fi
+	if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "$* >'${log}' 2>&1" <"$tty_in"; then
 		rm -f "$log"
 	else
 		echo "" >&2
@@ -165,7 +177,11 @@ install_go_toolchain() {
 
 clone_repo() {
 	if [ -d "$SRC_DIR/.git" ]; then
-		gum style --foreground 245 "Found existing checkout at $SRC_DIR, skipping clone."
+		# An existing checkout is likely left over from an earlier install
+		# attempt (possibly one that failed before a fix landed upstream) -
+		# always fast-forward it to latest master rather than silently
+		# reusing whatever happens to be on disk.
+		run_step "Updating existing checkout..." "git -C '$SRC_DIR' fetch origin master && git -C '$SRC_DIR' reset --hard origin/master"
 		return
 	fi
 	mkdir -p "$(dirname "$SRC_DIR")"
