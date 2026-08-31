@@ -14,7 +14,7 @@ import (
 const (
 	appManagementConfigDirPath  = "/etc/nivaroos"
 	appManagementConfigFilePath = "/etc/nivaroos/app-management.conf"
-	appManagementName           = "casaos-app-management.service"
+	appManagementName           = "nivaroos-app-management.service"
 	appManagementNameShort      = "app-management"
 )
 

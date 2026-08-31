@@ -1,0 +1,1 @@
+../debian/cleanup-nivaroos.sh

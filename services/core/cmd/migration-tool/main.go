@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	casaosServiceName = "casaos.service"
+	nivaroosServiceName = "nivaroos.service"
 )
 
 var (
@@ -66,13 +66,13 @@ func init() {
 	}
 
 	if !*forceFlag {
-		serviceEnabled, err := systemctl.IsServiceEnabled(casaosServiceName)
+		serviceEnabled, err := systemctl.IsServiceEnabled(nivaroosServiceName)
 		if err != nil {
 			panic(err)
 		}
 
 		if serviceEnabled {
-			_logger.Info("%s is already enabled. If migration is still needed, try with -f.", casaosServiceName)
+			_logger.Info("%s is already enabled. If migration is still needed, try with -f.", nivaroosServiceName)
 			os.Exit(1)
 		}
 	}

@@ -249,7 +249,7 @@ VM_SIDECAR_UNIT=/usr/lib/systemd/system/nivaroos-vm-sidecar.service
 write_vm_sidecar_unit() {
 	cat > "$VM_SIDECAR_UNIT" <<'UNIT_EOF'
 [Unit]
-After=network.target casaos-message-bus.service
+After=network.target nivaroos-message-bus.service
 Description=NivaroOS VM Sidecar
 
 [Service]
@@ -284,7 +284,7 @@ install_ui() {
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/nivaroos/www/." /var/lib/nivaroos/www/
 }
 
-LEGACY_SERVICE_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service"
+LEGACY_SERVICE_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service"
 
 start_core_services() {
 	systemctl daemon-reload

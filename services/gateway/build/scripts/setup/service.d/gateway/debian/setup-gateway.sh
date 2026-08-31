@@ -3,7 +3,7 @@
 set -e
 
 ## base variables
-readonly APP_NAME="casaos-gateway"
+readonly APP_NAME="nivaroos-gateway"
 readonly APP_NAME_SHORT="gateway"
 
 # copy config files

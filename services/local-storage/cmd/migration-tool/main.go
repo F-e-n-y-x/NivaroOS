@@ -14,7 +14,7 @@ import (
 const (
 	localStorageConfigDirPath  = "/etc/nivaroos"
 	localStorageConfigFilePath = "/etc/nivaroos/local-storage.conf"
-	localStorageName           = "casaos-local-storage.service"
+	localStorageName           = "nivaroos-local-storage.service"
 	localStorageNameShort      = "local-storage"
 )
 

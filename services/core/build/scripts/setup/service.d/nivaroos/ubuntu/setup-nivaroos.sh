@@ -1,0 +1,1 @@
+../debian/setup-nivaroos.sh

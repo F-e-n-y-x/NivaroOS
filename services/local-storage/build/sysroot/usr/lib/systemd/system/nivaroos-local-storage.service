@@ -1,0 +1,18 @@
+[Unit]
+After=nivaroos-gateway.service
+After=nivaroos-message-bus.service
+After=nivaroos-user-service.service
+After=nivaroos.service
+Before=docker.service
+ConditionFileNotEmpty=/etc/nivaroos/local-storage.conf
+Description=NivaroOS Local Storage Service
+
+[Service]
+ExecStartPre=/usr/bin/nivaroos-local-storage -v
+ExecStart=/usr/bin/nivaroos-local-storage -c /etc/nivaroos/local-storage.conf
+PIDFile=/var/run/nivaroos/local-storage.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

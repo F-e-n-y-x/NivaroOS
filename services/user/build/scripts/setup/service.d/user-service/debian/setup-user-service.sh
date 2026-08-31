@@ -2,7 +2,7 @@
 
 set -e
 
-readonly APP_NAME="casaos-user-service"
+readonly APP_NAME="nivaroos-user-service"
 readonly APP_NAME_SHORT="user-service"
 
 # copy config files

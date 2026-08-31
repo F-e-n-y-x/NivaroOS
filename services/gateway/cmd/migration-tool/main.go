@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	gatewayServiceName      = "casaos-gateway.service"
+	gatewayServiceName      = "nivaroos-gateway.service"
 	gatewayServiceNameShort = "gateway"
 )
 

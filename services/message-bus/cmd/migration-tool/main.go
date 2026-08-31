@@ -14,7 +14,7 @@ import (
 const (
 	messageBusConfigDirPath  = "/etc/nivaroos"
 	messageBusConfigFilePath = "/etc/nivaroos/message-bus.conf"
-	messageBusName           = "casaos-message-bus.service"
+	messageBusName           = "nivaroos-message-bus.service"
 	messageBusNameShort      = "message-bus"
 )
 

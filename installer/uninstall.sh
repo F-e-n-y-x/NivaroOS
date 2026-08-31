@@ -5,7 +5,7 @@ set -euo pipefail
 # (GPU_SIDECAR_UNIT / VM_SIDECAR_UNIT) - keep these two lists in sync if
 # either script's service list changes.
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="casaos-gateway.service casaos-message-bus.service casaos.service casaos-user-service.service casaos-app-management.service casaos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service"
+ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service"
 
 PURGE_DATA=""
 YES=""
@@ -32,14 +32,14 @@ stop_services() {
 
 remove_unit_files() {
 	rm -f \
-		/usr/lib/systemd/system/casaos-gateway.service \
-		/usr/lib/systemd/system/casaos-gateway.service.buildroot \
-		/usr/lib/systemd/system/casaos-message-bus.service \
-		/usr/lib/systemd/system/casaos.service \
-		/usr/lib/systemd/system/casaos-user-service.service \
-		/usr/lib/systemd/system/casaos-app-management.service \
-		/usr/lib/systemd/system/casaos-app-management.service.buildroot \
-		/usr/lib/systemd/system/casaos-local-storage.service \
+		/usr/lib/systemd/system/nivaroos-gateway.service \
+		/usr/lib/systemd/system/nivaroos-gateway.service.buildroot \
+		/usr/lib/systemd/system/nivaroos-message-bus.service \
+		/usr/lib/systemd/system/nivaroos.service \
+		/usr/lib/systemd/system/nivaroos-user-service.service \
+		/usr/lib/systemd/system/nivaroos-app-management.service \
+		/usr/lib/systemd/system/nivaroos-app-management.service.buildroot \
+		/usr/lib/systemd/system/nivaroos-local-storage.service \
 		/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 		/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 		/usr/lib/systemd/system/rclone.service

@@ -26,7 +26,7 @@ import (
 const recasaSrcDir = "/opt/nivaroos/src"
 
 const vmSidecarUnitContent = `[Unit]
-After=network.target casaos-message-bus.service
+After=network.target nivaroos-message-bus.service
 Description=Recasa VM Sidecar
 
 [Service]

@@ -2,7 +2,7 @@
 
 set -e
 
-readonly APP_NAME="casaos-local-storage"
+readonly APP_NAME="nivaroos-local-storage"
 readonly APP_NAME_SHORT="local-storage"
 
 # copy config files

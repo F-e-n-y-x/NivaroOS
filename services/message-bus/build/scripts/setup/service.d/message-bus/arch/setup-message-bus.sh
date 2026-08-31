@@ -2,7 +2,7 @@
 
 set -e
 
-readonly APP_NAME="casaos-message-bus"
+readonly APP_NAME="nivaroos-message-bus"
 readonly APP_NAME_SHORT="message-bus"
 
 # copy config files

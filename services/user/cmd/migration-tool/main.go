@@ -14,7 +14,7 @@ import (
 const (
 	userServiceConfigDirPath  = "/etc/nivaroos"
 	userServiceConfigFilePath = "/etc/nivaroos/user-service.conf"
-	userServiceName           = "casaos-user-service.service"
+	userServiceName           = "nivaroos-user-service.service"
 	userServiceNameShort      = "user-service"
 )
 

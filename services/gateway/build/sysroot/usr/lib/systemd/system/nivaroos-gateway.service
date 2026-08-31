@@ -1,0 +1,13 @@
+[Unit]
+After=network.target
+Description=NivaroOS Gateway
+
+[Service]
+ExecStartPre=/usr/bin/nivaroos-gateway -v
+ExecStart=/usr/bin/nivaroos-gateway
+PIDFile=/var/run/nivaroos/gateway.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

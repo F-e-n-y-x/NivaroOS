@@ -1,0 +1,1 @@
+../setup-nivaroos.sh
