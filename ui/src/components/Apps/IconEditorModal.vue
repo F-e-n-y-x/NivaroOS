@@ -191,9 +191,13 @@ export default {
 	height: 220px;
 	margin: 0.5rem auto 1.25rem;
 	overflow: hidden;
-	background: repeating-conic-gradient(#0000000d 0% 25%, transparent 0% 50%) 50% / 16px 16px;
-	border: 1px solid rgba(0, 0, 0, 0.08);
+	background-color: #0f172a;
+	background-image: repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0% 25%, transparent 0% 50%);
+	background-size: 16px 16px;
+	background-position: 50% 50%;
+	border: 1px solid rgba(15, 23, 42, 0.3);
 	border-radius: 12px;
+	box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.4);
 	cursor: grab;
 	user-select: none;
 
@@ -210,6 +214,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	transition: border-radius 0.12s ease;
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .icon-preview-img {
