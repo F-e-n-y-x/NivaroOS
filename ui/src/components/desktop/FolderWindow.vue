@@ -69,8 +69,8 @@ export default {
 				title: this.$t('Edit App'),
 				component: 'LegacyAppEditPanel',
 				props: { item },
-				width: 760,
-				height: 560
+				width: 720,
+				height: 530
 			})
 		},
 

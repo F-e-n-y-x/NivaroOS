@@ -798,8 +798,8 @@ export default {
 				title: `${this.$t('Edit')} - ${displayName}`,
 				component: 'LegacyAppEditPanel',
 				props: { item, override },
-				width: 760,
-				height: 560
+				width: 720,
+				height: 530
 			})
 		},
 

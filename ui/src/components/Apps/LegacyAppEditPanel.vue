@@ -1,62 +1,211 @@
 <template>
-	<div class="app-studio-root">
-		<div class="studio-content-layout">
-			<!-- LEFT COLUMN: Live Preview & Canvas Studio -->
-			<div class="studio-left-pane">
-				<div class="pane-section-header">
-					<span class="pane-title">{{ $t('Icon Preview') }}</span>
-					<button class="btn-link" type="button" @click="resetTransforms">
-						<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset') }}
-					</button>
+	<div class="app-editor-container">
+		<!-- Top Hero: App Identity & Live Preview -->
+		<div class="editor-hero-section">
+			<div
+				class="hero-icon-preview"
+				:style="{ borderRadius: iconRadius + '%' }"
+				:title="$t('Click to fine-tune crop and zoom')"
+				@click="iconTab = 'studio'"
+			>
+				<img
+					ref="heroPreviewImg"
+					:src="iconRaw || icon || fallbackIcon"
+					:style="imgTransformStyle"
+					class="hero-img"
+					draggable="false"
+				/>
+				<div class="hero-edit-overlay">
+					<i class="mdi mdi-crop-free"></i>
+					<span>{{ $t('Crop') }}</span>
+				</div>
+			</div>
+
+			<div class="hero-form-fields">
+				<div class="field-row">
+					<label class="field-lbl">{{ $t('Application Name') }}</label>
+					<div class="input-with-reset">
+						<b-input
+							v-model="name"
+							:placeholder="originalName"
+							size="is-small"
+							icon="pencil-outline"
+							expanded
+						></b-input>
+						<button
+							v-if="name && name !== originalName"
+							class="btn-clear-field"
+							type="button"
+							:title="$t('Reset name to default')"
+							@click="name = ''"
+						>
+							<i class="mdi mdi-close-circle"></i>
+						</button>
+					</div>
 				</div>
 
-				<!-- Interactive Viewport -->
-				<div
-					ref="viewport"
-					class="studio-canvas"
-					:class="{ 'is-draggable': iconZoom > 1, 'is-dragging': dragging }"
-					@mousedown="startDrag"
-					@touchstart="startDrag"
-				>
-					<div class="studio-crop-layer" :style="{ borderRadius: iconRadius + '%' }">
-						<img
-							ref="previewImg"
-							:src="iconRaw || icon || fallbackIcon"
-							:style="imgTransformStyle"
-							draggable="false"
-							class="studio-source-img"
-							@load="onImageLoaded"
-						/>
-					</div>
-					<div v-if="iconZoom > 1" class="canvas-drag-badge">
-						<i class="mdi mdi-cursor-move mr-1"></i>{{ $t('Drag to reposition') }}
-					</div>
+				<div v-if="showUrlField" class="field-row mt-2">
+					<label class="field-lbl">{{ $t('Web UI URL') }}</label>
+					<b-input
+						v-model="url"
+						:placeholder="$t('http://localhost:8080 or /app-path')"
+						size="is-small"
+						icon="link-variant"
+						expanded
+					></b-input>
+				</div>
+			</div>
+		</div>
+
+		<!-- Navigation Tabs -->
+		<div class="editor-tabs-bar">
+			<button
+				type="button"
+				class="tab-btn"
+				:class="{ active: iconTab === 'store' }"
+				@click="iconTab = 'store'"
+			>
+				<i class="mdi mdi-shopping-outline mr-1"></i>{{ $t('App Store Icons') }}
+			</button>
+			<button
+				type="button"
+				class="tab-btn"
+				:class="{ active: iconTab === 'studio' }"
+				@click="iconTab = 'studio'"
+			>
+				<i class="mdi mdi-crop-free mr-1"></i>{{ $t('Crop & Fine-Tune') }}
+			</button>
+			<button
+				type="button"
+				class="tab-btn"
+				:class="{ active: iconTab === 'upload' }"
+				@click="iconTab = 'upload'"
+			>
+				<i class="mdi mdi-upload-outline mr-1"></i>{{ $t('Upload Image') }}
+			</button>
+			<button
+				type="button"
+				class="tab-btn"
+				:class="{ active: iconTab === 'url' }"
+				@click="iconTab = 'url'"
+			>
+				<i class="mdi mdi-link-variant mr-1"></i>{{ $t('Image URL') }}
+			</button>
+			<button
+				type="button"
+				class="tab-btn"
+				:class="{ active: iconTab === 'badges' }"
+				@click="iconTab = 'badges'"
+			>
+				<i class="mdi mdi-palette-outline mr-1"></i>{{ $t('Monogram') }}
+			</button>
+		</div>
+
+		<!-- Tab Workspace Bodies -->
+		<div class="editor-tab-body">
+			<!-- 1. App Store Icon Catalog -->
+			<div v-if="iconTab === 'store'" class="tab-pane-full">
+				<div class="search-bar-row">
+					<b-input
+						v-model="storeSearch"
+						:placeholder="$t('Search icons (Nextcloud, Plex, Jellyfin, AdGuard, etc.)...')"
+						icon="magnify"
+						size="is-small"
+						expanded
+						clearable
+					></b-input>
 				</div>
 
-				<!-- Zoom & Roundness Controls -->
-				<div class="studio-sliders-box">
-					<!-- Zoom Slider -->
-					<div class="slider-row">
-						<div class="slider-label">
-							<i class="mdi mdi-magnify-plus-outline"></i>
-							<span>{{ $t('Zoom') }}</span>
+				<div class="store-catalog-grid" :class="{ 'is-loading': loadingStoreIcons }">
+					<div
+						v-for="app in filteredStoreApps"
+						:key="app.id || app.title"
+						class="catalog-item-card"
+						:class="{ 'is-active': isCurrentIcon(app.icon) }"
+						:title="app.title"
+						@click="selectStoreIcon(app)"
+					>
+						<div class="catalog-thumb-box">
+							<img :src="app.icon" class="catalog-thumb" :alt="app.title" loading="lazy" />
+							<div v-if="isCurrentIcon(app.icon)" class="check-badge">
+								<i class="mdi mdi-check"></i>
+							</div>
 						</div>
-						<input
-							v-model.number="iconZoom"
-							max="3"
-							min="1"
-							step="0.02"
-							type="range"
-							class="range-slider"
-						/>
-						<span class="slider-val">{{ Math.round(iconZoom * 100) }}%</span>
+						<span class="catalog-label">{{ app.title }}</span>
+					</div>
+
+					<div v-if="!filteredStoreApps.length" class="empty-results-box">
+						<i class="mdi mdi-file-search-outline"></i>
+						<span>{{ $t('No matching icons found for') }} "{{ storeSearch }}"</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- 2. Interactive Crop, Zoom & Roundness Studio -->
+			<div v-else-if="iconTab === 'studio'" class="tab-pane-studio">
+				<!-- Left: Large Interactive Canvas -->
+				<div class="studio-canvas-col">
+					<div
+						ref="viewport"
+						class="interactive-viewport"
+						:class="{ 'is-draggable': iconZoom > 1, 'is-dragging': dragging }"
+						@mousedown="startDrag"
+						@touchstart="startDrag"
+					>
+						<div class="canvas-crop-layer" :style="{ borderRadius: iconRadius + '%' }">
+							<img
+								ref="canvasImg"
+								:src="iconRaw || icon || fallbackIcon"
+								:style="imgTransformStyle"
+								draggable="false"
+								class="canvas-source-img"
+								@load="onImageLoaded"
+							/>
+						</div>
+						<div v-if="iconZoom > 1" class="canvas-pan-pill">
+							<i class="mdi mdi-cursor-move mr-1"></i>{{ $t('Drag image to reposition') }}
+						</div>
+					</div>
+					<div class="canvas-caption">{{ $t('Use sliders on the right to adjust zoom and corner curvature') }}</div>
+				</div>
+
+				<!-- Right: Controls -->
+				<div class="studio-controls-col">
+					<!-- Zoom Slider -->
+					<div class="control-box">
+						<div class="control-header">
+							<div class="control-title">
+								<i class="mdi mdi-magnify-plus-outline mr-1"></i>
+								<span>{{ $t('Zoom Scale') }}</span>
+							</div>
+							<span class="control-val">{{ Math.round(iconZoom * 100) }}%</span>
+						</div>
+						<div class="slider-interactive-wrap">
+							<button class="btn-step" type="button" :disabled="iconZoom <= 1" @click="stepZoom(-0.1)">
+								<i class="mdi mdi-minus"></i>
+							</button>
+							<input
+								v-model.number="iconZoom"
+								max="3"
+								min="1"
+								step="0.02"
+								type="range"
+								class="studio-range-slider"
+							/>
+							<button class="btn-step" type="button" :disabled="iconZoom >= 3" @click="stepZoom(0.1)">
+								<i class="mdi mdi-plus"></i>
+							</button>
+						</div>
 					</div>
 
 					<!-- Roundness Slider -->
-					<div class="slider-row">
-						<div class="slider-label">
-							<i class="mdi mdi-rounded-corner"></i>
-							<span>{{ $t('Corners') }}</span>
+					<div class="control-box mt-3">
+						<div class="control-header">
+							<div class="control-title">
+								<i class="mdi mdi-rounded-corner mr-1"></i>
+								<span>{{ $t('Corner Roundness') }}</span>
+							</div>
+							<span class="control-val">{{ iconRadius }}%</span>
 						</div>
 						<input
 							v-model.number="iconRadius"
@@ -64,216 +213,113 @@
 							min="0"
 							step="1"
 							type="range"
-							class="range-slider"
+							class="studio-range-slider"
 						/>
-						<span class="slider-val">{{ iconRadius }}%</span>
+
+						<!-- Preset Pills -->
+						<div class="corner-preset-pills mt-2">
+							<button
+								v-for="p in roundnessPresets"
+								:key="p.value"
+								type="button"
+								class="pill-btn"
+								:class="{ active: iconRadius === p.value }"
+								@click="iconRadius = p.value"
+							>
+								{{ p.label }}
+							</button>
+						</div>
 					</div>
 
-					<!-- Quick Roundness Presets -->
-					<div class="preset-buttons-row">
-						<button
-							v-for="p in roundnessPresets"
-							:key="p.value"
-							type="button"
-							class="btn-preset"
-							:class="{ active: iconRadius === p.value }"
-							@click="iconRadius = p.value"
-						>
-							{{ p.label }}
+					<div class="studio-actions-row mt-3">
+						<button class="btn-reset-transforms" type="button" @click="resetTransforms">
+							<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset Zoom & Crop') }}
 						</button>
 					</div>
 				</div>
-
-				<!-- Miniature Desktop Representation -->
-				<div class="mini-desktop-sample">
-					<div class="mini-app-tile" :style="{ borderRadius: iconRadius + '%' }">
-						<img :src="iconRaw || icon || fallbackIcon" :style="imgTransformStyle" draggable="false" />
-					</div>
-					<div class="mini-app-name">{{ displayName }}</div>
-				</div>
 			</div>
 
-			<!-- RIGHT COLUMN: Metadata & Source Selection -->
-			<div class="studio-right-pane">
-				<!-- App Info Details -->
-				<div class="pane-card mb-3">
-					<div class="card-heading-row">
-						<span class="card-title">{{ $t('Application Info') }}</span>
+			<!-- 3. Upload Image -->
+			<div v-else-if="iconTab === 'upload'" class="tab-pane-centered">
+				<div class="dropzone-card" @click="$refs.iconFile.click()">
+					<div class="dropzone-icon-circle">
+						<i class="mdi mdi-cloud-upload-outline"></i>
 					</div>
-
-					<div class="columns is-mobile is-variable is-2 mb-0">
-						<div class="column" :class="{ 'is-6': showUrlField, 'is-12': !showUrlField }">
-							<b-field :label="$t('Display Title')">
-								<b-input
-									v-model="name"
-									:placeholder="originalName"
-									size="is-small"
-									icon="pencil-outline"
-									expanded
-								></b-input>
-							</b-field>
-						</div>
-						<div v-if="showUrlField" class="column is-6">
-							<b-field :label="$t('Web UI URL')">
-								<b-input
-									v-model="url"
-									:placeholder="$t('http://... or /path')"
-									size="is-small"
-									icon="link-variant"
-									expanded
-								></b-input>
-							</b-field>
-						</div>
-					</div>
+					<div class="dropzone-title">{{ $t('Upload Custom Icon Image') }}</div>
+					<div class="dropzone-desc">{{ $t('Drag and drop an image file here, or click to browse') }}</div>
+					<div class="dropzone-badge">PNG, SVG, JPG, WebP</div>
 				</div>
+				<input
+					ref="iconFile"
+					accept="image/*"
+					style="display: none"
+					type="file"
+					@change="handleIconFile"
+				/>
+			</div>
 
-				<!-- Icon Source Picker -->
-				<div class="pane-card is-flex-grow-1">
-					<div class="card-heading-row">
-						<span class="card-title">{{ $t('Choose Icon Source') }}</span>
-						<div class="source-segmented-control">
-							<button
-								type="button"
-								class="seg-btn"
-								:class="{ active: iconTab === 'store' }"
-								@click="iconTab = 'store'"
-							>
-								<i class="mdi mdi-shopping-outline mr-1"></i>{{ $t('App Store') }}
-							</button>
-							<button
-								type="button"
-								class="seg-btn"
-								:class="{ active: iconTab === 'url' }"
-								@click="iconTab = 'url'"
-							>
-								<i class="mdi mdi-link-variant mr-1"></i>{{ $t('URL') }}
-							</button>
-							<button
-								type="button"
-								class="seg-btn"
-								:class="{ active: iconTab === 'upload' }"
-								@click="iconTab = 'upload'"
-							>
-								<i class="mdi mdi-upload-outline mr-1"></i>{{ $t('Upload') }}
-							</button>
-							<button
-								type="button"
-								class="seg-btn"
-								:class="{ active: iconTab === 'badges' }"
-								@click="iconTab = 'badges'"
-							>
-								<i class="mdi mdi-palette-outline mr-1"></i>{{ $t('Monogram') }}
-							</button>
-						</div>
-					</div>
-
-					<!-- Tab 1: App Store Catalog -->
-					<div v-if="iconTab === 'store'" class="tab-content-box">
+			<!-- 4. Direct URL -->
+			<div v-else-if="iconTab === 'url'" class="tab-pane-centered">
+				<div class="url-input-card">
+					<b-field :label="$t('Direct Image Address')">
 						<b-input
-							v-model="storeSearch"
-							:placeholder="$t('Search App Store icons...')"
-							icon="magnify"
-							size="is-small"
-							class="mb-2"
-							clearable
+							v-model="inputUrl"
+							:placeholder="$t('https://example.com/logo.png')"
+							icon="link"
+							expanded
+							@keyup.enter.native="applyCustomUrl"
 						></b-input>
-
-						<div class="store-icons-scroll-grid" :class="{ 'is-loading': loadingStoreIcons }">
-							<div
-								v-for="app in filteredStoreApps"
-								:key="app.id || app.title"
-								class="store-app-tile"
-								:class="{ 'is-selected': isCurrentIcon(app.icon) }"
-								:title="app.title"
-								@click="selectStoreIcon(app)"
-							>
-								<img :src="app.icon" class="store-app-icon" :alt="app.title" loading="lazy" />
-								<span class="store-app-title">{{ app.title }}</span>
-							</div>
-							<div v-if="!filteredStoreApps.length" class="empty-hint">
-								{{ $t('No matching icons found') }}
-							</div>
-						</div>
-					</div>
-
-					<!-- Tab 2: URL Input -->
-					<div v-else-if="iconTab === 'url'" class="tab-content-box p-3">
-						<b-field :label="$t('Image URL (PNG, SVG, JPG, WebP)')">
-							<b-input
-								v-model="inputUrl"
-								:placeholder="$t('https://example.com/logo.png')"
-								size="is-small"
-								icon="link"
-								expanded
-								@blur="applyCustomUrl"
-								@keyup.enter.native="applyCustomUrl"
-							></b-input>
-						</b-field>
+					</b-field>
+					<div class="is-flex is-justify-content-flex-end mt-2">
 						<b-button
 							type="is-primary"
-							outlined
 							size="is-small"
-							class="mt-2"
 							:loading="isCompressing"
 							@click="applyCustomUrl"
 						>
-							<i class="mdi mdi-check mr-1"></i>{{ $t('Load Image') }}
+							<i class="mdi mdi-download mr-1"></i>{{ $t('Load Image') }}
 						</b-button>
 					</div>
+				</div>
+			</div>
 
-					<!-- Tab 3: Upload Image File -->
-					<div v-else-if="iconTab === 'upload'" class="tab-content-box p-3">
-						<div class="upload-box" @click="$refs.iconFile.click()">
-							<i class="mdi mdi-cloud-upload-outline upload-box-icon"></i>
-							<div class="upload-box-text">{{ $t('Click to browse image file') }}</div>
-							<div class="upload-box-sub">PNG, SVG, JPG, WebP</div>
-						</div>
-						<input
-							ref="iconFile"
-							accept="image/*"
-							style="display: none"
-							type="file"
-							@change="handleIconFile"
-						/>
+			<!-- 5. Monogram Badges -->
+			<div v-else-if="iconTab === 'badges'" class="tab-pane-centered">
+				<div class="monogram-picker-card">
+					<div class="monogram-desc mb-3">
+						{{ $t('Select a gradient color to generate a modern monogram badge for') }} <strong>{{ displayName }}</strong>
 					</div>
-
-					<!-- Tab 4: Monogram Badge Generator -->
-					<div v-else-if="iconTab === 'badges'" class="tab-content-box p-3">
-						<div class="monogram-grid">
-							<button
-								v-for="(bg, idx) in badgeGradients"
-								:key="idx"
-								type="button"
-								class="monogram-tile"
-								:style="{ background: bg }"
-								@click="generateBadgeIcon(bg)"
-							>
-								<span>{{ badgeLetter }}</span>
-							</button>
-						</div>
-						<div class="monogram-hint">
-							{{ $t('Generates a clean gradient monogram icon with the initial letter') }}
-						</div>
+					<div class="monogram-tiles-grid">
+						<button
+							v-for="(bg, idx) in badgeGradients"
+							:key="idx"
+							type="button"
+							class="monogram-color-tile"
+							:style="{ background: bg }"
+							@click="generateBadgeIcon(bg)"
+						>
+							<span>{{ badgeLetter }}</span>
+						</button>
 					</div>
 				</div>
 			</div>
 		</div>
 
-		<!-- Window Footer -->
-		<footer class="app-studio-footer-bar">
+		<!-- Footer Actions -->
+		<footer class="editor-footer-bar">
 			<button
 				v-if="override"
 				type="button"
-				class="btn-reset-danger"
+				class="btn-danger-link"
 				@click="resetAllOverrides"
 			>
 				<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset to Defaults') }}
 			</button>
 			<div class="is-flex-grow-1"></div>
-			<div class="footer-actions">
-				<b-button size="is-small" rounded @click="$emit('close')">{{ $t('Cancel') }}</b-button>
-				<b-button type="is-primary" size="is-small" rounded :loading="isSaving" @click="save">
-					{{ $t('Save Changes') }}
+			<div class="footer-btn-group">
+				<b-button rounded @click="$emit('close')">{{ $t('Cancel') }}</b-button>
+				<b-button type="is-primary" rounded :loading="isSaving" @click="save">
+					<i class="mdi mdi-check mr-1"></i>{{ $t('Save Changes') }}
 				</b-button>
 			</div>
 		</footer>
@@ -285,7 +331,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
 
-const VIEWPORT_SIZE = 160
+const VIEWPORT_SIZE = 170
 const OUTPUT_SIZE = 256
 
 const POPULAR_STORE_ICONS = [
@@ -357,10 +403,10 @@ export default {
 			dragStart: null,
 			badgeGradients: BADGE_GRADIENTS,
 			roundnessPresets: [
-				{ label: '0%', value: 0 },
-				{ label: '15%', value: 15 },
-				{ label: '25%', value: 25 },
-				{ label: '50%', value: 50 }
+				{ label: 'Square (0%)', value: 0 },
+				{ label: 'Soft (15%)', value: 15 },
+				{ label: 'Squircle (25%)', value: 25 },
+				{ label: 'Circle (50%)', value: 50 }
 			],
 			fallbackIcon: require('@/assets/img/app/default.svg')
 		}
@@ -559,6 +605,11 @@ export default {
 			this.iconOffsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, this.iconOffsetY))
 		},
 
+		stepZoom(delta) {
+			const target = Math.max(1, Math.min(3, Math.round((this.iconZoom + delta) * 10) / 10))
+			this.iconZoom = target
+		},
+
 		resetTransforms() {
 			this.iconZoom = 1
 			this.iconOffsetX = 0
@@ -608,7 +659,7 @@ export default {
 			const ctx = canvas.getContext('2d')
 
 			try {
-				const img = this.$refs.previewImg
+				const img = this.$refs.canvasImg || this.$refs.heroPreviewImg
 				if (!img) return this.iconRaw || this.icon
 				const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
 
@@ -667,7 +718,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.app-studio-root {
+.app-editor-container {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
@@ -677,59 +728,281 @@ export default {
 	overflow: hidden;
 }
 
-.studio-content-layout {
-	flex: 1 1 auto;
-	display: flex;
-	overflow: hidden;
-}
-
-/* Left Pane: Preview Studio */
-.studio-left-pane {
-	width: 255px;
+/* Hero Section */
+.editor-hero-section {
 	flex-shrink: 0;
-	padding: 1rem;
-	background: #ffffff;
-	border-right: 1px solid #e2e8f0;
-	display: flex;
-	flex-direction: column;
-	overflow-y: auto;
-}
-
-.pane-section-header {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 0.65rem;
+	gap: 1.25rem;
+	padding: 1rem 1.25rem;
+	background: #ffffff;
+	border-bottom: 1px solid #e2e8f0;
 }
 
-.pane-title {
-	font-size: 0.8125rem;
-	font-weight: 700;
-	color: #0f172a;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-
-.btn-link {
-	border: none;
-	background: transparent;
-	font-size: 0.72rem;
-	font-weight: 600;
-	color: #2563eb;
+.hero-icon-preview {
+	position: relative;
+	width: 68px;
+	height: 68px;
+	flex-shrink: 0;
+	overflow: hidden;
+	background: #0f172a;
+	border: 1px solid #cbd5e1;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 	cursor: pointer;
-	padding: 0;
+	transition: all 0.15s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	.hero-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	.hero-edit-overlay {
+		position: absolute;
+		inset: 0;
+		background: rgba(15, 23, 42, 0.75);
+		color: #ffffff;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.65rem;
+		font-weight: 600;
+		opacity: 0;
+		transition: opacity 0.15s ease;
+
+		i {
+			font-size: 1.1rem;
+		}
+	}
 
 	&:hover {
-		text-decoration: underline;
+		border-color: #2563eb;
+		transform: scale(1.03);
+
+		.hero-edit-overlay {
+			opacity: 1;
+		}
 	}
 }
 
-/* Canvas Viewport */
-.studio-canvas {
+.hero-form-fields {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.field-row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.field-lbl {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #475569;
+}
+
+.input-with-reset {
 	position: relative;
-	width: 160px;
-	height: 160px;
-	margin: 0 auto 0.75rem;
+	display: flex;
+	align-items: center;
+
+	.btn-clear-field {
+		position: absolute;
+		right: 8px;
+		background: transparent;
+		border: none;
+		color: #94a3b8;
+		cursor: pointer;
+		font-size: 1rem;
+		padding: 0;
+		line-height: 1;
+
+		&:hover {
+			color: #475569;
+		}
+	}
+}
+
+/* Tabs Bar */
+.editor-tabs-bar {
+	flex-shrink: 0;
+	display: flex;
+	gap: 0.35rem;
+	padding: 0.5rem 1.25rem;
+	background: #f1f5f9;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.tab-btn {
+	border: 1px solid transparent;
+	background: transparent;
+	padding: 0.35rem 0.75rem;
+	border-radius: 7px;
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #64748b;
+	cursor: pointer;
+	transition: all 0.12s ease;
+	display: inline-flex;
+	align-items: center;
+
+	i {
+		font-size: 0.95rem;
+	}
+
+	&:hover {
+		color: #1e293b;
+		background: rgba(255, 255, 255, 0.6);
+	}
+
+	&.active {
+		background: #ffffff;
+		color: #2563eb;
+		border-color: #cbd5e1;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+	}
+}
+
+/* Workspace Content */
+.editor-tab-body {
+	flex: 1 1 auto;
+	overflow: hidden;
+	display: flex;
+	background: #ffffff;
+}
+
+/* Tab 1: App Store Catalog */
+.tab-pane-full {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	padding: 0.85rem 1.25rem;
+	overflow: hidden;
+}
+
+.search-bar-row {
+	flex-shrink: 0;
+	margin-bottom: 0.65rem;
+}
+
+.store-catalog-grid {
+	flex: 1 1 auto;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+	gap: 0.6rem;
+	overflow-y: auto;
+	padding: 0.25rem 0.15rem;
+}
+
+.catalog-item-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 0.5rem 0.35rem 0.4rem;
+	border-radius: 8px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	text-align: center;
+
+	.catalog-thumb-box {
+		position: relative;
+		width: 42px;
+		height: 42px;
+		margin-bottom: 0.3rem;
+
+		.catalog-thumb {
+			width: 100%;
+			height: 100%;
+			border-radius: 8px;
+			object-fit: cover;
+		}
+
+		.check-badge {
+			position: absolute;
+			top: -4px;
+			right: -4px;
+			width: 16px;
+			height: 16px;
+			border-radius: 50%;
+			background: #2563eb;
+			color: #ffffff;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 0.65rem;
+			box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+		}
+	}
+
+	.catalog-label {
+		font-size: 0.68rem;
+		font-weight: 500;
+		color: #334155;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		width: 100%;
+	}
+
+	&:hover {
+		border-color: #2563eb;
+		background: #ffffff;
+		transform: translateY(-2px);
+		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+	}
+
+	&.is-active {
+		border-color: #2563eb;
+		background: #eff6ff;
+		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+	}
+}
+
+.empty-results-box {
+	grid-column: 1 / -1;
+	padding: 2.5rem 1rem;
+	text-align: center;
+	color: #94a3b8;
+	font-size: 0.85rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.35rem;
+
+	i {
+		font-size: 2rem;
+	}
+}
+
+/* Tab 2: Crop Studio */
+.tab-pane-studio {
+	flex: 1 1 auto;
+	display: flex;
+	padding: 1.25rem;
+	gap: 1.5rem;
+	overflow: hidden;
+}
+
+.studio-canvas-col {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
+
+.interactive-viewport {
+	position: relative;
+	width: 170px;
+	height: 170px;
 	border-radius: 14px;
 	overflow: hidden;
 	background-color: #0f172a;
@@ -749,7 +1022,7 @@ export default {
 	}
 }
 
-.studio-crop-layer {
+.canvas-crop-layer {
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
@@ -760,7 +1033,7 @@ export default {
 	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-.studio-source-img {
+.canvas-source-img {
 	width: 100% !important;
 	height: 100% !important;
 	max-width: none !important;
@@ -770,87 +1043,115 @@ export default {
 	display: block;
 }
 
-.canvas-drag-badge {
+.canvas-pan-pill {
 	position: absolute;
-	bottom: 5px;
+	bottom: 6px;
 	left: 50%;
 	transform: translateX(-50%);
 	background: rgba(15, 23, 42, 0.88);
 	color: #ffffff;
 	font-size: 0.625rem;
 	font-weight: 500;
-	padding: 0.15rem 0.4rem;
+	padding: 0.15rem 0.45rem;
 	border-radius: 9999px;
 	pointer-events: none;
 	white-space: nowrap;
 	backdrop-filter: blur(6px);
 }
 
-/* Sliders Box */
-.studio-sliders-box {
+.canvas-caption {
+	font-size: 0.7rem;
+	color: #64748b;
+	margin-top: 0.6rem;
+	text-align: center;
+	max-width: 180px;
+}
+
+.studio-controls-col {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.control-box {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
-	border-radius: 8px;
-	padding: 0.6rem;
-	margin-bottom: 0.75rem;
+	border-radius: 10px;
+	padding: 0.85rem 1rem;
 }
 
-.slider-row {
+.control-header {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
-	margin-bottom: 0.45rem;
-
-	&:last-of-type {
-		margin-bottom: 0;
-	}
+	justify-content: space-between;
+	margin-bottom: 0.5rem;
 }
 
-.slider-label {
-	width: 4.8rem;
-	font-size: 0.72rem;
+.control-title {
+	font-size: 0.8rem;
 	font-weight: 600;
-	color: #475569;
+	color: #334155;
 	display: flex;
 	align-items: center;
-	gap: 0.2rem;
-
-	i {
-		font-size: 0.875rem;
-		color: #64748b;
-	}
 }
 
-.range-slider {
-	flex: 1;
-	accent-color: #2563eb;
-	cursor: pointer;
-	height: 4px;
-}
-
-.slider-val {
-	width: 2.2rem;
-	text-align: right;
-	font-size: 0.68rem;
+.control-val {
+	font-size: 0.75rem;
 	font-weight: 700;
 	color: #2563eb;
 }
 
-.preset-buttons-row {
+.slider-interactive-wrap {
 	display: flex;
-	gap: 0.25rem;
-	margin-top: 0.5rem;
-	padding-top: 0.5rem;
-	border-top: 1px dashed #e2e8f0;
+	align-items: center;
+	gap: 0.5rem;
+
+	.btn-step {
+		width: 22px;
+		height: 22px;
+		border-radius: 5px;
+		border: 1px solid #cbd5e1;
+		background: #ffffff;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #475569;
+		cursor: pointer;
+		font-size: 0.8rem;
+		padding: 0;
+
+		&:hover:not(:disabled) {
+			border-color: #2563eb;
+			color: #2563eb;
+		}
+
+		&:disabled {
+			opacity: 0.4;
+			cursor: not-allowed;
+		}
+	}
 }
 
-.btn-preset {
+.studio-range-slider {
+	flex: 1;
+	accent-color: #2563eb;
+	cursor: pointer;
+	height: 5px;
+}
+
+.corner-preset-pills {
+	display: flex;
+	gap: 0.35rem;
+}
+
+.pill-btn {
 	flex: 1;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
-	border-radius: 5px;
-	padding: 0.15rem 0.2rem;
-	font-size: 0.65rem;
+	border-radius: 6px;
+	padding: 0.25rem 0.35rem;
+	font-size: 0.7rem;
 	font-weight: 600;
 	color: #475569;
 	cursor: pointer;
@@ -869,267 +1170,156 @@ export default {
 	}
 }
 
-/* Miniature Desktop Sample */
-.mini-desktop-sample {
-	margin-top: auto;
-	padding: 0.5rem;
-	background: #f1f5f9;
-	border-radius: 8px;
-	border: 1px solid #e2e8f0;
-	display: flex;
-	flex-direction: column;
+.btn-reset-transforms {
+	border: none;
+	background: transparent;
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: #2563eb;
+	cursor: pointer;
+	padding: 0;
+	display: inline-flex;
 	align-items: center;
-	text-align: center;
+
+	&:hover {
+		text-decoration: underline;
+	}
 }
 
-.mini-app-tile {
-	width: 36px;
-	height: 36px;
-	overflow: hidden;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-	margin-bottom: 0.25rem;
+/* Centered Tab Panes (Upload, URL, Monogram) */
+.tab-pane-centered {
+	flex: 1 1 auto;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #ffffff;
-
-	img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
+	padding: 1.5rem;
 }
 
-.mini-app-name {
-	font-size: 0.7rem;
-	font-weight: 600;
-	color: #1e293b;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: 100%;
-}
-
-/* Right Pane: Main Details */
-.studio-right-pane {
-	flex: 1 1 auto;
-	padding: 1rem;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-}
-
-.pane-card {
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
-	border-radius: 10px;
-	padding: 0.85rem;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
-.card-heading-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 0.65rem;
-}
-
-.card-title {
-	font-size: 0.8125rem;
-	font-weight: 700;
-	color: #0f172a;
-}
-
-.source-segmented-control {
-	display: inline-flex;
-	border: 1px solid #e2e8f0;
-	border-radius: 6px;
-	background: #f8fafc;
-	padding: 2px;
-}
-
-.seg-btn {
-	border: none;
-	background: transparent;
-	padding: 0.25rem 0.55rem;
-	font-size: 0.72rem;
-	font-weight: 600;
-	color: #64748b;
-	border-radius: 4px;
-	cursor: pointer;
-	transition: all 0.12s ease;
-	display: inline-flex;
-	align-items: center;
-
-	i {
-		font-size: 0.85rem;
-	}
-
-	&:hover {
-		color: #1e293b;
-	}
-
-	&.active {
-		background: #ffffff;
-		color: #2563eb;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-	}
-}
-
-.tab-content-box {
-	display: flex;
-	flex-direction: column;
-	min-height: 180px;
-}
-
-/* Store Grid */
-.store-icons-scroll-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-	gap: 0.45rem;
-	max-height: 190px;
-	overflow-y: auto;
-	padding: 0.2rem;
-}
-
-.store-app-tile {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	padding: 0.35rem 0.2rem;
-	border-radius: 6px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
-	cursor: pointer;
-	transition: all 0.12s ease;
-	text-align: center;
-
-	&:hover {
-		border-color: #2563eb;
-		transform: translateY(-2px);
-		background: #ffffff;
-		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-	}
-
-	&.is-selected {
-		border-color: #2563eb;
-		background: #eff6ff;
-		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
-	}
-}
-
-.store-app-icon {
-	width: 32px;
-	height: 32px;
-	border-radius: 6px;
-	object-fit: cover;
-	margin-bottom: 0.2rem;
-}
-
-.store-app-title {
-	font-size: 0.625rem;
-	font-weight: 500;
-	color: #475569;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
+.dropzone-card {
 	width: 100%;
-}
-
-.empty-hint {
-	grid-column: 1 / -1;
-	padding: 1rem;
-	text-align: center;
-	color: #94a3b8;
-	font-size: 0.75rem;
-}
-
-/* Upload Box */
-.upload-box {
+	max-width: 420px;
 	border: 2px dashed #cbd5e1;
-	border-radius: 8px;
-	padding: 1.5rem 1rem;
+	border-radius: 12px;
+	padding: 2.25rem 1.5rem;
 	text-align: center;
 	cursor: pointer;
 	background: #f8fafc;
 	transition: all 0.15s ease;
 
+	.dropzone-icon-circle {
+		width: 52px;
+		height: 52px;
+		border-radius: 50%;
+		background: #eff6ff;
+		color: #2563eb;
+		font-size: 1.75rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 0.75rem;
+	}
+
+	.dropzone-title {
+		font-size: 0.95rem;
+		font-weight: 700;
+		color: #0f172a;
+		margin-bottom: 0.25rem;
+	}
+
+	.dropzone-desc {
+		font-size: 0.78rem;
+		color: #64748b;
+		margin-bottom: 0.75rem;
+	}
+
+	.dropzone-badge {
+		display: inline-block;
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #475569;
+		background: #e2e8f0;
+		padding: 0.15rem 0.55rem;
+		border-radius: 9999px;
+	}
+
 	&:hover {
 		border-color: #2563eb;
 		background: #eff6ff;
 	}
 }
 
-.upload-box-icon {
-	font-size: 2rem;
-	color: #2563eb;
-	margin-bottom: 0.3rem;
-	display: block;
+.url-input-card {
+	width: 100%;
+	max-width: 420px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 1.5rem;
 }
 
-.upload-box-text {
-	font-size: 0.8125rem;
-	font-weight: 600;
-	color: #1e293b;
+.monogram-picker-card {
+	width: 100%;
+	max-width: 420px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 1.5rem;
+	text-align: center;
+
+	.monogram-desc {
+		font-size: 0.8rem;
+		color: #475569;
+	}
 }
 
-.upload-box-sub {
-	font-size: 0.7rem;
-	color: #64748b;
-}
-
-/* Monogram Grid */
-.monogram-grid {
+.monogram-tiles-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-	gap: 0.5rem;
-	margin-bottom: 0.6rem;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 0.75rem;
+	max-width: 260px;
+	margin: 0 auto;
 }
 
-.monogram-tile {
-	width: 44px;
-	height: 44px;
-	border-radius: 8px;
+.monogram-color-tile {
+	width: 52px;
+	height: 52px;
+	border-radius: 12px;
 	border: none;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: #ffffff;
-	font-size: 1.15rem;
+	font-size: 1.35rem;
 	font-weight: 700;
-	transition: transform 0.12s ease;
-	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+	transition: transform 0.12s ease, box-shadow 0.12s ease;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 
 	&:hover {
-		transform: scale(1.08);
+		transform: scale(1.1);
+		box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22);
 	}
 }
 
-.monogram-hint {
-	font-size: 0.7rem;
-	color: #64748b;
-}
-
 /* Footer Bar */
-.app-studio-footer-bar {
+.editor-footer-bar {
 	flex-shrink: 0;
-	padding: 0.65rem 1rem;
-	border-top: 1px solid #e2e8f0;
+	padding: 0.75rem 1.25rem;
 	background: #ffffff;
+	border-top: 1px solid #e2e8f0;
 	display: flex;
 	align-items: center;
 }
 
-.btn-reset-danger {
+.btn-danger-link {
 	border: none;
 	background: transparent;
-	font-size: 0.75rem;
+	font-size: 0.78rem;
 	font-weight: 600;
 	color: #dc2626;
 	cursor: pointer;
-	padding: 0.3rem 0.45rem;
-	border-radius: 5px;
+	padding: 0.35rem 0.5rem;
+	border-radius: 6px;
 	display: inline-flex;
 	align-items: center;
 	transition: background 0.12s ease;
@@ -1139,8 +1329,8 @@ export default {
 	}
 }
 
-.footer-actions {
+.footer-btn-group {
 	display: flex;
-	gap: 0.5rem;
+	gap: 0.65rem;
 }
 </style>
