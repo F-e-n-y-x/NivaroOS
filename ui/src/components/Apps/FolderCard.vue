@@ -4,7 +4,7 @@
 		@contextmenu.prevent.stop="handleCardContextMenu">
 		<div class="action-btn">
 			<b-dropdown ref="dro" :mobile-modal="false" append-to-body aria-role="list" class="app-card-drop"
-				:triggers="['contextmenu']" animation="fade1" position="is-bottom-left">
+				:triggers="['contextmenu']" animation="fade1" :position="dropdownPosition">
 				<template #trigger>
 					<p role="button"></p>
 				</template>
@@ -60,6 +60,11 @@ export default {
 			default: false
 		}
 	},
+	data() {
+		return {
+			dropdownPosition: 'is-bottom-left'
+		}
+	},
 	computed: {
 		previewApps() {
 			return (this.folder.apps || []).slice(0, 4)
@@ -74,8 +79,13 @@ export default {
 		handleFolderDblClick() {
 			this.$emit('open', this.folder)
 		},
-		handleCardContextMenu() {
+		handleCardContextMenu(event) {
 			if (!this.$refs.dro) return
+			const rightOffset = window.innerWidth - (event ? event.clientX : 0) - 200
+			const horizontalPos = rightOffset > 0 ? 'right' : 'left'
+			const bottomOffset = window.innerHeight - (event ? event.clientY : 0) - 200
+			const verticalPos = bottomOffset > 0 ? 'bottom' : 'top'
+			this.dropdownPosition = `is-${verticalPos}-${horizontalPos}`
 			this.$refs.dro.isActive = true
 		},
 

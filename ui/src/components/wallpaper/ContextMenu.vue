@@ -55,7 +55,7 @@ import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 
 const MENU_WIDTH = 224
-const MENU_HEIGHT = 290
+const MENU_HEIGHT = 340
 
 export default {
 	name: 'desktop-context-menu',
@@ -98,6 +98,8 @@ export default {
 					cls.includes('installing-app-slot') ||
 					cls.includes('dock-item') ||
 					cls.includes('dock-context-menu') ||
+					cls.includes('modal') ||
+					cls.includes('window') ||
 					el.tagName === 'BUTTON'
 				) {
 					return // Not a canvas click — let the app's own handler deal with it

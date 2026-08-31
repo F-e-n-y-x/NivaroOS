@@ -54,7 +54,9 @@
 				@open-new-tab-request="onOpenInNewTab"
 				@copy-selection="onCopySelection"
 				@move-selection="onMoveSelection"
+				@download-selection="onDownloadSelection"
 				@delete-selection="onDeleteSelection"
+				@compress-selection="onCompressSelection"
 				@compress-request="onCompressRequest"
 				@extract-request="onExtractRequest"
 			></files-content-view>

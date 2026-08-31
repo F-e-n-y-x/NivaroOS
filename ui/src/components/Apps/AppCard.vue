@@ -330,7 +330,11 @@ export default {
 		handleCardContextMenu(event) {
 			if (!this.$refs.dro) return
 			this.checkPinStatus()
-			this.handleDorpdownPosition(event)
+			const rightOffset = window.innerWidth - event.clientX - 220
+			const horizontalPos = rightOffset > 0 ? "right" : "left"
+			const bottomOffset = window.innerHeight - event.clientY - 380
+			const verticalPos = bottomOffset > 0 ? "bottom" : "top"
+			this.dropdownPosition = `is-${verticalPos}-${horizontalPos}`
 			this.$refs.dro.isActive = true
 		},
 

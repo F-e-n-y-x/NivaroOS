@@ -71,8 +71,31 @@
 			@open-new-tab-request="$emit('open-new-tab-request', $event)"
 			@compress-request="$emit('compress-request', $event)"
 			@extract-request="$emit('extract-request', $event)"
+			@copy-selection="$emit('copy-selection')"
+			@move-selection="$emit('move-selection')"
+			@download-selection="$emit('download-selection')"
+			@compress-selection="$emit('compress-selection')"
+			@delete-selection="$emit('delete-selection')"
 		></files-context-menu>
 		<upload-tray ref="uploadTray" :current-path="path" @uploaded="reload"></upload-tray>
+
+		<!-- Status Summary Footer Bar -->
+		<footer v-if="!loading && listing.length > 0" class="content-status-bar">
+			<div class="status-left">
+				<span>{{ folderItemCountLabel }}</span>
+			</div>
+			<div v-if="selection.length > 0" class="status-center">
+				<span class="status-selected-pill">
+					<i class="mdi mdi-checkbox-marked-circle-outline mr-1"></i>
+					{{ selectionStatusLabel }}
+				</span>
+			</div>
+			<div class="status-right">
+				<button class="status-btn" :title="$t('Refresh')" @click="reload">
+					<i class="mdi mdi-refresh"></i>
+				</button>
+			</div>
+		</footer>
 	</section>
 </template>
 
@@ -138,6 +161,23 @@ export default {
 				width: this.dragBox.width + 'px',
 				height: this.dragBox.height + 'px',
 			}
+		},
+		folderItemCountLabel() {
+			const total = this.listing.length
+			const dirs = this.listing.filter((i) => i.is_dir).length
+			const files = total - dirs
+			if (dirs && files) {
+				return `${total} ${this.$t('items')} (${dirs} ${this.$t('folders')}, ${files} ${this.$t('files')})`
+			}
+			return `${total} ${this.$t('items')}`
+		},
+		selectionStatusLabel() {
+			const count = this.selection.length
+			if (count === 0) return ''
+			const selectedItems = this.listing.filter((i) => this.selection.includes(i.path))
+			const totalBytes = selectedItems.reduce((acc, item) => acc + (item.size || 0), 0)
+			const sizeStr = totalBytes > 0 ? ` • ${this.renderSize(totalBytes)}` : ''
+			return `${count} ${count === 1 ? this.$t('item selected') : this.$t('items selected')}${sizeStr}`
 		},
 	},
 	watch: {
@@ -282,7 +322,12 @@ export default {
 		// into `$refs.ctxMenu`, since that ref only exists on ContentView's own
 		// instance, not on the item components.
 		openContextMenu(item, event) {
-			this.$refs.ctxMenu.open(event, item, this.$el)
+			if (!this.selection.includes(item.path)) {
+				this.selection = [item.path]
+				this.lastClickedPath = item.path
+			}
+			const selectedItems = this.listing.filter((i) => this.selection.includes(i.path))
+			this.$refs.ctxMenu.open(event, item, this.$el, selectedItems)
 		},
 		openBlankContextMenu(event) {
 			this.$refs.ctxMenu.open(event, null, this.$el)
@@ -307,14 +352,74 @@ export default {
 		// paste isn't working." Re-emits the exact same events the toolbar
 		// itself emits (copy-selection/move-selection/delete-selection),
 		// so FilesApp's existing handlers for those need no changes.
+		renderSize(bytes) {
+			if (!bytes || bytes === 0) return '0 B'
+			const k = 1024
+			const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+			const i = Math.floor(Math.log(bytes) / Math.log(k))
+			return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+		},
 		onKeyDown(event) {
 			const meta = event.ctrlKey || event.metaKey
 			const key = event.key.toLowerCase()
+
 			if (meta && key === 'a') {
 				event.preventDefault()
 				this.selectAll()
 				return
 			}
+
+			if (event.key === 'Escape') {
+				this.clearSelection()
+				return
+			}
+
+			if (event.key === 'Enter') {
+				if (this.selection.length === 1) {
+					event.preventDefault()
+					const selectedItem = this.listing.find((i) => i.path === this.selection[0])
+					if (selectedItem) this.openItem(selectedItem)
+					return
+				}
+			}
+
+			// Arrow keys navigation
+			if (['arrowdown', 'arrowup', 'arrowleft', 'arrowright'].includes(key)) {
+				if (!this.listing.length) return
+				event.preventDefault()
+				const currentIndex = this.lastClickedPath
+					? this.listing.findIndex((i) => i.path === this.lastClickedPath)
+					: -1
+
+				let nextIndex = 0
+				if (currentIndex === -1) {
+					nextIndex = 0
+				} else if (key === 'arrowdown' || key === 'arrowright') {
+					nextIndex = Math.min(this.listing.length - 1, currentIndex + 1)
+				} else if (key === 'arrowup' || key === 'arrowleft') {
+					nextIndex = Math.max(0, currentIndex - 1)
+				}
+
+				const targetItem = this.listing[nextIndex]
+				if (targetItem) {
+					if (event.shiftKey && this.lastClickedPath) {
+						this.selection = selectRange(this.listing, this.lastClickedPath, targetItem.path)
+					} else {
+						this.selection = [targetItem.path]
+					}
+					this.lastClickedPath = targetItem.path
+
+					// Scroll item into view
+					this.$nextTick(() => {
+						const itemEls = this.$refs.itemEl
+						if (itemEls && itemEls[nextIndex] && itemEls[nextIndex].$el) {
+							itemEls[nextIndex].$el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+						}
+					})
+				}
+				return
+			}
+
 			if (!this.selection.length) return
 			if (meta && key === 'c') {
 				event.preventDefault()
@@ -543,5 +648,54 @@ export default {
 	border: 1px solid rgba(50, 115, 220, 0.6);
 	pointer-events: none;
 	z-index: 10;
+}
+
+.content-status-bar {
+	position: sticky;
+	bottom: -0.75rem;
+	margin: 0.75rem -0.75rem -0.75rem -0.75rem;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.4rem 1rem;
+	font-size: 0.75rem;
+	color: #64748b;
+	border-top: 1px solid rgba(0, 0, 0, 0.06);
+	background: rgba(255, 255, 255, 0.7);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	user-select: none;
+	flex-shrink: 0;
+	z-index: 15;
+
+	.status-selected-pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.15rem 0.65rem;
+		background: rgba(37, 99, 235, 0.09);
+		color: #2563eb;
+		border-radius: 9999px;
+		font-weight: 500;
+	}
+
+	.status-btn {
+		background: transparent;
+		border: none;
+		color: #64748b;
+		cursor: pointer;
+		padding: 0.2rem;
+		border-radius: 4px;
+		font-size: 0.95rem;
+		line-height: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.12s ease;
+
+		&:hover {
+			color: #1e293b;
+			background: rgba(0, 0, 0, 0.06);
+		}
+	}
 }
 </style>

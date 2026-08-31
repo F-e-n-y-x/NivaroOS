@@ -7,42 +7,40 @@
 		:style="{ top: y + 'px', left: x + 'px' }"
 		@contextmenu.prevent.stop
 	>
-		<!-- 1. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
-		<template v-if="!item">
-			<button class="menu-item" @click="act('new-folder')">
-				<i class="mdi mdi-folder-plus-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('New Folder') }}</span>
+		<!-- 1. MULTIPLE SELECTION CONTEXT MENU -->
+		<template v-if="isMultiSelect">
+			<div class="ctx-header">
+				<div class="ctx-badge">
+					<i class="mdi mdi-checkbox-multiple-marked-outline mr-1"></i>
+					<span>{{ selectedItems.length }} {{ $t('items selected') }}</span>
+				</div>
+			</div>
+			<div class="menu-sep"></div>
+			<button class="menu-item" @click="act('copy-selection')">
+				<i class="mdi mdi-content-copy menu-icon"></i>
+				<span class="menu-label">{{ $t('Copy') }} ({{ selectedItems.length }})</span>
 			</button>
-			<button class="menu-item" @click="act('new-file')">
-				<i class="mdi mdi-file-plus-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('New File') }}</span>
+			<button class="menu-item" @click="act('cut-selection')">
+				<i class="mdi mdi-content-cut menu-icon"></i>
+				<span class="menu-label">{{ $t('Cut') }} ({{ selectedItems.length }})</span>
 			</button>
-			<button class="menu-item" @click="act('upload')">
-				<i class="mdi mdi-upload-outline menu-icon"></i>
-				<span class="menu-label">{{ $t('Upload') }}</span>
+			<button class="menu-item" @click="act('download-selection')">
+				<i class="mdi mdi-download-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Download') }}</span>
+			</button>
+			<button class="menu-item" @click="act('compress-selection')">
+				<i class="mdi mdi-folder-zip-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Compress to Zip') }}</span>
 			</button>
 			<div class="menu-sep"></div>
-			<button v-if="hasClipboard" class="menu-item" @click="act('paste')">
-				<i class="mdi mdi-content-paste menu-icon"></i>
-				<span class="menu-label">{{ $t('Paste') }}</span>
-			</button>
-			<button class="menu-item" @click="act('select-all')">
-				<i class="mdi mdi-select-all menu-icon"></i>
-				<span class="menu-label">{{ $t('Select All') }}</span>
-			</button>
-			<button class="menu-item" @click="act('reload')">
-				<i class="mdi mdi-refresh menu-icon"></i>
-				<span class="menu-label">{{ $t('Refresh') }}</span>
-			</button>
-			<div class="menu-sep"></div>
-			<button class="menu-item" @click="act('open-window')">
-				<i class="mdi mdi-open-in-new menu-icon"></i>
-				<span class="menu-label">{{ $t('Open in New Window') }}</span>
+			<button class="menu-item is-danger" @click="act('delete-selection')">
+				<i class="mdi mdi-trash-can-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Delete') }} ({{ selectedItems.length }})</span>
 			</button>
 		</template>
 
-		<!-- 2. ITEM CONTEXT MENU (when right clicking a file or folder) -->
-		<template v-else>
+		<!-- 2. SINGLE ITEM CONTEXT MENU (when right clicking a single file or folder) -->
+		<template v-else-if="item">
 			<button class="menu-item" @click="act('open')">
 				<i class="mdi mdi-open-in-app menu-icon"></i>
 				<span class="menu-label">{{ $t('Open') }}</span>
@@ -97,6 +95,40 @@
 				<span class="menu-label">{{ $t('Detail') }}</span>
 			</button>
 		</template>
+
+		<!-- 3. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
+		<template v-else>
+			<button class="menu-item" @click="act('new-folder')">
+				<i class="mdi mdi-folder-plus-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('New Folder') }}</span>
+			</button>
+			<button class="menu-item" @click="act('new-file')">
+				<i class="mdi mdi-file-plus-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('New File') }}</span>
+			</button>
+			<button class="menu-item" @click="act('upload')">
+				<i class="mdi mdi-upload-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Upload') }}</span>
+			</button>
+			<div class="menu-sep"></div>
+			<button v-if="hasClipboard" class="menu-item" @click="act('paste')">
+				<i class="mdi mdi-content-paste menu-icon"></i>
+				<span class="menu-label">{{ $t('Paste') }}</span>
+			</button>
+			<button class="menu-item" @click="act('select-all')">
+				<i class="mdi mdi-select-all menu-icon"></i>
+				<span class="menu-label">{{ $t('Select All') }}</span>
+			</button>
+			<button class="menu-item" @click="act('reload')">
+				<i class="mdi mdi-refresh menu-icon"></i>
+				<span class="menu-label">{{ $t('Refresh') }}</span>
+			</button>
+			<div class="menu-sep"></div>
+			<button class="menu-item" @click="act('open-window')">
+				<i class="mdi mdi-open-in-new menu-icon"></i>
+				<span class="menu-label">{{ $t('Open in New Window') }}</span>
+			</button>
+		</template>
 	</div>
 </template>
 
@@ -113,9 +145,12 @@ export default {
 	mixins: [mixin],
 	inject: ['filesController'],
 	data() {
-		return { visible: false, x: 0, y: 0, item: null }
+		return { visible: false, x: 0, y: 0, item: null, selectedItems: [] }
 	},
 	computed: {
+		isMultiSelect() {
+			return this.selectedItems && this.selectedItems.length > 1
+		},
 		isFavorite() {
 			if (!this.item) return false
 			const shortcuts = this.$store.state.shortcutData || []
@@ -135,15 +170,17 @@ export default {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 	},
 	methods: {
-		open(event, item, boundsEl) {
+		open(event, item, boundsEl, selectedItems = []) {
 			this.item = item
+			this.selectedItems = Array.isArray(selectedItems) ? selectedItems : []
 			const bounds = boundsEl.getBoundingClientRect()
 			const scrollLeft = boundsEl.scrollLeft
 			const scrollTop = boundsEl.scrollTop
 			const rawX = event.clientX - bounds.left + scrollLeft
 			const rawY = event.clientY - bounds.top + scrollTop
+			const menuHeight = this.isMultiSelect ? 240 : (item ? MENU_HEIGHT : 260)
 			this.x = Math.max(scrollLeft + 4, Math.min(rawX, scrollLeft + bounds.width - MENU_WIDTH - 8))
-			this.y = Math.max(scrollTop + 4, Math.min(rawY, scrollTop + bounds.height - (item ? MENU_HEIGHT : 260) - 8))
+			this.y = Math.max(scrollTop + 4, Math.min(rawY, scrollTop + bounds.height - menuHeight - 8))
 			this.visible = true
 		},
 		close() {
@@ -190,6 +227,21 @@ export default {
 					if (this.filesController && this.filesController.openNewWindow) {
 						this.filesController.openNewWindow(this.filesController.currentPath)
 					}
+					break
+				case 'copy-selection':
+					this.$emit('copy-selection')
+					break
+				case 'cut-selection':
+					this.$emit('move-selection')
+					break
+				case 'download-selection':
+					this.$emit('download-selection')
+					break
+				case 'compress-selection':
+					this.$emit('compress-selection')
+					break
+				case 'delete-selection':
+					this.$emit('delete-selection')
 					break
 				case 'rename':
 					this.$emit('rename-request', this.item)
@@ -272,7 +324,7 @@ export default {
 .files-context-menu {
 	position: absolute;
 	z-index: 100;
-	width: 215px;
+	width: 220px;
 	background: rgba(255, 255, 255, 0.95);
 	backdrop-filter: blur(24px) saturate(180%);
 	-webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -293,6 +345,23 @@ export default {
 		opacity: 1;
 		transform: scale(1) translateY(0);
 	}
+}
+
+.ctx-header {
+	padding: 0.25rem 0.4rem 0.15rem;
+}
+
+.ctx-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.25rem 0.55rem;
+	background: rgba(37, 99, 235, 0.09);
+	color: #2563eb;
+	border-radius: 6px;
+	font-size: 0.775rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	width: 100%;
 }
 
 .menu-item {

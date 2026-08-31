@@ -1,4 +1,6 @@
 .dropdown-menu {
+    z-index: 999999 !important;
+
     .dropdown-content {
         border-radius: 0.5rem;
         overflow-x: hidden !important;
@@ -32,6 +34,67 @@
     }
 }
 
+/* App & Folder context menu dropdowns (rendered in body portal or inside cards) */
+.dropdown.app-card-drop,
+.app-card-drop,
+body > .dropdown {
+    z-index: 999999 !important;
+
+    .dropdown-menu {
+        z-index: 999999 !important;
+        min-width: 11.5rem;
+
+        .dropdown-content {
+            padding: 5px !important;
+            background: #ffffff !important;
+            border-radius: 10px !important;
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+
+            .dropdown-item {
+                padding: 0 !important;
+
+                & > * {
+                    margin: 1px 0 !important;
+                }
+            }
+
+            .button {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+                border-radius: 6px !important;
+                font-size: 0.8125rem !important;
+                height: 2rem !important;
+                justify-content: flex-start !important;
+
+                span {
+                    line-height: 1.25rem !important;
+                    height: 1.25rem !important;
+                    display: flex !important;
+                    align-items: center !important;
+                }
+
+                &:hover {
+                    background: #2563eb !important;
+                    color: #ffffff !important;
+
+                    i, .mdi {
+                        color: #ffffff !important;
+                    }
+                }
+
+                &.has-text-red:hover {
+                    background: #dc2626 !important;
+                    color: #ffffff !important;
+
+                    i, .mdi {
+                        color: #ffffff !important;
+                    }
+                }
+            }
+        }
+    }
+}
 
 a.dropdown-item {
     padding-right: 1.5rem;
