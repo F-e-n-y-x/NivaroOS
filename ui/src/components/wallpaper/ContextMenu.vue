@@ -19,20 +19,15 @@
 
 		<div class="ctx-divider"></div>
 
-		<!-- 2. App Store & Installation -->
-		<button class="ctx-item" @click="openAppStore">
-			<i class="mdi mdi-shopping-outline ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Open App Store') }}</span>
-		</button>
-
+		<!-- 2. Custom App & Link Installation -->
 		<button class="ctx-item" @click="showCustomInstall">
-			<i class="mdi mdi-cube-plus ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Custom Install Container') }}</span>
+			<i class="mdi mdi-docker ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Custom Install App / Container') }}</span>
 		</button>
 
 		<button class="ctx-item" @click="showExternalLinkPanel">
 			<i class="mdi mdi-link-variant-plus ctx-icon"></i>
-			<span class="ctx-label">{{ $t('Add Web Link / App') }}</span>
+			<span class="ctx-label">{{ $t('Add Web Link / Shortcut') }}</span>
 		</button>
 
 		<div class="ctx-divider"></div>

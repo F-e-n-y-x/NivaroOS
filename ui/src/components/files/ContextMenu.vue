@@ -1,94 +1,100 @@
 <!-- src/components/files/ContextMenu.vue -->
 <template>
-	<div v-if="visible" ref="menu" class="files-context-menu" :style="{ top: y + 'px', left: x + 'px' }" @contextmenu.prevent.stop>
+	<div
+		v-if="visible"
+		ref="menu"
+		class="files-context-menu"
+		:style="{ top: y + 'px', left: x + 'px' }"
+		@contextmenu.prevent.stop
+	>
 		<!-- 1. BLANK SPACE CONTEXT MENU (when right clicking empty area) -->
 		<template v-if="!item">
 			<button class="menu-item" @click="act('new-folder')">
-				<b-icon icon="folder-plus-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('New Folder') }}</span>
+				<i class="mdi mdi-folder-plus-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('New Folder') }}</span>
 			</button>
 			<button class="menu-item" @click="act('new-file')">
-				<b-icon icon="file-plus-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('New File') }}</span>
+				<i class="mdi mdi-file-plus-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('New File') }}</span>
 			</button>
 			<button class="menu-item" @click="act('upload')">
-				<b-icon icon="upload-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Upload') }}</span>
+				<i class="mdi mdi-upload-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Upload') }}</span>
 			</button>
 			<div class="menu-sep"></div>
 			<button v-if="hasClipboard" class="menu-item" @click="act('paste')">
-				<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Paste') }}</span>
+				<i class="mdi mdi-content-paste menu-icon"></i>
+				<span class="menu-label">{{ $t('Paste') }}</span>
 			</button>
 			<button class="menu-item" @click="act('select-all')">
-				<b-icon icon="select-all" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Select All') }}</span>
+				<i class="mdi mdi-select-all menu-icon"></i>
+				<span class="menu-label">{{ $t('Select All') }}</span>
 			</button>
 			<button class="menu-item" @click="act('reload')">
-				<b-icon icon="refresh" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Refresh') }}</span>
+				<i class="mdi mdi-refresh menu-icon"></i>
+				<span class="menu-label">{{ $t('Refresh') }}</span>
 			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item" @click="act('open-window')">
-				<b-icon icon="open-in-new" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Open in New Window') }}</span>
+				<i class="mdi mdi-open-in-new menu-icon"></i>
+				<span class="menu-label">{{ $t('Open in New Window') }}</span>
 			</button>
 		</template>
 
 		<!-- 2. ITEM CONTEXT MENU (when right clicking a file or folder) -->
 		<template v-else>
 			<button class="menu-item" @click="act('open')">
-				<b-icon icon="open-in-app" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Open') }}</span>
+				<i class="mdi mdi-open-in-app menu-icon"></i>
+				<span class="menu-label">{{ $t('Open') }}</span>
 			</button>
 			<button v-if="item.is_dir" class="menu-item" @click="act('open-new-tab')">
-				<b-icon icon="tab-plus" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Open in New Tab') }}</span>
+				<i class="mdi mdi-tab-plus menu-icon"></i>
+				<span class="menu-label">{{ $t('Open in New Tab') }}</span>
 			</button>
 			<div class="menu-sep"></div>
 			<button class="menu-item" @click="act('rename')">
-				<b-icon icon="pencil-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Rename') }}</span>
+				<i class="mdi mdi-pencil-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Rename') }}</span>
 			</button>
 			<button class="menu-item" @click="act('copy')">
-				<b-icon icon="content-copy" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Copy') }}</span>
+				<i class="mdi mdi-content-copy menu-icon"></i>
+				<span class="menu-label">{{ $t('Copy') }}</span>
 			</button>
 			<button class="menu-item" @click="act('cut')">
-				<b-icon icon="content-cut" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Cut') }}</span>
+				<i class="mdi mdi-content-cut menu-icon"></i>
+				<span class="menu-label">{{ $t('Cut') }}</span>
 			</button>
 			<button class="menu-item" @click="act('download')">
-				<b-icon icon="download-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Download') }}</span>
+				<i class="mdi mdi-download-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Download') }}</span>
 			</button>
 			<button class="menu-item" @click="act('compress')">
-				<b-icon icon="folder-zip-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Compress to Zip') }}</span>
+				<i class="mdi mdi-folder-zip-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Compress to Zip') }}</span>
 			</button>
 			<button v-if="isArchive" class="menu-item" @click="act('extract')">
-				<b-icon icon="archive-arrow-down-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Extract') }}</span>
+				<i class="mdi mdi-archive-arrow-down-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Extract') }}</span>
 			</button>
 			<template v-if="item.is_dir">
 				<div class="menu-sep"></div>
 				<button class="menu-item" @click="act('favorite')">
-					<b-icon :icon="isFavorite ? 'star' : 'star-outline'" custom-size="mdi-16px"></b-icon>
-					<span>{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
+					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="menu-icon"></i>
+					<span class="menu-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
 				</button>
 				<button class="menu-item" @click="act('share')">
-					<b-icon icon="share-variant-outline" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Share') }}</span>
+					<i class="mdi mdi-share-variant-outline menu-icon"></i>
+					<span class="menu-label">{{ $t('Share') }}</span>
 				</button>
 			</template>
 			<div class="menu-sep"></div>
 			<button class="menu-item is-danger" @click="act('delete')">
-				<b-icon icon="trash-can-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Delete') }}</span>
+				<i class="mdi mdi-trash-can-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Delete') }}</span>
 			</button>
 			<button class="menu-item" @click="act('detail')">
-				<b-icon icon="information-outline" custom-size="mdi-16px"></b-icon>
-				<span>{{ $t('Detail') }}</span>
+				<i class="mdi mdi-information-outline menu-icon"></i>
+				<span class="menu-label">{{ $t('Detail') }}</span>
 			</button>
 		</template>
 	</div>
@@ -99,8 +105,8 @@ import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import { isArchive as isArchiveFile } from '@/utils/files/archive'
 
-const MENU_WIDTH = 200
-const MENU_HEIGHT = 380
+const MENU_WIDTH = 215
+const MENU_HEIGHT = 400
 
 export default {
 	name: 'files-context-menu',
@@ -266,14 +272,14 @@ export default {
 .files-context-menu {
 	position: absolute;
 	z-index: 100;
+	width: 215px;
 	background: rgba(255, 255, 255, 0.95);
-	backdrop-filter: blur(20px) saturate(180%);
-	-webkit-backdrop-filter: blur(20px) saturate(180%);
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 10px;
-	box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.06);
+	backdrop-filter: blur(24px) saturate(180%);
+	-webkit-backdrop-filter: blur(24px) saturate(180%);
+	border: 1px solid rgba(0, 0, 0, 0.09);
+	border-radius: 12px;
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
 	padding: 0.35rem;
-	min-width: 200px;
 	animation: filesCtxFade 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 	user-select: none;
 }
@@ -295,28 +301,39 @@ export default {
 	gap: 0.65rem;
 	width: 100%;
 	text-align: left;
-	padding: 0.42rem 0.65rem;
+	padding: 0.44rem 0.7rem;
 	border: none;
 	background: none;
 	cursor: pointer;
-	border-radius: 6px;
+	border-radius: 7px;
 	font-family: inherit;
 	font-size: 0.8125rem;
 	font-weight: 500;
 	color: #1e293b;
 	transition: all 0.12s ease;
 
-	::v-deep .icon {
+	.menu-icon {
+		font-size: 1.15rem;
+		width: 1.25rem;
+		text-align: center;
 		color: #475569;
 		flex-shrink: 0;
+		line-height: 1;
 		transition: color 0.12s ease;
+	}
+
+	.menu-label {
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	&:hover {
 		background: #2563eb;
 		color: #ffffff;
 
-		::v-deep .icon {
+		.menu-icon {
 			color: #ffffff;
 		}
 	}
@@ -324,7 +341,7 @@ export default {
 	&.is-danger {
 		color: #dc2626;
 
-		::v-deep .icon {
+		.menu-icon {
 			color: #dc2626;
 		}
 
@@ -332,7 +349,7 @@ export default {
 			background: #dc2626;
 			color: #ffffff;
 
-			::v-deep .icon {
+			.menu-icon {
 				color: #ffffff;
 			}
 		}
