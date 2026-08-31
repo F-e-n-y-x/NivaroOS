@@ -236,9 +236,12 @@ export default {
 			const isGroupDrag = this.draggingGroup && this.draggingGroup.length > 1
 			if (!this.draggingName || !this.dragGhost || this.dragOverFolderId || isGroupDrag) return null
 			const canvasWidth = this.$refs.canvas ? this.$refs.canvas.clientWidth : window.innerWidth
+			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : window.innerHeight
 			const maxLeft = Math.max(0, canvasWidth - CELL_W)
+			const maxTop = Math.max(0, canvasHeight - CELL_H)
+			const ROW_H = CELL_H + GAP
 			const x = Math.min(maxLeft, Math.max(0, Math.round(this.dragGhost.left / SNAP) * SNAP))
-			const y = Math.max(0, Math.round(this.dragGhost.top / SNAP) * SNAP)
+			const y = Math.min(maxTop, Math.max(0, Math.round(this.dragGhost.top / ROW_H) * ROW_H))
 			return {
 				transform: `translate(${x}px, ${y}px)`,
 				width: CELL_W + 'px',

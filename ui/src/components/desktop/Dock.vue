@@ -17,6 +17,7 @@
 		<button v-for="win in extraWindows" :key="win.id" class="dock-item" :title="win.title" @click="toggleWindow(win)">
 			<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'FilesApp'" :src="filesIcon" class="dock-icon" :alt="win.title" />
+			<img v-else-if="win.component === 'FolderWindow'" :src="filesIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'AppStoreApp'" :src="appStoreIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'TerminalPanel'" :src="terminalIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />

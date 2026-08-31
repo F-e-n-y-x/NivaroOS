@@ -118,7 +118,31 @@ export default {
 	overflow-y: auto;
 	box-sizing: border-box;
 	scrollbar-width: thin;
-	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+	scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+	background: #fff;
+
+	// App cards inside the folder window sit on a white background,
+	// not over a dark wallpaper, so override the white text/shadow that
+	// _card.scss sets globally for the desktop icon look.
+	::v-deep .app-card {
+		a, p, .app-label {
+			color: #1a1a1a !important;
+			text-shadow: none !important;
+		}
+
+		&:hover .cards-content {
+			background: rgba(0, 0, 0, 0.05);
+			border-radius: 10px;
+		}
+	}
+
+	// Folder cards inside a folder (rare but possible)
+	::v-deep .folder-card {
+		.app-label {
+			color: #1a1a1a !important;
+			text-shadow: none !important;
+		}
+	}
 }
 
 .folder-window-grid {

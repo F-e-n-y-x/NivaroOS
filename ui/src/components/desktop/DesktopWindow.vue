@@ -3,7 +3,7 @@
 	:id="'window-' + win.id"
 	:style="windowStyle"
 	class="desktop-window"
-	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp', 'window-minimized': win.minimized }"
+	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow', 'window-minimized': win.minimized }"
 	@mousedown="focus"
 	@drop.stop
 >
