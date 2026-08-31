@@ -66,7 +66,7 @@
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	color: #64748b;
-	padding: 1rem 1.25rem 0.45rem;
+	padding: 0.75rem 0.25rem 0.45rem;
 }
 
 .settings-tabs {
@@ -187,13 +187,38 @@
 .setting-chip {
 	display: inline-flex;
 	align-items: center;
-	padding: 0.15rem 0.6rem;
+	padding: 0.18rem 0.6rem;
 	border-radius: 999px;
-	border: 1px solid rgba(0, 0, 0, 0.1);
-	background: rgba(0, 0, 0, 0.02);
-	font-size: 0.7rem;
-	color: rgba(0, 0, 0, 0.6);
+	border: 1px solid #e2e8f0;
+	background: #f8fafc;
+	font-size: 0.725rem;
+	color: #475569;
 	white-space: nowrap;
+
+	&.is-good,
+	&.is-online {
+		border-color: rgba(16, 185, 129, 0.3);
+		background: rgba(16, 185, 129, 0.1);
+		color: #059669;
+	}
+
+	&.is-feature {
+		border-color: rgba(37, 99, 235, 0.3);
+		background: rgba(37, 99, 235, 0.08);
+		color: #2563eb;
+	}
+
+	&.deb {
+		border-color: rgba(37, 99, 235, 0.3);
+		background: rgba(37, 99, 235, 0.08);
+		color: #2563eb;
+	}
+
+	&.deb-src {
+		border-color: rgba(245, 158, 11, 0.3);
+		background: rgba(245, 158, 11, 0.1);
+		color: #d97706;
+	}
 }
 
 // Shared account-row language: every user list in Settings (NivaroOS,
