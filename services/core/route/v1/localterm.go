@@ -68,6 +68,12 @@ func WsLocalTerm(ctx echo.Context) error {
 
 	cols, _ := strconv.Atoi(utils.DefaultQuery(ctx, "cols", "120"))
 	rows, _ := strconv.Atoi(utils.DefaultQuery(ctx, "rows", "32"))
+	if cols <= 0 {
+		cols = 120
+	}
+	if rows <= 0 {
+		rows = 32
+	}
 
 	u, err := getDefaultDesktopUser()
 	if err != nil {
@@ -76,6 +82,18 @@ func WsLocalTerm(ctx echo.Context) error {
 	}
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
+
+	var groupIds []uint32
+	if gids, gErr := u.GroupIds(); gErr == nil {
+		for _, gidStr := range gids {
+			if gidInt, convErr := strconv.Atoi(gidStr); convErr == nil {
+				groupIds = append(groupIds, uint32(gidInt))
+			}
+		}
+	}
+	if len(groupIds) == 0 {
+		groupIds = []uint32{uint32(gid)}
+	}
 
 	shell := "/bin/bash"
 	if _, statErr := os.Stat(shell); statErr != nil {
@@ -86,14 +104,23 @@ func WsLocalTerm(ctx echo.Context) error {
 	cmd.Dir = u.HomeDir
 	cmd.Env = []string{
 		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+		"LANG=C.UTF-8",
+		"LC_ALL=C.UTF-8",
+		"LANGUAGE=en_US:en",
 		"HOME=" + u.HomeDir,
 		"USER=" + u.Username,
 		"LOGNAME=" + u.Username,
-		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"SHELL=" + shell,
+		"PATH=" + u.HomeDir + "/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games",
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)},
-		Setsid:     true,
+		Credential: &syscall.Credential{
+			Uid:    uint32(uid),
+			Gid:    uint32(gid),
+			Groups: groupIds,
+		},
+		Setsid: true,
 	}
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
@@ -115,7 +142,7 @@ func WsLocalTerm(ctx echo.Context) error {
 		for {
 			n, readErr := ptmx.Read(buf)
 			if n > 0 {
-				if writeErr := wsConn.WriteMessage(websocket.TextMessage, buf[:n]); writeErr != nil {
+				if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
 					break
 				}
 			}
@@ -128,25 +155,26 @@ func WsLocalTerm(ctx echo.Context) error {
 
 	go func() {
 		for {
-			_, data, readErr := wsConn.ReadMessage()
+			msgType, data, readErr := wsConn.ReadMessage()
 			if readErr != nil {
 				break
 			}
-			msgObj := localTermMsg{}
-			if jsonErr := json.Unmarshal(data, &msgObj); jsonErr != nil || msgObj.Type == "" {
-				_, _ = ptmx.Write(data)
-				continue
-			}
-			switch msgObj.Type {
-			case "resize":
-				if msgObj.Cols > 0 && msgObj.Rows > 0 {
-					_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(msgObj.Rows), Cols: uint16(msgObj.Cols)})
+			if msgType == websocket.TextMessage && len(data) > 0 && data[0] == '{' {
+				msgObj := localTermMsg{}
+				if jsonErr := json.Unmarshal(data, &msgObj); jsonErr == nil && msgObj.Type != "" {
+					switch msgObj.Type {
+					case "resize":
+						if msgObj.Cols > 0 && msgObj.Rows > 0 {
+							_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(msgObj.Rows), Cols: uint16(msgObj.Cols)})
+						}
+						continue
+					case "cmd":
+						_, _ = ptmx.Write([]byte(msgObj.Cmd))
+						continue
+					}
 				}
-			case "cmd":
-				_, _ = ptmx.Write([]byte(msgObj.Cmd))
-			default:
-				_, _ = ptmx.Write(data)
 			}
+			_, _ = ptmx.Write(data)
 		}
 		quit <- true
 	}()

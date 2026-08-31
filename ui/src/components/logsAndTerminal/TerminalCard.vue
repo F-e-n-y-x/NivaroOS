@@ -1,4 +1,3 @@
-
 <template>
 	<div ref="terminalRoot" class="terminal-instance is-flex is-align-items-center is-justify-content-center">
 		<div v-if="connectError" class="card card-shadow mb-6">
@@ -8,7 +7,7 @@
 						{{ connectError }}
 					</b-notification>
 					<div class="buttons mt-5">
-						<b-button expanded rounded type="is-primary" @click="connect">{{ $t('Connect') }}</b-button>
+						<b-button expanded rounded type="is-primary" @click="connect">{{ $t('Reconnect') }}</b-button>
 					</div>
 				</div>
 			</div>
@@ -34,9 +33,9 @@ export default {
 	},
 	data() {
 		return {
-			term: "",
+			term: null,
 			fitAddon: null,
-			rows: 40,
+			rows: 32,
 			cols: 100,
 			state: true,
 			isVaild: false,
@@ -50,88 +49,112 @@ export default {
 		}
 	},
 	mounted() {
-		// Each instance needs its own FitAddon - it used to be a single
-		// module-level singleton shared by every TerminalCard, which broke
-		// as soon as more than one tab existed (fit() would only ever
-		// affect whichever terminal loaded the addon most recently).
-		this.fitAddon = new FitAddon();
-		this.rows = this.$refs.terminalRoot.offsetHeight / 16 - 6;
-		this.cols = this.$refs.terminalRoot.offsetWidth / 14;
-		this.connect();
+		this.fitAddon = new FitAddon()
+		this.connect()
 
-		// The desktop window this lives in can be resized independently of
-		// the browser viewport (drag handles, not a real browser resize),
-		// so a plain window 'resize' listener isn't enough to keep the
-		// terminal sized correctly.
 		this.resizeObserver = new ResizeObserver(() => this.onWindowResize())
-		this.resizeObserver.observe(this.$refs.terminalRoot)
+		if (this.$refs.terminalRoot) {
+			this.resizeObserver.observe(this.$refs.terminalRoot)
+		}
 	},
 	beforeDestroy() {
-		if (this.socket) this.socket.close()
-		if (this.term != "") this.term.dispose()
+		if (this.socket) {
+			this.socket.close()
+		}
+		if (this.term) {
+			this.term.dispose()
+			this.term = null
+		}
 		window.removeEventListener('resize', this.onWindowResize)
-		if (this.resizeObserver) this.resizeObserver.disconnect()
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect()
+		}
 	},
 
 	methods: {
 		connect() {
-			// No username/password prompt - the backend drops straight into
-			// the local desktop user's own shell (no SSH hop), same as a
-			// real desktop's built-in terminal.
 			this.connectError = ""
 			this.$messageBus('terminallogs_connect')
 			const query = {
 				token: this.$store.state.access_token,
-				cols: Math.max(parseInt(this.cols) || 100, 20),
-				rows: Math.max(parseInt(this.rows) || 30, 10),
+				cols: Math.max(parseInt(this.cols) || 120, 20),
+				rows: Math.max(parseInt(this.rows) || 32, 10),
 			}
 			this.wsUrl = this.initWsUrl || `${this.$wsProtocol}//${this.$baseURL}/v1/sys/wsterm?${qs.stringify(query)}`
 			this.isVaild = true
-			this.initSocket();
+			this.initSocket()
 		},
 		initTerm() {
-			const term = new Terminal({
-				// rendererType: 'canvas',
-				fontSize: 13,
-				cursorStyle: 'underline', //光标样式
-				cursorBlink: true, //光标闪烁
-				theme: { background: '#1E1E1E' },
-				rows: parseInt(this.rows), //行数
-				cols: parseInt(this.cols), // 不指定行数，自动回车后光标从下一行开始
-				fontFamily: "Consolas, Monaco, monospace",
-			});
-			const attachAddon = new AttachAddon(this.socket);
+			if (this.term) {
+				this.term.dispose()
+				this.term = null
+			}
 
-			term.loadAddon(attachAddon);
-			term.loadAddon(this.fitAddon);
-			term.open(this.$refs.xtermEl);
-			this.fitAddon.fit();
-			term.focus();
+			const term = new Terminal({
+				fontSize: 13,
+				lineHeight: 1.2,
+				fontFamily: '"Fira Code", "JetBrains Mono", "Cascadia Code", Menlo, Monaco, Consolas, "Courier New", monospace',
+				cursorStyle: 'block',
+				cursorBlink: true,
+				allowProposedApi: true,
+				scrollback: 10000,
+				tabStopWidth: 4,
+				windowsMode: false,
+				theme: {
+					background: '#18181b',
+					foreground: '#f4f4f5',
+					cursor: '#38bdf8',
+					cursorAccent: '#18181b',
+					selectionBackground: 'rgba(56, 189, 248, 0.35)',
+					black: '#18181b',
+					red: '#ef4444',
+					green: '#22c55e',
+					yellow: '#eab308',
+					blue: '#3b82f6',
+					magenta: '#a855f7',
+					cyan: '#06b6d4',
+					white: '#f4f4f5',
+					brightBlack: '#71717a',
+					brightRed: '#f87171',
+					brightGreen: '#4ade80',
+					brightYellow: '#fde047',
+					brightBlue: '#60a5fa',
+					brightMagenta: '#c084fc',
+					brightCyan: '#22d3ee',
+					brightWhite: '#ffffff'
+				}
+			})
+
+			const attachAddon = new AttachAddon(this.socket)
+			term.loadAddon(attachAddon)
+			term.loadAddon(this.fitAddon)
+
+			term.open(this.$refs.xtermEl)
+			this.$nextTick(() => {
+				try {
+					this.fitAddon.fit()
+					term.focus()
+					if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+						this.socket.send(JSON.stringify({
+							type: "resize",
+							cols: term.cols,
+							rows: term.rows
+						}))
+					}
+				} catch (e) {
+					console.error("fit error:", e)
+				}
+			})
+
 			this.term = term
 			window.addEventListener('resize', this.onWindowResize)
-
-			this.socket.send(JSON.stringify({
-				type: "resize",
-				cols: this.term.cols,
-				rows: this.term.rows
-			}))
-
 		},
 		initSocket() {
-			this.socket = new WebSocket(this.wsUrl);
-			this.socketOnClose();
-			this.socketOnOpen();
-			this.socketOnError();
-
-			this.socket.onmessage = (event) => {
-				if (event.data == "\r\n[?2004l\rlogout\r\n") {
-					this.socket.close()
-					if (this.term != "") this.term.dispose()
-					window.removeEventListener('resize', this.onWindowResize)
-					this.isVaild = false
-					this.connectError = this.$t('Terminal session ended')
-				}
-			}
+			this.socket = new WebSocket(this.wsUrl)
+			this.socket.binaryType = 'arraybuffer'
+			this.socketOnClose()
+			this.socketOnOpen()
+			this.socketOnError()
 		},
 		socketOnOpen() {
 			this.socket.onopen = () => {
@@ -140,41 +163,47 @@ export default {
 		},
 		socketOnClose() {
 			this.socket.onclose = () => {
-				console.log('close socket')
+				if (this.term) {
+					this.term.dispose()
+					this.term = null
+				}
+				window.removeEventListener('resize', this.onWindowResize)
+				this.isVaild = false
+				this.connectError = this.$t('Terminal session ended')
 			}
 		},
 		socketOnError() {
 			this.socket.onerror = () => {
-				console.log('socket failure')
+				this.isVaild = false
+				this.connectError = this.$t('Failed to establish terminal connection')
 			}
 		},
 		onWindowResize() {
-			if (!this.isVaild) {
+			if (!this.isVaild || !this.term || !this.fitAddon) {
 				return false
 			}
 			this.$nextTick(() => {
 				try {
-					this.fitAddon.fit();
-					this.socket.send(JSON.stringify({
-						type: "resize",
-						cols: this.term.cols,
-						rows: this.term.rows
-					}))
+					this.fitAddon.fit()
+					if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+						this.socket.send(JSON.stringify({
+							type: "resize",
+							cols: this.term.cols,
+							rows: this.term.rows
+						}))
+					}
 				} catch (e) {
-					console.log("e", e.message);
+					console.log("resize error:", e.message)
 				}
 			})
-
-		},
-		getTop(e) {
-			let offset = e.offsetTop;
-			if (e.offsetParent != null) offset += this.getTop(e.offsetParent);
-			return offset;
 		},
 		active(state) {
-			this.state = state;
+			this.state = state
 			if (state) {
-				this.onWindowResize();
+				this.onWindowResize()
+				if (this.term) {
+					this.$nextTick(() => this.term.focus())
+				}
 			}
 		}
 	}
@@ -185,9 +214,10 @@ export default {
 .terminal-instance {
 	width: 100%;
 	height: 100%;
-	font-size: 0.75rem;
-	padding: 0.5rem 0.75rem;
+	background: #18181b;
+	padding: 4px 6px;
 	box-sizing: border-box;
+	overflow: hidden;
 
 	.card {
 		.card-content {
@@ -196,8 +226,10 @@ export default {
 		}
 
 		&.card-shadow {
-			box-shadow: 0px 40px 80px rgba(115, 120, 128, 0.25) !important;
+			box-shadow: 0px 40px 80px rgba(0, 0, 0, 0.4) !important;
 			border-radius: 8px;
+			background: #27272a;
+			color: #f4f4f5;
 		}
 	}
 }
@@ -205,5 +237,9 @@ export default {
 .xterm {
 	width: 100%;
 	height: 100%;
+
+	::v-deep .xterm-viewport {
+		overflow-y: auto !important;
+	}
 }
 </style>
