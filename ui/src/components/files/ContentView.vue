@@ -12,16 +12,20 @@
 		@paste="paste"
 		@keydown="onKeyDown"
 		@mousedown.capture="focusRoot"
+		@contextmenu.self.prevent="openBlankContextMenu"
 	>
 		<b-loading v-model="loading" :is-full-page="false"></b-loading>
 		<error-holder v-if="error" :error="error"></error-holder>
-		<empty-folder v-else-if="!loading && listing.length === 0"></empty-folder>
+		<div v-else-if="!loading && listing.length === 0" class="empty-state-wrap" @contextmenu.prevent="openBlankContextMenu">
+			<empty-folder></empty-folder>
+		</div>
 		<div
 			v-else
 			ref="itemsEl"
 			class="items"
 			:class="[viewMode, { 'single-column': filesController.breakpoints.singleColumnGrid }]"
 			@mousedown.left.prevent="onDragSelectionStart"
+			@contextmenu.self.prevent="openBlankContextMenu"
 		>
 			<template v-if="viewMode === 'grid' || viewMode === 'grid-large'">
 				<grid-item
@@ -58,6 +62,8 @@
 		<files-context-menu
 			ref="ctxMenu"
 			@reload="reload"
+			@paste="paste"
+			@select-all="selectAll"
 			@rename-request="$emit('rename-request', $event)"
 			@detail-request="$emit('detail-request', $event)"
 			@delete-request="$emit('delete-request', $event)"
@@ -83,18 +89,13 @@ import { isFilesDragEvent, getFilesDragData, setFilesDragData } from '@/utils/fi
 
 // Minimum drag distance (px) before a mousedown+move is treated as a
 // selection-rectangle drag rather than a plain click on empty space.
-const DRAG_THRESHOLD = 3
+const DRAG_THRESHOLD = 5
 
 export default {
 	name: 'files-content-view',
-	inject: ['filesController'],
 	components: { EmptyFolder, ErrorHolder, GridItem, ListRow, FilesContextMenu, UploadTray },
+	inject: ['filesController'],
 	props: {
-		// The path THIS instance shows - one per open tab (see FilesApp.vue).
-		// Deliberately a prop rather than reading filesController.currentPath
-		// directly: with multiple tabs, each tab needs its own ContentView
-		// instance showing its own folder independently, while
-		// filesController.currentPath/navigate() remain the single shared
 		// "whichever tab is active" concept the toolbar/sidebar/breadcrumb
 		// already key off unchanged.
 		path: { type: String, required: true },
@@ -282,6 +283,9 @@ export default {
 		// instance, not on the item components.
 		openContextMenu(item, event) {
 			this.$refs.ctxMenu.open(event, item, this.$el)
+		},
+		openBlankContextMenu(event) {
+			this.$refs.ctxMenu.open(event, null, this.$el)
 		},
 		onItemClick(item, event) {
 			if (event.shiftKey && this.lastClickedPath) {

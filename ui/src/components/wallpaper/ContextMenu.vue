@@ -1,37 +1,57 @@
 <template>
-	<div>
-		<div class="home-context-menu" :style="{ top: y + 'px', left: x + 'px' }">
-			<b-dropdown ref="dropDown" id="dr2" aria-role="list" close-on-click class="file-dropdown"
-				:position="'is-' + verticalPos + '-' + horizontalPos" :animation="ani" :mobile-modal="false">
-				<template>
-					<b-dropdown-item aria-role="menuitem" class="is-flex is-align-items-center context-menu-item" key="system-context-install"
-						@click="showCustomInstall">
-						<i class="mdi mdi-cube-plus mr-3 menu-icon"></i>
-						<span>{{ $t('Custom Install APP') }}</span>
-					</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" class="is-flex is-align-items-center context-menu-item" key="system-context-link"
-						@click="showExternalLinkPanel">
-						<i class="mdi mdi-link-variant-plus mr-3 menu-icon"></i>
-						<span>{{ $t('Add external link/APP') }}</span>
-					</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" class="is-flex is-align-items-center context-menu-item" key="system-context-folder"
-						@click="showCreateFolderPrompt">
-						<i class="mdi mdi-folder-plus-outline mr-3 menu-icon"></i>
-						<span>{{ $t('Create folder') }}</span>
-					</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" class="is-flex is-align-items-center context-menu-item" key="system-context11"
-						@click="openWallpaperSettings">
-						<i class="mdi mdi-image-outline mr-3 menu-icon"></i>
-						<span>{{ $t('Change wallpaper') }}</span>
-					</b-dropdown-item>
-					<b-dropdown-item aria-role="menuitem" class="is-flex is-align-items-center context-menu-item" key="system-context-arrange-apps"
-						@click="arrangeApps">
-						<i class="mdi mdi-view-grid-outline mr-3 menu-icon"></i>
-						<span>{{ $t('Arrange icons') }}</span>
-					</b-dropdown-item>
-				</template>
-			</b-dropdown>
-		</div>
+	<div
+		v-if="visible"
+		ref="menu"
+		class="desktop-context-menu"
+		:style="{ top: y + 'px', left: x + 'px' }"
+		@contextmenu.prevent.stop
+	>
+		<!-- 1. Creation & Organization -->
+		<button class="ctx-item" @click="showCreateFolderPrompt">
+			<i class="mdi mdi-folder-plus-outline ctx-icon"></i>
+			<span class="ctx-label">{{ $t('New Folder') }}</span>
+		</button>
+
+		<button class="ctx-item" @click="arrangeApps">
+			<i class="mdi mdi-view-grid-outline ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Auto-Arrange Icons') }}</span>
+		</button>
+
+		<div class="ctx-divider"></div>
+
+		<!-- 2. App Store & Installation -->
+		<button class="ctx-item" @click="openAppStore">
+			<i class="mdi mdi-shopping-outline ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Open App Store') }}</span>
+		</button>
+
+		<button class="ctx-item" @click="showCustomInstall">
+			<i class="mdi mdi-cube-plus ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Custom Install Container') }}</span>
+		</button>
+
+		<button class="ctx-item" @click="showExternalLinkPanel">
+			<i class="mdi mdi-link-variant-plus ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Add Web Link / App') }}</span>
+		</button>
+
+		<div class="ctx-divider"></div>
+
+		<!-- 3. System Utilities -->
+		<button class="ctx-item" @click="openTerminal">
+			<i class="mdi mdi-console ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Terminal') }}</span>
+		</button>
+
+		<button class="ctx-item" @click="openWallpaperSettings">
+			<i class="mdi mdi-image-outline ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Change Wallpaper') }}</span>
+		</button>
+
+		<button class="ctx-item" @click="openSettings">
+			<i class="mdi mdi-cog-outline ctx-icon"></i>
+			<span class="ctx-label">{{ $t('System Settings') }}</span>
+		</button>
 	</div>
 </template>
 
@@ -39,21 +59,31 @@
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 
+const MENU_WIDTH = 224
+const MENU_HEIGHT = 290
+
 export default {
+	name: 'desktop-context-menu',
 	mixins: [mixin],
 	data() {
 		return {
-			verticalPos: 'bottom',
-			horizontalPos: 'right',
+			visible: false,
 			x: 0,
-			y: 0,
-			ani: 'fade1'
+			y: 0
 		}
 	},
 	mounted() {
-		this.$EventBus.$on(events.SHOW_HOME_CONTEXT_MENU, data => {
-			this.open(data)
+		this.$EventBus.$on(events.SHOW_HOME_CONTEXT_MENU, event => {
+			this.open(event)
 		})
+		document.addEventListener('mousedown', this.onOutsideClick)
+		window.addEventListener('blur', this.close)
+		window.addEventListener('resize', this.close)
+	},
+	beforeDestroy() {
+		document.removeEventListener('mousedown', this.onOutsideClick)
+		window.removeEventListener('blur', this.close)
+		window.removeEventListener('resize', this.close)
 	},
 	methods: {
 		open(event) {
@@ -67,22 +97,24 @@ export default {
 				(target.classList && target.classList.contains('desktop-viewport'))
 
 			if (isDesktopCanvas) {
-				this.$refs.dropDown.isActive = false
-				this.$nextTick(() => {
-					const menuWidth = 220
-					const menuHeight = 220
-					const maxLeft = Math.max(12, window.innerWidth - menuWidth - 16)
-					const maxTop = Math.max(12, window.innerHeight - menuHeight - 88) // Leaves room above the bottom dock
+				const maxLeft = Math.max(12, window.innerWidth - MENU_WIDTH - 16)
+				const maxTop = Math.max(12, window.innerHeight - MENU_HEIGHT - 80) // Above taskbar dock
 
-					this.x = Math.max(12, Math.min(maxLeft, event.clientX))
-					this.y = Math.max(12, Math.min(maxTop, event.clientY))
-					this.verticalPos = 'bottom'
-					this.horizontalPos = 'right'
-					this.$refs.dropDown.isActive = true
-				})
+				this.x = Math.max(12, Math.min(maxLeft, event.clientX))
+				this.y = Math.max(12, Math.min(maxTop, event.clientY))
+				this.visible = true
+			}
+		},
+		close() {
+			this.visible = false
+		},
+		onOutsideClick(event) {
+			if (this.visible && this.$refs.menu && !this.$refs.menu.contains(event.target)) {
+				this.close()
 			}
 		},
 		openWallpaperSettings() {
+			this.close()
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'settings',
 				title: this.$t('Settings'),
@@ -92,16 +124,50 @@ export default {
 				props: { section: 'appearance' }
 			})
 		},
+		openSettings() {
+			this.close()
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'settings',
+				title: this.$t('Settings'),
+				component: 'SettingsApp',
+				width: 760,
+				height: 540
+			})
+		},
+		openTerminal() {
+			this.close()
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'terminal',
+				title: this.$t('Terminal'),
+				component: 'TerminalPanel',
+				width: 720,
+				height: 480
+			})
+		},
+		openAppStore() {
+			this.close()
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'appstore',
+				title: this.$t('App Store'),
+				component: 'AppStoreApp',
+				width: 1040,
+				height: 720
+			})
+		},
 		showCustomInstall() {
+			this.close()
 			this.$EventBus.$emit(events.SHOW_CUSTOM_INSTALL)
 		},
 		showExternalLinkPanel() {
+			this.close()
 			this.$EventBus.$emit(events.SHOW_EXTERNAL_LINK_PANEL)
 		},
 		showCreateFolderPrompt() {
+			this.close()
 			this.$EventBus.$emit(events.SHOW_CREATE_FOLDER_PROMPT)
 		},
 		arrangeApps() {
+			this.close()
 			this.$EventBus.$emit(events.ARRANGE_APPS)
 		}
 	}
@@ -109,27 +175,81 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.home-context-menu {
+.desktop-context-menu {
 	position: fixed;
-	z-index: 800;
+	z-index: 10000;
+	width: 224px;
+	background: rgba(255, 255, 255, 0.88);
+	backdrop-filter: blur(24px) saturate(180%);
+	-webkit-backdrop-filter: blur(24px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.65);
+	border-radius: 12px;
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+	padding: 0.35rem;
+	user-select: none;
+	animation: ctxFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.context-menu-item {
-	font-size: 0.875rem;
-	padding: 0.5rem 0.85rem;
-	border-radius: 6px;
-	transition: all 0.15s ease;
+@keyframes ctxFadeIn {
+	from {
+		opacity: 0;
+		transform: scale(0.96) translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
 
-	.menu-icon {
-		font-size: 1.15rem;
-		color: #4b5563;
+.ctx-item {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	width: 100%;
+	padding: 0.45rem 0.65rem;
+	border-radius: 7px;
+	font-family: inherit;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: #1e293b;
+	transition: all 0.12s ease;
+	cursor: pointer;
+	border: none;
+	background: transparent;
+	text-align: left;
+
+	.ctx-icon {
+		font-size: 1.1rem;
+		color: #475569;
+		flex-shrink: 0;
+		line-height: 1;
+		transition: color 0.12s ease;
+	}
+
+	.ctx-label {
+		flex: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	&:hover {
-		background: rgba(59, 130, 246, 0.1);
-		.menu-icon {
-			color: #2563eb;
+		background: #2563eb;
+		color: #ffffff;
+
+		.ctx-icon {
+			color: #ffffff;
 		}
 	}
+
+	&:active {
+		transform: scale(0.98);
+	}
+}
+
+.ctx-divider {
+	height: 1px;
+	margin: 0.35rem 0.4rem;
+	background: rgba(0, 0, 0, 0.08);
 }
 </style>
