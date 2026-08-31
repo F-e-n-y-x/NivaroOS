@@ -275,8 +275,8 @@ export default {
 }
 
 .widgets-column {
-	flex: 0 0 18rem;
-	width: 18rem;
+	flex: 0 0 21rem;
+	width: 21rem;
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;

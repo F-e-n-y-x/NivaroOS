@@ -30,15 +30,13 @@
 			</div>
 			<!-- Chart End -->
 			<!-- Status Start -->
-			<div class="is-flex ">
-				<div class=" is-flex-shrink-0 is-size-65 is-flex is-align-items-center has-text-grey-100">
-					<div>
-						<b-icon class="up" icon="up-arrow" pack="casa" size="is-small">
-						</b-icon>
-						{{ currentUpSpeed * 1024 | renderSize }}/s
-						<b-icon class="down ml-2" icon="down-arrow" pack="casa" size="is-small">
-						</b-icon>
-						{{ currentDownSpeed * 1024 | renderSize }}/s
+			<div class="is-flex">
+				<div class="is-flex-shrink-0 is-size-65 is-flex is-align-items-center has-text-grey-100" style="white-space: nowrap; width: 100%;">
+					<div class="is-flex is-align-items-center" style="white-space: nowrap;">
+						<b-icon class="up" icon="up-arrow" pack="casa" size="is-small"></b-icon>
+						<span style="font-variant-numeric: tabular-nums; min-width: 60px;">{{ currentUpSpeed * 1024 | renderSize }}/s</span>
+						<b-icon class="down ml-3" icon="down-arrow" pack="casa" size="is-small"></b-icon>
+						<span style="font-variant-numeric: tabular-nums; min-width: 60px;">{{ currentDownSpeed * 1024 | renderSize }}/s</span>
 					</div>
 				</div>
 			</div>

@@ -164,31 +164,40 @@ export default {
 		}
 	},
 	mounted() {
+		document.body.appendChild(this.$el)
 		document.addEventListener('mousedown', this.onOutsideClick)
-		window.addEventListener('blur', this.close)
 		window.addEventListener('resize', this.close)
 	},
 	beforeDestroy() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
-		window.removeEventListener('blur', this.close)
 		window.removeEventListener('resize', this.close)
+		if (this.$el && this.$el.parentNode) {
+			this.$el.parentNode.removeChild(this.$el)
+		}
 	},
 	methods: {
 		open(event, item, boundsEl, selectedItems = []) {
+			if (event && event.stopPropagation) {
+				event.stopPropagation()
+			}
 			this.item = item
 			this.selectedItems = Array.isArray(selectedItems) ? selectedItems : []
 			const menuHeight = this.isMultiSelect ? 240 : (item ? MENU_HEIGHT : 260)
+			const clientX = event && typeof event.clientX === 'number' ? event.clientX : 100
+			const clientY = event && typeof event.clientY === 'number' ? event.clientY : 100
+
 			const maxLeft = Math.max(12, window.innerWidth - MENU_WIDTH - 16)
 			const maxTop = Math.max(12, window.innerHeight - menuHeight - 80) // Stay above taskbar
 
-			this.x = Math.max(12, Math.min(maxLeft, event.clientX))
-			this.y = Math.max(12, Math.min(maxTop, event.clientY))
+			this.x = Math.max(12, Math.min(maxLeft, clientX))
+			this.y = Math.max(12, Math.min(maxTop, clientY))
 			this.visible = true
 		},
 		close() {
 			this.visible = false
 		},
 		onOutsideClick(event) {
+			if (event && event.button === 2) return // Don't close on right-click mousedown
 			if (this.visible && this.$refs.menu && !this.$refs.menu.contains(event.target)) {
 				this.close()
 			}
