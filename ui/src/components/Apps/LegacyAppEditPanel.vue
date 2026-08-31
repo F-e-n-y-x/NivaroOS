@@ -8,13 +8,15 @@
 				:title="$t('Click to fine-tune crop and zoom')"
 				@click="iconTab = 'studio'"
 			>
-				<img
-					ref="heroPreviewImg"
-					:src="iconRaw || icon || fallbackIcon"
-					:style="imgTransformStyle"
-					class="hero-img"
-					draggable="false"
-				/>
+				<div class="hero-crop-box">
+					<img
+						ref="heroPreviewImg"
+						:src="iconRaw || icon || fallbackIcon"
+						:style="heroImgTransformStyle"
+						class="hero-img"
+						draggable="false"
+					/>
+				</div>
 				<div class="hero-edit-overlay">
 					<i class="mdi mdi-crop-free"></i>
 					<span>{{ $t('Crop') }}</span>
@@ -136,7 +138,7 @@
 
 					<div v-if="!filteredStoreApps.length" class="empty-results-box">
 						<i class="mdi mdi-file-search-outline"></i>
-						<span>{{ $t('No matching icons found for') }} "{{ storeSearch }}"</span>
+						<span>{{ $t('No matching icons found') }}</span>
 					</div>
 				</div>
 			</div>
@@ -331,7 +333,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
 
-const VIEWPORT_SIZE = 170
+const VIEWPORT_SIZE = 160
 const OUTPUT_SIZE = 256
 
 const POPULAR_STORE_ICONS = [
@@ -389,8 +391,8 @@ export default {
 			icon: '',
 			iconRaw: '',
 			iconZoom: 1,
-			iconOffsetX: 0,
-			iconOffsetY: 0,
+			iconPanX: 0,
+			iconPanY: 0,
 			iconRadius: 0,
 			iconTab: 'store',
 			inputUrl: '',
@@ -403,10 +405,10 @@ export default {
 			dragStart: null,
 			badgeGradients: BADGE_GRADIENTS,
 			roundnessPresets: [
-				{ label: 'Square (0%)', value: 0 },
-				{ label: 'Soft (15%)', value: 15 },
-				{ label: 'Squircle (25%)', value: 25 },
-				{ label: 'Circle (50%)', value: 50 }
+				{ label: '0%', value: 0 },
+				{ label: '15%', value: 15 },
+				{ label: '25%', value: 25 },
+				{ label: '50%', value: 50 }
 			],
 			fallbackIcon: require('@/assets/img/app/default.svg')
 		}
@@ -431,15 +433,22 @@ export default {
 			return this.storeApps.filter(app => app.title.toLowerCase().includes(q))
 		},
 		imgTransformStyle() {
+			const maxPan = (this.iconZoom - 1) * (VIEWPORT_SIZE / 2)
+			const pxX = this.iconPanX * maxPan
+			const pxY = this.iconPanY * maxPan
 			return {
-				transform: `translate3d(${this.iconOffsetX}px, ${this.iconOffsetY}px, 0) scale(${this.iconZoom})`,
+				transform: `translate3d(${pxX}px, ${pxY}px, 0) scale(${this.iconZoom})`,
 				transformOrigin: 'center center'
 			}
-		}
-	},
-	watch: {
-		iconZoom() {
-			this.clampOffsets()
+		},
+		heroImgTransformStyle() {
+			const maxPan = (this.iconZoom - 1) * 30
+			const pxX = this.iconPanX * maxPan
+			const pxY = this.iconPanY * maxPan
+			return {
+				transform: `translate3d(${pxX}px, ${pxY}px, 0) scale(${this.iconZoom})`,
+				transformOrigin: 'center center'
+			}
 		}
 	},
 	created() {
@@ -449,15 +458,21 @@ export default {
 			this.icon = this.override.icon || ''
 			this.iconRaw = this.override.iconRaw || this.override.icon || this.item.icon || ''
 			this.iconZoom = this.override.iconZoom !== undefined ? this.override.iconZoom : 1
-			this.iconOffsetX = this.override.iconOffsetX || 0
-			this.iconOffsetY = this.override.iconOffsetY || 0
 			this.iconRadius = this.override.iconRadius || 0
+			if (this.override.iconPanX !== undefined) {
+				this.iconPanX = this.override.iconPanX
+				this.iconPanY = this.override.iconPanY || 0
+			} else if (this.override.iconOffsetX) {
+				const maxPan = Math.max(1, (this.iconZoom - 1) * (VIEWPORT_SIZE / 2))
+				this.iconPanX = Math.min(1, Math.max(-1, this.override.iconOffsetX / maxPan))
+				this.iconPanY = Math.min(1, Math.max(-1, (this.override.iconOffsetY || 0) / maxPan))
+			}
 		} else {
 			this.icon = this.item.icon || ''
 			this.iconRaw = this.item.icon || ''
 			this.iconZoom = 1
-			this.iconOffsetX = 0
-			this.iconOffsetY = 0
+			this.iconPanX = 0
+			this.iconPanY = 0
 			this.iconRadius = this.item.iconRadius || 0
 		}
 		if (this.iconRaw && !this.iconRaw.startsWith('data:')) {
@@ -500,8 +515,8 @@ export default {
 			this.iconRaw = app.icon
 			this.inputUrl = app.icon
 			this.iconZoom = 1
-			this.iconOffsetX = 0
-			this.iconOffsetY = 0
+			this.iconPanX = 0
+			this.iconPanY = 0
 		},
 
 		applyCustomUrl() {
@@ -509,8 +524,8 @@ export default {
 			this.icon = this.inputUrl.trim()
 			this.iconRaw = this.inputUrl.trim()
 			this.iconZoom = 1
-			this.iconOffsetX = 0
-			this.iconOffsetY = 0
+			this.iconPanX = 0
+			this.iconPanY = 0
 		},
 
 		generateBadgeIcon(gradient) {
@@ -559,8 +574,8 @@ export default {
 			this.icon = dataUrl
 			this.iconRaw = dataUrl
 			this.iconZoom = 1
-			this.iconOffsetX = 0
-			this.iconOffsetY = 0
+			this.iconPanX = 0
+			this.iconPanY = 0
 		},
 
 		handleIconFile(event) {
@@ -575,8 +590,8 @@ export default {
 					this.icon = dataUrl
 					this.iconRaw = dataUrl
 					this.iconZoom = 1
-					this.iconOffsetX = 0
-					this.iconOffsetY = 0
+					this.iconPanX = 0
+					this.iconPanY = 0
 					this.isCompressing = false
 				}
 				img.src = reader.result
@@ -595,14 +610,7 @@ export default {
 		},
 
 		onImageLoaded() {
-			this.clampOffsets()
-		},
-
-		clampOffsets() {
-			const maxOffsetX = Math.max(0, ((this.iconZoom - 1) * VIEWPORT_SIZE) / 2)
-			const maxOffsetY = Math.max(0, ((this.iconZoom - 1) * VIEWPORT_SIZE) / 2)
-			this.iconOffsetX = Math.min(maxOffsetX, Math.max(-maxOffsetX, this.iconOffsetX))
-			this.iconOffsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, this.iconOffsetY))
+			// Ready
 		},
 
 		stepZoom(delta) {
@@ -612,8 +620,8 @@ export default {
 
 		resetTransforms() {
 			this.iconZoom = 1
-			this.iconOffsetX = 0
-			this.iconOffsetY = 0
+			this.iconPanX = 0
+			this.iconPanY = 0
 			this.iconRadius = 0
 		},
 
@@ -624,8 +632,8 @@ export default {
 			this.dragStart = {
 				x: point.clientX,
 				y: point.clientY,
-				offsetX: this.iconOffsetX,
-				offsetY: this.iconOffsetY
+				panX: this.iconPanX,
+				panY: this.iconPanY
 			}
 			window.addEventListener('mousemove', this.onDrag)
 			window.addEventListener('touchmove', this.onDrag)
@@ -638,10 +646,9 @@ export default {
 			const point = e.touches ? e.touches[0] : e
 			const dx = point.clientX - this.dragStart.x
 			const dy = point.clientY - this.dragStart.y
-			const maxOffsetX = Math.max(0, ((this.iconZoom - 1) * VIEWPORT_SIZE) / 2)
-			const maxOffsetY = Math.max(0, ((this.iconZoom - 1) * VIEWPORT_SIZE) / 2)
-			this.iconOffsetX = Math.min(maxOffsetX, Math.max(-maxOffsetX, this.dragStart.offsetX + dx))
-			this.iconOffsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, this.dragStart.offsetY + dy))
+			const maxPanPx = Math.max(1, (this.iconZoom - 1) * (VIEWPORT_SIZE / 2))
+			this.iconPanX = Math.min(1, Math.max(-1, this.dragStart.panX + dx / maxPanPx))
+			this.iconPanY = Math.min(1, Math.max(-1, this.dragStart.panY + dy / maxPanPx))
 		},
 
 		stopDrag() {
@@ -661,11 +668,13 @@ export default {
 			try {
 				const img = this.$refs.canvasImg || this.$refs.heroPreviewImg
 				if (!img) return this.iconRaw || this.icon
-				const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
+				const maxPan = (this.iconZoom - 1) * (OUTPUT_SIZE / 2)
+				const pxX = this.iconPanX * maxPan
+				const pxY = this.iconPanY * maxPan
 
 				ctx.save()
 				ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2)
-				ctx.translate(this.iconOffsetX * ratio, this.iconOffsetY * ratio)
+				ctx.translate(pxX, pxY)
 				ctx.scale(this.iconZoom, this.iconZoom)
 				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
 				ctx.restore()
@@ -698,8 +707,8 @@ export default {
 				icon: bakedIcon,
 				iconRaw: this.iconRaw || this.icon,
 				iconZoom: this.iconZoom,
-				iconOffsetX: this.iconOffsetX,
-				iconOffsetY: this.iconOffsetY,
+				iconPanX: this.iconPanX,
+				iconPanY: this.iconPanY,
 				iconRadius: this.iconRadius
 			})
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
@@ -733,32 +742,43 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	gap: 1.25rem;
-	padding: 1rem 1.25rem;
+	gap: 1rem;
+	padding: 0.85rem 1.25rem;
 	background: #ffffff;
 	border-bottom: 1px solid #e2e8f0;
 }
 
 .hero-icon-preview {
 	position: relative;
-	width: 68px;
-	height: 68px;
+	width: 60px;
+	height: 60px;
+	min-width: 60px;
+	min-height: 60px;
 	flex-shrink: 0;
 	overflow: hidden;
 	background: #0f172a;
 	border: 1px solid #cbd5e1;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
 	cursor: pointer;
 	transition: all 0.15s ease;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+
+	.hero-crop-box {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 
 	.hero-img {
-		width: 100%;
-		height: 100%;
+		width: 100% !important;
+		height: 100% !important;
+		max-width: none !important;
+		max-height: none !important;
 		object-fit: cover;
 		display: block;
+		pointer-events: none;
 	}
 
 	.hero-edit-overlay {
@@ -782,7 +802,7 @@ export default {
 
 	&:hover {
 		border-color: #2563eb;
-		transform: scale(1.03);
+		transform: scale(1.04);
 
 		.hero-edit-overlay {
 			opacity: 1;
@@ -798,11 +818,11 @@ export default {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2rem;
+	gap: 0.15rem;
 }
 
 .field-lbl {
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: #475569;
 }
@@ -834,26 +854,28 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	gap: 0.35rem;
-	padding: 0.5rem 1.25rem;
+	padding: 0.45rem 1.25rem;
 	background: #f1f5f9;
 	border-bottom: 1px solid #e2e8f0;
+	overflow-x: auto;
 }
 
 .tab-btn {
 	border: 1px solid transparent;
 	background: transparent;
-	padding: 0.35rem 0.75rem;
-	border-radius: 7px;
-	font-size: 0.78rem;
+	padding: 0.3rem 0.65rem;
+	border-radius: 6px;
+	font-size: 0.75rem;
 	font-weight: 600;
 	color: #64748b;
 	cursor: pointer;
 	transition: all 0.12s ease;
 	display: inline-flex;
 	align-items: center;
+	white-space: nowrap;
 
 	i {
-		font-size: 0.95rem;
+		font-size: 0.9rem;
 	}
 
 	&:hover {
@@ -872,7 +894,7 @@ export default {
 /* Workspace Content */
 .editor-tab-body {
 	flex: 1 1 auto;
-	overflow: hidden;
+	overflow-y: auto;
 	display: flex;
 	background: #ffffff;
 }
@@ -882,29 +904,29 @@ export default {
 	flex: 1 1 auto;
 	display: flex;
 	flex-direction: column;
-	padding: 0.85rem 1.25rem;
+	padding: 0.75rem 1.25rem;
 	overflow: hidden;
 }
 
 .search-bar-row {
 	flex-shrink: 0;
-	margin-bottom: 0.65rem;
+	margin-bottom: 0.5rem;
 }
 
 .store-catalog-grid {
 	flex: 1 1 auto;
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-	gap: 0.6rem;
+	grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+	gap: 0.5rem;
 	overflow-y: auto;
-	padding: 0.25rem 0.15rem;
+	padding: 0.2rem 0.1rem;
 }
 
 .catalog-item-card {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	padding: 0.5rem 0.35rem 0.4rem;
+	padding: 0.45rem 0.3rem 0.35rem;
 	border-radius: 8px;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
@@ -914,9 +936,9 @@ export default {
 
 	.catalog-thumb-box {
 		position: relative;
-		width: 42px;
-		height: 42px;
-		margin-bottom: 0.3rem;
+		width: 38px;
+		height: 38px;
+		margin-bottom: 0.25rem;
 
 		.catalog-thumb {
 			width: 100%;
@@ -929,21 +951,21 @@ export default {
 			position: absolute;
 			top: -4px;
 			right: -4px;
-			width: 16px;
-			height: 16px;
+			width: 15px;
+			height: 15px;
 			border-radius: 50%;
 			background: #2563eb;
 			color: #ffffff;
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			font-size: 0.65rem;
+			font-size: 0.6rem;
 			box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 		}
 	}
 
 	.catalog-label {
-		font-size: 0.68rem;
+		font-size: 0.65rem;
 		font-weight: 500;
 		color: #334155;
 		white-space: nowrap;
@@ -968,17 +990,17 @@ export default {
 
 .empty-results-box {
 	grid-column: 1 / -1;
-	padding: 2.5rem 1rem;
+	padding: 2rem 1rem;
 	text-align: center;
 	color: #94a3b8;
-	font-size: 0.85rem;
+	font-size: 0.8rem;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 0.35rem;
+	gap: 0.3rem;
 
 	i {
-		font-size: 2rem;
+		font-size: 1.75rem;
 	}
 }
 
@@ -986,9 +1008,12 @@ export default {
 .tab-pane-studio {
 	flex: 1 1 auto;
 	display: flex;
-	padding: 1.25rem;
-	gap: 1.5rem;
-	overflow: hidden;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem 1.25rem;
+	gap: 1.25rem;
+	overflow-y: auto;
 }
 
 .studio-canvas-col {
@@ -1001,8 +1026,8 @@ export default {
 
 .interactive-viewport {
 	position: relative;
-	width: 170px;
-	height: 170px;
+	width: 160px;
+	height: 160px;
 	border-radius: 14px;
 	overflow: hidden;
 	background-color: #0f172a;
@@ -1045,14 +1070,14 @@ export default {
 
 .canvas-pan-pill {
 	position: absolute;
-	bottom: 6px;
+	bottom: 5px;
 	left: 50%;
 	transform: translateX(-50%);
 	background: rgba(15, 23, 42, 0.88);
 	color: #ffffff;
 	font-size: 0.625rem;
 	font-weight: 500;
-	padding: 0.15rem 0.45rem;
+	padding: 0.15rem 0.4rem;
 	border-radius: 9999px;
 	pointer-events: none;
 	white-space: nowrap;
@@ -1060,15 +1085,16 @@ export default {
 }
 
 .canvas-caption {
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	color: #64748b;
-	margin-top: 0.6rem;
+	margin-top: 0.5rem;
 	text-align: center;
-	max-width: 180px;
+	max-width: 170px;
 }
 
 .studio-controls-col {
-	flex: 1 1 auto;
+	flex: 1 1 240px;
+	max-width: 320px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -1078,18 +1104,18 @@ export default {
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 10px;
-	padding: 0.85rem 1rem;
+	padding: 0.75rem 0.85rem;
 }
 
 .control-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 0.5rem;
+	margin-bottom: 0.4rem;
 }
 
 .control-title {
-	font-size: 0.8rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	color: #334155;
 	display: flex;
@@ -1097,7 +1123,7 @@ export default {
 }
 
 .control-val {
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	font-weight: 700;
 	color: #2563eb;
 }
@@ -1105,7 +1131,7 @@ export default {
 .slider-interactive-wrap {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.4rem;
 
 	.btn-step {
 		width: 22px;
@@ -1118,7 +1144,7 @@ export default {
 		justify-content: center;
 		color: #475569;
 		cursor: pointer;
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		padding: 0;
 
 		&:hover:not(:disabled) {
@@ -1137,21 +1163,21 @@ export default {
 	flex: 1;
 	accent-color: #2563eb;
 	cursor: pointer;
-	height: 5px;
+	height: 4px;
 }
 
 .corner-preset-pills {
 	display: flex;
-	gap: 0.35rem;
+	gap: 0.3rem;
 }
 
 .pill-btn {
 	flex: 1;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
-	border-radius: 6px;
-	padding: 0.25rem 0.35rem;
-	font-size: 0.7rem;
+	border-radius: 5px;
+	padding: 0.2rem 0.25rem;
+	font-size: 0.65rem;
 	font-weight: 600;
 	color: #475569;
 	cursor: pointer;
@@ -1173,7 +1199,7 @@ export default {
 .btn-reset-transforms {
 	border: none;
 	background: transparent;
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: #2563eb;
 	cursor: pointer;
@@ -1186,59 +1212,59 @@ export default {
 	}
 }
 
-/* Centered Tab Panes (Upload, URL, Monogram) */
+/* Centered Tab Panes */
 .tab-pane-centered {
 	flex: 1 1 auto;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 1.5rem;
+	padding: 1.25rem;
 }
 
 .dropzone-card {
 	width: 100%;
-	max-width: 420px;
+	max-width: 380px;
 	border: 2px dashed #cbd5e1;
 	border-radius: 12px;
-	padding: 2.25rem 1.5rem;
+	padding: 1.75rem 1.25rem;
 	text-align: center;
 	cursor: pointer;
 	background: #f8fafc;
 	transition: all 0.15s ease;
 
 	.dropzone-icon-circle {
-		width: 52px;
-		height: 52px;
+		width: 48px;
+		height: 48px;
 		border-radius: 50%;
 		background: #eff6ff;
 		color: #2563eb;
-		font-size: 1.75rem;
+		font-size: 1.5rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		margin: 0 auto 0.75rem;
+		margin: 0 auto 0.6rem;
 	}
 
 	.dropzone-title {
-		font-size: 0.95rem;
+		font-size: 0.875rem;
 		font-weight: 700;
 		color: #0f172a;
-		margin-bottom: 0.25rem;
+		margin-bottom: 0.2rem;
 	}
 
 	.dropzone-desc {
-		font-size: 0.78rem;
+		font-size: 0.75rem;
 		color: #64748b;
-		margin-bottom: 0.75rem;
+		margin-bottom: 0.6rem;
 	}
 
 	.dropzone-badge {
 		display: inline-block;
-		font-size: 0.7rem;
+		font-size: 0.68rem;
 		font-weight: 600;
 		color: #475569;
 		background: #e2e8f0;
-		padding: 0.15rem 0.55rem;
+		padding: 0.12rem 0.5rem;
 		border-radius: 9999px;
 	}
 
@@ -1250,24 +1276,24 @@ export default {
 
 .url-input-card {
 	width: 100%;
-	max-width: 420px;
+	max-width: 380px;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 12px;
-	padding: 1.5rem;
+	padding: 1.25rem;
 }
 
 .monogram-picker-card {
 	width: 100%;
-	max-width: 420px;
+	max-width: 380px;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 12px;
-	padding: 1.5rem;
+	padding: 1.25rem;
 	text-align: center;
 
 	.monogram-desc {
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		color: #475569;
 	}
 }
@@ -1275,22 +1301,22 @@ export default {
 .monogram-tiles-grid {
 	display: grid;
 	grid-template-columns: repeat(4, 1fr);
-	gap: 0.75rem;
-	max-width: 260px;
+	gap: 0.6rem;
+	max-width: 240px;
 	margin: 0 auto;
 }
 
 .monogram-color-tile {
-	width: 52px;
-	height: 52px;
-	border-radius: 12px;
+	width: 46px;
+	height: 46px;
+	border-radius: 10px;
 	border: none;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	color: #ffffff;
-	font-size: 1.35rem;
+	font-size: 1.2rem;
 	font-weight: 700;
 	transition: transform 0.12s ease, box-shadow 0.12s ease;
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
@@ -1304,7 +1330,7 @@ export default {
 /* Footer Bar */
 .editor-footer-bar {
 	flex-shrink: 0;
-	padding: 0.75rem 1.25rem;
+	padding: 0.65rem 1.25rem;
 	background: #ffffff;
 	border-top: 1px solid #e2e8f0;
 	display: flex;
@@ -1314,12 +1340,12 @@ export default {
 .btn-danger-link {
 	border: none;
 	background: transparent;
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	color: #dc2626;
 	cursor: pointer;
-	padding: 0.35rem 0.5rem;
-	border-radius: 6px;
+	padding: 0.3rem 0.45rem;
+	border-radius: 5px;
 	display: inline-flex;
 	align-items: center;
 	transition: background 0.12s ease;
@@ -1331,6 +1357,6 @@ export default {
 
 .footer-btn-group {
 	display: flex;
-	gap: 0.65rem;
+	gap: 0.6rem;
 }
 </style>
