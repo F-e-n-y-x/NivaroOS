@@ -35,6 +35,8 @@
 - Modify: `services/message-bus/config/config.go`, `services/message-bus/cmd/migration-tool/main.go`
 - Modify: `services/core/pkg/config/init.go`, `services/core/route/v2/health.go`, `services/core/route/v1/pkg_updates.go`, `services/core/service/system.go`
 - Modify: `cli/cmd/root.go` (path const only - its `Use`/`Short`/copyright text is Task 4), `cli/cmd/appManagementSetGlobal.go` (doc comment)
+- Modify: `ui/register-ui-events.sh` (two hardcoded `/var/run/recasa` and `/var/lib/recasa` paths)
+- Modify (paths/binaries only, NOT `Description=`/`After=`/`Before=` lines - those are Task 2's): `services/core/build/sysroot/usr/lib/systemd/system/casaos.service`, `services/gateway/build/sysroot/usr/lib/systemd/system/casaos-gateway.service`, `services/user/build/sysroot/usr/lib/systemd/system/casaos-user-service.service`, `services/app-management/build/sysroot/usr/lib/systemd/system/casaos-app-management.service`, `services/local-storage/build/sysroot/usr/lib/systemd/system/casaos-local-storage.service`, `services/message-bus/build/sysroot/usr/lib/systemd/system/casaos-message-bus.service`
 - Rename (git mv) every `build/sysroot/etc/recasa` → `build/sysroot/etc/nivaroos` and `build/sysroot/usr/share/recasa` → `build/sysroot/usr/share/nivaroos` directory under `services/core`, `services/gateway`, `services/user`, `services/app-management`, `services/local-storage`, `services/message-bus` (whichever exist per service - not all services have both)
 - Rename (git mv) `services/core/build/sysroot/var/lib/recasa` → `.../var/lib/nivaroos` and `ui/build/sysroot/var/lib/recasa` → `.../var/lib/nivaroos` if present (check with `find . -path '*/build/sysroot/var/lib/recasa' -o -path '*/build/sysroot/usr/share/recasa' -o -path '*/build/sysroot/etc/recasa'` first and rename exactly what's found - do not assume every service has every directory)
 
@@ -104,14 +106,51 @@ DefaultConstantPath = "/usr/share/nivaroos"
 DefaultDataPath     = "/var/lib/nivaroos"
 DefaultFilePath     = "/var/lib/nivaroos/files"
 DefaultLogPath      = "/var/log/nivaroos"
+DefaultRuntimePath  = "/var/run/nivaroos"
 ```
-Then apply the equivalent `/etc/recasa`→`/etc/nivaroos`, `/usr/share/recasa`→`/usr/share/nivaroos`, `/var/lib/recasa`→`/var/lib/nivaroos`, `/var/log/recasa`→`/var/log/nivaroos` substitution to every other file listed under **Files** above (each is a small, self-contained string constant or literal - e.g. `services/core/route/v1/pkg_updates.go:140`'s `/var/log/recasa-apt-upgrade.log` becomes `/var/log/nivaroos-apt-upgrade.log`). Use the Step 1 grep output as your checklist and confirm zero remain when done:
+Then apply the equivalent `/etc/recasa`→`/etc/nivaroos`, `/usr/share/recasa`→`/usr/share/nivaroos`, `/var/lib/recasa`→`/var/lib/nivaroos`, `/var/log/recasa`→`/var/log/nivaroos`, `/var/run/recasa`→`/var/run/nivaroos` substitution to every other file listed under **Files** above (each is a small, self-contained string constant or literal - e.g. `services/core/route/v1/pkg_updates.go:140`'s `/var/log/recasa-apt-upgrade.log` becomes `/var/log/nivaroos-apt-upgrade.log`; `services/local-storage/pkg/config/init.go`'s `RuntimePath: "/var/run/recasa"` becomes `"/var/run/nivaroos"`). In `ui/register-ui-events.sh`, change `runtime_file="/var/run/recasa/message-bus.url"` → `"/var/run/nivaroos/message-bus.url"`, the `cat /var/run/recasa/message-bus.url` line the same way, and `ui_message_bus_file="/var/lib/recasa/ui-message-bus.json"` → `"/var/lib/nivaroos/ui-message-bus.json"`. Use the Step 1 grep output as your checklist and confirm zero remain when done:
 ```bash
-grep -rn "/etc/recasa\|/usr/share/recasa\|/var/lib/recasa\|/var/log/recasa" --include="*.go" . | grep -v "/build/sysroot/"
+grep -rn "/etc/recasa\|/usr/share/recasa\|/var/lib/recasa\|/var/log/recasa\|/var/run/recasa" --include="*.go" --include="*.sh" . | grep -v "/build/sysroot/"
 ```
-Expected: no output.
+Expected: no output (the 6 real `.service` files under `build/sysroot/` still contain these paths at this point in the plan - Step 6 below handles those specifically, which is why this check excludes that directory).
 
-- [ ] **Step 6: Rename the on-disk `build/sysroot` path directories**
+- [ ] **Step 6: Rewrite the 6 real systemd unit files' internal paths (NOT their `Description=`/`After=`/`Before=` lines - Task 2 owns those)**
+
+Each of the 6 real unit files listed under **Files** above has `ExecStart=`/`ExecStartPre=`/`PIDFile=`/`ConditionFileNotEmpty=` lines that hardcode `/usr/bin/recasa*`, `/etc/recasa/*.conf`, and `/var/run/recasa/*.pid` paths. Rewrite only those lines' paths in each file (leave `Description=` and every `After=`/`Before=` line exactly as they are today - Task 2 renames those together with the unit filenames). For example, `services/gateway/build/sysroot/usr/lib/systemd/system/casaos-gateway.service` today reads:
+```ini
+[Unit]
+After=network.target
+Description=Recasa Gateway
+
+[Service]
+ExecStartPre=/usr/bin/recasa-gateway -v
+ExecStart=/usr/bin/recasa-gateway
+PIDFile=/var/run/recasa/gateway.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target
+```
+becomes (only the `ExecStartPre=`/`ExecStart=`/`PIDFile=` lines change):
+```ini
+[Unit]
+After=network.target
+Description=Recasa Gateway
+
+[Service]
+ExecStartPre=/usr/bin/nivaroos-gateway -v
+ExecStart=/usr/bin/nivaroos-gateway
+PIDFile=/var/run/nivaroos/gateway.pid
+Restart=always
+Type=notify
+
+[Install]
+WantedBy=multi-user.target
+```
+Read each of the other 5 files first (they're all under 15 lines) and apply the same pattern: only lines starting with `ExecStart=`, `ExecStartPre=`, `PIDFile=`, or `ConditionFileNotEmpty=` change, swapping `recasa` for `nivaroos` in binary and path names. `services/core/build/sysroot/usr/lib/systemd/system/casaos.service`'s `ExecStart=/usr/bin/recasa -c /etc/recasa/casaos.conf` becomes `ExecStart=/usr/bin/nivaroos -c /etc/nivaroos/casaos.conf` (the config file's own basename, `casaos.conf`, is untouched here - renaming config file basenames is out of scope for this plan; only the directory prefix changes).
+
+- [ ] **Step 7: Rename the on-disk `build/sysroot` path directories**
 
 For every directory Step 1's `find` command located, `git mv` it, e.g.:
 ```bash
@@ -120,14 +159,14 @@ git mv services/core/build/sysroot/usr/share/recasa services/core/build/sysroot/
 ```
 Repeat for every service where these directories exist (not all services have all three - use Step 1's `find` output, don't guess). Do the same for `ui/build/sysroot/var/lib/recasa` → `.../var/lib/nivaroos` if it exists.
 
-- [ ] **Step 7: Build and verify**
+- [ ] **Step 8: Build and verify**
 
 ```bash
 cd /root/recasa && go build ./... 2>&1 | tee /tmp/task1-build.log
 ```
 Expected: no output (success). Fix any compile errors before continuing - a missed rename will show up here as an "undefined" or unused-import error.
 
-- [ ] **Step 8: Full container install test**
+- [ ] **Step 9: Full container install test**
 
 ```bash
 mkdir -p /tmp/nivaroos-rename-test
@@ -154,7 +193,7 @@ docker exec nivaroos-rename-c tail -20 /root/install.log
 ```
 Expected: `EXIT_CODE=0`. Note `clone_repo()`'s "existing checkout" path runs `git fetch origin master && git reset --hard origin/master` - since this test repo has no real `origin` remote reachable the way the container's copy is set up, this step is expected to either no-op safely or you may need to temporarily comment out the `run_step "Updating existing checkout..."` line for this local-only test and restore it afterward (do not commit that comment-out).
 
-- [ ] **Step 9: Clean up test containers**
+- [ ] **Step 10: Clean up test containers**
 
 ```bash
 docker rm -f nivaroos-rename-c
@@ -162,7 +201,7 @@ docker rmi nivaroos-rename-img
 rm -rf /tmp/nivaroos-rename-test
 ```
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
@@ -180,7 +219,7 @@ git commit -m "rename: installer, build config, and install-time paths to nivaro
 - Rename (git mv): `services/app-management/build/sysroot/usr/lib/systemd/system/casaos-app-management.service` → `nivaroos-app-management.service` (and its `.service.buildroot` sibling)
 - Rename (git mv): `services/local-storage/build/sysroot/usr/lib/systemd/system/casaos-local-storage.service` → `nivaroos-local-storage.service`
 - Rename (git mv): `services/message-bus/build/sysroot/usr/lib/systemd/system/casaos-message-bus.service` → `nivaroos-message-bus.service`
-- Modify: contents of each renamed unit file (`Description=` line only - update `CasaOS X` → `NivaroOS X`)
+- Modify: contents of each renamed unit file (`Description=` and any `After=`/`Before=` line referencing another renamed unit by name - NOT the `ExecStart=`/`ExecStartPre=`/`PIDFile=`/`ConditionFileNotEmpty=` lines, which Task 1 already updated)
 - Modify: `services/core/cmd/migration-tool/main.go`, `services/gateway/cmd/migration-tool/main.go`, `services/user/cmd/migration-tool/main.go`, `services/app-management/cmd/migration-tool/main.go`, `services/local-storage/cmd/migration-tool/main.go`, `services/message-bus/cmd/migration-tool/main.go`
 - Modify: `installer/install.sh` (`LEGACY_SERVICE_UNITS`, the VM sidecar unit's `After=` line from Task 1 Step 3), `installer/uninstall.sh` (`ALL_UNITS`, `remove_unit_files()`)
 - Rename (git mv) + modify: `services/core/build/scripts/migration/script.d/03-migrate-casaos.sh` → `03-migrate-nivaroos.sh`, `services/core/build/scripts/setup/script.d/03-setup-casaos.sh` → `03-setup-nivaroos.sh`, `services/core/build/sysroot/usr/share/nivaroos/cleanup/script.d/03-cleanup-casaos.sh` → `03-cleanup-nivaroos.sh` (this file's parent dir was already renamed from `usr/share/recasa` in Task 1 Step 6)
@@ -191,7 +230,7 @@ git commit -m "rename: installer, build config, and install-time paths to nivaro
 - Consumes: Task 1's renamed binary paths (unit `ExecStart=` lines must point at the now-`nivaroos-*`-named binaries).
 - Produces: every real systemd unit is named `nivaroos*.service`. Task 3/4/5 don't depend on unit names.
 
-- [ ] **Step 1: Rename the 6 real unit files and update their `Description=` line**
+- [ ] **Step 1: Rename the 6 real unit files, and update their `Description=`/`After=`/`Before=` lines (their `ExecStart=`/`ExecStartPre=`/`PIDFile=`/`ConditionFileNotEmpty=` lines were already updated by Task 1 - leave those alone)**
 
 ```bash
 git mv services/core/build/sysroot/usr/lib/systemd/system/casaos.service services/core/build/sysroot/usr/lib/systemd/system/nivaroos.service
@@ -203,7 +242,68 @@ git mv services/app-management/build/sysroot/usr/lib/systemd/system/casaos-app-m
 git mv services/local-storage/build/sysroot/usr/lib/systemd/system/casaos-local-storage.service services/local-storage/build/sysroot/usr/lib/systemd/system/nivaroos-local-storage.service
 git mv services/message-bus/build/sysroot/usr/lib/systemd/system/casaos-message-bus.service services/message-bus/build/sysroot/usr/lib/systemd/system/nivaroos-message-bus.service
 ```
-Then in each renamed `.service`/`.service.buildroot` file, change `Description=CasaOS ...` (e.g. `Description=CasaOS Gateway`) to `Description=NivaroOS ...`. Read each file first (they're short, ~10 lines) to get the exact current wording before editing.
+
+These 6 units reference each other by name in `After=`/`Before=` lines, so renaming the files without updating those cross-references would leave every unit pointing at a dependency that no longer exists. After Task 1's edits, each file (aside from the rename itself) should read exactly as follows - apply only the changes shown between "entering this task" and "target":
+
+`nivaroos.service` (core) - entering this task:
+```ini
+[Unit]
+After=casaos-message-bus.service
+After=rclone.service
+Description=Recasa Main Service
+```
+target (only `After=casaos-message-bus.service` and `Description=` change; `After=rclone.service` stays exactly as-is - `rclone.service` is a third-party unit name, not being renamed):
+```ini
+[Unit]
+After=nivaroos-message-bus.service
+After=rclone.service
+Description=NivaroOS Main Service
+```
+
+`nivaroos-gateway.service` - entering this task: `After=network.target` / `Description=Recasa Gateway`. Target: `After=network.target` unchanged (no other unit referenced), `Description=NivaroOS Gateway`. Read `nivaroos-gateway.service.buildroot` and apply the same `Description=` rename to whatever text it currently has (it may say "CasaOS Gateway" rather than "Recasa Gateway" - the two files have drifted slightly; rename whichever word appears to `NivaroOS`).
+
+`nivaroos-user-service.service` - entering this task: `After=casaos-message-bus.service` / `Description=Recasa User Service`. Target: `After=nivaroos-message-bus.service`, `Description=NivaroOS User Service`.
+
+`nivaroos-app-management.service` - entering this task:
+```ini
+After=casaos-message-bus.service
+After=docker.service
+Description=Recasa App Management Service
+```
+target (`docker.service` is unrelated to this rename, leave it):
+```ini
+After=nivaroos-message-bus.service
+After=docker.service
+Description=NivaroOS App Management Service
+```
+Apply the same `Description=` rename to `nivaroos-app-management.service.buildroot`.
+
+`nivaroos-local-storage.service` - entering this task:
+```ini
+After=casaos-gateway.service
+After=casaos-message-bus.service
+After=casaos-user-service.service
+After=casaos.service
+Before=docker.service
+Description=Recasa Local Storage Service
+```
+target:
+```ini
+After=nivaroos-gateway.service
+After=nivaroos-message-bus.service
+After=nivaroos-user-service.service
+After=nivaroos.service
+Before=docker.service
+Description=NivaroOS Local Storage Service
+```
+
+`nivaroos-message-bus.service` - entering this task: `After=casaos-gateway.service` / `Description=Recasa Message Bus Service`. Target: `After=nivaroos-gateway.service`, `Description=NivaroOS Message Bus Service`.
+
+Confirm no unit references an old name when done:
+```bash
+grep -rn "casaos" services/*/build/sysroot/usr/lib/systemd/system/*.service*
+```
+Expected: no output.
 
 - [ ] **Step 2: Update the migration-tool Go constants**
 
