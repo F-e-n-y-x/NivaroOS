@@ -65,7 +65,7 @@
 
 		<h3 class="setting-card-title">{{ $t('Other Admin Accounts') }}</h3>
 		<div class="setting-card">
-			<casaos-users-panel></casaos-users-panel>
+			<nivaroos-users-panel></nivaroos-users-panel>
 		</div>
 
 		<h3 class="setting-card-title">{{ $t('System Users') }}</h3>
@@ -83,7 +83,7 @@
 <script>
 import { Cropper } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
-import CasaosUsersPanel from '@/components/settings/CasaosUsersPanel.vue'
+import NivaroOSUsersPanel from '@/components/settings/NivaroOSUsersPanel.vue'
 import SystemUsersPanel from '@/components/settings/SystemUsersPanel.vue'
 import SmbUsersPanel from '@/components/settings/SmbUsersPanel.vue'
 
@@ -96,7 +96,7 @@ export const ROWS = [
 
 export default {
 	name: 'users-section',
-	components: { Cropper, CasaosUsersPanel, SystemUsersPanel, SmbUsersPanel },
+	components: { Cropper, NivaroOSUsersPanel, SystemUsersPanel, SmbUsersPanel },
 	data() {
 		return {
 			avatarBroken: false,

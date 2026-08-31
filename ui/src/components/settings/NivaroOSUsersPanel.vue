@@ -34,7 +34,7 @@
 
 <script>
 export default {
-	name: 'casaos-users-panel',
+	name: 'nivaroos-users-panel',
 	data() {
 		return {
 			users: [],
