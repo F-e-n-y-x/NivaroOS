@@ -110,7 +110,7 @@
 		</div>
 		<!-- Action Button End -->
 		<div class="blur-background"></div>
-		<div class="cards-content">
+		<div class="cards-content" @click="handleCardClick(item, $event)" @dblclick="handleCardDblClick(item, $event)">
 			<!-- Card Content Start -->
 			<b-tooltip :always="isActiveTooltip" :animated="true" :label="tooltipLabel" :triggers="tooltipTriger"
 				animation="fade1" class="in-card" type="is-white">
@@ -121,7 +121,7 @@
 							<b-image :class="dotClass(item.status, isLoading)"
 								:style="item.iconRadius ? { borderRadius: item.iconRadius + '%', overflow: 'hidden' } : null"
 								:src="item.icon" :src-fallback="require('@/assets/img/app/default.svg')" class="is-52x52"
-								webp-fallback=".jpg" @click.native="openApp(item)"></b-image>
+								webp-fallback=".jpg"></b-image>
 							<!-- Unstable-->
 							<cTooltip v-if="newAppIds.includes(item.name)" class="__position" content="NEW"></cTooltip>
 						</div>
@@ -144,7 +144,6 @@
 				</div>
 			</b-tooltip>
 			<!-- Card Content End -->
-
 		</div>
 	</div>
 </template>
@@ -334,6 +333,14 @@ export default {
 		 * @param {String} index App access index
 		 * @return {*} void
 		 */
+		handleCardClick(item, e) {
+			if (this.$store.state.isMobile) {
+				this.openApp(item)
+			}
+		},
+		handleCardDblClick(item, e) {
+			this.openApp(item)
+		},
 		openApp(item) {
 			if (this.isContainerApp) {
 				// Importing is an explicit menu action now (see the

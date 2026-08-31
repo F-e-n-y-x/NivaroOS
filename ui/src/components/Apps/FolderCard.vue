@@ -19,7 +19,7 @@
 		</div>
 
 		<div class="blur-background"></div>
-		<div class="cards-content" @click="$emit('open', folder)">
+		<div class="cards-content" @click="handleFolderClick" @dblclick="handleFolderDblClick">
 			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 				<div class="is-flex is-justify-content-center">
 					<div v-if="folder.icon" class="folder-custom-icon is-52x52" :style="{ borderRadius: (folder.iconRadius || 0) + '%' }">
@@ -59,6 +59,14 @@ export default {
 		}
 	},
 	methods: {
+		handleFolderClick() {
+			if (this.$store.state.isMobile) {
+				this.$emit('open', this.folder)
+			}
+		},
+		handleFolderDblClick() {
+			this.$emit('open', this.folder)
+		},
 		handleCardContextMenu() {
 			if (!this.$refs.dro) return
 			this.$refs.dro.isActive = true

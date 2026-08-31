@@ -550,7 +550,6 @@ export default {
 
 		startDrag(item, e) {
 			if (e.button !== 0 || this.$store.state.isMobile || item.app_type === 'installing') return
-			e.preventDefault()
 
 			const isGroupDrag = this.selectedNames.includes(item.name) && this.selectedNames.length > 1
 			const groupNames = isGroupDrag ? this.selectedNames : [item.name]
@@ -580,6 +579,7 @@ export default {
 					this.draggingGroup = isGroupDrag ? groupNames : null
 				}
 				if (!dragged) return
+				moveEvent.preventDefault()
 
 				const curLeft = Math.max(0, startItem.x + deltaX)
 				const curTop = Math.max(0, startItem.y + deltaY)
