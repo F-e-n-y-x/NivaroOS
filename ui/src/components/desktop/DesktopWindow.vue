@@ -3,7 +3,7 @@
 	:id="'window-' + win.id"
 	:style="windowStyle"
 	class="desktop-window"
-	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow' || win.component === 'SystemUpdateWindow', 'window-minimized': win.minimized }"
+	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow', 'window-minimized': win.minimized }"
 	@mousedown="focus"
 	@drop.stop
 >
@@ -111,7 +111,7 @@ export default {
 		// visibly mismatched seam, so these windows get the same dark
 		// titlebar treatment TerminalPanel already uses.
 		isDarkWindow() {
-			return ['TerminalPanel', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel'].includes(this.win.component)
+			return ['TerminalPanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel'].includes(this.win.component)
 		},
 		isConsoleWindow() {
 			return this.win.component === 'VmConsolePanel'

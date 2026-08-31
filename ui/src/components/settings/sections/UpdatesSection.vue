@@ -562,14 +562,16 @@ export default {
 	margin: 0;
 	max-height: 16rem;
 	overflow: auto;
-	background: #18181b;
-	color: #22c55e;
+	background: #1e1e1e;
+	color: #ffffff;
 	border-radius: 12px;
 	padding: 0.85rem 1rem;
-	font-family: monospace;
-	font-size: 0.75rem;
-	line-height: 1.4;
+	font-family: 'Consolas', 'Monaco', monospace;
+	font-size: 13px;
+	line-height: 1.5em;
 	white-space: pre-wrap;
 	word-break: break-word;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 </style>

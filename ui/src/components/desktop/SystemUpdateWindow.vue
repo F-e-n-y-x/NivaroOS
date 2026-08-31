@@ -1,6 +1,6 @@
 <template>
 	<div class="system-update-window">
-		<!-- Header Status Bar -->
+		<!-- Sub-header Status Bar (Dark theme matching Terminal chrome) -->
 		<div class="updater-status-bar is-flex is-align-items-center is-justify-content-between">
 			<div class="is-flex is-align-items-center">
 				<div class="status-pulse-icon" :class="statusClass">
@@ -36,14 +36,15 @@
 			<div v-else class="progress-bar-idle"></div>
 		</div>
 
-		<!-- Terminal / Console Window -->
+		<!-- Terminal / Console Window (Matching TerminalPanel / LogsCard) -->
 		<div class="terminal-container">
 			<div class="terminal-top-bar is-flex is-align-items-center is-justify-content-between">
-				<div class="terminal-dots is-flex is-align-items-center">
-					<span class="dot dot-red"></span>
-					<span class="dot dot-yellow"></span>
-					<span class="dot dot-green"></span>
-					<span class="terminal-label ml-2">bash &middot; {{ mode === 'nivaroos' ? 'nivaroos-upgrade' : 'apt-get dist-upgrade' }}</span>
+				<div class="terminal-info is-flex is-align-items-center">
+					<i class="mdi mdi-console mr-2 terminal-icon"></i>
+					<span class="terminal-label">{{ mode === 'nivaroos' ? 'nivaroos-upgrade' : 'apt-get dist-upgrade' }}</span>
+					<span v-if="isRunning" class="tag is-dark is-rounded ml-3 terminal-running-tag">
+						<i class="mdi mdi-loading mdi-spin mr-1"></i>{{ $t('Running') }}
+					</span>
 				</div>
 				<div class="terminal-actions is-flex is-align-items-center">
 					<button class="terminal-action-btn" :title="$t('Toggle Auto-scroll')" :class="{ active: autoScroll }" @click="autoScroll = !autoScroll">
@@ -123,7 +124,7 @@ export default {
 		},
 		statusSubtitle() {
 			if (this.isRunning) {
-				return this.$t('Executing non-interactive package upgrade in background. Do not turn off your device.')
+				return this.$t('Executing package upgrade in background. Do not turn off your device.')
 			}
 			if (this.hasRun && this.exitCode === 0) {
 				return this.$t('All software packages have been safely upgraded to their latest versions.')
@@ -231,8 +232,8 @@ export default {
 			const l = line.toLowerCase()
 			if (l.includes('error') || l.includes('fail') || l.includes('err:')) return 'is-error'
 			if (l.includes('warn') || l.includes('warning')) return 'is-warning'
-			if (l.includes('success') || l.includes('done') || l.includes('complete') || l.includes('unpacking') || l.includes('setting up')) return 'is-info'
-			if (l.includes('get:') || l.includes('hit:')) return 'is-fetch'
+			if (l.includes('success') || l.includes('done') || l.includes('complete') || l.includes('setting up')) return 'is-success'
+			if (l.includes('get:') || l.includes('hit:') || l.includes('unpacking')) return 'is-info'
 			return ''
 		},
 		copyLogs() {
@@ -266,64 +267,64 @@ export default {
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	background: #ffffff;
+	background: #1e1e1e;
 	box-sizing: border-box;
 }
 
 .updater-status-bar {
-	padding: 1rem 1.25rem;
-	background: #f8fafc;
-	border-bottom: 1px solid #e2e8f0;
+	padding: 0.75rem 1.25rem;
+	background: #262626;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	flex-shrink: 0;
 }
 
 .status-pulse-icon {
-	width: 42px;
-	height: 42px;
+	width: 38px;
+	height: 38px;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 1.4rem;
+	font-size: 1.35rem;
 	flex-shrink: 0;
 
 	&.is-running {
-		background: rgba(59, 130, 246, 0.12);
-		color: #2563eb;
+		background: rgba(51, 136, 255, 0.15);
+		color: #3388ff;
 	}
 
 	&.is-success {
-		background: rgba(16, 185, 129, 0.12);
-		color: #10b981;
+		background: rgba(40, 204, 135, 0.15);
+		color: #28cc87;
 	}
 
 	&.is-failed {
-		background: rgba(239, 68, 68, 0.12);
-		color: #ef4444;
+		background: rgba(242, 83, 74, 0.15);
+		color: #f2534a;
 	}
 
 	&.is-idle {
-		background: rgba(100, 116, 139, 0.12);
-		color: #64748b;
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.7);
 	}
 }
 
 .updater-title {
-	font-size: 0.95rem;
-	font-weight: 700;
-	color: #1e293b;
-	margin-bottom: 0.15rem;
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: #ffffff;
+	margin-bottom: 0.1rem;
 }
 
 .updater-subtitle {
-	font-size: 0.78rem;
-	color: #64748b;
+	font-size: 0.75rem;
+	color: rgba(255, 255, 255, 0.6);
 }
 
 .updater-progress-wrap {
 	height: 3px;
 	width: 100%;
-	background: #f1f5f9;
+	background: rgba(255, 255, 255, 0.05);
 	position: relative;
 	overflow: hidden;
 	flex-shrink: 0;
@@ -332,7 +333,7 @@ export default {
 .progress-bar-animated {
 	width: 40%;
 	height: 100%;
-	background: #3b82f6;
+	background: #3388ff;
 	position: absolute;
 	animation: progress-slide 1.5s infinite linear;
 }
@@ -340,13 +341,13 @@ export default {
 .progress-bar-done {
 	width: 100%;
 	height: 100%;
-	background: #10b981;
+	background: #28cc87;
 }
 
 .progress-bar-failed {
 	width: 100%;
 	height: 100%;
-	background: #ef4444;
+	background: #f2534a;
 }
 
 .progress-bar-idle {
@@ -363,46 +364,46 @@ export default {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	background: #0f172a;
+	background: #1e1e1e;
 	min-height: 0;
 }
 
 .terminal-top-bar {
-	padding: 0.4rem 0.85rem;
-	background: #1e293b;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	padding: 0.35rem 0.85rem;
+	background: #222222;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 	flex-shrink: 0;
 }
 
-.terminal-dots {
-	.dot {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		margin-right: 5px;
-		display: inline-block;
-
-		&.dot-red { background: #ef4444; }
-		&.dot-yellow { background: #f59e0b; }
-		&.dot-green { background: #10b981; }
-	}
+.terminal-icon {
+	color: rgba(255, 255, 255, 0.55);
+	font-size: 0.9rem;
 }
 
 .terminal-label {
-	font-size: 0.72rem;
-	font-family: monospace;
-	color: #94a3b8;
+	font-size: 0.75rem;
+	font-family: 'Consolas', 'Monaco', monospace;
+	color: rgba(255, 255, 255, 0.75);
+}
+
+.terminal-running-tag {
+	font-size: 0.65rem;
+	height: 1.25rem;
+	padding: 0 0.5rem;
+	background: rgba(51, 136, 255, 0.2);
+	color: #3388ff;
 }
 
 .terminal-action-btn {
 	background: transparent;
 	border: none;
-	color: #94a3b8;
-	font-size: 0.95rem;
+	color: rgba(255, 255, 255, 0.5);
+	font-size: 0.9rem;
 	padding: 0.2rem 0.4rem;
 	border-radius: 4px;
 	cursor: pointer;
 	margin-left: 0.3rem;
+	transition: background 0.15s ease, color 0.15s ease;
 
 	&:hover {
 		background: rgba(255, 255, 255, 0.1);
@@ -410,18 +411,18 @@ export default {
 	}
 
 	&.active {
-		color: #38bdf8;
+		color: #3388ff;
 	}
 }
 
 .terminal-body {
 	flex: 1;
-	padding: 0.85rem 1rem;
+	padding: 0.75rem 1rem;
 	overflow-y: auto;
-	font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
-	font-size: 0.75rem;
-	line-height: 1.45;
-	color: #e2e8f0;
+	font-family: 'Consolas', 'Monaco', monospace;
+	font-size: 13px;
+	line-height: 1.5em;
+	color: #ffffff;
 	white-space: pre-wrap;
 	word-break: break-word;
 	scrollbar-width: thin;
@@ -429,19 +430,19 @@ export default {
 }
 
 .terminal-line {
-	margin-bottom: 0.15rem;
+	margin-bottom: 0.1rem;
 
 	&.is-error {
-		color: #f87171;
+		color: #f2534a;
 	}
 	&.is-warning {
-		color: #fbbf24;
+		color: #f6bd3b;
+	}
+	&.is-success {
+		color: #28cc87;
 	}
 	&.is-info {
-		color: #4ade80;
-	}
-	&.is-fetch {
-		color: #38bdf8;
+		color: #3388ff;
 	}
 }
 
@@ -451,15 +452,16 @@ export default {
 	margin-top: 0.25rem;
 
 	.terminal-prompt {
-		color: #38bdf8;
+		color: #28cc87;
 		font-weight: bold;
 		margin-right: 0.4rem;
+		font-family: 'Consolas', 'Monaco', monospace;
 	}
 
 	.terminal-cursor {
-		width: 8px;
+		width: 7px;
 		height: 14px;
-		background: #38bdf8;
+		background: #ffffff;
 		animation: cursor-blink 1s infinite;
 	}
 }
