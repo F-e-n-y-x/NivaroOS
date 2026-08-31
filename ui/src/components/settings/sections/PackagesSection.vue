@@ -1,8 +1,8 @@
 <template>
 	<section class="settings-section">
-		<div class="is-flex is-align-items-center is-justify-content-between mb-4">
-			<h2 class="section-title mb-0">{{ $t('Package Manager (APT)') }}</h2>
-			<div class="buttons are-small mb-0">
+		<div class="section-header">
+			<h2 class="section-title">{{ $t('Package Manager (APT)') }}</h2>
+			<div class="header-actions">
 				<b-button rounded size="is-small" :loading="updatingRepos" @click="updateRepositories">
 					<i class="mdi mdi-refresh mr-1"></i>{{ $t('Update Repositories') }}
 				</b-button>
