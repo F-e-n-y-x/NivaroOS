@@ -234,7 +234,7 @@ export default {
 }
 
 .user-name {
-	font-weight: 600;
+	font-weight: 500;
 	font-size: 0.85rem;
 }
 
@@ -267,7 +267,7 @@ export default {
 	background: transparent;
 	color: rgba(44, 62, 80, 0.6);
 	font-size: 0.8rem;
-	font-weight: 600;
+	font-weight: 500;
 	cursor: pointer;
 
 	&:hover {

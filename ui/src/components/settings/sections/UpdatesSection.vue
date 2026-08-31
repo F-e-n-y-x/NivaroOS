@@ -421,7 +421,7 @@ export default {
 
 .update-hero-title {
 	font-size: 0.95rem;
-	font-weight: 700;
+	font-weight: 500;
 	color: #1e293b;
 	line-height: 1.25;
 }
@@ -441,7 +441,7 @@ export default {
 
 	.commit-label {
 		font-size: 0.75rem;
-		font-weight: 600;
+		font-weight: 500;
 		color: #475569;
 	}
 
@@ -485,7 +485,7 @@ export default {
 
 .github-link {
 	font-size: 0.8rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: #2563eb;
 
 	&:hover {
@@ -541,7 +541,7 @@ export default {
 
 	.ver-new {
 		color: #10b981;
-		font-weight: 600;
+		font-weight: 500;
 	}
 }
 

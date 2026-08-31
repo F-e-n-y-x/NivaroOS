@@ -244,7 +244,7 @@ export default {
 }
 
 .drive-details-title {
-	font-weight: 700;
+	font-weight: 500;
 	font-size: 0.85rem;
 }
 
@@ -257,7 +257,7 @@ export default {
 .drive-details-subtitle {
 	margin: 1rem 1.25rem 0.25rem;
 	font-size: 0.75rem;
-	font-weight: 700;
+	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.02em;
 	opacity: 0.5;

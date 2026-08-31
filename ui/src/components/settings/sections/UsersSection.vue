@@ -221,10 +221,10 @@ export default {
 }
 
 .profile-avatar {
-	position: relative;
 	flex-shrink: 0;
-	width: 3.5rem;
-	height: 3.5rem;
+	position: relative;
+	width: 4rem;
+	height: 4rem;
 	border-radius: 50%;
 	overflow: hidden;
 	background: hsla(208, 100%, 50%, 0.1);
@@ -232,7 +232,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-weight: 700;
+	font-weight: 500;
 	font-size: 1.3rem;
 	cursor: pointer;
 
@@ -271,7 +271,7 @@ export default {
 }
 
 .profile-name {
-	font-weight: 700;
+	font-weight: 500;
 	font-size: 1rem;
 	display: flex;
 	align-items: center;

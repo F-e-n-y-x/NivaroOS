@@ -842,7 +842,7 @@ export default {
 .form-label {
 	display: block;
 	font-size: 0.775rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: #334155;
 	margin-bottom: 0.35rem;
 }
@@ -860,7 +860,7 @@ export default {
 	padding: 0.25rem 0.65rem;
 	border-radius: 999px;
 	font-size: 0.75rem;
-	font-weight: 500;
+	font-weight: 400;
 	cursor: pointer;
 	user-select: none;
 	display: inline-flex;
@@ -877,7 +877,7 @@ export default {
 		background: rgba(37, 99, 235, 0.1);
 		color: #2563eb;
 		border-color: rgba(37, 99, 235, 0.35);
-		font-weight: 600;
+		font-weight: 500;
 	}
 }
 
@@ -890,7 +890,7 @@ export default {
 
 .preview-label {
 	font-size: 0.7rem;
-	font-weight: 600;
+	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: #64748b;
@@ -922,7 +922,7 @@ export default {
 	background: #ef4444;
 	color: #ffffff;
 	font-size: 0.6875rem;
-	font-weight: 700;
+	font-weight: 500;
 	line-height: 1;
 }
 
@@ -1033,14 +1033,14 @@ export default {
 
 .pkg-name {
 	font-size: 0.875rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: #1e293b;
 	font-family: $family-monospace;
 }
 
 .pkg-version {
 	font-size: 0.75rem;
-	font-weight: 500;
+	font-weight: 400;
 	color: #64748b;
 	font-family: $family-monospace;
 	background: #f1f5f9;
@@ -1066,7 +1066,7 @@ export default {
 	background: rgba(16, 185, 129, 0.12);
 	color: #059669;
 	font-size: 0.725rem;
-	font-weight: 600;
+	font-weight: 500;
 }
 
 .pkg-desc {
@@ -1095,7 +1095,7 @@ export default {
 
 	.new-ver {
 		color: #10b981;
-		font-weight: 600;
+		font-weight: 500;
 	}
 }
 
@@ -1132,10 +1132,11 @@ export default {
 	flex-wrap: wrap;
 	font-size: 0.8125rem;
 	font-family: $family-monospace;
+	font-weight: 400;
 }
 
 .source-type {
-	font-weight: 700;
+	font-weight: 500;
 	padding: 0.1rem 0.4rem;
 	border-radius: 4px;
 	background: #f1f5f9;
@@ -1149,12 +1150,12 @@ export default {
 }
 
 .source-uri {
-	font-weight: 600;
+	font-weight: 500;
 	color: #2563eb;
 }
 
 .source-suite {
-	font-weight: 600;
+	font-weight: 500;
 	color: #1e293b;
 }
 

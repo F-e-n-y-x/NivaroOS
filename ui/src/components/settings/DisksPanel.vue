@@ -217,7 +217,7 @@ export default {
 	.row-label {
 		flex: 1;
 		font-size: 0.85rem;
-		font-weight: 600;
+		font-weight: 500;
 	}
 }
 
@@ -228,7 +228,7 @@ export default {
 }
 
 .user-name {
-	font-weight: 600;
+	font-weight: 500;
 	font-size: 0.85rem;
 }
 

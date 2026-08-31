@@ -376,7 +376,7 @@ export default {
 
 .datetime-preview {
 	font-size: 0.85rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: #1e293b;
 }
 

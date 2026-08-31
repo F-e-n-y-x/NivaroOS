@@ -62,7 +62,7 @@
 
 .setting-card-title {
 	font-size: 0.725rem;
-	font-weight: 600;
+	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	color: #64748b;
@@ -81,7 +81,7 @@
 
 .row-label-heading {
 	font-size: 0.825rem;
-	font-weight: 600;
+	font-weight: 500;
 	color: #1e293b;
 	margin-bottom: 0.45rem;
 }
@@ -111,6 +111,8 @@
 	.row-label {
 		flex: 1;
 		font-size: 0.875rem;
+		font-weight: 400;
+		color: #1e293b;
 	}
 
 	.setting-title {
@@ -143,7 +145,7 @@
 	color: #2563eb;
 	border-radius: 9999px;
 	font-size: 0.825rem;
-	font-weight: 600;
+	font-weight: 500;
 	letter-spacing: 0.01em;
 }
 
@@ -156,7 +158,7 @@
 	border-radius: 6px;
 	font-family: $family-monospace;
 	font-size: 0.825rem;
-	font-weight: 600;
+	font-weight: 500;
 }
 
 // A .setting-row that lives directly in a card (no icon column) gets
@@ -226,7 +228,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-weight: 600;
+	font-weight: 500;
 	font-size: 0.95rem;
 	overflow: hidden;
 
@@ -246,7 +248,7 @@
 }
 
 .account-name {
-	font-weight: 600;
+	font-weight: 500;
 	font-size: 0.875rem;
 	color: #1e293b;
 	display: flex;
@@ -344,7 +346,7 @@
 	&.active {
 		background: #ffffff;
 		color: #1e293b;
-		font-weight: 600;
+		font-weight: 500;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 	}
 
@@ -372,7 +374,7 @@
 	background: #f1f5f9;
 	color: #1e293b;
 	font-size: 0.75rem;
-	font-weight: 600;
+	font-weight: 500;
 	text-align: center;
 	white-space: nowrap;
 }
