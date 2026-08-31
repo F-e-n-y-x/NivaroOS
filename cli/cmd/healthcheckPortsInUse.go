@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Recasa
+Copyright © 2023 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ var healthcheckPortsInUseCmd = &cobra.Command{
 			return err
 		}
 
-		url := fmt.Sprintf("http://%s/%s", rootURL, BasePathCasaOS)
+		url := fmt.Sprintf("http://%s/%s", rootURL, BasePathNivaroOS)
 
 		client, err := nivaroos.NewClientWithResponses(url)
 		if err != nil {

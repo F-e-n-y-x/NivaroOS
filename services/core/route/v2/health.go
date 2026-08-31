@@ -13,7 +13,7 @@ import (
 	"github.com/mholt/archiver/v3"
 )
 
-func (s *CasaOS) GetHealthServices(ctx echo.Context) error {
+func (s *NivaroOS) GetHealthServices(ctx echo.Context) error {
 	services, err := service.MyService.Health().Services()
 	if err != nil {
 		message := err.Error()
@@ -30,7 +30,7 @@ func (s *CasaOS) GetHealthServices(ctx echo.Context) error {
 	})
 }
 
-func (s *CasaOS) GetHealthPorts(ctx echo.Context) error {
+func (s *NivaroOS) GetHealthPorts(ctx echo.Context) error {
 	tcpPorts, udpPorts, err := service.MyService.Health().Ports()
 	if err != nil {
 		message := err.Error()
@@ -46,7 +46,7 @@ func (s *CasaOS) GetHealthPorts(ctx echo.Context) error {
 		},
 	})
 }
-func (c *CasaOS) GetHealthlogs(ctx echo.Context) error {
+func (c *NivaroOS) GetHealthlogs(ctx echo.Context) error {
 	var name, currentPath, commonDir, extension string
 	var err error
 	var ar archiver.Writer

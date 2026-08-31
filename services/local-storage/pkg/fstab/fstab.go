@@ -75,7 +75,7 @@ func (f *FStab) Add(e Entry, replace bool) error {
 		}
 	}
 
-	if err := copy(f.path, f.path+".casaos.bak"); err != nil {
+	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
 		return err
 	}
 
@@ -85,7 +85,7 @@ func (f *FStab) Add(e Entry, replace bool) error {
 	}
 	defer fstabFile.Close()
 
-	_, err = fstabFile.WriteString(e.String() + "\t# Added by the Recasa\n")
+	_, err = fstabFile.WriteString(e.String() + "\t# Added by the NivaroOS\n")
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (f *FStab) Add(e Entry, replace bool) error {
 }
 
 func (f *FStab) RemoveByMountPoint(mountpoint string, comment bool) error {
-	FStabPathNew := f.path + ".casaos.new"
+	FStabPathNew := f.path + ".nivaroos.new"
 	FStabFileNew, err := os.OpenFile(FStabPathNew, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func (f *FStab) RemoveByMountPoint(mountpoint string, comment bool) error {
 		return err
 	}
 
-	if err := copy(f.path, f.path+".casaos.bak"); err != nil {
+	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
 		return err
 	}
 

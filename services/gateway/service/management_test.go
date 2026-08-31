@@ -16,8 +16,8 @@ func init() {
 }
 
 func TestRoutesPersistence(t *testing.T) {
-	tmpdir1, _ := os.MkdirTemp("", "casaos-gateway-route-test")
-	tmpdir2, _ := os.MkdirTemp("", "casaos-gateway-route-test")
+	tmpdir1, _ := os.MkdirTemp("", "nivaroos-gateway-route-test")
+	tmpdir2, _ := os.MkdirTemp("", "nivaroos-gateway-route-test")
 
 	defer func() {
 		os.RemoveAll(tmpdir1)
@@ -57,7 +57,7 @@ func TestRoutesPersistence(t *testing.T) {
 }
 
 func TestPathSorting(t *testing.T) {
-	tmpdir, _ := os.MkdirTemp("", "casaos-gateway-route-test")
+	tmpdir, _ := os.MkdirTemp("", "nivaroos-gateway-route-test")
 
 	defer func() {
 		os.RemoveAll(tmpdir)

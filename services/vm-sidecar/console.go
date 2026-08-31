@@ -15,7 +15,7 @@ import (
 )
 
 var consoleUpgrader = websocket.Upgrader{
-	// The VmManagerApp is served from CasaOS-UI's own origin, not this
+	// The VmManagerApp is served from the NivaroOS UI's own origin, not this
 	// sidecar's port, so the console connection is always cross-origin -
 	// same trust model as the "*" CORS header used for the REST routes.
 	CheckOrigin: func(r *http.Request) bool { return true },

@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-10 16:11:37
  * @FilePath: /CasaOS/pkg/utils/udev_helper.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package utils

@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-01 13:56:44
  * @FilePath: /CasaOS/pkg/samba/smaba.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package samba

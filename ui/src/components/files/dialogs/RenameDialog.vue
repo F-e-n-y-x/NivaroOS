@@ -49,7 +49,7 @@ export default {
 				return
 			}
 			// Matches legacy RenameModal.vue: always uses $api.file.rename
-			// regardless of item.is_dir. Verified against the Recasa backend
+			// regardless of item.is_dir. Verified against the NivaroOS backend
 			// (route/v1.go) that both `/v1/file/name` and `/v1/folder/name`
 			// PUT routes are registered to the exact same handler
 			// (v1.RenamePath -> service.System().RenameFile, a plain

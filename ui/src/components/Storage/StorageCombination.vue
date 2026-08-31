@@ -15,14 +15,14 @@
 							<h4 class="title is-size-14px mb-0 has-text-left one-line">{{
 									item.name || $t('undefined')
 								}}
-								<b-tag v-if="item.isSystem" class="ml-2">Recasa</b-tag>
+								<b-tag v-if="item.isSystem" class="ml-2">NivaroOS</b-tag>
 							</h4>
 
 							<p class="has-text-left is-size-7 has-text-grey-light	">{{ $t('Single Drive Storage') }},
 								<span
 								class="is-uppercase">{{ item.fsType || $t('undefined') }}</span>
 								<b-tooltip
-								:label="$t('Recasa reserves 1% of file space when creating storage in EXT4 format.')"
+								:label="$t('NivaroOS reserves 1% of file space when creating storage in EXT4 format.')"
 								append-to-body>
 									<b-icon class="mr-2 " icon="question-outline" pack="casa" size="is-small"></b-icon>
 								</b-tooltip>

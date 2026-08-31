@@ -1,5 +1,5 @@
-// recasa-vm-sidecar exposes a REST/WebSocket API over libvirt for the
-// CasaOS VM Manager windowed app. It talks to the local libvirtd over
+// nivaroos-vm-sidecar exposes a REST/WebSocket API over libvirt for the
+// NivaroOS VM Manager windowed app. It talks to the local libvirtd over
 // qemu:///system.
 package main
 
@@ -29,7 +29,7 @@ func main() {
 	RegisterScreenshotRoutes(mux, store)
 	RegisterHostRoutes(mux)
 
-	log.Printf("recasa-vm-sidecar listening on %s (libvirt: %s)", *addr, *uri)
+	log.Printf("nivaroos-vm-sidecar listening on %s (libvirt: %s)", *addr, *uri)
 	log.Fatal(http.ListenAndServe(*addr, withCORS(mux)))
 }
 

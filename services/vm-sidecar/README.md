@@ -1,9 +1,9 @@
-# recasa-vm-sidecar
+# nivaroos-vm-sidecar
 
 Backs the VM Manager windowed app: create/run/manage QEMU/KVM VMs via
 libvirt (`qemu:///system`), on port `:28641`. Installed as a systemd
-service (`recasa-vm-sidecar.service`), independent of the CasaOS services
-proper - same shape as `recasa-gpu-sidecar`.
+service (`nivaroos-vm-sidecar.service`), independent of the NivaroOS services
+proper - same shape as `nivaroos-gpu-sidecar`.
 
 Connects to libvirt lazily (and reconnects automatically if the
 connection drops), so the sidecar can start and serve `/setup/status`

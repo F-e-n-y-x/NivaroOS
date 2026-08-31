@@ -68,7 +68,7 @@ func TestCommand(t *testing.T) {
 
 	t.Run("TestExecuteScripts", func(t *testing.T) {
 		// make a temp directory
-		tmpDir, err := os.MkdirTemp("", "casaos-test-*")
+		tmpDir, err := os.MkdirTemp("", "nivaroos-test-*")
 		if err != nil {
 			t.Error(err)
 		}

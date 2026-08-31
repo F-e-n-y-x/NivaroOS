@@ -1,4 +1,4 @@
-// Thin REST/WebSocket client for recasa-vm-sidecar (port 28641), used by
+// Thin REST/WebSocket client for nivaroos-vm-sidecar (port 28641), used by
 // the VM Manager windowed app. Mirrors the SIDECAR_URL convention the GPU
 // widget already uses for its own sidecar. Guarded against a missing
 // `window` (the unit tests run under vitest's default "node" environment,

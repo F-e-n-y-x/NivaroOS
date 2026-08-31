@@ -635,7 +635,7 @@ func YAMLfromRequest(ctx echo.Context) ([]byte, error) {
 type composeAppsWithStoreInfoOpts struct {
 	checkIsUpdateAvailable bool
 	// The /web/appgrid endpoint does not require information about whether the application can be updated, so we added an option.
-	// This endpoint is called as soon as CasaOS is opened, and we don't have time to cache it in advance.
+	// This endpoint is called as soon as NivaroOS is opened, and we don't have time to cache it in advance.
 	// We must ensure that this endpoint responds as quickly as possible.
 }
 

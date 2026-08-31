@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-07-04 16:18:23
  * @FilePath: /CasaOS/service/file.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package service

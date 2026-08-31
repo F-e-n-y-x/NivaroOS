@@ -486,9 +486,9 @@ func MyAppList(ctx echo.Context) error {
 	image := ctx.QueryParam("image")
 	state := ctx.QueryParam("state")
 
-	casaOSApps, localApps := service.MyService.Docker().GetContainerAppList(&name, &image, &state)
+	nivaroosApps, localApps := service.MyService.Docker().GetContainerAppList(&name, &image, &state)
 	data := make(map[string]interface{}, 2)
-	data["casaos_apps"] = casaOSApps
+	data["nivaroos_apps"] = nivaroosApps
 	data["local_apps"] = localApps
 
 	return ctx.JSON(common_err.SUCCESS, &modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
@@ -684,7 +684,7 @@ func pullAndInstall(ctx context.Context, imageName string, m *model.Customizatio
 		return err
 	}
 
-	config.CasaOSGlobalVariables.AppChange = true
+	config.NivaroOSGlobalVariables.AppChange = true
 	return nil
 }
 
@@ -755,7 +755,7 @@ func uninstall(ctx context.Context, container *types.ContainerJSON, isDelete boo
 			}
 		}
 	}
-	config.CasaOSGlobalVariables.AppChange = true
+	config.NivaroOSGlobalVariables.AppChange = true
 
 	return nil
 }

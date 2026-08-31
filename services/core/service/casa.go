@@ -10,8 +10,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-type CasaService interface {
-	GetCasaosVersion() model.Version
+type NivaroOSService interface {
+	GetNivaroOSVersion() model.Version
 }
 
 type casaService struct{}
@@ -20,7 +20,7 @@ type casaService struct{}
  * @description: get remote version
  * @return {model.Version}
  */
-func (o *casaService) GetCasaosVersion() model.Version {
+func (o *casaService) GetNivaroOSVersion() model.Version {
 	keyName := "casa_version"
 	var dataStr string
 	var version model.Version
@@ -48,6 +48,6 @@ func (o *casaService) GetCasaosVersion() model.Version {
 	return version
 }
 
-func NewCasaService() CasaService {
+func NewNivaroOSService() NivaroOSService {
 	return &casaService{}
 }

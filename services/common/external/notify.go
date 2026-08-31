@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	CasaOSURLFilename = "casaos.url"
-	APICasaOSNotify   = "/v1/notify"
+	NivaroOSURLFilename = "nivaroos.url"
+	APINivaroOSNotify   = "/v1/notify"
 )
 
 type NotifyService interface {
@@ -31,7 +31,7 @@ func (n *notifyService) SendNotify(path string, message interface{}) error {
 		return err
 	}
 
-	url := strings.TrimSuffix(address, "/") + APICasaOSNotify + "/" + path
+	url := strings.TrimSuffix(address, "/") + APINivaroOSNotify + "/" + path
 
 	body, err := json.Marshal(message)
 	if err != nil {
@@ -59,6 +59,6 @@ func (n *notifyService) SendSystemStatusNotify(message map[string]interface{}) e
 
 func NewNotifyService(runtimePath string) NotifyService {
 	return &notifyService{
-		addressFile: filepath.Join(runtimePath, CasaOSURLFilename),
+		addressFile: filepath.Join(runtimePath, NivaroOSURLFilename),
 	}
 }

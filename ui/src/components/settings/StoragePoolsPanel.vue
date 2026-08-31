@@ -2,7 +2,7 @@
 	<div class="storage-pools-panel">
 		<div class="row-label-heading">{{ $t('Combined storage (mergerfs)') }}</div>
 		<p v-if="!mergeEnabled" class="hint">
-			{{ $t('Combined storage is not enabled on this box. Set EnableMergerFS=true in /etc/recasa/local-storage.conf and restart recasa-local-storage to turn it on.') }}
+			{{ $t('Combined storage is not enabled on this box. Set EnableMergerFS=true in /etc/nivaroos/local-storage.conf and restart nivaroos-local-storage to turn it on.') }}
 		</p>
 		<div v-else>
 			<p v-if="!merges.length" class="hint">{{ $t('No combined storage pools configured.') }}</p>

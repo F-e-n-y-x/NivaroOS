@@ -63,7 +63,7 @@ export default {
 		 */
 		async updateSystem() {
 			this.isUpdating = true;
-			await this.$api.sys.updateRecasa();
+			await this.$api.sys.updateNivaroOS();
 			// this.checkUpdateState();
 			this.getUpdateLogs()
 		},
@@ -74,10 +74,10 @@ export default {
 		 */
 		getUpdateLogs() {
 			this.updateTimer = setInterval(() => {
-				this.$api.file.getContent(`/var/log/recasa/upgrade.log`).then(res => {
+				this.$api.file.getContent(`/var/log/nivaroos/upgrade.log`).then(res => {
 
 					this.updateLogs = res.data.data;
-					if (this.updateLogs.includes(`CasaOS upgrade successfully`)) {
+					if (this.updateLogs.includes(`NivaroOS upgrade successfully`)) {
 						localStorage.setItem('is_update', 'true')
 						clearInterval(this.updateTimer);
 						setTimeout(() => {
@@ -85,7 +85,7 @@ export default {
 								path: '/logout'
 							})
 						}, 1000);
-					} else if (this.updateLogs.includes(`CasaOS upgrade failed`)) {
+					} else if (this.updateLogs.includes(`NivaroOS upgrade failed`)) {
 						this.$buefy.toast.open({
 							message: this.$t(`There seems to be a problem with the upgrade process, please try again!`),
 							type: 'is-danger'

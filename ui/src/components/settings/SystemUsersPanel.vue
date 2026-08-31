@@ -1,7 +1,7 @@
 <template>
 	<div class="account-list">
 		<div class="account-inline-form panel-header">
-			<p class="hint">{{ $t('System (Linux) users, distinct from Recasa accounts.') }}</p>
+			<p class="hint">{{ $t('System (Linux) users, distinct from NivaroOS accounts.') }}</p>
 			<button class="add-button" type="button" :title="$t('Add system user')" @click="showAddForm = !showAddForm">
 				<b-icon :icon="showAddForm ? 'close-outline' : 'add-outline'" pack="casa" size="is-20"></b-icon>
 			</button>

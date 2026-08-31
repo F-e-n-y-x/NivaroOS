@@ -83,7 +83,7 @@ export default {
 
 		showShareModal() {
 			// messageBus :: share
-			this.$messageBus('connect_sharecasaos');
+			this.$messageBus('connect_sharenivaroos');
 			this.$buefy.modal.open({
 				parent: this,
 				component: ShareModal,

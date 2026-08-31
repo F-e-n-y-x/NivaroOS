@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	// BasePathCasaOS is the base path of the core service's API, matching its
+	// BasePathNivaroOS is the base path of the core service's API, matching its
 	// live openapi.yaml servers.url (the wire-level route has not been renamed).
-	BasePathCasaOS = "v2/casaos"
+	BasePathNivaroOS = "v2/casaos"
 
 	FlagDir     = "dir"
 	FlagDryRun  = "dry-run"

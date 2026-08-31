@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 Recasa
+Copyright © 2023 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,7 +188,7 @@ func showAppList(ctx context.Context, writer io.Writer, client *app_management.C
 
 			message := string(body)
 			if message == "" {
-				message = "is the casaos-app-management service running?"
+				message = "is the nivaroos-app-management service running?"
 			}
 
 			return fmt.Errorf("%s - %s", response.Status, message)

@@ -24,7 +24,7 @@ describe('window mutations persistence', () => {
 		mutations.PERSIST_WINDOWS(state)
 		expect(global.localStorage.setItem).toHaveBeenCalledTimes(1)
 		const [key, json] = global.localStorage.setItem.mock.calls[0]
-		expect(key).toBe('casaos_open_windows')
+		expect(key).toBe('nivaroos_open_windows')
 		expect(JSON.parse(json)).toEqual([{ id: 'settings', title: 'Settings', component: 'SettingsApp', x: 10, y: 20, width: 950, height: 650, minimized: false }])
 	})
 

@@ -27,7 +27,7 @@ func init() {
 }
 
 func setup(t *testing.T) func(t *testing.T) {
-	tmpdir, _ := os.MkdirTemp("", "casaos-gateway-route-test")
+	tmpdir, _ := os.MkdirTemp("", "nivaroos-gateway-route-test")
 
 	_state = service.NewState()
 	if err := _state.SetRuntimePath(tmpdir); err != nil {

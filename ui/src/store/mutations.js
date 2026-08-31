@@ -1,4 +1,4 @@
-const WINDOWS_STORAGE_KEY = 'casaos_open_windows'
+const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
 
 // Only system-app windows persist across sessions - edit-app windows
 // carry a live snapshot of an app list item as props, which is
@@ -132,7 +132,7 @@ const mutations = {
 	},
 
 	SET_LANGUAGE(state, val) {
-		state.casaos_lang = val
+		state.nivaroos_lang = val
 	},
 
 	SET_TIME_FORMAT(state, val) {

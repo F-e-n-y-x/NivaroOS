@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-09-02 22:12:34
  * @FilePath: /CasaOS/model/sys_common.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

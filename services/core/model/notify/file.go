@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-06-02 11:14:15
  * @FilePath: /CasaOS/model/notify/file.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package notify

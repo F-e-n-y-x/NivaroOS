@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-18 11:16:25
  * @FilePath: /CasaOS/service/shares.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package service
@@ -78,7 +77,7 @@ func (s *sharesStruct) UpdateConfigFile() {
 		dirName := filepath.Base(share.Path)
 		configStr += `
 [` + dirName + `]
-comment = Recasa share ` + dirName + `
+comment = NivaroOS share ` + dirName + `
 public = Yes
 path = ` + share.Path + `
 browseable = Yes
@@ -91,7 +90,7 @@ force user = root
 `
 	}
 	// write config file
-	file.WriteToPath([]byte(configStr), "/etc/samba", "smb.casa.conf")
+	file.WriteToPath([]byte(configStr), "/etc/samba", "smb.nivaroos.conf")
 	// restart samba
 	command.OnlyExec("source " + config.AppInfo.ShellPath + "/helper.sh ;RestartSMBD")
 }
@@ -99,12 +98,12 @@ force user = root
 func (s *sharesStruct) InitSambaConfig() {
 	if file.Exists("/etc/samba/smb.conf") {
 		str := file.ReadLine(1, "/etc/samba/smb.conf")
-		if strings.Contains(str, "# Copyright (c) 2021-2022 CasaOS Inc. All rights reserved.") {
+		if strings.Contains(str, "# Copyright (c) 2021-2022 NivaroOS Inc. All rights reserved.") {
 			return
 		}
 		file.MoveFile("/etc/samba/smb.conf", "/etc/samba/smb.conf.bak")
 		smbConf := ""
-		smbConf += `# Copyright (c) 2021-2022 CasaOS Inc. All rights reserved.
+		smbConf += `# Copyright (c) 2021-2022 NivaroOS Inc. All rights reserved.
 #
 #
 #                          ______     _______
@@ -135,7 +134,7 @@ func (s *sharesStruct) InitSambaConfig() {
 #  |/     \|  (_______)  (______/   \_______/  |/            \_/
 #
 #
-# IMPORTANT: CasaOS will not provide technical support for any issues
+# IMPORTANT: NivaroOS will not provide technical support for any issues
 #            caused by unauthorized modification to the configuration.
 
 [global]
@@ -151,7 +150,7 @@ func (s *sharesStruct) InitSambaConfig() {
    fruit:wipe_intentionally_left_blank_rfork = yes
    fruit:delete_empty_adfiles = yes
    map to guest = bad user
-   include=/etc/samba/smb.casa.conf`
+   include=/etc/samba/smb.nivaroos.conf`
 		file.WriteToPath([]byte(smbConf), "/etc/samba", "smb.conf")
 	}
 }

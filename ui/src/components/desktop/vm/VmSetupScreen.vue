@@ -9,7 +9,7 @@
 
 			<div v-if="unreachable" class="has-text-centered mb-4">
 				<p class="has-text-danger mb-4">{{ $t('VM Manager is not installed.') }}</p>
-				<p>{{ $t('Run') }} <code>recasa vm enable</code> {{ $t('on the server to install it.') }}</p>
+				<p>{{ $t('Run') }} <code>nivaroos-cli vm enable</code> {{ $t('on the server to install it.') }}</p>
 			</div>
 			<template v-else>
 				<div v-if="status.missing_packages && status.missing_packages.length" class="mb-4">

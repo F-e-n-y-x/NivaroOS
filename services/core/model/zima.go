@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-01 18:32:57
  * @FilePath: /CasaOS/model/zima.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

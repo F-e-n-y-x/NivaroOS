@@ -6,7 +6,7 @@
 // a plain custom dataTransfer type carries the payload anywhere a drop can
 // happen - no Vuex/EventBus plumbing needed for the payload itself.
 
-export const FILES_DRAG_TYPE = 'application/x-casaos-files'
+export const FILES_DRAG_TYPE = 'application/x-nivaroos-files'
 
 export function setFilesDragData(event, payload) {
 	event.dataTransfer.effectAllowed = 'copyMove'

@@ -4,7 +4,6 @@
  * @LastEditors: LinkLeong
  * @LastEditTime: 2022-07-11 17:57:00
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

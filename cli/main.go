@@ -5,7 +5,7 @@
 //go:generate bash -c "mkdir -p codegen/user_service && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,client -package user_service ../services/user/api/user-service/openapi.yaml > codegen/user_service/api.go"
 
 /*
-Copyright © 2022 Recasa
+Copyright © 2022 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

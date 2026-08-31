@@ -37,7 +37,7 @@ var healthcheckLogsCmd = &cobra.Command{
 			return err
 		}
 
-		url := fmt.Sprintf("http://%s/%s", rootURL, BasePathCasaOS)
+		url := fmt.Sprintf("http://%s/%s", rootURL, BasePathNivaroOS)
 
 		client, err := nivaroos.NewClientWithResponses(url)
 		if err != nil {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestPackageInstalled_UnknownPackageIsFalse(t *testing.T) {
-	if packageInstalled("totally-fake-package-xyz-recasa-vm-sidecar-test") {
+	if packageInstalled("totally-fake-package-xyz-nivaroos-vm-sidecar-test") {
 		t.Fatal("expected a nonexistent package to report as not installed")
 	}
 }

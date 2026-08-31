@@ -122,11 +122,11 @@ func ensureDefaultDirectories() {
 	}
 
 	if sysType == "windows" {
-		dirArray = []string{"C:\\Recasa\\DATA\\AppData", "C:\\Recasa\\DATA\\Documents", "C:\\Recasa\\DATA\\Downloads", "C:\\Recasa\\DATA\\Gallery", "C:\\Recasa\\DATA\\Media/Movies", "C:\\Recasa\\DATA\\Media\\TV Shows", "C:\\Recasa\\DATA\\Media\\Music"}
+		dirArray = []string{"C:\\NivaroOS\\DATA\\AppData", "C:\\NivaroOS\\DATA\\Documents", "C:\\NivaroOS\\DATA\\Downloads", "C:\\NivaroOS\\DATA\\Gallery", "C:\\NivaroOS\\DATA\\Media/Movies", "C:\\NivaroOS\\DATA\\Media\\TV Shows", "C:\\NivaroOS\\DATA\\Media\\Music"}
 	}
 
 	if sysType == "darwin" {
-		dirArray = []string{"./Recasa/DATA/AppData", "./Recasa/DATA/Documents", "./Recasa/DATA/Downloads", "./Recasa/DATA/Gallery", "./Recasa/DATA/Media/Movies", "./Recasa/DATA/Media/TV Shows", "./Recasa/DATA/Media/Music"}
+		dirArray = []string{"./NivaroOS/DATA/AppData", "./NivaroOS/DATA/Documents", "./NivaroOS/DATA/Downloads", "./NivaroOS/DATA/Gallery", "./NivaroOS/DATA/Media/Movies", "./NivaroOS/DATA/Media/TV Shows", "./NivaroOS/DATA/Media/Music"}
 	}
 
 	for _, v := range dirArray {

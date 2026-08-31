@@ -155,7 +155,7 @@ func (s *appStore) UpdateCatalog() error {
 		return err
 	}
 
-	placeholderFile := filepath.Join(storeRoot, ".casaos-appstore")
+	placeholderFile := filepath.Join(storeRoot, ".nivaroos-appstore")
 	if err := file.CreateFileAndWriteContent(placeholderFile, s.url); err != nil {
 		return err
 	}

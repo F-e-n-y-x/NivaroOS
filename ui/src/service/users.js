@@ -97,7 +97,7 @@ const users = {
 		});
 	},
 
-	// mint a fresh one-time registration key (to add another Recasa user
+	// mint a fresh one-time registration key (to add another NivaroOS user
 	// after initial setup - upstream only ever issued one, before the
 	// first user existed)
 	generateRegisterKey() {

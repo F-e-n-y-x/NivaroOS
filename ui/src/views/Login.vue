@@ -3,7 +3,7 @@
 		<div v-if="!isLoading" class="login-panel step4 is-shadow">
 			<div class="is-flex is-justify-content-center pb-3 ">
 				<div class="has-text-centered">
-					<b-image :src-fallback="require('@/assets/img/account/default-avatar.svg')" src="/v1/users/image?path=/var/lib/recasa/1/avatar.png" class="is-128x128" rounded></b-image>
+					<b-image :src-fallback="require('@/assets/img/account/default-avatar.svg')" src="/v1/users/image?path=/var/lib/nivaroos/1/avatar.png" class="is-128x128" rounded></b-image>
 				</div>
 
 			</div>

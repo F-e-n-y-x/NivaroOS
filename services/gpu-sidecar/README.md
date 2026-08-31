@@ -1,9 +1,9 @@
-# recasa-gpu-sidecar
+# nivaroos-gpu-sidecar
 
-Exposes NVIDIA GPU stats as JSON on `:28640/gpu-stats` for the CasaOS GPU
-dashboard widget. CasaOS itself has no GPU support, so this shells out to
+Exposes NVIDIA GPU stats as JSON on `:28640/gpu-stats` for the NivaroOS GPU
+dashboard widget. NivaroOS itself has no GPU support, so this shells out to
 `nvidia-smi` on every request instead. Installed as a systemd service
-(`recasa-gpu-sidecar.service`), independent of the CasaOS services proper.
+(`nivaroos-gpu-sidecar.service`), independent of the NivaroOS services proper.
 
 Response shape:
 ```json

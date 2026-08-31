@@ -381,7 +381,7 @@
 						<h3 class="subtitle is-7 has-text-grey-light">
 							{{
 								$t(
-									'From community contributors, not optimized for Recasa, but provides a basic App nexperience.'
+									'From community contributors, not optimized for NivaroOS, but provides a basic App experience.'
 								)
 							}}
 						</h3>

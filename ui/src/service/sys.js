@@ -79,12 +79,12 @@ const sys = {
 		return api.get(`${PREFIX}/proxy?url=${url}`)
 	},
 
-	// get casaos server port
+	// get nivaroos server port
 	getServerPort() {
 		return api.get(`/gateway/port`);
 	},
 
-	// edit casaos server port
+	// edit nivaroos server port
 	editServerPort(data) {
 		return api.put(`/gateway/port`, data);
 	},
@@ -99,13 +99,13 @@ const sys = {
 		return api.put(`/usb/usb-auto-mount`, data);
 	},
 
-	// update Recasa
-	updateRecasa() {
+	// update NivaroOS
+	updateNivaroOS() {
 		return api.post(`${PREFIX}/update`);
 	},
 
-	// stop casaos
-	stopRecasa() {
+	// stop nivaroos
+	stopNivaroOS() {
 		return api.post(`${PREFIX}/stop`);
 	},
 

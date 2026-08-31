@@ -174,7 +174,7 @@ export default {
 			this.logLines = [`[${new Date().toLocaleTimeString()}] Initializing package upgrade sequence...`]
 
 			if (this.mode === 'nivaroos') {
-				this.$api.sys.updateRecasa().then(() => {
+				this.$api.sys.updateNivaroOS().then(() => {
 					this.logLines.push(`[${new Date().toLocaleTimeString()}] NivaroOS self-updater script spawned.`)
 				}).catch(err => {
 					this.logLines.push(`[${new Date().toLocaleTimeString()}] Error triggering NivaroOS update: ${err.message}`)

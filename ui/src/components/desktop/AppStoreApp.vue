@@ -781,7 +781,7 @@
 							<div class="card-icon-pill is-emerald"><i class="mdi mdi-web"></i></div>
 							<div class="card-title-left">
 								<h4 class="card-heading">{{ $t('Web UI & Dashboard Access') }}</h4>
-								<span class="card-caption">{{ $t('Configure the web portal and direct access port in Recasa') }}</span>
+								<span class="card-caption">{{ $t('Configure the web portal and direct access port in NivaroOS') }}</span>
 							</div>
 							<div class="card-toggle-wrap">
 								<b-switch v-model="formState.webUI.enabled" type="is-success">{{ $t('Enable Web UI') }}</b-switch>
@@ -1485,7 +1485,7 @@ export default {
 		},
 		getGradientBg(str) {
 			let hash = 0
-			const s = str || 'recasa'
+			const s = str || 'nivaroos'
 			for (let i = 0; i < s.length; i++) {
 				hash = s.charCodeAt(i) + ((hash << 5) - hash)
 			}

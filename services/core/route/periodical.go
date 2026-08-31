@@ -8,7 +8,6 @@
  * @LastEditTime: 2022-09-05 16:28:46
  * @FilePath: /CasaOS/route/periodical.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package route

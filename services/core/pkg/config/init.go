@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-09-05 11:58:02
  * @FilePath: /CasaOS/pkg/config/init.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package config

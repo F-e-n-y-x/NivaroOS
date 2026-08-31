@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-07-21 15:27:53
  * @FilePath: /CasaOS/pkg/utils/version/version.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package version

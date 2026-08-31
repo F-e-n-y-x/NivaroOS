@@ -14,7 +14,7 @@
 
 					<p class="has-text-left has-text-full-04 has-text-grey-light mt-1">{{ $t('Single Drive Storage') }},
 						<span class="is-uppercase">{{ item.fsType }}</span>
-						<b-tooltip :label="$t('Recasa reserves 1% of file space when creating storage in EXT4 format.')"
+						<b-tooltip :label="$t('NivaroOS reserves 1% of file space when creating storage in EXT4 format.')"
 								   append-to-body>
 							<b-icon class="mr-2 " icon="question-outline" pack="casa" size="is-small"></b-icon>
 						</b-tooltip>

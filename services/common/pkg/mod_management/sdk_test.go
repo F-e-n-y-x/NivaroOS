@@ -19,12 +19,12 @@ func TestInstallableModules(t *testing.T) {
 
 func TestInstallModule(t *testing.T) {
 	t.Skip("skipping integration test requiring running mod_management service")
-	err := modmanagement.RequireModule("doconverter", "/var/run/casaos")
+	err := modmanagement.RequireModule("doconverter", "/var/run/nivaroos")
 	assert.NoError(t, err)
 }
 
 func TestInstallNoExistModule(t *testing.T) {
 	t.Skip("skipping integration test requiring running mod_management service")
-	err := modmanagement.RequireModule("abc", "/var/run/casaos")
+	err := modmanagement.RequireModule("abc", "/var/run/nivaroos")
 	assert.ErrorIs(t, err, modmanagement.ErrModuleNoInStore)
 }

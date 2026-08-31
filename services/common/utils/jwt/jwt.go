@@ -52,7 +52,7 @@ func ParseToken(signedToken string, publicKeyFunc func() (*ecdsa.PublicKey, erro
 
 // get AccessToken
 func GetAccessToken(username string, privateKey *ecdsa.PrivateKey, id int) (string, error) {
-	return GenerateToken(username, privateKey, id, "casaos", 3*time.Hour)
+	return GenerateToken(username, privateKey, id, "nivaroos", 3*time.Hour)
 }
 
 func GetRefreshToken(username string, private *ecdsa.PrivateKey, id int) (string, error) {

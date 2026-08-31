@@ -96,11 +96,11 @@ func InitV1Router() http.Handler {
 			v1SysGroup.PUT("/smb-users/:username/password", v1.PutSmbUserPassword)
 			// v1SysGroup.GET("/config", v1.GetSystemConfig) //delete
 			// v1SysGroup.POST("/config", v1.PostSetSystemConfig)
-			v1SysGroup.GET("/logs", v1.GetCasaOSErrorLogs) // error/logs
+			v1SysGroup.GET("/logs", v1.GetNivaroOSErrorLogs) // error/logs
 			// v1SysGroup.GET("/widget/config", v1.GetWidgetConfig)//delete
 			// v1SysGroup.POST("/widget/config", v1.PostSetWidgetConfig)//delete
 
-			v1SysGroup.POST("/stop", v1.PostKillCasaOS)
+			v1SysGroup.POST("/stop", v1.PostKillNivaroOS)
 
 			v1SysGroup.GET("/utilization", v1.GetSystemUtilization)
 			v1SysGroup.GET("/cpu", v1.GetSystemCupInfo)
@@ -112,8 +112,8 @@ func InitV1Router() http.Handler {
 
 			v1SysGroup.GET("/server-info", nil)
 			v1SysGroup.PUT("/server-info", nil)
-			// v1SysGroup.GET("/port", v1.GetCasaOSPort)
-			// v1SysGroup.PUT("/port", v1.PutCasaOSPort)
+			// v1SysGroup.GET("/port", v1.GetNivaroOSPort)
+			// v1SysGroup.PUT("/port", v1.PutNivaroOSPort)
 			v1SysGroup.GET("/proxy", v1.GetSystemProxy)
 			v1SysGroup.PUT("/state/:state", v1.PutSystemState)
 			v1SysGroup.GET("/entry", v1.GetSystemEntry)

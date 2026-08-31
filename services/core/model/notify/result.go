@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-05-27 11:15:59
  * @FilePath: /CasaOS/model/notify/result.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 

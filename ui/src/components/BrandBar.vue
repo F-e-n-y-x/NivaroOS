@@ -55,13 +55,13 @@ export default {
 	methods: {
 		async parseFeed() {
 			let parser = new Parser();
-			let params = await this.$api.file.getContent('/var/lib/recasa/baseinfo.conf').then(res => {
+			let params = await this.$api.file.getContent('/var/lib/nivaroos/baseinfo.conf').then(res => {
 				return JSON.parse(res.data.data)
 			})
 			this.$store.commit('SET_DEVICE_ID', params.i)
 			params.l = localStorage.getItem('lang') ? localStorage.getItem('lang') : navigator.language.toLowerCase().replace("-", "_");
 			let stringify = btoa(encodeURIComponent(JSON.stringify(params)))
-			let feed = await parser.parseURL('https://blog.casaos.io/feed/tag/dashboard/?key=' + stringify);
+			let feed = await parser.parseURL('https://blog.nivaroos.io/feed/tag/dashboard/?key=' + stringify);
 			const newFeed = feed.items.map(item => {
 				return {
 					title: item.title,

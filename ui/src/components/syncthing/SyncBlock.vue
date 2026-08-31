@@ -63,7 +63,7 @@ export default {
 		async checkSyncStatus() {
 			// const res = await this.$api.sys.getSystemApps()
 			const listRes = await this.$api.container.getMyAppList();
-			const systemApps = listRes.data ? listRes.data.data.casaos_apps : [];
+			const systemApps = listRes.data ? listRes.data.data.nivaroos_apps : [];
 			const is8384SyncInstalled = systemApps.some(app => {
 				return app.image.includes('syncthing') && app.port === 8384
 			})

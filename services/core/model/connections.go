@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-04 20:06:04
  * @FilePath: /CasaOS/model/connections.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

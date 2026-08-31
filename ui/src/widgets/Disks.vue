@@ -14,7 +14,7 @@
 			<!-- Header End -->
 
 			<!-- Each real mount point (root + every /DATA/* volume the user
-			has, formatted through Recasa or just mounted by hand - both
+			has, formatted through NivaroOS or just mounted by hand - both
 			show up here) gets its own row with its own used/total, instead
 			of one number combining everything into a single blob. -->
 			<div class="columns is-mobile is-multiline pt-2">

@@ -40,7 +40,7 @@ func LoadConfig() (*viper.Viper, error) {
 		config.AddConfigPath(filepath.Join(currentDirectory, "conf"))
 	}
 
-	if configPath, success := os.LookupEnv("RECASA_CONFIG_PATH"); success {
+	if configPath, success := os.LookupEnv("NIVAROOS_CONFIG_PATH"); success {
 		config.AddConfigPath(configPath)
 	}
 

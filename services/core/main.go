@@ -89,12 +89,12 @@ func init() {
 	//configfile.Install()
 }
 
-// @title casaOS API
+// @title NivaroOS API
 // @version 1.0.0
 // @contact.name lauren.pan
 // @contact.url https://www.zimaboard.com
 // @contact.email lauren.pan@icewhale.org
-// @description casaOS v1版本api
+// @description NivaroOS v1版本api
 // @host 192.168.2.217:8089
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
@@ -190,7 +190,7 @@ func main() {
 		}
 	}()
 
-	urlFilePath := filepath.Join(config.CommonInfo.RuntimePath, "casaos.url")
+	urlFilePath := filepath.Join(config.CommonInfo.RuntimePath, "nivaroos.url")
 	if err := file.CreateFileAndWriteContent(urlFilePath, "http://"+listener.Addr().String()); err != nil {
 		logger.Error("error when creating address file", zap.Error(err),
 			zap.Any("address", listener.Addr().String()),
@@ -203,9 +203,9 @@ func main() {
 	command.ExecuteScripts(scriptDirectory)
 
 	if supported, err := daemon.SdNotify(false, daemon.SdNotifyReady); err != nil {
-		logger.Error("Failed to notify systemd that casaos main service is ready", zap.Any("error", err))
+		logger.Error("Failed to notify systemd that nivaroos main service is ready", zap.Any("error", err))
 	} else if supported {
-		logger.Info("Notified systemd that casaos main service is ready")
+		logger.Info("Notified systemd that nivaroos main service is ready")
 	} else {
 		logger.Info("This process is not running as a systemd service.")
 	}
@@ -221,7 +221,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second, // fix G112: Potential slowloris attack (see https://github.com/securego/gosec)
 	}
 
-	logger.Info("CasaOS main service is listening...", zap.Any("address", listener.Addr().String()))
+	logger.Info("NivaroOS main service is listening...", zap.Any("address", listener.Addr().String()))
 	// defer service.MyService.Storage().UnmountAllStorage()
 	err = s.Serve(listener) // not using http.serve() to fix G114: Use of net/http serve function that has no support for setting timeouts (see https://github.com/securego/gosec)
 	if err != nil {

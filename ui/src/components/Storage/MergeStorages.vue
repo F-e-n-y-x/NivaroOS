@@ -35,7 +35,7 @@
 					  item.availSize)
 			  }}/{{ renderSize(item.size) }}</span>
 				</div>
-				<b-checkbox v-model="checkBoxGroup" :disabled="item.persistedIn !== 'casaos' || item.isSystem"
+				<b-checkbox v-model="checkBoxGroup" :disabled="item.persistedIn !== 'nivaroos' || item.isSystem"
 							:native-value="item.uuid" class="mr-2"></b-checkbox>
 			</div>
 

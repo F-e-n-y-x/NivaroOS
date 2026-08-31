@@ -23,7 +23,7 @@ import FileOperationStatus from './FileOperationStatus.vue'
 import ContainerInstallStatus from './ContainerInstallStatus.vue'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 
-const WINDOWS_STORAGE_KEY = 'casaos_open_windows'
+const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
 // Real folder (/DATA/Desktop) FolderTree.vue creates automatically if
 // missing - dragging a file/folder onto the desktop background (outside
 // any window) copies/moves it here, matching a real desktop's icons.

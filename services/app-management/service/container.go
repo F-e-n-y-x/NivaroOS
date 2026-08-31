@@ -100,8 +100,8 @@ func getContainerStats() {
 				continue
 			}
 		}
-		if config.CasaOSGlobalVariables.AppChange {
-			config.CasaOSGlobalVariables.AppChange = false
+		if config.NivaroOSGlobalVariables.AppChange {
+			config.NivaroOSGlobalVariables.AppChange = false
 			dataStats.Range(func(key, value interface{}) bool {
 				dataStats.Delete(key)
 				return true
@@ -266,7 +266,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 
 	localApps := []model.MyAppList{}
 
-	casaOSApps := []model.MyAppList{}
+	nivaroosApps := []model.MyAppList{}
 
 	for i, m := range containers {
 
@@ -303,7 +303,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 				}
 			}
 
-			casaOSApp := model.MyAppList{
+			nivaroosApp := model.MyAppList{
 				Name:       name,
 				Icon:       icon,
 				State:      m.State,
@@ -319,7 +319,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 				AppStoreID: getV1AppStoreID(&containers[i]),
 			}
 
-			casaOSApps = append(casaOSApps, casaOSApp)
+			nivaroosApps = append(nivaroosApps, nivaroosApp)
 		} else {
 			localApp := model.MyAppList{
 				Name:     strings.ReplaceAll(m.Names[0], "/", ""),
@@ -339,7 +339,7 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 		}
 	}
 
-	return &casaOSApps, &localApps
+	return &nivaroosApps, &localApps
 }
 
 func (ds *dockerService) CreateContainerShellSession(container, row, col string) (types.HijackedResponse, error) {

@@ -76,7 +76,7 @@ func (s *LocalStorage) SetMerge(ctx echo.Context) error {
 			}
 
 			if !volumeFound {
-				message := "volume " + volumeUUID + " not found, or it is not a Recasa storage. Consider adding it to Recasa first."
+				message := "volume " + volumeUUID + " not found, or it is not a NivaroOS storage. Consider adding it to NivaroOS first."
 				return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 			}
 		}

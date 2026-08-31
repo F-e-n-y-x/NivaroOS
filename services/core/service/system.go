@@ -37,7 +37,7 @@ import (
 type SystemService interface {
 	UpdateSystemVersion(version string)
 	GetSystemConfigDebug() []string
-	GetCasaOSLogs(lineNumber int) string
+	GetNivaroOSLogs(lineNumber int) string
 	UpdateAssist()
 	UpSystemPort(port string)
 	GetTimeZone() string
@@ -287,10 +287,10 @@ func (c *systemService) GetDirPath(path string) ([]model.Path, error) {
 	if path == "/DATA" {
 		sysType := runtime.GOOS
 		if sysType == "windows" {
-			path = "C:\\Recasa\\DATA"
+			path = "C:\\NivaroOS\\DATA"
 		}
 		if sysType == "darwin" {
-			path = "./Recasa/DATA"
+			path = "./NivaroOS/DATA"
 		}
 
 	}
@@ -485,7 +485,7 @@ func (s *systemService) UpSystemPort(port string) {
 	config.Cfg.SaveTo(config.SystemConfigInfo.ConfigPath)
 }
 
-func (s *systemService) GetCasaOSLogs(lineNumber int) string {
+func (s *systemService) GetNivaroOSLogs(lineNumber int) string {
 	file, err := os.Open(filepath.Join(config.AppInfo.LogPath, fmt.Sprintf("%s.%s",
 		config.AppInfo.LogSaveName,
 		config.AppInfo.LogFileExt,

@@ -85,8 +85,8 @@ export default {
 		async confirmDelete(username) {
 			this.$buefy.dialog.confirm({
 				container: '#window-settings',
-				title: this.$t('Delete Recasa user'),
-				message: this.$t('Delete the Recasa account {user}?', { user: username }),
+				title: this.$t('Delete NivaroOS user'),
+				message: this.$t('Delete the NivaroOS account {user}?', { user: username }),
 				type: 'is-danger',
 				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),

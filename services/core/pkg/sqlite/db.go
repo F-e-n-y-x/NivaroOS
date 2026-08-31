@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-08-31 13:39:24
  * @FilePath: /CasaOS/pkg/sqlite/db.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package sqlite

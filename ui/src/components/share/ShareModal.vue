@@ -16,7 +16,7 @@
 
 				<div>
 					<div class=" is-size-14px">{{
-						$t('Please invite more friends who are concerned about family and data privacy to join and use Recasa.')
+						$t('Please invite more friends who are concerned about family and data privacy to join and use NivaroOS.')
 						}}
 					</div>
 
@@ -55,7 +55,7 @@ export default {
 			timer: 0,
 			updateTimer: 0,
 			githubUrl: `https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/0.4/casaos_social_share.png`,
-			shareTitle: `I'm using Recasa, a simple, easy-to-use, elegant open-source home cloud system, try it like me.`,
+			shareTitle: `I'm using NivaroOS, a simple, easy-to-use, elegant open-source home cloud system, try it like me.`,
 			shareSites: [
 				'facebook',
 				'twitter',
@@ -75,7 +75,7 @@ export default {
 		 */
 		async updateSystem() {
 			this.isUpdating = true;
-			await this.$api.sys.updateRecasa();
+			await this.$api.sys.updateNivaroOS();
 			this.getUpdateLogs()
 		},
 
@@ -85,15 +85,15 @@ export default {
 		 */
 		getUpdateLogs() {
 			this.updateTimer = setInterval(() => {
-				this.$api.file.getContent(`/var/log/recasa/upgrade.log`).then(res => {
+				this.$api.file.getContent(`/var/log/nivaroos/upgrade.log`).then(res => {
 
 					this.updateLogs = res.data.data;
-					if (this.updateLogs.includes(`CasaOS upgrade successfully`)) {
+					if (this.updateLogs.includes(`NivaroOS upgrade successfully`)) {
 						clearInterval(this.updateTimer);
 						setTimeout(() => {
 							location.reload();
 						}, 1000);
-					} else if (this.updateLogs.includes(`CasaOS upgrade failed`)) {
+					} else if (this.updateLogs.includes(`NivaroOS upgrade failed`)) {
 						this.$buefy.toast.open({
 							message: this.$t(`There seems to be a problem with the upgrade process, please try again!`),
 							type: 'is-danger'

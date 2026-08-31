@@ -4,7 +4,6 @@
  *@LastEditTime: 2022-07-13 10:49:16
  *@FilePath: /CasaOS/model/docker.go
  *@Description:
- *@Website: https://www.casaos.io
  *Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

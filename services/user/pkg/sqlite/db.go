@@ -4,7 +4,6 @@
  * @LastEditors: LinkLeong
  * @LastEditTime: 2022-07-11 18:10:53
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package sqlite

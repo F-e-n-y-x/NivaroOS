@@ -4,7 +4,6 @@
  *@LastEditTime: 2022-06-14 14:33:49
  *@FilePath: /CasaOS/pkg/utils/encryption/md5_helper.go
  *@Description:
- *@Website: https://www.casaos.io
  *Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package encryption

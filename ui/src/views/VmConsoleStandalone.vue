@@ -4,7 +4,7 @@
 	its own browser tab (VmList's "Open in New Tab" action). A real
 	remote console lives in its own tab in every VM app this was modeled
 	after (VMware Workstation, VirtualBox) - useful for a second monitor,
-	or just not losing the console when the Recasa desktop tab is closed.
+	or just not losing the console when the NivaroOS desktop tab is closed.
 -->
 <template>
 	<div class="vm-console-page">

@@ -114,7 +114,7 @@ func validateHostNIC(hostNIC string, defaultRouteDevice func() (string, error)) 
 	return nil
 }
 
-const bridgeSnippetTemplate = `# Managed by recasa-vm-sidecar - bridge {{.Name}} over {{.HostNIC}}
+const bridgeSnippetTemplate = `# Managed by nivaroos-vm-sidecar - bridge {{.Name}} over {{.HostNIC}}
 auto {{.HostNIC}}
 iface {{.HostNIC}} inet manual
 
@@ -190,10 +190,10 @@ func neutralizeMainInterfaceStanza(mainInterfacesPath, hostNIC string) (original
 	for _, line := range lines {
 		switch {
 		case autoRe.MatchString(line):
-			out = append(out, "# "+line+" # commented out by recasa-vm-sidecar: bridged instead, see interfaces.d/")
+			out = append(out, "# "+line+" # commented out by nivaroos-vm-sidecar: bridged instead, see interfaces.d/")
 			changed = true
 		case ifaceRe.MatchString(line):
-			out = append(out, "# "+line+" # commented out by recasa-vm-sidecar: bridged instead, see interfaces.d/")
+			out = append(out, "# "+line+" # commented out by nivaroos-vm-sidecar: bridged instead, see interfaces.d/")
 			inBlock = true
 			changed = true
 		case inBlock && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")):
@@ -460,7 +460,7 @@ func restoreMainInterfaceStanza(mainInterfacesPath, hostNIC string) (changed boo
 	if err != nil {
 		return false, err
 	}
-	const marker = " # commented out by recasa-vm-sidecar: bridged instead, see interfaces.d/"
+	const marker = " # commented out by nivaroos-vm-sidecar: bridged instead, see interfaces.d/"
 	autoRe := regexp.MustCompile(`^# (auto|allow-hotplug)\s+` + regexp.QuoteMeta(hostNIC) + `\s*$`)
 	ifaceRe := regexp.MustCompile(`^# iface\s+` + regexp.QuoteMeta(hostNIC) + `\s+`)
 

@@ -1,5 +1,5 @@
 /* Custom cursor set (user-provided .cur files from
-/DATA/recasa_icons/cursor/dark, plus wait.cur/appstarting.cur - single
+/DATA/nivaroos_icons/cursor/dark, plus wait.cur/appstarting.cur - single
 frames extracted from the source .ani files, since CSS cursor doesn't
 support animated cursor formats at all). All carry their own hotspot
 metadata, so no manual x/y offset is needed.

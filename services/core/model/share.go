@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-07-27 14:58:55
  * @FilePath: /CasaOS/model/share.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model

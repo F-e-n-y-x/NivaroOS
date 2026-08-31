@@ -1,5 +1,5 @@
-// recasa-gpu-sidecar exposes NVIDIA GPU stats as JSON for the CasaOS GPU
-// dashboard widget, since CasaOS itself has no GPU support. It shells out to
+// nivaroos-gpu-sidecar exposes NVIDIA GPU stats as JSON for the NivaroOS GPU
+// dashboard widget, since NivaroOS itself has no GPU support. It shells out to
 // nvidia-smi on every request rather than polling on a timer, since
 // nvidia-smi is fast and this keeps the service stateless.
 package main
@@ -115,6 +115,6 @@ func main() {
 	flag.Parse()
 
 	http.HandleFunc("/gpu-stats", handleGPUStats)
-	log.Printf("recasa-gpu-sidecar listening on %s", *addr)
+	log.Printf("nivaroos-gpu-sidecar listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }

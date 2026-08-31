@@ -5,12 +5,12 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
-type CasaOS struct {
+type NivaroOS struct {
 	fileUploadService *service.FileUploadService
 }
 
-func NewCasaOS() codegen.ServerInterface {
-	return &CasaOS{
+func NewNivaroOS() codegen.ServerInterface {
+	return &NivaroOS{
 		fileUploadService: service.NewFileUploadService(),
 	}
 }

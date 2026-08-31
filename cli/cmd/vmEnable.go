@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 Recasa
+Copyright © 2022 NivaroOS
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const recasaSrcDir = "/opt/nivaroos/src"
+const nivaroosSrcDir = "/opt/nivaroos/src"
 
 const vmSidecarUnitContent = `[Unit]
 After=network.target nivaroos-message-bus.service
-Description=Recasa VM Sidecar
+Description=NivaroOS VM Sidecar
 
 [Service]
 ExecStart=/usr/bin/nivaroos-vm-sidecar
@@ -43,8 +43,8 @@ var vmEnableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Build and enable the VM Manager service",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := os.Stat(recasaSrcDir); err != nil {
-			return fmt.Errorf("%s not found - run the Recasa installer first: %w", recasaSrcDir, err)
+		if _, err := os.Stat(nivaroosSrcDir); err != nil {
+			return fmt.Errorf("%s not found - run the NivaroOS installer first: %w", nivaroosSrcDir, err)
 		}
 
 		// nivaroos-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
@@ -68,7 +68,7 @@ var vmEnableCmd = &cobra.Command{
 		}
 
 		build := exec.Command("go", "build", "-o", "/usr/bin/nivaroos-vm-sidecar", ".")
-		build.Dir = recasaSrcDir + "/services/vm-sidecar"
+		build.Dir = nivaroosSrcDir + "/services/vm-sidecar"
 		build.Stdout = os.Stdout
 		build.Stderr = os.Stderr
 		if err := build.Run(); err != nil {

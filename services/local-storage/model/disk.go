@@ -4,7 +4,6 @@
  *@LastEditTime: 2022-08-03 14:45:35
  *@FilePath: /CasaOS/model/disk.go
  *@Description:
- *@Website: https://www.casaos.io
  *Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package model
@@ -87,7 +86,7 @@ type Storage struct {
 	Path        string `json:"path"`
 	DriveName   string `json:"drive_name"`
 	Label       string `json:"label"`
-	PersistedIn string `json:"persisted_in"` // none, fstab, casaos
+	PersistedIn string `json:"persisted_in"` // none, fstab, nivaroos
 }
 type Storages struct {
 	DiskName string    `json:"disk_name"`

@@ -64,7 +64,7 @@ const state = {
 	// public params
 	device_id: "xxx",
 	access_id: "dsdad",
-	casaos_lang: "zh",
+	nivaroos_lang: "zh",
 	notImportList: [],
 
 	// Desktop windowing system (Files, Settings, future apps) - shape:

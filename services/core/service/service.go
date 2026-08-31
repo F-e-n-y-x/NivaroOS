@@ -5,7 +5,6 @@
  * @LastEditTime: 2022-09-02 22:10:05
  * @FilePath: /CasaOS/service/service.go
  * @Description:
- * @Website: https://www.casaos.io
  * Copyright (c) 2022 by icewhale, All Rights Reserved.
  */
 package service
@@ -31,7 +30,7 @@ var (
 )
 
 type Repository interface {
-	Casa() CasaService
+	Casa() NivaroOSService
 	Connections() ConnectionsService
 	Gateway() external.ManagementService
 	Health() HealthService
@@ -52,7 +51,7 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 	}
 
 	return &store{
-		casa:        NewCasaService(),
+		casa:        NewNivaroOSService(),
 		connections: NewConnectionsService(db),
 		gateway:     gatewayManagement,
 		notify:      NewNotifyService(db),
@@ -70,7 +69,7 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 type store struct {
 	peer        PeerService
 	db          *gorm.DB
-	casa        CasaService
+	casa        NivaroOSService
 	notify      NotifyServer
 	rely        RelyService
 	system      SystemService
@@ -118,7 +117,7 @@ func (c *store) Notify() NotifyServer {
 	return c.notify
 }
 
-func (c *store) Casa() CasaService {
+func (c *store) Casa() NivaroOSService {
 	return c.casa
 }
 
