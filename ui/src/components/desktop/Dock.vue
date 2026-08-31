@@ -1,37 +1,27 @@
 <template>
 	<div class="dock-wrapper">
 		<div class="dock" @contextmenu.prevent.stop="openDockContextMenu($event, { type: 'dock' })">
-			<!-- 1. Built-in Pinned Apps -->
+			<!-- Pinned Apps (Built-ins and User Apps in exact pinned order) -->
 			<button
-				v-for="p in visiblePinned"
-				:key="p.id"
+				v-for="item in dockItems"
+				:key="'dock-' + item.name"
 				class="dock-item"
-				:title="p.label"
-				@click="launch(p)"
-				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'pinned', data: p })"
+				:title="displayName(item)"
+				@click="launchItem(item)"
+				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'item', data: item })"
 			>
-				<img :src="p.icon" class="dock-icon" :alt="p.label" />
-				<span class="dock-dot" v-if="isOpen(p.id)" :class="{ minimized: isMinimized(p.id) }"></span>
+				<img
+					:src="item.icon"
+					class="dock-icon"
+					:style="{ borderRadius: item.iconRadius ? item.iconRadius + '%' : '12px' }"
+					:alt="displayName(item)"
+				/>
+				<span class="dock-dot" v-if="isItemOpen(item)" :class="{ minimized: isItemMinimized(item) }"></span>
 			</button>
 
-			<div v-if="pinnedApps.length && visiblePinned.length" class="dock-sep"></div>
+			<div v-if="extraWindows.length && dockItems.length" class="dock-sep"></div>
 
-			<!-- 2. User Pinned Apps -->
-			<button
-				v-for="app in pinnedApps"
-				:key="'pinned-' + app.name"
-				class="dock-item"
-				:title="displayName(app)"
-				@click="launchApp(app)"
-				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'pinnedApp', data: app })"
-			>
-				<img :src="app.icon" class="dock-icon" :alt="displayName(app)" />
-				<span class="dock-dot" v-if="isAppRunning(app)" :class="{ minimized: false }"></span>
-			</button>
-
-			<div v-if="extraWindows.length" class="dock-sep"></div>
-
-			<!-- 3. Active Unpinned Windows -->
+			<!-- Active Unpinned Windows -->
 			<button
 				v-for="win in extraWindows"
 				:key="win.id"
@@ -41,9 +31,9 @@
 				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'window', data: win })"
 			>
 				<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'FilesApp' || win.component === 'FolderWindow'" :src="filesIcon" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'AppStoreApp'" :src="appStoreIcon" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="terminalIcon" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'FilesApp' || win.component === 'FolderWindow'" :src="getBuiltinIcon('Files')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
@@ -62,7 +52,12 @@
 		>
 			<!-- Header with App info -->
 			<div v-if="ctxMenu.title" class="ctx-header is-flex is-align-items-center">
-				<img v-if="ctxMenu.icon" :src="ctxMenu.icon" class="ctx-header-icon mr-2" />
+				<img
+					v-if="ctxMenu.icon"
+					:src="ctxMenu.icon"
+					:style="{ borderRadius: ctxMenu.iconRadius ? ctxMenu.iconRadius + '%' : '5px' }"
+					class="ctx-header-icon mr-2"
+				/>
 				<div class="ctx-header-info">
 					<div class="ctx-header-title font-semibold">{{ ctxMenu.title }}</div>
 					<div v-if="ctxMenu.status" class="ctx-header-sub text-muted is-size-7">{{ ctxMenu.status }}</div>
@@ -70,62 +65,64 @@
 			</div>
 			<div v-if="ctxMenu.title" class="ctx-divider"></div>
 
-			<!-- 1. Pinned System App actions -->
-			<template v-if="ctxMenu.target && ctxMenu.target.type === 'pinned'">
-				<button class="ctx-item" @click="handlePinnedAction('toggle')">
+			<!-- 1. Pinned Item Actions (Built-in or User App) -->
+			<template v-if="ctxMenu.target && ctxMenu.target.type === 'item'">
+				<button class="ctx-item" @click="handleItemAction('toggle')">
 					<i class="mdi mdi-open-in-app ctx-icon"></i>
-					<span class="ctx-label">{{ isOpen(ctxMenu.target.data.id) ? (isMinimized(ctxMenu.target.data.id) ? $t('Restore') : $t('Bring to Front')) : $t('Open') }}</span>
+					<span class="ctx-label">{{ isItemOpen(ctxMenu.target.data) ? (isItemMinimized(ctxMenu.target.data) ? $t('Restore') : $t('Bring to Front')) : $t('Open') }}</span>
 				</button>
-				<button v-if="ctxMenu.target.data.id === 'files' || ctxMenu.target.data.id === 'terminal'" class="ctx-item" @click="handlePinnedAction('newWindow')">
+
+				<button v-if="isMultiWindowApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('newWindow')">
 					<i class="mdi mdi-plus-box-multiple-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('New Window') }}</span>
 				</button>
-				<button class="ctx-item" @click="handlePinnedAction('unpin')">
+
+				<button v-if="!isBuiltinApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('edit')">
+					<i class="mdi mdi-pencil-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Edit Settings') }}</span>
+				</button>
+
+				<button v-if="!isBuiltinApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('restart')">
+					<i class="mdi mdi-restart ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Restart App') }}</span>
+				</button>
+
+				<div class="ctx-divider"></div>
+
+				<button class="ctx-item" @click="handleItemAction('unpin')">
 					<i class="mdi mdi-pin-off-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
 				</button>
-				<div v-if="isOpen(ctxMenu.target.data.id)" class="ctx-divider"></div>
-				<button v-if="isOpen(ctxMenu.target.data.id)" class="ctx-item is-danger" @click="handlePinnedAction('close')">
+
+				<div v-if="isItemOpen(ctxMenu.target.data)" class="ctx-divider"></div>
+
+				<button v-if="isItemOpen(ctxMenu.target.data)" class="ctx-item is-danger" @click="handleItemAction('close')">
 					<i class="mdi mdi-close ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Close Window') }}</span>
 				</button>
 			</template>
 
-			<!-- 2. Pinned User App actions -->
-			<template v-else-if="ctxMenu.target && ctxMenu.target.type === 'pinnedApp'">
-				<button class="ctx-item" @click="handleUserAppAction('open')">
-					<i class="mdi mdi-open-in-app ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Open App') }}</span>
-				</button>
-				<button class="ctx-item" @click="handleUserAppAction('edit')">
-					<i class="mdi mdi-pencil-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Edit Settings') }}</span>
-				</button>
-				<button class="ctx-item" @click="handleUserAppAction('restart')">
-					<i class="mdi mdi-restart ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Restart App') }}</span>
-				</button>
-				<div class="ctx-divider"></div>
-				<button class="ctx-item" @click="handleUserAppAction('unpin')">
-					<i class="mdi mdi-pin-off-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
-				</button>
-			</template>
-
-			<!-- 3. Running Window actions -->
+			<!-- 2. Running Extra Window Actions -->
 			<template v-else-if="ctxMenu.target && ctxMenu.target.type === 'window'">
 				<button class="ctx-item" @click="handleWindowAction('toggle')">
 					<i :class="ctxMenu.target.data.minimized ? 'mdi mdi-window-maximize' : 'mdi mdi-window-minimize'" class="ctx-icon"></i>
 					<span class="ctx-label">{{ ctxMenu.target.data.minimized ? $t('Restore Window') : $t('Minimize Window') }}</span>
 				</button>
+
+				<button class="ctx-item" @click="handleWindowAction('pin')">
+					<i class="mdi mdi-pin-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Pin to Taskbar') }}</span>
+				</button>
+
 				<div class="ctx-divider"></div>
+
 				<button class="ctx-item is-danger" @click="handleWindowAction('close')">
 					<i class="mdi mdi-close ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Close Window') }}</span>
 				</button>
 			</template>
 
-			<!-- 4. Dock background actions -->
+			<!-- 3. Dock Background Actions -->
 			<template v-else>
 				<button class="ctx-item" @click="openAppearanceSettings">
 					<i class="mdi mdi-palette-outline ctx-icon"></i>
@@ -155,19 +152,19 @@ import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_LinkApp from '@/mixins/app/Business_LinkApp'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
-import business_DockPins from '@/mixins/app/Business_DockPins'
+import business_DockPins, { DEFAULT_PINS, SYSTEM_NAME_MAP } from '@/mixins/app/Business_DockPins'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 
 import viewerIcon from '@/assets/img/app/viewer.png'
 import vmIcon from '@/assets/img/app/vm.png'
 
-const PINNED = [
-	{ id: 'files', label: 'Files', icon: filesIcon },
-	{ id: 'appstore', label: 'App Store', icon: appStoreIcon },
-	{ id: 'terminal', label: 'Terminal', icon: terminalIcon },
-	{ id: 'vms', label: 'VMs', icon: vmManagerIcon },
-	{ id: 'settings', label: 'Settings', icon: settingsIcon }
-]
+const BUILTIN_DEFS = {
+	Files: { id: 'files', name: 'Files', label: 'Files', defaultIcon: filesIcon, component: 'FilesApp', width: 960, height: 620 },
+	'App Store': { id: 'appstore', name: 'App Store', label: 'App Store', defaultIcon: appStoreIcon, component: 'AppStoreApp', width: 1040, height: 720 },
+	Terminal: { id: 'terminal', name: 'Terminal', label: 'Terminal', defaultIcon: terminalIcon, component: 'TerminalPanel', width: 720, height: 480 },
+	VMs: { id: 'vms', name: 'VMs', label: 'VMs', defaultIcon: vmManagerIcon, component: 'VmManagerApp', width: 880, height: 560 },
+	Settings: { id: 'settings', name: 'Settings', label: 'Settings', defaultIcon: settingsIcon, component: 'SettingsApp', width: 760, height: 540 }
+}
 
 const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer']
 const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
@@ -177,12 +174,8 @@ export default {
 	mixins: [business_ShowNewAppTag, business_OpenThirdApp, business_LinkApp, business_LegacyAppOverrides, business_DockPins],
 	data() {
 		return {
-			pinned: PINNED,
-			unpinnedSystemIds: JSON.parse(localStorage.getItem('unpinned_system_dock') || '[]'),
-			pinnedApps: [],
-			filesIcon,
-			terminalIcon,
-			appStoreIcon,
+			dockItems: [],
+			overridesMap: {},
 			ctxMenu: {
 				visible: false,
 				bottom: 80,
@@ -190,20 +183,19 @@ export default {
 				title: '',
 				status: '',
 				icon: null,
+				iconRadius: 0,
 				target: null
 			}
 		}
 	},
 	computed: {
-		visiblePinned() {
-			return this.pinned.filter(p => !this.unpinnedSystemIds.includes(p.id))
-		},
 		windows() {
 			return this.$store.state.windows
 		},
 		extraWindows() {
-			const pinnedIds = this.visiblePinned.map(p => p.id)
-			return this.windows.filter(w => !pinnedIds.includes(w.id))
+			const pinnedNames = this.dockItems.map(item => item.name)
+			const pinnedIds = this.dockItems.map(item => item.id).filter(Boolean)
+			return this.windows.filter(w => !pinnedIds.includes(w.id) && !pinnedNames.includes(w.title))
 		},
 		viewerIconUrl() {
 			return viewerIcon
@@ -213,8 +205,8 @@ export default {
 		}
 	},
 	created() {
-		this.loadPinnedApps()
-		this.$EventBus.$on(events.RELOAD_APP_LIST, this.loadPinnedApps)
+		this.loadDockItems()
+		this.$EventBus.$on(events.RELOAD_APP_LIST, this.loadDockItems)
 	},
 	mounted() {
 		document.addEventListener('mousedown', this.onOutsideClick)
@@ -222,12 +214,17 @@ export default {
 		window.addEventListener('resize', this.closeCtxMenu)
 	},
 	beforeDestroy() {
-		this.$EventBus.$off(events.RELOAD_APP_LIST, this.loadPinnedApps)
+		this.$EventBus.$off(events.RELOAD_APP_LIST, this.loadDockItems)
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('blur', this.closeCtxMenu)
 		window.removeEventListener('resize', this.closeCtxMenu)
 	},
 	methods: {
+		getBuiltinIcon(name) {
+			const override = this.overridesMap[name]
+			if (override && override.icon) return override.icon
+			return (BUILTIN_DEFS[name] && BUILTIN_DEFS[name].defaultIcon) || require('@/assets/img/app/default.svg')
+		},
 		onOutsideClick(e) {
 			if (this.ctxMenu.visible && this.$refs.dockCtxMenu && !this.$refs.dockCtxMenu.contains(e.target)) {
 				this.closeCtxMenu()
@@ -245,22 +242,19 @@ export default {
 			let title = ''
 			let status = ''
 			let icon = null
+			let iconRadius = 0
 
-			if (target.type === 'pinned') {
-				const p = target.data
-				title = this.$t(p.label)
-				status = this.isOpen(p.id) ? this.$t('Running') : this.$t('Ready')
-				icon = p.icon
-			} else if (target.type === 'pinnedApp') {
-				const app = target.data
-				title = this.displayName(app)
-				status = app.status === 'running' ? this.$t('Running') : this.$t('Stopped')
-				icon = app.icon
+			if (target.type === 'item') {
+				const item = target.data
+				title = this.displayName(item)
+				status = this.isItemOpen(item) ? this.$t('Running') : this.$t('Ready')
+				icon = item.icon
+				iconRadius = item.iconRadius || 0
 			} else if (target.type === 'window') {
 				const win = target.data
 				title = win.title
 				status = win.minimized ? this.$t('Minimized') : this.$t('Active')
-				icon = this.isViewerWindow(win) ? this.viewerIconUrl : (win.component === 'FilesApp' ? this.filesIcon : null)
+				icon = this.isViewerWindow(win) ? this.viewerIconUrl : (win.component === 'FilesApp' ? this.getBuiltinIcon('Files') : null)
 			}
 
 			this.ctxMenu = {
@@ -270,16 +264,144 @@ export default {
 				title,
 				status,
 				icon,
+				iconRadius,
 				target
 			}
 		},
-		handlePinnedAction(action) {
-			const p = this.ctxMenu.target.data
+		async loadDockItems() {
+			const [pins, orgAppList, linkAppList, overrides] = await Promise.all([
+				this.getDockPins(),
+				this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || []).catch(() => []),
+				this.getLinkAppList().catch(() => []),
+				this.getLegacyAppOverrides().catch(() => ({}))
+			])
+			this.overridesMap = overrides || {}
+
+			const allApps = orgAppList.concat(linkAppList)
+			const items = []
+
+			pins.forEach(pinName => {
+				const norm = SYSTEM_NAME_MAP[pinName] || pinName
+				if (BUILTIN_DEFS[norm]) {
+					const def = BUILTIN_DEFS[norm]
+					const override = overrides[def.name] || overrides[def.id]
+					const icon = (override && override.icon) || def.defaultIcon
+					const iconRadius = (override && override.iconRadius) || 0
+					const title = (override && override.title) || def.label
+					items.push({
+						...def,
+						icon,
+						iconRadius,
+						title,
+						app_type: 'system',
+						status: 'running'
+					})
+				} else {
+					const app = allApps.find(a => a.name === pinName)
+					if (app) {
+						const override = overrides[app.name]
+						const icon = (override && override.icon) || app.icon || require('@/assets/img/app/default.svg')
+						const iconRadius = (override && override.iconRadius) || 0
+						const title = override && override.title ? { ...app.title, custom: override.title } : app.title
+						const overrideUrl = override && override.url
+						items.push({
+							...app,
+							icon,
+							iconRadius,
+							title,
+							overrideUrl
+						})
+					}
+				}
+			})
+
+			this.dockItems = items
+		},
+		displayName(item) {
+			if (typeof item.title === 'string') return item.title
+			return (item.title && ice_i18n(item.title)) || item.name || item.label
+		},
+		isBuiltinApp(item) {
+			return item.app_type === 'system' || !!BUILTIN_DEFS[item.name]
+		},
+		isMultiWindowApp(item) {
+			return item.id === 'files' || item.name === 'Files' || item.id === 'terminal' || item.name === 'Terminal'
+		},
+		findWindow(idOrTitle) {
+			return this.windows.find(w => w.id === idOrTitle || w.title === idOrTitle)
+		},
+		isViewerWindow(win) {
+			return VIEWER_COMPONENTS.includes(win.component)
+		},
+		isVmWindow(win) {
+			return VM_ICON_COMPONENTS.includes(win.component)
+		},
+		isItemOpen(item) {
+			if (item.id && this.findWindow(item.id)) return true
+			if (this.findWindow(item.name)) return true
+			if (item.app_type !== 'system' && item.status === 'running') return true
+			return false
+		},
+		isItemMinimized(item) {
+			const win = this.findWindow(item.id || item.name)
+			return !!(win && win.minimized)
+		},
+		isTopmost(win) {
+			return win.zIndex === Math.max(...this.windows.map(w => w.zIndex))
+		},
+		launchItem(item) {
+			if (this.isBuiltinApp(item)) {
+				const def = BUILTIN_DEFS[SYSTEM_NAME_MAP[item.name] || item.name] || item
+				const win = this.findWindow(def.id)
+				if (!win) {
+					this.$store.commit('OPEN_WINDOW', {
+						id: def.id,
+						title: this.$t(def.label),
+						component: def.component,
+						width: def.width,
+						height: def.height
+					})
+					return
+				}
+				this.toggleWindow(win)
+				return
+			}
+
+			// User Container / Link App
+			if (item.app_type === 'container') {
+				if (item.overrideUrl) window.open(item.overrideUrl, '_blank')
+				return
+			}
+			if (item.app_type === 'LinkApp') {
+				window.open(item.hostname, '_blank')
+				return
+			}
+			if (item.status === 'running') {
+				this.openAppToNewWindow(item)
+				return
+			}
+			const request = item.app_type === 'v2app'
+				? this.$openAPI.appManagement.compose.setComposeAppStatus(item.name, 'start')
+				: this.$api.container.updateState(item.name, 'start')
+			request.then(() => this.firstOpenThirdApp(item))
+		},
+		toggleWindow(win) {
+			if (win.minimized) {
+				this.$store.commit('FOCUS_WINDOW', win.id)
+			} else if (this.isTopmost(win)) {
+				this.$store.commit('TOGGLE_MINIMIZE_WINDOW', win.id)
+			} else {
+				this.$store.commit('FOCUS_WINDOW', win.id)
+			}
+		},
+		handleItemAction(action) {
+			const item = this.ctxMenu.target.data
 			this.closeCtxMenu()
+
 			if (action === 'toggle') {
-				this.launch(p)
+				this.launchItem(item)
 			} else if (action === 'newWindow') {
-				if (p.id === 'files') {
+				if (item.id === 'files' || item.name === 'Files') {
 					this.$store.commit('OPEN_WINDOW', {
 						id: 'files-' + Date.now(),
 						title: this.$t('Files'),
@@ -287,7 +409,7 @@ export default {
 						width: 960,
 						height: 620
 					})
-				} else if (p.id === 'terminal') {
+				} else if (item.id === 'terminal' || item.name === 'Terminal') {
 					this.$store.commit('OPEN_WINDOW', {
 						id: 'terminal-' + Date.now(),
 						title: this.$t('Terminal'),
@@ -296,41 +418,35 @@ export default {
 						height: 480
 					})
 				}
+			} else if (action === 'edit') {
+				this.$EventBus.$emit(events.SHOW_CONFIG_PANEL, item)
+			} else if (action === 'restart') {
+				this.$messageBus('apps_restart', item.name)
+				const req = item.app_type === 'v2app'
+					? this.$openAPI.appManagement.compose.setComposeAppStatus(item.name, 'restart')
+					: this.$api.container.updateState(item.name, 'restart')
+				req.then(() => {
+					this.$buefy.toast.open({
+						message: this.$t('Restarting app...'),
+						type: 'is-info',
+						position: 'is-top',
+						duration: 2000
+					})
+				})
 			} else if (action === 'unpin') {
-				if (!this.unpinnedSystemIds.includes(p.id)) {
-					this.unpinnedSystemIds.push(p.id)
-					localStorage.setItem('unpinned_system_dock', JSON.stringify(this.unpinnedSystemIds))
+				this.setDockPinned(item.name, false).then(() => {
+					this.loadDockItems()
+					this.$EventBus.$emit(events.RELOAD_APP_LIST)
 					this.$buefy.toast.open({
 						message: this.$t('Removed from taskbar'),
 						type: 'is-info',
+						position: 'is-top',
 						duration: 2000
 					})
-				}
+				})
 			} else if (action === 'close') {
-				const win = this.findWindow(p.id)
+				const win = this.findWindow(item.id || item.name)
 				if (win) this.$store.commit('CLOSE_WINDOW', win.id)
-			}
-		},
-		handleUserAppAction(action) {
-			const app = this.ctxMenu.target.data
-			this.closeCtxMenu()
-			if (action === 'open') {
-				this.launchApp(app)
-			} else if (action === 'edit') {
-				this.$EventBus.$emit(events.SHOW_CONFIG_PANEL, app)
-			} else if (action === 'restart') {
-				this.$messageBus('apps_restart', app.name)
-				const req = app.app_type === 'v2app'
-					? this.$openAPI.appManagement.compose.setComposeAppStatus(app.name, 'restart')
-					: this.$api.container.updateState(app.name, 'restart')
-				req.then(() => {
-					this.$buefy.toast.open({ message: this.$t('Restarting app...'), type: 'is-info' })
-				})
-			} else if (action === 'unpin') {
-				this.setDockPinned(app.name, false).then(() => {
-					this.loadPinnedApps()
-					this.$buefy.toast.open({ message: this.$t('Removed from taskbar'), type: 'is-info' })
-				})
 			}
 		},
 		handleWindowAction(action) {
@@ -338,6 +454,17 @@ export default {
 			this.closeCtxMenu()
 			if (action === 'toggle') {
 				this.toggleWindow(win)
+			} else if (action === 'pin') {
+				this.setDockPinned(win.title, true).then(() => {
+					this.loadDockItems()
+					this.$EventBus.$emit(events.RELOAD_APP_LIST)
+					this.$buefy.toast.open({
+						message: this.$t('Pinned to taskbar'),
+						type: 'is-info',
+						position: 'is-top',
+						duration: 2000
+					})
+				})
 			} else if (action === 'close') {
 				this.$store.commit('CLOSE_WINDOW', win.id)
 			}
@@ -365,115 +492,16 @@ export default {
 		},
 		restoreDefaultPins() {
 			this.closeCtxMenu()
-			this.unpinnedSystemIds = []
-			localStorage.removeItem('unpinned_system_dock')
-			this.$buefy.toast.open({ message: this.$t('Taskbar reset to default'), type: 'is-success' })
-		},
-		isAppRunning(app) {
-			return app.status === 'running' || this.isOpen(app.name)
-		},
-		async loadPinnedApps() {
-			const pins = await this.getDockPins()
-			if (!pins.length) {
-				this.pinnedApps = []
-				return
-			}
-			const [orgAppList, linkAppList, overrides] = await Promise.all([
-				this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || []),
-				this.getLinkAppList(),
-				this.getLegacyAppOverrides()
-			])
-			const all = orgAppList.concat(linkAppList)
-			this.pinnedApps = pins
-				.map(name => all.find(a => a.name === name))
-				.filter(Boolean)
-				.map(app => {
-					const override = overrides[app.name]
-					const icon = (override && override.icon) || app.icon || require('@/assets/img/app/default.svg')
-					const title = override && override.title ? { ...app.title, custom: override.title } : app.title
-					const overrideUrl = override && override.url
-					return { ...app, icon, title, overrideUrl }
+			this.$api.users.setCustomStorage('dock_pinned_apps', [...DEFAULT_PINS]).then(() => {
+				this.loadDockItems()
+				this.$EventBus.$emit(events.RELOAD_APP_LIST)
+				this.$buefy.toast.open({
+					message: this.$t('Taskbar reset to default'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000
 				})
-		},
-		displayName(app) {
-			return (app.title && ice_i18n(app.title)) || app.name
-		},
-		launchApp(app) {
-			if (app.app_type === 'container') {
-				if (app.overrideUrl) window.open(app.overrideUrl, '_blank')
-				return
-			}
-			if (app.app_type === 'LinkApp') {
-				window.open(app.hostname, '_blank')
-				return
-			}
-			if (app.status === 'running') {
-				this.openAppToNewWindow(app)
-				return
-			}
-			const request = app.app_type === 'v2app'
-				? this.$openAPI.appManagement.compose.setComposeAppStatus(app.name, 'start')
-				: this.$api.container.updateState(app.name, 'start')
-			request.then(() => this.firstOpenThirdApp(app))
-		},
-		findWindow(id) {
-			return this.windows.find(w => w.id === id)
-		},
-		isViewerWindow(win) {
-			return VIEWER_COMPONENTS.includes(win.component)
-		},
-		isVmWindow(win) {
-			return VM_ICON_COMPONENTS.includes(win.component)
-		},
-		isOpen(id) {
-			return !!this.findWindow(id)
-		},
-		isMinimized(id) {
-			const win = this.findWindow(id)
-			return !!(win && win.minimized)
-		},
-		isTopmost(win) {
-			return win.zIndex === Math.max(...this.windows.map(w => w.zIndex))
-		},
-		launch(p) {
-			const win = this.findWindow(p.id)
-			if (!win) {
-				this.open(p.id)
-				return
-			}
-			this.toggleWindow(win)
-		},
-		toggleWindow(win) {
-			if (win.minimized) {
-				this.$store.commit('FOCUS_WINDOW', win.id)
-			} else if (this.isTopmost(win)) {
-				this.$store.commit('TOGGLE_MINIMIZE_WINDOW', win.id)
-			} else {
-				this.$store.commit('FOCUS_WINDOW', win.id)
-			}
-		},
-		open(id) {
-			if (id === 'files') {
-				this.$store.commit('OPEN_WINDOW', {
-					id: 'files', title: this.$t('Files'), component: 'FilesApp', width: 960, height: 620
-				})
-			} else if (id === 'appstore') {
-				this.$store.commit('OPEN_WINDOW', {
-					id: 'appstore', title: this.$t('App Store'), component: 'AppStoreApp', width: 1040, height: 720
-				})
-			} else if (id === 'terminal') {
-				this.$store.commit('OPEN_WINDOW', {
-					id: 'terminal', title: this.$t('Terminal'), component: 'TerminalPanel', width: 720, height: 480
-				})
-			} else if (id === 'settings') {
-				this.$store.commit('OPEN_WINDOW', {
-					id: 'settings', title: this.$t('Settings'), component: 'SettingsApp', width: 760, height: 540
-				})
-			} else if (id === 'vms') {
-				this.$store.commit('OPEN_WINDOW', {
-					id: 'vms', title: this.$t('VMs'), component: 'VmManagerApp', width: 880, height: 560
-				})
-			}
+			})
 		}
 	}
 }
@@ -535,6 +563,7 @@ export default {
 	height: 3rem;
 	border-radius: 12px;
 	box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+	object-fit: cover;
 }
 
 .dock-icon-generic {

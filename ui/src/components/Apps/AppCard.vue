@@ -12,12 +12,21 @@
 				</template>
 
 				<b-dropdown-item v-if="isSystemApp" :focusable="false" aria-role="menu-item" custom>
-					<!-- System apps (Files/Settings/Terminal/App Store) only get
-					the Edit option (rename/icon/roundness) - no URL override,
-					no uninstall/restart, nothing that doesn't apply to a
-					built-in app. -->
 					<b-button expanded type="is-text" @click="closeMenuThen('editLegacyApp', item)">
+						<i class="mdi mdi-pencil-outline mr-2"></i>
 						{{ $t('Edit') }}
+					</b-button>
+					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
+						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
+						{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}
+					</b-button>
+					<b-button v-if="!folderId" expanded type="is-text" @click="closeMenuThen('addToFolder', item)">
+						<i class="mdi mdi-folder-plus-outline mr-2"></i>
+						{{ $t('Add to folder') }}
+					</b-button>
+					<b-button v-if="folderId" expanded type="is-text" @click="closeMenuThen('removeFromFolder', { item, folderId })">
+						<i class="mdi mdi-folder-remove-outline mr-2"></i>
+						{{ $t('Remove from folder') }}
 					</b-button>
 				</b-dropdown-item>
 
@@ -95,7 +104,8 @@
 					</div>
 
 					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
-						{{ isPinned ? $t('Unpin from dock') : $t('Pin to dock') }}
+						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
+						{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}
 					</b-button>
 
 					<b-button v-if="!folderId" expanded type="is-text" @click="closeMenuThen('addToFolder', item)">
@@ -258,9 +268,12 @@ export default {
 	},
 
 	created() {
-		this.getDockPins().then(pins => {
-			this.isPinned = pins.includes(this.item.name)
-		})
+		this.checkPinStatus()
+		this.$EventBus.$on(events.RELOAD_APP_LIST, this.checkPinStatus)
+	},
+
+	beforeDestroy() {
+		this.$EventBus.$off(events.RELOAD_APP_LIST, this.checkPinStatus)
 	},
 
 	watch: {
@@ -286,6 +299,13 @@ export default {
 	},
 
 	methods: {
+		checkPinStatus() {
+			this.getDockPins().then(pins => {
+				const name = this.item.name || this.item.label || this.item.id
+				this.isPinned = pins.includes(name) || pins.includes(this.item.name)
+			})
+		},
+
 		handleDorpdownPosition(event) {
 			this.$nextTick(() => {
 				const rightOffset = window.innerWidth - event.clientX - 160
@@ -301,6 +321,7 @@ export default {
 		// anywhere on the card open the same menu.
 		handleCardContextMenu(event) {
 			if (!this.$refs.dro) return
+			this.checkPinStatus()
 			this.handleDorpdownPosition(event)
 			this.$refs.dro.isActive = true
 		},
@@ -308,12 +329,17 @@ export default {
 		togglePin() {
 			const next = !this.isPinned
 			this.isPinned = next
-			this.setDockPinned(this.item.name, next).then(() => {
-				// Dock.vue lives in a different branch of the component
-				// tree and has no other way to know a pin changed.
+			const name = this.item.name || this.item.label || this.item.id
+			this.setDockPinned(name, next).then(() => {
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
+				this.$buefy.toast.open({
+					message: next ? this.$t('Pinned to taskbar') : this.$t('Removed from taskbar'),
+					type: 'is-info',
+					position: 'is-top',
+					duration: 2000
+				})
 			})
-			this.$refs.dro.isActive = false
+			if (this.$refs.dro) this.$refs.dro.isActive = false
 		},
 
 		// Menu items that open something else (a modal, another panel)
