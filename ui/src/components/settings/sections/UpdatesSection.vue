@@ -2,49 +2,46 @@
 	<section class="settings-section">
 		<h2 class="section-title">{{ $t('Updates & Maintenance') }}</h2>
 
-		<!-- ==================== NIVAROOS UPDATES ==================== -->
-		<h3 class="setting-card-title is-flex is-align-items-center">
-			<i class="mdi mdi-update mr-2 section-card-icon"></i>
-			{{ $t('NivaroOS System Update') }}
-		</h3>
-
-		<div class="setting-card update-studio-card">
-			<!-- Version Status Banner -->
-			<div class="update-header-box is-flex is-align-items-center is-justify-content-between">
-				<div class="is-flex is-align-items-center">
-					<div class="status-icon-box" :class="{ 'is-update-available': hasNivaroUpdate, 'is-up-to-date': !hasNivaroUpdate }">
-						<i :class="hasNivaroUpdate ? 'mdi mdi-cloud-download' : 'mdi mdi-check-circle'"></i>
+		<!-- ==================== 1. NIVAROOS SYSTEM UPDATE ==================== -->
+		<h3 class="setting-card-title">{{ $t('NivaroOS System Update') }}</h3>
+		<div class="setting-card">
+			<!-- Main Status Row -->
+			<div class="setting-row update-hero-row">
+				<div class="update-hero-icon" :class="{ 'is-update-available': hasNivaroUpdate, 'is-up-to-date': !hasNivaroUpdate }">
+					<i :class="hasNivaroUpdate ? 'mdi mdi-cloud-download' : 'mdi mdi-check-circle'"></i>
+				</div>
+				<div class="row-label">
+					<div class="update-hero-title">
+						{{ hasNivaroUpdate ? $t('New NivaroOS update available') : $t('NivaroOS is up to date') }}
 					</div>
-					<div class="ml-3">
-						<div class="version-status-title">
-							{{ hasNivaroUpdate ? $t('New NivaroOS update available') : $t('NivaroOS is up to date') }}
-						</div>
-						<div class="version-status-sub">
-							<span>{{ $t('Installed') }}: <strong>{{ currentVersion || 'v0.4.5' }}</strong></span>
-							<span class="mx-2">&middot;</span>
-							<span>{{ $t('Latest') }}: <strong>{{ latestGithubVersion || latestVersion || currentVersion || 'v0.4.5' }}</strong></span>
-						</div>
+					<div class="update-hero-meta">
+						<span>{{ $t('Installed') }}: <strong>{{ currentVersion || 'v0.4.5' }}</strong></span>
+						<span class="mx-2">&middot;</span>
+						<span>{{ $t('Latest') }}: <strong>{{ latestGithubVersion || latestVersion || currentVersion || 'v0.4.5' }}</strong></span>
+						<span class="mx-2">&middot;</span>
+						<span class="text-muted">{{ $t('Checked') }}: {{ lastNivaroCheckTime || $t('Just now') }}</span>
 					</div>
 				</div>
-
-				<div class="is-flex is-align-items-center gap-2">
-					<b-button rounded size="is-small" :loading="checkingNivaro" :disabled="checkingNivaro || nivaroUpdating" @click="checkNivaroUpdates">
-						<i class="mdi mdi-refresh mr-1"></i>
-						{{ $t('Check for updates') }}
-					</b-button>
-					<b-button v-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
-						<i class="mdi mdi-download mr-1"></i>
-						{{ $t('Update NivaroOS') }}
-					</b-button>
-					<span v-else class="tag is-success is-light is-rounded">
-						<i class="mdi mdi-check mr-1"></i>
-						{{ $t('Up to date') }}
-					</span>
+				<div class="row-control">
+					<div class="buttons are-small mb-0">
+						<b-button rounded size="is-small" :loading="checkingNivaro" :disabled="checkingNivaro || nivaroUpdating" @click="checkNivaroUpdates">
+							<i class="mdi mdi-refresh mr-1"></i>
+							{{ $t('Check for updates') }}
+						</b-button>
+						<b-button v-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
+							<i class="mdi mdi-download mr-1"></i>
+							{{ $t('Update NivaroOS') }}
+						</b-button>
+						<span v-else class="tag is-success is-light is-rounded">
+							<i class="mdi mdi-check mr-1"></i>
+							{{ $t('Up to date') }}
+						</span>
+					</div>
 				</div>
 			</div>
 
-			<!-- GitHub Master Commit Details -->
-			<div v-if="latestCommit" class="github-commit-info mt-3">
+			<!-- GitHub Master Commit Details (if available) -->
+			<div v-if="latestCommit" class="update-inset-box">
 				<div class="is-flex is-align-items-center is-justify-content-between mb-1">
 					<span class="commit-label is-flex is-align-items-center">
 						<i class="mdi mdi-github mr-1"></i>
@@ -56,7 +53,7 @@
 			</div>
 
 			<!-- Release Notes Accordion -->
-			<div v-if="githubReleaseNotes" class="release-notes-box mt-3">
+			<div v-if="githubReleaseNotes" class="update-inset-box mt-0">
 				<div class="release-notes-head is-flex is-align-items-center is-justify-content-between" @click="showChangelog = !showChangelog">
 					<span class="font-semibold is-size-7">{{ $t('Release Highlights & Changelog') }}</span>
 					<i :class="showChangelog ? 'mdi mdi-chevron-up' : 'mdi mdi-chevron-down'"></i>
@@ -66,112 +63,124 @@
 				</div>
 			</div>
 
-			<div class="is-flex is-align-items-center is-justify-content-between pt-3 mt-3 border-t">
-				<a href="https://github.com/F-e-n-y-x/NivaroOS/releases" target="_blank" rel="noopener noreferrer" class="github-link is-flex is-align-items-center">
-					<i class="mdi mdi-open-in-new mr-1"></i>
-					{{ $t('View releases on GitHub') }}
-				</a>
-				<span class="text-muted is-size-7">{{ $t('Last checked') }}: {{ lastNivaroCheckTime || $t('Just now') }}</span>
+			<!-- Footer Row: GitHub link -->
+			<div class="setting-row sub-row">
+				<div class="row-label">
+					<a href="https://github.com/F-e-n-y-x/NivaroOS/releases" target="_blank" rel="noopener noreferrer" class="github-link is-flex is-align-items-center">
+						<i class="mdi mdi-open-in-new mr-1"></i>
+						{{ $t('View releases and changelog on GitHub') }}
+					</a>
+				</div>
 			</div>
 		</div>
 
-		<!-- ==================== LINUX SYSTEM PACKAGES (APT) ==================== -->
-		<h3 class="setting-card-title is-flex is-align-items-center mt-4">
-			<i class="mdi mdi-package-variant mr-2 section-card-icon"></i>
-			{{ $t('Linux System Packages (APT)') }}
-		</h3>
-
-		<div class="setting-card update-studio-card">
-			<!-- Package Status Header -->
-			<div class="update-header-box is-flex is-align-items-center is-justify-content-between">
-				<div class="is-flex is-align-items-center">
-					<div class="status-icon-box" :class="{ 'is-update-available': pkgCount > 0, 'is-up-to-date': pkgCount === 0 }">
-						<i :class="pkgCount > 0 ? 'mdi mdi-package-down' : 'mdi mdi-check-circle'"></i>
+		<!-- ==================== 2. LINUX SYSTEM PACKAGES (APT) ==================== -->
+		<h3 class="setting-card-title">{{ $t('Linux System Packages (APT)') }}</h3>
+		<div class="setting-card">
+			<!-- Main Status Row -->
+			<div class="setting-row update-hero-row">
+				<div class="update-hero-icon" :class="{ 'is-update-available': pkgCount > 0, 'is-up-to-date': pkgCount === 0 }">
+					<i :class="pkgCount > 0 ? 'mdi mdi-package-down' : 'mdi mdi-check-circle'"></i>
+				</div>
+				<div class="row-label">
+					<div class="update-hero-title">
+						{{ pkgCount > 0 ? `${pkgCount} ${$t('package updates available')}` : $t('All system packages are up to date') }}
 					</div>
-					<div class="ml-3">
-						<div class="version-status-title">
-							{{ pkgCount > 0 ? `${pkgCount} ${$t('package updates available')}` : $t('All system packages are up to date') }}
-						</div>
-						<div class="version-status-sub">
-							<span v-if="securityCount > 0" class="has-text-danger font-semibold">
-								<i class="mdi mdi-shield-alert mr-1"></i>
-								{{ securityCount }} {{ $t('security updates') }}
-							</span>
-							<span v-else>{{ $t('Debian / Linux base system packages') }}</span>
-							<span class="mx-2">&middot;</span>
-							<span>{{ $t('Last checked') }}: {{ lastAptCheckTime || $t('Just now') }}</span>
-						</div>
+					<div class="update-hero-meta">
+						<span v-if="securityCount > 0" class="has-text-danger font-semibold">
+							<i class="mdi mdi-shield-alert mr-1"></i>
+							{{ securityCount }} {{ $t('security updates') }}
+						</span>
+						<span v-else>{{ $t('Debian / Linux base system packages') }}</span>
+						<span class="mx-2">&middot;</span>
+						<span class="text-muted">{{ $t('Checked') }}: {{ lastAptCheckTime || $t('Just now') }}</span>
 					</div>
 				</div>
-
-				<div class="is-flex is-align-items-center gap-2">
-					<b-button rounded size="is-small" :loading="checkingApt" :disabled="checkingApt || aptUpgrading" @click="refreshAptPackages">
-						<i class="mdi mdi-refresh mr-1"></i>
-						{{ $t('Check for OS updates') }}
-					</b-button>
-					<b-button v-if="pkgCount > 0" rounded size="is-small" type="is-primary" :loading="aptUpgrading" @click="openSystemUpgradeWindow">
-						<i class="mdi mdi-arrow-up-bold-circle mr-1"></i>
-						{{ $t('Upgrade All Packages') }} ({{ pkgCount }})
-					</b-button>
-					<span v-else class="tag is-success is-light is-rounded">
-						<i class="mdi mdi-check mr-1"></i>
-						{{ $t('Up to date') }}
-					</span>
+				<div class="row-control">
+					<div class="buttons are-small mb-0">
+						<b-button rounded size="is-small" :loading="checkingApt" :disabled="checkingApt || aptUpgrading" @click="refreshAptPackages">
+							<i class="mdi mdi-refresh mr-1"></i>
+							{{ $t('Check for OS updates') }}
+						</b-button>
+						<b-button v-if="pkgCount > 0" rounded size="is-small" type="is-primary" :loading="aptUpgrading" @click="openSystemUpgradeWindow">
+							<i class="mdi mdi-arrow-up-bold-circle mr-1"></i>
+							{{ $t('Upgrade All Packages') }} ({{ pkgCount }})
+						</b-button>
+						<span v-else class="tag is-success is-light is-rounded">
+							<i class="mdi mdi-check mr-1"></i>
+							{{ $t('Up to date') }}
+						</span>
+					</div>
 				</div>
 			</div>
 
-			<!-- Search / Filter bar if packages exist -->
-			<div v-if="pkgCount > 0" class="is-flex is-align-items-center is-justify-content-between mt-3 mb-2">
-				<b-input v-model="pkgSearch" size="is-small" icon="magnify" icon-pack="mdi" :placeholder="$t('Filter packages...')" class="pkg-search-input"></b-input>
-				<span class="text-muted is-size-7">{{ filteredPackages.length }} / {{ pkgCount }} {{ $t('packages') }}</span>
+			<!-- Search & Filter bar (if packages exist) -->
+			<div v-if="pkgCount > 0" class="setting-row filter-row">
+				<div class="row-label">
+					<b-input v-model="pkgSearch" size="is-small" icon="magnify" icon-pack="mdi" :placeholder="$t('Filter packages...')" class="pkg-search-input"></b-input>
+				</div>
+				<div class="row-control">
+					<span class="text-muted is-size-7">{{ filteredPackages.length }} / {{ pkgCount }} {{ $t('packages') }}</span>
+				</div>
 			</div>
 
-			<!-- Upgradable Packages List -->
-			<div v-if="filteredPackages.length > 0" class="package-list-box mt-2">
-				<div v-for="pkg in filteredPackages" :key="pkg.name" class="package-item is-flex is-align-items-center is-justify-content-between">
-					<div class="package-main">
-						<div class="package-name is-flex is-align-items-center">
+			<!-- Upgradable Package List Rows -->
+			<div v-if="filteredPackages.length > 0" class="package-list-wrapper">
+				<div v-for="pkg in filteredPackages" :key="pkg.name" class="setting-row package-item-row">
+					<div class="row-label">
+						<div class="package-name-line is-flex is-align-items-center">
 							<span class="font-semibold">{{ pkg.name }}</span>
 							<span v-if="pkg.is_security" class="tag is-danger is-light is-rounded ml-2 is-size-7">
 								<i class="mdi mdi-shield mr-1"></i>{{ $t('Security') }}
 							</span>
-							<span class="tag is-light is-rounded ml-2 is-size-7">{{ pkg.arch }}</span>
+							<span class="setting-chip ml-2">{{ pkg.arch }}</span>
+							<span v-if="pkg.suite" class="suite-tag ml-2">{{ pkg.suite }}</span>
 						</div>
-						<div class="package-version-diff">
+					</div>
+					<div class="row-control">
+						<div class="package-version-badge">
 							<span class="ver-curr">{{ pkg.current_version }}</span>
 							<i class="mdi mdi-arrow-right mx-1 ver-arrow"></i>
 							<span class="ver-new">{{ pkg.new_version }}</span>
-							<span v-if="pkg.suite" class="suite-tag ml-2">{{ pkg.suite }}</span>
 						</div>
 					</div>
 				</div>
 			</div>
-
-			<!-- Empty State when 0 packages -->
-			<div v-else-if="pkgCount === 0" class="has-text-centered py-4">
-				<i class="mdi mdi-check-all has-text-success is-size-3"></i>
-				<p class="text-muted is-size-7 mt-1">{{ $t('Your Linux OS packages are completely up to date.') }}</p>
-			</div>
 		</div>
 
-		<!-- ==================== UPGRADE TERMINAL / STATUS (IF RUNNING) ==================== -->
-		<div v-if="aptUpgradeLogs.length > 0 || aptUpgrading" class="mt-4">
-			<h3 class="setting-card-title is-flex is-align-items-center is-justify-content-between">
-				<span class="is-flex is-align-items-center">
-					<i class="mdi mdi-console-line mr-2 section-card-icon"></i>
-					{{ $t('Live Upgrade Progress') }}
-				</span>
-				<span v-if="aptUpgrading" class="tag is-info is-light is-rounded">
-					<i class="mdi mdi-loading mdi-spin mr-1"></i>{{ $t('Upgrading...') }}
-				</span>
-				<span v-else-if="aptExitCode === 0" class="tag is-success is-light is-rounded">
-					<i class="mdi mdi-check mr-1"></i>{{ $t('Finished') }}
-				</span>
-			</h3>
+		<!-- ==================== 3. LIVE UPGRADE PROGRESS (IF RUNNING OR LOGS EXIST) ==================== -->
+		<template v-if="aptUpgradeLogs.length > 0 || aptUpgrading">
+			<h3 class="setting-card-title">{{ $t('Live Upgrade Progress') }}</h3>
 			<div class="setting-card">
+				<div class="setting-row">
+					<div class="row-label is-flex is-align-items-center">
+						<span class="font-semibold">{{ $t('Terminal Console Output') }}</span>
+						<span v-if="aptUpgrading" class="tag is-info is-light is-rounded ml-2">
+							<i class="mdi mdi-loading mdi-spin mr-1"></i>{{ $t('Running...') }}
+						</span>
+						<span v-else-if="aptExitCode === 0" class="tag is-success is-light is-rounded ml-2">
+							<i class="mdi mdi-check mr-1"></i>{{ $t('Finished') }}
+						</span>
+						<span v-else class="tag is-danger is-light is-rounded ml-2">
+							<i class="mdi mdi-alert-circle mr-1"></i>{{ $t('Error') }}
+						</span>
+					</div>
+					<div class="row-control">
+						<div class="buttons are-small mb-0">
+							<b-button rounded size="is-small" @click="openSystemUpgradeWindow">
+								<i class="mdi mdi-open-in-new mr-1"></i>
+								{{ $t('Open Window') }}
+							</b-button>
+							<b-button rounded size="is-small" @click="copyLogs">
+								<i class="mdi mdi-content-copy mr-1"></i>
+								{{ $t('Copy') }}
+							</b-button>
+						</div>
+					</div>
+				</div>
 				<pre ref="logConsole" class="terminal-log-view">{{ aptUpgradeLogs.join('\n') }}</pre>
 			</div>
-		</div>
+		</template>
 	</section>
 </template>
 
@@ -369,38 +378,35 @@ export default {
 					clearInterval(this.pollTimer)
 				})
 			}, 1500)
+		},
+		copyLogs() {
+			navigator.clipboard.writeText(this.aptUpgradeLogs.join('\n')).then(() => {
+				this.$buefy.toast.open({
+					message: this.$t('Logs copied to clipboard'),
+					type: 'is-success',
+					duration: 2000
+				})
+			})
 		}
 	}
 }
 </script>
 
 <style lang="scss" scoped>
-.section-card-icon {
-	font-size: 1.25rem;
-	color: #3b82f6;
+.update-hero-row {
+	padding: 1.15rem 1.25rem;
 }
 
-.update-studio-card {
-	padding: 1.25rem;
-	margin-bottom: 1.25rem;
-}
-
-.update-header-box {
-	background: rgba(0, 0, 0, 0.02);
-	border: 1px solid rgba(0, 0, 0, 0.06);
-	border-radius: 12px;
-	padding: 1rem;
-}
-
-.status-icon-box {
-	width: 44px;
-	height: 44px;
+.update-hero-icon {
+	width: 42px;
+	height: 42px;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 1.5rem;
+	font-size: 1.4rem;
 	flex-shrink: 0;
+	margin-right: 1rem;
 
 	&.is-up-to-date {
 		background: rgba(16, 185, 129, 0.12);
@@ -413,19 +419,21 @@ export default {
 	}
 }
 
-.version-status-title {
+.update-hero-title {
 	font-size: 0.95rem;
 	font-weight: 700;
-	color: #1f2937;
+	color: #1e293b;
+	line-height: 1.25;
 }
 
-.version-status-sub {
-	font-size: 0.8125rem;
-	color: #6b7280;
-	margin-top: 0.15rem;
+.update-hero-meta {
+	font-size: 0.8rem;
+	color: #64748b;
+	margin-top: 0.2rem;
 }
 
-.github-commit-info {
+.update-inset-box {
+	margin: 0 1.25rem 0.85rem;
 	background: #f8fafc;
 	border: 1px solid #e2e8f0;
 	border-radius: 8px;
@@ -451,40 +459,32 @@ export default {
 	}
 }
 
-.release-notes-box {
-	border: 1px solid #e2e8f0;
-	border-radius: 8px;
-	overflow: hidden;
-
-	.release-notes-head {
-		background: #f1f5f9;
-		padding: 0.5rem 0.85rem;
-		cursor: pointer;
-		user-select: none;
-	}
-
-	.release-notes-body {
-		padding: 0.75rem;
-		background: #ffffff;
-		max-height: 10rem;
-		overflow-y: auto;
-	}
-
-	.notes-pre {
-		font-size: 0.75rem;
-		white-space: pre-wrap;
-		word-break: break-word;
-		background: transparent;
-		padding: 0;
-	}
+.release-notes-head {
+	cursor: pointer;
+	user-select: none;
 }
 
-.border-t {
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
+.release-notes-body {
+	padding-top: 0.5rem;
+	max-height: 10rem;
+	overflow-y: auto;
+}
+
+.notes-pre {
+	font-size: 0.75rem;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: transparent;
+	padding: 0;
+}
+
+.sub-row {
+	background: rgba(0, 0, 0, 0.015);
+	padding: 0.75rem 1.25rem;
 }
 
 .github-link {
-	font-size: 0.8125rem;
+	font-size: 0.8rem;
 	font-weight: 600;
 	color: #2563eb;
 
@@ -493,40 +493,42 @@ export default {
 	}
 }
 
+.filter-row {
+	background: #f8fafc;
+	padding: 0.65rem 1.25rem;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
 .pkg-search-input {
 	width: 14rem;
 }
 
-.package-list-box {
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 8px;
-	max-height: 16rem;
+.package-list-wrapper {
+	max-height: 18rem;
 	overflow-y: auto;
-	background: #fff;
 }
 
-.package-item {
-	padding: 0.65rem 0.9rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-
-	&:last-child {
-		border-bottom: none;
-	}
+.package-item-row {
+	padding: 0.75rem 1.25rem;
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.015);
 	}
 }
 
-.package-name {
+.package-name-line {
 	font-size: 0.85rem;
 	color: #1e293b;
 }
 
-.package-version-diff {
-	font-size: 0.75rem;
-	color: #64748b;
-	margin-top: 0.15rem;
+.suite-tag {
+	color: #94a3b8;
+	font-size: 0.7rem;
+}
+
+.package-version-badge {
+	font-size: 0.78rem;
+	font-family: 'Consolas', 'Monaco', monospace;
 
 	.ver-curr {
 		color: #94a3b8;
@@ -541,20 +543,15 @@ export default {
 		color: #10b981;
 		font-weight: 600;
 	}
-
-	.suite-tag {
-		color: #94a3b8;
-		font-size: 0.7rem;
-	}
 }
 
 .terminal-log-view {
-	margin: 0;
-	max-height: 16rem;
+	margin: 0 1.25rem 1.25rem;
+	max-height: 14rem;
 	overflow: auto;
 	background: #1e1e1e;
 	color: #ffffff;
-	border-radius: 12px;
+	border-radius: 8px;
 	padding: 0.85rem 1rem;
 	font-family: 'Consolas', 'Monaco', monospace;
 	font-size: 13px;
