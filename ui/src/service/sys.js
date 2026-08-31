@@ -160,5 +160,19 @@ const sys = {
 	setSmbUserPassword(username, password) {
 		return api.put(`${PREFIX}/smb-users/${username}/password`, { password });
 	},
+
+	// Linux System (APT) Package Updates
+	getPackageUpdates() {
+		return api.get(`${PREFIX}/packages/check`);
+	},
+	refreshPackageUpdates() {
+		return api.post(`${PREFIX}/packages/refresh`);
+	},
+	upgradePackages() {
+		return api.post(`${PREFIX}/packages/upgrade`);
+	},
+	getPackageUpgradeStatus() {
+		return api.get(`${PREFIX}/packages/upgrade/status`);
+	},
 }
 export default sys;

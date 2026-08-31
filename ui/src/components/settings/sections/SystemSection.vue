@@ -2,6 +2,7 @@
 	<section class="settings-section">
 		<h2 class="section-title">{{ $t('System') }}</h2>
 
+		<h3 class="setting-card-title">{{ $t('General') }}</h3>
 		<div class="setting-card">
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="language-outline" pack="casa" size="is-20"></b-icon>

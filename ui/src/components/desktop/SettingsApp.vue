@@ -7,6 +7,7 @@
 
 			<div ref="content" class="settings-content" :class="{ 'is-narrow': narrow }">
 				<system-section v-if="activeSection === 'system'"></system-section>
+				<updates-section v-else-if="activeSection === 'updates'"></updates-section>
 				<network-section v-else-if="activeSection === 'network'"></network-section>
 				<storage-section v-else-if="activeSection === 'storage'"></storage-section>
 				<appearance-section v-else-if="activeSection === 'appearance'"></appearance-section>
@@ -24,10 +25,12 @@ import UsersSection, { ROWS as USERS_ROWS } from '@/components/settings/sections
 import NetworkSection, { ROWS as NETWORK_ROWS } from '@/components/settings/sections/NetworkSection.vue'
 import StorageSection, { ROWS as STORAGE_ROWS } from '@/components/settings/sections/StorageSection.vue'
 import SystemSection, { ROWS as SYSTEM_ROWS } from '@/components/settings/sections/SystemSection.vue'
+import UpdatesSection, { ROWS as UPDATES_ROWS } from '@/components/settings/sections/UpdatesSection.vue'
 import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
 	{ id: 'system', label: 'System', icon: 'system-outline', rows: SYSTEM_ROWS },
+	{ id: 'updates', label: 'Updates', icon: 'update', pack: 'mdi', rows: UPDATES_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', rows: STORAGE_ROWS },
 	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', rows: APPEARANCE_ROWS },
@@ -43,7 +46,8 @@ export default {
 		UsersSection,
 		NetworkSection,
 		StorageSection,
-		SystemSection
+		SystemSection,
+		UpdatesSection
 	},
 	props: {
 		section: {

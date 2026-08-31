@@ -3,7 +3,7 @@
 	:id="'window-' + win.id"
 	:style="windowStyle"
 	class="desktop-window"
-	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow', 'window-minimized': win.minimized }"
+	:class="{ 'window-dark': isDarkWindow, 'window-opaque': win.component === 'FilesApp' || win.component === 'FolderWindow' || win.component === 'SystemUpdateWindow', 'window-minimized': win.minimized }"
 	@mousedown="focus"
 	@drop.stop
 >
@@ -52,6 +52,7 @@ import VmConsolePanel from './vm/VmConsolePanel.vue'
 import CreateVmModal from './vm/CreateVmModal.vue'
 import EditVmModal from './vm/EditVmModal.vue'
 import FolderWindow from './FolderWindow.vue'
+import SystemUpdateWindow from './SystemUpdateWindow.vue'
 
 const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -69,7 +70,8 @@ const COMPONENT_REGISTRY = {
 	DocViewer,
 	ExcelViewer,
 	PdfViewer,
-	FolderWindow
+	FolderWindow,
+	SystemUpdateWindow
 }
 
 const MIN_WIDTH = 360

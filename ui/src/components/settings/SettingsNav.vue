@@ -3,7 +3,7 @@
 		<button v-for="s in sections" :key="s.id" class="nav-item hover-effect _is-radius"
 			:class="{ active: activeSection === s.id }" :title="compact ? $t(s.label) : null"
 			@click="$emit('select', s.id)">
-			<b-icon :icon="s.icon" pack="casa" size="is-20"></b-icon>
+			<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-20"></b-icon>
 			<span v-if="!compact" class="nav-label">{{ $t(s.label) }}</span>
 		</button>
 	</aside>

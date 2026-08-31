@@ -16,7 +16,7 @@
 		</div>
 		<div v-if="results.length" class="search-results">
 			<button v-for="r in results" :key="r.sectionId + r.label" class="search-result" @click="jump(r)">
-				<b-icon class="result-icon" :icon="r.sectionIcon" pack="casa" size="is-20"></b-icon>
+				<b-icon class="result-icon" :icon="r.sectionIcon" :pack="r.sectionPack || 'casa'" size="is-20"></b-icon>
 				<span class="result-label">{{ $t(r.label) }}</span>
 				<span class="result-section">{{ $t(r.sectionLabel) }}</span>
 			</button>

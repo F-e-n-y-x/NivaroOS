@@ -19,7 +19,7 @@
 			<img v-else-if="win.component === 'FilesApp'" :src="filesIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'FolderWindow'" :src="filesIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="win.component === 'AppStoreApp'" :src="appStoreIcon" class="dock-icon" :alt="win.title" />
-			<img v-else-if="win.component === 'TerminalPanel'" :src="terminalIcon" class="dock-icon" :alt="win.title" />
+			<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="terminalIcon" class="dock-icon" :alt="win.title" />
 			<img v-else-if="isVmWindow(win)" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 			<div v-else class="dock-icon dock-icon-generic">
 				<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
