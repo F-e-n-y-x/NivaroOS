@@ -112,9 +112,14 @@
 						<span class="ctx-label">{{ $t('Edit Settings') }}</span>
 					</button>
 
-					<button v-if="ctxMenu.target.data.app_type !== 'LinkApp' && ctxMenu.target.data.app_type !== 'container'" class="ctx-item" @click="handleItemAction('restart')">
+					<button v-if="ctxMenu.target.data.app_type !== 'LinkApp'" class="ctx-item" @click="handleItemAction('restart')">
 						<i class="mdi mdi-restart ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Restart App') }}</span>
+					</button>
+
+					<button v-if="ctxMenu.target.data.app_type === 'container'" class="ctx-item" @click="handleItemAction('toggleContainer')">
+						<i :class="ctxMenu.target.data.status === 'running' ? 'mdi mdi-stop-circle-outline' : 'mdi mdi-play-circle-outline'" class="ctx-icon"></i>
+						<span class="ctx-label">{{ ctxMenu.target.data.status === 'running' ? $t('Stop Container') : $t('Start Container') }}</span>
 					</button>
 
 					<div class="ctx-divider"></div>
@@ -456,6 +461,25 @@ export default {
 						type: 'is-info',
 						position: 'is-top',
 						duration: 2000
+					})
+				})
+			} else if (action === 'toggleContainer') {
+				const newState = item.status === 'running' ? 'stop' : 'start'
+				this.$api.container.updateState(item.name, newState).then(() => {
+					item.status = newState === 'stop' ? 'exited' : 'running'
+					this.$buefy.toast.open({
+						message: newState === 'stop' ? this.$t('Container stopped') : this.$t('Container started'),
+						type: 'is-info',
+						position: 'is-top',
+						duration: 2000
+					})
+					this.$EventBus.$emit(events.UPDATE_SYNC_STATUS)
+				}).catch((err) => {
+					this.$buefy.toast.open({
+						message: err?.response?.data?.message || this.$t('Failed to change container state'),
+						type: 'is-danger',
+						position: 'is-top',
+						duration: 3000
 					})
 				})
 			} else if (action === 'unpin') {

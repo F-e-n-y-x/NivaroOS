@@ -78,7 +78,7 @@ func InitV1Router() http.Handler {
 
 			v1ContainerGroup.PUT("/:id", v1.UpdateSetting) ///update/:id/setting
 
-			// v1ContainerGroup.PUT("/:id/state", v1.ChangAppState) // /app/state/:id
+			v1ContainerGroup.PUT("/:id/state", v1.ChangAppState) // /app/state/:id - start/stop/restart
 			v1ContainerGroup.DELETE("/:id", v1.UninstallApp) // app/uninstall/:id
 
 			// v1ContainerGroup.GET("/info", v1.GetDockerDaemonConfiguration)

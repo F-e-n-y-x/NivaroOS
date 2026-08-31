@@ -95,23 +95,26 @@
 						</b-loading>
 					</b-button>
 
-					<div v-if="!isLinkApp && !isContainerApp" class="gap">
-						<div class="columns is-gapless _b-bor is-flex">
-							<div class="column is-flex is-justify-content-center is-align-items-center">
-								<b-button :loading="isRestarting" expanded type="is-text" @click="restartApp"
-									:disabled="item.status != 'running'">
-									<b-icon custom-size="is-size-20px" icon="restart-outline" pack="casa"></b-icon>
-								</b-button>
-							</div>
-							<div class="column is-flex is-justify-content-center is-align-items-center">
-								<b-button :class="item.status" :loading="isStarting" class="has-text-red" expanded
-									type="is-text" @click="toggle(item)">
-									<b-icon custom-size="is-size-20px" icon="shutdown-outline" pack="casa"
-										:custom-class="shutDownClass"></b-icon>
-								</b-button>
-							</div>
+					<!-- Start / Stop / Restart — v1, v2 and external container apps -->
+				<div v-if="!isLinkApp" class="gap">
+					<div class="columns is-gapless _b-bor is-flex">
+						<div class="column is-flex is-justify-content-center is-align-items-center">
+							<b-button :loading="isRestarting" expanded type="is-text" @click="restartApp"
+								:disabled="item.status != 'running'"
+								:title="$t('Restart')">
+								<b-icon custom-size="is-size-20px" icon="restart-outline" pack="casa"></b-icon>
+							</b-button>
+						</div>
+						<div class="column is-flex is-justify-content-center is-align-items-center">
+							<b-button :class="item.status" :loading="isStarting" class="has-text-red" expanded
+								type="is-text" @click="toggle(item)"
+								:title="item.status === 'running' ? $t('Stop') : $t('Start')">
+								<b-icon custom-size="is-size-20px" icon="shutdown-outline" pack="casa"
+									:custom-class="shutDownClass"></b-icon>
+							</b-button>
 						</div>
 					</div>
+				</div>
 
 					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
 						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
@@ -460,7 +463,7 @@ export default {
 			this.isRestarting = true
 			if (this.isV2App) {
 				this.restartAppV2();
-			} else if (this.isV1App) {
+			} else if (this.isV1App || this.isContainerApp) {
 				this.restartAppV1();
 			}
 			this.$refs.dro.isActive = false;
@@ -623,7 +626,7 @@ export default {
 			const status = item.status === "running" ? "stop" : "start"
 			if (this.isV2App) {
 				this.toggleAppV2(item, status);
-			} else if (this.isV1App) {
+			} else if (this.isV1App || this.isContainerApp) {
 				this.toggleAppV1(item, status);
 			}
 			this.$refs.dro.isActive = false
