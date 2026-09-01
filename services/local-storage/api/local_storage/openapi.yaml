@@ -7,7 +7,7 @@ info:
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_dark_night_800px.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-        <img alt="NivaroOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
+        <img alt="CasaOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
     </picture>
 
     NivaroOS Local Storage service manages local storage including disks, partitions and mounting points.
@@ -452,7 +452,7 @@ components:
           example: "/DATA"
         source_base_path:
           type: string
-          example: "/var/lib/casaos/files"
+          example: "/var/lib/nivaroos/files"
         source_volume_uuids:
           type: array
           items:

@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: recasa-cli
+project_name: nivaroos-cli
 before:
   hooks:
     - go generate
@@ -8,7 +8,7 @@ before:
     - go mod tidy
     - go test -race -v ./...
 builds:
-  - id: casaos-cli-amd64
+  - id: nivaroos-cli-amd64
     binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
@@ -29,7 +29,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-cli-arm64
+  - id: nivaroos-cli-arm64
     binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
@@ -50,7 +50,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-cli-arm-7
+  - id: nivaroos-cli-arm-7
     binary: build/sysroot/usr/bin/nivaroos-cli
     hooks:
       post:
@@ -76,11 +76,11 @@ builds:
 archives:
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
-    id: casaos-cli
+    id: nivaroos-cli
     builds:
-      - casaos-cli-amd64
-      - casaos-cli-arm64
-      - casaos-cli-arm-7
+      - nivaroos-cli-amd64
+      - nivaroos-cli-arm64
+      - nivaroos-cli-arm-7
     files:
       - build/**/*
 checksum:
@@ -96,7 +96,7 @@ changelog:
 release:
   github:
     owner: F-e-n-y-x
-    name: recasa
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

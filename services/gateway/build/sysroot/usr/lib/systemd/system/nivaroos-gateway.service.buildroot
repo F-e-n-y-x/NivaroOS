@@ -3,9 +3,9 @@ After=network.target
 Description=NivaroOS Gateway
 
 [Service]
-ExecStartPre=/usr/bin/casaos-gateway -v
-ExecStart=/usr/bin/casaos-gateway -w /usr/share/casaos/www
-PIDFile=/var/run/casaos/gateway.pid
+ExecStartPre=/usr/bin/nivaroos-gateway -v
+ExecStart=/usr/bin/nivaroos-gateway -w /usr/share/nivaroos/www
+PIDFile=/var/run/nivaroos/gateway.pid
 Restart=always
 Type=notify
 

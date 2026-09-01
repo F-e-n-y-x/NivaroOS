@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  title: Casaos User Service API
+  title: NivaroOS User Service API
   version: v2
   description: |
     <picture>
@@ -9,12 +9,12 @@ info:
          <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
          <img alt="CasaOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
      </picture>
-     This is the API for the Casaos User Service.
-     It is used to manage users and their access to Casaos services.
+     This is the API for the NivaroOS User Service.
+     It is used to manage users and their access to NivaroOS services.
 
 servers:
   - url: /v2/users
-    description: Casaos User Service API
+    description: NivaroOS User Service API
 
 tags:
   - name: event
@@ -197,13 +197,13 @@ components:
               value: Cruzer
             - name: local-storage:uuid
               value: 442e0e5b-9d3e-4fe8-b46f-9c4141fdecd7
-            - name: casaos-ui:type
+            - name: nivaroos-ui:type
               value: notification-style-2
-            - name: casaos-ui:title
+            - name: nivaroos-ui:title
               value: "New disk found"
-            - name: casaos-ui:icon-1
+            - name: nivaroos-ui:icon-1
               value: casaos-icon-disk
-            - name: casaos-ui:message-1
+            - name: nivaroos-ui:message-1
               value: "A new disk, SanDisk Cruzer, is added."
         timestamp:
           type: string

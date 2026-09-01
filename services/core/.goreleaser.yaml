@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: recasa
+project_name: nivaroos
 before:
   hooks:
     - go generate
@@ -9,7 +9,7 @@ before:
     - go test -race -v ./...
 
 builds:
-  - id: casaos-amd64
+  - id: nivaroos-amd64
     binary: build/sysroot/usr/bin/nivaroos
     hooks:
       post:
@@ -36,7 +36,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-arm64
+  - id: nivaroos-arm64
     binary: build/sysroot/usr/bin/nivaroos
     # hooks:
     #   post:
@@ -63,7 +63,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-arm-7
+  - id: nivaroos-arm-7
     binary: build/sysroot/usr/bin/nivaroos
     hooks:
       post:
@@ -92,7 +92,7 @@ builds:
       - arm
     goarm:
       - "7"
-  - id: casaos-migration-tool-amd64
+  - id: nivaroos-migration-tool-amd64
     binary: build/sysroot/usr/bin/nivaroos-migration-tool
     hooks:
       post:
@@ -114,7 +114,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-migration-tool-arm64
+  - id: nivaroos-migration-tool-arm64
     binary: build/sysroot/usr/bin/nivaroos-migration-tool
     # hooks:
     #   post:
@@ -136,7 +136,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-migration-tool-arm-7
+  - id: nivaroos-migration-tool-arm-7
     binary: build/sysroot/usr/bin/nivaroos-migration-tool
     hooks:
       post:
@@ -163,20 +163,20 @@ builds:
 archives:
   - name_template:  >- 
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
-    id: casaos
+    id: nivaroos
     builds:
-      - casaos-amd64
-      - casaos-arm64
-      - casaos-arm-7
+      - nivaroos-amd64
+      - nivaroos-arm64
+      - nivaroos-arm-7
     files:
       - build/**/*
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-migration-tool-v{{ .Version }}
-    id: casaos-migration-tool
+    id: nivaroos-migration-tool
     builds:
-      - casaos-migration-tool-amd64
-      - casaos-migration-tool-arm64
-      - casaos-migration-tool-arm-7
+      - nivaroos-migration-tool-amd64
+      - nivaroos-migration-tool-arm64
+      - nivaroos-migration-tool-arm-7
     files:
       - build/sysroot/etc/**/*
 checksum:
@@ -200,7 +200,7 @@ changelog:
 release:
   github:
     owner: F-e-n-y-x
-    name: recasa
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

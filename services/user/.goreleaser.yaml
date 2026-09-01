@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: recasa-user
+project_name: nivaroos-user
 before:
   hooks:
     - go generate
@@ -8,7 +8,7 @@ before:
     - go mod tidy
     - go test -race -v ./...
 builds:
-  - id: casaos-user-service-amd64
+  - id: nivaroos-user-service-amd64
     binary: build/sysroot/usr/bin/nivaroos-user
     hooks:
       post:
@@ -29,7 +29,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-user-service-arm64
+  - id: nivaroos-user-service-arm64
     binary: build/sysroot/usr/bin/nivaroos-user
     # hooks:
     #   post:
@@ -50,7 +50,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-user-service-arm-7
+  - id: nivaroos-user-service-arm-7
     binary: build/sysroot/usr/bin/nivaroos-user
     hooks:
       post:
@@ -73,7 +73,7 @@ builds:
       - arm
     goarm:
       - "7"
-  - id: casaos-user-service-migration-tool-amd64
+  - id: nivaroos-user-service-migration-tool-amd64
     binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     hooks:
       post:
@@ -95,7 +95,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-user-service-migration-tool-arm64
+  - id: nivaroos-user-service-migration-tool-arm64
     binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     # hooks:
     #   post:
@@ -117,7 +117,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-user-service-migration-tool-arm-7
+  - id: nivaroos-user-service-migration-tool-arm-7
     binary: build/sysroot/usr/bin/nivaroos-user-migration-tool
     hooks:
       post:
@@ -145,18 +145,18 @@ archives:
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
     builds:
-      - casaos-user-service-amd64
-      - casaos-user-service-arm64
-      - casaos-user-service-arm-7
+      - nivaroos-user-service-amd64
+      - nivaroos-user-service-arm64
+      - nivaroos-user-service-arm-7
     files:
       - build/**/*
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-migration-tool-v{{ .Version }}
-    id: casaos-user-service-migration-tool
+    id: nivaroos-user-service-migration-tool
     builds:
-      - casaos-user-service-migration-tool-amd64
-      - casaos-user-service-migration-tool-arm64
-      - casaos-user-service-migration-tool-arm-7
+      - nivaroos-user-service-migration-tool-amd64
+      - nivaroos-user-service-migration-tool-arm64
+      - nivaroos-user-service-migration-tool-arm-7
     files:
       - build/sysroot/etc/**/*
 checksum:
@@ -172,7 +172,7 @@ changelog:
 release:
   github:
     owner: F-e-n-y-x
-    name: recasa
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

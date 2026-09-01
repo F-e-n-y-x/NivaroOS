@@ -7,7 +7,7 @@ info:
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_dark_night_800px.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-        <img alt="NivaroOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
+        <img alt="CasaOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
     </picture>
 
     NivaroOS App Management manages app lifecycle, including installing, uninstalling, starting, stopping, setting, etc.
@@ -299,7 +299,7 @@ components:
           example: "https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_logo_64px.png"
         title:
           type: string
-          example: "CasaOS"
+          example: "NivaroOS"
         data:
           type: object
         previous:
@@ -366,25 +366,25 @@ components:
       properties:
         container_name:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         custom_id:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         origin:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         network_model:
           type: string
           example: "bridge"
         index:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         icon:
           type: string
           example: "https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_logo_64px.png"
         image:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         envs:
           type: array
           items:
@@ -418,16 +418,16 @@ components:
           example: true
         label:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         description:
           type: string
-          example: "CasaOS"
+          example: "NivaroOS"
         position:
           type: boolean
           example: true
         host_name:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         privileged:
           type: boolean
           example: true
@@ -440,13 +440,13 @@ components:
           type: array
           items:
             type: string
-          example: ["casaos"]
+          example: ["nivaroos"]
         protocol:
           type: string
           example: "tcp"
         host:
           type: string
-          example: "casaos"
+          example: "nivaroos"
         appstore_id:
           type: integer
           example: 1

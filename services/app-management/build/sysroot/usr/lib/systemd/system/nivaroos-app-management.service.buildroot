@@ -4,9 +4,9 @@ After=docker.service
 Description=NivaroOS App Management Service
 
 [Service]
-ExecStartPre=/usr/bin/casaos-app-management -v
-ExecStart=/usr/bin/casaos-app-management -c /etc/casaos/app-management.conf --removeRuntimeIfNoNvidiaGPU true
-PIDFile=/run/casaos/app-management.pid
+ExecStartPre=/usr/bin/nivaroos-app-management -v
+ExecStart=/usr/bin/nivaroos-app-management -c /etc/nivaroos/app-management.conf --removeRuntimeIfNoNvidiaGPU true
+PIDFile=/run/nivaroos/app-management.pid
 Restart=always
 Type=notify
 

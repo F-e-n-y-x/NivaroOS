@@ -1,13 +1,13 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: recasa-local-storage
+project_name: nivaroos-local-storage
 before:
   hooks:
     - go generate
     - go mod tidy
     - go test -race -v ./...
 builds:
-  - id: casaos-local-storage-amd64
+  - id: nivaroos-local-storage-amd64
     binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
@@ -28,7 +28,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-local-storage-arm64
+  - id: nivaroos-local-storage-arm64
     binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
@@ -49,7 +49,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-local-storage-arm-7
+  - id: nivaroos-local-storage-arm-7
     binary: build/sysroot/usr/bin/nivaroos-local-storage
     hooks:
       post:
@@ -72,7 +72,7 @@ builds:
       - arm
     goarm:
       - "7"
-  - id: casaos-local-storage-migration-tool-amd64
+  - id: nivaroos-local-storage-migration-tool-amd64
     binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
@@ -94,7 +94,7 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-local-storage-migration-tool-arm64
+  - id: nivaroos-local-storage-migration-tool-arm64
     binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
@@ -116,7 +116,7 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-local-storage-migration-tool-arm-7
+  - id: nivaroos-local-storage-migration-tool-arm-7
     binary: build/sysroot/usr/bin/nivaroos-local-storage-migration-tool
     hooks:
       post:
@@ -142,21 +142,21 @@ builds:
       - "7"
 archives:
   - name_template: "{{ .Os }}-{{ .Arch }}-{{ .ProjectName }}-v{{ .Version }}"
-    id: casaos-local-storage
+    id: nivaroos-local-storage
     builds:
-      - casaos-local-storage-amd64
-      - casaos-local-storage-arm64
-      - casaos-local-storage-arm-7
+      - nivaroos-local-storage-amd64
+      - nivaroos-local-storage-arm64
+      - nivaroos-local-storage-arm-7
     replacements:
       arm: arm-7
     files:
       - build/**/*
   - name_template: "{{ .Os }}-{{ .Arch }}-{{ .ProjectName }}-migration-tool-v{{ .Version }}"
-    id: casaos-local-storage-migration-tool
+    id: nivaroos-local-storage-migration-tool
     builds:
-      - casaos-local-storage-migration-tool-amd64
-      - casaos-local-storage-migration-tool-arm64
-      - casaos-local-storage-migration-tool-arm-7
+      - nivaroos-local-storage-migration-tool-amd64
+      - nivaroos-local-storage-migration-tool-arm64
+      - nivaroos-local-storage-migration-tool-arm-7
     replacements:
       arm: arm-7
     files:
@@ -174,7 +174,7 @@ changelog:
 release:
   github:
     owner: F-e-n-y-x
-    name: recasa
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

@@ -6,7 +6,7 @@ func ReplaceDefaultENV(key, tz string) string {
 	temp := ""
 	switch key {
 	case "$DefaultPassword":
-		temp = "nivaroos"
+		temp = "casaos"
 	case "$DefaultUserName":
 		temp = "admin"
 

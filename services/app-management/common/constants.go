@@ -19,7 +19,7 @@ const (
 
 	DefaultCategoryFont = "grid"
 	DefaultLanguage     = "en_us"
-	DefaultPassword     = "nivaroos"
+	DefaultPassword     = "casaos"
 	DefaultPGID         = "1000"
 	DefaultPUID         = "1000"
 	DefaultUserName     = "admin"

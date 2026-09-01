@@ -92,7 +92,7 @@ _____             _____ _____
 |     |___ ___ ___|     |   __|
 |   --| .'|_ -| .'|  |  |__   |
 |_____|__,|___|__,|_____|_____|
--- Originally made by IceWhale, forked as Recasa by Ayush --
+-- Originally made by IceWhale, forked as NivaroOS by Ayush --
 `, `font-family: monospace`);
 
 		this.$buefy.config.setOptions(customIconConfig)
