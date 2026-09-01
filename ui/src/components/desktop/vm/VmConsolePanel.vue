@@ -1439,7 +1439,7 @@ export default {
 	}
 
 	&.power-btn {
-		color: #93c5fd;
+		color: rgba(255, 255, 255, 0.85);
 		&.is-running {
 			color: #34d399;
 		}
@@ -1503,18 +1503,15 @@ export default {
 .net-back-btn {
 	border: none;
 	background: rgba(255, 255, 255, 0.08);
-	color: rgba(255, 255, 255, 0.7);
+	color: #fff;
+	border-radius: 4px;
+	padding: 0.15rem 0.35rem;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.5rem;
-	height: 1.5rem;
-	border-radius: 5px;
-	transition: all 0.12s ease;
 
 	&:hover {
-		color: #fff;
 		background: rgba(255, 255, 255, 0.16);
 	}
 }
@@ -1524,7 +1521,7 @@ export default {
 	gap: 0.25rem;
 	border: 1px solid rgba(255, 255, 255, 0.15);
 	background: rgba(255, 255, 255, 0.08);
-	color: #93c5fd;
+	color: rgba(255, 255, 255, 0.85);
 	font-family: inherit;
 	font-size: 0.72rem;
 	font-weight: 500;
@@ -1534,8 +1531,8 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover {
-		background: rgba(59, 130, 246, 0.25);
-		border-color: rgba(59, 130, 246, 0.5);
+		background: rgba(255, 255, 255, 0.16);
+		border-color: rgba(255, 255, 255, 0.25);
 		color: #fff;
 	}
 }
@@ -1593,18 +1590,18 @@ export default {
 	align-items: center;
 	gap: 0.35rem;
 	border: none;
-	background: #2563eb;
+	background: rgba(255, 255, 255, 0.18);
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.75rem;
-	font-weight: 500;
+	font-weight: 600;
 	padding: 0.38rem 0.95rem;
 	border-radius: 6px;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: #1d4ed8;
+		background: rgba(255, 255, 255, 0.28);
 	}
 	&:active:not(:disabled) {
 		transform: scale(0.97);
@@ -1963,11 +1960,11 @@ export default {
 	align-items: center;
 	gap: 0.35rem;
 	border: none;
-	background: #2563eb;
+	background: rgba(255, 255, 255, 0.16);
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.78rem;
-	font-weight: 500;
+	font-weight: 600;
 	padding: 0 0.85rem;
 	height: 2.15rem;
 	border-radius: 8px;
@@ -1976,7 +1973,7 @@ export default {
 	transition: background 0.15s ease, transform 0.1s ease;
 
 	&:hover:not(:disabled) {
-		background: #1d4ed8;
+		background: rgba(255, 255, 255, 0.26);
 	}
 	&:active:not(:disabled) {
 		transform: scale(0.97);
@@ -2240,7 +2237,7 @@ export default {
 
 .share-tag-input {
 	flex: 1;
-	background: rgba(0, 0, 0, 0.35);
+	background: rgba(0, 0, 0, 0.4);
 	border: 1px solid rgba(255, 255, 255, 0.15);
 	border-radius: 6px;
 	padding: 0.35rem 0.5rem;
@@ -2250,7 +2247,7 @@ export default {
 
 	&:focus {
 		outline: none;
-		border-color: #3b82f6;
+		border-color: rgba(255, 255, 255, 0.4);
 	}
 }
 
@@ -2266,20 +2263,20 @@ export default {
 	font-size: 0.75rem;
 	font-weight: 600;
 	cursor: pointer;
-	background: rgba(255, 255, 255, 0.1);
+	background: rgba(255, 255, 255, 0.14);
 	color: #fff;
 	white-space: nowrap;
 	transition: background 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.18);
+		background: rgba(255, 255, 255, 0.24);
 	}
 
 	&.is-primary {
-		background: #2563eb;
+		background: rgba(255, 255, 255, 0.2);
 		color: #fff;
 		&:hover:not(:disabled) {
-			background: #1d4ed8;
+			background: rgba(255, 255, 255, 0.3);
 		}
 	}
 
@@ -2293,8 +2290,8 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.55rem;
-	background: rgba(16, 185, 129, 0.1);
-	border: 1px solid rgba(16, 185, 129, 0.25);
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.1);
 	border-radius: 8px;
 	padding: 0.45rem 0.6rem;
 	margin-top: 0.25rem;
@@ -2304,8 +2301,8 @@ export default {
 	width: 1.8rem;
 	height: 1.8rem;
 	border-radius: 6px;
-	background: rgba(16, 185, 129, 0.2);
-	color: #34d399;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.9);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -2332,13 +2329,14 @@ export default {
 
 .share-active-meta {
 	font-size: 0.68rem;
-	color: #34d399;
+	color: rgba(255, 255, 255, 0.6);
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
 
 	.tag-pill {
-		background: rgba(16, 185, 129, 0.2);
+		background: rgba(255, 255, 255, 0.1);
+		color: #fff;
 		padding: 0.05rem 0.35rem;
 		border-radius: 4px;
 		font-family: monospace;
@@ -2426,7 +2424,7 @@ export default {
 	code {
 		font-size: 0.72rem;
 		font-family: monospace;
-		color: #93c5fd;
+		color: rgba(255, 255, 255, 0.9);
 		overflow-x: auto;
 		white-space: nowrap;
 	}
@@ -2463,9 +2461,9 @@ export default {
 	justify-content: center;
 	gap: 0.4rem;
 	width: 100%;
-	border: 1px solid rgba(59, 130, 246, 0.4);
-	background: rgba(59, 130, 246, 0.15);
-	color: #93c5fd;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.08);
+	color: #fff;
 	font-family: inherit;
 	font-size: 0.75rem;
 	font-weight: 600;
@@ -2475,7 +2473,7 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(59, 130, 246, 0.3);
+		background: rgba(255, 255, 255, 0.16);
 		color: #fff;
 	}
 	&:disabled {

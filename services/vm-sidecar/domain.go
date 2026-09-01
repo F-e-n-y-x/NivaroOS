@@ -675,10 +675,10 @@ const domainXMLTemplate = `<domain type='kvm'>
   <name>{{.Name}}</name>
   <memory unit='MiB'>{{.MemoryMiB}}</memory>
   <vcpu>{{.VCPUs}}</vcpu>
-  {{if .SharedFolders}}<memoryBacking>
+  <memoryBacking>
     <source type='memfd'/>
     <access mode='shared'/>
-  </memoryBacking>{{end}}
+  </memoryBacking>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
     {{if eq .Firmware "uefi"}}<loader readonly='yes' type='pflash'>{{.OVMFCodePath}}</loader>

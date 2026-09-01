@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"text/template"
+
+	libvirt "libvirt.org/go/libvirt"
 )
 
 type SharedFolderSpec struct {
@@ -33,6 +35,29 @@ func (s *LibvirtStore) ListSharedFolders(name string) ([]SharedFolderSpec, error
 	return vm.SharedFolders, nil
 }
 
+func ensureSharedMemoryBacking(conn *libvirt.Connect, dom *libvirt.Domain) error {
+	rawXML, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(rawXML, "<memoryBacking>") && strings.Contains(rawXML, "shared") {
+		return nil
+	}
+
+	backingXML := "\n  <memoryBacking>\n    <source type='memfd'/>\n    <access mode='shared'/>\n  </memoryBacking>"
+	var newXML string
+	if idx := strings.Index(rawXML, "</vcpu>"); idx != -1 {
+		newXML = rawXML[:idx+7] + backingXML + rawXML[idx+7:]
+	} else if idx := strings.Index(rawXML, "</memory>"); idx != -1 {
+		newXML = rawXML[:idx+9] + backingXML + rawXML[idx+9:]
+	} else {
+		return nil
+	}
+
+	_, err = conn.DomainDefineXML(newXML)
+	return err
+}
+
 func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) error {
 	if spec.SourceDir == "" {
 		return errors.New("source_dir is required")
@@ -48,18 +73,36 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 		return fmt.Errorf("%q is not a directory", spec.SourceDir)
 	}
 
+	conn, err := s.getConn()
+	if err != nil {
+		return err
+	}
+
 	dom, err := s.lookup(name)
 	if err != nil {
 		return err
 	}
 	defer dom.Free()
 
+	_ = ensureSharedMemoryBacking(conn, dom)
+
 	var buf strings.Builder
 	if err := sharedFolderTemplate.Execute(&buf, spec); err != nil {
 		return err
 	}
 
-	return attachOrDetachDevice(dom, buf.String(), true)
+	err = attachOrDetachDevice(dom, buf.String(), true)
+	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "shared memory") || strings.Contains(errStr, "virtiofs") {
+			// Domain is active but was booted without memfd shared memory.
+			// Save device to persistent domain config so it boots with it on restart.
+			_ = dom.AttachDeviceFlags(buf.String(), libvirt.DOMAIN_DEVICE_MODIFY_CONFIG)
+			return fmt.Errorf("Shared folder added to VM configuration! Please restart %s to activate VirtIO-FS shared memory.", name)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *LibvirtStore) DetachSharedFolder(name string, targetTag string) error {

@@ -563,8 +563,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(50, 115, 220, 0.1);
-	color: #3273dc;
+	background: rgba(0, 0, 0, 0.04);
+	color: rgba(0, 0, 0, 0.45);
 }
 
 .vm-share-main {
@@ -594,9 +594,9 @@ export default {
 .vm-share-tag-badge {
 	font-size: 0.7rem;
 	font-weight: 600;
-	color: #3273dc;
-	background: rgba(50, 115, 220, 0.1);
-	padding: 0.1rem 0.45rem;
+	color: rgba(0, 0, 0, 0.55);
+	background: rgba(0, 0, 0, 0.05);
+	padding: 0.1rem 0.5rem;
 	border-radius: 999px;
 	flex-shrink: 0;
 }

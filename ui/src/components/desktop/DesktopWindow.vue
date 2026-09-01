@@ -3,7 +3,12 @@
 	:id="'window-' + win.id"
 	:style="windowStyle"
 	class="desktop-window"
-	:class="{ 'window-dark': isDarkWindow, 'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp'].includes(win.component), 'window-minimized': win.minimized }"
+	:class="{
+		'window-dark': isDarkWindow,
+		'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp'].includes(win.component),
+		'window-minimized': win.minimized,
+		'window-console': isConsoleWindow,
+	}"
 	@mousedown="focus"
 	@drop.stop
 >
@@ -322,6 +327,12 @@ export default {
 
 		.window-title {
 			color: rgba(255, 255, 255, 0.85);
+		}
+	}
+
+	&.window-console {
+		.window-content {
+			overflow: hidden !important;
 		}
 	}
 }
