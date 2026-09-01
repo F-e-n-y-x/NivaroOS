@@ -60,28 +60,73 @@
 						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 					</button>
 					<div v-if="netMenuOpen" class="device-menu network-dropdown-menu">
-						<p class="device-menu-title">{{ $t('Network Adapters') }}</p>
-						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
-						<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
-							<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
-								<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
-							</div>
-							<div class="network-row-details">
-								<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
-								<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
-							</div>
-							<button
-								type="button"
-								class="network-link-toggle"
-								:class="{ 'is-connected': n.link_state !== 'down' }"
-								:title="n.link_state === 'down' ? $t('Connect virtual ethernet cable') : $t('Disconnect virtual ethernet cable')"
-								:disabled="netBusy"
-								@click="toggleNetworkLink(n)"
-							>
-								<b-icon :icon="n.link_state === 'down' ? 'lan-disconnect' : 'lan-check'" size="is-small"></b-icon>
-								<span>{{ n.link_state === 'down' ? $t('Connect') : $t('Disconnect') }}</span>
+						<div class="device-menu-header-row">
+							<p class="device-menu-title">{{ $t('Network Adapters') }}</p>
+							<button v-if="!editingNet && vm && vm.networks && vm.networks.length" type="button" class="net-edit-toggle-btn" @click="startEditingNet(vm.networks[0])">
+								<b-icon icon="pencil-outline" size="is-small"></b-icon>
+								<span>{{ $t('Edit') }}</span>
 							</button>
 						</div>
+						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
+						<template v-if="!editingNet">
+							<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
+								<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
+									<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
+								</div>
+								<div class="network-row-details">
+									<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
+									<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
+								</div>
+								<button
+									type="button"
+									class="network-link-toggle"
+									:class="{ 'is-connected': n.link_state !== 'down' }"
+									:title="n.link_state === 'down' ? $t('Connect virtual ethernet cable') : $t('Disconnect virtual ethernet cable')"
+									:disabled="netBusy"
+									@click="toggleNetworkLink(n)"
+								>
+									<b-icon :icon="n.link_state === 'down' ? 'lan-disconnect' : 'lan-check'" size="is-small"></b-icon>
+									<span>{{ n.link_state === 'down' ? $t('Connect') : $t('Disconnect') }}</span>
+								</button>
+							</div>
+						</template>
+						<template v-else>
+							<div class="net-inline-editor">
+								<div class="net-editor-section">
+									<label class="net-editor-label">{{ $t('Mode') }}</label>
+									<div class="segmented-control net-segmented">
+										<button type="button" class="segmented-option" :class="{ active: netForm.mode === 'nat' }" @click="netForm.mode = 'nat'">{{ $t('NAT') }}</button>
+										<button type="button" class="segmented-option" :class="{ active: netForm.mode === 'bridge' }" @click="netForm.mode = 'bridge'">{{ $t('Bridge') }}</button>
+									</div>
+									<div v-if="netForm.mode === 'bridge'" style="margin-top: 0.35rem;">
+										<vm-dropdown
+											v-model="netForm.bridge_name"
+											:options="bridgeDropdownOptions"
+											:placeholder="$t('Select bridge interface...')"
+											dark
+											icon="lan-connect"
+											size="small"
+										></vm-dropdown>
+									</div>
+								</div>
+								<div class="net-editor-section">
+									<label class="net-editor-label">{{ $t('Adapter Model') }}</label>
+									<div class="segmented-control net-segmented">
+										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'virtio' }" @click="netForm.model = 'virtio'">VirtIO</button>
+										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'e1000e' }" @click="netForm.model = 'e1000e'">e1000e</button>
+										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'e1000' }" @click="netForm.model = 'e1000'">e1000</button>
+										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'rtl8139' }" @click="netForm.model = 'rtl8139'">RTL8139</button>
+									</div>
+								</div>
+								<div class="net-editor-actions">
+									<button type="button" class="net-cancel-btn" @click="editingNet = false">{{ $t('Cancel') }}</button>
+									<button type="button" class="net-save-btn" :disabled="netBusy" @click="saveNetworkAdapter">
+										<b-icon v-if="netBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										<span>{{ $t('Save') }}</span>
+									</button>
+								</div>
+							</div>
+						</template>
 					</div>
 				</div>
 				<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
@@ -163,13 +208,16 @@
 							</button>
 						</div>
 						<div class="device-menu-add">
-							<div class="custom-select-wrapper">
-								<select v-model="selectedISO" class="device-menu-select" :disabled="diskBusy || !availableISOs.length">
-									<option value="" disabled>{{ availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available') }}</option>
-									<option v-for="iso in availableISOs" :key="iso.name" :value="iso.name">{{ iso.name }}</option>
-								</select>
-								<b-icon icon="chevron-down" size="is-small" class="select-chevron"></b-icon>
-							</div>
+							<vm-dropdown
+								v-model="selectedISO"
+								:options="isoDropdownOptions"
+								:placeholder="availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available')"
+								:disabled="diskBusy || !availableISOs.length"
+								dark
+								icon="disc"
+								size="small"
+								style="flex: 1 1 auto; min-width: 0;"
+							></vm-dropdown>
 							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
 								<b-icon icon="tray-arrow-down" size="is-small"></b-icon>
 								<span>{{ $t('Insert') }}</span>
@@ -289,6 +337,7 @@
 <script>
 import RFB from '@novnc/novnc'
 import { vmSidecar } from '@/api/vmSidecar'
+import VmDropdown from './VmDropdown.vue'
 
 const STATE_POLL_MS = 3000
 
@@ -443,6 +492,9 @@ const ARROW_ROWS = [
 
 export default {
 	name: 'vm-console-panel',
+	components: {
+		VmDropdown,
+	},
 	props: {
 		vmName: { type: String, required: true },
 		// Default false: as a desktop window, the shared titlebar already
@@ -477,6 +529,10 @@ export default {
 			powerMenuOpen: false,
 			netMenuOpen: false,
 			netBusy: false,
+			editingNet: false,
+			editingNetMAC: '',
+			netForm: { mode: 'nat', bridge_name: '', model: 'virtio', mac: '', link_state: 'up' },
+			availableBridges: [],
 			statePollTimer: null,
 			usbMenuOpen: false,
 			diskMenuOpen: false,
@@ -537,6 +593,29 @@ export default {
 					low: this.$t('Low Bandwidth'),
 				}[this.qualityMode] || this.qualityMode
 			)
+		},
+		isoDropdownOptions() {
+			return (this.availableISOs || []).map((iso) => ({
+				value: iso.name,
+				label: iso.name,
+				icon: 'disc',
+				meta: iso.size_bytes ? `${Math.round((iso.size_bytes / (1024 * 1024 * 1024)) * 10) / 10} GB` : '',
+			}))
+		},
+		bridgeDropdownOptions() {
+			return (this.availableBridges || []).map((b) => ({
+				value: b.name,
+				label: b.name,
+				icon: 'lan-connect',
+			}))
+		},
+	},
+	watch: {
+		netMenuOpen(open) {
+			if (open) {
+				this.editingNet = false
+				this.loadAvailableNetworks()
+			}
 		},
 	},
 	mounted() {
@@ -720,6 +799,41 @@ export default {
 			} finally {
 				this.netBusy = false
 			}
+		},
+		startEditingNet(net) {
+			this.editingNet = true
+			this.editingNetMAC = (net && net.mac) || ''
+			this.netForm = {
+				mode: (net && net.mode) || 'nat',
+				bridge_name: (net && net.bridge_name) || (this.availableBridges[0] ? this.availableBridges[0].name : 'br0'),
+				model: (net && net.model) || 'virtio',
+				mac: (net && net.mac) || '',
+				link_state: (net && net.link_state) || 'up',
+			}
+			this.loadAvailableNetworks()
+		},
+		async saveNetworkAdapter() {
+			this.netBusy = true
+			try {
+				await vmSidecar.updateNetworkAdapter(this.vmName, this.editingNetMAC, this.netForm)
+				this.$buefy.toast.open({
+					message: this.$t('Network adapter updated successfully'),
+					type: 'is-success',
+					duration: 2500,
+				})
+				this.editingNet = false
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({ message: e.message || this.$t('Failed to update network adapter'), type: 'is-danger' })
+			} finally {
+				this.netBusy = false
+			}
+		},
+		async loadAvailableNetworks() {
+			try {
+				const nets = await vmSidecar.listNetworks()
+				this.availableBridges = (nets || []).filter((n) => n.mode === 'bridge')
+			} catch (e) {}
 		},
 		async runAction(method) {
 			this.powerMenuOpen = false
@@ -1048,7 +1162,107 @@ export default {
 	right: 0 !important;
 }
 .network-dropdown-menu {
-	width: 21rem;
+	width: 22rem;
+}
+.device-menu-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0.35rem;
+}
+.net-edit-toggle-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.08);
+	color: #93c5fd;
+	font-family: inherit;
+	font-size: 0.72rem;
+	font-weight: 500;
+	padding: 0.2rem 0.5rem;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	&:hover {
+		background: rgba(59, 130, 246, 0.25);
+		border-color: rgba(59, 130, 246, 0.5);
+		color: #fff;
+	}
+}
+.net-inline-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	padding: 0.65rem;
+	background: rgba(0, 0, 0, 0.28);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 8px;
+	margin-top: 0.25rem;
+}
+.net-editor-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+.net-editor-label {
+	font-size: 0.7rem;
+	font-weight: 600;
+	color: rgba(255, 255, 255, 0.6);
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+.net-segmented {
+	margin-bottom: 0;
+	flex-wrap: wrap;
+}
+.net-editor-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 0.4rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.net-cancel-btn {
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.6);
+	font-family: inherit;
+	font-size: 0.75rem;
+	padding: 0.35rem 0.65rem;
+	border-radius: 6px;
+	cursor: pointer;
+
+	&:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.08);
+	}
+}
+.net-save-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	border: none;
+	background: #2563eb;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 500;
+	padding: 0.35rem 0.85rem;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: #1d4ed8;
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
 }
 .net-menu-row {
 	display: flex;

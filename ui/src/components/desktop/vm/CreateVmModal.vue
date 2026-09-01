@@ -80,13 +80,13 @@
 					<b-icon class="row-icon" icon="monitor" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Display Resolution') }}</div>
 					<div class="row-control">
-						<b-select v-model="displayResolution" size="is-small" expanded class="display-res-select">
-							<option value="">{{ $t('Default (let the guest decide)') }}</option>
-							<option value="1920x1080">1920 × 1080</option>
-							<option value="1280x720">1280 × 720</option>
-							<option value="1024x768">1024 × 768</option>
-							<option value="800x600">800 × 600</option>
-						</b-select>
+						<vm-dropdown
+							v-model="displayResolution"
+							:options="resolutionOptions"
+							:placeholder="$t('Default (let the guest decide)')"
+							icon="monitor"
+							size="small"
+						></vm-dropdown>
 					</div>
 				</div>
 				<div class="setting-row" v-if="mode === 'advanced'">
@@ -233,6 +233,7 @@ import VmFilePickerDialog from './VmFilePickerDialog.vue'
 import VmDiskList from './VmDiskList.vue'
 import VmNetworkList from './VmNetworkList.vue'
 import VmHardwarePicker from './VmHardwarePicker.vue'
+import VmDropdown from './VmDropdown.vue'
 
 // Picking a template only pre-fills these fields - it's a starting point
 // for beginners, not a locked-in mode; every field stays editable right
@@ -244,14 +245,23 @@ const OS_TEMPLATES = [
 	{ id: 'custom', label: 'Other', icon: 'cog-outline', vcpus: 2, memory_mib: 2048, disk_gib: 20, firmware: 'bios', net_model: 'e1000e' },
 ]
 
+const RESOLUTION_OPTIONS = [
+	{ value: '', label: 'Default (let the guest decide)', icon: 'monitor' },
+	{ value: '1920x1080', label: '1920 × 1080', meta: 'Full HD', icon: 'monitor' },
+	{ value: '1280x720', label: '1280 × 720', meta: 'HD', icon: 'monitor' },
+	{ value: '1024x768', label: '1024 × 768', meta: '4:3', icon: 'monitor' },
+	{ value: '800x600', label: '800 × 600', meta: 'SVGA', icon: 'monitor' },
+]
+
 export default {
 	name: 'create-vm-modal',
-	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker },
+	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker, VmDropdown },
 	data() {
 		return {
 			mode: 'basic',
 			step: 0,
 			osTemplates: OS_TEMPLATES,
+			resolutionOptions: RESOLUTION_OPTIONS,
 			selectedTemplate: 'linux',
 			form: {
 				name: '',

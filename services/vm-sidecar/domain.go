@@ -1487,3 +1487,97 @@ func (s *LibvirtStore) SetNetworkLinkState(name, mac, state string) error {
 	}
 	return nil
 }
+
+// UpdateNetworkAdapter updates or replaces an interface (mode, model, bridge, mac)
+// live if running and persists the changes to domain config.
+func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dom, err := s.lookup(name)
+	if err != nil {
+		return err
+	}
+	defer dom.Free()
+
+	active, err := dom.IsActive()
+	if err != nil {
+		return err
+	}
+
+	model := nic.Model
+	if model == "" {
+		model = "virtio"
+	}
+	mac := nic.MAC
+	if mac == "" {
+		mac = oldMAC
+	}
+
+	nicType := "network"
+	source := "default"
+	if nic.Mode == "bridge" && nic.BridgeName != "" {
+		nicType = "bridge"
+		source = nic.BridgeName
+	}
+
+	if active {
+		// 1. Detach old interface if oldMAC is present
+		if oldMAC != "" {
+			_ = exec.Command("virsh", "detach-interface", name, "--type", "bridge", "--mac", oldMAC, "--live", "--config").Run()
+			_ = exec.Command("virsh", "detach-interface", name, "--type", "network", "--mac", oldMAC, "--live", "--config").Run()
+		}
+		// 2. Attach new interface
+		args := []string{"attach-interface", name, nicType, source, "--model", model, "--live", "--config"}
+		if mac != "" {
+			args = append(args, "--mac", mac)
+		}
+		out, err := exec.Command("virsh", args...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("attach interface: %s (%v)", strings.TrimSpace(string(out)), err)
+		}
+	} else {
+		current, err := toVM(dom)
+		if err != nil {
+			return err
+		}
+		replaced := false
+		newNetworks := make([]NICSpec, 0, len(current.Networks))
+		for _, n := range current.Networks {
+			if (oldMAC != "" && n.MAC == oldMAC) || (!replaced && oldMAC == "") {
+				newNetworks = append(newNetworks, nic)
+				replaced = true
+			} else {
+				newNetworks = append(newNetworks, NICSpec{
+					Mode:       n.Mode,
+					BridgeName: n.BridgeName,
+					Model:      n.Model,
+					MAC:        n.MAC,
+					LinkState:  n.LinkState,
+				})
+			}
+		}
+		if !replaced {
+			newNetworks = append(newNetworks, nic)
+		}
+		reqDisks := make([]DiskSpec, len(current.Disks))
+		for i, d := range current.Disks {
+			reqDisks[i] = DiskSpec{Path: d.Path, GiB: d.GiB, Bus: d.Bus, SSD: d.SSD}
+		}
+		_, err = s.UpdateVM(name, UpdateVMRequest{
+			VCPUs:      current.VCPUs,
+			MemoryMiB:  current.MemoryMiB,
+			Firmware:   current.Firmware,
+			ISOPath:    current.ISOPath,
+			Disks:      reqDisks,
+			Networks:   newNetworks,
+			USBDevices: current.USBDevices,
+			PCIDevices: current.PCIDevices,
+			BootOrder:  current.BootOrder,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

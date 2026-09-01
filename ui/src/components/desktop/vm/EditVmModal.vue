@@ -46,13 +46,13 @@
 					<b-icon class="row-icon" icon="monitor" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Display Resolution') }}</div>
 					<div class="row-control">
-						<b-select v-model="displayResolution" size="is-small" expanded class="display-res-select">
-							<option value="">{{ $t('Default (let the guest decide)') }}</option>
-							<option value="1920x1080">1920 × 1080</option>
-							<option value="1280x720">1280 × 720</option>
-							<option value="1024x768">1024 × 768</option>
-							<option value="800x600">800 × 600</option>
-						</b-select>
+						<vm-dropdown
+							v-model="displayResolution"
+							:options="resolutionOptions"
+							:placeholder="$t('Default (let the guest decide)')"
+							icon="monitor"
+							size="small"
+						></vm-dropdown>
 					</div>
 				</div>
 				<div class="setting-row">
@@ -108,10 +108,19 @@ import VmFilePickerDialog from './VmFilePickerDialog.vue'
 import VmDiskList from './VmDiskList.vue'
 import VmNetworkList from './VmNetworkList.vue'
 import VmHardwarePicker from './VmHardwarePicker.vue'
+import VmDropdown from './VmDropdown.vue'
+
+const RESOLUTION_OPTIONS = [
+	{ value: '', label: 'Default (let the guest decide)', icon: 'monitor' },
+	{ value: '1920x1080', label: '1920 × 1080', meta: 'Full HD', icon: 'monitor' },
+	{ value: '1280x720', label: '1280 × 720', meta: 'HD', icon: 'monitor' },
+	{ value: '1024x768', label: '1024 × 768', meta: '4:3', icon: 'monitor' },
+	{ value: '800x600', label: '800 × 600', meta: 'SVGA', icon: 'monitor' },
+]
 
 export default {
 	name: 'edit-vm-modal',
-	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker },
+	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker, VmDropdown },
 	props: {
 		// The VM (from VmList's poll) being edited - only its identity/
 		// current values matter here, re-read fresh from the sidecar on
@@ -120,6 +129,7 @@ export default {
 	},
 	data() {
 		return {
+			resolutionOptions: RESOLUTION_OPTIONS,
 			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [] },
 			// The VM's disks as they were when loaded - VmDiskList uses this
 			// to floor each existing disk's size at its current GiB (grow

@@ -72,6 +72,8 @@ export const vmSidecar = {
 	insertCDROM: (name, isoPath) => request(`/vms/${encodeURIComponent(name)}/cdrom`, jsonBody({ iso_path: isoPath })),
 	setNetworkLink: (name, mac, state) =>
 		request(`/vms/${encodeURIComponent(name)}/network/link`, jsonBody({ mac, state })),
+	updateNetworkAdapter: (name, oldMac, nic) =>
+		request(`/vms/${encodeURIComponent(name)}/network/adapter`, jsonBody({ old_mac: oldMac, nic })),
 
 	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
 	// A cache-busting `t` param is left for the caller to append when

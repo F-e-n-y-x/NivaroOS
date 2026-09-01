@@ -26,7 +26,14 @@
 						class="segmented-option"
 						:class="{ active: net.mode === 'bridge' && net.bridge_name === bridge.name }"
 						@click="setBridge(i, bridge.name)"
-					>{{ bridge.name }}</button>
+					>Bridge: {{ bridge.name }}</button>
+					<button
+						v-if="!bridgeNetworks || !bridgeNetworks.length"
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.mode === 'bridge' }"
+						@click="setBridge(i, net.bridge_name || 'br0')"
+					>{{ $t('Bridge') }} ({{ net.bridge_name || 'br0' }})</button>
 				</div>
 				<div class="segmented-control vm-net-model" :title="$t('Network adapter emulation model')">
 					<button

@@ -43,9 +43,13 @@
 				<b-input v-model="form.name" size="is-small" placeholder="br-vm0"></b-input>
 			</b-field>
 			<b-field :label="$t('Host network interface')">
-				<b-select v-model="form.host_nic" size="is-small" expanded>
-					<option v-for="nic in interfaces" :key="nic" :value="nic">{{ nic }}</option>
-				</b-select>
+				<vm-dropdown
+					v-model="form.host_nic"
+					:options="nicOptions"
+					:placeholder="$t('Select host interface...')"
+					icon="lan"
+					size="small"
+				></vm-dropdown>
 			</b-field>
 			<b-message v-if="!interfaces.length && !loadingInterfaces" type="is-info" :closable="false">
 				{{ $t('No spare physical network interfaces were found on this machine.') }}
@@ -93,10 +97,11 @@
 <script>
 import { vmSidecar } from '@/api/vmSidecar'
 import VmOverlayPanel from './VmOverlayPanel.vue'
+import VmDropdown from './VmDropdown.vue'
 
 export default {
 	name: 'vm-networks',
-	components: { VmOverlayPanel },
+	components: { VmOverlayPanel, VmDropdown },
 	data() {
 		return {
 			networks: [],
@@ -116,7 +121,14 @@ export default {
 			if (!this.form.name || !this.form.host_nic) return false
 			if (this.form.useStaticIP && (!this.form.static_ip || !this.form.netmask || !this.form.gateway)) return false
 			return true
-		}
+		},
+		nicOptions() {
+			return (this.interfaces || []).map((nic) => ({
+				value: nic,
+				label: nic,
+				icon: 'lan',
+			}))
+		},
 	},
 	watch: {
 		showCreate(isOpen) {
