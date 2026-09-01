@@ -121,6 +121,16 @@ select_addons() {
 
 GUM_VERSION="2.0.0"
 
+# Verifies $1's sha256 against $2; on mismatch, deletes $1 and returns non-zero.
+verify_sha256() {
+	local file="$1" expected="$2" actual
+	actual="$(sha256sum "$file" 2>/dev/null | awk '{print $1}')"
+	if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+		rm -f "$file"
+		return 1
+	fi
+}
+
 install_gum() {
 	if command -v gum >/dev/null 2>&1; then
 		return
@@ -137,7 +147,17 @@ install_gum() {
 			;;
 	esac
 	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
+	local expected_sha
+	expected_sha="$(curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/checksums.txt" 2>/dev/null | awk -v f="$tarball" '$2==f{print $1}')"
 	if curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"; then
+		# gum is a cosmetic dependency (the installer falls back to plain
+		# stdout when it's missing) - a checksum mismatch skips installing
+		# it rather than aborting the whole install.
+		if ! verify_sha256 "/tmp/${tarball}" "$expected_sha"; then
+			echo "warning: gum download checksum could not be verified, skipping optional gum install" >&2
+			rm -f "/tmp/${tarball}"
+			return
+		fi
 		tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum" 2>/dev/null || true
 		if [ -f /tmp/gum ]; then
 			install -m 0755 /tmp/gum /usr/local/bin/gum
@@ -195,7 +215,27 @@ install_go_toolchain() {
 			exit 1
 			;;
 	esac
-	run_step "Installing the Go toolchain (v1.23.4)..." "curl -fsSL https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz -o /tmp/go1.23.4.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz && rm -f /tmp/go1.23.4.tar.gz"
+	local tarball="go1.23.4.linux-${go_arch}.tar.gz"
+	# Unlike gum, the Go toolchain is essential (it builds every service), so
+	# a verifiable checksum mismatch aborts the install rather than proceeding
+	# on a possibly-tampered compiler. go.dev's JSON index is the source of
+	# truth for the official sha256; if that lookup itself fails (network
+	# hiccup, endpoint shape change) we warn and continue rather than
+	# bricking installs over the verification step itself failing.
+	local expected_sha
+	expected_sha="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' 2>/dev/null | tr -d ' \n' | grep -o "\"filename\":\"${tarball}\"[^}]*\"sha256\":\"[a-f0-9]*\"" | grep -o '"sha256":"[a-f0-9]*"' | head -1 | grep -o '[a-f0-9]\{64\}')"
+	run_step "Installing the Go toolchain (v1.23.4)..." "curl -fsSL https://go.dev/dl/${tarball} -o /tmp/${tarball}"
+	if [ -n "$expected_sha" ]; then
+		if ! verify_sha256 "/tmp/${tarball}" "$expected_sha"; then
+			echo "error: Go toolchain download failed checksum verification (expected ${expected_sha}) - aborting" >&2
+			exit 1
+		fi
+	else
+		echo "warning: could not fetch the official Go toolchain checksum to verify against, proceeding without verification" >&2
+	fi
+	rm -rf /usr/local/go
+	tar -C /usr/local -xzf "/tmp/${tarball}"
+	rm -f "/tmp/${tarball}"
 	export PATH="/usr/local/go/bin:$PATH"
 	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/nivaroos-go.sh
 	ln -sf /usr/local/go/bin/go /usr/bin/go
@@ -322,11 +362,11 @@ install_ui() {
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/nivaroos/www/." /var/lib/casaos/www/ 2>/dev/null || true
 }
 
-LEGACY_SERVICE_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service"
+CORE_SERVICE_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service"
 
 start_core_services() {
 	systemctl daemon-reload
-	for unit in $LEGACY_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
+	for unit in $CORE_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
 		systemctl enable --now "$unit" >/dev/null 2>&1 || true
 		systemctl restart "$unit" >/dev/null 2>&1 || true
 	done
@@ -336,7 +376,7 @@ print_summary() {
 	local lines=()
 	lines+=("NivaroOS installed successfully!")
 	lines+=("")
-	for unit in $LEGACY_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
+	for unit in $CORE_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
 		if systemctl is-active --quiet "$unit"; then
 			lines+=("✓ $unit")
 		else

@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: casaos-cli
+project_name: nivaroos-cli
 before:
   hooks:
     - go generate
@@ -8,8 +8,8 @@ before:
     - go mod tidy
     - go test -race -v ./...
 builds:
-  - id: casaos-cli-amd64
-    binary: build/sysroot/usr/bin/casaos-cli
+  - id: nivaroos-cli-amd64
+    binary: build/sysroot/usr/bin/nivaroos-cli
     env:
       - CC=x86_64-linux-gnu-gcc
     gcflags:
@@ -24,8 +24,8 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-cli-arm64
-    binary: build/sysroot/usr/bin/casaos-cli
+  - id: nivaroos-cli-arm64
+    binary: build/sysroot/usr/bin/nivaroos-cli
     env:
       - CC=aarch64-linux-gnu-gcc
     gcflags:
@@ -40,8 +40,8 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-cli-arm-7
-    binary: build/sysroot/usr/bin/casaos-cli
+  - id: nivaroos-cli-arm-7
+    binary: build/sysroot/usr/bin/nivaroos-cli
     env:
       - CC=arm-linux-gnueabihf-gcc
     gcflags:
@@ -61,11 +61,11 @@ builds:
 archives:
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
-    id: casaos-cli
+    id: nivaroos-cli
     builds:
-      - casaos-cli-amd64
-      - casaos-cli-arm64
-      - casaos-cli-arm-7
+      - nivaroos-cli-amd64
+      - nivaroos-cli-arm64
+      - nivaroos-cli-arm-7
     files:
       - build/**/*
 checksum:

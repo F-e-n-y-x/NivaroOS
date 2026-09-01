@@ -1,6 +1,6 @@
 module github.com/F-e-n-y-x/NivaroOS/services/user
 
-go 1.21
+go 1.23.4
 
 toolchain go1.23.4
 

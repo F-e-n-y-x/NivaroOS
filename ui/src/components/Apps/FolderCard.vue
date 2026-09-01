@@ -30,7 +30,7 @@
 			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 				<div class="is-flex is-justify-content-center">
 					<div v-if="folder.icon" class="folder-custom-icon is-52x52" :style="{ borderRadius: (folder.iconRadius || 0) + '%' }">
-						<img :src="folder.icon">
+						<img :src="folder.icon" :alt="folder.name || ''">
 					</div>
 					<div v-else class="folder-icon-grid is-52x52">
 						<div v-for="i in 4" :key="i" class="folder-icon-cell">

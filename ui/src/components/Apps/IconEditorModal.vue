@@ -15,6 +15,7 @@
 						:style="imgTransformStyle"
 						draggable="false"
 						class="icon-preview-img"
+						alt=""
 						@load="onImageLoaded"
 					/>
 				</div>

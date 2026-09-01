@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: casaos
+project_name: nivaroos
 before:
   hooks:
     - go generate
@@ -9,8 +9,8 @@ before:
     - go test -race -v ./...
 
 builds:
-  - id: casaos-amd64
-    binary: build/sysroot/usr/bin/casaos
+  - id: nivaroos-amd64
+    binary: build/sysroot/usr/bin/nivaroos
     env:
       - CC=x86_64-linux-gnu-gcc
     gcflags:
@@ -25,8 +25,8 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-arm64
-    binary: build/sysroot/usr/bin/casaos
+  - id: nivaroos-arm64
+    binary: build/sysroot/usr/bin/nivaroos
     env:
       - CC=aarch64-linux-gnu-gcc
     gcflags:
@@ -41,8 +41,8 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-arm-7
-    binary: build/sysroot/usr/bin/casaos
+  - id: nivaroos-arm-7
+    binary: build/sysroot/usr/bin/nivaroos
     env:
       - CC=arm-linux-gnueabihf-gcc
     gcflags:
@@ -59,8 +59,8 @@ builds:
       - arm
     goarm:
       - "7"
-  - id: casaos-migration-tool-amd64
-    binary: build/sysroot/usr/bin/casaos-migration-tool
+  - id: nivaroos-migration-tool-amd64
+    binary: build/sysroot/usr/bin/nivaroos-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=x86_64-linux-gnu-gcc
@@ -76,8 +76,8 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-migration-tool-arm64
-    binary: build/sysroot/usr/bin/casaos-migration-tool
+  - id: nivaroos-migration-tool-arm64
+    binary: build/sysroot/usr/bin/nivaroos-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=aarch64-linux-gnu-gcc
@@ -93,8 +93,8 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/casaos-migration-tool
+  - id: nivaroos-migration-tool-arm-7
+    binary: build/sysroot/usr/bin/nivaroos-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=arm-linux-gnueabihf-gcc
@@ -115,20 +115,20 @@ builds:
 archives:
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
-    id: casaos
+    id: nivaroos
     builds:
-      - casaos-amd64
-      - casaos-arm64
-      - casaos-arm-7
+      - nivaroos-amd64
+      - nivaroos-arm64
+      - nivaroos-arm-7
     files:
       - build/**/*
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-migration-tool-v{{ .Version }}
-    id: casaos-migration-tool
+    id: nivaroos-migration-tool
     builds:
-      - casaos-migration-tool-amd64
-      - casaos-migration-tool-arm64
-      - casaos-migration-tool-arm-7
+      - nivaroos-migration-tool-amd64
+      - nivaroos-migration-tool-arm64
+      - nivaroos-migration-tool-arm-7
     files:
       - build/sysroot/etc/**/*
 checksum:

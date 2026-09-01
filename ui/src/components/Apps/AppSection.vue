@@ -30,7 +30,7 @@
 					<div class="cards-content has-text-centered is-flex is-justify-content-center is-flex-direction-column" style="padding:6px 4px 4px;width:100%;height:100%">
 						<div class="is-flex is-justify-content-center is-relative">
 							<div class="installing-icon-box">
-								<img :src="item.icon || defaultAppIcon" class="is-52x52 installing-icon" @error="onIconError" />
+								<img :src="item.icon || defaultAppIcon" class="is-52x52 installing-icon" :alt="item.title || item.name || ''" @error="onIconError" />
 								<div class="installing-ring-wrap">
 									<svg class="progress-ring-svg" viewBox="0 0 72 72">
 										<circle class="ring-track" cx="36" cy="36" r="32"></circle>

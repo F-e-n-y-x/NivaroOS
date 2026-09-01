@@ -74,6 +74,7 @@
 					:src="ctxMenu.icon"
 					:style="{ borderRadius: ctxMenu.iconRadius ? ctxMenu.iconRadius + '%' : '5px' }"
 					class="ctx-header-icon mr-2"
+					alt=""
 				/>
 				<div class="ctx-header-info">
 					<div class="ctx-header-title font-semibold">{{ ctxMenu.title }}</div>

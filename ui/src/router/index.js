@@ -77,6 +77,7 @@ router.beforeEach(async (to, from, next) => {
 					case "/login":
 						if (accessToken) {
 							next('/');
+							return;
 						}
 						break;
 
@@ -85,12 +86,13 @@ router.beforeEach(async (to, from, next) => {
 						localStorage.removeItem("refresh_token");
 						localStorage.removeItem("user");
 						next('/login');
-						break;
+						return;
 
 					default:
 						if (version == null) {
 							localStorage.removeItem("access_token");
 							next('/login');
+							return;
 						}
 						break;
 				}

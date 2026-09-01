@@ -21,6 +21,7 @@
 						:style="heroImgTransformStyle"
 						class="hero-img"
 						draggable="false"
+						alt=""
 					/>
 				</div>
 				<div class="hero-edit-overlay">
@@ -265,6 +266,7 @@
 								:style="imgTransformStyle"
 								draggable="false"
 								class="canvas-source-img"
+								alt=""
 								@load="onImageLoaded"
 							/>
 						</div>

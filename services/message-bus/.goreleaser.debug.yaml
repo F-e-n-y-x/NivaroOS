@@ -1,6 +1,6 @@
 # This is an example .goreleaser.yml file with some sensible defaults.
 # Make sure to check the documentation at https://goreleaser.com
-project_name: casaos-message-bus
+project_name: nivaroos-message-bus
 before:
   hooks:
     - go generate
@@ -8,8 +8,8 @@ before:
     - go mod tidy
     - go test -race -v ./...
 builds:
-  - id: casaos-message-bus-amd64
-    binary: build/sysroot/usr/bin/casaos-message-bus
+  - id: nivaroos-message-bus-amd64
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     env:
       - CC=x86_64-linux-gnu-gcc
     gcflags:
@@ -24,8 +24,8 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-message-bus-arm64
-    binary: build/sysroot/usr/bin/casaos-message-bus
+  - id: nivaroos-message-bus-arm64
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     env:
       - CC=aarch64-linux-gnu-gcc
     gcflags:
@@ -40,8 +40,8 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-message-bus-arm-7
-    binary: build/sysroot/usr/bin/casaos-message-bus
+  - id: nivaroos-message-bus-arm-7
+    binary: build/sysroot/usr/bin/nivaroos-message-bus
     env:
       - CC=arm-linux-gnueabihf-gcc
     gcflags:
@@ -58,8 +58,8 @@ builds:
       - arm
     goarm:
       - "7"
-  - id: casaos-message-bus-migration-tool-amd64
-    binary: build/sysroot/usr/bin/casaos-message-bus-migration-tool
+  - id: nivaroos-message-bus-migration-tool-amd64
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=x86_64-linux-gnu-gcc
@@ -75,8 +75,8 @@ builds:
       - linux
     goarch:
       - amd64
-  - id: casaos-message-bus-migration-tool-arm64
-    binary: build/sysroot/usr/bin/casaos-message-bus-migration-tool
+  - id: nivaroos-message-bus-migration-tool-arm64
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=aarch64-linux-gnu-gcc
@@ -92,8 +92,8 @@ builds:
       - linux
     goarch:
       - arm64
-  - id: casaos-message-bus-migration-tool-arm-7
-    binary: build/sysroot/usr/bin/casaos-message-bus-migration-tool
+  - id: nivaroos-message-bus-migration-tool-arm-7
+    binary: build/sysroot/usr/bin/nivaroos-message-bus-migration-tool
     main: ./cmd/migration-tool
     env:
       - CC=arm-linux-gnueabihf-gcc
@@ -114,20 +114,20 @@ builds:
 archives:
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-v{{ .Version }}
-    id: casaos-message-bus
+    id: nivaroos-message-bus
     builds:
-      - casaos-message-bus-amd64
-      - casaos-message-bus-arm64
-      - casaos-message-bus-arm-7
+      - nivaroos-message-bus-amd64
+      - nivaroos-message-bus-arm64
+      - nivaroos-message-bus-arm-7
     files:
       - build/**/*
   - name_template: >-
       {{ .Os }}-{{- if eq .Arch "arm" }}arm-7{{- else }}{{ .Arch }}{{- end }}-{{ .ProjectName }}-migration-tool-v{{ .Version }}
-    id: casaos-message-bus-migration-tool
+    id: nivaroos-message-bus-migration-tool
     builds:
-      - casaos-message-bus-migration-tool-amd64
-      - casaos-message-bus-migration-tool-arm64
-      - casaos-message-bus-migration-tool-arm-7
+      - nivaroos-message-bus-migration-tool-amd64
+      - nivaroos-message-bus-migration-tool-arm64
+      - nivaroos-message-bus-migration-tool-arm-7
     files:
       - build/sysroot/etc/**/*
 checksum:

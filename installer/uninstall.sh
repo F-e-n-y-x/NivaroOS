@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Mirrors install.sh's LEGACY_SERVICE_UNITS + the units it writes itself
+# Mirrors install.sh's CORE_SERVICE_UNITS + the units it writes itself
 # (GPU_SIDECAR_UNIT / VM_SIDECAR_UNIT) - keep these two lists in sync if
 # either script's service list changes.
 SRC_DIR="/opt/nivaroos/src"

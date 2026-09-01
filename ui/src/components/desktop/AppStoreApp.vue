@@ -667,7 +667,7 @@
 						<span>{{ $t('Back to Store') }}</span>
 					</button>
 					<div class="installer-app-badge">
-						<img :src="formState.icon || defaultAppIcon" class="installer-app-icon" @error="onFormIconError" />
+						<img :src="formState.icon || defaultAppIcon" class="installer-app-icon" :alt="formState.title || formState.appName || ''" @error="onFormIconError" />
 						<div class="installer-app-info">
 							<h3 class="installer-app-title">{{ formState.title || formState.appName || $t('Custom Container') }}</h3>
 							<span class="installer-app-sub">{{ formState.image || 'docker:image' }}</span>
@@ -769,7 +769,7 @@
 						<div class="form-group mt-3">
 							<label class="form-label">{{ $t('Icon URL') }}</label>
 							<div class="icon-input-row">
-								<img :src="formState.icon || defaultAppIcon" class="icon-preview-thumb" @error="onFormIconError" />
+								<img :src="formState.icon || defaultAppIcon" class="icon-preview-thumb" alt="" @error="onFormIconError" />
 								<input v-model="formState.icon" type="text" class="form-input" :placeholder="$t('https://icon.casaos.io/main/all/app.png')" />
 							</div>
 						</div>

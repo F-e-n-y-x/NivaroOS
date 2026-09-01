@@ -837,6 +837,10 @@ export default {
 	},
 	methods: {
 		connect() {
+			if (this.rfb) {
+				this.rfb.disconnect()
+				this.rfb = null
+			}
 			this.status = 'connecting'
 			this.rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
 			this.rfb.scaleViewport = this.scaleToFit

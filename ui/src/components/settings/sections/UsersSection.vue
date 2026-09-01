@@ -5,7 +5,7 @@
 		<div class="setting-card">
 			<div class="profile-row">
 				<div class="profile-avatar" @click="triggerAvatarPick">
-					<img :src="avatarUrl" @error="avatarBroken = true" v-show="!avatarBroken" />
+					<img :src="avatarUrl" :alt="$t('Profile picture')" @error="avatarBroken = true" v-show="!avatarBroken" />
 					<span v-show="avatarBroken">{{ (username || '?').charAt(0).toUpperCase() }}</span>
 					<div class="profile-avatar-overlay">
 						<b-icon icon="edit-outline" pack="casa" size="is-16"></b-icon>

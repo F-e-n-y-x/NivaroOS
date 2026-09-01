@@ -1,6 +1,6 @@
 module github.com/F-e-n-y-x/NivaroOS/services/common
 
-go 1.21
+go 1.23.4
 
 require (
 	github.com/coreos/go-systemd/v22 v22.5.0

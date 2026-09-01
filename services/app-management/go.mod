@@ -1,6 +1,6 @@
 module github.com/F-e-n-y-x/NivaroOS/services/app-management
 
-go 1.21
+go 1.23.4
 
 require (
 	github.com/bluele/gcache v0.0.2

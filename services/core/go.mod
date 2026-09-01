@@ -1,6 +1,6 @@
 module github.com/F-e-n-y-x/NivaroOS/services/core
 
-go 1.21
+go 1.23.4
 
 require (
 	github.com/Curtis-Milo/nat-type-identifier-go v0.0.0-20220215191915-18d42168c63d

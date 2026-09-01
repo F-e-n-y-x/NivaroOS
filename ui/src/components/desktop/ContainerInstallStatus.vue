@@ -9,7 +9,7 @@
 			>
 				<div class="install-task-header">
 					<div class="task-icon-wrapper">
-						<img :src="task.icon || defaultAppIcon" class="task-app-icon" @error="onIconError" />
+						<img :src="task.icon || defaultAppIcon" class="task-app-icon" :alt="task.title || task.name || ''" @error="onIconError" />
 						<div v-if="!task.finished && !task.error" class="icon-spinner-ring"></div>
 						<div v-else-if="task.finished" class="icon-success-badge">
 							<i class="mdi mdi-check"></i>
