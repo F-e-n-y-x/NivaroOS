@@ -52,7 +52,7 @@ remove_binaries() {
 		/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
 		/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-vm-sidecar \
 		/usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-cli \
-		/usr/local/bin/mergerfs.ctl
+		/usr/bin/nivaroos-uninstall /usr/local/bin/mergerfs.ctl
 }
 
 remove_dirs() {
@@ -89,7 +89,7 @@ main() {
 	if [ -z "$PURGE_DATA" ]; then
 		echo "App data, VM disks, and files under /DATA were left untouched. Re-run with --purge-data to remove those too."
 	fi
-	echo "The Go toolchain, Node.js/pnpm, and gum were left in place - they aren't managed by this installer."
+	echo "The Go toolchain, Node.js, pnpm, and Docker were left in place - they aren't managed by this installer."
 }
 
 main "$@"

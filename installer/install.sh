@@ -14,6 +14,11 @@ set -euo pipefail
 REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
 SRC_DIR="/opt/nivaroos/src"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
+GO_VERSION="1.23.4"
+MIN_RECOMMENDED_MEMORY_MB="1024"
+MIN_REQUIRED_MEMORY_MB="256"
+MIN_RECOMMENDED_DISK_GB="5"
+MIN_REQUIRED_DISK_GB="1"
 WITH_VM=""
 YES=""
 STEP_NUM=0
@@ -30,27 +35,86 @@ export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
+###############################################################################
+# Output helpers - deliberately dependency-free (no gum/whiptail/etc). A
+# previous version of this script wrapped step execution and the add-on
+# picker in `gum spin`/`gum choose` for a nicer look, but that put an
+# external TUI tool's exit-code/terminal-state handling on the critical path
+# for "did the install actually succeed" - which is exactly the kind of
+# thing an installer can't afford to get subtly wrong. Plain, boring output
+# is worth more here than a spinner.
+###############################################################################
+
+COLOR_RESET='\033[0m'
+COLOR_BOLD='\033[1m'
+COLOR_GREEN='\033[32m'
+COLOR_YELLOW='\033[33m'
+COLOR_RED='\033[31m'
+
+info()  { printf '%b\n' "${COLOR_GREEN}[INFO]${COLOR_RESET} $1"; }
+warn()  { printf '%b\n' "${COLOR_YELLOW}[WARN]${COLOR_RESET} $1" >&2; }
+error() { printf '%b\n' "${COLOR_RED}[ERROR]${COLOR_RESET} $1" >&2; }
+
+# Any command that fails without going through run_step's own error handling
+# (e.g. a bare command at the top level of a function) still gets a clear,
+# actionable message instead of the script just silently vanishing.
+on_error() {
+	local exit_code=$? line="$1"
+	error "Installation failed at installer line ${line} (exit code ${exit_code})."
+	error "Please open an issue at https://github.com/F-e-n-y-x/NivaroOS/issues and include this output."
+	exit "$exit_code"
+}
+trap 'on_error "$LINENO"' ERR
+
 check_root() {
 	if [ "$(id -u)" -ne 0 ]; then
-		echo "error: NivaroOS installer must be run as root (use sudo or su)" >&2
+		error "NivaroOS installer must be run as root (use sudo or su)."
 		exit 1
 	fi
 }
 
 check_distro() {
 	if [ ! -f "$OS_RELEASE_FILE" ]; then
-		echo "error: $OS_RELEASE_FILE not found, cannot determine distro" >&2
+		error "$OS_RELEASE_FILE not found, cannot determine distro."
 		exit 1
 	fi
 	# shellcheck disable=SC1090
 	. "$OS_RELEASE_FILE"
-	case "$ID" in
-		debian|ubuntu) ;;
+	local family="${ID:-} ${ID_LIKE:-}"
+	case " $family " in
+		*" debian "*|*" ubuntu "*) ;;
 		*)
-			echo "error: unsupported distro '$ID' - NivaroOS's installer supports Debian and Ubuntu only" >&2
+			error "Unsupported distro '${ID:-unknown}' - NivaroOS's installer supports Debian, Ubuntu, and their derivatives (Mint, Pop!_OS, Raspberry Pi OS, etc.) only."
 			exit 1
 			;;
 	esac
+	info "Distro check passed: ${PRETTY_NAME:-$ID}"
+}
+
+# Non-fatal below the recommended thresholds (a piped/unattended install
+# shouldn't block on this), fatal only when resources are low enough that
+# the build steps below are essentially guaranteed to fail anyway.
+check_resources() {
+	local mem_mb disk_gb
+	mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }')"
+	disk_gb="$(($(LC_ALL=C df -P / 2>/dev/null | tail -n 1 | awk '{print $4}') / 1024 / 1024))"
+
+	if [ -n "$mem_mb" ]; then
+		if [ "$mem_mb" -lt "$MIN_REQUIRED_MEMORY_MB" ]; then
+			error "Only ${mem_mb}MB of memory detected - NivaroOS needs at least ${MIN_REQUIRED_MEMORY_MB}MB to install."
+			exit 1
+		elif [ "$mem_mb" -lt "$MIN_RECOMMENDED_MEMORY_MB" ]; then
+			warn "Only ${mem_mb}MB of memory detected - ${MIN_RECOMMENDED_MEMORY_MB}MB+ is recommended. Continuing anyway."
+		fi
+	fi
+	if [ -n "$disk_gb" ]; then
+		if [ "$disk_gb" -lt "$MIN_REQUIRED_DISK_GB" ]; then
+			error "Only ${disk_gb}GB of free disk space on / - NivaroOS needs at least ${MIN_REQUIRED_DISK_GB}GB to install."
+			exit 1
+		elif [ "$disk_gb" -lt "$MIN_RECOMMENDED_DISK_GB" ]; then
+			warn "Only ${disk_gb}GB of free disk space on / - ${MIN_RECOMMENDED_DISK_GB}GB+ is recommended. Continuing anyway."
+		fi
+	fi
 }
 
 parse_args() {
@@ -71,7 +135,7 @@ parse_args() {
 				exit 0
 				;;
 			*)
-				echo "error: unknown argument '$1'" >&2
+				error "Unknown argument '$1'."
 				exit 1
 				;;
 		esac
@@ -79,67 +143,52 @@ parse_args() {
 	done
 }
 
+# Runs "$*" with its stdin isolated from this script's own (in a `curl|bash`
+# invocation, still-live) stdin, logging output and only surfacing it on
+# failure so a successful run stays quiet.
 run_step() {
 	local title="$1"
 	shift
 	STEP_NUM=$((STEP_NUM + 1))
+	info "Step ${STEP_NUM}: ${title}"
 	local log
 	log="$(mktemp)"
-	local tty_in=/dev/null
-	if exec 3</dev/tty 2>/dev/null; then
-		exec 3<&-
-		tty_in=/dev/tty
+	if ! bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $*" >"$log" 2>&1 </dev/null; then
+		error "Step ${STEP_NUM} failed: ${title}"
+		cat "$log" >&2
+		rm -f "$log"
+		exit 1
 	fi
-	if command -v gum >/dev/null 2>&1; then
-		if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1 </dev/null" <"$tty_in"; then
-			rm -f "$log"
-		else
-			echo "" >&2
-			gum style --foreground 196 --bold "✗ Step ${STEP_NUM} failed: ${title}" >&2
-			echo "" >&2
-			cat "$log" >&2
-			rm -f "$log"
-			exit 1
-		fi
-	else
-		echo "Step ${STEP_NUM}: ${title}"
-		if bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1 </dev/null"; then
-			rm -f "$log"
-		else
-			echo "✗ Step ${STEP_NUM} failed: ${title}" >&2
-			cat "$log" >&2
-			rm -f "$log"
-			exit 1
-		fi
-	fi
+	rm -f "$log"
 }
-
-ADDON_IDS=(vm)
-ADDON_LABELS=("VM Manager - create and manage virtual machines")
 
 select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		return
 	fi
-	if [ -n "$YES" ] || [ ! -t 0 ] || ! command -v gum >/dev/null 2>&1; then
+	if [ -n "$YES" ] || [ ! -t 0 ]; then
 		WITH_VM=no
 		return
 	fi
-	local chosen
-	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}" || echo "")"
-	local i id upper
-	for i in "${!ADDON_IDS[@]}"; do
-		id="${ADDON_IDS[$i]}"
-		upper="$(printf '%s' "$id" | tr '[:lower:]' '[:upper:]')"
-		if printf '%s\n' "$chosen" | grep -qF "${ADDON_LABELS[$i]}"; then
-			declare -g "WITH_${upper}=yes"
-		else
-			declare -g "WITH_${upper}=no"
-		fi
-	done
+	local reply=""
+	read -r -p "Install the VM Manager add-on (QEMU/KVM + libvirt)? [y/N] " reply </dev/tty || reply=""
+	case "$reply" in
+		[yY]|[yY][eE][sS]) WITH_VM=yes ;;
+		*) WITH_VM=no ;;
+	esac
 }
 
-GUM_VERSION="2.0.0"
+print_banner() {
+	printf '%b' "${COLOR_BOLD}${COLOR_GREEN}"
+	cat <<'EOF'
+  ╔════════════════════════════════════════════════╗
+  ║                    NIVAROOS                     ║
+  ║     Self-hosted personal cloud & container      ║
+  ║                    platform                     ║
+  ╚════════════════════════════════════════════════╝
+EOF
+	printf '%b\n' "${COLOR_RESET}"
+}
 
 # Verifies $1's sha256 against $2; on mismatch, deletes $1 and returns non-zero.
 verify_sha256() {
@@ -151,57 +200,11 @@ verify_sha256() {
 	fi
 }
 
-install_gum() {
-	if command -v gum >/dev/null 2>&1; then
-		return
-	fi
-	apt-get update -qq >/dev/null 2>&1 || true
-	apt-get install -y -qq curl tar ca-certificates >/dev/null 2>&1 || true
-	local arch gum_arch
-	arch="$(dpkg --print-architecture)"
-	case "$arch" in
-		amd64) gum_arch=x86_64 ;;
-		arm64) gum_arch=arm64 ;;
-		*)
-			return
-			;;
-	esac
-	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
-	local expected_sha
-	expected_sha="$(curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/checksums.txt" 2>/dev/null | awk -v f="$tarball" '$2==f{print $1}')"
-	if curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"; then
-		# gum is a cosmetic dependency (the installer falls back to plain
-		# stdout when it's missing) - a checksum mismatch skips installing
-		# it rather than aborting the whole install.
-		if ! verify_sha256 "/tmp/${tarball}" "$expected_sha"; then
-			echo "warning: gum download checksum could not be verified, skipping optional gum install" >&2
-			rm -f "/tmp/${tarball}"
-			return
-		fi
-		tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum" 2>/dev/null || true
-		if [ -f /tmp/gum ]; then
-			install -m 0755 /tmp/gum /usr/local/bin/gum
-		fi
-		rm -f "/tmp/${tarball}" /tmp/gum
-	fi
-}
-
-print_banner() {
-	if command -v gum >/dev/null 2>&1; then
-		gum style \
-			--border double --align center --width 50 --margin "1 2" --padding "1 4" \
-			--border-foreground 212 --foreground 212 --bold \
-			"NIVAROOS" "Self-hosted personal cloud & container platform"
-	else
-		echo "=================================================="
-		echo "  NIVAROOS - Self-hosted personal cloud platform  "
-		echo "=================================================="
-	fi
-}
-
 install_build_deps() {
 	run_step "Updating package lists..." apt-get update
-	run_step "Installing git, nodejs, npm, curl, build essentials..." apt-get install -y git nodejs npm curl ca-certificates build-essential
+	run_step "Installing build and runtime dependencies..." apt-get install -y \
+		git nodejs npm curl ca-certificates build-essential \
+		smartmontools hdparm parted ntfs-3g samba
 
 	if ! command -v go >/dev/null 2>&1 || ! go_version_ok; then
 		install_go_toolchain
@@ -221,7 +224,7 @@ install_build_deps() {
 go_version_ok() {
 	local ver
 	ver="$(go version | awk '{print $3}' | sed 's/^go//')"
-	printf '%s\n%s\n' "1.23.4" "$ver" | sort -V -C
+	printf '%s\n%s\n' "$GO_VERSION" "$ver" | sort -V -C
 }
 
 install_go_toolchain() {
@@ -231,27 +234,27 @@ install_go_toolchain() {
 		amd64) go_arch=amd64 ;;
 		arm64) go_arch=arm64 ;;
 		*)
-			echo "error: unsupported architecture '$arch' for Go toolchain install" >&2
+			error "Unsupported architecture '$arch' for Go toolchain install."
 			exit 1
 			;;
 	esac
-	local tarball="go1.23.4.linux-${go_arch}.tar.gz"
-	# Unlike gum, the Go toolchain is essential (it builds every service), so
-	# a verifiable checksum mismatch aborts the install rather than proceeding
-	# on a possibly-tampered compiler. go.dev's JSON index is the source of
-	# truth for the official sha256; if that lookup itself fails (network
-	# hiccup, endpoint shape change) we warn and continue rather than
-	# bricking installs over the verification step itself failing.
+	local tarball="go${GO_VERSION}.linux-${go_arch}.tar.gz"
+	# Unlike optional tooling, the Go toolchain is essential (it builds every
+	# service), so a verifiable checksum mismatch aborts the install rather
+	# than proceeding on a possibly-tampered compiler. go.dev's JSON index is
+	# the source of truth for the official sha256; if that lookup itself
+	# fails (network hiccup, endpoint shape change) we warn and continue
+	# rather than bricking installs over the verification step itself failing.
 	local expected_sha
 	expected_sha="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' 2>/dev/null | tr -d ' \n' | grep -o "\"filename\":\"${tarball}\"[^}]*\"sha256\":\"[a-f0-9]*\"" | grep -o '"sha256":"[a-f0-9]*"' | head -1 | grep -o '[a-f0-9]\{64\}')"
-	run_step "Installing the Go toolchain (v1.23.4)..." "curl -fsSL https://go.dev/dl/${tarball} -o /tmp/${tarball}"
+	run_step "Installing the Go toolchain (v${GO_VERSION})..." "curl -fsSL https://go.dev/dl/${tarball} -o /tmp/${tarball}"
 	if [ -n "$expected_sha" ]; then
 		if ! verify_sha256 "/tmp/${tarball}" "$expected_sha"; then
-			echo "error: Go toolchain download failed checksum verification (expected ${expected_sha}) - aborting" >&2
+			error "Go toolchain download failed checksum verification (expected ${expected_sha}) - aborting."
 			exit 1
 		fi
 	else
-		echo "warning: could not fetch the official Go toolchain checksum to verify against, proceeding without verification" >&2
+		warn "Could not fetch the official Go toolchain checksum to verify against, proceeding without verification."
 	fi
 	rm -rf /usr/local/go
 	tar -C /usr/local -xzf "/tmp/${tarball}"
@@ -260,6 +263,26 @@ install_go_toolchain() {
 	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/nivaroos-go.sh
 	ln -sf /usr/local/go/bin/go /usr/bin/go
 	ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+}
+
+# app-management drives Docker directly (compose apps, the app store) - it
+# is not optional. Installs it via Docker's own official convenience script
+# if missing, and makes sure the daemon is actually up either way.
+check_docker() {
+	if ! command -v docker >/dev/null 2>&1; then
+		run_step "Installing Docker..." "curl -fsSL https://get.docker.com | sh"
+	fi
+	if ! systemctl is-enabled --quiet docker 2>/dev/null; then
+		systemctl enable docker >/dev/null 2>&1 || true
+	fi
+	if ! systemctl is-active --quiet docker 2>/dev/null; then
+		run_step "Starting Docker..." systemctl start docker
+	fi
+	if ! docker version >/dev/null 2>&1; then
+		error "Docker was installed but isn't responding - check 'systemctl status docker'."
+		exit 1
+	fi
+	info "Docker is installed and running."
 }
 
 clone_repo() {
@@ -392,43 +415,79 @@ start_core_services() {
 	done
 }
 
+# A thin, memorable wrapper around the actual uninstall.sh in the checked-out
+# source tree, so users don't need to remember where that is or re-fetch it.
+install_uninstall_wrapper() {
+	cat > /usr/bin/nivaroos-uninstall <<EOF
+#!/usr/bin/env bash
+exec bash "$SRC_DIR/installer/uninstall.sh" "\$@"
+EOF
+	chmod +x /usr/bin/nivaroos-uninstall
+}
+
+# Every real (non-virtual) NIC's IPv4 address, for a useful "where do I
+# actually reach this thing" summary on multi-NIC/multi-bridge hosts, where
+# `hostname -I`'s first entry is frequently a Docker bridge, not the LAN.
+list_reachable_ips() {
+	ip -4 -o addr show scope global 2>/dev/null | awk '{print $2, $4}' | while read -r iface cidr; do
+		case "$iface" in
+			docker*|veth*|br-*|virbr*) continue ;;
+		esac
+		echo "${cidr%/*} ${iface}"
+	done
+}
+
 print_summary() {
-	local lines=()
-	lines+=("NivaroOS installed successfully!")
-	lines+=("")
+	echo ""
+	info "NivaroOS installed successfully!"
+	echo ""
 	for unit in $CORE_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
 		if systemctl is-active --quiet "$unit"; then
-			lines+=("✓ $unit")
+			printf '%b\n' "  ${COLOR_GREEN}✓${COLOR_RESET} $unit"
 		else
-			lines+=("✗ $unit (not running)")
+			printf '%b\n' "  ${COLOR_RED}✗${COLOR_RESET} $unit (not running)"
 		fi
 	done
 	if [ "$WITH_VM" = "yes" ]; then
 		if systemctl is-active --quiet nivaroos-vm-sidecar.service; then
-			lines+=("✓ nivaroos-vm-sidecar.service")
+			printf '%b\n' "  ${COLOR_GREEN}✓${COLOR_RESET} nivaroos-vm-sidecar.service"
 		else
-			lines+=("✗ nivaroos-vm-sidecar.service (not running)")
+			printf '%b\n' "  ${COLOR_RED}✗${COLOR_RESET} nivaroos-vm-sidecar.service (not running)"
 		fi
 	else
-		lines+=("○ VM Manager not installed - run 'nivaroos-cli vm enable' to add it later")
+		echo "  ○ VM Manager not installed - run 'nivaroos-cli vm enable' to add it later"
 	fi
-	lines+=("")
-	lines+=("Open http://$(hostname -I | awk '{print $1}')/ to finish setup.")
-	if command -v gum >/dev/null 2>&1; then
-		gum style --border double --padding "1 2" --border-foreground 212 "${lines[@]}"
+	echo ""
+	local port
+	port="$(grep -m1 '^port=' /etc/nivaroos/gateway.ini 2>/dev/null | cut -d= -f2)"
+	local ips
+	ips="$(list_reachable_ips)"
+	if [ -n "$ips" ]; then
+		info "Open your browser and visit:"
+		while read -r ip iface; do
+			[ -z "$ip" ] && continue
+			if [ -z "$port" ] || [ "$port" = "80" ]; then
+				echo "  - http://${ip} (${iface})"
+			else
+				echo "  - http://${ip}:${port} (${iface})"
+			fi
+		done <<< "$ips"
 	else
-		printf '%s\n' "${lines[@]}"
+		info "Open http://$(hostname -I | awk '{print $1}')/ to finish setup."
 	fi
+	echo ""
+	echo "Uninstall: nivaroos-uninstall"
 }
 
 main() {
+	parse_args "$@"
 	check_root
 	check_distro
-	parse_args "$@"
-	install_gum
+	check_resources
 	print_banner
 	select_addons
 	install_build_deps
+	check_docker
 	clone_repo
 	install_core_services
 	if [ "$WITH_VM" = "yes" ]; then
@@ -436,8 +495,8 @@ main() {
 	fi
 	install_ui
 	start_core_services
+	install_uninstall_wrapper
 	print_summary
 }
 
 main "$@"
-

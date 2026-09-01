@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer
 
 Stops and removes all NivaroOS services, binaries, and config, and deletes the cloned source under `/opt/nivaroos`. Your app data, VM disks, and files under `/DATA` are left untouched, so you can re-run the install command above for a clean reinstall. To also wipe `/DATA` (irreversible), add `--purge-data` - run interactively so you're asked to type `DELETE` to confirm, or pass `--yes` too for a non-interactive purge.
 
-The Go toolchain, Node.js/pnpm, and `gum` are left in place since the installer doesn't own them.
+The Go toolchain, Node.js, pnpm, and Docker are left in place since the installer doesn't own them.
 
 ---
 
