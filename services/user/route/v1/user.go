@@ -91,7 +91,7 @@ func PostUserRegister(c *gin.Context) {
 // only before the first user exists) - single-user by design. This is
 // JWT-protected (only an already-logged-in user can call it), so it's
 // safe to allow minting new keys any time to support adding more
-// CasaOS-level users later.
+// NivaroOS-level users later.
 func PostGenerateRegisterKey(c *gin.Context) {
 	key := uuid.NewV4().String()
 	service.UserRegisterHash[key] = key

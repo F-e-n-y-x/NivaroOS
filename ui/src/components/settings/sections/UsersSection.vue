@@ -83,7 +83,7 @@
 <script>
 import { Cropper } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
-import NivaroOSUsersPanel from '@/components/settings/NivaroOSUsersPanel.vue'
+import NivaroosUsersPanel from '@/components/settings/NivaroOSUsersPanel.vue'
 import SystemUsersPanel from '@/components/settings/SystemUsersPanel.vue'
 import SmbUsersPanel from '@/components/settings/SmbUsersPanel.vue'
 
@@ -96,7 +96,7 @@ export const ROWS = [
 
 export default {
 	name: 'users-section',
-	components: { Cropper, NivaroOSUsersPanel, SystemUsersPanel, SmbUsersPanel },
+	components: { Cropper, NivaroosUsersPanel, SystemUsersPanel, SmbUsersPanel },
 	data() {
 		return {
 			avatarBroken: false,
