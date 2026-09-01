@@ -328,15 +328,19 @@ export default {
 	flex-direction: column;
 	gap: 1.25rem;
 
-	// A flex item's automatic minimum size drops to 0 the moment it has
-	// any overflow other than visible - .setting-card's own overflow:
-	// hidden (for its rounded corners) means that WITHOUT this, it's the
-	// one section flexbox is allowed to crush down to zero height to make
-	// everything "fit" instead of properly scrolling, while the
-	// .edit-section blocks (no overflow set) keep their natural size and
-	// stay visible - exactly the "everything above Disks disappears" bug.
 	> * {
 		flex-shrink: 0;
+	}
+
+	.setting-card {
+		overflow: visible !important;
+	}
+	.setting-row {
+		overflow: visible !important;
+	}
+	.row-control {
+		overflow: visible !important;
+		position: relative;
 	}
 }
 // A section's own heading-to-content gap is deliberately smaller than

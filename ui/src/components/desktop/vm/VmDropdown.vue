@@ -78,7 +78,7 @@ export default {
 		icon: { type: String, default: '' },
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
 		align: { type: String, default: 'left' }, // 'left', 'right'
-		direction: { type: String, default: 'auto' }, // 'auto', 'down', 'up'
+		direction: { type: String, default: 'down' }, // 'down', 'up', 'auto'
 	},
 	data() {
 		return {
@@ -140,16 +140,16 @@ export default {
 				this.isDropup = true
 				return
 			}
-			if (this.direction === 'down') {
-				this.isDropup = false
-				return
+			if (this.direction === 'auto') {
+				if (this.$refs.dropdownRoot) {
+					const rect = this.$refs.dropdownRoot.getBoundingClientRect()
+					const spaceBelow = window.innerHeight - rect.bottom
+					const spaceAbove = rect.top
+					this.isDropup = spaceBelow < 140 && spaceAbove > spaceBelow
+					return
+				}
 			}
-			if (this.$refs.dropdownRoot) {
-				const rect = this.$refs.dropdownRoot.getBoundingClientRect()
-				const spaceBelow = window.innerHeight - rect.bottom
-				const spaceAbove = rect.top
-				this.isDropup = spaceBelow < 200 && spaceAbove > spaceBelow
-			}
+			this.isDropup = false
 		},
 		close() {
 			this.isOpen = false

@@ -124,7 +124,6 @@
 										:options="adapterModelOptions"
 										dark
 										size="small"
-										direction="up"
 									></vm-dropdown>
 								</div>
 								<div class="net-editor-actions">

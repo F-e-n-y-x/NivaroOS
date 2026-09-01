@@ -522,23 +522,23 @@ export default {
 	min-height: 0;
 }
 .wizard-pane {
-	// Each step's own children (a setting-card, a hint paragraph, a
-	// .wizard-section) otherwise only had their OWN margin to space
-	// themselves from whatever came before - inconsistent depending on
-	// what type of element that happened to be. A uniform gap means the
-	// rhythm is the same regardless, in every step.
 	display: flex;
 	flex-direction: column;
 	gap: 1rem;
 
-	// A flex item's automatic minimum size drops to 0 the moment it has
-	// any overflow other than visible - .setting-card's own overflow:
-	// hidden (for its rounded corners) means that WITHOUT this, it's the
-	// section flexbox is allowed to crush down to zero height to make
-	// everything "fit" in cramped space instead of properly scrolling
-	// (see EditVmModal.vue's .edit-vm-body for where this actually bit).
 	> * {
 		flex-shrink: 0;
+	}
+
+	.setting-card {
+		overflow: visible !important;
+	}
+	.setting-row {
+		overflow: visible !important;
+	}
+	.row-control {
+		overflow: visible !important;
+		position: relative;
 	}
 }
 // A section's own heading-to-content gap is deliberately smaller than

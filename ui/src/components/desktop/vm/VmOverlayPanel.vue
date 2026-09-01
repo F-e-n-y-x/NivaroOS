@@ -72,7 +72,7 @@ export default {
 	max-width: calc(100% - 3rem);
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
+	overflow: visible;
 
 	// Every dialog (Create VM, Create bridged network, the file picker)
 	// uses plain <b-button> both in its body (Browse/Clear next to an ISO
@@ -137,7 +137,7 @@ export default {
 	flex: 1 1 auto;
 	display: flex;
 	flex-direction: column;
-	overflow: auto;
+	overflow: visible;
 	padding: 1rem;
 }
 
