@@ -61,7 +61,12 @@
 					</button>
 					<div v-if="netMenuOpen" class="device-menu network-dropdown-menu">
 						<div class="device-menu-header-row">
-							<p class="device-menu-title">{{ $t('Network Adapters') }}</p>
+							<div class="header-title-group">
+								<button v-if="editingNet" type="button" class="net-back-btn" :title="$t('Back')" @click="editingNet = false">
+									<b-icon icon="arrow-left" size="is-small"></b-icon>
+								</button>
+								<p class="device-menu-title">{{ editingNet ? $t('Edit Adapter') : $t('Network Adapters') }}</p>
+							</div>
 							<button v-if="!editingNet && vm && vm.networks && vm.networks.length" type="button" class="net-edit-toggle-btn" @click="startEditingNet(vm.networks[0])">
 								<b-icon icon="pencil-outline" size="is-small"></b-icon>
 								<span>{{ $t('Edit') }}</span>
@@ -93,36 +98,40 @@
 						<template v-else>
 							<div class="net-inline-editor">
 								<div class="net-editor-section">
-									<label class="net-editor-label">{{ $t('Mode') }}</label>
-									<div class="segmented-control net-segmented">
-										<button type="button" class="segmented-option" :class="{ active: netForm.mode === 'nat' }" @click="netForm.mode = 'nat'">{{ $t('NAT') }}</button>
-										<button type="button" class="segmented-option" :class="{ active: netForm.mode === 'bridge' }" @click="netForm.mode = 'bridge'">{{ $t('Bridge') }}</button>
-									</div>
-									<div v-if="netForm.mode === 'bridge'" style="margin-top: 0.35rem;">
-										<vm-dropdown
-											v-model="netForm.bridge_name"
-											:options="bridgeDropdownOptions"
-											:placeholder="$t('Select bridge interface...')"
-											dark
-											icon="lan-connect"
-											size="small"
-										></vm-dropdown>
-									</div>
+									<label class="net-editor-label">{{ $t('Network Mode') }}</label>
+									<vm-dropdown
+										v-model="netForm.mode"
+										:options="networkModeOptions"
+										dark
+										size="small"
+									></vm-dropdown>
+								</div>
+								<div v-if="netForm.mode === 'bridge'" class="net-editor-section">
+									<label class="net-editor-label">{{ $t('Bridge Interface') }}</label>
+									<vm-dropdown
+										v-model="netForm.bridge_name"
+										:options="bridgeDropdownOptions"
+										:placeholder="$t('Select bridge interface...')"
+										dark
+										icon="lan-connect"
+										size="small"
+									></vm-dropdown>
 								</div>
 								<div class="net-editor-section">
-									<label class="net-editor-label">{{ $t('Adapter Model') }}</label>
-									<div class="segmented-control net-segmented">
-										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'virtio' }" @click="netForm.model = 'virtio'">VirtIO</button>
-										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'e1000e' }" @click="netForm.model = 'e1000e'">e1000e</button>
-										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'e1000' }" @click="netForm.model = 'e1000'">e1000</button>
-										<button type="button" class="segmented-option" :class="{ active: netForm.model === 'rtl8139' }" @click="netForm.model = 'rtl8139'">RTL8139</button>
-									</div>
+									<label class="net-editor-label">{{ $t('Adapter Emulation Model') }}</label>
+									<vm-dropdown
+										v-model="netForm.model"
+										:options="adapterModelOptions"
+										dark
+										size="small"
+									></vm-dropdown>
 								</div>
 								<div class="net-editor-actions">
 									<button type="button" class="net-cancel-btn" @click="editingNet = false">{{ $t('Cancel') }}</button>
 									<button type="button" class="net-save-btn" :disabled="netBusy" @click="saveNetworkAdapter">
 										<b-icon v-if="netBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-										<span>{{ $t('Save') }}</span>
+										<b-icon v-else icon="check" size="is-small"></b-icon>
+										<span>{{ $t('Apply Changes') }}</span>
 									</button>
 								</div>
 							</div>
@@ -608,6 +617,20 @@ export default {
 				label: b.name,
 				icon: 'lan-connect',
 			}))
+		},
+		networkModeOptions() {
+			return [
+				{ value: 'nat', label: this.$t('NAT (Shared Network)'), icon: 'lan', meta: 'Default' },
+				{ value: 'bridge', label: this.$t('Bridge (Direct LAN Access)'), icon: 'lan-connect', meta: 'Bridged' },
+			]
+		},
+		adapterModelOptions() {
+			return [
+				{ value: 'virtio', label: 'VirtIO', meta: 'Fastest (Linux/VirtIO-Win)', icon: 'speedometer' },
+				{ value: 'e1000e', label: 'Intel e1000e', meta: 'Native Windows 10/11 & Linux', icon: 'microsoft-windows' },
+				{ value: 'e1000', label: 'Intel e1000', meta: 'Universal Legacy', icon: 'lan' },
+				{ value: 'rtl8139', label: 'Realtek RTL8139', meta: 'Legacy 10/100', icon: 'lan' },
+			]
 		},
 	},
 	watch: {
@@ -1162,13 +1185,40 @@ export default {
 	right: 0 !important;
 }
 .network-dropdown-menu {
-	width: 22rem;
+	width: 22.5rem;
 }
 .device-menu-header-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 0.35rem;
+	margin-bottom: 0.4rem;
+}
+.header-title-group {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+
+	.device-menu-title {
+		margin: 0;
+	}
+}
+.net-back-btn {
+	border: none;
+	background: rgba(255, 255, 255, 0.08);
+	color: rgba(255, 255, 255, 0.7);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	border-radius: 5px;
+	transition: all 0.12s ease;
+
+	&:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.16);
+	}
 }
 .net-edit-toggle-btn {
 	display: inline-flex;
@@ -1180,7 +1230,7 @@ export default {
 	font-family: inherit;
 	font-size: 0.72rem;
 	font-weight: 500;
-	padding: 0.2rem 0.5rem;
+	padding: 0.2rem 0.55rem;
 	border-radius: 6px;
 	cursor: pointer;
 	transition: all 0.15s ease;
@@ -1194,70 +1244,71 @@ export default {
 .net-inline-editor {
 	display: flex;
 	flex-direction: column;
-	gap: 0.6rem;
-	padding: 0.65rem;
-	background: rgba(0, 0, 0, 0.28);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 8px;
+	gap: 0.75rem;
+	padding: 0.75rem;
+	background: rgba(0, 0, 0, 0.32);
+	border: 1px solid rgba(255, 255, 255, 0.09);
+	border-radius: 10px;
 	margin-top: 0.25rem;
 }
 .net-editor-section {
 	display: flex;
 	flex-direction: column;
-	gap: 0.3rem;
+	gap: 0.35rem;
 }
 .net-editor-label {
-	font-size: 0.7rem;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.6);
+	font-size: 0.68rem;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.55);
 	text-transform: uppercase;
-	letter-spacing: 0.02em;
-}
-.net-segmented {
-	margin-bottom: 0;
-	flex-wrap: wrap;
+	letter-spacing: 0.03em;
 }
 .net-editor-actions {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 0.5rem;
-	margin-top: 0.4rem;
-	padding-top: 0.5rem;
+	margin-top: 0.25rem;
+	padding-top: 0.65rem;
 	border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .net-cancel-btn {
 	border: none;
-	background: transparent;
-	color: rgba(255, 255, 255, 0.6);
+	background: rgba(255, 255, 255, 0.07);
+	color: rgba(255, 255, 255, 0.7);
 	font-family: inherit;
 	font-size: 0.75rem;
-	padding: 0.35rem 0.65rem;
+	font-weight: 500;
+	padding: 0.38rem 0.75rem;
 	border-radius: 6px;
 	cursor: pointer;
+	transition: all 0.12s ease;
 
 	&:hover {
 		color: #fff;
-		background: rgba(255, 255, 255, 0.08);
+		background: rgba(255, 255, 255, 0.14);
 	}
 }
 .net-save-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.3rem;
+	gap: 0.35rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.75rem;
 	font-weight: 500;
-	padding: 0.35rem 0.85rem;
+	padding: 0.38rem 0.95rem;
 	border-radius: 6px;
 	cursor: pointer;
-	transition: background 0.15s ease;
+	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
 		background: #1d4ed8;
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.97);
 	}
 	&:disabled {
 		opacity: 0.4;

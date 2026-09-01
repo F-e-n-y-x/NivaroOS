@@ -953,17 +953,35 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 	}
 	defer dom.Free()
 
+	current, err := toVM(dom)
+	if err != nil {
+		return VM{}, err
+	}
+
 	active, err := dom.IsActive()
 	if err != nil {
 		return VM{}, err
 	}
 	if active {
-		return VM{}, fmt.Errorf("stop %q before editing it - vCPU/memory/firmware changes require a stopped VM", name)
-	}
-
-	current, err := toVM(dom)
-	if err != nil {
-		return VM{}, err
+		if (req.VCPUs > 0 && req.VCPUs != current.VCPUs) || (req.MemoryMiB > 0 && req.MemoryMiB != current.MemoryMiB) || (req.Firmware != "" && req.Firmware != current.Firmware) {
+			return VM{}, fmt.Errorf("stop %q before changing its CPU cores, RAM, or firmware", name)
+		}
+		// Hot-update networks
+		for _, net := range req.Networks {
+			oldMAC := net.MAC
+			if err := s.UpdateNetworkAdapter(name, oldMAC, net); err != nil {
+				return VM{}, err
+			}
+		}
+		// Hot-update ISO
+		if req.ISOPath != current.ISOPath {
+			if req.ISOPath != "" {
+				_ = s.InsertCDROM(name, req.ISOPath)
+			} else {
+				_ = s.EjectCDROM(name)
+			}
+		}
+		return s.GetVM(name)
 	}
 
 	// Match requested disks against current ones by path: a path that
@@ -1491,8 +1509,6 @@ func (s *LibvirtStore) SetNetworkLinkState(name, mac, state string) error {
 // UpdateNetworkAdapter updates or replaces an interface (mode, model, bridge, mac)
 // live if running and persists the changes to domain config.
 func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	dom, err := s.lookup(name)
 	if err != nil {
 		return err
@@ -1508,16 +1524,30 @@ func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) er
 	if model == "" {
 		model = "virtio"
 	}
-	mac := nic.MAC
-	if mac == "" {
-		mac = oldMAC
-	}
 
 	nicType := "network"
 	source := "default"
-	if nic.Mode == "bridge" && nic.BridgeName != "" {
+	if nic.Mode == "bridge" {
 		nicType = "bridge"
-		source = nic.BridgeName
+		if nic.BridgeName != "" {
+			source = nic.BridgeName
+		} else {
+			source = "br0"
+			nic.BridgeName = "br0"
+		}
+	}
+
+	current, err := toVM(dom)
+	if err != nil {
+		return err
+	}
+
+	if oldMAC == "" && len(current.Networks) > 0 {
+		oldMAC = current.Networks[0].MAC
+	}
+	mac := nic.MAC
+	if mac == "" {
+		mac = oldMAC
 	}
 
 	if active {
@@ -1536,10 +1566,6 @@ func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) er
 			return fmt.Errorf("attach interface: %s (%v)", strings.TrimSpace(string(out)), err)
 		}
 	} else {
-		current, err := toVM(dom)
-		if err != nil {
-			return err
-		}
 		replaced := false
 		newNetworks := make([]NICSpec, 0, len(current.Networks))
 		for _, n := range current.Networks {
