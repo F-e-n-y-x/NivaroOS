@@ -14,10 +14,10 @@
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
-						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" max="32" step="1"
-							:style="rangeStyle(form.vcpus, 1, 32)" />
-						<span class="slider-hint">32</span>
-						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" max="64" @change="clampVcpus" />
+						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" :max="maxVcpus" step="1"
+							:style="rangeStyle(form.vcpus, 1, maxVcpus)" />
+						<span class="slider-hint">{{ maxVcpus }}</span>
+						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" :max="maxVcpus" @change="clampVcpus" />
 					</div>
 				</div>
 				<div class="setting-row">
@@ -25,10 +25,10 @@
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
-						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" max="65536" step="512"
-							:style="rangeStyle(form.memory_mib, 512, 65536)" />
-						<span class="slider-hint">64 GB</span>
-						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" max="128" step="0.5" />
+						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" :max="maxMemoryMiB" step="512"
+							:style="rangeStyle(form.memory_mib, 512, maxMemoryMiB)" />
+						<span class="slider-hint">{{ maxMemoryGiB }} GB</span>
+						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" :max="maxMemoryGiB" step="0.5" />
 						<span class="slider-value-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
@@ -136,6 +136,7 @@ export default {
 			// to floor each existing disk's size at its current GiB (grow
 			// only) and lock its bus/SSD, since those can't change on an
 			// already-attached disk without recreating it.
+			hostCaps: null,
 			existingDisks: [],
 			networks: [],
 			showIsoPicker: false,
@@ -144,6 +145,21 @@ export default {
 		}
 	},
 	computed: {
+		maxVcpus() {
+			if (this.hostCaps && this.hostCaps.cpu_cores) {
+				return Math.max(1, this.hostCaps.cpu_cores)
+			}
+			return 16
+		},
+		maxMemoryMiB() {
+			if (this.hostCaps && this.hostCaps.total_memory_mib) {
+				return Math.max(1024, Math.floor(this.hostCaps.total_memory_mib / 512) * 512)
+			}
+			return 16384
+		},
+		maxMemoryGiB() {
+			return Math.round(this.maxMemoryMiB / 1024)
+		},
 		bridgeNetworks() {
 			return this.networks.filter((n) => n.mode === 'bridge')
 		},
@@ -158,7 +174,7 @@ export default {
 			set(gib) {
 				const mib = Math.round((Number(gib) || 0) * 1024)
 				const snapped = Math.round(mib / 512) * 512
-				this.form.memory_mib = Math.min(65536, Math.max(512, snapped))
+				this.form.memory_mib = Math.min(this.maxMemoryMiB, Math.max(512, snapped))
 			},
 		},
 		displayResolution: {
@@ -187,7 +203,7 @@ export default {
 			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
 		},
 		clampVcpus() {
-			this.form.vcpus = Math.min(64, Math.max(1, Math.round(this.form.vcpus) || 1))
+			this.form.vcpus = Math.min(this.maxVcpus, Math.max(1, Math.round(this.form.vcpus) || 1))
 		},
 		// Matches AppearanceSection.vue's own range inputs exactly - sets
 		// the --pct custom property .pretty-range's filled-track gradient
@@ -200,11 +216,15 @@ export default {
 		},
 		async load() {
 			this.error = null
-			this.networks = await vmSidecar.listNetworks().catch(() => [])
-			// Re-fetch rather than trusting the prop - VmList's poll snapshot
-			// could be a couple seconds stale, and disk sizes in particular
-			// need a fresh qemu-img read.
-			const fresh = await vmSidecar.getVM(this.vm.name).catch(() => this.vm)
+			const [nets, caps, fresh] = await Promise.all([
+				vmSidecar.listNetworks().catch(() => []),
+				vmSidecar.getHostCapabilities().catch(() => null),
+				vmSidecar.getVM(this.vm.name).catch(() => this.vm),
+			])
+			this.networks = nets || []
+			if (caps) {
+				this.hostCaps = caps
+			}
 			this.form = {
 				vcpus: fresh.vcpus,
 				memory_mib: fresh.memory_mib,

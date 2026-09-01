@@ -124,6 +124,7 @@
 										:options="adapterModelOptions"
 										dark
 										size="small"
+										direction="up"
 									></vm-dropdown>
 								</div>
 								<div class="net-editor-actions">
@@ -191,13 +192,15 @@
 						<p class="device-menu-title">{{ $t('USB Devices') }}</p>
 						<p v-if="loadingHostCaps" class="device-menu-hint">{{ $t('Loading host devices...') }}</p>
 						<p v-else-if="!hostUsbDevices.length" class="device-menu-hint">{{ $t('No USB devices found on the host.') }}</p>
-						<label v-for="dev in hostUsbDevices" :key="dev.vendor_id + ':' + dev.product_id" class="device-menu-row" :class="{ active: isUsbAttached(dev) }">
-							<div class="device-row-icon" :class="{ active: isUsbAttached(dev) }">
-								<b-icon icon="usb" size="is-small"></b-icon>
-							</div>
-							<span class="device-menu-desc">{{ dev.description || (dev.vendor_id + ':' + dev.product_id) }}</span>
-							<input type="checkbox" class="device-menu-checkbox" :checked="isUsbAttached(dev)" :disabled="usbBusy" @change="toggleUsbDevice(dev, $event.target.checked)" />
-						</label>
+						<div class="device-menu-scrollable">
+							<label v-for="dev in hostUsbDevices" :key="dev.vendor_id + ':' + dev.product_id" class="device-menu-row" :class="{ active: isUsbAttached(dev) }">
+								<div class="device-row-icon" :class="{ active: isUsbAttached(dev) }">
+									<b-icon icon="usb" size="is-small"></b-icon>
+								</div>
+								<span class="device-menu-desc">{{ dev.description || (dev.vendor_id + ':' + dev.product_id) }}</span>
+								<input type="checkbox" class="device-menu-checkbox" :checked="isUsbAttached(dev)" :disabled="usbBusy" @change="toggleUsbDevice(dev, $event.target.checked)" />
+							</label>
+						</div>
 					</div>
 				</div>
 				<div ref="diskMenuWrapper" class="menu-wrapper">
@@ -234,14 +237,16 @@
 						</div>
 						<p class="device-menu-title device-menu-title-divided">{{ $t('Attached Disks') }}</p>
 						<p v-if="!(vm && vm.disks && vm.disks.length)" class="device-menu-hint">{{ $t('No virtual disks yet') }}</p>
-						<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
-							<div class="device-row-icon active">
-								<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
+						<div class="device-menu-scrollable">
+							<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
+								<div class="device-row-icon active">
+									<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
+								</div>
+								<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
+								<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
+									<b-icon icon="eject-outline" size="is-small"></b-icon>
+								</button>
 							</div>
-							<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
-							<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
-								<b-icon icon="eject-outline" size="is-small"></b-icon>
-							</button>
 						</div>
 					</div>
 				</div>
@@ -1190,10 +1195,10 @@ export default {
 .network-dropdown-menu {
 	left: 0 !important;
 	right: auto !important;
-	width: 22rem;
+	width: 22.5rem;
 	max-width: calc(100vw - 2rem);
-	max-height: none;
-	overflow: visible;
+	max-height: none !important;
+	overflow: visible !important;
 }
 .device-menu-header-row {
 	display: flex;
@@ -1258,6 +1263,7 @@ export default {
 	border: 1px solid rgba(255, 255, 255, 0.09);
 	border-radius: 10px;
 	margin-top: 0.25rem;
+	overflow: visible !important;
 }
 .net-editor-section {
 	display: flex;
@@ -1491,14 +1497,20 @@ export default {
 	border-radius: 12px;
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 	padding: 0.75rem;
-	width: 21.5rem;
-	max-height: 28rem;
-	overflow-y: auto;
-	scrollbar-width: thin;
-	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+	width: 22rem;
+	overflow: visible !important;
 	display: flex;
 	flex-direction: column;
 	gap: 0.35rem;
+}
+.device-menu-scrollable {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	max-height: 12rem;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
 	&::-webkit-scrollbar {
 		width: 5px;

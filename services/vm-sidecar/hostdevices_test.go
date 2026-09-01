@@ -61,3 +61,26 @@ func TestParseLspciOutput_EmptyInput(t *testing.T) {
 		t.Errorf("expected no devices for empty input, got %+v", devices)
 	}
 }
+
+func TestParseMeminfo_ExtractsTotalAndAvailable(t *testing.T) {
+	sampleMeminfo := `MemTotal:       32785716 kB
+MemFree:         4123560 kB
+MemAvailable:   24560128 kB
+Buffers:          345120 kB
+Cached:          8923400 kB
+`
+	total, avail := parseMeminfo(sampleMeminfo)
+	if total != 32785716/1024 {
+		t.Errorf("expected total %d MiB, got %d", 32785716/1024, total)
+	}
+	if avail != 24560128/1024 {
+		t.Errorf("expected avail %d MiB, got %d", 24560128/1024, avail)
+	}
+}
+
+func TestParseMeminfo_HandlesEmptyOrMissing(t *testing.T) {
+	total, avail := parseMeminfo("")
+	if total != 0 || avail != 0 {
+		t.Errorf("expected 0, 0 for empty input, got %d, %d", total, avail)
+	}
+}

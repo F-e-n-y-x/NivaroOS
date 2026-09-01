@@ -8,7 +8,6 @@
 			'is-disabled': disabled,
 			'is-small': size === 'small',
 			'is-compact': size === 'compact',
-			'align-right': align === 'right',
 		}"
 	>
 		<button
@@ -27,7 +26,19 @@
 		</button>
 
 		<transition name="dropdown-fade">
-			<div v-if="isOpen" class="vm-dropdown-menu" :style="menuStyle" role="listbox">
+			<div
+				v-show="isOpen"
+				ref="dropdownMenu"
+				class="vm-dropdown-menu"
+				:class="{
+					'is-dark': dark,
+					'is-dropup': isDropup,
+					'is-small': size === 'small',
+					'is-compact': size === 'compact',
+				}"
+				:style="menuFloatingStyle"
+				role="listbox"
+			>
 				<div v-if="!normalizedOptions.length" class="vm-dropdown-empty">
 					<b-icon icon="information-outline" size="is-small"></b-icon>
 					<span>{{ emptyText || $t('No options available') }}</span>
@@ -71,12 +82,13 @@ export default {
 		dark: { type: Boolean, default: false },
 		icon: { type: String, default: '' },
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
-		align: { type: String, default: 'left' }, // 'left', 'right'
-		menuMinWidth: { type: String, default: '' },
+		direction: { type: String, default: 'auto' }, // 'auto', 'down', 'up'
 	},
 	data() {
 		return {
 			isOpen: false,
+			isDropup: false,
+			menuFloatingStyle: {},
 		}
 	},
 	computed: {
@@ -113,26 +125,73 @@ export default {
 		selectedIcon() {
 			return this.selectedOption ? this.selectedOption.icon : ''
 		},
-		menuStyle() {
-			if (this.menuMinWidth) {
-				return { minWidth: this.menuMinWidth }
-			}
-			return {}
-		},
 	},
 	mounted() {
-		document.addEventListener('mousedown', this.handleOutsideClick)
+		document.addEventListener('mousedown', this.handleOutsideClick, true)
+		window.addEventListener('resize', this.updatePosition, true)
+		window.addEventListener('scroll', this.updatePosition, true)
 	},
 	beforeDestroy() {
-		document.removeEventListener('mousedown', this.handleOutsideClick)
+		document.removeEventListener('mousedown', this.handleOutsideClick, true)
+		window.removeEventListener('resize', this.updatePosition, true)
+		window.removeEventListener('scroll', this.updatePosition, true)
+		if (this.$refs.dropdownMenu && this.$refs.dropdownMenu.parentNode === document.body) {
+			document.body.removeChild(this.$refs.dropdownMenu)
+		}
 	},
 	methods: {
 		toggle() {
 			if (this.disabled) return
-			this.isOpen = !this.isOpen
+			if (this.isOpen) {
+				this.close()
+			} else {
+				this.open()
+			}
+		},
+		open() {
+			this.isOpen = true
+			this.$nextTick(() => {
+				if (this.$refs.dropdownMenu && this.$refs.dropdownMenu.parentNode !== document.body) {
+					document.body.appendChild(this.$refs.dropdownMenu)
+				}
+				this.updatePosition()
+			})
 		},
 		close() {
 			this.isOpen = false
+		},
+		updatePosition() {
+			if (!this.isOpen || !this.$refs.dropdownRoot || !this.$refs.dropdownMenu) return
+			const triggerRect = this.$refs.dropdownRoot.getBoundingClientRect()
+			const menuEl = this.$refs.dropdownMenu
+			const menuHeight = menuEl.offsetHeight || 160
+			const menuWidth = Math.max(triggerRect.width, menuEl.offsetWidth || triggerRect.width)
+
+			const spaceBelow = window.innerHeight - triggerRect.bottom
+			const spaceAbove = triggerRect.top
+
+			const isDropup = this.direction === 'up' || (this.direction === 'auto' && spaceBelow < Math.min(menuHeight + 12, 220) && spaceAbove > spaceBelow)
+			this.isDropup = isDropup
+
+			const top = isDropup ? triggerRect.top - menuHeight - 4 : triggerRect.bottom + 4
+			let left = triggerRect.left
+
+			// Keep inside screen
+			if (left + menuWidth > window.innerWidth - 12) {
+				left = Math.max(12, window.innerWidth - menuWidth - 12)
+			}
+			if (left < 12) {
+				left = 12
+			}
+
+			this.menuFloatingStyle = {
+				position: 'fixed',
+				top: `${Math.round(top)}px`,
+				left: `${Math.round(left)}px`,
+				minWidth: `${Math.round(triggerRect.width)}px`,
+				maxWidth: `min(32rem, calc(100vw - 24px))`,
+				zIndex: 999999,
+			}
 		},
 		selectOption(opt) {
 			if (opt.disabled) return
@@ -144,7 +203,10 @@ export default {
 			return this.value === val
 		},
 		handleOutsideClick(e) {
-			if (this.isOpen && this.$refs.dropdownRoot && !this.$refs.dropdownRoot.contains(e.target)) {
+			if (!this.isOpen) return
+			const inTrigger = this.$refs.dropdownRoot && this.$refs.dropdownRoot.contains(e.target)
+			const inMenu = this.$refs.dropdownMenu && this.$refs.dropdownMenu.contains(e.target)
+			if (!inTrigger && !inMenu) {
 				this.close()
 			}
 		},
@@ -155,8 +217,8 @@ export default {
 <style lang="scss" scoped>
 .vm-dropdown {
 	position: relative;
-	display: inline-block;
 	width: 100%;
+	display: block;
 	font-family: inherit;
 	user-select: none;
 
@@ -168,6 +230,7 @@ export default {
 
 .vm-dropdown-trigger {
 	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -213,6 +276,8 @@ export default {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	flex: 1 1 auto;
+	text-align: left;
 
 	&.is-placeholder {
 		color: #94a3b8;
@@ -231,18 +296,12 @@ export default {
 	}
 }
 
+/* Floating Portaled Menu */
 .vm-dropdown-menu {
-	position: absolute;
-	top: calc(100% + 4px);
-	left: 0;
-	right: 0;
-	width: 100%;
-	box-sizing: border-box;
-	z-index: 100;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
-	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.04);
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06);
 	padding: 0.35rem;
 	max-height: 15rem;
 	overflow-y: auto;
@@ -251,6 +310,8 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 0.15rem;
+	box-sizing: border-box;
+	font-family: inherit;
 
 	&::-webkit-scrollbar {
 		width: 5px;
@@ -262,11 +323,6 @@ export default {
 	&::-webkit-scrollbar-track {
 		background: transparent;
 	}
-}
-
-.vm-dropdown.align-right .vm-dropdown-menu {
-	left: auto;
-	right: 0;
 }
 
 .vm-dropdown-empty {
@@ -285,7 +341,7 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.5rem;
+	gap: 0.75rem;
 	background: transparent;
 	border: none;
 	border-radius: 6px;
@@ -298,6 +354,7 @@ export default {
 	outline: none;
 	transition: background 0.12s ease, color 0.12s ease;
 	min-height: 2.1rem;
+	white-space: nowrap;
 
 	&:hover:not(:disabled) {
 		background: #f1f5f9;
@@ -319,10 +376,10 @@ export default {
 .item-left {
 	display: flex;
 	align-items: center;
-	gap: 0.45rem;
+	gap: 0.5rem;
 	min-width: 0;
 	flex: 1 1 auto;
-	overflow: hidden;
+	white-space: nowrap;
 }
 
 .item-icon {
@@ -335,11 +392,8 @@ export default {
 }
 
 .item-label {
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 	flex: 1 1 auto;
-	min-width: 0;
 }
 
 .item-meta {
@@ -372,7 +426,7 @@ export default {
 	border-radius: 6px;
 }
 
-/* Dark Mode (for Console panel) */
+/* Dark Mode (for Console panel and dark themes) */
 .vm-dropdown.is-dark {
 	.vm-dropdown-trigger {
 		background: rgba(255, 255, 255, 0.08);
@@ -402,16 +456,16 @@ export default {
 	&.is-open .trigger-chevron {
 		color: #60a5fa;
 	}
+}
 
-	.vm-dropdown-menu {
-		background: #242424;
-		border-color: rgba(255, 255, 255, 0.14);
-		box-shadow: 0 14px 36px rgba(0, 0, 0, 0.7);
-		scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+.vm-dropdown-menu.is-dark {
+	background: #242424;
+	border-color: rgba(255, 255, 255, 0.14);
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
-		&::-webkit-scrollbar-thumb {
-			background: rgba(255, 255, 255, 0.2);
-		}
+	&::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.2);
 	}
 
 	.vm-dropdown-empty {
@@ -441,7 +495,8 @@ export default {
 	}
 
 	.item-meta {
-		color: rgba(255, 255, 255, 0.4);
+		color: rgba(255, 255, 255, 0.5);
+		background: rgba(255, 255, 255, 0.08);
 	}
 
 	.item-check {
@@ -464,5 +519,22 @@ export default {
 .dropdown-fade-leave-to {
 	opacity: 0;
 	transform: scaleY(0.95) translateY(-2px);
+}
+
+.vm-dropdown-menu.is-dropup {
+	&.dropdown-fade-enter-active,
+	&.dropdown-fade-leave-active {
+		transform-origin: bottom center;
+	}
+
+	&.dropdown-fade-enter {
+		opacity: 0;
+		transform: scaleY(0.95) translateY(4px);
+	}
+
+	&.dropdown-fade-leave-to {
+		opacity: 0;
+		transform: scaleY(0.95) translateY(2px);
+	}
 }
 </style>

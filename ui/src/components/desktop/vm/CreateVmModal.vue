@@ -58,10 +58,10 @@
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
-						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" max="32" step="1"
-							:style="rangeStyle(form.vcpus, 1, 32)" />
-						<span class="slider-hint">32</span>
-						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" max="64" @change="clampVcpus" />
+						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" :max="maxVcpus" step="1"
+							:style="rangeStyle(form.vcpus, 1, maxVcpus)" />
+						<span class="slider-hint">{{ maxVcpus }}</span>
+						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" :max="maxVcpus" @change="clampVcpus" />
 					</div>
 				</div>
 				<div class="setting-row">
@@ -69,10 +69,10 @@
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
-						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" max="65536" step="512"
-							:style="rangeStyle(form.memory_mib, 512, 65536)" />
-						<span class="slider-hint">64 GB</span>
-						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" max="128" step="0.5" />
+						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" :max="maxMemoryMiB" step="512"
+							:style="rangeStyle(form.memory_mib, 512, maxMemoryMiB)" />
+						<span class="slider-hint">{{ maxMemoryGiB }} GB</span>
+						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" :max="maxMemoryGiB" step="0.5" />
 						<span class="slider-value-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
@@ -277,6 +277,7 @@ export default {
 				usb_devices: [],
 				pci_devices: [],
 			},
+			hostCaps: null,
 			showIsoPicker: false,
 			networks: [],
 			creating: false,
@@ -284,6 +285,21 @@ export default {
 		}
 	},
 	computed: {
+		maxVcpus() {
+			if (this.hostCaps && this.hostCaps.cpu_cores) {
+				return Math.max(1, this.hostCaps.cpu_cores)
+			}
+			return 16
+		},
+		maxMemoryMiB() {
+			if (this.hostCaps && this.hostCaps.total_memory_mib) {
+				return Math.max(1024, Math.floor(this.hostCaps.total_memory_mib / 512) * 512)
+			}
+			return 16384
+		},
+		maxMemoryGiB() {
+			return Math.round(this.maxMemoryMiB / 1024)
+		},
 		bridgeNetworks() {
 			return this.networks.filter((n) => n.mode === 'bridge')
 		},
@@ -321,7 +337,7 @@ export default {
 			set(gib) {
 				const mib = Math.round((Number(gib) || 0) * 1024)
 				const snapped = Math.round(mib / 512) * 512
-				this.form.memory_mib = Math.min(65536, Math.max(512, snapped))
+				this.form.memory_mib = Math.min(this.maxMemoryMiB, Math.max(512, snapped))
 			},
 		},
 		// The guest's actual display resolution (a libvirt video hint the
@@ -375,8 +391,8 @@ export default {
 		},
 		applyTemplate(tpl) {
 			this.selectedTemplate = tpl.id
-			this.form.vcpus = tpl.vcpus
-			this.form.memory_mib = tpl.memory_mib
+			this.form.vcpus = Math.min(this.maxVcpus, tpl.vcpus)
+			this.form.memory_mib = Math.min(this.maxMemoryMiB, tpl.memory_mib)
 			this.form.firmware = tpl.firmware
 			if (this.form.disks.length === 1) {
 				this.form.disks = [{ ...this.form.disks[0], gib: tpl.disk_gib }]
@@ -390,7 +406,7 @@ export default {
 			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
 		},
 		clampVcpus() {
-			this.form.vcpus = Math.min(64, Math.max(1, Math.round(this.form.vcpus) || 1))
+			this.form.vcpus = Math.min(this.maxVcpus, Math.max(1, Math.round(this.form.vcpus) || 1))
 		},
 		// Matches AppearanceSection.vue's own range inputs exactly - sets
 		// the --pct custom property .pretty-range's filled-track gradient
@@ -405,7 +421,20 @@ export default {
 			this.$emit('close')
 		},
 		async refresh() {
-			this.networks = await vmSidecar.listNetworks().catch(() => [])
+			const [nets, caps] = await Promise.all([
+				vmSidecar.listNetworks().catch(() => []),
+				vmSidecar.getHostCapabilities().catch(() => null),
+			])
+			this.networks = nets || []
+			if (caps) {
+				this.hostCaps = caps
+				if (this.form.vcpus > this.maxVcpus) {
+					this.form.vcpus = this.maxVcpus
+				}
+				if (this.form.memory_mib > this.maxMemoryMiB) {
+					this.form.memory_mib = this.maxMemoryMiB
+				}
+			}
 		},
 		async submit() {
 			this.error = null

@@ -4,10 +4,14 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -24,12 +28,52 @@ type HostPCIDevice struct {
 
 // HostCapabilities is the JSON shape returned by GET /host/capabilities -
 // what the Create/Edit VM hardware picker has available to offer.
-// IOMMUEnabled gates whether PCI passthrough can work at all on this
-// host; USB passthrough has no such prerequisite.
+// Includes host CPU core count, total RAM, and available RAM so VM creation
+// and edit dialogs match the host machine's actual hardware specs.
 type HostCapabilities struct {
-	IOMMUEnabled bool            `json:"iommu_enabled"`
-	USBDevices   []HostUSBDevice `json:"usb_devices"`
-	PCIDevices   []HostPCIDevice `json:"pci_devices"`
+	CPUCores           int             `json:"cpu_cores"`
+	TotalMemoryMiB     int64           `json:"total_memory_mib"`
+	AvailableMemoryMiB int64           `json:"available_memory_mib,omitempty"`
+	IOMMUEnabled       bool            `json:"iommu_enabled"`
+	USBDevices         []HostUSBDevice `json:"usb_devices"`
+	PCIDevices         []HostPCIDevice `json:"pci_devices"`
+}
+
+func parseMeminfo(content string) (int64, int64) {
+	var totalMemMiB, availMemMiB int64
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "MemTotal:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+					totalMemMiB = kb / 1024
+				}
+			}
+		} else if strings.HasPrefix(line, "MemAvailable:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+					availMemMiB = kb / 1024
+				}
+			}
+		}
+	}
+	return totalMemMiB, availMemMiB
+}
+
+func readHostSystemSpecs() (int, int64, int64) {
+	cores := runtime.NumCPU()
+	content, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return cores, 8192, 4096
+	}
+	totalMemMiB, availMemMiB := parseMeminfo(string(content))
+	if totalMemMiB <= 0 {
+		totalMemMiB = 8192
+	}
+	return cores, totalMemMiB, availMemMiB
 }
 
 var lsusbLineRe = regexp.MustCompile(`^Bus \d+ Device \d+: ID ([0-9a-fA-F]{4}):([0-9a-fA-F]{4})\s*(.*)$`)
@@ -94,18 +138,22 @@ func listHostPCIDevices() ([]HostPCIDevice, error) {
 }
 
 func GetHostCapabilities() (HostCapabilities, error) {
+	cores, totalMem, availMem := readHostSystemSpecs()
 	usb, err := listHostUSBDevices()
 	if err != nil {
-		return HostCapabilities{}, err
+		usb = []HostUSBDevice{}
 	}
 	pci, err := listHostPCIDevices()
 	if err != nil {
-		return HostCapabilities{}, err
+		pci = []HostPCIDevice{}
 	}
 	return HostCapabilities{
-		IOMMUEnabled: iommuEnabled(),
-		USBDevices:   usb,
-		PCIDevices:   pci,
+		CPUCores:           cores,
+		TotalMemoryMiB:     totalMem,
+		AvailableMemoryMiB: availMem,
+		IOMMUEnabled:       iommuEnabled(),
+		USBDevices:         usb,
+		PCIDevices:         pci,
 	}, nil
 }
 
