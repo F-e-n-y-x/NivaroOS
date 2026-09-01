@@ -208,6 +208,50 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// Shared Folder (Dynamic USB Drive for offline file sharing)
+	mux.HandleFunc("GET /vms/{name}/shared-folder", func(w http.ResponseWriter, r *http.Request) {
+		info, err := store.GetSharedFolder(r.PathValue("name"))
+		if err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, info)
+	})
+
+	mux.HandleFunc("POST /vms/{name}/shared-folder/mount", func(w http.ResponseWriter, r *http.Request) {
+		var spec SharedFolderSpec
+		if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		info, err := store.MountSharedFolder(r.PathValue("name"), spec)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, info)
+	})
+
+	mux.HandleFunc("POST /vms/{name}/shared-folder/sync", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.SyncSharedFolder(r.PathValue("name")); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /vms/{name}/shared-folder/unmount", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.UnmountSharedFolder(r.PathValue("name")); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 // vmAction adapts a LibvirtStore method taking just a VM name into an

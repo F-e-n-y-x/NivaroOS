@@ -36,7 +36,8 @@
 		</div>
 		<template #footer>
 			<b-button @click="$emit('close')">{{ $t('Cancel') }}</b-button>
-			<b-button type="is-primary" :disabled="!selectedPath" @click="confirm">{{ $t('Select') }}</b-button>
+			<b-button v-if="directoryMode" type="is-primary" @click="confirmFolder">{{ $t('Select This Folder') }}</b-button>
+			<b-button v-else type="is-primary" :disabled="!selectedPath" @click="confirm">{{ $t('Select') }}</b-button>
 		</template>
 	</vm-overlay-panel>
 </template>
@@ -58,7 +59,8 @@ export default {
 		// picked - non-matching files are shown but dimmed, not hidden
 		// entirely, since the destination filesystem may use a different
 		// extension convention than expected. Empty = no filtering at all.
-		extensions: { type: Array, default: () => [] }
+		extensions: { type: Array, default: () => [] },
+		directoryMode: { type: Boolean, default: false }
 	},
 	data() {
 		return {
@@ -127,6 +129,10 @@ export default {
 		confirm() {
 			if (!this.selectedPath) return
 			this.$emit('selected', this.selectedPath)
+			this.$emit('close')
+		},
+		confirmFolder() {
+			this.$emit('selected', this.selectedPath || this.currentPath)
 			this.$emit('close')
 		}
 	}

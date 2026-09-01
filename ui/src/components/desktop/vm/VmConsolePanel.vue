@@ -249,6 +249,81 @@
 						</div>
 					</div>
 				</div>
+				<div ref="shareMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" :class="{ active: sharedFolder && sharedFolder.attached }" @click="toggleShareMenu">
+						<b-icon icon="folder-sync-outline" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Share') }}</span>
+						<span v-if="sharedFolder && sharedFolder.attached" class="share-badge-dot"></span>
+					</button>
+					<div v-if="shareMenuOpen" class="device-menu share-menu">
+						<p class="device-menu-title">{{ $t('Offline Shared Folder') }}</p>
+						<p class="device-menu-hint">{{ $t('Mounts a host folder as a virtual USB drive in the VM with zero network needed.') }}</p>
+
+						<!-- When not mounted -->
+						<template v-if="!(sharedFolder && sharedFolder.attached)">
+							<div class="share-form-group">
+								<label class="share-label">{{ $t('Host Folder') }}</label>
+								<div class="share-folder-picker-row">
+									<span class="share-folder-path" :class="{ 'is-empty': !selectedShareFolder }">
+										{{ selectedShareFolder || $t('No folder selected') }}
+									</span>
+									<button type="button" class="share-browse-btn" @click="showShareFolderPicker = true">
+										<b-icon icon="folder-open" size="is-small"></b-icon>
+										<span>{{ $t('Browse') }}</span>
+									</button>
+								</div>
+							</div>
+							<div class="share-form-group">
+								<label class="share-label">{{ $t('Drive Size') }}</label>
+								<div class="share-size-chips">
+									<button
+										v-for="s in [512, 1024, 2048, 4096]"
+										:key="s"
+										type="button"
+										class="share-size-chip"
+										:class="{ active: shareSizeMB === s }"
+										@click="shareSizeMB = s"
+									>
+										{{ s >= 1024 ? (s / 1024) + ' GB' : s + ' MB' }}
+									</button>
+								</div>
+							</div>
+							<button class="share-action-btn is-primary" :disabled="shareBusy || !selectedShareFolder" @click="mountShare">
+								<b-icon v-if="shareBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+								<b-icon v-else icon="usb-flash-drive" size="is-small"></b-icon>
+								<span>{{ $t('Mount as USB Drive') }}</span>
+							</button>
+						</template>
+
+						<!-- When mounted -->
+						<template v-else>
+							<div class="share-active-box">
+								<div class="share-active-icon">
+									<b-icon icon="usb-flash-drive" size="is-small"></b-icon>
+								</div>
+								<div class="share-active-details">
+									<span class="share-active-path">{{ sharedFolder.folder_path }}</span>
+									<span class="share-active-meta">
+										<span class="share-status-dot"></span>
+										{{ $t('Mounted as USB') }} &middot; {{ sharedFolder.size_mb >= 1024 ? (sharedFolder.size_mb / 1024) + ' GB' : sharedFolder.size_mb + ' MB' }}
+									</span>
+								</div>
+							</div>
+							<div class="share-active-actions">
+								<button class="share-action-btn" :disabled="shareBusy" :title="$t('Sync new/edited files from VM to host')" @click="syncShare">
+									<b-icon v-if="shareBusy && shareAction === 'sync'" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+									<b-icon v-else icon="sync" size="is-small"></b-icon>
+									<span>{{ $t('Sync to Host') }}</span>
+								</button>
+								<button class="share-action-btn is-danger" :disabled="shareBusy" :title="$t('Eject USB drive from VM')" @click="unmountShare">
+									<b-icon v-if="shareBusy && shareAction === 'unmount'" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+									<b-icon v-else icon="eject" size="is-small"></b-icon>
+									<span>{{ $t('Eject Drive') }}</span>
+								</button>
+							</div>
+						</template>
+					</div>
+				</div>
 				<button class="toolbar-btn" :class="{ active: keyboardOpen }" @click="keyboardOpen = !keyboardOpen">
 					<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
 					<span>{{ $t('Keyboard') }}</span>
@@ -343,7 +418,19 @@
 			<span class="statusbar-item"><b-icon icon="harddisk" size="is-small"></b-icon>{{ diskSummary }}</span>
 			<span v-if="vm && vm.iso_path" class="statusbar-item"><b-icon icon="disc" size="is-small"></b-icon>{{ isoFileName }}</span>
 			<span v-if="vm && vm.usb_devices && vm.usb_devices.length" class="statusbar-item"><b-icon icon="usb" size="is-small"></b-icon>{{ vm.usb_devices.length }}</span>
+			<span v-if="sharedFolder && sharedFolder.attached" class="statusbar-item is-shared-live">
+				<b-icon icon="folder-sync" size="is-small"></b-icon>{{ $t('USB Share') }} ({{ sharedFolder.size_mb >= 1024 ? (sharedFolder.size_mb / 1024) + ' GB' : sharedFolder.size_mb + ' MB' }})
+			</span>
 		</div>
+
+		<vm-file-picker-dialog
+			:active="showShareFolderPicker"
+			:title="$t('Select Host Folder to Share')"
+			start-path="/DATA"
+			directory-mode
+			@selected="onShareFolderSelected"
+			@close="showShareFolderPicker = false"
+		></vm-file-picker-dialog>
 	</div>
 </template>
 
@@ -351,6 +438,7 @@
 import RFB from '@novnc/novnc'
 import { vmSidecar } from '@/api/vmSidecar'
 import VmDropdown from './VmDropdown.vue'
+import VmFilePickerDialog from './VmFilePickerDialog.vue'
 
 const STATE_POLL_MS = 3000
 
@@ -507,6 +595,7 @@ export default {
 	name: 'vm-console-panel',
 	components: {
 		VmDropdown,
+		VmFilePickerDialog,
 	},
 	props: {
 		vmName: { type: String, required: true },
@@ -549,6 +638,13 @@ export default {
 			statePollTimer: null,
 			usbMenuOpen: false,
 			diskMenuOpen: false,
+			shareMenuOpen: false,
+			sharedFolder: null,
+			selectedShareFolder: '',
+			shareSizeMB: 1024,
+			shareBusy: false,
+			shareAction: '',
+			showShareFolderPicker: false,
 			loadingHostCaps: false,
 			hostUsbDevices: [],
 			usbBusy: false,
@@ -684,13 +780,123 @@ export default {
 		},
 		async pollState() {
 			try {
-				const vm = await vmSidecar.getVM(this.vmName)
+				const [vm, share] = await Promise.all([
+					vmSidecar.getVM(this.vmName),
+					vmSidecar.getSharedFolder(this.vmName).catch(() => null),
+				])
 				this.vm = vm
 				this.vmState = vm.state
+				if (share) {
+					this.sharedFolder = share
+					if (share.folder_path && !this.selectedShareFolder) {
+						this.selectedShareFolder = share.folder_path
+					}
+				} else {
+					this.sharedFolder = null
+				}
 			} catch (e) {
 				// VM may have just been deleted, or the sidecar is briefly
 				// unreachable - keep showing the last known state rather than
 				// flipping the power menu around on a transient error.
+			}
+		},
+		toggleShareMenu() {
+			this.shareMenuOpen = !this.shareMenuOpen
+			if (this.shareMenuOpen) {
+				this.fetchSharedFolder()
+			}
+		},
+		async fetchSharedFolder() {
+			try {
+				const info = await vmSidecar.getSharedFolder(this.vmName)
+				this.sharedFolder = info
+				if (info && info.folder_path && !this.selectedShareFolder) {
+					this.selectedShareFolder = info.folder_path
+				}
+			} catch (e) {
+				this.sharedFolder = null
+			}
+		},
+		onShareFolderSelected(path) {
+			this.selectedShareFolder = path
+		},
+		async mountShare() {
+			if (!this.selectedShareFolder || this.shareBusy) return
+			this.shareBusy = true
+			this.shareAction = 'mount'
+			try {
+				const res = await vmSidecar.mountSharedFolder(this.vmName, {
+					folder_path: this.selectedShareFolder,
+					size_mb: this.shareSizeMB,
+				})
+				this.sharedFolder = res
+				this.$buefy.toast.open({
+					message: this.$t('Shared USB drive attached to VM!'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 3500,
+				})
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: e.message || this.$t('Failed to mount shared folder'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 4000,
+				})
+			} finally {
+				this.shareBusy = false
+				this.shareAction = ''
+			}
+		},
+		async syncShare() {
+			if (this.shareBusy) return
+			this.shareBusy = true
+			this.shareAction = 'sync'
+			try {
+				await vmSidecar.syncSharedFolder(this.vmName)
+				this.$buefy.toast.open({
+					message: this.$t('Files synced back to host folder successfully!'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 3500,
+				})
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: e.message || this.$t('Sync failed'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 4000,
+				})
+			} finally {
+				this.shareBusy = false
+				this.shareAction = ''
+			}
+		},
+		async unmountShare() {
+			if (this.shareBusy) return
+			this.shareBusy = true
+			this.shareAction = 'unmount'
+			try {
+				await vmSidecar.unmountSharedFolder(this.vmName)
+				this.sharedFolder = null
+				this.$buefy.toast.open({
+					message: this.$t('Shared USB drive safely ejected from VM!'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 3500,
+				})
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: e.message || this.$t('Eject failed'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 4000,
+				})
+			} finally {
+				this.shareBusy = false
+				this.shareAction = ''
 			}
 		},
 		sendCtrlAltDel() {
@@ -797,6 +1003,9 @@ export default {
 			}
 			if (this.diskMenuOpen && this.$refs.diskMenuWrapper && !this.$refs.diskMenuWrapper.contains(event.target)) {
 				this.diskMenuOpen = false
+			}
+			if (this.shareMenuOpen && this.$refs.shareMenuWrapper && !this.$refs.shareMenuWrapper.contains(event.target)) {
+				this.shareMenuOpen = false
 			}
 			if (this.qualityMenuOpen && this.$refs.qualityMenuWrapper && !this.$refs.qualityMenuWrapper.contains(event.target)) {
 				this.qualityMenuOpen = false
@@ -1861,5 +2070,231 @@ export default {
 .statusbar-item.is-live .activity-dot {
 	background: #48c774;
 	box-shadow: 0 0 4px #48c774;
+}
+.statusbar-item.is-shared-live {
+	color: #34d399;
+	font-weight: 500;
+}
+
+/* File Share Menu Styles */
+.share-menu {
+	width: 22rem;
+	right: 0 !important;
+	left: auto !important;
+}
+
+.share-form-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	margin-top: 0.4rem;
+}
+
+.share-label {
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: rgba(255, 255, 255, 0.7);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.share-folder-picker-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 8px;
+	padding: 0.35rem 0.5rem;
+}
+
+.share-folder-path {
+	flex: 1 1 auto;
+	font-size: 0.78rem;
+	color: #fff;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: monospace;
+
+	&.is-empty {
+		color: rgba(255, 255, 255, 0.35);
+		font-family: inherit;
+		font-style: italic;
+	}
+}
+
+.share-browse-btn {
+	border: none;
+	background: rgba(255, 255, 255, 0.12);
+	color: #fff;
+	border-radius: 6px;
+	padding: 0.25rem 0.55rem;
+	font-family: inherit;
+	font-size: 0.72rem;
+	font-weight: 500;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
+	transition: background 0.15s ease;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.2);
+	}
+}
+
+.share-size-chips {
+	display: flex;
+	gap: 0.35rem;
+}
+
+.share-size-chip {
+	flex: 1;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	background: rgba(255, 255, 255, 0.05);
+	color: rgba(255, 255, 255, 0.75);
+	border-radius: 6px;
+	padding: 0.3rem 0;
+	font-size: 0.72rem;
+	font-weight: 600;
+	cursor: pointer;
+	text-align: center;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: #fff;
+	}
+
+	&.active {
+		background: rgba(37, 99, 235, 0.25);
+		border-color: #3b82f6;
+		color: #60a5fa;
+	}
+}
+
+.share-action-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.4rem;
+	width: 100%;
+	border: none;
+	border-radius: 8px;
+	padding: 0.5rem;
+	font-family: inherit;
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	margin-top: 0.4rem;
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+	transition: background 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.18);
+	}
+
+	&.is-primary {
+		background: #2563eb;
+		color: #fff;
+		&:hover:not(:disabled) {
+			background: #1d4ed8;
+		}
+	}
+
+	&.is-danger {
+		background: rgba(239, 68, 68, 0.2);
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		color: #f87171;
+		&:hover:not(:disabled) {
+			background: rgba(239, 68, 68, 0.35);
+			color: #fff;
+		}
+	}
+
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+
+.share-active-box {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	background: rgba(16, 185, 129, 0.1);
+	border: 1px solid rgba(16, 185, 129, 0.25);
+	border-radius: 8px;
+	padding: 0.6rem;
+	margin-top: 0.25rem;
+}
+
+.share-active-icon {
+	width: 2rem;
+	height: 2rem;
+	border-radius: 6px;
+	background: rgba(16, 185, 129, 0.2);
+	color: #34d399;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.share-active-details {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.share-active-path {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #fff;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: monospace;
+}
+
+.share-active-meta {
+	font-size: 0.7rem;
+	color: #34d399;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.share-status-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #34d399;
+	display: inline-block;
+}
+
+.share-active-actions {
+	display: flex;
+	gap: 0.4rem;
+	margin-top: 0.4rem;
+
+	.share-action-btn {
+		margin-top: 0;
+		flex: 1;
+	}
+}
+
+.share-badge-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: #34d399;
+	display: inline-block;
+	margin-left: 0.2rem;
+	box-shadow: 0 0 6px #34d399;
 }
 </style>

@@ -75,6 +75,11 @@ export const vmSidecar = {
 	updateNetworkAdapter: (name, oldMac, nic) =>
 		request(`/vms/${encodeURIComponent(name)}/network/adapter`, jsonBody({ old_mac: oldMac, nic })),
 
+	getSharedFolder: name => request(`/vms/${encodeURIComponent(name)}/shared-folder`),
+	mountSharedFolder: (name, payload) => request(`/vms/${encodeURIComponent(name)}/shared-folder/mount`, jsonBody(payload)),
+	syncSharedFolder: name => request(`/vms/${encodeURIComponent(name)}/shared-folder/sync`, { method: 'POST' }),
+	unmountSharedFolder: name => request(`/vms/${encodeURIComponent(name)}/shared-folder/unmount`, { method: 'POST' }),
+
 	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
 	// A cache-busting `t` param is left for the caller to append when
 	// polling (a plain <img src> won't re-fetch an unchanged URL).

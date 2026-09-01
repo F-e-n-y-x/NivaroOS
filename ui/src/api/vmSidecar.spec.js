@@ -78,4 +78,26 @@ describe('vmSidecar', () => {
 		// client falls back to "localhost" - see vmSidecar.js.
 		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost:28641/vms/my-vm/console')
 	})
+
+	test('sharedFolder endpoints call correct URLs and verbs', async () => {
+		global.fetch.mockReturnValue(jsonResponse({ attached: true, folder_path: '/DATA/Share' }))
+		const info = await vmSidecar.getSharedFolder('my-vm')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder`, {})
+		expect(info.attached).toBe(true)
+
+		global.fetch.mockReturnValue(jsonResponse({ attached: true, size_mb: 1024 }))
+		await vmSidecar.mountSharedFolder('my-vm', { folder_path: '/DATA/Share', size_mb: 1024 })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/mount`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ folder_path: '/DATA/Share', size_mb: 1024 })
+		})
+
+		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
+		await vmSidecar.syncSharedFolder('my-vm')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/sync`, { method: 'POST' })
+
+		await vmSidecar.unmountSharedFolder('my-vm')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/unmount`, { method: 'POST' })
+	})
 })
