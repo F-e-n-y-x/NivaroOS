@@ -244,7 +244,7 @@ cd services/common && go test ./...
 
 ## 👥 Authors & Contributors
 
-- **Ayush** ([@F-e-n-y-x](https://github.com/F-e-n-y-x) · [ayushsoni2911@gmail.com](mailto:ayushsoni2911@gmail.com)) — Lead Developer & Project Creator
+- **Ayush** ([@F-e-n-y-x](https://github.com/F-e-n-y-x)) — Project Creator
 - **NivaroOS Community Contributors**
 
 ---
