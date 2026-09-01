@@ -8,6 +8,8 @@
 			'is-disabled': disabled,
 			'is-small': size === 'small',
 			'is-compact': size === 'compact',
+			'is-dropup': isDropup,
+			'align-right': align === 'right',
 		}"
 	>
 		<button
@@ -30,13 +32,6 @@
 				v-show="isOpen"
 				ref="dropdownMenu"
 				class="vm-dropdown-menu"
-				:class="{
-					'is-dark': dark,
-					'is-dropup': isDropup,
-					'is-small': size === 'small',
-					'is-compact': size === 'compact',
-				}"
-				:style="menuFloatingStyle"
 				role="listbox"
 			>
 				<div v-if="!normalizedOptions.length" class="vm-dropdown-empty">
@@ -82,13 +77,13 @@ export default {
 		dark: { type: Boolean, default: false },
 		icon: { type: String, default: '' },
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
+		align: { type: String, default: 'left' }, // 'left', 'right'
 		direction: { type: String, default: 'auto' }, // 'auto', 'down', 'up'
 	},
 	data() {
 		return {
 			isOpen: false,
 			isDropup: false,
-			menuFloatingStyle: {},
 		}
 	},
 	computed: {
@@ -127,71 +122,37 @@ export default {
 		},
 	},
 	mounted() {
-		document.addEventListener('mousedown', this.handleOutsideClick, true)
-		window.addEventListener('resize', this.updatePosition, true)
-		window.addEventListener('scroll', this.updatePosition, true)
+		document.addEventListener('mousedown', this.handleOutsideClick)
 	},
 	beforeDestroy() {
-		document.removeEventListener('mousedown', this.handleOutsideClick, true)
-		window.removeEventListener('resize', this.updatePosition, true)
-		window.removeEventListener('scroll', this.updatePosition, true)
-		if (this.$refs.dropdownMenu && this.$refs.dropdownMenu.parentNode === document.body) {
-			document.body.removeChild(this.$refs.dropdownMenu)
-		}
+		document.removeEventListener('mousedown', this.handleOutsideClick)
 	},
 	methods: {
 		toggle() {
 			if (this.disabled) return
-			if (this.isOpen) {
-				this.close()
-			} else {
-				this.open()
+			if (!this.isOpen) {
+				this.checkDropDirection()
 			}
+			this.isOpen = !this.isOpen
 		},
-		open() {
-			this.isOpen = true
-			this.$nextTick(() => {
-				if (this.$refs.dropdownMenu && this.$refs.dropdownMenu.parentNode !== document.body) {
-					document.body.appendChild(this.$refs.dropdownMenu)
-				}
-				this.updatePosition()
-			})
+		checkDropDirection() {
+			if (this.direction === 'up') {
+				this.isDropup = true
+				return
+			}
+			if (this.direction === 'down') {
+				this.isDropup = false
+				return
+			}
+			if (this.$refs.dropdownRoot) {
+				const rect = this.$refs.dropdownRoot.getBoundingClientRect()
+				const spaceBelow = window.innerHeight - rect.bottom
+				const spaceAbove = rect.top
+				this.isDropup = spaceBelow < 200 && spaceAbove > spaceBelow
+			}
 		},
 		close() {
 			this.isOpen = false
-		},
-		updatePosition() {
-			if (!this.isOpen || !this.$refs.dropdownRoot || !this.$refs.dropdownMenu) return
-			const triggerRect = this.$refs.dropdownRoot.getBoundingClientRect()
-			const menuEl = this.$refs.dropdownMenu
-			const menuHeight = menuEl.offsetHeight || 160
-			const menuWidth = Math.max(triggerRect.width, menuEl.offsetWidth || triggerRect.width)
-
-			const spaceBelow = window.innerHeight - triggerRect.bottom
-			const spaceAbove = triggerRect.top
-
-			const isDropup = this.direction === 'up' || (this.direction === 'auto' && spaceBelow < Math.min(menuHeight + 12, 220) && spaceAbove > spaceBelow)
-			this.isDropup = isDropup
-
-			const top = isDropup ? triggerRect.top - menuHeight - 4 : triggerRect.bottom + 4
-			let left = triggerRect.left
-
-			// Keep inside screen
-			if (left + menuWidth > window.innerWidth - 12) {
-				left = Math.max(12, window.innerWidth - menuWidth - 12)
-			}
-			if (left < 12) {
-				left = 12
-			}
-
-			this.menuFloatingStyle = {
-				position: 'fixed',
-				top: `${Math.round(top)}px`,
-				left: `${Math.round(left)}px`,
-				minWidth: `${Math.round(triggerRect.width)}px`,
-				maxWidth: `min(32rem, calc(100vw - 24px))`,
-				zIndex: 999999,
-			}
 		},
 		selectOption(opt) {
 			if (opt.disabled) return
@@ -203,10 +164,7 @@ export default {
 			return this.value === val
 		},
 		handleOutsideClick(e) {
-			if (!this.isOpen) return
-			const inTrigger = this.$refs.dropdownRoot && this.$refs.dropdownRoot.contains(e.target)
-			const inMenu = this.$refs.dropdownMenu && this.$refs.dropdownMenu.contains(e.target)
-			if (!inTrigger && !inMenu) {
+			if (this.isOpen && this.$refs.dropdownRoot && !this.$refs.dropdownRoot.contains(e.target)) {
 				this.close()
 			}
 		},
@@ -296,12 +254,18 @@ export default {
 	}
 }
 
-/* Floating Portaled Menu */
 .vm-dropdown-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	min-width: 100%;
+	width: max-content;
+	max-width: min(28rem, calc(100vw - 2rem));
+	z-index: 1000;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
-	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06);
+	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.05);
 	padding: 0.35rem;
 	max-height: 15rem;
 	overflow-y: auto;
@@ -311,7 +275,6 @@ export default {
 	flex-direction: column;
 	gap: 0.15rem;
 	box-sizing: border-box;
-	font-family: inherit;
 
 	&::-webkit-scrollbar {
 		width: 5px;
@@ -323,6 +286,17 @@ export default {
 	&::-webkit-scrollbar-track {
 		background: transparent;
 	}
+}
+
+.vm-dropdown.align-right .vm-dropdown-menu {
+	left: auto;
+	right: 0;
+}
+
+.vm-dropdown.is-dropup .vm-dropdown-menu {
+	top: auto;
+	bottom: calc(100% + 4px);
+	box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.15), 0 -4px 10px rgba(0, 0, 0, 0.05);
 }
 
 .vm-dropdown-empty {
@@ -456,16 +430,16 @@ export default {
 	&.is-open .trigger-chevron {
 		color: #60a5fa;
 	}
-}
 
-.vm-dropdown-menu.is-dark {
-	background: #242424;
-	border-color: rgba(255, 255, 255, 0.14);
-	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
-	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+	.vm-dropdown-menu {
+		background: #242424;
+		border-color: rgba(255, 255, 255, 0.14);
+		box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+		scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 
-	&::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
+		&::-webkit-scrollbar-thumb {
+			background: rgba(255, 255, 255, 0.2);
+		}
 	}
 
 	.vm-dropdown-empty {
@@ -521,18 +495,18 @@ export default {
 	transform: scaleY(0.95) translateY(-2px);
 }
 
-.vm-dropdown-menu.is-dropup {
-	&.dropdown-fade-enter-active,
-	&.dropdown-fade-leave-active {
+.vm-dropdown.is-dropup {
+	.dropdown-fade-enter-active,
+	.dropdown-fade-leave-active {
 		transform-origin: bottom center;
 	}
 
-	&.dropdown-fade-enter {
+	.dropdown-fade-enter {
 		opacity: 0;
 		transform: scaleY(0.95) translateY(4px);
 	}
 
-	&.dropdown-fade-leave-to {
+	.dropdown-fade-leave-to {
 		opacity: 0;
 		transform: scaleY(0.95) translateY(2px);
 	}
