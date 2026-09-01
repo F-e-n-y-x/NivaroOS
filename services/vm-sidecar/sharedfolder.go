@@ -1,33 +1,135 @@
-// sharedfolder.go implements live Host-to-Guest direct directory sharing
-// using VirtIO-FS (zero-network shared memory pass-through).
+// sharedfolder.go implements autonomous Host-to-Guest direct directory sharing
+// using a Unified VM Shares root with host bind-mounting via VirtIO-FS.
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/template"
 
 	libvirt "libvirt.org/go/libvirt"
 )
 
+const vmSharesBaseDir = "/DATA/VM-Shares"
+
 type SharedFolderSpec struct {
 	SourceDir string `json:"source_dir"`
-	TargetTag string `json:"target_tag"` // e.g. "nivaroshare"
+	TargetTag string `json:"target_tag"` // e.g. "nivaroshare" or subfolder name
 	ReadOnly  bool   `json:"read_only,omitempty"`
 }
 
-const sharedFolderXMLTemplate = `<filesystem type='mount' accessmode='passthrough'>
+const rootSharedFolderXMLTemplate = `<filesystem type='mount' accessmode='passthrough'>
   <driver type='virtiofs'/>
-  <source dir='{{.SourceDir}}'/>
-  <target dir='{{.TargetTag}}'/>
-  {{if .ReadOnly}}<readonly/>{{end}}
+  <source dir='/DATA/VM-Shares/{{.Name}}'/>
+  <target dir='nivaroshare'/>
 </filesystem>`
 
-var sharedFolderTemplate = template.Must(template.New("sharedFolder").Parse(sharedFolderXMLTemplate))
+var rootSharedFolderTemplate = template.Must(template.New("rootSharedFolder").Parse(rootSharedFolderXMLTemplate))
+
+func getVMShareDir(name string) string {
+	return filepath.Join(vmSharesBaseDir, name)
+}
+
+func isMounted(path string) bool {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == path {
+			return true
+		}
+	}
+	return false
+}
+
+func readVMSharesMetadata(name string) ([]SharedFolderSpec, error) {
+	metaFile := filepath.Join(getVMShareDir(name), ".shares.json")
+	data, err := os.ReadFile(metaFile)
+	if err != nil {
+		return nil, err
+	}
+	var shares []SharedFolderSpec
+	if err := json.Unmarshal(data, &shares); err != nil {
+		return nil, err
+	}
+	return shares, nil
+}
+
+func saveVMSharesMetadata(name string, shares []SharedFolderSpec) error {
+	dir := getVMShareDir(name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(shares, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, ".shares.json"), data, 0644)
+}
+
+// SyncVMShareDir sets up the host-level unified share directory and bind mounts
+// each individual host directory as a subfolder inside /DATA/VM-Shares/<vmName>.
+func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
+	vmDir := getVMShareDir(name)
+	if err := os.MkdirAll(vmDir, 0755); err != nil {
+		return err
+	}
+
+	activeSubdirs := make(map[string]bool)
+
+	for _, sf := range shares {
+		if sf.SourceDir == "" {
+			continue
+		}
+		subName := strings.TrimSpace(sf.TargetTag)
+		if subName == "" || subName == "nivaroshare" {
+			subName = filepath.Base(sf.SourceDir)
+		}
+		if subName == "" || subName == "/" || subName == "." {
+			subName = "shared"
+		}
+		targetPath := filepath.Join(vmDir, subName)
+		activeSubdirs[subName] = true
+
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			continue
+		}
+
+		if !isMounted(targetPath) {
+			_ = exec.Command("mount", "--bind", sf.SourceDir, targetPath).Run()
+		}
+	}
+
+	// Clean up removed subdirectories
+	entries, _ := os.ReadDir(vmDir)
+	for _, entry := range entries {
+		if entry.Name() == ".shares.json" {
+			continue
+		}
+		if !activeSubdirs[entry.Name()] {
+			targetPath := filepath.Join(vmDir, entry.Name())
+			if isMounted(targetPath) {
+				_ = exec.Command("umount", targetPath).Run()
+			}
+			_ = os.RemoveAll(targetPath)
+		}
+	}
+
+	return saveVMSharesMetadata(name, shares)
+}
 
 func (s *LibvirtStore) ListSharedFolders(name string) ([]SharedFolderSpec, error) {
+	if shares, err := readVMSharesMetadata(name); err == nil && len(shares) > 0 {
+		return shares, nil
+	}
 	vm, err := s.GetVM(name)
 	if err != nil {
 		return nil, err
@@ -88,6 +190,29 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 		return fmt.Errorf("%q is not a directory", spec.SourceDir)
 	}
 
+	if spec.TargetTag == "" || spec.TargetTag == "nivaroshare" {
+		spec.TargetTag = filepath.Base(spec.SourceDir)
+	}
+
+	// Read existing shares and append new one
+	shares, _ := readVMSharesMetadata(name)
+	found := false
+	for i, existing := range shares {
+		if existing.SourceDir == spec.SourceDir || existing.TargetTag == spec.TargetTag {
+			shares[i] = spec
+			found = true
+			break
+		}
+	}
+	if !found {
+		shares = append(shares, spec)
+	}
+
+	// Sync host unified directory & bind mounts
+	if err := SyncVMShareDir(name, shares); err != nil {
+		return fmt.Errorf("sync share directory: %w", err)
+	}
+
 	conn, err := s.getConn()
 	if err != nil {
 		return err
@@ -99,79 +224,33 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 	}
 	defer dom.Free()
 
-	// Ensure domain XML has shared memory backing and enough PCIe root ports
 	_ = ensureSharedMemoryAndPCIe(conn, dom)
 
-	// Ensure unique tag if multiple folders are attached
-	current, err := toVM(dom)
-	if err == nil {
-		usedTags := make(map[string]bool)
-		for _, sf := range current.SharedFolders {
-			usedTags[sf.TargetTag] = true
-		}
-		if spec.TargetTag == "" {
-			spec.TargetTag = "nivaroshare"
-		}
-		if usedTags[spec.TargetTag] {
-			baseTag := spec.TargetTag
-			for i := 2; ; i++ {
-				candidate := fmt.Sprintf("%s%d", baseTag, i)
-				if !usedTags[candidate] {
-					spec.TargetTag = candidate
-					break
-				}
-			}
+	// Check if root filesystem device is attached in XML
+	rawXML, _ := dom.GetXMLDesc(0)
+	if !strings.Contains(rawXML, fmt.Sprintf("dir='%s'", getVMShareDir(name))) {
+		var buf strings.Builder
+		structData := struct{ Name string }{Name: name}
+		if err := rootSharedFolderTemplate.Execute(&buf, structData); err == nil {
+			_ = attachOrDetachDevice(dom, buf.String(), true)
 		}
 	}
 
-	var buf strings.Builder
-	if err := sharedFolderTemplate.Execute(&buf, spec); err != nil {
-		return err
-	}
-
-	err = attachOrDetachDevice(dom, buf.String(), true)
-	if err != nil {
-		errStr := strings.ToLower(err.Error())
-		if strings.Contains(errStr, "shared memory") || strings.Contains(errStr, "pci") || strings.Contains(errStr, "virtiofs") {
-			// Domain is active but was booted without enough PCIe ports or memfd.
-			// Save device to persistent domain config so it boots with it on restart.
-			_ = dom.AttachDeviceFlags(buf.String(), libvirt.DOMAIN_DEVICE_MODIFY_CONFIG)
-			return fmt.Errorf("Shared folder added to VM configuration! Please restart %s to activate new PCIe root ports.", name)
-		}
-		return err
-	}
 	return nil
 }
 
 func (s *LibvirtStore) DetachSharedFolder(name string, targetTag string) error {
-	if targetTag == "" {
-		targetTag = "nivaroshare"
-	}
-	dom, err := s.lookup(name)
+	shares, err := readVMSharesMetadata(name)
 	if err != nil {
-		return err
+		shares, _ = s.ListSharedFolders(name)
 	}
-	defer dom.Free()
 
-	current, err := toVM(dom)
-	if err != nil {
-		return err
-	}
-	var found *SharedFolderSpec
-	for _, sf := range current.SharedFolders {
-		if sf.TargetTag == targetTag {
-			found = &sf
-			break
+	newShares := make([]SharedFolderSpec, 0, len(shares))
+	for _, sf := range shares {
+		if sf.TargetTag != targetTag && sf.SourceDir != targetTag && filepath.Base(sf.SourceDir) != targetTag {
+			newShares = append(newShares, sf)
 		}
 	}
-	if found == nil {
-		return fmt.Errorf("shared folder with tag %q not found", targetTag)
-	}
 
-	var buf strings.Builder
-	if err := sharedFolderTemplate.Execute(&buf, *found); err != nil {
-		return err
-	}
-
-	return attachOrDetachDevice(dom, buf.String(), false)
+	return SyncVMShareDir(name, newShares)
 }

@@ -386,13 +386,17 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 			})
 		}
 	}
-	for _, fs := range parsed.Devices.Filesystems {
-		if fs.Source.Dir != "" && fs.Target.Dir != "" {
-			vm.SharedFolders = append(vm.SharedFolders, SharedFolderSpec{
-				SourceDir: fs.Source.Dir,
-				TargetTag: fs.Target.Dir,
-				ReadOnly:  fs.ReadOnly != nil,
-			})
+	if metaShares, err := readVMSharesMetadata(name); err == nil && len(metaShares) > 0 {
+		vm.SharedFolders = metaShares
+	} else {
+		for _, fs := range parsed.Devices.Filesystems {
+			if fs.Source.Dir != "" && fs.Target.Dir != "" {
+				vm.SharedFolders = append(vm.SharedFolders, SharedFolderSpec{
+					SourceDir: fs.Source.Dir,
+					TargetTag: fs.Target.Dir,
+					ReadOnly:  fs.ReadOnly != nil,
+				})
+			}
 		}
 	}
 	return vm, nil
@@ -714,13 +718,11 @@ const domainXMLTemplate = `<domain type='kvm'>
     <controller type='pci' model='pcie-root-port' index='14'/>
     <controller type='pci' model='pcie-root-port' index='15'/>
     <controller type='pci' model='pcie-root-port' index='16'/>
-    {{range .SharedFolders}}<filesystem type='mount' accessmode='passthrough'>
+    {{if .SharedFolders}}<filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs'/>
-      <source dir='{{.SourceDir}}'/>
-      <target dir='{{.TargetTag}}'/>
-      {{if .ReadOnly}}<readonly/>{{end}}
-    </filesystem>
-    {{end}}{{range .Disks}}<disk type='file' device='disk'>
+      <source dir='/DATA/VM-Shares/{{.Name}}'/>
+      <target dir='nivaroshare'/>
+    </filesystem>{{end}}{{range .Disks}}<disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'{{if .SSD}} discard='unmap'{{end}}/>
       <source file='{{.Path}}'/>
       <target dev='{{.Target}}' bus='{{.Bus}}'/>
@@ -764,10 +766,42 @@ const domainXMLTemplate = `<domain type='kvm'>
     <video><model type='virtio' heads='1'>{{if .DisplayWidth}}<resolution x='{{.DisplayWidth}}' y='{{.DisplayHeight}}'/>{{end}}</model></video>
     <sound model='ich9'/>
     <memballoon model='virtio'/>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+    </channel>
   </devices>
 </domain>`
 
 var domainTemplate = template.Must(template.New("domain").Parse(domainXMLTemplate))
+
+func deduplicateSharedFolders(shares []SharedFolderSpec) []SharedFolderSpec {
+	used := make(map[string]bool)
+	res := make([]SharedFolderSpec, len(shares))
+	for i, sf := range shares {
+		tag := strings.TrimSpace(sf.TargetTag)
+		if tag == "" {
+			tag = "nivaroshare"
+		}
+		tag = strings.ToLower(tag)
+		if used[tag] {
+			base := tag
+			for c := 2; ; c++ {
+				cand := fmt.Sprintf("%s%d", base, c)
+				if !used[cand] {
+					tag = cand
+					break
+				}
+			}
+		}
+		used[tag] = true
+		res[i] = SharedFolderSpec{
+			SourceDir: sf.SourceDir,
+			TargetTag: tag,
+			ReadOnly:  sf.ReadOnly,
+		}
+	}
+	return res
+}
 
 type domainXMLData struct {
 	Name          string
@@ -922,6 +956,10 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if len(req.SharedFolders) > 0 {
+		_ = SyncVMShareDir(req.Name, req.SharedFolders)
+	}
+
 	data := domainXMLData{
 		Name:          req.Name,
 		VCPUs:         req.VCPUs,
@@ -931,7 +969,7 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
-		SharedFolders: req.SharedFolders,
+		SharedFolders: deduplicateSharedFolders(req.SharedFolders),
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,
@@ -1084,6 +1122,8 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	_ = SyncVMShareDir(name, req.SharedFolders)
+
 	data := domainXMLData{
 		Name:          name,
 		VCPUs:         req.VCPUs,
@@ -1093,7 +1133,7 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
-		SharedFolders: req.SharedFolders,
+		SharedFolders: deduplicateSharedFolders(req.SharedFolders),
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,

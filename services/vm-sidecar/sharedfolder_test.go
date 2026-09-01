@@ -6,14 +6,10 @@ import (
 )
 
 func TestSharedFolder_XMLTemplate(t *testing.T) {
-	spec := SharedFolderSpec{
-		SourceDir: "/DATA/Media",
-		TargetTag: "nivaroshare",
-		ReadOnly:  false,
-	}
+	data := struct{ Name string }{Name: "myvm"}
 
 	var buf strings.Builder
-	if err := sharedFolderTemplate.Execute(&buf, spec); err != nil {
+	if err := rootSharedFolderTemplate.Execute(&buf, data); err != nil {
 		t.Fatalf("template execution failed: %v", err)
 	}
 
@@ -21,8 +17,8 @@ func TestSharedFolder_XMLTemplate(t *testing.T) {
 	if !strings.Contains(xml, "<driver type='virtiofs'/>") {
 		t.Errorf("expected virtiofs driver, got %s", xml)
 	}
-	if !strings.Contains(xml, "<source dir='/DATA/Media'/>") {
-		t.Errorf("expected source dir /DATA/Media, got %s", xml)
+	if !strings.Contains(xml, "<source dir='/DATA/VM-Shares/myvm'/>") {
+		t.Errorf("expected source dir /DATA/VM-Shares/myvm, got %s", xml)
 	}
 	if !strings.Contains(xml, "<target dir='nivaroshare'/>") {
 		t.Errorf("expected target tag nivaroshare, got %s", xml)

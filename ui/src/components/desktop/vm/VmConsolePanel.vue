@@ -475,6 +475,33 @@
 			@selected="onShareFolderSelected"
 			@close="showShareFolderPicker = false"
 		></vm-file-picker-dialog>
+
+		<!-- Quick Paste & Type Modal -->
+		<vm-overlay-panel :active="showPasteDialog" :title="$t('Paste Text to VM')" max-width="30rem" @close="showPasteDialog = false">
+			<div class="paste-modal-content">
+				<p class="paste-modal-desc">
+					{{ $t('Type or paste text (Ctrl+V) to send to the virtual machine.') }}
+				</p>
+				<textarea
+					ref="pasteInput"
+					v-model="pasteText"
+					class="paste-modal-textarea"
+					rows="4"
+					:placeholder="$t('Paste your text here...')"
+					@keydown.enter.ctrl="sendPasteText(false)"
+				></textarea>
+				<div class="paste-modal-actions">
+					<button type="button" class="paste-action-btn" @click="sendPasteText(true)">
+						<b-icon icon="keyboard-outline" size="is-small"></b-icon>
+						<span>{{ $t('Type Keystrokes') }}</span>
+					</button>
+					<button type="button" class="paste-action-btn is-primary" :disabled="!pasteText" @click="sendPasteText(false)">
+						<b-icon icon="content-paste" size="is-small"></b-icon>
+						<span>{{ $t('Paste Clipboard') }}</span>
+					</button>
+				</div>
+			</div>
+		</vm-overlay-panel>
 	</div>
 </template>
 
@@ -483,6 +510,7 @@ import RFB from '@novnc/novnc'
 import { vmSidecar } from '@/api/vmSidecar'
 import VmDropdown from './VmDropdown.vue'
 import VmFilePickerDialog from './VmFilePickerDialog.vue'
+import VmOverlayPanel from './VmOverlayPanel.vue'
 
 const STATE_POLL_MS = 3000
 
@@ -640,6 +668,7 @@ export default {
 	components: {
 		VmDropdown,
 		VmFilePickerDialog,
+		VmOverlayPanel,
 	},
 	props: {
 		vmName: { type: String, required: true },
@@ -655,6 +684,8 @@ export default {
 			status: 'connecting',
 			vmState: null,
 			vm: null,
+			showPasteDialog: false,
+			pasteText: '',
 			scaleToFit: true,
 			// The VNC stream's own encoding quality/compression trade-off -
 			// distinct from both the VM's display resolution (a libvirt
@@ -821,6 +852,12 @@ export default {
 			this.rfb.addEventListener('disconnect', () => {
 				this.status = 'disconnected'
 			})
+			this.rfb.addEventListener('clipboard', (e) => {
+				const text = e.detail && e.detail.text
+				if (text && navigator.clipboard && navigator.clipboard.writeText) {
+					navigator.clipboard.writeText(text).catch(() => {})
+				}
+			})
 		},
 		async pollState() {
 			try {
@@ -980,12 +1017,63 @@ export default {
 			}, 60)
 		},
 		async pasteClipboard() {
+			if (!this.rfb) return
+			let text = ''
 			try {
-				const text = await navigator.clipboard.readText()
-				if (this.rfb && text) this.rfb.clipboardPasteFrom(text)
+				if (navigator.clipboard && navigator.clipboard.readText) {
+					text = await navigator.clipboard.readText()
+				}
 			} catch (e) {
-				this.$buefy.toast.open({ message: this.$t('Could not read the clipboard'), type: 'is-danger' })
+				// Browser permission or non-secure HTTP context blocked direct read
 			}
+			if (text) {
+				this.rfb.clipboardPasteFrom(text)
+				this.$buefy.toast.open({
+					message: this.$t('Pasted into VM clipboard'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
+				})
+			} else {
+				this.pasteText = ''
+				this.showPasteDialog = true
+				this.$nextTick(() => {
+					if (this.$refs.pasteInput) this.$refs.pasteInput.focus()
+				})
+			}
+		},
+		sendPasteText(asKeystrokes = false) {
+			if (!this.rfb || !this.pasteText) return
+			if (asKeystrokes) {
+				const str = this.pasteText
+				for (let i = 0; i < str.length; i++) {
+					const char = str[i]
+					if (char === '\n') {
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', true)
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', false)
+					} else {
+						const code = str.charCodeAt(i)
+						this.rfb.sendKey(code, null, true)
+						this.rfb.sendKey(code, null, false)
+					}
+				}
+				this.$buefy.toast.open({
+					message: this.$t('Typed text into VM'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
+				})
+			} else {
+				this.rfb.clipboardPasteFrom(this.pasteText)
+				this.$buefy.toast.open({
+					message: this.$t('Pasted into VM clipboard'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
+				})
+			}
+			this.pasteText = ''
+			this.showPasteDialog = false
 		},
 		toggleScale() {
 			this.scaleToFit = !this.scaleToFit
@@ -2508,6 +2596,73 @@ export default {
 	color: #4ade80;
 	&:hover {
 		background: rgba(74, 222, 128, 0.15);
+	}
+}
+
+.paste-modal-content {
+	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.paste-modal-desc {
+	font-size: 0.8rem;
+	color: rgba(255, 255, 255, 0.7);
+	margin: 0;
+}
+
+.paste-modal-textarea {
+	width: 100%;
+	background: rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 8px;
+	padding: 0.6rem;
+	color: #fff;
+	font-family: monospace;
+	font-size: 0.82rem;
+	resize: vertical;
+
+	&:focus {
+		outline: none;
+		border-color: rgba(255, 255, 255, 0.4);
+	}
+}
+
+.paste-modal-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+.paste-action-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: none;
+	border-radius: 6px;
+	padding: 0.4rem 0.85rem;
+	font-family: inherit;
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	background: rgba(255, 255, 255, 0.12);
+	color: #fff;
+	transition: background 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.22);
+	}
+	&.is-primary {
+		background: rgba(255, 255, 255, 0.22);
+		&:hover:not(:disabled) {
+			background: rgba(255, 255, 255, 0.32);
+		}
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 }
 </style>
