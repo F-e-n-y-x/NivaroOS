@@ -9,7 +9,7 @@
 			'is-small': size === 'small',
 			'is-compact': size === 'compact',
 			'is-dropup': isDropup,
-			'align-right': align === 'right',
+			'align-right': isAlignRight,
 		}"
 	>
 		<button
@@ -77,13 +77,14 @@ export default {
 		dark: { type: Boolean, default: false },
 		icon: { type: String, default: '' },
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
-		align: { type: String, default: 'left' }, // 'left', 'right'
+		align: { type: String, default: 'auto' }, // 'auto', 'left', 'right'
 		direction: { type: String, default: 'down' }, // 'down', 'up', 'auto'
 	},
 	data() {
 		return {
 			isOpen: false,
 			isDropup: false,
+			isAlignRight: false,
 		}
 	},
 	computed: {
@@ -131,25 +132,34 @@ export default {
 		toggle() {
 			if (this.disabled) return
 			if (!this.isOpen) {
-				this.checkDropDirection()
+				this.checkPlacement()
 			}
 			this.isOpen = !this.isOpen
 		},
-		checkDropDirection() {
+		checkPlacement() {
 			if (this.direction === 'up') {
 				this.isDropup = true
-				return
+			} else if (this.direction === 'auto' && this.$refs.dropdownRoot) {
+				const rect = this.$refs.dropdownRoot.getBoundingClientRect()
+				const spaceBelow = window.innerHeight - rect.bottom
+				const spaceAbove = rect.top
+				this.isDropup = spaceBelow < 140 && spaceAbove > spaceBelow
+			} else {
+				this.isDropup = false
 			}
-			if (this.direction === 'auto') {
-				if (this.$refs.dropdownRoot) {
-					const rect = this.$refs.dropdownRoot.getBoundingClientRect()
-					const spaceBelow = window.innerHeight - rect.bottom
-					const spaceAbove = rect.top
-					this.isDropup = spaceBelow < 140 && spaceAbove > spaceBelow
-					return
-				}
+
+			if (this.align === 'right') {
+				this.isAlignRight = true
+			} else if (this.align === 'left') {
+				this.isAlignRight = false
+			} else if (this.$refs.dropdownRoot) {
+				const rect = this.$refs.dropdownRoot.getBoundingClientRect()
+				const spaceRight = window.innerWidth - rect.left
+				const spaceLeft = rect.right
+				this.isAlignRight = spaceRight < 300 && spaceLeft > spaceRight
+			} else {
+				this.isAlignRight = false
 			}
-			this.isDropup = false
 		},
 		close() {
 			this.isOpen = false
