@@ -25,36 +25,36 @@
 			<div class="toolbar-actions">
 				<!-- Segment 1: Input Controls -->
 				<div class="toolbar-group">
-					<button class="toolbar-btn icon-only-btn" :class="{ active: keyboardOpen }" :title="$t('On-Screen Keyboard')" @click="keyboardOpen = !keyboardOpen">
+					<button type="button" class="toolbar-btn icon-only-btn" :class="{ active: keyboardOpen }" :title="$t('On-Screen Keyboard')" @click="keyboardOpen = !keyboardOpen">
 						<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
 					</button>
 
 					<div ref="keysMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send Key Shortcuts')" @click="keysMenuOpen = !keysMenuOpen">
+						<button type="button" class="toolbar-btn" :title="$t('Send Key Shortcuts')" @click="keysMenuOpen = !keysMenuOpen">
 							<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Keys') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
 						<div v-if="keysMenuOpen" class="power-menu keys-menu">
-							<button class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
 								<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon><span>Ctrl+Alt+Del</span>
 							</button>
-							<button class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
 								<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon><span>{{ $t('Win Key') }}</span>
 							</button>
-							<button class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
 								<b-icon icon="tab" custom-size="mdi-16px"></b-icon><span>Alt + Tab</span>
 							</button>
-							<button class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
 								<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon><span>Ctrl+Shift+Esc</span>
 							</button>
-							<button class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
 								<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon><span>Alt + F4</span>
 							</button>
 						</div>
 					</div>
 
-					<button class="toolbar-btn icon-only-btn" :disabled="status !== 'connected'" :title="$t('Paste clipboard text into VM')" @click="pasteClipboard">
+					<button type="button" class="toolbar-btn icon-only-btn" :title="$t('Paste clipboard text into VM')" @click="pasteClipboard">
 						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
 					</button>
 				</div>
@@ -63,19 +63,19 @@
 
 				<!-- Segment 2: View & Stream Controls -->
 				<div class="toolbar-group">
-					<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
+					<button type="button" class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
 						<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
 						<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
 					</button>
 
 					<div ref="qualityMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :title="$t('Display & Bandwidth Quality')" @click="qualityMenuOpen = !qualityMenuOpen">
+						<button type="button" class="toolbar-btn" :title="$t('Display & Bandwidth Quality')" @click="qualityMenuOpen = !qualityMenuOpen">
 							<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
 							<span>{{ qualityModeLabel }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
 						<div v-if="qualityMenuOpen" class="power-menu quality-menu">
-							<button v-for="q in qualityOptions" :key="q.mode" class="power-menu-item quality-menu-item" :class="{ active: qualityMode === q.mode }" @click="setQualityMode(q.mode)">
+							<button type="button" v-for="q in qualityOptions" :key="q.mode" class="power-menu-item quality-menu-item" :class="{ active: qualityMode === q.mode }" @click="setQualityMode(q.mode)">
 								<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
 								<span class="quality-menu-text">
 									<span class="quality-menu-title">{{ $t(q.label) }}</span>
@@ -86,7 +86,7 @@
 						</div>
 					</div>
 
-					<button class="toolbar-btn icon-only-btn" :title="$t('Fullscreen')" @click="toggleFullscreen">
+					<button type="button" class="toolbar-btn icon-only-btn" :title="$t('Fullscreen')" @click="toggleFullscreen">
 						<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
 					</button>
 				</div>
@@ -97,7 +97,7 @@
 				<div class="toolbar-group">
 					<!-- Disks & ISO -->
 					<div ref="diskMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :class="{ active: diskMenuOpen }" :title="$t('Storage & CD-ROM')" @click="diskMenuOpen = !diskMenuOpen">
+						<button type="button" class="toolbar-btn" :class="{ active: diskMenuOpen }" :title="$t('Storage & CD-ROM')" @click="diskMenuOpen = !diskMenuOpen">
 							<b-icon icon="harddisk" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Disks') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
@@ -109,7 +109,7 @@
 									<b-icon icon="disc" size="is-small"></b-icon>
 								</div>
 								<span class="device-menu-desc">{{ isoFileName || $t('No ISO loaded') }}</span>
-								<button v-if="isoFileName" class="device-menu-detach" :disabled="diskBusy" :title="$t('Eject')" @click="ejectBootISO">
+								<button type="button" v-if="isoFileName" class="device-menu-detach" :disabled="diskBusy" :title="$t('Eject')" @click="ejectBootISO">
 									<b-icon icon="eject-outline" size="is-small"></b-icon>
 								</button>
 							</div>
@@ -124,7 +124,7 @@
 									size="small"
 									style="flex: 1 1 auto; min-width: 0;"
 								></vm-dropdown>
-								<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
+								<button type="button" class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
 									<b-icon icon="tray-arrow-down" size="is-small"></b-icon>
 									<span>{{ $t('Insert') }}</span>
 								</button>
@@ -137,7 +137,7 @@
 										<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
 									</div>
 									<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
-									<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
+									<button type="button" class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
 										<b-icon icon="eject-outline" size="is-small"></b-icon>
 									</button>
 								</div>
@@ -147,7 +147,7 @@
 
 					<!-- Live Shared Folders (VirtIO-FS) -->
 					<div ref="shareMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :class="{ active: (vm && vm.shared_folders && vm.shared_folders.length) }" :title="$t('Host Shared Folders (Live Mount)')" @click="toggleShareMenu">
+						<button type="button" class="toolbar-btn" :class="{ active: (vm && vm.shared_folders && vm.shared_folders.length) }" :title="$t('Host Shared Folders (Live Mount)')" @click="toggleShareMenu">
 							<b-icon icon="folder-sync-outline" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Share') }}</span>
 							<span v-if="vm && vm.shared_folders && vm.shared_folders.length" class="share-badge-dot"></span>
@@ -239,7 +239,7 @@
 
 					<!-- Host USB Devices -->
 					<div ref="usbMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :class="{ active: usbMenuOpen }" :title="$t('USB Device Passthrough')" @click="usbMenuOpen = !usbMenuOpen">
+						<button type="button" class="toolbar-btn" :class="{ active: usbMenuOpen }" :title="$t('USB Device Passthrough')" @click="usbMenuOpen = !usbMenuOpen">
 							<b-icon icon="usb" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('USB') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
@@ -262,7 +262,7 @@
 
 					<!-- Network -->
 					<div ref="netMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn" :class="{ active: netMenuOpen }" :title="$t('Network Adapters')" @click="netMenuOpen = !netMenuOpen">
+						<button type="button" class="toolbar-btn" :class="{ active: netMenuOpen }" :title="$t('Network Adapters')" @click="netMenuOpen = !netMenuOpen">
 							<b-icon :icon="networkIcon" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Network') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
@@ -353,23 +353,23 @@
 				<!-- Segment 4: Power Controls -->
 				<div class="toolbar-group">
 					<div ref="powerMenuWrapper" class="menu-wrapper">
-						<button class="toolbar-btn power-btn" :class="{ 'is-running': vmState === 'running' }" @click="powerMenuOpen = !powerMenuOpen">
+						<button type="button" class="toolbar-btn power-btn" :class="{ 'is-running': vmState === 'running' }" @click="powerMenuOpen = !powerMenuOpen">
 							<b-icon icon="power" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Power') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
 						<div v-if="powerMenuOpen" class="power-menu power-menu-right">
-							<button v-if="vmState !== 'running'" class="power-menu-item is-start" @click="runAction('startVM')">
+							<button type="button" v-if="vmState !== 'running'" class="power-menu-item is-start" @click="runAction('startVM')">
 								<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
 							</button>
 							<template v-else>
-								<button class="power-menu-item" @click="runAction('shutdownVM')">
+								<button type="button" class="power-menu-item" @click="runAction('shutdownVM')">
 									<b-icon icon="power" custom-size="mdi-16px"></b-icon><span>{{ $t('Shutdown') }}</span>
 								</button>
-								<button class="power-menu-item" @click="runAction('resetVM')">
+								<button type="button" class="power-menu-item" @click="runAction('resetVM')">
 									<b-icon icon="restart" custom-size="mdi-16px"></b-icon><span>{{ $t('Reset') }}</span>
 								</button>
-								<button class="power-menu-item is-danger" @click="runAction('forceOffVM')">
+								<button type="button" class="power-menu-item is-danger" @click="runAction('forceOffVM')">
 									<b-icon icon="power-plug-off-outline" custom-size="mdi-16px"></b-icon><span>{{ $t('Force off') }}</span>
 								</button>
 							</template>
@@ -377,7 +377,7 @@
 					</div>
 				</div>
 
-				<button v-if="showClose" class="toolbar-btn icon-only-btn close-btn" :title="$t('Close')" @click="$emit('close')">
+				<button type="button" v-if="showClose" class="toolbar-btn icon-only-btn close-btn" :title="$t('Close')" @click="$emit('close')">
 					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 				</button>
 			</div>
@@ -1016,6 +1016,12 @@ export default {
 			}
 		},
 		onOutsideClick(event) {
+			if (!event || !event.target) return
+			if (typeof event.target.closest === 'function') {
+				if (event.target.closest('.vm-overlay') || event.target.closest('.modal') || event.target.closest('.dialog')) {
+					return
+				}
+			}
 			if (this.keysMenuOpen && this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(event.target)) {
 				this.keysMenuOpen = false
 			}
@@ -1380,11 +1386,7 @@ export default {
 	align-items: center;
 	gap: 0.35rem;
 	flex-wrap: nowrap;
-	overflow-x: auto;
-	scrollbar-width: none;
-	&::-webkit-scrollbar {
-		display: none;
-	}
+	overflow: visible;
 }
 .toolbar-group {
 	display: inline-flex;
@@ -1774,7 +1776,7 @@ export default {
 	position: absolute;
 	top: calc(100% + 0.35rem);
 	right: 0;
-	z-index: 50;
+	z-index: 1000;
 	background: #262626;
 	border: 1px solid rgba(255, 255, 255, 0.12);
 	border-radius: 12px;

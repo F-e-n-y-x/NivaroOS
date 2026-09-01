@@ -88,24 +88,37 @@
 				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
 			</div>
 			<div class="edit-section">
-				<div class="edit-section-header">
-					<h3 class="setting-card-title">{{ $t('Shared Folders') }}</h3>
-					<b-button size="is-small" icon-left="plus" @click="showSharePicker = true">{{ $t('Add Folder') }}</b-button>
-				</div>
-				<div v-if="!form.shared_folders || !form.shared_folders.length" class="empty-hint">
-					{{ $t('No host shared folders configured.') }}
-				</div>
-				<div v-else class="shared-folders-list">
-					<div v-for="(sf, idx) in form.shared_folders" :key="idx" class="shared-folder-item">
-						<b-icon icon="folder" size="is-small" class="sf-icon"></b-icon>
-						<div class="sf-details">
-							<span class="sf-path" :title="sf.source_dir">{{ sf.source_dir }}</span>
-							<span class="sf-tag">Tag: <code>{{ sf.target_tag }}</code></span>
+				<h3 class="setting-card-title">{{ $t('Shared Folders') }}</h3>
+				<div class="vm-share-list">
+					<div v-for="(sf, idx) in form.shared_folders || []" :key="idx" class="vm-share-row">
+						<div class="vm-share-icon">
+							<b-icon icon="folder-sync-outline" custom-size="mdi-22px"></b-icon>
 						</div>
-						<button type="button" class="sf-remove-btn" :title="$t('Remove')" @click="form.shared_folders.splice(idx, 1)">
-							<b-icon icon="close" size="is-small"></b-icon>
+						<div class="vm-share-main">
+							<div class="vm-share-path-row">
+								<span class="vm-share-path" :title="sf.source_dir">{{ sf.source_dir }}</span>
+								<span class="vm-share-tag-badge">{{ sf.target_tag }}</span>
+							</div>
+							<div class="vm-share-options">
+								<label class="vm-share-ro">
+									<input type="checkbox" :checked="sf.read_only" @change="sf.read_only = $event.target.checked" />
+									{{ $t('Read-Only') }}
+								</label>
+							</div>
+						</div>
+						<button type="button" class="vm-share-remove" :title="$t('Remove')" @click="form.shared_folders.splice(idx, 1)">
+							<b-icon icon="trash-can-outline" custom-size="mdi-18px"></b-icon>
 						</button>
 					</div>
+
+					<button type="button" class="vm-share-add" @click="showSharePicker = true">
+						<b-icon icon="plus" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Add Shared Folder') }}</span>
+					</button>
+
+					<p v-if="!form.shared_folders || !form.shared_folders.length" class="vm-share-hint">
+						{{ $t('Direct host directory pass-through via VirtIO-FS. Instant file access with no size limits.') }}
+					</p>
 				</div>
 			</div>
 			<vm-file-picker-dialog
@@ -526,81 +539,123 @@ export default {
 	margin-bottom: 0;
 }
 
-.edit-section-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 0.4rem;
-}
-
-.empty-hint {
-	font-size: 0.8rem;
-	color: rgba(0, 0, 0, 0.4);
-	padding: 0.5rem 0.25rem;
-}
-
-.shared-folders-list {
+.vm-share-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.35rem;
+	gap: 0.65rem;
 }
 
-.shared-folder-item {
+.vm-share-row {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	background: rgba(0, 0, 0, 0.03);
+	gap: 0.75rem;
+	padding: 0.6rem 0.75rem;
 	border: 1px solid rgb(228 233 237);
-	border-radius: 8px;
-	padding: 0.45rem 0.65rem;
-
-	.sf-icon {
-		color: #eab308;
-	}
-
-	.sf-details {
-		flex: 1 1 auto;
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-
-	.sf-path {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: #2c3e50;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-family: monospace;
-	}
-
-	.sf-tag {
-		font-size: 0.7rem;
-		color: rgba(0, 0, 0, 0.5);
-
-		code {
-			background: rgba(0, 0, 0, 0.05);
-			padding: 0.05rem 0.3rem;
-			border-radius: 4px;
-		}
-	}
+	border-radius: 10px;
+	background: #fff;
 }
 
-.sf-remove-btn {
-	border: none;
-	background: transparent;
-	color: rgba(0, 0, 0, 0.4);
-	cursor: pointer;
-	padding: 0.2rem;
-	border-radius: 4px;
+.vm-share-icon {
+	flex-shrink: 0;
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	background: rgba(50, 115, 220, 0.1);
+	color: #3273dc;
+}
+
+.vm-share-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.vm-share-path-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.vm-share-path {
+	font-size: 0.82rem;
+	font-weight: 600;
+	font-family: monospace;
+	color: #2c3e50;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vm-share-tag-badge {
+	font-size: 0.7rem;
+	font-weight: 600;
+	color: #3273dc;
+	background: rgba(50, 115, 220, 0.1);
+	padding: 0.1rem 0.45rem;
+	border-radius: 999px;
+	flex-shrink: 0;
+}
+
+.vm-share-options {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.vm-share-ro {
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.75rem;
+	color: rgba(0, 0, 0, 0.6);
+	cursor: pointer;
+}
+
+.vm-share-remove {
+	flex-shrink: 0;
+	border: none;
+	background: transparent;
+	color: rgba(0, 0, 0, 0.35);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	padding: 0.35rem;
+	border-radius: 6px;
 
 	&:hover {
-		color: #ef4444;
-		background: rgba(239, 68, 68, 0.1);
+		color: #f2534a;
+		background: rgba(242, 83, 74, 0.08);
 	}
+}
+
+.vm-share-add {
+	align-self: flex-start;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: 1px dashed rgb(200 207 214);
+	border-radius: 8px;
+	background: transparent;
+	color: #3273dc;
+	font-family: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	padding: 0.4rem 0.75rem;
+	cursor: pointer;
+	transition: background 0.12s ease;
+
+	&:hover {
+		background: rgba(50, 115, 220, 0.06);
+	}
+}
+
+.vm-share-hint {
+	font-size: 0.78rem;
+	color: rgba(0, 0, 0, 0.45);
 }
 </style>

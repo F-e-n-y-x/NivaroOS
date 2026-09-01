@@ -270,7 +270,7 @@ export default {
 	min-width: 100%;
 	width: max-content;
 	max-width: min(28rem, calc(100vw - 2rem));
-	z-index: 1000;
+	z-index: 1050;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
