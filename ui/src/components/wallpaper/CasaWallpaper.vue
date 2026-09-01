@@ -32,25 +32,27 @@ export default {
 	},
 	data() {
 		return {
-			isWelcome: false,
-			backgroundStyleObj: {
-				backgroundImage: localStorage.getItem("wallpaper") ? `url(${this.parseUrl(localStorage.getItem("wallpaper"))})` : `url(${this.$store.state.wallpaperObject.path})`
-			},
+			isWelcome: false
 		}
 	},
-	watch: {
-		'$store.state.wallpaperObject': {
-			handler(val) {
-				this.backgroundStyleObj.backgroundImage = `url(${this.parseUrl(val.path)})`
-			},
-			deep: true
+	computed: {
+		wallpaperPath() {
+			return (this.$store.state.wallpaperObject && this.$store.state.wallpaperObject.path) || localStorage.getItem("wallpaper") || require('@/assets/background/wallpaper01.jpg')
 		},
-
+		backgroundStyleObj() {
+			const path = this.wallpaperPath
+			return {
+				backgroundImage: `url("${this.parseUrl(path)}")`
+			}
+		}
 	},
 	methods: {
 		parseUrl(serverUrl) {
 			if (!serverUrl) return '';
 			if (serverUrl.startsWith('data:') || serverUrl.startsWith('blob:')) {
+				return serverUrl;
+			}
+			if (serverUrl.startsWith('http://') || serverUrl.startsWith('https://')) {
 				return serverUrl;
 			}
 			// Built-in assets bundled in the UI
@@ -59,7 +61,7 @@ export default {
 			}
 			// Gallery, uploaded, or server-hosted files use the unauthenticated public wallpaper endpoint
 			if (serverUrl.includes('/v3/file') || serverUrl.includes('/DATA/') || serverUrl.includes('/var/lib/') || serverUrl.includes('/users/image') || serverUrl.includes('/v1/users/wallpaper')) {
-				return `${this.$protocol}//${this.$baseURL}/v1/users/wallpaper`;
+				return `${this.$protocol}//${this.$baseURL}/v1/users/wallpaper?t=${Date.now()}`;
 			}
 			let newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`);
 			newUrl = newUrl.replace('/ui', '').replace('/user/', '/users/');

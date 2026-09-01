@@ -124,26 +124,20 @@ export default {
 			this.isUpLoading = false
 			const uploadPath = this.getFileUrl({ path: `${galleryPath}/${rootFile.name}`, is_dir: false })
 			this.loadGallery()
-			this.backgroundStyleObj.backgroundImage = `url(${uploadPath})`
 			this.path = uploadPath
 			this.from = "Upload"
+			this.applyWallpaper(uploadPath, "Upload")
 		})
 
 	},
 	computed: {
 		isDirty() {
-			return this.path !== this.$store.state.wallpaperObject.path
+			return false
 		}
 	},
 	methods: {
-		cancel() {
-			this.path = this.$store.state.wallpaperObject.path
-			this.from = this.$store.state.wallpaperObject.from
-			this.backgroundStyleObj.backgroundImage = `url(${this.parseUrl(this.path)})`
-			this.$emit('close')
-		},
-		saveChange() {
-			let cleanPath = this.path
+		applyWallpaper(path, from) {
+			let cleanPath = path
 			if (cleanPath && cleanPath.includes('path=')) {
 				try {
 					const urlObj = new URL(cleanPath, 'http://localhost')
@@ -153,31 +147,28 @@ export default {
 					}
 				} catch (e) {}
 			}
-			let data = {
+			const data = {
 				path: cleanPath,
-				from: this.from
+				from: from || this.from || "Built-in"
 			}
-			this.isLoading = true
-			this.$api.users.setCustomStorage(wallpaperConfig, data).then(res => {
-				this.isLoading = false
-				if (res.data.success === 200) {
-					this.$messageBus('dashboardsetting_wallpaper', res.data.data.path.toString())
-					this.$emit("close")
-					setTimeout(() => {
-						this.$store.commit('SET_WALLPAPER', {
-							path: res.data.data.path,
-							from: res.data.data.from
-						})
-					}, 300)
+			this.path = cleanPath
+			this.from = data.from
+			localStorage.setItem('wallpaper', cleanPath)
+			this.$store.commit('SET_WALLPAPER', data)
+			this.$messageBus('dashboardsetting_wallpaper', cleanPath.toString())
 
-				} else {
-					this.$buefy.toast.open({
-						message: this.$t('Save failed, please try again!'),
-						type: 'is-danger'
-					})
-				}
-
+			this.$api.users.setCustomStorage(wallpaperConfig, data).catch(err => {
+				console.error('Failed to save wallpaper setting', err)
 			})
+		},
+		cancel() {
+			this.path = this.$store.state.wallpaperObject.path
+			this.from = this.$store.state.wallpaperObject.from
+			this.$emit('close')
+		},
+		saveChange() {
+			this.applyWallpaper(this.path, this.from)
+			this.$emit('close')
 		},
 		loadGallery() {
 			this.$api.folder.getList(galleryPath).then(res => {
@@ -191,13 +182,14 @@ export default {
 			})
 		},
 		changeWallpaper(path) {
-			this.backgroundStyleObj.backgroundImage = `url(${this.parseUrl(path)})`
 			this.path = path
-			this.from = "Built-in"
+			this.from = path.includes('/DATA/') ? 'Gallery' : 'Built-in'
+			this.applyWallpaper(path, this.from)
 		},
 
 		checkActive(path) {
-			return this.path == path
+			const current = (this.$store.state.wallpaperObject && this.$store.state.wallpaperObject.path) || this.path
+			return current == path || this.path == path
 		},
 		checkActiveFrom(from) {
 			return this.from == from
@@ -207,6 +199,7 @@ export default {
 			return `${this.$protocol}//${this.$baseURL}/v1/users/current/image/${wallpaperConfig}?token=${accessToken}&type=wallpaper`
 		},
 		parseUrl(serverUrl) {
+			if (!serverUrl) return ''
 			const newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`)
 			return newUrl;
 		},

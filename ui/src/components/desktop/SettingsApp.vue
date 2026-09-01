@@ -32,12 +32,12 @@ import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
 	{ id: 'system', label: 'System', icon: 'system-outline', pack: 'casa', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.12)', rows: SYSTEM_ROWS },
-	{ id: 'packages', label: 'Package Manager', icon: 'package-variant-closed', pack: 'mdi', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)', rows: PACKAGES_ROWS },
+	{ id: 'packages', label: 'Package Manager', icon: 'package-variant-closed-outline', pack: 'mdi', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)', rows: PACKAGES_ROWS },
 	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: APPEARANCE_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
 	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', pack: 'casa', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)', rows: USERS_ROWS },
-	{ id: 'updates', label: 'Updates', icon: 'update', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
+	{ id: 'updates', label: 'Updates', icon: 'cloud-download-outline', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
 ]
 
 export default {

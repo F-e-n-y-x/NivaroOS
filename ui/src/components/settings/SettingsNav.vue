@@ -88,6 +88,18 @@ export default {
 	.icon {
 		color: #94a3b8;
 		transition: color 0.12s ease;
+		width: 20px;
+		height: 20px;
+		font-size: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+
+		i {
+			font-size: 20px;
+			line-height: 1;
+		}
 	}
 
 	&:hover {
