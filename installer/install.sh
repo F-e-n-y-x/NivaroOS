@@ -10,6 +10,16 @@ STEP_NUM=0
 
 export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
 
+# Piping this script via `curl | bash` means the script's own body is still
+# being streamed from stdin while it runs. If any subprocess we invoke tries
+# to read from stdin too - most commonly apt-get's debconf frontend, or
+# needrestart's whiptail prompt on Ubuntu - it races with bash's own read of
+# the remaining script and both bash and the installer can silently die
+# mid-script with no error message. Force every apt-get call non-interactive
+# so nothing ever tries.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
 check_root() {
 	if [ "$(id -u)" -ne 0 ]; then
 		echo "error: NivaroOS installer must be run as root (use sudo or su)" >&2
@@ -71,7 +81,7 @@ run_step() {
 		tty_in=/dev/tty
 	fi
 	if command -v gum >/dev/null 2>&1; then
-		if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1" <"$tty_in"; then
+		if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1 </dev/null" <"$tty_in"; then
 			rm -f "$log"
 		else
 			echo "" >&2
@@ -83,7 +93,7 @@ run_step() {
 		fi
 	else
 		echo "Step ${STEP_NUM}: ${title}"
-		if bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1"; then
+		if bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1 </dev/null"; then
 			rm -f "$log"
 		else
 			echo "✗ Step ${STEP_NUM} failed: ${title}" >&2
