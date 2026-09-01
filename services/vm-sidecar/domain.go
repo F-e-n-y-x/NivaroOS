@@ -697,6 +697,23 @@ const domainXMLTemplate = `<domain type='kvm'>
          hostdev passthrough (including hot-attaching a device later)
          has nothing to attach to without it. -->
     <controller type='usb' model='qemu-xhci'/>
+    <controller type='pci' model='pcie-root'/>
+    <controller type='pci' model='pcie-root-port' index='1'/>
+    <controller type='pci' model='pcie-root-port' index='2'/>
+    <controller type='pci' model='pcie-root-port' index='3'/>
+    <controller type='pci' model='pcie-root-port' index='4'/>
+    <controller type='pci' model='pcie-root-port' index='5'/>
+    <controller type='pci' model='pcie-root-port' index='6'/>
+    <controller type='pci' model='pcie-root-port' index='7'/>
+    <controller type='pci' model='pcie-root-port' index='8'/>
+    <controller type='pci' model='pcie-root-port' index='9'/>
+    <controller type='pci' model='pcie-root-port' index='10'/>
+    <controller type='pci' model='pcie-root-port' index='11'/>
+    <controller type='pci' model='pcie-root-port' index='12'/>
+    <controller type='pci' model='pcie-root-port' index='13'/>
+    <controller type='pci' model='pcie-root-port' index='14'/>
+    <controller type='pci' model='pcie-root-port' index='15'/>
+    <controller type='pci' model='pcie-root-port' index='16'/>
     {{range .SharedFolders}}<filesystem type='mount' accessmode='passthrough'>
       <driver type='virtiofs'/>
       <source dir='{{.SourceDir}}'/>

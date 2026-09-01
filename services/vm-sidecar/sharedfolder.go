@@ -35,35 +35,50 @@ func (s *LibvirtStore) ListSharedFolders(name string) ([]SharedFolderSpec, error
 	return vm.SharedFolders, nil
 }
 
-func ensureSharedMemoryBacking(conn *libvirt.Connect, dom *libvirt.Domain) error {
+func ensureSharedMemoryAndPCIe(conn *libvirt.Connect, dom *libvirt.Domain) error {
 	rawXML, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
 	if err != nil {
 		return err
 	}
-	if strings.Contains(rawXML, "<memoryBacking>") && strings.Contains(rawXML, "shared") {
-		return nil
+
+	modified := false
+	newXML := rawXML
+
+	// 1. Shared Memory Backing
+	if !strings.Contains(newXML, "<memoryBacking>") || !strings.Contains(newXML, "shared") {
+		backingXML := "\n  <memoryBacking>\n    <source type='memfd'/>\n    <access mode='shared'/>\n  </memoryBacking>"
+		if idx := strings.Index(newXML, "</vcpu>"); idx != -1 {
+			newXML = newXML[:idx+7] + backingXML + newXML[idx+7:]
+			modified = true
+		} else if idx := strings.Index(newXML, "</memory>"); idx != -1 {
+			newXML = newXML[:idx+9] + backingXML + newXML[idx+9:]
+			modified = true
+		}
 	}
 
-	backingXML := "\n  <memoryBacking>\n    <source type='memfd'/>\n    <access mode='shared'/>\n  </memoryBacking>"
-	var newXML string
-	if idx := strings.Index(rawXML, "</vcpu>"); idx != -1 {
-		newXML = rawXML[:idx+7] + backingXML + rawXML[idx+7:]
-	} else if idx := strings.Index(rawXML, "</memory>"); idx != -1 {
-		newXML = rawXML[:idx+9] + backingXML + rawXML[idx+9:]
-	} else {
-		return nil
+	// 2. PCIe Root Ports (needed for multiple hotplug VirtIO-FS/Disks/NICs on Q35)
+	count := strings.Count(newXML, "model='pcie-root-port'") + strings.Count(newXML, `model="pcie-root-port"`)
+	if count < 8 {
+		var ports strings.Builder
+		for i := count + 1; i <= 16; i++ {
+			ports.WriteString(fmt.Sprintf("\n    <controller type='pci' model='pcie-root-port' index='%d'/>", i))
+		}
+		if idx := strings.Index(newXML, "<devices>"); idx != -1 {
+			newXML = newXML[:idx+9] + ports.String() + newXML[idx+9:]
+			modified = true
+		}
 	}
 
-	_, err = conn.DomainDefineXML(newXML)
-	return err
+	if modified {
+		_, err = conn.DomainDefineXML(newXML)
+		return err
+	}
+	return nil
 }
 
 func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) error {
 	if spec.SourceDir == "" {
 		return errors.New("source_dir is required")
-	}
-	if spec.TargetTag == "" {
-		spec.TargetTag = "nivaroshare"
 	}
 	fi, err := os.Stat(spec.SourceDir)
 	if err != nil {
@@ -84,7 +99,30 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 	}
 	defer dom.Free()
 
-	_ = ensureSharedMemoryBacking(conn, dom)
+	// Ensure domain XML has shared memory backing and enough PCIe root ports
+	_ = ensureSharedMemoryAndPCIe(conn, dom)
+
+	// Ensure unique tag if multiple folders are attached
+	current, err := toVM(dom)
+	if err == nil {
+		usedTags := make(map[string]bool)
+		for _, sf := range current.SharedFolders {
+			usedTags[sf.TargetTag] = true
+		}
+		if spec.TargetTag == "" {
+			spec.TargetTag = "nivaroshare"
+		}
+		if usedTags[spec.TargetTag] {
+			baseTag := spec.TargetTag
+			for i := 2; ; i++ {
+				candidate := fmt.Sprintf("%s%d", baseTag, i)
+				if !usedTags[candidate] {
+					spec.TargetTag = candidate
+					break
+				}
+			}
+		}
+	}
 
 	var buf strings.Builder
 	if err := sharedFolderTemplate.Execute(&buf, spec); err != nil {
@@ -94,11 +132,11 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 	err = attachOrDetachDevice(dom, buf.String(), true)
 	if err != nil {
 		errStr := strings.ToLower(err.Error())
-		if strings.Contains(errStr, "shared memory") || strings.Contains(errStr, "virtiofs") {
-			// Domain is active but was booted without memfd shared memory.
+		if strings.Contains(errStr, "shared memory") || strings.Contains(errStr, "pci") || strings.Contains(errStr, "virtiofs") {
+			// Domain is active but was booted without enough PCIe ports or memfd.
 			// Save device to persistent domain config so it boots with it on restart.
 			_ = dom.AttachDeviceFlags(buf.String(), libvirt.DOMAIN_DEVICE_MODIFY_CONFIG)
-			return fmt.Errorf("Shared folder added to VM configuration! Please restart %s to activate VirtIO-FS shared memory.", name)
+			return fmt.Errorf("Shared folder added to VM configuration! Please restart %s to activate new PCIe root ports.", name)
 		}
 		return err
 	}

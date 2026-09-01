@@ -226,11 +226,11 @@
 									</div>
 								</div>
 								<div v-else class="instructions-body">
-									<p class="win-instruct-text">{{ $t('Windows uses VirtIO-FS Service from the VirtIO Drivers package to map as a drive letter.') }}</p>
+									<p class="win-instruct-text">{{ $t('Insert Guest Tools CD and run NivaroOS-Guest-Tools-Setup.bat inside Windows to auto-install all drivers & mount shared folders.') }}</p>
 									<button type="button" class="insert-virtio-btn" :disabled="virtioWinBusy" @click="insertVirtioWinCD">
 										<b-icon v-if="virtioWinBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
 										<b-icon v-else icon="disc" size="is-small"></b-icon>
-										<span>{{ $t('Insert VirtIO Drivers CD') }}</span>
+										<span>{{ $t('Insert NivaroOS Guest Tools') }}</span>
 									</button>
 								</div>
 							</div>
