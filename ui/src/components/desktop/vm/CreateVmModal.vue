@@ -86,6 +86,8 @@
 							:placeholder="$t('Default (let the guest decide)')"
 							icon="monitor"
 							size="small"
+							style="max-width: 18rem;"
+							menu-min-width="16rem"
 						></vm-dropdown>
 					</div>
 				</div>

@@ -225,6 +225,7 @@
 								dark
 								icon="disc"
 								size="small"
+								menu-min-width="19rem"
 								style="flex: 1 1 auto; min-width: 0;"
 							></vm-dropdown>
 							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
@@ -824,14 +825,17 @@ export default {
 			}
 		},
 		startEditingNet(net) {
+			const currentNet = net || (this.vm && this.vm.networks && this.vm.networks[0]) || {}
 			this.editingNet = true
-			this.editingNetMAC = (net && net.mac) || ''
+			this.editingNetMAC = currentNet.mac || ''
+			const rawModel = (currentNet.model || 'virtio').toLowerCase()
+			const rawMode = (currentNet.mode || 'nat').toLowerCase()
 			this.netForm = {
-				mode: (net && net.mode) || 'nat',
-				bridge_name: (net && net.bridge_name) || (this.availableBridges[0] ? this.availableBridges[0].name : 'br0'),
-				model: (net && net.model) || 'virtio',
-				mac: (net && net.mac) || '',
-				link_state: (net && net.link_state) || 'up',
+				mode: rawMode === 'bridge' ? 'bridge' : 'nat',
+				bridge_name: currentNet.bridge_name || (this.availableBridges[0] ? this.availableBridges[0].name : 'br0'),
+				model: ['virtio', 'e1000e', 'e1000', 'rtl8139'].includes(rawModel) ? rawModel : 'virtio',
+				mac: currentNet.mac || '',
+				link_state: currentNet.link_state || 'up',
 			}
 			this.loadAvailableNetworks()
 		},
@@ -1185,7 +1189,10 @@ export default {
 	right: 0 !important;
 }
 .network-dropdown-menu {
-	width: 22.5rem;
+	width: 26.5rem;
+	max-width: calc(100vw - 2rem);
+	max-height: none;
+	overflow: visible;
 }
 .device-menu-header-row {
 	display: flex;
@@ -1483,12 +1490,25 @@ export default {
 	border-radius: 12px;
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 	padding: 0.75rem;
-	width: 20.5rem;
-	max-height: 24rem;
+	width: 24.5rem;
+	max-height: 28rem;
 	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 	display: flex;
 	flex-direction: column;
 	gap: 0.35rem;
+
+	&::-webkit-scrollbar {
+		width: 5px;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 4px;
+	}
+	&::-webkit-scrollbar-track {
+		background: transparent;
+	}
 }
 .device-menu-title {
 	font-size: 0.72rem;

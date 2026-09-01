@@ -336,7 +336,11 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 		if linkState == "" {
 			linkState = "up"
 		}
-		info := NICInfo{Model: i.Model.Type, MAC: i.MAC.Address, LinkState: linkState}
+		model := i.Model.Type
+		if model == "" {
+			model = "virtio"
+		}
+		info := NICInfo{Model: model, MAC: i.MAC.Address, LinkState: linkState}
 		if i.Type == "bridge" && i.Source.Bridge != "" {
 			info.Mode = "bridge"
 			info.BridgeName = i.Source.Bridge

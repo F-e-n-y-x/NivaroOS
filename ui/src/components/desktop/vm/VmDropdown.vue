@@ -1,4 +1,3 @@
-<!-- src/components/desktop/vm/VmDropdown.vue -->
 <template>
 	<div
 		ref="dropdownRoot"
@@ -9,6 +8,7 @@
 			'is-disabled': disabled,
 			'is-small': size === 'small',
 			'is-compact': size === 'compact',
+			'align-right': align === 'right',
 		}"
 	>
 		<button
@@ -27,7 +27,7 @@
 		</button>
 
 		<transition name="dropdown-fade">
-			<div v-if="isOpen" class="vm-dropdown-menu" role="listbox">
+			<div v-if="isOpen" class="vm-dropdown-menu" :style="menuStyle" role="listbox">
 				<div v-if="!normalizedOptions.length" class="vm-dropdown-empty">
 					<b-icon icon="information-outline" size="is-small"></b-icon>
 					<span>{{ emptyText || $t('No options available') }}</span>
@@ -70,6 +70,8 @@ export default {
 		dark: { type: Boolean, default: false },
 		icon: { type: String, default: '' },
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
+		align: { type: String, default: 'left' }, // 'left', 'right'
+		menuMinWidth: { type: String, default: '' },
 	},
 	data() {
 		return {
@@ -109,6 +111,12 @@ export default {
 		},
 		selectedIcon() {
 			return this.selectedOption ? this.selectedOption.icon : ''
+		},
+		menuStyle() {
+			if (this.menuMinWidth) {
+				return { minWidth: this.menuMinWidth }
+			}
+			return {}
 		},
 	},
 	mounted() {
@@ -226,18 +234,37 @@ export default {
 	position: absolute;
 	top: calc(100% + 4px);
 	left: 0;
-	right: 0;
+	min-width: 100%;
+	width: max-content;
+	max-width: min(34rem, calc(100vw - 2rem));
 	z-index: 100;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
 	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.04);
 	padding: 0.35rem;
-	max-height: 15rem;
+	max-height: 16rem;
 	overflow-y: auto;
+	scrollbar-width: thin;
 	display: flex;
 	flex-direction: column;
 	gap: 0.15rem;
+
+	&::-webkit-scrollbar {
+		width: 5px;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 4px;
+	}
+	&::-webkit-scrollbar-track {
+		background: transparent;
+	}
+}
+
+.vm-dropdown.align-right .vm-dropdown-menu {
+	left: auto;
+	right: 0;
 }
 
 .vm-dropdown-empty {
@@ -255,11 +282,11 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.5rem;
+	gap: 0.85rem;
 	background: transparent;
 	border: none;
 	border-radius: 6px;
-	padding: 0.45rem 0.65rem;
+	padding: 0.45rem 0.75rem;
 	font-family: inherit;
 	font-size: 0.8rem;
 	color: #334155;
@@ -267,6 +294,7 @@ export default {
 	text-align: left;
 	outline: none;
 	transition: background 0.12s ease, color 0.12s ease;
+	white-space: nowrap;
 
 	&:hover:not(:disabled) {
 		background: #f1f5f9;
@@ -288,10 +316,10 @@ export default {
 .item-left {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.55rem;
 	min-width: 0;
 	flex: 1 1 auto;
-	overflow: hidden;
+	white-space: nowrap;
 }
 
 .item-icon {
@@ -304,9 +332,8 @@ export default {
 }
 
 .item-label {
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
+	flex: 1 1 auto;
 }
 
 .item-meta {
@@ -314,11 +341,16 @@ export default {
 	color: #94a3b8;
 	font-weight: normal;
 	flex-shrink: 0;
+	white-space: nowrap;
+	background: rgba(0, 0, 0, 0.04);
+	padding: 0.12rem 0.4rem;
+	border-radius: 4px;
 }
 
 .item-check {
 	color: #2563eb;
 	flex-shrink: 0;
+	margin-left: 0.25rem;
 }
 
 /* Size Modifiers */
@@ -365,9 +397,14 @@ export default {
 	}
 
 	.vm-dropdown-menu {
-		background: #262626;
-		border-color: rgba(255, 255, 255, 0.12);
-		box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+		background: #242424;
+		border-color: rgba(255, 255, 255, 0.14);
+		box-shadow: 0 14px 36px rgba(0, 0, 0, 0.7);
+		scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+		&::-webkit-scrollbar-thumb {
+			background: rgba(255, 255, 255, 0.2);
+		}
 	}
 
 	.vm-dropdown-empty {
