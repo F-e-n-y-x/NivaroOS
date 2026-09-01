@@ -1,12 +1,3 @@
-<!--
-  * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
-  * @LastEditTime: 2022/12/1 下午8:02
-  * @FilePath: /CasaOS-UI/src/views/Welcome.vue
-  * @Description:
-  *
-  * Copyright (c) 2022 by IceWhale, All Rights Reserved.
-  -->
-
 <template>
 	<div id="login-page" class="is-flex is-justify-content-center is-align-items-center">
 		<div v-if="!isLoading" v-animate-css="initAni" :class="'step' + step" class="login-panel is-shadow">

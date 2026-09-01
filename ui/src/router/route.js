@@ -1,12 +1,3 @@
-/*
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2023-02-24 17:51:33
- * @FilePath: /CasaOS-UI/src/router/route.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
-
 export default [
 	{
 		path: '/login',

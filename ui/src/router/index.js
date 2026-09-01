@@ -1,12 +1,3 @@
-/*
- * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
- * @LastEditTime: 2022/12/1 下午8:21
- * @FilePath: /CasaOS-UI/src/router/index.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
-
 import Vue       from 'vue'
 import VueRouter from 'vue-router'
 import api       from '@/service/api'

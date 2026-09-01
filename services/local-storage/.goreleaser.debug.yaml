@@ -143,8 +143,8 @@ changelog:
       - "^test:"
 release:
   github:
-    owner: IceWhaleTech
-    name: CasaOS-LocalStorage
+    owner: F-e-n-y-x
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

@@ -75,10 +75,10 @@ x-casaos:
   description:
     en_us: Syncthing is a continuous file synchronization program. It synchronizes files between two or more computers in real time, safely protected from prying eyes. Your data is your data alone and you deserve to choose where it is stored, whether it is shared with some third party, and how it's transmitted over the internet.
   developer: Syncthing
-  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.png
+  icon: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Syncthing/icon.png
   tagline:
     en_us: Free, secure, and distributed file synchronisation tool.
-  thumbnail: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/thumbnail.jpg
+  thumbnail: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Jellyfin/thumbnail.jpg
   tips: {}
   title:
     en_us: Syncthing

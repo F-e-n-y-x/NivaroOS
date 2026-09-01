@@ -9,12 +9,12 @@
     "generate:ts": "npx openapi-typescript-codegen --input ./api/app_management/openapi.yaml --output ./generate",
     "start": "yarn generate:local && yarn build"
   },
-  "homepage": "https://github.com/IceWhaleTech/CasaOS-AppManagement#readme",
-  "description": "Casaos-AppManagement Typescript+Axios SDK",
+  "homepage": "https://github.com/F-e-n-y-x/NivaroOS-AppManagement#readme",
+  "description": "NivaroOS-AppManagement Typescript+Axios SDK",
   "keywords": [
-    "CasaOS-AppManagement",
+    "NivaroOS-AppManagement",
     "SDK",
-    "CasaOS-AppManagement Axios"
+    "NivaroOS-AppManagement Axios"
   ],
   "main": "dist/index.js",
   "files": [

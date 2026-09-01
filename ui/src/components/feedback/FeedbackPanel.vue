@@ -29,7 +29,7 @@
 		<footer class="modal-card-foot is-flex is-align-items-center ">
 			<div class="is-flex-grow-1">
 				<a class="is-size-14px" rel="noopener"
-				   href="https://github.com/IceWhaleTech/CasaOS/issues/new/choose"
+				   href="https://github.com/F-e-n-y-x/NivaroOS/issues/new/choose"
 				   target="_blank">{{ $t('For more feedback options, visit NivaroOS project on GitHub...') }}</a>
 			</div>
 			<div>
@@ -79,7 +79,7 @@ export default {
 				description: this.postBody,
 				additional: this.feedBody,
 			}
-			let repoUrl = new URL(`https://github.com/IceWhaleTech/CasaOS/issues/new`);
+			let repoUrl = new URL(`https://github.com/F-e-n-y-x/NivaroOS/issues/new`);
 			for (const optionElement in option) {
 				repoUrl.searchParams.set(optionElement, option[optionElement]);
 			}

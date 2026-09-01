@@ -114,12 +114,12 @@ x-casaos:
     sv_se: Sonarr är en PVR för användare av Usenet och BitTorrent. Den kan övervaka flera RSS-flöden för nya avsnitt av dina favoritprogram och fånga dem, sortera dem och döpa om dem. Den kan också konfigureras för att automatiskt uppgradera kvaliteten på de redan nedladdade filerna när en bättre kvalitet blir tillgänglig.
     uk_ua: Sonarr - це PVR для користувачів Usenet і BitTorrent. Він може відстежувати кілька RSS-каналів для нових серій ваших улюблених шоу і захоплювати, сортувати і перейменовувати їх. Він також може бути налаштований для автоматичного оновлення якості вже завантажених файлів, коли краща якість стає доступною.
   developer: Sonarr
-  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/icon.png
+  icon: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/icon.png
   screenshot_link:
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-1.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-2.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-3.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-4.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-1.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-2.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-3.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-4.jpg
   tagline:
     en_us: The PVR for Usenet and BitTorrent users
     zh_cn: 用于Usenet和BitTorrent用户的PVR
@@ -134,7 +134,7 @@ x-casaos:
     pt_br: O PVR para usuários de Usenet e BitTorrent
     sv_se: PVR för användare av Usenet och BitTorrent
     uk_ua: PVR для користувачів Usenet і BitTorrent
-  thumbnail: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Radarr/thumbnail.jpg
+  thumbnail: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Radarr/thumbnail.jpg
   tips: {}
   title:
     en_us: Sonarr
@@ -168,13 +168,13 @@ x-casaos:
     zh_cn: |
       Swing Music 是一款设计精美的自托管音乐流媒体服务器。就像更酷的 Spotify......但可以带来你自己的音乐。
   developer: SwingMX
-  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/icon.png
+  icon: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/icon.png
   screenshot_link:
-  - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/screenshot-1.png
-  - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/screenshot-2.png
-  - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/screenshot-3.png
-  - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/screenshot-4.png
-  - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/SwingMusic/screenshot-5.png
+  - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/screenshot-1.png
+  - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/screenshot-2.png
+  - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/screenshot-3.png
+  - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/screenshot-4.png
+  - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/SwingMusic/screenshot-5.png
 
   tagline:
     en_us: Swing Music is a beautifully designed, self-hosted music streaming server. Like a cooler Spotify ... but bring your own music.
@@ -275,12 +275,12 @@ x-casaos:
     sv_se: Sonarr är en PVR för användare av Usenet och BitTorrent. Den kan övervaka flera RSS-flöden för nya avsnitt av dina favoritprogram och fånga dem, sortera dem och döpa om dem. Den kan också konfigureras för att automatiskt uppgradera kvaliteten på de redan nedladdade filerna när en bättre kvalitet blir tillgänglig.
     uk_ua: Sonarr - це PVR для користувачів Usenet і BitTorrent. Він може відстежувати кілька RSS-каналів для нових серій ваших улюблених шоу і захоплювати, сортувати і перейменовувати їх. Він також може бути налаштований для автоматичного оновлення якості вже завантажених файлів, коли краща якість стає доступною.
   developer: Sonarr
-  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/icon.png
+  icon: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/icon.png
   screenshot_link:
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-1.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-2.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-3.jpg
-    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Sonarr/screenshot-4.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-1.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-2.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-3.jpg
+    - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Sonarr/screenshot-4.jpg
   tagline:
     en_us: The PVR for Usenet and BitTorrent users
     zh_cn: 用于Usenet和BitTorrent用户的PVR
@@ -295,7 +295,7 @@ x-casaos:
     pt_br: O PVR para usuários de Usenet e BitTorrent
     sv_se: PVR för användare av Usenet och BitTorrent
     uk_ua: PVR для користувачів Usenet і BitTorrent
-  thumbnail: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Radarr/thumbnail.jpg
+  thumbnail: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Radarr/thumbnail.jpg
   tips: {}
   title:
     en_us: Sonarr

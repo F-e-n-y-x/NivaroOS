@@ -1,6 +1,6 @@
 # CasaOS-CLI
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/IceWhaleTech/CasaOS-CLI.svg)](https://pkg.go.dev/github.com/IceWhaleTech/CasaOS-CLI) [![Go Report Card](https://goreportcard.com/badge/github.com/IceWhaleTech/CasaOS-CLI)](https://goreportcard.com/report/github.com/IceWhaleTech/CasaOS-CLI) [![goreleaser](https://github.com/IceWhaleTech/CasaOS-CLI/actions/workflows/release.yml/badge.svg)](https://github.com/IceWhaleTech/CasaOS-CLI/actions/workflows/release.yml) [![codecov](https://codecov.io/github/IceWhaleTech/CasaOS-CLI/branch/main/graph/badge.svg?token=XHM6PM8C0K)](https://codecov.io/github/IceWhaleTech/CasaOS-CLI)
+[![Go Reference](https://pkg.go.dev/badge/github.com/F-e-n-y-x/NivaroOS/cli.svg)](https://pkg.go.dev/github.com/F-e-n-y-x/NivaroOS/cli) [![Go Report Card](https://goreportcard.com/badge/github.com/F-e-n-y-x/NivaroOS/cli)](https://goreportcard.com/report/github.com/F-e-n-y-x/NivaroOS/cli) [![goreleaser](https://github.com/F-e-n-y-x/NivaroOS-CLI/actions/workflows/release.yml/badge.svg)](https://github.com/F-e-n-y-x/NivaroOS-CLI/actions/workflows/release.yml)
 
 A command-line tool to interact with CasaOS for testing and diagnosing purpose
 

@@ -4,15 +4,9 @@ info:
   title: NivaroOS App Management API
   version: v1
   description: |
-    <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_dark_night_800px.png">
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-        <img alt="CasaOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-    </picture>
-
     NivaroOS App Management manages app lifecycle, including installing, uninstalling, starting, stopping, setting, etc.
 
-    For issues and discussions, please visit the [GitHub repository](https://github.com/IceWhaleTech/CasaOS) or join [our Discord](https://discord.gg/knqAbbBbeX).
+    For issues and discussions, please visit the [GitHub repository](https://github.com/F-e-n-y-x/NivaroOS).
 
 servers:
   - url: /v1/container
@@ -296,7 +290,7 @@ components:
       properties:
         icon:
           type: string
-          example: "https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_logo_64px.png"
+          example: "https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/ui/src/assets/img/logo/logo.svg"
         title:
           type: string
           example: "NivaroOS"
@@ -381,7 +375,7 @@ components:
           example: "nivaroos"
         icon:
           type: string
-          example: "https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_logo_64px.png"
+          example: "https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/ui/src/assets/img/logo/logo.svg"
         image:
           type: string
           example: "nivaroos"

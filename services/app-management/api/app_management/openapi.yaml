@@ -4,15 +4,9 @@ info:
   title: NivaroOS App Management API
   version: v2
   description: |
-    <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_dark_night_800px.png">
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-        <img alt="CasaOS" src="https://raw.githubusercontent.com/IceWhaleTech/logo/main/casaos/casaos_banner_twilight_blue_800px.png">
-    </picture>
-
     NivaroOS App Management manages app lifecycle, including installing, uninstalling, starting, stopping, setting, etc.
 
-    For issues and discussions, please visit the [GitHub repository](https://github.com/IceWhaleTech/CasaOS) or join [our Discord](https://discord.gg/knqAbbBbeX).
+    For issues and discussions, please visit the [GitHub repository](https://github.com/F-e-n-y-x/NivaroOS).
 
 servers:
   - url: /v2/app_management
@@ -736,7 +730,7 @@ components:
       in: query
       schema:
         type: string
-        example: "https://github.com/IceWhaleTech/CasaOS-AppStore"
+        example: "https://github.com/F-e-n-y-x/NivaroOS-AppStore"
 
     AppStoreID:
       name: id
@@ -1251,7 +1245,7 @@ components:
         url:
           type: string
           readOnly: true
-          example: "https://github.com/IceWhaleTech/CasaOS-AppStore/archive/refs/heads/main.zip"
+          example: "https://github.com/F-e-n-y-x/NivaroOS-AppStore/archive/refs/heads/main.zip"
           x-go-name: URL
         store_root:
           type: string
@@ -1346,20 +1340,20 @@ components:
             en_us: Free, secure, and distributed file synchronisation tool.
         icon:
           type: string
-          example: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.png
+          example: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Syncthing/icon.png
         screenshot_link:
           type: array
           items:
             type: string
           example:
-            - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/OpenSpeedTest/screenshot-1.png
-            - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/OpenSpeedTest/screenshot-2.png
+            - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/OpenSpeedTest/screenshot-1.png
+            - https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/OpenSpeedTest/screenshot-2.png
           x-oapi-codegen-extra-tags:
             mapstructure: "screenshot_link"
             yaml: "screenshot_link,omitempty"
         thumbnail:
           type: string
-          example: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/thumbnail.jpg
+          example: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Jellyfin/thumbnail.jpg
         author:
           type: string
           example: CasaOS Team
@@ -1528,7 +1522,7 @@ components:
           $ref: "#/components/schemas/StoreAppID"
         icon:
           type: string
-          example: "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.png"
+          example: "https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Syncthing/icon.png"
         status:
           type: string
           enum:
@@ -1747,7 +1741,7 @@ components:
               en_us: Syncthing
         icon:
           type: string
-          example: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.png
+          example: https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Syncthing/icon.png
         author_type:
           $ref: "#/components/schemas/StoreAppAuthorType"
         app_type:

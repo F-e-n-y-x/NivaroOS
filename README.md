@@ -249,6 +249,12 @@ cd services/common && go test ./...
 
 ---
 
+## 🙏 Acknowledgments
+
+NivaroOS is a fork of [CasaOS](https://github.com/IceWhaleTech/CasaOS), originally created by [IceWhaleTech](https://github.com/IceWhaleTech). Thank you to the original CasaOS team and community for the foundation this project was built on.
+
+---
+
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome!

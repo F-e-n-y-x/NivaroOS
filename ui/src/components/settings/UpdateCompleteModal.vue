@@ -49,7 +49,7 @@ export default {
 			timer: 0,
 			updateTimer: 0,
 			markdown: ``,
-			githubUrl: `https://github.com/IceWhaleTech/CasaOS`,
+			githubUrl: `https://github.com/F-e-n-y-x/NivaroOS`,
 			shareTitle: `I'm using NivaroOS, a simple, easy-to-use, elegant open-source home cloud system, try it like me.`,
 			shareSites: [
 				'facebook',

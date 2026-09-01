@@ -1,13 +1,3 @@
-<!--
- * @Author: Jerryk jerry@icewhale.org
- * @Date: 2022-06-21 19:03:39
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2022-08-18 10:48:59
- * @FilePath: \CasaOS-UI-dev\src\components\wallpaper\CasaWallpaper.vue
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
--->
 <template>
 	<div>
 		<div id="background" v-animate-css="animate" :style="backgroundStyleObj"></div>

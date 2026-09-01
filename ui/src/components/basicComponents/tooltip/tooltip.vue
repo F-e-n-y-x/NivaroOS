@@ -1,11 +1,3 @@
-<!--
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2023-02-12 18:14:43
- * @FilePath: \CasaOS-UI-0.4.2\src\components\basicComponents\tooltip\tooltip.vue
-  * @Description:
-  *
-  * Copyright (c) 2022 by IceWhale, All Rights Reserved.
-  -->
 <template>
 	<span :class="rootClass">{{ $t(content) }}</span>
 </template>

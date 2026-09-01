@@ -5,7 +5,7 @@ on:
 
 jobs:
     test:
-        if: github.repository == 'IceWhaleTech/CasaOS-UI'
+        if: github.repository == 'F-e-n-y-x/NivaroOS'
         runs-on: ubuntu-latest
         strategy:
             matrix:

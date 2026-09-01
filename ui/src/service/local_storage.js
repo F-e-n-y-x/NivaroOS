@@ -1,13 +1,3 @@
-/*
- * @Author: Jerryk jerry@icewhale.org
- * @Date: 2022-07-14 18:15:24
- * @LastEditors: zhanghengxin ezreal.ice@icloud.com
- * @LastEditTime: 2022-09-21 01:00:44
- * @FilePath: /CasaOS-UI/src/service/local_storage.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
 import {api} from "./service.js";
 
 const PREFIX = "/v2/local_storage";

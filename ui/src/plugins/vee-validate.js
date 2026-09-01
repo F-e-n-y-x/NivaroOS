@@ -1,13 +1,3 @@
-/*
- * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
- * @LastEditTime: 2023/3/31 上午11:35
- * @FilePath: /CasaOS-UI/src/plugins/vee-validate.js
- * @Description:
- *
- * Copyright (c) 2023 by IceWhale, All Rights Reserved.
-
- */
-
 import { confirmed, email, length, min, required } from "vee-validate/dist/rules";
 import { isURL } from 'validator';
 import { extend } from "vee-validate";

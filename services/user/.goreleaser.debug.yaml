@@ -144,8 +144,8 @@ changelog:
       - "^test:"
 release:
   github:
-    owner: IceWhaleTech
-    name: CasaOS-UserService
+    owner: F-e-n-y-x
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

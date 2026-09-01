@@ -1,15 +1,3 @@
-/*
- * @Author: zhanghengxin ezreal.ice@icloud.com
- * @Date: 2022-09-22 19:00:01
- * @LastEditors: zhanghengxin ezreal.ice@icloud.com
- * @LastEditTime: 2022-09-22 21:20:11
- * @FilePath: /CasaOS-UI/mock/meta_data.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- *
- */
-
 // 调用本地文件系统
 const fs = require('fs');
 const path = require('path');
@@ -57,7 +45,7 @@ module.exports = function mock(app) {
 				"name": "Transmission",
 				"state": "INSTALLED",
 				"type": "INSTALL",
-				"icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Transmission/icon.png",
+				"icon": "https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Transmission/icon.png",
 				"message": "App installing",
 				// business :: coreService.vue :: whether to show notifications
 				"finished": false,

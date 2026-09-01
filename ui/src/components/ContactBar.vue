@@ -33,7 +33,7 @@
 			<div class="popper  tooltip-content">
 				{{ $t('Visit our Github') }}
 			</div>
-			<a slot="reference" rel="noopener" href="https://github.com/IceWhaleTech/CasaOS" target="_blank"
+			<a slot="reference" rel="noopener" href="https://github.com/F-e-n-y-x/NivaroOS" target="_blank"
 				@click="$messageBus('connect_github')">
 				<b-icon icon="github" pack="casa"></b-icon>
 			</a>

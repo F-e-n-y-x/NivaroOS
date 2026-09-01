@@ -1,11 +1,3 @@
-<!--
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2023-01-30 15:06:13
- * @FilePath: /CasaOS-UI/src/views/AppLauncherCheck.vue
-  * @Description:
-  *
-  * Copyright (c) 2022 by IceWhale, All Rights Reserved.
-  -->
 <template>
 	<div v-if="isCheckFailed"
 		 class="is-flex is-flex-direction-column is-align-items-center is-justify-content-center is-fullheight">

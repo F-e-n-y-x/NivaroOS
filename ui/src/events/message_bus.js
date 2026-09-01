@@ -1,12 +1,3 @@
-/*
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2023-03-15 14:13:55
- * @FilePath: /CasaOS-UI/src/events/message_bus.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
-
 const sourceID = "nivaroos-ui";
 
 async function intermediateProcessor(name, ownParameter) {

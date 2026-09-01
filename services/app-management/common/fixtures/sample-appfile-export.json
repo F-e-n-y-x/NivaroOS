@@ -7,7 +7,7 @@
   "label": "Emby",
   "position": false,
   "index": "/",
-  "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/icon.png",
+  "icon": "https://cdn.jsdelivr.net/gh/F-e-n-y-x/NivaroOS-AppStore@main/Apps/Emby/icon.png",
   "network_model": "bridge",
   "image": "linuxserver/emby:4.6.7",
   "description": "Bringing all of your home videos, music, and photos together into one place has never been easier. Your personal Emby Server automatically converts and streams your media on-the-fly to play on any device.",

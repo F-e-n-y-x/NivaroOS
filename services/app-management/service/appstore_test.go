@@ -156,13 +156,13 @@ func TestWorkDir(t *testing.T) {
 
 	// test for github
 	hostname := "github.com"
-	path := "/IceWhaleTech/CasaOS-AppStore/archive/refs/heads/main.zip"
+	path := "/F-e-n-y-x/NivaroOS-AppStore/archive/refs/heads/main.zip"
 	appStore, err = service.AppStoreByURL("https://" + hostname + path)
 	assert.NilError(t, err)
 
 	workdir, err = appStore.WorkDir()
 	assert.NilError(t, err)
-	assert.Equal(t, workdir, filepath.Join(config.AppInfo.AppStorePath, hostname, "8b0968a7d7cda3f813d05736a89d0c92"))
+	assert.Equal(t, workdir, filepath.Join(config.AppInfo.AppStorePath, hostname, "94c295f55b20d91b89db102df31ba07b"))
 }
 
 func TestStoreRoot(t *testing.T) {
@@ -176,7 +176,7 @@ func TestStoreRoot(t *testing.T) {
 
 	workdir := t.TempDir()
 
-	expectedStoreRoot := filepath.Join(workdir, "github.com", "IceWhaleTech", "CasaOS-AppStore", "main")
+	expectedStoreRoot := filepath.Join(workdir, "github.com", "F-e-n-y-x", "NivaroOS-AppStore", "main")
 	err := file.MkDir(filepath.Join(expectedStoreRoot, common.AppsDirectoryName))
 	assert.NilError(t, err)
 

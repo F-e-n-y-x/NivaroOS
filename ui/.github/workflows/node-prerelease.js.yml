@@ -79,4 +79,4 @@ jobs:
                   region: oss-cn-shanghai
                   bucket: casaos
                   assets: |
-                      ./linux-all-casaos-${{ steps.get_version.outputs.VERSION }}.tar.gz:/IceWhaleTech/CasaOS-UI/releases/download/${{ steps.get_version.outputs.VERSION }}/linux-all-casaos-${{ steps.get_version.outputs.VERSION }}.tar.gz
+                      ./linux-all-casaos-${{ steps.get_version.outputs.VERSION }}.tar.gz:/F-e-n-y-x/NivaroOS-UI/releases/download/${{ steps.get_version.outputs.VERSION }}/linux-all-casaos-${{ steps.get_version.outputs.VERSION }}.tar.gz

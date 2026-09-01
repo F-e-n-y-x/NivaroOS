@@ -1,6 +1,6 @@
 # CasaOS-Gateway
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/IceWhaleTech/CasaOS-Gateway.svg)](https://pkg.go.dev/github.com/IceWhaleTech/CasaOS-Gateway) [![Go Report Card](https://goreportcard.com/badge/github.com/IceWhaleTech/CasaOS-Gateway)](https://goreportcard.com/report/github.com/IceWhaleTech/CasaOS-Gateway) [![goreleaser](https://github.com/IceWhaleTech/CasaOS-Gateway/actions/workflows/release.yml/badge.svg)](https://github.com/IceWhaleTech/CasaOS-Gateway/actions/workflows/release.yml) [![codecov](https://codecov.io/gh/IceWhaleTech/CasaOS-Gateway/branch/main/graph/badge.svg?token=5JIHXF1RJ4)](https://codecov.io/gh/IceWhaleTech/CasaOS-Gateway)
+[![Go Reference](https://pkg.go.dev/badge/github.com/F-e-n-y-x/NivaroOS/services/gateway.svg)](https://pkg.go.dev/github.com/F-e-n-y-x/NivaroOS/services/gateway) [![Go Report Card](https://goreportcard.com/badge/github.com/F-e-n-y-x/NivaroOS/services/gateway)](https://goreportcard.com/report/github.com/F-e-n-y-x/NivaroOS/services/gateway) [![goreleaser](https://github.com/F-e-n-y-x/NivaroOS-Gateway/actions/workflows/release.yml/badge.svg)](https://github.com/F-e-n-y-x/NivaroOS-Gateway/actions/workflows/release.yml)
 
 CasaOS Gateway is a dynamic API gateway service that can be used to expose APIs from different other HTTP based services.
 

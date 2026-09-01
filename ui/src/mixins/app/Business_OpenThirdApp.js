@@ -1,12 +1,3 @@
-/*
- * @LastEditors: Jerryk jerry@icewhale.org
- * @LastEditTime: 2023-02-12 18:32:17
- * @FilePath: \CasaOS-UI-0.4.2\src\mixins\app\Business_OpenThirdApp.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
-
 export default {
 	methods: {
 		openAppToNewWindow(appInfo) {

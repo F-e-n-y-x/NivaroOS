@@ -1,12 +1,3 @@
-<!--
-  - * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
-  - * @LastEditTime: 2023/2/10 下午3:14
-  - * @FilePath: /CasaOS-UI/src/assets/img/app/default.svg
-  - * @Description:
-  - *
-  - * Copyright (c) 2023 by IceWhale, All Rights Reserved.
-  -->
-
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
 	<rect width="64" height="64" rx="12" fill="url(#paint0_linear_913_2028)"/>
 	<g filter="url(#filter0_i_913_2028)">

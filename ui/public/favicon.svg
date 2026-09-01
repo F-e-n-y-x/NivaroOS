@@ -1,12 +1,3 @@
-<!--
-  - * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
-  - * @LastEditTime: 2022/12/2 上午11:09
-  - * @FilePath: /CasaOS-UI/public/img/icon/safari-pinned-tab.svg
-  - * @Description:
-  - *
-  - * Copyright (c) 2022 by IceWhale, All Rights Reserved.
-  -->
-
 <svg width="267" height="267" viewBox="0 0 267 267" fill="none" xmlns="http://www.w3.org/2000/svg">
 	<path opacity="0.95"
 		  d="M67.25 220.914C103.839 220.914 133.5 191.253 133.5 154.664C133.5 118.075 103.839 88.4138 67.25 88.4138C30.6611 88.4138 1 118.075 1 154.664C1 191.253 30.6611 220.914 67.25 220.914Z"

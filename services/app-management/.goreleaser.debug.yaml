@@ -28,7 +28,7 @@ builds:
       - amd64
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/IceWhaleTech/CasaOS-AppManagement/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
   - id: casaos-app-management-arm64
     binary: build/sysroot/usr/bin/casaos-app-management
@@ -50,7 +50,7 @@ builds:
       - arm64
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/IceWhaleTech/CasaOS-AppManagement/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
   - id: casaos-app-management-arm-7
     binary: build/sysroot/usr/bin/casaos-app-management
@@ -74,7 +74,7 @@ builds:
       - "7"
     hooks:
       post:
-        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/IceWhaleTech/CasaOS-AppManagement/cmd/appfile2compose
+        - cmd: go build -v -tags 'musl netgo osusergo' -o build/sysroot/usr/bin/appfile2compose github.com/F-e-n-y-x/NivaroOS/services/app-management/cmd/appfile2compose
           output: true
   - id: casaos-app-management-migration-tool-amd64
     binary: build/sysroot/usr/bin/casaos-app-management-migration-tool
@@ -166,8 +166,8 @@ changelog:
       - "^test:"
 release:
   github:
-    owner: IceWhaleTech
-    name: CasaOS-AppManagement
+    owner: F-e-n-y-x
+    name: nivaroos
   draft: true
   prerelease: auto
   mode: replace

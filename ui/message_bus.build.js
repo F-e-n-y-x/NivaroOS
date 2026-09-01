@@ -1,12 +1,3 @@
-/*
- * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
- * @LastEditTime: 2023/1/3 下午8:51
- * @FilePath: /CasaOS-UI/message_bus.build.js
- * @Description:
- *
- * Copyright (c) 2022 by IceWhale, All Rights Reserved.
- */
-
 const events = require('./src/events/message_bus.js');
 const fs = require('fs');
 const path = require('path');

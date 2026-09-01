@@ -1,13 +1,3 @@
-/*
- * @LastEditors: zhanghengxin ezreal.zhang@icewhale.org
- * @LastEditTime: 2023/4/24 上午11:20
- * @FilePath: /CasaOS-UI/src/components/filebrowser/drop/Network.js
- * @Description:
- *
- * Copyright (c) 2023 by IceWhale, All Rights Reserved.
-
- */
-
 window.URL = window.URL || window.webkitURL;
 window.isRtcSupported = !!(window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection);
 
