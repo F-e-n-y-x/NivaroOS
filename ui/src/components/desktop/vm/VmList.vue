@@ -512,31 +512,34 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.45rem 0.65rem;
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
-	background: #f8fafc;
+	padding: 0.25rem 0.85rem 0.85rem;
+	border-top: none;
+	background: #ffffff;
 }
 .vm-action-group {
 	display: flex;
 	align-items: center;
-	gap: 0.2rem;
+	gap: 0.25rem;
 }
 .vm-action-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.95rem;
-	height: 1.95rem;
+	width: 2rem;
+	height: 2rem;
 	border: none;
-	background: transparent;
+	background: #f8fafc;
 	color: #64748b;
-	border-radius: 7px;
+	border-radius: 8px;
 	cursor: pointer;
-	transition: background 0.12s ease, color 0.12s ease;
+	transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
 
 	&:hover:not(:disabled) {
 		background: #e2e8f0;
 		color: #0f172a;
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.95);
 	}
 	&:disabled {
 		opacity: 0.35;

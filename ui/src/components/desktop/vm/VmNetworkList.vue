@@ -11,21 +11,49 @@
 			<div class="vm-net-icon" :class="{ 'is-bridge': net.mode === 'bridge' }">
 				<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" custom-size="mdi-22px"></b-icon>
 			</div>
-			<div class="segmented-control vm-net-mode">
-				<button
-					type="button"
-					class="segmented-option"
-					:class="{ active: net.mode === 'nat' }"
-					@click="setField(i, 'mode', 'nat')"
-				>{{ $t('NAT') }}</button>
-				<button
-					v-for="bridge in bridgeNetworks"
-					:key="bridge.name"
-					type="button"
-					class="segmented-option"
-					:class="{ active: net.mode === 'bridge' && net.bridge_name === bridge.name }"
-					@click="setBridge(i, bridge.name)"
-				>{{ bridge.name }}</button>
+			<div class="vm-net-controls">
+				<div class="segmented-control vm-net-mode">
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.mode === 'nat' }"
+						@click="setField(i, 'mode', 'nat')"
+					>{{ $t('NAT') }}</button>
+					<button
+						v-for="bridge in bridgeNetworks"
+						:key="bridge.name"
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.mode === 'bridge' && net.bridge_name === bridge.name }"
+						@click="setBridge(i, bridge.name)"
+					>{{ bridge.name }}</button>
+				</div>
+				<div class="segmented-control vm-net-model" :title="$t('Network adapter emulation model')">
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: !net.model || net.model === 'virtio' }"
+						@click="setField(i, 'model', 'virtio')"
+					>VirtIO</button>
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.model === 'e1000e' }"
+						@click="setField(i, 'model', 'e1000e')"
+					>e1000e</button>
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.model === 'e1000' }"
+						@click="setField(i, 'model', 'e1000')"
+					>e1000</button>
+					<button
+						type="button"
+						class="segmented-option"
+						:class="{ active: net.model === 'rtl8139' }"
+						@click="setField(i, 'model', 'rtl8139')"
+					>RTL8139</button>
+				</div>
 			</div>
 			<button type="button" class="vm-net-remove" :title="$t('Remove')" @click="removeNet(i)">
 				<b-icon icon="trash-can-outline" custom-size="mdi-18px"></b-icon>
@@ -64,7 +92,7 @@ export default {
 			this.$emit('input', this.networks.map((n, i) => (i === index ? { ...n, mode: 'bridge', bridge_name: bridgeName } : n)))
 		},
 		addNet() {
-			this.$emit('input', [...this.networks, { mode: 'nat' }])
+			this.$emit('input', [...this.networks, { mode: 'nat', model: 'virtio' }])
 		},
 		removeNet(index) {
 			this.$emit('input', this.networks.filter((_, i) => i !== index))
@@ -77,22 +105,26 @@ export default {
 .vm-net-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 0.65rem;
 }
 .vm-net-row {
 	display: flex;
 	align-items: center;
-	flex-wrap: wrap;
-	gap: 0.65rem;
-	padding: 0.65rem 0.85rem;
-	border: 1px solid rgb(228 233 237);
-	border-radius: 10px;
+	gap: 0.85rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 12px;
 	background: #fff;
-	color: rgba(0, 0, 0, 0.6);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
-// Matches VmDiskList.vue's .vm-disk-icon / VmStorage.vue's .iso-icon -
-// the same round icon-badge treatment used everywhere else in this app's
-// list rows.
+.vm-net-controls {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
 .vm-net-icon {
 	flex-shrink: 0;
 	width: 2.5rem;
@@ -101,60 +133,59 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.04);
-	color: rgba(0, 0, 0, 0.4);
+	background: #f1f5f9;
+	color: #64748b;
 
 	&.is-bridge {
-		background: rgba(50, 115, 220, 0.1);
-		color: #3273dc;
+		background: #eff6ff;
+		color: #2563eb;
 	}
 }
-// .segmented-control (see common/_settings.scss, global) has its own
-// bottom margin meant for standalone use as a tab bar - inline here it
-// just needs to sit level with the row's icon/remove button, and wrap
-// (rather than overflow) once there are several bridges to choose from.
-.vm-net-mode {
-	flex: 1 1 auto;
-	flex-wrap: wrap;
-	margin-bottom: 0;
-}
 .vm-net-remove {
+	flex-shrink: 0;
 	border: none;
 	background: transparent;
-	color: rgba(0, 0, 0, 0.35);
+	color: #94a3b8;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
-	flex-shrink: 0;
-	padding: 0.35rem;
-	border-radius: 6px;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	border-radius: 7px;
+	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
-		background: rgba(242, 83, 74, 0.08);
-		color: #f2534a;
+		color: #dc2626;
+		background: #fee2e2;
 	}
+}
+.vm-net-mode, .vm-net-model {
+	flex-wrap: wrap;
+	margin-bottom: 0;
 }
 .vm-net-add {
 	align-self: flex-start;
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
-	border: 1px dashed rgb(200 207 214);
+	border: 1px dashed rgba(37, 99, 235, 0.4);
 	border-radius: 8px;
 	background: transparent;
-	color: #3273dc;
+	color: #2563eb;
 	font-family: inherit;
 	font-size: 0.8rem;
-	font-weight: 600;
-	padding: 0.4rem 0.75rem;
+	font-weight: 500;
+	padding: 0.45rem 0.85rem;
 	cursor: pointer;
+	transition: background 0.15s ease;
 
 	&:hover {
-		background: rgba(50, 115, 220, 0.06);
+		background: rgba(37, 99, 235, 0.08);
 	}
 }
 .vm-net-hint {
 	font-size: 0.78rem;
-	color: rgba(0, 0, 0, 0.45);
+	color: #64748b;
 }
 </style>

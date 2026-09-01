@@ -238,11 +238,10 @@ import VmHardwarePicker from './VmHardwarePicker.vue'
 // for beginners, not a locked-in mode; every field stays editable right
 // after, matching Unraid's "template just fills defaults" behavior.
 const OS_TEMPLATES = [
-	{ id: 'linux', label: 'Linux', icon: 'linux', vcpus: 2, memory_mib: 2048, disk_gib: 20, firmware: 'bios' },
-	// Windows 11 requires UEFI (Secure Boot/TPM prerequisites) - Windows
-	// 10 works with either, but UEFI is the safer default either way.
-	{ id: 'windows', label: 'Windows', icon: 'microsoft-windows', vcpus: 4, memory_mib: 4096, disk_gib: 60, firmware: 'uefi' },
-	{ id: 'custom', label: 'Other', icon: 'cog-outline', vcpus: 2, memory_mib: 2048, disk_gib: 20, firmware: 'bios' },
+	{ id: 'linux', label: 'Linux', icon: 'linux', vcpus: 2, memory_mib: 2048, disk_gib: 20, firmware: 'bios', net_model: 'virtio' },
+	// Windows 11 requires UEFI and standard Intel e1000e driver out-of-the-box
+	{ id: 'windows', label: 'Windows', icon: 'microsoft-windows', vcpus: 4, memory_mib: 4096, disk_gib: 60, firmware: 'uefi', net_model: 'e1000e' },
+	{ id: 'custom', label: 'Other', icon: 'cog-outline', vcpus: 2, memory_mib: 2048, disk_gib: 20, firmware: 'bios', net_model: 'e1000e' },
 ]
 
 export default {
@@ -370,6 +369,9 @@ export default {
 			this.form.firmware = tpl.firmware
 			if (this.form.disks.length === 1) {
 				this.form.disks = [{ ...this.form.disks[0], gib: tpl.disk_gib }]
+			}
+			if (this.form.networks.length === 1) {
+				this.form.networks = [{ ...this.form.networks[0], model: tpl.net_model || 'virtio' }]
 			}
 		},
 		formatMib(mib) {

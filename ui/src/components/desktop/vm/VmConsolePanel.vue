@@ -31,7 +31,7 @@
 						<span>{{ $t('Keys') }}</span>
 						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 					</button>
-					<div v-if="keysMenuOpen" class="power-menu">
+					<div v-if="keysMenuOpen" class="power-menu keys-menu">
 						<button class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
 							<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon><span>Ctrl+Alt+Del</span>
 						</button>
@@ -53,6 +53,39 @@
 					<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
 					<span>{{ $t('Paste') }}</span>
 				</button>
+				<div ref="shareMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" :title="$t('Share files with the virtual machine')" @click="shareMenuOpen = !shareMenuOpen">
+						<b-icon icon="folder-network-outline" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Share Files') }}</span>
+					</button>
+					<div v-if="shareMenuOpen" class="device-menu share-menu">
+						<p class="device-menu-title">{{ $t('File Sharing') }}</p>
+						<div class="share-box">
+							<p class="share-box-desc">{{ $t('Access files from inside the VM via Windows File Explorer or Linux Network:') }}</p>
+							<div class="share-path-row" :title="$t('Click to copy network path')" @click="copySharePath">
+								<code class="share-path-code">\\{{ hostIp }}\DATA</code>
+								<b-icon icon="content-copy" custom-size="mdi-16px"></b-icon>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div ref="netMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" :title="$t('Network connections')" @click="netMenuOpen = !netMenuOpen">
+						<b-icon :icon="networkIcon" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Network') }}</span>
+					</button>
+					<div v-if="netMenuOpen" class="device-menu network-menu">
+						<p class="device-menu-title">{{ $t('Network Adapters') }}</p>
+						<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row disk-row">
+							<div class="device-row-icon active">
+								<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
+							</div>
+							<span class="device-menu-desc">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT') }} &middot; {{ (n.model || 'virtio').toUpperCase() }}</span>
+							<span class="network-badge-connected">{{ $t('Connected') }}</span>
+						</div>
+						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
+					</div>
+				</div>
 				<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
 					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
 					<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
@@ -80,7 +113,7 @@
 						<span>{{ $t('Power') }}</span>
 						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 					</button>
-					<div v-if="powerMenuOpen" class="power-menu">
+					<div v-if="powerMenuOpen" class="power-menu power-menu-right">
 						<button v-if="vmState !== 'running'" class="power-menu-item" @click="runAction('startVM')">
 							<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
 						</button>
@@ -177,7 +210,7 @@
 			<div class="osk-header" @pointerdown="startKeyboardDrag">
 				<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
 				<span class="osk-title">{{ $t('Keyboard') }}</span>
-				<button type="button" class="osk-close" :title="$t('Close')" @click="keyboardOpen = false">
+				<button type="button" class="osk-close" :title="$t('Close')" @pointerdown.stop @mousedown.stop @click.stop="closeKeyboard">
 					<b-icon icon="close" size="is-small"></b-icon>
 				</button>
 			</div>
@@ -438,6 +471,9 @@ export default {
 			qualityMenuOpen: false,
 			keysMenuOpen: false,
 			powerMenuOpen: false,
+			netMenuOpen: false,
+			shareMenuOpen: false,
+			hostIp: window.location.hostname || '127.0.0.1',
 			statePollTimer: null,
 			usbMenuOpen: false,
 			diskMenuOpen: false,
@@ -641,6 +677,12 @@ export default {
 			if (this.keysMenuOpen && this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(event.target)) {
 				this.keysMenuOpen = false
 			}
+			if (this.shareMenuOpen && this.$refs.shareMenuWrapper && !this.$refs.shareMenuWrapper.contains(event.target)) {
+				this.shareMenuOpen = false
+			}
+			if (this.netMenuOpen && this.$refs.netMenuWrapper && !this.$refs.netMenuWrapper.contains(event.target)) {
+				this.netMenuOpen = false
+			}
 			if (this.powerMenuOpen && this.$refs.powerMenuWrapper && !this.$refs.powerMenuWrapper.contains(event.target)) {
 				this.powerMenuOpen = false
 			}
@@ -652,6 +694,29 @@ export default {
 			}
 			if (this.qualityMenuOpen && this.$refs.qualityMenuWrapper && !this.$refs.qualityMenuWrapper.contains(event.target)) {
 				this.qualityMenuOpen = false
+			}
+		},
+		closeKeyboard() {
+			this.keyboardOpen = false
+			if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
+				document.body.removeChild(this.$refs.keyboard)
+			}
+		},
+		async copySharePath() {
+			const path = `\\\\${this.hostIp || '192.168.1.x'}\\DATA`
+			try {
+				await navigator.clipboard.writeText(path)
+				this.$buefy.toast.open({
+					message: `${this.$t('Network path copied')}: ${path}`,
+					type: 'is-success',
+					duration: 2500,
+				})
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: path,
+					type: 'is-info',
+					duration: 3500,
+				})
 			}
 		},
 		async runAction(method) {
@@ -959,17 +1024,74 @@ export default {
 }
 .power-menu {
 	position: absolute;
-	top: calc(100% + 0.3rem);
-	right: 0;
-	z-index: 30;
+	top: calc(100% + 0.35rem);
+	left: 0;
+	z-index: 50;
 	background: #262626;
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.12);
 	border-radius: 8px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-	padding: 0.3rem;
-	min-width: 9rem;
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+	padding: 0.35rem;
+	min-width: 10rem;
 	display: flex;
 	flex-direction: column;
+}
+.keys-menu {
+	left: 0 !important;
+	right: auto !important;
+	min-width: 11.5rem;
+}
+.power-menu-right {
+	left: auto !important;
+	right: 0 !important;
+}
+.share-menu {
+	width: 19rem;
+}
+.share-box {
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 7px;
+	padding: 0.6rem;
+	margin-top: 0.35rem;
+}
+.share-box-desc {
+	font-size: 0.72rem;
+	color: rgba(255, 255, 255, 0.7);
+	margin-bottom: 0.45rem;
+	line-height: 1.35;
+}
+.share-path-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	background: rgba(0, 0, 0, 0.35);
+	padding: 0.45rem 0.6rem;
+	border-radius: 6px;
+	cursor: pointer;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: background 0.15s ease, border-color 0.15s ease;
+
+	&:hover {
+		background: rgba(37, 99, 235, 0.25);
+		border-color: rgba(37, 99, 235, 0.5);
+	}
+}
+.share-path-code {
+	font-family: monospace;
+	font-size: 0.8rem;
+	color: #60a5fa;
+	background: none;
+	padding: 0;
+}
+.network-badge-connected {
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: #34d399;
+	background: rgba(16, 185, 129, 0.15);
+	padding: 0.15rem 0.45rem;
+	border-radius: 9999px;
+	flex-shrink: 0;
 }
 .power-menu-item {
 	display: flex;
@@ -998,6 +1120,8 @@ export default {
 }
 .quality-menu {
 	min-width: 14rem;
+	left: auto !important;
+	right: 0 !important;
 }
 .quality-menu-item {
 	align-items: flex-start;
