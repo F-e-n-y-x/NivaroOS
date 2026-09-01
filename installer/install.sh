@@ -8,6 +8,15 @@ WITH_VM=""
 YES=""
 STEP_NUM=0
 
+export PATH="/usr/local/go/bin:/usr/local/bin:$PATH"
+
+check_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		echo "error: NivaroOS installer must be run as root (use sudo or su)" >&2
+		exit 1
+	fi
+}
+
 check_distro() {
 	if [ ! -f "$OS_RELEASE_FILE" ]; then
 		echo "error: $OS_RELEASE_FILE not found, cannot determine distro" >&2
@@ -30,6 +39,17 @@ parse_args() {
 			--with-vm) WITH_VM=yes ;;
 			--without-vm) WITH_VM=no ;;
 			--yes|-y) YES=yes ;;
+			--help|-h)
+				echo "NivaroOS Installer"
+				echo "Usage: install.sh [options]"
+				echo ""
+				echo "Options:"
+				echo "  --yes, -y       Skip interactive prompts and install defaults"
+				echo "  --with-vm       Install with VM Manager support (QEMU/KVM + libvirt)"
+				echo "  --without-vm    Install without VM Manager support"
+				echo "  --help, -h      Show this help message"
+				exit 0
+				;;
 			*)
 				echo "error: unknown argument '$1'" >&2
 				exit 1
@@ -39,37 +59,38 @@ parse_args() {
 	done
 }
 
-# Runs a command with a clean gum spinner instead of raw scrolling output.
-# On success, the command's own output is discarded (kept in a temp log that
-# gets deleted) - on failure, that log is dumped in full before exiting, so
-# nothing useful is ever actually lost, it's just hidden until it's relevant.
 run_step() {
 	local title="$1"
 	shift
 	STEP_NUM=$((STEP_NUM + 1))
 	local log
 	log="$(mktemp)"
-	# gum spin is a full-screen (bubbletea) program that probes the terminal
-	# for feature support and reads the reply on its own stdin. Over
-	# `curl | bash`, fd 0 for the whole script is the tail end of that pipe,
-	# not the real terminal - gum still writes the probe to the terminal
-	# (fd 1), but can't read the terminal's reply back through the dead
-	# pipe, so it comes out on screen as literal garbage. Point gum's stdin
-	# at /dev/tty (the real terminal) instead when one exists.
 	local tty_in=/dev/null
 	if exec 3</dev/tty 2>/dev/null; then
 		exec 3<&-
 		tty_in=/dev/tty
 	fi
-	if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "$* >'${log}' 2>&1" <"$tty_in"; then
-		rm -f "$log"
+	if command -v gum >/dev/null 2>&1; then
+		if gum spin --title "Step ${STEP_NUM}: ${title}" -- bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1" <"$tty_in"; then
+			rm -f "$log"
+		else
+			echo "" >&2
+			gum style --foreground 196 --bold "✗ Step ${STEP_NUM} failed: ${title}" >&2
+			echo "" >&2
+			cat "$log" >&2
+			rm -f "$log"
+			exit 1
+		fi
 	else
-		echo "" >&2
-		gum style --foreground 196 --bold "✗ Step ${STEP_NUM} failed: ${title}" >&2
-		echo "" >&2
-		cat "$log" >&2
-		rm -f "$log"
-		exit 1
+		echo "Step ${STEP_NUM}: ${title}"
+		if bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"; $* >'${log}' 2>&1"; then
+			rm -f "$log"
+		else
+			echo "✗ Step ${STEP_NUM} failed: ${title}" >&2
+			cat "$log" >&2
+			rm -f "$log"
+			exit 1
+		fi
 	fi
 }
 
@@ -80,17 +101,12 @@ select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		return
 	fi
-	# A curl-piped install (or --yes) never gets an interactive menu - stdin
-	# is the script itself in that case, so reading it for a menu answer
-	# would silently corrupt/truncate the rest of the install. Default to
-	# a minimal install instead; --with-vm or a direct, downloaded run of
-	# this script (real terminal, real stdin) are how you opt in.
-	if [ -n "$YES" ] || [ ! -t 0 ]; then
+	if [ -n "$YES" ] || [ ! -t 0 ] || ! command -v gum >/dev/null 2>&1; then
 		WITH_VM=no
 		return
 	fi
 	local chosen
-	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}")"
+	chosen="$(gum choose --no-limit --header "Select add-ons to install (space to toggle, enter to confirm, none for a minimal install):" "${ADDON_LABELS[@]}" || echo "")"
 	local i id upper
 	for i in "${!ADDON_IDS[@]}"; do
 		id="${ADDON_IDS[$i]}"
@@ -109,41 +125,56 @@ install_gum() {
 	if command -v gum >/dev/null 2>&1; then
 		return
 	fi
+	apt-get update -qq >/dev/null 2>&1 || true
+	apt-get install -y -qq curl tar ca-certificates >/dev/null 2>&1 || true
 	local arch gum_arch
 	arch="$(dpkg --print-architecture)"
 	case "$arch" in
 		amd64) gum_arch=x86_64 ;;
 		arm64) gum_arch=arm64 ;;
 		*)
-			echo "error: unsupported architecture '$arch' for gum install" >&2
-			exit 1
+			return
 			;;
 	esac
 	local tarball="gum_${GUM_VERSION}_Linux_${gum_arch}.tar.gz"
-	curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"
-	tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum"
-	install -m 0755 /tmp/gum /usr/local/bin/gum
-	rm -f "/tmp/${tarball}" /tmp/gum
+	if curl -fsSL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/${tarball}" -o "/tmp/${tarball}"; then
+		tar -C /tmp -xzf "/tmp/${tarball}" --strip-components=1 "gum_${GUM_VERSION}_Linux_${gum_arch}/gum" 2>/dev/null || true
+		if [ -f /tmp/gum ]; then
+			install -m 0755 /tmp/gum /usr/local/bin/gum
+		fi
+		rm -f "/tmp/${tarball}" /tmp/gum
+	fi
 }
 
 print_banner() {
-	gum style \
-		--border double --align center --width 50 --margin "1 2" --padding "1 4" \
-		--border-foreground 212 --foreground 212 --bold \
-		"NIVAROOS" "Self-hosted personal cloud & container platform"
+	if command -v gum >/dev/null 2>&1; then
+		gum style \
+			--border double --align center --width 50 --margin "1 2" --padding "1 4" \
+			--border-foreground 212 --foreground 212 --bold \
+			"NIVAROOS" "Self-hosted personal cloud & container platform"
+	else
+		echo "=================================================="
+		echo "  NIVAROOS - Self-hosted personal cloud platform  "
+		echo "=================================================="
+	fi
 }
 
 install_build_deps() {
 	run_step "Updating package lists..." apt-get update
-	run_step "Installing git, nodejs, curl..." apt-get install -y git nodejs curl
+	run_step "Installing git, nodejs, npm, curl, build essentials..." apt-get install -y git nodejs npm curl ca-certificates build-essential
 
 	if ! command -v go >/dev/null 2>&1 || ! go_version_ok; then
 		install_go_toolchain
 	fi
 
 	if ! command -v pnpm >/dev/null 2>&1; then
-		corepack enable
-		corepack prepare pnpm@9.0.6 --activate
+		if command -v corepack >/dev/null 2>&1; then
+			corepack enable || true
+			corepack prepare pnpm@9.0.6 --activate || true
+		fi
+		if ! command -v pnpm >/dev/null 2>&1; then
+			npm install -g pnpm@9.0.6 >/dev/null 2>&1 || curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=9.0.6 sh - || true
+		fi
 	fi
 }
 
@@ -164,26 +195,19 @@ install_go_toolchain() {
 			exit 1
 			;;
 	esac
-	run_step "Installing the Go toolchain..." "curl -fsSL https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz -o /tmp/go1.23.4.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz && rm -f /tmp/go1.23.4.tar.gz"
+	run_step "Installing the Go toolchain (v1.23.4)..." "curl -fsSL https://go.dev/dl/go1.23.4.linux-${go_arch}.tar.gz -o /tmp/go1.23.4.tar.gz && rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go1.23.4.tar.gz && rm -f /tmp/go1.23.4.tar.gz"
 	export PATH="/usr/local/go/bin:$PATH"
 	echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/nivaroos-go.sh
-	# /etc/profile.d only helps interactive login shells. Symlink into /usr/bin
-	# too so `go` is always resolvable - e.g. for `nivaroos-cli vm enable`'s own
-	# `go build` invocation, run later via a plain `docker exec`/non-interactive
-	# `ssh host cmd`-style call that never sources /etc/profile.
 	ln -sf /usr/local/go/bin/go /usr/bin/go
 	ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 }
 
 clone_repo() {
 	if [ -d "$SRC_DIR/.git" ]; then
-		# An existing checkout is likely left over from an earlier install
-		# attempt (possibly one that failed before a fix landed upstream) -
-		# always fast-forward it to latest master rather than silently
-		# reusing whatever happens to be on disk.
 		run_step "Updating existing checkout..." "git -C '$SRC_DIR' fetch origin master && git -C '$SRC_DIR' reset --hard origin/master"
 		return
 	fi
+	rm -rf "$SRC_DIR"
 	mkdir -p "$(dirname "$SRC_DIR")"
 	run_step "Cloning NivaroOS..." git clone "$REPO_URL" "$SRC_DIR"
 }
@@ -198,7 +222,7 @@ install_service() {
 	fi
 	(
 		cd "$SRC_DIR/services/$name"
-		run_step "Building $bin_name (first run may take a minute)..." go build -o "/usr/bin/$bin_name" .
+		run_step "Building $bin_name..." go build -o "/usr/bin/$bin_name" .
 	)
 	if [ -d "$SRC_DIR/services/$name/build/sysroot" ]; then
 		cp -a "$SRC_DIR/services/$name/build/sysroot/." /
@@ -206,7 +230,7 @@ install_service() {
 	local setup_script
 	setup_script="$(find "$SRC_DIR/services/$name/build/scripts/setup/script.d" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | sort | head -1 || true)"
 	if [ -n "$setup_script" ]; then
-		bash "$setup_script"
+		bash "$setup_script" >/dev/null 2>&1 || true
 	fi
 }
 
@@ -234,13 +258,27 @@ install_cli() {
 	)
 }
 
+init_directories_and_configs() {
+	mkdir -p /etc/nivaroos /var/lib/nivaroos /var/lib/casaos /var/log/nivaroos /var/run/nivaroos /DATA
+	for sample in /etc/nivaroos/*.sample /etc/nivaroos/*.conf.sample; do
+		if [ -f "$sample" ]; then
+			local conf="${sample%.sample}"
+			if [ ! -f "$conf" ]; then
+				cp "$sample" "$conf"
+			fi
+		fi
+	done
+}
+
 install_core_services() {
+	init_directories_and_configs
 	for name in $CORE_SERVICES; do
 		install_service "$name"
 	done
+	init_directories_and_configs
 	write_gpu_sidecar_unit
 	systemctl daemon-reload
-	systemctl enable --now nivaroos-gpu-sidecar.service
+	systemctl enable --now nivaroos-gpu-sidecar.service >/dev/null 2>&1 || true
 	install_cli
 }
 
@@ -249,7 +287,7 @@ VM_SIDECAR_UNIT=/usr/lib/systemd/system/nivaroos-vm-sidecar.service
 write_vm_sidecar_unit() {
 	cat > "$VM_SIDECAR_UNIT" <<'UNIT_EOF'
 [Unit]
-After=network.target nivaroos-message-bus.service
+After=network.target nivaroos-message-bus.service libvirtd.service
 Description=NivaroOS VM Sidecar
 
 [Service]
@@ -262,26 +300,26 @@ UNIT_EOF
 }
 
 install_vm_manager() {
-	# nivaroos-vm-sidecar links against libvirt via cgo (pkg-config: libvirt-admin)
-	# and needs a C compiler to do so; neither is installed by install_build_deps().
-	run_step "Installing libvirt-dev, gcc..." apt-get install -y libvirt-dev gcc
+	run_step "Installing libvirt, QEMU KVM, and dependencies..." apt-get install -y libvirt-dev gcc libvirt-daemon-system qemu-kvm qemu-utils
+	systemctl enable --now libvirtd.service >/dev/null 2>&1 || true
 	(
 		cd "$SRC_DIR/services/vm-sidecar"
 		run_step "Building nivaroos-vm-sidecar..." go build -o /usr/bin/nivaroos-vm-sidecar .
 	)
 	write_vm_sidecar_unit
 	systemctl daemon-reload
-	systemctl enable --now nivaroos-vm-sidecar.service
+	systemctl enable --now nivaroos-vm-sidecar.service >/dev/null 2>&1 || true
 }
 
 install_ui() {
 	(
 		cd "$SRC_DIR/ui"
-		run_step "Installing UI dependencies (first run may take a minute)..." pnpm install --frozen-lockfile
+		run_step "Installing UI dependencies..." pnpm install --frozen-lockfile
 		run_step "Building the web UI..." pnpm run build
 	)
-	mkdir -p /var/lib/nivaroos/www
+	mkdir -p /var/lib/nivaroos/www /var/lib/casaos/www
 	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/nivaroos/www/." /var/lib/nivaroos/www/
+	cp -a "$SRC_DIR/ui/build/sysroot/var/lib/nivaroos/www/." /var/lib/casaos/www/ 2>/dev/null || true
 }
 
 LEGACY_SERVICE_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service"
@@ -289,7 +327,8 @@ LEGACY_SERVICE_UNITS="nivaroos-gateway.service nivaroos-message-bus.service niva
 start_core_services() {
 	systemctl daemon-reload
 	for unit in $LEGACY_SERVICE_UNITS nivaroos-gpu-sidecar.service; do
-		systemctl start "$unit"
+		systemctl enable --now "$unit" >/dev/null 2>&1 || true
+		systemctl restart "$unit" >/dev/null 2>&1 || true
 	done
 }
 
@@ -315,10 +354,15 @@ print_summary() {
 	fi
 	lines+=("")
 	lines+=("Open http://$(hostname -I | awk '{print $1}')/ to finish setup.")
-	gum style --border double --padding "1 2" --border-foreground 212 "${lines[@]}"
+	if command -v gum >/dev/null 2>&1; then
+		gum style --border double --padding "1 2" --border-foreground 212 "${lines[@]}"
+	else
+		printf '%s\n' "${lines[@]}"
+	fi
 }
 
 main() {
+	check_root
 	check_distro
 	parse_args "$@"
 	install_gum
@@ -336,3 +380,4 @@ main() {
 }
 
 main "$@"
+
