@@ -80,24 +80,25 @@ describe('vmSidecar', () => {
 	})
 
 	test('sharedFolder endpoints call correct URLs and verbs', async () => {
-		global.fetch.mockReturnValue(jsonResponse({ attached: true, folder_path: '/DATA/Share' }))
-		const info = await vmSidecar.getSharedFolder('my-vm')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder`, {})
-		expect(info.attached).toBe(true)
+		global.fetch.mockReturnValue(jsonResponse([{ source_dir: '/DATA/Share', target_tag: 'nivaroshare' }]))
+		const shares = await vmSidecar.listSharedFolders('my-vm')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, {})
+		expect(shares).toEqual([{ source_dir: '/DATA/Share', target_tag: 'nivaroshare' }])
 
-		global.fetch.mockReturnValue(jsonResponse({ attached: true, size_mb: 1024 }))
-		await vmSidecar.mountSharedFolder('my-vm', { folder_path: '/DATA/Share', size_mb: 1024 })
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/mount`, {
+		global.fetch.mockReturnValue(jsonResponse({}, 201))
+		await vmSidecar.attachSharedFolder('my-vm', { source_dir: '/DATA/Share', target_tag: 'nivaroshare' })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ folder_path: '/DATA/Share', size_mb: 1024 })
+			body: JSON.stringify({ source_dir: '/DATA/Share', target_tag: 'nivaroshare' })
 		})
 
 		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
-		await vmSidecar.syncSharedFolder('my-vm')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/sync`, { method: 'POST' })
+		await vmSidecar.detachSharedFolder('my-vm', 'nivaroshare')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders/nivaroshare`, { method: 'DELETE' })
 
-		await vmSidecar.unmountSharedFolder('my-vm')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folder/unmount`, { method: 'POST' })
+		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
+		await vmSidecar.insertVirtioWin('my-vm')
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/insert-virtio-win`, { method: 'POST' })
 	})
 })

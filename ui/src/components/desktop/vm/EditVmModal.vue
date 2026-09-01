@@ -87,6 +87,35 @@
 				<h3 class="setting-card-title">{{ $t('Network Adapters') }}</h3>
 				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
 			</div>
+			<div class="edit-section">
+				<div class="edit-section-header">
+					<h3 class="setting-card-title">{{ $t('Shared Folders') }}</h3>
+					<b-button size="is-small" icon-left="plus" @click="showSharePicker = true">{{ $t('Add Folder') }}</b-button>
+				</div>
+				<div v-if="!form.shared_folders || !form.shared_folders.length" class="empty-hint">
+					{{ $t('No host shared folders configured.') }}
+				</div>
+				<div v-else class="shared-folders-list">
+					<div v-for="(sf, idx) in form.shared_folders" :key="idx" class="shared-folder-item">
+						<b-icon icon="folder" size="is-small" class="sf-icon"></b-icon>
+						<div class="sf-details">
+							<span class="sf-path" :title="sf.source_dir">{{ sf.source_dir }}</span>
+							<span class="sf-tag">Tag: <code>{{ sf.target_tag }}</code></span>
+						</div>
+						<button type="button" class="sf-remove-btn" :title="$t('Remove')" @click="form.shared_folders.splice(idx, 1)">
+							<b-icon icon="close" size="is-small"></b-icon>
+						</button>
+					</div>
+				</div>
+			</div>
+			<vm-file-picker-dialog
+				:active="showSharePicker"
+				:title="$t('Select Host Folder to Share')"
+				start-path="/DATA"
+				directory-mode
+				@selected="addSharedFolder"
+				@close="showSharePicker = false"
+			></vm-file-picker-dialog>
 			<vm-hardware-picker
 				:usb-value="form.usb_devices"
 				:pci-value="form.pci_devices"
@@ -132,7 +161,7 @@ export default {
 	data() {
 		return {
 			resolutionOptions: RESOLUTION_OPTIONS,
-			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [] },
+			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [], shared_folders: [] },
 			// The VM's disks as they were when loaded - VmDiskList uses this
 			// to floor each existing disk's size at its current GiB (grow
 			// only) and lock its bus/SSD, since those can't change on an
@@ -141,6 +170,7 @@ export default {
 			existingDisks: [],
 			networks: [],
 			showIsoPicker: false,
+			showSharePicker: false,
 			saving: false,
 			error: null,
 		}
@@ -215,6 +245,13 @@ export default {
 		isoFileName(path) {
 			return path ? path.slice(path.lastIndexOf('/') + 1) : ''
 		},
+		addSharedFolder(dir) {
+			if (!dir) return
+			if (!this.form.shared_folders) this.form.shared_folders = []
+			const tagBase = dir.split('/').filter(Boolean).pop() || 'nivaroshare'
+			const tag = tagBase.toLowerCase().replace(/[^a-z0-9]/g, '') || 'nivaroshare'
+			this.form.shared_folders.push({ source_dir: dir, target_tag: tag, read_only: false })
+		},
 		async load() {
 			this.error = null
 			const [nets, caps, fresh] = await Promise.all([
@@ -237,6 +274,7 @@ export default {
 				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
 				usb_devices: fresh.usb_devices || [],
 				pci_devices: fresh.pci_devices || [],
+				shared_folders: (fresh.shared_folders || []).map((sf) => ({ source_dir: sf.source_dir, target_tag: sf.target_tag, read_only: !!sf.read_only })),
 			}
 			this.existingDisks = (fresh.disks || []).map((d) => ({ path: d.path, gib: d.gib }))
 		},
@@ -255,6 +293,7 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
+					shared_folders: this.form.shared_folders || [],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {
@@ -485,5 +524,83 @@ export default {
 // a .row-control it just needs to sit level with the label.
 .setting-row .segmented-control {
 	margin-bottom: 0;
+}
+
+.edit-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0.4rem;
+}
+
+.empty-hint {
+	font-size: 0.8rem;
+	color: rgba(0, 0, 0, 0.4);
+	padding: 0.5rem 0.25rem;
+}
+
+.shared-folders-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.shared-folder-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	background: rgba(0, 0, 0, 0.03);
+	border: 1px solid rgb(228 233 237);
+	border-radius: 8px;
+	padding: 0.45rem 0.65rem;
+
+	.sf-icon {
+		color: #eab308;
+	}
+
+	.sf-details {
+		flex: 1 1 auto;
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.sf-path {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #2c3e50;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-family: monospace;
+	}
+
+	.sf-tag {
+		font-size: 0.7rem;
+		color: rgba(0, 0, 0, 0.5);
+
+		code {
+			background: rgba(0, 0, 0, 0.05);
+			padding: 0.05rem 0.3rem;
+			border-radius: 4px;
+		}
+	}
+}
+
+.sf-remove-btn {
+	border: none;
+	background: transparent;
+	color: rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+	padding: 0.2rem;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	&:hover {
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.1);
+	}
 }
 </style>

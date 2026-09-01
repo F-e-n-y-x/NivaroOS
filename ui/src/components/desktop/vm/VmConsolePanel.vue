@@ -15,326 +15,370 @@
 <template>
 	<div class="vm-console-panel">
 		<div class="console-toolbar">
-			<!-- Only shown standalone (own browser tab, no window chrome of
-			     its own) - hosted in a desktop window, this is a duplicate
-			     of the window's own titlebar, which already carries the
-			     icon, name, and connection pill (see DesktopWindow.vue). -->
+			<!-- Standalone window header / VM identity -->
 			<div v-if="showClose" class="vm-identity">
 				<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
 				<span class="vm-name">{{ vmName }}</span>
 				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
 			</div>
+
 			<div class="toolbar-actions">
-				<div ref="keysMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send special key combinations to the VM')" @click="keysMenuOpen = !keysMenuOpen">
-						<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Keys') }}</span>
-						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+				<!-- Segment 1: Input Controls -->
+				<div class="toolbar-group">
+					<button class="toolbar-btn icon-only-btn" :class="{ active: keyboardOpen }" :title="$t('On-Screen Keyboard')" @click="keyboardOpen = !keyboardOpen">
+						<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
 					</button>
-					<div v-if="keysMenuOpen" class="power-menu keys-menu">
-						<button class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
-							<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon><span>Ctrl+Alt+Del</span>
+
+					<div ref="keysMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send Key Shortcuts')" @click="keysMenuOpen = !keysMenuOpen">
+							<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Keys') }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
-						<button class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
-							<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon><span>{{ $t('Win Key') }}</span>
-						</button>
-						<button class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
-							<b-icon icon="tab" custom-size="mdi-16px"></b-icon><span>Alt + Tab</span>
-						</button>
-						<button class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
-							<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon><span>Ctrl+Shift+Esc</span>
-						</button>
-						<button class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
-							<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon><span>Alt + F4</span>
-						</button>
-					</div>
-				</div>
-				<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Paste clipboard text into the VM')" @click="pasteClipboard">
-					<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Paste') }}</span>
-				</button>
-				<div ref="netMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" :class="{ active: netMenuOpen }" :title="$t('Network connections')" @click="netMenuOpen = !netMenuOpen">
-						<b-icon :icon="networkIcon" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Network') }}</span>
-						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
-					</button>
-					<div v-if="netMenuOpen" class="device-menu network-dropdown-menu">
-						<div class="device-menu-header-row">
-							<div class="header-title-group">
-								<button v-if="editingNet" type="button" class="net-back-btn" :title="$t('Back')" @click="editingNet = false">
-									<b-icon icon="arrow-left" size="is-small"></b-icon>
-								</button>
-								<p class="device-menu-title">{{ editingNet ? $t('Edit Adapter') : $t('Network Adapters') }}</p>
-							</div>
-							<button v-if="!editingNet && vm && vm.networks && vm.networks.length" type="button" class="net-edit-toggle-btn" @click="startEditingNet(vm.networks[0])">
-								<b-icon icon="pencil-outline" size="is-small"></b-icon>
-								<span>{{ $t('Edit') }}</span>
+						<div v-if="keysMenuOpen" class="power-menu keys-menu">
+							<button class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
+								<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon><span>Ctrl+Alt+Del</span>
+							</button>
+							<button class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
+								<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon><span>{{ $t('Win Key') }}</span>
+							</button>
+							<button class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
+								<b-icon icon="tab" custom-size="mdi-16px"></b-icon><span>Alt + Tab</span>
+							</button>
+							<button class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
+								<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon><span>Ctrl+Shift+Esc</span>
+							</button>
+							<button class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
+								<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon><span>Alt + F4</span>
 							</button>
 						</div>
-						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
-						<template v-if="!editingNet">
-							<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
-								<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
-									<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
-								</div>
-								<div class="network-row-details">
-									<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
-									<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
-								</div>
-								<button
-									type="button"
-									class="network-link-toggle"
-									:class="{ 'is-connected': n.link_state !== 'down' }"
-									:title="n.link_state === 'down' ? $t('Connect virtual ethernet cable') : $t('Disconnect virtual ethernet cable')"
-									:disabled="netBusy"
-									@click="toggleNetworkLink(n)"
-								>
-									<b-icon :icon="n.link_state === 'down' ? 'lan-disconnect' : 'lan-check'" size="is-small"></b-icon>
-									<span>{{ n.link_state === 'down' ? $t('Connect') : $t('Disconnect') }}</span>
-								</button>
-							</div>
-						</template>
-						<template v-else>
-							<div class="net-inline-editor">
-								<div class="net-editor-section">
-									<label class="net-editor-label">{{ $t('Network Mode') }}</label>
-									<vm-dropdown
-										v-model="netForm.mode"
-										:options="networkModeOptions"
-										dark
-										size="small"
-									></vm-dropdown>
-								</div>
-								<div v-if="netForm.mode === 'bridge'" class="net-editor-section">
-									<label class="net-editor-label">{{ $t('Bridge Interface') }}</label>
-									<vm-dropdown
-										v-model="netForm.bridge_name"
-										:options="bridgeDropdownOptions"
-										:placeholder="$t('Select bridge interface...')"
-										dark
-										icon="lan-connect"
-										size="small"
-									></vm-dropdown>
-								</div>
-								<div class="net-editor-section">
-									<label class="net-editor-label">{{ $t('Adapter Emulation Model') }}</label>
-									<vm-dropdown
-										v-model="netForm.model"
-										:options="adapterModelOptions"
-										dark
-										size="small"
-									></vm-dropdown>
-								</div>
-								<div class="net-editor-actions">
-									<button type="button" class="net-cancel-btn" @click="editingNet = false">{{ $t('Cancel') }}</button>
-									<button type="button" class="net-save-btn" :disabled="netBusy" @click="saveNetworkAdapter">
-										<b-icon v-if="netBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-										<b-icon v-else icon="check" size="is-small"></b-icon>
-										<span>{{ $t('Apply Changes') }}</span>
-									</button>
-								</div>
-							</div>
-						</template>
 					</div>
-				</div>
-				<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
-					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
-					<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
-				</button>
-				<div ref="qualityMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" @click="qualityMenuOpen = !qualityMenuOpen">
-						<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
-						<span>{{ qualityModeLabel }}</span>
-						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+
+					<button class="toolbar-btn icon-only-btn" :disabled="status !== 'connected'" :title="$t('Paste clipboard text into VM')" @click="pasteClipboard">
+						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
 					</button>
-					<div v-if="qualityMenuOpen" class="power-menu quality-menu">
-						<button v-for="q in qualityOptions" :key="q.mode" class="power-menu-item quality-menu-item" :class="{ active: qualityMode === q.mode }" @click="setQualityMode(q.mode)">
-							<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
-							<span class="quality-menu-text">
-								<span class="quality-menu-title">{{ $t(q.label) }}</span>
-								<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
-							</span>
-							<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+				</div>
+
+				<div class="toolbar-divider"></div>
+
+				<!-- Segment 2: View & Stream Controls -->
+				<div class="toolbar-group">
+					<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
+						<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
+						<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
+					</button>
+
+					<div ref="qualityMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :title="$t('Display & Bandwidth Quality')" @click="qualityMenuOpen = !qualityMenuOpen">
+							<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
+							<span>{{ qualityModeLabel }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
+						<div v-if="qualityMenuOpen" class="power-menu quality-menu">
+							<button v-for="q in qualityOptions" :key="q.mode" class="power-menu-item quality-menu-item" :class="{ active: qualityMode === q.mode }" @click="setQualityMode(q.mode)">
+								<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
+								<span class="quality-menu-text">
+									<span class="quality-menu-title">{{ $t(q.label) }}</span>
+									<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
+								</span>
+								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+							</button>
+						</div>
 					</div>
-				</div>
-				<div ref="powerMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" @click="powerMenuOpen = !powerMenuOpen">
-						<b-icon icon="power" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Power') }}</span>
-						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+
+					<button class="toolbar-btn icon-only-btn" :title="$t('Fullscreen')" @click="toggleFullscreen">
+						<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
 					</button>
-					<div v-if="powerMenuOpen" class="power-menu power-menu-right">
-						<button v-if="vmState !== 'running'" class="power-menu-item" @click="runAction('startVM')">
-							<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
+				</div>
+
+				<div class="toolbar-divider"></div>
+
+				<!-- Segment 3: Storage, Share, Hardware & Network -->
+				<div class="toolbar-group">
+					<!-- Disks & ISO -->
+					<div ref="diskMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :class="{ active: diskMenuOpen }" :title="$t('Storage & CD-ROM')" @click="diskMenuOpen = !diskMenuOpen">
+							<b-icon icon="harddisk" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Disks') }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
-						<template v-else>
-							<button class="power-menu-item" @click="runAction('shutdownVM')">
-								<b-icon icon="power" custom-size="mdi-16px"></b-icon><span>{{ $t('Shutdown') }}</span>
-							</button>
-							<button class="power-menu-item" @click="runAction('resetVM')">
-								<b-icon icon="restart" custom-size="mdi-16px"></b-icon><span>{{ $t('Reset') }}</span>
-							</button>
-							<button class="power-menu-item is-danger" @click="runAction('forceOffVM')">
-								<b-icon icon="power-plug-off-outline" custom-size="mdi-16px"></b-icon><span>{{ $t('Force off') }}</span>
-							</button>
-						</template>
-					</div>
-				</div>
-				<div ref="usbMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" @click="usbMenuOpen = !usbMenuOpen">
-						<b-icon icon="usb" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('USB') }}</span>
-					</button>
-					<div v-if="usbMenuOpen" class="device-menu">
-						<p class="device-menu-title">{{ $t('USB Devices') }}</p>
-						<p v-if="loadingHostCaps" class="device-menu-hint">{{ $t('Loading host devices...') }}</p>
-						<p v-else-if="!hostUsbDevices.length" class="device-menu-hint">{{ $t('No USB devices found on the host.') }}</p>
-						<div class="device-menu-scrollable">
-							<label v-for="dev in hostUsbDevices" :key="dev.vendor_id + ':' + dev.product_id" class="device-menu-row" :class="{ active: isUsbAttached(dev) }">
-								<div class="device-row-icon" :class="{ active: isUsbAttached(dev) }">
-									<b-icon icon="usb" size="is-small"></b-icon>
+						<div v-if="diskMenuOpen" class="device-menu">
+							<p class="device-menu-title">{{ $t('Boot ISO') }}</p>
+							<div class="device-menu-row disk-row">
+								<div class="device-row-icon" :class="{ active: !!isoFileName }">
+									<b-icon icon="disc" size="is-small"></b-icon>
 								</div>
-								<span class="device-menu-desc">{{ dev.description || (dev.vendor_id + ':' + dev.product_id) }}</span>
-								<input type="checkbox" class="device-menu-checkbox" :checked="isUsbAttached(dev)" :disabled="usbBusy" @change="toggleUsbDevice(dev, $event.target.checked)" />
-							</label>
-						</div>
-					</div>
-				</div>
-				<div ref="diskMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" @click="diskMenuOpen = !diskMenuOpen">
-						<b-icon icon="harddisk" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Disks') }}</span>
-					</button>
-					<div v-if="diskMenuOpen" class="device-menu">
-						<p class="device-menu-title">{{ $t('Boot ISO') }}</p>
-						<div class="device-menu-row disk-row">
-							<div class="device-row-icon" :class="{ active: !!isoFileName }">
-								<b-icon icon="disc" size="is-small"></b-icon>
-							</div>
-							<span class="device-menu-desc">{{ isoFileName || $t('No ISO loaded') }}</span>
-							<button v-if="isoFileName" class="device-menu-detach" :disabled="diskBusy" :title="$t('Eject')" @click="ejectBootISO">
-								<b-icon icon="eject-outline" size="is-small"></b-icon>
-							</button>
-						</div>
-						<div class="device-menu-add">
-							<vm-dropdown
-								v-model="selectedISO"
-								:options="isoDropdownOptions"
-								:placeholder="availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available')"
-								:disabled="diskBusy || !availableISOs.length"
-								dark
-								icon="disc"
-								size="small"
-								style="flex: 1 1 auto; min-width: 0;"
-							></vm-dropdown>
-							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
-								<b-icon icon="tray-arrow-down" size="is-small"></b-icon>
-								<span>{{ $t('Insert') }}</span>
-							</button>
-						</div>
-						<p class="device-menu-title device-menu-title-divided">{{ $t('Attached Disks') }}</p>
-						<p v-if="!(vm && vm.disks && vm.disks.length)" class="device-menu-hint">{{ $t('No virtual disks yet') }}</p>
-						<div class="device-menu-scrollable">
-							<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
-								<div class="device-row-icon active">
-									<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
-								</div>
-								<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
-								<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
+								<span class="device-menu-desc">{{ isoFileName || $t('No ISO loaded') }}</span>
+								<button v-if="isoFileName" class="device-menu-detach" :disabled="diskBusy" :title="$t('Eject')" @click="ejectBootISO">
 									<b-icon icon="eject-outline" size="is-small"></b-icon>
 								</button>
 							</div>
+							<div class="device-menu-add">
+								<vm-dropdown
+									v-model="selectedISO"
+									:options="isoDropdownOptions"
+									:placeholder="availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available')"
+									:disabled="diskBusy || !availableISOs.length"
+									dark
+									icon="disc"
+									size="small"
+									style="flex: 1 1 auto; min-width: 0;"
+								></vm-dropdown>
+								<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
+									<b-icon icon="tray-arrow-down" size="is-small"></b-icon>
+									<span>{{ $t('Insert') }}</span>
+								</button>
+							</div>
+							<p class="device-menu-title device-menu-title-divided">{{ $t('Attached Disks') }}</p>
+							<p v-if="!(vm && vm.disks && vm.disks.length)" class="device-menu-hint">{{ $t('No virtual disks yet') }}</p>
+							<div class="device-menu-scrollable">
+								<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
+									<div class="device-row-icon active">
+										<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
+									</div>
+									<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
+									<button class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
+										<b-icon icon="eject-outline" size="is-small"></b-icon>
+									</button>
+								</div>
+							</div>
 						</div>
 					</div>
-				</div>
-				<div ref="shareMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" :class="{ active: sharedFolder && sharedFolder.attached }" @click="toggleShareMenu">
-						<b-icon icon="folder-sync-outline" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Share') }}</span>
-						<span v-if="sharedFolder && sharedFolder.attached" class="share-badge-dot"></span>
-					</button>
-					<div v-if="shareMenuOpen" class="device-menu share-menu">
-						<p class="device-menu-title">{{ $t('Offline Shared Folder') }}</p>
-						<p class="device-menu-hint">{{ $t('Mounts a host folder as a virtual USB drive in the VM with zero network needed.') }}</p>
 
-						<!-- When not mounted -->
-						<template v-if="!(sharedFolder && sharedFolder.attached)">
-							<div class="share-form-group">
-								<label class="share-label">{{ $t('Host Folder') }}</label>
+					<!-- Live Shared Folders (VirtIO-FS) -->
+					<div ref="shareMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :class="{ active: (vm && vm.shared_folders && vm.shared_folders.length) }" :title="$t('Host Shared Folders (Live Mount)')" @click="toggleShareMenu">
+							<b-icon icon="folder-sync-outline" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Share') }}</span>
+							<span v-if="vm && vm.shared_folders && vm.shared_folders.length" class="share-badge-dot"></span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+						<div v-if="shareMenuOpen" class="device-menu share-menu">
+							<div class="device-menu-header-row">
+								<div class="header-title-group">
+									<b-icon icon="folder-sync-outline" size="is-small"></b-icon>
+									<p class="device-menu-title">{{ $t('Live Shared Folders') }}</p>
+								</div>
+								<span v-if="vm && vm.shared_folders && vm.shared_folders.length" class="share-connected-badge">
+									<span class="share-status-dot"></span> {{ vm.shared_folders.length }} {{ $t('Active') }}
+								</span>
+							</div>
+							<p class="device-menu-hint">{{ $t('Direct host directory pass-through via VirtIO-FS with full disk space and zero-network instant access.') }}</p>
+
+							<!-- Active Shares List -->
+							<div v-if="vm && vm.shared_folders && vm.shared_folders.length" class="share-list-section">
+								<div v-for="sf in vm.shared_folders" :key="sf.target_tag" class="share-active-box">
+									<div class="share-active-icon">
+										<b-icon icon="folder-check-outline" size="is-small"></b-icon>
+									</div>
+									<div class="share-active-details">
+										<span class="share-active-path" :title="sf.source_dir">{{ sf.source_dir }}</span>
+										<span class="share-active-meta">
+											<span class="share-status-dot"></span>
+											<span class="tag-pill">{{ sf.target_tag }}</span>
+											<template v-if="sf.read_only">&middot; {{ $t('Read-Only') }}</template>
+											<template v-else>&middot; {{ $t('Read / Write') }}</template>
+										</span>
+									</div>
+									<button class="share-remove-btn" :disabled="shareBusy" :title="$t('Unmount shared folder')" @click="detachShare(sf.target_tag)">
+										<b-icon icon="close" size="is-small"></b-icon>
+									</button>
+								</div>
+							</div>
+
+							<!-- Add Share Section -->
+							<div class="share-add-box">
+								<label class="share-label">{{ $t('Add Host Folder') }}</label>
 								<div class="share-folder-picker-row">
 									<span class="share-folder-path" :class="{ 'is-empty': !selectedShareFolder }">
-										{{ selectedShareFolder || $t('No folder selected') }}
+										{{ selectedShareFolder || $t('Select host directory...') }}
 									</span>
 									<button type="button" class="share-browse-btn" @click="showShareFolderPicker = true">
 										<b-icon icon="folder-open" size="is-small"></b-icon>
 										<span>{{ $t('Browse') }}</span>
 									</button>
 								</div>
-							</div>
-							<div class="share-form-group">
-								<label class="share-label">{{ $t('Drive Size') }}</label>
-								<div class="share-size-chips">
-									<button
-										v-for="s in [512, 1024, 2048, 4096]"
-										:key="s"
-										type="button"
-										class="share-size-chip"
-										:class="{ active: shareSizeMB === s }"
-										@click="shareSizeMB = s"
-									>
-										{{ s >= 1024 ? (s / 1024) + ' GB' : s + ' MB' }}
+								<div v-if="selectedShareFolder" class="share-tag-row">
+									<input v-model="shareTag" class="share-tag-input" :placeholder="$t('Mount tag (e.g. nivaroshare)')" />
+									<button class="share-action-btn is-primary" :disabled="shareBusy" @click="attachShare">
+										<b-icon v-if="shareBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										<b-icon v-else icon="plus" size="is-small"></b-icon>
+										<span>{{ $t('Mount Live') }}</span>
 									</button>
 								</div>
 							</div>
-							<button class="share-action-btn is-primary" :disabled="shareBusy || !selectedShareFolder" @click="mountShare">
-								<b-icon v-if="shareBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-								<b-icon v-else icon="usb-flash-drive" size="is-small"></b-icon>
-								<span>{{ $t('Mount as USB Drive') }}</span>
-							</button>
-						</template>
 
-						<!-- When mounted -->
-						<template v-else>
-							<div class="share-active-box">
-								<div class="share-active-icon">
-									<b-icon icon="usb-flash-drive" size="is-small"></b-icon>
+							<!-- Guest Instructions -->
+							<div class="share-instructions-card">
+								<div class="instructions-header">
+									<span class="instructions-title">{{ $t('How to access in VM:') }}</span>
+									<div class="os-tab-buttons">
+										<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'linux' }" @click="instructionsTab = 'linux'">Linux</button>
+										<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'windows' }" @click="instructionsTab = 'windows'">Windows</button>
+									</div>
 								</div>
-								<div class="share-active-details">
-									<span class="share-active-path">{{ sharedFolder.folder_path }}</span>
-									<span class="share-active-meta">
-										<span class="share-status-dot"></span>
-										{{ $t('Mounted as USB') }} &middot; {{ sharedFolder.size_mb >= 1024 ? (sharedFolder.size_mb / 1024) + ' GB' : sharedFolder.size_mb + ' MB' }}
-									</span>
+								<div v-if="instructionsTab === 'linux'" class="instructions-body">
+									<div class="code-snippet-box">
+										<code>sudo mount -t virtiofs {{ (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'nivaroshare' }} /mnt</code>
+										<button type="button" class="code-copy-btn" :title="$t('Copy Command')" @click="copyCommand(`sudo mount -t virtiofs ${(vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'nivaroshare'} /mnt`)">
+											<b-icon icon="content-copy" size="is-small"></b-icon>
+										</button>
+									</div>
+								</div>
+								<div v-else class="instructions-body">
+									<p class="win-instruct-text">{{ $t('Windows uses VirtIO-FS Service from the VirtIO Drivers package to map as a drive letter.') }}</p>
+									<button type="button" class="insert-virtio-btn" :disabled="virtioWinBusy" @click="insertVirtioWinCD">
+										<b-icon v-if="virtioWinBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										<b-icon v-else icon="disc" size="is-small"></b-icon>
+										<span>{{ $t('Insert VirtIO Drivers CD') }}</span>
+									</button>
 								</div>
 							</div>
-							<div class="share-active-actions">
-								<button class="share-action-btn" :disabled="shareBusy" :title="$t('Sync new/edited files from VM to host')" @click="syncShare">
-									<b-icon v-if="shareBusy && shareAction === 'sync'" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-									<b-icon v-else icon="sync" size="is-small"></b-icon>
-									<span>{{ $t('Sync to Host') }}</span>
-								</button>
-								<button class="share-action-btn is-danger" :disabled="shareBusy" :title="$t('Eject USB drive from VM')" @click="unmountShare">
-									<b-icon v-if="shareBusy && shareAction === 'unmount'" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-									<b-icon v-else icon="eject" size="is-small"></b-icon>
-									<span>{{ $t('Eject Drive') }}</span>
+						</div>
+					</div>
+
+					<!-- Host USB Devices -->
+					<div ref="usbMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :class="{ active: usbMenuOpen }" :title="$t('USB Device Passthrough')" @click="usbMenuOpen = !usbMenuOpen">
+							<b-icon icon="usb" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('USB') }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+						<div v-if="usbMenuOpen" class="device-menu">
+							<p class="device-menu-title">{{ $t('USB Devices') }}</p>
+							<p v-if="loadingHostCaps" class="device-menu-hint">{{ $t('Loading host devices...') }}</p>
+							<p v-else-if="!hostUsbDevices.length" class="device-menu-hint">{{ $t('No USB devices found on the host.') }}</p>
+							<div class="device-menu-scrollable">
+								<label v-for="dev in hostUsbDevices" :key="dev.vendor_id + ':' + dev.product_id" class="device-menu-row" :class="{ active: isUsbAttached(dev) }">
+									<div class="device-row-icon" :class="{ active: isUsbAttached(dev) }">
+										<b-icon icon="usb" size="is-small"></b-icon>
+									</div>
+									<span class="device-menu-desc">{{ dev.description || (dev.vendor_id + ':' + dev.product_id) }}</span>
+									<input type="checkbox" class="device-menu-checkbox" :checked="isUsbAttached(dev)" :disabled="usbBusy" @change="toggleUsbDevice(dev, $event.target.checked)" />
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<!-- Network -->
+					<div ref="netMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn" :class="{ active: netMenuOpen }" :title="$t('Network Adapters')" @click="netMenuOpen = !netMenuOpen">
+							<b-icon :icon="networkIcon" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Network') }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+						<div v-if="netMenuOpen" class="device-menu network-dropdown-menu">
+							<div class="device-menu-header-row">
+								<div class="header-title-group">
+									<button v-if="editingNet" type="button" class="net-back-btn" :title="$t('Back')" @click="editingNet = false">
+										<b-icon icon="arrow-left" size="is-small"></b-icon>
+									</button>
+									<p class="device-menu-title">{{ editingNet ? $t('Edit Adapter') : $t('Network Adapters') }}</p>
+								</div>
+								<button v-if="!editingNet && vm && vm.networks && vm.networks.length" type="button" class="net-edit-toggle-btn" @click="startEditingNet(vm.networks[0])">
+									<b-icon icon="pencil-outline" size="is-small"></b-icon>
+									<span>{{ $t('Edit') }}</span>
 								</button>
 							</div>
-						</template>
+							<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
+							<template v-if="!editingNet">
+								<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
+									<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
+										<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
+									</div>
+									<div class="network-row-details">
+										<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
+										<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
+									</div>
+									<button
+										type="button"
+										class="network-link-toggle"
+										:class="{ 'is-connected': n.link_state !== 'down' }"
+										:title="n.link_state === 'down' ? $t('Connect virtual ethernet cable') : $t('Disconnect virtual ethernet cable')"
+										:disabled="netBusy"
+										@click="toggleNetworkLink(n)"
+									>
+										<b-icon :icon="n.link_state === 'down' ? 'lan-disconnect' : 'lan-check'" size="is-small"></b-icon>
+										<span>{{ n.link_state === 'down' ? $t('Connect') : $t('Disconnect') }}</span>
+									</button>
+								</div>
+							</template>
+							<template v-else>
+								<div class="net-inline-editor">
+									<div class="net-editor-section">
+										<label class="net-editor-label">{{ $t('Network Mode') }}</label>
+										<vm-dropdown
+											v-model="netForm.mode"
+											:options="networkModeOptions"
+											dark
+											size="small"
+										></vm-dropdown>
+									</div>
+									<div v-if="netForm.mode === 'bridge'" class="net-editor-section">
+										<label class="net-editor-label">{{ $t('Bridge Interface') }}</label>
+										<vm-dropdown
+											v-model="netForm.bridge_name"
+											:options="bridgeDropdownOptions"
+											:placeholder="$t('Select bridge interface...')"
+											dark
+											icon="lan-connect"
+											size="small"
+										></vm-dropdown>
+									</div>
+									<div class="net-editor-section">
+										<label class="net-editor-label">{{ $t('Adapter Emulation Model') }}</label>
+										<vm-dropdown
+											v-model="netForm.model"
+											:options="adapterModelOptions"
+											dark
+											size="small"
+										></vm-dropdown>
+									</div>
+									<div class="net-editor-actions">
+										<button type="button" class="net-cancel-btn" @click="editingNet = false">{{ $t('Cancel') }}</button>
+										<button type="button" class="net-save-btn" :disabled="netBusy" @click="saveNetworkAdapter">
+											<b-icon v-if="netBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+											<b-icon v-else icon="check" size="is-small"></b-icon>
+											<span>{{ $t('Apply Changes') }}</span>
+										</button>
+									</div>
+								</div>
+							</template>
+						</div>
 					</div>
 				</div>
-				<button class="toolbar-btn" :class="{ active: keyboardOpen }" @click="keyboardOpen = !keyboardOpen">
-					<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Keyboard') }}</span>
-				</button>
-				<button class="toolbar-btn" @click="toggleFullscreen">
-					<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Fullscreen') }}</span>
-				</button>
-				<button v-if="showClose" class="toolbar-btn" @click="$emit('close')">
+
+				<div class="toolbar-divider"></div>
+
+				<!-- Segment 4: Power Controls -->
+				<div class="toolbar-group">
+					<div ref="powerMenuWrapper" class="menu-wrapper">
+						<button class="toolbar-btn power-btn" :class="{ 'is-running': vmState === 'running' }" @click="powerMenuOpen = !powerMenuOpen">
+							<b-icon icon="power" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Power') }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+						<div v-if="powerMenuOpen" class="power-menu power-menu-right">
+							<button v-if="vmState !== 'running'" class="power-menu-item is-start" @click="runAction('startVM')">
+								<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
+							</button>
+							<template v-else>
+								<button class="power-menu-item" @click="runAction('shutdownVM')">
+									<b-icon icon="power" custom-size="mdi-16px"></b-icon><span>{{ $t('Shutdown') }}</span>
+								</button>
+								<button class="power-menu-item" @click="runAction('resetVM')">
+									<b-icon icon="restart" custom-size="mdi-16px"></b-icon><span>{{ $t('Reset') }}</span>
+								</button>
+								<button class="power-menu-item is-danger" @click="runAction('forceOffVM')">
+									<b-icon icon="power-plug-off-outline" custom-size="mdi-16px"></b-icon><span>{{ $t('Force off') }}</span>
+								</button>
+							</template>
+						</div>
+					</div>
+				</div>
+
+				<button v-if="showClose" class="toolbar-btn icon-only-btn close-btn" :title="$t('Close')" @click="$emit('close')">
 					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Close') }}</span>
 				</button>
 			</div>
 		</div>
@@ -780,20 +824,8 @@ export default {
 		},
 		async pollState() {
 			try {
-				const [vm, share] = await Promise.all([
-					vmSidecar.getVM(this.vmName),
-					vmSidecar.getSharedFolder(this.vmName).catch(() => null),
-				])
-				this.vm = vm
-				this.vmState = vm.state
-				if (share) {
-					this.sharedFolder = share
-					if (share.folder_path && !this.selectedShareFolder) {
-						this.selectedShareFolder = share.folder_path
-					}
-				} else {
-					this.sharedFolder = null
-				}
+				this.vm = await vmSidecar.getVM(this.vmName)
+				this.vmState = this.vm ? this.vm.state : null
 			} catch (e) {
 				// VM may have just been deleted, or the sidecar is briefly
 				// unreachable - keep showing the last known state rather than
@@ -802,36 +834,26 @@ export default {
 		},
 		toggleShareMenu() {
 			this.shareMenuOpen = !this.shareMenuOpen
-			if (this.shareMenuOpen) {
-				this.fetchSharedFolder()
-			}
-		},
-		async fetchSharedFolder() {
-			try {
-				const info = await vmSidecar.getSharedFolder(this.vmName)
-				this.sharedFolder = info
-				if (info && info.folder_path && !this.selectedShareFolder) {
-					this.selectedShareFolder = info.folder_path
-				}
-			} catch (e) {
-				this.sharedFolder = null
-			}
 		},
 		onShareFolderSelected(path) {
 			this.selectedShareFolder = path
+			if (!this.shareTag || this.shareTag === 'nivaroshare') {
+				const base = path.split('/').filter(Boolean).pop() || 'nivaroshare'
+				this.shareTag = base.toLowerCase().replace(/[^a-z0-9]/g, '') || 'nivaroshare'
+			}
 		},
-		async mountShare() {
+		async attachShare() {
 			if (!this.selectedShareFolder || this.shareBusy) return
 			this.shareBusy = true
-			this.shareAction = 'mount'
 			try {
-				const res = await vmSidecar.mountSharedFolder(this.vmName, {
-					folder_path: this.selectedShareFolder,
-					size_mb: this.shareSizeMB,
+				await vmSidecar.attachSharedFolder(this.vmName, {
+					source_dir: this.selectedShareFolder,
+					target_tag: this.shareTag || 'nivaroshare',
+					read_only: this.shareReadOnly,
 				})
-				this.sharedFolder = res
+				this.selectedShareFolder = ''
 				this.$buefy.toast.open({
-					message: this.$t('Shared USB drive attached to VM!'),
+					message: this.$t('Live shared folder mounted!'),
 					type: 'is-success',
 					position: 'is-top',
 					duration: 3500,
@@ -846,42 +868,15 @@ export default {
 				})
 			} finally {
 				this.shareBusy = false
-				this.shareAction = ''
 			}
 		},
-		async syncShare() {
+		async detachShare(tag) {
 			if (this.shareBusy) return
 			this.shareBusy = true
-			this.shareAction = 'sync'
 			try {
-				await vmSidecar.syncSharedFolder(this.vmName)
+				await vmSidecar.detachSharedFolder(this.vmName, tag)
 				this.$buefy.toast.open({
-					message: this.$t('Files synced back to host folder successfully!'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 3500,
-				})
-			} catch (e) {
-				this.$buefy.toast.open({
-					message: e.message || this.$t('Sync failed'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 4000,
-				})
-			} finally {
-				this.shareBusy = false
-				this.shareAction = ''
-			}
-		},
-		async unmountShare() {
-			if (this.shareBusy) return
-			this.shareBusy = true
-			this.shareAction = 'unmount'
-			try {
-				await vmSidecar.unmountSharedFolder(this.vmName)
-				this.sharedFolder = null
-				this.$buefy.toast.open({
-					message: this.$t('Shared USB drive safely ejected from VM!'),
+					message: this.$t('Shared folder unmounted!'),
 					type: 'is-success',
 					position: 'is-top',
 					duration: 3500,
@@ -889,14 +884,46 @@ export default {
 				await this.pollState()
 			} catch (e) {
 				this.$buefy.toast.open({
-					message: e.message || this.$t('Eject failed'),
+					message: e.message || this.$t('Failed to unmount shared folder'),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 4000,
 				})
 			} finally {
 				this.shareBusy = false
-				this.shareAction = ''
+			}
+		},
+		async insertVirtioWinCD() {
+			this.virtioWinBusy = true
+			try {
+				await vmSidecar.insertVirtioWin(this.vmName)
+				this.$buefy.toast.open({
+					message: this.$t('VirtIO Drivers ISO inserted into CD drive! Open "This PC" in Windows to install the VirtIO-FS service.'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 5000,
+				})
+				await this.pollState()
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: e.message || this.$t('Failed to insert VirtIO Drivers CD'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 4000,
+				})
+			} finally {
+				this.virtioWinBusy = false
+			}
+		},
+		copyCommand(cmd) {
+			if (navigator.clipboard) {
+				navigator.clipboard.writeText(cmd)
+				this.$buefy.toast.open({
+					message: this.$t('Command copied to clipboard!'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2500,
+				})
 			}
 		},
 		sendCtrlAltDel() {
@@ -1313,10 +1340,10 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5rem;
-	padding: 0.5rem 0.75rem;
-	background: #1a1a1a;
+	padding: 0.4rem 0.65rem;
+	background: #141416;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-	flex-wrap: wrap;
+	user-select: none;
 }
 .vm-identity {
 	display: flex;
@@ -1325,9 +1352,11 @@ export default {
 }
 .vm-name {
 	font-weight: 600;
+	font-size: 0.85rem;
+	letter-spacing: -0.01em;
 }
 .status-pill {
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	padding: 0.1rem 0.5rem;
 	border-radius: 999px;
 	background: rgba(255, 255, 255, 0.1);
@@ -1350,28 +1379,73 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	scrollbar-width: none;
+	&::-webkit-scrollbar {
+		display: none;
+	}
+}
+.toolbar-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	background: rgba(255, 255, 255, 0.05);
+	padding: 0.18rem;
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.toolbar-divider {
+	width: 1px;
+	height: 1.25rem;
+	background: rgba(255, 255, 255, 0.1);
+	margin: 0 0.15rem;
+	flex-shrink: 0;
 }
 .toolbar-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: 0.3rem;
 	border: none;
-	background: rgba(255, 255, 255, 0.08);
-	color: #fff;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.85);
 	font-family: inherit;
 	font-size: 0.75rem;
-	padding: 0.4rem 0.6rem;
+	font-weight: 500;
+	padding: 0.32rem 0.55rem;
 	border-radius: 6px;
 	cursor: pointer;
 	white-space: nowrap;
+	transition: all 0.14s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.15);
+		background: rgba(255, 255, 255, 0.12);
+		color: #fff;
+	}
+	&.active {
+		background: rgba(255, 255, 255, 0.22);
+		color: #fff;
+		font-weight: 600;
 	}
 	&:disabled {
-		opacity: 0.4;
+		opacity: 0.35;
 		cursor: default;
+	}
+
+	&.icon-only-btn {
+		padding: 0.32rem 0.42rem;
+	}
+
+	&.power-btn {
+		color: #93c5fd;
+		&.is-running {
+			color: #34d399;
+		}
+	}
+
+	&.close-btn:hover {
+		background: rgba(239, 68, 68, 0.25);
+		color: #ef4444;
 	}
 }
 .menu-wrapper {
@@ -1379,30 +1453,31 @@ export default {
 }
 .power-menu {
 	position: absolute;
-	top: calc(100% + 0.35rem);
+	top: calc(100% + 0.45rem);
 	left: 0;
-	z-index: 50;
-	background: #262626;
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 8px;
-	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+	z-index: 1000;
+	background: #1e1e24;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	border-radius: 10px;
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
 	padding: 0.35rem;
-	min-width: 10rem;
+	min-width: 11rem;
 	display: flex;
 	flex-direction: column;
+	gap: 0.15rem;
 }
 .keys-menu {
 	left: 0 !important;
 	right: auto !important;
-	min-width: 11.5rem;
+	min-width: 12rem;
 }
 .power-menu-right {
 	left: auto !important;
 	right: 0 !important;
 }
 .network-dropdown-menu {
-	left: 0 !important;
-	right: auto !important;
+	left: auto !important;
+	right: 0 !important;
 	width: 22.5rem;
 	max-width: calc(100vw - 2rem);
 	max-height: none !important;
@@ -2144,52 +2219,54 @@ export default {
 	}
 }
 
-.share-size-chips {
+.share-add-box {
 	display: flex;
+	flex-direction: column;
 	gap: 0.35rem;
+	margin-top: 0.35rem;
+	background: rgba(255, 255, 255, 0.04);
+	padding: 0.55rem;
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.share-size-chip {
+.share-tag-row {
+	display: flex;
+	gap: 0.35rem;
+	margin-top: 0.35rem;
+}
+
+.share-tag-input {
 	flex: 1;
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	background: rgba(255, 255, 255, 0.05);
-	color: rgba(255, 255, 255, 0.75);
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.15);
 	border-radius: 6px;
-	padding: 0.3rem 0;
-	font-size: 0.72rem;
-	font-weight: 600;
-	cursor: pointer;
-	text-align: center;
-	transition: all 0.12s ease;
+	padding: 0.35rem 0.5rem;
+	color: #fff;
+	font-family: monospace;
+	font-size: 0.75rem;
 
-	&:hover {
-		background: rgba(255, 255, 255, 0.1);
-		color: #fff;
-	}
-
-	&.active {
-		background: rgba(37, 99, 235, 0.25);
+	&:focus {
+		outline: none;
 		border-color: #3b82f6;
-		color: #60a5fa;
 	}
 }
 
 .share-action-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 0.4rem;
-	width: 100%;
+	gap: 0.35rem;
 	border: none;
-	border-radius: 8px;
-	padding: 0.5rem;
+	border-radius: 6px;
+	padding: 0.35rem 0.75rem;
 	font-family: inherit;
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	cursor: pointer;
-	margin-top: 0.4rem;
 	background: rgba(255, 255, 255, 0.1);
 	color: #fff;
+	white-space: nowrap;
 	transition: background 0.15s ease;
 
 	&:hover:not(:disabled) {
@@ -2204,16 +2281,6 @@ export default {
 		}
 	}
 
-	&.is-danger {
-		background: rgba(239, 68, 68, 0.2);
-		border: 1px solid rgba(239, 68, 68, 0.4);
-		color: #f87171;
-		&:hover:not(:disabled) {
-			background: rgba(239, 68, 68, 0.35);
-			color: #fff;
-		}
-	}
-
 	&:disabled {
 		opacity: 0.4;
 		cursor: default;
@@ -2223,17 +2290,17 @@ export default {
 .share-active-box {
 	display: flex;
 	align-items: center;
-	gap: 0.65rem;
+	gap: 0.55rem;
 	background: rgba(16, 185, 129, 0.1);
 	border: 1px solid rgba(16, 185, 129, 0.25);
 	border-radius: 8px;
-	padding: 0.6rem;
+	padding: 0.45rem 0.6rem;
 	margin-top: 0.25rem;
 }
 
 .share-active-icon {
-	width: 2rem;
-	height: 2rem;
+	width: 1.8rem;
+	height: 1.8rem;
 	border-radius: 6px;
 	background: rgba(16, 185, 129, 0.2);
 	color: #34d399;
@@ -2252,7 +2319,7 @@ export default {
 }
 
 .share-active-path {
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 	font-weight: 600;
 	color: #fff;
 	overflow: hidden;
@@ -2262,29 +2329,156 @@ export default {
 }
 
 .share-active-meta {
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	color: #34d399;
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
+
+	.tag-pill {
+		background: rgba(16, 185, 129, 0.2);
+		padding: 0.05rem 0.35rem;
+		border-radius: 4px;
+		font-family: monospace;
+		font-weight: 600;
+	}
 }
 
-.share-status-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: #34d399;
-	display: inline-block;
-}
-
-.share-active-actions {
+.share-remove-btn {
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.5);
+	cursor: pointer;
+	padding: 0.25rem;
+	border-radius: 4px;
 	display: flex;
-	gap: 0.4rem;
-	margin-top: 0.4rem;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.12s ease;
 
-	.share-action-btn {
-		margin-top: 0;
-		flex: 1;
+	&:hover {
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.15);
+	}
+}
+
+.share-instructions-card {
+	margin-top: 0.5rem;
+	padding: 0.55rem;
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.instructions-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.instructions-title {
+	font-size: 0.68rem;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.6);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.os-tab-buttons {
+	display: inline-flex;
+	background: rgba(255, 255, 255, 0.08);
+	border-radius: 5px;
+	padding: 0.1rem;
+}
+
+.os-tab-btn {
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.7);
+	font-family: inherit;
+	font-size: 0.68rem;
+	font-weight: 600;
+	padding: 0.15rem 0.45rem;
+	border-radius: 4px;
+	cursor: pointer;
+
+	&.active {
+		background: rgba(255, 255, 255, 0.25);
+		color: #fff;
+	}
+}
+
+.code-snippet-box {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	background: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.09);
+	border-radius: 6px;
+	padding: 0.35rem 0.5rem;
+	gap: 0.4rem;
+
+	code {
+		font-size: 0.72rem;
+		font-family: monospace;
+		color: #93c5fd;
+		overflow-x: auto;
+		white-space: nowrap;
+	}
+}
+
+.code-copy-btn {
+	border: none;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.8);
+	border-radius: 4px;
+	padding: 0.2rem;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.12s ease;
+
+	&:hover {
+		color: #fff;
+		background: rgba(255, 255, 255, 0.2);
+	}
+}
+
+.win-instruct-text {
+	font-size: 0.7rem;
+	color: rgba(255, 255, 255, 0.7);
+	line-height: 1.3;
+	margin-bottom: 0.35rem;
+}
+
+.insert-virtio-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.4rem;
+	width: 100%;
+	border: 1px solid rgba(59, 130, 246, 0.4);
+	background: rgba(59, 130, 246, 0.15);
+	color: #93c5fd;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 600;
+	padding: 0.35rem;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(59, 130, 246, 0.3);
+		color: #fff;
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 }
 
@@ -2296,5 +2490,24 @@ export default {
 	display: inline-block;
 	margin-left: 0.2rem;
 	box-shadow: 0 0 6px #34d399;
+}
+
+.share-connected-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: #34d399;
+	background: rgba(16, 185, 129, 0.15);
+	padding: 0.15rem 0.45rem;
+	border-radius: 9999px;
+}
+
+.power-menu-item.is-start {
+	color: #4ade80;
+	&:hover {
+		background: rgba(74, 222, 128, 0.15);
+	}
 }
 </style>

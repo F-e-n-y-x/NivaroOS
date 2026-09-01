@@ -51,28 +51,30 @@ export default {
 .vm-overlay {
 	position: absolute;
 	inset: 0;
-	z-index: 20;
+	z-index: 2000;
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	padding: 1rem;
 }
 
 .vm-overlay-backdrop {
 	position: absolute;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.35);
+	background: rgba(0, 0, 0, 0.45);
+	backdrop-filter: blur(2px);
 }
 
 .vm-overlay-card {
 	position: relative;
 	background: #fff;
-	border-radius: 10px;
-	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
-	max-height: calc(100% - 3rem);
-	max-width: calc(100% - 3rem);
+	border-radius: 12px;
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+	max-height: calc(100% - 1.5rem);
+	max-width: calc(100% - 1.5rem);
 	display: flex;
 	flex-direction: column;
-	overflow: visible;
+	overflow: hidden;
 
 	// Every dialog (Create VM, Create bridged network, the file picker)
 	// uses plain <b-button> both in its body (Browse/Clear next to an ISO
@@ -137,8 +139,9 @@ export default {
 	flex: 1 1 auto;
 	display: flex;
 	flex-direction: column;
-	overflow: visible;
-	padding: 1rem;
+	overflow: hidden;
+	min-height: 0;
+	padding: 0.85rem 1rem;
 }
 
 .vm-overlay-foot {

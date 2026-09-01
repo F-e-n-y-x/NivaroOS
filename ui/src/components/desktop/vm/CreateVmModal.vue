@@ -6,16 +6,19 @@
 	<div class="create-vm-window">
 		<div class="wizard-steps">
 			<div class="wizard-dots">
-				<span
+				<button
 					v-for="(s, i) in steps"
 					:key="s.id"
+					type="button"
 					class="wizard-dot"
 					:class="{ active: i === step, done: i < step }"
+					:disabled="i > step"
 					:title="s.label"
+					@click="step = i"
 				>
 					<b-icon v-if="i < step" icon="check" custom-size="mdi-12px"></b-icon>
 					<template v-else>{{ i + 1 }}</template>
-				</span>
+				</button>
 			</div>
 			<div class="wizard-current-label">{{ $t('Step') }} {{ step + 1 }} {{ $t('of') }} {{ steps.length }} &middot; {{ steps[step].label }}</div>
 		</div>
@@ -277,6 +280,7 @@ export default {
 				networks: [{ mode: 'nat' }],
 				usb_devices: [],
 				pci_devices: [],
+				shared_folders: [],
 			},
 			hostCaps: null,
 			showIsoPicker: false,
@@ -450,6 +454,7 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
+					shared_folders: this.form.shared_folders || [],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {
@@ -656,24 +661,35 @@ export default {
 }
 .wizard-dot {
 	flex-shrink: 0;
-	width: 1.4rem;
-	height: 1.4rem;
+	width: 1.5rem;
+	height: 1.5rem;
+	border: none;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 0.7rem;
+	font-size: 0.72rem;
 	background: rgba(0, 0, 0, 0.06);
 	color: rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+	transition: all 0.15s ease;
 
 	&.active {
 		background: #3273dc;
 		color: #fff;
 		font-weight: 600;
+		box-shadow: 0 0 0 3px rgba(50, 115, 220, 0.2);
 	}
 	&.done {
 		background: rgba(50, 115, 220, 0.15);
 		color: #3273dc;
+		&:hover {
+			background: rgba(50, 115, 220, 0.25);
+		}
+	}
+	&:disabled {
+		cursor: default;
+		opacity: 0.6;
 	}
 }
 .wizard-current-label {

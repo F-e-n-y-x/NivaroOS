@@ -5,7 +5,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 
 	libvirt "libvirt.org/go/libvirt"
 )
@@ -209,9 +211,9 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// Shared Folder (Dynamic USB Drive for offline file sharing)
-	mux.HandleFunc("GET /vms/{name}/shared-folder", func(w http.ResponseWriter, r *http.Request) {
-		info, err := store.GetSharedFolder(r.PathValue("name"))
+	// Live Shared Folders (VirtIO-FS Host-to-Guest Direct Directory Pass-Through)
+	mux.HandleFunc("GET /vms/{name}/shared-folders", func(w http.ResponseWriter, r *http.Request) {
+		shares, err := store.ListSharedFolders(r.PathValue("name"))
 		if err != nil {
 			if isNotFound(err) {
 				writeError(w, http.StatusNotFound, err)
@@ -220,33 +222,38 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, info)
+		writeJSON(w, http.StatusOK, shares)
 	})
 
-	mux.HandleFunc("POST /vms/{name}/shared-folder/mount", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /vms/{name}/shared-folders", func(w http.ResponseWriter, r *http.Request) {
 		var spec SharedFolderSpec
 		if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		info, err := store.MountSharedFolder(r.PathValue("name"), spec)
-		if err != nil {
+		if err := store.AttachSharedFolder(r.PathValue("name"), spec); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, info)
+		w.WriteHeader(http.StatusCreated)
 	})
 
-	mux.HandleFunc("POST /vms/{name}/shared-folder/sync", func(w http.ResponseWriter, r *http.Request) {
-		if err := store.SyncSharedFolder(r.PathValue("name")); err != nil {
+	mux.HandleFunc("DELETE /vms/{name}/shared-folders/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		tag := r.PathValue("tag")
+		if err := store.DetachSharedFolder(r.PathValue("name"), tag); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	mux.HandleFunc("POST /vms/{name}/shared-folder/unmount", func(w http.ResponseWriter, r *http.Request) {
-		if err := store.UnmountSharedFolder(r.PathValue("name")); err != nil {
+	mux.HandleFunc("POST /vms/{name}/insert-virtio-win", func(w http.ResponseWriter, r *http.Request) {
+		const virtioWinPath = "/DATA/VMs/isos/virtio-win.iso"
+		if _, err := os.Stat(virtioWinPath); err != nil {
+			writeError(w, http.StatusNotFound, fmt.Errorf("virtio-win.iso not found at %s: %w", virtioWinPath, err))
+			return
+		}
+		if err := store.InsertCDROM(r.PathValue("name"), virtioWinPath); err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}

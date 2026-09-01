@@ -107,6 +107,7 @@ type VM struct {
 	ISOPath     string     `json:"iso_path,omitempty"`
 	USBDevices  []USBDeviceSpec `json:"usb_devices,omitempty"`
 	PCIDevices  []PCIDeviceSpec `json:"pci_devices,omitempty"`
+	SharedFolders []SharedFolderSpec `json:"shared_folders,omitempty"`
 	BootOrder   []string        `json:"boot_order,omitempty"`
 	// "bios" (SeaBIOS, the default) or "uefi" (OVMF) - detected from
 	// whether the domain's XML has a <loader> element, since that's the
@@ -276,6 +277,20 @@ type domainXML struct {
 				} `xml:"resolution"`
 			} `xml:"model"`
 		} `xml:"video"`
+		Filesystems []struct {
+			Type       string `xml:"type,attr"`
+			AccessMode string `xml:"accessmode,attr"`
+			Driver     struct {
+				Type string `xml:"type,attr"`
+			} `xml:"driver"`
+			Source struct {
+				Dir string `xml:"dir,attr"`
+			} `xml:"source"`
+			Target struct {
+				Dir string `xml:"dir,attr"`
+			} `xml:"target"`
+			ReadOnly *struct{} `xml:"readonly"`
+		} `xml:"filesystem"`
 	} `xml:"devices"`
 }
 
@@ -371,6 +386,15 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 			})
 		}
 	}
+	for _, fs := range parsed.Devices.Filesystems {
+		if fs.Source.Dir != "" && fs.Target.Dir != "" {
+			vm.SharedFolders = append(vm.SharedFolders, SharedFolderSpec{
+				SourceDir: fs.Source.Dir,
+				TargetTag: fs.Target.Dir,
+				ReadOnly:  fs.ReadOnly != nil,
+			})
+		}
+	}
 	return vm, nil
 }
 
@@ -445,8 +469,9 @@ type CreateVMRequest struct {
 	Disks      []DiskSpec      `json:"disks,omitempty"`
 	ISOPath    string          `json:"iso_path,omitempty"`
 	Networks   []NICSpec       `json:"networks,omitempty"`
-	USBDevices []USBDeviceSpec `json:"usb_devices,omitempty"`
-	PCIDevices []PCIDeviceSpec `json:"pci_devices,omitempty"`
+	USBDevices    []USBDeviceSpec    `json:"usb_devices,omitempty"`
+	PCIDevices    []PCIDeviceSpec    `json:"pci_devices,omitempty"`
+	SharedFolders []SharedFolderSpec `json:"shared_folders,omitempty"`
 	// BootOrder lists boot targets by symbol, highest priority first:
 	// a disk's target dev name (e.g. "vda"), "cdrom", or "network". Any
 	// device not listed is still bootable, just after the ones named
@@ -650,6 +675,10 @@ const domainXMLTemplate = `<domain type='kvm'>
   <name>{{.Name}}</name>
   <memory unit='MiB'>{{.MemoryMiB}}</memory>
   <vcpu>{{.VCPUs}}</vcpu>
+  {{if .SharedFolders}}<memoryBacking>
+    <source type='memfd'/>
+    <access mode='shared'/>
+  </memoryBacking>{{end}}
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
     {{if eq .Firmware "uefi"}}<loader readonly='yes' type='pflash'>{{.OVMFCodePath}}</loader>
@@ -668,7 +697,13 @@ const domainXMLTemplate = `<domain type='kvm'>
          hostdev passthrough (including hot-attaching a device later)
          has nothing to attach to without it. -->
     <controller type='usb' model='qemu-xhci'/>
-    {{range .Disks}}<disk type='file' device='disk'>
+    {{range .SharedFolders}}<filesystem type='mount' accessmode='passthrough'>
+      <driver type='virtiofs'/>
+      <source dir='{{.SourceDir}}'/>
+      <target dir='{{.TargetTag}}'/>
+      {{if .ReadOnly}}<readonly/>{{end}}
+    </filesystem>
+    {{end}}{{range .Disks}}<disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'{{if .SSD}} discard='unmap'{{end}}/>
       <source file='{{.Path}}'/>
       <target dev='{{.Target}}' bus='{{.Bus}}'/>
@@ -726,6 +761,7 @@ type domainXMLData struct {
 	Networks      []renderedNIC
 	USBDevices    []renderedUSBDevice
 	PCIDevices    []renderedPCIDevice
+	SharedFolders []SharedFolderSpec
 	UseOSBoot     bool
 	Firmware      string
 	OVMFCodePath  string
@@ -878,6 +914,7 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
+		SharedFolders: req.SharedFolders,
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,
@@ -925,15 +962,16 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 // explicit, separately-confirmed action rather than living inside a
 // general-purpose "save these settings" request.
 type UpdateVMRequest struct {
-	VCPUs      uint            `json:"vcpus"`
-	MemoryMiB  uint64          `json:"memory_mib"`
-	Disks      []DiskSpec      `json:"disks,omitempty"`
-	ISOPath    string          `json:"iso_path,omitempty"`
-	Networks   []NICSpec       `json:"networks,omitempty"`
-	USBDevices []USBDeviceSpec `json:"usb_devices,omitempty"`
-	PCIDevices []PCIDeviceSpec `json:"pci_devices,omitempty"`
-	BootOrder  []string        `json:"boot_order,omitempty"`
-	Firmware   string          `json:"firmware,omitempty"`
+	VCPUs         uint               `json:"vcpus"`
+	MemoryMiB     uint64             `json:"memory_mib"`
+	Disks         []DiskSpec         `json:"disks,omitempty"`
+	ISOPath       string             `json:"iso_path,omitempty"`
+	Networks      []NICSpec          `json:"networks,omitempty"`
+	USBDevices    []USBDeviceSpec    `json:"usb_devices,omitempty"`
+	PCIDevices    []PCIDeviceSpec    `json:"pci_devices,omitempty"`
+	SharedFolders []SharedFolderSpec `json:"shared_folders,omitempty"`
+	BootOrder     []string           `json:"boot_order,omitempty"`
+	Firmware      string             `json:"firmware,omitempty"`
 	// DisplayWidth/DisplayHeight - see CreateVMRequest's field of the
 	// same name. Zero/omitted clears any previously-set resolution hint.
 	DisplayWidth  uint `json:"display_width,omitempty"`
@@ -1038,6 +1076,7 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
+		SharedFolders: req.SharedFolders,
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,
