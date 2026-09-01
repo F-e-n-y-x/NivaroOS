@@ -190,15 +190,38 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 		return fmt.Errorf("%q is not a directory", spec.SourceDir)
 	}
 
+	baseName := filepath.Base(spec.SourceDir)
+	if baseName == "" || baseName == "/" || baseName == "." {
+		baseName = "shared"
+	}
 	if spec.TargetTag == "" || spec.TargetTag == "nivaroshare" {
-		spec.TargetTag = filepath.Base(spec.SourceDir)
+		spec.TargetTag = baseName
 	}
 
 	// Read existing shares and append new one
 	shares, _ := readVMSharesMetadata(name)
+
+	// Deduplicate TargetTag if different folder with same name exists
+	usedTags := make(map[string]bool)
+	for _, existing := range shares {
+		if existing.SourceDir != spec.SourceDir {
+			usedTags[existing.TargetTag] = true
+		}
+	}
+	if usedTags[spec.TargetTag] {
+		base := spec.TargetTag
+		for c := 2; ; c++ {
+			cand := fmt.Sprintf("%s_%d", base, c)
+			if !usedTags[cand] {
+				spec.TargetTag = cand
+				break
+			}
+		}
+	}
+
 	found := false
 	for i, existing := range shares {
-		if existing.SourceDir == spec.SourceDir || existing.TargetTag == spec.TargetTag {
+		if existing.SourceDir == spec.SourceDir {
 			shares[i] = spec
 			found = true
 			break

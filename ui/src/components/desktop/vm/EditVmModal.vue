@@ -261,13 +261,13 @@ export default {
 		addSharedFolder(dir) {
 			if (!dir) return
 			if (!this.form.shared_folders) this.form.shared_folders = []
-			const tagBase = dir.split('/').filter(Boolean).pop() || 'nivaroshare'
-			let tag = tagBase.toLowerCase().replace(/[^a-z0-9]/g, '') || 'nivaroshare'
+			const tagBase = dir.split('/').filter(Boolean).pop() || 'shared'
+			let tag = tagBase
 			const used = new Set(this.form.shared_folders.map((s) => s.target_tag))
 			if (used.has(tag)) {
 				let i = 2
-				while (used.has(`${tag}${i}`)) i++
-				tag = `${tag}${i}`
+				while (used.has(`${tag}_${i}`)) i++
+				tag = `${tag}_${i}`
 			}
 			this.form.shared_folders.push({ source_dir: dir, target_tag: tag, read_only: false })
 		},

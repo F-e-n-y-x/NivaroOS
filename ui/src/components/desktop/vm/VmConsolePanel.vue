@@ -874,21 +874,21 @@ export default {
 		},
 		onShareFolderSelected(path) {
 			this.selectedShareFolder = path
-			if (!this.shareTag || this.shareTag === 'nivaroshare') {
-				const base = path.split('/').filter(Boolean).pop() || 'nivaroshare'
-				this.shareTag = base.toLowerCase().replace(/[^a-z0-9]/g, '') || 'nivaroshare'
-			}
+			const base = path.split('/').filter(Boolean).pop() || 'shared'
+			this.shareTag = base
 		},
 		async attachShare() {
 			if (!this.selectedShareFolder || this.shareBusy) return
 			this.shareBusy = true
 			try {
+				const tag = this.shareTag || this.selectedShareFolder.split('/').filter(Boolean).pop() || 'shared'
 				await vmSidecar.attachSharedFolder(this.vmName, {
 					source_dir: this.selectedShareFolder,
-					target_tag: this.shareTag || 'nivaroshare',
+					target_tag: tag,
 					read_only: this.shareReadOnly,
 				})
 				this.selectedShareFolder = ''
+				this.shareTag = ''
 				this.$buefy.toast.open({
 					message: this.$t('Live shared folder mounted!'),
 					type: 'is-success',
