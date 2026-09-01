@@ -358,6 +358,12 @@ install_core_services() {
 	for name in $CORE_SERVICES; do
 		install_service "$name"
 	done
+	# Repo-root sysroot (distinct from each service's own build/sysroot) -
+	# ships shared, cross-service files like the UI event-registration
+	# script core runs as a post-start hook.
+	if [ -d "$SRC_DIR/build/sysroot" ]; then
+		cp -a "$SRC_DIR/build/sysroot/." /
+	fi
 	init_directories_and_configs
 	write_gpu_sidecar_unit
 	systemctl daemon-reload
