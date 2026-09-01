@@ -171,9 +171,15 @@ export default {
 			return { running: this.$t('Running'), shutoff: this.$t('Stopped'), paused: this.$t('Paused'), crashed: this.$t('Crashed') }[state] || state
 		},
 		formatMib(mib) {
+			if (!mib || isNaN(mib)) return '0 MB'
 			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
 		},
 		networkLabel(vm) {
+			if (!vm) return this.$t('None')
+			if (vm.networks && vm.networks.length > 0) {
+				const n = vm.networks[0]
+				return n.mode === 'bridge' ? (n.bridge_name || 'Bridge') : this.$t('NAT')
+			}
 			if (!vm.network_mode) return this.$t('None')
 			return vm.network_mode.startsWith('bridge:') ? vm.network_mode.replace('bridge:', '') : this.$t('NAT')
 		},

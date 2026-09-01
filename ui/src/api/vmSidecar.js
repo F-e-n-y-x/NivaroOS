@@ -4,7 +4,10 @@
 // `window` (the unit tests run under vitest's default "node" environment,
 // which has no DOM globals) rather than requiring jsdom just for this.
 const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-const BASE_URL = `http://${hostname}:28641`
+const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+const protocol = isHttps ? 'https:' : 'http:'
+const wsProtocol = isHttps ? 'wss:' : 'ws:'
+const BASE_URL = `${protocol}//${hostname}:28641`
 
 async function request(path, options = {}) {
 	const res = await fetch(`${BASE_URL}${path}`, options)
@@ -68,7 +71,7 @@ export const vmSidecar = {
 	ejectCDROM: name => request(`/vms/${encodeURIComponent(name)}/cdrom/eject`, { method: 'POST' }),
 	insertCDROM: (name, isoPath) => request(`/vms/${encodeURIComponent(name)}/cdrom`, jsonBody({ iso_path: isoPath })),
 
-	consoleUrl: name => `ws://${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
+	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
 	// A cache-busting `t` param is left for the caller to append when
 	// polling (a plain <img src> won't re-fetch an unchanged URL).
 	screenshotUrl: name => `${BASE_URL}/vms/${encodeURIComponent(name)}/screenshot`

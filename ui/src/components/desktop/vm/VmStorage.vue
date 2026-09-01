@@ -114,6 +114,7 @@ export default {
 			}
 		},
 		formatMib(mib) {
+			if (!mib || isNaN(mib)) return '0 MB'
 			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
 		},
 		async upload(file) {

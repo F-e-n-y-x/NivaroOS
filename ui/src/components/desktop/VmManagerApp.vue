@@ -62,46 +62,72 @@ export default {
 	position: relative;
 	display: flex;
 	height: 100%;
-	background: #fff;
-	color: #2c3e50;
+	background: #f8fafc;
+	color: #1e293b;
 	font-family: $family-sans-serif;
 }
 
 .vm-nav {
 	flex-shrink: 0;
-	width: 13rem;
-	padding: 1rem 0.6rem;
-	background: rgba(0, 0, 0, 0.015);
-	border-right: 1px solid rgb(228 233 237);
+	width: 13.5rem;
+	padding: 1.25rem 0.75rem;
+	background: #ffffff;
+	border-right: 1px solid rgba(0, 0, 0, 0.06);
 	display: flex;
 	flex-direction: column;
-	gap: 0.15rem;
+	gap: 0.2rem;
+	user-select: none;
 }
 
 .nav-item {
 	display: flex;
 	align-items: center;
-	gap: 0.6rem;
+	gap: 0.75rem;
 	border: none;
 	background: transparent;
-	color: inherit;
-	padding: 0.55rem 0.75rem;
+	color: #475569;
+	padding: 0.6rem 0.85rem;
 	font-size: 0.85rem;
+	font-weight: 400;
+	border-radius: 9px;
 	text-align: left;
 	cursor: pointer;
 	width: 100%;
+	transition: background 0.12s ease, color 0.12s ease;
 
 	.icon {
-		color: hsla(208, 16%, 42%, 1);
+		color: #94a3b8;
+		transition: color 0.12s ease;
+		width: 20px;
+		height: 20px;
+		font-size: 20px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+
+		i {
+			font-size: 20px;
+			line-height: 1;
+		}
+	}
+
+	&:hover {
+		background: #f8fafc;
+		color: #1e293b;
+
+		.icon {
+			color: #1e293b;
+		}
 	}
 
 	&.active {
-		background: hsla(208, 100%, 96%, 1);
-		color: hsla(208, 100%, 45%, 1);
-		font-weight: 600;
+		background: #f1f5f9;
+		color: #1e293b;
+		font-weight: 500;
 
 		.icon {
-			color: hsla(208, 100%, 45%, 1);
+			color: #2563eb;
 		}
 	}
 }
@@ -110,6 +136,7 @@ export default {
 	flex: 1 1 auto;
 	overflow: auto;
 	min-width: 0;
+	background: #f8fafc;
 }
 
 .vm-section {
