@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# This script uses bash-only syntax (arrays, etc.) and will fail with a
+# confusing syntax error if run under a POSIX `sh` (e.g. dash, the default
+# /bin/sh on Debian/Ubuntu) instead of bash - `sh install.sh` or a shebang-
+# ignoring invocation both hit this. Detect that and transparently re-exec
+# under bash instead of failing. This block itself must stay POSIX sh
+# compatible so dash can parse it far enough to hit the re-exec.
+if [ -z "${BASH_VERSION:-}" ]; then
+	exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
