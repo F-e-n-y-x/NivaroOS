@@ -25,10 +25,30 @@
 				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
 			</div>
 			<div class="toolbar-actions">
-				<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send Ctrl+Alt+Del to the VM')" @click="sendCtrlAltDel">
-					<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon>
-					<span>Ctrl+Alt+Del</span>
-				</button>
+				<div ref="keysMenuWrapper" class="menu-wrapper">
+					<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Send special key combinations to the VM')" @click="keysMenuOpen = !keysMenuOpen">
+						<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
+						<span>{{ $t('Keys') }}</span>
+						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+					</button>
+					<div v-if="keysMenuOpen" class="power-menu">
+						<button class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
+							<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon><span>Ctrl+Alt+Del</span>
+						</button>
+						<button class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
+							<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon><span>{{ $t('Win Key') }}</span>
+						</button>
+						<button class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
+							<b-icon icon="tab" custom-size="mdi-16px"></b-icon><span>Alt + Tab</span>
+						</button>
+						<button class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
+							<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon><span>Ctrl+Shift+Esc</span>
+						</button>
+						<button class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
+							<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon><span>Alt + F4</span>
+						</button>
+					</div>
+				</div>
 				<button class="toolbar-btn" :disabled="status !== 'connected'" :title="$t('Paste clipboard text into the VM')" @click="pasteClipboard">
 					<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
 					<span>{{ $t('Paste') }}</span>
@@ -407,9 +427,16 @@ export default {
 			// setting). This is what actually trades picture quality for
 			// less lag on a slow connection, since it changes how much data
 			// noVNC asks the sidecar's VNC server to send per frame.
-			qualityMode: 'balanced',
+			qualityMode: (function () {
+				try {
+					return localStorage.getItem('vm_console_quality_mode') || 'balanced'
+				} catch (e) {
+					return 'balanced'
+				}
+			})(),
 			qualityOptions: QUALITY_OPTIONS,
 			qualityMenuOpen: false,
+			keysMenuOpen: false,
 			powerMenuOpen: false,
 			statePollTimer: null,
 			usbMenuOpen: false,
@@ -421,10 +448,6 @@ export default {
 			availableISOs: [],
 			selectedISO: '',
 			keyboardOpen: false,
-			// null until the user drags it once - the default position comes
-			// from CSS (centered, docked near the bottom); once set, this
-			// pins it at an explicit spot instead so it stays wherever it
-			// was dropped, including across a close/reopen of the panel.
 			keyboardPos: null,
 			keyboardRows: KEYBOARD_ROWS,
 			navRows: NAV_ROWS,
@@ -482,12 +505,7 @@ export default {
 		this.pollState()
 		this.statePollTimer = setInterval(this.pollState, STATE_POLL_MS)
 		document.addEventListener('mousedown', this.onOutsideClick)
-		// A keyboard position dragged into place is just raw left/top px -
-		// nothing re-clamps it if the desktop window is then resized
-		// smaller (or fullscreen is toggled), so it can end up sitting
-		// partway or fully outside the new, shrunk bounds. Watching this
-		// panel's own size (not the keyboard's) catches every case that
-		// actually changes the available space.
+		window.addEventListener('resize', this.clampKeyboardPos)
 		this.panelResizeObserver = new ResizeObserver(() => this.clampKeyboardPos())
 		this.panelResizeObserver.observe(this.$el)
 	},
@@ -495,16 +513,25 @@ export default {
 		if (this.rfb) this.rfb.disconnect()
 		clearInterval(this.statePollTimer)
 		document.removeEventListener('mousedown', this.onOutsideClick)
+		window.removeEventListener('resize', this.clampKeyboardPos)
 		if (this.panelResizeObserver) this.panelResizeObserver.disconnect()
+		if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
+			document.body.removeChild(this.$refs.keyboard)
+		}
 	},
 	methods: {
 		connect() {
 			this.status = 'connecting'
 			this.rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
 			this.rfb.scaleViewport = this.scaleToFit
-			Object.assign(this.rfb, QUALITY_PRESETS[this.qualityMode])
+			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
+			this.rfb.qualityLevel = preset.qualityLevel
+			this.rfb.compressionLevel = preset.compressionLevel
 			this.rfb.addEventListener('connect', () => {
 				this.status = 'connected'
+				const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
+				this.rfb.qualityLevel = p.qualityLevel
+				this.rfb.compressionLevel = p.compressionLevel
 			})
 			this.rfb.addEventListener('disconnect', () => {
 				this.status = 'disconnected'
@@ -524,6 +551,56 @@ export default {
 		sendCtrlAltDel() {
 			if (this.rfb) this.rfb.sendCtrlAltDel()
 		},
+		sendWinKey() {
+			if (!this.rfb) return
+			const winKey = SPECIAL_KEYSYMS.Super
+			this.rfb.sendKey(winKey, 'MetaLeft', true)
+			setTimeout(() => {
+				if (this.rfb) this.rfb.sendKey(winKey, 'MetaLeft', false)
+			}, 60)
+		},
+		sendAltTab() {
+			if (!this.rfb) return
+			const alt = SPECIAL_KEYSYMS.Alt
+			const tab = SPECIAL_KEYSYMS.Tab
+			this.rfb.sendKey(alt, 'AltLeft', true)
+			this.rfb.sendKey(tab, 'Tab', true)
+			setTimeout(() => {
+				if (this.rfb) {
+					this.rfb.sendKey(tab, 'Tab', false)
+					this.rfb.sendKey(alt, 'AltLeft', false)
+				}
+			}, 60)
+		},
+		sendCtrlShiftEsc() {
+			if (!this.rfb) return
+			const ctrl = SPECIAL_KEYSYMS.Control
+			const shift = SPECIAL_KEYSYMS.Shift
+			const esc = SPECIAL_KEYSYMS.Escape
+			this.rfb.sendKey(ctrl, 'ControlLeft', true)
+			this.rfb.sendKey(shift, 'ShiftLeft', true)
+			this.rfb.sendKey(esc, 'Escape', true)
+			setTimeout(() => {
+				if (this.rfb) {
+					this.rfb.sendKey(esc, 'Escape', false)
+					this.rfb.sendKey(shift, 'ShiftLeft', false)
+					this.rfb.sendKey(ctrl, 'ControlLeft', false)
+				}
+			}, 60)
+		},
+		sendAltF4() {
+			if (!this.rfb) return
+			const alt = SPECIAL_KEYSYMS.Alt
+			const f4 = SPECIAL_KEYSYMS.F4
+			this.rfb.sendKey(alt, 'AltLeft', true)
+			this.rfb.sendKey(f4, 'F4', true)
+			setTimeout(() => {
+				if (this.rfb) {
+					this.rfb.sendKey(f4, 'F4', false)
+					this.rfb.sendKey(alt, 'AltLeft', false)
+				}
+			}, 60)
+		},
 		async pasteClipboard() {
 			try {
 				const text = await navigator.clipboard.readText()
@@ -539,7 +616,19 @@ export default {
 		setQualityMode(mode) {
 			this.qualityMode = mode
 			this.qualityMenuOpen = false
-			if (this.rfb) Object.assign(this.rfb, QUALITY_PRESETS[mode])
+			try {
+				localStorage.setItem('vm_console_quality_mode', mode)
+			} catch (e) {}
+			if (this.rfb) {
+				const preset = QUALITY_PRESETS[mode] || QUALITY_PRESETS.balanced
+				this.rfb.qualityLevel = preset.qualityLevel
+				this.rfb.compressionLevel = preset.compressionLevel
+			}
+			this.$buefy.toast.open({
+				message: `${this.$t('Bandwidth profile')}: ${this.qualityModeLabel}`,
+				type: 'is-info',
+				duration: 1800,
+			})
 		},
 		toggleFullscreen() {
 			if (document.fullscreenElement) {
@@ -549,6 +638,9 @@ export default {
 			}
 		},
 		onOutsideClick(event) {
+			if (this.keysMenuOpen && this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(event.target)) {
+				this.keysMenuOpen = false
+			}
 			if (this.powerMenuOpen && this.$refs.powerMenuWrapper && !this.$refs.powerMenuWrapper.contains(event.target)) {
 				this.powerMenuOpen = false
 			}
@@ -672,32 +764,18 @@ export default {
 			if (key.gapBefore) style.marginLeft = `${key.gapBefore}rem`
 			return style
 		},
-		// Drags the floating keyboard by its header, like a real window -
-		// pointer events (not separate mouse/touch handlers) so this works
-		// the same with a mouse, a trackpad, or a touchscreen.
 		startKeyboardDrag(event) {
-			// Pointer capture (not document-level listeners) - the VNC
-			// canvas underneath handles pointer events itself to relay
-			// clicks to the VM, and can consume a pointerup before it ever
-			// bubbles to document. Losing that event left the pointermove
-			// listener attached forever, so the keyboard kept following the
-			// mouse anywhere on the page long after the drag should've
-			// ended - exactly the "keyboard moves anywhere, even outside
-			// the console" bug. Capture guarantees this element keeps
-			// getting every event for this pointer regardless of what's
-			// underneath it.
 			const header = event.currentTarget
 			header.setPointerCapture(event.pointerId)
-			const panelRect = this.$el.getBoundingClientRect()
-			const kbEl = header.parentElement
+			const kbEl = this.$refs.keyboard
 			const kbRect = kbEl.getBoundingClientRect()
 			const offsetX = event.clientX - kbRect.left
 			const offsetY = event.clientY - kbRect.top
 			const onMove = (e) => {
-				const maxX = panelRect.width - kbRect.width
-				const maxY = panelRect.height - kbRect.height
-				const x = Math.max(0, Math.min(e.clientX - panelRect.left - offsetX, maxX))
-				const y = Math.max(0, Math.min(e.clientY - panelRect.top - offsetY, maxY))
+				const maxX = Math.max(0, window.innerWidth - kbRect.width)
+				const maxY = Math.max(0, window.innerHeight - kbRect.height)
+				const x = Math.max(0, Math.min(e.clientX - offsetX, maxX))
+				const y = Math.max(0, Math.min(e.clientY - offsetY, maxY))
 				this.keyboardPos = { x, y }
 			}
 			const onUp = () => {
@@ -710,15 +788,13 @@ export default {
 			header.addEventListener('pointerup', onUp)
 			header.addEventListener('pointercancel', onUp)
 		},
-		// Re-pins a dragged keyboard back inside the current panel bounds -
-		// called on every panel resize (window resize, fullscreen toggle)
-		// so a position that was valid before stays valid after.
+		// Re-pins a dragged keyboard back inside the viewport bounds -
+		// called on every window resize / fullscreen toggle so it stays visible.
 		clampKeyboardPos() {
 			if (!this.keyboardPos || !this.$refs.keyboard) return
-			const panelRect = this.$el.getBoundingClientRect()
 			const kbRect = this.$refs.keyboard.getBoundingClientRect()
-			const maxX = Math.max(0, panelRect.width - kbRect.width)
-			const maxY = Math.max(0, panelRect.height - kbRect.height)
+			const maxX = Math.max(0, window.innerWidth - kbRect.width)
+			const maxY = Math.max(0, window.innerHeight - kbRect.height)
 			const x = Math.max(0, Math.min(this.keyboardPos.x, maxX))
 			const y = Math.max(0, Math.min(this.keyboardPos.y, maxY))
 			if (x !== this.keyboardPos.x || y !== this.keyboardPos.y) {
@@ -772,9 +848,25 @@ export default {
 			},
 		},
 		keyboardOpen(open) {
-			// $refs.keyboard doesn't exist until this v-if's DOM lands -
-			// covers a resize that happened while it was closed.
-			if (open) this.$nextTick(this.clampKeyboardPos)
+			if (open) {
+				this.$nextTick(() => {
+					if (this.$refs.keyboard && this.$refs.keyboard.parentNode !== document.body) {
+						document.body.appendChild(this.$refs.keyboard)
+					}
+					if (!this.keyboardPos && this.$refs.keyboard) {
+						const kbRect = this.$refs.keyboard.getBoundingClientRect()
+						this.keyboardPos = {
+							x: Math.max(10, Math.round((window.innerWidth - kbRect.width) / 2)),
+							y: Math.max(10, Math.round(window.innerHeight - kbRect.height - 40)),
+						}
+					}
+					this.clampKeyboardPos()
+				})
+			} else {
+				if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
+					document.body.removeChild(this.$refs.keyboard)
+				}
+			}
 		},
 		usbMenuOpen(open) {
 			if (open) this.loadHostUsbDevices()
@@ -1139,22 +1231,25 @@ export default {
 // keyboard laid over whatever's underneath, the same way a real external
 // keyboard doesn't resize the monitor's picture to make room for itself.
 .on-screen-keyboard {
-	position: absolute;
+	position: fixed !important;
 	left: 50%;
-	bottom: 1rem;
+	bottom: 2rem;
 	transform: translateX(-50%);
-	z-index: 40;
+	z-index: 100000 !important;
 	display: flex;
 	flex-direction: column;
 	gap: 0.3rem;
 	width: fit-content;
-	max-width: calc(100% - 2rem);
+	max-width: calc(100vw - 2rem);
 	overflow-x: auto;
 	padding: 0.5rem 0.75rem 0.75rem;
-	background: #2b2b2b;
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 12px;
-	box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+	background: rgba(38, 38, 38, 0.95);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 14px;
+	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+	user-select: none;
 }
 .osk-header {
 	display: flex;

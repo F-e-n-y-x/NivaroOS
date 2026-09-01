@@ -153,9 +153,7 @@ export default {
 
 <style lang="scss" scoped>
 .vm-storage {
-	padding: 1.25rem;
-	height: 100%;
-	overflow: auto;
+	padding: 1.5rem;
 }
 .vm-section-toolbar {
 	display: flex;
@@ -165,31 +163,31 @@ export default {
 }
 .vm-section-toolbar-secondary {
 	margin-top: 2rem;
-	padding-top: 1.25rem;
-	border-top: 1px solid rgb(228 233 237);
 }
 .vm-section-title {
-	font-size: 1.1rem;
-	font-weight: 700;
-	color: #2c3e50;
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: #0f172a;
 	margin: 0;
+	letter-spacing: -0.01em;
 }
 .create-btn {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
+	gap: 0.45rem;
 	border: none;
-	background: #3273dc;
+	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.85rem;
-	font-weight: 600;
-	padding: 0.55rem 1rem;
+	font-weight: 500;
+	padding: 0.5rem 0.95rem;
 	border-radius: 8px;
 	cursor: pointer;
+	transition: background 0.15s ease;
 
 	&:hover {
-		background: #2366d1;
+		background: #1d4ed8;
 		color: #fff;
 	}
 }
@@ -197,30 +195,33 @@ export default {
 	display: flex;
 	justify-content: center;
 	padding: 3rem 0;
-	color: rgba(0, 0, 0, 0.35);
+	color: #94a3b8;
 
-	// Buefy's <b-icon> wraps every glyph in a Bulma .icon span fixed at
-	// 1.5rem (24px) by default - custom-size only scales the glyph's own
-	// font-size, so anything bigger than 24px overflows its own wrapper
-	// unless the wrapper itself is resized to match here.
 	::v-deep .icon {
-		width: 2.25rem;
-		height: 2.25rem;
+		width: 2.5rem;
+		height: 2.5rem;
 	}
 }
 .iso-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.5rem;
+	gap: 0.75rem;
 }
 .iso-row {
 	display: flex;
 	align-items: center;
 	gap: 0.85rem;
-	padding: 0.75rem 1rem;
-	border: 1px solid rgb(228 233 237);
-	border-radius: 10px;
+	padding: 0.85rem 1.15rem;
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 12px;
 	background: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+	&:hover {
+		border-color: rgba(37, 99, 235, 0.25);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	}
 }
 .iso-icon {
 	flex-shrink: 0;
@@ -230,12 +231,12 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.04);
-	color: rgba(0, 0, 0, 0.4);
+	background: #f1f5f9;
+	color: #64748b;
 
 	&.is-ssd {
-		background: rgba(50, 115, 220, 0.1);
-		color: #3273dc;
+		background: #eff6ff;
+		color: #2563eb;
 	}
 }
 .iso-info {
@@ -243,38 +244,42 @@ export default {
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
+	gap: 0.15rem;
 }
 .iso-name-target {
 	font-weight: 400;
-	color: rgba(0, 0, 0, 0.4);
+	color: #94a3b8;
 	font-size: 0.78rem;
 }
 .iso-name {
 	font-weight: 600;
-	color: #2c3e50;
-	font-size: 0.9rem;
+	color: #0f172a;
+	font-size: 0.92rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .iso-meta {
 	font-size: 0.75rem;
-	color: rgba(0, 0, 0, 0.45);
+	color: #64748b;
 }
 .iso-remove {
 	flex-shrink: 0;
 	border: none;
 	background: transparent;
-	color: rgba(0, 0, 0, 0.35);
+	color: #94a3b8;
 	cursor: pointer;
 	display: flex;
 	align-items: center;
-	padding: 0.35rem;
-	border-radius: 6px;
+	justify-content: center;
+	width: 1.95rem;
+	height: 1.95rem;
+	border-radius: 7px;
+	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
-		color: #f2534a;
-		background: rgba(242, 83, 74, 0.08);
+		color: #dc2626;
+		background: #fee2e2;
 	}
 }
 .vm-empty {
@@ -282,19 +287,20 @@ export default {
 	flex-direction: column;
 	align-items: center;
 	gap: 0.5rem;
-	padding: 3rem 1rem;
-	color: rgba(0, 0, 0, 0.3);
+	padding: 3.5rem 1rem;
+	color: #94a3b8;
 
 	::v-deep .icon {
-		width: 3rem;
-		height: 3rem;
+		width: 3.5rem;
+		height: 3.5rem;
+		color: #cbd5e1;
 	}
 
 	.vm-empty-title {
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		font-weight: 600;
-		color: rgba(0, 0, 0, 0.5);
-		margin: 0;
+		color: #475569;
+		margin: 0.25rem 0 0;
 	}
 }
 </style>

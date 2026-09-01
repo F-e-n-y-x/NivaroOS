@@ -58,10 +58,10 @@
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
-						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" max="16" step="1"
-							:style="rangeStyle(form.vcpus, 1, 16)" />
-						<span class="slider-hint">16</span>
-						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" max="16" @change="clampVcpus" />
+						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" max="32" step="1"
+							:style="rangeStyle(form.vcpus, 1, 32)" />
+						<span class="slider-hint">32</span>
+						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" max="64" @change="clampVcpus" />
 					</div>
 				</div>
 				<div class="setting-row">
@@ -69,10 +69,10 @@
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
-						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" max="16384" step="512"
-							:style="rangeStyle(form.memory_mib, 512, 16384)" />
-						<span class="slider-hint">16 GB</span>
-						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" max="16" step="0.5" />
+						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" max="65536" step="512"
+							:style="rangeStyle(form.memory_mib, 512, 65536)" />
+						<span class="slider-hint">64 GB</span>
+						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" max="128" step="0.5" />
 						<span class="slider-value-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
@@ -311,7 +311,7 @@ export default {
 			set(gib) {
 				const mib = Math.round((Number(gib) || 0) * 1024)
 				const snapped = Math.round(mib / 512) * 512
-				this.form.memory_mib = Math.min(16384, Math.max(512, snapped))
+				this.form.memory_mib = Math.min(65536, Math.max(512, snapped))
 			},
 		},
 		// The guest's actual display resolution (a libvirt video hint the
@@ -377,7 +377,7 @@ export default {
 			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
 		},
 		clampVcpus() {
-			this.form.vcpus = Math.min(16, Math.max(1, Math.round(this.form.vcpus) || 1))
+			this.form.vcpus = Math.min(64, Math.max(1, Math.round(this.form.vcpus) || 1))
 		},
 		// Matches AppearanceSection.vue's own range inputs exactly - sets
 		// the --pct custom property .pretty-range's filled-track gradient

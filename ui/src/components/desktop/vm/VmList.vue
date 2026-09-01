@@ -266,9 +266,7 @@ export default {
 
 <style lang="scss" scoped>
 .vm-list {
-	padding: 1.25rem;
-	height: 100%;
-	overflow: auto;
+	padding: 1.5rem;
 }
 .vm-list-toolbar {
 	display: flex;
@@ -277,42 +275,43 @@ export default {
 	margin-bottom: 1.25rem;
 }
 .vm-list-title {
-	font-size: 1.1rem;
-	font-weight: 700;
-	color: #2c3e50;
+	font-size: 1.15rem;
+	font-weight: 600;
+	color: #0f172a;
 	margin: 0;
+	letter-spacing: -0.01em;
 }
 .create-btn {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
+	gap: 0.45rem;
 	border: none;
-	background: #3273dc;
+	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.85rem;
-	font-weight: 600;
-	padding: 0.55rem 1rem;
+	font-weight: 500;
+	padding: 0.5rem 0.95rem;
 	border-radius: 8px;
 	cursor: pointer;
+	transition: background 0.15s ease, transform 0.1s ease;
 
 	&:hover {
-		background: #2366d1;
+		background: #1d4ed8;
+	}
+	&:active {
+		transform: scale(0.98);
 	}
 }
 .vm-loading {
 	display: flex;
 	justify-content: center;
-	padding: 3rem 0;
-	color: rgba(0, 0, 0, 0.35);
+	padding: 4rem 0;
+	color: #94a3b8;
 
-	// Buefy's <b-icon> wraps every glyph in a Bulma .icon span fixed at
-	// 1.5rem (24px) by default - custom-size only scales the glyph's own
-	// font-size, so anything bigger than 24px overflows its own wrapper
-	// unless the wrapper itself is resized to match here.
 	::v-deep .icon {
-		width: 2.25rem;
-		height: 2.25rem;
+		width: 2.5rem;
+		height: 2.5rem;
 	}
 }
 .vm-empty {
@@ -320,44 +319,41 @@ export default {
 	flex-direction: column;
 	align-items: center;
 	gap: 0.5rem;
-	padding: 4rem 1rem;
-	color: rgba(0, 0, 0, 0.4);
+	padding: 4.5rem 1rem;
+	color: #94a3b8;
 
-	// Scoped to the direct icon child only - a blanket ".icon" selector
-	// here also matched the Create VM button's own (much smaller) plus
-	// icon just below it, since the button is nested inside .vm-empty
-	// too, inflating that icon to match and making the whole button look
-	// oversized.
 	> ::v-deep .icon {
-		width: 3rem;
-		height: 3rem;
+		width: 3.5rem;
+		height: 3.5rem;
+		color: #cbd5e1;
 	}
 
 	.vm-empty-title {
-		font-size: 1rem;
+		font-size: 1.05rem;
 		font-weight: 600;
-		color: rgba(0, 0, 0, 0.6);
-		margin: 0.25rem 0 0;
+		color: #334155;
+		margin: 0.5rem 0 0;
 	}
 	.vm-empty-hint {
-		margin: 0 0 1rem;
+		margin: 0 0 1.25rem;
 		font-size: 0.85rem;
+		color: #64748b;
 	}
 }
 .create-btn-large {
 	display: flex;
 	align-items: center;
-	gap: 0.45rem;
+	gap: 0.5rem;
 	border: none;
-	background: #3273dc;
+	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
 	font-size: 0.9rem;
-	font-weight: 600;
-	padding: 0.7rem 1.35rem;
+	font-weight: 500;
+	padding: 0.65rem 1.35rem;
 	border-radius: 10px;
 	cursor: pointer;
-	box-shadow: 0 4px 14px rgba(50, 115, 220, 0.25);
+	box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
 	transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 
 	::v-deep .icon {
@@ -366,9 +362,9 @@ export default {
 	}
 
 	&:hover {
-		background: #2366d1;
+		background: #1d4ed8;
 		transform: translateY(-1px);
-		box-shadow: 0 6px 18px rgba(50, 115, 220, 0.32);
+		box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
 	}
 	&:active {
 		transform: translateY(0);
@@ -376,27 +372,29 @@ export default {
 }
 .vm-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-	gap: 1rem;
+	grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+	gap: 1.15rem;
 }
 .vm-card {
 	display: flex;
 	flex-direction: column;
 	border-radius: 12px;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid rgba(0, 0, 0, 0.08);
 	overflow: hidden;
 	background: #fff;
-	transition: box-shadow 0.15s ease, border-color 0.15s ease;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+	transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 
 	&:hover {
-		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-		border-color: rgb(210 217 224);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+		border-color: rgba(37, 99, 235, 0.25);
+		transform: translateY(-2px);
 	}
 }
 .vm-preview {
 	position: relative;
 	aspect-ratio: 16 / 9;
-	background: #111;
+	background: #0f172a;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -404,7 +402,7 @@ export default {
 	overflow: hidden;
 
 	&.is-off {
-		background: rgba(0, 0, 0, 0.04);
+		background: #f1f5f9;
 	}
 
 	&:hover .vm-preview-overlay {
@@ -418,7 +416,7 @@ export default {
 	background: #000;
 }
 .vm-preview-placeholder {
-	color: rgba(0, 0, 0, 0.2);
+	color: #94a3b8;
 
 	::v-deep .icon {
 		width: 2.5rem;
@@ -431,101 +429,122 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.35);
+	background: rgba(15, 23, 42, 0.45);
+	backdrop-filter: blur(2px);
 	color: #fff;
 	opacity: 0;
 	transition: opacity 0.15s ease;
 }
 .vm-card-body {
-	padding: 0.75rem 0.85rem 0.5rem;
+	padding: 0.85rem 1rem 0.65rem;
 }
 .vm-card-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5rem;
-	margin-bottom: 0.4rem;
+	margin-bottom: 0.5rem;
 }
 .vm-name {
 	font-weight: 600;
-	font-size: 0.9rem;
-	color: #2c3e50;
+	font-size: 0.92rem;
+	color: #0f172a;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .vm-state-badge {
 	flex-shrink: 0;
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.3rem;
-	font-size: 0.7rem;
-	font-weight: 600;
-	color: rgba(0, 0, 0, 0.5);
+	gap: 0.35rem;
+	font-size: 0.72rem;
+	font-weight: 500;
+	padding: 0.2rem 0.55rem;
+	border-radius: 9999px;
+	background: #f1f5f9;
+	color: #475569;
 }
 .vm-state-dot {
-	width: 7px;
-	height: 7px;
+	width: 6px;
+	height: 6px;
 	border-radius: 50%;
-	background: #b5b5b5;
+	background: #94a3b8;
 }
-.vm-state-badge.is-running .vm-state-dot {
-	background: #23d160;
+.vm-state-badge.is-running {
+	background: #ecfdf5;
+	color: #059669;
+
+	.vm-state-dot {
+		background: #10b981;
+		box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+	}
 }
-.vm-state-badge.is-crashed .vm-state-dot {
-	background: #ff3860;
+.vm-state-badge.is-crashed {
+	background: #fef2f2;
+	color: #dc2626;
+
+	.vm-state-dot {
+		background: #ef4444;
+	}
 }
-.vm-state-badge.is-paused .vm-state-dot {
-	background: #ffdd57;
+.vm-state-badge.is-paused {
+	background: #fffbeb;
+	color: #d97706;
+
+	.vm-state-dot {
+		background: #f59e0b;
+	}
 }
 .vm-specs {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.6rem;
+	gap: 0.75rem;
 }
 .vm-spec {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.25rem;
-	font-size: 0.72rem;
-	color: rgba(0, 0, 0, 0.5);
+	gap: 0.3rem;
+	font-size: 0.74rem;
+	color: #64748b;
 }
 .vm-card-actions {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.4rem 0.6rem;
-	border-top: 1px solid rgb(228 233 237);
-	background: rgba(0, 0, 0, 0.012);
+	padding: 0.45rem 0.65rem;
+	border-top: 1px solid rgba(0, 0, 0, 0.06);
+	background: #f8fafc;
 }
 .vm-action-group {
 	display: flex;
 	align-items: center;
-	gap: 0.15rem;
+	gap: 0.2rem;
 }
 .vm-action-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.9rem;
-	height: 1.9rem;
+	width: 1.95rem;
+	height: 1.95rem;
 	border: none;
 	background: transparent;
-	color: rgba(0, 0, 0, 0.55);
-	border-radius: 6px;
+	color: #64748b;
+	border-radius: 7px;
 	cursor: pointer;
+	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(0, 0, 0, 0.06);
-		color: #2c3e50;
+		background: #e2e8f0;
+		color: #0f172a;
 	}
 	&:disabled {
 		opacity: 0.35;
 		cursor: default;
 	}
 	&.is-danger:hover:not(:disabled) {
-		background: rgba(242, 83, 74, 0.1);
-		color: #f2534a;
+		background: #fee2e2;
+		color: #dc2626;
 	}
 }
 </style>

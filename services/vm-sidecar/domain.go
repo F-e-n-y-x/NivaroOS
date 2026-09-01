@@ -684,7 +684,9 @@ const domainXMLTemplate = `<domain type='kvm'>
         <address domain='0x{{.Domain}}' bus='0x{{.Bus}}' slot='0x{{.Slot}}' function='0x{{.Function}}'/>
       </source>
     </hostdev>
-    {{end}}<graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    {{end}}<input type='tablet' bus='usb'/>
+    <input type='keyboard' bus='usb'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
     <!-- virtio (not plain vga) is required for the guest to actually
          apply the <resolution> hint below - vga only offers it as an
          optional VBE/EDID-style suggestion most guest display drivers
@@ -693,6 +695,7 @@ const domainXMLTemplate = `<domain type='kvm'>
          it directly. virtio-vga still provides a legacy VGA-compatible
          boot mode, so this doesn't cost anything a plain vga guest had. -->
     <video><model type='virtio' heads='1'>{{if .DisplayWidth}}<resolution x='{{.DisplayWidth}}' y='{{.DisplayHeight}}'/>{{end}}</model></video>
+    <sound model='ich9'/>
     <memballoon model='virtio'/>
   </devices>
 </domain>`
