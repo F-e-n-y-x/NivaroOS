@@ -155,8 +155,9 @@ type NICSpec struct {
 	BridgeName string `json:"bridge_name,omitempty"`
 	// "virtio" (default) or a slower emulated NIC ("e1000", "rtl8139")
 	// for guests too old to have virtio drivers.
-	Model string `json:"model,omitempty"`
-	MAC   string `json:"mac,omitempty"`
+	Model     string `json:"model,omitempty"`
+	MAC       string `json:"mac,omitempty"`
+	LinkState string `json:"link_state,omitempty"` // "up" or "down"
 }
 
 // NICInfo is a network adapter as reported back by GET /vms.
@@ -165,6 +166,7 @@ type NICInfo struct {
 	BridgeName string `json:"bridge_name,omitempty"`
 	Model      string `json:"model"`
 	MAC        string `json:"mac,omitempty"`
+	LinkState  string `json:"link_state,omitempty"` // "up" or "down"
 }
 
 // USBDeviceSpec identifies a host USB device to pass through by its
@@ -244,6 +246,9 @@ type domainXML struct {
 			MAC struct {
 				Address string `xml:"address,attr"`
 			} `xml:"mac"`
+			Link struct {
+				State string `xml:"state,attr"`
+			} `xml:"link"`
 		} `xml:"interface"`
 		Hostdevs []struct {
 			Type   string `xml:"type,attr"`
@@ -327,7 +332,11 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 		vm.DiskGiB = vm.Disks[0].GiB
 	}
 	for _, i := range parsed.Devices.Interfaces {
-		info := NICInfo{Model: i.Model.Type, MAC: i.MAC.Address}
+		linkState := i.Link.State
+		if linkState == "" {
+			linkState = "up"
+		}
+		info := NICInfo{Model: i.Model.Type, MAC: i.MAC.Address, LinkState: linkState}
 		if i.Type == "bridge" && i.Source.Bridge != "" {
 			info.Mode = "bridge"
 			info.BridgeName = i.Source.Bridge
@@ -482,6 +491,7 @@ type renderedNIC struct {
 	BridgeName string
 	Model      string
 	MAC        string
+	LinkState  string
 	BootOrder  int
 }
 type renderedISO struct {
@@ -536,7 +546,7 @@ func buildDeviceRender(disks []DiskSpec, isoPath string, networks []NICSpec, boo
 		if model == "" {
 			model = "virtio"
 		}
-		renderedNets[i] = renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, Model: model, MAC: n.MAC}
+		renderedNets[i] = renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, Model: model, MAC: n.MAC, LinkState: n.LinkState}
 	}
 
 	for pos, sym := range bootOrder {
@@ -671,6 +681,7 @@ const domainXMLTemplate = `<domain type='kvm'>
       {{if eq .Mode "bridge"}}<source bridge='{{.BridgeName}}'/>{{else}}<source network='default'/>{{end}}
       <model type='{{.Model}}'/>
       {{if .MAC}}<mac address='{{.MAC}}'/>{{end}}
+      {{if .LinkState}}<link state='{{.LinkState}}'/>{{end}}
       {{if .BootOrder}}<boot order='{{.BootOrder}}'/>{{end}}
     </interface>
     {{end}}{{range .USBDevices}}<hostdev mode='subsystem' type='usb' managed='yes'>
@@ -1459,4 +1470,20 @@ func (s *LibvirtStore) InsertCDROM(name, isoPath string) error {
 		return err
 	}
 	return updateDeviceXML(dom, buf.String())
+}
+
+// SetNetworkLinkState connects or disconnects a virtual network adapter
+// by its MAC address (or interface name) without deleting the device.
+func (s *LibvirtStore) SetNetworkLinkState(name, mac, state string) error {
+	if state != "up" && state != "down" {
+		return fmt.Errorf("state must be 'up' or 'down'")
+	}
+	// Run live update if running
+	_ = exec.Command("virsh", "domif-setlink", name, mac, state).Run()
+	// Persist to configuration
+	out, err := exec.Command("virsh", "domif-setlink", name, mac, state, "--config").CombinedOutput()
+	if err != nil && len(out) > 0 {
+		return fmt.Errorf("setlink config: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }

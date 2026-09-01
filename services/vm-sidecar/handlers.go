@@ -176,6 +176,22 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	mux.HandleFunc("POST /vms/{name}/network/link", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MAC   string `json:"mac"`
+			State string `json:"state"` // "up" or "down"
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := store.SetNetworkLinkState(r.PathValue("name"), req.MAC, req.State); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 // vmAction adapts a LibvirtStore method taking just a VM name into an

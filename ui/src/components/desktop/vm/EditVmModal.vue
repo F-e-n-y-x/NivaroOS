@@ -202,7 +202,7 @@ export default {
 				display_width: fresh.display_width || 0,
 				display_height: fresh.display_height || 0,
 				disks: (fresh.disks || []).map((d) => ({ path: d.path, gib: d.gib, bus: d.bus, ssd: !!d.ssd })),
-				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name })),
+				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
 				usb_devices: fresh.usb_devices || [],
 				pci_devices: fresh.pci_devices || [],
 			}

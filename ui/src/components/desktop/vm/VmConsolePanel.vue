@@ -53,37 +53,35 @@
 					<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
 					<span>{{ $t('Paste') }}</span>
 				</button>
-				<div ref="shareMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" :title="$t('Share files with the virtual machine')" @click="shareMenuOpen = !shareMenuOpen">
-						<b-icon icon="folder-network-outline" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Share Files') }}</span>
-					</button>
-					<div v-if="shareMenuOpen" class="device-menu share-menu">
-						<p class="device-menu-title">{{ $t('File Sharing') }}</p>
-						<div class="share-box">
-							<p class="share-box-desc">{{ $t('Access files from inside the VM via Windows File Explorer or Linux Network:') }}</p>
-							<div class="share-path-row" :title="$t('Click to copy network path')" @click="copySharePath">
-								<code class="share-path-code">\\{{ hostIp }}\DATA</code>
-								<b-icon icon="content-copy" custom-size="mdi-16px"></b-icon>
-							</div>
-						</div>
-					</div>
-				</div>
 				<div ref="netMenuWrapper" class="menu-wrapper">
-					<button class="toolbar-btn" :title="$t('Network connections')" @click="netMenuOpen = !netMenuOpen">
+					<button class="toolbar-btn" :class="{ active: netMenuOpen }" :title="$t('Network connections')" @click="netMenuOpen = !netMenuOpen">
 						<b-icon :icon="networkIcon" custom-size="mdi-16px"></b-icon>
 						<span>{{ $t('Network') }}</span>
+						<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 					</button>
-					<div v-if="netMenuOpen" class="device-menu network-menu">
+					<div v-if="netMenuOpen" class="device-menu network-dropdown-menu">
 						<p class="device-menu-title">{{ $t('Network Adapters') }}</p>
-						<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row disk-row">
-							<div class="device-row-icon active">
+						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
+						<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
+							<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
 								<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small"></b-icon>
 							</div>
-							<span class="device-menu-desc">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT') }} &middot; {{ (n.model || 'virtio').toUpperCase() }}</span>
-							<span class="network-badge-connected">{{ $t('Connected') }}</span>
+							<div class="network-row-details">
+								<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
+								<span class="network-row-meta">{{ (n.model || 'virtio').toUpperCase() }} <template v-if="n.mac">&middot; {{ n.mac }}</template></span>
+							</div>
+							<button
+								type="button"
+								class="network-link-toggle"
+								:class="{ 'is-connected': n.link_state !== 'down' }"
+								:title="n.link_state === 'down' ? $t('Connect virtual ethernet cable') : $t('Disconnect virtual ethernet cable')"
+								:disabled="netBusy"
+								@click="toggleNetworkLink(n)"
+							>
+								<b-icon :icon="n.link_state === 'down' ? 'lan-disconnect' : 'lan-check'" size="is-small"></b-icon>
+								<span>{{ n.link_state === 'down' ? $t('Connect') : $t('Disconnect') }}</span>
+							</button>
 						</div>
-						<p v-if="!(vm && vm.networks && vm.networks.length)" class="device-menu-hint">{{ $t('No network adapters attached.') }}</p>
 					</div>
 				</div>
 				<button class="toolbar-btn" :title="scaleToFit ? $t('Show actual size') : $t('Scale to fit window')" @click="toggleScale">
@@ -165,11 +163,17 @@
 							</button>
 						</div>
 						<div class="device-menu-add">
-							<select v-model="selectedISO" class="device-menu-select" :disabled="diskBusy || !availableISOs.length">
-								<option value="" disabled>{{ availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available') }}</option>
-								<option v-for="iso in availableISOs" :key="iso.name" :value="iso.name">{{ iso.name }}</option>
-							</select>
-							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">{{ $t('Insert') }}</button>
+							<div class="custom-select-wrapper">
+								<select v-model="selectedISO" class="device-menu-select" :disabled="diskBusy || !availableISOs.length">
+									<option value="" disabled>{{ availableISOs.length ? $t('Select an ISO...') : $t('No ISOs available') }}</option>
+									<option v-for="iso in availableISOs" :key="iso.name" :value="iso.name">{{ iso.name }}</option>
+								</select>
+								<b-icon icon="chevron-down" size="is-small" class="select-chevron"></b-icon>
+							</div>
+							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
+								<b-icon icon="tray-arrow-down" size="is-small"></b-icon>
+								<span>{{ $t('Insert') }}</span>
+							</button>
 						</div>
 						<p class="device-menu-title device-menu-title-divided">{{ $t('Attached Disks') }}</p>
 						<p v-if="!(vm && vm.disks && vm.disks.length)" class="device-menu-hint">{{ $t('No virtual disks yet') }}</p>
@@ -472,8 +476,7 @@ export default {
 			keysMenuOpen: false,
 			powerMenuOpen: false,
 			netMenuOpen: false,
-			shareMenuOpen: false,
-			hostIp: window.location.hostname || '127.0.0.1',
+			netBusy: false,
 			statePollTimer: null,
 			usbMenuOpen: false,
 			diskMenuOpen: false,
@@ -677,9 +680,6 @@ export default {
 			if (this.keysMenuOpen && this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(event.target)) {
 				this.keysMenuOpen = false
 			}
-			if (this.shareMenuOpen && this.$refs.shareMenuWrapper && !this.$refs.shareMenuWrapper.contains(event.target)) {
-				this.shareMenuOpen = false
-			}
 			if (this.netMenuOpen && this.$refs.netMenuWrapper && !this.$refs.netMenuWrapper.contains(event.target)) {
 				this.netMenuOpen = false
 			}
@@ -702,21 +702,23 @@ export default {
 				document.body.removeChild(this.$refs.keyboard)
 			}
 		},
-		async copySharePath() {
-			const path = `\\\\${this.hostIp || '192.168.1.x'}\\DATA`
+		async toggleNetworkLink(net) {
+			if (!net.mac) return
+			this.netBusy = true
+			const targetState = net.link_state === 'down' ? 'up' : 'down'
 			try {
-				await navigator.clipboard.writeText(path)
+				await vmSidecar.setNetworkLink(this.vmName, net.mac, targetState)
+				net.link_state = targetState
 				this.$buefy.toast.open({
-					message: `${this.$t('Network path copied')}: ${path}`,
-					type: 'is-success',
-					duration: 2500,
+					message: targetState === 'up' ? this.$t('Network connected') : this.$t('Network disconnected'),
+					type: targetState === 'up' ? 'is-success' : 'is-warning',
+					duration: 2000,
 				})
+				await this.pollState()
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: path,
-					type: 'is-info',
-					duration: 3500,
-				})
+				this.$buefy.toast.open({ message: e.message || this.$t('Failed to change network state'), type: 'is-danger' })
+			} finally {
+				this.netBusy = false
 			}
 		},
 		async runAction(method) {
@@ -1045,53 +1047,69 @@ export default {
 	left: auto !important;
 	right: 0 !important;
 }
-.share-menu {
-	width: 19rem;
+.network-dropdown-menu {
+	width: 21rem;
 }
-.share-box {
-	background: rgba(255, 255, 255, 0.05);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 7px;
-	padding: 0.6rem;
-	margin-top: 0.35rem;
-}
-.share-box-desc {
-	font-size: 0.72rem;
-	color: rgba(255, 255, 255, 0.7);
-	margin-bottom: 0.45rem;
-	line-height: 1.35;
-}
-.share-path-row {
+.net-menu-row {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	background: rgba(0, 0, 0, 0.35);
-	padding: 0.45rem 0.6rem;
+	gap: 0.6rem;
+	padding: 0.45rem 0.55rem;
+}
+.network-row-details {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+.network-row-label {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #fff;
+}
+.network-row-meta {
+	font-size: 0.68rem;
+	color: rgba(255, 255, 255, 0.5);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.network-link-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.08);
+	color: rgba(255, 255, 255, 0.8);
+	font-family: inherit;
+	font-size: 0.72rem;
+	font-weight: 500;
+	padding: 0.3rem 0.55rem;
 	border-radius: 6px;
 	cursor: pointer;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	transition: background 0.15s ease, border-color 0.15s ease;
-
-	&:hover {
-		background: rgba(37, 99, 235, 0.25);
-		border-color: rgba(37, 99, 235, 0.5);
-	}
-}
-.share-path-code {
-	font-family: monospace;
-	font-size: 0.8rem;
-	color: #60a5fa;
-	background: none;
-	padding: 0;
-}
-.network-badge-connected {
-	font-size: 0.68rem;
-	font-weight: 600;
-	color: #34d399;
-	background: rgba(16, 185, 129, 0.15);
-	padding: 0.15rem 0.45rem;
-	border-radius: 9999px;
 	flex-shrink: 0;
+	transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.18);
+		color: #fff;
+	}
+	&.is-connected {
+		background: rgba(16, 185, 129, 0.15);
+		border-color: rgba(16, 185, 129, 0.35);
+		color: #34d399;
+
+		&:hover:not(:disabled) {
+			background: rgba(239, 68, 68, 0.2);
+			border-color: rgba(239, 68, 68, 0.4);
+			color: #f87171;
+		}
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
 }
 .power-menu-item {
 	display: flex;
@@ -1192,28 +1210,28 @@ export default {
 }
 .device-menu {
 	position: absolute;
-	top: calc(100% + 0.3rem);
+	top: calc(100% + 0.35rem);
 	right: 0;
-	z-index: 30;
+	z-index: 50;
 	background: #262626;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 8px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-	padding: 0.6rem;
-	width: 18rem;
-	max-height: 20rem;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+	padding: 0.75rem;
+	width: 20.5rem;
+	max-height: 24rem;
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 0.3rem;
+	gap: 0.35rem;
 }
 .device-menu-title {
-	font-size: 0.7rem;
+	font-size: 0.72rem;
 	font-weight: 700;
 	text-transform: uppercase;
-	letter-spacing: 0.03em;
-	color: rgba(255, 255, 255, 0.45);
-	margin: 0 0 0.2rem;
+	letter-spacing: 0.04em;
+	color: rgba(255, 255, 255, 0.5);
+	margin: 0 0 0.25rem;
 }
 .device-menu-hint {
 	font-size: 0.75rem;
@@ -1223,36 +1241,33 @@ export default {
 .device-menu-row {
 	display: flex;
 	align-items: center;
-	gap: 0.6rem;
-	padding: 0.4rem;
-	border-radius: 6px;
+	gap: 0.65rem;
+	padding: 0.45rem 0.55rem;
+	border-radius: 8px;
 	cursor: pointer;
 	color: #fff;
 	font-size: 0.78rem;
+	transition: background 0.12s ease;
 
 	&:hover {
 		background: rgba(255, 255, 255, 0.06);
 	}
 	&.active {
-		background: rgba(50, 115, 220, 0.12);
+		background: rgba(37, 99, 235, 0.15);
 	}
 	&.disk-row {
 		cursor: default;
+		background: rgba(255, 255, 255, 0.03);
+		margin-bottom: 0.25rem;
 		&:hover {
-			background: none;
-		}
-		&.active {
-			background: rgba(50, 115, 220, 0.12);
+			background: rgba(255, 255, 255, 0.05);
 		}
 	}
 }
-// Same round icon-badge treatment as the Disks/Network Adapters/Hardware
-// Passthrough rows elsewhere in this app, scaled down to fit this menu's
-// compact width.
 .device-row-icon {
 	flex-shrink: 0;
-	width: 1.9rem;
-	height: 1.9rem;
+	width: 2rem;
+	height: 2rem;
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
@@ -1261,8 +1276,8 @@ export default {
 	color: rgba(255, 255, 255, 0.5);
 
 	&.active {
-		background: rgba(50, 115, 220, 0.25);
-		color: #7fb0f5;
+		background: rgba(37, 99, 235, 0.25);
+		color: #60a5fa;
 	}
 }
 .device-menu-checkbox {
@@ -1272,9 +1287,9 @@ export default {
 	cursor: pointer;
 }
 .device-menu-title-divided {
-	margin-top: 0.5rem;
-	padding-top: 0.5rem;
-	border-top: 1px solid rgba(255, 255, 255, 0.1);
+	margin-top: 0.6rem;
+	padding-top: 0.6rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .device-menu-desc {
 	flex: 1 1 auto;
@@ -1290,12 +1305,13 @@ export default {
 	color: rgba(255, 255, 255, 0.5);
 	cursor: pointer;
 	display: flex;
-	padding: 0.25rem;
-	border-radius: 5px;
+	padding: 0.3rem;
+	border-radius: 6px;
+	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(255, 56, 96, 0.2);
-		color: #ff6b6b;
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
 	}
 	&:disabled {
 		opacity: 0.4;
@@ -1305,45 +1321,82 @@ export default {
 .device-menu-add {
 	display: flex;
 	align-items: center;
-	gap: 0.4rem;
+	gap: 0.45rem;
 	margin-top: 0.4rem;
-	padding-top: 0.5rem;
-	border-top: 1px solid rgba(255, 255, 255, 0.1);
+	padding-top: 0.6rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
-.device-menu-select {
+.custom-select-wrapper {
+	position: relative;
 	flex: 1 1 auto;
 	min-width: 0;
-	height: 2rem;
-	background: rgba(255, 255, 255, 0.08);
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	border-radius: 5px;
-	color: #fff;
-	font-family: inherit;
-	font-size: 0.75rem;
-	padding: 0 0.4rem;
-
-	&:disabled {
-		opacity: 0.4;
-	}
-	option {
-		background: #262626;
-		color: #fff;
-	}
+	display: flex;
+	align-items: center;
 }
-.device-menu-attach-btn {
-	margin-left: auto;
-	border: none;
-	background: #3273dc;
-	color: #fff;
+.device-menu-select {
+	width: 100%;
+	height: 2.15rem;
+	background: rgba(255, 255, 255, 0.07);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 8px;
+	color: #f8fafc;
 	font-family: inherit;
-	font-size: 0.75rem;
-	font-weight: 600;
-	padding: 0.35rem 0.7rem;
-	border-radius: 6px;
+	font-size: 0.78rem;
+	font-weight: 500;
+	padding: 0 1.9rem 0 0.65rem;
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
 	cursor: pointer;
+	outline: none;
+	transition: border-color 0.15s ease, background 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: #2366d1;
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(255, 255, 255, 0.28);
+	}
+	&:focus {
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	option {
+		background: #1e1e1e;
+		color: #f8fafc;
+		padding: 6px 10px;
+	}
+}
+.select-chevron {
+	position: absolute;
+	right: 0.5rem;
+	pointer-events: none;
+	color: rgba(255, 255, 255, 0.5);
+}
+.device-menu-attach-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: none;
+	background: #2563eb;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.78rem;
+	font-weight: 500;
+	padding: 0 0.85rem;
+	height: 2.15rem;
+	border-radius: 8px;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition: background 0.15s ease, transform 0.1s ease;
+
+	&:hover:not(:disabled) {
+		background: #1d4ed8;
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.97);
 	}
 	&:disabled {
 		opacity: 0.4;

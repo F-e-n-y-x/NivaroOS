@@ -70,6 +70,8 @@ export const vmSidecar = {
 	detachDisk: (name, target) => request(`/vms/${encodeURIComponent(name)}/disks/${encodeURIComponent(target)}`, { method: 'DELETE' }),
 	ejectCDROM: name => request(`/vms/${encodeURIComponent(name)}/cdrom/eject`, { method: 'POST' }),
 	insertCDROM: (name, isoPath) => request(`/vms/${encodeURIComponent(name)}/cdrom`, jsonBody({ iso_path: isoPath })),
+	setNetworkLink: (name, mac, state) =>
+		request(`/vms/${encodeURIComponent(name)}/network/link`, jsonBody({ mac, state })),
 
 	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
 	// A cache-busting `t` param is left for the caller to append when
