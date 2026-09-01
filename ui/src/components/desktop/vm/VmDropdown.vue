@@ -56,9 +56,8 @@
 					<div class="item-left">
 						<b-icon v-if="opt.icon" :icon="opt.icon" class="item-icon" size="is-small"></b-icon>
 						<span class="item-label">{{ opt.label }}</span>
-						<span v-if="opt.meta" class="item-meta">{{ opt.meta }}</span>
 					</div>
-					<b-icon v-if="isSelected(opt.value)" icon="check" class="item-check" size="is-small"></b-icon>
+					<span v-if="opt.meta" class="item-meta">{{ opt.meta }}</span>
 				</button>
 			</div>
 		</transition>
@@ -392,12 +391,6 @@ export default {
 	margin-left: 0.35rem;
 }
 
-.item-check {
-	color: #2563eb;
-	flex-shrink: 0;
-	margin-left: 0.25rem;
-}
-
 /* Size Modifiers */
 .vm-dropdown.is-small .vm-dropdown-trigger {
 	padding: 0.35rem 0.6rem;
@@ -481,10 +474,6 @@ export default {
 	.item-meta {
 		color: rgba(255, 255, 255, 0.5);
 		background: rgba(255, 255, 255, 0.08);
-	}
-
-	.item-check {
-		color: #60a5fa;
 	}
 }
 
