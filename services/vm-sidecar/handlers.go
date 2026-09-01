@@ -235,7 +235,7 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		w.WriteHeader(http.StatusCreated)
+		writeJSON(w, http.StatusCreated, spec)
 	})
 
 	mux.HandleFunc("DELETE /vms/{name}/shared-folders/{tag}", func(w http.ResponseWriter, r *http.Request) {

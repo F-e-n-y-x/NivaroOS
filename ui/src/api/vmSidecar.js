@@ -12,11 +12,27 @@ const BASE_URL = `${protocol}//${hostname}:28641`
 async function request(path, options = {}) {
 	const res = await fetch(`${BASE_URL}${path}`, options)
 	if (!res.ok) {
-		const body = await res.json().catch(() => ({}))
+		let body = {}
+		try {
+			if (res.json) body = await res.json()
+			else if (res.text) body = JSON.parse(await res.text())
+		} catch (e) {}
 		throw new Error(body.error || `${options.method || 'GET'} ${path} failed: ${res.status}`)
 	}
 	if (res.status === 204) return null
-	return res.json()
+	if (res.text) {
+		const text = await res.text()
+		if (!text || !text.trim()) return null
+		try {
+			return JSON.parse(text)
+		} catch (e) {
+			return null
+		}
+	}
+	if (res.json) {
+		return res.json().catch(() => null)
+	}
+	return null
 }
 
 const jsonBody = (payload, method = 'POST') => ({
