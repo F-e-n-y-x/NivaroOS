@@ -225,7 +225,6 @@
 								dark
 								icon="disc"
 								size="small"
-								menu-min-width="19rem"
 								style="flex: 1 1 auto; min-width: 0;"
 							></vm-dropdown>
 							<button class="device-menu-attach-btn" :disabled="diskBusy || !selectedISO" @click="insertBootISO">
@@ -1189,7 +1188,9 @@ export default {
 	right: 0 !important;
 }
 .network-dropdown-menu {
-	width: 26.5rem;
+	left: 0 !important;
+	right: auto !important;
+	width: 22rem;
 	max-width: calc(100vw - 2rem);
 	max-height: none;
 	overflow: visible;
@@ -1490,7 +1491,7 @@ export default {
 	border-radius: 12px;
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 	padding: 0.75rem;
-	width: 24.5rem;
+	width: 21.5rem;
 	max-height: 28rem;
 	overflow-y: auto;
 	scrollbar-width: thin;

@@ -53,7 +53,6 @@
 							icon="monitor"
 							size="small"
 							style="max-width: 18rem;"
-							menu-min-width="16rem"
 						></vm-dropdown>
 					</div>
 				</div>

@@ -42,6 +42,7 @@
 						'is-disabled': opt.disabled,
 					}"
 					:disabled="opt.disabled"
+					:title="opt.label + (opt.meta ? ' (' + opt.meta + ')' : '')"
 					role="option"
 					:aria-selected="isSelected(opt.value)"
 					@click="selectOption(opt)"
@@ -234,17 +235,18 @@ export default {
 	position: absolute;
 	top: calc(100% + 4px);
 	left: 0;
-	min-width: 100%;
-	width: max-content;
-	max-width: min(34rem, calc(100vw - 2rem));
+	right: 0;
+	width: 100%;
+	box-sizing: border-box;
 	z-index: 100;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
 	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.04);
 	padding: 0.35rem;
-	max-height: 16rem;
+	max-height: 15rem;
 	overflow-y: auto;
+	overflow-x: hidden;
 	scrollbar-width: thin;
 	display: flex;
 	flex-direction: column;
@@ -279,14 +281,15 @@ export default {
 
 .vm-dropdown-item {
 	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.85rem;
+	gap: 0.5rem;
 	background: transparent;
 	border: none;
 	border-radius: 6px;
-	padding: 0.45rem 0.75rem;
+	padding: 0.45rem 0.65rem;
 	font-family: inherit;
 	font-size: 0.8rem;
 	color: #334155;
@@ -294,7 +297,7 @@ export default {
 	text-align: left;
 	outline: none;
 	transition: background 0.12s ease, color 0.12s ease;
-	white-space: nowrap;
+	min-height: 2.1rem;
 
 	&:hover:not(:disabled) {
 		background: #f1f5f9;
@@ -316,10 +319,10 @@ export default {
 .item-left {
 	display: flex;
 	align-items: center;
-	gap: 0.55rem;
+	gap: 0.45rem;
 	min-width: 0;
 	flex: 1 1 auto;
-	white-space: nowrap;
+	overflow: hidden;
 }
 
 .item-icon {
@@ -332,19 +335,23 @@ export default {
 }
 
 .item-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .item-meta {
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	color: #94a3b8;
 	font-weight: normal;
 	flex-shrink: 0;
 	white-space: nowrap;
 	background: rgba(0, 0, 0, 0.04);
-	padding: 0.12rem 0.4rem;
+	padding: 0.1rem 0.35rem;
 	border-radius: 4px;
+	margin-left: 0.35rem;
 }
 
 .item-check {
