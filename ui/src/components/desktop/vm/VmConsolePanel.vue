@@ -134,7 +134,7 @@
 							<div class="device-menu-scrollable">
 								<div v-for="disk in (vm && vm.disks) || []" :key="disk.target" class="device-menu-row disk-row">
 									<div class="device-row-icon active">
-										<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small"></b-icon>
+										<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small" :custom-size="disk.ssd ? 'mdi-12px' : 'mdi-16px'"></b-icon>
 									</div>
 									<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
 									<button type="button" class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
@@ -284,7 +284,7 @@
 							<template v-if="!editingNet">
 								<div v-for="(n, idx) in (vm && vm.networks) || []" :key="idx" class="device-menu-row net-menu-row">
 									<div class="device-row-icon" :class="{ active: n.link_state !== 'down' }">
-										<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small" :custom-size="n.mode === 'bridge' ? 'mdi-14px' : 'mdi-16px'"></b-icon>
+										<b-icon :icon="n.mode === 'bridge' ? 'lan-connect' : 'lan'" size="is-small" :custom-size="n.mode === 'bridge' ? 'mdi-12px' : 'mdi-16px'"></b-icon>
 									</div>
 									<div class="network-row-details">
 										<span class="network-row-label">{{ n.mode === 'bridge' ? n.bridge_name : $t('NAT Network') }}</span>
@@ -755,7 +755,7 @@ export default {
 		// font-size, so it reads as noticeably bigger/bolder next to it -
 		// render it a size down to compensate.
 		networkIconSize() {
-			return this.vm && this.vm.network_mode && this.vm.network_mode.startsWith('bridge:') ? 'mdi-14px' : 'mdi-16px'
+			return this.vm && this.vm.network_mode && this.vm.network_mode.startsWith('bridge:') ? 'mdi-12px' : 'mdi-16px'
 		},
 		networkSummary() {
 			if (!this.vm || !this.vm.network_mode) return this.$t('None')

@@ -10,7 +10,7 @@
 		<div v-else class="iso-list">
 			<div v-for="disk in vmDisks" :key="disk.vmName + disk.path" class="iso-row">
 				<div class="iso-icon" :class="{ 'is-ssd': disk.ssd }">
-					<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" custom-size="mdi-22px"></b-icon>
+					<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" :custom-size="disk.ssd ? 'mdi-18px' : 'mdi-22px'"></b-icon>
 				</div>
 				<div class="iso-info">
 					<span class="iso-name">{{ disk.vmName }} <span class="iso-name-target">&middot; {{ disk.target }}</span></span>

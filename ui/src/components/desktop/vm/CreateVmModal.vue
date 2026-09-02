@@ -153,7 +153,7 @@
 			<template v-if="mode === 'basic'">
 				<div class="setting-card">
 					<div class="setting-row">
-						<b-icon class="row-icon" :icon="form.networks[0].mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="form.networks[0].mode === 'bridge' ? 'mdi-18px' : 'mdi-20px'"></b-icon>
+						<b-icon class="row-icon" :icon="form.networks[0].mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="form.networks[0].mode === 'bridge' ? 'mdi-16px' : 'mdi-20px'"></b-icon>
 						<div class="row-label">{{ $t('Network') }}</div>
 						<div class="row-control">
 							<div class="segmented-control">

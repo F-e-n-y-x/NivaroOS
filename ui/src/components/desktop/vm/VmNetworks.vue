@@ -15,7 +15,7 @@
 		<div v-else class="network-list">
 			<div v-for="net in networks" :key="net.name" class="network-row">
 				<div class="network-icon" :class="{ 'is-active': net.active }">
-					<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-20px' : 'mdi-22px'"></b-icon>
+					<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-18px' : 'mdi-22px'"></b-icon>
 				</div>
 				<div class="network-info">
 					<span class="network-name">{{ net.name }}</span>

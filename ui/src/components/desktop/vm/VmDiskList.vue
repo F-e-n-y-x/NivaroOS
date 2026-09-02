@@ -13,7 +13,7 @@
 	<div class="vm-disk-list">
 		<div v-for="(disk, i) in disks" :key="i" class="vm-disk-row">
 			<div class="vm-disk-icon" :class="{ 'is-ssd': disk.ssd }">
-				<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" custom-size="mdi-22px"></b-icon>
+				<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" :custom-size="disk.ssd ? 'mdi-18px' : 'mdi-22px'"></b-icon>
 			</div>
 			<div class="vm-disk-main">
 				<div class="vm-disk-size-row">
