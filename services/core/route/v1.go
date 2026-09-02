@@ -77,6 +77,17 @@ func InitV1Router() http.Handler {
 			v1SysGroup.POST("/packages/upgrade", v1.PostSystemPackageUpgrade)
 			v1SysGroup.GET("/packages/upgrade/status", v1.GetSystemPackageUpgradeStatus)
 
+			v1SysGroup.GET("/apt/search", v1.GetAptSearch)
+			v1SysGroup.GET("/apt/installed", v1.GetAptInstalled)
+			v1SysGroup.GET("/apt/upgradable", v1.GetAptUpgradable)
+			v1SysGroup.POST("/apt/install", v1.PostAptInstall)
+			v1SysGroup.POST("/apt/uninstall", v1.PostAptUninstall)
+			v1SysGroup.POST("/apt/upgrade", v1.PostAptUpgrade)
+			v1SysGroup.POST("/apt/update", v1.PostAptUpdate)
+			v1SysGroup.GET("/apt/sources", v1.GetAptSources)
+			v1SysGroup.POST("/apt/sources", v1.PostAptSources)
+			v1SysGroup.DELETE("/apt/sources", v1.DeleteAptSources)
+
 			v1SysGroup.GET("/hardware", v1.GetSystemHardwareInfo) // hardware/info
 			v1SysGroup.PUT("/hostname", v1.PutSystemHostname)
 
