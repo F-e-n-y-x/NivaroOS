@@ -5,8 +5,13 @@
 *************************************/
 
 .icon {
-	overflow: hidden;
-	
+	// This box is sized to exactly match its glyph with zero margin
+	// (see the .is-NN rules below). Some icon glyphs render a hair past
+	// their own nominal em-box at a given font-size, and overflow:hidden
+	// here clipped that sliver clean off everywhere in the app - visible
+	// as a flat-cut edge, most often at the bottom of the icon.
+	overflow: visible;
+
 	&.is-16 {
 		width: 1rem;
 		height: 1rem;
