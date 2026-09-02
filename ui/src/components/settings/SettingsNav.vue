@@ -95,6 +95,13 @@ export default {
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
+		// Buefy's own .icon base style sets overflow:hidden, and this box is
+		// sized to exactly match its glyph with zero margin - some glyphs'
+		// actual rendered ink extends a hair past their own nominal em-box
+		// at a given font-size, which then gets clipped clean off (visible
+		// as a flat-cut edge, usually at the bottom). Give it room instead
+		// of clipping.
+		overflow: visible;
 
 		i {
 			font-size: 20px;
