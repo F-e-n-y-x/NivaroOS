@@ -28,7 +28,7 @@
 		<div v-if="activeTab === 'search'">
 			<!-- Quick Install Box -->
 			<div class="setting-card mb-4">
-				<div class="setting-row">
+				<div class="setting-row quick-install-row">
 					<b-icon class="row-icon" icon="download-box-outline" pack="mdi" size="is-20"></b-icon>
 					<div class="row-label">
 						<div class="setting-title">{{ $t('Quick Install by Package Name') }}</div>
@@ -85,7 +85,7 @@
 
 			<div v-else-if="searchResults.length" class="setting-card">
 				<div v-for="pkg in searchResults" :key="pkg.name" class="setting-row">
-					<b-icon class="row-icon" icon="package-variant-closed-outline" pack="mdi" size="is-20"></b-icon>
+					<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
 					<div class="row-label">
 						<div class="setting-title is-flex is-align-items-center">
 							<span>{{ pkg.name }}</span>
@@ -133,7 +133,7 @@
 			</div>
 
 			<div v-else class="empty-state">
-				<i class="mdi mdi-package-variant-closed-outline is-size-2 text-muted"></i>
+				<i class="mdi mdi-package-variant-closed is-size-2 text-muted"></i>
 				<div class="mt-2 text-muted is-size-7">{{ $t('Type a package name above to search or quick-install.') }}</div>
 			</div>
 		</div>
@@ -163,7 +163,7 @@
 				</div>
 				<div v-else>
 					<div v-for="pkg in installedList" :key="pkg.name" class="setting-row">
-						<b-icon class="row-icon" icon="package-variant-closed-outline" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ pkg.name }}</div>
 							<div class="setting-desc">{{ pkg.version }} &middot; {{ formatBytes(pkg.size) }} &middot; {{ pkg.description }}</div>
@@ -960,6 +960,24 @@ export default {
 
 .quick-install-input {
 	width: 14rem;
+}
+
+// This row's control (a text input + button) needs more room than the
+// toggles/dropdowns most other .setting-row controls hold, so it always
+// stacks label-above-control rather than relying on the window-wide
+// is-narrow breakpoint, which only accounts for total window width, not
+// how much of that width the fixed-width sidebar already ate into.
+.quick-install-row {
+	flex-wrap: wrap;
+	row-gap: 0.6rem;
+
+	.row-label {
+		flex-basis: 100%;
+	}
+
+	.row-control {
+		flex-basis: 100%;
+	}
 }
 
 .empty-state {

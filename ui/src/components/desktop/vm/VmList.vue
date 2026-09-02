@@ -51,7 +51,7 @@
 
 				<div class="vm-card-actions">
 					<div class="vm-action-group">
-						<button v-if="vm.state !== 'running'" class="vm-action-btn" :title="$t('Start')" @click="start(vm.name)">
+						<button v-if="vm.state !== 'running'" class="vm-action-btn vm-play-btn" :title="$t('Start')" @click="start(vm.name)">
 							<b-icon icon="play" custom-size="mdi-18px"></b-icon>
 						</button>
 						<template v-else>
@@ -527,6 +527,16 @@ export default {
 	justify-content: center;
 	width: 2rem;
 	height: 2rem;
+
+	// A right-pointing play triangle's visual weight sits left of its own
+	// glyph bounding box, so centering the box (as every other icon here
+	// correctly does) still reads as off-center to the eye - nudge it right
+	// to compensate. Verified against the other action icons (measured via
+	// their real getBoundingClientRect, not a guessed crop) which don't
+	// need this.
+	&.vm-play-btn .icon {
+		transform: translateX(1px);
+	}
 	border: none;
 	background: #f8fafc;
 	color: #64748b;
