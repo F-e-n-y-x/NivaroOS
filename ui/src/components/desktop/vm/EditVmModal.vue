@@ -10,7 +10,7 @@
 		<template v-if="vm">
 			<div class="setting-card">
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
@@ -21,7 +21,7 @@
 					</div>
 				</div>
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
@@ -459,6 +459,7 @@ export default {
 .iso-picker-clear {
 	flex-shrink: 0;
 	display: flex;
+	align-items: center;
 	color: rgba(0, 0, 0, 0.35);
 	border-radius: 4px;
 

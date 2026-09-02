@@ -22,7 +22,6 @@ const state = {
 	searchEngineSwitch: true,
 	existingAppsSwitch: true,
 	recommendSwitch: true,
-	rssSwitch: false,
 
 	siteLoading: true,
 	needInitialization: false,

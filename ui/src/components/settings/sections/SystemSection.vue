@@ -226,7 +226,6 @@ export default {
 				lang: 'en_us',
 				existing_apps_switch: true,
 				recommend_switch: true,
-				rss_switch: false,
 				search_engine: 'https://duckduckgo.com/?q='
 			},
 			port: '',

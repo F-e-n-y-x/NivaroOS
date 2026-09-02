@@ -19,9 +19,9 @@
 				<div v-for="d in disksUsage" :key="d.mount_point" class="disk-config-row">
 					<span class="disk-config-label">{{ d.mount_point }}</span>
 					<button class="icon-button" type="button"
-						:title="isMountHidden(d.mount_point) ? $t('Show in widget') : $t('Hide from widget')"
-						@click="toggleMountHidden(d.mount_point)">
-						<b-icon :icon="isMountHidden(d.mount_point) ? 'eye-off-outline' : 'eye-outline'" pack="casa" size="is-16"></b-icon>
+						:title="isMountHidden(d) ? $t('Show in widget') : $t('Hide from widget')"
+						@click="toggleMountHidden(d)">
+						<b-icon :icon="isMountHidden(d) ? 'eye-off-outline' : 'eye-outline'" pack="casa" size="is-16"></b-icon>
 					</button>
 				</div>
 				<p v-if="!disksUsage.length" class="hint">{{ $t('No drives detected.') }}</p>
@@ -51,7 +51,8 @@ export default {
 			widgets: [],
 			showDiskConfig: false,
 			disksUsage: [],
-			hiddenMounts: []
+			hiddenMounts: [],
+			hasCustomHiddenMounts: false
 		}
 	},
 	created() {
@@ -83,16 +84,27 @@ export default {
 			this.$api.users.getCustomStorage(storageWidgetConfigKey).then(res => {
 				if (res.data.success === 200 && res.data.data) {
 					this.hiddenMounts = res.data.data.hiddenMounts || []
+					this.hasCustomHiddenMounts = true
 				}
 			})
 		},
-		isMountHidden(mountPoint) {
-			return this.hiddenMounts.includes(mountPoint)
+		isEfiPartition(disk) {
+			return disk.fstype === 'vfat' && /efi/i.test(disk.mount_point || '')
 		},
-		toggleMountHidden(mountPoint) {
-			this.hiddenMounts = this.isMountHidden(mountPoint)
+		// Mirrors Disks.vue's own visibleDisks logic: until an explicit
+		// config has been saved, EFI partitions read as hidden by default
+		// so this panel's eye icons match what the widget is actually
+		// showing, rather than looking "on" for something already hidden.
+		isMountHidden(disk) {
+			if (this.hiddenMounts.includes(disk.mount_point)) return true
+			return !this.hasCustomHiddenMounts && this.isEfiPartition(disk)
+		},
+		toggleMountHidden(disk) {
+			const mountPoint = disk.mount_point
+			this.hiddenMounts = this.isMountHidden(disk)
 				? this.hiddenMounts.filter(m => m !== mountPoint)
 				: this.hiddenMounts.concat([mountPoint])
+			this.hasCustomHiddenMounts = true
 			this.$api.users.setCustomStorage(storageWidgetConfigKey, { hiddenMounts: this.hiddenMounts })
 			// Settings and the desktop widget are separate component trees -
 			// broadcast the change so an already-open widget updates

@@ -97,6 +97,7 @@ export default {
 		return {
 			disksUsage: [],
 			hiddenMounts: [],
+			hasCustomHiddenMounts: false,
 			usbDisks: [],
 			timer: 0
 		}
@@ -104,6 +105,16 @@ export default {
 
 	computed: {
 		visibleDisks() {
+			// Until the user has ever touched the widget's show/hide config
+			// (a fresh install, or an existing install where they've simply
+			// never opened it), fall back to hiding EFI system partitions by
+			// default rather than an unfiltered list - they're never useful
+			// to show here and confuse people unfamiliar with them. The
+			// moment they save an explicit config (even an empty one),
+			// hiddenMounts becomes the sole source of truth.
+			if (!this.hasCustomHiddenMounts) {
+				return this.disksUsage.filter(d => !this.isEfiPartition(d))
+			}
 			return this.disksUsage.filter(d => !this.hiddenMounts.includes(d.mount_point))
 		}
 	},
@@ -128,12 +139,18 @@ export default {
 			this.$api.users.getCustomStorage(storageWidgetConfigKey).then(res => {
 				if (res.data.success === 200 && res.data.data) {
 					this.hiddenMounts = res.data.data.hiddenMounts || []
+					this.hasCustomHiddenMounts = true
 				}
 			})
 		},
 
+		isEfiPartition(disk) {
+			return disk.fstype === 'vfat' && /efi/i.test(disk.mount_point || '')
+		},
+
 		setHiddenMounts(hiddenMounts) {
 			this.hiddenMounts = hiddenMounts
+			this.hasCustomHiddenMounts = true
 		},
 
 		mountLabel(mountPoint) {

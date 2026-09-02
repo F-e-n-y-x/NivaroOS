@@ -33,8 +33,7 @@ export default {
 	data() {
 		return {
 			barData: {
-				recommend_switch: true,
-				rss_switch: false
+				recommend_switch: true
 			},
 			tokens: {
 				token: '',
@@ -68,7 +67,6 @@ export default {
 		this.onResize()
 		if (sessionStorage.getItem('fromWelcome')) {
 			this.$messageBus('global_newvisit')
-			this.rssConfirm()
 			sessionStorage.removeItem('fromWelcome')
 		}
 		this.$messageBus('global_visit')
@@ -84,8 +82,7 @@ export default {
 				const barData = {
 					lang: this.getLangFromBrowser(),
 					recommend_switch: true,
-					existing_apps_switch: true,
-					rss_switch: this.barData.rss_switch
+					existing_apps_switch: true
 				}
 				const saveRes = await this.$api.users.setCustomStorage('system', barData)
 				if (saveRes.data.success === 200) {
@@ -95,7 +92,6 @@ export default {
 			}
 
 			this.$store.commit('SET_RECOMMEND_SWITCH', systemConfig.data.data.recommend_switch)
-			this.$store.commit('SET_RSS_SWITCH', systemConfig.data.data.rss_switch)
 			this.barData = systemConfig.data.data
 			this.isLoading = false
 		},
@@ -167,26 +163,6 @@ export default {
 					if (customDateTimeFormat !== undefined) this.$store.commit('SET_CUSTOM_DATETIME_FORMAT', customDateTimeFormat)
 				}
 			}).catch(() => {})
-		},
-
-		rssConfirm() {
-			this.$buefy.dialog.confirm({
-				title: this.$t('Show news feed from NivaroOS Blog'),
-				message: this.$t('NivaroOS dashboard will get the latest news feed via Internet. Do you accept?'),
-				type: 'is-dark',
-				confirmText: this.$t('Accept'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: async () => {
-					let systemConfig = await this.$api.users.getCustomStorage('system')
-					let barData = systemConfig.data.data
-					barData.rss_switch = true
-					const saveRes = await this.$api.users.setCustomStorage('system', barData)
-					this.barData = saveRes.data.data
-				},
-				onCancel: () => {
-					this.barData.rss_switch = false
-				}
-			})
 		},
 
 		async showStorageManagerPanelModal() {

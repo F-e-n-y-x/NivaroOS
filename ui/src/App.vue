@@ -189,8 +189,8 @@ Appearance (see SettingsApp.vue's applyBackdrop). Windows are fully
 opaque/white by default (no see-through glass) - lower the alpha
 slider there if some transparency is wanted instead. */
 :root {
-	--ui-backdrop-alpha: 1;
-	--ui-backdrop-blur: 0px;
+	--ui-backdrop-alpha: 0.4;
+	--ui-backdrop-blur: 5px;
 }
 
 </style>

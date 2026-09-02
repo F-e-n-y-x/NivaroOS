@@ -74,8 +74,8 @@ export default {
 	components: { WallpaperModal, WidgetVisibilityPanel },
 	data() {
 		return {
-			backdropAlphaPct: 100,
-			backdropBlurPx: 0
+			backdropAlphaPct: 40,
+			backdropBlurPx: 5
 		}
 	},
 	created() {
@@ -85,8 +85,8 @@ export default {
 		restoreBackdropSettings() {
 			const alpha = localStorage.getItem('uiBackdropAlpha')
 			const blur = localStorage.getItem('uiBackdropBlur')
-			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 100
-			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 0
+			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 40
+			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 5
 
 			this.$api.users.getCustomStorage('appearance').then(res => {
 				if (res.data.success === 200 && res.data.data) {
@@ -124,8 +124,8 @@ export default {
 			this.saveAppearanceSettings()
 		},
 		resetToDefaults() {
-			this.backdropAlphaPct = 100
-			this.backdropBlurPx = 0
+			this.backdropAlphaPct = 40
+			this.backdropBlurPx = 5
 			this.applyBackdropAlpha()
 			this.applyBackdropBlur()
 			this.$buefy.toast.open({ message: this.$t('Appearance reset to defaults'), type: 'is-success' })

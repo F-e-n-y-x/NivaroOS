@@ -80,10 +80,6 @@ const mutations = {
 		state.recommendSwitch = val
 	},
 
-	SET_RSS_SWITCH(state, val) {
-		state.rssSwitch = val
-	},
-
 	SET_HARDWARE_INFO(state, val) {
 		state.hardwareInfo = val
 	},

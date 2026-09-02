@@ -43,8 +43,8 @@
 						</span>
 					</div>
 					<div class="vm-specs">
-						<span class="vm-spec"><b-icon icon="chip" custom-size="mdi-14px"></b-icon>{{ vm.vcpus }} {{ $t('vCPU') }}</span>
-						<span class="vm-spec"><b-icon icon="memory" custom-size="mdi-14px"></b-icon>{{ formatMib(vm.memory_mib) }}</span>
+						<span class="vm-spec"><b-icon icon="memory" custom-size="mdi-14px"></b-icon>{{ vm.vcpus }} {{ $t('vCPU') }}</span>
+						<span class="vm-spec"><b-icon icon="chip" custom-size="mdi-14px"></b-icon>{{ formatMib(vm.memory_mib) }}</span>
 						<span class="vm-spec"><b-icon icon="lan" custom-size="mdi-14px"></b-icon>{{ networkLabel(vm) }}</span>
 					</div>
 				</div>
