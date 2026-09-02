@@ -26,38 +26,6 @@
 
 		<!-- ==================== TAB 1: SEARCH & INSTALL ==================== -->
 		<div v-if="activeTab === 'search'">
-			<!-- Quick Install Box -->
-			<div class="setting-card mb-4">
-				<div class="setting-row quick-install-row">
-					<b-icon class="row-icon" icon="download-box-outline" pack="mdi" size="is-20"></b-icon>
-					<div class="row-label">
-						<div class="setting-title">{{ $t('Quick Install by Package Name') }}</div>
-						<div class="setting-desc">{{ $t('Install any Linux APT package directly by name') }}</div>
-					</div>
-					<div class="row-control">
-						<div class="is-flex is-align-items-center">
-							<b-input
-								v-model="quickInstallName"
-								size="is-small"
-								placeholder="e.g. htop, neofetch, git"
-								class="quick-install-input mr-2"
-								@keyup.enter.native="installPackage(quickInstallName)"
-							></b-input>
-							<b-button
-								rounded
-								size="is-small"
-								type="is-primary"
-								:disabled="!quickInstallName.trim()"
-								:loading="processingPkg === quickInstallName.trim()"
-								@click="installPackage(quickInstallName)"
-							>
-								<i class="mdi mdi-plus mr-1"></i>{{ $t('Install') }}
-							</b-button>
-						</div>
-					</div>
-				</div>
-			</div>
-
 			<!-- Search Bar -->
 			<div class="search-wrap mb-3">
 				<b-icon class="search-icon" icon="magnify" pack="mdi" size="is-20"></b-icon>
@@ -134,7 +102,7 @@
 
 			<div v-else class="empty-state">
 				<i class="mdi mdi-package-variant-closed is-size-2 text-muted"></i>
-				<div class="mt-2 text-muted is-size-7">{{ $t('Type a package name above to search or quick-install.') }}</div>
+				<div class="mt-2 text-muted is-size-7">{{ $t('Type a package name above to search.') }}</div>
 			</div>
 		</div>
 
@@ -494,7 +462,6 @@ export default {
 			searchQuery: '',
 			searching: false,
 			searchResults: [],
-			quickInstallName: '',
 			processingPkg: null,
 
 			installedQuery: '',
@@ -652,7 +619,6 @@ export default {
 			this.$api.sys.installAptPackages([pkgName], reinstall)
 				.then(res => {
 					this.processingPkg = null
-					this.quickInstallName = ''
 					this.$buefy.toast.open({ message: this.$t('Package installed successfully'), type: 'is-success' })
 					this.onSearchInput()
 					this.fetchInstalled()
@@ -955,28 +921,6 @@ export default {
 	cursor: pointer;
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);
-	}
-}
-
-.quick-install-input {
-	width: 14rem;
-}
-
-// This row's control (a text input + button) needs more room than the
-// toggles/dropdowns most other .setting-row controls hold, so it always
-// stacks label-above-control rather than relying on the window-wide
-// is-narrow breakpoint, which only accounts for total window width, not
-// how much of that width the fixed-width sidebar already ate into.
-.quick-install-row {
-	flex-wrap: wrap;
-	row-gap: 0.6rem;
-
-	.row-label {
-		flex-basis: 100%;
-	}
-
-	.row-control {
-		flex-basis: 100%;
 	}
 }
 
