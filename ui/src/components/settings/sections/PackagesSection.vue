@@ -47,13 +47,13 @@
 			</div>
 
 			<div v-else-if="searchQuery && !searchResults.length" class="empty-state">
-				<i class="mdi mdi-package-variant is-size-3 text-muted"></i>
+				<i class="mdi mdi-cube-outline is-size-3 text-muted"></i>
 				<div class="mt-2 text-muted is-size-7">{{ $t('No packages found matching') }} "{{ searchQuery }}"</div>
 			</div>
 
 			<div v-else-if="searchResults.length" class="setting-card">
 				<div v-for="pkg in searchResults" :key="pkg.name" class="setting-row">
-					<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
+					<b-icon class="row-icon" icon="cube-outline" pack="mdi" size="is-20"></b-icon>
 					<div class="row-label">
 						<div class="setting-title is-flex is-align-items-center">
 							<span>{{ pkg.name }}</span>
@@ -101,7 +101,7 @@
 			</div>
 
 			<div v-else class="empty-state">
-				<i class="mdi mdi-package-variant-closed is-size-2 text-muted"></i>
+				<i class="mdi mdi-cube-outline is-size-2 text-muted"></i>
 				<div class="mt-2 text-muted is-size-7">{{ $t('Type a package name above to search.') }}</div>
 			</div>
 		</div>
@@ -131,7 +131,7 @@
 				</div>
 				<div v-else>
 					<div v-for="pkg in installedList" :key="pkg.name" class="setting-row">
-						<b-icon class="row-icon" icon="package-variant-closed" pack="mdi" size="is-20"></b-icon>
+						<b-icon class="row-icon" icon="cube-outline" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ pkg.name }}</div>
 							<div class="setting-desc">{{ pkg.version }} &middot; {{ formatBytes(pkg.size) }} &middot; {{ pkg.description }}</div>
@@ -455,7 +455,7 @@ export default {
 			activeTab: 'search',
 			tabs: [
 				{ id: 'search', label: 'Search & Install', icon: 'mdi-magnify' },
-				{ id: 'installed', label: 'Installed', icon: 'mdi-package-variant-closed' },
+				{ id: 'installed', label: 'Installed', icon: 'mdi-cube-outline' },
 				{ id: 'upgrades', label: 'Upgrades', icon: 'mdi-arrow-up-bold-circle-outline' },
 				{ id: 'sources', label: 'Repositories', icon: 'mdi-server-network' }
 			],

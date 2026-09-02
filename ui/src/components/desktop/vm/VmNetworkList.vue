@@ -9,7 +9,7 @@
 	<div class="vm-net-list">
 		<div v-for="(net, i) in networks" :key="i" class="vm-net-row">
 			<div class="vm-net-icon" :class="{ 'is-bridge': net.mode === 'bridge' }">
-				<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" custom-size="mdi-22px"></b-icon>
+				<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-20px' : 'mdi-22px'"></b-icon>
 			</div>
 			<div class="vm-net-controls">
 				<div class="segmented-control vm-net-mode">
