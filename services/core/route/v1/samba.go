@@ -33,7 +33,7 @@ import (
 // service
 
 func GetSambaStatus(ctx echo.Context) error {
-	if status, err := systemctl.IsServiceRunning("smbd"); err != nil || !status {
+	if status, err := systemctl.IsServiceRunning("smbd.service"); err != nil || !status {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{
 			Success: common_err.SERVICE_NOT_RUNNING,
 			Message: common_err.GetMsg(common_err.SERVICE_NOT_RUNNING),
@@ -60,6 +60,8 @@ func GetSambaSharesList(ctx echo.Context) error {
 			Anonymous: v.Anonymous,
 			Path:      v.Path,
 			ID:        v.ID,
+			Name:      v.Name,
+			ReadOnly:  v.ReadOnly,
 		})
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shareList})
@@ -82,16 +84,45 @@ func PostSambaSharesCreate(ctx echo.Context) error {
 			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.SHARE_NAME_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.SHARE_NAME_ALREADY_EXISTS)})
 		}
 	}
-	for _, v := range shares {
+	for i, v := range shares {
 		shareDBModel := model2.SharesDBModel{}
-		shareDBModel.Anonymous = true
+		shareDBModel.Anonymous = v.Anonymous
+		shareDBModel.ReadOnly = v.ReadOnly
 		shareDBModel.Path = v.Path
-		shareDBModel.Name = filepath.Base(v.Path)
+		shareDBModel.Name = v.Name
+		if shareDBModel.Name == "" {
+			shareDBModel.Name = filepath.Base(v.Path)
+		}
 		os.Chmod(v.Path, 0o777)
 		service.MyService.Shares().CreateShare(shareDBModel)
+		shares[i].Name = shareDBModel.Name
 	}
 
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shares})
+}
+
+func PutSambaShare(ctx echo.Context) error {
+	id := ctx.Param("id")
+	if id == "" {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
+	}
+	existing := service.MyService.Shares().GetShareByID(id)
+	if existing.ID == 0 {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.Record_NOT_EXIST, Message: common_err.GetMsg(common_err.Record_NOT_EXIST)})
+	}
+
+	req := model.Shares{}
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
+	}
+	name := req.Name
+	if name == "" {
+		name = filepath.Base(existing.Path)
+	}
+	if err := service.MyService.Shares().UpdateShare(id, name, req.ReadOnly, req.Anonymous); err != nil {
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }
 
 func DeleteSambaShares(ctx echo.Context) error {
@@ -109,11 +140,12 @@ func GetSambaConnectionsList(ctx echo.Context) error {
 	connectionList := []model.Connections{}
 	for _, v := range connections {
 		connectionList = append(connectionList, model.Connections{
-			ID:         v.ID,
-			Username:   v.Username,
-			Port:       v.Port,
-			Host:       v.Host,
-			MountPoint: v.MountPoint,
+			ID:          v.ID,
+			Username:    v.Username,
+			Port:        v.Port,
+			Host:        v.Host,
+			MountPoint:  v.MountPoint,
+			Directories: v.Directories,
 		})
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: connectionList})

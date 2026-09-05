@@ -13,4 +13,6 @@ type Shares struct {
 	ID        uint   `json:"id"`
 	Anonymous bool   `json:"anonymous"`
 	Path      string `json:"path"`
+	Name      string `json:"name"`
+	ReadOnly  bool   `json:"read_only"`
 }

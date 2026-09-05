@@ -25,7 +25,9 @@ type SharesService interface {
 	GetSharesList() (shares []model2.SharesDBModel)
 	GetSharesByPath(path string) (shares []model2.SharesDBModel)
 	GetSharesByName(name string) (shares []model2.SharesDBModel)
+	GetShareByID(id string) (share model2.SharesDBModel)
 	CreateShare(share model2.SharesDBModel)
+	UpdateShare(id string, name string, readOnly bool, anonymous bool) error
 	DeleteShare(id string)
 	UpdateConfigFile()
 	InitSambaConfig()
@@ -42,18 +44,23 @@ func (s *sharesStruct) DeleteShareByPath(path string) {
 }
 
 func (s *sharesStruct) GetSharesByName(name string) (shares []model2.SharesDBModel) {
-	s.db.Select("anonymous,path,id").Where("name = ?", name).Find(&shares)
+	s.db.Where("name = ?", name).Find(&shares)
 
 	return
 }
 
 func (s *sharesStruct) GetSharesByPath(path string) (shares []model2.SharesDBModel) {
-	s.db.Select("anonymous,path,id").Where("path = ?", path).Find(&shares)
+	s.db.Where("path = ?", path).Find(&shares)
 	return
 }
 
 func (s *sharesStruct) GetSharesList() (shares []model2.SharesDBModel) {
-	s.db.Select("anonymous,path,id").Find(&shares)
+	s.db.Find(&shares)
+	return
+}
+
+func (s *sharesStruct) GetShareByID(id string) (share model2.SharesDBModel) {
+	s.db.Where("id = ?", id).First(&share)
 	return
 }
 
@@ -63,6 +70,19 @@ func (s *sharesStruct) CreateShare(share model2.SharesDBModel) {
 	s.UpdateConfigFile()
 }
 
+func (s *sharesStruct) UpdateShare(id string, name string, readOnly bool, anonymous bool) error {
+	updates := map[string]interface{}{
+		"name":      name,
+		"read_only": readOnly,
+		"anonymous": anonymous,
+	}
+	if err := s.db.Model(&model.SharesDBModel{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+		return err
+	}
+	s.UpdateConfigFile()
+	return nil
+}
+
 func (s *sharesStruct) DeleteShare(id string) {
 	s.db.Where("id= ?", id).Delete(&model.SharesDBModel{})
 	s.UpdateConfigFile()
@@ -70,22 +90,43 @@ func (s *sharesStruct) DeleteShare(id string) {
 
 func (s *sharesStruct) UpdateConfigFile() {
 	shares := []model2.SharesDBModel{}
-	s.db.Select("anonymous,path").Find(&shares)
+	s.db.Find(&shares)
 	// generated config file
 	configStr := ""
 	for _, share := range shares {
-		dirName := filepath.Base(share.Path)
-		configStr += `
-[` + dirName + `]
-comment = NivaroOS share ` + dirName + `
-public = Yes
-path = ` + share.Path + `
-browseable = Yes
-read only = No
-guest ok = Yes
+		sectionName := share.Name
+		if sectionName == "" {
+			sectionName = filepath.Base(share.Path)
+		}
+		readOnly := "No"
+		if share.ReadOnly {
+			readOnly = "Yes"
+		}
+		// A guest ("Anonymous") share is world-writable-by-default and owned
+		// by root regardless of who connects, matching what this always did
+		// before per-share options existed. A non-guest share instead
+		// requires a real SMB login (any account created via smbusers.go/
+		// pdbedit) and lets that connecting user's own Unix permissions on
+		// the path apply - "force user" and "guest ok = Yes" together would
+		// otherwise make the guest-only behavior impossible to ever turn
+		// off. There's no per-share user allowlist (every SMB user can
+		// access every non-guest share) - a "valid users" restriction would
+		// need its own dedicated group/UI concept this doesn't have yet.
+		access := `guest ok = Yes
 create mask = 0777
 directory mask = 0777
-force user = root
+force user = root`
+		if !share.Anonymous {
+			access = `guest ok = No`
+		}
+		configStr += `
+[` + sectionName + `]
+comment = NivaroOS share ` + sectionName + `
+public = ` + map[bool]string{true: "Yes", false: "No"}[share.Anonymous] + `
+path = ` + share.Path + `
+browseable = Yes
+read only = ` + readOnly + `
+` + access + `
 
 `
 	}

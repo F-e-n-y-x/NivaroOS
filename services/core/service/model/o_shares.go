@@ -14,6 +14,7 @@ type SharesDBModel struct {
 	Anonymous bool   `json:"anonymous"`
 	Path      string `json:"path"`
 	Name      string `json:"name"`
+	ReadOnly  bool   `json:"read_only"`
 	Updated   int64  `gorm:"autoUpdateTime"`
 	Created   int64  `gorm:"autoCreateTime"`
 }

@@ -14,7 +14,12 @@
 			</div>
 		</div>
 
-		<h3 class="setting-card-title">{{ $t('Network Shares') }}</h3>
+		<h3 class="setting-card-title">{{ $t('Connect to a Network Share') }}</h3>
+		<div class="setting-card">
+			<network-connections-panel></network-connections-panel>
+		</div>
+
+		<h3 class="setting-card-title">{{ $t('Share a Folder from This Device') }}</h3>
 		<div class="setting-card">
 			<network-shares-panel></network-shares-panel>
 		</div>
@@ -26,17 +31,19 @@
 
 <script>
 import NetworkSharesPanel from '@/components/settings/NetworkSharesPanel.vue'
+import NetworkConnectionsPanel from '@/components/settings/NetworkConnectionsPanel.vue'
 import RemoteAccessPanel from '@/components/settings/RemoteAccessPanel.vue'
 
 export const ROWS = [
 	{ label: 'This Device' },
-	{ label: 'Network Shares' },
+	{ label: 'Connect to a Network Share' },
+	{ label: 'Share a Folder from This Device' },
 	{ label: 'Remote Access' }
 ]
 
 export default {
 	name: 'network-section',
-	components: { NetworkSharesPanel, RemoteAccessPanel },
+	components: { NetworkSharesPanel, NetworkConnectionsPanel, RemoteAccessPanel },
 	data() {
 		return {
 			interfaces: []
