@@ -39,6 +39,8 @@ DETECTED_PORT="80"
 WITH_VM=""
 YES=""
 DEBUG=""
+CLI_WIDTH=""
+CLI_HEIGHT=""
 STEP_NUM=0
 TOTAL_STEPS=9
 START_TIME=0
@@ -115,21 +117,58 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT INT TERM
 
 # ------------------------------------------------------------------------------
-# Real-Time Terminal Dimension Detection
+# Real-Time Terminal Dimension Detection & CPR Hardware Probing
 # ------------------------------------------------------------------------------
 TERM_COLS=80
 TERM_ROWS=24
 
 get_term_size() {
-	local rows=24 cols=80
-	if [ -e /dev/tty ]; then
-		local stty_out
-		stty_out="$(stty size </dev/tty 2>/dev/null || true)"
-		if [ -n "$stty_out" ]; then
-			rows="$(echo "$stty_out" | awk '{print $1}')"
-			cols="$(echo "$stty_out" | awk '{print $2}')"
+	if [ -n "${CLI_WIDTH:-}" ] && [ "$CLI_WIDTH" -ge 40 ] 2>/dev/null; then
+		TERM_COLS="$CLI_WIDTH"
+		TERM_ROWS="${CLI_HEIGHT:-24}"
+		return
+	fi
+	if [ -n "${WIDTH:-}" ] && [ "$WIDTH" -ge 40 ] 2>/dev/null; then
+		TERM_COLS="$WIDTH"
+		TERM_ROWS="${HEIGHT:-24}"
+		return
+	fi
+
+	local rows=0 cols=0
+
+	# 1. Probe terminal emulator directly via ANSI CPR (Cursor Position Report)
+	# This detects real web-terminal (xterm.js/Portainer/browser) width even when PTY defaults to 80
+	if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+		if command -v stty >/dev/null 2>&1; then
+			local old_stty
+			old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
+			if [ -n "$old_stty" ]; then
+				stty raw -echo min 0 time 0 </dev/tty 2>/dev/null || true
+				printf "\0337\033[9999;9999H\033[6n\0338" >/dev/tty 2>/dev/null || true
+				local resp=""
+				read -r -t 0.08 -d 'R' resp </dev/tty 2>/dev/null || true
+				stty "$old_stty" </dev/tty 2>/dev/null || true
+				if [[ "$resp" =~ \[([0-9]+)\;([0-9]+) ]]; then
+					rows="${BASH_REMATCH[1]}"
+					cols="${BASH_REMATCH[2]}"
+				fi
+			fi
 		fi
 	fi
+
+	# 2. Fallback to stty size on /dev/tty
+	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
+		if [ -e /dev/tty ]; then
+			local stty_out
+			stty_out="$(stty size </dev/tty 2>/dev/null || true)"
+			if [ -n "$stty_out" ]; then
+				rows="$(echo "$stty_out" | awk '{print $1}')"
+				cols="$(echo "$stty_out" | awk '{print $2}')"
+			fi
+		fi
+	fi
+
+	# 3. Fallback to stty size on stdin
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		if [ -t 0 ] || [ -t 1 ]; then
 			local stty_out
@@ -140,18 +179,29 @@ get_term_size() {
 			fi
 		fi
 	fi
+
+	# 4. Fallback to tput
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		if command -v tput >/dev/null 2>&1; then
 			cols="$(tput cols 2>/dev/null || true)"
 			rows="$(tput lines 2>/dev/null || true)"
 		fi
 	fi
+
+	# 5. Fallback to environment variables
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		cols="${COLUMNS:-80}"
 		rows="${LINES:-24}"
 	fi
+
 	if [ "$cols" -lt 40 ] 2>/dev/null; then cols=80; fi
 	if [ "$rows" -lt 10 ] 2>/dev/null; then rows=24; fi
+
+	# Sync kernel tty driver if CPR found a larger width
+	if [ "$cols" -gt 0 ] && [ "$rows" -gt 0 ] && [ -e /dev/tty ]; then
+		stty rows "$rows" cols "$cols" </dev/tty 2>/dev/null || true
+	fi
+
 	TERM_COLS="$cols"
 	TERM_ROWS="$rows"
 }
@@ -415,6 +465,11 @@ parse_args() {
 				shift
 				CUSTOM_PORT="${1:-}"
 				;;
+			--width=*) CLI_WIDTH="${1#*=}" ;;
+			--width|-w)
+				shift
+				CLI_WIDTH="${1:-}"
+				;;
 			--branch=*) BRANCH="${1#*=}" ;;
 			--branch|-b)
 				shift
@@ -431,6 +486,7 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--with-vm${COLOR_RESET}             Install VM Manager with QEMU/KVM, libvirt & web console"
 				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}          Skip VM Manager installation (can be enabled later via CLI)"
 				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}         Custom HTTP dashboard port (default: 80 or next free port)"
+				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}        Force specific terminal box width (default: auto-detect)"
 				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}     Git branch or tag to install (default: master)"
 				printf '%b\n' "  ${COLOR_CYAN}--debug${COLOR_RESET}               Show detailed verbose logs during installation"
 				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}            Display this help message and exit"

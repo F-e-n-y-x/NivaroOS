@@ -18,6 +18,8 @@ MANIFEST_FILE="/var/lib/nivaroos/manifest"
 
 PURGE_DATA=""
 YES=""
+CLI_WIDTH=""
+CLI_HEIGHT=""
 STEP_NUM=0
 TOTAL_STEPS=4
 START_TIME=0
@@ -71,21 +73,57 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT INT TERM
 
 # ------------------------------------------------------------------------------
-# Real-Time Terminal Dimension Detection
+# Real-Time Terminal Dimension Detection & CPR Hardware Probing
 # ------------------------------------------------------------------------------
 TERM_COLS=80
 TERM_ROWS=24
 
 get_term_size() {
-	local rows=24 cols=80
-	if [ -e /dev/tty ]; then
-		local stty_out
-		stty_out="$(stty size </dev/tty 2>/dev/null || true)"
-		if [ -n "$stty_out" ]; then
-			rows="$(echo "$stty_out" | awk '{print $1}')"
-			cols="$(echo "$stty_out" | awk '{print $2}')"
+	if [ -n "${CLI_WIDTH:-}" ] && [ "$CLI_WIDTH" -ge 40 ] 2>/dev/null; then
+		TERM_COLS="$CLI_WIDTH"
+		TERM_ROWS="${CLI_HEIGHT:-24}"
+		return
+	fi
+	if [ -n "${WIDTH:-}" ] && [ "$WIDTH" -ge 40 ] 2>/dev/null; then
+		TERM_COLS="$WIDTH"
+		TERM_ROWS="${HEIGHT:-24}"
+		return
+	fi
+
+	local rows=0 cols=0
+
+	# 1. Probe terminal emulator directly via ANSI CPR (Cursor Position Report)
+	if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+		if command -v stty >/dev/null 2>&1; then
+			local old_stty
+			old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
+			if [ -n "$old_stty" ]; then
+				stty raw -echo min 0 time 0 </dev/tty 2>/dev/null || true
+				printf "\0337\033[9999;9999H\033[6n\0338" >/dev/tty 2>/dev/null || true
+				local resp=""
+				read -r -t 0.08 -d 'R' resp </dev/tty 2>/dev/null || true
+				stty "$old_stty" </dev/tty 2>/dev/null || true
+				if [[ "$resp" =~ \[([0-9]+)\;([0-9]+) ]]; then
+					rows="${BASH_REMATCH[1]}"
+					cols="${BASH_REMATCH[2]}"
+				fi
+			fi
 		fi
 	fi
+
+	# 2. Fallback to stty size on /dev/tty
+	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
+		if [ -e /dev/tty ]; then
+			local stty_out
+			stty_out="$(stty size </dev/tty 2>/dev/null || true)"
+			if [ -n "$stty_out" ]; then
+				rows="$(echo "$stty_out" | awk '{print $1}')"
+				cols="$(echo "$stty_out" | awk '{print $2}')"
+			fi
+		fi
+	fi
+
+	# 3. Fallback to stty size on stdin
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		if [ -t 0 ] || [ -t 1 ]; then
 			local stty_out
@@ -96,18 +134,29 @@ get_term_size() {
 			fi
 		fi
 	fi
+
+	# 4. Fallback to tput
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		if command -v tput >/dev/null 2>&1; then
 			cols="$(tput cols 2>/dev/null || true)"
 			rows="$(tput lines 2>/dev/null || true)"
 		fi
 	fi
+
+	# 5. Fallback to environment variables
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		cols="${COLUMNS:-80}"
 		rows="${LINES:-24}"
 	fi
+
 	if [ "$cols" -lt 40 ] 2>/dev/null; then cols=80; fi
 	if [ "$rows" -lt 10 ] 2>/dev/null; then rows=24; fi
+
+	# Sync kernel tty driver if CPR found a larger width
+	if [ "$cols" -gt 0 ] && [ "$rows" -gt 0 ] && [ -e /dev/tty ]; then
+		stty rows "$rows" cols "$cols" </dev/tty 2>/dev/null || true
+	fi
+
 	TERM_COLS="$cols"
 	TERM_ROWS="$rows"
 }
@@ -156,12 +205,18 @@ parse_args() {
 		case "$1" in
 			--purge-data) PURGE_DATA=yes ;;
 			--yes|-y|--unattended) YES=yes ;;
+			--width=*) CLI_WIDTH="${1#*=}" ;;
+			--width|-w)
+				shift
+				CLI_WIDTH="${1:-}"
+				;;
 			--help|-h)
 				print_banner
 				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} uninstall.sh [options]\n"
 				printf '%b\n' "${COLOR_BOLD}Options:${COLOR_RESET}"
 				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}             Automatic non-interactive uninstall (skip confirmation)"
 				printf '%b\n' "  ${COLOR_CYAN}--purge-data${COLOR_RESET}          Permanently delete /DATA (all app configs, VM disks, files)"
+				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}        Force specific terminal box width (default: auto-detect)"
 				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}            Display this help message and exit"
 				printf '\n'
 				exit 0
