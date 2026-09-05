@@ -19,6 +19,9 @@
 			<span v-if="isConsoleWindow && consoleStatus" class="window-title-status" :class="'is-' + consoleStatus">{{ consoleStatusText }}</span>
 			<div class="window-titlebar-spacer"></div>
 			<div class="window-controls">
+				<button v-if="isConsoleWindow" type="button" class="window-btn-action" :title="$t('Open in New Tab')" @click.stop="openConsoleTab">
+					<b-icon icon="open-in-new" custom-size="mdi-14px"></b-icon>
+				</button>
 				<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="minimize"></button>
 				<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="close"></button>
 			</div>
@@ -174,6 +177,13 @@ export default {
 
 		minimize() {
 			this.$store.commit('TOGGLE_MINIMIZE_WINDOW', this.win.id)
+		},
+
+		openConsoleTab() {
+			const name = (this.win.props && this.win.props.vmName) || this.win.title
+			if (!name) return
+			const url = this.$router.resolve({ name: 'VmConsoleStandalone', params: { name } }).href
+			window.open(url, '_blank')
 		},
 
 		startDrag(e) {
@@ -404,8 +414,34 @@ export default {
 
 .window-controls {
 	display: flex;
+	align-items: center;
 	gap: 0.5rem;
 	flex-shrink: 0;
+}
+
+.window-btn-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	border-radius: 4px;
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.65);
+	cursor: pointer;
+	padding: 0;
+	margin-right: 0.15rem;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.15);
+		color: #ffffff;
+	}
+
+	&:active {
+		transform: scale(0.95);
+	}
 }
 
 .window-btn {
