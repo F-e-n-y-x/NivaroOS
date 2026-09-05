@@ -189,7 +189,25 @@
 }
 
 .modal-background {
-    background: rgba(0, 0, 0, .8);
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(2px);
+}
+
+.desktop-window,
+.window-manager,
+.settings-app,
+.vm-manager {
+    .modal {
+        position: absolute;
+        inset: 0;
+        z-index: 1500;
+        overflow: hidden;
+
+        .modal-background {
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(1.5px);
+        }
+    }
 }
 
 @media screen and (min-width: 769px) {
@@ -209,19 +227,32 @@
 .dialog {
     .modal-card {
         background-color: #FFFFFF !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
+        overflow: hidden;
+        max-width: 440px;
 
         .modal-card-head {
-            height: 3.5rem;
-            padding: 1.25rem 1.25rem .5rem 1.5rem;
-            border-bottom: 1px solid rgba(133, 149, 163, .1215686275);
+            height: auto;
+            padding: 1rem 1.25rem 0.75rem 1.25rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            background: #ffffff;
 
             .modal-card-title {
-                font-size: 1rem;
+                font-size: 0.9375rem;
+                font-weight: 600;
+                color: #0f172a;
             }
         }
 
         .modal-card-body {
+            padding: 1rem 1.25rem;
             border: none;
+            background: #ffffff;
+            color: #334155;
+            font-size: 0.85rem;
+            line-height: 1.45;
         }
 
         .media {
@@ -233,7 +264,39 @@
         }
 
         .modal-card-foot {
-            gap: .5rem;
+            padding: 0.75rem 1.25rem 1rem 1.25rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            background: #ffffff;
+            gap: 0.5rem;
+            justify-content: flex-end;
+
+            .button {
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 0.8125rem;
+                height: 2rem;
+                padding: 0 0.85rem;
+                border: none;
+                box-shadow: none;
+
+                &.is-danger {
+                    background: #ef4444;
+                    color: #fff;
+                    &:hover { background: #dc2626; }
+                }
+
+                &.is-primary {
+                    background: #2563eb;
+                    color: #fff;
+                    &:hover { background: #1d4ed8; }
+                }
+
+                &:not(.is-primary):not(.is-danger):not(.is-dark) {
+                    background: rgba(0, 0, 0, 0.045);
+                    color: #1e293b;
+                    &:hover { background: rgba(0, 0, 0, 0.08); }
+                }
+            }
         }
     }
 }

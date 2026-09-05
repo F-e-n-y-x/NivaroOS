@@ -206,40 +206,68 @@
 			</div>
 		</div>
 
-		<!-- ==================== LOG VIEWER MODAL ==================== -->
-		<b-modal
-			v-model="showLogModal"
-			has-modal-card
-			trap-focus
-			aria-modal
-		>
-			<div class="modal-card log-modal-card">
-				<header class="modal-card-head">
-					<p class="modal-card-title is-size-6 font-medium">
-						<i class="mdi mdi-text-box-outline mr-2"></i>
-						{{ selectedLogTask ? selectedLogTask.name : $t('Execution Output') }}
-					</p>
-					<button type="button" class="delete" @click="showLogModal = false" />
+		<!-- ==================== IN-WINDOW DELETE CONFIRMATION ==================== -->
+		<div v-if="targetDeleteTask" class="window-overlay">
+			<div class="window-overlay-backdrop" @click="targetDeleteTask = null"></div>
+			<div class="window-overlay-card delete-card">
+				<header class="window-overlay-head">
+					<span class="window-overlay-title">
+						<i class="mdi mdi-trash-can-outline mr-1 has-text-danger"></i>
+						{{ $t('Delete Scheduled Task') }}
+					</span>
+					<button type="button" class="window-overlay-close" @click="targetDeleteTask = null">
+						<b-icon icon="close" size="is-small"></b-icon>
+					</button>
 				</header>
-				<section class="modal-card-body p-0">
+				<div class="window-overlay-body">
+					<p class="mb-1">
+						{{ $t('Are you sure you want to delete scheduled task') }}
+						<strong>"{{ targetDeleteTask.name }}"</strong>?
+					</p>
+					<p class="is-size-7 text-muted">{{ $t('This operation cannot be undone.') }}</p>
+				</div>
+				<footer class="window-overlay-foot">
+					<b-button rounded size="is-small" @click="targetDeleteTask = null">{{ $t('Cancel') }}</b-button>
+					<b-button rounded size="is-small" type="is-danger" :loading="deletingTask" @click="performDeleteTask">
+						<i class="mdi mdi-trash-can-outline mr-1"></i>
+						{{ $t('Delete') }}
+					</b-button>
+				</footer>
+			</div>
+		</div>
+
+		<!-- ==================== IN-WINDOW LOG VIEWER ==================== -->
+		<div v-if="selectedLogTask" class="window-overlay">
+			<div class="window-overlay-backdrop" @click="selectedLogTask = null"></div>
+			<div class="window-overlay-card log-card">
+				<header class="window-overlay-head">
+					<span class="window-overlay-title">
+						<i class="mdi mdi-text-box-outline mr-1 has-text-info"></i>
+						{{ selectedLogTask.name }} &middot; {{ $t('Execution Output') }}
+					</span>
+					<button type="button" class="window-overlay-close" @click="selectedLogTask = null">
+						<b-icon icon="close" size="is-small"></b-icon>
+					</button>
+				</header>
+				<div class="window-overlay-body p-0">
 					<div class="task-log-viewer scrollbars">
 						<div class="log-meta p-3 is-flex is-align-items-center is-justify-content-between">
 							<div>
-								<span class="log-target-name mr-2">{{ selectedLogTask ? (selectedLogTask.target_name || selectedLogTask.name) : '' }}</span>
-								<span class="text-muted is-size-7">Action: {{ selectedLogTask ? (selectedLogTask.action || selectedLogTask.type) : '' }}</span>
+								<span class="log-target-name mr-2">{{ selectedLogTask.target_name || selectedLogTask.name }}</span>
+								<span class="text-muted is-size-7">Action: {{ selectedLogTask.action || selectedLogTask.type }}</span>
 							</div>
 							<div class="is-size-7 text-muted">
-								{{ selectedLogTask ? selectedLogTask.last_run : '' }}
+								{{ selectedLogTask.last_run }}
 							</div>
 						</div>
-						<pre class="task-output-pre p-3">{{ selectedLogTask ? (selectedLogTask.last_output || $t('No output text recorded.')) : '' }}</pre>
+						<pre class="task-output-pre p-3">{{ selectedLogTask.last_output || $t('No output text recorded.') }}</pre>
 					</div>
-				</section>
-				<footer class="modal-card-foot is-justify-content-flex-end">
-					<b-button rounded size="is-small" @click="showLogModal = false">{{ $t('Close') }}</b-button>
+				</div>
+				<footer class="window-overlay-foot">
+					<b-button rounded size="is-small" @click="selectedLogTask = null">{{ $t('Close') }}</b-button>
 				</footer>
 			</div>
-		</b-modal>
+		</div>
 	</section>
 </template>
 
@@ -260,7 +288,8 @@ export default {
 			tasks: [],
 			loadingTasks: false,
 			runningId: null,
-			showLogModal: false,
+			targetDeleteTask: null,
+			deletingTask: false,
 			selectedLogTask: null,
 			targetVms: [],
 			targetContainers: [],
@@ -480,38 +509,33 @@ export default {
 		},
 		viewTaskLog(t) {
 			this.selectedLogTask = t
-			this.showLogModal = true
 		},
 		confirmDelete(t) {
-			this.$buefy.dialog.confirm({
-				title: this.$t('Delete Scheduled Task'),
-				message: this.$t('Are you sure you want to delete this scheduled task: "{name}"?', { name: t.name }),
-				confirmText: this.$t('Delete'),
-				cancelText: this.$t('Cancel'),
-				type: 'is-danger',
-				hasIcon: true,
-				icon: 'trash-can-outline',
-				iconPack: 'mdi',
-				onConfirm: async () => {
-					try {
-						await this.$api.schedules.deleteSchedule(t.id)
-						this.$buefy.toast.open({
-							message: this.$t('Task deleted'),
-							type: 'is-success',
-							position: 'is-top',
-							duration: 2000
-						})
-						await this.fetchTasks()
-					} catch (err) {
-						this.$buefy.toast.open({
-							message: err.message || this.$t('Failed to delete task'),
-							type: 'is-danger',
-							position: 'is-top',
-							duration: 3000
-						})
-					}
-				}
-			})
+			this.targetDeleteTask = t
+		},
+		async performDeleteTask() {
+			if (!this.targetDeleteTask) return
+			this.deletingTask = true
+			try {
+				await this.$api.schedules.deleteSchedule(this.targetDeleteTask.id)
+				this.$buefy.toast.open({
+					message: this.$t('Task deleted'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000
+				})
+				this.targetDeleteTask = null
+				await this.fetchTasks()
+			} catch (err) {
+				this.$buefy.toast.open({
+					message: err.message || this.$t('Failed to delete task'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 3000
+				})
+			} finally {
+				this.deletingTask = false
+			}
 		},
 		getTypeIcon(type) {
 			switch (type) {
@@ -808,15 +832,100 @@ export default {
 	}
 }
 
-.log-modal-card {
-	width: 680px;
-	max-width: 95vw;
+/* In-Window Overlay & Dialogs */
+.window-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+}
+
+.window-overlay-backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.25);
+	backdrop-filter: blur(2px);
+}
+
+.window-overlay-card {
+	position: relative;
+	background: #ffffff;
+	border-radius: 12px;
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+	max-height: calc(100% - 2rem);
+	max-width: calc(100% - 2rem);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border: 1px solid rgba(0, 0, 0, 0.08);
+
+	&.delete-card {
+		width: 24rem;
+	}
+
+	&.log-card {
+		width: 40rem;
+	}
+}
+
+.window-overlay-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	background: #ffffff;
+}
+
+.window-overlay-title {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #0f172a;
+	display: flex;
+	align-items: center;
+}
+
+.window-overlay-close {
+	border: none;
+	background: transparent;
+	color: #94a3b8;
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+
+	&:hover {
+		color: #0f172a;
+		background: rgba(0, 0, 0, 0.05);
+	}
+}
+
+.window-overlay-body {
+	padding: 1rem;
+	overflow-y: auto;
+	font-size: 0.85rem;
+	color: #334155;
+	line-height: 1.45;
+}
+
+.window-overlay-foot {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 0.75rem 1rem;
+	border-top: 1px solid rgba(0, 0, 0, 0.06);
+	background: #ffffff;
 }
 
 .task-log-viewer {
 	background: #121214;
 	color: #e4e4e7;
-	max-height: 400px;
+	max-height: 380px;
 	overflow-y: auto;
 
 	.log-meta {
