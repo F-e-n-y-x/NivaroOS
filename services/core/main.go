@@ -140,7 +140,9 @@ func main() {
 		"/v1/samba",
 		"/v1/notify",
 		"/v1/driver",
-		"/v1/cloud",
+		// "/v1/cloud" is served by nivaroos-local-storage's in-process rclone
+		// engine now (Online Accounts feature) - registering it here too would
+		// race the gateway's routes.json between the two services.
 		"/v1/recover",
 		"/v1/other",
 		"/v1/zt",

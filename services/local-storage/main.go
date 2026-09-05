@@ -162,7 +162,7 @@ func main() {
 		"/v1/usb",
 		"/v1/disks",
 		"/v1/storage",
-		// "/v1/cloud",
+		"/v1/cloud",
 		// "/v1/recover",
 		// "/v1/driver",
 		route.V2APIPath,
