@@ -11,7 +11,7 @@
 -->
 <template>
 	<div class="viewer-shell">
-		<div class="viewer-body">
+		<div class="viewer-body" :class="{ 'no-overflow': noOverflow }">
 			<slot></slot>
 		</div>
 		<div class="viewer-toolbar">
@@ -27,6 +27,12 @@
 <script>
 export default {
 	name: 'files-viewer-chrome',
+	props: {
+		noOverflow: {
+			type: Boolean,
+			default: false
+		}
+	},
 	computed: {
 		hasActions() {
 			return !!this.$slots.actions
@@ -42,6 +48,7 @@ export default {
 	background: #1e1e1e;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
 }
 .viewer-body {
 	flex: 1 1 auto;
@@ -51,6 +58,10 @@ export default {
 	align-items: center;
 	justify-content: center;
 	position: relative;
+
+	&.no-overflow {
+		overflow: hidden !important;
+	}
 }
 .viewer-toolbar {
 	position: absolute;

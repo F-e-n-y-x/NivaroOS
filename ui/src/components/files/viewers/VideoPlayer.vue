@@ -9,7 +9,7 @@
 	same libraries, new chrome only.
 -->
 <template>
-	<files-viewer-chrome @download="downloadFile(item)">
+	<files-viewer-chrome :no-overflow="true" @download="downloadFile(item)">
 		<div class="video-player-body">
 			<div v-if="poster" class="audio-blur-background" :style="{ backgroundImage: `url(${poster})` }"></div>
 			<div v-if="isVideo" ref="artRef" class="player"></div>
@@ -117,10 +117,26 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	overflow: hidden;
 }
 .player {
 	width: 100%;
 	height: 100%;
+	overflow: hidden;
+
+	::v-deep .art-video-player {
+		width: 100% !important;
+		height: 100% !important;
+		max-width: 100% !important;
+		max-height: 100% !important;
+		overflow: hidden !important;
+	}
+
+	::v-deep .art-video-player video {
+		width: 100% !important;
+		height: 100% !important;
+		object-fit: contain;
+	}
 }
 .player-audio {
 	position: relative;

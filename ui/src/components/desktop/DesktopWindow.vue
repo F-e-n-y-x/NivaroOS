@@ -8,6 +8,7 @@
 		'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp', 'ScheduledTaskWindow'].includes(win.component),
 		'window-minimized': win.minimized,
 		'window-console': isConsoleWindow,
+		'window-no-scroll': isNoScrollWindow,
 	}"
 	@mousedown="focus"
 	@drop.stop
@@ -124,6 +125,9 @@ export default {
 		},
 		isConsoleWindow() {
 			return this.win.component === 'VmConsolePanel'
+		},
+		isNoScrollWindow() {
+			return ['VideoPlayer', 'ImageViewer', 'VmConsolePanel'].includes(this.win.component)
 		},
 		consoleStatusText() {
 			return (
@@ -334,7 +338,8 @@ export default {
 		}
 	}
 
-	&.window-console {
+	&.window-console,
+	&.window-no-scroll {
 		.window-content {
 			overflow: hidden !important;
 		}

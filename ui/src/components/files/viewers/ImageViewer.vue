@@ -20,7 +20,7 @@
 	viewerjs at all.
 -->
 <template>
-	<files-viewer-chrome @download="downloadFile(currentItem)">
+	<files-viewer-chrome :no-overflow="true" @download="downloadFile(currentItem)">
 		<template #actions>
 			<b-icon
 				v-if="itemList.length > 1"
