@@ -7,7 +7,9 @@
 #
 # Supported Environments:
 #   Debian 11+, Ubuntu 20.04+, Linux Mint, Pop!_OS, Raspberry Pi OS,
-#   CentOS/RHEL/Rocky/AlmaLinux 8+, Fedora 38+, Arch Linux, openSUSE, Alpine
+#   CentOS/RHEL/Rocky/AlmaLinux 8+, Fedora 38+, Arch Linux, openSUSE
+#   (Alpine Linux: packages install fine, but service management is
+#   systemd-only for now - see check_distro's warning)
 #
 # Quick Install / Update:
 #   curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
@@ -350,7 +352,9 @@ check_distro() {
 		*" rhel "*|*" centos "*|*" fedora "*|*" rocky "*|*" almalinux "*|*" amzn "*) ;;
 		*" arch "*|*" manjaro "*|*" endeavouros "*) ;;
 		*" opensuse "*|*" sles "*) ;;
-		*" alpine "*) ;;
+		*" alpine "*)
+			warn "Alpine Linux uses OpenRC, not systemd - this installer only knows how to create/enable/health-check systemd services, so NivaroOS's services will need to be started and supervised manually after this script finishes. Installation will continue, but expect to see 'inactive' services until you set that up yourself."
+			;;
 		*)
 			warn "Distribution '${ID:-unknown}' has not been fully validated, but installation will continue."
 			;;
@@ -366,7 +370,13 @@ check_resources() {
 		mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
 	fi
 
-	disk_gb="$(($(LC_ALL=C df -P / 2>/dev/null | tail -n 1 | awk '{print $4}') / 1024 / 1024))"
+	local disk_kb
+	disk_kb="$(LC_ALL=C df -P / 2>/dev/null | tail -n 1 | awk '{print $4}')"
+	if [ -n "$disk_kb" ] && [ "$disk_kb" -eq "$disk_kb" ] 2>/dev/null; then
+		disk_gb=$((disk_kb / 1024 / 1024))
+	else
+		disk_gb=0
+	fi
 
 	if [ -n "$mem_mb" ] && [ "$mem_mb" -gt 0 ]; then
 		if [ "$mem_mb" -lt "$MIN_REQUIRED_MEMORY_MB" ]; then
@@ -376,7 +386,7 @@ check_resources() {
 			warn "Only ${mem_mb}MB of memory detected - ${MIN_RECOMMENDED_MEMORY_MB}MB+ is recommended for optimal performance."
 		fi
 	fi
-	if [ -n "$disk_gb" ] && [ "$disk_gb" -ge 0 ]; then
+	if [ -n "$disk_gb" ] && [ "$disk_gb" -gt 0 ]; then
 		if [ "$disk_gb" -lt "$MIN_REQUIRED_DISK_GB" ]; then
 			error "Only ${disk_gb}GB of free disk space on / - NivaroOS requires at least ${MIN_REQUIRED_DISK_GB}GB."
 			exit 1
@@ -413,8 +423,13 @@ find_process_on_port() {
 }
 
 resolve_port_conflict() {
-	# Check if existing NivaroOS configuration exists
+	# Check if existing NivaroOS configuration exists. This is checked
+	# independent of whatever port is actually requested/free right now -
+	# otherwise re-running with a different --port than a prior install
+	# used (which is now sitting free, since the old install owns its own
+	# port) would misclassify a genuine upgrade as a fresh install below.
 	if [ -f /etc/nivaroos/gateway.ini ]; then
+		IS_UPGRADE="true"
 		local saved_port
 		saved_port="$(awk -F '=' '/^[[:space:]]*port[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' /etc/nivaroos/gateway.ini 2>/dev/null || echo "")"
 		if [ -n "$saved_port" ]; then
@@ -523,7 +538,13 @@ parse_args() {
 				exit 1
 				;;
 		esac
-		shift
+		# The two-token flags above (--port, --width/-w, --branch/-b) already
+		# shift once themselves to consume their value - if that value was
+		# the last argument on the command line, $# is already 0 here, and
+		# an unconditional shift would fail ("shift count out of range"),
+		# which set -e turns into the whole installer aborting over a
+		# missing flag value instead of just falling back to its default.
+		[ $# -eq 0 ] || shift
 	done
 }
 
@@ -952,7 +973,7 @@ DOCKEREOF
 		systemctl daemon-reload >/dev/null 2>&1 || true
 		systemctl enable --now docker >/dev/null 2>&1 || true
 
-		local d_running=false
+		d_running=false
 		for i in {1..10}; do
 			if docker info >/dev/null 2>&1; then
 				d_running=true
@@ -977,8 +998,13 @@ clone_or_update_repo() {
 		if [ -d \"${SRC_DIR}/.git\" ]; then
 			cd \"$SRC_DIR\"
 			git fetch --all --tags --prune
-			git checkout \"$BRANCH\"
-			git pull origin \"$BRANCH\" || true
+			# reset --hard + clean (not checkout + pull) so a dirty tree -
+			# left behind by a previous crashed run, or a manual edit made
+			# while debugging - can never hard-abort this step. This is an
+			# unattended installer/updater, not a workspace the running
+			# user is expected to have made their own changes in.
+			git reset --hard \"origin/$BRANCH\"
+			git clean -fdx
 		else
 			if [ -d \"$SRC_DIR\" ] && [ \"\$(ls -A \"$SRC_DIR\" 2>/dev/null)\" ]; then
 				rm -rf \"${SRC_DIR:?}\"/* \"${SRC_DIR:?}\"/.[!.]* 2>/dev/null || true
@@ -988,7 +1014,7 @@ clone_or_update_repo() {
 
 		# Ensure Go toolchain is installed
 		if ! command -v go >/dev/null 2>&1; then
-			local go_arch=\"amd64\"
+			go_arch=\"amd64\"
 			case \"\$(uname -m)\" in
 				x86_64) go_arch=\"amd64\" ;;
 				aarch64|arm64) go_arch=\"arm64\" ;;
@@ -1012,7 +1038,7 @@ install_core_services() {
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
 
 		# Stop existing background services before replacing binaries if upgrading
-		local active_units=(
+		active_units=(
 			nivaroos.service
 			nivaroos-gateway.service
 			nivaroos-message-bus.service
@@ -1072,7 +1098,7 @@ install_core_services() {
 
 		# 9. Install systemd service units from repository
 		mkdir -p /usr/lib/systemd/system
-		local service_mappings=(
+		service_mappings=(
 			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/nivaroos.service:/usr/lib/systemd/system/nivaroos.service\"
 			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/rclone.service:/usr/lib/systemd/system/rclone.service\"
 			\"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service:/usr/lib/systemd/system/usb-mount@.service\"
@@ -1084,8 +1110,8 @@ install_core_services() {
 		)
 
 		for m in \"\${service_mappings[@]}\"; do
-			local src=\"\${m%%:*}\"
-			local dst=\"\${m##*:}\"
+			src=\"\${m%%:*}\"
+			dst=\"\${m##*:}\"
 			if [ -f \"\$src\" ]; then
 				cp -f \"\$src\" \"\$dst\"
 				echo \"\$dst\" >> \"$MANIFEST_FILE\"
@@ -1101,6 +1127,14 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/nivaroos-gpu-sidecar
 Restart=always
+# Conservative hardening - this service doesn't need write access to /home
+# or to modify /usr, /boot or /etc, but still needs root-equivalent access
+# to query GPU/driver state, so this stops short of ProtectSystem=strict
+# or a narrow ReadWritePaths allowlist that risks blocking a real write
+# path this installer can't fully enumerate.
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
 
 [Install]
 WantedBy=multi-user.target
@@ -1132,6 +1166,13 @@ install_vm_manager() {
 			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf
 		elif command -v pacman >/dev/null 2>&1; then
 			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf
+		elif command -v zypper >/dev/null 2>&1; then
+			pkg_install qemu-kvm qemu-tools libvirt libvirt-client virt-install bridge-utils qemu-ovmf-x86_64
+		elif command -v apk >/dev/null 2>&1; then
+			pkg_install qemu-system-x86_64 qemu-img libvirt libvirt-daemon virt-install bridge dnsmasq ovmf
+		else
+			echo 'No known package manager found (apt/dnf/yum/pacman/zypper/apk) - cannot install QEMU/libvirt automatically. Skipping VM Manager; install those packages yourself and re-run with --with-vm.' >&2
+			exit 1
 		fi
 
 		cd \"${SRC_DIR}/services/vm-sidecar\"
@@ -1146,6 +1187,14 @@ After=network.target nivaroos-message-bus.service libvirtd.service
 [Service]
 ExecStart=/usr/bin/nivaroos-vm-sidecar
 Restart=always
+# Conservative hardening only - this service genuinely needs root (it
+# bind-mounts host directories for shared folders, and talks to libvirtd
+# for USB/PCI passthrough), so this stops short of ProtectSystem=strict or
+# a narrow ReadWritePaths allowlist that risks blocking a real write path
+# (/DATA, libvirt's own state dirs, etc.) this installer can't fully
+# enumerate ahead of time.
+NoNewPrivileges=true
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
@@ -1165,13 +1214,35 @@ VMEOF
 install_ui() {
 	run_step "Deploying Web Dashboard & Frontend Assets" "
 		mkdir -p /var/lib/nivaroos/www
+
+		ui_source_dir=\"\"
 		if [ -d \"${SRC_DIR}/ui/dist\" ]; then
-			cp -rf \"${SRC_DIR}/ui/dist\"/* /var/lib/nivaroos/www/ 2>/dev/null || true
+			ui_source_dir=\"${SRC_DIR}/ui/dist\"
 		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
-			cp -rf \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"/* /var/lib/nivaroos/www/ 2>/dev/null || true
+			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
 		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/casaos/www\" ]; then
-			cp -rf \"${SRC_DIR}/build/sysroot/var/lib/casaos/www\"/* /var/lib/nivaroos/www/ 2>/dev/null || true
+			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/casaos/www\"
 		fi
+
+		# No prebuilt output shipped in this checkout - try to build it
+		# ourselves, but only using tools already present on this system
+		# (this installer doesn't set up a Node.js toolchain on its own,
+		# across 8+ distro families, purely to build the UI once).
+		if [ -z \"\$ui_source_dir\" ] && command -v pnpm >/dev/null 2>&1; then
+			echo 'No prebuilt dashboard found - building the frontend from source with pnpm (this can take a few minutes)...'
+			( cd \"${SRC_DIR}/ui\" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install ) && \
+			( cd \"${SRC_DIR}/ui\" && pnpm vue-cli-service build --dest \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" --mode production )
+			if [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
+				ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
+			fi
+		fi
+
+		if [ -z \"\$ui_source_dir\" ]; then
+			echo 'Could not find or build the web dashboard (no ui/dist, no build/sysroot output, and pnpm is not installed to build one). The rest of NivaroOS will run, but the dashboard will be empty until you build ui/ manually and re-run this installer.' >&2
+			exit 1
+		fi
+
+		cp -rf \"\$ui_source_dir\"/* /var/lib/nivaroos/www/
 	"
 }
 
@@ -1181,7 +1252,7 @@ install_ui() {
 start_core_services() {
 	run_step "Reloading System Daemons & Starting Services" "
 		systemctl daemon-reload
-		local services=(
+		services=(
 			nivaroos-gateway
 			nivaroos-message-bus
 			nivaroos-user-service
@@ -1202,8 +1273,8 @@ start_core_services() {
 # ------------------------------------------------------------------------------
 verify_health() {
 	run_step "Verifying Microservices Health & Endpoints" "
-		local target_port=\"${DETECTED_PORT:-80}\"
-		local healthy=false
+		target_port=\"${DETECTED_PORT:-80}\"
+		healthy=false
 
 		for i in {1..20}; do
 			if curl -fsSL -m 2 \"http://127.0.0.1:${target_port}/ping\" >/dev/null 2>&1 || \
@@ -1219,6 +1290,11 @@ verify_health() {
 			if systemctl is-active --quiet nivaroos-gateway; then
 				healthy=true
 			fi
+		fi
+
+		if [ \"\$healthy\" = \"false\" ]; then
+			echo \"Gateway did not respond on port ${target_port} after 20s\" >&2
+			exit 1
 		fi
 	"
 }
@@ -1380,7 +1456,7 @@ main() {
 	START_TIME=$(date +%s)
 	init_logging
 	parse_args "$@"
-	check_root
+	check_root "$@"
 	check_distro
 	check_resources
 	print_banner
