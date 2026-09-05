@@ -48,8 +48,8 @@
 						<i class="mdi mdi-play-network-outline"></i>
 					</div>
 					<div class="stat-info">
-						<div class="stat-val">{{ nextUpcomingTaskText }}</div>
-						<div class="stat-lbl">{{ $t('Next Upcoming Run') }}</div>
+						<div class="stat-val one-line" :title="nextUpcomingTaskTitle">{{ nextUpcomingTaskTitle }}</div>
+						<div class="stat-lbl">{{ nextUpcomingTaskSubtitle }}</div>
 					</div>
 				</div>
 			</div>
@@ -60,14 +60,19 @@
 		<div class="columns is-multiline is-mobile mb-4">
 			<div v-for="tpl in quickTemplates" :key="tpl.id" class="column is-3-desktop is-6-tablet is-12-mobile">
 				<div class="template-card" @click="applyTemplate(tpl)">
-					<div class="template-icon" :style="{ color: tpl.color, background: tpl.bg }">
-						<i :class="'mdi ' + tpl.icon"></i>
+					<div class="template-card-header is-flex is-align-items-center is-justify-content-between mb-2">
+						<div class="template-icon" :style="{ color: tpl.color, background: tpl.bg }">
+							<i :class="['mdi', 'mdi-' + tpl.icon]"></i>
+						</div>
+						<span class="template-add-pill" :title="$t('Use template')">
+							<i class="mdi mdi-plus"></i>
+						</span>
 					</div>
-					<div class="template-info">
-						<div class="template-title">{{ tpl.name }}</div>
-						<div class="template-desc">{{ tpl.scheduleText }}</div>
+					<div class="template-title">{{ tpl.name }}</div>
+					<div class="template-desc is-flex is-align-items-center mt-1">
+						<i class="mdi mdi-clock-outline mr-1"></i>
+						<span>{{ tpl.scheduleText }}</span>
 					</div>
-					<i class="mdi mdi-plus-circle-outline template-add"></i>
 				</div>
 			</div>
 		</div>
@@ -112,7 +117,7 @@
 			>
 				<!-- Icon -->
 				<div class="task-avatar mr-3" :class="'type-' + t.type">
-					<i :class="'mdi ' + getTypeIcon(t.type)"></i>
+					<i :class="['mdi', 'mdi-' + getTypeIcon(t.type)]"></i>
 				</div>
 
 				<!-- Info -->
@@ -480,12 +485,18 @@ export default {
 		activeTasksCount() {
 			return this.tasks.filter(t => t.enabled).length
 		},
-		nextUpcomingTaskText() {
+		nextUpcomingTask() {
 			const active = this.tasks.filter(t => t.enabled && t.next_run)
-			if (!active.length) return this.$t('None scheduled')
-			active.sort((a, b) => new Date(a.next_run) - new Date(b.next_run))
-			const first = active[0]
-			return `${first.name} (${this.formatNextRun(first.next_run)})`
+			if (!active.length) return null
+			const sorted = [...active].sort((a, b) => new Date(a.next_run) - new Date(b.next_run))
+			return sorted[0]
+		},
+		nextUpcomingTaskTitle() {
+			return this.nextUpcomingTask ? this.nextUpcomingTask.name : this.$t('None Scheduled')
+		},
+		nextUpcomingTaskSubtitle() {
+			if (!this.nextUpcomingTask) return this.$t('No active schedules')
+			return this.formatNextRun(this.nextUpcomingTask.next_run)
 		}
 	},
 	mounted() {
@@ -767,11 +778,15 @@ export default {
 			const d = new Date(dateStr)
 			if (isNaN(d.getTime())) return dateStr
 			const now = new Date()
-			const diffHours = (d - now) / (1000 * 3600)
-			if (diffHours > 0 && diffHours < 24) {
-				return `${this.$t('in')} ${Math.round(diffHours)} ${this.$t('hours')} (${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+			const diffMin = Math.round((d - now) / (1000 * 60))
+			const diffHours = Math.round((d - now) / (1000 * 3600))
+			const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+			if (diffMin <= 0) return `${this.$t('Due now')} (${timeStr})`
+			if (diffMin < 60) return `${this.$t('in')} ${diffMin} ${diffMin === 1 ? this.$t('min') : this.$t('mins')} (${timeStr})`
+			if (diffHours < 24) {
+				return `${this.$t('in')} ${diffHours} ${diffHours === 1 ? this.$t('hour') : this.$t('hours')} (${timeStr})`
 			}
-			return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+			return `${d.toLocaleString([], { month: 'short', day: 'numeric' })} at ${timeStr}`
 		},
 		formatTimeAgo(dateStr) {
 			if (!dateStr) return ''
@@ -836,67 +851,64 @@ export default {
 
 .template-card {
 	display: flex;
-	align-items: center;
-	padding: 10px 12px;
-	background: rgba(255, 255, 255, 0.6);
-	border: 1px solid rgba(0, 0, 0, 0.06);
-	border-radius: 10px;
+	flex-direction: column;
+	padding: 12px 14px;
+	background: rgba(255, 255, 255, 0.7);
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	border-radius: 12px;
 	cursor: pointer;
-	position: relative;
+	height: 100%;
 	transition: all 0.15s ease;
 
 	&:hover {
 		background: #ffffff;
-		border-color: rgba(0, 0, 0, 0.15);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-		transform: translateY(-1px);
+		border-color: rgba(37, 99, 235, 0.3);
+		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+		transform: translateY(-2px);
 
-		.template-add {
-			color: #2563eb;
+		.template-add-pill {
+			background: #2563eb;
+			color: #ffffff;
+			border-color: #2563eb;
 		}
 	}
 
 	.template-icon {
-		width: 32px;
-		height: 32px;
+		width: 34px;
+		height: 34px;
 		border-radius: 8px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 16px;
-		margin-right: 10px;
+		font-size: 18px;
 		flex-shrink: 0;
 	}
 
-	.template-info {
-		min-width: 0;
-		flex: 1;
-		padding-right: 16px;
-
-		.template-title {
-			font-size: 12px;
-			font-weight: 600;
-			color: #18181b;
-			white-space: nowrap;
-			overflow: hidden;
-			text-overflow: ellipsis;
-		}
-
-		.template-desc {
-			font-size: 10px;
-			color: #71717a;
-			white-space: nowrap;
-			overflow: hidden;
-			text-overflow: ellipsis;
-		}
+	.template-add-pill {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.04);
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		color: #71717a;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 13px;
+		transition: all 0.15s ease;
 	}
 
-	.template-add {
-		position: absolute;
-		right: 10px;
-		font-size: 16px;
-		color: #a1a1aa;
-		transition: color 0.15s ease;
+	.template-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: #18181b;
+		line-height: 1.35;
+	}
+
+	.template-desc {
+		font-size: 11px;
+		color: #71717a;
+		line-height: 1.3;
 	}
 }
 
@@ -910,13 +922,13 @@ export default {
 }
 
 .task-avatar {
-	width: 38px;
-	height: 38px;
+	width: 40px;
+	height: 40px;
 	border-radius: 10px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 18px;
+	font-size: 20px;
 	flex-shrink: 0;
 
 	&.type-vm {
