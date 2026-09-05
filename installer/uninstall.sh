@@ -12,7 +12,8 @@ fi
 set -euo pipefail
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service"
+ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service usb-mount@.service"
+MANIFEST_FILE="/var/lib/nivaroos/manifest"
 
 PURGE_DATA=""
 YES=""
@@ -243,6 +244,15 @@ stop_services() {
 
 remove_unit_files() {
 	run_step "Removing systemd service definitions & reloading daemon" "
+		if [ -f \"$MANIFEST_FILE\" ]; then
+			while IFS= read -r f; do
+				case \"\$f\" in
+					*.service)
+						rm -f \"\$f\" 2>/dev/null || true
+						;;
+				esac
+			done < \"$MANIFEST_FILE\"
+		fi
 		rm -f \
 			/usr/lib/systemd/system/nivaroos-gateway.service \
 			/usr/lib/systemd/system/nivaroos-gateway.service.buildroot \
@@ -255,13 +265,23 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 			/usr/lib/systemd/system/rclone.service \
-			/etc/systemd/system/nivaroos*
+			/usr/lib/systemd/system/usb-mount@.service \
+			/etc/systemd/system/nivaroos* \
+			/etc/udev/rules.d/11-usb-mount.rules \
+			/etc/sysctl.d/99-nivaroos.conf \
+			/etc/systemd/system/docker.service.d/override.conf
 		systemctl daemon-reload
+		udevadm control --reload-rules >/dev/null 2>&1 || true
 	"
 }
 
 remove_binaries() {
 	run_step "Removing NivaroOS binaries, CLI tools & symlinks" "
+		if [ -f \"$MANIFEST_FILE\" ]; then
+			while IFS= read -r f; do
+				rm -rf \"\$f\" 2>/dev/null || true
+			done < \"$MANIFEST_FILE\"
+		fi
 		rm -f \
 			/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
@@ -270,7 +290,7 @@ remove_binaries() {
 			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
 			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
 			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
-		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos
+		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos /usr/share/nivaroos
 	"
 }
 

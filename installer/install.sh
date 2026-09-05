@@ -39,13 +39,14 @@ WITH_VM=""
 YES=""
 DEBUG=""
 STEP_NUM=0
-TOTAL_STEPS=8
+TOTAL_STEPS=9
 START_TIME=0
 DATE_TAG="$(date +'%Y%m%d-%H%M%S')"
 
 LOG_DIR="/var/log/nivaroos"
 INSTALL_LOG="${LOG_DIR}/install-${DATE_TAG}.log"
 LATEST_LOG="${LOG_DIR}/install.log"
+MANIFEST_FILE="/var/lib/nivaroos/manifest"
 
 export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
@@ -363,7 +364,7 @@ parse_args() {
 select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		if [ "$WITH_VM" = "yes" ]; then
-			TOTAL_STEPS=9
+			TOTAL_STEPS=10
 		fi
 		return
 	fi
@@ -372,7 +373,7 @@ select_addons() {
 	if [ -n "$YES" ] || [ ! -t 0 ]; then
 		if [ -e /dev/kvm ]; then
 			WITH_VM=yes
-			TOTAL_STEPS=9
+			TOTAL_STEPS=10
 		else
 			WITH_VM=no
 		fi
@@ -410,7 +411,7 @@ select_addons() {
 	fi
 
 	if [ "$WITH_VM" = "yes" ]; then
-		TOTAL_STEPS=9
+		TOTAL_STEPS=10
 		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} VM Manager enabled."
 	else
 		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} VM Manager skipped (can be enabled anytime via CLI: 'nivaroos vm enable')."
@@ -617,6 +618,21 @@ pkg_install() {
 }
 
 # ------------------------------------------------------------------------------
+# System & Kernel Tuning (Coolify / CasaOS Best Practices)
+# ------------------------------------------------------------------------------
+tune_system_limits() {
+	run_step "Applying kernel inotify & system storage limits" "
+		mkdir -p /etc/sysctl.d
+		cat > /etc/sysctl.d/99-nivaroos.conf <<'EOF'
+fs.inotify.max_user_watches=524288
+fs.inotify.max_user_instances=512
+fs.file-max=2097152
+EOF
+		sysctl -p /etc/sysctl.d/99-nivaroos.conf >/dev/null 2>&1 || true
+	"
+}
+
+# ------------------------------------------------------------------------------
 # Toolchain & Runtime Installation
 # ------------------------------------------------------------------------------
 go_version_ok() {
@@ -662,9 +678,9 @@ install_go_toolchain() {
 install_core_dependencies() {
 	run_step "Updating system package repositories" pkg_update
 
-	local required_tools=(curl wget git jq tar gzip ca-certificates build-essential smartmontools hdparm parted ntfs-3g samba)
+	local required_tools=(curl wget git jq tar gzip ca-certificates build-essential smartmontools hdparm parted ntfs-3g samba udevil mergerfs rclone)
 	if ! command -v apt-get >/dev/null 2>&1; then
-		required_tools=(curl wget git jq tar gzip ca-certificates gcc make smartmontools parted samba)
+		required_tools=(curl wget git jq tar gzip ca-certificates gcc make smartmontools parted samba rclone)
 	fi
 
 	run_step "Installing system utilities & libraries" pkg_install "${required_tools[@]}"
@@ -707,7 +723,7 @@ check_docker() {
 		run_step "Installing Docker Engine & Container Daemon" "curl -fsSL https://get.docker.com | sh"
 	fi
 
-	# Configure Docker daemon log rotation safely
+	# Configure Docker daemon log rotation & address pool safely
 	mkdir -p /etc/docker
 	if [ ! -f /etc/docker/daemon.json ]; then
 		cat > /etc/docker/daemon.json <<'EOF'
@@ -716,16 +732,29 @@ check_docker() {
   "log-opts": {
     "max-size": "10m",
     "max-file": "3"
-  }
+  },
+  "default-address-pools": [
+    {"base": "10.0.0.0/8", "size": 24}
+  ]
 }
 EOF
 	fi
+
+	# Apply Docker API override for CasaOS / NivaroOS compatibility
+	local override_dir="/etc/systemd/system/docker.service.d"
+	mkdir -p "$override_dir"
+	cat > "${override_dir}/override.conf" <<'EOF'
+[Service]
+Environment=DOCKER_MIN_API_VERSION=1.24
+EOF
 
 	if ! systemctl is-enabled --quiet docker 2>/dev/null; then
 		systemctl enable docker >/dev/null 2>&1 || true
 	fi
 	if ! systemctl is-active --quiet docker 2>/dev/null; then
-		run_step "Starting Docker daemon service" systemctl start docker
+		run_step "Starting Docker daemon service" "systemctl daemon-reload && systemctl start docker"
+	else
+		systemctl daemon-reload >/dev/null 2>&1 || true
 	fi
 
 	if ! docker version >/dev/null 2>&1; then
@@ -861,6 +890,22 @@ WantedBy=multi-user.target
 UNIT_EOF
 }
 
+configure_usb_automount() {
+	mkdir -p /etc/udev/rules.d /usr/share/nivaroos/shell
+	if [ -f "$SRC_DIR/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh" ]; then
+		cp -a "$SRC_DIR/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh" /usr/share/nivaroos/shell/usb-mount.sh
+		chmod 755 /usr/share/nivaroos/shell/usb-mount.sh
+	fi
+	if [ -f "$SRC_DIR/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service" ]; then
+		cp -a "$SRC_DIR/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service" /usr/lib/systemd/system/usb-mount@.service
+	fi
+	cat > /etc/udev/rules.d/11-usb-mount.rules <<'EOF'
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/bin/systemctl --no-block start usb-mount@%k.service"
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/bin/systemctl --no-block stop usb-mount@%k.service"
+EOF
+	udevadm control --reload-rules >/dev/null 2>&1 || true
+}
+
 install_core_services() {
 	run_step "Compiling core engine, services & management CLI" "
 		init_storage_layout
@@ -879,6 +924,7 @@ install_core_services() {
 		fi
 		init_storage_layout
 		write_gpu_sidecar_unit
+		configure_usb_automount
 		systemctl daemon-reload
 		systemctl enable --now nivaroos-gpu-sidecar.service >/dev/null 2>&1 || true
 	"
@@ -915,6 +961,38 @@ install_ui() {
 	"
 }
 
+generate_manifest() {
+	mkdir -p /var/lib/nivaroos
+	cat > "$MANIFEST_FILE" <<'EOF'
+/usr/bin/nivaroos
+/usr/bin/nivaroos-gateway
+/usr/bin/nivaroos-user
+/usr/bin/nivaroos-app-management
+/usr/bin/nivaroos-local-storage
+/usr/bin/nivaroos-message-bus
+/usr/bin/nivaroos-gpu-sidecar
+/usr/bin/nivaroos-vm-sidecar
+/usr/bin/nivaroos-cli
+/usr/bin/nivaroos-uninstall
+/usr/local/bin/nivaroos
+/usr/local/bin/nivaroos-cli
+/usr/local/bin/nivaroos-uninstall
+/usr/lib/systemd/system/nivaroos-gateway.service
+/usr/lib/systemd/system/nivaroos-message-bus.service
+/usr/lib/systemd/system/nivaroos.service
+/usr/lib/systemd/system/nivaroos-user-service.service
+/usr/lib/systemd/system/nivaroos-app-management.service
+/usr/lib/systemd/system/nivaroos-local-storage.service
+/usr/lib/systemd/system/nivaroos-gpu-sidecar.service
+/usr/lib/systemd/system/nivaroos-vm-sidecar.service
+/usr/lib/systemd/system/usb-mount@.service
+/etc/udev/rules.d/11-usb-mount.rules
+/etc/sysctl.d/99-nivaroos.conf
+/etc/systemd/system/docker.service.d/override.conf
+/var/lib/nivaroos/www
+EOF
+}
+
 CORE_SERVICE_UNITS="nivaroos-message-bus.service nivaroos-user-service.service nivaroos-local-storage.service nivaroos-app-management.service nivaroos-gpu-sidecar.service nivaroos-gateway.service nivaroos.service"
 
 start_core_services() {
@@ -924,6 +1002,7 @@ start_core_services() {
 			systemctl enable \"\$unit\" >/dev/null 2>&1 || true
 			systemctl restart \"\$unit\" >/dev/null 2>&1 || true
 		done
+		generate_manifest
 	"
 }
 
@@ -1078,6 +1157,7 @@ main() {
 	printf "\n"
 
 	install_core_dependencies
+	tune_system_limits
 	check_docker
 	clone_or_update_repo
 	install_core_services
