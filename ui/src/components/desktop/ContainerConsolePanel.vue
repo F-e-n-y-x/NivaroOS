@@ -40,22 +40,12 @@
 			<div class="header-right is-flex is-align-items-center">
 				<button
 					v-if="activeTab === 'logs'"
-					class="header-tool-btn mr-2"
+					class="header-tool-btn mr-3"
 					:class="{ 'is-spinning': loadingLogs }"
 					:title="$t('Refresh logs')"
 					@click="fetchLogs"
 				>
 					<i class="mdi mdi-refresh"></i>
-				</button>
-
-				<button
-					class="header-tool-btn mr-3"
-					:class="{ 'is-spinning': restarting }"
-					:disabled="restarting"
-					:title="$t('Restart container')"
-					@click="restartContainer"
-				>
-					<i class="mdi mdi-restart"></i>
 				</button>
 
 				<div class="window-controls">
@@ -302,6 +292,12 @@ export default {
 			this.activeTab = tab
 			if (tab === 'logs') {
 				this.fetchLogs()
+			} else if (tab === 'terminal') {
+				this.$nextTick(() => {
+					if (this.$refs.terminalCard && typeof this.$refs.terminalCard.active === 'function') {
+						this.$refs.terminalCard.active(true)
+					}
+				})
 			}
 		},
 		startLogPolling() {
@@ -629,40 +625,48 @@ export default {
 }
 
 .panel-body {
-	flex: 1;
-	display: flex;
+	flex: 1 1 auto;
+	min-height: 0;
 	position: relative;
 	overflow: hidden;
-	background: #0d0d10;
+	background: #18181b;
 }
 
 .tab-pane {
-	width: 100%;
-	height: 100%;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
+	background: #18181b;
 }
 
 .terminal-pane {
-	position: relative;
-	width: 100%;
-	height: 100%;
-	background: #121214;
-	padding: 10px 14px;
-	box-sizing: border-box;
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: #18181b;
+	padding: 0;
+	margin: 0;
 	overflow: hidden;
 
 	::v-deep .terminal-instance {
 		width: 100%;
 		height: 100%;
-		background: transparent;
+		min-height: 0;
+		background: #18181b;
+		padding: 4px 6px;
+		box-sizing: border-box;
 	}
 
 	::v-deep .xterm {
 		width: 100%;
 		height: 100%;
-		padding: 2px 4px;
-		box-sizing: border-box;
 	}
 }
 
