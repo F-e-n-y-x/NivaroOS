@@ -139,3 +139,69 @@ func PutFstabMountEnabled(c *gin.Context) {
 
 	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
+
+type fstabActionRequest struct {
+	MountPoint string `json:"mount_point"`
+}
+
+// POST /v1/storage/fstab/mount
+func PostFstabMountAction(c *gin.Context) {
+	var req fstabActionRequest
+	_ = c.ShouldBindJSON(&req)
+	if req.MountPoint == "" {
+		req.MountPoint = c.Query("mount_point")
+	}
+	if req.MountPoint == "" {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+
+	if err := service.MyService.Disk().MountFstabEntry(req.MountPoint); err != nil {
+		fstabError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+}
+
+// POST /v1/storage/fstab/umount
+func PostFstabUmountAction(c *gin.Context) {
+	var req fstabActionRequest
+	_ = c.ShouldBindJSON(&req)
+	if req.MountPoint == "" {
+		req.MountPoint = c.Query("mount_point")
+	}
+	if req.MountPoint == "" {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+
+	if err := service.MyService.Disk().UmountFstabEntry(req.MountPoint); err != nil {
+		fstabError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+}
+
+// POST /v1/storage/fstab/adopt
+func PostFstabAdoptAction(c *gin.Context) {
+	var req fstabActionRequest
+	_ = c.ShouldBindJSON(&req)
+	if req.MountPoint == "" {
+		req.MountPoint = c.Query("mount_point")
+	}
+	if req.MountPoint == "" {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+
+	mount, err := service.MyService.Disk().AdoptFstabEntry(req.MountPoint)
+	if err != nil {
+		fstabError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: mount})
+}
+

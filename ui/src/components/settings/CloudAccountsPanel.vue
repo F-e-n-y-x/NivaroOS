@@ -30,6 +30,13 @@
 					<option v-for="ex in opt.Examples" :key="ex.Value" :value="ex.Value">{{ ex.Help }}</option>
 				</b-select>
 				<b-input
+					v-else-if="opt.Name === 'cookie'"
+					v-model="form.values[opt.Name]"
+					type="textarea"
+					size="is-small"
+					rows="3"
+				></b-input>
+				<b-input
 					v-else
 					v-model="form.values[opt.Name]"
 					size="is-small"

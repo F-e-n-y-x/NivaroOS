@@ -23,6 +23,13 @@ const (
 	ManagedComment = "Added by the NivaroOS"
 )
 
+func isManagedComment(line string) bool {
+	return strings.Contains(line, "Added by the NivaroOS") ||
+		strings.Contains(line, "Added by NivaroOS") ||
+		strings.Contains(line, "Added by the CasaOS") ||
+		strings.Contains(line, "Added by CasaOS")
+}
+
 var (
 	_fstab *FStab
 
@@ -288,6 +295,45 @@ func (f *FStab) Enable(mountpoint string) error {
 	return os.Rename(FStabPathNew, f.path)
 }
 
+// Adopt appends ManagedComment to an existing system fstab line to bring it under NivaroOS management.
+func (f *FStab) Adopt(mountpoint string) error {
+	FStabPathNew := f.path + ".nivaroos.new"
+	FStabFileNew, err := os.OpenFile(FStabPathNew, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	if err := foreachLine(f.path, func(line string) error {
+		entry, _ := parseEntry(line)
+		if entry != nil && entry.MountPoint == mountpoint && !entry.Managed {
+			found = true
+			_, err := FStabFileNew.WriteString(strings.TrimRight(line, "\r\n\t ") + "\t# " + ManagedComment + "\n")
+			return err
+		}
+
+		_, err := FStabFileNew.WriteString(line + "\n")
+		return err
+	}); err != nil {
+		FStabFileNew.Close()
+		return err
+	}
+
+	if err := FStabFileNew.Close(); err != nil {
+		return err
+	}
+
+	if !found {
+		return ErrEntryNotFound
+	}
+
+	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
+		return err
+	}
+
+	return os.Rename(FStabPathNew, f.path)
+}
+
 func Get() *FStab {
 	if _fstab == nil {
 		_fstab = &FStab{
@@ -312,7 +358,7 @@ func parseEntry(line string) (*Entry, error) {
 	entry := Entry{
 		Dump:    0,
 		Pass:    PassDoNotCheck,
-		Managed: strings.Contains(line, ManagedComment),
+		Managed: isManagedComment(line),
 		Enabled: true,
 	}
 
@@ -347,7 +393,7 @@ func parseEntry(line string) (*Entry, error) {
 // entry the admin disabled by hand, etc.) - those are left alone.
 func parseManagedCommentLine(trimmedLine string) *Entry {
 	rest := strings.TrimSpace(strings.TrimPrefix(trimmedLine, "#"))
-	if !strings.Contains(rest, ManagedComment) {
+	if !isManagedComment(rest) {
 		return nil
 	}
 

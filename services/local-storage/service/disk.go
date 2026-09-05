@@ -75,6 +75,9 @@ type DiskService interface {
 	UpdateFstabMount(req model.UpdateFstabMountRequest) (*model.FstabMount, error)
 	RemoveFstabMount(mountPoint string) error
 	SetFstabMountEnabled(mountPoint string, enabled bool) error
+	MountFstabEntry(mountPoint string) error
+	UmountFstabEntry(mountPoint string) error
+	AdoptFstabEntry(mountPoint string) (*model.FstabMount, error)
 }
 
 type diskService struct {

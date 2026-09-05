@@ -69,6 +69,9 @@ func InitV1Router() *gin.Engine {
 				v1FstabGroup.PUT("", v1.PutFstabMount)
 				v1FstabGroup.DELETE("", v1.DeleteFstabMount)
 				v1FstabGroup.PUT("/enabled", v1.PutFstabMountEnabled)
+				v1FstabGroup.POST("/mount", v1.PostFstabMountAction)
+				v1FstabGroup.POST("/umount", v1.PostFstabUmountAction)
+				v1FstabGroup.POST("/adopt", v1.PostFstabAdoptAction)
 			}
 		}
 		v1CloudGroup := v1Group.Group("/cloud")

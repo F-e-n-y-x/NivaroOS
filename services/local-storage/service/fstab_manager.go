@@ -265,12 +265,14 @@ func (d *diskService) ListFstabSystemEntries() ([]model.FstabMount, error) {
 		activeMounts = map[string]bool{}
 	}
 
+	blkList := d.LSBLK(false)
+
 	result := make([]model.FstabMount, 0, len(entries))
 	for _, e := range entries {
 		if e.Managed {
 			continue
 		}
-		result = append(result, buildFstabMountView(e, nil, activeMounts))
+		result = append(result, buildFstabMountView(e, blkList, activeMounts))
 	}
 
 	return result, nil
@@ -588,3 +590,73 @@ func (d *diskService) SetFstabMountEnabled(mountPoint string, enabled bool) erro
 	}
 	return fstab.Get().RemoveByMountPoint(mountPoint, true)
 }
+
+// MountFstabEntry mounts a configured fstab entry on demand.
+func (d *diskService) MountFstabEntry(mountPoint string) error {
+	entry, err := fstab.Get().GetEntryByMountPoint(mountPoint)
+	if err != nil {
+		return err
+	}
+	if entry == nil {
+		allEntries, err := fstab.Get().GetAllEntries()
+		if err == nil {
+			for _, e := range allEntries {
+				if e.MountPoint == mountPoint {
+					entry = e
+					break
+				}
+			}
+		}
+	}
+	if entry == nil {
+		return newFstabError(common_err.FSTAB_ENTRY_NOT_FOUND, "fstab entry not found")
+	}
+
+	activeMounts, _ := currentMountPoints()
+	if activeMounts[mountPoint] {
+		return nil
+	}
+
+	if err := file.IsNotExistMkDir(mountPoint); err != nil {
+		return fmt.Errorf("could not create mount point directory: %w", err)
+	}
+
+	fstypeArg, optionsArg := entry.FSType, entry.Options
+	if err := mount.Mount(entry.Source, entry.MountPoint, &fstypeArg, &optionsArg); err != nil {
+		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+	}
+
+	return nil
+}
+
+// UmountFstabEntry unmounts an active fstab entry.
+func (d *diskService) UmountFstabEntry(mountPoint string) error {
+	if isReservedMountPoint(mountPoint) {
+		return newFstabError(common_err.FSTAB_MOUNT_POINT_UNSAFE, "cannot unmount a system root or boot directory")
+	}
+
+	activeMounts, _ := currentMountPoints()
+	if !activeMounts[mountPoint] {
+		return nil
+	}
+
+	if err := mount.UmountByMountPoint(mountPoint); err != nil {
+		return fmt.Errorf("could not unmount %s: %w", mountPoint, err)
+	}
+
+	return nil
+}
+
+// AdoptFstabEntry converts an unmanaged system fstab entry into a managed one.
+func (d *diskService) AdoptFstabEntry(mountPoint string) (*model.FstabMount, error) {
+	if isReservedMountPoint(mountPoint) {
+		return nil, newFstabError(common_err.FSTAB_MOUNT_POINT_UNSAFE, "cannot adopt a system root or boot partition")
+	}
+
+	if err := fstab.Get().Adopt(mountPoint); err != nil {
+		return nil, err
+	}
+
+	return d.getFstabMountByMountPoint(mountPoint)
+}
+

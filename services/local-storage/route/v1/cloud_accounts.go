@@ -51,6 +51,7 @@ var providerCatalog = []cloudProvider{
 	{Type: "webdav", Label: "WebDAV", Icon: "server-network", AuthKind: "form"},
 	{Type: "sftp", Label: "SFTP", Icon: "server-network", AuthKind: "form"},
 	{Type: "smb", Label: "SMB / CIFS Share", Icon: "nas", AuthKind: "form"},
+	{Type: "terabox", Label: "TeraBox", Icon: "package-variant", AuthKind: "form"},
 }
 
 var providerIcons = func() map[string]string {

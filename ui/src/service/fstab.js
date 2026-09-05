@@ -26,6 +26,18 @@ const fstab = {
 
 	setEnabled(mountPoint, enabled) {
 		return api.put(`${PREFIX}/enabled`, { mount_point: mountPoint, enabled });
+	},
+
+	mount(mountPoint) {
+		return api.post(`${PREFIX}/mount`, { mount_point: mountPoint });
+	},
+
+	umount(mountPoint) {
+		return api.post(`${PREFIX}/umount`, { mount_point: mountPoint });
+	},
+
+	adopt(mountPoint) {
+		return api.post(`${PREFIX}/adopt`, { mount_point: mountPoint });
 	}
 }
 export default fstab;

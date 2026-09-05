@@ -11,6 +11,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	_ "github.com/F-e-n-y-x/NivaroOS/services/local-storage/backend/terabox"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/mount"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/command"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
