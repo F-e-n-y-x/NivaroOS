@@ -125,6 +125,7 @@
 				:active="showSharePicker"
 				:title="$t('Select Host Folder to Share')"
 				start-path="/DATA"
+				confine-to-root="/DATA"
 				directory-mode
 				@selected="addSharedFolder"
 				@close="showSharePicker = false"

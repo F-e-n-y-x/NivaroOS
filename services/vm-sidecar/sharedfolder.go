@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -21,6 +23,59 @@ type SharedFolderSpec struct {
 	SourceDir string `json:"source_dir"`
 	TargetTag string `json:"target_tag"` // e.g. "nivaroshare" or subfolder name
 	ReadOnly  bool   `json:"read_only,omitempty"`
+}
+
+// safeSubdirNameRe restricts a folder's subdirectory name (derived from its
+// TargetTag, or from SourceDir's basename) to a single, safe path component.
+// This becomes a directory name directly beneath vmSharesBaseDir/<vmName> via
+// filepath.Join in SyncVMShareDir - anything containing "/", "..", or other
+// path metacharacters would let a crafted value bind-mount somewhere far
+// outside that directory (see validateShareSource for the analogous check
+// on SourceDir itself).
+var safeSubdirNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// deniedShareRoots are paths under the otherwise-allowed /DATA tree that
+// must never be handed to a VM as a shared folder even though they're
+// legitimate host directories - sharing vmSharesBaseDir back into itself
+// would create a mount loop, and sharing defaultStorageDir would give a
+// VM's guest OS live, direct read/write access to every VM's virtual disk
+// images (including its own, while running).
+var deniedShareRoots = []string{vmSharesBaseDir, defaultStorageDir}
+
+// validateShareSource resolves sourceDir to its real, symlink-free absolute
+// path and confirms it's an existing directory somewhere under /DATA (this
+// project's convention for user-managed storage - see FstabPanel/cloud
+// storage, which scope themselves the same way) and not one of
+// deniedShareRoots. Without this, a shared folder's source was accepted
+// completely unchecked - any host path, including /, /etc, /root, or other
+// VMs' disk storage, could be exposed read-write to a VM's guest.
+func validateShareSource(sourceDir string) (string, error) {
+	abs, err := filepath.Abs(sourceDir)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", fmt.Errorf("source folder %q does not exist: %w", sourceDir, err)
+	}
+	fi, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("source folder %q does not exist: %w", sourceDir, err)
+	}
+	if !fi.IsDir() {
+		return "", fmt.Errorf("%q is not a directory", sourceDir)
+	}
+
+	const allowedRoot = "/DATA"
+	if resolved != allowedRoot && !strings.HasPrefix(resolved, allowedRoot+string(filepath.Separator)) {
+		return "", fmt.Errorf("only folders under %s can be shared with a VM", allowedRoot)
+	}
+	for _, denied := range deniedShareRoots {
+		if resolved == denied || strings.HasPrefix(resolved, denied+string(filepath.Separator)) {
+			return "", fmt.Errorf("%q can't be shared - it's used internally by the VM system", sourceDir)
+		}
+	}
+	return resolved, nil
 }
 
 const rootSharedFolderXMLTemplate = `<filesystem type='mount' accessmode='passthrough'>
@@ -77,6 +132,12 @@ func saveVMSharesMetadata(name string, shares []SharedFolderSpec) error {
 
 // SyncVMShareDir sets up the host-level unified share directory and bind mounts
 // each individual host directory as a subfolder inside /DATA/VM-Shares/<vmName>.
+// This is the single choke point every entry path (AttachSharedFolder, plus
+// CreateVM/UpdateVM handling their own shared_folders field directly) goes
+// through before anything is actually bind-mounted, so source/name validation
+// lives here rather than only in the higher-level callers - a request that
+// bypassed AttachSharedFolder's own checks would otherwise reach this
+// unvalidated.
 func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 	vmDir := getVMShareDir(name)
 	if err := os.MkdirAll(vmDir, 0755); err != nil {
@@ -84,17 +145,26 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 	}
 
 	activeSubdirs := make(map[string]bool)
+	validShares := make([]SharedFolderSpec, 0, len(shares))
 
 	for _, sf := range shares {
 		if sf.SourceDir == "" {
 			continue
 		}
+
+		resolvedSource, err := validateShareSource(sf.SourceDir)
+		if err != nil {
+			log.Printf("shared folder: skipping %q for VM %q: %v", sf.SourceDir, name, err)
+			continue
+		}
+
 		subName := strings.TrimSpace(sf.TargetTag)
 		if subName == "" || subName == "nivaroshare" {
-			subName = filepath.Base(sf.SourceDir)
+			subName = filepath.Base(resolvedSource)
 		}
-		if subName == "" || subName == "/" || subName == "." {
-			subName = "shared"
+		if !safeSubdirNameRe.MatchString(subName) {
+			log.Printf("shared folder: rejecting unsafe folder name %q for VM %q", subName, name)
+			continue
 		}
 		targetPath := filepath.Join(vmDir, subName)
 		activeSubdirs[subName] = true
@@ -104,8 +174,26 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 		}
 
 		if !isMounted(targetPath) {
-			_ = exec.Command("mount", "--bind", sf.SourceDir, targetPath).Run()
+			if err := exec.Command("mount", "--bind", resolvedSource, targetPath).Run(); err != nil {
+				log.Printf("shared folder: bind mount failed for VM %q, folder %q: %v", name, subName, err)
+				continue
+			}
 		}
+
+		// A bind mount doesn't inherit "read-only" from the UI toggle on its
+		// own - it must be explicitly remounted so the guest (which sees host
+		// permissions straight through via virtiofs) actually can't write
+		// here. Also clears a stale read-only remount if a folder that used
+		// to be read-only has since been switched back to read-write.
+		if sf.ReadOnly {
+			_ = exec.Command("mount", "-o", "remount,bind,ro", targetPath).Run()
+		} else {
+			_ = exec.Command("mount", "-o", "remount,bind,rw", targetPath).Run()
+		}
+
+		sf.SourceDir = resolvedSource
+		sf.TargetTag = subName
+		validShares = append(validShares, sf)
 	}
 
 	// Clean up removed subdirectories
@@ -123,7 +211,7 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 		}
 	}
 
-	return saveVMSharesMetadata(name, shares)
+	return saveVMSharesMetadata(name, validShares)
 }
 
 func (s *LibvirtStore) ListSharedFolders(name string) ([]SharedFolderSpec, error) {
@@ -182,20 +270,21 @@ func (s *LibvirtStore) AttachSharedFolder(name string, spec SharedFolderSpec) er
 	if spec.SourceDir == "" {
 		return errors.New("source_dir is required")
 	}
-	fi, err := os.Stat(spec.SourceDir)
+	resolvedSource, err := validateShareSource(spec.SourceDir)
 	if err != nil {
-		return fmt.Errorf("source folder %q does not exist: %w", spec.SourceDir, err)
+		return err
 	}
-	if !fi.IsDir() {
-		return fmt.Errorf("%q is not a directory", spec.SourceDir)
-	}
+	spec.SourceDir = resolvedSource
 
-	baseName := filepath.Base(spec.SourceDir)
+	baseName := filepath.Base(resolvedSource)
 	if baseName == "" || baseName == "/" || baseName == "." {
 		baseName = "shared"
 	}
 	if spec.TargetTag == "" || spec.TargetTag == "nivaroshare" {
 		spec.TargetTag = baseName
+	}
+	if !safeSubdirNameRe.MatchString(spec.TargetTag) {
+		return fmt.Errorf("folder name %q isn't allowed - use only letters, numbers, - and _", spec.TargetTag)
 	}
 
 	// Read existing shares and append new one
@@ -275,5 +364,24 @@ func (s *LibvirtStore) DetachSharedFolder(name string, targetTag string) error {
 		}
 	}
 
-	return SyncVMShareDir(name, newShares)
+	if err := SyncVMShareDir(name, newShares); err != nil {
+		return err
+	}
+
+	if len(newShares) == 0 {
+		// No folders left - fully detach the virtiofs device instead of
+		// leaving an empty export attached: otherwise the guest still sees a
+		// "nivaroshare" mount with nothing in it, and a later
+		// AttachSharedFolder call would find the device already present in
+		// the XML and skip re-adding it.
+		if dom, err := s.lookup(name); err == nil {
+			defer dom.Free()
+			var buf strings.Builder
+			if tplErr := rootSharedFolderTemplate.Execute(&buf, struct{ Name string }{Name: name}); tplErr == nil {
+				_ = attachOrDetachDevice(dom, buf.String(), false)
+			}
+		}
+	}
+
+	return nil
 }

@@ -1254,6 +1254,12 @@ func (s *LibvirtStore) DeleteVM(name string, wipeDisk bool) error {
 		return err
 	}
 
+	// Deleting a VM previously left every folder it had shared still
+	// bind-mounted under vmSharesBaseDir/<name> indefinitely - unmount them
+	// and remove the now-orphaned unified share directory along with it.
+	_ = SyncVMShareDir(name, nil)
+	_ = os.RemoveAll(getVMShareDir(name))
+
 	for _, path := range diskPaths {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove disk %s: %w", path, err)

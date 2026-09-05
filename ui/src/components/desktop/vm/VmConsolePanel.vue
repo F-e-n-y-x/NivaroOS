@@ -199,13 +199,21 @@
 									</button>
 								</div>
 								<div v-if="selectedShareFolder" class="share-tag-row">
-									<input v-model="shareTag" class="share-tag-input" :placeholder="$t('Mount tag (e.g. nivaroshare)')" />
-									<button class="share-action-btn is-primary" :disabled="shareBusy" @click="attachShare">
+									<input
+										v-model="shareTag"
+										class="share-tag-input"
+										:placeholder="$t('Folder name (letters, numbers, - and _ only)')"
+										pattern="[a-zA-Z0-9_-]+"
+									/>
+									<button class="share-action-btn is-primary" :disabled="shareBusy || !isValidShareTag" @click="attachShare">
 										<b-icon v-if="shareBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
 										<b-icon v-else icon="plus" size="is-small"></b-icon>
 										<span>{{ $t('Mount Live') }}</span>
 									</button>
 								</div>
+								<p v-if="selectedShareFolder && shareTag && !isValidShareTag" class="share-tag-error">
+									{{ $t('Only letters, numbers, - and _ are allowed here.') }}
+								</p>
 							</div>
 
 							<!-- Guest Instructions -->
@@ -218,12 +226,17 @@
 									</div>
 								</div>
 								<div v-if="instructionsTab === 'linux'" class="instructions-body">
+									<!-- Every shared folder lives under one single virtiofs export,
+									     always tagged "nivaroshare" on the guest side regardless of
+									     each folder's own name - that name only picks its
+									     subdirectory once mounted (see /mnt/<folder name> below). -->
 									<div class="code-snippet-box">
-										<code>sudo mount -t virtiofs {{ (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'nivaroshare' }} /mnt</code>
-										<button type="button" class="code-copy-btn" :title="$t('Copy Command')" @click="copyCommand(`sudo mount -t virtiofs ${(vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'nivaroshare'} /mnt`)">
+										<code>sudo mount -t virtiofs nivaroshare /mnt</code>
+										<button type="button" class="code-copy-btn" :title="$t('Copy Command')" @click="copyCommand('sudo mount -t virtiofs nivaroshare /mnt')">
 											<b-icon icon="content-copy" size="is-small"></b-icon>
 										</button>
 									</div>
+									<p class="instructions-note">{{ $t('Each shared folder then appears as a subfolder there, e.g. /mnt/{example}.', { example: (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'my-folder' }) }}</p>
 								</div>
 								<div v-else class="instructions-body">
 									<p class="win-instruct-text">{{ $t('Insert Guest Tools CD and run NivaroOS-Guest-Tools-Setup.bat inside Windows to auto-install all drivers & mount shared folders.') }}</p>
@@ -471,6 +484,7 @@
 			:active="showShareFolderPicker"
 			:title="$t('Select Host Folder to Share')"
 			start-path="/DATA"
+			confine-to-root="/DATA"
 			directory-mode
 			@selected="onShareFolderSelected"
 			@close="showShareFolderPicker = false"
@@ -739,6 +753,14 @@ export default {
 		}
 	},
 	computed: {
+		// Mirrors the vm-sidecar's own safeSubdirNameRe - this folder name
+		// becomes a directory name on the host, so anything outside this
+		// charset would be rejected server-side anyway; validating it here
+		// too means the button just stays disabled instead of the user
+		// waiting on a round-trip to find out.
+		isValidShareTag() {
+			return /^[a-zA-Z0-9_-]+$/.test(this.shareTag || '')
+		},
 		statusText() {
 			return (
 				{
@@ -2354,6 +2376,18 @@ export default {
 		outline: none;
 		border-color: rgba(255, 255, 255, 0.4);
 	}
+}
+
+.share-tag-error {
+	margin: 0.3rem 0 0;
+	font-size: 0.7rem;
+	color: var(--color-danger);
+}
+
+.instructions-note {
+	margin: 0.4rem 0 0;
+	font-size: 0.7rem;
+	color: rgba(255, 255, 255, 0.55);
 }
 
 .share-action-btn {

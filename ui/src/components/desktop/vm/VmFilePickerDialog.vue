@@ -68,7 +68,14 @@ export default {
 		// entirely, since the destination filesystem may use a different
 		// extension convention than expected. Empty = no filtering at all.
 		extensions: { type: Array, default: () => [] },
-		directoryMode: { type: Boolean, default: false }
+		directoryMode: { type: Boolean, default: false },
+			// When set, browsing is confined to this directory and below - the
+			// "Root" breadcrumb and everything above this point are hidden
+			// entirely rather than merely discouraged. Used for VM shared
+			// folders, which the backend only accepts from /DATA anyway (see
+			// vm-sidecar's validateShareSource) - confining the picker to
+			// match means a folder picked here can never be rejected afterwards.
+			confineToRoot: { type: String, default: '' }
 	},
 	data() {
 		return {
@@ -80,11 +87,19 @@ export default {
 	},
 	computed: {
 		crumbs() {
+			const root = this.confineToRoot || '/'
+			const rootParts = root.split('/').filter(Boolean)
 			const parts = this.currentPath.split('/').filter(Boolean)
-			const crumbs = [{ name: this.$t('Root'), path: '/' }]
+			// When confined, start the breadcrumb at the root itself (named
+			// after its last segment, e.g. "DATA") instead of a global "Root"
+			// that would otherwise invite navigating above it.
+			const crumbs = this.confineToRoot
+				? [{ name: rootParts[rootParts.length - 1] || root, path: root }]
+				: [{ name: this.$t('Root'), path: '/' }]
 			let acc = ''
-			parts.forEach(part => {
+			parts.forEach((part, i) => {
 				acc += '/' + part
+				if (this.confineToRoot && i < rootParts.length) return
 				crumbs.push({ name: part, path: acc })
 			})
 			return crumbs
@@ -130,6 +145,9 @@ export default {
 			}
 		},
 		navigate(path) {
+			if (this.confineToRoot && path !== this.confineToRoot && !path.startsWith(this.confineToRoot + '/')) {
+				return
+			}
 			this.currentPath = path
 			this.selectedPath = null
 			this.load()
