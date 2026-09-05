@@ -7,6 +7,7 @@
 		via CSS (see DesktopWindow's :class binding). -->
 		<desktop-window v-for="win in windows" :key="win.id" :win="win"></desktop-window>
 		<dock></dock>
+		<notification-center></notification-center>
 		<date-time-pill></date-time-pill>
 		<drag-drop-menu></drag-drop-menu>
 		<file-operation-status></file-operation-status>
@@ -17,6 +18,7 @@
 <script>
 import DesktopWindow from './DesktopWindow.vue'
 import Dock from './Dock.vue'
+import NotificationCenter from './NotificationCenter.vue'
 import DateTimePill from './DateTimePill.vue'
 import DragDropMenu from './DragDropMenu.vue'
 import FileOperationStatus from './FileOperationStatus.vue'
@@ -34,6 +36,7 @@ export default {
 	components: {
 		DesktopWindow,
 		Dock,
+		NotificationCenter,
 		DateTimePill,
 		DragDropMenu,
 		FileOperationStatus,

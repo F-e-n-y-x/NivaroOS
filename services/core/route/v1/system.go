@@ -265,30 +265,151 @@ type diskUsageEntry struct {
 	Total      string `json:"total"`
 	Used       string `json:"used"`
 	Percent    string `json:"percent"`
+	IsUSB      bool   `json:"is_usb"`
+	Model      string `json:"model"`
+	Label      string `json:"label"`
+	SizeBytes  uint64 `json:"size_bytes,omitempty"`
+	UsedBytes  uint64 `json:"used_bytes,omitempty"`
+	AvailBytes uint64 `json:"avail_bytes,omitempty"`
 }
 
-// GetSystemDisksUsage shells `df` for a human-readable, per-mount usage
-// breakdown across every real filesystem (excluding virtual ones like
-// tmpfs/overlay) - the single-mount GetSystemDiskInfo/GetDiskInfo only
-// ever reports on "/", which misses every other mounted data volume.
+type lsblkJSONOutput struct {
+	Blockdevices []lsblkDevice `json:"blockdevices"`
+}
+
+type lsblkDevice struct {
+	Name        string        `json:"name"`
+	Type        string        `json:"type"`
+	Fstype      *string       `json:"fstype"`
+	Label       *string       `json:"label"`
+	Size        *uint64       `json:"size"`
+	Mountpoints []string      `json:"mountpoints"`
+	Tran        *string       `json:"tran"`
+	Model       *string       `json:"model"`
+	Fsavail     *uint64       `json:"fsavail"`
+	Fsused      *uint64       `json:"fsused"`
+	FsusePct    *string       `json:"fsuse%"`
+	Children    []lsblkDevice `json:"children"`
+}
+
+func formatDiskBytes(b uint64) string {
+	const unit = 1024.0
+	if b < 1024 {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / 1024; n >= 1024 && exp < 4; n /= 1024 {
+		div *= 1024
+		exp++
+	}
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	val := float64(b) / float64(div)
+	if exp >= 2 {
+		return fmt.Sprintf("%.1f %s", val, units[exp])
+	}
+	return fmt.Sprintf("%.0f %s", val, units[exp])
+}
+
+// GetSystemDisksUsage inspects lsblk block devices (with df fallback) for
+// exact per-mount usage breakdown, filesystem type, drive model, and USB
+// bus detection across all mounted drives.
 func GetSystemDisksUsage(ctx echo.Context) error {
-	out, err := exec.Command("sh", "-c", "df -h --output=target,fstype,size,used,pcent -x tmpfs -x devtmpfs -x overlay -x squashfs -x efivarfs 2>/dev/null | tail -n +2").Output()
+	out, err := exec.Command("lsblk", "-J", "-b", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINTS,TRAN,MODEL,FSAVAIL,FSUSED,FSUSE%").Output()
 	disks := []diskUsageEntry{}
 	if err == nil {
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 5 {
-				continue
+		var parsed lsblkJSONOutput
+		if json.Unmarshal(out, &parsed) == nil {
+			var processDevice func(d lsblkDevice, parentTran, parentModel string)
+			processDevice = func(d lsblkDevice, parentTran, parentModel string) {
+				tran := parentTran
+				if d.Tran != nil && *d.Tran != "" {
+					tran = *d.Tran
+				}
+				model := parentModel
+				if d.Model != nil && *d.Model != "" {
+					model = strings.TrimSpace(*d.Model)
+				}
+				fstype := ""
+				if d.Fstype != nil {
+					fstype = *d.Fstype
+				}
+				label := ""
+				if d.Label != nil {
+					label = *d.Label
+				}
+				var size uint64
+				if d.Size != nil {
+					size = *d.Size
+				}
+				var used uint64
+				if d.Fsused != nil {
+					used = *d.Fsused
+				}
+				var avail uint64
+				if d.Fsavail != nil {
+					avail = *d.Fsavail
+				} else if size > used {
+					avail = size - used
+				}
+				pcent := "0%"
+				if d.FsusePct != nil && *d.FsusePct != "" {
+					pcent = *d.FsusePct
+				} else if size > 0 && used > 0 {
+					pcent = fmt.Sprintf("%d%%", (used*100)/size)
+				}
+
+				for _, mp := range d.Mountpoints {
+					if mp == "" || mp == "[SWAP]" || fstype == "swap" {
+						continue
+					}
+					disks = append(disks, diskUsageEntry{
+						MountPoint: mp,
+						Fstype:     fstype,
+						Label:      label,
+						Model:      model,
+						SizeBytes:  size,
+						UsedBytes:  used,
+						AvailBytes: avail,
+						Total:      formatDiskBytes(size),
+						Used:       formatDiskBytes(used),
+						Percent:    pcent,
+						IsUSB:      strings.ToLower(tran) == "usb",
+					})
+				}
+
+				for _, child := range d.Children {
+					processDevice(child, tran, model)
+				}
 			}
-			disks = append(disks, diskUsageEntry{
-				MountPoint: fields[0],
-				Fstype:     fields[1],
-				Total:      fields[2],
-				Used:       fields[3],
-				Percent:    fields[4],
-			})
+
+			for _, dev := range parsed.Blockdevices {
+				processDevice(dev, "", "")
+			}
 		}
 	}
+
+	// Fallback to df if lsblk returned nothing
+	if len(disks) == 0 {
+		dfOut, dfErr := exec.Command("sh", "-c", "df -h --output=fstype,size,used,pcent,target -x tmpfs -x devtmpfs -x overlay -x squashfs -x efivarfs 2>/dev/null | tail -n +2").Output()
+		if dfErr == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(dfOut)), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) < 5 {
+					continue
+				}
+				mountPoint := strings.Join(fields[4:], " ")
+				disks = append(disks, diskUsageEntry{
+					Fstype:     fields[0],
+					Total:      fields[1],
+					Used:       fields[2],
+					Percent:    fields[3],
+					MountPoint: mountPoint,
+					IsUSB:      strings.HasPrefix(mountPoint, "/media/") || strings.Contains(mountPoint, "usb"),
+				})
+			}
+		}
+	}
+
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: disks})
 }
 

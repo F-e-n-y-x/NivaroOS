@@ -30,6 +30,7 @@ import Business_ShowNewAppTag from "@/mixins/app/Business_ShowNewAppTag";
 import DiskLearnMore from "@/components/Storage/DiskLearnMore.vue";
 import last from "lodash/last";
 import { ice_i18n } from "@/mixins/base/common-i18n";
+import activityService from "@/service/activity";
 
 
 export default {
@@ -160,6 +161,10 @@ export default {
 				this.homeShowFiles(path);
 			});
 
+			this.$EventBus.$on('activity:add', (item) => {
+				activityService.add(item);
+			});
+
 			this.$EventBus.$on('casaUI:openDiskLearnMore', () => {
 				this.$buefy.modal.open({
 					parent: this,
@@ -180,6 +185,7 @@ export default {
 		destroyUIEventBus() {
 			this.$EventBus.$off('casaUI:openInFiles');
 			this.$EventBus.$off('casaUI:openDiskLearnMore');
+			this.$EventBus.$off('activity:add');
 			// this.$EventBus.$off('casaUI:openStorageManager');
 		},
 		triggerUIEventBus(event) {
@@ -276,6 +282,16 @@ export default {
 					messageUUID: eventJson.uuid
 				})
 				this.noticesData[eventType]['operate']['path'] = eventJson.properties['mount_point']
+				activityService.add({
+					title: this.$t('USB Drive Connected'),
+					message: `${eventJson.properties['model'] || 'USB Device'} (${percent})`,
+					type: 'usb',
+					status: 'info',
+					action: eventJson.properties['mount_point'] ? {
+						label: this.$t('Open in Files'),
+						path: eventJson.properties['mount_point']
+					} : null
+				})
 			} else if (operateType === 'removed') {
 				// Delete according to the uuid with this.noticesData[eventType]['content'] from BackEnd-DB
 				if (this.noticesData[eventType] && this.noticesData[eventType]['content'][entityUUID]) {
@@ -286,6 +302,12 @@ export default {
 				if (Object.keys(this.noticesData[eventType]['content']).length === 0) {
 					this.$delete(this.noticesData, eventType)
 				}
+				activityService.add({
+					title: this.$t('USB Drive Disconnected'),
+					message: `${eventJson.properties['model'] || 'USB Device'} was removed`,
+					type: 'usb',
+					status: 'info'
+				})
 			}
 		},
 		transformLocalStorage(eventJson, /*operateType*/) {
@@ -324,6 +346,23 @@ export default {
 					messageUUID: eventJson.uuid
 				})
 				this.noticesData[driveType]['operate']['path'] = eventJson.properties['mount_point']
+				activityService.add({
+					title: this.$t('Storage Drive Detected'),
+					message: `${eventJson.properties['model'] || 'Storage Disk'} (${percent})`,
+					type: 'storage',
+					status: 'info',
+					action: {
+						label: this.$t('Storage Manager'),
+						window: {
+							id: 'settings',
+							title: this.$t('Settings'),
+							component: 'SettingsApp',
+							width: 780,
+							height: 560,
+							props: { section: 'storage' }
+						}
+					}
+				})
 			} else if (operateType === 'removed') {
 				// Delete according to the uuid with this.noticesData[driveType]['content'] from BackEnd-DB
 				if (this.noticesData[driveType] && this.noticesData[driveType]['content'][entityUUID]) {
@@ -334,6 +373,12 @@ export default {
 				if (Object.keys(this.noticesData[driveType]['content']).length === 0) {
 					this.$delete(this.noticesData, driveType)
 				}
+				activityService.add({
+					title: this.$t('Storage Drive Removed'),
+					message: `${eventJson.properties['model'] || 'Storage Disk'} disconnected`,
+					type: 'storage',
+					status: 'info'
+				})
 			}
 		},
 		transformNewDisk(eventJson, operateType) {
@@ -368,6 +413,23 @@ export default {
 					messageUUID: eventJson.uuid
 				})
 				this.noticesData[eventType]['operate']['path'] = eventJson.properties['mount_point']
+				activityService.add({
+					title: this.$t('New Unformatted Disk Detected'),
+					message: `${eventJson.properties['model'] || 'Storage Device'} requires formatting or setup`,
+					type: 'storage',
+					status: 'warning',
+					action: {
+						label: this.$t('Storage Manager'),
+						window: {
+							id: 'settings',
+							title: this.$t('Settings'),
+							component: 'SettingsApp',
+							width: 780,
+							height: 560,
+							props: { section: 'storage' }
+						}
+					}
+				})
 			} else if (operateType === 'removed') {
 				// Delete according to the uuid with this.noticesData[eventType]['content'] from BackEnd-DB
 				if (this.noticesData[eventType] && this.noticesData[eventType]['content'][entityUUID]) {
@@ -471,6 +533,13 @@ export default {
 				message: res.Properties["message"],
 				icon: res.Properties["app:icon"]
 			});
+			activityService.add({
+				title: this.$t('App Settings Updated'),
+				message: `${res.Properties["app:name"] || 'Application'} configuration updated`,
+				type: 'app',
+				status: 'success',
+				icon: res.Properties["app:icon"]
+			});
 		},
 		"app:apply-changes-error"(res) {
 			this.$buefy.toast.open({
@@ -486,6 +555,13 @@ export default {
 				success: false,
 				title: res.Properties["app:name"] + "Error Info",
 				message: res.Properties["message"],
+				icon: res.Properties["app:icon"]
+			});
+			activityService.add({
+				title: this.$t('App Configuration Failed'),
+				message: `${res.Properties["app:name"]}: ${res.Properties["message"]}`,
+				type: 'app',
+				status: 'error',
 				icon: res.Properties["app:icon"]
 			});
 		},
@@ -511,6 +587,13 @@ export default {
 				icon: res.Properties["app:icon"],
 				isNewTag: true
 			});
+			activityService.add({
+				title: this.$t('App Installed Successfully'),
+				message: `${res.Properties["app:name"] || 'Application'} installed and ready to use`,
+				type: 'app',
+				status: 'success',
+				icon: res.Properties["app:icon"]
+			});
 		},
 		"app:install-error"(res) {
 			this.transformAppInstallationProgress({
@@ -524,6 +607,13 @@ export default {
 				icon: res.Properties["app:icon"],
 				isNewTag: true
 			});
+			activityService.add({
+				title: this.$t('App Installation Failed'),
+				message: `${res.Properties["app:name"] || 'Application'}: ${res.Properties["message"] || 'Installation error'}`,
+				type: 'app',
+				status: 'error',
+				icon: res.Properties["app:icon"]
+			});
 		},
 
 		"app:update-begin"(res) {
@@ -535,12 +625,19 @@ export default {
 			});
 		},
 		"app:update-end"(res) {
+			const isUpdated = res.Properties["docker:image:updated"] === "true";
 			this.transformAppInstallationProgress({
 				finished: true,
 				name: res.Properties["name"],
 				id: res.Properties["cid"],
 				icon: '',
-				isNewTag: res.Properties["docker:image:updated"] === "true"
+				isNewTag: isUpdated
+			});
+			activityService.add({
+				title: isUpdated ? this.$t('App Updated') : this.$t('App Checked'),
+				message: `${res.Properties["name"] || 'Application'} ${isUpdated ? 'was updated to latest version' : 'is up to date'}`,
+				type: 'app',
+				status: 'success'
 			});
 		},
 		"app:install-progress"(res) {

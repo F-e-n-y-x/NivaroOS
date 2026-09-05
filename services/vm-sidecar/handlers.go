@@ -259,6 +259,75 @@ func RegisterVMRoutes(mux *http.ServeMux, store *LibvirtStore) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	// VM Snapshots (Create, List, Get, Revert, Delete)
+	mux.HandleFunc("GET /vms/{name}/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		snaps, err := store.ListSnapshots(r.PathValue("name"))
+		if err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, snaps)
+	})
+
+	mux.HandleFunc("POST /vms/{name}/snapshots", func(w http.ResponseWriter, r *http.Request) {
+		var req CreateSnapshotRequest
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		snap, err := store.CreateSnapshot(r.PathValue("name"), req)
+		if err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, snap)
+	})
+
+	mux.HandleFunc("GET /vms/{name}/snapshots/{snap}", func(w http.ResponseWriter, r *http.Request) {
+		snap, err := store.GetSnapshot(r.PathValue("name"), r.PathValue("snap"))
+		if err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, snap)
+	})
+
+	mux.HandleFunc("POST /vms/{name}/snapshots/{snap}/revert", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.RevertSnapshot(r.PathValue("name"), r.PathValue("snap")); err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("DELETE /vms/{name}/snapshots/{snap}", func(w http.ResponseWriter, r *http.Request) {
+		children := r.URL.Query().Get("children") == "true"
+		if err := store.DeleteSnapshot(r.PathValue("name"), r.PathValue("snap"), children); err != nil {
+			if isNotFound(err) {
+				writeError(w, http.StatusNotFound, err)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 }
 
 // vmAction adapts a LibvirtStore method taking just a VM name into an

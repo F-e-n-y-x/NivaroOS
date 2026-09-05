@@ -13,20 +13,17 @@
 			</div>
 			<!-- Header End -->
 
-			<!-- Each real mount point (root + every /DATA/* volume the user
-			has, formatted through NivaroOS or just mounted by hand - both
-			show up here) gets its own row with its own used/total, instead
-			of one number combining everything into a single blob. -->
+			<!-- Unified Disks & USB Drives List -->
 			<div class="columns is-mobile is-multiline pt-2">
 				<p v-if="!visibleDisks.length" class="disk-info no-disks column is-full">{{ $t('No drives to show.') }}</p>
-				<div v-for="d in visibleDisks" :key="d.mount_point" class="column is-full pb-0">
+				<div v-for="d in visibleDisks" :key="d.mount_point" class="column is-full pb-0 mb-2">
 					<div class="is-flex is-align-items-center">
-						<div class="header-icon">
-							<b-image :src="require('@/assets/img/storage/storage.svg')" class="is-64x64"></b-image>
+						<div class="header-icon is-flex-shrink-0">
+							<b-image :src="d.is_usb ? require('@/assets/img/storage/USB.svg') : require('@/assets/img/storage/storage.svg')" class="is-64x64"></b-image>
 						</div>
-						<div class="ml-2 is-flex-grow-1 ">
-							<h4 class="title is-size-14px mb-1 mt-0 has-text-left has-text-white one-line">
-								{{ mountLabel(d.mount_point) }}
+						<div class="ml-2 is-flex-grow-1 min-w-0">
+							<h4 class="title is-size-14px mb-1 mt-0 has-text-left has-text-white one-line" :title="getDiskTitle(d)">
+								{{ getDiskTitle(d) }}
 							</h4>
 							<p class="has-text-left is-size-14px disk-info">
 								{{ $t('Used') }}: {{ d.used }}<br>
@@ -38,35 +35,6 @@
 						size="is-small"></b-progress>
 				</div>
 			</div>
-
-			<!-- Usb Disk List Start - part of the same card, not a second
-			stacked widget, so this widget always renders exactly one box
-			like every other widget (needed for the auto-arrange grid to
-			treat every widget as the same nominal size). -->
-			<div v-if="usbDisks.length > 0" class="usb-disks pt-1">
-				<div class="columns is-mobile is-multiline">
-					<div v-for="(item) in usbDisks" :key="'usb_' + item.name" class="column is-full pb-0">
-						<div class="is-flex">
-							<div class="header-icon is-flex-shrink-0">
-								<b-image :src="require('@/assets/img/storage/USB.svg')" class="is-64x64"></b-image>
-							</div>
-							<div class="ml-2 is-flex-grow-1 ">
-								<h4 class="title is-size-14px mb-1 mt-0 has-text-left has-text-white one-line ">
-									{{ item.model }}
-								</h4>
-								<p class="has-text-left is-size-14px disk-info">
-									{{ $t('Used') }}: {{ renderSize(item.size - item.avail) }}<br>
-									{{ $t('Total') }}: {{ renderSize(item.size) }}
-								</p>
-							</div>
-						</div>
-						<b-progress :type="(Math.floor((item.size - item.avail) * 100 / item.size)) | getProgressType"
-							:value="Math.floor((item.size - item.avail) * 100 / item.size)" class="mt-2"
-							size="is-small"></b-progress>
-					</div>
-				</div>
-			</div>
-			<!-- Usb Disk List End -->
 		</div>
 	</div>
 </template>
@@ -76,20 +44,15 @@ import { mixin } from '@/mixins/mixin';
 import events from '@/events/events'
 
 const storageWidgetConfigKey = "storage_widget_config"
-const REFRESH_MS = 30000 // disk usage isn't part of the 5s hardware-utilization
-// socket push, so this widget polls it on its own, and re-reads the
-// hidden-mounts config on the same cadence as a fallback - the actual
-// instant update when a mount is hidden/shown from Settings comes over
-// the EventBus instead (see events.SET_STORAGE_WIDGET_HIDDEN_MOUNTS
-// below), matching how SideBar.vue's own widget hide/show already works.
+const REFRESH_MS = 20000
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
 	name: 'disks',
 	icon: "storage-outline",
 	title: "Storage Status",
-	gridCols: 3, // "normal" size - 3 icon-columns wide (see SideBar.vue)
-	gridRows: 2, // "normal" size - 2 icon-rows tall
+	gridCols: 3,
+	gridRows: 2,
 	initShow: true,
 	mixins: [mixin],
 
@@ -98,40 +61,22 @@ export default {
 			disksUsage: [],
 			hiddenMounts: [],
 			hasCustomHiddenMounts: false,
-			usbDisks: [],
-			usbMountPoints: new Set(),
 			timer: 0
 		}
 	},
 
 	computed: {
 		visibleDisks() {
-			// Every mounted USB drive already gets its own row below in the
-			// dedicated "USB Disk List" (usbDisks, from the raw USB device
-			// list) - df-based disksUsage has no concept of "USB" and would
-			// otherwise show that same mount point a second time here, so
-			// usbMountPoints is subtracted out regardless of the hidden-
-			// mounts config.
-			let visible = this.disksUsage.filter(d => !this.usbMountPoints.has(d.mount_point))
-
-			// Until the user has ever touched the widget's show/hide config
-			// (a fresh install, or an existing install where they've simply
-			// never opened it), fall back to hiding EFI system partitions by
-			// default rather than an unfiltered list - they're never useful
-			// to show here and confuse people unfamiliar with them. The
-			// moment they save an explicit config (even an empty one),
-			// hiddenMounts becomes the sole source of truth.
 			if (!this.hasCustomHiddenMounts) {
-				return visible.filter(d => !this.isEfiPartition(d))
+				return this.disksUsage.filter(d => !this.isEfiPartition(d))
 			}
-			return visible.filter(d => !this.hiddenMounts.includes(d.mount_point))
+			return this.disksUsage.filter(d => !this.hiddenMounts.includes(d.mount_point))
 		}
 	},
 
 	mounted() {
 		this.refresh()
 		this.timer = setInterval(this.refresh, REFRESH_MS)
-		this.usbDisks = this.$store.state.hardwareInfo.sys_usb
 		this.$EventBus.$on(events.SET_STORAGE_WIDGET_HIDDEN_MOUNTS, this.setHiddenMounts)
 	},
 
@@ -151,17 +96,6 @@ export default {
 					this.hasCustomHiddenMounts = true
 				}
 			})
-			this.$api.storage.list().then(res => {
-				if (res.data.success !== 200) return
-				const mountPoints = new Set()
-				;(res.data.data || []).forEach(disk => {
-					if (disk.type !== 'usb') return
-					;(disk.children || []).forEach(child => {
-						if (child.mount_point) mountPoints.add(child.mount_point)
-					})
-				})
-				this.usbMountPoints = mountPoints
-			})
 		},
 
 		isEfiPartition(disk) {
@@ -171,6 +105,19 @@ export default {
 		setHiddenMounts(hiddenMounts) {
 			this.hiddenMounts = hiddenMounts
 			this.hasCustomHiddenMounts = true
+		},
+
+		getDiskTitle(d) {
+			if (d.mount_point === '/') return this.$t('System')
+			if (d.is_usb) {
+				if (d.model && d.label && d.label !== 'New Volume') {
+					return `${d.model} (${d.label})`
+				}
+				if (d.model) return d.model
+				if (d.label) return d.label
+			}
+			if (d.label) return d.label
+			return this.mountLabel(d.mount_point)
 		},
 
 		mountLabel(mountPoint) {
@@ -184,10 +131,6 @@ export default {
 
 		showDiskManagement() {
 			this.$messageBus('widget_storagemanager');
-			// The old StorageManagerPanel modal floated outside any window
-			// (not movable/resizable, inconsistent with the rest of the
-			// app) - jump straight to Appearance > Widgets, where this
-			// widget's own drive show/hide config actually lives.
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'settings', title: this.$t('Settings'), component: 'SettingsApp', width: 760, height: 540,
 				props: { section: 'appearance' }
@@ -195,8 +138,14 @@ export default {
 		},
 	},
 	sockets: {
-		"nivaroos:system:utilization"(res) {
-			this.usbDisks = JSON.parse(res.Properties.sys_usb)
+		"nivaroos:system:utilization"() {
+			// Periodically keep disks in sync when utilization ticks
+		},
+		"local-storage:disk:added"() {
+			this.refresh()
+		},
+		"local-storage:disk:removed"() {
+			this.refresh()
 		}
 	}
 }
@@ -230,9 +179,8 @@ export default {
 		padding: 0.5rem 0;
 	}
 
-	.usb-disks {
-		margin-top: 0.5rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
+	.min-w-0 {
+		min-width: 0;
 	}
 }
 </style>

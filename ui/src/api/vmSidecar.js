@@ -96,6 +96,14 @@ export const vmSidecar = {
 	detachSharedFolder: (name, tag) => request(`/vms/${encodeURIComponent(name)}/shared-folders/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
 	insertVirtioWin: name => request(`/vms/${encodeURIComponent(name)}/insert-virtio-win`, { method: 'POST' }),
 
+	// VM Snapshots
+	listSnapshots: name => request(`/vms/${encodeURIComponent(name)}/snapshots`),
+	getSnapshot: (name, snapName) => request(`/vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(snapName)}`),
+	createSnapshot: (name, payload) => request(`/vms/${encodeURIComponent(name)}/snapshots`, jsonBody(payload || {})),
+	revertSnapshot: (name, snapName) => request(`/vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(snapName)}/revert`, { method: 'POST' }),
+	deleteSnapshot: (name, snapName, children) =>
+		request(`/vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(snapName)}${children ? '?children=true' : ''}`, { method: 'DELETE' }),
+
 	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
 	// A cache-busting `t` param is left for the caller to append when
 	// polling (a plain <img src> won't re-fetch an unchanged URL).

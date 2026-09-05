@@ -74,6 +74,13 @@
 					</div>
 					<div class="vm-action-group">
 						<button
+							class="vm-action-btn"
+							:title="$t('Snapshots')"
+							@click="openSnapshots(vm.name)"
+						>
+							<b-icon icon="camera-outline" custom-size="mdi-18px"></b-icon>
+						</button>
+						<button
 						class="vm-action-btn"
 						:title="vm.state === 'running' ? $t('Stop the VM to edit it') : $t('Edit')"
 						:disabled="vm.state === 'running'"
@@ -243,6 +250,11 @@ export default {
 				height: 640,
 				props: { vmName: name },
 			})
+		},
+		openSnapshots(name) {
+			if (this.$parent && this.$parent.activeSection !== undefined) {
+				this.$parent.activeSection = 'snapshots'
+			}
 		},
 		openConsoleTab(name) {
 			const url = this.$router.resolve({ name: 'VmConsoleStandalone', params: { name } }).href

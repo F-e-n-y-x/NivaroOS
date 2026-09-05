@@ -3,4 +3,5 @@
 node_modules/
 *.log
 /services/vm-sidecar/vm-sidecar
+/services/vm-sidecar/nivaroos-vm-sidecar
 /services/gpu-sidecar/gpu-sidecar

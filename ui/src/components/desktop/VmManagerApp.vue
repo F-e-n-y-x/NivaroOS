@@ -3,7 +3,7 @@
 		<aside class="vm-nav">
 			<button v-for="s in sections" :key="s.id" class="nav-item hover-effect _is-radius"
 				:class="{ active: activeSection === s.id }" @click="activeSection = s.id">
-				<b-icon :icon="s.icon" pack="casa" size="is-20"></b-icon>
+				<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-20"></b-icon>
 				<span>{{ $t(s.label) }}</span>
 			</button>
 		</aside>
@@ -12,6 +12,10 @@
 			<section v-if="activeSection === 'vms'" class="vm-section">
 				<vm-setup-screen v-if="!setupReady" @ready="setupReady = true"></vm-setup-screen>
 				<vm-list v-else></vm-list>
+			</section>
+
+			<section v-if="activeSection === 'snapshots'" class="vm-section">
+				<vm-snapshots></vm-snapshots>
 			</section>
 
 			<section v-if="activeSection === 'networks'" class="vm-section">
@@ -28,18 +32,20 @@
 <script>
 import VmSetupScreen from './vm/VmSetupScreen.vue'
 import VmList from './vm/VmList.vue'
+import VmSnapshots from './vm/VmSnapshots.vue'
 import VmNetworks from './vm/VmNetworks.vue'
 import VmStorage from './vm/VmStorage.vue'
 import { vmSidecar } from '@/api/vmSidecar'
 
 export default {
 	name: 'vm-manager-app',
-	components: { VmSetupScreen, VmList, VmNetworks, VmStorage },
+	components: { VmSetupScreen, VmList, VmSnapshots, VmNetworks, VmStorage },
 	data() {
 		return {
 			activeSection: 'vms',
 			sections: [
 				{ id: 'vms', label: 'VMs', icon: 'display-applications-outline' },
+				{ id: 'snapshots', label: 'Snapshots', icon: 'camera-outline', pack: 'mdi' },
 				{ id: 'networks', label: 'Networks', icon: 'network-outline' },
 				{ id: 'storage', label: 'Storage', icon: 'storage-outline' }
 			],
