@@ -20,7 +20,7 @@
 		</div>
 
 		<!-- form-kind: S3, B2, WebDAV, SFTP, SMB - one step, fields generated from rclone's own metadata -->
-		<div v-if="activeProvider && activeProvider.auth_kind === 'form'" class="account-inline-form is-block mt-3">
+		<div v-if="activeProvider && activeProvider.auth_kind === 'form'" class="account-inline-form is-block">
 			<b-field :label="$t('Label')">
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
@@ -48,7 +48,7 @@
 		</div>
 
 		<!-- token-kind: Drive, Dropbox, OneDrive - a real 2-step sequence -->
-		<div v-if="activeProvider && activeProvider.auth_kind === 'token'" class="account-inline-form is-block mt-3">
+		<div v-if="activeProvider && activeProvider.auth_kind === 'token'" class="account-inline-form is-block">
 			<b-field :label="$t('Label')">
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
@@ -67,7 +67,7 @@
 				<span class="step-number">2</span>
 				<div class="step-body">
 					<p class="step-title">{{ $t('Paste what it prints back') }}</p>
-					<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('{\"access_token\":\"...')"></b-input>
+					<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')"></b-input>
 				</div>
 			</div>
 
@@ -79,7 +79,7 @@
 		</div>
 
 		<!-- interactive-kind: iCloud - Apple ID + password, then a 2FA code -->
-		<div v-if="activeProvider && activeProvider.auth_kind === 'interactive'" class="account-inline-form is-block mt-3">
+		<div v-if="activeProvider && activeProvider.auth_kind === 'interactive'" class="account-inline-form is-block">
 			<template v-if="!icloud.sessionId">
 				<b-field :label="$t('Label')">
 					<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
@@ -344,8 +344,8 @@ export default {
 .provider-groups {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
-	padding: 0.25rem 1.25rem 0.75rem;
+	gap: 1rem;
+	padding: 1rem 1.25rem 0.5rem;
 }
 
 .provider-group-label {
@@ -353,7 +353,7 @@ export default {
 	font-weight: 600;
 	letter-spacing: 0.02em;
 	color: rgba(0, 0, 0, 0.4);
-	margin-bottom: 0.4rem;
+	margin-bottom: 0.5rem;
 }
 
 .provider-grid {
@@ -402,7 +402,11 @@ export default {
 .step {
 	display: flex;
 	gap: 0.65rem;
-	margin: 0.6rem 0;
+	margin: 0.25rem 0 0.75rem;
+
+	&:last-child {
+		margin-bottom: 0;
+	}
 }
 
 .step-number {

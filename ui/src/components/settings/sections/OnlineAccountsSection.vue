@@ -1,7 +1,7 @@
 <template>
 	<section class="settings-section">
 		<h2 class="section-title">{{ $t('Online Storage') }}</h2>
-		<p class="section-desc">
+		<p class="section-subtitle text-muted is-size-7">
 			{{ $t('Connect Google Drive, Dropbox, OneDrive, iCloud, S3-compatible storage, and more - each one shows up as a location in Files.') }}
 		</p>
 
@@ -30,9 +30,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.section-desc {
-	font-size: 0.8rem;
+// text-muted isn't an actual defined class anywhere in this app (other
+// sections use it too, but it's a no-op) - keeping is-size-7 (a real Bulma
+// helper) for sizing, but the muted color needs its own rule here.
+.section-subtitle {
 	color: rgba(0, 0, 0, 0.55);
-	margin: -0.5rem 0 1rem;
 }
 </style>
