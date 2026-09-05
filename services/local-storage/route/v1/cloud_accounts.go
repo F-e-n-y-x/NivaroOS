@@ -1,10 +1,12 @@
 package v1
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,12 +14,15 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/configmap"
 	"github.com/rclone/rclone/fs/config/obscure"
+	"github.com/rclone/rclone/fs/operations"
 	"github.com/rclone/rclone/fs/rc"
+	"go.uber.org/zap"
 )
 
 // cloudProvider describes one online-account type the "Add Account" UI can
@@ -171,11 +176,12 @@ func PostCloudAccount(c *gin.Context) {
 // API/2FA handling of our own.
 
 type icloudSession struct {
-	name   string
-	label  string
-	m      configmap.Simple
-	state  string
-	expiry time.Time
+	name      string
+	label     string
+	reconnect bool
+	m         configmap.Simple
+	state     string
+	expiry    time.Time
 }
 
 var (
@@ -227,6 +233,12 @@ func runICloudConfig(c *gin.Context, sess *icloudSession, in fs.ConfigIn) {
 		// (cookies/trust token/etc alongside apple_id). Finish the account
 		// exactly like the non-interactive path does.
 		mountPoint := "/mnt/" + sess.name
+		if sess.reconnect {
+			if err := service.MyService.Storage().UnmountStorage(mountPoint); err != nil {
+				logger.Error("reconnect: failed to unmount before remounting", zap.Error(err), zap.String("name", sess.name))
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		data := rc.Params{"username": sess.label, "mount_point": mountPoint}
 		for k, v := range sess.m {
 			data[k] = v
@@ -259,6 +271,9 @@ type icloudStartRequest struct {
 	Label    string `json:"label" binding:"required"`
 	AppleID  string `json:"apple_id" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	// Name, if set, reconnects an existing account in place (re-runs sign-in
+	// against its current remote name) instead of creating a new one.
+	Name string `json:"name"`
 }
 
 // PostICloudStart begins the iCloud interactive flow: Apple ID + password.
@@ -269,7 +284,10 @@ func PostICloudStart(c *gin.Context) {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: err.Error()})
 		return
 	}
-	name := remoteName(req.Label, "iclouddrive")
+	name := req.Name
+	if name == "" {
+		name = remoteName(req.Label, "iclouddrive")
+	}
 	// The iclouddrive backend's own Config function expects an
 	// already-obscured password (config.Reveal()s it immediately) - that's
 	// normally done automatically by rclone's interactive config machinery
@@ -281,9 +299,10 @@ func PostICloudStart(c *gin.Context) {
 		return
 	}
 	sess := &icloudSession{
-		name:  name,
-		label: req.Label,
-		m:     configmap.Simple{"apple_id": req.AppleID, "password": obscuredPassword},
+		name:      name,
+		label:     req.Label,
+		reconnect: req.Name != "",
+		m:         configmap.Simple{"apple_id": req.AppleID, "password": obscuredPassword},
 	}
 	icloudSessionsMu.Lock()
 	pruneICloudSessions()
@@ -315,4 +334,146 @@ func PostICloudVerify(c *gin.Context) {
 		return
 	}
 	runICloudConfig(c, sess, fs.ConfigIn{State: sess.state, Result: req.Code})
+}
+
+// --- Manage an existing account: rename, reconnect, and a quick speed test.
+
+type renameAccountRequest struct {
+	Label string `json:"label" binding:"required"`
+}
+
+// PatchCloudAccount renames an account's display label - the only thing
+// "editing" an account safely means without re-running its whole auth flow.
+func PatchCloudAccount(c *gin.Context) {
+	name := c.Param("name")
+	var req renameAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: err.Error()})
+		return
+	}
+	if service.MyService.Storage().GetAttributeValueByName(name, "type") == "" {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "no such account"})
+		return
+	}
+	if err := service.MyService.Storage().SetAttributeValue(name, "username", req.Label, false); err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "label": req.Label}})
+}
+
+type reconnectAccountRequest struct {
+	Params map[string]string `json:"params" binding:"required"`
+}
+
+// PostCloudAccountReconnect replaces credentials on an existing account
+// in place (a fresh token pasted after re-running `rclone authorize`, or
+// updated server details for a form-kind account) without losing its name,
+// mount point, or display label. Used for token/form-kind providers; iCloud
+// has its own reconnect via PostICloudStart with an existing name.
+func PostCloudAccountReconnect(c *gin.Context) {
+	name := c.Param("name")
+	t := service.MyService.Storage().GetAttributeValueByName(name, "type")
+	if t == "" {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "no such account"})
+		return
+	}
+	var req reconnectAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: err.Error()})
+		return
+	}
+
+	ri, err := fs.Find(t)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+	isPassword := make(map[string]bool, len(ri.Options))
+	for _, opt := range ri.Options {
+		isPassword[opt.Name] = opt.IsPassword
+	}
+
+	mountPoint := "/mnt/" + name
+	if err := service.MyService.Storage().UnmountStorage(mountPoint); err != nil {
+		logger.Error("reconnect: failed to unmount before remounting", zap.Error(err), zap.String("name", name))
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	for k, v := range req.Params {
+		if err := service.MyService.Storage().SetAttributeValue(name, k, v, isPassword[k]); err != nil {
+			c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+			return
+		}
+	}
+
+	if err := service.MyService.Storage().MountStorage(mountPoint, name); err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})
+}
+
+// PostCloudAccountSpeedTest uploads a small random test file, times the
+// upload, reads it back timed, then deletes it - a quick real-world
+// throughput check against the actual remote, not a synthetic benchmark.
+func PostCloudAccountSpeedTest(c *gin.Context) {
+	name := c.Param("name")
+	if service.MyService.Storage().GetAttributeValueByName(name, "type") == "" {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "no such account"})
+		return
+	}
+
+	ctx := context.Background()
+	f, err := fs.NewFs(ctx, name+":")
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+
+	const testSize = 8 * 1024 * 1024 // 8MB - enough for a meaningful number, small enough to be quick
+	payload := make([]byte, testSize)
+	if _, err := rand.Read(payload); err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
+	testFileName := ".nivaroos-speedtest-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+	uploadStart := time.Now()
+	obj, err := operations.Rcat(ctx, f, testFileName, io.NopCloser(bytes.NewReader(payload)), time.Now(), nil)
+	uploadElapsed := time.Since(uploadStart)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("upload failed: %v", err)})
+		return
+	}
+	defer func() {
+		if err := obj.Remove(ctx); err != nil {
+			logger.Error("speedtest: failed to remove test file", zap.Error(err), zap.String("name", name))
+		}
+	}()
+
+	downloadStart := time.Now()
+	rc, err := obj.Open(ctx)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("download failed: %v", err)})
+		return
+	}
+	written, err := io.Copy(io.Discard, rc)
+	rc.Close()
+	downloadElapsed := time.Since(downloadStart)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("download failed: %v", err)})
+		return
+	}
+
+	mbpsUp := float64(testSize) / uploadElapsed.Seconds() / (1024 * 1024)
+	mbpsDown := float64(written) / downloadElapsed.Seconds() / (1024 * 1024)
+
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{
+		"upload_mbps":      mbpsUp,
+		"download_mbps":    mbpsDown,
+		"upload_seconds":   uploadElapsed.Seconds(),
+		"download_seconds": downloadElapsed.Seconds(),
+		"test_size_bytes":  testSize,
+	}})
 }

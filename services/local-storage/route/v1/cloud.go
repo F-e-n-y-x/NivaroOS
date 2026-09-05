@@ -36,19 +36,17 @@ func ListStorages(c *gin.Context) {
 		return
 	}
 
-	for i := 0; i < len(r.MountPoints); i++ {
-		t := service.MyService.Storage().GetAttributeValueByName(r.MountPoints[i].Fs, "type")
-		r.MountPoints[i].Icon = cloudProviderIcon(t)
-		r.MountPoints[i].Name = service.MyService.Storage().GetAttributeValueByName(r.MountPoints[i].Fs, "username")
-	}
 	list := []httper.MountPoint{}
 
 	for _, v := range r.MountPoints {
+		t := service.MyService.Storage().GetAttributeValueByName(v.Fs, "type")
+		name := service.MyService.Storage().GetAttributeValueByName(v.Fs, "username")
 		list = append(list, httper.MountPoint{
 			Fs:         v.Fs,
-			Icon:       v.Icon,
+			Icon:       cloudProviderIcon(t),
 			MountPoint: v.MountPoint,
-			Name:       v.Name,
+			Name:       name,
+			Type:       t,
 		})
 	}
 

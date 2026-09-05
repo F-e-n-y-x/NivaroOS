@@ -583,5 +583,11 @@
   "Enter the code": "Enter the code",
   "Failed to start iCloud sign-in": "Failed to start iCloud sign-in",
   "Verification failed": "Verification failed",
-  "Verify": "Verify"
+  "Verify": "Verify",
+  "Test speed": "Test speed",
+  "MB/s": "MB/s",
+  "Run this, sign in again, then paste the fresh token below.": "Run this, sign in again, then paste the fresh token below.",
+  "Reconnected": "Reconnected",
+  "Failed to reconnect": "Failed to reconnect",
+  "Speed test failed": "Speed test failed"
 }

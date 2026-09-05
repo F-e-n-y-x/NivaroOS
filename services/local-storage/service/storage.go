@@ -34,6 +34,7 @@ type StorageService interface {
 	CheckAndMountAll() error
 	GetConfigByName(name string) []string
 	GetAttributeValueByName(name, key string) string
+	SetAttributeValue(name, key, value string, isPassword bool) error
 	DeleteConfigByName(name string)
 	GetConfig() (httper.RemotesResult, error)
 }
@@ -222,6 +223,24 @@ func (s *storageStruct) GetAttributeValueByName(name, key string) string {
 		return ""
 	}
 	return value
+}
+
+// SetAttributeValue writes a single config value for an existing remote (e.g.
+// renaming its display label, or replacing its token/password when
+// reconnecting) without touching anything else in its config section.
+func (s *storageStruct) SetAttributeValue(name, key, value string, isPassword bool) error {
+	if isPassword {
+		if _, revealErr := obscure.Reveal(value); revealErr != nil {
+			obscured, err := obscure.Obscure(value)
+			if err != nil {
+				return fmt.Errorf("failed to obscure %q: %w", key, err)
+			}
+			value = obscured
+		}
+	}
+	rconfig.LoadedData().SetValue(name, key, value)
+	rconfig.SaveConfig()
+	return nil
 }
 
 func (s *storageStruct) DeleteConfigByName(name string) {
