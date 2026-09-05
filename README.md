@@ -26,15 +26,6 @@ Install NivaroOS on any clean **Debian 12+** or **Ubuntu 22.04+** system with a 
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 ```
 
-### Automated / Unattended Installation
-
-```bash
-# Install minimal stack (without KVM Virtual Machine Manager)
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash -s -- --without-vm --yes
-
-# Install full stack including KVM Virtual Machine Manager & noVNC
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash -s -- --with-vm --yes
-```
 
 #### Installer Flags & Options
 
