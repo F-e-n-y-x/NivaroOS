@@ -125,11 +125,11 @@
 		>
 			<span class="tree-node-icon">
 				<b-image v-if="item.icon_type === 'svg'" :src="item.icon" class="is-24x24"></b-image>
-				<b-icon v-else :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="casa-22px"></b-icon>
+				<b-icon v-else :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="mdi-22px"></b-icon>
 			</span>
 			<span class="tree-node-label one-line">{{ item.name }}</span>
 			<span class="tree-node-right-icon" @click.stop="umountCloud(item)">
-				<b-icon icon="eject" :pack="item.pack" class="casa-color-gray" custom-size="casa-16px"></b-icon>
+				<b-icon icon="eject" pack="casa" class="casa-color-gray" custom-size="casa-16px"></b-icon>
 			</span>
 		</div>
 		<!-- Cloud List End -->

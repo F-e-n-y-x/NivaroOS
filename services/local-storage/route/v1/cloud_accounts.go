@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/configmap"
+	"github.com/rclone/rclone/fs/config/obscure"
 	"github.com/rclone/rclone/fs/rc"
 )
 
@@ -269,10 +270,20 @@ func PostICloudStart(c *gin.Context) {
 		return
 	}
 	name := remoteName(req.Label, "iclouddrive")
+	// The iclouddrive backend's own Config function expects an
+	// already-obscured password (config.Reveal()s it immediately) - that's
+	// normally done automatically by rclone's interactive config machinery
+	// before a value ever reaches a backend; since we're seeding this
+	// configmap ourselves, we have to obscure it the same way first.
+	obscuredPassword, err := obscure.Obscure(req.Password)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		return
+	}
 	sess := &icloudSession{
 		name:  name,
 		label: req.Label,
-		m:     configmap.Simple{"apple_id": req.AppleID, "password": req.Password},
+		m:     configmap.Simple{"apple_id": req.AppleID, "password": obscuredPassword},
 	}
 	icloudSessionsMu.Lock()
 	pruneICloudSessions()

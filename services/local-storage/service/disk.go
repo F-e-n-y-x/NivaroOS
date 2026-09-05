@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -813,7 +812,13 @@ func (d *diskService) InitCheck() {
 func (d *diskService) GetSystemDf() (model.DFDiskSpace, error) {
 	out, err := exec.Command("df", "-kPT").Output()
 	if err != nil {
-		log.Fatal(err)
+		// A broken/disconnected FUSE mount (or any other mounted filesystem
+		// df can't stat) makes `df` exit non-zero - that must not take the
+		// whole service down. This is a per-request check, not a startup
+		// precondition; log.Fatal here previously crashed the entire
+		// process on every such failure.
+		logger.Error("GetSystemDf: df command failed", zap.Error(err))
+		return model.DFDiskSpace{}, err
 	}
 
 	outputStr := string(out)
