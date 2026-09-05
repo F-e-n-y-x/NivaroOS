@@ -220,14 +220,12 @@ export default {
 		},
 		// Local Storage (include Mergerfs)
 		async getLocalStorage() {
-			let mergeRes
+			let mergeRes = []
 			try {
-				mergeRes = await this.$api.local_storage
-					.getMergerfsInfo()
-					.then((res) => res.data.data[0].source_volume_uuids)
+				const mInfo = await this.$api.local_storage.getMergerfsInfo()
+				mergeRes = mInfo.data?.data?.[0]?.source_volume_uuids || []
 			} catch (error) {
 				mergeRes = []
-				console.log(error)
 			}
 
 			// Local Storage
@@ -235,14 +233,16 @@ export default {
 				const storageRes = await this.$api.storage.list()
 				const storageArray = []
 				const usbStorageArray = []
-				storageRes.data.data.forEach((item) => {
-					item.children.forEach((part) => {
-						if (!mergeRes.find((mp) => mp === part.uuid))
+				const dataList = storageRes.data?.data || []
+				dataList.forEach((item) => {
+					;(item.children || []).forEach((part) => {
+						if (!mergeRes.find((mp) => mp === part.uuid)) {
 							if (item.type === 'usb') {
 								usbStorageArray.push(part)
 							} else {
 								storageArray.push(part)
 							}
+						}
 					})
 				})
 				this.localStorageList = storageArray.map((storage) => {
@@ -277,8 +277,9 @@ export default {
 				this.mergeStorageList = []
 				const storageRes = await this.$api.storage.list()
 				let storageList = []
-				storageRes.data.data.forEach((item) => {
-					item.children.forEach((part) => {
+				const dataList = storageRes.data?.data || []
+				dataList.forEach((item) => {
+					;(item.children || []).forEach((part) => {
 						part.disk = item.path
 						part.diskName = item.disk_name
 						storageList.push(part)

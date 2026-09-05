@@ -4,22 +4,25 @@
 			<b-icon icon="loading" custom-class="mdi-spin" size="is-large"></b-icon>
 		</div>
 		<div v-else class="vm-setup-card">
-			<h2 class="section-title">{{ $t('Set up virtualization') }}</h2>
-			<p class="mb-4">{{ $t('QEMU/KVM and libvirt are required to create and run VMs.') }}</p>
+			<h2 class="section-title">{{ $t('Set up virtual machines') }}</h2>
+			<p class="mb-4">{{ $t('A few one-time components need to be installed on this server before you can create VMs.') }}</p>
 
 			<div v-if="unreachable" class="has-text-centered mb-4">
-				<p class="has-text-danger mb-4">{{ $t('VM Manager is not installed.') }}</p>
-				<p>{{ $t('Run') }} <code>nivaroos-cli vm enable</code> {{ $t('on the server to install it.') }}</p>
+				<p class="has-text-danger mb-3">{{ $t("VM support isn't installed on this server yet.") }}</p>
+				<b-button type="is-primary" outlined class="install-btn" @click="openInstallTerminal">
+					{{ $t('Open terminal to install') }}
+				</b-button>
+				<p class="vm-setup-hint mt-3">{{ $t('This opens a terminal with the install command already typed in - just press Enter.') }}</p>
 			</div>
 			<template v-else>
 				<div v-if="status.missing_packages && status.missing_packages.length" class="mb-4">
-					<p class="has-text-weight-semibold">{{ $t('Missing packages') }}:</p>
+					<p class="has-text-weight-semibold">{{ $t('Still need to install:') }}</p>
 					<ul class="vm-setup-missing">
 						<li v-for="pkg in status.missing_packages" :key="pkg">{{ pkg }}</li>
 					</ul>
 				</div>
 				<p v-if="!status.libvirt_reachable" class="has-text-danger mb-4">
-					{{ $t('libvirtd is not reachable.') }}
+					{{ $t("The virtualization service isn't responding yet - try installing again, or restart the server if this persists.") }}
 				</p>
 			</template>
 
@@ -28,7 +31,7 @@
 				<pre class="vm-setup-output">{{ installResult.output }}</pre>
 			</b-message>
 
-			<b-button type="is-primary" class="install-btn" :loading="installing" @click="install">
+			<b-button v-if="!unreachable" type="is-primary" class="install-btn" :loading="installing" @click="install">
 				{{ $t('Install now') }}
 			</b-button>
 		</div>
@@ -76,6 +79,16 @@ export default {
 				this.installing = false
 				await this.refresh()
 			}
+		},
+		openInstallTerminal() {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'terminal-vm-enable-' + Date.now(),
+				title: this.$t('Terminal'),
+				component: 'TerminalPanel',
+				width: 720,
+				height: 480,
+				props: { initCommand: 'nivaroos-cli vm enable' }
+			})
 		}
 	}
 }
@@ -93,14 +106,14 @@ export default {
 	max-width: 28rem;
 	margin: 2rem auto 0;
 	padding: 1.5rem;
-	border: 1px solid rgb(228 233 237);
-	border-radius: 12px;
+	border: 1px solid var(--color-border-strong);
+	border-radius: var(--radius-card);
 	background: #fff;
 }
 .section-title {
 	font-size: 1.1rem;
 	font-weight: 700;
-	color: #2c3e50;
+	color: #1e293b;
 	margin: 0 0 0.75rem;
 }
 
@@ -116,12 +129,29 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	background: #2563eb;
+	background: var(--color-primary);
 	box-shadow: none;
 
 	&:hover {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 	}
+}
+
+// The "open terminal" path is outlined, not filled - it's a detour to a
+// different tool, not the primary action, so it shouldn't compete with it.
+::v-deep .b-button.install-btn.is-outlined {
+	background: transparent;
+	color: var(--color-primary);
+	border: 1px solid var(--color-primary);
+
+	&:hover {
+		background: var(--color-primary-soft);
+	}
+}
+
+.vm-setup-hint {
+	font-size: 0.775rem;
+	color: var(--color-text-muted);
 }
 
 .vm-setup-missing {

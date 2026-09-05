@@ -3,6 +3,40 @@
 :root {
     --swiper-navigation-size: 24px !important;
     --background: $main-background-color;
+
+    // --- Shared design tokens ---
+    // Introduced to converge the many independently-drifted hex values found
+    // across Settings/VM panels (see the UI/UX audit this was built from) onto
+    // one canonical value per semantic role. Additive only: nothing consumes
+    // these until a component is explicitly migrated to reference them, so
+    // adding this block changes no existing rendering on its own.
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-primary-soft: rgba(37, 99, 235, 0.1);
+
+    --color-danger: #ef4444;
+    --color-danger-hover: #dc2626;
+    --color-danger-soft: rgba(239, 68, 68, 0.1);
+
+    --color-success: #16a34a;
+    --color-success-soft: rgba(22, 163, 74, 0.1);
+
+    --color-warning: #d97706;
+    --color-warning-soft: rgba(217, 119, 6, 0.1);
+
+    --color-info: #0284c7;
+    --color-info-soft: rgba(2, 132, 199, 0.1);
+
+    --color-border: rgba(0, 0, 0, 0.08);
+    --color-border-strong: rgba(0, 0, 0, 0.12);
+
+    --color-text-muted: #64748b;
+    --color-text-muted-light: #94a3b8;
+
+    --radius-card: 12px;
+    --radius-modal: 14px;
+    --radius-control: 8px;
+    --radius-pill: 999px;
 }
 
 * {

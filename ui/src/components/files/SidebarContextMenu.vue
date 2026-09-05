@@ -88,16 +88,12 @@ export default {
 		},
 	},
 	mounted() {
-		document.body.appendChild(this.$el)
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('resize', this.close)
 	},
 	beforeDestroy() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('resize', this.close)
-		if (this.$el && this.$el.parentNode) {
-			this.$el.parentNode.removeChild(this.$el)
-		}
 	},
 	methods: {
 		open(event, item, mountType = null) {

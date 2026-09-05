@@ -208,22 +208,38 @@ export default {
 
 	methods: {
 		async getNewList() {
-			const newList = await this.$api.folder.getList(this.rootDataList[0].path)
-			const dataList = await this.$api.folder.getList(this.initFolders[0].path)
+			try {
+				let newContent = []
+				let dataContent = []
+				try {
+					const newList = await this.$api.folder.getList(this.rootDataList[0].path)
+					newContent = newList.data?.data?.content || []
+				} catch (e) {
+					console.warn(e)
+				}
+				try {
+					const dataList = await this.$api.folder.getList(this.initFolders[0].path)
+					dataContent = dataList.data?.data?.content || []
+				} catch (e) {
+					console.warn(e)
+				}
 
-			this.shortcutList = this.$store.state.shortcutData || []
-			const initPaths = new Set(this.initFolders.map((f) => f.path))
-			const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
+				this.shortcutList = this.$store.state.shortcutData || []
+				const initPaths = new Set(this.initFolders.map((f) => f.path))
+				const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
 
-			this.dataList = [...this.initFolders, ...uniqueShortcuts]
-			let contactList = []
-			contactList.push(...(newList.data?.data?.content || []), ...(dataList.data?.data?.content || []), ...uniqueShortcuts)
-			this.dataList.forEach((dir) => {
-				dir.icon = dir.icon == 'folder' ? 'folder-outline' : dir.icon
-				dir.visible = contactList.some((item) => item.path == dir.path && item.is_dir)
-				const isInArray = contactList.find((item) => item.path == dir.path && item.is_dir)
-				dir.extensions = isInArray ? isInArray.extensions : null
-			})
+				this.dataList = [...this.initFolders, ...uniqueShortcuts]
+				const contactList = [...newContent, ...dataContent]
+
+				this.dataList.forEach((dir) => {
+					dir.icon = dir.icon === 'folder' ? 'folder-outline' : dir.icon
+					const isInArray = contactList.find((item) => item.path === dir.path)
+					dir.extensions = isInArray ? isInArray.extensions : null
+					dir.visible = true
+				})
+			} catch (err) {
+				console.error('getNewList error:', err)
+			}
 		},
 
 		// Creates /DATA/Desktop once if it doesn't already exist, so the

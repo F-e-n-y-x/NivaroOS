@@ -252,7 +252,7 @@
 	align-items: center;
 	padding: 0.3rem 0.85rem;
 	background: rgba(37, 99, 235, 0.08);
-	color: #2563eb;
+	color: var(--color-primary);
 	border-radius: 9999px;
 	font-size: 0.825rem;
 	font-weight: 400;
@@ -315,19 +315,19 @@
 	&.is-feature {
 		border-color: rgba(37, 99, 235, 0.3);
 		background: rgba(37, 99, 235, 0.08);
-		color: #2563eb;
+		color: var(--color-primary);
 	}
 
 	&.deb {
 		border-color: rgba(37, 99, 235, 0.3);
 		background: rgba(37, 99, 235, 0.08);
-		color: #2563eb;
+		color: var(--color-primary);
 	}
 
 	&.deb-src {
 		border-color: rgba(245, 158, 11, 0.3);
 		background: rgba(245, 158, 11, 0.1);
-		color: #d97706;
+		color: var(--color-warning);
 	}
 }
 
@@ -359,7 +359,7 @@
 	height: 2.4rem;
 	border-radius: 50%;
 	background: rgba(37, 99, 235, 0.1);
-	color: #2563eb;
+	color: var(--color-primary);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -426,11 +426,11 @@
 
 	&.on {
 		background: rgba(37, 99, 235, 0.12);
-		color: #2563eb;
+		color: var(--color-primary);
 	}
 
 	input {
-		accent-color: #2563eb;
+		accent-color: var(--color-primary);
 	}
 }
 
@@ -529,7 +529,7 @@ input[type='range'].pretty-range {
 		height: 6px;
 		border-radius: 999px;
 		background: linear-gradient(to right,
-			#2563eb var(--pct, 50%),
+			var(--color-primary) var(--pct, 50%),
 			#e2e8f0 var(--pct, 50%));
 	}
 
@@ -558,7 +558,7 @@ input[type='range'].pretty-range {
 	&::-moz-range-progress {
 		height: 6px;
 		border-radius: 999px;
-		background: #2563eb;
+		background: var(--color-primary);
 	}
 
 	&::-moz-range-thumb {
@@ -590,7 +590,7 @@ input[type='range'].pretty-range {
 }
 
 .error-note {
-	color: #ef4444;
+	color: var(--color-danger);
 	font-size: 0.775rem;
 	font-weight: 500;
 	padding: 0 0.6rem;
