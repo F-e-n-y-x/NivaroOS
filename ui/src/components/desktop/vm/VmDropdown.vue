@@ -37,18 +37,42 @@
 					:class="{
 						'is-selected': isSelected(opt.value),
 						'is-disabled': opt.disabled,
+						'is-rich': !!(opt.specs || opt.sublabel || opt.state),
 					}"
 					:disabled="opt.disabled"
-					:title="opt.label + (opt.meta ? ' (' + opt.meta + ')' : '')"
+					:title="opt.label + (opt.specs ? ' · ' + opt.specs : '')"
 					role="option"
 					:aria-selected="isSelected(opt.value)"
 					@click="selectOption(opt)"
 				>
-					<div class="item-left">
-						<b-icon v-if="opt.icon" :icon="opt.icon" class="item-icon" size="is-small"></b-icon>
-						<span class="item-label">{{ opt.label }}</span>
-					</div>
-					<span v-if="opt.meta" class="item-meta">{{ opt.meta }}</span>
+					<slot name="option" :option="opt" :is-selected="isSelected(opt.value)">
+						<div v-if="opt.specs || opt.sublabel || opt.state" class="item-rich-content">
+							<div class="item-icon-box" :class="opt.state ? 'is-' + opt.state : ''">
+								<b-icon v-if="opt.icon" :icon="opt.icon" size="is-small"></b-icon>
+							</div>
+							<div class="item-main">
+								<div class="item-head">
+									<span class="item-title">{{ opt.label }}</span>
+									<span v-if="opt.state" class="item-state-dot" :class="'is-' + opt.state" :title="opt.stateLabel || opt.state"></span>
+									<span v-if="opt.stateLabel" class="item-state-text" :class="'is-' + opt.state">{{ opt.stateLabel }}</span>
+								</div>
+								<div v-if="opt.specs || opt.sublabel" class="item-specs">
+									{{ opt.specs || opt.sublabel }}
+								</div>
+							</div>
+							<div class="item-tail">
+								<span v-if="opt.meta && !opt.stateLabel" class="item-meta">{{ opt.meta }}</span>
+								<b-icon v-if="isSelected(opt.value)" icon="check" size="is-small" class="item-check"></b-icon>
+							</div>
+						</div>
+						<template v-else>
+							<div class="item-left">
+								<b-icon v-if="opt.icon" :icon="opt.icon" class="item-icon" size="is-small"></b-icon>
+								<span class="item-label">{{ opt.label }}</span>
+							</div>
+							<span v-if="opt.meta" class="item-meta">{{ opt.meta }}</span>
+						</template>
+					</slot>
 				</button>
 			</div>
 
@@ -61,8 +85,11 @@
 				@keydown.esc="closeMenu"
 			>
 				<div class="trigger-content">
-					<b-icon v-if="selectedIcon || icon" :icon="selectedIcon || icon" class="trigger-icon" size="is-small"></b-icon>
-					<span class="trigger-label" :class="{ 'is-placeholder': !hasValue }">{{ selectedLabel }}</span>
+					<b-icon v-if="selectedOption && selectedOption.icon || icon" :icon="(selectedOption && selectedOption.icon) || icon" class="trigger-icon" size="is-small"></b-icon>
+					<div class="trigger-label-group">
+						<span class="trigger-label" :class="{ 'is-placeholder': !hasValue }">{{ selectedLabel }}</span>
+						<span v-if="selectedOption && selectedOption.state" class="trigger-state-dot" :class="'is-' + selectedOption.state" :title="selectedOption.stateLabel || selectedOption.state"></span>
+					</div>
 				</div>
 				<b-icon icon="chevron-down" class="trigger-chevron" size="is-small"></b-icon>
 			</button>
@@ -104,7 +131,12 @@ export default {
 						label: opt.label !== undefined ? opt.label : opt.name || opt.id || String(opt.value),
 						icon: opt.icon || '',
 						meta: opt.meta || '',
+						specs: opt.specs || '',
+						sublabel: opt.sublabel || '',
+						state: opt.state || '',
+						stateLabel: opt.stateLabel || '',
 						disabled: !!opt.disabled,
+						raw: opt,
 					}
 				}
 				return {
@@ -112,7 +144,12 @@ export default {
 					label: String(opt),
 					icon: '',
 					meta: '',
+					specs: '',
+					sublabel: '',
+					state: '',
+					stateLabel: '',
 					disabled: false,
+					raw: opt,
 				}
 			})
 		},
@@ -145,7 +182,7 @@ export default {
 			}
 		},
 		menuStyle() {
-			return this.triggerWidth ? { minWidth: `${this.triggerWidth}px` } : null
+			return this.triggerWidth ? { minWidth: `${Math.max(this.triggerWidth, 220)}px` } : null
 		},
 	},
 	methods: {
@@ -226,16 +263,42 @@ export default {
 	flex-shrink: 0;
 }
 
+.trigger-label-group {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
 .trigger-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	flex: 1 1 auto;
 	text-align: left;
 
 	&.is-placeholder {
 		color: #94a3b8;
 		font-weight: normal;
+	}
+}
+
+.trigger-state-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #94a3b8;
+	flex-shrink: 0;
+
+	&.is-running {
+		background: #10b981;
+		box-shadow: 0 0 5px rgba(16, 185, 129, 0.4);
+	}
+	&.is-paused {
+		background: #f59e0b;
+	}
+	&.is-crashed {
+		background: #ef4444;
 	}
 }
 
@@ -247,20 +310,20 @@ export default {
 
 .vm-dropdown-menu {
 	width: max-content;
-	max-width: min(28rem, calc(100vw - 2rem));
+	max-width: min(32rem, calc(100vw - 2rem));
 	z-index: 3000;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
 	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.05);
 	padding: 0.35rem;
-	max-height: 15rem;
+	max-height: 18rem;
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-width: thin;
 	display: flex;
 	flex-direction: column;
-	gap: 0.15rem;
+	gap: 0.2rem;
 	box-sizing: border-box;
 
 	&::-webkit-scrollbar {
@@ -321,6 +384,136 @@ export default {
 		opacity: 0.4;
 		cursor: default;
 	}
+
+	&.is-rich {
+		padding: 0.5rem 0.65rem;
+		min-height: 2.85rem;
+	}
+}
+
+.item-rich-content {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	width: 100%;
+	min-width: 0;
+}
+
+.item-icon-box {
+	flex-shrink: 0;
+	width: 2.1rem;
+	height: 2.1rem;
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f1f5f9;
+	color: #64748b;
+	transition: all 0.12s ease;
+
+	&.is-running {
+		background: #ecfdf5;
+		color: #059669;
+	}
+
+	&.is-paused {
+		background: #fffbeb;
+		color: #d97706;
+	}
+
+	&.is-crashed {
+		background: #fef2f2;
+		color: #dc2626;
+	}
+
+	.is-selected & {
+		background: #dbeafe;
+		color: #2563eb;
+	}
+}
+
+.item-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.item-head {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	min-width: 0;
+}
+
+.item-title {
+	font-size: 0.825rem;
+	font-weight: 600;
+	color: #0f172a;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+
+	.is-selected & {
+		color: #2563eb;
+	}
+}
+
+.item-state-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #94a3b8;
+	flex-shrink: 0;
+
+	&.is-running {
+		background: #10b981;
+		box-shadow: 0 0 5px rgba(16, 185, 129, 0.4);
+	}
+	&.is-paused {
+		background: #f59e0b;
+	}
+	&.is-crashed {
+		background: #ef4444;
+	}
+}
+
+.item-state-text {
+	font-size: 0.68rem;
+	font-weight: 500;
+	color: #64748b;
+	text-transform: capitalize;
+
+	&.is-running {
+		color: #059669;
+	}
+	&.is-paused {
+		color: #d97706;
+	}
+	&.is-crashed {
+		color: #dc2626;
+	}
+}
+
+.item-specs {
+	font-size: 0.7rem;
+	color: #64748b;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.item-tail {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	margin-left: auto;
+}
+
+.item-check {
+	color: #2563eb;
 }
 
 .item-left {
@@ -424,6 +617,30 @@ export default {
 
 		&.is-selected {
 			background: rgba(37, 99, 235, 0.22);
+			color: #60a5fa;
+		}
+	}
+
+	.item-rich-content {
+		.item-icon-box {
+			background: rgba(255, 255, 255, 0.08);
+			color: rgba(255, 255, 255, 0.7);
+
+			&.is-running {
+				background: rgba(16, 185, 129, 0.2);
+				color: #34d399;
+			}
+		}
+
+		.item-title {
+			color: #f8fafc;
+		}
+
+		.item-specs {
+			color: rgba(255, 255, 255, 0.5);
+		}
+
+		.item-check {
 			color: #60a5fa;
 		}
 	}

@@ -27,7 +27,7 @@
 			<div class="toolbar-right">
 				<div v-if="selectedVm" class="safety-net-badge" :class="snapshots.length ? 'is-active' : 'is-empty'">
 					<b-icon :icon="snapshots.length ? 'shield-check' : 'shield-alert-outline'" custom-size="mdi-16px"></b-icon>
-					<span>{{ snapshots.length ? $t('Safety Net Active') : $t('No Safety Net') }}</span>
+					<span>{{ snapshots.length ? `${snapshots.length} ${snapshots.length === 1 ? $t('Snapshot') : $t('Snapshots')}` : $t('No Safety Net') }}</span>
 				</div>
 
 				<button
@@ -39,6 +39,52 @@
 					<b-icon icon="camera-plus-outline" custom-size="mdi-18px"></b-icon>
 					<span>{{ $t('Take Snapshot') }}</span>
 				</button>
+			</div>
+		</div>
+
+		<!-- Selected VM Spec Banner -->
+		<div v-if="selectedVm && !loadingVms" class="vm-spec-banner">
+			<div class="spec-banner-left">
+				<div class="spec-banner-icon" :class="'is-' + selectedVm.state">
+					<b-icon :icon="osIcon(selectedVm)" custom-size="mdi-20px"></b-icon>
+				</div>
+				<div class="spec-banner-info">
+					<div class="spec-banner-title-row">
+						<span class="spec-banner-name">{{ selectedVm.name }}</span>
+						<span class="spec-banner-state" :class="'is-' + selectedVm.state">
+							<span class="state-dot"></span>{{ stateLabel(selectedVm.state) }}
+						</span>
+					</div>
+					<div class="spec-banner-specs">
+						<span class="spec-item">
+							<b-icon icon="memory" custom-size="mdi-13px"></b-icon>
+							<span>{{ selectedVm.vcpus }} {{ $t('vCPU') }}</span>
+						</span>
+						<span class="spec-sep">&middot;</span>
+						<span class="spec-item">
+							<b-icon icon="chip" custom-size="mdi-13px"></b-icon>
+							<span>{{ formatMib(selectedVm.memory_mib) }}</span>
+						</span>
+						<template v-if="getDiskTotal(selectedVm)">
+							<span class="spec-sep">&middot;</span>
+							<span class="spec-item">
+								<b-icon icon="harddisk" custom-size="mdi-13px"></b-icon>
+								<span>{{ getDiskTotal(selectedVm) }}</span>
+							</span>
+						</template>
+						<span class="spec-sep">&middot;</span>
+						<span class="spec-item">
+							<b-icon icon="lan" custom-size="mdi-13px"></b-icon>
+							<span>{{ networkLabel(selectedVm) }}</span>
+						</span>
+					</div>
+				</div>
+			</div>
+			<div class="spec-banner-right">
+				<div class="spec-banner-count">
+					<span class="count-num">{{ snapshots.length }}</span>
+					<span class="count-text">{{ snapshots.length === 1 ? $t('Restore Point') : $t('Restore Points') }}</span>
+				</div>
 			</div>
 		</div>
 
@@ -272,12 +318,28 @@ export default {
 			return this.vms.find(v => v.name === this.selectedVmName) || null
 		},
 		vmDropdownOptions() {
-			return this.vms.map(v => ({
-				value: v.name,
-				label: v.name,
-				meta: this.stateLabel(v.state),
-				icon: this.osIcon(v)
-			}))
+			return this.vms.map(v => {
+				const memoryStr = v.memory_mib >= 1024
+					? `${(v.memory_mib / 1024).toFixed(v.memory_mib % 1024 ? 1 : 0)} GB`
+					: `${v.memory_mib} MB`
+				const vcpuStr = `${v.vcpus} vCPU`
+				const diskTotalGib = (v.disks || []).reduce((acc, d) => acc + (Number(d.gib) || 0), 0)
+				const diskStr = diskTotalGib > 0 ? `${diskTotalGib} GB Disk` : ''
+				
+				const specsParts = [vcpuStr, memoryStr, diskStr].filter(Boolean)
+				const specsStr = specsParts.join(' · ')
+
+				return {
+					value: v.name,
+					label: v.name,
+					icon: this.osIcon(v),
+					state: v.state,
+					stateLabel: this.stateLabel(v.state),
+					specs: specsStr,
+					meta: this.stateLabel(v.state),
+					raw: v
+				}
+			})
 		}
 	},
 	watch: {
@@ -425,6 +487,24 @@ export default {
 			if (name.includes('mint')) return 'linux-mint'
 			return 'linux'
 		},
+		formatMib(mib) {
+			if (!mib || isNaN(mib)) return '0 MB'
+			return mib >= 1024 ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB` : `${mib} MB`
+		},
+		getDiskTotal(vm) {
+			if (!vm || !vm.disks || !vm.disks.length) return ''
+			const total = vm.disks.reduce((acc, d) => acc + (Number(d.gib) || 0), 0)
+			return total ? `${total} GB` : ''
+		},
+		networkLabel(vm) {
+			if (!vm) return this.$t('None')
+			if (vm.networks && vm.networks.length > 0) {
+				const n = vm.networks[0]
+				return n.mode === 'bridge' ? (n.bridge_name || 'Bridge') : this.$t('NAT')
+			}
+			if (!vm.network_mode) return this.$t('None')
+			return vm.network_mode.startsWith('bridge:') ? vm.network_mode.replace('bridge:', '') : this.$t('NAT')
+		},
 		formatCreationTime(isoStr) {
 			if (!isoStr) return ''
 			const d = new Date(isoStr)
@@ -482,7 +562,7 @@ export default {
 }
 
 .vm-selector-dropdown {
-	min-width: 12.5rem;
+	min-width: 14rem;
 }
 
 .refresh-icon-btn {
@@ -525,6 +605,153 @@ export default {
 		color: #d97706;
 		border: 1px solid #fde68a;
 	}
+}
+
+.vm-spec-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.75rem 1rem;
+	background: #ffffff;
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	border-radius: 10px;
+	margin-bottom: 1.15rem;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.spec-banner-left {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.spec-banner-icon {
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f1f5f9;
+	color: #64748b;
+	flex-shrink: 0;
+
+	&.is-running {
+		background: #ecfdf5;
+		color: #059669;
+	}
+	&.is-paused {
+		background: #fffbeb;
+		color: #d97706;
+	}
+	&.is-crashed {
+		background: #fef2f2;
+		color: #dc2626;
+	}
+}
+
+.spec-banner-info {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+	min-width: 0;
+}
+
+.spec-banner-title-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.spec-banner-name {
+	font-size: 0.92rem;
+	font-weight: 600;
+	color: #0f172a;
+}
+
+.spec-banner-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.68rem;
+	font-weight: 500;
+	padding: 0.1rem 0.45rem;
+	border-radius: 9999px;
+	background: #f1f5f9;
+	color: #64748b;
+
+	.state-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: #94a3b8;
+	}
+
+	&.is-running {
+		background: #ecfdf5;
+		color: #059669;
+		.state-dot {
+			background: #10b981;
+			box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+		}
+	}
+	&.is-paused {
+		background: #fffbeb;
+		color: #d97706;
+		.state-dot { background: #f59e0b; }
+	}
+	&.is-crashed {
+		background: #fef2f2;
+		color: #dc2626;
+		.state-dot { background: #ef4444; }
+	}
+}
+
+.spec-banner-specs {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.72rem;
+	color: #64748b;
+	flex-wrap: wrap;
+}
+
+.spec-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	color: #64748b;
+}
+
+.spec-sep {
+	opacity: 0.5;
+}
+
+.spec-banner-right {
+	flex-shrink: 0;
+}
+
+.spec-banner-count {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	text-align: right;
+}
+
+.count-num {
+	font-size: 1.05rem;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1;
+}
+
+.count-text {
+	font-size: 0.68rem;
+	color: #94a3b8;
+	font-weight: 500;
+	margin-top: 0.15rem;
 }
 
 .create-btn {
