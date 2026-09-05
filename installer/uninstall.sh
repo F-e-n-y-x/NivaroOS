@@ -165,6 +165,18 @@ run_step() {
 	local log_file
 	log_file=$(mktemp /tmp/nivaroos-uninstall-step-XXXXXX.log)
 
+	local cols=80
+	if command -v tput >/dev/null 2>&1; then
+		cols=$(tput cols 2>/dev/null || echo 80)
+	fi
+	if [ "$cols" -lt 60 ]; then cols=60; fi
+	local max_box_width=$((cols - 4))
+	if [ "$max_box_width" -gt 76 ]; then max_box_width=76; fi
+	local inner_width=$((max_box_width - 4))
+
+	local num_log_lines=3
+	local total_rendered_lines=$((num_log_lines + 3))
+
 	if [ "$IS_TTY" = "true" ]; then
 		(
 			eval "$*"
@@ -173,6 +185,7 @@ run_step() {
 
 		local frame_idx=0
 		local num_frames=${#SPINNER_FRAMES[@]}
+		local first_render=true
 
 		printf "\033[?25l"
 
@@ -181,24 +194,66 @@ run_step() {
 			current_ts=$(date +%s)
 			local elapsed=$((current_ts - start_ts))
 			local frame="${SPINNER_FRAMES[$frame_idx]}"
-			
-			printf "\r\033[2K  %b %b %b %b(%ds)%b" \
+
+			if [ "$first_render" = "false" ]; then
+				printf "\033[%dA" "$total_rendered_lines"
+			else
+				first_render=false
+			fi
+
+			printf "\r\033[2K  %b %b %b %b(%ds)%b\n" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
+			local dashes_len=$((max_box_width - 18))
+			local dashes=""
+			for ((d=0; d<dashes_len; d++)); do dashes+="─"; done
+			printf "\r\033[2K  %b╭── %bTeardown Activity%b %s╮%b\n" \
+				"${COLOR_MUTED}" "${COLOR_CYAN}" "${COLOR_MUTED}" "${dashes}" "${COLOR_RESET}"
+
+			local lines=()
+			if [ -f "$log_file" ] && [ -s "$log_file" ]; then
+				mapfile -t lines < <(tail -n "$num_log_lines" "$log_file" 2>/dev/null || true)
+			fi
+
+			local pad_count=$((num_log_lines - ${#lines[@]}))
+			for ((p=0; p<pad_count; p++)); do
+				printf "\r\033[2K  %b│%b  %-*s  %b│%b\n" \
+					"${COLOR_MUTED}" "${COLOR_MUTED}" "$inner_width" "..." "${COLOR_MUTED}" "${COLOR_RESET}"
+			done
+
+			for l in "${lines[@]}"; do
+				local clean_l
+				clean_l=$(printf '%s' "$l" | tr '\r\t' '  ' | cut -c 1-"$inner_width")
+				printf "\r\033[2K  %b│%b  %-*s  %b│%b\n" \
+					"${COLOR_MUTED}" "${COLOR_WHITE}" "$inner_width" "$clean_l" "${COLOR_MUTED}" "${COLOR_RESET}"
+			done
+
+			local bot_dashes=""
+			for ((d=0; d<max_box_width-2; d++)); do bot_dashes+="─"; done
+			printf "\r\033[2K  %b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
 		done
-
-		printf "\033[?25h"
 
 		wait "$cmd_pid"
 		local exit_code=$?
 		local end_ts
 		end_ts=$(date +%s)
 		local total_elapsed=$((end_ts - start_ts))
+
+		if [ "$first_render" = "false" ]; then
+			printf "\033[%dA" "$total_rendered_lines"
+			for ((c=0; c<total_rendered_lines; c++)); do
+				printf "\r\033[2K\n"
+			done
+			printf "\033[%dA" "$total_rendered_lines"
+		fi
+
+		printf "\033[?25h"
 
 		if [ "$exit_code" -eq 0 ]; then
 			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
