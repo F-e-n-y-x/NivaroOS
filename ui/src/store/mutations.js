@@ -151,6 +151,11 @@ const mutations = {
 		state.customDateTimeFormat = val
 	},
 
+	SET_SHOW_HIDDEN(state, val) {
+		localStorage.setItem('filesShowHidden', val)
+		state.showHidden = val
+	},
+
 	// TODO v2 does not have.
 	SET_NOTIMPORT_LIST(state, val) {
 		state.notImportList = val

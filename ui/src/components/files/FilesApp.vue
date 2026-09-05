@@ -158,6 +158,8 @@ export default {
 				sidebarCollapsed: localStorage.getItem('files-sidebar-collapsed') === 'true',
 				activeSection: 'browser',
 				navigate: this.navigate,
+				newTab: this.newTab,
+				openDetail: this.onDetailRequest,
 				setActiveSection: this.setActiveSection,
 				toggleSidebar: this.toggleSidebar,
 				openNewFolder: this.onNewFolder,

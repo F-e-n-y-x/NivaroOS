@@ -186,6 +186,9 @@ export default {
 			const sizeStr = totalBytes > 0 ? ` • ${this.renderSize(totalBytes)}` : ''
 			return `${count} ${count === 1 ? this.$t('item selected') : this.$t('items selected')}${sizeStr}`
 		},
+		showHidden() {
+			return !!this.$store.state.showHidden
+		},
 	},
 	watch: {
 		path: {
@@ -194,6 +197,9 @@ export default {
 				this.clearSelection()
 				this.fetchListing(path)
 			},
+		},
+		showHidden() {
+			this.fetchListing(this.path)
 		},
 	},
 	mounted() {
@@ -275,7 +281,7 @@ export default {
 							// one - Vue 2 can't track newly-added properties.
 							type: this.mountTypes[item.path],
 						}))
-						const visible = mapped.filter((item) => !item.name.startsWith('.'))
+						const visible = this.showHidden ? mapped : mapped.filter((item) => !item.name.startsWith('.'))
 						this.listing = orderBy(visible, ['is_dir'], ['desc'])
 						this.error = ''
 						// eslint-disable-next-line no-console
@@ -375,6 +381,12 @@ export default {
 			if (meta && key === 'a') {
 				event.preventDefault()
 				this.selectAll()
+				return
+			}
+
+			if (meta && key === 'h') {
+				event.preventDefault()
+				this.$store.commit('SET_SHOW_HIDDEN', !this.showHidden)
 				return
 			}
 

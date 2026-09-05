@@ -17,6 +17,7 @@
 			:class="{ active: isItemActive(item), rail, disabled: picker, 'drop-target': dragHoverPath === item.path }"
 			:title="rail ? item.name : null"
 			@click="openRoot(item.path)"
+			@contextmenu.prevent="onContextMenu(item, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
@@ -57,11 +58,7 @@
 		</div>
 		<!-- Data End -->
 
-		<!-- Right-click "Remove from Favorite" - only for user-added shortcuts,
-		     never the built-in Root/DATA/Documents/etc. entries. -->
-		<div v-if="menuVisible" ref="itemMenu" class="sidebar-item-menu" :style="{ top: menuY + 'px', left: menuX + 'px' }">
-			<button class="menu-item" @click="removeFromFavorite">{{ $t('Remove from Favorite') }}</button>
-		</div>
+		<sidebar-context-menu ref="contextMenu"></sidebar-context-menu>
 	</div>
 </template>
 
@@ -69,6 +66,7 @@
 import events from '@/events/events'
 import has from 'lodash/has'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
+import SidebarContextMenu from './SidebarContextMenu.vue'
 
 // How long a files drag has to hover a sidebar location before it
 // auto-navigates there (a "spring-loaded folder", matching Explorer/
@@ -80,6 +78,9 @@ const HOVER_OPEN_DELAY = 700
 export default {
 	name: 'folder-tree',
 	inject: ['filesController'],
+	components: {
+		SidebarContextMenu,
+	},
 	props: {
 		// Renders icon-only nodes (no labels/badges) for the collapsed icon-rail sidebar mode.
 		rail: {
@@ -174,10 +175,6 @@ export default {
 			],
 			dataList: [],
 			shortcutList: [],
-			menuVisible: false,
-			menuX: 0,
-			menuY: 0,
-			menuItem: null,
 			dragHoverPath: null,
 			hoverTimer: null,
 		}
@@ -195,7 +192,6 @@ export default {
 
 	mounted() {
 		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.getNewList)
-		document.addEventListener('mousedown', this.onOutsideMenuClick)
 
 		this.shortcutList = this.$store.state.shortcutData || []
 		const initPaths = new Set(this.initFolders.map((f) => f.path))
@@ -207,7 +203,6 @@ export default {
 		// Unlike the legacy singleton sidebar, this component is created/destroyed each time
 		// the sidebar collapses into (and back out of) icon-rail mode, so the listener must be removed.
 		this.$EventBus.$off(events.RELOAD_FILE_LIST, this.getNewList)
-		document.removeEventListener('mousedown', this.onOutsideMenuClick)
 		clearTimeout(this.hoverTimer)
 	},
 
@@ -329,28 +324,10 @@ export default {
 			return this.shortcutList.some((s) => s.path === item.path)
 		},
 		onContextMenu(item, event) {
-			if (this.picker || !this.isShortcut(item)) return
-			this.menuItem = item
-			const boundsEl = this.$el.closest('.files-sidebar') || this.$el
-			const bounds = boundsEl.getBoundingClientRect()
-			const rawX = event.clientX - bounds.left + boundsEl.scrollLeft
-			const rawY = event.clientY - bounds.top + boundsEl.scrollTop
-			this.menuX = Math.max(boundsEl.scrollLeft, Math.min(rawX, boundsEl.scrollLeft + bounds.width - 180))
-			this.menuY = Math.max(boundsEl.scrollTop, Math.min(rawY, boundsEl.scrollTop + bounds.height - 40))
-			this.menuVisible = true
-		},
-		onOutsideMenuClick(event) {
-			if (this.menuVisible && this.$refs.itemMenu && !this.$refs.itemMenu.contains(event.target)) {
-				this.menuVisible = false
+			if (this.picker) return
+			if (this.$refs.contextMenu) {
+				this.$refs.contextMenu.open(event, { ...item, is_dir: true })
 			}
-		},
-		removeFromFavorite() {
-			const shortcut = this.shortcutList.filter((s) => s.path !== this.menuItem.path)
-			this.$store.dispatch('SET_SHORTCUT_DATA', shortcut).then(() => {
-				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-				this.$buefy.toast.open({ message: this.$t('Removed from favorites'), type: 'is-success' })
-			})
-			this.menuVisible = false
 		},
 	},
 }
@@ -419,27 +396,5 @@ export default {
 	position: absolute;
 	right: -0.15rem;
 	bottom: -0.1rem;
-}
-.sidebar-item-menu {
-	position: absolute;
-	z-index: 50;
-	background: #fff;
-	border-radius: 6px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-	padding: 0.25rem;
-	min-width: 180px;
-
-	.menu-item {
-		display: block;
-		width: 100%;
-		text-align: left;
-		padding: 0.4rem 0.6rem;
-		border: none;
-		background: none;
-		cursor: pointer;
-		border-radius: 4px;
-		font-size: 0.85rem;
-		&:hover { background: rgba(0, 0, 0, 0.06); }
-	}
 }
 </style>

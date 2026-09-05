@@ -86,6 +86,12 @@
 				</button>
 			</template>
 			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('toggle-hidden')">
+				<i :class="showHidden ? 'mdi mdi-eye-off-outline ctx-icon' : 'mdi mdi-eye-outline ctx-icon'"></i>
+				<span class="ctx-label">{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}</span>
+				<i v-if="showHidden" class="mdi mdi-check ctx-check"></i>
+			</button>
+			<div class="ctx-divider"></div>
 			<button class="ctx-item is-danger" @click="act('delete')">
 				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Delete') }}</span>
@@ -122,6 +128,12 @@
 			<button class="ctx-item" @click="act('reload')">
 				<i class="mdi mdi-refresh ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Refresh') }}</span>
+			</button>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('toggle-hidden')">
+				<i :class="showHidden ? 'mdi mdi-eye-off-outline ctx-icon' : 'mdi mdi-eye-outline ctx-icon'"></i>
+				<span class="ctx-label">{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}</span>
+				<i v-if="showHidden" class="mdi mdi-check ctx-check"></i>
 			</button>
 			<div class="ctx-divider"></div>
 			<button class="ctx-item" @click="act('open-window')">
@@ -161,6 +173,9 @@ export default {
 		},
 		hasClipboard() {
 			return !!(this.$store.state.operateObject && this.$store.state.operateObject.item && this.$store.state.operateObject.item.length)
+		},
+		showHidden() {
+			return !!this.$store.state.showHidden
 		}
 	},
 	mounted() {
@@ -204,6 +219,10 @@ export default {
 		},
 		act(action) {
 			switch (action) {
+				case 'toggle-hidden':
+					this.$store.commit('SET_SHOW_HIDDEN', !this.showHidden)
+					this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+					break
 				case 'new-folder':
 					if (this.filesController && this.filesController.openNewFolder) {
 						this.filesController.openNewFolder()
@@ -407,11 +426,22 @@ export default {
 		text-overflow: ellipsis;
 	}
 
+	.ctx-check {
+		font-size: 0.95rem;
+		color: #2563eb;
+		margin-left: auto;
+		flex-shrink: 0;
+	}
+
 	&:hover {
 		background: #2563eb;
 		color: #ffffff;
 
 		.ctx-icon {
+			color: #ffffff;
+		}
+
+		.ctx-check {
 			color: #ffffff;
 		}
 	}

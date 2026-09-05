@@ -74,6 +74,9 @@
 					<b-dropdown-item aria-role="menuitem" @click="$emit('upload')">
 						<i class="mdi mdi-upload-outline mr-2"></i>{{ $t('Upload') }}
 					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="toggleHidden">
+						<i class="mdi mr-2" :class="showHidden ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></i>{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}
+					</b-dropdown-item>
 					<b-dropdown-item aria-role="menuitem" @click="$emit('set-view', nextViewMode)">
 						<i class="mdi mdi-view-grid-outline mr-2"></i>{{ viewModeLabel }}
 					</b-dropdown-item>
@@ -136,6 +139,11 @@
 						</button>
 					</template>
 				</div>
+				<b-tooltip :label="showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files')" position="is-left" type="is-dark">
+					<button class="view-trigger" :class="{ 'is-active': showHidden }" @click="toggleHidden">
+						<b-icon :icon="showHidden ? 'eye-off-outline' : 'eye-outline'" custom-size="mdi-18px"></b-icon>
+					</button>
+				</b-tooltip>
 				<b-tooltip :label="viewModeLabel" position="is-left" type="is-dark">
 					<button class="view-trigger" @click="$emit('set-view', nextViewMode)">
 						<b-icon :icon="viewModeIcon" custom-size="mdi-18px"></b-icon>
@@ -207,6 +215,9 @@ export default {
 		hiddenCrumbs() {
 			return this.hiddenCount === 0 ? [] : this.crumbs.slice(0, this.hiddenCount)
 		},
+		showHidden() {
+			return !!this.$store.state.showHidden
+		},
 	},
 	watch: {
 		'filesController.currentPath'() {
@@ -240,6 +251,9 @@ export default {
 		go(crumb) {
 			this.filesController.navigate(crumb.path)
 		},
+		toggleHidden() {
+			this.$store.commit('SET_SHOW_HIDDEN', !this.showHidden)
+		},
 		measure() {
 			const container = this.$refs.breadContainer
 			const shadow = this.$refs.shadowCrumbs
@@ -271,81 +285,87 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0.5rem 0.75rem;
-	border-bottom: 1px solid rgb(228 233 237);
-	min-width: 0;
+	gap: 0.75rem;
+	height: 2.75rem;
+	padding: 0 0.85rem;
+	background: #fff;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 .breadcrumb-bar {
 	flex: 1 1 auto;
 	min-width: 0;
-	display: flex;
-	align-items: center;
 	overflow: hidden;
 	position: relative;
+	height: 1.5rem;
+	display: flex;
+	align-items: center;
+}
+.live-crumbs {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	white-space: nowrap;
 }
 .shadow-crumbs {
 	position: absolute;
 	visibility: hidden;
-	white-space: nowrap;
 	pointer-events: none;
+	white-space: nowrap;
 }
 .crumb {
+	font-size: 0.8125rem;
+	color: #64748b;
 	cursor: pointer;
-	padding: 0 0.35rem;
-	white-space: nowrap;
-	color: rgba(0, 0, 0, 0.55);
-	&:hover { text-decoration: underline; }
-	// A visual separator between segments, and bold/dark styling for the
-	// current folder (the last visible crumb) - previously every segment
-	// looked identical with no separator at all, making it genuinely hard
-	// to tell which folder you were in at a glance.
-	&:not(:first-child)::before {
-		content: '/';
-		margin-right: 0.35rem;
-		color: rgba(0, 0, 0, 0.3);
+
+	&:hover:not(.current) {
+		color: #1e293b;
 	}
+
 	&.current {
-		cursor: default;
+		color: #1e293b;
 		font-weight: 600;
-		color: #2c3e50;
-		&:hover { text-decoration: none; }
+		cursor: default;
+	}
+
+	&:not(:last-child)::after {
+		content: '/';
+		margin-left: 0.35rem;
+		color: #cbd5e1;
 	}
 }
 .actions {
-	flex-shrink: 0;
 	display: flex;
-	gap: 0.5rem;
 	align-items: center;
+	gap: 0.45rem;
+	flex-shrink: 0;
 }
 .action-group {
 	display: flex;
 	align-items: center;
-	gap: 0.15rem;
-	background: rgba(0, 0, 0, 0.04);
-	border-radius: 8px;
-	padding: 0.2rem;
+	gap: 0.25rem;
 }
 .action-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
-	border: none;
-	background: transparent;
-	color: #2c3e50;
-	font-family: inherit;
-	font-size: 0.78rem;
+	gap: 0.3rem;
 	padding: 0.3rem 0.6rem;
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	background: #fff;
 	border-radius: 6px;
+	font-size: 0.75rem;
+	font-weight: 500;
+	color: #334155;
 	cursor: pointer;
-	white-space: nowrap;
+	transition: all 0.12s ease;
 
 	&:hover {
-		background: #fff;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+		background: rgba(0, 0, 0, 0.04);
+		color: #0f172a;
 	}
 }
 .paste-btn {
-	background: rgba(50, 115, 220, 0.12);
+	background: rgba(50, 115, 220, 0.1);
+	border-color: rgba(50, 115, 220, 0.3);
 	color: #3273dc;
 
 	&:hover {
@@ -355,6 +375,7 @@ export default {
 }
 .delete-btn {
 	color: #f2534a;
+	border-color: rgba(242, 83, 74, 0.2);
 
 	&:hover {
 		background: rgba(242, 83, 74, 0.1);
@@ -372,10 +393,16 @@ export default {
 	border-radius: 6px;
 	color: rgba(0, 0, 0, 0.55);
 	cursor: pointer;
+	transition: all 0.12s ease;
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.06);
 		color: #2c3e50;
+	}
+
+	&.is-active {
+		background: rgba(37, 99, 235, 0.12);
+		color: #2563eb;
 	}
 }
 .selection-bar {

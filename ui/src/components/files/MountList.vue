@@ -3,7 +3,12 @@
 	<div class="mount-list">
 		<!-- Merge fs storage item -->
 		<div v-if="hasMergerFunction" class="mount-group">
-			<div class="tree-node" :class="{ active: isMergeRowActive }" @click="filesController.navigate('/DATA')">
+			<div
+				class="tree-node"
+				:class="{ active: isMergeRowActive }"
+				@click="filesController.navigate('/DATA')"
+				@contextmenu.prevent="onContextMenu({ name: $t('NivaroOS HD'), path: '/DATA', is_dir: true, mountType: 'merger-root' }, $event)"
+			>
 				<span class="tree-node-icon is-relative">
 					<i
 						class="casa casa-22px"
@@ -36,6 +41,7 @@
 					class="tree-node"
 					:class="{ active: isItemActive(item) }"
 					@click="open(item)"
+					@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'merger' }, $event)"
 				>
 					<span class="tree-node-icon">
 						<b-icon
@@ -59,6 +65,7 @@
 			class="tree-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
+			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'local' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
@@ -77,6 +84,7 @@
 			class="tree-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
+			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'network' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
@@ -98,6 +106,7 @@
 			class="tree-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
+			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'usb' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
@@ -119,6 +128,7 @@
 			class="tree-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
+			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'cloud' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
@@ -134,6 +144,7 @@
 		</div>
 		<!-- Cloud List End -->
 
+		<sidebar-context-menu ref="contextMenu" @eject="handleEject"></sidebar-context-menu>
 		<b-loading v-model="isLoading" :is-full-page="false"></b-loading>
 	</div>
 </template>
@@ -142,6 +153,7 @@
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
+import SidebarContextMenu from './SidebarContextMenu.vue'
 
 const HOVER_OPEN_DELAY = 700
 
@@ -149,6 +161,9 @@ export default {
 	name: 'mount-list',
 	mixins: [mixin],
 	inject: ['filesController'],
+	components: {
+		SidebarContextMenu,
+	},
 	data() {
 		return {
 			isLoading: false,
@@ -511,6 +526,21 @@ export default {
 			if (!payload) return
 			if (payload.from === item.path || payload.items.includes(item.path)) return
 			this.$store.commit('SHOW_DRAG_DROP_MENU', { x: event.clientX, y: event.clientY, payload, targetPath: item.path })
+		},
+		onContextMenu(item, event) {
+			if (!item || !item.path) return
+			if (this.$refs.contextMenu) {
+				this.$refs.contextMenu.open(event, { ...item, is_dir: true }, item.mountType)
+			}
+		},
+		handleEject(item, mountType) {
+			if (mountType === 'usb') {
+				this.umountUsb(item)
+			} else if (mountType === 'network') {
+				this.umountNetwork(item)
+			} else if (mountType === 'cloud') {
+				this.umountCloud(item)
+			}
 		},
 	},
 	sockets: {

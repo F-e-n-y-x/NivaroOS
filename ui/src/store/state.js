@@ -33,6 +33,7 @@ const state = {
 	currentPath: "",
 	// 'grid' (thumbnails) | 'grid-large' (bigger thumbnails) | 'list' (details)
 	viewMode: localStorage.getItem('filesViewMode') || 'grid',
+	showHidden: localStorage.getItem('filesShowHidden') === 'true',
 	// Drag-and-drop copy/move menu ("Copy here"/"Move here"), shown wherever
 	// a files drag is dropped - the source and target can be in entirely
 	// different tabs/windows/the sidebar/the desktop, so this needs to be
