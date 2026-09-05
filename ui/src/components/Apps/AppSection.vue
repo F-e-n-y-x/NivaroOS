@@ -1,9 +1,14 @@
 <template>
 	<div class="desktop-app-section">
-		<!-- App List Start -->
-		<div v-if="isLoading" class="app-list-skeleton">
-			<div v-for="index in skCount" :id="'app-' + index" :key="'app-' + index">
-				<app-card-skeleton :index="index"></app-card-skeleton>
+		<!-- Skeleton App List on Desktop Canvas -->
+		<div v-if="isLoading" class="app-canvas app-canvas-skeleton">
+			<div
+				v-for="sk in skeletonSlots"
+				:key="'sk-' + sk.id"
+				class="app-slot skeleton-slot"
+				:style="sk.style"
+			>
+				<app-card-skeleton :delay="sk.delay"></app-card-skeleton>
 			</div>
 		</div>
 		<div v-else ref="canvas" class="app-canvas contextmenu-canvas" :class="{ 'is-dragging': !!draggingName }"
@@ -227,6 +232,28 @@ export default {
 					return item ? { ...item, x: p.x, y: p.y } : null
 				})
 				.filter(Boolean)
+		},
+		skeletonSlots() {
+			const canvasHeight = typeof window !== 'undefined' ? (window.innerHeight - 120) : 600
+			const maxRows = Math.max(3, Math.floor(canvasHeight / (CELL_H + GAP)))
+			const total = Math.min(12, Math.max(6, maxRows * 2))
+			const slots = []
+			for (let i = 0; i < total; i++) {
+				const col = Math.floor(i / maxRows)
+				const row = i % maxRows
+				const x = col * SNAP
+				const y = row * (CELL_H + GAP)
+				slots.push({
+					id: i,
+					delay: (col * maxRows + row) * 0.08,
+					style: {
+						width: CELL_W + 'px',
+						height: CELL_H + 'px',
+						transform: `translate3d(${x}px, ${y}px, 0)`
+					}
+				})
+			}
+			return slots
 		},
 		canvasHeight() {
 			const maxY = this.positions.reduce((max, p) => Math.max(max, p.y), 0)
@@ -952,19 +979,17 @@ export default {
 	overflow: hidden;
 }
 
-.app-list-skeleton {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 1rem;
-	padding: 0.5rem;
-}
-
 .app-canvas {
 	position: absolute;
 	inset: 0;
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
+}
+
+.skeleton-slot {
+	pointer-events: none;
+	cursor: default;
 }
 
 .app-slot {

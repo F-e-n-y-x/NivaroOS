@@ -48,7 +48,7 @@
 				<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'FilesApp' || win.component === 'FolderWindow'" :src="getBuiltinIcon('Files')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app/default.svg')" class="dock-icon" :alt="win.title" />
@@ -320,7 +320,7 @@ export default {
 					icon = this.getBuiltinIcon('Files')
 				} else if (win.component === 'AppStoreApp') {
 					icon = this.getBuiltinIcon('App Store')
-				} else if (win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow') {
+				} else if (win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel') {
 					icon = this.getBuiltinIcon('Terminal')
 				} else if (win.component === 'SettingsApp') {
 					icon = this.getBuiltinIcon('Settings')

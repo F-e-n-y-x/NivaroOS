@@ -1,73 +1,108 @@
 <template>
-	<div class="common-card is-flex is-align-items-center is-justify-content-center p-55 app-card" :style="animation">
-		<!-- Action Button End -->
-		<div class="blur-background"></div>
+	<div class="common-card is-flex is-align-items-center is-justify-content-center app-card">
 		<div class="cards-content">
-			<!-- Card Content Start -->
-			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column pt-5 pb-3">
+			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 				<div class="is-flex is-justify-content-center">
-					<b-image :src="require('@/assets/img/app/sk_icon.svg')" class="is-64x64"></b-image>
+					<div class="skeleton-icon-wrapper">
+						<div class="skeleton-icon-box" :style="{ animationDelay: `${delay}s` }"></div>
+					</div>
 				</div>
-				<div class="sk-line mt-3"></div>
-
+				<div class="is-flex is-justify-content-center">
+					<div class="skeleton-label" :style="{ animationDelay: `${delay + 0.06}s` }"></div>
+				</div>
 			</div>
-			<!-- Card Content End -->˝
 		</div>
 	</div>
 </template>
 
 <script>
 export default {
+	name: 'AppCardSkeleton',
 	props: {
 		index: {
 			type: Number,
 			default: 0
 		},
-		gap: {
+		delay: {
 			type: Number,
-			default: 0.2
+			default: 0
 		}
-	},
-
-	data() {
-		return {
-			animation: {
-				animationDelay: this.index * this.gap + 's',
-			}
-		}
-	},
-
+	}
 }
 </script>
 
 <style lang="scss" scoped>
-@keyframes light {
-	from {
-		opacity: 1;
-	}
-
-	to {
-		opacity: 0.7;
-	}
+.app-card {
+	width: 100%;
+	height: 100%;
+	background: transparent;
+	border-radius: 12px;
+	pointer-events: none;
+	user-select: none;
 }
 
-.common-card {
+.cards-content {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
 
-	animation-name: light;
-	animation-duration: 1.5s;
-	animation-timing-function: linear;
-	animation-iteration-count: infinite;
-	animation-direction: alternate;
+.icon-cell {
+	width: 100%;
+	height: 100%;
+	padding: 6px 4px 4px;
+	box-sizing: border-box;
+	justify-content: center;
+	gap: 0;
+}
 
-	&:hover {
-		box-shadow: none
+.skeleton-icon-wrapper {
+	width: 52px;
+	height: 52px;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.skeleton-icon-box {
+	width: 52px;
+	height: 52px;
+	border-radius: 12px;
+	background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.07) 100%);
+	background-size: 250% 250%;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	animation: skeleton-shimmer 2s ease-in-out infinite;
+}
+
+.skeleton-label {
+	width: 52px;
+	height: 9px;
+	margin-top: 6px;
+	border-radius: 4px;
+	background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.18) 50%, rgba(255, 255, 255, 0.08) 100%);
+	background-size: 250% 250%;
+	animation: skeleton-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+	0% {
+		background-position: 100% 100%;
+		opacity: 0.65;
 	}
-
-	.sk-line {
-		width: 4.5rem;
-		height: 0.75rem;
-		border-radius: 0.25rem;
-		background-color: rgba(133, 149, 163, 0.6);
+	50% {
+		background-position: 0% 0%;
+		opacity: 1;
+	}
+	100% {
+		background-position: 100% 100%;
+		opacity: 0.65;
 	}
 }
 </style>
