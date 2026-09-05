@@ -69,6 +69,28 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
+get_terminal_width() {
+	local c=80
+	if command -v tput >/dev/null 2>&1; then
+		c=$(tput cols 2>/dev/null || echo "${COLUMNS:-80}")
+	elif [ -n "${COLUMNS:-}" ]; then
+		c="$COLUMNS"
+	fi
+	if [ "$c" -lt 40 ]; then c=80; fi
+	echo "$c"
+}
+
+get_terminal_height() {
+	local l=24
+	if command -v tput >/dev/null 2>&1; then
+		l=$(tput lines 2>/dev/null || echo "${LINES:-24}")
+	elif [ -n "${LINES:-}" ]; then
+		l="$LINES"
+	fi
+	if [ "$l" -lt 10 ]; then l=24; fi
+	echo "$l"
+}
+
 check_root() {
 	if [ "$(id -u)" -ne 0 ]; then
 		if command -v sudo >/dev/null 2>&1; then
@@ -165,16 +187,21 @@ run_step() {
 	local log_file
 	log_file=$(mktemp /tmp/nivaroos-uninstall-step-XXXXXX.log)
 
-	local cols=80
-	if command -v tput >/dev/null 2>&1; then
-		cols=$(tput cols 2>/dev/null || echo 80)
-	fi
-	if [ "$cols" -lt 60 ]; then cols=60; fi
-	local max_box_width=$((cols - 4))
-	if [ "$max_box_width" -gt 76 ]; then max_box_width=76; fi
-	local inner_width=$((max_box_width - 4))
+	local cols lines_cnt
+	cols=$(get_terminal_width)
+	lines_cnt=$(get_terminal_height)
 
-	local num_log_lines=3
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 4))
+
+	local num_log_lines=5
+	if [ "$lines_cnt" -ge 35 ]; then
+		num_log_lines=7
+	elif [ "$lines_cnt" -le 20 ]; then
+		num_log_lines=3
+	fi
+
 	local total_rendered_lines=$((num_log_lines + 3))
 
 	if [ "$IS_TTY" = "true" ]; then
@@ -207,11 +234,14 @@ run_step() {
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
-			local dashes_len=$((max_box_width - 18))
-			local dashes=""
-			for ((d=0; d<dashes_len; d++)); do dashes+="─"; done
-			printf "\r\033[2K  %b╭── %bTeardown Activity%b %s╮%b\n" \
-				"${COLOR_MUTED}" "${COLOR_CYAN}" "${COLOR_MUTED}" "${dashes}" "${COLOR_RESET}"
+			local title_tag="Teardown Activity"
+			local top_dashes_len=$((box_width - ${#title_tag} - 6))
+			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+			local top_dashes=""
+			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
+			printf "\r\033[2K  %b╭── %b%s%b %s╮%b\n" \
+				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
 			if [ -f "$log_file" ] && [ -s "$log_file" ]; then
@@ -232,7 +262,7 @@ run_step() {
 			done
 
 			local bot_dashes=""
-			for ((d=0; d<max_box_width-2; d++)); do bot_dashes+="─"; done
+			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
 			printf "\r\033[2K  %b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
@@ -359,10 +389,22 @@ print_summary() {
 	end_ts=$(date +%s)
 	local total_duration=$((end_ts - START_TIME))
 
+	local cols
+	cols=$(get_terminal_width)
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+
+	local bot_dashes=""
+	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+
+	local top_title="✔  NivaroOS Successfully Uninstalled! (completed in ${total_duration}s)"
+	local top_dashes_len=$((box_width - ${#top_title} - 4))
+	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+	local top_dashes=""
+	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
 	printf "\n"
-	printf '%b' "${COLOR_GREEN}╭───────────────────────────────────────────────────────────────────────────────╮${COLOR_RESET}\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_GREEN}✔  NivaroOS Successfully Uninstalled!${COLOR_RESET} ${COLOR_MUTED}(completed in ${total_duration}s)${COLOR_RESET}                      │\n"
-	printf '%b' "${COLOR_GREEN}├───────────────────────────────────────────────────────────────────────────────┤${COLOR_RESET}\n"
+	printf '%b' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}╮${COLOR_RESET}\n"
 	printf '%b' "│                                                                               │\n"
 	printf '%b' "│   • All systemd background services have been stopped and disabled.          │\n"
 	printf '%b' "│   • System binaries, management tools, and web assets have been removed.      │\n"
@@ -373,7 +415,7 @@ print_summary() {
 	fi
 	printf '%b' "│                                                                               │\n"
 	printf '%b' "│   ${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}                                              │\n"
-	printf '%b' "${COLOR_GREEN}╰───────────────────────────────────────────────────────────────────────────────╯${COLOR_RESET}\n\n"
+	printf '%b' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}\n\n"
 }
 
 main() {

@@ -113,6 +113,28 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
+get_terminal_width() {
+	local c=80
+	if command -v tput >/dev/null 2>&1; then
+		c=$(tput cols 2>/dev/null || echo "${COLUMNS:-80}")
+	elif [ -n "${COLUMNS:-}" ]; then
+		c="$COLUMNS"
+	fi
+	if [ "$c" -lt 40 ]; then c=80; fi
+	echo "$c"
+}
+
+get_terminal_height() {
+	local l=24
+	if command -v tput >/dev/null 2>&1; then
+		l=$(tput lines 2>/dev/null || echo "${LINES:-24}")
+	elif [ -n "${LINES:-}" ]; then
+		l="$LINES"
+	fi
+	if [ "$l" -lt 10 ]; then l=24; fi
+	echo "$l"
+}
+
 # ------------------------------------------------------------------------------
 # Banner & Diagnostics Display
 # ------------------------------------------------------------------------------
@@ -134,6 +156,12 @@ EOF
 }
 
 print_diagnostics_card() {
+	local cols
+	cols=$(get_terminal_width)
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 4))
+
 	local os_name="Linux"
 	if [ -f "$OS_RELEASE_FILE" ]; then
 		# shellcheck disable=SC1090
@@ -141,9 +169,8 @@ print_diagnostics_card() {
 		os_name="${PRETTY_NAME:-$ID}"
 	fi
 
-	local arch
+	local arch kernel
 	arch="$(uname -m)"
-	local kernel
 	kernel="$(uname -r)"
 
 	local mem_mb="0" mem_gb_str="Unknown"
@@ -157,33 +184,53 @@ print_diagnostics_card() {
 		mem_gb_str="$(awk "BEGIN {printf \"%.1f GB\", $mem_mb/1024}")"
 	fi
 
-	local disk_gb_str="Unknown"
-	local disk_mb
+	local disk_gb_str="Unknown" disk_mb
 	disk_mb="$(LC_ALL=C df -m / 2>/dev/null | tail -n 1 | awk '{print $4}' || echo "0")"
 	if [ -n "$disk_mb" ] && [ "$disk_mb" -gt 0 ]; then
 		disk_gb_str="$(awk "BEGIN {printf \"%.1f GB\", $disk_mb/1024}")"
 	fi
 
-	local kvm_status="${COLOR_GREEN}Supported (KVM Acceleration Available)${COLOR_RESET}"
+	local kvm_status="Supported (KVM Acceleration Available)"
 	if [ ! -e /dev/kvm ]; then
-		kvm_status="${COLOR_YELLOW}Not Detected (Emulation Only)${COLOR_RESET}"
+		kvm_status="Not Detected (Emulation Only)"
 	fi
 
-	local docker_status="${COLOR_MUTED}Not Installed (Auto-installs during setup)${COLOR_RESET}"
+	local docker_status="Not Installed (Auto-installs during setup)"
 	if command -v docker >/dev/null 2>&1; then
 		local d_ver
 		d_ver="$(docker version --format '{{.Server.Version}}' 2>/dev/null || docker -v 2>/dev/null | awk '{print $3}' | tr -d ',' || echo 'installed')"
-		docker_status="${COLOR_GREEN}Installed (v${d_ver})${COLOR_RESET}"
+		docker_status="Installed (v${d_ver})"
 	fi
 
-	printf '%b' "${COLOR_MUTED}╭── ${COLOR_BOLD}${COLOR_WHITE}System Diagnostics${COLOR_RESET}${COLOR_MUTED} ──────────────────────────────────────────────────────────╮${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Operating System:${COLOR_RESET}   ${COLOR_WHITE}${os_name} (${arch})${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Linux Kernel:${COLOR_RESET}       ${COLOR_WHITE}${kernel}${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}System Memory:${COLOR_RESET}      ${COLOR_WHITE}${mem_gb_str}${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Free Disk on /:${COLOR_RESET}     ${COLOR_WHITE}${disk_gb_str}${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Virtualization:${COLOR_RESET}     ${kvm_status}\n"
-	printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Docker Engine:${COLOR_RESET}      ${docker_status}\n"
-	printf '%b' "${COLOR_MUTED}╰───────────────────────────────────────────────────────────────────────────────╯${COLOR_RESET}\n\n"
+	local title_tag="System Diagnostics"
+	local top_dashes_len=$((box_width - ${#title_tag} - 6))
+	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+	local top_dashes=""
+	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
+	local bot_dashes=""
+	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+
+	printf '%b' "${COLOR_MUTED}╭── ${COLOR_BOLD}${COLOR_WHITE}${title_tag}${COLOR_RESET}${COLOR_MUTED} ${top_dashes}╮${COLOR_RESET}\n"
+	
+	render_diag_line() {
+		local label="$1" val="$2"
+		local clean_text="• ${label}: ${val}"
+		local pad_len=$((inner_width - ${#clean_text}))
+		if [ "$pad_len" -lt 0 ]; then pad_len=0; fi
+		local pad=""
+		for ((p=0; p<pad_len; p++)); do pad+=" "; done
+		printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}${label}:${COLOR_RESET} ${COLOR_WHITE}${val}${COLOR_RESET}${pad}  ${COLOR_MUTED}│${COLOR_RESET}\n"
+	}
+
+	render_diag_line "Operating System" "${os_name} (${arch})"
+	render_diag_line "Linux Kernel    " "${kernel}"
+	render_diag_line "System Memory   " "${mem_gb_str}"
+	render_diag_line "Free Disk on /  " "${disk_gb_str}"
+	render_diag_line "Virtualization  " "${kvm_status}"
+	render_diag_line "Docker Engine   " "${docker_status}"
+
+	printf '%b' "${COLOR_MUTED}╰${bot_dashes}╯${COLOR_RESET}\n\n"
 }
 
 # ------------------------------------------------------------------------------
@@ -434,28 +481,44 @@ print_error_card() {
 	local exit_code="$2"
 	local log_file="$3"
 
+	local cols
+	cols=$(get_terminal_width)
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 4))
+
+	local bot_dashes=""
+	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+
+	local top_dashes_len=$((box_width - 24))
+	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+	local top_dashes=""
+	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
 	printf "\n"
-	printf '%b' "${COLOR_RED}╭── ${COLOR_BOLD}Installation Failed${COLOR_RESET}${COLOR_RED} ────────────────────────────────────────────────────────╮${COLOR_RESET}\n"
+	printf '%b' "${COLOR_RED}╭── ${COLOR_BOLD}Installation Failed${COLOR_RESET}${COLOR_RED} ${top_dashes}╮${COLOR_RESET}\n"
 	printf '%b' "│  ${COLOR_RED}✖ Step Failed:${COLOR_RESET}  ${COLOR_WHITE}${title}${COLOR_RESET}\n"
 	printf '%b' "│  ${COLOR_RED}✖ Exit Code:${COLOR_RESET}    ${COLOR_WHITE}${exit_code}${COLOR_RESET}\n"
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│  ${COLOR_BOLD}Recent Log Output:${COLOR_RESET}                                                           │\n"
-	printf '%b' "${COLOR_RED}├───────────────────────────────────────────────────────────────────────────────┤${COLOR_RESET}\n"
+	printf '%b' "│  ${COLOR_BOLD}Recent Log Output:${COLOR_RESET}\n"
+	printf '%b' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}\n"
 
 	if [ -f "$log_file" ] && [ -s "$log_file" ]; then
 		while IFS= read -r line; do
-			printf "│  %b\n" "${COLOR_MUTED}${line:0:74}${COLOR_RESET}"
+			local clean_l
+			clean_l=$(printf '%s' "$line" | tr '\r\t' '  ' | cut -c 1-"$inner_width")
+			printf "│  %b\n" "${COLOR_MUTED}${clean_l}${COLOR_RESET}"
 		done < <(tail -n 14 "$log_file")
 	else
 		printf "│  %b\n" "${COLOR_MUTED}(No detailed log output captured)${COLOR_RESET}"
 	fi
 
-	printf '%b' "${COLOR_RED}├───────────────────────────────────────────────────────────────────────────────┤${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_BOLD}Troubleshooting Tips:${COLOR_RESET}                                                       │\n"
+	printf '%b' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}\n"
+	printf '%b' "│  ${COLOR_BOLD}Troubleshooting Tips:${COLOR_RESET}\n"
 	printf '%b' "│  • Full installation log saved to: ${COLOR_CYAN}${INSTALL_LOG}${COLOR_RESET}\n"
-	printf '%b' "│  • Verify internet connectivity and package mirrors.                          │\n"
-	printf '%b' "│  • Report issues at: ${COLOR_CYAN}https://github.com/F-e-n-y-x/NivaroOS/issues${COLOR_RESET}             │\n"
-	printf '%b' "${COLOR_RED}╰───────────────────────────────────────────────────────────────────────────────╯${COLOR_RESET}\n\n"
+	printf '%b' "│  • Verify internet connectivity and package mirrors.\n"
+	printf '%b' "│  • Report issues at: ${COLOR_CYAN}https://github.com/F-e-n-y-x/NivaroOS/issues${COLOR_RESET}\n"
+	printf '%b' "${COLOR_RED}╰${bot_dashes}╯${COLOR_RESET}\n\n"
 }
 
 on_fatal_error() {
@@ -470,7 +533,7 @@ on_fatal_error() {
 trap 'on_fatal_error "$LINENO"' ERR
 
 # ------------------------------------------------------------------------------
-# Split-Pane Live Stream Step Runner (Top: Progress / Bottom: Live Activity)
+# Full-Width Responsive Split-Pane Live Stream Step Runner
 # ------------------------------------------------------------------------------
 run_step() {
 	local title="$1"
@@ -502,16 +565,23 @@ run_step() {
 		return 0
 	fi
 
-	local cols=80
-	if command -v tput >/dev/null 2>&1; then
-		cols=$(tput cols 2>/dev/null || echo 80)
-	fi
-	if [ "$cols" -lt 60 ]; then cols=60; fi
-	local max_box_width=$((cols - 4))
-	if [ "$max_box_width" -gt 76 ]; then max_box_width=76; fi
-	local inner_width=$((max_box_width - 4))
+	local cols lines_cnt
+	cols=$(get_terminal_width)
+	lines_cnt=$(get_terminal_height)
 
-	local num_log_lines=4
+	# Full width box calculation (uses entire terminal width minus 4-space outer margins)
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 4))
+
+	# Responsive height based on terminal rows
+	local num_log_lines=6
+	if [ "$lines_cnt" -ge 35 ]; then
+		num_log_lines=8
+	elif [ "$lines_cnt" -le 20 ]; then
+		num_log_lines=4
+	fi
+
 	local total_rendered_lines=$((num_log_lines + 3))
 
 	if [ "$IS_TTY" = "true" ]; then
@@ -541,19 +611,22 @@ run_step() {
 				first_render=false
 			fi
 
-			# Top Half: Progress Header with Spinner
+			# Top Half: Progress Header with Animated Spinner & Live Timer
 			printf "\r\033[2K  %b %b %b %b(%ds)%b\n" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
-			# Bottom Half: Live Activity Stream Box
-			local dashes_len=$((max_box_width - 18))
-			local dashes=""
-			for ((d=0; d<dashes_len; d++)); do dashes+="─"; done
-			printf "\r\033[2K  %b╭── %bLive Activity%b %s╮%b\n" \
-				"${COLOR_MUTED}" "${COLOR_CYAN}" "${COLOR_MUTED}" "${dashes}" "${COLOR_RESET}"
+			# Bottom Half: Full-Width Live Activity Box
+			local title_tag="Live Activity"
+			local top_dashes_len=$((box_width - ${#title_tag} - 6))
+			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+			local top_dashes=""
+			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
+			printf "\r\033[2K  %b╭── %b%s%b %s╮%b\n" \
+				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
 			if [ -f "$log_file" ] && [ -s "$log_file" ]; then
@@ -574,7 +647,7 @@ run_step() {
 			done
 
 			local bot_dashes=""
-			for ((d=0; d<max_box_width-2; d++)); do bot_dashes+="─"; done
+			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
 			printf "\r\033[2K  %b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
@@ -1123,12 +1196,25 @@ print_summary() {
 	end_ts=$(date +%s)
 	local total_duration=$((end_ts - START_TIME))
 
+	local cols
+	cols=$(get_terminal_width)
+	local box_width=$((cols - 4))
+	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 4))
+
+	local bot_dashes=""
+	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+
+	local top_title="🎉  NivaroOS Installed Successfully! (completed in ${total_duration}s)"
+	local top_dashes_len=$((box_width - ${#top_title} - 4))
+	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
+	local top_dashes=""
+	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
+
 	printf "\n"
-	printf '%b' "${COLOR_GREEN}╭───────────────────────────────────────────────────────────────────────────────╮${COLOR_RESET}\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_GREEN}🎉  NivaroOS Installed Successfully!${COLOR_RESET} ${COLOR_MUTED}(completed in ${total_duration}s)${COLOR_RESET}                        │\n"
-	printf '%b' "${COLOR_GREEN}├───────────────────────────────────────────────────────────────────────────────┤${COLOR_RESET}\n"
+	printf '%b' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}╮${COLOR_RESET}\n"
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}Access your Web Dashboard at:${COLOR_RESET}                                              │\n"
+	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}Access your Web Dashboard at:${COLOR_RESET}\n"
 
 	local port_suffix=""
 	if [ -n "$DETECTED_PORT" ] && [ "$DETECTED_PORT" != "80" ]; then
@@ -1158,7 +1244,7 @@ print_summary() {
 	printf "│   ${COLOR_CYAN}➜${COLOR_RESET}  ${COLOR_BOLD}%-32s${COLOR_RESET} ${COLOR_MUTED}(local)${COLOR_RESET}\n" "http://localhost${port_suffix}"
 
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}System Services Status:${COLOR_RESET}                                                     │\n"
+	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}System Services Status:${COLOR_RESET}\n"
 
 	local s_core="${COLOR_GREEN}✔ Core Engine${COLOR_RESET}"
 	local s_gw="${COLOR_GREEN}✔ Gateway${COLOR_RESET}"
@@ -1189,14 +1275,14 @@ print_summary() {
 	fi
 
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}                                                       │\n"
-	printf '%b' "│   • Management CLI:     ${COLOR_CYAN}nivaroos --help${COLOR_RESET}                                       │\n"
-	printf '%b' "│   • System Status:      ${COLOR_CYAN}nivaroos status${COLOR_RESET}                                       │\n"
-	printf '%b' "│   • View Live Logs:     ${COLOR_CYAN}journalctl -u nivaroos -f${COLOR_RESET}                             │\n"
-	printf '%b' "│   • Service Controls:   ${COLOR_CYAN}systemctl restart nivaroos-gateway${COLOR_RESET}                    │\n"
-	printf '%b' "│   • Uninstall NivaroOS: ${COLOR_CYAN}nivaroos-uninstall${COLOR_RESET}                                    │\n"
+	printf '%b' "│   ${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}\n"
+	printf '%b' "│   • Management CLI:     ${COLOR_CYAN}nivaroos --help${COLOR_RESET}\n"
+	printf '%b' "│   • System Status:      ${COLOR_CYAN}nivaroos status${COLOR_RESET}\n"
+	printf '%b' "│   • View Live Logs:     ${COLOR_CYAN}journalctl -u nivaroos -f${COLOR_RESET}\n"
+	printf '%b' "│   • Service Controls:   ${COLOR_CYAN}systemctl restart nivaroos-gateway${COLOR_RESET}\n"
+	printf '%b' "│   • Uninstall NivaroOS: ${COLOR_CYAN}nivaroos-uninstall${COLOR_RESET}\n"
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "${COLOR_GREEN}╰───────────────────────────────────────────────────────────────────────────────╯${COLOR_RESET}\n\n"
+	printf '%b' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}\n\n"
 }
 
 # ------------------------------------------------------------------------------
