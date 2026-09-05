@@ -60,13 +60,8 @@
 		<div class="columns is-multiline is-mobile mb-4">
 			<div v-for="tpl in quickTemplates" :key="tpl.id" class="column is-3-desktop is-6-tablet is-12-mobile">
 				<div class="template-card" @click="applyTemplate(tpl)">
-					<div class="template-card-header is-flex is-align-items-center is-justify-content-between mb-2">
-						<div class="template-icon" :style="{ color: tpl.color, background: tpl.bg }">
-							<i :class="['mdi', 'mdi-' + tpl.icon]"></i>
-						</div>
-						<span class="template-add-pill" :title="$t('Use template')">
-							<i class="mdi mdi-plus"></i>
-						</span>
+					<div class="template-icon mb-2" :style="{ color: tpl.color, background: tpl.bg }">
+						<i :class="['mdi', 'mdi-' + tpl.icon]"></i>
 					</div>
 					<div class="template-title">{{ tpl.name }}</div>
 					<div class="template-desc is-flex is-align-items-center mt-1">
@@ -865,12 +860,6 @@ export default {
 		border-color: rgba(37, 99, 235, 0.3);
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
 		transform: translateY(-2px);
-
-		.template-add-pill {
-			background: #2563eb;
-			color: #ffffff;
-			border-color: #2563eb;
-		}
 	}
 
 	.template-icon {
@@ -882,20 +871,6 @@ export default {
 		justify-content: center;
 		font-size: 18px;
 		flex-shrink: 0;
-	}
-
-	.template-add-pill {
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		background: rgba(0, 0, 0, 0.04);
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		color: #71717a;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 13px;
-		transition: all 0.15s ease;
 	}
 
 	.template-title {
