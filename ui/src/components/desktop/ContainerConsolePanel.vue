@@ -12,9 +12,12 @@
 				</span>
 			</div>
 
-			<!-- Tab switchers in center -->
-			<div class="header-center">
-				<div class="console-tabs">
+			<!-- Spacer pushes switcher and controls to the right -->
+			<div class="header-spacer"></div>
+
+			<!-- Right side: Tab switchers, tools, and window controls -->
+			<div class="header-right is-flex is-align-items-center">
+				<div class="console-tabs mr-3">
 					<button
 						type="button"
 						class="console-tab-btn"
@@ -34,10 +37,7 @@
 						{{ $t('Logs') }}
 					</button>
 				</div>
-			</div>
 
-			<!-- Window controls / Quick actions on right -->
-			<div class="header-right is-flex is-align-items-center">
 				<button
 					v-if="activeTab === 'logs'"
 					class="header-tool-btn mr-3"
@@ -463,11 +463,10 @@ export default {
 }
 
 .header-left {
-	flex: 1 1 0;
-	min-width: 0;
+	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	justify-content: flex-start;
+	min-width: 0;
 
 	.docker-icon {
 		color: #38bdf8 !important;
@@ -476,7 +475,7 @@ export default {
 	.container-title {
 		font-size: 13px;
 		color: #f4f4f5;
-		max-width: 180px;
+		max-width: 220px;
 	}
 
 	.image-tag {
@@ -486,7 +485,7 @@ export default {
 		border-radius: 4px;
 		color: #a1a1aa;
 		font-family: monospace;
-		max-width: 130px;
+		max-width: 160px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -526,12 +525,15 @@ export default {
 	}
 }
 
-.header-center {
+.header-spacer {
+	flex: 1 1 auto;
+	min-width: 1rem;
+}
+
+.header-right {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	padding: 0 16px;
 }
 
 .console-tabs {
@@ -563,13 +565,6 @@ export default {
 			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 		}
 	}
-}
-
-.header-right {
-	flex: 1 1 0;
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
 }
 
 .header-tool-btn {
@@ -612,7 +607,7 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin-left: 14px;
+	margin-left: 10px;
 }
 
 .window-btn {
