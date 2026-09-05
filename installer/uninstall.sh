@@ -72,6 +72,10 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
+strip_ansi() {
+	printf '%b' "$1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\033\[[0-9;]*[a-zA-Z]//g' | tr '\r\t' '  '
+}
+
 # ------------------------------------------------------------------------------
 # Real-Time Terminal Dimension Detection & CPR Hardware Probing
 # ------------------------------------------------------------------------------
@@ -296,6 +300,7 @@ run_step() {
 			get_term_size
 			local box_width=$((TERM_COLS - 2))
 			if [ "$box_width" -lt 38 ]; then box_width=38; fi
+			local inner_width=$((box_width - 6))
 
 			# 10 Live Activity Lines by default
 			local num_log_lines=10
@@ -321,14 +326,14 @@ run_step() {
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
-			# Bottom Half: Clean Full-Width Activity Box
-			local title_tag="Teardown Activity"
-			local top_dashes_len=$((box_width - ${#title_tag} - 5))
+			# Bottom Half: Fully Enclosed Activity Box
+			local title_tag=" Teardown Activity "
+			local top_dashes_len=$((box_width - ${#title_tag} - 4))
 			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 			local top_dashes=""
 			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
-			printf "\r\033[2K%b╭── %b%s%b %s%b\n" \
+			printf "\r\033[2K%b╭──%b%s%b%s╮%b\n" \
 				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
@@ -338,19 +343,31 @@ run_step() {
 
 			local pad_count=$((num_log_lines - ${#lines[@]}))
 			for ((p=0; p<pad_count; p++)); do
-				printf "\r\033[2K%b│%b  ...\n" "${COLOR_MUTED}" "${COLOR_MUTED}"
+				local empty_pad=""
+				if [ "$inner_width" -gt 3 ]; then
+					empty_pad="$(printf '%*s' "$((inner_width - 3))" '')"
+				fi
+				printf "\r\033[2K%b│%b  ...%s  %b│%b\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			for l in "${lines[@]}"; do
 				local clean_l
-				clean_l=$(printf '%s' "$l" | tr '\r\t' '  ' | cut -c 1-"$((box_width - 4))")
-				printf "\r\033[2K%b│%b  %s%b\n" \
-					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "${COLOR_RESET}"
+				clean_l="$(strip_ansi "$l")"
+				if [ "${#clean_l}" -gt "$inner_width" ]; then
+					clean_l="${clean_l:0:$inner_width}"
+				fi
+				local pad_len=$((inner_width - ${#clean_l}))
+				local pad=""
+				if [ "$pad_len" -gt 0 ]; then
+					pad="$(printf '%*s' "$pad_len" '')"
+				fi
+				printf "\r\033[2K%b│%b  %s%s  %b│%b\n" \
+					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "$pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			local bot_dashes=""
-			for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
-			printf "\r\033[2K%b╰%s%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+			printf "\r\033[2K%b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
@@ -480,29 +497,47 @@ print_summary() {
 	get_term_size
 	local box_width=$((TERM_COLS - 2))
 	if [ "$box_width" -lt 40 ]; then box_width=40; fi
+	local inner_width=$((box_width - 6))
 
 	local bot_dashes=""
-	for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
+	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
 
-	local top_title="✔  NivaroOS Successfully Uninstalled! (completed in ${total_duration}s)"
-	local top_dashes_len=$((box_width - ${#top_title} - 5))
+	local top_title=" ✔  NivaroOS Successfully Uninstalled! (completed in ${total_duration}s) "
+	local top_dashes_len=$((box_width - ${#top_title} - 4))
 	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 	local top_dashes=""
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	printf "\n"
-	printf '%b\n' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}${COLOR_RESET}"
-	printf '%b\n' "│"
-	printf '%b\n' "│   • All systemd background services have been stopped and disabled."
-	printf '%b\n' "│   • System binaries, management tools, and web assets have been removed."
+	printf '%b\n' "${COLOR_GREEN}╭──${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN}${top_dashes}╮${COLOR_RESET}"
+	
+	render_unsum_line() {
+		local text="$1"
+		local plain
+		plain="$(strip_ansi "$text")"
+		if [ "${#plain}" -gt "$inner_width" ]; then
+			plain="${plain:0:$inner_width}"
+		fi
+		local pad_len=$((inner_width - ${#plain}))
+		local pad=""
+		if [ "$pad_len" -gt 0 ]; then
+			pad="$(printf '%*s' "$pad_len" '')"
+		fi
+		printf '%b\n' "${COLOR_GREEN}│${COLOR_RESET}  ${text}${pad}  ${COLOR_GREEN}│${COLOR_RESET}"
+	}
+
+	render_unsum_line ""
+	render_unsum_line "• All systemd background services have been stopped and disabled."
+	render_unsum_line "• System binaries, management tools, and web assets have been removed."
 	if [ "$PURGE_DATA" = "yes" ]; then
-		printf '%b\n' "│   • ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}"
+		render_unsum_line "• ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}"
 	else
-		printf '%b\n' "│   • ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}"
+		render_unsum_line "• ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}"
 	fi
-	printf '%b\n' "│"
-	printf '%b\n' "│   ${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}"
-	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}${COLOR_RESET}"
+	render_unsum_line ""
+	render_unsum_line "${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}"
+	render_unsum_line ""
+	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}"
 }
 
 main() {
