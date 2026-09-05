@@ -2513,16 +2513,22 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	background: rgba(0, 0, 0, 0.4);
-	border: 1px solid rgba(255, 255, 255, 0.09);
+	background: #0f172a;
+	border: 1px solid rgba(255, 255, 255, 0.14);
 	border-radius: 6px;
 	padding: 0.35rem 0.5rem;
 	gap: 0.4rem;
 
 	code {
 		font-size: 0.72rem;
-		font-family: monospace;
-		color: rgba(255, 255, 255, 0.9);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+		background: transparent !important;
+		background-color: transparent !important;
+		color: #38bdf8 !important;
+		padding: 0 !important;
+		margin: 0;
+		border: none;
+		border-radius: 0;
 		overflow-x: auto;
 		white-space: nowrap;
 	}
