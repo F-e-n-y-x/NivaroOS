@@ -2,7 +2,9 @@
 # ==============================================================================
 #  NivaroOS Uninstaller Script
 #  Clean Teardown & Service Removal
+#  GitHub: https://github.com/F-e-n-y-x/NivaroOS
 # ==============================================================================
+
 if [ -z "${BASH_VERSION:-}" ]; then
 	exec bash "$0" "$@"
 fi
@@ -54,10 +56,10 @@ fi
 
 SPINNER_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
 
-info()  { printf '%b\n' "${COLOR_CYAN}ℹ${COLOR_RESET}  ${COLOR_WHITE}$1${COLOR_RESET}"; }
+info()    { printf '%b\n' "${COLOR_CYAN}ℹ${COLOR_RESET}  ${COLOR_WHITE}$1${COLOR_RESET}"; }
 success() { printf '%b\n' "${COLOR_GREEN}✔${COLOR_RESET}  ${COLOR_GREEN}$1${COLOR_RESET}"; }
-warn()  { printf '%b\n' "${COLOR_YELLOW}⚠${COLOR_RESET}  ${COLOR_YELLOW}$1${COLOR_RESET}" >&2; }
-error() { printf '%b\n' "${COLOR_RED}✖${COLOR_RESET}  ${COLOR_RED}$1${COLOR_RESET}" >&2; }
+warn()    { printf '%b\n' "${COLOR_YELLOW}⚠${COLOR_RESET}  ${COLOR_YELLOW}$1${COLOR_RESET}" >&2; }
+error()   { printf '%b\n' "${COLOR_RED}✖${COLOR_RESET}  ${COLOR_RED}$1${COLOR_RESET}" >&2; }
 
 cleanup_on_exit() {
 	if [ "$IS_TTY" = "true" ]; then
@@ -66,8 +68,22 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
+check_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		if command -v sudo >/dev/null 2>&1; then
+			info "Root privileges required. Elevating with sudo..."
+			exec sudo -E bash "$0" "$@"
+		else
+			error "NivaroOS uninstaller must be run as root."
+			exit 1
+		fi
+	fi
+}
+
 print_banner() {
-	clear 2>/dev/null || true
+	if [ "$IS_TTY" = "true" ]; then
+		clear 2>/dev/null || true
+	fi
 	printf "\n"
 	printf '%b' "${COLOR_BOLD}${COLOR_CYAN}"
 	cat <<'EOF'
@@ -85,7 +101,7 @@ parse_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--purge-data) PURGE_DATA=yes ;;
-			--yes|-y) YES=yes ;;
+			--yes|-y|--unattended) YES=yes ;;
 			--help|-h)
 				print_banner
 				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} uninstall.sh [options]\n"
@@ -238,7 +254,8 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-local-storage.service \
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
-			/usr/lib/systemd/system/rclone.service
+			/usr/lib/systemd/system/rclone.service \
+			/etc/systemd/system/nivaroos*
 		systemctl daemon-reload
 	"
 }
@@ -248,36 +265,21 @@ remove_binaries() {
 		rm -f \
 			/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
-			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-vm-sidecar \
-			/usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-cli \
-			/usr/bin/nivaroos-uninstall /usr/local/bin/mergerfs.ctl
+			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
+			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
+			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
+			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
+			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
+		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos
 	"
 }
 
-remove_dirs() {
-	run_step "Removing system configuration directories & web assets" "
-		rm -rf /etc/nivaroos /usr/share/nivaroos /var/lib/nivaroos /var/lib/casaos \"\$(dirname \"$SRC_DIR\")\"
-		rm -f /etc/profile.d/nivaroos-go.sh
-	"
-}
-
-purge_data() {
-	if [ -z "$PURGE_DATA" ]; then
-		return
+purge_data_if_requested() {
+	if [ "$PURGE_DATA" = "yes" ]; then
+		run_step "Purging all user data & volumes in /DATA" "rm -rf /DATA"
+	else
+		run_step "Preserving user data in /DATA" "true"
 	fi
-	if [ -t 0 ] && [ -z "$YES" ]; then
-		printf "\n"
-		printf '%b\n' "${COLOR_RED}${COLOR_BOLD}DANGER: Permanent Data Deletion Confirmation${COLOR_RESET}"
-		printf '%b\n' "This will permanently wipe /DATA including all Docker app volumes, VM disk images, and files."
-		local confirm=""
-		printf '%b' "Type '${COLOR_BOLD}DELETE${COLOR_RESET}' to confirm data purge: "
-		read -r confirm </dev/tty || confirm=""
-		if [ "$confirm" != "DELETE" ]; then
-			warn "Purge aborted. /DATA left untouched."
-			return
-		fi
-	fi
-	run_step "Purging /DATA storage volume" "rm -rf /DATA"
 }
 
 print_summary() {
@@ -287,46 +289,35 @@ print_summary() {
 
 	printf "\n"
 	printf '%b' "${COLOR_GREEN}╭───────────────────────────────────────────────────────────────────────────────╮${COLOR_RESET}\n"
-	printf '%b' "│   ${COLOR_BOLD}${COLOR_GREEN}✔  NivaroOS Has Been Completely Uninstalled${COLOR_RESET} ${COLOR_MUTED}(in ${total_duration}s)${COLOR_RESET}                       │\n"
+	printf '%b' "│   ${COLOR_BOLD}${COLOR_GREEN}✔  NivaroOS Successfully Uninstalled!${COLOR_RESET} ${COLOR_MUTED}(completed in ${total_duration}s)${COLOR_RESET}                      │\n"
 	printf '%b' "${COLOR_GREEN}├───────────────────────────────────────────────────────────────────────────────┤${COLOR_RESET}\n"
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_BOLD}Summary of Actions:${COLOR_RESET}                                                         │\n"
-	printf '%b' "│   ✔ All NivaroOS systemd services stopped and disabled                        │\n"
-	printf '%b' "│   ✔ Service unit definitions removed from /usr/lib/systemd/system             │\n"
-	printf '%b' "│   ✔ Application binaries and CLI tools removed from /usr/bin                  │\n"
-	printf '%b' "│   ✔ System configurations and web UI assets cleaned                           │\n"
-	printf '%b' "│                                                                               │\n"
-
-	if [ -n "$PURGE_DATA" ]; then
-		printf '%b' "│   ${COLOR_YELLOW}• Data Directory:${COLOR_RESET}  ${COLOR_RED}/DATA has been permanently purged.${COLOR_RESET}                   │\n"
+	printf '%b' "│   • All systemd background services have been stopped and disabled.          │\n"
+	printf '%b' "│   • System binaries, management tools, and web assets have been removed.      │\n"
+	if [ "$PURGE_DATA" = "yes" ]; then
+		printf '%b' "│   • ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}                                      │\n"
 	else
-		printf '%b' "│   ${COLOR_GREEN}• Data Directory:${COLOR_RESET}  ${COLOR_WHITE}/DATA was left untouched.${COLOR_RESET}                            │\n"
-		printf '%b' "│                      ${COLOR_MUTED}(App databases, VM disks and files are safe)${COLOR_RESET}             │\n"
+		printf '%b' "│   • ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}                                       │\n"
 	fi
-
 	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_MUTED}Note: Host dependencies (Docker, Node.js, Go) were preserved.${COLOR_RESET}              │\n"
-	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_BOLD}To reinstall anytime:${COLOR_RESET}                                                       │\n"
-	printf '%b' "│   ${COLOR_CYAN}curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash${COLOR_RESET}\n"
-	printf '%b' "│                                                                               │\n"
+	printf '%b' "│   ${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}                                              │\n"
 	printf '%b' "${COLOR_GREEN}╰───────────────────────────────────────────────────────────────────────────────╯${COLOR_RESET}\n\n"
 }
 
 main() {
 	START_TIME=$(date +%s)
+	check_root
 	parse_args "$@"
 	print_banner
 	confirm_uninstall
 
-	info "Beginning teardown pipeline..."
+	info "Beginning NivaroOS teardown..."
 	printf "\n"
 
 	stop_services
 	remove_unit_files
 	remove_binaries
-	remove_dirs
-	purge_data
+	purge_data_if_requested
 
 	print_summary
 }
