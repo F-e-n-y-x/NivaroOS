@@ -2,7 +2,7 @@
 	<section class="settings-section">
 		<div class="section-header is-flex is-align-items-center is-justify-content-between mb-4">
 			<div>
-				<h2 class="section-title mb-1">{{ $t('Containers & Updates') }}</h2>
+				<h2 class="section-title mb-1">{{ $t('Container') }}</h2>
 				<p class="section-subtitle text-muted is-size-7">{{ $t('Manage Docker containers, remote registry update tracking, and automated container update schedules without needing manual imports.') }}</p>
 			</div>
 			<div class="header-actions is-flex is-align-items-center">
