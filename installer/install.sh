@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  NivaroOS Installer Script
+#  NivaroOS Installer & Updater Script
 #  Modern Self-Hosted Personal Cloud & Container Platform
 #  GitHub: https://github.com/F-e-n-y-x/NivaroOS
 # ==============================================================================
@@ -9,7 +9,7 @@
 #   Debian 11+, Ubuntu 20.04+, Linux Mint, Pop!_OS, Raspberry Pi OS,
 #   CentOS/RHEL/Rocky/AlmaLinux 8+, Fedora 38+, Arch Linux, openSUSE, Alpine
 #
-# Quick Install:
+# Quick Install / Update:
 #   curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 # ==============================================================================
 
@@ -36,6 +36,7 @@ MIN_REQUIRED_DISK_GB="1"
 
 CUSTOM_PORT=""
 DETECTED_PORT="80"
+IS_UPGRADE="false"
 WITH_VM=""
 YES=""
 DEBUG=""
@@ -240,7 +241,6 @@ print_diagnostics_card() {
 	get_term_size
 	local box_width=$((TERM_COLS - 2))
 	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 4))
 
 	local os_name="Linux"
 	if [ -f "$OS_RELEASE_FILE" ]; then
@@ -283,34 +283,22 @@ print_diagnostics_card() {
 	fi
 
 	local title_tag="System Diagnostics"
-	local top_dashes_len=$((box_width - ${#title_tag} - 6))
+	local top_dashes_len=$((box_width - ${#title_tag} - 5))
 	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 	local top_dashes=""
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+	for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
 
-	printf '%b' "${COLOR_MUTED}╭── ${COLOR_BOLD}${COLOR_WHITE}${title_tag}${COLOR_RESET}${COLOR_MUTED} ${top_dashes}╮${COLOR_RESET}\n"
-	
-	render_diag_line() {
-		local label="$1" val="$2"
-		local clean_text="• ${label}: ${val}"
-		local pad_len=$((inner_width - ${#clean_text}))
-		if [ "$pad_len" -lt 0 ]; then pad_len=0; fi
-		local pad=""
-		for ((p=0; p<pad_len; p++)); do pad+=" "; done
-		printf '%b' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}${label}:${COLOR_RESET} ${COLOR_WHITE}${val}${COLOR_RESET}${pad}  ${COLOR_MUTED}│${COLOR_RESET}\n"
-	}
-
-	render_diag_line "Operating System" "${os_name} (${arch})"
-	render_diag_line "Linux Kernel    " "${kernel}"
-	render_diag_line "System Memory   " "${mem_gb_str}"
-	render_diag_line "Free Disk on /  " "${disk_gb_str}"
-	render_diag_line "Virtualization  " "${kvm_status}"
-	render_diag_line "Docker Engine   " "${docker_status}"
-
-	printf '%b' "${COLOR_MUTED}╰${bot_dashes}╯${COLOR_RESET}\n\n"
+	printf '%b\n' "${COLOR_MUTED}╭── ${COLOR_BOLD}${COLOR_WHITE}${title_tag}${COLOR_RESET}${COLOR_MUTED} ${top_dashes}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Operating System:${COLOR_RESET} ${COLOR_WHITE}${os_name} (${arch})${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Linux Kernel    :${COLOR_RESET} ${COLOR_WHITE}${kernel}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}System Memory   :${COLOR_RESET} ${COLOR_WHITE}${mem_gb_str}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Free Disk on /  :${COLOR_RESET} ${COLOR_WHITE}${disk_gb_str}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Virtualization  :${COLOR_RESET} ${COLOR_WHITE}${kvm_status}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_CYAN}•${COLOR_RESET} ${COLOR_MUTED}Docker Engine   :${COLOR_RESET} ${COLOR_WHITE}${docker_status}${COLOR_RESET}"
+	printf '%b\n\n' "${COLOR_MUTED}╰${bot_dashes}${COLOR_RESET}"
 }
 
 # ------------------------------------------------------------------------------
@@ -379,7 +367,7 @@ check_resources() {
 }
 
 # ------------------------------------------------------------------------------
-# Port Conflict Detection & Resolution
+# Port Conflict & Existing Installation Detection
 # ------------------------------------------------------------------------------
 is_port_in_use() {
 	local port="$1"
@@ -405,51 +393,68 @@ find_process_on_port() {
 }
 
 resolve_port_conflict() {
-	local target_port="${CUSTOM_PORT:-80}"
-
-	if ! is_port_in_use "$target_port"; then
-		DETECTED_PORT="$target_port"
-		return 0
+	# Check if existing NivaroOS configuration exists
+	if [ -f /etc/nivaroos/gateway.ini ]; then
+		local saved_port
+		saved_port="$(awk -F '=' '/^[[:space:]]*port[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2}' /etc/nivaroos/gateway.ini 2>/dev/null || echo "")"
+		if [ -n "$saved_port" ]; then
+			DETECTED_PORT="$saved_port"
+		fi
 	fi
 
-	local conflict_proc
-	conflict_proc="$(find_process_on_port "$target_port")"
-	[ -z "$conflict_proc" ] && conflict_proc="another web service / container"
+	local target_port="${CUSTOM_PORT:-$DETECTED_PORT}"
 
-	local alt_port=8080
-	while [ "$alt_port" -le 65535 ]; do
-		if ! is_port_in_use "$alt_port"; then
-			break
-		fi
-		alt_port=$((alt_port + 1))
-	done
+	# Check if port is in use
+	if is_port_in_use "$target_port"; then
+		local conflict_proc
+		conflict_proc="$(find_process_on_port "$target_port")"
 
-	if [ -n "$CUSTOM_PORT" ]; then
-		warn "Requested port ${CUSTOM_PORT} is already bound by ${conflict_proc}."
-		if [ -n "$YES" ] || [ ! -t 0 ]; then
-			DETECTED_PORT="$CUSTOM_PORT"
+		# If port is in use by NivaroOS itself, this is an upgrade/reinstall
+		if [[ "$conflict_proc" =~ nivaroos || "$conflict_proc" =~ casaos ]]; then
+			IS_UPGRADE="true"
+			DETECTED_PORT="$target_port"
+			info "Existing NivaroOS installation detected on Port ${target_port}. Performing in-place upgrade..."
 			return 0
 		fi
-	else
-		warn "Port 80 is currently in use by ${conflict_proc}."
-	fi
 
-	if [ -n "$YES" ] || [ ! -t 0 ]; then
-		info "Non-interactive mode: Automatically assigning free port ${alt_port}."
-		DETECTED_PORT="$alt_port"
-		return 0
-	fi
+		# If in use by another third-party process
+		local alt_port=8080
+		while [ "$alt_port" -le 65535 ]; do
+			if ! is_port_in_use "$alt_port"; then
+				break
+			fi
+			alt_port=$((alt_port + 1))
+		done
 
-	printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} Port 80 is occupied. You can use available port ${COLOR_CYAN}${alt_port}${COLOR_RESET} or specify a custom port."
-	local user_port=""
-	printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}HTTP Dashboard Port [${alt_port}]:${COLOR_RESET} "
-	read -r user_port </dev/tty || user_port=""
-	if [ -z "$user_port" ]; then
-		DETECTED_PORT="$alt_port"
+		if [ -n "$CUSTOM_PORT" ]; then
+			warn "Requested port ${CUSTOM_PORT} is already bound by ${conflict_proc}."
+			if [ -n "$YES" ] || [ ! -t 0 ]; then
+				DETECTED_PORT="$CUSTOM_PORT"
+				return 0
+			fi
+		else
+			warn "Port 80 is currently in use by ${conflict_proc}."
+		fi
+
+		if [ -n "$YES" ] || [ ! -t 0 ]; then
+			info "Non-interactive mode: Automatically assigning free port ${alt_port}."
+			DETECTED_PORT="$alt_port"
+			return 0
+		fi
+
+		printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} Port 80 is occupied. You can use available port ${COLOR_CYAN}${alt_port}${COLOR_RESET} or specify a custom port."
+		local user_port=""
+		printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}HTTP Dashboard Port [${alt_port}]:${COLOR_RESET} "
+		read -r user_port </dev/tty || user_port=""
+		if [ -z "$user_port" ]; then
+			DETECTED_PORT="$alt_port"
+		else
+			DETECTED_PORT="$user_port"
+		fi
+		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} Selected Dashboard Port: ${COLOR_BOLD}${DETECTED_PORT}${COLOR_RESET}"
 	else
-		DETECTED_PORT="$user_port"
+		DETECTED_PORT="$target_port"
 	fi
-	printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} Selected Dashboard Port: ${COLOR_BOLD}${DETECTED_PORT}${COLOR_RESET}"
 }
 
 # ------------------------------------------------------------------------------
@@ -570,10 +575,9 @@ print_error_card() {
 	get_term_size
 	local box_width=$((TERM_COLS - 2))
 	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 4))
 
 	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+	for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
 
 	local top_dashes_len=$((box_width - 24))
 	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
@@ -581,29 +585,29 @@ print_error_card() {
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	printf "\n"
-	printf '%b' "${COLOR_RED}╭── ${COLOR_BOLD}Installation Failed${COLOR_RESET}${COLOR_RED} ${top_dashes}╮${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_RED}✖ Step Failed:${COLOR_RESET}  ${COLOR_WHITE}${title}${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_RED}✖ Exit Code:${COLOR_RESET}    ${COLOR_WHITE}${exit_code}${COLOR_RESET}\n"
-	printf '%b' "│\n"
-	printf '%b' "│  ${COLOR_BOLD}Recent Log Output:${COLOR_RESET}\n"
-	printf '%b' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}\n"
+	printf '%b\n' "${COLOR_RED}╭── ${COLOR_BOLD}Installation Failed${COLOR_RESET}${COLOR_RED} ${top_dashes}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_RED}✖ Step Failed:${COLOR_RESET}  ${COLOR_WHITE}${title}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_RED}✖ Exit Code:${COLOR_RESET}    ${COLOR_WHITE}${exit_code}${COLOR_RESET}"
+	printf '%b\n' "│"
+	printf '%b\n' "│  ${COLOR_BOLD}Recent Log Output:${COLOR_RESET}"
+	printf '%b\n' "${COLOR_RED}├${bot_dashes}${COLOR_RESET}"
 
 	if [ -f "$log_file" ] && [ -s "$log_file" ]; then
 		while IFS= read -r line; do
 			local clean_l
-			clean_l=$(printf '%s' "$line" | tr '\r\t' '  ' | cut -c 1-"$inner_width")
+			clean_l=$(printf '%s' "$line" | tr '\r\t' '  ')
 			printf "│  %b\n" "${COLOR_MUTED}${clean_l}${COLOR_RESET}"
 		done < <(tail -n 14 "$log_file")
 	else
 		printf "│  %b\n" "${COLOR_MUTED}(No detailed log output captured)${COLOR_RESET}"
 	fi
 
-	printf '%b' "${COLOR_RED}├${bot_dashes}┤${COLOR_RESET}\n"
-	printf '%b' "│  ${COLOR_BOLD}Troubleshooting Tips:${COLOR_RESET}\n"
-	printf '%b' "│  • Full installation log saved to: ${COLOR_CYAN}${INSTALL_LOG}${COLOR_RESET}\n"
-	printf '%b' "│  • Verify internet connectivity and package mirrors.\n"
-	printf '%b' "│  • Report issues at: ${COLOR_CYAN}https://github.com/F-e-n-y-x/NivaroOS/issues${COLOR_RESET}\n"
-	printf '%b' "${COLOR_RED}╰${bot_dashes}╯${COLOR_RESET}\n\n"
+	printf '%b\n' "${COLOR_RED}├${bot_dashes}${COLOR_RESET}"
+	printf '%b\n' "│  ${COLOR_BOLD}Troubleshooting Tips:${COLOR_RESET}"
+	printf '%b\n' "│  • Full installation log saved to: ${COLOR_CYAN}${INSTALL_LOG}${COLOR_RESET}"
+	printf '%b\n' "│  • Verify internet connectivity and package mirrors."
+	printf '%b\n' "│  • Report issues at: ${COLOR_CYAN}https://github.com/F-e-n-y-x/NivaroOS/issues${COLOR_RESET}"
+	printf '%b\n\n' "${COLOR_RED}╰${bot_dashes}${COLOR_RESET}"
 }
 
 on_fatal_error() {
@@ -618,7 +622,7 @@ on_fatal_error() {
 trap 'on_fatal_error "$LINENO"' ERR
 
 # ------------------------------------------------------------------------------
-# Full-Width Responsive Split-Pane Live Stream Step Runner (10 Live Activity Lines)
+# Full-Width Responsive Split-Pane Live Stream Step Runner (10 Lines, Clean Open Edge)
 # ------------------------------------------------------------------------------
 run_step() {
 	local title="$1"
@@ -676,9 +680,8 @@ run_step() {
 			get_term_size
 			local box_width=$((TERM_COLS - 2))
 			if [ "$box_width" -lt 38 ]; then box_width=38; fi
-			local inner_width=$((box_width - 4))
 
-			# 10 Live Activity Lines by default, adaptable if terminal is small/tall
+			# 10 Live Activity Lines by default, adaptable for small/tall terminals
 			local num_log_lines=10
 			if [ "$TERM_ROWS" -le 16 ]; then
 				num_log_lines=$((TERM_ROWS - 6))
@@ -702,14 +705,14 @@ run_step() {
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
-			# Bottom Half: Full-Width Edge-to-Edge Live Activity Box
+			# Bottom Half: Clean Full-Width Live Activity Box
 			local title_tag="Live Activity"
-			local top_dashes_len=$((box_width - ${#title_tag} - 6))
+			local top_dashes_len=$((box_width - ${#title_tag} - 5))
 			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 			local top_dashes=""
 			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
-			printf "\r\033[2K%b╭── %b%s%b %s╮%b\n" \
+			printf "\r\033[2K%b╭── %b%s%b %s%b\n" \
 				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
@@ -719,20 +722,19 @@ run_step() {
 
 			local pad_count=$((num_log_lines - ${#lines[@]}))
 			for ((p=0; p<pad_count; p++)); do
-				printf "\r\033[2K%b│%b  %-*s  %b│%b\n" \
-					"${COLOR_MUTED}" "${COLOR_MUTED}" "$inner_width" "..." "${COLOR_MUTED}" "${COLOR_RESET}"
+				printf "\r\033[2K%b│%b  ...\n" "${COLOR_MUTED}" "${COLOR_MUTED}"
 			done
 
 			for l in "${lines[@]}"; do
 				local clean_l
-				clean_l=$(printf '%s' "$l" | tr '\r\t' '  ' | cut -c 1-"$inner_width")
-				printf "\r\033[2K%b│%b  %-*s  %b│%b\n" \
-					"${COLOR_MUTED}" "${COLOR_WHITE}" "$inner_width" "$clean_l" "${COLOR_MUTED}" "${COLOR_RESET}"
+				clean_l=$(printf '%s' "$l" | tr '\r\t' '  ' | cut -c 1-"$((box_width - 4))")
+				printf "\r\033[2K%b│%b  %s%b\n" \
+					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "${COLOR_RESET}"
 			done
 
 			local bot_dashes=""
-			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\r\033[2K%b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+			for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
+			printf "\r\033[2K%b╰%s%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
@@ -929,7 +931,6 @@ clone_or_update_repo() {
 			git checkout \"$BRANCH\"
 			git pull origin \"$BRANCH\" || true
 		else
-			# If directory has contents without .git, clean it up
 			if [ -d \"$SRC_DIR\" ] && [ \"\$(ls -A \"$SRC_DIR\" 2>/dev/null)\" ]; then
 				rm -rf \"${SRC_DIR:?}\"/* \"${SRC_DIR:?}\"/.[!.]* 2>/dev/null || true
 			fi
@@ -961,75 +962,103 @@ install_core_services() {
 		cd \"$SRC_DIR\"
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
 
+		# Stop existing background services before replacing binaries if upgrading
+		local active_units=(
+			nivaroos.service
+			nivaroos-gateway.service
+			nivaroos-message-bus.service
+			nivaroos-app-management.service
+			nivaroos-local-storage.service
+			nivaroos-user-service.service
+			nivaroos-gpu-sidecar.service
+		)
+		for u in \"\${active_units[@]}\"; do
+			systemctl stop \"\$u\" >/dev/null 2>&1 || true
+		done
+
 		mkdir -p /var/lib/nivaroos /var/run/nivaroos /etc/nivaroos /DATA/AppData /DATA/Documents /DATA/Downloads /DATA/Media /DATA/Gallery
 		touch \"$MANIFEST_FILE\"
 
-		# Compile Core Engine
-		go build -o /usr/bin/nivaroos ./cmd/nivaroos
+		# 1. Compile Core Engine
+		cd \"${SRC_DIR}/services/core\"
+		go build -o /usr/bin/nivaroos .
 		echo '/usr/bin/nivaroos' >> \"$MANIFEST_FILE\"
 
-		# Compile Gateway
-		cd \"${SRC_DIR}/cmd/gateway\"
+		# 2. Compile Gateway
+		cd \"${SRC_DIR}/services/gateway\"
 		go build -o /usr/bin/nivaroos-gateway .
 		echo '/usr/bin/nivaroos-gateway' >> \"$MANIFEST_FILE\"
 
-		# Compile Message Bus
-		cd \"${SRC_DIR}/cmd/message-bus\"
+		# 3. Compile Message Bus
+		cd \"${SRC_DIR}/services/message-bus\"
 		go build -o /usr/bin/nivaroos-message-bus .
 		echo '/usr/bin/nivaroos-message-bus' >> \"$MANIFEST_FILE\"
 
-		# Compile App Management
-		cd \"${SRC_DIR}/cmd/app-management\"
+		# 4. Compile App Management
+		cd \"${SRC_DIR}/services/app-management\"
 		go build -o /usr/bin/nivaroos-app-management .
 		echo '/usr/bin/nivaroos-app-management' >> \"$MANIFEST_FILE\"
 
-		# Compile Local Storage
-		cd \"${SRC_DIR}/cmd/local-storage\"
+		# 5. Compile Local Storage
+		cd \"${SRC_DIR}/services/local-storage\"
 		go build -o /usr/bin/nivaroos-local-storage .
 		echo '/usr/bin/nivaroos-local-storage' >> \"$MANIFEST_FILE\"
 
-		# Compile User Service
-		cd \"${SRC_DIR}/cmd/user-service\"
+		# 6. Compile User Service
+		cd \"${SRC_DIR}/services/user\"
 		go build -o /usr/bin/nivaroos-user-service .
 		echo '/usr/bin/nivaroos-user-service' >> \"$MANIFEST_FILE\"
 
-		# Compile GPU Sidecar
-		cd \"${SRC_DIR}/cmd/gpu-sidecar\"
+		# 7. Compile GPU Sidecar
+		cd \"${SRC_DIR}/services/gpu-sidecar\"
 		go build -o /usr/bin/nivaroos-gpu-sidecar .
 		echo '/usr/bin/nivaroos-gpu-sidecar' >> \"$MANIFEST_FILE\"
 
-		# Compile Unified Management CLI
-		cd \"${SRC_DIR}/cmd/cli\"
+		# 8. Compile Unified Management CLI
+		cd \"${SRC_DIR}/cli\"
 		go build -o /usr/bin/nivaroos-cli .
 		echo '/usr/bin/nivaroos-cli' >> \"$MANIFEST_FILE\"
 		ln -sf /usr/bin/nivaroos-cli /usr/local/bin/nivaroos 2>/dev/null || true
 		ln -sf /usr/bin/nivaroos-cli /usr/bin/casaos-cli 2>/dev/null || true
 
-		# Install systemd service units
-		cd \"$SRC_DIR\"
-		local units=(
-			\"build/sysroot/usr/lib/systemd/system/nivaroos.service:/usr/lib/systemd/system/nivaroos.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-gateway.service:/usr/lib/systemd/system/nivaroos-gateway.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-message-bus.service:/usr/lib/systemd/system/nivaroos-message-bus.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-app-management.service:/usr/lib/systemd/system/nivaroos-app-management.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-local-storage.service:/usr/lib/systemd/system/nivaroos-local-storage.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-user-service.service:/usr/lib/systemd/system/nivaroos-user-service.service\"
-			\"build/sysroot/usr/lib/systemd/system/nivaroos-gpu-sidecar.service:/usr/lib/systemd/system/nivaroos-gpu-sidecar.service\"
-			\"build/sysroot/usr/lib/systemd/system/rclone.service:/usr/lib/systemd/system/rclone.service\"
-			\"build/sysroot/usr/lib/systemd/system/usb-mount@.service:/usr/lib/systemd/system/usb-mount@.service\"
+		# 9. Install systemd service units from repository
+		mkdir -p /usr/lib/systemd/system
+		local service_mappings=(
+			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/nivaroos.service:/usr/lib/systemd/system/nivaroos.service\"
+			\"${SRC_DIR}/services/core/build/sysroot/usr/lib/systemd/system/rclone.service:/usr/lib/systemd/system/rclone.service\"
+			\"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount@.service:/usr/lib/systemd/system/usb-mount@.service\"
+			\"${SRC_DIR}/services/gateway/build/sysroot/usr/lib/systemd/system/nivaroos-gateway.service:/usr/lib/systemd/system/nivaroos-gateway.service\"
+			\"${SRC_DIR}/services/message-bus/build/sysroot/usr/lib/systemd/system/nivaroos-message-bus.service:/usr/lib/systemd/system/nivaroos-message-bus.service\"
+			\"${SRC_DIR}/services/app-management/build/sysroot/usr/lib/systemd/system/nivaroos-app-management.service:/usr/lib/systemd/system/nivaroos-app-management.service\"
+			\"${SRC_DIR}/services/local-storage/build/sysroot/usr/lib/systemd/system/nivaroos-local-storage.service:/usr/lib/systemd/system/nivaroos-local-storage.service\"
+			\"${SRC_DIR}/services/user/build/sysroot/usr/lib/systemd/system/nivaroos-user-service.service:/usr/lib/systemd/system/nivaroos-user-service.service\"
 		)
 
-		mkdir -p /usr/lib/systemd/system
-		for u in \"\${units[@]}\"; do
-			local src=\"\${u%%:*}\"
-			local dst=\"\${u##*:}\"
+		for m in \"\${service_mappings[@]}\"; do
+			local src=\"\${m%%:*}\"
+			local dst=\"\${m##*:}\"
 			if [ -f \"\$src\" ]; then
 				cp -f \"\$src\" \"\$dst\"
 				echo \"\$dst\" >> \"$MANIFEST_FILE\"
 			fi
 		done
 
-		# Apply Custom Port configuration if specified
+		# Write GPU Sidecar service unit
+		cat > /usr/lib/systemd/system/nivaroos-gpu-sidecar.service <<'GPUEOF'
+[Unit]
+Description=NivaroOS GPU Sidecar
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/nivaroos-gpu-sidecar
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+GPUEOF
+		echo '/usr/lib/systemd/system/nivaroos-gpu-sidecar.service' >> \"$MANIFEST_FILE\"
+
+		# Save custom port configuration if specified
 		if [ -n \"$DETECTED_PORT\" ] && [ \"$DETECTED_PORT\" != \"80\" ]; then
 			mkdir -p /etc/nivaroos
 			cat > /etc/nivaroos/gateway.ini <<GWCONF
@@ -1039,7 +1068,6 @@ GWCONF
 			echo '/etc/nivaroos/gateway.ini' >> \"$MANIFEST_FILE\"
 		fi
 
-		# Sort manifest uniquely
 		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
 	"
 }
@@ -1057,14 +1085,23 @@ install_vm_manager() {
 			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf
 		fi
 
-		cd \"${SRC_DIR}/cmd/vm-sidecar\"
+		cd \"${SRC_DIR}/services/vm-sidecar\"
 		go build -o /usr/bin/nivaroos-vm-sidecar .
 		echo '/usr/bin/nivaroos-vm-sidecar' >> \"$MANIFEST_FILE\"
 
-		if [ -f \"${SRC_DIR}/build/sysroot/usr/lib/systemd/system/nivaroos-vm-sidecar.service\" ]; then
-			cp -f \"${SRC_DIR}/build/sysroot/usr/lib/systemd/system/nivaroos-vm-sidecar.service\" /usr/lib/systemd/system/nivaroos-vm-sidecar.service
-			echo '/usr/lib/systemd/system/nivaroos-vm-sidecar.service' >> \"$MANIFEST_FILE\"
-		fi
+		cat > /usr/lib/systemd/system/nivaroos-vm-sidecar.service <<'VMEOF'
+[Unit]
+Description=NivaroOS VM Sidecar
+After=network.target nivaroos-message-bus.service libvirtd.service
+
+[Service]
+ExecStart=/usr/bin/nivaroos-vm-sidecar
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+VMEOF
+		echo '/usr/lib/systemd/system/nivaroos-vm-sidecar.service' >> \"$MANIFEST_FILE\"
 
 		mkdir -p /DATA/VMs/Images /DATA/VMs/ISOs /DATA/VMs/Disks
 		systemctl daemon-reload >/dev/null 2>&1 || true
@@ -1130,7 +1167,6 @@ verify_health() {
 		done
 
 		if [ \"\$healthy\" = \"false\" ]; then
-			# Verify whether processes are active via systemctl
 			if systemctl is-active --quiet nivaroos-gateway; then
 				healthy=true
 			fi
@@ -1185,19 +1221,22 @@ print_summary() {
 	get_term_size
 	local box_width=$((TERM_COLS - 2))
 	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 4))
 
 	local bot_dashes=""
-	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
+	for ((d=0; d<box_width-1; d++)); do bot_dashes+="─"; done
 
-	local top_title="🎉  NivaroOS Installed Successfully! (completed in ${total_duration}s)"
-	local top_dashes_len=$((box_width - ${#top_title} - 4))
+	local action_title="🎉  NivaroOS Installed Successfully!"
+	if [ "$IS_UPGRADE" = "true" ]; then
+		action_title="🎉  NivaroOS Updated Successfully!"
+	fi
+	local top_title="${action_title} (completed in ${total_duration}s)"
+	local top_dashes_len=$((box_width - ${#top_title} - 5))
 	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 	local top_dashes=""
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	printf "\n"
-	printf '%b\n' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}╮${COLOR_RESET}"
+	printf '%b\n' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}${COLOR_RESET}"
 	printf '%b\n' "│"
 	printf '%b\n' "│   ${COLOR_BOLD}${COLOR_WHITE}Access your Web Dashboard at:${COLOR_RESET}"
 
@@ -1267,7 +1306,7 @@ print_summary() {
 	printf '%b\n' "│   • Service Controls:   ${COLOR_CYAN}systemctl restart nivaroos-gateway${COLOR_RESET}"
 	printf '%b\n' "│   • Uninstall NivaroOS: ${COLOR_CYAN}nivaroos-uninstall${COLOR_RESET}"
 	printf '%b\n' "│"
-	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}"
+	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}${COLOR_RESET}"
 }
 
 # ------------------------------------------------------------------------------
@@ -1285,7 +1324,11 @@ main() {
 	resolve_port_conflict
 	select_addons
 
-	info "Starting NivaroOS automated installation pipeline..."
+	if [ "$IS_UPGRADE" = "true" ]; then
+		info "Starting NivaroOS automated upgrade pipeline..."
+	else
+		info "Starting NivaroOS automated installation pipeline..."
+	fi
 	printf "\n"
 
 	install_core_dependencies
