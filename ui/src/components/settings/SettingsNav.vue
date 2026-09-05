@@ -95,10 +95,24 @@ export default {
 		align-items: center;
 		justify-content: center;
 		flex-shrink: 0;
+		line-height: 1;
 
-		i {
+		i, .mdi, [class^="casa-"], [class*=" casa-"] {
 			font-size: 20px;
 			line-height: 1;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			text-align: center;
+			width: 20px;
+			height: 20px;
+
+			&::before {
+				font-size: 20px;
+				line-height: 1;
+				text-align: center;
+				vertical-align: middle;
+			}
 		}
 	}
 

@@ -144,9 +144,22 @@
 			height: 1.25rem;
 		}
 
-		i {
+		i, .mdi, [class^="casa-"], [class*=" casa-"] {
 			font-size: 1.25rem;
 			line-height: 1;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			text-align: center;
+			width: 1.25rem;
+			height: 1.25rem;
+
+			&::before {
+				font-size: 1.25rem;
+				line-height: 1;
+				text-align: center;
+				vertical-align: middle;
+			}
 		}
 	}
 
@@ -196,11 +209,27 @@
 		width: 1rem;
 		height: 1rem;
 		font-size: 1rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 
-	i {
+	i, .mdi, [class^="casa-"], [class*=" casa-"] {
 		font-size: 1rem;
 		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		width: 1rem;
+		height: 1rem;
+
+		&::before {
+			font-size: 1rem;
+			line-height: 1;
+			text-align: center;
+			vertical-align: middle;
+		}
 	}
 
 	&:hover {
