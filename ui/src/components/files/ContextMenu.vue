@@ -86,12 +86,6 @@
 				</button>
 			</template>
 			<div class="ctx-divider"></div>
-			<button class="ctx-item" @click="act('toggle-hidden')">
-				<i :class="showHidden ? 'mdi mdi-eye-off-outline ctx-icon' : 'mdi mdi-eye-outline ctx-icon'"></i>
-				<span class="ctx-label">{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}</span>
-				<i v-if="showHidden" class="mdi mdi-check ctx-check"></i>
-			</button>
-			<div class="ctx-divider"></div>
 			<button class="ctx-item is-danger" @click="act('delete')">
 				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Delete') }}</span>
@@ -314,12 +308,18 @@ export default {
 		},
 
 		addToFavorite() {
-			let shortcut = this.$store.state.shortcutData
-			if (!shortcut) shortcut = []
-			shortcut.push({
-				name: this.item.name,
-				path: this.item.path,
-			})
+			if (!this.item) return
+			const currentShortcuts = this.$store.state.shortcutData || []
+			if (currentShortcuts.some((s) => s.path === this.item.path)) return
+			const shortcut = [
+				...currentShortcuts,
+				{
+					name: this.item.name || this.item.path.split('/').pop() || this.item.path,
+					path: this.item.path,
+					icon: 'folder-outline',
+					pack: 'casa',
+				},
+			]
 			this.$store.dispatch('SET_SHORTCUT_DATA', shortcut).then(() => {
 				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 				this.$buefy.toast.open({ message: this.$t('Added to favorites'), type: 'is-success' })
@@ -327,7 +327,9 @@ export default {
 		},
 
 		removeFromFavorite() {
-			const shortcut = (this.$store.state.shortcutData || []).filter((s) => s.path !== this.item.path)
+			if (!this.item) return
+			const currentShortcuts = this.$store.state.shortcutData || []
+			const shortcut = currentShortcuts.filter((s) => s.path !== this.item.path)
 			this.$store.dispatch('SET_SHORTCUT_DATA', shortcut).then(() => {
 				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 				this.$buefy.toast.open({ message: this.$t('Removed from favorites'), type: 'is-success' })

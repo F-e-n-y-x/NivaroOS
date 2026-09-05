@@ -170,13 +170,16 @@ export default {
 			this.close()
 		},
 		addToFavorite() {
-			let shortcut = this.$store.state.shortcutData
-			if (!shortcut) shortcut = []
-			shortcut = [
-				...shortcut,
+			if (!this.item) return
+			const currentShortcuts = this.$store.state.shortcutData || []
+			if (currentShortcuts.some((s) => s.path === this.item.path)) return
+			const shortcut = [
+				...currentShortcuts,
 				{
 					name: this.item.name || this.item.path.split('/').pop() || this.item.path,
 					path: this.item.path,
+					icon: 'folder-outline',
+					pack: 'casa',
 				},
 			]
 			this.$store.dispatch('SET_SHORTCUT_DATA', shortcut).then(() => {
@@ -185,7 +188,9 @@ export default {
 			})
 		},
 		removeFromFavorite() {
-			const shortcut = (this.$store.state.shortcutData || []).filter((s) => s.path !== this.item.path)
+			if (!this.item) return
+			const currentShortcuts = this.$store.state.shortcutData || []
+			const shortcut = currentShortcuts.filter((s) => s.path !== this.item.path)
 			this.$store.dispatch('SET_SHORTCUT_DATA', shortcut).then(() => {
 				this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 				this.$buefy.toast.open({ message: this.$t('Removed from favorites'), type: 'is-success' })

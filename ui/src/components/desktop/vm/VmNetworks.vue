@@ -78,7 +78,7 @@
 
 			<template #footer>
 				<b-button @click="showCreate = false">{{ $t('Cancel') }}</b-button>
-				<b-button type="is-danger" :loading="creating" :disabled="!canCreate" @click="create">
+				<b-button type="is-primary" :loading="creating" :disabled="!canCreate" @click="create">
 					{{ $t('Create') }}
 				</b-button>
 			</template>

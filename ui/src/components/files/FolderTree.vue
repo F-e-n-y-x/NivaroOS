@@ -179,6 +179,15 @@ export default {
 			hoverTimer: null,
 		}
 	},
+	watch: {
+		'$store.state.shortcutData': {
+			deep: true,
+			handler(val) {
+				this.shortcutList = val || []
+				this.getNewList()
+			},
+		},
+	},
 	async created() {
 		// Get the shortcut detail for the first time and save it to store
 		try {
@@ -195,7 +204,17 @@ export default {
 
 		this.shortcutList = this.$store.state.shortcutData || []
 		const initPaths = new Set(this.initFolders.map((f) => f.path))
-		const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
+		const uniqueShortcuts = this.shortcutList
+			.filter((s) => !initPaths.has(s.path))
+			.map((s) => ({
+				name: s.name,
+				path: s.path,
+				icon: s.icon || 'folder-outline',
+				pack: s.pack || 'casa',
+				visible: true,
+				selected: true,
+				extensions: null,
+			}))
 		this.dataList = [...this.initFolders, ...uniqueShortcuts]
 	},
 
@@ -226,15 +245,27 @@ export default {
 
 				this.shortcutList = this.$store.state.shortcutData || []
 				const initPaths = new Set(this.initFolders.map((f) => f.path))
-				const uniqueShortcuts = this.shortcutList.filter((s) => !initPaths.has(s.path))
+				const uniqueShortcuts = this.shortcutList
+					.filter((s) => !initPaths.has(s.path))
+					.map((s) => ({
+						name: s.name,
+						path: s.path,
+						icon: s.icon || 'folder-outline',
+						pack: s.pack || 'casa',
+						visible: true,
+						selected: true,
+						extensions: null,
+					}))
 
 				this.dataList = [...this.initFolders, ...uniqueShortcuts]
 				const contactList = [...newContent, ...dataContent]
 
 				this.dataList.forEach((dir) => {
-					dir.icon = dir.icon === 'folder' ? 'folder-outline' : dir.icon
+					dir.icon = dir.icon === 'folder' ? 'folder-outline' : (dir.icon || 'folder-outline')
 					const isInArray = contactList.find((item) => item.path === dir.path)
-					dir.extensions = isInArray ? isInArray.extensions : null
+					if (isInArray) {
+						dir.extensions = isInArray.extensions || null
+					}
 					dir.visible = true
 				})
 			} catch (err) {

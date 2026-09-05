@@ -858,7 +858,7 @@ export default {
 
 	&.is-primary {
 		background: rgba(50, 115, 220, 0.12);
-		color: #3273dc;
+		color: var(--color-primary);
 	}
 
 	&.is-info {
@@ -1266,7 +1266,7 @@ export default {
 	height: 3.5rem;
 	border-radius: 50%;
 	background: rgba(50, 115, 220, 0.08);
-	color: #3273dc;
+	color: var(--color-primary);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1468,7 +1468,7 @@ export default {
 	width: 1.3rem;
 	height: 1.3rem;
 	border-radius: 50%;
-	background: #3273dc;
+	background: var(--color-primary);
 	color: #fff;
 	font-size: 0.7rem;
 	font-weight: 700;
@@ -1503,14 +1503,14 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.03);
 	}
 
 	&.active {
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.08);
-		box-shadow: 0 0 0 1px #3273dc;
+		box-shadow: 0 0 0 1px var(--color-primary);
 	}
 }
 
@@ -1568,7 +1568,7 @@ export default {
 	width: 1rem;
 	height: 1rem;
 	border-radius: 50%;
-	background: #3273dc;
+	background: var(--color-primary);
 	color: #fff;
 	font-size: 0.65rem;
 	display: flex;
@@ -1588,7 +1588,7 @@ export default {
 	align-items: center;
 	gap: 0.25rem;
 	font-size: 0.74rem;
-	color: #3273dc;
+	color: var(--color-primary);
 	cursor: pointer;
 	font-weight: 500;
 }
@@ -1620,20 +1620,20 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.02);
 	}
 
 	&.active {
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.08);
-		box-shadow: 0 0 0 1px #3273dc;
+		box-shadow: 0 0 0 1px var(--color-primary);
 	}
 }
 
 .preset-icon-wrap {
 	font-size: 1.15rem;
-	color: #3273dc;
+	color: var(--color-primary);
 	flex-shrink: 0;
 	margin-top: 0.05rem;
 }
@@ -1662,7 +1662,7 @@ export default {
 	width: 1rem;
 	height: 1rem;
 	border-radius: 50%;
-	background: #3273dc;
+	background: var(--color-primary);
 	color: #fff;
 	font-size: 0.65rem;
 	display: flex;
@@ -1696,8 +1696,8 @@ export default {
 	color: #334155;
 
 	&:hover {
-		border-color: #3273dc;
-		color: #3273dc;
+		border-color: var(--color-primary);
+		color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.06);
 	}
 }

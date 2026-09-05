@@ -363,9 +363,9 @@ export default {
 			background: rgba(0, 0, 0, 0.08);
 		}
 		&.is-primary {
-			background: #2563eb;
+			background: var(--color-primary);
 			color: #fff;
-			&:hover { background: #1d4ed8; }
+			&:hover { background: var(--color-primary-hover); }
 		}
 		&[disabled] {
 			opacity: 0.5;
@@ -497,7 +497,7 @@ export default {
 			border-color: rgba(50, 115, 220, 0.4);
 		}
 		&:focus {
-			border-color: #3273dc;
+			border-color: var(--color-primary);
 			box-shadow: none;
 		}
 	}
@@ -534,7 +534,7 @@ export default {
 	}
 	&:focus {
 		outline: none;
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: #fff;
 	}
 }
@@ -652,7 +652,7 @@ export default {
 	border: 1px dashed rgb(200 207 214);
 	border-radius: 8px;
 	background: transparent;
-	color: #3273dc;
+	color: var(--color-primary);
 	font-family: inherit;
 	font-size: 0.8rem;
 	font-weight: 600;

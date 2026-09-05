@@ -647,5 +647,13 @@
   "These were already there before (set up by the system, or added by hand) - they aren't managed here.": "These were already there before (set up by the system, or added by hand) - they aren't managed here.",
   "What's this drive for?": "What's this drive for?",
   "Where this drive appears in Files": "Where this drive appears in Files",
-  "Will mount at next startup": "Will mount at next startup"
+  "Will mount at next startup": "Will mount at next startup",
+  "Set up virtual machines": "Set up virtual machines",
+  "A few one-time components need to be installed on this server before you can create VMs.": "A few one-time components need to be installed on this server before you can create VMs.",
+  "VM support isn't installed on this server yet.": "VM support isn't installed on this server yet.",
+  "Open terminal to install": "Open terminal to install",
+  "This opens a terminal with the install command already typed in - just press Enter.": "This opens a terminal with the install command already typed in - just press Enter.",
+  "Still need to install:": "Still need to install:",
+  "The virtualization service isn't responding yet - try installing again, or restart the server if this persists.": "The virtualization service isn't responding yet - try installing again, or restart the server if this persists.",
+  "Install now": "Install now"
 }

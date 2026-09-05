@@ -517,9 +517,9 @@ export default {
 			background: rgba(0, 0, 0, 0.08);
 		}
 		&.is-primary {
-			background: #2563eb;
+			background: var(--color-primary);
 			color: #fff;
-			&:hover { background: #1d4ed8; }
+			&:hover { background: var(--color-primary-hover); }
 		}
 		&[disabled] {
 			opacity: 0.5;
@@ -637,7 +637,7 @@ export default {
 	}
 	&:focus {
 		outline: none;
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: #fff;
 	}
 }
@@ -679,14 +679,14 @@ export default {
 	transition: all 0.15s ease;
 
 	&.active {
-		background: #3273dc;
+		background: var(--color-primary);
 		color: #fff;
 		font-weight: 600;
 		box-shadow: 0 0 0 3px rgba(50, 115, 220, 0.2);
 	}
 	&.done {
 		background: rgba(50, 115, 220, 0.15);
-		color: #3273dc;
+		color: var(--color-primary);
 		&:hover {
 			background: rgba(50, 115, 220, 0.25);
 		}
@@ -744,9 +744,9 @@ export default {
 		border-color: rgba(50, 115, 220, 0.4);
 	}
 	&.active {
-		border-color: #3273dc;
+		border-color: var(--color-primary);
 		background: rgba(50, 115, 220, 0.06);
-		color: #3273dc;
+		color: var(--color-primary);
 	}
 }
 .iso-picker {
@@ -817,7 +817,7 @@ export default {
 			border-color: rgba(50, 115, 220, 0.4);
 		}
 		&:focus {
-			border-color: #3273dc;
+			border-color: var(--color-primary);
 			box-shadow: none;
 		}
 	}

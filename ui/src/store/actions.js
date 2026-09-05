@@ -7,31 +7,41 @@ const actions = {
 	// set shortcut data
 	async SET_SHORTCUT_DATA(context, val) {
 		try {
-			// Changing the shortcut data structure
-			val.forEach((item) => {
-				item.icon = 'folder'
-				item.pack = 'casa'
-				item.visible = true
-				item.selected = true
-				item.extensions = null
-			})
-			let data = await $api.users.saveShutcutDetail(val).then(v => v.data.data);
-			context.commit("SET_SHORTCUT_DATA", data)
+			const items = Array.isArray(val)
+				? val.map((item) => ({
+						name: item.name,
+						path: item.path,
+						icon: item.icon || 'folder-outline',
+						pack: item.pack || 'casa',
+						visible: true,
+						selected: true,
+						extensions: null,
+				  }))
+				: []
+			context.commit("SET_SHORTCUT_DATA", items)
+			try {
+				const res = await $api.users.saveShutcutDetail(items)
+				if (res && res.data && Array.isArray(res.data.data)) {
+					context.commit("SET_SHORTCUT_DATA", res.data.data)
+				}
+			} catch (err) {
+				console.warn("Could not persist shortcuts to backend:", err)
+			}
 		} catch (e) {
-			console.log(e)
+			console.error("SET_SHORTCUT_DATA error:", e)
 		}
 	},
 
 	//get shortcut data
 	async GET_SHORTCUT_DATA(context, val) {
 		try {
-			let data = await $api.users.getShutcutDetail(val).then(v => v.data.data);
-			if (!data) {
+			let data = await $api.users.getShutcutDetail(val).then((v) => v.data?.data)
+			if (!data || !Array.isArray(data)) {
 				data = []
 			}
 			context.commit("SET_SHORTCUT_DATA", data)
 		} catch (e) {
-			console.log(e)
+			console.warn("GET_SHORTCUT_DATA warning:", e)
 		}
 	}
 

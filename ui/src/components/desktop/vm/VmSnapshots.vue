@@ -1043,7 +1043,7 @@ export default {
 	align-items: flex-start;
 	background: #fffbeb;
 	border: 1px solid #fde68a;
-	color: #b45309;
+	color: var(--color-warning);
 	padding: 0.75rem;
 	border-radius: 8px;
 	font-size: 0.8rem;

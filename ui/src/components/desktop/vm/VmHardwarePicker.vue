@@ -26,7 +26,7 @@
 		<div class="vm-hw-section">
 			<h3 class="setting-card-title">{{ $t('PCI Devices') }}</h3>
 			<p v-if="!iommuEnabled" class="vm-hw-warning">
-				{{ $t('PCI passthrough needs IOMMU (VT-d/AMD-Vi) enabled on the host - it isn\'t right now, so this is unavailable.') }}
+				{{ $t("This server doesn't have hardware device passthrough turned on yet, so PCI devices can't be assigned to a VM. It usually needs to be enabled in the BIOS/UEFI settings (often listed as Intel VT-d or AMD-Vi) and the server restarted.") }}
 			</p>
 			<template v-else>
 				<p v-if="!pciDevices.length" class="vm-hw-hint">{{ $t('No PCI devices found on the host.') }}</p>
@@ -130,8 +130,8 @@ export default {
 }
 .vm-hw-warning {
 	font-size: 0.78rem;
-	color: #b5651d;
-	background: rgba(181, 101, 29, 0.08);
+	color: var(--color-warning);
+	background: var(--color-warning-soft);
 	border-radius: 8px;
 	padding: 0.6rem 0.75rem;
 }

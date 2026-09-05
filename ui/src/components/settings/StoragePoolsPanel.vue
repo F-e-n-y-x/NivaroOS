@@ -13,7 +13,7 @@
 				</div>
 			</div>
 			<div v-if="!mergeEnabled" class="account-empty">
-				{{ $t('Combined storage is not enabled on this host. Set EnableMergerFS=true in /etc/nivaroos/local-storage.conf to turn it on.') }}
+				{{ $t("Combined storage pools aren't turned on for this server. This is an advanced, server-level setting - ask your administrator to enable it if you need it.") }}
 			</div>
 			<div v-else-if="!merges.length" class="account-empty">
 				{{ $t('No combined storage pools configured.') }}
