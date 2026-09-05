@@ -687,7 +687,7 @@ const domainXMLTemplate = `<domain type='kvm'>
     <type arch='x86_64' machine='q35'>hvm</type>
     {{if eq .Firmware "uefi"}}<loader readonly='yes' type='pflash'>{{.OVMFCodePath}}</loader>
     <nvram>{{.NVRAMPath}}</nvram>{{end}}
-    {{if .UseOSBoot}}{{if .ISO.Path}}<boot dev='cdrom'/>{{end}}<boot dev='hd'/>{{end}}
+    {{if .UseOSBoot}}<boot dev='cdrom'/><boot dev='hd'/>{{end}}
   </os>
   <features><acpi/><apic/></features>
   <cpu mode='host-model'/>
@@ -1582,7 +1582,8 @@ func (s *LibvirtStore) EjectCDROM(name string) error {
 }
 
 // InsertCDROM swaps in a different ISO (or the first one, if the drive
-// was empty) without needing to stop the VM.
+// was empty) without needing to stop the VM, and ensures the domain's boot
+// configuration includes the CD-ROM as a primary boot candidate.
 func (s *LibvirtStore) InsertCDROM(name, isoPath string) error {
 	dom, err := s.lookup(name)
 	if err != nil {
@@ -1593,7 +1594,39 @@ func (s *LibvirtStore) InsertCDROM(name, isoPath string) error {
 	if err := cdromDeviceTemplate.Execute(&buf, struct{ Path, Target string }{Path: isoPath, Target: cdromTarget}); err != nil {
 		return err
 	}
-	return updateDeviceXML(dom, buf.String())
+	if err := updateDeviceXML(dom, buf.String()); err != nil {
+		return err
+	}
+	return s.ensureCDROMBoot(dom)
+}
+
+func (s *LibvirtStore) ensureCDROMBoot(dom *libvirt.Domain) error {
+	xmlStr, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(xmlStr, "<boot dev='cdrom'") || strings.Contains(xmlStr, `<boot dev="cdrom"`) || strings.Contains(xmlStr, "<boot order=") {
+		return nil
+	}
+	conn, err := s.getConn()
+	if err != nil {
+		return err
+	}
+
+	if strings.Contains(xmlStr, "<boot dev='hd'/>") {
+		newXML := strings.Replace(xmlStr, "<boot dev='hd'/>", "<boot dev='cdrom'/>\n    <boot dev='hd'/>", 1)
+		_, err = conn.DomainDefineXML(newXML)
+		return err
+	} else if strings.Contains(xmlStr, `<boot dev="hd"/>`) {
+		newXML := strings.Replace(xmlStr, `<boot dev="hd"/>`, `<boot dev="cdrom"/>`+"\n    "+`<boot dev="hd"/>`, 1)
+		_, err = conn.DomainDefineXML(newXML)
+		return err
+	} else if idx := strings.Index(xmlStr, "</os>"); idx != -1 {
+		newXML := xmlStr[:idx] + "  <boot dev='cdrom'/>\n    <boot dev='hd'/>\n  " + xmlStr[idx:]
+		_, err = conn.DomainDefineXML(newXML)
+		return err
+	}
+	return nil
 }
 
 // SetNetworkLinkState connects or disconnects a virtual network adapter
