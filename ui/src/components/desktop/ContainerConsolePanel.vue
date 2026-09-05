@@ -463,8 +463,11 @@ export default {
 }
 
 .header-left {
+	flex: 1 1 0;
 	min-width: 0;
-	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
 
 	.docker-icon {
 		color: #38bdf8 !important;
@@ -473,7 +476,7 @@ export default {
 	.container-title {
 		font-size: 13px;
 		color: #f4f4f5;
-		max-width: 200px;
+		max-width: 180px;
 	}
 
 	.image-tag {
@@ -483,7 +486,7 @@ export default {
 		border-radius: 4px;
 		color: #a1a1aa;
 		font-family: monospace;
-		max-width: 150px;
+		max-width: 130px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -523,6 +526,14 @@ export default {
 	}
 }
 
+.header-center {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 16px;
+}
+
 .console-tabs {
 	display: flex;
 	background: rgba(255, 255, 255, 0.06);
@@ -555,8 +566,10 @@ export default {
 }
 
 .header-right {
+	flex: 1 1 0;
 	display: flex;
 	align-items: center;
+	justify-content: flex-end;
 }
 
 .header-tool-btn {
@@ -598,7 +611,8 @@ export default {
 .window-controls {
 	display: flex;
 	align-items: center;
-	gap: 7px;
+	gap: 8px;
+	margin-left: 14px;
 }
 
 .window-btn {
