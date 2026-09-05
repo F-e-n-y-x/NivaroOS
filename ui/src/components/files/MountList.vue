@@ -355,12 +355,14 @@ export default {
 			try {
 				const cloudRes = await this.$api.cloud.list()
 				this.cloudStorageList = cloudRes.data.data.map((storage) => {
+					// Backend now returns an mdi icon name (e.g. "google-drive") rather
+					// than a served SVG URL - render it as a normal icon, not an image.
 					return {
 						id: storage.fs,
 						name: storage.name,
-						icon: storage.icon,
-						icon_type: 'svg',
-						pack: 'casa',
+						icon: storage.icon || 'cloud-outline',
+						icon_type: 'mdi',
+						pack: 'mdi',
 						path: storage.mount_point,
 						visible: true,
 						selected: true,

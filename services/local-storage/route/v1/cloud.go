@@ -6,8 +6,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
-	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/dropbox"
-	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/drivers/google_drive"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
@@ -40,12 +38,7 @@ func ListStorages(c *gin.Context) {
 
 	for i := 0; i < len(r.MountPoints); i++ {
 		t := service.MyService.Storage().GetAttributeValueByName(r.MountPoints[i].Fs, "type")
-		if t == "drive" {
-			r.MountPoints[i].Icon = google_drive.ICONURL
-		}
-		if t == "dropbox" {
-			r.MountPoints[i].Icon = dropbox.ICONURL
-		}
+		r.MountPoints[i].Icon = cloudProviderIcon(t)
 		r.MountPoints[i].Name = service.MyService.Storage().GetAttributeValueByName(r.MountPoints[i].Fs, "username")
 	}
 	list := []httper.MountPoint{}

@@ -27,7 +27,6 @@ func InitV1Router() *gin.Engine {
 	if ginMode != gin.ReleaseMode {
 		r.Use(ginWriteLog())
 	}
-	r.GET("/v1/recover/:type", v1.GetRecoverStorage)
 	v1Group := r.Group("/v1")
 
 	v1Group.Use(ginJWT(
@@ -77,6 +76,11 @@ func InitV1Router() *gin.Engine {
 		{
 			v1CloudGroup.GET("", v1.ListStorages)
 			v1CloudGroup.DELETE("", v1.UmountStorage)
+			v1CloudGroup.GET("/providers", v1.GetCloudProviders)
+			v1CloudGroup.GET("/providers/:type/options", v1.GetCloudProviderOptions)
+			v1CloudGroup.POST("/accounts", v1.PostCloudAccount)
+			v1CloudGroup.POST("/accounts/icloud/start", v1.PostICloudStart)
+			v1CloudGroup.POST("/accounts/icloud/verify", v1.PostICloudVerify)
 		}
 		v1DriverGroup := v1Group.Group("/driver")
 		v1DriverGroup.Use()

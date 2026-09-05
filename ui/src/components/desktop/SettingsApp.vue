@@ -13,6 +13,7 @@
 				<updates-section v-else-if="activeSection === 'updates'"></updates-section>
 				<network-section v-else-if="activeSection === 'network'"></network-section>
 				<storage-section v-else-if="activeSection === 'storage'"></storage-section>
+				<online-accounts-section v-else-if="activeSection === 'cloud'"></online-accounts-section>
 				<appearance-section v-else-if="activeSection === 'appearance'"></appearance-section>
 				<users-section v-else-if="activeSection === 'users'" :narrow="narrow"></users-section>
 			</div>
@@ -27,6 +28,7 @@ import AppearanceSection, { ROWS as APPEARANCE_ROWS } from '@/components/setting
 import UsersSection, { ROWS as USERS_ROWS } from '@/components/settings/sections/UsersSection.vue'
 import NetworkSection, { ROWS as NETWORK_ROWS } from '@/components/settings/sections/NetworkSection.vue'
 import StorageSection, { ROWS as STORAGE_ROWS } from '@/components/settings/sections/StorageSection.vue'
+import OnlineAccountsSection, { ROWS as CLOUD_ROWS } from '@/components/settings/sections/OnlineAccountsSection.vue'
 import SystemSection, { ROWS as SYSTEM_ROWS } from '@/components/settings/sections/SystemSection.vue'
 import UpdatesSection, { ROWS as UPDATES_ROWS } from '@/components/settings/sections/UpdatesSection.vue'
 import PackagesSection, { ROWS as PACKAGES_ROWS } from '@/components/settings/sections/PackagesSection.vue'
@@ -42,6 +44,7 @@ const SECTIONS = [
 	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.12)', rows: APPEARANCE_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
+	{ id: 'cloud', label: 'Online Accounts', icon: 'cloud-outline', pack: 'mdi', color: '#0891b2', bg: 'rgba(8, 145, 178, 0.12)', rows: CLOUD_ROWS },
 	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', pack: 'casa', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)', rows: USERS_ROWS },
 	{ id: 'updates', label: 'Updates', icon: 'cloud-download-outline', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
 ]
@@ -55,6 +58,7 @@ export default {
 		UsersSection,
 		NetworkSection,
 		StorageSection,
+		OnlineAccountsSection,
 		SystemSection,
 		UpdatesSection,
 		PackagesSection,
