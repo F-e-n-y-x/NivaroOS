@@ -837,9 +837,6 @@ export default {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('resize', this.clampKeyboardPos)
 		if (this.panelResizeObserver) this.panelResizeObserver.disconnect()
-		if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
-			document.body.removeChild(this.$refs.keyboard)
-		}
 	},
 	methods: {
 		connect() {
@@ -1144,9 +1141,6 @@ export default {
 		},
 		closeKeyboard() {
 			this.keyboardOpen = false
-			if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
-				document.body.removeChild(this.$refs.keyboard)
-			}
 		},
 		async toggleNetworkLink(net) {
 			if (!net.mac) return
@@ -1319,14 +1313,19 @@ export default {
 			const header = event.currentTarget
 			header.setPointerCapture(event.pointerId)
 			const kbEl = this.$refs.keyboard
+			if (!kbEl) return
+			const panelEl = this.$el
 			const kbRect = kbEl.getBoundingClientRect()
 			const offsetX = event.clientX - kbRect.left
 			const offsetY = event.clientY - kbRect.top
 			const onMove = (e) => {
-				const maxX = Math.max(0, window.innerWidth - kbRect.width)
-				const maxY = Math.max(0, window.innerHeight - kbRect.height)
-				const x = Math.max(0, Math.min(e.clientX - offsetX, maxX))
-				const y = Math.max(0, Math.min(e.clientY - offsetY, maxY))
+				const pRect = panelEl.getBoundingClientRect()
+				const maxX = Math.max(0, pRect.width - kbRect.width)
+				const maxY = Math.max(0, pRect.height - kbRect.height)
+				const relX = e.clientX - pRect.left - offsetX
+				const relY = e.clientY - pRect.top - offsetY
+				const x = Math.max(0, Math.min(relX, maxX))
+				const y = Math.max(0, Math.min(relY, maxY))
 				this.keyboardPos = { x, y }
 			}
 			const onUp = () => {
@@ -1339,13 +1338,14 @@ export default {
 			header.addEventListener('pointerup', onUp)
 			header.addEventListener('pointercancel', onUp)
 		},
-		// Re-pins a dragged keyboard back inside the viewport bounds -
-		// called on every window resize / fullscreen toggle so it stays visible.
+		// Re-pins a dragged keyboard back inside the panel bounds -
+		// called on every resize / fullscreen toggle so it stays visible.
 		clampKeyboardPos() {
-			if (!this.keyboardPos || !this.$refs.keyboard) return
+			if (!this.keyboardPos || !this.$refs.keyboard || !this.$el) return
+			const panelRect = this.$el.getBoundingClientRect()
 			const kbRect = this.$refs.keyboard.getBoundingClientRect()
-			const maxX = Math.max(0, window.innerWidth - kbRect.width)
-			const maxY = Math.max(0, window.innerHeight - kbRect.height)
+			const maxX = Math.max(0, panelRect.width - kbRect.width)
+			const maxY = Math.max(0, panelRect.height - kbRect.height)
 			const x = Math.max(0, Math.min(this.keyboardPos.x, maxX))
 			const y = Math.max(0, Math.min(this.keyboardPos.y, maxY))
 			if (x !== this.keyboardPos.x || y !== this.keyboardPos.y) {
@@ -1401,22 +1401,8 @@ export default {
 		keyboardOpen(open) {
 			if (open) {
 				this.$nextTick(() => {
-					if (this.$refs.keyboard && this.$refs.keyboard.parentNode !== document.body) {
-						document.body.appendChild(this.$refs.keyboard)
-					}
-					if (!this.keyboardPos && this.$refs.keyboard) {
-						const kbRect = this.$refs.keyboard.getBoundingClientRect()
-						this.keyboardPos = {
-							x: Math.max(10, Math.round((window.innerWidth - kbRect.width) / 2)),
-							y: Math.max(10, Math.round(window.innerHeight - kbRect.height - 40)),
-						}
-					}
 					this.clampKeyboardPos()
 				})
-			} else {
-				if (this.$refs.keyboard && this.$refs.keyboard.parentNode === document.body) {
-					document.body.removeChild(this.$refs.keyboard)
-				}
 			}
 		},
 		usbMenuOpen(open) {
@@ -2086,16 +2072,16 @@ export default {
 // keyboard laid over whatever's underneath, the same way a real external
 // keyboard doesn't resize the monitor's picture to make room for itself.
 .on-screen-keyboard {
-	position: fixed !important;
+	position: absolute !important;
 	left: 50%;
-	bottom: 2rem;
+	bottom: 2.5rem;
 	transform: translateX(-50%);
-	z-index: 100000 !important;
+	z-index: 99999 !important;
 	display: flex;
 	flex-direction: column;
 	gap: 0.3rem;
 	width: fit-content;
-	max-width: calc(100vw - 2rem);
+	max-width: calc(100% - 1.5rem);
 	overflow-x: auto;
 	padding: 0.5rem 0.75rem 0.75rem;
 	background: rgba(38, 38, 38, 0.95);
