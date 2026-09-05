@@ -252,6 +252,7 @@ export default {
 			})
 		},
 		openSnapshots(name) {
+			this.$emit('open-snapshots', name)
 			if (this.$parent && this.$parent.activeSection !== undefined) {
 				this.$parent.activeSection = 'snapshots'
 			}
@@ -294,17 +295,19 @@ export default {
 	letter-spacing: -0.01em;
 }
 .create-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.45rem;
+	justify-content: center;
+	gap: 0.4rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
-	padding: 0.5rem 0.95rem;
-	border-radius: 8px;
+	height: 2rem;
+	padding: 0 0.85rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.15s ease, transform 0.1s ease;
 
@@ -318,7 +321,7 @@ export default {
 .vm-loading {
 	display: flex;
 	justify-content: center;
-	padding: 4rem 0;
+	padding: 3rem 0;
 	color: #94a3b8;
 
 	::v-deep .icon {
@@ -330,53 +333,54 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 0.5rem;
-	padding: 4.5rem 1rem;
+	justify-content: center;
+	padding: 3.5rem 1rem;
+	text-align: center;
 	color: #94a3b8;
 
 	> ::v-deep .icon {
-		width: 3.5rem;
-		height: 3.5rem;
+		width: 2.5rem;
+		height: 2.5rem;
 		color: #cbd5e1;
 	}
 
 	.vm-empty-title {
-		font-size: 1.05rem;
+		font-size: 0.95rem;
 		font-weight: 600;
-		color: #334155;
-		margin: 0.5rem 0 0;
+		color: #1e293b;
+		margin: 0.5rem 0 0.25rem;
 	}
 	.vm-empty-hint {
-		margin: 0 0 1.25rem;
-		font-size: 0.85rem;
+		margin: 0 0 1rem;
+		font-size: 0.8rem;
 		color: #64748b;
 	}
 }
 .create-btn-large {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.5rem;
+	justify-content: center;
+	gap: 0.45rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.9rem;
-	font-weight: 500;
-	padding: 0.65rem 1.35rem;
-	border-radius: 10px;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	height: 2.15rem;
+	padding: 0 1rem;
+	border-radius: 6px;
 	cursor: pointer;
-	box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
-	transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+	transition: background 0.15s ease, transform 0.15s ease;
 
 	::v-deep .icon {
-		width: 1.15rem;
-		height: 1.15rem;
+		width: 1rem;
+		height: 1rem;
 	}
 
 	&:hover {
 		background: #1d4ed8;
 		transform: translateY(-1px);
-		box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
 	}
 	&:active {
 		transform: translateY(0);
@@ -534,11 +538,11 @@ export default {
 	gap: 0.25rem;
 }
 .vm-action-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 2rem;
-	height: 2rem;
+	width: 1.85rem;
+	height: 1.85rem;
 
 	// A right-pointing play triangle's visual weight sits left of its own
 	// glyph bounding box, so centering the box (as every other icon here
@@ -552,7 +556,7 @@ export default {
 	border: none;
 	background: #f8fafc;
 	color: #64748b;
-	border-radius: 8px;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
 

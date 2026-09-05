@@ -172,17 +172,19 @@ export default {
 	letter-spacing: -0.01em;
 }
 .create-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.45rem;
+	justify-content: center;
+	gap: 0.4rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
-	padding: 0.5rem 0.95rem;
-	border-radius: 8px;
+	height: 2rem;
+	padding: 0 0.85rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.15s ease;
 
@@ -205,29 +207,29 @@ export default {
 .iso-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 0.5rem;
 }
 .iso-row {
 	display: flex;
 	align-items: center;
 	gap: 0.85rem;
-	padding: 0.85rem 1.15rem;
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 12px;
+	padding: 0.75rem 1rem;
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	border-radius: 10px;
 	background: #fff;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
 	&:hover {
 		border-color: rgba(37, 99, 235, 0.25);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 	}
 }
 .iso-icon {
 	flex-shrink: 0;
-	width: 2.5rem;
-	height: 2.5rem;
-	border-radius: 50%;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -249,18 +251,18 @@ export default {
 .iso-name-target {
 	font-weight: 400;
 	color: #94a3b8;
-	font-size: 0.78rem;
+	font-size: 0.75rem;
 }
 .iso-name {
 	font-weight: 600;
 	color: #0f172a;
-	font-size: 0.92rem;
+	font-size: 0.875rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .iso-meta {
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	color: #64748b;
 }
 .iso-remove {
@@ -272,9 +274,9 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.95rem;
-	height: 1.95rem;
-	border-radius: 7px;
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 6px;
 	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
@@ -286,13 +288,15 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
+	justify-content: center;
 	gap: 0.5rem;
 	padding: 3.5rem 1rem;
+	text-align: center;
 	color: #94a3b8;
 
 	::v-deep .icon {
-		width: 3.5rem;
-		height: 3.5rem;
+		width: 2.5rem;
+		height: 2.5rem;
 		color: #cbd5e1;
 	}
 

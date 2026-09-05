@@ -346,22 +346,26 @@ export default {
 	// this window.
 	::v-deep .button {
 		border: none;
-		border-radius: 8px;
-		font-weight: 600;
-		font-size: 0.85rem;
-		padding: 0.55rem 1rem;
-		height: auto;
+		border-radius: 6px;
+		font-weight: 500;
+		font-size: 0.8125rem;
+		padding: 0 0.85rem;
+		height: 2rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: rgba(0, 0, 0, 0.045);
-		color: #2c3e50;
+		color: #1e293b;
 		box-shadow: none;
+		transition: background 0.15s ease, color 0.15s ease;
 
 		&:hover {
 			background: rgba(0, 0, 0, 0.08);
 		}
 		&.is-primary {
-			background: #3273dc;
+			background: #2563eb;
 			color: #fff;
-			&:hover { background: #2366d1; }
+			&:hover { background: #1d4ed8; }
 		}
 		&[disabled] {
 			opacity: 0.5;

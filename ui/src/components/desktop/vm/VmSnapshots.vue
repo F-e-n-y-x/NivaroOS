@@ -244,6 +244,12 @@ export default {
 		VmDropdown,
 		VmOverlayPanel
 	},
+	props: {
+		initialVm: {
+			type: String,
+			default: ''
+		}
+	},
 	data() {
 		return {
 			vms: [],
@@ -274,6 +280,14 @@ export default {
 			}))
 		}
 	},
+	watch: {
+		initialVm(newVal) {
+			if (newVal && newVal !== this.selectedVmName) {
+				this.selectedVmName = newVal
+				this.loadSnapshots()
+			}
+		}
+	},
 	async created() {
 		await this.loadVMs()
 	},
@@ -283,8 +297,12 @@ export default {
 			try {
 				const list = await vmSidecar.listVMs()
 				this.vms = Array.isArray(list) ? list : []
-				if (this.vms.length && !this.selectedVmName) {
+				if (this.initialVm && this.vms.some(v => v.name === this.initialVm)) {
+					this.selectedVmName = this.initialVm
+				} else if (this.vms.length && !this.selectedVmName) {
 					this.selectedVmName = this.vms[0].name
+				}
+				if (this.selectedVmName) {
 					await this.loadSnapshots()
 				}
 			} catch (err) {
@@ -452,6 +470,7 @@ export default {
 .toolbar-right {
 	display: flex;
 	align-items: center;
+	gap: 0.6rem;
 }
 
 .vm-section-title {
@@ -463,7 +482,7 @@ export default {
 }
 
 .vm-selector-dropdown {
-	min-width: 12rem;
+	min-width: 12.5rem;
 }
 
 .refresh-icon-btn {
@@ -475,7 +494,7 @@ export default {
 	color: #64748b;
 	width: 2rem;
 	height: 2rem;
-	border-radius: 8px;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
@@ -487,14 +506,13 @@ export default {
 }
 
 .safety-net-badge {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.8rem;
+	font-size: 0.75rem;
 	font-weight: 600;
-	padding: 0.3rem 0.65rem;
+	padding: 0.25rem 0.65rem;
 	border-radius: 9999px;
-	margin-right: 0.85rem;
 
 	&.is-active {
 		background: #ecfdf5;
@@ -510,38 +528,47 @@ export default {
 }
 
 .create-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.45rem;
+	justify-content: center;
+	gap: 0.4rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
-	padding: 0.5rem 0.95rem;
-	border-radius: 8px;
+	height: 2rem;
+	padding: 0 0.85rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.15s ease;
 
-	&:hover {
+	&:hover:not(:disabled) {
 		background: #1d4ed8;
 		color: #fff;
+	}
+
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 }
 
 .create-btn-large {
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: 0.45rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.9rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
-	padding: 0.65rem 1.25rem;
-	border-radius: 8px;
+	height: 2.15rem;
+	padding: 0 1rem;
+	border-radius: 6px;
 	cursor: pointer;
 	margin-top: 1rem;
 	transition: background 0.15s ease;
@@ -569,7 +596,7 @@ export default {
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	padding: 4rem 1.5rem;
+	padding: 3.5rem 1.5rem;
 	text-align: center;
 	background: #ffffff;
 	border: 1px dashed #cbd5e1;
@@ -578,7 +605,7 @@ export default {
 }
 
 .vm-empty-title {
-	font-size: 1rem;
+	font-size: 0.95rem;
 	font-weight: 600;
 	color: #1e293b;
 	margin: 0.75rem 0 0.25rem;
@@ -588,43 +615,43 @@ export default {
 	font-size: 0.8rem;
 	color: #64748b;
 	max-width: 26rem;
-	line-height: 1.4;
+	line-height: 1.45;
 	margin: 0;
 }
 
 .snapshot-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 0.5rem;
 }
 
 .snapshot-row {
 	display: flex;
 	align-items: center;
-	gap: 1rem;
-	padding: 0.95rem 1.25rem;
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 12px;
+	gap: 0.85rem;
+	padding: 0.75rem 1rem;
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	border-radius: 10px;
 	background: #ffffff;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 	transition: all 0.15s ease;
 
 	&:hover {
-		border-color: rgba(37, 99, 235, 0.3);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+		border-color: rgba(37, 99, 235, 0.25);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 	}
 
 	&.is-current {
-		border-color: rgba(37, 99, 235, 0.4);
+		border-color: rgba(37, 99, 235, 0.35);
 		background: #f8fafc;
 	}
 }
 
 .snapshot-icon {
 	flex-shrink: 0;
-	width: 2.75rem;
-	height: 2.75rem;
-	border-radius: 10px;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -648,12 +675,12 @@ export default {
 .snapshot-head {
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.45rem;
 	flex-wrap: wrap;
 }
 
 .snapshot-name {
-	font-size: 0.95rem;
+	font-size: 0.875rem;
 	font-weight: 600;
 	color: #0f172a;
 }
@@ -662,22 +689,22 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.25rem;
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	font-weight: 700;
 	color: #2563eb;
 	background: #eff6ff;
 	border: 1px solid #bfdbfe;
-	padding: 0.1rem 0.5rem;
+	padding: 0.1rem 0.45rem;
 	border-radius: 9999px;
 	text-transform: uppercase;
 	letter-spacing: 0.02em;
 }
 
 .state-pill {
-	font-size: 0.7rem;
+	font-size: 0.68rem;
 	font-weight: 600;
-	padding: 0.1rem 0.45rem;
-	border-radius: 6px;
+	padding: 0.1rem 0.4rem;
+	border-radius: 4px;
 	background: #f1f5f9;
 	color: #64748b;
 	text-transform: capitalize;
@@ -694,7 +721,7 @@ export default {
 }
 
 .snapshot-desc {
-	font-size: 0.8rem;
+	font-size: 0.78rem;
 	color: #475569;
 	margin: 0;
 	line-height: 1.35;
@@ -704,7 +731,7 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	color: #94a3b8;
 }
 
@@ -716,28 +743,30 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
+	gap: 0.4rem;
 	margin-left: auto;
 }
 
 .revert-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: 0.35rem;
 	background: #ffffff;
 	border: 1px solid #cbd5e1;
 	color: #334155;
-	font-size: 0.8rem;
+	font-size: 0.78rem;
 	font-weight: 600;
-	padding: 0.4rem 0.8rem;
-	border-radius: 8px;
+	height: 1.85rem;
+	padding: 0 0.75rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: #2563eb;
-		color: #ffffff;
-		border-color: #2563eb;
+		background: #eff6ff;
+		color: #2563eb;
+		border-color: #93c5fd;
 	}
 
 	&:disabled {
@@ -747,21 +776,21 @@ export default {
 }
 
 .delete-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	background: transparent;
 	border: 1px solid transparent;
 	color: #94a3b8;
-	padding: 0.4rem;
-	border-radius: 8px;
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
 		color: #ef4444;
 		background: #fee2e2;
-		border-color: #fecaca;
 	}
 
 	&:disabled {

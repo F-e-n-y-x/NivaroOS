@@ -108,16 +108,19 @@ export default {
 // <b-button> on its own renders Bulma's stock bordered/white look.
 ::v-deep .install-btn {
 	border: none;
-	border-radius: 8px;
-	font-weight: 600;
-	font-size: 0.85rem;
-	padding: 0.55rem 1rem;
-	height: auto;
-	background: #3273dc;
+	border-radius: 6px;
+	font-weight: 500;
+	font-size: 0.8125rem;
+	padding: 0 0.85rem;
+	height: 2rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	background: #2563eb;
 	box-shadow: none;
 
 	&:hover {
-		background: #2366d1;
+		background: #1d4ed8;
 	}
 }
 

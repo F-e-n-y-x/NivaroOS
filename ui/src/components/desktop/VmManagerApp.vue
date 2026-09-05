@@ -11,11 +11,11 @@
 		<div class="vm-content">
 			<section v-if="activeSection === 'vms'" class="vm-section">
 				<vm-setup-screen v-if="!setupReady" @ready="setupReady = true"></vm-setup-screen>
-				<vm-list v-else></vm-list>
+				<vm-list v-else @open-snapshots="handleOpenSnapshots"></vm-list>
 			</section>
 
 			<section v-if="activeSection === 'snapshots'" class="vm-section">
-				<vm-snapshots></vm-snapshots>
+				<vm-snapshots :initial-vm="targetSnapshotVm"></vm-snapshots>
 			</section>
 
 			<section v-if="activeSection === 'networks'" class="vm-section">
@@ -43,6 +43,7 @@ export default {
 	data() {
 		return {
 			activeSection: 'vms',
+			targetSnapshotVm: '',
 			sections: [
 				{ id: 'vms', label: 'VMs', icon: 'display-applications-outline' },
 				{ id: 'snapshots', label: 'Snapshots', icon: 'camera-outline', pack: 'mdi' },
@@ -55,6 +56,12 @@ export default {
 	async created() {
 		const status = await vmSidecar.getSetupStatus().catch(() => ({ ready: false }))
 		this.setupReady = !!status.ready
+	},
+	methods: {
+		handleOpenSnapshots(vmName) {
+			this.targetSnapshotVm = vmName || ''
+			this.activeSection = 'snapshots'
+		}
 	}
 }
 </script>

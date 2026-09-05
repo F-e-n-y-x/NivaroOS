@@ -210,17 +210,19 @@ export default {
 	letter-spacing: -0.01em;
 }
 .create-btn {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.45rem;
+	justify-content: center;
+	gap: 0.4rem;
 	border: none;
 	background: #2563eb;
 	color: #fff;
 	font-family: inherit;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
 	font-weight: 500;
-	padding: 0.5rem 0.95rem;
-	border-radius: 8px;
+	height: 2rem;
+	padding: 0 0.85rem;
+	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.15s ease;
 
@@ -242,29 +244,29 @@ export default {
 .network-list {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 0.5rem;
 }
 .network-row {
 	display: flex;
 	align-items: center;
 	gap: 0.85rem;
-	padding: 0.85rem 1.15rem;
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 12px;
+	padding: 0.75rem 1rem;
+	border: 1px solid rgba(0, 0, 0, 0.07);
+	border-radius: 10px;
 	background: #fff;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
 	&:hover {
 		border-color: rgba(37, 99, 235, 0.25);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 	}
 }
 .network-icon {
 	flex-shrink: 0;
-	width: 2.5rem;
-	height: 2.5rem;
-	border-radius: 50%;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 8px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -286,10 +288,10 @@ export default {
 .network-name {
 	font-weight: 600;
 	color: #0f172a;
-	font-size: 0.92rem;
+	font-size: 0.875rem;
 }
 .network-meta {
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	color: #64748b;
 }
 .network-status {
@@ -297,9 +299,9 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.72rem;
+	font-size: 0.68rem;
 	font-weight: 500;
-	padding: 0.2rem 0.55rem;
+	padding: 0.15rem 0.5rem;
 	border-radius: 9999px;
 	background: #f1f5f9;
 	color: #64748b;
@@ -328,9 +330,9 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.95rem;
-	height: 1.95rem;
-	border-radius: 7px;
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 6px;
 	margin-left: 0.35rem;
 	transition: background 0.12s ease, color 0.12s ease;
 
@@ -356,13 +358,15 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
+	justify-content: center;
 	gap: 0.5rem;
 	padding: 3.5rem 1rem;
+	text-align: center;
 	color: #94a3b8;
 
 	::v-deep .icon {
-		width: 3.5rem;
-		height: 3.5rem;
+		width: 2.5rem;
+		height: 2.5rem;
 		color: #cbd5e1;
 	}
 
