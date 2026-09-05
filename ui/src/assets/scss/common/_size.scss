@@ -290,6 +290,29 @@
 	&::before { line-height: 1 !important; text-align: center !important; vertical-align: middle !important; }
 }
 
+.mdi-19px {
+	width: 19px !important;
+	height: 19px !important;
+	font-size: 19px !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	line-height: 1 !important;
+	text-align: center !important;
+	i, i.mdi {
+		width: 19px !important;
+		height: 19px !important;
+		font-size: 19px !important;
+		line-height: 1 !important;
+		display: inline-flex !important;
+		align-items: center !important;
+		justify-content: center !important;
+		text-align: center !important;
+		&::before { line-height: 1 !important; text-align: center !important; vertical-align: middle !important; }
+	}
+	&::before { line-height: 1 !important; text-align: center !important; vertical-align: middle !important; }
+}
+
 .mdi-18px {
 	width: 18px !important;
 	height: 18px !important;

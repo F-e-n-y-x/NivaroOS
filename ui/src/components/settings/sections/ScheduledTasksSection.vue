@@ -3,7 +3,7 @@
 		<div class="section-header is-flex is-align-items-center is-justify-content-between mb-4">
 			<div>
 				<h2 class="section-title mb-1">{{ $t('Scheduled Tasks & Automation') }}</h2>
-				<p class="section-subtitle text-muted is-size-7">{{ $t('Automate periodic operations like VM power states, container updates, backups, system maintenance, and custom cron commands.') }}</p>
+				<p class="section-subtitle text-muted is-size-7">{{ $t('Automate cloud backups, directory sync, VM power cycles, container restarts, and maintenance schedules.') }}</p>
 			</div>
 			<div class="header-actions is-flex is-align-items-center">
 				<b-button
@@ -123,9 +123,9 @@
 							{{ formatTypeLabel(t.type) }}
 						</span>
 						<span class="target-pill mr-2">
-							<span class="target-name">{{ t.target_name || t.target_id || t.type }}</span>
+							<span class="target-name">{{ getTargetDisplay(t) }}</span>
 							<span class="mx-1">&middot;</span>
-							<span>{{ formatActionLabel(t.action) }}</span>
+							<span>{{ formatActionLabel(t.action || t.sync_mode) }}</span>
 						</span>
 					</div>
 					<div class="setting-desc is-flex is-align-items-center is-flex-wrap-wrap mt-1">
@@ -181,7 +181,7 @@
 							<i class="mdi mdi-text-box-outline"></i>
 						</b-button>
 
-						<!-- Edit -->
+						<!-- Edit in Window -->
 						<b-button
 							rounded
 							size="is-small"
@@ -206,156 +206,6 @@
 			</div>
 		</div>
 
-		<!-- ==================== CREATE / EDIT MODAL ==================== -->
-		<b-modal
-			v-model="showEditModal"
-			has-modal-card
-			trap-focus
-			:can-cancel="['escape', 'x']"
-			aria-modal
-		>
-			<div class="modal-card schedule-modal-card">
-				<header class="modal-card-head">
-					<p class="modal-card-title is-size-6 font-medium">
-						<i class="mdi mdi-calendar-clock mr-2 has-text-primary"></i>
-						{{ editingTask.id ? $t('Edit Scheduled Task') : $t('Create Scheduled Task') }}
-					</p>
-					<button type="button" class="delete" @click="showEditModal = false" />
-				</header>
-
-				<section class="modal-card-body">
-					<!-- 1. Task Name & Type -->
-					<b-field :label="$t('Task Name')">
-						<b-input
-							v-model="editingTask.name"
-							:placeholder="$t('e.g. Shut down gaming VM nightly')"
-							required
-						></b-input>
-					</b-field>
-
-					<div class="columns mb-0">
-						<div class="column is-6">
-							<b-field :label="$t('Task Type')">
-								<b-select v-model="editingTask.type" expanded @input="onTypeChange">
-									<option value="vm">{{ $t('Virtual Machine (VM)') }}</option>
-									<option value="container">{{ $t('Docker Container') }}</option>
-									<option value="maintenance">{{ $t('System Maintenance') }}</option>
-									<option value="command">{{ $t('Custom Bash Command') }}</option>
-								</b-select>
-							</b-field>
-						</div>
-
-						<div class="column is-6">
-							<b-field :label="$t('Action')">
-								<!-- VM Actions -->
-								<b-select v-if="editingTask.type === 'vm'" v-model="editingTask.action" expanded>
-									<option value="stop">{{ $t('Shut Down (ACPI Poweroff)') }}</option>
-									<option value="start">{{ $t('Start VM') }}</option>
-									<option value="reboot">{{ $t('Reboot VM') }}</option>
-									<option value="force_off">{{ $t('Force Power Off') }}</option>
-								</b-select>
-
-								<!-- Container Actions -->
-								<b-select v-else-if="editingTask.type === 'container'" v-model="editingTask.action" expanded>
-									<option value="restart">{{ $t('Restart Container') }}</option>
-									<option value="stop">{{ $t('Stop Container') }}</option>
-									<option value="start">{{ $t('Start Container') }}</option>
-									<option value="update">{{ $t('Check Update & Recreate') }}</option>
-								</b-select>
-
-								<!-- Maintenance Actions -->
-								<b-select v-else-if="editingTask.type === 'maintenance'" v-model="editingTask.action" expanded>
-									<option value="fstrim">{{ $t('SSD / Disk fstrim (TRIM)') }}</option>
-									<option value="drop_caches">{{ $t('Drop Memory Page Caches (sync & drop)') }}</option>
-									<option value="docker_prune">{{ $t('Docker Prune Unused Objects') }}</option>
-									<option value="disk_standby_check">{{ $t('Verify Disk Standby State') }}</option>
-								</b-select>
-
-								<!-- Command Action -->
-								<b-input v-else v-model="editingTask.action" disabled placeholder="run_command"></b-input>
-							</b-field>
-						</div>
-					</div>
-
-					<!-- 2. Target Selector -->
-					<!-- For VM: select target VM -->
-					<b-field v-if="editingTask.type === 'vm'" :label="$t('Target Virtual Machine')">
-						<b-select v-model="editingTask.target_id" expanded @input="onVmTargetSelected">
-							<option v-for="vm in targetVms" :key="vm.id" :value="vm.id">
-								{{ vm.name }} ({{ vm.id }}) - {{ vm.state }}
-							</option>
-						</b-select>
-					</b-field>
-
-					<!-- For Container: select target Container -->
-					<b-field v-else-if="editingTask.type === 'container'" :label="$t('Target Docker Container')">
-						<b-select v-model="editingTask.target_id" expanded @input="onContainerTargetSelected">
-							<option v-for="c in targetContainers" :key="c.id" :value="c.name || c.id">
-								{{ c.name }} ({{ c.image }})
-							</option>
-						</b-select>
-					</b-field>
-
-					<!-- For Custom Command: bash script input -->
-					<b-field v-else-if="editingTask.type === 'command'" :label="$t('Bash Command / Shell Script')">
-						<b-input
-							v-model="editingTask.command"
-							type="textarea"
-							placeholder="echo 'Running nightly backup...' && rsync -av /DATA /BACKUP"
-							rows="3"
-						></b-input>
-					</b-field>
-
-					<!-- 3. Schedule Builder -->
-					<b-field :label="$t('Cron Schedule')">
-						<div class="schedule-builder-box">
-							<div class="select is-small mb-2 is-fullwidth">
-								<select v-model="modalPresetSchedule" @change="onModalPresetChange">
-									<option value="0 23 * * *">{{ $t('Every night at 11:00 PM (23:00)') }}</option>
-									<option value="0 0 * * *">{{ $t('Every night at Midnight (00:00)') }}</option>
-									<option value="0 3 * * *">{{ $t('Every night at 3:00 AM') }}</option>
-									<option value="0 4 * * *">{{ $t('Every night at 4:00 AM') }}</option>
-									<option value="0 3 * * 0">{{ $t('Every Sunday at 3:00 AM (Weekly)') }}</option>
-									<option value="0 * * * *">{{ $t('Every hour') }}</option>
-									<option value="*/30 * * * *">{{ $t('Every 30 minutes') }}</option>
-									<option value="0 0 1 * *">{{ $t('Monthly (1st day of month at midnight)') }}</option>
-									<option value="custom">{{ $t('Custom Cron Expression') }}</option>
-								</select>
-							</div>
-
-							<div v-if="modalPresetSchedule === 'custom'" class="cron-input-row is-flex is-align-items-center mt-2">
-								<b-input
-									v-model="editingTask.cron"
-									placeholder="0 23 * * *"
-									size="is-small"
-									class="mr-2"
-								></b-input>
-								<span class="is-size-7 text-muted font-mono">(min hour dom month dow)</span>
-							</div>
-
-							<div class="cron-preview mt-2 is-size-7 text-muted is-flex is-align-items-center">
-								<i class="mdi mdi-information-outline mr-1"></i>
-								<span>{{ humanizeCron(editingTask.cron) }}</span>
-							</div>
-						</div>
-					</b-field>
-
-					<div class="is-flex is-align-items-center mt-3">
-						<b-switch v-model="editingTask.enabled" type="is-primary" size="is-small">
-							{{ $t('Enable schedule immediately') }}
-						</b-switch>
-					</div>
-				</section>
-
-				<footer class="modal-card-foot is-justify-content-flex-end">
-					<b-button rounded size="is-small" @click="showEditModal = false">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-primary" :loading="savingTask" @click="saveTask">
-						{{ editingTask.id ? $t('Save Changes') : $t('Create Task') }}
-					</b-button>
-				</footer>
-			</div>
-		</b-modal>
-
 		<!-- ==================== LOG VIEWER MODAL ==================== -->
 		<b-modal
 			v-model="showLogModal"
@@ -375,8 +225,8 @@
 					<div class="task-log-viewer scrollbars">
 						<div class="log-meta p-3 is-flex is-align-items-center is-justify-content-between">
 							<div>
-								<span class="log-target-name mr-2">{{ selectedLogTask ? selectedLogTask.target_name : '' }}</span>
-								<span class="text-muted is-size-7">Action: {{ selectedLogTask ? selectedLogTask.action : '' }}</span>
+								<span class="log-target-name mr-2">{{ selectedLogTask ? (selectedLogTask.target_name || selectedLogTask.name) : '' }}</span>
+								<span class="text-muted is-size-7">Action: {{ selectedLogTask ? (selectedLogTask.action || selectedLogTask.type) : '' }}</span>
 							</div>
 							<div class="is-size-7 text-muted">
 								{{ selectedLogTask ? selectedLogTask.last_run : '' }}
@@ -397,6 +247,7 @@
 export const ROWS = [
 	{ label: 'Scheduled Tasks' },
 	{ label: 'Cron Jobs & Automation' },
+	{ label: 'Cloud Storage Backup & Sync' },
 	{ label: 'Automated VM Shutdown' },
 	{ label: 'Container Auto-Restart' },
 	{ label: 'System Maintenance Tasks' }
@@ -409,26 +260,54 @@ export default {
 			tasks: [],
 			loadingTasks: false,
 			runningId: null,
-			savingTask: false,
-			showEditModal: false,
 			showLogModal: false,
 			selectedLogTask: null,
-			editingTask: {
-				id: '',
-				name: '',
-				type: 'vm',
-				action: 'stop',
-				target_id: '',
-				target_name: '',
-				command: '',
-				cron: '0 23 * * *',
-				enabled: true
-			},
-			modalPresetSchedule: '0 23 * * *',
 			targetVms: [],
 			targetContainers: [],
-			targetMaintenance: [],
+			targetClouds: [],
 			quickTemplates: [
+				{
+					id: 'cloud-backup-nightly',
+					name: this.$t('Cloud Backup (Local → Cloud)'),
+					type: 'backup',
+					action: 'copy',
+					direction: 'local_to_cloud',
+					source_path: '/DATA/Documents',
+					dest_path: '',
+					cron: '0 2 * * *',
+					scheduleText: this.$t('Every night at 2:00 AM'),
+					icon: 'cloud-upload',
+					color: '#2563eb',
+					bg: 'rgba(37, 99, 235, 0.12)'
+				},
+				{
+					id: 'cloud-sync-daily',
+					name: this.$t('Cloud Sync (Cloud → Local)'),
+					type: 'backup',
+					action: 'sync',
+					direction: 'cloud_to_local',
+					source_path: '',
+					dest_path: '/DATA/CloudSync',
+					cron: '0 12 * * *',
+					scheduleText: this.$t('Every day at 12:00 PM'),
+					icon: 'cloud-sync',
+					color: '#0ea5e9',
+					bg: 'rgba(14, 165, 233, 0.12)'
+				},
+				{
+					id: 'local-backup-weekly',
+					name: this.$t('Weekly Local Snapshot / Archive'),
+					type: 'backup',
+					action: 'archive',
+					direction: 'local_to_local',
+					source_path: '/DATA',
+					dest_path: '/DATA/Backup',
+					cron: '0 3 * * 0',
+					scheduleText: this.$t('Every Sunday at 3:00 AM'),
+					icon: 'folder-zip-outline',
+					color: '#10b981',
+					bg: 'rgba(16, 185, 129, 0.12)'
+				},
 				{
 					id: 'vm-shutdown',
 					name: this.$t('Nightly VM Shutdown'),
@@ -448,12 +327,12 @@ export default {
 					cron: '0 3 * * 0',
 					scheduleText: this.$t('Every Sunday at 3:00 AM'),
 					icon: 'docker',
-					color: '#0ea5e9',
-					bg: 'rgba(14, 165, 233, 0.12)'
+					color: '#0284c7',
+					bg: 'rgba(2, 132, 199, 0.12)'
 				},
 				{
 					id: 'fstrim-maintenance',
-					name: this.$t('Nightly SSD Trim & Cache Flush'),
+					name: this.$t('SSD Trim & Cache Flush'),
 					type: 'maintenance',
 					action: 'fstrim',
 					cron: '0 0 * * *',
@@ -497,6 +376,10 @@ export default {
 	mounted() {
 		this.fetchTasks()
 		this.fetchTargets()
+		this.$EventBus.$on('scheduled-tasks-changed', this.fetchTasks)
+	},
+	beforeDestroy() {
+		this.$EventBus.$off('scheduled-tasks-changed', this.fetchTasks)
 	},
 	methods: {
 		async fetchTasks() {
@@ -519,138 +402,46 @@ export default {
 					const data = res.data.data
 					this.targetVms = data.vms || []
 					this.targetContainers = data.containers || []
-					this.targetMaintenance = data.maintenance || []
+					this.targetClouds = data.clouds || []
 				}
 			} catch (err) {
 				console.error('Failed to load targets:', err)
 			}
 		},
-		openCreateModal() {
-			this.editingTask = {
-				id: '',
-				name: '',
-				type: 'vm',
-				action: 'stop',
-				target_id: this.targetVms.length ? this.targetVms[0].id : '',
-				target_name: this.targetVms.length ? this.targetVms[0].name : '',
-				command: '',
-				cron: '0 23 * * *',
-				enabled: true
-			}
-			this.modalPresetSchedule = '0 23 * * *'
-			this.showEditModal = true
+		openCreateModal(tpl = null) {
+			// Opens a movable desktop window instead of blocking the entire screen
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'scheduled-task-editor',
+				title: tpl ? tpl.name : this.$t('New Automation Task'),
+				component: 'ScheduledTaskWindow',
+				props: { initialTemplate: tpl },
+				width: 580,
+				height: 640
+			})
 		},
 		openEditModal(task) {
-			this.editingTask = JSON.parse(JSON.stringify(task))
-			if (['0 23 * * *', '0 0 * * *', '0 3 * * *', '0 4 * * *', '0 3 * * 0', '0 * * * *', '*/30 * * * *', '0 0 1 * *'].includes(this.editingTask.cron)) {
-				this.modalPresetSchedule = this.editingTask.cron
-			} else {
-				this.modalPresetSchedule = 'custom'
-			}
-			this.showEditModal = true
+			// Opens a movable desktop window instead of blocking the entire screen
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'scheduled-task-editor',
+				title: this.$t('Edit Scheduled Task'),
+				component: 'ScheduledTaskWindow',
+				props: { task },
+				width: 580,
+				height: 640
+			})
 		},
 		applyTemplate(tpl) {
-			this.editingTask = {
-				id: '',
-				name: tpl.name,
-				type: tpl.type,
-				action: tpl.action,
-				target_id: '',
-				target_name: '',
-				command: '',
-				cron: tpl.cron,
-				enabled: true
-			}
-			if (tpl.type === 'vm' && this.targetVms.length) {
-				this.editingTask.target_id = this.targetVms[0].id
-				this.editingTask.target_name = this.targetVms[0].name
-			} else if (tpl.type === 'container' && this.targetContainers.length) {
-				this.editingTask.target_id = this.targetContainers[0].name || this.targetContainers[0].id
-				this.editingTask.target_name = this.targetContainers[0].name
-			} else if (tpl.type === 'maintenance') {
-				this.editingTask.target_id = tpl.action
-				this.editingTask.target_name = tpl.name
-			}
-			this.modalPresetSchedule = tpl.cron
-			this.showEditModal = true
+			this.openCreateModal(tpl)
 		},
-		onTypeChange(type) {
-			if (type === 'vm') {
-				this.editingTask.action = 'stop'
-				if (this.targetVms.length) {
-					this.editingTask.target_id = this.targetVms[0].id
-					this.editingTask.target_name = this.targetVms[0].name
+		getTargetDisplay(t) {
+			if (t.type === 'backup') {
+				if (t.source_path && t.dest_path) {
+					return `${t.source_path} → ${t.dest_path}`
 				}
-			} else if (type === 'container') {
-				this.editingTask.action = 'restart'
-				if (this.targetContainers.length) {
-					this.editingTask.target_id = this.targetContainers[0].name || this.targetContainers[0].id
-					this.editingTask.target_name = this.targetContainers[0].name
-				}
-			} else if (type === 'maintenance') {
-				this.editingTask.action = 'fstrim'
-				this.editingTask.target_id = 'fstrim'
-				this.editingTask.target_name = 'SSD / Disk TRIM'
-			} else if (type === 'command') {
-				this.editingTask.action = 'run_command'
-				this.editingTask.target_id = 'bash'
-				this.editingTask.target_name = 'Custom Command'
+				if (t.target_name) return t.target_name
+				return this.$t('Cloud & Storage Backup')
 			}
-		},
-		onVmTargetSelected(id) {
-			const vm = this.targetVms.find(v => v.id === id)
-			if (vm) this.editingTask.target_name = vm.name
-		},
-		onContainerTargetSelected(id) {
-			const c = this.targetContainers.find(item => item.name === id || item.id === id)
-			if (c) this.editingTask.target_name = c.name
-		},
-		onModalPresetChange() {
-			if (this.modalPresetSchedule !== 'custom') {
-				this.editingTask.cron = this.modalPresetSchedule
-			}
-		},
-		async saveTask() {
-			if (!this.editingTask.name) {
-				this.$buefy.toast.open({
-					message: this.$t('Please enter a task name'),
-					type: 'is-warning',
-					position: 'is-top',
-					duration: 2000
-				})
-				return
-			}
-			this.savingTask = true
-			try {
-				if (this.editingTask.id) {
-					await this.$api.schedules.updateSchedule(this.editingTask.id, this.editingTask)
-					this.$buefy.toast.open({
-						message: this.$t('Task updated successfully'),
-						type: 'is-success',
-						position: 'is-top',
-						duration: 2000
-					})
-				} else {
-					await this.$api.schedules.createSchedule(this.editingTask)
-					this.$buefy.toast.open({
-						message: this.$t('Task created successfully'),
-						type: 'is-success',
-						position: 'is-top',
-						duration: 2000
-					})
-				}
-				this.showEditModal = false
-				await this.fetchTasks()
-			} catch (err) {
-				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to save task'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 3000
-				})
-			} finally {
-				this.savingTask = false
-			}
+			return t.target_name || t.target_id || t.type
 		},
 		async toggleTask(t) {
 			try {
@@ -724,6 +515,7 @@ export default {
 		},
 		getTypeIcon(type) {
 			switch (type) {
+				case 'backup': return 'cloud-sync'
 				case 'vm': return 'monitor'
 				case 'container': return 'docker'
 				case 'maintenance': return 'wrench-outline'
@@ -733,15 +525,21 @@ export default {
 		},
 		formatTypeLabel(type) {
 			switch (type) {
+				case 'backup': return this.$t('Backup & Sync')
 				case 'vm': return 'VM'
 				case 'container': return 'Container'
-				case 'maintenance': return 'System Maintenance'
+				case 'maintenance': return 'Maintenance'
 				case 'command': return 'Script'
 				default: return type
 			}
 		},
 		formatActionLabel(action) {
 			switch (action) {
+				case 'copy': return this.$t('Incremental Backup')
+				case 'sync': return this.$t('Exact Mirror')
+				case 'archive': return this.$t('Compressed Archive')
+				case 'move': return this.$t('Move & Archive')
+				case 'rsync': return this.$t('Rsync Mirror')
 				case 'stop': return this.$t('Shut Down')
 				case 'start': return this.$t('Start')
 				case 'restart': return this.$t('Restart')
@@ -757,10 +555,11 @@ export default {
 		},
 		humanizeCron(cron) {
 			if (!cron) return ''
+			if (cron === '0 2 * * *') return this.$t('Every day at 2:00 AM')
+			if (cron === '0 3 * * *') return this.$t('Every day at 3:00 AM')
 			if (cron === '0 23 * * *') return this.$t('Every day at 11:00 PM')
 			if (cron === '0 0 * * *') return this.$t('Every day at Midnight (00:00)')
-			if (cron === '0 3 * * *') return this.$t('Every day at 3:00 AM')
-			if (cron === '0 4 * * *') return this.$t('Every day at 4:00 AM')
+			if (cron === '0 12 * * *') return this.$t('Every day at Noon (12:00 PM)')
 			if (cron === '0 3 * * 0') return this.$t('Every Sunday at 3:00 AM')
 			if (cron === '0 4 * * 0') return this.$t('Every Sunday at 4:00 AM')
 			if (cron === '0 * * * *') return this.$t('Every hour')
@@ -925,6 +724,10 @@ export default {
 	font-size: 20px;
 	flex-shrink: 0;
 
+	&.type-backup {
+		background: rgba(37, 99, 235, 0.1);
+		color: #2563eb;
+	}
 	&.type-vm {
 		background: rgba(244, 63, 94, 0.1);
 		color: #f43f5e;
@@ -951,6 +754,10 @@ export default {
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
 
+	&.type-backup {
+		background: rgba(37, 99, 235, 0.12);
+		color: #2563eb;
+	}
 	&.type-vm {
 		background: rgba(244, 63, 94, 0.12);
 		color: #f43f5e;
@@ -975,6 +782,10 @@ export default {
 	background: rgba(0, 0, 0, 0.05);
 	border-radius: 9999px;
 	color: #3f3f46;
+	max-width: 320px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .cron-pill {
@@ -995,18 +806,6 @@ export default {
 	&.bg-danger {
 		background: #ef4444;
 	}
-}
-
-.schedule-modal-card {
-	width: 540px;
-	max-width: 90vw;
-}
-
-.schedule-builder-box {
-	background: rgba(0, 0, 0, 0.03);
-	border: 1px solid rgba(0, 0, 0, 0.08);
-	border-radius: 8px;
-	padding: 10px;
 }
 
 .log-modal-card {

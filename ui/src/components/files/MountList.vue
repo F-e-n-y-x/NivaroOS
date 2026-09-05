@@ -124,8 +124,8 @@
 			@drop="onDrop(item, $event)"
 		>
 			<span class="tree-node-icon">
-				<b-image v-if="item.icon_type === 'svg'" :src="item.icon" class="is-24x24"></b-image>
-				<b-icon v-else :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="mdi-22px"></b-icon>
+				<b-image v-if="item.icon_type === 'svg'" :src="item.icon" style="width: 19px; height: 19px;"></b-image>
+				<b-icon v-else :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="mdi-19px"></b-icon>
 			</span>
 			<span class="tree-node-label one-line">{{ item.name }}</span>
 			<span class="tree-node-right-icon" @click.stop="umountCloud(item)">

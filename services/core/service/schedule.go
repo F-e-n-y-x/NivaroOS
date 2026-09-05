@@ -23,11 +23,16 @@ type ScheduleTask struct {
 	Name        string    `json:"name"`
 	Enabled     bool      `json:"enabled"`
 	Cron        string    `json:"cron"`        // standard 5-part cron e.g. "0 23 * * *" or descriptor like "@daily"
-	Type        string    `json:"type"`        // "vm" | "container" | "maintenance" | "command"
-	Action      string    `json:"action"`      // "stop", "start", "restart", "reboot", "force_off", "update", "fstrim", "drop_caches", "docker_prune", "disk_standby_check", "run_command"
-	TargetID    string    `json:"target_id"`   // VM ID/Name, Container ID/Name
+	Type        string    `json:"type"`        // "vm" | "container" | "maintenance" | "command" | "backup" | "sync"
+	Action      string    `json:"action"`      // "stop", "start", "restart", "reboot", "force_off", "update", "fstrim", "drop_caches", "docker_prune", "disk_standby_check", "copy", "sync", "move", "archive", "rsync", "run_command"
+	TargetID    string    `json:"target_id"`   // VM ID/Name, Container ID/Name, or Source ID
 	TargetName  string    `json:"target_name"` // Friendly display name
 	Command     string    `json:"command"`     // Command for script execution
+	SourcePath  string    `json:"source_path"` // Source directory or cloud remote
+	DestPath    string    `json:"dest_path"`   // Destination directory or cloud remote
+	Direction   string    `json:"direction"`   // "local_to_cloud" | "cloud_to_local" | "local_to_local"
+	SyncMode    string    `json:"sync_mode"`   // "copy" | "sync" | "archive" | "move" | "rsync"
+	ExtraArgs   string    `json:"extra_args"`  // Optional extra flags e.g. --bwlimit
 	ActionType  string    `json:"action_type"` // for backwards compatibility
 	Target      string    `json:"target"`      // for backwards compatibility
 	Description string    `json:"description"`
@@ -298,6 +303,93 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 		}
 	}
 
+	if t.Type == "backup" || t.Type == "sync" {
+		src := strings.TrimSpace(t.SourcePath)
+		dest := strings.TrimSpace(t.DestPath)
+		if src == "" {
+			src = strings.TrimSpace(t.TargetID)
+		}
+		if dest == "" {
+			dest = strings.TrimSpace(t.Target)
+		}
+		if src == "" || dest == "" {
+			if t.Command != "" {
+				cmd := exec.CommandContext(ctx, "bash", "-c", t.Command)
+				buf, err := cmd.CombinedOutput()
+				return string(buf), err
+			}
+			return "", fmt.Errorf("source and destination are required for backup/sync task")
+		}
+
+		action := t.Action
+		if action == "" {
+			action = t.SyncMode
+		}
+		if action == "" {
+			action = "copy"
+		}
+
+		extra := strings.TrimSpace(t.ExtraArgs)
+
+		switch action {
+		case "sync", "rclone_sync":
+			args := []string{"sync", src, dest, "--stats-one-line", "-v"}
+			if extra != "" {
+				args = append(args, strings.Fields(extra)...)
+			}
+			cmd := exec.CommandContext(ctx, "rclone", args...)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+
+		case "copy", "rclone_copy":
+			args := []string{"copy", src, dest, "--stats-one-line", "-v"}
+			if extra != "" {
+				args = append(args, strings.Fields(extra)...)
+			}
+			cmd := exec.CommandContext(ctx, "rclone", args...)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+
+		case "move", "rclone_move":
+			args := []string{"move", src, dest, "--stats-one-line", "-v"}
+			if extra != "" {
+				args = append(args, strings.Fields(extra)...)
+			}
+			cmd := exec.CommandContext(ctx, "rclone", args...)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+
+		case "rsync", "rsync_backup":
+			srcSlash := src
+			if !strings.HasSuffix(srcSlash, "/") && !strings.Contains(srcSlash, ":") {
+				srcSlash += "/"
+			}
+			args := []string{"-avh", "--delete", srcSlash, dest}
+			if extra != "" {
+				args = append(args, strings.Fields(extra)...)
+			}
+			cmd := exec.CommandContext(ctx, "rsync", args...)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+
+		case "archive", "tar_archive":
+			tarCmd := fmt.Sprintf(`mkdir -p "%s" && tar -czf "%s/backup_$(date +%%Y%%m%%d_%%H%%M%%S).tar.gz" -C "%s" "%s"`,
+				dest, dest, filepath.Dir(src), filepath.Base(src))
+			cmd := exec.CommandContext(ctx, "bash", "-c", tarCmd)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+
+		default:
+			args := []string{"copy", src, dest, "--stats-one-line", "-v"}
+			if extra != "" {
+				args = append(args, strings.Fields(extra)...)
+			}
+			cmd := exec.CommandContext(ctx, "rclone", args...)
+			buf, err := cmd.CombinedOutput()
+			return string(buf), err
+		}
+	}
+
 	if t.Type == "command" || t.Command != "" {
 		cmdStr := t.Command
 		if cmdStr == "" {
@@ -529,9 +621,17 @@ type ContainerTargetInfo struct {
 	State  string `json:"state"`
 }
 
+type CloudTargetInfo struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Remote     string `json:"remote"`
+	MountPoint string `json:"mount_point"`
+}
+
 func (s *scheduleService) GetTargets() (map[string]interface{}, error) {
 	vms := make([]VMTargetInfo, 0)
 	containers := make([]ContainerTargetInfo, 0)
+	clouds := make([]CloudTargetInfo, 0)
 
 	virshOut, err := exec.Command("virsh", "list", "--all").Output()
 	if err == nil {
@@ -575,8 +675,55 @@ func (s *scheduleService) GetTargets() (map[string]interface{}, error) {
 		}
 	}
 
+	// Fetch cloud accounts from rclone
+	dumpOut, err := exec.Command("rclone", "config", "dump").Output()
+	if err == nil {
+		var rawConfig map[string]map[string]interface{}
+		if err := json.Unmarshal(dumpOut, &rawConfig); err == nil {
+			for remoteName, cfg := range rawConfig {
+				cType, _ := cfg["type"].(string)
+				cUser, _ := cfg["username"].(string)
+				cMount, _ := cfg["mount_point"].(string)
+				name := cUser
+				if name == "" {
+					name = remoteName
+				}
+				clouds = append(clouds, CloudTargetInfo{
+					Name:       name,
+					Type:       cType,
+					Remote:     remoteName + ":",
+					MountPoint: cMount,
+				})
+			}
+		}
+	}
+
+	// Pre-populate standard local data paths
+	candidatePaths := []string{
+		"/DATA",
+		"/DATA/Documents",
+		"/DATA/Media",
+		"/DATA/AppData",
+		"/DATA/Gallery",
+		"/DATA/Downloads",
+		"/DATA/Desktop",
+		"/DATA/Backup",
+		"/DATA/VMs",
+	}
+	localPaths := make([]string, 0)
+	for _, p := range candidatePaths {
+		if _, err := os.Stat(p); err == nil {
+			localPaths = append(localPaths, p)
+		}
+	}
+	if len(localPaths) == 0 {
+		localPaths = append(localPaths, "/DATA")
+	}
+
 	return map[string]interface{}{
-		"vms":        vms,
-		"containers": containers,
+		"vms":         vms,
+		"containers":  containers,
+		"clouds":      clouds,
+		"local_paths": localPaths,
 	}, nil
 }

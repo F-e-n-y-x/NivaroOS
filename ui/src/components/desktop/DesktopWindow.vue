@@ -5,7 +5,7 @@
 	class="desktop-window"
 	:class="{
 		'window-dark': isDarkWindow,
-		'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp'].includes(win.component),
+		'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp', 'ScheduledTaskWindow'].includes(win.component),
 		'window-minimized': win.minimized,
 		'window-console': isConsoleWindow,
 	}"
@@ -59,6 +59,7 @@ import EditVmModal from './vm/EditVmModal.vue'
 import FolderWindow from './FolderWindow.vue'
 import SystemUpdateWindow from './SystemUpdateWindow.vue'
 import ContainerConsolePanel from './ContainerConsolePanel.vue'
+import ScheduledTaskWindow from './ScheduledTaskWindow.vue'
 
 const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -78,7 +79,8 @@ const COMPONENT_REGISTRY = {
 	ExcelViewer,
 	PdfViewer,
 	FolderWindow,
-	SystemUpdateWindow
+	SystemUpdateWindow,
+	ScheduledTaskWindow
 }
 
 const MIN_WIDTH = 360
