@@ -38,7 +38,7 @@
 			<template v-if="addDraft.uuid">
 				<p class="field-help mt-3">{{ $t("What's this drive for? (optional - fills in sensible defaults, everything stays editable below)") }}</p>
 				<div class="preset-grid">
-					<button v-for="p in visiblePresets" :key="p.id" type="button" class="preset-tile" @click="applyPreset(addDraft, p)">
+					<button v-for="p in visiblePresets" :key="p.id" type="button" class="preset-tile" :class="{ active: presetMatches(addDraft, p) }" @click="applyPreset(addDraft, p)">
 						<i class="mdi" :class="`mdi-${p.icon}`"></i>
 						<span>{{ $t(p.label) }}</span>
 					</button>
@@ -86,8 +86,11 @@
 						<div class="setting-desc">
 							{{ m.fstype }} &middot; {{ formatSize(m.size) }}
 							<span class="status-dot" :class="{ 'is-good': m.mounted }"></span>{{ m.mounted ? $t('Mounted') : $t('Not mounted') }}
+						</div>
+						<div v-if="!m.enabled || m.read_only || extraOptions(m.options)" class="setting-chips-row">
 							<span v-if="!m.enabled" class="setting-chip">{{ $t('Disabled at boot') }}</span>
 							<span v-if="m.read_only" class="setting-chip">{{ $t('Read-only') }}</span>
+							<span v-if="extraOptions(m.options)" class="setting-chip is-mono" :title="extraOptions(m.options)">{{ extraOptions(m.options) }}</span>
 						</div>
 					</div>
 					<div class="row-control">
@@ -104,7 +107,7 @@
 
 				<div v-if="editingMountPoint === m.mount_point" class="fstab-form is-block full-width">
 					<div class="preset-grid">
-						<button v-for="p in visiblePresetsFor(m.fstype)" :key="p.id" type="button" class="preset-tile" @click="applyPreset(editDraft, p)">
+						<button v-for="p in visiblePresetsFor(m.fstype)" :key="p.id" type="button" class="preset-tile" :class="{ active: presetMatches(editDraft, p) }" @click="applyPreset(editDraft, p)">
 							<i class="mdi" :class="`mdi-${p.icon}`"></i>
 							<span>{{ $t(p.label) }}</span>
 						</button>
@@ -216,6 +219,20 @@ export default {
 	},
 	methods: {
 		formatSize,
+		// The ro/rw and auto/noauto tokens are represented by their own
+		// switches - stripping them back out of the stored options string
+		// is what the "Advanced options" field should actually show,
+		// mirroring composeOptions' own filtering on the way in. Without
+		// this, opening Edit on an entry that has real extra options (e.g.
+		// the Windows preset's uid/gid/dmask/fmask) and saving without
+		// retyping them would silently wipe them out.
+		extraOptions(options) {
+			return (options || '')
+				.split(',')
+				.map(t => t.trim())
+				.filter(t => t && !['ro', 'rw', 'auto', 'noauto'].includes(t))
+				.join(',')
+		},
 		visiblePresetsFor(fstype) {
 			if (WINDOWS_FSTYPES.includes((fstype || '').toLowerCase())) return [...PRESETS, WINDOWS_PRESET]
 			return PRESETS
@@ -231,6 +248,21 @@ export default {
 			draft.mount_at_boot = preset.mount_at_boot
 			draft.check_at_boot = preset.check_at_boot
 			draft.options = preset.options
+		},
+		// Whether `draft` currently matches `preset`'s values exactly - used to
+		// highlight the applied preset (including the one silently applied by
+		// selectCandidate's default pick) rather than leaving every tile look
+		// unselected regardless of what's actually in effect. Matching on the
+		// values themselves rather than tracking "which button was clicked"
+		// means it stays correct (shows no active tile) the moment someone
+		// hand-edits a field away from the preset it came from.
+		presetMatches(draft, preset) {
+			return (
+				draft.read_only === preset.read_only &&
+				draft.mount_at_boot === preset.mount_at_boot &&
+				draft.check_at_boot === preset.check_at_boot &&
+				draft.options === preset.options
+			)
 		},
 		refresh() {
 			this.error = ''
@@ -300,7 +332,7 @@ export default {
 				mount_point: m.mount_point,
 				new_mount_point: m.mount_point,
 				fstype: m.fstype,
-				options: '',
+				options: this.extraOptions(m.options),
 				read_only: m.read_only,
 				mount_at_boot: m.mount_at_boot,
 				check_at_boot: m.check_at_boot
@@ -324,6 +356,12 @@ export default {
 			})
 		},
 		toggleEnabled(m, enabled) {
+			// Flip the switch immediately rather than waiting on the round
+			// trip - a full refresh() still follows on success (other
+			// fields, like the "Disabled at boot" chip, depend on it too),
+			// but the control itself shouldn't feel laggy in the meantime.
+			const previous = m.enabled
+			m.enabled = enabled
 			this.$api.fstab.setEnabled(m.mount_point, enabled).then(() => {
 				this.refresh()
 				this.$buefy.toast.open({
@@ -331,6 +369,7 @@ export default {
 					type: 'is-success'
 				})
 			}).catch(() => {
+				m.enabled = previous
 				this.error = this.$t('Failed to update mount')
 			})
 		},
@@ -532,6 +571,16 @@ export default {
 		background: rgba(50, 115, 220, 0.08);
 		color: #3273dc;
 	}
+
+	&.active {
+		border-color: #3273dc;
+		background: rgba(50, 115, 220, 0.08);
+		color: #3273dc;
+
+		i {
+			color: #3273dc;
+		}
+	}
 }
 
 .fstab-switch-row {
@@ -549,6 +598,15 @@ export default {
 	margin-top: 0.5rem;
 }
 
+.setting-chip.is-mono {
+	max-width: 14rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: "Fira Code", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+	font-size: 0.675rem;
+}
+
 .status-dot {
 	display: inline-block;
 	width: 0.4rem;
@@ -560,6 +618,17 @@ export default {
 	&.is-good {
 		background: #23d160;
 	}
+}
+
+// Config flags (disabled/read-only/advanced options) wrap on their own row
+// instead of competing with the live fstype/size/mounted-status line above
+// for space - that line stays one predictable length, this one can grow to
+// 0-3 chips without reflowing the row's actual info.
+.setting-chips-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem;
+	margin-top: 0.3rem;
 }
 
 .system-entries-toggle {
