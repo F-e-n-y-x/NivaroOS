@@ -161,6 +161,24 @@ func currentMountPoints() (map[string]bool, error) {
 	return result, nil
 }
 
+// verifyMounted confirms mountPoint is actually an active mount after a mount.Mount call.
+// This is necessary because every managed entry's options include "nofail" (so a missing
+// removable drive never hangs boot) - and mount(8) honors "nofail" outside of boot too,
+// silently returning success even when the source device can't be found or mounted at all
+// (e.g. a stale/changed UUID after a reformat or drive swap). mount.Mount's own error return
+// can't be trusted to catch that case, so an explicit, user-initiated mount/add/edit action
+// must double-check reality before reporting success.
+func verifyMounted(mountPoint string) error {
+	mounted, err := currentMountPoints()
+	if err != nil {
+		return err
+	}
+	if !mounted[mountPoint] {
+		return fmt.Errorf("the drive could not be mounted - it may be disconnected, or its filesystem may not be recognized")
+	}
+	return nil
+}
+
 func findManagedEntry(mountPoint string) (*fstab.Entry, error) {
 	entries, err := fstab.Get().GetAllEntries()
 	if err != nil {
@@ -419,6 +437,9 @@ func (d *diskService) AddFstabMount(req model.AddFstabMountRequest) (*model.Fsta
 		if err := mount.Mount(source, req.MountPoint, &fstypeArg, &optionsArg); err != nil {
 			return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
 		}
+		if err := verifyMounted(req.MountPoint); err != nil {
+			return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+		}
 	}
 
 	entry := fstab.Entry{
@@ -514,6 +535,9 @@ func (d *diskService) UpdateFstabMount(req model.UpdateFstabMountRequest) (*mode
 
 	fstypeArg, optionsArg := fstype, options
 	if err := mount.Mount(existing.Source, newMountPoint, &fstypeArg, &optionsArg); err != nil {
+		return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+	}
+	if err := verifyMounted(newMountPoint); err != nil {
 		return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
 	}
 
@@ -623,6 +647,9 @@ func (d *diskService) MountFstabEntry(mountPoint string) error {
 
 	fstypeArg, optionsArg := entry.FSType, entry.Options
 	if err := mount.Mount(entry.Source, entry.MountPoint, &fstypeArg, &optionsArg); err != nil {
+		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+	}
+	if err := verifyMounted(entry.MountPoint); err != nil {
 		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
 	}
 

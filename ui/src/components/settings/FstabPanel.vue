@@ -4,7 +4,7 @@
 		<div class="fstab-header">
 			<div class="header-left">
 				<div class="header-title-row">
-					<h3 class="setting-card-title mb-0">{{ $t('Persistent Mounts (/etc/fstab)') }}</h3>
+					<h3 class="setting-card-title mb-0">{{ $t('Mounted Drives') }}</h3>
 					<div class="status-counters">
 						<span class="count-pill is-primary" :title="$t('Managed persistent mounts')">
 							<i class="mdi mdi-check-circle-outline mr-1"></i>{{ mounts.length }} {{ $t('Managed') }}
@@ -34,16 +34,16 @@
 
 			<!-- Managed Drives Card Grid -->
 			<div v-if="mounts.length" class="mount-cards-grid">
-				<div v-for="m in mounts" :key="m.mount_point" class="mount-card" :class="{ 'is-unmounted': !m.mounted, 'is-disabled': !m.enabled }">
+				<div v-for="m in mounts" :key="m.mount_point" class="mount-card" :class="{ 'is-unmounted': !m.mounted, 'is-disabled': !m.enabled, 'is-missing': isDeviceMissing(m) }">
 					<!-- Card Header -->
 					<div class="mount-card-header">
 						<div class="drive-icon-wrap" :class="getDriveIconClass(m.fstype)">
-							<i class="mdi" :class="driveIcon(m.fstype)"></i>
+							<i class="mdi" :class="isDeviceMissing(m) ? 'mdi-harddisk-remove' : driveIcon(m.fstype)"></i>
 						</div>
 						<div class="drive-titles">
 							<div class="drive-name-row">
 								<span class="drive-main-name one-line" :title="m.drive_label || m.mount_point">
-									{{ m.drive_label || m.drive_path || m.uuid.slice(0, 10) }}
+									{{ isDeviceMissing(m) ? $t('Drive not detected') : (m.drive_label || m.drive_path || m.mount_point) }}
 								</span>
 								<span class="fs-badge">{{ (m.fstype || 'auto').toUpperCase() }}</span>
 							</div>
@@ -52,7 +52,11 @@
 							</div>
 						</div>
 						<div class="mount-status-badges">
-							<span class="status-pill" :class="m.mounted ? 'is-mounted' : 'is-unmounted'">
+							<span v-if="isDeviceMissing(m)" class="status-pill is-missing" :title="$t('This drive is not currently connected. If you replaced or reformatted it, remove this entry and mount the new drive.')">
+								<span class="status-dot is-bad"></span>
+								{{ $t('Not Detected') }}
+							</span>
+							<span v-else class="status-pill" :class="m.mounted ? 'is-mounted' : 'is-unmounted'">
 								<span class="status-dot" :class="{ 'is-good': m.mounted }"></span>
 								{{ m.mounted ? $t('Mounted') : $t('Unmounted') }}
 							</span>
@@ -485,6 +489,7 @@
 
 <script>
 import { formatSize } from '@/utils/formatSize'
+import events from '@/events/events'
 
 const emptyDraft = () => ({
 	uuid: '',
@@ -641,6 +646,12 @@ export default {
 				})
 			}
 		},
+		// A managed entry whose UUID no longer matches any currently-attached drive
+		// (reformatted, replaced, or unplugged) looks identical to a plain "unmounted"
+		// entry unless called out separately - and "Mount" on it will always fail.
+		isDeviceMissing(m) {
+			return !m.mounted && !m.drive_path
+		},
 		refresh() {
 			this.error = ''
 			this.loadingMounts = true
@@ -655,6 +666,9 @@ export default {
 				this.loadingMounts = false
 			})
 			this.refreshCandidates()
+			// Files' MountList lives in a separate component tree with no other
+			// way to learn a drive was added/edited/mounted/unmounted/removed here.
+			this.$EventBus.$emit(events.RELOAD_MOUNT_LIST)
 		},
 		refreshCandidates() {
 			this.loadingCandidates = true
@@ -938,6 +952,12 @@ export default {
 		border-style: dashed;
 		background: rgba(255, 255, 255, 0.7);
 	}
+
+	&.is-missing {
+		border-style: dashed;
+		border-color: rgba(239, 68, 68, 0.35);
+		background: rgba(239, 68, 68, 0.03);
+	}
 }
 
 .mount-card-header {
@@ -1029,6 +1049,11 @@ export default {
 		background: rgba(100, 116, 139, 0.1);
 		color: #64748b;
 	}
+
+	&.is-missing {
+		background: rgba(239, 68, 68, 0.1);
+		color: #ef4444;
+	}
 }
 
 .status-dot {
@@ -1040,6 +1065,10 @@ export default {
 
 	&.is-good {
 		background: #23d160;
+	}
+
+	&.is-bad {
+		background: #ef4444;
 	}
 }
 

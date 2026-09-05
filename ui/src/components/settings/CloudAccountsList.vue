@@ -88,6 +88,8 @@
 </template>
 
 <script>
+import events from '@/events/events'
+
 export default {
 	name: 'cloud-accounts-list',
 	data() {
@@ -129,6 +131,9 @@ export default {
 			this.$api.cloud.list().then(res => {
 				if (res.data.success === 200) this.accounts = res.data.data || []
 			})
+			// Files' MountList lives in a separate component tree with no other
+			// way to learn a cloud account was added/renamed/reconnected/removed.
+			this.$EventBus.$emit(events.RELOAD_MOUNT_LIST)
 		},
 		startRename(a) {
 			this.editingKey = a.mount_point
