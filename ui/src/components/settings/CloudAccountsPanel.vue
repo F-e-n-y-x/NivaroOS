@@ -1,36 +1,25 @@
 <template>
 	<div class="cloud-accounts-panel">
-		<div v-for="a in accounts" :key="a.mount_point" class="setting-row">
-			<i class="row-icon mdi" :class="`mdi-${a.icon || 'cloud-outline'}`"></i>
-			<div class="row-label">
-				<div class="setting-title">{{ a.name || a.fs }}</div>
-				<div class="setting-desc">{{ a.mount_point }}</div>
+		<div class="provider-groups">
+			<div v-for="group in providerGroups" :key="group.key" class="provider-group">
+				<div class="provider-group-label">{{ group.label }}</div>
+				<div class="provider-grid">
+					<button
+						v-for="p in group.items"
+						:key="p.type"
+						class="provider-tile"
+						:class="{ active: addingType === p.type }"
+						:style="{ '--provider-accent': providerAccent(p.type) }"
+						@click="startAdd(p)"
+					>
+						<i class="mdi" :class="`mdi-${p.icon}`"></i>
+						<span>{{ p.label }}</span>
+					</button>
+				</div>
 			</div>
-			<div class="row-control">
-				<b-button rounded size="is-small" type="is-danger" outlined :loading="removingKey === a.mount_point" @click="confirmRemove(a)">
-					{{ $t('Remove') }}
-				</b-button>
-			</div>
 		</div>
 
-		<div v-if="!accounts.length" class="account-empty">
-			{{ $t('No online accounts connected yet.') }}
-		</div>
-
-		<div class="provider-grid mt-3">
-			<button
-				v-for="p in providers"
-				:key="p.type"
-				class="provider-tile"
-				:class="{ active: addingType === p.type }"
-				@click="startAdd(p)"
-			>
-				<i class="mdi" :class="`mdi-${p.icon}`"></i>
-				<span>{{ p.label }}</span>
-			</button>
-		</div>
-
-		<!-- form-kind: S3, B2, WebDAV, SFTP, SMB - fields generated from rclone's own metadata -->
+		<!-- form-kind: S3, B2, WebDAV, SFTP, SMB - one step, fields generated from rclone's own metadata -->
 		<div v-if="activeProvider && activeProvider.auth_kind === 'form'" class="account-inline-form is-block mt-3">
 			<b-field :label="$t('Label')">
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
@@ -58,19 +47,30 @@
 			<p v-if="error" class="error-note">{{ error }}</p>
 		</div>
 
-		<!-- token-kind: Drive, Dropbox, OneDrive - paste a token from `rclone authorize` -->
+		<!-- token-kind: Drive, Dropbox, OneDrive - a real 2-step sequence -->
 		<div v-if="activeProvider && activeProvider.auth_kind === 'token'" class="account-inline-form is-block mt-3">
 			<b-field :label="$t('Label')">
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
-			<p class="field-help">
-				{{ $t('Click "Open Terminal" to run this on the server itself (it starts automatically) - sign in via the link it prints, then paste the token it prints back below. Or run it yourself on any computer with a browser.') }}
-			</p>
-			<code class="authorize-cmd">rclone authorize "{{ activeProvider.type }}"</code>
-			<a class="advanced-toggle" @click="openTerminal">{{ $t('Open Terminal (runs it for you)') }}</a>
-			<b-field :label="$t('Token')">
-				<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste the {...} token here')"></b-input>
-			</b-field>
+
+			<div class="step">
+				<span class="step-number">1</span>
+				<div class="step-body">
+					<p class="step-title">{{ $t('Sign in to {provider}', { provider: activeProvider.label }) }}</p>
+					<p class="step-help">{{ $t('Run this on the server, open the link it prints, and sign in.') }}</p>
+					<code class="authorize-cmd">rclone authorize "{{ activeProvider.type }}"</code>
+					<a class="advanced-toggle" @click="openTerminal">{{ $t('Run it in Terminal') }}</a>
+				</div>
+			</div>
+
+			<div class="step">
+				<span class="step-number">2</span>
+				<div class="step-body">
+					<p class="step-title">{{ $t('Paste what it prints back') }}</p>
+					<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('{\"access_token\":\"...')"></b-input>
+				</div>
+			</div>
+
 			<div class="form-actions">
 				<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!form.token.trim()" @click="submitToken">{{ $t('Connect') }}</b-button>
 				<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
@@ -84,27 +84,37 @@
 				<b-field :label="$t('Label')">
 					<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 				</b-field>
-				<b-field :label="$t('Apple ID')">
-					<b-input v-model="icloud.appleId" size="is-small" type="email"></b-input>
-				</b-field>
-				<b-field :label="$t('Password')">
-					<b-input v-model="icloud.password" size="is-small" type="password" password-reveal></b-input>
-				</b-field>
+				<div class="step">
+					<span class="step-number">1</span>
+					<div class="step-body">
+						<p class="step-title">{{ $t('Sign in with your Apple ID') }}</p>
+						<b-field :label="$t('Apple ID')">
+							<b-input v-model="icloud.appleId" size="is-small" type="email"></b-input>
+						</b-field>
+						<b-field :label="$t('Password')">
+							<b-input v-model="icloud.password" size="is-small" type="password" password-reveal></b-input>
+						</b-field>
+					</div>
+				</div>
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-dark" :loading="submitting" @click="startIcloud">{{ $t('Continue') }}</b-button>
+					<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!icloud.appleId || !icloud.password" @click="startIcloud">{{ $t('Continue') }}</b-button>
 					<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 				</div>
 			</template>
 			<template v-else>
-				<b-field :label="icloud.question ? icloud.question.Help : ''">
-					<b-input
-						v-model="icloud.answer"
-						size="is-small"
-						:type="icloud.question && icloud.question.IsPassword ? 'password' : 'text'"
-					></b-input>
-				</b-field>
+				<div class="step">
+					<span class="step-number">2</span>
+					<div class="step-body">
+						<p class="step-title">{{ icloud.question ? icloud.question.Help : $t('Enter the code') }}</p>
+						<b-input
+							v-model="icloud.answer"
+							size="is-small"
+							:type="icloud.question && icloud.question.IsPassword ? 'password' : 'text'"
+						></b-input>
+					</div>
+				</div>
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-dark" :loading="submitting" @click="verifyIcloud">{{ $t('Verify') }}</b-button>
+					<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!icloud.answer" @click="verifyIcloud">{{ $t('Verify') }}</b-button>
 					<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 				</div>
 			</template>
@@ -114,13 +124,30 @@
 </template>
 
 <script>
+// Genuine grouping, not decoration: these two categories need different
+// things from the user (sign in vs. enter server details), which is why
+// they get different add-flows below (token/interactive vs form).
+const PERSONAL_CLOUD_TYPES = ['drive', 'dropbox', 'onedrive', 'iclouddrive']
+
+// A light per-provider accent for the tile icon only (not the whole tile) -
+// brand recognition without turning the grid into a color chart.
+const PROVIDER_ACCENTS = {
+	drive: '#1FA463',
+	dropbox: '#0061FF',
+	onedrive: '#0364B8',
+	iclouddrive: '#8e8e93',
+	s3: '#FF9900',
+	b2: '#E21E29',
+	webdav: '#6b7280',
+	sftp: '#6b7280',
+	smb: '#6b7280'
+}
+
 export default {
 	name: 'cloud-accounts-panel',
 	data() {
 		return {
-			accounts: [],
 			providers: [],
-			removingKey: null,
 			addingType: null,
 			formOptions: [],
 			showAdvanced: false,
@@ -139,19 +166,24 @@ export default {
 		},
 		hiddenFormOptionCount() {
 			return this.formOptions.filter(o => o.Advanced).length
+		},
+		providerGroups() {
+			const personal = this.providers.filter(p => PERSONAL_CLOUD_TYPES.includes(p.type))
+			const other = this.providers.filter(p => !PERSONAL_CLOUD_TYPES.includes(p.type))
+			const groups = []
+			if (personal.length) groups.push({ key: 'personal', label: this.$t('Personal cloud'), items: personal })
+			if (other.length) groups.push({ key: 'other', label: this.$t('Self-hosted & business storage'), items: other })
+			return groups
 		}
 	},
 	created() {
-		this.refresh()
 		this.$api.cloud.providers().then(res => {
 			if (res.data.success === 200) this.providers = res.data.data || []
 		})
 	},
 	methods: {
-		refresh() {
-			this.$api.cloud.list().then(res => {
-				if (res.data.success === 200) this.accounts = res.data.data || []
-			})
+		providerAccent(type) {
+			return PROVIDER_ACCENTS[type] || '#6b7280'
 		},
 		startAdd(provider) {
 			if (this.addingType === provider.type) {
@@ -195,7 +227,8 @@ export default {
 				.then(res => {
 					if (res.data.success === 200) {
 						this.cancelAdd()
-						this.refresh()
+						this.$emit('added')
+						this.$buefy.toast.open({ message: this.$t('Connected'), type: 'is-success' })
 					} else {
 						this.error = res.data.message
 					}
@@ -215,7 +248,8 @@ export default {
 				.then(res => {
 					if (res.data.success === 200) {
 						this.cancelAdd()
-						this.refresh()
+						this.$emit('added')
+						this.$buefy.toast.open({ message: this.$t('Connected'), type: 'is-success' })
 					} else {
 						this.error = res.data.message
 					}
@@ -265,45 +299,28 @@ export default {
 			}
 			if (step.done) {
 				this.cancelAdd()
-				this.refresh()
+				this.$emit('added')
+				this.$buefy.toast.open({ message: this.$t('Connected'), type: 'is-success' })
 				return
 			}
 			this.icloud.sessionId = step.session_id
 			this.icloud.question = step.question
 			this.icloud.answer = ''
 		},
-		confirmRemove(account) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
-				title: this.$t('Remove account'),
-				message: this.$t('Disconnect {name}? This unmounts it from Files - it will no longer be accessible from here.', { name: account.name || account.fs }),
-				type: 'is-danger',
-				confirmText: this.$t('Remove'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: () => {
-					this.removingKey = account.mount_point
-					this.$api.cloud
-						.umount({ mount_point: account.mount_point })
-						.then(() => this.refresh())
-						.finally(() => {
-							this.removingKey = null
-						})
-				}
-			})
-		},
 		openTerminal() {
 			// `rclone authorize` always prints a 127.0.0.1:53682 link (hardcoded
-			// upstream) - unreachable unless the browser completing the OAuth
-			// consent is on this exact machine. Rewriting it in the terminal's
-			// own output to this box's actual address (whatever the browser is
-			// already using to reach NivaroOS) makes the link usable from any
-			// device; a small always-on proxy (services/local-storage/pkg/
-			// oauthproxy, port 53683) is what makes that rewritten address
-			// actually work rather than just look right.
+			// upstream), and the provider's redirect back after sign-in is
+			// hardcoded to that same literal address too - unreachable unless
+			// the browser is on this exact machine. A small always-on proxy
+			// (services/local-storage/pkg/oauthproxy) listens on port 53682
+			// on this box's real LAN address(es), same port rclone uses, just
+			// not on loopback - so swapping only the host (not the port) in
+			// whatever 127.0.0.1:53682 link/redirect shows up, here or by
+			// hand in the URL bar, lands somewhere real.
 			const host = window.location.hostname
 			const type = this.addingType
 			const initCommand = type
-				? `rclone authorize "${type}" 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53683/g"`
+				? `rclone authorize "${type}" 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53682/g"`
 				: ''
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'terminal-' + Date.now(),
@@ -324,11 +341,25 @@ export default {
 	flex-direction: column;
 }
 
+.provider-groups {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 0.25rem 1.25rem 0.75rem;
+}
+
+.provider-group-label {
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: rgba(0, 0, 0, 0.4);
+	margin-bottom: 0.4rem;
+}
+
 .provider-grid {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.5rem;
-	padding: 0 1.25rem 0.5rem;
 }
 
 .provider-tile {
@@ -345,6 +376,7 @@ export default {
 
 	i {
 		font-size: 1.05rem;
+		color: var(--provider-accent, #6b7280);
 	}
 
 	&:hover {
@@ -355,6 +387,10 @@ export default {
 		border-color: #3273dc;
 		background: rgba(50, 115, 220, 0.08);
 		color: #3273dc;
+
+		i {
+			color: #3273dc;
+		}
 	}
 }
 
@@ -363,10 +399,41 @@ export default {
 	padding: 0.75rem 1.25rem 1rem;
 }
 
-.field-help {
+.step {
+	display: flex;
+	gap: 0.65rem;
+	margin: 0.6rem 0;
+}
+
+.step-number {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	border-radius: 50%;
+	background: rgba(50, 115, 220, 0.1);
+	color: #3273dc;
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.step-body {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.step-title {
+	font-size: 0.8rem;
+	font-weight: 600;
+	margin-bottom: 0.3rem;
+}
+
+.step-help {
 	font-size: 0.75rem;
 	color: rgba(0, 0, 0, 0.55);
-	margin-bottom: 0.35rem;
+	margin-bottom: 0.4rem;
 }
 
 .authorize-cmd {
@@ -375,7 +442,7 @@ export default {
 	border-radius: 6px;
 	padding: 0.4rem 0.6rem;
 	font-size: 0.75rem;
-	margin-bottom: 0.5rem;
+	margin-bottom: 0.4rem;
 }
 
 .advanced-toggle {
