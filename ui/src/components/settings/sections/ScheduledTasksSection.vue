@@ -96,7 +96,7 @@
 
 		<div v-else-if="!tasks.length" class="empty-card has-text-centered p-6 mb-4">
 			<i class="mdi mdi-calendar-clock is-size-1 text-muted mb-2"></i>
-			<div class="is-size-6 font-weight-bold text-muted">{{ $t('No scheduled tasks yet') }}</div>
+			<div class="is-size-6 font-medium text-muted">{{ $t('No scheduled tasks yet') }}</div>
 			<div class="is-size-7 text-muted mt-1 mb-4">{{ $t('Create a custom cron schedule or pick one of the quick automation templates above.') }}</div>
 			<b-button rounded type="is-primary" size="is-small" @click="openCreateModal()">
 				<i class="mdi mdi-plus mr-1"></i>
@@ -118,12 +118,12 @@
 				<!-- Info -->
 				<div class="row-label">
 					<div class="setting-title is-flex is-align-items-center is-flex-wrap-wrap">
-						<span class="font-weight-bold mr-2">{{ t.name }}</span>
+						<span class="task-name mr-2">{{ t.name }}</span>
 						<span class="type-pill mr-2" :class="'type-' + t.type">
 							{{ formatTypeLabel(t.type) }}
 						</span>
 						<span class="target-pill mr-2">
-							<span class="font-weight-bold">{{ t.target_name || t.target_id || t.type }}</span>
+							<span class="target-name">{{ t.target_name || t.target_id || t.type }}</span>
 							<span class="mx-1">&middot;</span>
 							<span>{{ formatActionLabel(t.action) }}</span>
 						</span>
@@ -216,7 +216,7 @@
 		>
 			<div class="modal-card schedule-modal-card">
 				<header class="modal-card-head">
-					<p class="modal-card-title is-size-6 font-weight-bold">
+					<p class="modal-card-title is-size-6 font-medium">
 						<i class="mdi mdi-calendar-clock mr-2 has-text-primary"></i>
 						{{ editingTask.id ? $t('Edit Scheduled Task') : $t('Create Scheduled Task') }}
 					</p>
@@ -365,7 +365,7 @@
 		>
 			<div class="modal-card log-modal-card">
 				<header class="modal-card-head">
-					<p class="modal-card-title is-size-6 font-weight-bold">
+					<p class="modal-card-title is-size-6 font-medium">
 						<i class="mdi mdi-text-box-outline mr-2"></i>
 						{{ selectedLogTask ? selectedLogTask.name : $t('Execution Output') }}
 					</p>
@@ -375,7 +375,7 @@
 					<div class="task-log-viewer scrollbars">
 						<div class="log-meta p-3 is-flex is-align-items-center is-justify-content-between">
 							<div>
-								<span class="font-weight-bold mr-2">{{ selectedLogTask ? selectedLogTask.target_name : '' }}</span>
+								<span class="log-target-name mr-2">{{ selectedLogTask ? selectedLogTask.target_name : '' }}</span>
 								<span class="text-muted is-size-7">Action: {{ selectedLogTask ? selectedLogTask.action : '' }}</span>
 							</div>
 							<div class="is-size-7 text-muted">
@@ -832,8 +832,8 @@ export default {
 	}
 
 	.stat-val {
-		font-size: 16px;
-		font-weight: 700;
+		font-size: 15px;
+		font-weight: 500;
 		line-height: 1.2;
 		color: #18181b;
 	}
@@ -875,7 +875,7 @@ export default {
 
 	.template-title {
 		font-size: 13px;
-		font-weight: 600;
+		font-weight: 500;
 		color: #18181b;
 		line-height: 1.35;
 	}
@@ -894,6 +894,25 @@ export default {
 	&:last-child {
 		border-bottom: none;
 	}
+}
+
+.task-name {
+	font-size: 0.85rem;
+	font-weight: 500;
+	color: #18181b;
+}
+
+.target-name {
+	font-weight: 500;
+}
+
+.log-target-name {
+	font-weight: 500;
+	color: #f4f4f5;
+}
+
+.font-medium {
+	font-weight: 500;
 }
 
 .task-avatar {
@@ -926,7 +945,7 @@ export default {
 
 .type-pill {
 	font-size: 10px;
-	font-weight: 600;
+	font-weight: 500;
 	padding: 1px 6px;
 	border-radius: 4px;
 	text-transform: uppercase;

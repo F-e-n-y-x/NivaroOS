@@ -159,7 +159,7 @@
 
 		<div v-else-if="!filteredContainers.length" class="empty-card has-text-centered p-6">
 			<i class="mdi mdi-docker is-size-1 text-muted mb-2"></i>
-			<div class="is-size-6 font-weight-bold text-muted">{{ $t('No containers found') }}</div>
+			<div class="is-size-6 font-medium text-muted">{{ $t('No containers found') }}</div>
 			<div class="is-size-7 text-muted mt-1">{{ searchQuery ? $t('No containers matching search filter.') : $t('No Docker containers running on host.') }}</div>
 		</div>
 
@@ -177,12 +177,12 @@
 				<!-- Info -->
 				<div class="row-label">
 					<div class="setting-title is-flex is-align-items-center">
-						<span class="font-weight-bold mr-2">{{ c.name }}</span>
+						<span class="container-name mr-2">{{ c.name }}</span>
 						<span class="status-pill mr-2" :class="c.state === 'running' ? 'is-running' : 'is-stopped'">
 							<span class="dot"></span>
 							{{ c.state }}
 						</span>
-						<span v-if="c.has_update" class="tag is-info is-rounded is-small is-light font-weight-bold pulse-update">
+						<span v-if="c.has_update" class="tag is-info is-rounded is-small is-light pulse-update">
 							<i class="mdi mdi-arrow-up-bold-circle-outline mr-1"></i>
 							{{ $t('Update Available') }}
 						</span>
@@ -611,8 +611,8 @@ export default {
 	}
 
 	.stat-val {
-		font-size: 18px;
-		font-weight: 700;
+		font-size: 17px;
+		font-weight: 500;
 		line-height: 1.2;
 		color: #18181b;
 	}
@@ -621,6 +621,16 @@ export default {
 		font-size: 11px;
 		color: #71717a;
 	}
+}
+
+.container-name {
+	font-size: 0.85rem;
+	font-weight: 500;
+	color: #18181b;
+}
+
+.font-medium {
+	font-weight: 500;
 }
 
 .search-box {
