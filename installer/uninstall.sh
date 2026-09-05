@@ -182,11 +182,10 @@ run_step() {
 			local elapsed=$((current_ts - start_ts))
 			local frame="${SPINNER_FRAMES[$frame_idx]}"
 			
-			printf "\r\033[2K  %b %b %s%b %b(%ds)%b" \
+			printf "\r\033[2K  %b %b %b %b(%ds)%b" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
@@ -202,19 +201,17 @@ run_step() {
 		local total_elapsed=$((end_ts - start_ts))
 
 		if [ "$exit_code" -eq 0 ]; then
-			printf "\r\033[2K  %b %b %s%b %b[%ds]%b\n" \
+			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
 				"${COLOR_GREEN}✔${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${total_elapsed}" "${COLOR_RESET}"
 			rm -f "$log_file"
 		else
-			printf "\r\033[2K  %b %b %s%b %b[%ds - FAILED]%b\n" \
+			printf "\r\033[2K  %b %b %b %b[%ds - FAILED]%b\n" \
 				"${COLOR_RED}✖${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_RED}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_RED}" "${total_elapsed}" "${COLOR_RESET}"
 			rm -f "$log_file"
 		fi

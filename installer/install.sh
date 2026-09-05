@@ -146,12 +146,15 @@ print_diagnostics_card() {
 	local kernel
 	kernel="$(uname -r)"
 
-	local mem_mb mem_gb_str
-	mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
+	local mem_mb="0" mem_gb_str="Unknown"
+	if [ -f /proc/meminfo ]; then
+		mem_mb="$(awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo "0")"
+	fi
+	if [ -z "$mem_mb" ] || [ "$mem_mb" -eq 0 ]; then
+		mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
+	fi
 	if [ -n "$mem_mb" ] && [ "$mem_mb" -gt 0 ]; then
 		mem_gb_str="$(awk "BEGIN {printf \"%.1f GB\", $mem_mb/1024}")"
-	else
-		mem_gb_str="Unknown"
 	fi
 
 	local disk_gb_str="Unknown"
@@ -220,8 +223,14 @@ check_distro() {
 }
 
 check_resources() {
-	local mem_mb disk_gb
-	mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
+	local mem_mb="0" disk_gb
+	if [ -f /proc/meminfo ]; then
+		mem_mb="$(awk '/MemTotal:/ { print int($2/1024) }' /proc/meminfo 2>/dev/null || echo "0")"
+	fi
+	if [ -z "$mem_mb" ] || [ "$mem_mb" -eq 0 ]; then
+		mem_mb="$(LC_ALL=C free -m 2>/dev/null | awk '/^Mem:/ { print $2 }' || echo "0")"
+	fi
+
 	disk_gb="$(($(LC_ALL=C df -P / 2>/dev/null | tail -n 1 | awk '{print $4}') / 1024 / 1024))"
 
 	if [ -n "$mem_mb" ] && [ "$mem_mb" -gt 0 ]; then
@@ -514,11 +523,10 @@ run_step() {
 			local elapsed=$((current_ts - start_ts))
 			local frame="${SPINNER_FRAMES[$frame_idx]}"
 			
-			printf "\r\033[2K  %b %b %s%b %b(%ds)%b" \
+			printf "\r\033[2K  %b %b %b %b(%ds)%b" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
@@ -537,20 +545,18 @@ run_step() {
 
 		if [ "$exit_code" -eq 0 ]; then
 			log_raw "<<< COMPLETED STEP ${STEP_NUM}: ${title} [${total_elapsed}s]"
-			printf "\r\033[2K  %b %b %s%b %b[%ds]%b\n" \
+			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
 				"${COLOR_GREEN}✔${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${total_elapsed}" "${COLOR_RESET}"
 			rm -f "$log_file"
 		else
 			log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} [${total_elapsed}s, exit code ${exit_code}]"
-			printf "\r\033[2K  %b %b %s%b %b[%ds - FAILED]%b\n" \
+			printf "\r\033[2K  %b %b %b %b[%ds - FAILED]%b\n" \
 				"${COLOR_RED}✖${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_RED}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
-				"${COLOR_RESET}" \
 				"${COLOR_RED}" "${total_elapsed}" "${COLOR_RESET}"
 			print_error_card "$title" "$exit_code" "$log_file"
 			exit "$exit_code"
