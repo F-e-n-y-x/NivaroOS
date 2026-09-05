@@ -26,7 +26,7 @@
 					</template>
 					<template v-else>
 						<button class="icon-button" type="button" :title="$t('Test speed')" :disabled="speedTestingKey === a.mount_point" @click="runSpeedTest(a)">
-							<i class="mdi mdi-speedometer" :class="{ 'mdi-spin': speedTestingKey === a.mount_point }"></i>
+							<i class="mdi mdi-speedometer" :class="{ 'speedtest-pulse': speedTestingKey === a.mount_point }"></i>
 						</button>
 						<button v-if="reconnectableKinds[a.type]" class="icon-button" type="button" :title="$t('Reconnect')" @click="toggleReconnect(a)">
 							<i class="mdi mdi-refresh"></i>
@@ -298,6 +298,20 @@ export default {
 @keyframes cloud-list-spin {
 	from { transform: rotate(0deg); }
 	to { transform: rotate(360deg); }
+}
+
+// A speedometer needle doesn't read as "working" when spun in a full circle
+// like a refresh icon - a small back-and-forth tilt plus a soft pulse reads
+// as "measuring" instead, without implying rotation the icon doesn't have.
+.speedtest-pulse {
+	display: inline-block;
+	animation: speedtest-pulse 0.9s ease-in-out infinite;
+	color: #3273dc;
+}
+
+@keyframes speedtest-pulse {
+	0%, 100% { transform: rotate(-12deg); opacity: 0.55; }
+	50% { transform: rotate(12deg); opacity: 1; }
 }
 
 .speed-result {

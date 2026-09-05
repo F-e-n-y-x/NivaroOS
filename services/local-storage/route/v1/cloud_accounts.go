@@ -298,11 +298,34 @@ func PostICloudStart(c *gin.Context) {
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 		return
 	}
+	m := configmap.Simple{"apple_id": req.AppleID, "password": obscuredPassword}
+	// A bare configmap.Simple has no knowledge of the backend's own declared
+	// option defaults (that's normally layered in separately by rclone's
+	// config-file/flag machinery - see fs.ConfigMap - which we're
+	// deliberately not using here since its setter writes straight through
+	// to the real rclone.conf on every m.Set(), before we've decided the
+	// flow is actually done). Without this, client_id comes back empty and
+	// Apple's own authorize/signin endpoint rejects it outright with a bare
+	// "HTTP error 400 ... body: \"\"" - seed the declared defaults for
+	// anything the caller didn't already supply.
+	if ri, err := fs.Find("iclouddrive"); err == nil {
+		for _, opt := range ri.Options {
+			if _, ok := m[opt.Name]; ok {
+				continue
+			}
+			if opt.Default == nil {
+				continue
+			}
+			if s := fmt.Sprint(opt.Default); s != "" {
+				m[opt.Name] = s
+			}
+		}
+	}
 	sess := &icloudSession{
 		name:      name,
 		label:     req.Label,
 		reconnect: req.Name != "",
-		m:         configmap.Simple{"apple_id": req.AppleID, "password": obscuredPassword},
+		m:         m,
 	}
 	icloudSessionsMu.Lock()
 	pruneICloudSessions()
