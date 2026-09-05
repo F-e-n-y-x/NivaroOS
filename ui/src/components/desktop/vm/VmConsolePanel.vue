@@ -113,6 +113,9 @@
 									<b-icon icon="eject-outline" size="is-small"></b-icon>
 								</button>
 							</div>
+							<p v-if="isoFileName" class="device-menu-hint iso-access-hint">
+								{{ $t('Inserted in virtual CD drive. Linux: sudo mount /dev/cdrom /mnt · Windows: CD Drive (D:)') }}
+							</p>
 							<div class="device-menu-add">
 								<vm-dropdown
 									v-model="selectedISO"
