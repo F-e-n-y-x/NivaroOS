@@ -1,6 +1,6 @@
 <template>
 	<section class="settings-section">
-		<h2 class="section-title">{{ $t('Online Accounts') }}</h2>
+		<h2 class="section-title">{{ $t('Online Storage') }}</h2>
 		<p class="section-desc">
 			{{ $t('Connect Google Drive, Dropbox, OneDrive, iCloud, S3-compatible storage, and more - each one shows up as a location in Files.') }}
 		</p>

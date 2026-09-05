@@ -23,13 +23,18 @@ import 'xterm/css/xterm.css'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { AttachAddon } from 'xterm-addon-attach'
+import { WebLinksAddon } from 'xterm-addon-web-links'
 
 export default {
 	name: "terminal-card",
 	props: {
 		id: String,
 		label: String,
-		initWsUrl: String
+		initWsUrl: String,
+		// A command line to type and run automatically once the shell
+		// connects (e.g. opening a Terminal from Settings to run
+		// `rclone authorize`) - only fired once, on the very first connect.
+		initCommand: String
 	},
 	data() {
 		return {
@@ -41,6 +46,7 @@ export default {
 			isVaild: false,
 			wsUrl: "",
 			connectError: "",
+			initCommandSent: false,
 		}
 	},
 	computed: {
@@ -128,6 +134,14 @@ export default {
 			const attachAddon = new AttachAddon(this.socket)
 			term.loadAddon(attachAddon)
 			term.loadAddon(this.fitAddon)
+			// Links are only "live" with a modifier held (matches VS Code's
+			// integrated terminal convention) so a plain click still just
+			// places the cursor / starts a text selection like normal.
+			term.loadAddon(new WebLinksAddon((event, uri) => {
+				if (event.ctrlKey || event.metaKey) {
+					window.open(uri, '_blank', 'noopener,noreferrer')
+				}
+			}))
 
 			term.open(this.$refs.xtermEl)
 			this.$nextTick(() => {
@@ -144,6 +158,7 @@ export default {
 				} catch (e) {
 					console.error("fit error:", e)
 				}
+				this.runInitCommand()
 			})
 
 			this.term = term
@@ -177,6 +192,18 @@ export default {
 				this.isVaild = false
 				this.connectError = this.$t('Failed to establish terminal connection')
 			}
+		},
+		// Fired once per component instance (not on reconnects) - a short
+		// delay gives the shell a moment to print its prompt first so the
+		// typed command doesn't land mid-banner.
+		runInitCommand() {
+			if (!this.initCommand || this.initCommandSent) return
+			this.initCommandSent = true
+			setTimeout(() => {
+				if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+					this.socket.send(this.initCommand + '\r')
+				}
+			}, 400)
 		},
 		onWindowResize() {
 			if (!this.isVaild || !this.term || !this.fitAddon) {

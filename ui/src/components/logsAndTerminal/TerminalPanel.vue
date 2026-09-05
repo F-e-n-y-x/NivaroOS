@@ -34,7 +34,7 @@
 
 		<div class="terminal-body">
 			<div v-for="tab in shellTabs" :key="tab.id" v-show="tab.id === activeTerminalTabId" class="terminal-body-layer">
-				<terminal-card :ref="'terminal-' + tab.id"></terminal-card>
+				<terminal-card :ref="'terminal-' + tab.id" :init-command="tab.id === 1 ? initCommand : ''"></terminal-card>
 			</div>
 			<!-- Deliberately outside the v-for above, not a type-branch inside
 			     it: a static ref (needed since there's only ever one Logs
@@ -60,6 +60,12 @@ export default {
 	components: {
 		TerminalCard,
 		LogsCard
+	},
+	props: {
+		// A command to type and run automatically in this window's first
+		// shell tab as soon as it connects - e.g. Settings' "Open Terminal"
+		// for connecting an rclone-authorize-based cloud account.
+		initCommand: { type: String, default: '' }
 	},
 	data() {
 		return {

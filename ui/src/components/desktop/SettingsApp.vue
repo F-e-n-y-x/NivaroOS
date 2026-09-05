@@ -44,7 +44,7 @@ const SECTIONS = [
 	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.12)', rows: APPEARANCE_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
-	{ id: 'cloud', label: 'Online Accounts', icon: 'cloud-outline', pack: 'mdi', color: '#0891b2', bg: 'rgba(8, 145, 178, 0.12)', rows: CLOUD_ROWS },
+	{ id: 'cloud', label: 'Online Storage', icon: 'cloud-outline', pack: 'mdi', color: '#0891b2', bg: 'rgba(8, 145, 178, 0.12)', rows: CLOUD_ROWS },
 	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', pack: 'casa', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)', rows: USERS_ROWS },
 	{ id: 'updates', label: 'Updates', icon: 'cloud-download-outline', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
 ]

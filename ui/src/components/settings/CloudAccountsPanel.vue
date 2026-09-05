@@ -64,10 +64,10 @@
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
 			<p class="field-help">
-				{{ $t('Run this command on any computer with a web browser (or use the built-in Terminal), sign in, then paste the token it prints below.') }}
+				{{ $t('Click "Open Terminal" to run this on the server itself (it starts automatically) - sign in via the link it prints, then paste the token it prints back below. Or run it yourself on any computer with a browser.') }}
 			</p>
 			<code class="authorize-cmd">rclone authorize "{{ activeProvider.type }}"</code>
-			<a class="advanced-toggle" @click="openTerminal">{{ $t('Open Terminal') }}</a>
+			<a class="advanced-toggle" @click="openTerminal">{{ $t('Open Terminal (runs it for you)') }}</a>
 			<b-field :label="$t('Token')">
 				<b-input v-model="form.token" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste the {...} token here')"></b-input>
 			</b-field>
@@ -292,12 +292,26 @@ export default {
 			})
 		},
 		openTerminal() {
+			// `rclone authorize` always prints a 127.0.0.1:53682 link (hardcoded
+			// upstream) - unreachable unless the browser completing the OAuth
+			// consent is on this exact machine. Rewriting it in the terminal's
+			// own output to this box's actual address (whatever the browser is
+			// already using to reach NivaroOS) makes the link usable from any
+			// device; a small always-on proxy (services/local-storage/pkg/
+			// oauthproxy, port 53683) is what makes that rewritten address
+			// actually work rather than just look right.
+			const host = window.location.hostname
+			const type = this.addingType
+			const initCommand = type
+				? `rclone authorize "${type}" 2>&1 | sed -u "s/127\\.0\\.0\\.1:53682/${host}:53683/g"`
+				: ''
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'terminal-' + Date.now(),
 				title: this.$t('Terminal'),
 				component: 'TerminalPanel',
 				width: 720,
-				height: 480
+				height: 480,
+				props: { initCommand }
 			})
 		}
 	}

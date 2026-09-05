@@ -15,8 +15,6 @@
   "packageManager": "pnpm@9.0.6",
   "dependencies": {
     "@fontsource/roboto": "^5.0.5",
-    "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
-    "recasa-core-openapi": "link:./vendor/api-clients/recasa-core-openapi",
     "@kangc/v-md-editor": "^1.7.11",
     "@mdi/font": "^6.9.96",
     "@novnc/novnc": "1.7.0",
@@ -66,6 +64,8 @@
     "music-metadata-browser": "^2.5.10",
     "nanoid": "^4.0.2",
     "qs": "^6.11.2",
+    "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
+    "recasa-core-openapi": "link:./vendor/api-clients/recasa-core-openapi",
     "remove": "^0.1.5",
     "simple-uploader.js": "^0.6.0",
     "socket.io-client": "^2.5.0",
@@ -102,6 +102,7 @@
     "xterm": "^4.19.0",
     "xterm-addon-attach": "^0.6.0",
     "xterm-addon-fit": "^0.5.0",
+    "xterm-addon-web-links": "0.6.0",
     "yamljs": "^0.3.0",
     "yargs-parser": "^21.1.1"
   },

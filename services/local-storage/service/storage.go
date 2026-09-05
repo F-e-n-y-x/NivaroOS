@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"runtime"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/rclone/rclone/cmd/mountlib"
 	"github.com/rclone/rclone/fs"
 	rconfig "github.com/rclone/rclone/fs/config"
+	"github.com/rclone/rclone/fs/config/obscure"
 	"github.com/rclone/rclone/fs/rc"
 	"github.com/rclone/rclone/vfs/vfscommon"
 	"go.uber.org/zap"
@@ -135,9 +137,49 @@ func (s *storageStruct) GetStorages() (httper.MountList, error) {
 	return ls, nil
 	// return httper.GetMountList()
 }
+// CreateConfig writes a fully-formed remote config section directly
+// (LoadedData().SetValue per key, then SaveConfig) rather than going
+// through rclone's interactive Config state machine - that machinery is
+// meant for prompting a user through a flow one step at a time, and even
+// with NonInteractive:true it still requires a state to resume, so it
+// isn't a generic "just write these values" primitive.
+//
+// This is intentionally backend-agnostic: it's used both for
+// non-interactive "form" providers (S3/B2/WebDAV/SFTP/SMB - every value
+// is already known upfront) and for OAuth providers connected via a
+// pasted `rclone authorize` token (Drive/Dropbox/OneDrive - the token is
+// already valid, there's no auth step left to run).
 func (s *storageStruct) CreateConfig(data rc.Params, name string, t string) error {
-	_, err := rconfig.CreateRemote(context.Background(), name, t, data, rconfig.UpdateRemoteOpt{State: "*oauth-islocal,teamdrive,,", NonInteractive: true})
-	return err
+	ri, err := fs.Find(t)
+	if err != nil {
+		return err
+	}
+	needsObscure := make(map[string]struct{})
+	for _, option := range ri.Options {
+		if option.IsPassword {
+			needsObscure[option.Name] = struct{}{}
+		}
+	}
+
+	rconfig.LoadedData().SetValue(name, "type", t)
+	for k, v := range data {
+		vStr := fmt.Sprint(v)
+		if _, ok := needsObscure[k]; ok {
+			// Store passwords obscured, same as rclone's own config UI -
+			// leave already-obscured values (e.g. round-tripped from a
+			// previous read) alone rather than double-obscuring them.
+			if _, revealErr := obscure.Reveal(vStr); revealErr != nil {
+				obscured, obscureErr := obscure.Obscure(vStr)
+				if obscureErr != nil {
+					return fmt.Errorf("failed to obscure %q: %w", k, obscureErr)
+				}
+				vStr = obscured
+			}
+		}
+		rconfig.LoadedData().SetValue(name, k, vStr)
+	}
+	rconfig.SaveConfig()
+	return nil
 }
 func (s *storageStruct) CheckAndMountByName(name string) error {
 

@@ -22,11 +22,14 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/cache"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/oauthproxy"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/merge"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/route"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/coreos/go-systemd/daemon"
+	"github.com/rclone/rclone/cmd/mountlib"
+	"github.com/rclone/rclone/fs/config/configfile"
 	"github.com/robfig/cron/v3"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -97,9 +100,12 @@ func init() {
 	checkToken2_11()
 
 	ensureDefaultDirectories()
-	// service.MountLists = make(map[string]*mountlib.MountPoint)
-	// configfile.Install()
-	// service.MyService.Storage().CheckAndMountAll()
+	service.MountLists = make(map[string]*mountlib.MountPoint)
+	configfile.Install()
+	oauthproxy.Start()
+	if err := service.MyService.Storage().CheckAndMountAll(); err != nil {
+		logger.Error("failed to remount previously configured cloud accounts", zap.Error(err))
+	}
 }
 
 func checkToken2_11() {
