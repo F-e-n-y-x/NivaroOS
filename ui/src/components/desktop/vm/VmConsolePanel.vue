@@ -807,12 +807,20 @@ export default {
 			)
 		},
 		isoDropdownOptions() {
-			return (this.availableISOs || []).map((iso) => ({
-				value: iso.name,
-				label: iso.name,
-				icon: 'disc',
-				meta: iso.size_bytes ? `${Math.round((iso.size_bytes / (1024 * 1024 * 1024)) * 10) / 10} GB` : '',
-			}))
+			return (this.availableISOs || []).map((iso) => {
+				let sizeStr = ''
+				if (iso.size_mib) {
+					sizeStr = `${(iso.size_mib / 1024).toFixed(1)} GB`
+				} else if (iso.size_bytes) {
+					sizeStr = `${(iso.size_bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+				}
+				return {
+					value: iso.name,
+					label: iso.name,
+					icon: 'disc',
+					meta: sizeStr,
+				}
+			})
 		},
 		bridgeDropdownOptions() {
 			return (this.availableBridges || []).map((b) => ({
@@ -847,6 +855,7 @@ export default {
 	mounted() {
 		this.connect()
 		this.pollState()
+		this.loadAvailableISOs()
 		this.statePollTimer = setInterval(this.pollState, STATE_POLL_MS)
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
@@ -1140,7 +1149,14 @@ export default {
 		onOutsideClick(event) {
 			if (!event || !event.target) return
 			if (typeof event.target.closest === 'function') {
-				if (event.target.closest('.vm-overlay') || event.target.closest('.modal') || event.target.closest('.dialog')) {
+				if (
+					event.target.closest('.vm-overlay') ||
+					event.target.closest('.modal') ||
+					event.target.closest('.dialog') ||
+					event.target.closest('.vm-dropdown-popper-root') ||
+					event.target.closest('.vm-dropdown-menu') ||
+					event.target.closest('.popper')
+				) {
 					return
 				}
 			}
@@ -1293,6 +1309,11 @@ export default {
 			this.diskBusy = true
 			try {
 				await vmSidecar.ejectCDROM(this.vmName)
+				this.$buefy.toast.open({
+					message: this.$t('ISO ejected!'),
+					type: 'is-info',
+					duration: 2000,
+				})
 				await this.pollState()
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
@@ -1316,6 +1337,11 @@ export default {
 				// wizard's file picker uses as its start-path.
 				await vmSidecar.insertCDROM(this.vmName, `/DATA/VMs/isos/${this.selectedISO}`)
 				this.selectedISO = ''
+				this.$buefy.toast.open({
+					message: this.$t('ISO inserted successfully!'),
+					type: 'is-success',
+					duration: 2000,
+				})
 				await this.pollState()
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })

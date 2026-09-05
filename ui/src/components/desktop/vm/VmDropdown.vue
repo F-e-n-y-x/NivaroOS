@@ -12,7 +12,7 @@
 		<popper
 			ref="popperRef"
 			trigger="click"
-			append-to-body
+			:append-to-body="appendToBody"
 			:disabled="disabled"
 			transition="dropdown-fade"
 			:options="popperOptions"
@@ -116,6 +116,7 @@ export default {
 		size: { type: String, default: 'normal' }, // 'normal', 'small', 'compact'
 		align: { type: String, default: 'auto' }, // 'auto', 'left', 'right'
 		direction: { type: String, default: 'down' }, // 'down', 'up', 'auto'
+		appendToBody: { type: Boolean, default: false },
 	},
 	data() {
 		return {
