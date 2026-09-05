@@ -38,6 +38,15 @@ const (
 	REMOVE_MOUNT_POINT_ERROR = 40004
 	FORMAT_ERROR             = 40005
 
+	// fstab
+	FSTAB_MOUNT_POINT_UNSAFE = 40006
+	FSTAB_ENTRY_NOT_FOUND    = 40007
+	FSTAB_ENTRY_NOT_MANAGED  = 40008
+	FSTAB_ENTRY_EXISTS       = 40009
+	FSTAB_DEVICE_NOT_FOUND   = 40010
+	FSTAB_TEST_MOUNT_FAILED  = 40011
+	FSTAB_INVALID_FIELD      = 40012
+
 	// app
 	UNINSTALL_APP_ERROR  = 50001
 	PULL_IMAGE_ERROR     = 50002
@@ -96,6 +105,15 @@ var MsgFlags = map[int]string{
 	REMOVE_MOUNT_POINT_ERROR: "Failed to remove mount point",
 	DISK_BUSYING:             "Drive is busy",
 	FORMAT_ERROR:             "Formatting failed, please check if the directory is occupied",
+
+	// fstab
+	FSTAB_MOUNT_POINT_UNSAFE: "That mount point is reserved by the system and cannot be used",
+	FSTAB_ENTRY_NOT_FOUND:    "No matching fstab entry found",
+	FSTAB_ENTRY_NOT_MANAGED:  "This fstab entry was not created by NivaroOS and cannot be edited or removed here",
+	FSTAB_ENTRY_EXISTS:       "A different fstab entry already uses that mount point",
+	FSTAB_DEVICE_NOT_FOUND:   "That drive is no longer available - it may have been unplugged or already claimed",
+	FSTAB_TEST_MOUNT_FAILED:  "Mount test failed - nothing was written to fstab",
+	FSTAB_INVALID_FIELD:      "Invalid value",
 
 	//
 	SOURCE_DES_SAME:     "Source and destination cannot be the same.",

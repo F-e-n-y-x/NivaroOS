@@ -65,6 +65,17 @@ type DiskService interface {
 	SaveMountPointToDB(m model2.Volume) error
 	InitCheck()
 	GetSystemDf() (model.DFDiskSpace, error)
+
+	// fstab-backed mount management: real /etc/fstab entries the UI can create, edit,
+	// disable, and remove, as an alternative to the DB-backed "nivaroos" persistence
+	// mechanism above.
+	ListFstabMounts() ([]model.FstabMount, error)
+	ListFstabSystemEntries() ([]model.FstabMount, error)
+	ListFstabCandidates() ([]model.FstabCandidate, error)
+	AddFstabMount(req model.AddFstabMountRequest) (*model.FstabMount, error)
+	UpdateFstabMount(req model.UpdateFstabMountRequest) (*model.FstabMount, error)
+	RemoveFstabMount(mountPoint string) error
+	SetFstabMountEnabled(mountPoint string, enabled bool) error
 }
 
 type diskService struct {
@@ -585,7 +596,7 @@ func (d *diskService) GetPersistentTypeByUUID(uuid string) string {
 	}
 
 	// check if it is in fstab
-	if entry, err := fstab.Get().GetEntryBySource(uuid); err != nil {
+	if entry, err := fstab.Get().GetEntryByUUID(uuid); err != nil {
 		logger.Error("error when finding the volume by uuid in fstab", zap.Error(err), zap.String("uuid", uuid))
 	} else if entry != nil {
 		return PersistentTypeFStab

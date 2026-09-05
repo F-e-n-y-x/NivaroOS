@@ -56,6 +56,16 @@
 						{{ $t('Setting') }}
 					</b-button>
 
+					<!-- Logs & Terminal Console for all containers -->
+					<b-button v-if="isContainerApp || isV2App || isV1App" expanded type="is-text" @click="openContainerConsole('logs')">
+						<i class="mdi mdi-text-box-search-outline mr-2"></i>
+						{{ $t('Logs') }}
+					</b-button>
+					<b-button v-if="isContainerApp || isV2App || isV1App" expanded type="is-text" @click="openContainerConsole('terminal')">
+						<i class="mdi mdi-console mr-2"></i>
+						{{ $t('Terminal') }}
+					</b-button>
+
 					<!-- Rename/icon/roundness - available for every app type -->
 					<b-button expanded type="is-text" @click="closeMenuThen('editLegacyApp', item)">
 						<i class="mdi mdi-pencil-outline mr-2"></i>
@@ -449,6 +459,28 @@ export default {
 		 */
 		setDropState(e) {
 			this.dropState = e
+		},
+
+		openContainerConsole(initialTab = 'terminal') {
+			this.$refs.dro.isActive = false;
+			const containerId = this.item.name || this.item.id;
+			const containerName = this.item.title || this.item.name || containerId;
+			const containerImage = this.item.image || '';
+			const status = this.item.status || 'running';
+			this.$store.commit('OPEN_WINDOW', {
+				id: `container-console-${containerId}`,
+				title: `${containerName} - ${initialTab === 'logs' ? this.$t('Logs') : this.$t('Terminal')}`,
+				component: 'ContainerConsolePanel',
+				width: 820,
+				height: 520,
+				props: {
+					containerId: containerId,
+					containerName: containerName,
+					containerImage: containerImage,
+					initialTab: initialTab,
+					status: status
+				}
+			});
 		},
 
 		/**

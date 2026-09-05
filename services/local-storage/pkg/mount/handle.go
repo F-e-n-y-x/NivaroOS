@@ -1,3 +1,5 @@
+//go:build linux
+
 package mount
 
 import (
@@ -22,15 +24,13 @@ var _ fusefs.HandleReader = (*FileHandle)(nil)
 func (fh *FileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	var n int
 	defer log.Trace(fh, "len=%d, offset=%d", req.Size, req.Offset)("read=%d, err=%v", &n, &err)
-	data := make([]byte, req.Size)
+	data := resp.Data[:req.Size]
 	n, err = fh.Handle.ReadAt(data, req.Offset)
+	resp.Data = data[:n]
 	if err == io.EOF {
 		err = nil
-	} else if err != nil {
-		return (err)
 	}
-	resp.Data = data[:n]
-	return nil
+	return translateError(err)
 }
 
 // Check interface satisfied
@@ -41,7 +41,7 @@ func (fh *FileHandle) Write(ctx context.Context, req *fuse.WriteRequest, resp *f
 	defer log.Trace(fh, "len=%d, offset=%d", len(req.Data), req.Offset)("written=%d, err=%v", &resp.Size, &err)
 	n, err := fh.Handle.WriteAt(req.Data, req.Offset)
 	if err != nil {
-		return (err)
+		return translateError(err)
 	}
 	resp.Size = n
 	return nil
@@ -67,7 +67,7 @@ var _ fusefs.HandleFlusher = (*FileHandle)(nil)
 // some writes, or that if will be called at all.
 func (fh *FileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	defer log.Trace(fh, "")("err=%v", &err)
-	return (fh.Handle.Flush())
+	return translateError(fh.Handle.Flush())
 }
 
 var _ fusefs.HandleReleaser = (*FileHandle)(nil)
@@ -78,5 +78,5 @@ var _ fusefs.HandleReleaser = (*FileHandle)(nil)
 // the kernel
 func (fh *FileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
 	defer log.Trace(fh, "")("err=%v", &err)
-	return (fh.Handle.Release())
+	return translateError(fh.Handle.Release())
 }

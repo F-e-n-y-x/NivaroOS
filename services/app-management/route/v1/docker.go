@@ -324,8 +324,10 @@ func ChangAppState(ctx echo.Context) error {
 // @Router /app/logs/{id} [get]
 func ContainerLog(ctx echo.Context) error {
 	appID := ctx.Param("id")
+	tail := ctx.QueryParam("tail")
+	timestamps := ctx.QueryParam("timestamps") == "true"
 
-	log, err := service.MyService.Docker().GetContainerLog(appID)
+	log, err := service.GetFormattedContainerLogs(context.Background(), appID, tail, timestamps)
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 	}
@@ -758,4 +760,137 @@ func uninstall(ctx context.Context, container *types.ContainerJSON, isDelete boo
 	config.NivaroOSGlobalVariables.AppChange = true
 
 	return nil
+}
+
+func GetAllContainersWithUpdates(ctx echo.Context) error {
+	mgr := service.GetContainerUpdateManager()
+	list, err := mgr.GetAllContainersWithUpdates(ctx.Request().Context())
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    list,
+	})
+}
+
+func CheckContainerUpdate(ctx echo.Context) error {
+	id := ctx.Param("id")
+	mgr := service.GetContainerUpdateManager()
+	info, err := mgr.CheckContainerUpdate(ctx.Request().Context(), id)
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    info,
+	})
+}
+
+func UpdateContainer(ctx echo.Context) error {
+	id := ctx.Param("id")
+	mgr := service.GetContainerUpdateManager()
+	if err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: "Container updated successfully",
+	})
+}
+
+type setAutoUpdateReq struct {
+	Enabled  bool   `json:"enabled"`
+	Schedule string `json:"schedule"`
+}
+
+func SetContainerAutoUpdate(ctx echo.Context) error {
+	id := ctx.Param("id")
+	var req setAutoUpdateReq
+	if err := ctx.Bind(&req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{
+			Success: common_err.INVALID_PARAMS,
+			Message: err.Error(),
+		})
+	}
+
+	mgr := service.GetContainerUpdateManager()
+	if err := mgr.SetContainerAutoUpdate(id, req.Enabled, req.Schedule); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+	})
+}
+
+func GetAutoUpdateConfig(ctx echo.Context) error {
+	mgr := service.GetContainerUpdateManager()
+	cfg := mgr.GetGlobalConfig()
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    cfg,
+	})
+}
+
+func SetAutoUpdateConfig(ctx echo.Context) error {
+	var cfg service.GlobalAutoUpdateConfig
+	if err := ctx.Bind(&cfg); err != nil {
+		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{
+			Success: common_err.INVALID_PARAMS,
+			Message: err.Error(),
+		})
+	}
+
+	mgr := service.GetContainerUpdateManager()
+	if err := mgr.SetGlobalConfig(cfg); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    cfg,
+	})
+}
+
+func CheckAllContainersUpdate(ctx echo.Context) error {
+	mgr := service.GetContainerUpdateManager()
+	containers, err := mgr.GetAllContainersWithUpdates(ctx.Request().Context())
+	if err != nil {
+		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
+
+	for _, c := range containers {
+		go func(name string) {
+			_, _ = mgr.CheckContainerUpdate(context.Background(), name)
+		}(c.Name)
+	}
+
+	return ctx.JSON(http.StatusOK, modelCommon.Result{
+		Success: common_err.SUCCESS,
+		Message: "Checking all containers in background",
+	})
 }

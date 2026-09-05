@@ -139,6 +139,46 @@ const container = {
 	// rebuild app
 	archive(id) {
 		return api.put(`${PREFIX}/archive/${id}`);
+	},
+
+	// get all host containers with update & auto-update statuses
+	getAllContainersWithUpdates() {
+		return api.get(`${PREFIX}/all`);
+	},
+
+	// get plain container logs
+	getRawLogs(id, lines = 500, timestamps = true) {
+		return api.get(`${PREFIX}/${id}/logs?lines=${lines}&timestamps=${timestamps}`);
+	},
+
+	// check single container for registry update
+	checkContainerUpdate(id) {
+		return api.post(`${PREFIX}/${id}/check-update`);
+	},
+
+	// check all containers for registry updates
+	checkAllContainersUpdate() {
+		return api.post(`${PREFIX}/check-all-updates`);
+	},
+
+	// pull newest image and update/recreate container
+	updateContainer(id) {
+		return api.post(`${PREFIX}/${id}/update`);
+	},
+
+	// configure per-container auto-update
+	setContainerAutoUpdate(id, data) {
+		return api.put(`${PREFIX}/${id}/auto-update`, data);
+	},
+
+	// get global auto-update configuration
+	getAutoUpdateConfig() {
+		return api.get(`${PREFIX}/auto-update/config`);
+	},
+
+	// save global auto-update configuration
+	setAutoUpdateConfig(data) {
+		return api.put(`${PREFIX}/auto-update/config`, data);
 	}
 }
 

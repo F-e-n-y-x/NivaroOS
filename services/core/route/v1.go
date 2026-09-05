@@ -236,6 +236,19 @@ func InitV1Router() http.Handler {
 			v1TailscaleGroup.GET("/prefs", v1.GetTailscalePrefs)
 			v1TailscaleGroup.PUT("/prefs", v1.PutTailscalePrefs)
 		}
+
+		v1SchedulesGroup := v1Group.Group("/schedules")
+		v1SchedulesGroup.Use()
+		{
+			v1SchedulesGroup.GET("", v1.GetSchedules)
+			v1SchedulesGroup.POST("", v1.CreateSchedule)
+			v1SchedulesGroup.GET("/targets", v1.GetScheduleTargets)
+			v1SchedulesGroup.GET("/:id", v1.GetSchedule)
+			v1SchedulesGroup.PUT("/:id", v1.UpdateSchedule)
+			v1SchedulesGroup.DELETE("/:id", v1.DeleteSchedule)
+			v1SchedulesGroup.POST("/:id/toggle", v1.ToggleSchedule)
+			v1SchedulesGroup.POST("/:id/run", v1.RunScheduleNow)
+		}
 	}
 
 	return e

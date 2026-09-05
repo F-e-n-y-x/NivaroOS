@@ -99,12 +99,21 @@ export default {
 			hiddenMounts: [],
 			hasCustomHiddenMounts: false,
 			usbDisks: [],
+			usbMountPoints: new Set(),
 			timer: 0
 		}
 	},
 
 	computed: {
 		visibleDisks() {
+			// Every mounted USB drive already gets its own row below in the
+			// dedicated "USB Disk List" (usbDisks, from the raw USB device
+			// list) - df-based disksUsage has no concept of "USB" and would
+			// otherwise show that same mount point a second time here, so
+			// usbMountPoints is subtracted out regardless of the hidden-
+			// mounts config.
+			let visible = this.disksUsage.filter(d => !this.usbMountPoints.has(d.mount_point))
+
 			// Until the user has ever touched the widget's show/hide config
 			// (a fresh install, or an existing install where they've simply
 			// never opened it), fall back to hiding EFI system partitions by
@@ -113,9 +122,9 @@ export default {
 			// moment they save an explicit config (even an empty one),
 			// hiddenMounts becomes the sole source of truth.
 			if (!this.hasCustomHiddenMounts) {
-				return this.disksUsage.filter(d => !this.isEfiPartition(d))
+				return visible.filter(d => !this.isEfiPartition(d))
 			}
-			return this.disksUsage.filter(d => !this.hiddenMounts.includes(d.mount_point))
+			return visible.filter(d => !this.hiddenMounts.includes(d.mount_point))
 		}
 	},
 
@@ -141,6 +150,17 @@ export default {
 					this.hiddenMounts = res.data.data.hiddenMounts || []
 					this.hasCustomHiddenMounts = true
 				}
+			})
+			this.$api.storage.list().then(res => {
+				if (res.data.success !== 200) return
+				const mountPoints = new Set()
+				;(res.data.data || []).forEach(disk => {
+					if (disk.type !== 'usb') return
+					;(disk.children || []).forEach(child => {
+						if (child.mount_point) mountPoints.add(child.mount_point)
+					})
+				})
+				this.usbMountPoints = mountPoints
 			})
 		},
 

@@ -8,6 +8,8 @@
 			<div ref="content" class="settings-content" :class="{ 'is-narrow': narrow }">
 				<system-section v-if="activeSection === 'system'"></system-section>
 				<packages-section v-else-if="activeSection === 'packages'"></packages-section>
+				<containers-section v-else-if="activeSection === 'containers'"></containers-section>
+				<scheduled-tasks-section v-else-if="activeSection === 'schedules'"></scheduled-tasks-section>
 				<updates-section v-else-if="activeSection === 'updates'"></updates-section>
 				<network-section v-else-if="activeSection === 'network'"></network-section>
 				<storage-section v-else-if="activeSection === 'storage'"></storage-section>
@@ -28,12 +30,16 @@ import StorageSection, { ROWS as STORAGE_ROWS } from '@/components/settings/sect
 import SystemSection, { ROWS as SYSTEM_ROWS } from '@/components/settings/sections/SystemSection.vue'
 import UpdatesSection, { ROWS as UPDATES_ROWS } from '@/components/settings/sections/UpdatesSection.vue'
 import PackagesSection, { ROWS as PACKAGES_ROWS } from '@/components/settings/sections/PackagesSection.vue'
+import ContainersSection, { ROWS as CONTAINERS_ROWS } from '@/components/settings/sections/ContainersSection.vue'
+import ScheduledTasksSection, { ROWS as SCHEDULES_ROWS } from '@/components/settings/sections/ScheduledTasksSection.vue'
 import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
 	{ id: 'system', label: 'System', icon: 'system-outline', pack: 'casa', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.12)', rows: SYSTEM_ROWS },
 	{ id: 'packages', label: 'Package Manager', icon: 'cube-outline', pack: 'mdi', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)', rows: PACKAGES_ROWS },
-	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: APPEARANCE_ROWS },
+	{ id: 'containers', label: 'Containers & Updates', icon: 'docker', pack: 'mdi', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.12)', rows: CONTAINERS_ROWS },
+	{ id: 'schedules', label: 'Scheduled Tasks', icon: 'clock-outline', pack: 'mdi', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: SCHEDULES_ROWS },
+	{ id: 'appearance', label: 'Appearance', icon: 'wallpaper-outline', pack: 'casa', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.12)', rows: APPEARANCE_ROWS },
 	{ id: 'network', label: 'Network & Sharing', icon: 'internet-outline', pack: 'casa', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.12)', rows: NETWORK_ROWS },
 	{ id: 'storage', label: 'Storage', icon: 'storage-other', pack: 'casa', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', rows: STORAGE_ROWS },
 	{ id: 'users', label: 'Users & Access', icon: 'user-edit-outline', pack: 'casa', color: '#f43f5e', bg: 'rgba(244, 63, 94, 0.12)', rows: USERS_ROWS },
@@ -51,7 +57,9 @@ export default {
 		StorageSection,
 		SystemSection,
 		UpdatesSection,
-		PackagesSection
+		PackagesSection,
+		ContainersSection,
+		ScheduledTasksSection
 	},
 	props: {
 		section: {

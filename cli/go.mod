@@ -2,8 +2,6 @@ module github.com/F-e-n-y-x/NivaroOS/cli
 
 go 1.23.4
 
-toolchain go1.23.4
-
 require (
 	github.com/alecthomas/chroma v0.10.0
 	github.com/compose-spec/compose-go v1.11.0

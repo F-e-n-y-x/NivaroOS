@@ -58,10 +58,12 @@ import CreateVmModal from './vm/CreateVmModal.vue'
 import EditVmModal from './vm/EditVmModal.vue'
 import FolderWindow from './FolderWindow.vue'
 import SystemUpdateWindow from './SystemUpdateWindow.vue'
+import ContainerConsolePanel from './ContainerConsolePanel.vue'
 
 const COMPONENT_REGISTRY = {
 	FilesApp,
 	TerminalPanel,
+	ContainerConsolePanel,
 	VmConsolePanel,
 	CreateVmModal,
 	EditVmModal,
@@ -85,7 +87,7 @@ const MIN_HEIGHT = 280
 // These components' own top row IS the window's titlebar (draggable, with
 // their own minimize/close controls, no maximize by design) - the shared
 // .window-titlebar below would just be a redundant second bar on top of it.
-const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel']
+const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerConsolePanel']
 
 export default {
 	name: 'desktop-window',
@@ -116,7 +118,7 @@ export default {
 		// visibly mismatched seam, so these windows get the same dark
 		// titlebar treatment TerminalPanel already uses.
 		isDarkWindow() {
-			return ['TerminalPanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel'].includes(this.win.component)
+			return ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel'].includes(this.win.component)
 		},
 		isConsoleWindow() {
 			return this.win.component === 'VmConsolePanel'

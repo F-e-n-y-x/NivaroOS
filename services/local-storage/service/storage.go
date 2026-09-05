@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -54,8 +53,8 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	}
 	mountOptin := mountlib.Options{
 		MaxReadAhead:  128 * 1024,
-		AttrTimeout:   1 * time.Second,
-		DaemonWait:    60 * time.Second,
+		AttrTimeout:   fs.Duration(1 * time.Second),
+		DaemonWait:    fs.Duration(60 * time.Second),
 		NoAppleDouble: true,
 		NoAppleXattr:  false,
 		AsyncRead:     true,
@@ -65,24 +64,24 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		NoModTime:          false,
 		NoChecksum:         false,
 		NoSeek:             false,
-		DirCacheTime:       5 * 60 * time.Second,
-		PollInterval:       time.Minute,
+		DirCacheTime:       fs.Duration(5 * 60 * time.Second),
+		PollInterval:       fs.Duration(time.Minute),
 		ReadOnly:           false,
 		Umask:              18,
 		UID:                0,
 		GID:                0,
-		DirPerms:           os.FileMode(0777),
-		FilePerms:          os.FileMode(0666),
+		DirPerms:           vfscommon.FileMode(0777),
+		FilePerms:          vfscommon.FileMode(0666),
 		CacheMode:          3,
-		CacheMaxAge:        3600 * time.Second,
-		CachePollInterval:  60 * time.Second,
+		CacheMaxAge:        fs.Duration(3600 * time.Second),
+		CachePollInterval:  fs.Duration(60 * time.Second),
 		ChunkSize:          128 * fs.Mebi,
 		ChunkSizeLimit:     -1,
 		CacheMaxSize:       -1,
 		CaseInsensitive:    runtime.GOOS == "windows" || runtime.GOOS == "darwin", // default to true on Windows and Mac, false otherwise
-		WriteWait:          1000 * time.Millisecond,
-		ReadWait:           20 * time.Millisecond,
-		WriteBack:          5 * time.Second,
+		WriteWait:          fs.Duration(1000 * time.Millisecond),
+		ReadWait:           fs.Duration(20 * time.Millisecond),
+		WriteBack:          fs.Duration(5 * time.Second),
 		ReadAhead:          0 * fs.Mebi,
 		UsedIsSize:         false,
 		DiskSpaceTotalSize: -1,
