@@ -464,15 +464,25 @@ export default {
 		openContainerConsole(initialTab = 'terminal') {
 			this.$refs.dro.isActive = false;
 			const containerId = this.item.name || this.item.id;
-			const containerName = this.item.title || this.item.name || containerId;
+			let containerName = this.item.title || this.item.name || containerId;
+			if (typeof containerName === 'object' && containerName !== null) {
+				containerName = containerName.custom || containerName.en_us || containerName['en_US'] || Object.values(containerName)[0] || this.item.name || containerId;
+			} else if (typeof containerName === 'string' && containerName.trim().startsWith('{')) {
+				try {
+					const p = JSON.parse(containerName);
+					if (typeof p === 'object' && p !== null) {
+						containerName = p.custom || p.en_us || p.en_US || Object.values(p)[0] || this.item.name || containerId;
+					}
+				} catch (e) {}
+			}
 			const containerImage = this.item.image || '';
 			const status = this.item.status || 'running';
 			this.$store.commit('OPEN_WINDOW', {
 				id: `container-console-${containerId}`,
 				title: `${containerName} - ${initialTab === 'logs' ? this.$t('Logs') : this.$t('Terminal')}`,
 				component: 'ContainerConsolePanel',
-				width: 820,
-				height: 520,
+				width: 860,
+				height: 560,
 				props: {
 					containerId: containerId,
 					containerName: containerName,

@@ -1,18 +1,18 @@
 <template>
 	<div class="container-console-panel">
-		<!-- Top Window Toolbar / Tabs -->
+		<!-- Top Window Toolbar / Titlebar -->
 		<div class="panel-header" @mousedown="$emit('drag-start', $event)">
 			<div class="header-left is-flex is-align-items-center">
-				<b-icon icon="docker" pack="mdi" size="is-20" class="mr-2 has-text-info"></b-icon>
-				<span class="container-title one-line font-weight-bold">{{ containerName || containerId }}</span>
-				<span v-if="containerImage" class="image-tag ml-2">{{ shortImage }}</span>
+				<b-icon icon="docker" pack="mdi" size="is-20" class="docker-icon mr-2"></b-icon>
+				<span class="container-title one-line font-weight-bold" :title="displayTitle">{{ displayTitle }}</span>
+				<span v-if="shortImage" class="image-tag ml-2" :title="containerImage">{{ shortImage }}</span>
 				<span class="status-badge ml-2" :class="isContainerRunning ? 'is-running' : 'is-stopped'">
 					<span class="status-dot"></span>
 					{{ isContainerRunning ? $t('Running') : $t('Stopped') }}
 				</span>
 			</div>
 
-			<!-- Tab switchers -->
+			<!-- Tab switchers in center -->
 			<div class="header-center">
 				<div class="console-tabs">
 					<button
@@ -36,30 +36,27 @@
 				</div>
 			</div>
 
-			<!-- Window controls / Quick actions -->
+			<!-- Window controls / Quick actions on right -->
 			<div class="header-right is-flex is-align-items-center">
-				<b-button
+				<button
 					v-if="activeTab === 'logs'"
-					rounded
-					size="is-small"
-					class="panel-action-btn mr-2"
-					:loading="loadingLogs"
-					@click="fetchLogs"
+					class="header-tool-btn mr-2"
+					:class="{ 'is-spinning': loadingLogs }"
 					:title="$t('Refresh logs')"
+					@click="fetchLogs"
 				>
 					<i class="mdi mdi-refresh"></i>
-				</b-button>
+				</button>
 
-				<b-button
-					rounded
-					size="is-small"
-					class="panel-action-btn mr-3"
-					:loading="restarting"
-					@click="restartContainer"
+				<button
+					class="header-tool-btn mr-3"
+					:class="{ 'is-spinning': restarting }"
+					:disabled="restarting"
 					:title="$t('Restart container')"
+					@click="restartContainer"
 				>
 					<i class="mdi mdi-restart"></i>
-				</b-button>
+				</button>
 
 				<div class="window-controls">
 					<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="$emit('minimize')"></button>
@@ -74,7 +71,7 @@
 			<div v-show="activeTab === 'terminal'" class="tab-pane terminal-pane">
 				<div v-if="!isContainerRunning" class="stopped-warning is-flex is-flex-direction-column is-align-items-center is-justify-content-center">
 					<i class="mdi mdi-alert-circle-outline is-size-1 has-text-warning mb-3"></i>
-					<p class="is-size-6 mb-3">{{ $t('Container is stopped. Start it to open terminal.') }}</p>
+					<p class="is-size-6 mb-3 text-muted">{{ $t('Container is stopped. Start it to open interactive terminal.') }}</p>
 					<b-button rounded type="is-primary" size="is-small" :loading="starting" @click="startContainer">
 						<i class="mdi mdi-play mr-1"></i>
 						{{ $t('Start Container') }}
@@ -90,11 +87,11 @@
 
 			<!-- Tab 2: Logs Viewer -->
 			<div v-show="activeTab === 'logs'" class="tab-pane logs-pane">
-				<!-- Logs Action Bar -->
+				<!-- Logs Action Bar (Dark Frosted Glass Theme) -->
 				<div class="logs-toolbar is-flex is-align-items-center is-justify-content-between">
 					<div class="toolbar-left is-flex is-align-items-center">
 						<!-- Search Filter -->
-						<div class="search-box mr-3">
+						<div class="search-box">
 							<i class="mdi mdi-magnify search-icon"></i>
 							<input
 								v-model="logSearch"
@@ -108,7 +105,7 @@
 						</div>
 
 						<!-- Line Count Selector -->
-						<div class="select is-small mr-3">
+						<div class="custom-select-wrap">
 							<select v-model="lineCount" @change="fetchLogs">
 								<option :value="100">100 {{ $t('lines') }}</option>
 								<option :value="500">500 {{ $t('lines') }}</option>
@@ -116,43 +113,44 @@
 								<option :value="2000">2000 {{ $t('lines') }}</option>
 								<option :value="5000">5000 {{ $t('lines') }}</option>
 							</select>
+							<i class="mdi mdi-chevron-down select-chevron"></i>
 						</div>
 
-						<!-- Timestamps switch -->
-						<label class="checkbox is-size-7 mr-3 is-flex is-align-items-center text-muted">
-							<input type="checkbox" v-model="showTimestamps" @change="fetchLogs" class="mr-1" />
-							{{ $t('Timestamps') }}
+						<!-- Timestamps checkbox -->
+						<label class="custom-check">
+							<input type="checkbox" v-model="showTimestamps" @change="fetchLogs" />
+							<span>{{ $t('Timestamps') }}</span>
 						</label>
 
-						<!-- Auto-refresh switch -->
-						<label class="checkbox is-size-7 mr-3 is-flex is-align-items-center text-muted">
-							<input type="checkbox" v-model="autoRefresh" class="mr-1" />
-							{{ $t('Live Auto-refresh') }}
+						<!-- Auto-refresh checkbox -->
+						<label class="custom-check">
+							<input type="checkbox" v-model="autoRefresh" />
+							<span>{{ $t('Live Auto-refresh') }}</span>
 						</label>
 
-						<!-- Auto-scroll switch -->
-						<label class="checkbox is-size-7 is-flex is-align-items-center text-muted">
-							<input type="checkbox" v-model="autoScroll" class="mr-1" />
-							{{ $t('Auto-scroll') }}
+						<!-- Auto-scroll checkbox -->
+						<label class="custom-check">
+							<input type="checkbox" v-model="autoScroll" />
+							<span>{{ $t('Auto-scroll') }}</span>
 						</label>
 					</div>
 
 					<div class="toolbar-right is-flex is-align-items-center">
-						<span v-if="logSearch" class="is-size-7 text-muted mr-3">
+						<span v-if="logSearch" class="match-pill mr-3">
 							{{ filteredLines.length }} / {{ rawLines.length }} {{ $t('matches') }}
 						</span>
-						<b-button rounded size="is-small" class="mr-2" @click="copyLogs" :disabled="!logContent">
+						<button class="toolbar-btn mr-2" @click="copyLogs" :disabled="!logContent">
 							<i class="mdi mdi-content-copy mr-1"></i>
 							{{ $t('Copy') }}
-						</b-button>
-						<b-button rounded size="is-small" class="mr-2" @click="downloadLogs" :disabled="!logContent">
+						</button>
+						<button class="toolbar-btn mr-2" @click="downloadLogs" :disabled="!logContent">
 							<i class="mdi mdi-download mr-1"></i>
 							{{ $t('Download') }}
-						</b-button>
-						<b-button rounded size="is-small" @click="clearLogsView" :disabled="!logContent">
+						</button>
+						<button class="toolbar-btn" @click="clearLogsView" :disabled="!logContent">
 							<i class="mdi mdi-trash-can-outline mr-1"></i>
 							{{ $t('Clear View') }}
-						</b-button>
+						</button>
 					</div>
 				</div>
 
@@ -163,7 +161,7 @@
 						<span>{{ $t('Loading logs...') }}</span>
 					</div>
 					<div v-else-if="!logContent" class="empty-logs is-flex is-align-items-center is-justify-content-center">
-						<span class="text-muted">{{ $t('No log output recorded yet for this container.') }}</span>
+						<span class="text-muted is-size-7">{{ $t('No log output recorded yet for this container.') }}</span>
 					</div>
 					<div v-else class="log-content">
 						<div
@@ -197,7 +195,7 @@ export default {
 			required: true
 		},
 		containerName: {
-			type: String,
+			type: [String, Object],
 			default: ''
 		},
 		containerImage: {
@@ -230,6 +228,22 @@ export default {
 		}
 	},
 	computed: {
+		displayTitle() {
+			let val = this.containerName || this.containerId
+			if (!val) return this.containerId || ''
+			if (typeof val === 'object') {
+				return val.custom || val.en_us || val.en_US || Object.values(val)[0] || this.containerId
+			}
+			if (typeof val === 'string' && val.trim().startsWith('{')) {
+				try {
+					const p = JSON.parse(val)
+					if (typeof p === 'object' && p !== null) {
+						return p.custom || p.en_us || p.en_US || Object.values(p)[0] || this.containerId
+					}
+				} catch (e) {}
+			}
+			return val
+		},
 		isContainerRunning() {
 			return this.currentStatus === 'running' || this.currentStatus === 'healthy'
 		},
@@ -248,7 +262,11 @@ export default {
 		},
 		rawLines() {
 			if (!this.logContent) return []
-			return this.logContent.split('\n')
+			const lines = this.logContent.split('\n')
+			if (lines.length > 0 && lines[lines.length - 1] === '') {
+				return lines.slice(0, lines.length - 1)
+			}
+			return lines
 		},
 		filteredLines() {
 			if (!this.logSearch) return this.rawLines
@@ -309,7 +327,6 @@ export default {
 					this.showTimestamps
 				)
 				if (res && res.data) {
-					// could be string or json
 					if (typeof res.data === 'string') {
 						this.logContent = res.data
 					} else if (res.data.data !== undefined) {
@@ -364,7 +381,7 @@ export default {
 			const url = URL.createObjectURL(blob)
 			const a = document.createElement('a')
 			a.href = url
-			a.download = `${this.containerName || this.containerId}-logs-${new Date().toISOString().slice(0, 10)}.log`
+			a.download = `${this.displayTitle || this.containerId}-logs-${new Date().toISOString().slice(0, 10)}.log`
 			document.body.appendChild(a)
 			a.click()
 			document.body.removeChild(a)
@@ -438,7 +455,7 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	height: 44px;
-	padding: 0 14px;
+	padding: 0 16px;
 	background: #18181b;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	user-select: none;
@@ -453,19 +470,27 @@ export default {
 	min-width: 0;
 	flex: 1;
 
+	.docker-icon {
+		color: #38bdf8 !important;
+	}
+
 	.container-title {
 		font-size: 13px;
 		color: #f4f4f5;
-		max-width: 180px;
+		max-width: 200px;
 	}
 
 	.image-tag {
 		font-size: 11px;
-		padding: 2px 6px;
+		padding: 2px 7px;
 		background: rgba(255, 255, 255, 0.08);
 		border-radius: 4px;
 		color: #a1a1aa;
 		font-family: monospace;
+		max-width: 150px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 }
 
@@ -506,7 +531,7 @@ export default {
 	display: flex;
 	background: rgba(255, 255, 255, 0.06);
 	padding: 3px;
-	border-radius: 7px;
+	border-radius: 8px;
 
 	.console-tab-btn {
 		background: transparent;
@@ -515,7 +540,7 @@ export default {
 		font-size: 12px;
 		font-weight: 500;
 		padding: 4px 14px;
-		border-radius: 5px;
+		border-radius: 6px;
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -528,7 +553,7 @@ export default {
 		&.active {
 			background: #27272a;
 			color: #ffffff;
-			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 		}
 	}
 }
@@ -538,18 +563,40 @@ export default {
 	align-items: center;
 }
 
-.panel-action-btn {
-	background: rgba(255, 255, 255, 0.08) !important;
-	border: none !important;
-	color: #e4e4e7 !important;
+.header-tool-btn {
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	color: #e4e4e7;
 	width: 28px;
 	height: 28px;
-	padding: 0 !important;
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	padding: 0;
+	font-size: 14px;
+	transition: all 0.15s ease;
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.15) !important;
-		color: #fff !important;
+		background: rgba(255, 255, 255, 0.16);
+		color: #ffffff;
+		border-color: rgba(255, 255, 255, 0.2);
 	}
+
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	&.is-spinning i {
+		animation: spin 1s infinite linear;
+	}
+}
+
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 
 .window-controls {
@@ -573,11 +620,11 @@ export default {
 	}
 
 	&.window-btn-minimize {
-		background: #fbbf24;
+		background: #ffbd2e;
 	}
 
 	&.window-btn-close {
-		background: #f87171;
+		background: #ff5f56;
 	}
 }
 
@@ -586,6 +633,7 @@ export default {
 	display: flex;
 	position: relative;
 	overflow: hidden;
+	background: #0d0d10;
 }
 
 .tab-pane {
@@ -597,6 +645,25 @@ export default {
 
 .terminal-pane {
 	position: relative;
+	width: 100%;
+	height: 100%;
+	background: #121214;
+	padding: 10px 14px;
+	box-sizing: border-box;
+	overflow: hidden;
+
+	::v-deep .terminal-instance {
+		width: 100%;
+		height: 100%;
+		background: transparent;
+	}
+
+	::v-deep .xterm {
+		width: 100%;
+		height: 100%;
+		padding: 2px 4px;
+		box-sizing: border-box;
+	}
 }
 
 .stopped-warning {
@@ -608,95 +675,232 @@ export default {
 .logs-pane {
 	display: flex;
 	flex-direction: column;
+	width: 100%;
+	height: 100%;
 }
 
 .logs-toolbar {
-	padding: 8px 12px;
+	padding: 8px 14px;
 	background: #18181b;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	font-size: 12px;
+}
 
-	.search-box {
-		position: relative;
-		display: flex;
-		align-items: center;
+.search-box {
+	position: relative;
+	display: flex;
+	align-items: center;
+	margin-right: 12px;
 
-		.search-icon {
-			position: absolute;
-			left: 8px;
+	.search-icon {
+		position: absolute;
+		left: 8px;
+		color: #71717a;
+		font-size: 13px;
+		pointer-events: none;
+	}
+
+	.log-search-input {
+		padding: 0 24px 0 26px;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 6px;
+		color: #f4f4f5;
+		font-size: 11px;
+		height: 26px;
+		width: 160px;
+		outline: none;
+		transition: all 0.15s ease;
+
+		&::placeholder {
 			color: #71717a;
-			font-size: 14px;
 		}
 
-		.log-search-input {
-			padding: 4px 26px 4px 26px;
-			background: #27272a;
-			border: 1px solid rgba(255, 255, 255, 0.1);
-			border-radius: 6px;
-			color: #f4f4f5;
-			font-size: 12px;
-			width: 180px;
-			outline: none;
-
-			&:focus {
-				border-color: #3b82f6;
-			}
-		}
-
-		.clear-search-btn {
-			position: absolute;
-			right: 6px;
-			background: transparent;
-			border: none;
-			color: #71717a;
-			cursor: pointer;
-			padding: 0;
+		&:focus {
+			width: 200px;
+			background: rgba(255, 255, 255, 0.12);
+			border-color: #3b82f6;
 		}
 	}
 
-	.select select {
-		background: #27272a;
-		border-color: rgba(255, 255, 255, 0.1);
+	.clear-search-btn {
+		position: absolute;
+		right: 6px;
+		background: transparent;
+		border: none;
+		color: #71717a;
+		cursor: pointer;
+		padding: 0;
+		font-size: 13px;
+
+		&:hover {
+			color: #e4e4e7;
+		}
+	}
+}
+
+.custom-select-wrap {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	margin-right: 12px;
+
+	select {
+		appearance: none;
+		-webkit-appearance: none;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.12);
 		color: #e4e4e7;
-		font-size: 12px;
+		font-size: 11px;
+		height: 26px;
+		padding: 0 24px 0 8px;
+		border-radius: 6px;
+		outline: none;
+		cursor: pointer;
+		transition: all 0.15s ease;
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.12);
+			border-color: rgba(255, 255, 255, 0.2);
+		}
+
+		&:focus {
+			border-color: #3b82f6;
+		}
+
+		option {
+			background: #18181b;
+			color: #e4e4e7;
+		}
+	}
+
+	.select-chevron {
+		position: absolute;
+		right: 6px;
+		color: #a1a1aa;
+		pointer-events: none;
+		font-size: 13px;
+	}
+}
+
+.custom-check {
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+	font-size: 11px;
+	color: #a1a1aa;
+	user-select: none;
+	margin-right: 12px;
+	transition: color 0.15s ease;
+
+	&:hover {
+		color: #f4f4f5;
+	}
+
+	input[type="checkbox"] {
+		appearance: none;
+		-webkit-appearance: none;
+		width: 14px;
+		height: 14px;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 4px;
+		margin-right: 6px;
+		display: grid;
+		place-content: center;
+		cursor: pointer;
+		transition: all 0.15s ease;
+
+		&:checked {
+			background: #2563eb;
+			border-color: #2563eb;
+
+			&::before {
+				content: "";
+				width: 7px;
+				height: 4px;
+				border-left: 2px solid #fff;
+				border-bottom: 2px solid #fff;
+				transform: rotate(-45deg) translate(1px, -1px);
+			}
+		}
+	}
+}
+
+.match-pill {
+	font-size: 11px;
+	color: #a1a1aa;
+	background: rgba(255, 255, 255, 0.06);
+	padding: 2px 8px;
+	border-radius: 4px;
+}
+
+.toolbar-btn {
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	color: #e4e4e7;
+	font-size: 11px;
+	height: 26px;
+	padding: 0 10px;
+	border-radius: 6px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	transition: all 0.15s ease;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.16);
+		border-color: rgba(255, 255, 255, 0.2);
+		color: #ffffff;
+	}
+
+	&:disabled {
+		opacity: 0.4;
+		background: rgba(255, 255, 255, 0.04);
+		border-color: rgba(255, 255, 255, 0.06);
+		color: #71717a;
+		cursor: not-allowed;
 	}
 }
 
 .log-viewport {
 	flex: 1;
-	background: #09090b;
+	background: #0d0d10;
 	padding: 10px 14px;
 	overflow-y: auto;
 	font-family: "Monaco", "Consolas", "Courier New", monospace;
 	font-size: 12px;
-	line-height: 1.6;
-	color: #d4d4d8;
+	line-height: 1.55;
+	color: #e4e4e7;
 }
 
 .log-line {
 	display: flex;
 	white-space: pre-wrap;
 	word-break: break-all;
+	padding: 1px 0;
 
 	&:hover {
-		background: rgba(255, 255, 255, 0.04);
+		background: rgba(255, 255, 255, 0.05);
 	}
 
 	&.highlight {
-		background: rgba(234, 179, 8, 0.2);
+		background: rgba(234, 179, 8, 0.25);
 	}
 
 	.line-num {
 		user-select: none;
 		color: #52525b;
-		width: 44px;
+		width: 48px;
 		flex-shrink: 0;
 		text-align: right;
-		padding-right: 12px;
+		padding-right: 14px;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.line-text {
 		flex: 1;
+		min-width: 0;
 	}
 }
 
