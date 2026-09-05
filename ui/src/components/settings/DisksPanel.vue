@@ -199,10 +199,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.disks-panel {
-	padding: 1.25rem;
-}
-
 .error-note {
 	padding: 0 1.25rem 0.75rem;
 	color: #ef4444;
