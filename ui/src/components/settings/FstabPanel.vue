@@ -2,14 +2,14 @@
 	<div class="fstab-panel">
 		<div class="panel-header">
 			<div class="header-text">
-				<h3 class="setting-card-title">{{ $t('Persistent Mounts (fstab)') }}</h3>
-				<p class="hint">{{ $t('Add an already-formatted drive as a real /etc/fstab entry, so it mounts automatically at boot - the same result as editing fstab by hand, without the editor.') }}</p>
+				<h3 class="setting-card-title">{{ $t('Mounted Drives') }}</h3>
+				<p class="hint">{{ $t('Add a drive here and it stays available every time your server starts - no formatting, no editing files by hand.') }}</p>
 			</div>
 			<div class="header-actions">
 				<button class="icon-button" type="button" :title="$t('Refresh')" :disabled="loadingCandidates" @click="refresh">
 					<i class="mdi mdi-refresh" :class="{ 'mdi-spin': loadingCandidates }"></i>
 				</button>
-				<button class="add-button" type="button" :title="$t('Add drive to fstab')" @click="toggleAddForm">
+				<button class="add-button" type="button" :title="$t('Add a drive')" @click="toggleAddForm">
 					<i class="mdi" :class="showAddForm ? 'mdi-close' : 'mdi-plus'"></i>
 				</button>
 			</div>
@@ -36,7 +36,7 @@
 			<p v-if="!loadingCandidates && !candidates.length" class="hint">{{ $t('No addable drives found - format one first under Available Disks above.') }}</p>
 
 			<template v-if="addDraft.uuid">
-				<p class="field-help mt-3">{{ $t("What's this drive for? (optional - fills in sensible defaults, everything stays editable below)") }}</p>
+				<p class="field-help mt-3">{{ $t("What's this drive for?") }}</p>
 				<div class="preset-grid">
 					<button v-for="p in visiblePresets" :key="p.id" type="button" class="preset-tile" :class="{ active: presetMatches(addDraft, p) }" @click="applyPreset(addDraft, p)">
 						<i class="mdi" :class="`mdi-${p.icon}`"></i>
@@ -44,29 +44,35 @@
 					</button>
 				</div>
 
-				<b-field :label="$t('Mount point')">
+				<b-field :label="$t('Mount point')" :message="$t('Where this drive appears in Files')">
 					<b-input v-model="addDraft.mount_point" placeholder="/DATA/..." size="is-small" expanded></b-input>
-				</b-field>
-				<b-field :label="$t('Filesystem')">
-					<b-input v-model="addDraft.fstype" size="is-small" expanded></b-input>
 				</b-field>
 
 				<div class="fstab-switch-row">
-					<span>{{ $t('Mount automatically at boot') }}</span>
+					<span>{{ $t('Mount automatically at startup') }}</span>
 					<b-switch v-model="addDraft.mount_at_boot" size="is-small" type="is-dark"></b-switch>
 				</div>
 				<div class="fstab-switch-row">
-					<span>{{ $t('Read-only') }}</span>
+					<span>{{ $t('Read-only (protect the data on this drive)') }}</span>
 					<b-switch v-model="addDraft.read_only" size="is-small" type="is-dark"></b-switch>
 				</div>
-				<div class="fstab-switch-row">
-					<span>{{ $t('Check filesystem at boot') }}</span>
-					<b-switch v-model="addDraft.check_at_boot" size="is-small" type="is-dark"></b-switch>
-				</div>
 
-				<b-field :label="$t('Advanced options')">
-					<b-input v-model="addDraft.options" :placeholder="$t('e.g. noatime,uid=1000 (optional)')" size="is-small" expanded></b-input>
-				</b-field>
+				<a class="advanced-toggle" @click="showAddAdvanced = !showAddAdvanced">
+					<i class="mdi" :class="showAddAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+					{{ $t('Advanced') }}
+				</a>
+				<template v-if="showAddAdvanced">
+					<b-field :label="$t('Filesystem')">
+						<b-input v-model="addDraft.fstype" size="is-small" expanded></b-input>
+					</b-field>
+					<div class="fstab-switch-row">
+						<span>{{ $t('Check filesystem at startup') }}</span>
+						<b-switch v-model="addDraft.check_at_boot" size="is-small" type="is-dark"></b-switch>
+					</div>
+					<b-field :label="$t('Extra mount options')">
+						<b-input v-model="addDraft.options" :placeholder="$t('e.g. noatime,uid=1000 (optional)')" size="is-small" expanded></b-input>
+					</b-field>
+				</template>
 
 				<div class="form-actions">
 					<b-button rounded size="is-small" type="is-dark" :loading="submitting" @click="submitAdd">{{ $t('Add') }}</b-button>
@@ -84,24 +90,23 @@
 					<div class="row-label">
 						<div class="setting-title">{{ m.drive_label || m.uuid }} &rarr; {{ m.mount_point }}</div>
 						<div class="setting-desc">
-							{{ m.fstype }} &middot; {{ formatSize(m.size) }}
+							{{ formatSize(m.size) }}
 							<span class="status-dot" :class="{ 'is-good': m.mounted }"></span>{{ m.mounted ? $t('Mounted') : $t('Not mounted') }}
 						</div>
-						<div v-if="!m.enabled || m.read_only || extraOptions(m.options)" class="setting-chips-row">
-							<span v-if="!m.enabled" class="setting-chip">{{ $t('Disabled at boot') }}</span>
+						<div v-if="!m.enabled || m.read_only" class="setting-chips-row">
+							<span v-if="!m.enabled" class="setting-chip">{{ $t('Disabled at startup') }}</span>
 							<span v-if="m.read_only" class="setting-chip">{{ $t('Read-only') }}</span>
-							<span v-if="extraOptions(m.options)" class="setting-chip is-mono" :title="extraOptions(m.options)">{{ extraOptions(m.options) }}</span>
 						</div>
 					</div>
 					<div class="row-control">
 						<b-switch :value="m.enabled" size="is-small" class="is-flex-direction-row-reverse mr-2" type="is-dark"
-							:title="$t('Mount at boot')" @input="toggleEnabled(m, $event)"></b-switch>
-						<button class="icon-button mr-2" type="button" :title="$t('Edit')" @click="toggleEdit(m)">
+							:title="$t('Mount at startup')" @input="toggleEnabled(m, $event)"></b-switch>
+						<button class="icon-button mr-2" type="button" :title="$t('Change')" @click="toggleEdit(m)">
 							<i class="mdi mdi-pencil-outline"></i>
 						</button>
-						<b-button rounded size="is-small" type="is-danger" outlined :loading="removing === m.mount_point" @click="confirmRemove(m)">
-							{{ $t('Remove') }}
-						</b-button>
+						<button class="icon-button is-danger" type="button" :title="$t('Delete')" @click="confirmRemove(m)">
+							<i class="mdi" :class="removing === m.mount_point ? 'mdi-loading mdi-spin' : 'mdi-trash-can-outline'"></i>
+						</button>
 					</div>
 				</div>
 
@@ -112,27 +117,35 @@
 							<span>{{ $t(p.label) }}</span>
 						</button>
 					</div>
-					<b-field :label="$t('Mount point')">
+					<b-field :label="$t('Mount point')" :message="$t('Where this drive appears in Files')">
 						<b-input v-model="editDraft.new_mount_point" size="is-small" expanded></b-input>
 					</b-field>
-					<b-field :label="$t('Filesystem')">
-						<b-input v-model="editDraft.fstype" size="is-small" expanded></b-input>
-					</b-field>
 					<div class="fstab-switch-row">
-						<span>{{ $t('Mount automatically at boot') }}</span>
+						<span>{{ $t('Mount automatically at startup') }}</span>
 						<b-switch v-model="editDraft.mount_at_boot" size="is-small" type="is-dark"></b-switch>
 					</div>
 					<div class="fstab-switch-row">
-						<span>{{ $t('Read-only') }}</span>
+						<span>{{ $t('Read-only (protect the data on this drive)') }}</span>
 						<b-switch v-model="editDraft.read_only" size="is-small" type="is-dark"></b-switch>
 					</div>
-					<div class="fstab-switch-row">
-						<span>{{ $t('Check filesystem at boot') }}</span>
-						<b-switch v-model="editDraft.check_at_boot" size="is-small" type="is-dark"></b-switch>
-					</div>
-					<b-field :label="$t('Advanced options')">
-						<b-input v-model="editDraft.options" size="is-small" expanded></b-input>
-					</b-field>
+
+					<a class="advanced-toggle" @click="showEditAdvanced = !showEditAdvanced">
+						<i class="mdi" :class="showEditAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+						{{ $t('Advanced') }}
+					</a>
+					<template v-if="showEditAdvanced">
+						<b-field :label="$t('Filesystem')">
+							<b-input v-model="editDraft.fstype" size="is-small" expanded></b-input>
+						</b-field>
+						<div class="fstab-switch-row">
+							<span>{{ $t('Check filesystem at startup') }}</span>
+							<b-switch v-model="editDraft.check_at_boot" size="is-small" type="is-dark"></b-switch>
+						</div>
+						<b-field :label="$t('Extra mount options')">
+							<b-input v-model="editDraft.options" size="is-small" expanded></b-input>
+						</b-field>
+					</template>
+
 					<div class="form-actions">
 						<b-button rounded size="is-small" type="is-dark" :loading="submitting" @click="submitEdit(m)">{{ $t('Save') }}</b-button>
 						<b-button rounded size="is-small" @click="editingMountPoint = null">{{ $t('Cancel') }}</b-button>
@@ -140,15 +153,15 @@
 					<p v-if="formError" class="error-note">{{ formError }}</p>
 				</div>
 			</div>
-			<div v-if="!loadingMounts && !mounts.length" class="account-empty">{{ $t('No drives added yet.') }}</div>
+			<div v-if="!loadingMounts && !mounts.length" class="account-empty">{{ $t("No drives added yet - click the + button above to add one.") }}</div>
 		</div>
 
 		<button type="button" class="system-entries-toggle" @click="showSystem = !showSystem">
 			<i class="mdi" :class="showSystem ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
-			{{ $t('System entries ({count})', { count: systemEntries.length }) }}
+			{{ $t('Other startup drives ({count})', { count: systemEntries.length }) }}
 		</button>
 		<div v-if="showSystem" class="setting-card">
-			<p class="hint">{{ $t("These come from the base system or were added by hand - not managed here. Edit /etc/fstab directly if you need to change them.") }}</p>
+			<p class="hint">{{ $t("These were already there before (set up by the system, or added by hand) - they aren't managed here.") }}</p>
 			<div v-for="e in systemEntries" :key="e.mount_point" class="setting-row">
 				<i class="row-icon mdi mdi-lock-outline"></i>
 				<div class="row-label">
@@ -156,7 +169,7 @@
 					<div class="setting-desc">{{ e.source }} &middot; {{ e.fstype }} &middot; {{ e.options }}</div>
 				</div>
 			</div>
-			<div v-if="!systemEntries.length" class="account-empty">{{ $t('No other fstab entries.') }}</div>
+			<div v-if="!systemEntries.length" class="account-empty">{{ $t('Nothing else here.') }}</div>
 		</div>
 
 		<p v-if="error" class="error-note">{{ error }}</p>
@@ -197,6 +210,8 @@ export default {
 			systemEntries: [],
 			candidates: [],
 			showAddForm: false,
+			showAddAdvanced: false,
+			showEditAdvanced: false,
 			showSystem: false,
 			addDraft: emptyDraft(),
 			editingMountPoint: null,
@@ -221,10 +236,10 @@ export default {
 		formatSize,
 		// The ro/rw and auto/noauto tokens are represented by their own
 		// switches - stripping them back out of the stored options string
-		// is what the "Advanced options" field should actually show,
-		// mirroring composeOptions' own filtering on the way in. Without
-		// this, opening Edit on an entry that has real extra options (e.g.
-		// the Windows preset's uid/gid/dmask/fmask) and saving without
+		// is what "Extra mount options" should actually show, mirroring
+		// composeOptions' own filtering on the way in. Without this,
+		// opening Change on an entry that has real extra options (e.g. the
+		// Windows preset's uid/gid/dmask/fmask) and saving without
 		// retyping them would silently wipe them out.
 		extraOptions(options) {
 			return (options || '')
@@ -273,7 +288,7 @@ export default {
 					this.systemEntries = (res.data.data && res.data.data.system) || []
 				}
 			}).catch(() => {
-				this.error = this.$t('Failed to load fstab entries')
+				this.error = this.$t('Failed to load drives')
 			}).finally(() => {
 				this.loadingMounts = false
 			})
@@ -292,6 +307,7 @@ export default {
 			this.formError = ''
 			if (this.showAddForm) {
 				this.addDraft = emptyDraft()
+				this.showAddAdvanced = false
 				this.refreshCandidates()
 			}
 		},
@@ -314,9 +330,9 @@ export default {
 				}
 				this.showAddForm = false
 				this.refresh()
-				this.$buefy.toast.open({ message: this.$t('Drive added and mounted'), type: 'is-success' })
+				this.$buefy.toast.open({ message: this.$t('Drive added'), type: 'is-success' })
 			}).catch(e => {
-				this.formError = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to add mount')
+				this.formError = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to add drive')
 			}).finally(() => {
 				this.submitting = false
 			})
@@ -327,6 +343,7 @@ export default {
 				return
 			}
 			this.formError = ''
+			this.showEditAdvanced = false
 			this.editingMountPoint = m.mount_point
 			this.editDraft = {
 				mount_point: m.mount_point,
@@ -358,36 +375,36 @@ export default {
 		toggleEnabled(m, enabled) {
 			// Flip the switch immediately rather than waiting on the round
 			// trip - a full refresh() still follows on success (other
-			// fields, like the "Disabled at boot" chip, depend on it too),
-			// but the control itself shouldn't feel laggy in the meantime.
+			// fields, like the "Disabled at startup" chip, depend on it
+			// too), but the control itself shouldn't feel laggy meanwhile.
 			const previous = m.enabled
 			m.enabled = enabled
 			this.$api.fstab.setEnabled(m.mount_point, enabled).then(() => {
 				this.refresh()
 				this.$buefy.toast.open({
-					message: enabled ? this.$t('Will mount at next boot') : this.$t('Disabled at boot - currently mounted drive left untouched'),
+					message: enabled ? this.$t('Will mount at next startup') : this.$t('Disabled at startup - currently mounted drive left untouched'),
 					type: 'is-success'
 				})
 			}).catch(() => {
 				m.enabled = previous
-				this.error = this.$t('Failed to update mount')
+				this.error = this.$t('Failed to update drive')
 			})
 		},
 		confirmRemove(m) {
 			this.$buefy.dialog.confirm({
 				container: '#window-settings',
-				title: this.$t('Remove mount'),
-				message: this.$t('Unmount {mount} and remove it from fstab? The drive itself and its data are left untouched.', { mount: m.mount_point }),
+				title: this.$t('Delete this drive?'),
+				message: this.$t('{name} will no longer open automatically or show up in Files. The drive itself and everything on it stay exactly as they are - you can add it back anytime.', { name: m.drive_label || m.mount_point }),
 				type: 'is-danger',
-				confirmText: this.$t('Remove'),
+				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
 					this.removing = m.mount_point
 					this.$api.fstab.remove(m.mount_point).then(() => {
 						this.refresh()
-						this.$buefy.toast.open({ message: this.$t('Mount removed'), type: 'is-success' })
+						this.$buefy.toast.open({ message: this.$t('Drive removed'), type: 'is-success' })
 					}).catch(e => {
-						this.error = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to remove mount')
+						this.error = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to delete drive')
 					}).finally(() => {
 						this.removing = null
 					})
@@ -468,6 +485,11 @@ export default {
 	&:disabled {
 		opacity: 0.5;
 		cursor: default;
+	}
+
+	&.is-danger:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.12);
+		color: #ef4444;
 	}
 }
 
@@ -591,20 +613,25 @@ export default {
 	padding: 0.35rem 0;
 }
 
+.advanced-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.2rem;
+	font-size: 0.75rem;
+	color: #3273dc;
+	cursor: pointer;
+	margin: 0.4rem 0;
+
+	i {
+		font-size: 1rem;
+	}
+}
+
 .form-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: 0.5rem;
 	margin-top: 0.5rem;
-}
-
-.setting-chip.is-mono {
-	max-width: 14rem;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-family: "Fira Code", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
-	font-size: 0.675rem;
 }
 
 .status-dot {
@@ -620,10 +647,10 @@ export default {
 	}
 }
 
-// Config flags (disabled/read-only/advanced options) wrap on their own row
-// instead of competing with the live fstype/size/mounted-status line above
-// for space - that line stays one predictable length, this one can grow to
-// 0-3 chips without reflowing the row's actual info.
+// Config flags (disabled/read-only) wrap on their own row instead of
+// competing with the live size/mounted-status line above for space - that
+// line stays one predictable length, this one can grow to 0-2 chips
+// without reflowing the row's actual info.
 .setting-chips-row {
 	display: flex;
 	flex-wrap: wrap;
