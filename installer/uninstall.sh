@@ -10,6 +10,7 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 set -euo pipefail
+shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
 ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service usb-mount@.service"
@@ -69,26 +70,56 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT INT TERM
 
-get_terminal_width() {
-	local c=80
-	if command -v tput >/dev/null 2>&1; then
-		c=$(tput cols 2>/dev/null || echo "${COLUMNS:-80}")
-	elif [ -n "${COLUMNS:-}" ]; then
-		c="$COLUMNS"
+# ------------------------------------------------------------------------------
+# Real-Time Terminal Dimension Detection
+# ------------------------------------------------------------------------------
+TERM_COLS=80
+TERM_ROWS=24
+
+get_term_size() {
+	local rows=24 cols=80
+	if [ -e /dev/tty ]; then
+		local stty_out
+		stty_out="$(stty size </dev/tty 2>/dev/null || true)"
+		if [ -n "$stty_out" ]; then
+			rows="$(echo "$stty_out" | awk '{print $1}')"
+			cols="$(echo "$stty_out" | awk '{print $2}')"
+		fi
 	fi
-	if [ "$c" -lt 40 ]; then c=80; fi
-	echo "$c"
+	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
+		if [ -t 0 ] || [ -t 1 ]; then
+			local stty_out
+			stty_out="$(stty size 2>/dev/null || true)"
+			if [ -n "$stty_out" ]; then
+				rows="$(echo "$stty_out" | awk '{print $1}')"
+				cols="$(echo "$stty_out" | awk '{print $2}')"
+			fi
+		fi
+	fi
+	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
+		if command -v tput >/dev/null 2>&1; then
+			cols="$(tput cols 2>/dev/null || true)"
+			rows="$(tput lines 2>/dev/null || true)"
+		fi
+	fi
+	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
+		cols="${COLUMNS:-80}"
+		rows="${LINES:-24}"
+	fi
+	if [ "$cols" -lt 40 ] 2>/dev/null; then cols=80; fi
+	if [ "$rows" -lt 10 ] 2>/dev/null; then rows=24; fi
+	TERM_COLS="$cols"
+	TERM_ROWS="$rows"
+}
+
+get_terminal_width() {
+	get_term_size
+	echo "$TERM_COLS"
 }
 
 get_terminal_height() {
-	local l=24
-	if command -v tput >/dev/null 2>&1; then
-		l=$(tput lines 2>/dev/null || echo "${LINES:-24}")
-	elif [ -n "${LINES:-}" ]; then
-		l="$LINES"
-	fi
-	if [ "$l" -lt 10 ]; then l=24; fi
-	echo "$l"
+	get_term_size
+	echo "$TERM_ROWS"
 }
 
 check_root() {
@@ -187,23 +218,6 @@ run_step() {
 	local log_file
 	log_file=$(mktemp /tmp/nivaroos-uninstall-step-XXXXXX.log)
 
-	local cols lines_cnt
-	cols=$(get_terminal_width)
-	lines_cnt=$(get_terminal_height)
-
-	local box_width=$((cols - 4))
-	if [ "$box_width" -lt 40 ]; then box_width=40; fi
-	local inner_width=$((box_width - 4))
-
-	local num_log_lines=5
-	if [ "$lines_cnt" -ge 35 ]; then
-		num_log_lines=7
-	elif [ "$lines_cnt" -le 20 ]; then
-		num_log_lines=3
-	fi
-
-	local total_rendered_lines=$((num_log_lines + 3))
-
 	if [ "$IS_TTY" = "true" ]; then
 		(
 			eval "$*"
@@ -213,6 +227,7 @@ run_step() {
 		local frame_idx=0
 		local num_frames=${#SPINNER_FRAMES[@]}
 		local first_render=true
+		local last_rendered_lines=0
 
 		printf "\033[?25l"
 
@@ -222,25 +237,44 @@ run_step() {
 			local elapsed=$((current_ts - start_ts))
 			local frame="${SPINNER_FRAMES[$frame_idx]}"
 
+			# Dynamically re-query terminal size EVERY frame in real-time
+			get_term_size
+			local box_width=$((TERM_COLS - 2))
+			if [ "$box_width" -lt 38 ]; then box_width=38; fi
+			local inner_width=$((box_width - 4))
+
+			# 10 Live Activity Lines by default
+			local num_log_lines=10
+			if [ "$TERM_ROWS" -le 16 ]; then
+				num_log_lines=$((TERM_ROWS - 6))
+				if [ "$num_log_lines" -lt 4 ]; then num_log_lines=4; fi
+			elif [ "$TERM_ROWS" -ge 42 ]; then
+				num_log_lines=14
+			fi
+			local total_rendered_lines=$((num_log_lines + 3))
+
 			if [ "$first_render" = "false" ]; then
-				printf "\033[%dA" "$total_rendered_lines"
+				printf "\033[%dA" "$last_rendered_lines"
 			else
 				first_render=false
 			fi
+			last_rendered_lines="$total_rendered_lines"
 
+			# Top Half: Progress Header with Animated Spinner & Live Timer
 			printf "\r\033[2K  %b %b %b %b(%ds)%b\n" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
 				"${COLOR_MUTED}" "${elapsed}" "${COLOR_RESET}"
 
+			# Bottom Half: Full-Width Edge-to-Edge Activity Box
 			local title_tag="Teardown Activity"
 			local top_dashes_len=$((box_width - ${#title_tag} - 6))
 			if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 			local top_dashes=""
 			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
-			printf "\r\033[2K  %b╭── %b%s%b %s╮%b\n" \
+			printf "\r\033[2K%b╭── %b%s%b %s╮%b\n" \
 				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
@@ -250,20 +284,20 @@ run_step() {
 
 			local pad_count=$((num_log_lines - ${#lines[@]}))
 			for ((p=0; p<pad_count; p++)); do
-				printf "\r\033[2K  %b│%b  %-*s  %b│%b\n" \
+				printf "\r\033[2K%b│%b  %-*s  %b│%b\n" \
 					"${COLOR_MUTED}" "${COLOR_MUTED}" "$inner_width" "..." "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			for l in "${lines[@]}"; do
 				local clean_l
 				clean_l=$(printf '%s' "$l" | tr '\r\t' '  ' | cut -c 1-"$inner_width")
-				printf "\r\033[2K  %b│%b  %-*s  %b│%b\n" \
+				printf "\r\033[2K%b│%b  %-*s  %b│%b\n" \
 					"${COLOR_MUTED}" "${COLOR_WHITE}" "$inner_width" "$clean_l" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			local bot_dashes=""
 			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\r\033[2K  %b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+			printf "\r\033[2K%b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
@@ -275,12 +309,13 @@ run_step() {
 		end_ts=$(date +%s)
 		local total_elapsed=$((end_ts - start_ts))
 
+		# Cleanly erase live activity pane on completion
 		if [ "$first_render" = "false" ]; then
-			printf "\033[%dA" "$total_rendered_lines"
-			for ((c=0; c<total_rendered_lines; c++)); do
+			printf "\033[%dA" "$last_rendered_lines"
+			for ((c=0; c<last_rendered_lines; c++)); do
 				printf "\r\033[2K\n"
 			done
-			printf "\033[%dA" "$total_rendered_lines"
+			printf "\033[%dA" "$last_rendered_lines"
 		fi
 
 		printf "\033[?25h"
@@ -389,9 +424,8 @@ print_summary() {
 	end_ts=$(date +%s)
 	local total_duration=$((end_ts - START_TIME))
 
-	local cols
-	cols=$(get_terminal_width)
-	local box_width=$((cols - 4))
+	get_term_size
+	local box_width=$((TERM_COLS - 2))
 	if [ "$box_width" -lt 40 ]; then box_width=40; fi
 
 	local bot_dashes=""
@@ -404,18 +438,18 @@ print_summary() {
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	printf "\n"
-	printf '%b' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}╮${COLOR_RESET}\n"
-	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   • All systemd background services have been stopped and disabled.          │\n"
-	printf '%b' "│   • System binaries, management tools, and web assets have been removed.      │\n"
+	printf '%b\n' "${COLOR_GREEN}╭── ${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN} ${top_dashes}╮${COLOR_RESET}"
+	printf '%b\n' "│"
+	printf '%b\n' "│   • All systemd background services have been stopped and disabled."
+	printf '%b\n' "│   • System binaries, management tools, and web assets have been removed."
 	if [ "$PURGE_DATA" = "yes" ]; then
-		printf '%b' "│   • ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}                                      │\n"
+		printf '%b\n' "│   • ${COLOR_RED}/DATA directory was completely purged.${COLOR_RESET}"
 	else
-		printf '%b' "│   • ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}                                       │\n"
+		printf '%b\n' "│   • ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}"
 	fi
-	printf '%b' "│                                                                               │\n"
-	printf '%b' "│   ${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}                                              │\n"
-	printf '%b' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}\n\n"
+	printf '%b\n' "│"
+	printf '%b\n' "│   ${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}"
+	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}"
 }
 
 main() {
