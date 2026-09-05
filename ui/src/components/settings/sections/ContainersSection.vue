@@ -594,7 +594,7 @@ export default {
 
 		&.bg-blue {
 			background: rgba(37, 99, 235, 0.12);
-			color: #2563eb;
+			color: var(--color-primary);
 		}
 		&.bg-green {
 			background: rgba(16, 185, 129, 0.12);
@@ -614,19 +614,19 @@ export default {
 		font-size: 17px;
 		font-weight: 500;
 		line-height: 1.2;
-		color: #18181b;
+		color: #1e293b;
 	}
 
 	.stat-lbl {
 		font-size: 11px;
-		color: #71717a;
+		color: var(--color-text-muted);
 	}
 }
 
 .container-name {
 	font-size: 0.85rem;
 	font-weight: 500;
-	color: #18181b;
+	color: #1e293b;
 }
 
 .font-medium {
@@ -641,7 +641,7 @@ export default {
 	.search-icon {
 		position: absolute;
 		left: 8px;
-		color: #a1a1aa;
+		color: var(--color-text-muted-light);
 		font-size: 14px;
 	}
 
@@ -655,7 +655,7 @@ export default {
 		outline: none;
 
 		&:focus {
-			border-color: #2563eb;
+			border-color: var(--color-primary);
 			background: #fff;
 		}
 	}
@@ -665,7 +665,7 @@ export default {
 		right: 6px;
 		background: transparent;
 		border: none;
-		color: #a1a1aa;
+		color: var(--color-text-muted-light);
 		cursor: pointer;
 		padding: 0;
 	}
@@ -678,7 +678,7 @@ export default {
 	.filter-pill {
 		background: rgba(0, 0, 0, 0.04);
 		border: 1px solid rgba(0, 0, 0, 0.06);
-		color: #71717a;
+		color: var(--color-text-muted);
 		font-size: 11px;
 		font-weight: 500;
 		padding: 4px 10px;
@@ -690,12 +690,12 @@ export default {
 
 		&:hover {
 			background: rgba(0, 0, 0, 0.08);
-			color: #18181b;
+			color: #1e293b;
 		}
 
 		&.active {
-			background: #2563eb;
-			border-color: #2563eb;
+			background: var(--color-primary);
+			border-color: var(--color-primary);
 			color: #ffffff;
 
 			.pill-count {
@@ -769,7 +769,7 @@ export default {
 .image-text code {
 	font-size: 11px;
 	background: rgba(0, 0, 0, 0.04);
-	color: #52525b;
+	color: var(--color-text-muted);
 	padding: 2px 5px;
 	border-radius: 4px;
 }

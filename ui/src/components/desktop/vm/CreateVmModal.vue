@@ -129,7 +129,7 @@
 					<div class="row-label">{{ $t('Disk size') }}</div>
 					<div class="row-control">
 						<b-numberinput :value="form.disks[0].gib" @input="form.disks[0].gib = $event" :min="1" :max="2000" size="is-small" type="is-light" controls-position="compact" class="basic-disk-size"></b-numberinput>
-						<span class="basic-disk-unit">{{ $t('GiB') }}</span>
+						<span class="basic-disk-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
 			</div>
@@ -198,7 +198,7 @@
 				<div class="setting-row" v-if="displayResolution"><div class="row-label">{{ $t('Display Resolution') }}</div><div class="row-control review-value">{{ displayResolution }}</div></div>
 				<div class="setting-row">
 					<div class="row-label">{{ $t('Disks') }}</div>
-					<div class="row-control review-value">{{ form.disks.length ? form.disks.map((d) => d.gib + ' GiB ' + d.bus.toUpperCase() + (d.ssd ? ' SSD' : '')).join(', ') : $t('None') }}</div>
+					<div class="row-control review-value">{{ form.disks.length ? form.disks.map((d) => d.gib + ' GB ' + d.bus.toUpperCase() + (d.ssd ? ' SSD' : '')).join(', ') : $t('None') }}</div>
 				</div>
 				<div class="setting-row"><div class="row-label">{{ $t('ISO') }}</div><div class="row-control review-value">{{ form.iso_path || $t('None') }}</div></div>
 				<div class="setting-row">

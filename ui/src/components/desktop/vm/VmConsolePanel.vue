@@ -136,7 +136,7 @@
 									<div class="device-row-icon active">
 										<b-icon :icon="disk.ssd ? 'harddisk' : 'database'" size="is-small" :custom-size="disk.ssd ? 'mdi-12px' : 'mdi-16px'"></b-icon>
 									</div>
-									<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}</span>
+									<span class="device-menu-desc">{{ disk.target }} &middot; {{ disk.gib }} GB &middot; {{ disk.bus.toUpperCase() }}</span>
 									<button type="button" class="device-menu-detach" :disabled="diskBusy" :title="$t('Detach')" @click="detachDiskConfirm(disk)">
 										<b-icon icon="eject-outline" size="is-small"></b-icon>
 									</button>
@@ -765,7 +765,7 @@ export default {
 			const disks = (this.vm && this.vm.disks) || []
 			if (!disks.length) return this.$t('None')
 			const totalGiB = disks.reduce((sum, d) => sum + (d.gib || 0), 0)
-			return `${disks.length} · ${totalGiB} GiB`
+			return `${disks.length} · ${totalGiB} GB`
 		},
 		isoFileName() {
 			const path = this.vm && this.vm.iso_path

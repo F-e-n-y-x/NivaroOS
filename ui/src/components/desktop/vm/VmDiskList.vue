@@ -27,7 +27,7 @@
 						type="is-light"
 						controls-position="compact"
 					></b-numberinput>
-					<span class="vm-disk-unit">{{ $t('GiB') }}</span>
+					<span class="vm-disk-unit">{{ $t('GB') }}</span>
 					<!-- An existing disk's bus/type can't change without recreating
 					     it, so it's shown as a plain fact here, not a picker that
 					     looks interactive but is actually locked. -->

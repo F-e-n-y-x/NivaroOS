@@ -14,7 +14,7 @@
 				</div>
 				<div class="iso-info">
 					<span class="iso-name">{{ disk.vmName }} <span class="iso-name-target">&middot; {{ disk.target }}</span></span>
-					<span class="iso-meta">{{ disk.gib }} GiB &middot; {{ disk.bus.toUpperCase() }}{{ disk.ssd ? ' · SSD' : '' }}</span>
+					<span class="iso-meta">{{ disk.gib }} GB &middot; {{ disk.bus.toUpperCase() }}{{ disk.ssd ? ' · SSD' : '' }}</span>
 				</div>
 			</div>
 			<div v-if="!vmDisks.length" class="vm-empty">
