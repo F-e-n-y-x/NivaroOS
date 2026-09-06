@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'storage_service.dart';
@@ -30,6 +31,10 @@ class ApiClient {
     _refreshToken = await StorageService.instance.getRefreshToken();
   }
 
+  void setBaseUrl(String url) {
+    _baseUrl = url;
+  }
+
   String get baseUrl => _baseUrl ?? '';
   bool get hasSession => _accessToken != null && _accessToken!.isNotEmpty;
 
@@ -44,10 +49,42 @@ class ApiClient {
   }
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
-    final resolved = path.startsWith('http') || path.startsWith('/v2')
-        ? path
-        : '/v1$path';
-    final full = '$_baseUrl$resolved';
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      final uri = Uri.parse(path);
+      if (query == null || query.isEmpty) return uri;
+      return uri.replace(queryParameters: {
+        ...uri.queryParameters,
+        ...query.map((k, v) => MapEntry(k, '$v')),
+      });
+    }
+
+    var base = (_baseUrl ?? '').trim();
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+    if (!base.startsWith('http://') && !base.startsWith('https://') && base.isNotEmpty) {
+      base = 'http://$base';
+    }
+
+    var normalizedPath = path.trim();
+    if (!normalizedPath.startsWith('/')) {
+      normalizedPath = '/$normalizedPath';
+    }
+
+    final String fullPath;
+    if (normalizedPath.startsWith('/v1/') ||
+        normalizedPath == '/v1' ||
+        normalizedPath.startsWith('/v2/') ||
+        normalizedPath == '/v2' ||
+        normalizedPath.startsWith('/speedtest') ||
+        normalizedPath.startsWith('/ping') ||
+        normalizedPath.startsWith('/files/')) {
+      fullPath = normalizedPath;
+    } else {
+      fullPath = '/v1$normalizedPath';
+    }
+
+    final full = '$base$fullPath';
     final uri = Uri.parse(full);
     if (query == null || query.isEmpty) return uri;
     return uri.replace(queryParameters: {
@@ -90,6 +127,51 @@ class ApiClient {
   Future<String> currentAuthHeader() async => _accessToken ?? '';
 
   /// A GET request's raw bytes (file download) rather than a JSON envelope.
+
+  /// Exposes the resolved URI for a given path and query
+  Uri buildUri(String path, [Map<String, dynamic>? query]) => _uri(path, query);
+
+  /// Streams download of a remote file chunk-by-chunk directly into [targetFile],
+  /// reporting real-time byte count and download speed.
+  Future<void> downloadFileStream(
+    String remotePath,
+    File targetFile, {
+    void Function(int received, int total, double speedBps)? onProgress,
+  }) async {
+    final client = http.Client();
+    try {
+      final uri = _uri('/file', {'path': remotePath});
+      final req = http.Request('GET', uri);
+      if (_accessToken != null && _accessToken!.isNotEmpty) {
+        req.headers['Authorization'] = _accessToken!;
+      }
+      final streamedRes = await client.send(req);
+      if (streamedRes.statusCode != 200) {
+        throw ApiException('Failed to download file (HTTP ${streamedRes.statusCode})', statusCode: streamedRes.statusCode);
+      }
+      final total = streamedRes.contentLength ?? 0;
+      final sink = targetFile.openWrite();
+      int received = 0;
+      final stopwatch = Stopwatch()..start();
+      int lastNotifyMs = 0;
+
+      await for (final chunk in streamedRes.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        final nowMs = stopwatch.elapsedMilliseconds;
+        if (nowMs - lastNotifyMs >= 80 || (total > 0 && received == total)) {
+          lastNotifyMs = nowMs;
+          final speed = nowMs > 0 ? (received / (nowMs / 1000.0)) : 0.0;
+          onProgress?.call(received, total, speed);
+        }
+      }
+      await sink.flush();
+      await sink.close();
+    } finally {
+      client.close();
+    }
+  }
+
   Future<http.Response> getRaw(String path, {Map<String, dynamic>? query}) {
     return http.get(_uri(path, query), headers: _headers(json: false));
   }

@@ -141,6 +141,7 @@ func InitV1Router() http.Handler {
 			v1FileGroup.GET("", v1.GetDownloadSingleFile) // download/:path
 			v1FileGroup.POST("", v1.PostCreateFile)
 			v1FileGroup.PUT("", v1.PutFileContent)
+			v1FileGroup.DELETE("", v1.DeleteFile)
 			v1FileGroup.PUT("/name", v1.RenamePath)
 			v1FileGroup.POST("/archive", v1.PostArchiveFiles)
 			v1FileGroup.POST("/unarchive", v1.PostUnarchiveFile)
@@ -236,6 +237,20 @@ func InitV1Router() http.Handler {
 			v1TailscaleGroup.PUT("/state/:state", v1.PutTailscaleState)
 			v1TailscaleGroup.GET("/prefs", v1.GetTailscalePrefs)
 			v1TailscaleGroup.PUT("/prefs", v1.PutTailscalePrefs)
+		}
+
+		v1CompanionGroup := v1Group.Group("/companion")
+		v1CompanionGroup.Use()
+		{
+			v1CompanionGroup.GET("/devices", v1.GetCompanionDevices)
+			v1CompanionGroup.POST("/register", v1.PostRegisterCompanionDevice)
+			v1CompanionGroup.PUT("/devices/:id", v1.PutUpdateCompanionDevice)
+			v1CompanionGroup.DELETE("/devices/:id", v1.DeleteCompanionDevice)
+			v1CompanionGroup.GET("/devices/:id/storage", v1.GetCompanionDeviceStorage)
+			v1CompanionGroup.GET("/devices/:id/files", v1.GetCompanionDeviceFiles)
+			v1CompanionGroup.GET("/devices/:id/file", v1.GetCompanionDeviceDownload)
+			v1CompanionGroup.POST("/devices/:id/upload", v1.PostCompanionDeviceUpload)
+			v1CompanionGroup.GET("/devices/:id/ws", v1.GetCompanionDeviceWS)
 		}
 
 		v1SchedulesGroup := v1Group.Group("/schedules")

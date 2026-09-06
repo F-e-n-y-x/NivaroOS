@@ -4,9 +4,8 @@ import '../theme.dart';
 import '../services/api_client.dart';
 import '../models/container_entry.dart';
 import '../widgets/common.dart';
-import 'custom_install_screen.dart';
+import '../utils/app_icons.dart';
 
-/// Browse and install official apps from the catalog or paste custom compose files.
 class AppStoreScreen extends StatefulWidget {
   const AppStoreScreen({super.key});
 
@@ -15,21 +14,89 @@ class AppStoreScreen extends StatefulWidget {
 }
 
 class _AppStoreScreenState extends State<AppStoreScreen> {
-  List<StoreApp> _apps = [];
-  Set<String> _installedIds = {};
+  List<StoreApp> _catalog = [];
   bool _loading = true;
   String? _error;
-  final Set<String> _installing = {};
+  String _selectedCategory = 'all';
   final _searchController = TextEditingController();
-  String _selectedCategory = 'All';
+  final Set<String> _installing = {};
 
-  final List<String> _categories = [
-    'All',
-    'Media',
-    'Utilities',
-    'Cloud & Sync',
-    'Database',
-    'Development',
+  final _featuredApps = const [
+    (id: 'plex', title: 'Plex Media Server', desc: 'Stream video, music and photos across all devices.', category: 'Media', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/plex.png'),
+    (id: 'nextcloud', title: 'Nextcloud Hub', desc: 'Secure self-hosted productivity platform and files.', category: 'Cloud', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/nextcloud.png'),
+    (id: 'homeassistant', title: 'Home Assistant', desc: 'Open-source local home automation system.', category: 'Smart Home', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/home-assistant.png'),
+    (id: 'jellyfin', title: 'Jellyfin Media', desc: 'Free software media system with zero tracking.', category: 'Media', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/jellyfin.png'),
+    (id: 'adguard-home', title: 'AdGuard Home', desc: 'Network-wide ads and trackers blocking DNS.', category: 'Network', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/adguard-home.png'),
+    (id: 'ollama', title: 'Ollama AI Server', desc: 'Run LLMs (Llama 3, DeepSeek, Mistral) locally.', category: 'AI & LLM', icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/ollama.png'),
+  ];
+
+  List<String> _categories = const ['all', 'Featured', 'Media', 'Cloud', 'Smart Home', 'Network', 'AI & LLM', 'Dev', 'Utilities'];
+
+  static final List<StoreApp> _fallbackApps = [
+    StoreApp(
+      id: 'plex',
+      title: 'Plex Media Server',
+      tagline: 'Stream movies, TV shows, music, and photos anywhere, anytime.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/plex.png',
+      category: 'Media',
+      author: 'Plex, Inc.',
+    ),
+    StoreApp(
+      id: 'jellyfin',
+      title: 'Jellyfin',
+      tagline: 'The Free Software Media System that puts you in control of managing and streaming your media.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/jellyfin.png',
+      category: 'Media',
+      author: 'Jellyfin',
+    ),
+    StoreApp(
+      id: 'nextcloud',
+      title: 'Nextcloud Hub',
+      tagline: 'A safe home for all your data. Access & share your files, calendars, contacts, mail & more.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/nextcloud.png',
+      category: 'Cloud',
+      author: 'Nextcloud GmbH',
+    ),
+    StoreApp(
+      id: 'homeassistant',
+      title: 'Home Assistant',
+      tagline: 'Open source home automation that puts local control and privacy first.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/home-assistant.png',
+      category: 'Smart Home',
+      author: 'Nabu Casa',
+    ),
+    StoreApp(
+      id: 'adguard-home',
+      title: 'AdGuard Home',
+      tagline: 'Network-wide software for blocking ads & tracking across all home devices.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/adguard-home.png',
+      category: 'Network',
+      author: 'AdGuard',
+    ),
+    StoreApp(
+      id: 'ollama',
+      title: 'Ollama AI',
+      tagline: 'Get up and running with Llama 3, Mistral, Gemma, DeepSeek and other large language models locally.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/ollama.png',
+      category: 'AI & LLM',
+      author: 'Ollama',
+    ),
+    StoreApp(
+      id: 'qbittorrent',
+      title: 'qBittorrent',
+      tagline: 'The qBittorrent project aims to provide an open-source software alternative to µTorrent.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/qbittorrent.png',
+      category: 'Utilities',
+      author: 'qBittorrent',
+    ),
+    StoreApp(
+      id: 'vaultwarden',
+      title: 'Vaultwarden',
+      tagline: 'Unofficial Bitwarden compatible server written in Rust.',
+      icon: 'https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/vaultwarden.png',
+      category: 'Cloud',
+      author: 'Vaultwarden',
+    ),
   ];
 
   @override
@@ -45,6 +112,18 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
     super.dispose();
   }
 
+  List<StoreApp> get _filteredApps {
+    final query = _searchController.text.trim().toLowerCase();
+    var list = _catalog;
+    if (_selectedCategory != 'all' && _selectedCategory != 'Featured') {
+      list = list.where((a) => a.category.toLowerCase().contains(_selectedCategory.toLowerCase())).toList();
+    }
+    if (query.isNotEmpty) {
+      list = list.where((a) => a.title.toLowerCase().contains(query) || a.tagline.toLowerCase().contains(query) || a.id.toLowerCase().contains(query)).toList();
+    }
+    return list;
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -52,15 +131,91 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
     });
     try {
       final res = await ApiClient.instance.get('/v2/app_management/apps');
-      final data = res['data'] as Map<String, dynamic>? ?? {};
-      final list = data['list'] as Map<String, dynamic>? ?? {};
-      final installed = (data['installed'] as List<dynamic>? ?? []).map((e) => e.toString()).toSet();
-      final apps = list.entries.map((e) => StoreApp.fromJson(e.key, e.value as Map<String, dynamic>)).toList();
-      apps.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      dynamic data = res['data'] ?? res;
+      final List<StoreApp> list = [];
+
+      if (data is Map<String, dynamic>) {
+        if (data['list'] is Map) {
+          final map = data['list'] as Map;
+          for (final entry in map.entries) {
+            if (entry.value is Map) {
+              list.add(StoreApp.fromJson(entry.key.toString(), Map<String, dynamic>.from(entry.value as Map)));
+            }
+          }
+        } else if (data['list'] is List) {
+          for (final item in data['list'] as List) {
+            if (item is Map) {
+              final id = item['id']?.toString() ?? (item['name']?.toString() ?? 'app');
+              list.add(StoreApp.fromJson(id, Map<String, dynamic>.from(item)));
+            }
+          }
+        } else if (data['apps'] is Map) {
+          final map = data['apps'] as Map;
+          for (final entry in map.entries) {
+            if (entry.value is Map) {
+              list.add(StoreApp.fromJson(entry.key.toString(), Map<String, dynamic>.from(entry.value as Map)));
+            }
+          }
+        } else if (data['apps'] is List) {
+          for (final item in data['apps'] as List) {
+            if (item is Map) {
+              final id = item['id']?.toString() ?? (item['name']?.toString() ?? 'app');
+              list.add(StoreApp.fromJson(id, Map<String, dynamic>.from(item)));
+            }
+          }
+        } else if (data['community'] is List || data['recommended'] is List) {
+          final comList = (data['community'] as List? ?? []);
+          final recList = (data['recommended'] as List? ?? []);
+          for (final item in [...recList, ...comList]) {
+            if (item is Map) {
+              final id = item['id']?.toString() ?? (item['name']?.toString() ?? 'app');
+              list.add(StoreApp.fromJson(id, Map<String, dynamic>.from(item)));
+            }
+          }
+        } else {
+          for (final entry in data.entries) {
+            if (entry.value is Map && entry.key != 'installed') {
+              list.add(StoreApp.fromJson(entry.key, Map<String, dynamic>.from(entry.value as Map)));
+            }
+          }
+        }
+      } else if (data is List) {
+        for (final item in data) {
+          if (item is Map) {
+            final id = item['id']?.toString() ?? (item['name']?.toString() ?? 'app');
+            list.add(StoreApp.fromJson(id, Map<String, dynamic>.from(item)));
+          }
+        }
+      }
+
+      // If remote was empty, keep fallback apps
+      if (list.isEmpty) {
+        list.addAll(_fallbackApps);
+      }
+
+      // Deduplicate by ID
+      final seen = <String>{};
+      final uniqueList = <StoreApp>[];
+      for (final a in list) {
+        if (!seen.contains(a.id.toLowerCase())) {
+          seen.add(a.id.toLowerCase());
+          uniqueList.add(a);
+        }
+      }
+      uniqueList.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+
+      // Dynamically extract categories from catalog
+      final dynamicCategories = <String>{'all', 'Featured'};
+      for (final a in uniqueList) {
+        if (a.category.isNotEmpty) {
+          dynamicCategories.add(a.category);
+        }
+      }
+
       if (!mounted) return;
       setState(() {
-        _apps = apps;
-        _installedIds = installed;
+        _catalog = uniqueList;
+        _categories = dynamicCategories.toList();
         _loading = false;
       });
     } catch (e) {
@@ -72,386 +227,365 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
     }
   }
 
-  Future<void> _install(StoreApp app) async {
+  Future<void> _installApp(String id, String title) async {
     HapticFeedback.mediumImpact();
-    setState(() => _installing.add(app.id));
+    final portCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: NivaroColors.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.largeIncreased)),
+        title: Text('Install $title', style: const TextStyle(fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Deploy container app "$id" to NivaroOS with automatic volumes and network mappings.', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: portCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Web Port (Optional Override)',
+                hintText: 'e.g. 8080',
+                filled: true,
+                fillColor: NivaroColors.surfaceRaised,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Install Now'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _installing.add(id));
     try {
-      final composeRes = await ApiClient.instance.getWithAccept('/v2/app_management/apps/${app.id}/compose', 'application/yaml');
-      if (composeRes.statusCode != 200) {
-        throw Exception('Could not fetch install compose file (HTTP ${composeRes.statusCode}).');
+      final body = <String, dynamic>{};
+      if (portCtrl.text.trim().isNotEmpty) {
+        body['port_map'] = portCtrl.text.trim();
       }
-      await ApiClient.instance.postBody('/v2/app_management/compose', composeRes.body, 'application/yaml');
+      await ApiClient.instance.post('/v2/app_management/compose/$id', body: body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${app.title} installed and deployed.'),
-            backgroundColor: NivaroColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text('Installing $title in background...')),
         );
-        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: NivaroColors.danger,
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text('Install failed: $e'), backgroundColor: NivaroColors.danger),
         );
       }
     } finally {
-      if (mounted) setState(() => _installing.remove(app.id));
+      if (mounted) setState(() => _installing.remove(id));
     }
-  }
-
-  void _showAppDetails(StoreApp app) {
-    HapticFeedback.lightImpact();
-    final installed = _installedIds.contains(app.id);
-    final installing = _installing.contains(app.id);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: NivaroColors.surfaceRaised,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: app.icon.isNotEmpty
-                        ? Image.network(app.icon, width: 56, height: 56, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _fallback())
-                        : _fallback(),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(app.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                        const SizedBox(height: 2),
-                        Text(app.id, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  if (installed)
-                    const StatusPill(label: 'Installed', state: 'running')
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (app.tagline.isNotEmpty) ...[
-                Text(
-                  app.tagline,
-                  style: const TextStyle(color: NivaroColors.textPrimary, fontSize: 14, height: 1.4),
-                ),
-                const SizedBox(height: 16),
-              ],
-              const Divider(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: installed
-                    ? OutlinedButton.icon(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.check_circle_outline_rounded, color: NivaroColors.success),
-                        label: const Text('Already Installed'),
-                      )
-                    : FilledButton.icon(
-                        onPressed: installing
-                            ? null
-                            : () {
-                                Navigator.pop(context);
-                                _install(app);
-                              },
-                        icon: installing
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.download_rounded, size: 20),
-                        label: Text(installing ? 'Installing...' : 'Install App'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: NivaroColors.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _customInstall() async {
-    HapticFeedback.selectionClick();
-    final installed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const CustomInstallScreen()),
-    );
-    if (installed == true && mounted) Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = _searchController.text.trim().toLowerCase();
-    var visible = query.isEmpty ? _apps : _apps.where((a) => a.title.toLowerCase().contains(query) || a.tagline.toLowerCase().contains(query)).toList();
-
-    if (_selectedCategory != 'All') {
-      visible = visible.where((a) {
-        final cat = _inferCategory(a).toLowerCase();
-        return cat.contains(_selectedCategory.toLowerCase());
-      }).toList();
-    }
-
+    final apps = _filteredApps;
     return Scaffold(
-      body: SafeArea(
-        child: Column(
+      backgroundColor: NivaroColors.background,
+      appBar: AppBar(
+        title: const Text('Nivaro App Store', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
+        backgroundColor: NivaroColors.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          RoundIconButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Refresh Store',
+            onPressed: _load,
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        color: NivaroColors.primaryLight,
+        backgroundColor: NivaroColors.surfaceRaised,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1150),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
           children: [
-            // Top Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 20, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'App Store',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                    ),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: _customInstall,
-                    icon: const Icon(Icons.code_rounded, size: 18),
-                    label: const Text('Custom'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Search Box
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search catalog of server apps...',
-                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {});
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: NivaroColors.surfaceRaised,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(NivaroShape.large),
-                    borderSide: const BorderSide(color: NivaroColors.borderSubtle),
-                  ),
+            // Search Field
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search 150+ self-hosted applications...',
+                hintStyle: const TextStyle(color: NivaroColors.textFaint, fontSize: 13),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: NivaroColors.textFaint),
+                filled: true,
+                fillColor: NivaroColors.surface,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(NivaroShape.large),
+                  borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(NivaroShape.large),
+                  borderSide: const BorderSide(color: NivaroColors.borderSubtle),
                 ),
               ),
             ),
             const SizedBox(height: 12),
 
-            // Category Chips
-            SizedBox(
-              height: 38,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                scrollDirection: Axis.horizontal,
-                itemCount: _categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, i) {
-                  final cat = _categories[i];
-                  final isSelected = _selectedCategory == cat;
-                  return FilterChip(
-                    label: Text(cat),
-                    selected: isSelected,
-                    onSelected: (val) {
-                      HapticFeedback.selectionClick();
-                      setState(() => _selectedCategory = cat);
-                    },
-                    backgroundColor: NivaroColors.surfaceRaised,
-                    selectedColor: NivaroColors.primary.withValues(alpha: 0.25),
-                    labelStyle: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? NivaroColors.primaryLight : NivaroColors.textPrimary,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(NivaroShape.full),
-                      side: BorderSide(
-                        color: isSelected ? NivaroColors.primary : NivaroColors.borderSubtle,
+            // Categories
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _categories.map((cat) {
+                  final sel = _selectedCategory == cat;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedCategory = cat),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: sel ? NivaroColors.primary : NivaroColors.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: sel ? Colors.transparent : NivaroColors.borderSubtle),
+                        ),
+                        child: Text(
+                          cat == 'all' ? 'All' : cat,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: sel ? FontWeight.w700 : FontWeight.w600,
+                            color: sel ? Colors.white : NivaroColors.textMuted,
+                          ),
+                        ),
                       ),
                     ),
                   );
-                },
+                }).toList(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 18),
 
-            // App List
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(40),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.error_outline_rounded, color: NivaroColors.danger, size: 36),
-                                const SizedBox(height: 12),
-                                Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center),
-                                const SizedBox(height: 16),
-                                OutlinedButton(onPressed: _load, child: const Text('Retry')),
-                              ],
+            // Featured Carousel
+            if (_selectedCategory == 'all' || _selectedCategory == 'Featured') ...[
+              const SectionHeader(title: 'Featured Apps'),
+              SizedBox(
+                height: 145,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _featuredApps.length,
+                  itemBuilder: (context, i) {
+                    final f = _featuredApps[i];
+                    final busy = _installing.contains(f.id);
+
+                    return Container(
+                      width: 270,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: NivaroColors.surface,
+                        borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
+                        border: Border.all(color: NivaroColors.borderSubtle),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3)),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              NivaroAppIcon(iconUrl: f.icon, name: f.title, size: 36, radius: 10),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(f.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), overflow: TextOverflow.ellipsis),
+                                    Text(f.category, style: const TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            f.desc,
+                            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton(
+                              onPressed: busy ? null : () => _installApp(f.id, f.title),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: NivaroColors.primary,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                minimumSize: const Size(0, 28),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                              child: busy
+                                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('Install', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
                             ),
                           ),
-                        )
-                      : visible.isEmpty
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(40),
-                                child: Text('No applications match your search.', style: TextStyle(color: NivaroColors.textMuted)),
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _load,
-                              color: NivaroColors.primaryLight,
-                              backgroundColor: NivaroColors.surfaceRaised,
-                              child: ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                                itemCount: visible.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                                itemBuilder: (context, i) {
-                                  final app = visible[i];
-                                  final installed = _installedIds.contains(app.id);
-                                  final installing = _installing.contains(app.id);
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
 
-                                  return DarkCard(
-                                    onTap: () => _showAppDetails(app),
-                                    child: Row(
-                                      children: [
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(NivaroShape.medium),
-                                          child: app.icon.isNotEmpty
-                                              ? Image.network(
-                                                  app.icon,
-                                                  width: 48,
-                                                  height: 48,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) => _fallback(),
-                                                )
-                                              : _fallback(),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                app.title,
-                                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              if (app.tagline.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  app.tagline,
-                                                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        if (installed)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: NivaroColors.surfaceMuted,
-                                              borderRadius: BorderRadius.circular(NivaroShape.full),
-                                              border: Border.all(color: NivaroColors.borderSubtle),
-                                            ),
-                                            child: const Text('Installed', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5, fontWeight: FontWeight.w600)),
-                                          )
-                                        else
-                                          FilledButton(
-                                            onPressed: installing ? null : () => _install(app),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: NivaroColors.primary,
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
-                                            ),
-                                            child: installing
-                                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                                : const Text('Get', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                },
+            const SectionHeader(title: 'App Catalog'),
+            if (_loading && _catalog.isEmpty)
+              const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+            else if (_error != null && _catalog.isEmpty)
+              DarkCard(
+                child: Center(
+                  child: Column(
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
+                      const SizedBox(height: 10),
+                      Text(_error!, style: const TextStyle(color: NivaroColors.textMuted)),
+                      const SizedBox(height: 12),
+                      OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Builder(builder: (context) {
+                final width = MediaQuery.of(context).size.width;
+                final cols = width >= 1050 ? 3 : (width >= 700 ? 2 : 1);
+
+                if (cols > 1) {
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: cols,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 3.5,
+                    ),
+                    itemCount: apps.length,
+                    itemBuilder: (context, index) {
+                      final app = apps[index];
+                      final busy = _installing.contains(app.id);
+                      return DarkCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        child: Row(
+                          children: [
+                            NivaroAppIcon(
+                              iconUrl: app.icon,
+                              name: app.title,
+                              size: 40,
+                              radius: 11,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(app.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    app.tagline.isNotEmpty ? app.tagline : app.category,
+                                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: busy ? null : () => _installApp(app.id, app.title),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: NivaroColors.primary,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                minimumSize: const Size(0, 30),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: busy
+                                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('Get', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                }
+
+                return Column(
+                  children: apps.map((app) {
+                    final busy = _installing.contains(app.id);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: DarkCard(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        child: Row(
+                          children: [
+                            NivaroAppIcon(
+                              iconUrl: app.icon,
+                              name: app.title,
+                              size: 42,
+                              radius: 12,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(app.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14), overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    app.tagline.isNotEmpty ? app.tagline : app.category,
+                                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: busy ? null : () => _installApp(app.id, app.title),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: NivaroColors.primary,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                minimumSize: const Size(0, 32),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: busy
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Text('Get', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              }),
+            ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
-
-  String _inferCategory(StoreApp app) {
-    final title = app.title.toLowerCase();
-    final tag = app.tagline.toLowerCase();
-    if (title.contains('plex') || title.contains('jellyfin') || title.contains('audio') || title.contains('media') || tag.contains('streaming') || tag.contains('video')) {
-      return 'Media';
-    }
-    if (title.contains('nextcloud') || title.contains('syncthing') || title.contains('drive') || tag.contains('cloud') || tag.contains('sync')) {
-      return 'Cloud & Sync';
-    }
-    if (title.contains('sql') || title.contains('mongo') || title.contains('redis') || title.contains('db') || tag.contains('database')) {
-      return 'Database';
-    }
-    if (title.contains('code') || title.contains('git') || title.contains('dev') || tag.contains('developer') || tag.contains('editor')) {
-      return 'Development';
-    }
-    return 'Utilities';
-  }
-
-  Widget _fallback() => Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: NivaroColors.surfaceMuted,
-          borderRadius: BorderRadius.circular(NivaroShape.medium),
-        ),
-        alignment: Alignment.center,
-        child: const Icon(Icons.widgets_rounded, color: NivaroColors.textMuted, size: 24),
-      );
 }
-

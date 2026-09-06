@@ -17,6 +17,7 @@ import local_storage from "./local_storage.js";
 import driver from './driver.js';
 import cloud from './cloud.js';
 import schedules from './schedules.js';
+import companion from './companion.js';
 
 export default {
 	// Apps
@@ -34,6 +35,7 @@ export default {
 	storage,
 	samba,
 	tailscale,
+	companion,
 	driver,
 	cloud,
 	// System

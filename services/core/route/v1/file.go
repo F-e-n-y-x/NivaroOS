@@ -157,6 +157,11 @@ func GetDownloadFile(ctx echo.Context) error {
 	list := strings.Split(files, ",")
 	for _, v := range list {
 		if !file.Exists(v) {
+			if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil && dev.IsOnline {
+				if len(list) == 1 {
+					return ProxyCompanionFileDownload(dev, phonePath, ctx)
+				}
+			}
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
 				Success: common_err.FILE_DOES_NOT_EXIST,
 				Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
@@ -232,12 +237,24 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 		})
 	}
 	fileName := path.Base(filePath)
+
+	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil && dev.IsOnline {
+		if !file.Exists(filePath) {
+			if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+				return nil
+			}
+		}
+	}
+
 	// c.Header("Content-Disposition", "inline")
 	ctx.Request().Header.Add("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
 
 	fi, err := os.Open(filePath)
 	if err != nil {
-		panic(err)
+		return ctx.JSON(http.StatusNotFound, model.Result{
+			Success: common_err.FILE_DOES_NOT_EXIST,
+			Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
+		})
 	}
 
 	// We only have to pass the file header = first 261 bytes
@@ -284,6 +301,37 @@ func DirPath(ctx echo.Context) error {
 	path := ctx.QueryParam("path")
 	req.Path = path
 	req.Validate()
+
+	// Live companion device file proxy
+	if dev, phonePath := GetCompanionDeviceByStoragePath(req.Path); dev != nil && dev.IsOnline {
+		phoneFiles, err := FetchCompanionFilesFromDevice(dev, phonePath)
+		if err == nil {
+			pathList := make([]ObjResp, 0, len(phoneFiles))
+			for _, item := range phoneFiles {
+				t := ObjResp{
+					IsDir:    item.IsDir,
+					Name:     item.Name,
+					Modified: item.Modified,
+					Date:     item.Modified,
+					Size:     item.Size,
+					Path:     filepath.Join(req.Path, item.Name),
+				}
+				pathList = append(pathList, t)
+			}
+			flist := FsListResp{
+				Content: pathList,
+				Total:   int64(len(pathList)),
+				Index:   req.Index,
+				Size:    req.Size,
+			}
+			return ctx.JSON(common_err.SUCCESS, model.Result{
+				Success: common_err.SUCCESS,
+				Message: common_err.GetMsg(common_err.SUCCESS),
+				Data:    flist,
+			})
+		}
+	}
+
 	info, err := service.MyService.System().GetDirPath(req.Path)
 	if err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
@@ -760,14 +808,51 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 // @Router /file/delete [delete]
 func DeleteFile(ctx echo.Context) error {
 	paths := []string{}
-	ctx.Bind(&paths)
+	body, err := io.ReadAll(ctx.Request().Body)
+	if err == nil && len(body) > 0 {
+		// Try parsing as plain []string first (filter out empty strings that
+		// appear when the JSON actually contains objects instead of strings)
+		var rawPaths []string
+		if json.Unmarshal(body, &rawPaths) == nil {
+			for _, p := range rawPaths {
+				if p != "" {
+					paths = append(paths, p)
+				}
+			}
+		}
+		if len(paths) == 0 {
+			var objList []map[string]interface{}
+			if err := json.Unmarshal(body, &objList); err == nil {
+				for _, o := range objList {
+					if p, ok := o["path"].(string); ok && p != "" {
+						paths = append(paths, p)
+					}
+				}
+			}
+		}
+		if len(paths) == 0 {
+			var singleObj map[string]interface{}
+			if err := json.Unmarshal(body, &singleObj); err == nil {
+				if p, ok := singleObj["path"].(string); ok && p != "" {
+					paths = append(paths, p)
+				}
+			}
+		}
+	}
+	if len(paths) == 0 {
+		q := ctx.QueryParam("path")
+		if q != "" {
+			paths = strings.Split(q, ",")
+		}
+	}
 	if len(paths) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-	//	path := ctx.QueryParam("path")
 
-	//	paths := strings.Split(path, ",")
 	for _, v := range paths {
+		if v == "" {
+			continue
+		}
 		mounted := service.IsMounted(v)
 		if mounted {
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
@@ -775,9 +860,14 @@ func DeleteFile(ctx echo.Context) error {
 	}
 
 	for _, v := range paths {
+		if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil && dev.IsOnline {
+			ProxyCompanionFileDelete(dev, phonePath)
+		}
 		err := os.RemoveAll(v)
-		if err != nil {
-			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: common_err.GetMsg(common_err.FILE_DELETE_ERROR), Data: err})
+		if err != nil && !os.IsNotExist(err) {
+			if dev, _ := GetCompanionDeviceByStoragePath(v); dev == nil {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: common_err.GetMsg(common_err.FILE_DELETE_ERROR), Data: err})
+			}
 		}
 	}
 

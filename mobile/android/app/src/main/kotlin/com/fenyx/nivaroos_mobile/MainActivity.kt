@@ -2,17 +2,13 @@ package com.fenyx.nivaroos_mobile
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.BatteryManager
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    // multicast_dns (the pure-Dart mDNS package used for server auto-
-    // discovery) opens a plain UDP socket - it has no native Android code
-    // of its own, so nothing else acquires this. Without it, some devices
-    // silently drop incoming multicast packets (Android disables multicast
-    // reception by default for battery reasons), which would make
-    // discovery "work" in testing on devices that happen not to enforce
-    // this and mysteriously find nothing on others.
     private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,6 +17,23 @@ class MainActivity : FlutterActivity() {
         multicastLock = wifi?.createMulticastLock("nivaroos-mdns-discovery")?.apply {
             setReferenceCounted(true)
             acquire()
+        }
+    }
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->
+            if (call.method == "getBatteryLevel") {
+                try {
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+                    val level = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+                    result.success(level)
+                } catch (e: Exception) {
+                    result.success(-1)
+                }
+            } else {
+                result.notImplemented()
+            }
         }
     }
 

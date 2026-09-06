@@ -5,6 +5,8 @@ import 'services/storage_service.dart';
 import 'screens/discovery_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
+import 'services/permission_service.dart';
+import 'services/device_sync_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +44,9 @@ class _BootstrapState extends State<_Bootstrap> {
   }
 
   Future<void> _decide() async {
+    // Request permissions on startup
+    PermissionService.requestInitialPermissions();
+
     await ApiClient.instance.init();
     if (!mounted) return;
 
@@ -61,6 +66,8 @@ class _BootstrapState extends State<_Bootstrap> {
       );
       return;
     }
+
+    DeviceSyncService.instance.startAutoSync();
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const HomeShell()),

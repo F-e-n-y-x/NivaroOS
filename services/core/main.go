@@ -148,6 +148,7 @@ func main() {
 		"/v1/zt",
 		"/v1/tailscale",
 		"/v1/schedules",
+		"/v1/companion",
 		"/v1/test",
 		route.V2APIPath,
 		route.V2DocPath,

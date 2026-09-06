@@ -57,7 +57,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	}
 	mountOptin := mountlib.Options{
 		MaxReadAhead:  128 * 1024,
-		AttrTimeout:   fs.Duration(1 * time.Second),
+		AttrTimeout:   fs.Duration(30 * time.Minute),
 		DaemonWait:    fs.Duration(60 * time.Second),
 		NoAppleDouble: true,
 		NoAppleXattr:  false,
@@ -68,7 +68,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		NoModTime:          false,
 		NoChecksum:         false,
 		NoSeek:             false,
-		DirCacheTime:       fs.Duration(5 * 60 * time.Second),
+		DirCacheTime:       fs.Duration(30 * time.Minute),
 		PollInterval:       fs.Duration(time.Minute),
 		ReadOnly:           false,
 		Umask:              18,
@@ -79,7 +79,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		CacheMode:          3,
 		CacheMaxAge:        fs.Duration(3600 * time.Second),
 		CachePollInterval:  fs.Duration(60 * time.Second),
-		ChunkSize:          128 * fs.Mebi,
+		ChunkSize:          32 * fs.Mebi,
 		ChunkSizeLimit:     -1,
 		CacheMaxSize:       -1,
 		CaseInsensitive:    runtime.GOOS == "windows" || runtime.GOOS == "darwin", // default to true on Windows and Mac, false otherwise
@@ -94,7 +94,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	mnt := mountlib.NewMountPoint(mount.MountFn, mountPoint, currentFS, &mountOptin, &vfsOpt)
 	_, err = mnt.Mount()
 	if err != nil {
-		logger.Error("when CheckAndMountAll then", zap.Error(err))
+		logger.Error("when MountStorage then", zap.Error(err), zap.String("mountPoint", mountPoint), zap.String("device", deviceName))
 		return err
 	}
 	go func() {
@@ -180,6 +180,15 @@ func (s *storageStruct) CreateConfig(data rc.Params, name string, t string) erro
 		}
 		rconfig.LoadedData().SetValue(name, k, vStr)
 	}
+	// Default drive settings for high performance and avoiding hangs on dangling shortcuts
+	if t == "drive" {
+		if _, ok := data["skip_shortcuts"]; !ok {
+			rconfig.LoadedData().SetValue(name, "skip_shortcuts", "true")
+		}
+		if _, ok := data["skip_dangling_shortcuts"]; !ok {
+			rconfig.LoadedData().SetValue(name, "skip_dangling_shortcuts", "true")
+		}
+	}
 	rconfig.SaveConfig()
 	return nil
 }
@@ -187,7 +196,7 @@ func (s *storageStruct) CheckAndMountByName(name string) error {
 
 	mountPoint, found := rconfig.LoadedData().GetValue(name, "mount_point")
 	if !found && len(mountPoint) == 0 {
-		logger.Error("when CheckAndMountAll then mountpint is empty", zap.String("mountPoint", mountPoint), zap.String("fs", name))
+		logger.Error("when CheckAndMountByName then mountpoint is empty", zap.String("mountPoint", mountPoint), zap.String("fs", name))
 		return errors.New("mountpoint is empty")
 	}
 	return MyService.Storage().MountStorage(mountPoint, name)
@@ -197,21 +206,69 @@ func (s *storageStruct) CheckAndMountAll() error {
 	section := rconfig.LoadedData().GetSectionList()
 
 	logger.Info("when CheckAndMountAll section", zap.Any("section", section))
+	var failedRemotes []string
 	for _, v := range section {
-		command.OnlyExec("umount /mnt/" + v)
+		command.OnlyExec("umount -l /mnt/" + v)
 		mountPoint, found := rconfig.LoadedData().GetValue(v, "mount_point")
 
-		if !found && len(mountPoint) == 0 {
-			logger.Info("when CheckAndMountAll then mountpint is empty", zap.String("mountPoint", mountPoint), zap.String("fs", v))
+		if !found || len(mountPoint) == 0 {
+			logger.Info("when CheckAndMountAll then mountpoint is empty", zap.String("mountPoint", mountPoint), zap.String("fs", v))
 			continue
 		}
 		err := MyService.Storage().MountStorage(mountPoint, v)
 		if err != nil {
-			logger.Error("when CheckAndMountAll then", zap.Error(err))
-			return err
+			logger.Error("when CheckAndMountAll failed to mount remote, will retry in background", zap.String("mountPoint", mountPoint), zap.String("fs", v), zap.Error(err))
+			failedRemotes = append(failedRemotes, v)
 		}
 	}
+	if len(failedRemotes) > 0 {
+		go s.retryMountFailedRemotes(failedRemotes)
+	}
 	return nil
+}
+
+func (s *storageStruct) retryMountFailedRemotes(remotes []string) {
+	backoffs := []time.Duration{4 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
+	pending := make(map[string]bool)
+	for _, r := range remotes {
+		pending[r] = true
+	}
+
+	for _, d := range backoffs {
+		time.Sleep(d)
+		if len(pending) == 0 {
+			break
+		}
+		for v := range pending {
+			mountMu.Lock()
+			mountPoint, found := rconfig.LoadedData().GetValue(v, "mount_point")
+			alreadyMounted := false
+			if found && mountPoint != "" {
+				_, alreadyMounted = MountLists[mountPoint]
+			}
+			mountMu.Unlock()
+
+			if alreadyMounted {
+				delete(pending, v)
+				continue
+			}
+
+			if !found || len(mountPoint) == 0 {
+				delete(pending, v)
+				continue
+			}
+
+			logger.Info("retrying background mount for remote", zap.String("remote", v), zap.String("mountPoint", mountPoint))
+			command.OnlyExec("umount -l /mnt/" + v)
+			err := MyService.Storage().MountStorage(mountPoint, v)
+			if err == nil {
+				logger.Info("successfully mounted remote on retry", zap.String("remote", v), zap.String("mountPoint", mountPoint))
+				delete(pending, v)
+			} else {
+				logger.Error("retry mount failed", zap.String("remote", v), zap.Error(err))
+			}
+		}
+	}
 }
 
 func (s *storageStruct) GetConfigByName(name string) []string {

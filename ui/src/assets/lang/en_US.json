@@ -701,5 +701,17 @@
   "No sign-in required. Windows 10/11 blocks this kind of connection by default though - if it doesn't show up there, use \"Requires SMB sign-in\" instead.": "No sign-in required. Windows 10/11 blocks this kind of connection by default though - if it doesn't show up there, use \"Requires SMB sign-in\" instead.",
   "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.": "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.",
   "VMs": "VMs",
-  "Change Server": "Change Server"
+  "Change Server": "Change Server",
+  "Companion Devices": "Companion Devices",
+  "Manage connected phones, tablets, and companion devices. View storage and rename devices.": "Manage connected phones, tablets, and companion devices. View storage and rename devices.",
+  "No Companion Devices Connected": "No Companion Devices Connected",
+  "Download and connect the NivaroOS Companion App on your Android or iOS device to sync files and manage your system.": "Download and connect the NivaroOS Companion App on your Android or iOS device to sync files and manage your system.",
+  "Download Android APK": "Download Android APK",
+  "Rename Companion Device": "Rename Companion Device",
+  "Remove Companion Device": "Remove Companion Device",
+  "Device Name": "Device Name",
+  "Device Storage": "Device Storage",
+  "Connected Devices": "Connected Devices",
+  "Shared Storage": "Shared Storage",
+  "Loading connected companion devices...": "Loading connected companion devices..."
 }

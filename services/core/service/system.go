@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/command"
@@ -292,7 +293,6 @@ func (c *systemService) GetDirPath(path string) ([]model.Path, error) {
 		if sysType == "darwin" {
 			path = "./NivaroOS/DATA"
 		}
-
 	}
 
 	ls, err := os.ReadDir(path)
@@ -300,29 +300,55 @@ func (c *systemService) GetDirPath(path string) ([]model.Path, error) {
 		logger.Error("when read dir", zap.Error(err))
 		return []model.Path{}, err
 	}
-	dirs := []model.Path{}
-	if len(path) > 0 {
-		for _, l := range ls {
-			filePath := filepath.Join(path, l.Name())
-			link, err := filepath.EvalSymlinks(filePath)
-			if err != nil {
-				link = filePath
-			}
-			tempFile, err := l.Info()
-			if err != nil {
-				logger.Error("when read dir", zap.Error(err))
-				return []model.Path{}, err
-			}
-			temp := model.Path{Name: l.Name(), Path: filePath, IsDir: l.IsDir(), Date: tempFile.ModTime(), Size: tempFile.Size()}
-			if filePath != link {
-				file, _ := os.Stat(link)
-				temp.IsDir = file.IsDir()
-			}
-			dirs = append(dirs, temp)
-		}
-	} else {
-		dirs = append(dirs, model.Path{Name: "DATA", Path: "/DATA/", IsDir: true, Date: time.Now()})
+	if len(path) == 0 {
+		return []model.Path{{Name: "DATA", Path: "/DATA/", IsDir: true, Date: time.Now()}}, nil
 	}
+
+	dirs := make([]model.Path, len(ls))
+	var wg sync.WaitGroup
+	// Concurrency pool (max 16 simultaneous FUSE stats)
+	semaphore := make(chan struct{}, 16)
+
+	for i, l := range ls {
+		wg.Add(1)
+		go func(idx int, entry os.DirEntry) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			filePath := filepath.Join(path, entry.Name())
+			isDir := entry.IsDir()
+			modTime := time.Now()
+			var size int64
+
+			// Only evaluate symlinks if the directory entry indicates a symlink
+			if entry.Type()&os.ModeSymlink != 0 {
+				link, err := filepath.EvalSymlinks(filePath)
+				if err == nil && link != filePath {
+					if fileInfo, err := os.Stat(link); err == nil {
+						isDir = fileInfo.IsDir()
+						modTime = fileInfo.ModTime()
+						size = fileInfo.Size()
+					}
+				}
+			} else {
+				if info, err := entry.Info(); err == nil {
+					modTime = info.ModTime()
+					size = info.Size()
+				}
+			}
+
+			dirs[idx] = model.Path{
+				Name:  entry.Name(),
+				Path:  filePath,
+				IsDir: isDir,
+				Date:  modTime,
+				Size:  size,
+			}
+		}(i, l)
+	}
+	wg.Wait()
+
 	return dirs, nil
 }
 

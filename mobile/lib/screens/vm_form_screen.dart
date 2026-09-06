@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/vm_client.dart';
 import '../theme.dart';
+import '../services/vm_client.dart';
 import '../widgets/common.dart';
 
-/// Create or edit a VM with OS preset quick-selection, resource sliders,
-/// ISO boot picker, and firmware/network configuration.
 class VmFormScreen extends StatefulWidget {
   final VmClient client;
   final Vm? existing;
+
   const VmFormScreen({super.key, required this.client, this.existing});
 
   @override
@@ -17,104 +16,154 @@ class VmFormScreen extends StatefulWidget {
 
 class _VmFormScreenState extends State<VmFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _name;
-  late final TextEditingController _vcpus;
-  late final TextEditingController _memoryGb;
-  late final TextEditingController _diskGb;
-  late final TextEditingController _bridgeName;
-  String _networkMode = 'nat';
-  String _firmware = 'bios';
-  String? _isoPath;
-  List<VmIso> _isos = [];
-  bool _loadingIsos = true;
-  bool _saving = false;
-  String? _error;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _bridgeCtrl;
 
-  bool get _isEdit => widget.existing != null;
+  int _vcpus = 2;
+  int _ramGb = 2;
+  int _diskGb = 20;
+  String _diskBus = 'virtio';
+  bool _diskSsd = true;
+  String _firmware = 'uefi';
+  String _networkMode = 'bridge';
+  String _nicModel = 'virtio';
+  String? _selectedIso;
+  int _displayWidth = 0;
+  int _displayHeight = 0;
+  bool _bootCdromFirst = true;
+
+  List<VmIso> _isos = [];
+  bool _loadingIsos = false;
+  bool _saving = false;
+
+  final _presets = [
+    (name: 'Windows 11', vcpus: 4, ram: 4, disk: 60, uefi: true, bus: 'virtio', icon: Icons.window_rounded, color: const Color(0xFF0284C7)),
+    (name: 'Windows 10', vcpus: 4, ram: 4, disk: 50, uefi: true, bus: 'virtio', icon: Icons.window_rounded, color: const Color(0xFF0284C7)),
+    (name: 'Ubuntu 24.04', vcpus: 2, ram: 2, disk: 25, uefi: true, bus: 'virtio', icon: Icons.terminal_rounded, color: const Color(0xFFE95420)),
+    (name: 'Debian 12', vcpus: 2, ram: 2, disk: 20, uefi: true, bus: 'virtio', icon: Icons.terminal_rounded, color: const Color(0xFFD70A53)),
+    (name: 'Linux Mint', vcpus: 2, ram: 2, disk: 20, uefi: true, bus: 'virtio', icon: Icons.terminal_rounded, color: const Color(0xFF87CF3E)),
+    (name: 'Arch Linux', vcpus: 2, ram: 2, disk: 20, uefi: true, bus: 'virtio', icon: Icons.terminal_rounded, color: const Color(0xFF1793D1)),
+  ];
+
+  final _resolutions = [
+    (label: 'Auto / Default', width: 0, height: 0),
+    (label: '1920 × 1080 (FHD)', width: 1920, height: 1080),
+    (label: '1600 × 900 (HD+)', width: 1600, height: 900),
+    (label: '1366 × 768 (WXGA)', width: 1366, height: 768),
+    (label: '1280 × 720 (720p)', width: 1280, height: 720),
+    (label: '1024 × 768 (XGA)', width: 1024, height: 768),
+  ];
 
   @override
   void initState() {
     super.initState();
-    final e = widget.existing;
-    _name = TextEditingController(text: e?.name ?? '');
-    _vcpus = TextEditingController(text: (e?.vcpus ?? 2).toString());
-    _memoryGb = TextEditingController(text: e == null ? '2.0' : (e.memoryMib / 1024).toStringAsFixed(1));
-    _diskGb = TextEditingController(text: (e?.diskGib ?? 20).toString());
-    _bridgeName = TextEditingController(text: e?.networks.isNotEmpty == true ? (e!.networks.first.bridgeName ?? '') : '');
-    _networkMode = e?.networkMode.isNotEmpty == true ? e!.networkMode : 'nat';
-    _firmware = e?.firmware ?? 'bios';
-    _isoPath = e?.isoPath;
-    _loadIsos();
-  }
+    final ex = widget.existing;
+    _nameCtrl = TextEditingController(text: ex?.name ?? '');
+    _bridgeCtrl = TextEditingController(text: (ex?.networks.isNotEmpty == true) ? (ex!.networks.first.bridgeName ?? 'br0') : 'br0');
 
-  Future<void> _loadIsos() async {
-    try {
-      final isos = await widget.client.listIsos();
-      if (!mounted) return;
-      setState(() {
-        _isos = isos;
-        _loadingIsos = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loadingIsos = false);
+    if (ex != null) {
+      _vcpus = ex.vcpus > 0 ? ex.vcpus : 2;
+      _ramGb = (ex.memoryMib / 1024).round().clamp(1, 64);
+      _diskGb = ex.diskGib > 0 ? ex.diskGib : 20;
+      _firmware = ex.firmware;
+      _selectedIso = ex.isoPath;
+      _displayWidth = ex.displayWidth;
+      _displayHeight = ex.displayHeight;
+
+      if (ex.disks.isNotEmpty) {
+        _diskBus = ex.disks.first.bus;
+        _diskSsd = ex.disks.first.ssd;
+      }
+      if (ex.networks.isNotEmpty) {
+        _networkMode = ex.networks.first.mode;
+        _nicModel = ex.networks.first.model;
+      }
     }
+    _loadIsos();
   }
 
   @override
   void dispose() {
-    _name.dispose();
-    _vcpus.dispose();
-    _memoryGb.dispose();
-    _diskGb.dispose();
-    _bridgeName.dispose();
+    _nameCtrl.dispose();
+    _bridgeCtrl.dispose();
     super.dispose();
   }
 
-  void _applyPreset(String name, int vcpus, double memGb, int diskGb, String fw) {
+  Future<void> _loadIsos() async {
+    setState(() => _loadingIsos = true);
+    try {
+      final list = await widget.client.listIsos();
+      if (mounted) setState(() => _isos = list);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingIsos = false);
+    }
+  }
+
+  void _applyPreset(dynamic p) {
     HapticFeedback.selectionClick();
     setState(() {
-      if (!_isEdit && _name.text.isEmpty) {
-        _name.text = name.toLowerCase().replaceAll(' ', '-');
-      }
-      _vcpus.text = vcpus.toString();
-      _memoryGb.text = memGb.toStringAsFixed(1);
-      _diskGb.text = diskGb.toString();
-      _firmware = fw;
+      if (_nameCtrl.text.isEmpty) _nameCtrl.text = p.name.toString().replaceAll(' ', '-').toLowerCase();
+      _vcpus = p.vcpus;
+      _ramGb = p.ram;
+      _diskGb = p.disk;
+      _diskBus = p.bus;
+      _firmware = p.uefi ? 'uefi' : 'bios';
     });
   }
 
-  Future<void> _save() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     HapticFeedback.mediumImpact();
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+    setState(() => _saving = true);
+
+    final bootOrder = _bootCdromFirst && _selectedIso != null && _selectedIso!.isNotEmpty
+        ? ['cdrom', 'vda', 'network']
+        : ['vda', 'cdrom', 'network'];
+
     try {
-      final memoryMib = (double.parse(_memoryGb.text) * 1024).round();
-      if (_isEdit) {
+      if (widget.existing != null) {
         await widget.client.updateVm(
           widget.existing!.name,
-          vcpus: int.parse(_vcpus.text),
-          memoryMib: memoryMib,
+          vcpus: _vcpus,
+          memoryMib: _ramGb * 1024,
+          diskGib: _diskGb,
+          diskBus: _diskBus,
+          ssd: _diskSsd,
+          isoPath: _selectedIso,
+          networkMode: _networkMode,
+          bridgeName: _networkMode == 'bridge' ? _bridgeCtrl.text.trim() : null,
+          nicModel: _nicModel,
           firmware: _firmware,
+          displayWidth: _displayWidth > 0 ? _displayWidth : null,
+          displayHeight: _displayHeight > 0 ? _displayHeight : null,
+          bootOrder: bootOrder,
         );
       } else {
         await widget.client.createVm(
-          name: _name.text.trim(),
-          vcpus: int.parse(_vcpus.text),
-          memoryMib: memoryMib,
-          diskGib: int.tryParse(_diskGb.text),
-          isoPath: _isoPath,
+          name: _nameCtrl.text.trim(),
+          vcpus: _vcpus,
+          memoryMib: _ramGb * 1024,
+          diskGib: _diskGb,
+          diskBus: _diskBus,
+          ssd: _diskSsd,
+          isoPath: _selectedIso,
           networkMode: _networkMode,
-          bridgeName: _networkMode == 'bridge' ? _bridgeName.text.trim() : null,
+          bridgeName: _networkMode == 'bridge' ? _bridgeCtrl.text.trim() : null,
+          nicModel: _nicModel,
           firmware: _firmware,
+          displayWidth: _displayWidth > 0 ? _displayWidth : null,
+          displayHeight: _displayHeight > 0 ? _displayHeight : null,
+          bootOrder: bootOrder,
         );
       }
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -122,301 +171,434 @@ class _VmFormScreenState extends State<VmFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isEdit = widget.existing != null;
+
     return Scaffold(
-      body: SafeArea(
-        child: Column(
+      backgroundColor: NivaroColors.background,
+      appBar: AppBar(
+        title: Text(isEdit ? 'Configure: ${widget.existing!.name}' : 'New Virtual Machine', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Reload ISOs',
+            onPressed: _loadIsos,
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
           children: [
-            // Top Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 20, 12),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _isEdit ? 'Edit Virtual Machine' : 'Create Virtual Machine',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+            if (!isEdit) ...[
+              const SectionHeader(title: 'Quick OS Presets', subtitle: 'Auto-fill recommended specs'),
+              SizedBox(
+                height: 64,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _presets.length,
+                  itemBuilder: (context, i) {
+                    final p = _presets[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () => _applyPreset(p),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: NivaroColors.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: NivaroColors.borderSubtle),
                           ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: p.color.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(p.icon, color: p.color, size: 17),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white)),
+                                  Text('${p.vcpus}C · ${p.ram}GB RAM', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 10.5)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            const SectionHeader(title: 'General Information'),
+            DarkCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: _nameCtrl,
+                    enabled: !isEdit,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: 'Virtual Machine Name',
+                      hintText: 'e.g. windows-11, debian-server',
+                      prefixIcon: Icon(Icons.computer_rounded, size: 19),
                     ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Name is required';
+                      if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(v.trim())) {
+                        return 'Only letters, numbers, hyphens and underscores allowed';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Firmware Boot Architecture', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('UEFI (OVMF)')),
+                          selected: _firmware == 'uefi',
+                          onSelected: (s) => setState(() => _firmware = 'uefi'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('Legacy BIOS')),
+                          selected: _firmware == 'bios',
+                          onSelected: (s) => setState(() => _firmware = 'bios'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Display Resolution Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    value: _resolutions.indexWhere((r) => r.width == _displayWidth && r.height == _displayHeight).clamp(0, _resolutions.length - 1),
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.display_settings_rounded, size: 19),
+                    ),
+                    items: List.generate(_resolutions.length, (idx) {
+                      final r = _resolutions[idx];
+                      return DropdownMenuItem<int>(
+                        value: idx,
+                        child: Text(r.label, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                      );
+                    }),
+                    onChanged: (idx) {
+                      if (idx != null) {
+                        final r = _resolutions[idx];
+                        setState(() {
+                          _displayWidth = r.width;
+                          _displayHeight = r.height;
+                        });
+                      }
+                    },
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            const SizedBox(height: 18),
 
-            // Form Fields
-            Expanded(
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
-                  children: [
-                    // Presets Bar (on create only)
-                    if (!_isEdit) ...[
-                      const SectionHeader(title: 'Quick OS Presets'),
-                      const SizedBox(height: 10),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _presetChip('Ubuntu / Debian', Icons.terminal_rounded, () => _applyPreset('ubuntu', 2, 2.0, 25, 'bios')),
-                            const SizedBox(width: 8),
-                            _presetChip('Windows 11', Icons.window_rounded, () => _applyPreset('win11', 4, 4.0, 64, 'uefi')),
-                            const SizedBox(width: 8),
-                            _presetChip('Alpine Linux', Icons.speed_rounded, () => _applyPreset('alpine', 1, 1.0, 10, 'bios')),
-                            const SizedBox(width: 8),
-                            _presetChip('Docker Host', Icons.layers_rounded, () => _applyPreset('docker-vm', 4, 8.0, 40, 'bios')),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // General Card
-                    const SectionHeader(title: 'General Details'),
-                    const SizedBox(height: 10),
-                    DarkCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextFormField(
-                            controller: _name,
-                            enabled: !_isEdit,
-                            decoration: const InputDecoration(
-                              labelText: 'VM Name',
-                              hintText: 'e.g. ubuntu-server, windows11',
-                              prefixIcon: Icon(Icons.badge_rounded, size: 20),
-                              filled: true,
-                              fillColor: NivaroColors.surfaceRaised,
-                            ),
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) return 'Name is required';
-                              if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(v.trim())) {
-                                return 'Letters, numbers, - and _ only';
-                              }
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Compute & Memory Card
-                    const SectionHeader(title: 'Compute & Memory'),
-                    const SizedBox(height: 10),
-                    DarkCard(
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _vcpus,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    labelText: 'vCPU Cores',
-                                    prefixIcon: Icon(Icons.memory_rounded, size: 20),
-                                    filled: true,
-                                    fillColor: NivaroColors.surfaceRaised,
-                                  ),
-                                  validator: (v) {
-                                    final val = int.tryParse(v ?? '');
-                                    if (val == null || val <= 0) return 'Valid CPU count required';
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _memoryGb,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(
-                                    labelText: 'RAM (GB)',
-                                    prefixIcon: Icon(Icons.speed_rounded, size: 20),
-                                    filled: true,
-                                    fillColor: NivaroColors.surfaceRaised,
-                                  ),
-                                  validator: (v) {
-                                    final val = double.tryParse(v ?? '');
-                                    if (val == null || val <= 0) return 'Valid RAM required';
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Storage & Media Card
-                    if (!_isEdit) ...[
-                      const SectionHeader(title: 'Storage & Boot Media'),
-                      const SizedBox(height: 10),
-                      DarkCard(
-                        child: Column(
-                          children: [
-                            TextFormField(
-                              controller: _diskGb,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Main Disk Size (GB)',
-                                prefixIcon: Icon(Icons.storage_rounded, size: 20),
-                                filled: true,
-                                fillColor: NivaroColors.surfaceRaised,
-                              ),
-                              validator: (v) {
-                                final val = int.tryParse(v ?? '');
-                                if (val == null || val <= 0) return 'Valid disk size required';
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            if (_loadingIsos)
-                              const LinearProgressIndicator()
-                            else
-                              DropdownButtonFormField<String?>(
-                                dropdownColor: NivaroColors.surfaceRaised,
-                                value: _isoPath,
-                                decoration: const InputDecoration(
-                                  labelText: 'Boot ISO Image (optional)',
-                                  prefixIcon: Icon(Icons.album_rounded, size: 20),
-                                  filled: true,
-                                  fillColor: NivaroColors.surfaceRaised,
-                                ),
-                                items: [
-                                  const DropdownMenuItem(value: null, child: Text('None (Network / Existing Disk)')),
-                                  ..._isos.map(
-                                    (iso) => DropdownMenuItem(
-                                      value: iso.path,
-                                      child: Text(iso.name, overflow: TextOverflow.ellipsis),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (v) => setState(() => _isoPath = v),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
-                    // Firmware & Network Card
-                    const SectionHeader(title: 'Firmware & Network'),
-                    const SizedBox(height: 10),
-                    DarkCard(
-                      child: Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            dropdownColor: NivaroColors.surfaceRaised,
-                            value: _firmware,
-                            decoration: const InputDecoration(
-                              labelText: 'Boot Firmware',
-                              prefixIcon: Icon(Icons.developer_mode_rounded, size: 20),
-                              filled: true,
-                              fillColor: NivaroColors.surfaceRaised,
-                            ),
-                            items: const [
-                              DropdownMenuItem(value: 'bios', child: Text('Legacy BIOS')),
-                              DropdownMenuItem(value: 'uefi', child: Text('UEFI (Windows 11 / Modern OS)')),
-                            ],
-                            onChanged: _isEdit ? null : (v) => setState(() => _firmware = v ?? 'bios'),
-                          ),
-                          if (!_isEdit) ...[
-                            const SizedBox(height: 14),
-                            DropdownButtonFormField<String>(
-                              dropdownColor: NivaroColors.surfaceRaised,
-                              value: _networkMode,
-                              decoration: const InputDecoration(
-                                labelText: 'Network Mode',
-                                prefixIcon: Icon(Icons.lan_rounded, size: 20),
-                                filled: true,
-                                fillColor: NivaroColors.surfaceRaised,
-                              ),
-                              items: const [
-                                DropdownMenuItem(value: 'nat', child: Text('NAT (Shared Host Network)')),
-                                DropdownMenuItem(value: 'bridge', child: Text('Bridged (Direct LAN IP)')),
-                              ],
-                              onChanged: (v) => setState(() => _networkMode = v ?? 'nat'),
-                            ),
-                            if (_networkMode == 'bridge') ...[
-                              const SizedBox(height: 14),
-                              TextFormField(
-                                controller: _bridgeName,
-                                decoration: const InputDecoration(
-                                  labelText: 'Bridge Interface Name',
-                                  hintText: 'e.g. br0, virbr0',
-                                  prefixIcon: Icon(Icons.router_rounded, size: 20),
-                                  filled: true,
-                                  fillColor: NivaroColors.surfaceRaised,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ],
-                      ),
-                    ),
-
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      DarkCard(
-                        color: NivaroColors.danger.withValues(alpha: 0.15),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline_rounded, color: NivaroColors.danger),
-                            const SizedBox(width: 12),
-                            Expanded(child: Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13))),
-                          ],
-                        ),
+            const SectionHeader(title: 'Resource Allocation'),
+            DarkCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('vCPU Cores', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(color: NivaroColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_vcpus Cores', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.primaryLight)),
                       ),
                     ],
-
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: FilledButton(
-                        onPressed: _saving ? null : _save,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: NivaroColors.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
-                        ),
-                        child: _saving
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                            : Text(_isEdit ? 'Save Changes' : 'Create & Provision VM', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  ),
+                  Slider(
+                    value: _vcpus.toDouble(),
+                    min: 1,
+                    max: 16,
+                    divisions: 15,
+                    label: '$_vcpus Cores',
+                    onChanged: (v) => setState(() => _vcpus = v.round()),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.center,
+                    children: [1, 2, 4, 8, 12, 16].map((c) {
+                      return ChoiceChip(
+                        label: Text('${c}C', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        selected: _vcpus == c,
+                        onSelected: (_) => setState(() => _vcpus = c),
+                        visualDensity: VisualDensity.compact,
+                      );
+                    }).toList(),
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Memory (RAM)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(color: NivaroColors.purpleLight.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_ramGb GB RAM', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.purpleLight)),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                  Slider(
+                    value: _ramGb.toDouble(),
+                    min: 1,
+                    max: 32,
+                    divisions: 31,
+                    label: '$_ramGb GB',
+                    onChanged: (v) => setState(() => _ramGb = v.round()),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.center,
+                    children: [1, 2, 4, 8, 16, 32].map((gb) {
+                      return ChoiceChip(
+                        label: Text('${gb}G', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        selected: _ramGb == gb,
+                        onSelected: (_) => setState(() => _ramGb = gb),
+                        visualDensity: VisualDensity.compact,
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(height: 18),
+
+            const SectionHeader(title: 'Virtual Storage & Bus'),
+            DarkCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Primary Virtual Disk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(color: NivaroColors.success.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_diskGb GB', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.successLight)),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: _diskGb.toDouble().clamp(10, 500),
+                    min: 10,
+                    max: 300,
+                    divisions: 29,
+                    label: '$_diskGb GB',
+                    onChanged: (v) => setState(() => _diskGb = v.round()),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Disk Controller Bus', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('VirtIO')),
+                          selected: _diskBus == 'virtio',
+                          onSelected: (s) => setState(() => _diskBus = 'virtio'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('SATA')),
+                          selected: _diskBus == 'sata',
+                          onSelected: (s) => setState(() => _diskBus = 'sata'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('IDE')),
+                          selected: _diskBus == 'ide',
+                          onSelected: (s) => setState(() => _diskBus = 'ide'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('SSD Emulation (TRIM / Discard)', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Allows guest OS to reclaim deleted blocks', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
+                    value: _diskSsd,
+                    onChanged: (v) => setState(() => _diskSsd = v),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            const SectionHeader(title: 'Virtual Network'),
+            DarkCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('Bridged (LAN)')),
+                          selected: _networkMode == 'bridge',
+                          onSelected: (s) => setState(() => _networkMode = 'bridge'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('NAT (Isolated)')),
+                          selected: _networkMode == 'nat',
+                          onSelected: (s) => setState(() => _networkMode = 'nat'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_networkMode == 'bridge') ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _bridgeCtrl,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: const InputDecoration(
+                        labelText: 'Bridge Interface Name',
+                        hintText: 'e.g. br0, virbr0',
+                        prefixIcon: Icon(Icons.settings_ethernet_rounded, size: 19),
+                      ),
+                      validator: (v) => _networkMode == 'bridge' && (v == null || v.trim().isEmpty) ? 'Bridge interface name is required' : null,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text('NIC Device Model', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('VirtIO')),
+                          selected: _nicModel == 'virtio',
+                          onSelected: (s) => setState(() => _nicModel = 'virtio'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('e1000')),
+                          selected: _nicModel == 'e1000',
+                          onSelected: (s) => setState(() => _nicModel = 'e1000'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(child: Text('RTL8139')),
+                          selected: _nicModel == 'rtl8139',
+                          onSelected: (s) => setState(() => _nicModel = 'rtl8139'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            const SectionHeader(title: 'Boot Media / ISO'),
+            DarkCard(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_loadingIsos)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  else
+                    DropdownButtonFormField<String?>(
+                      value: _selectedIso,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Boot ISO Image',
+                        prefixIcon: Icon(Icons.album_rounded, size: 19),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('No ISO (Boot from Virtual Disk)', overflow: TextOverflow.ellipsis),
+                        ),
+                        ..._isos.map((iso) => DropdownMenuItem<String?>(
+                              value: iso.path,
+                              child: Text(iso.name, overflow: TextOverflow.ellipsis),
+                            )),
+                      ],
+                      onChanged: (v) => setState(() => _selectedIso = v),
+                    ),
+                  if (_selectedIso != null && _selectedIso!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Prioritize CD-ROM in Boot Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Attempts to boot from selected ISO first', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
+                      value: _bootCdromFirst,
+                      onChanged: (v) => setState(() => _bootCdromFirst = v),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            FilledButton.icon(
+              onPressed: _saving ? null : _submit,
+              icon: _saving
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded),
+              label: Text(isEdit ? 'Save Changes' : 'Create Virtual Machine', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              style: FilledButton.styleFrom(
+                backgroundColor: NivaroColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
+              ),
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
-
-  Widget _presetChip(String label, IconData icon, VoidCallback onTap) {
-    return ActionChip(
-      avatar: Icon(icon, size: 16, color: NivaroColors.primaryLight),
-      label: Text(label),
-      labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      backgroundColor: NivaroColors.surfaceRaised,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(NivaroShape.full),
-        side: const BorderSide(color: NivaroColors.borderSubtle),
-      ),
-      onPressed: onTap,
-    );
-  }
 }
-

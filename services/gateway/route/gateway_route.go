@@ -1,6 +1,7 @@
 package route
 
 import (
+	"io"
 	"net/http"
 	"strings"
 
@@ -66,11 +67,48 @@ func rewriteRequestSourceIP(r *http.Request) {
 func (g *GatewayRoute) GetRoute() *http.ServeMux {
 	gatewayMux := http.NewServeMux()
 	gatewayMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/ping" {
+		if r.URL.Path == "/ping" || r.URL.Path == "/speedtest/ping" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write([]byte("pong from gateway service")); err != nil {
-				logger.Error("Failed to `pong` in resposne to `ping`", zap.Any("error", err))
+				logger.Error("Failed to `pong` in response to `ping`", zap.Any("error", err))
 			}
+			return
+		}
+
+		if r.URL.Path == "/speedtest/download" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.WriteHeader(http.StatusOK)
+			buf := make([]byte, 128*1024)
+			for i := range buf {
+				buf[i] = byte(i & 0xFF)
+			}
+			flusher, ok := w.(http.Flusher)
+			for i := 0; i < 4000; i++ {
+				if _, err := w.Write(buf); err != nil {
+					return
+				}
+				if ok && i%8 == 0 {
+					flusher.Flush()
+				}
+			}
+			return
+		}
+
+		if r.URL.Path == "/speedtest/upload" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, PUT, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			io.Copy(io.Discard, r.Body)
+			r.Body.Close()
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
 			return
 		}
 

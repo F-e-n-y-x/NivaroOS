@@ -6,6 +6,8 @@ import 'vm_list_screen.dart';
 import 'apps_screen.dart';
 import 'settings_screen.dart';
 import '../services/storage_service.dart';
+import '../services/permission_service.dart';
+import '../services/device_sync_service.dart';
 import '../widgets/common.dart';
 
 /// Main Application Shell with floating pill navigation bar and smooth tab transitions.
@@ -42,6 +44,8 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _loadAvatar();
+    PermissionService.requestInitialPermissions();
+    DeviceSyncService.instance.startAutoSync();
   }
 
   Future<void> _loadAvatar() async {

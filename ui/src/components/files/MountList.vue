@@ -144,6 +144,37 @@
 		</div>
 		<!-- Cloud List End -->
 
+		<!-- Companion Devices List Start -->
+		<div
+			v-for="item in companionDeviceList"
+			:key="item.id || item.path"
+			class="tree-node companion-node"
+			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
+			@click="open(item)"
+			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'companion' }, $event)"
+			@dragover="onDragOver(item, $event)"
+			@dragleave="onDragLeave(item)"
+			@drop="onDrop(item, $event)"
+			:title="item.storageText ? `${item.name} (${item.storageText})` : item.name"
+		>
+			<span class="tree-node-icon">
+				<b-icon :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="casa-22px"></b-icon>
+			</span>
+			<div class="companion-node-body">
+				<div class="companion-node-row">
+					<span class="tree-node-label one-line">{{ item.name }}</span>
+					<span v-if="item.isOnline" class="status-dot-online" title="Online"></span>
+				</div>
+				<div v-if="item.storageTotal > 0" class="companion-storage-meta">
+					<span class="companion-storage-text">{{ item.storageText }}</span>
+					<div class="companion-storage-meter">
+						<div class="companion-storage-bar" :style="{ width: item.storagePercent + '%' }"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- Companion Devices List End -->
+
 		<sidebar-context-menu ref="contextMenu" @eject="handleEject"></sidebar-context-menu>
 		<b-loading v-model="isLoading" :is-full-page="false"></b-loading>
 	</div>
@@ -172,6 +203,7 @@ export default {
 			localStorageList: [],
 			networkStorageList: [],
 			cloudStorageList: [],
+			companionDeviceList: [],
 			dorpdown: false,
 			mergeStorageList: [],
 			testMergeMiss: 0,
@@ -217,6 +249,7 @@ export default {
 			// this.getUsbStorage()
 			this.getNetworkStorage()
 			this.getCloudStorage()
+			this.getCompanionDevices()
 		},
 		// Local Storage (include Mergerfs)
 		async getLocalStorage() {
@@ -380,6 +413,70 @@ export default {
 						icon_type: 'mdi',
 						pack: 'mdi',
 						path: storage.mount_point,
+						visible: true,
+						selected: true,
+						extensions: null,
+					}
+				})
+			} catch (error) {
+				console.log(error.response?.data?.message || error.message || error)
+			}
+		},
+
+		formatBytes(bytes) {
+			if (!bytes || bytes <= 0) return '0 B'
+			const k = 1024
+			const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+			const i = Math.floor(Math.log(bytes) / Math.log(k))
+			return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+		},
+
+		// Companion Devices
+		async getCompanionDevices() {
+			try {
+				const res = await this.$api.companion.getDevices()
+				const list = res.data?.data || []
+				this.companionDeviceList = list.map((dev) => {
+					const name = dev.name || dev.device_name || 'Companion'
+					const model = (dev.model || '').toLowerCase()
+					const platform = (dev.platform || '').toLowerCase()
+					const devType = (dev.device_type || '').toLowerCase()
+					const nameLower = name.toLowerCase()
+
+					let icon = 'cellphone'
+					if (
+						devType === 'tablet' ||
+						model.includes('tablet') ||
+						model.includes('tab') ||
+						model.includes('pad') ||
+						nameLower.includes('tablet') ||
+						nameLower.includes('tab') ||
+						nameLower.includes('pad')
+					) {
+						icon = 'tablet-cellphone'
+					} else if (platform.includes('ios') || model.includes('iphone') || model.includes('ipad')) {
+						icon = 'cellphone-apple'
+					}
+
+					const storageUsed = dev.storage_used || 0
+					const storageTotal = dev.storage_total || 0
+					const storagePercent = storageTotal > 0 ? Math.min(100, Math.round((storageUsed / storageTotal) * 100)) : 0
+					const storageText = storageTotal > 0 ? `${this.formatBytes(storageUsed)} / ${this.formatBytes(storageTotal)}` : ''
+
+					return {
+						id: dev.id,
+						name: name,
+						model: dev.model || '',
+						icon: icon,
+						pack: 'mdi',
+						path: dev.storage_path || `/DATA/Companion/${name.replace(/[/\\?%*:|"<>]/g, '_')}`,
+						isOnline: !!dev.is_online,
+						storageUsed,
+						storageTotal,
+						storagePercent,
+						storageText,
+						serverStorageUsed: dev.server_storage_used || 0,
+						batteryLevel: dev.battery_level || 0,
 						visible: true,
 						selected: true,
 						extensions: null,
@@ -684,5 +781,59 @@ export default {
 	border: 1px solid #ffffff;
 	top: -0.5rem;
 	left: 0.9rem;
+}
+.status-dot-online {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background-color: #22c55e;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+.companion-node {
+	align-items: flex-start;
+	padding: 0.45rem 0.5rem;
+}
+.companion-node .tree-node-icon {
+	margin-top: 2px;
+}
+.companion-node-body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+.companion-node-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.35rem;
+}
+.companion-storage-meta {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.companion-storage-text {
+	font-size: 0.68rem;
+	color: #64748b;
+	line-height: 1.1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.companion-storage-meter {
+	width: 100%;
+	height: 3px;
+	background: rgba(0, 0, 0, 0.08);
+	border-radius: 2px;
+	overflow: hidden;
+}
+.companion-storage-bar {
+	height: 100%;
+	background: #3b82f6;
+	border-radius: 2px;
+	transition: width 0.3s ease;
 }
 </style>

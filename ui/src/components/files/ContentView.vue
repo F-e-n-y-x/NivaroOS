@@ -14,6 +14,33 @@
 		@mousedown.capture="focusRoot"
 		@contextmenu.self.prevent="openBlankContextMenu"
 	>
+		<!-- Companion Device Banner -->
+		<div v-if="companionDeviceInfo" class="companion-device-banner">
+			<div class="banner-avatar">
+				<b-icon :icon="companionDeviceInfo.icon" pack="mdi" class="casa-color-blue" custom-size="casa-24px"></b-icon>
+			</div>
+			<div class="banner-info">
+				<div class="banner-header-row">
+					<span class="banner-device-name">{{ companionDeviceInfo.name }}</span>
+					<span class="banner-pill" :class="companionDeviceInfo.isOnline ? 'is-online' : 'is-offline'">
+						{{ companionDeviceInfo.isOnline ? $t('Online') : $t('Offline') }}
+					</span>
+					<span v-if="companionDeviceInfo.batteryLevel > 0" class="banner-battery">
+						<i class="mdi mdi-battery mr-1"></i>{{ companionDeviceInfo.batteryLevel }}%
+					</span>
+					<span class="banner-subtext">{{ companionDeviceInfo.model }} · {{ companionDeviceInfo.platform }} · {{ $t('Companion Sync Folder') }}</span>
+				</div>
+				<div v-if="companionDeviceInfo.storageTotal > 0" class="banner-storage-row">
+					<span class="banner-storage-label">{{ $t('Device Internal Storage') }}:</span>
+					<span class="banner-storage-text">{{ companionDeviceInfo.storageText }}</span>
+					<div class="banner-storage-track">
+						<div class="banner-storage-bar" :style="{ width: companionDeviceInfo.storagePercent + '%' }"></div>
+					</div>
+					<span class="banner-storage-pct">{{ companionDeviceInfo.storagePercent }}%</span>
+				</div>
+			</div>
+		</div>
+
 		<b-loading v-model="loading" :is-full-page="false"></b-loading>
 		<error-holder v-if="error" :error="error"></error-holder>
 		<div v-else-if="!loading && listing.length === 0" class="empty-state-wrap" @contextmenu.prevent="openBlankContextMenu">
@@ -151,6 +178,7 @@ export default {
 			// (the same one MountList.vue's sidebar entries already use).
 			mountTypes: {},
 			isDragOver: false,
+			companionDeviceList: [],
 		}
 	},
 	computed: {
@@ -168,6 +196,51 @@ export default {
 				width: this.dragBox.width + 'px',
 				height: this.dragBox.height + 'px',
 			}
+		},
+		companionDeviceInfo() {
+			if (!this.path || !this.path.startsWith('/DATA/Companion/')) return null
+			const pathLower = this.path.toLowerCase()
+			for (const dev of this.companionDeviceList) {
+				const name = dev.name || dev.device_name || 'Companion'
+				const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '_')
+				if (
+					(dev.storage_path && this.path.startsWith(dev.storage_path)) ||
+					pathLower.includes(cleanName) ||
+					pathLower.includes(name.toLowerCase())
+				) {
+					const storageUsed = dev.storage_used || 0
+					const storageTotal = dev.storage_total || 0
+					const storagePercent = storageTotal > 0 ? Math.min(100, Math.round((storageUsed / storageTotal) * 100)) : 0
+					const storageText = storageTotal > 0 ? `${this.renderSize(storageUsed)} / ${this.renderSize(storageTotal)}` : ''
+
+					let icon = 'cellphone'
+					const model = (dev.model || '').toLowerCase()
+					const platform = (dev.platform || '').toLowerCase()
+					const nameLower = name.toLowerCase()
+					if (
+						model.includes('tablet') || model.includes('tab') || model.includes('pad') || model.includes('ruan') ||
+						nameLower.includes('tablet') || nameLower.includes('tab') || nameLower.includes('pad')
+					) {
+						icon = 'tablet-cellphone'
+					} else if (platform.includes('ios') || model.includes('iphone') || model.includes('ipad')) {
+						icon = 'cellphone-apple'
+					}
+
+					return {
+						name,
+						model: dev.model || '',
+						platform: dev.platform || '',
+						icon,
+						isOnline: !!dev.is_online,
+						batteryLevel: dev.battery_level || 0,
+						storageUsed,
+						storageTotal,
+						storagePercent,
+						storageText,
+					}
+				}
+			}
+			return null
 		},
 		folderItemCountLabel() {
 			const total = this.listing.length
@@ -196,6 +269,9 @@ export default {
 			handler(path) {
 				this.clearSelection()
 				this.fetchListing(path)
+				if (path && path.startsWith('/DATA/Companion/')) {
+					this.fetchCompanionDevices()
+				}
 			},
 		},
 		showHidden() {
@@ -216,6 +292,7 @@ export default {
 		// window), which was a real regression caught in review.
 		this.focusRoot()
 		this.fetchMountTypes()
+		this.fetchCompanionDevices()
 		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.reload)
 	},
 	beforeDestroy() {
@@ -321,6 +398,12 @@ export default {
 			} catch (e) {
 				// No storage access in this session (or none configured) - fine.
 			}
+		},
+		async fetchCompanionDevices() {
+			try {
+				const res = await this.$api.companion.getDevices()
+				this.companionDeviceList = res.data?.data || []
+			} catch (_) {}
 		},
 		openItem(item) {
 			if (item.is_dir) {
@@ -714,5 +797,107 @@ export default {
 			background: rgba(0, 0, 0, 0.06);
 		}
 	}
+}
+
+.companion-device-banner {
+	flex-shrink: 0;
+	margin: 0.75rem 0.75rem 0.25rem 0.75rem;
+	padding: 0.75rem 1rem;
+	background: #ffffff;
+	border: 1px solid rgb(228 233 237);
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.banner-avatar {
+	width: 42px;
+	height: 42px;
+	border-radius: 10px;
+	background: rgba(59, 130, 246, 0.1);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+.banner-info {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+.banner-header-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+.banner-device-name {
+	font-weight: 700;
+	font-size: 0.95rem;
+	color: #1e293b;
+}
+.banner-pill {
+	font-size: 0.68rem;
+	font-weight: 700;
+	padding: 2px 6px;
+	border-radius: 6px;
+	text-transform: uppercase;
+	&.is-online {
+		background: rgba(34, 197, 94, 0.12);
+		color: #16a34a;
+	}
+	&.is-offline {
+		background: rgba(148, 163, 184, 0.15);
+		color: #64748b;
+	}
+}
+.banner-battery {
+	font-size: 0.75rem;
+	color: #64748b;
+	display: flex;
+	align-items: center;
+}
+.banner-subtext {
+	font-size: 0.75rem;
+	color: #94a3b8;
+}
+.banner-storage-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.banner-storage-label {
+	font-size: 0.75rem;
+	color: #64748b;
+	font-weight: 500;
+	white-space: nowrap;
+}
+.banner-storage-text {
+	font-size: 0.75rem;
+	color: #3b82f6;
+	font-weight: 700;
+	white-space: nowrap;
+}
+.banner-storage-track {
+	flex: 1 1 auto;
+	max-width: 140px;
+	height: 6px;
+	background: #e2e8f0;
+	border-radius: 3px;
+	overflow: hidden;
+}
+.banner-storage-bar {
+	height: 100%;
+	background: #3b82f6;
+	border-radius: 3px;
+	transition: width 0.3s ease;
+}
+.banner-storage-pct {
+	font-size: 0.72rem;
+	color: #64748b;
+	font-weight: 600;
 }
 </style>
