@@ -543,6 +543,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex-wrap: wrap;
+	row-gap: 0.5rem;
 	margin-bottom: 1.25rem;
 }
 
@@ -550,6 +552,8 @@ export default {
 .toolbar-right {
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
+	row-gap: 0.4rem;
 	gap: 0.6rem;
 }
 
@@ -562,7 +566,7 @@ export default {
 }
 
 .vm-selector-dropdown {
-	min-width: 14rem;
+	min-width: min(14rem, 100%);
 }
 
 .refresh-icon-btn {
@@ -611,6 +615,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex-wrap: wrap;
+	row-gap: 0.5rem;
 	gap: 1rem;
 	padding: 0.75rem 1rem;
 	background: #ffffff;

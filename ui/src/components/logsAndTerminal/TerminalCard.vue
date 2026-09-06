@@ -249,7 +249,9 @@ export default {
 	.card {
 		.card-content {
 			padding: 2.5rem;
-			width: 25rem;
+			width: 100%;
+			max-width: 25rem;
+			box-sizing: border-box;
 		}
 
 		&.card-shadow {

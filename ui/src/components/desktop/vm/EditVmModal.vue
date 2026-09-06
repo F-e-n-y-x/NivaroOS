@@ -5,7 +5,7 @@
 	without needing CreateVmModal's step-by-step wizard treatment.
 -->
 <template>
-	<div class="edit-vm-window">
+	<div class="edit-vm-window" ref="root" :class="{ 'is-narrow': isNarrow }">
 		<div class="edit-vm-body">
 		<template v-if="vm">
 			<div class="setting-card">
@@ -187,6 +187,7 @@ export default {
 			showSharePicker: false,
 			saving: false,
 			error: null,
+			isNarrow: false,
 		}
 	},
 	computed: {
@@ -241,6 +242,19 @@ export default {
 	},
 	created() {
 		if (this.vm) this.load()
+	},
+	mounted() {
+		// See CreateVmModal.vue's identical comment - this window fills the
+		// viewport on mobile/tablet, so its .setting-rows need the same
+		// narrow-width stacking Settings gets for free from its own
+		// stylesheet, which this component isn't part of.
+		this.resizeObserver = new ResizeObserver(entries => {
+			this.isNarrow = entries[0].contentRect.width < 480
+		})
+		this.resizeObserver.observe(this.$refs.root)
+	},
+	beforeDestroy() {
+		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
 		formatMib(mib) {
@@ -341,6 +355,25 @@ export default {
 	height: 100%;
 	padding: 1rem;
 	background: #fff;
+
+	// Mirrors Settings' own is-narrow row-stacking rule - see
+	// CreateVmModal.vue's identical block for the full reasoning.
+	&.is-narrow {
+		.setting-row {
+			flex-wrap: wrap;
+			row-gap: 0.5rem;
+
+			.row-label,
+			.row-control {
+				flex-basis: 100%;
+			}
+		}
+
+		.slider-control {
+			flex-wrap: wrap;
+			row-gap: 0.35rem;
+		}
+	}
 
 	// Same reasoning as CreateVmModal's own copy of this: it used to come
 	// from VmOverlayPanel's card-wide override, which no longer wraps

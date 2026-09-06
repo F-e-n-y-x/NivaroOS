@@ -1,8 +1,8 @@
 <template>
-	<div class="vm-app">
+	<div class="vm-app" ref="root" :class="{ 'nav-collapsed': navCollapsed }">
 		<aside class="vm-nav">
 			<button v-for="s in sections" :key="s.id" class="nav-item hover-effect _is-radius"
-				:class="{ active: activeSection === s.id }" @click="activeSection = s.id">
+				:class="{ active: activeSection === s.id }" :title="navCollapsed ? $t(s.label) : ''" @click="activeSection = s.id">
 				<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-20"></b-icon>
 				<span>{{ $t(s.label) }}</span>
 			</button>
@@ -37,6 +37,14 @@ import VmNetworks from './vm/VmNetworks.vue'
 import VmStorage from './vm/VmStorage.vue'
 import { vmSidecar } from '@/api/vmSidecar'
 
+// Below this width, the 13.5rem-wide labeled nav would leave barely any
+// room at all for content (VM cards, snapshot lists, etc.) - collapsing it
+// to icon-only mirrors Settings' own nav-collapse threshold/behavior
+// (see utils/settings/breakpoints.js), just via a plain ResizeObserver
+// here rather than a shared breakpoints module, since this is the only
+// place in this app that needs one.
+const NAV_COLLAPSE_WIDTH = 700
+
 export default {
 	name: 'vm-manager-app',
 	components: { VmSetupScreen, VmList, VmSnapshots, VmNetworks, VmStorage },
@@ -50,12 +58,23 @@ export default {
 				{ id: 'networks', label: 'Networks', icon: 'network-outline' },
 				{ id: 'storage', label: 'Storage', icon: 'storage-outline' }
 			],
-			setupReady: false
+			setupReady: false,
+			navCollapsed: false
 		}
 	},
 	async created() {
 		const status = await vmSidecar.getSetupStatus().catch(() => ({ ready: false }))
 		this.setupReady = !!status.ready
+	},
+	mounted() {
+		this.resizeObserver = new ResizeObserver(entries => {
+			const width = entries[0].contentRect.width
+			this.navCollapsed = width < NAV_COLLAPSE_WIDTH
+		})
+		this.resizeObserver.observe(this.$refs.root)
+	},
+	beforeDestroy() {
+		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
 		handleOpenSnapshots(vmName) {
@@ -90,6 +109,20 @@ export default {
 	flex-direction: column;
 	gap: 0.2rem;
 	user-select: none;
+}
+
+.nav-collapsed .vm-nav {
+	width: 3.75rem;
+	padding: 1.25rem 0.5rem;
+
+	.nav-item span {
+		display: none;
+	}
+
+	.nav-item {
+		justify-content: center;
+		padding: 0.6rem;
+	}
 }
 
 .nav-item {

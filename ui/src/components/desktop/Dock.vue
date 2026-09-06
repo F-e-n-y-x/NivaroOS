@@ -625,6 +625,19 @@ export default {
 	border-radius: 22px;
 	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
 	z-index: 99990;
+	// A row of pinned/running app icons has no inherent limit - on a narrow
+	// viewport, enough of them would otherwise push the dock wider than the
+	// screen with no way to reach the overflowing icons at all (it has no
+	// max-width/scroll of its own). This is a no-op whenever the dock
+	// already fits, which is the normal desktop case.
+	max-width: calc(100vw - 1rem);
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
 }
 
 .dock-sep {

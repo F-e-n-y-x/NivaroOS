@@ -118,9 +118,9 @@
 		</div>
 
 		<!-- ==================== 2. CONTAINERS LIST ==================== -->
-		<div class="is-flex is-align-items-center is-justify-content-between mb-3">
+		<div class="is-flex is-align-items-center is-justify-content-between mb-3 containers-list-header">
 			<h3 class="setting-card-title mb-0">{{ $t('All Host Containers') }}</h3>
-			<div class="is-flex is-align-items-center">
+			<div class="is-flex is-align-items-center containers-list-header-controls">
 				<!-- Search box -->
 				<div class="search-box mr-2">
 					<i class="mdi mdi-magnify search-icon"></i>
@@ -633,6 +633,19 @@ export default {
 	font-weight: 500;
 }
 
+// The "All Host Containers" header row (title + search + filter pills) had
+// no wrap at all - title, a 190px search box, and 4 filter pills easily
+// exceed a phone-width window with nowhere for the overflow to go.
+.containers-list-header {
+	flex-wrap: wrap;
+	row-gap: 0.5rem;
+}
+
+.containers-list-header-controls {
+	flex-wrap: wrap;
+	row-gap: 0.5rem;
+}
+
 .search-box {
 	position: relative;
 	display: flex;
@@ -651,7 +664,8 @@ export default {
 		border: 1px solid rgba(0, 0, 0, 0.08);
 		border-radius: 6px;
 		font-size: 12px;
-		width: 190px;
+		width: 100%;
+		max-width: 190px;
 		outline: none;
 
 		&:focus {
@@ -721,6 +735,23 @@ export default {
 	&:last-child {
 		border-bottom: none;
 	}
+
+	// This row's .row-control (an Auto toggle + up to 4 action buttons)
+	// had no wrap - the setting-card ancestor clips overflow (see
+	// _settings.scss), so at phone width the later buttons (Restart,
+	// Terminal) could end up entirely unreachable instead of just cramped.
+	.row-control {
+		flex-wrap: wrap;
+		row-gap: 0.4rem;
+		justify-content: flex-end;
+	}
+}
+
+// Same clipped-and-unreachable risk for the "Update Schedule" row's Save
+// button once the schedule select + custom cron input also need room.
+.setting-row.sub-row .row-control {
+	flex-wrap: wrap;
+	row-gap: 0.4rem;
 }
 
 .container-avatar {

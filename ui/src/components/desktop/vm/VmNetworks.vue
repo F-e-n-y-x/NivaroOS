@@ -200,6 +200,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex-wrap: wrap;
+	row-gap: 0.5rem;
 	margin-bottom: 1.25rem;
 }
 .vm-section-title {

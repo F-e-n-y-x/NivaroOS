@@ -244,6 +244,14 @@ export default {
 	align-items: center;
 	gap: 0.5rem;
 	margin-left: 0.75rem;
+	// .terminal-tabs scrolls horizontally once there are enough tabs to
+	// overflow - without this, Close/Minimize (the only way to close this
+	// window, since it doubles as the titlebar) would scroll out of view
+	// along with everything else instead of staying reachable.
+	position: sticky;
+	right: 0;
+	padding-left: 0.5rem;
+	background: #1e1e1e;
 }
 
 .window-btn {

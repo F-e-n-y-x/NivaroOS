@@ -1542,7 +1542,22 @@ export default {
 	align-items: center;
 	gap: 0.35rem;
 	flex-wrap: nowrap;
-	overflow: visible;
+	// This console window has overflow:hidden forced on its whole content
+	// area (see DesktopWindow.vue's isNoScrollWindow), so a phone-width
+	// window with no room for all ~10 buttons here would otherwise clip
+	// most of them off entirely with no way to reach them at all - letting
+	// this one row scroll horizontally (min-width:0 is required for a flex
+	// child to actually shrink enough for overflow-x to take effect) keeps
+	// every control reachable regardless of window width.
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: visible;
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
 }
 .toolbar-group {
 	display: inline-flex;
@@ -1936,6 +1951,7 @@ export default {
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 	padding: 0.75rem;
 	width: 22rem;
+	max-width: calc(100vw - 2rem);
 	overflow: visible !important;
 	display: flex;
 	flex-direction: column;
@@ -2309,6 +2325,7 @@ export default {
 /* File Share Menu Styles */
 .share-menu {
 	width: 22rem;
+	max-width: calc(100vw - 2rem);
 	right: 0 !important;
 	left: auto !important;
 }

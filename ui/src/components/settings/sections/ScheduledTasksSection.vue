@@ -717,6 +717,15 @@ export default {
 	&:last-child {
 		border-bottom: none;
 	}
+
+	// Same clipped-and-unreachable risk as ContainersSection's row-control -
+	// an enable toggle plus up to 4 action buttons (including the
+	// text-labeled "Run Now") had no wrap.
+	.row-control {
+		flex-wrap: wrap;
+		row-gap: 0.4rem;
+		justify-content: flex-end;
+	}
 }
 
 .task-name {

@@ -3,7 +3,7 @@
      the window chrome itself provides the titlebar/drag/close, so this is
      just the wizard's own content filling the window body. -->
 <template>
-	<div class="create-vm-window">
+	<div class="create-vm-window" ref="root" :class="{ 'is-narrow': isNarrow }">
 		<div class="wizard-steps">
 			<div class="wizard-dots">
 				<button
@@ -287,6 +287,7 @@ export default {
 			networks: [],
 			creating: false,
 			error: null,
+			isNarrow: false,
 		}
 	},
 	computed: {
@@ -376,6 +377,19 @@ export default {
 	},
 	mounted() {
 		this.$nextTick(() => this.$refs.nameInput && this.$refs.nameInput.focus())
+		// This window fills the viewport on mobile/tablet (see OPEN_WINDOW),
+		// so a phone-width window would otherwise still lay out every
+		// .setting-row's icon+label+control inline with no wrap - mirrors
+		// Settings' own is-narrow row-stacking rule (utils/settings/
+		// breakpoints.js), just via a plain ResizeObserver here since this
+		// is the only place in this component that needs one.
+		this.resizeObserver = new ResizeObserver(entries => {
+			this.isNarrow = entries[0].contentRect.width < 480
+		})
+		this.resizeObserver.observe(this.$refs.root)
+	},
+	beforeDestroy() {
+		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
 		setMode(mode) {
@@ -491,6 +505,26 @@ export default {
 	// overflow above is the real fix, this just guarantees nothing else
 	// can reintroduce the same class of bug later.
 	overflow-x: hidden;
+
+	// Mirrors Settings' own is-narrow row-stacking rule (_settings.scss) -
+	// this component doesn't share that stylesheet's scope, so it needs
+	// its own copy rather than being able to just rely on the global one.
+	&.is-narrow {
+		.setting-row {
+			flex-wrap: wrap;
+			row-gap: 0.5rem;
+
+			.row-label,
+			.row-control {
+				flex-basis: 100%;
+			}
+		}
+
+		.slider-control {
+			flex-wrap: wrap;
+			row-gap: 0.35rem;
+		}
+	}
 
 	// Every button in this window (Browse/Clear next to the ISO field,
 	// the wizard's own Back/Cancel/Next/Create footer) used to inherit

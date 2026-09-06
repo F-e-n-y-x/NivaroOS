@@ -34,14 +34,21 @@
 			<component :is="resolvedComponent" ref="content" v-bind="win.props" @close="close" @minimize="minimize" @drag-start="startDrag" @status-change="onConsoleStatusChange"></component>
 		</div>
 
-		<div class="resize-handle resize-right" @pointerdown.stop="startResize('right', $event)"></div>
-		<div class="resize-handle resize-left" @pointerdown.stop="startResize('left', $event)"></div>
-		<div class="resize-handle resize-bottom" @pointerdown.stop="startResize('bottom', $event)"></div>
-		<div class="resize-handle resize-top" @pointerdown.stop="startResize('top', $event)"></div>
-		<div class="resize-handle resize-corner-br" @pointerdown.stop="startResize('corner-br', $event)"></div>
-		<div class="resize-handle resize-corner-tl" @pointerdown.stop="startResize('corner-tl', $event)"></div>
-		<div class="resize-handle resize-corner-tr" @pointerdown.stop="startResize('corner-tr', $event)"></div>
-		<div class="resize-handle resize-corner-bl" @pointerdown.stop="startResize('corner-bl', $event)"></div>
+		<!-- A phone-sized window always fills the screen (see OPEN_WINDOW) -
+		     there's nowhere meaningful to drag or resize it to, and real
+		     mobile apps aren't freely resizable either. A tablet keeps the
+		     full desktop-style windowing, since it has genuine room for an
+		     overlapping multi-window layout. -->
+		<template v-if="!isMobileViewport">
+			<div class="resize-handle resize-right" @pointerdown.stop="startResize('right', $event)"></div>
+			<div class="resize-handle resize-left" @pointerdown.stop="startResize('left', $event)"></div>
+			<div class="resize-handle resize-bottom" @pointerdown.stop="startResize('bottom', $event)"></div>
+			<div class="resize-handle resize-top" @pointerdown.stop="startResize('top', $event)"></div>
+			<div class="resize-handle resize-corner-br" @pointerdown.stop="startResize('corner-br', $event)"></div>
+			<div class="resize-handle resize-corner-tl" @pointerdown.stop="startResize('corner-tl', $event)"></div>
+			<div class="resize-handle resize-corner-tr" @pointerdown.stop="startResize('corner-tr', $event)"></div>
+			<div class="resize-handle resize-corner-bl" @pointerdown.stop="startResize('corner-bl', $event)"></div>
+		</template>
 	</div>
 </template>
 
@@ -140,6 +147,9 @@ export default {
 		isTouchDevice() {
 			return this.$store.state.isTouchDevice
 		},
+		isMobileViewport() {
+			return this.$store.state.isMobile
+		},
 		consoleStatusText() {
 			return (
 				{
@@ -196,6 +206,11 @@ export default {
 
 		startDrag(e) {
 			this.focus()
+			// A fullscreen phone window has nowhere meaningful to be dragged
+			// to - focus() above still runs (e.g. for FilesApp/TerminalPanel's
+			// own tab bar, which doubles as their titlebar), just not the
+			// actual drag.
+			if (this.isMobileViewport) return
 			const startX = e.clientX
 			const startY = e.clientY
 			const originX = this.win.x
