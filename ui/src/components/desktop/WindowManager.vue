@@ -1,12 +1,22 @@
 <template>
 	<div class="window-manager" @dragover.prevent="onDesktopDragOver" @drop="onDesktopDrop">
-		<!-- Every open window stays mounted even while minimized - a
-		window's content (a live terminal session, an in-progress file
-		list load, unsaved settings state) must survive minimize/restore,
-		not get torn down and recreated. Minimized ones are just hidden
-		via CSS (see DesktopWindow's :class binding). -->
-		<desktop-window v-for="win in windows" :key="win.id" :win="win"></desktop-window>
-		<dock></dock>
+		<!-- Desktop/tablet: every open window floats independently and stays
+		     mounted even while minimized (a live terminal session, an
+		     in-progress file list load, unsaved settings state must survive
+		     minimize/restore, not get torn down and recreated - minimized
+		     ones are just hidden via CSS, see DesktopWindow's :class
+		     binding). Phone: no floating windows at all - see
+		     MobileScreenHost/MobileTabBar's own doc comments for why this
+		     needs an entirely different presentation, not just smaller
+		     versions of the same chrome. -->
+		<template v-if="!isMobileShell">
+			<desktop-window v-for="win in windows" :key="win.id" :win="win"></desktop-window>
+			<dock></dock>
+		</template>
+		<template v-else>
+			<mobile-screen-host></mobile-screen-host>
+			<mobile-tab-bar></mobile-tab-bar>
+		</template>
 		<notification-center></notification-center>
 		<date-time-pill></date-time-pill>
 		<drag-drop-menu></drag-drop-menu>
@@ -18,6 +28,8 @@
 <script>
 import DesktopWindow from './DesktopWindow.vue'
 import Dock from './Dock.vue'
+import MobileScreenHost from './MobileScreenHost.vue'
+import MobileTabBar from './MobileTabBar.vue'
 import NotificationCenter from './NotificationCenter.vue'
 import DateTimePill from './DateTimePill.vue'
 import DragDropMenu from './DragDropMenu.vue'
@@ -36,6 +48,8 @@ export default {
 	components: {
 		DesktopWindow,
 		Dock,
+		MobileScreenHost,
+		MobileTabBar,
 		NotificationCenter,
 		DateTimePill,
 		DragDropMenu,
@@ -45,6 +59,9 @@ export default {
 	computed: {
 		windows() {
 			return this.$store.state.windows
+		},
+		isMobileShell() {
+			return this.$store.state.isMobile || this.$store.state.isTablet
 		}
 	},
 	created() {

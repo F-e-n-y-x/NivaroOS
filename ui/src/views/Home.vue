@@ -1,5 +1,10 @@
 <template>
-	<div v-if="!isLoading" class="desktop-viewport contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
+	<!-- On phone/tablet, WindowManager's MobileScreenHost/MobileTabBar (a
+	     sibling of this view, mounted in App.vue) fully replace this
+	     desktop surface - its own "Apps" screen reuses the same
+	     AppSection this renders below, so showing both at once would be
+	     two overlapping, redundant icon grids rather than one. -->
+	<div v-if="!isLoading && !isMobileShell" class="desktop-viewport contextmenu-canvas" @contextmenu.prevent="openHomeContaxtMenu">
 		<div class="desktop-workspace">
 			<div class="desktop-canvas-area contextmenu-canvas">
 				<!-- Apps Grid Start -->
@@ -46,6 +51,9 @@ export default {
 	computed: {
 		sidebarOpen() {
 			return this.$store.state.sidebarOpen
+		},
+		isMobileShell() {
+			return this.$store.state.isMobile || this.$store.state.isTablet
 		}
 	},
 	provide() {

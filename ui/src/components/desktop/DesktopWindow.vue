@@ -53,55 +53,10 @@
 </template>
 
 <script>
-import FilesApp from '@/components/files/FilesApp.vue'
-import TerminalPanel from '@/components/logsAndTerminal/TerminalPanel.vue'
-import SettingsApp from './SettingsApp.vue'
-import AppStoreApp from './AppStoreApp.vue'
-import LegacyAppEditPanel from '@/components/Apps/LegacyAppEditPanel.vue'
-import VmManagerApp from './VmManagerApp.vue'
-import ImageViewer from '@/components/files/viewers/ImageViewer.vue'
-import VideoPlayer from '@/components/files/viewers/VideoPlayer.vue'
-import CodeEditor from '@/components/files/viewers/CodeEditor.vue'
-import DocViewer from '@/components/files/viewers/DocViewer.vue'
-import ExcelViewer from '@/components/files/viewers/ExcelViewer.vue'
-import PdfViewer from '@/components/files/viewers/PdfViewer.vue'
-import VmConsolePanel from './vm/VmConsolePanel.vue'
-import CreateVmModal from './vm/CreateVmModal.vue'
-import EditVmModal from './vm/EditVmModal.vue'
-import FolderWindow from './FolderWindow.vue'
-import SystemUpdateWindow from './SystemUpdateWindow.vue'
-import ContainerConsolePanel from './ContainerConsolePanel.vue'
-import ScheduledTaskWindow from './ScheduledTaskWindow.vue'
-
-const COMPONENT_REGISTRY = {
-	FilesApp,
-	TerminalPanel,
-	ContainerConsolePanel,
-	VmConsolePanel,
-	CreateVmModal,
-	EditVmModal,
-	SettingsApp,
-	AppStoreApp,
-	LegacyAppEditPanel,
-	VmManagerApp,
-	ImageViewer,
-	VideoPlayer,
-	CodeEditor,
-	DocViewer,
-	ExcelViewer,
-	PdfViewer,
-	FolderWindow,
-	SystemUpdateWindow,
-	ScheduledTaskWindow
-}
+import { COMPONENT_REGISTRY, OWN_TITLEBAR_COMPONENTS, DARK_WINDOW_COMPONENTS, NO_SCROLL_COMPONENTS } from '@/utils/desktop/windowRegistry'
 
 const MIN_WIDTH = 360
 const MIN_HEIGHT = 280
-
-// These components' own top row IS the window's titlebar (draggable, with
-// their own minimize/close controls, no maximize by design) - the shared
-// .window-titlebar below would just be a redundant second bar on top of it.
-const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerConsolePanel']
 
 export default {
 	name: 'desktop-window',
@@ -132,13 +87,13 @@ export default {
 		// visibly mismatched seam, so these windows get the same dark
 		// titlebar treatment TerminalPanel already uses.
 		isDarkWindow() {
-			return ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel'].includes(this.win.component)
+			return DARK_WINDOW_COMPONENTS.includes(this.win.component)
 		},
 		isConsoleWindow() {
 			return this.win.component === 'VmConsolePanel'
 		},
 		isNoScrollWindow() {
-			return ['VideoPlayer', 'ImageViewer', 'VmConsolePanel'].includes(this.win.component)
+			return NO_SCROLL_COMPONENTS.includes(this.win.component)
 		},
 		// 8px-wide edge resize handles are fine for a mouse pointer but
 		// impractical to grab with a finger - widened via .window-touch

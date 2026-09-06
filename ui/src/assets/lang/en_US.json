@@ -699,5 +699,6 @@
   "e.g. /DATA/Shared": "e.g. /DATA/Shared",
   "folders": "folders",
   "No sign-in required. Windows 10/11 blocks this kind of connection by default though - if it doesn't show up there, use \"Requires SMB sign-in\" instead.": "No sign-in required. Windows 10/11 blocks this kind of connection by default though - if it doesn't show up there, use \"Requires SMB sign-in\" instead.",
-  "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.": "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect."
+  "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.": "Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.",
+  "VMs": "VMs"
 }
