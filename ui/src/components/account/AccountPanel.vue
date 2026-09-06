@@ -7,6 +7,7 @@
           <h3 class="title is-header">{{ title }}</h3>
         </div>
         <div>
+          <b-button v-if="isNativeApp" :label="$t('Change Server')" rounded class="mr-2" @click="changeServer" />
           <b-button :label="$t('Logout')" rounded @click="logout" type="is-danger is-light" />
         </div>
       </header>
@@ -43,6 +44,7 @@
             </div>
           </div>
           <div v-if="embedded" class="mt-5 has-text-right">
+            <b-button v-if="isNativeApp" :label="$t('Change Server')" rounded size="is-small" class="mr-2" @click="changeServer" />
             <b-button :label="$t('Logout')" rounded size="is-small" type="is-danger is-light" @click="logout" />
           </div>
         </template>
@@ -107,6 +109,7 @@
 </template>
 
 <script>
+import { isNativeApp, changeServer } from '@/utils/nativeApp';
 import { ValidationObserver, ValidationProvider } from "vee-validate";
 import "@/plugins/vee-validate";
 import { Cropper, Preview, CircleStencil } from 'vue-advanced-cropper';
@@ -150,6 +153,7 @@ export default {
   data() {
     return {
       isLoading: false,
+      isNativeApp: isNativeApp(),
       state: 1,
       user: this.$store.state.user,
       username: this.$store.state.user.username,
@@ -325,6 +329,9 @@ export default {
       this.$messageBus('account_setting_logout')
       this.$store.commit('SET_DEFAULT_WALLPAPER')
       this.$router.push("/logout");
+    },
+    changeServer() {
+      changeServer()
     },
   },
   destroyed() {

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NivaroOS</title>
+<style>
+	:root {
+		--color-primary: #2563eb;
+		--color-primary-hover: #1d4ed8;
+		--color-danger: #ef4444;
+		--color-text-muted: #64748b;
+		--color-border: rgba(0, 0, 0, 0.1);
+	}
+	* { box-sizing: border-box; }
+	html, body {
+		margin: 0;
+		padding: 0;
+		height: 100%;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		background: #f8fafc;
+		color: #1e293b;
+		-webkit-tap-highlight-color: transparent;
+	}
+	#app {
+		min-height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem 1.5rem;
+		padding-top: max(2rem, env(safe-area-inset-top));
+		padding-bottom: max(2rem, env(safe-area-inset-bottom));
+	}
+	.brand {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-bottom: 2.5rem;
+	}
+	.brand svg { width: 64px; height: 64px; margin-bottom: 0.85rem; }
+	.brand-name {
+		font-size: 1.35rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+	.brand-tagline {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		margin-top: 0.2rem;
+		text-align: center;
+	}
+
+	#loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+	.spinner {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		border: 3px solid rgba(37, 99, 235, 0.18);
+		border-top-color: var(--color-primary);
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin { to { transform: rotate(360deg); } }
+
+	#setup {
+		display: none;
+		width: 100%;
+		max-width: 24rem;
+	}
+	.field-label {
+		display: block;
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: #334155;
+		margin-bottom: 0.4rem;
+	}
+	.field-hint {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin: 0.35rem 0 1.1rem;
+	}
+	input[type="text"] {
+		width: 100%;
+		font-size: 1rem;
+		padding: 0.75rem 0.9rem;
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		background: #fff;
+		outline: none;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+	input[type="text"]:focus {
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+	}
+	.protocol-toggle {
+		display: flex;
+		background: #eef2f7;
+		border-radius: 10px;
+		padding: 0.2rem;
+		margin-bottom: 1.1rem;
+	}
+	.protocol-option {
+		flex: 1;
+		text-align: center;
+		font-size: 0.825rem;
+		font-weight: 500;
+		padding: 0.5rem;
+		border-radius: 8px;
+		cursor: pointer;
+		color: var(--color-text-muted);
+		user-select: none;
+	}
+	.protocol-option.active {
+		background: #fff;
+		color: #1e293b;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	}
+	button#connect-btn {
+		width: 100%;
+		font-size: 1rem;
+		font-weight: 600;
+		padding: 0.85rem;
+		border: none;
+		border-radius: 10px;
+		background: var(--color-primary);
+		color: #fff;
+		cursor: pointer;
+		transition: background 0.15s ease;
+	}
+	button#connect-btn:active { background: var(--color-primary-hover); }
+	button#connect-btn:disabled { opacity: 0.5; cursor: default; }
+
+	#error {
+		display: none;
+		font-size: 0.8rem;
+		color: var(--color-danger);
+		margin-top: 0.85rem;
+		text-align: center;
+	}
+	.help-text {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		text-align: center;
+		margin-top: 1.75rem;
+		line-height: 1.5;
+	}
+</style>
+</head>
+<body>
+<div id="app">
+	<div class="brand">
+		<svg viewBox="0 0 267 267" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<path opacity="0.95" d="M67.25 220.914C103.839 220.914 133.5 191.253 133.5 154.664C133.5 118.075 103.839 88.4138 67.25 88.4138C30.6611 88.4138 1 118.075 1 154.664C1 191.253 30.6611 220.914 67.25 220.914Z" fill="#4CE7FF"/>
+			<path opacity="0.95" d="M133.5 221.198C183.536 221.198 224.099 180.636 224.099 130.599C224.099 80.5626 183.536 40 133.5 40C83.4635 40 42.9009 80.5626 42.9009 130.599C42.9009 180.636 83.4635 221.198 133.5 221.198Z" fill="#0067C2"/>
+			<path opacity="0.95" d="M199.75 220.914C236.339 220.914 266 191.253 266 154.664C266 118.075 236.339 88.4138 199.75 88.4138C163.161 88.4138 133.5 118.075 133.5 154.664C133.5 191.253 163.161 220.914 199.75 220.914Z" fill="#4CE7FF"/>
+		</svg>
+		<div class="brand-name">NivaroOS</div>
+		<div class="brand-tagline">Your personal cloud, in your pocket.</div>
+	</div>
+
+	<div id="loading">
+		<div class="spinner"></div>
+	</div>
+
+	<div id="setup">
+		<label class="field-label" for="host-input">Server address</label>
+		<input id="host-input" type="text" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="192.168.1.10 or nivaroos.mydomain.com">
+		<p class="field-hint">The IP address or domain name of the computer running NivaroOS - the same thing you'd type into a browser.</p>
+
+		<div class="protocol-toggle">
+			<div class="protocol-option active" data-protocol="http">http:// (local network)</div>
+			<div class="protocol-option" data-protocol="https">https://</div>
+		</div>
+
+		<button id="connect-btn" disabled>Connect</button>
+		<p id="error"></p>
+
+		<p class="help-text">You can change this later from the app's menu once connected.</p>
+	</div>
+</div>
+
+<script>
+	(function () {
+		var STORAGE_KEY = 'nivaroos_server_url'
+		var protocol = 'http'
+
+		var loadingEl = document.getElementById('loading')
+		var setupEl = document.getElementById('setup')
+		var hostInput = document.getElementById('host-input')
+		var connectBtn = document.getElementById('connect-btn')
+		var errorEl = document.getElementById('error')
+		var protocolOptions = document.querySelectorAll('.protocol-option')
+
+		// Stored via the native Preferences plugin, not localStorage - once
+		// this page redirects to the user's own server, that's a different
+		// web origin with its own separate localStorage, isolated from this
+		// one. The live NivaroOS app (running inside this same native shell)
+		// needs to be able to clear this to support "change server" without
+		// the user having to uninstall/reinstall - only a native plugin call
+		// reaches storage that's shared across origins like that.
+		function getPreferences() {
+			return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences
+		}
+
+		function getSavedUrl() {
+			var prefs = getPreferences()
+			if (prefs) return prefs.get({ key: STORAGE_KEY }).then(function (r) { return r.value })
+			// Falls back to localStorage only when opened as a plain web page
+			// (e.g. previewing this file in a desktop browser) - never the
+			// real code path once actually running inside the packaged app.
+			try { return Promise.resolve(window.localStorage.getItem(STORAGE_KEY)) } catch (e) { return Promise.resolve(null) }
+		}
+
+		function setSavedUrl(url) {
+			var prefs = getPreferences()
+			if (prefs) return prefs.set({ key: STORAGE_KEY, value: url })
+			try { window.localStorage.setItem(STORAGE_KEY, url) } catch (e) {}
+			return Promise.resolve()
+		}
+
+		function normalizeHost(raw) {
+			var value = raw.trim()
+			// A user pasting a full URL (with its own scheme, and maybe a
+			// trailing path/slash) should still just work, not be told it's
+			// invalid because it doesn't match the bare-host pattern below.
+			value = value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')
+			return value
+		}
+
+		function buildUrl(rawHost) {
+			var host = normalizeHost(rawHost)
+			if (!host) return ''
+			return protocol + '://' + host
+		}
+
+		function showSetup() {
+			loadingEl.style.display = 'none'
+			setupEl.style.display = 'block'
+		}
+
+		function goToServer(url) {
+			window.location.replace(url)
+		}
+
+		function boot() {
+			// ?reset=1 is how the live app (see ui/src/utils/nativeApp.js)
+			// sends the user back here on "Change Server" - always show
+			// setup in that case even if a URL is still saved underneath.
+			var forceSetup = /[?&]reset=1(&|$)/.test(window.location.search)
+			if (forceSetup) {
+				showSetup()
+				return
+			}
+			getSavedUrl().then(function (saved) {
+				if (saved) {
+					goToServer(saved)
+					return
+				}
+				showSetup()
+			})
+		}
+
+		protocolOptions.forEach(function (opt) {
+			opt.addEventListener('click', function () {
+				protocolOptions.forEach(function (o) { o.classList.remove('active') })
+				opt.classList.add('active')
+				protocol = opt.getAttribute('data-protocol')
+			})
+		})
+
+		hostInput.addEventListener('input', function () {
+			connectBtn.disabled = !hostInput.value.trim()
+			errorEl.style.display = 'none'
+		})
+
+		connectBtn.addEventListener('click', function () {
+			var url = buildUrl(hostInput.value)
+			if (!url) return
+			setSavedUrl(url).then(function () {
+				goToServer(url)
+			})
+		})
+
+		hostInput.addEventListener('keydown', function (e) {
+			if (e.key === 'Enter' && !connectBtn.disabled) connectBtn.click()
+		})
+
+		boot()
+	})()
+</script>
+</body>
+</html>

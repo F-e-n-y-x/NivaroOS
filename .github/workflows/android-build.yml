@@ -1,0 +1,50 @@
+name: Build Android app
+
+# Builds the NivaroOS companion app (mobile/) into an installable debug
+# APK on every push that touches it, and publishes the APK as a downloadable
+# workflow artifact - this repo doesn't commit prebuilt binaries, and this
+# workflow's Android SDK/Gradle toolchain is heavier than something worth
+# requiring of every contributor's own machine.
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install mobile shell dependencies
+        run: npm install
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nivaroos-android-debug
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
