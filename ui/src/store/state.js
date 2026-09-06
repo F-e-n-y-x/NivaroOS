@@ -26,6 +26,15 @@ const state = {
 	siteLoading: true,
 	needInitialization: false,
 	hardwareInfo: {},
+	// isMobile (viewport width < 480, an existing App Store-only concept -
+	// see AppPanel.vue/AppSection.vue/Dropdown.vue) is left exactly as it
+	// was; isTablet is a second, wider tier added for the desktop shell's
+	// own adaptive-window behavior (see OPEN_WINDOW). isTouchDevice is a
+	// capability check independent of either - a touch laptop at desktop
+	// width still needs touch-drag/resize to work, without also getting
+	// the small-viewport window behavior.
+	isTablet: false,
+	isTouchDevice: false,
 	isMobile: false,
 
 	// Files

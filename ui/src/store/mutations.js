@@ -13,6 +13,19 @@ function persistWindows(state) {
 	localStorage.setItem(WINDOWS_STORAGE_KEY, JSON.stringify(toSave))
 }
 
+// A tablet keeps a small margin so the window doesn't feel glued to the
+// screen edge (there's room for it); a phone gets none, since every pixel
+// matters at that size and the margin would just be wasted chrome.
+function fitWindowToViewport(state) {
+	const margin = state.isMobile ? 0 : 12
+	return {
+		x: margin,
+		y: margin,
+		width: Math.max(200, window.innerWidth - margin * 2),
+		height: Math.max(200, window.innerHeight - margin * 2)
+	}
+}
+
 const mutations = {
 	// User and tokens
 	SET_ACCESS_TOKEN(state, token) {
@@ -58,6 +71,14 @@ const mutations = {
 			path: require('@/assets/background/default_wallpaper.jpg'),
 			from: "Built-in" //Built-in, Upload, Files
 		}
+	},
+
+	SET_IS_TABLET(state, val) {
+		state.isTablet = val
+	},
+
+	SET_IS_TOUCH_DEVICE(state, val) {
+		state.isTouchDevice = val
 	},
 
 	SET_IS_MOBILE(state, val) {
@@ -173,15 +194,31 @@ const mutations = {
 		}
 		// Stagger new windows so they don't stack exactly on top of each other.
 		const offset = (state.windows.length % 6) * 24
+		let rect = {
+			x: x !== undefined ? x : 80 + offset,
+			y: y !== undefined ? y : 60 + offset,
+			width: width || 900,
+			height: height || 600
+		}
+		// On a phone/tablet-sized viewport, every one of this app's ~40
+		// OPEN_WINDOW call sites still passes its own fixed desktop pixel
+		// size (e.g. 760x540) - on a 375px-wide screen that's unusable
+		// without knowing to drag/resize it first, which touch resize
+		// handles make impractical anyway. Overriding to fill the viewport
+		// here, once, means none of those call sites need to know or care
+		// what device they're running on.
+		if (state.isMobile || state.isTablet) {
+			rect = fitWindowToViewport(state)
+		}
 		state.windows.push({
 			id,
 			title,
 			component,
 			props: props || {},
-			x: x !== undefined ? x : 80 + offset,
-			y: y !== undefined ? y : 60 + offset,
-			width: width || 900,
-			height: height || 600,
+			x: rect.x,
+			y: rect.y,
+			width: rect.width,
+			height: rect.height,
 			zIndex: state.nextWindowZIndex++,
 			minimized: false
 		})
@@ -232,9 +269,14 @@ const mutations = {
 	RESTORE_WINDOWS(state, savedWindows) {
 		if (state.windows.length || !savedWindows.length) return
 		let maxZ = state.nextWindowZIndex
+		const fitToViewport = state.isMobile || state.isTablet
 		state.windows = savedWindows.map(w => {
 			const zIndex = maxZ++
-			return { ...w, props: {}, zIndex }
+			// A window saved from a previous, wider-viewport session
+			// shouldn't reopen oversized (or partly offscreen) if this
+			// session is on a phone/tablet - same reasoning as OPEN_WINDOW.
+			const rect = fitToViewport ? fitWindowToViewport(state) : {}
+			return { ...w, ...rect, props: {}, zIndex }
 		})
 		state.nextWindowZIndex = maxZ
 	},

@@ -119,6 +119,10 @@ _____             _____ _____
 		this.setInitLang();
 		window.addEventListener('resize', this.onWindowResize);
 		this.onWindowResize();
+		// A capability check, not a viewport-size one - unlike isMobile/
+		// isTablet this never changes after load, so it's set once here
+		// rather than inside the resize handler.
+		this.$store.commit('SET_IS_TOUCH_DEVICE', 'ontouchstart' in window || navigator.maxTouchPoints > 0);
 		let vh = window.innerHeight * 0.01;
 		this["vh"] = `${vh}px`;
 
@@ -161,8 +165,13 @@ _____             _____ _____
 		 * @return {*}
 		 */
 		onWindowResize() {
-			const isMobile = document.body.clientWidth < 480
-			this.$store.commit('SET_IS_MOBILE', isMobile)
+			const width = document.body.clientWidth
+			// isMobile's own threshold/consumers (the App Store's own
+			// mobile layout - AppPanel/AppSection/Dropdown) are untouched;
+			// isTablet is a second, wider tier only the desktop shell's
+			// window-sizing (see OPEN_WINDOW) reacts to.
+			this.$store.commit('SET_IS_MOBILE', width < 480)
+			this.$store.commit('SET_IS_TABLET', width >= 480 && width < 1024)
 		},
 	},
 	sockets: {

@@ -1,7 +1,7 @@
 <template>
 	<div class="container-console-panel">
 		<!-- Top Window Toolbar / Titlebar -->
-		<div class="panel-header" @mousedown="$emit('drag-start', $event)">
+		<div class="panel-header" @pointerdown="$emit('drag-start', $event)">
 			<div class="header-left is-flex is-align-items-center">
 				<b-icon icon="docker" pack="mdi" size="is-20" class="docker-icon mr-2"></b-icon>
 				<span class="container-title one-line font-weight-bold" :title="displayTitle">{{ displayTitle }}</span>

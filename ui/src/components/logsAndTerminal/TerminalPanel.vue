@@ -7,7 +7,7 @@
 		     the same reason Files' tab bar stays visible in Shared/Drop: as
 		     the only titlebar, hiding it would remove drag/minimize/close
 		     entirely whenever Logs is showing. -->
-		<div class="terminal-tabs" @mousedown="$emit('drag-start', $event)">
+		<div class="terminal-tabs" @pointerdown="$emit('drag-start', $event)">
 			<button v-for="tab in terminalTabs" :key="tab.id" class="terminal-tab"
 				:class="{ active: tab.id === activeTerminalTabId }" @click="activateTerminalTab(tab.id)">
 				<span class="one-line">{{ tab.title }}</span>

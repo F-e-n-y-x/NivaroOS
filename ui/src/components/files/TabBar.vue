@@ -1,6 +1,6 @@
 <!-- src/components/files/TabBar.vue -->
 <template>
-	<div class="tab-bar" @mousedown="$emit('drag-start', $event)">
+	<div class="tab-bar" @pointerdown="$emit('drag-start', $event)">
 		<button
 			v-for="tab in tabs"
 			:key="tab.id"

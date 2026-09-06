@@ -9,11 +9,12 @@
 		'window-minimized': win.minimized,
 		'window-console': isConsoleWindow,
 		'window-no-scroll': isNoScrollWindow,
+		'window-touch': isTouchDevice,
 	}"
-	@mousedown="focus"
+	@pointerdown="focus"
 	@drop.stop
 >
-		<div v-if="!ownTitlebarComponents.includes(win.component)" class="window-titlebar" @mousedown="startDrag">
+		<div v-if="!ownTitlebarComponents.includes(win.component)" class="window-titlebar" @pointerdown="startDrag">
 			<b-icon v-if="isConsoleWindow" icon="monitor" custom-size="mdi-16px" class="window-title-icon"></b-icon>
 			<span class="window-title" :class="{ 'one-line': !isConsoleWindow }">{{ win.title }}</span>
 			<span v-if="isConsoleWindow && consoleStatus" class="window-title-status" :class="'is-' + consoleStatus">{{ consoleStatusText }}</span>
@@ -33,14 +34,14 @@
 			<component :is="resolvedComponent" ref="content" v-bind="win.props" @close="close" @minimize="minimize" @drag-start="startDrag" @status-change="onConsoleStatusChange"></component>
 		</div>
 
-		<div class="resize-handle resize-right" @mousedown.stop="startResize('right', $event)"></div>
-		<div class="resize-handle resize-left" @mousedown.stop="startResize('left', $event)"></div>
-		<div class="resize-handle resize-bottom" @mousedown.stop="startResize('bottom', $event)"></div>
-		<div class="resize-handle resize-top" @mousedown.stop="startResize('top', $event)"></div>
-		<div class="resize-handle resize-corner-br" @mousedown.stop="startResize('corner-br', $event)"></div>
-		<div class="resize-handle resize-corner-tl" @mousedown.stop="startResize('corner-tl', $event)"></div>
-		<div class="resize-handle resize-corner-tr" @mousedown.stop="startResize('corner-tr', $event)"></div>
-		<div class="resize-handle resize-corner-bl" @mousedown.stop="startResize('corner-bl', $event)"></div>
+		<div class="resize-handle resize-right" @pointerdown.stop="startResize('right', $event)"></div>
+		<div class="resize-handle resize-left" @pointerdown.stop="startResize('left', $event)"></div>
+		<div class="resize-handle resize-bottom" @pointerdown.stop="startResize('bottom', $event)"></div>
+		<div class="resize-handle resize-top" @pointerdown.stop="startResize('top', $event)"></div>
+		<div class="resize-handle resize-corner-br" @pointerdown.stop="startResize('corner-br', $event)"></div>
+		<div class="resize-handle resize-corner-tl" @pointerdown.stop="startResize('corner-tl', $event)"></div>
+		<div class="resize-handle resize-corner-tr" @pointerdown.stop="startResize('corner-tr', $event)"></div>
+		<div class="resize-handle resize-corner-bl" @pointerdown.stop="startResize('corner-bl', $event)"></div>
 	</div>
 </template>
 
@@ -132,6 +133,13 @@ export default {
 		isNoScrollWindow() {
 			return ['VideoPlayer', 'ImageViewer', 'VmConsolePanel'].includes(this.win.component)
 		},
+		// 8px-wide edge resize handles are fine for a mouse pointer but
+		// impractical to grab with a finger - widened via .window-touch
+		// below, only for devices that actually have touch (a mouse-only
+		// desktop keeps the original hit targets exactly as they were).
+		isTouchDevice() {
+			return this.$store.state.isTouchDevice
+		},
 		consoleStatusText() {
 			return (
 				{
@@ -219,15 +227,15 @@ export default {
 				if (!frame) frame = requestAnimationFrame(flush)
 			}
 			const onUp = () => {
-				window.removeEventListener('mousemove', onMove)
-				window.removeEventListener('mouseup', onUp)
+				window.removeEventListener('pointermove', onMove)
+				window.removeEventListener('pointerup', onUp)
 				if (frame) cancelAnimationFrame(frame)
 				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
 				this.$store.commit('PERSIST_WINDOWS')
 				document.body.style.userSelect = ''
 			}
-			window.addEventListener('mousemove', onMove)
-			window.addEventListener('mouseup', onUp)
+			window.addEventListener('pointermove', onMove)
+			window.addEventListener('pointerup', onUp)
 		},
 
 		// direction is one of: right, left, bottom, top, corner-br,
@@ -287,15 +295,15 @@ export default {
 				if (!frame) frame = requestAnimationFrame(flush)
 			}
 			const onUp = () => {
-				window.removeEventListener('mousemove', onMove)
-				window.removeEventListener('mouseup', onUp)
+				window.removeEventListener('pointermove', onMove)
+				window.removeEventListener('pointerup', onUp)
 				if (frame) cancelAnimationFrame(frame)
 				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
 				this.$store.commit('PERSIST_WINDOWS')
 				document.body.style.userSelect = ''
 			}
-			window.addEventListener('mousemove', onMove)
-			window.addEventListener('mouseup', onUp)
+			window.addEventListener('pointermove', onMove)
+			window.addEventListener('pointerup', onUp)
 		}
 	}
 }
@@ -366,6 +374,9 @@ export default {
 	background: #fff;
 	border-bottom: 1px solid rgb(228 233 237);
 	user-select: none;
+	// Without this, a touch-drag on the titlebar competes with the
+	// browser's own pan/scroll gesture instead of just moving the window.
+	touch-action: none;
 }
 
 .window-title {
@@ -471,6 +482,7 @@ export default {
 .resize-handle {
 	position: absolute;
 	z-index: 100;
+	touch-action: none;
 }
 
 .resize-right {
@@ -539,5 +551,29 @@ export default {
 	height: 18px;
 	cursor: nesw-resize;
 	z-index: 101;
+}
+
+// A touch device gets meaningfully wider hit targets on the same visual
+// edges - the resize-handle elements are otherwise invisible chrome, so
+// growing them doesn't change how the window looks, only how easy it is
+// to grab.
+.window-touch {
+	.resize-right,
+	.resize-left {
+		width: 16px;
+	}
+
+	.resize-bottom,
+	.resize-top {
+		height: 16px;
+	}
+
+	.resize-corner-br,
+	.resize-corner-tl,
+	.resize-corner-tr,
+	.resize-corner-bl {
+		width: 28px;
+		height: 28px;
+	}
 }
 </style>
