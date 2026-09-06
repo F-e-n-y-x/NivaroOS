@@ -20,6 +20,8 @@ func main() {
 	store := NewLibvirtStore(*uri)
 	defer store.Close()
 
+	EnsureAutoShareDir()
+
 	mux := http.NewServeMux()
 	RegisterVMRoutes(mux, store)
 	RegisterSetupRoutes(mux, store, defaultStorageDir, defaultISODir)

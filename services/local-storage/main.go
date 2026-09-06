@@ -124,7 +124,7 @@ func ensureDefaultDirectories() {
 	sysType := runtime.GOOS
 	var dirArray []string
 	if sysType == "linux" {
-		dirArray = []string{"/DATA/AppData", "/DATA/Documents", "/DATA/Downloads", "/DATA/Gallery", "/DATA/Media/Movies", "/DATA/Media/TV Shows", "/DATA/Media/Music"}
+		dirArray = []string{"/DATA/AppData", "/DATA/Documents", "/DATA/Downloads", "/DATA/Gallery", "/DATA/Media/Movies", "/DATA/Media/TV Shows", "/DATA/Media/Music", "/DATA/VMs/share"}
 	}
 
 	if sysType == "windows" {

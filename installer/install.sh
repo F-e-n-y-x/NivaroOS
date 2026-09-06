@@ -29,6 +29,11 @@ shopt -s checkwinsize 2>/dev/null || true
 REPO_URL="https://github.com/F-e-n-y-x/NivaroOS.git"
 BRANCH="master"
 SRC_DIR="/opt/nivaroos/src"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
+LOCAL_REPO=""
+if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/../services/core/main.go" ]; then
+	LOCAL_REPO="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 GO_VERSION="1.23.4"
 MIN_RECOMMENDED_MEMORY_MB="1024"
@@ -396,6 +401,11 @@ print_diagnostics_card() {
 # ------------------------------------------------------------------------------
 check_root() {
 	if [ "$(id -u)" -ne 0 ]; then
+		if [ ! -f "$0" ]; then
+			error "NivaroOS installer requires root privileges. Please run with sudo:"
+			printf '%b\n' "   ${COLOR_CYAN}curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash${COLOR_RESET}\n"
+			exit 1
+		fi
 		if command -v sudo >/dev/null 2>&1; then
 			info "Root privileges required. Elevating with sudo..."
 			exec sudo -E bash "$0" "$@"
@@ -765,7 +775,13 @@ run_step() {
 
 	if [ "$DEBUG" = "yes" ]; then
 		printf '%b\n' "  ${COLOR_CYAN}➜${COLOR_RESET} ${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET} ${COLOR_WHITE}${title}${COLOR_RESET} (verbose)..."
-		if ! bash -c "export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"; export DEBIAN_FRONTEND=noninteractive; export NEEDRESTART_MODE=a; $*" 2>&1 | tee -a "$INSTALL_LOG"; then
+		if ! (
+			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+			export DEBIAN_FRONTEND=noninteractive
+			export NEEDRESTART_MODE=a
+			export GOWORK=off
+			eval "$*"
+		) 2>&1 | tee -a "$INSTALL_LOG"; then
 			local exit_code=$?
 			log_raw "<<< FAILED STEP ${STEP_NUM}: ${title} (exit code ${exit_code})"
 			error "Step ${STEP_NUM} failed: ${title}"
@@ -785,6 +801,7 @@ run_step() {
 			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 			export DEBIAN_FRONTEND=noninteractive
 			export NEEDRESTART_MODE=a
+			export GOWORK=off
 			eval "$*"
 		) > "$log_file" 2>&1 </dev/null &
 		local cmd_pid=$!
@@ -924,6 +941,7 @@ run_step() {
 			export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 			export DEBIAN_FRONTEND=noninteractive
 			export NEEDRESTART_MODE=a
+			export GOWORK=off
 			eval "$*"
 		) > "$log_file" 2>&1 </dev/null; then
 			local end_ts
@@ -984,15 +1002,15 @@ install_core_dependencies() {
 	run_step "Installing Core System Dependencies" "
 		pkg_update
 		if command -v apt-get >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential
+			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc
+			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc rsync
 		elif command -v pacman >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates systemd util-linux pciutils smartmontools parted base-devel
+			pkg_install curl wget git tar ca-certificates systemd util-linux pciutils smartmontools parted base-devel rsync
 		elif command -v zypper >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted make gcc
+			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted make gcc rsync
 		elif command -v apk >/dev/null 2>&1; then
-			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-base
+			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-base rsync
 		fi
 	"
 }
@@ -1069,7 +1087,16 @@ DOCKEREOF
 clone_or_update_repo() {
 	run_step "Fetching NivaroOS Source (${BRANCH})" "
 		mkdir -p \"$SRC_DIR\"
-		if [ -d \"${SRC_DIR}/.git\" ]; then
+		if [ -n \"$LOCAL_REPO\" ] && [ \"$LOCAL_REPO\" != \"$SRC_DIR\" ]; then
+			echo \"Syncing local repository from \${LOCAL_REPO} to \${SRC_DIR}...\"
+			mkdir -p \"$SRC_DIR\"
+			if command -v rsync >/dev/null 2>&1; then
+				rsync -a --delete --exclude='mobile' --exclude='ui/node_modules' --exclude='.git' \"\${LOCAL_REPO}/\" \"\${SRC_DIR}/\"
+			else
+				cp -a \"\${LOCAL_REPO}/.\" \"\${SRC_DIR}/\"
+				rm -rf \"\${SRC_DIR}/mobile\" \"\${SRC_DIR}/ui/node_modules\" 2>/dev/null || true
+			fi
+		elif [ -d \"${SRC_DIR}/.git\" ]; then
 			cd \"$SRC_DIR\"
 			git fetch --all --tags --prune
 			# reset --hard + clean (not checkout + pull) so a dirty tree -
@@ -1094,7 +1121,7 @@ clone_or_update_repo() {
 				aarch64|arm64) go_arch=\"arm64\" ;;
 				armv7l|armhf) go_arch=\"armv6l\" ;;
 			esac
-			wget -q \"https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz\" -O /tmp/go.tar.gz
+			wget -q \"https://go.dev/dl/go${GO_VERSION}.linux-\${go_arch}.tar.gz\" -O /tmp/go.tar.gz
 			rm -rf /usr/local/go
 			tar -C /usr/local -xzf /tmp/go.tar.gz
 			rm -f /tmp/go.tar.gz
@@ -1125,7 +1152,8 @@ install_core_services() {
 			systemctl stop \"\$u\" >/dev/null 2>&1 || true
 		done
 
-		mkdir -p /var/lib/nivaroos /var/run/nivaroos /etc/nivaroos /DATA/AppData /DATA/Documents /DATA/Downloads /DATA/Media /DATA/Gallery
+		mkdir -p /var/lib/nivaroos /var/run/nivaroos /etc/nivaroos /DATA/AppData /DATA/Documents /DATA/Downloads /DATA/Media /DATA/Gallery /DATA/VMs/share
+		chmod 777 /DATA/VMs/share 2>/dev/null || true
 		touch \"$MANIFEST_FILE\"
 
 		# 1. Compile Core Engine
@@ -1215,6 +1243,35 @@ WantedBy=multi-user.target
 GPUEOF
 		echo '/usr/lib/systemd/system/nivaroos-gpu-sidecar.service' >> \"$MANIFEST_FILE\"
 
+		# 10. Install default service configuration templates if not already present
+		config_mappings=(
+			\"${SRC_DIR}/services/core/build/sysroot/etc/nivaroos/casaos.conf.sample:/etc/nivaroos/casaos.conf\"
+			\"${SRC_DIR}/services/gateway/build/sysroot/etc/nivaroos/gateway.ini.sample:/etc/nivaroos/gateway.ini\"
+			\"${SRC_DIR}/services/message-bus/build/sysroot/etc/nivaroos/message-bus.conf.sample:/etc/nivaroos/message-bus.conf\"
+			\"${SRC_DIR}/services/app-management/build/sysroot/etc/nivaroos/app-management.conf.sample:/etc/nivaroos/app-management.conf\"
+			\"${SRC_DIR}/services/local-storage/build/sysroot/etc/nivaroos/local-storage.conf.sample:/etc/nivaroos/local-storage.conf\"
+			\"${SRC_DIR}/services/user/build/sysroot/etc/nivaroos/user-service.conf.sample:/etc/nivaroos/user-service.conf\"
+		)
+		for cm in \"\${config_mappings[@]}\"; do
+			csrc=\"\${cm%%:*}\"
+			cdst=\"\${cm##*:}\"
+			if [ -f \"\$csrc\" ]; then
+				cp -f \"\$csrc\" \"\${cdst}.sample\" 2>/dev/null || true
+				if [ ! -f \"\$cdst\" ]; then
+					cp -f \"\$csrc\" \"\$cdst\"
+					echo \"\$cdst\" >> \"$MANIFEST_FILE\"
+				fi
+			fi
+		done
+
+		# 11. Install USB mount helper script
+		mkdir -p /usr/share/nivaroos/shell
+		if [ -f \"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh\" ]; then
+			cp -f \"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh\" /usr/share/nivaroos/shell/usb-mount.sh
+			chmod 755 /usr/share/nivaroos/shell/usb-mount.sh
+			echo '/usr/share/nivaroos/shell/usb-mount.sh' >> \"$MANIFEST_FILE\"
+		fi
+
 		# Save custom port configuration if specified
 		if [ -n \"$DETECTED_PORT\" ] && [ \"$DETECTED_PORT\" != \"80\" ]; then
 			mkdir -p /etc/nivaroos
@@ -1250,6 +1307,7 @@ install_vm_manager() {
 		fi
 
 		cd \"${SRC_DIR}/services/vm-sidecar\"
+		export GOWORK=off
 		go build -o /usr/bin/nivaroos-vm-sidecar .
 		echo '/usr/bin/nivaroos-vm-sidecar' >> \"$MANIFEST_FILE\"
 
@@ -1290,29 +1348,34 @@ install_ui() {
 		mkdir -p /var/lib/nivaroos/www
 
 		ui_source_dir=\"\"
-		if [ -d \"${SRC_DIR}/ui/dist\" ]; then
-			ui_source_dir=\"${SRC_DIR}/ui/dist\"
-		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
+		if [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ] && [ -f \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www/index.html\" ]; then
 			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
-		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/casaos/www\" ]; then
+		elif [ -d \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\" ] && [ -f \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www/index.html\" ]; then
+			ui_source_dir=\"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\"
+		elif [ -d \"${SRC_DIR}/ui/dist\" ] && [ -f \"${SRC_DIR}/ui/dist/index.html\" ]; then
+			ui_source_dir=\"${SRC_DIR}/ui/dist\"
+		elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/casaos/www\" ] && [ -f \"${SRC_DIR}/build/sysroot/var/lib/casaos/www/index.html\" ]; then
 			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/casaos/www\"
 		fi
 
-		# No prebuilt output shipped in this checkout - try to build it
-		# ourselves, but only using tools already present on this system
-		# (this installer doesn't set up a Node.js toolchain on its own,
-		# across 8+ distro families, purely to build the UI once).
+		# If prebuilt output is not found, try building from source if pnpm is available
 		if [ -z \"\$ui_source_dir\" ] && command -v pnpm >/dev/null 2>&1; then
-			echo 'No prebuilt dashboard found - building the frontend from source with pnpm (this can take a few minutes)...'
-			( cd \"${SRC_DIR}/ui\" && pnpm install --frozen-lockfile 2>/dev/null || pnpm install ) && \
-			( cd \"${SRC_DIR}/ui\" && pnpm vue-cli-service build --dest \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" --mode production )
-			if [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
+			echo 'Building frontend from source with pnpm...'
+			( cd \"${SRC_DIR}/ui\" && pnpm install --prefer-offline 2>/dev/null || pnpm install ) && \
+			( cd \"${SRC_DIR}/ui\" && pnpm run build )
+			if [ -d \"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\" ]; then
+				ui_source_dir=\"${SRC_DIR}/ui/build/sysroot/var/lib/nivaroos/www\"
+			elif [ -d \"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\" ]; then
 				ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/nivaroos/www\"
 			fi
 		fi
 
-		if [ -z \"\$ui_source_dir\" ]; then
-			echo 'Could not find or build the web dashboard (no ui/dist, no build/sysroot output, and pnpm is not installed to build one). The rest of NivaroOS will run, but the dashboard will be empty until you build ui/ manually and re-run this installer.' >&2
+		if [ -n \"\$ui_source_dir\" ]; then
+			cp -rf \"\$ui_source_dir\"/* /var/lib/nivaroos/www/
+		elif [ -f /var/lib/nivaroos/www/index.html ]; then
+			echo 'Preserving existing installed web dashboard in /var/lib/nivaroos/www.'
+		else
+			echo 'Could not find or build the web dashboard (no prebuilt www files found). The rest of NivaroOS will run, but the dashboard will be empty until you build ui/ manually.' >&2
 			exit 1
 		fi
 
@@ -1351,9 +1414,9 @@ verify_health() {
 		healthy=false
 
 		for i in {1..20}; do
-			if curl -fsSL -m 2 \"http://127.0.0.1:${target_port}/ping\" >/dev/null 2>&1 || \
-			   curl -fsSL -m 2 \"http://127.0.0.1:${target_port}/v1/sys/version\" >/dev/null 2>&1 || \
-			   curl -fsSL -m 2 \"http://127.0.0.1:${target_port}/\" >/dev/null 2>&1; then
+			if curl -fsSL -m 2 \"http://127.0.0.1:\${target_port}/ping\" >/dev/null 2>&1 || \
+			   curl -fsSL -m 2 \"http://127.0.0.1:\${target_port}/v1/sys/version\" >/dev/null 2>&1 || \
+			   curl -fsSL -m 2 \"http://127.0.0.1:\${target_port}/\" >/dev/null 2>&1; then
 				healthy=true
 				break
 			fi
@@ -1367,7 +1430,7 @@ verify_health() {
 		fi
 
 		if [ \"\$healthy\" = \"false\" ]; then
-			echo \"Gateway did not respond on port ${target_port} after 20s\" >&2
+			echo \"Gateway did not respond on port \${target_port} after 20s\" >&2
 			exit 1
 		fi
 	"
@@ -1556,7 +1619,7 @@ print_summary() {
 	render_sum_line ""
 	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}"
 	render_sum_line "• Management CLI:     ${COLOR_CYAN}nivaroos --help${COLOR_RESET}"
-	render_sum_line "• System Status:      ${COLOR_CYAN}nivaroos status${COLOR_RESET}"
+	render_sum_line "• System Status:      ${COLOR_CYAN}nivaroos healthcheck${COLOR_RESET}"
 	render_sum_line "• View Live Logs:     ${COLOR_CYAN}journalctl -u nivaroos -f${COLOR_RESET}"
 	render_sum_line "• Service Controls:   ${COLOR_CYAN}systemctl restart nivaroos-gateway${COLOR_RESET}"
 	render_sum_line "• Uninstall NivaroOS: ${COLOR_CYAN}nivaroos-uninstall${COLOR_RESET}"
@@ -1569,9 +1632,9 @@ print_summary() {
 # ------------------------------------------------------------------------------
 main() {
 	START_TIME=$(date +%s)
-	init_logging
 	parse_args "$@"
 	check_root "$@"
+	init_logging
 	check_distro
 	check_resources
 	print_banner

@@ -18,6 +18,13 @@ import (
 )
 
 const vmSharesBaseDir = "/DATA/VM-Shares"
+const defaultAutoShareDir = "/DATA/VMs/share"
+
+func EnsureAutoShareDir() string {
+	_ = os.MkdirAll(defaultAutoShareDir, 0777)
+	_ = os.Chmod(defaultAutoShareDir, 0777)
+	return defaultAutoShareDir
+}
 
 type SharedFolderSpec struct {
 	SourceDir string `json:"source_dir"`
@@ -71,6 +78,9 @@ func validateShareSource(sourceDir string) (string, error) {
 		return "", fmt.Errorf("only folders under %s can be shared with a VM", allowedRoot)
 	}
 	for _, denied := range deniedShareRoots {
+		if resolved == defaultAutoShareDir {
+			continue
+		}
 		if resolved == denied || strings.HasPrefix(resolved, denied+string(filepath.Separator)) {
 			return "", fmt.Errorf("%q can't be shared - it's used internally by the VM system", sourceDir)
 		}
@@ -139,9 +149,20 @@ func saveVMSharesMetadata(name string, shares []SharedFolderSpec) error {
 // bypassed AttachSharedFolder's own checks would otherwise reach this
 // unvalidated.
 func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
+	EnsureAutoShareDir()
 	vmDir := getVMShareDir(name)
 	if err := os.MkdirAll(vmDir, 0755); err != nil {
 		return err
+	}
+
+	if len(shares) == 0 {
+		shares = []SharedFolderSpec{
+			{
+				SourceDir: defaultAutoShareDir,
+				TargetTag: "share",
+				ReadOnly:  false,
+			},
+		}
 	}
 
 	activeSubdirs := make(map[string]bool)
@@ -196,7 +217,7 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 		validShares = append(validShares, sf)
 	}
 
-	// Clean up removed subdirectories
+	// Clean up removed subdirectories safely
 	entries, _ := os.ReadDir(vmDir)
 	for _, entry := range entries {
 		if entry.Name() == ".shares.json" {
@@ -205,9 +226,12 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 		if !activeSubdirs[entry.Name()] {
 			targetPath := filepath.Join(vmDir, entry.Name())
 			if isMounted(targetPath) {
-				_ = exec.Command("umount", targetPath).Run()
+				_ = exec.Command("umount", "-l", targetPath).Run()
 			}
-			_ = os.RemoveAll(targetPath)
+			// NEVER call os.RemoveAll on mount targets - only remove if unmounted and empty!
+			if !isMounted(targetPath) {
+				_ = os.Remove(targetPath)
+			}
 		}
 	}
 
@@ -215,14 +239,23 @@ func SyncVMShareDir(name string, shares []SharedFolderSpec) error {
 }
 
 func (s *LibvirtStore) ListSharedFolders(name string) ([]SharedFolderSpec, error) {
+	EnsureAutoShareDir()
 	if shares, err := readVMSharesMetadata(name); err == nil && len(shares) > 0 {
 		return shares, nil
 	}
 	vm, err := s.GetVM(name)
-	if err != nil {
-		return nil, err
+	if err == nil && len(vm.SharedFolders) > 0 {
+		return vm.SharedFolders, nil
 	}
-	return vm.SharedFolders, nil
+	defaultShare := []SharedFolderSpec{
+		{
+			SourceDir: defaultAutoShareDir,
+			TargetTag: "share",
+			ReadOnly:  false,
+		},
+	}
+	_ = SyncVMShareDir(name, defaultShare)
+	return defaultShare, nil
 }
 
 func ensureSharedMemoryAndPCIe(conn *libvirt.Connect, dom *libvirt.Domain) error {

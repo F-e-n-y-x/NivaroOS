@@ -280,7 +280,7 @@ export default {
 				networks: [{ mode: 'nat' }],
 				usb_devices: [],
 				pci_devices: [],
-				shared_folders: [],
+				shared_folders: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 			},
 			hostCaps: null,
 			showIsoPicker: false,
@@ -468,7 +468,9 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
-					shared_folders: this.form.shared_folders || [],
+					shared_folders: (this.form.shared_folders && this.form.shared_folders.length)
+						? this.form.shared_folders
+						: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {

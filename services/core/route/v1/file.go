@@ -157,9 +157,11 @@ func GetDownloadFile(ctx echo.Context) error {
 	list := strings.Split(files, ",")
 	for _, v := range list {
 		if !file.Exists(v) {
-			if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil && dev.IsOnline {
+			if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil {
 				if len(list) == 1 {
-					return ProxyCompanionFileDownload(dev, phonePath, ctx)
+					if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+						return nil
+					}
 				}
 			}
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
@@ -238,7 +240,7 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 	}
 	fileName := path.Base(filePath)
 
-	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil && dev.IsOnline {
+	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
 		if !file.Exists(filePath) {
 			if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
 				return nil
@@ -303,7 +305,7 @@ func DirPath(ctx echo.Context) error {
 	req.Validate()
 
 	// Live companion device file proxy
-	if dev, phonePath := GetCompanionDeviceByStoragePath(req.Path); dev != nil && dev.IsOnline {
+	if dev, phonePath := GetCompanionDeviceByStoragePath(req.Path); dev != nil {
 		phoneFiles, err := FetchCompanionFilesFromDevice(dev, phonePath)
 		if err == nil {
 			pathList := make([]ObjResp, 0, len(phoneFiles))
@@ -853,16 +855,48 @@ func DeleteFile(ctx echo.Context) error {
 		if v == "" {
 			continue
 		}
-		mounted := service.IsMounted(v)
-		if mounted {
+		cleanV := filepath.Clean(v)
+		// Protect system root and top-level storage directories from deletion
+		if cleanV == "/" || cleanV == "/DATA" || cleanV == "/mnt" || cleanV == "/DATA/Documents" || cleanV == "/DATA/Downloads" || cleanV == "/DATA/Media" || cleanV == "/DATA/Gallery" || cleanV == "/DATA/AppData" || cleanV == "/DATA/Companion" || cleanV == "/DATA/vm-share" {
+			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: "Cannot delete system or root storage directory"})
+		}
+		// If cleanV is directly under /mnt (e.g. /mnt/<host> or /mnt/<cloud>), refuse file/delete
+		if strings.HasPrefix(cleanV, "/mnt/") && len(strings.Split(strings.TrimPrefix(cleanV, "/mnt/"), "/")) <= 1 {
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: "Cannot delete connected location via file delete. Please disconnect or eject the location instead."})
+		}
+		if service.IsMounted(cleanV) {
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
 		}
 	}
 
 	for _, v := range paths {
-		if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil && dev.IsOnline {
-			ProxyCompanionFileDelete(dev, phonePath)
+		cleanV := filepath.Clean(v)
+		if dev, phonePath := GetCompanionDeviceByStoragePath(cleanV); dev != nil {
+			cleanPhone := filepath.Clean(phonePath)
+			root := filepath.Clean(dev.RootPath)
+			if root == "" || root == "." {
+				root = "/storage/emulated/0"
+			}
+			// Only proxy delete if NOT the phone root! NEVER wipe the whole phone storage!
+			if cleanPhone != "" && cleanPhone != "/" && cleanPhone != "." && cleanPhone != root {
+				ProxyCompanionFileDelete(dev, phonePath)
+			}
 		}
+		// Do not run os.RemoveAll if cleanV is a companion device root folder
+		companionMu.RLock()
+		isCompanionRoot := false
+		for _, dev := range companionDevices {
+			if dev.StoragePath != "" && cleanV == filepath.Clean(dev.StoragePath) {
+				isCompanionRoot = true
+				break
+			}
+		}
+		companionMu.RUnlock()
+		if isCompanionRoot {
+			_ = os.Remove(cleanV)
+			continue
+		}
+
 		err := os.RemoveAll(v)
 		if err != nil && !os.IsNotExist(err) {
 			if dev, _ := GetCompanionDeviceByStoragePath(v); dev == nil {

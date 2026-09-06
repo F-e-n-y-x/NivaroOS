@@ -314,15 +314,21 @@ class FilesScreenState extends State<FilesScreen> {
     try {
       final List<DiskUsage> allDisks = [];
       try {
-        final res = await ApiClient.instance.get('/storage');
-        final data = res['data'] ?? res;
-        final list = DiskUsage.fromStorageApi(data);
-        allDisks.addAll(list);
-      } catch (_) {}
+        final res = await ApiClient.instance.get('/sys/disks-usage');
+        final data = res['data'] as List<dynamic>? ?? [];
+        for (final item in data) {
+          if (item is Map<String, dynamic>) {
+            final du = DiskUsage.fromJson(item);
+            allDisks.add(du);
+          }
+        }
+      } catch (e) {
+        debugPrint('[FilesScreen] Error loading sys disks-usage: $e');
+      }
 
       if (allDisks.isEmpty) {
         try {
-          final res = await ApiClient.instance.get('/sys/disks-usage');
+          final res = await ApiClient.instance.get('/storage');
           final data = res['data'] ?? res;
           final list = DiskUsage.fromStorageApi(data);
           allDisks.addAll(list);
@@ -343,6 +349,11 @@ class FilesScreenState extends State<FilesScreen> {
       final seen = <String>{};
       final uniqueDisks = <DiskUsage>[];
       for (final d in allDisks) {
+        final mp = d.mountPoint.toLowerCase();
+        // Skip internal VM pass-through mounts and phone local storage (shown in companion section)
+        if (mp.startsWith('/data/vm-shares') || mp == '/storage/emulated/0' || mp.startsWith('/storage/emulated')) {
+          continue;
+        }
         if (!seen.contains(d.mountPoint) && d.mountPoint.isNotEmpty && !d.isSystemPartition) {
           seen.add(d.mountPoint);
           uniqueDisks.add(d);

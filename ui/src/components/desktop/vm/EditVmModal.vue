@@ -175,7 +175,7 @@ export default {
 	data() {
 		return {
 			resolutionOptions: RESOLUTION_OPTIONS,
-			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [], shared_folders: [] },
+			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [], shared_folders: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }] },
 			// The VM's disks as they were when loaded - VmDiskList uses this
 			// to floor each existing disk's size at its current GiB (grow
 			// only) and lock its bus/SSD, since those can't change on an
@@ -308,7 +308,9 @@ export default {
 				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
 				usb_devices: fresh.usb_devices || [],
 				pci_devices: fresh.pci_devices || [],
-				shared_folders: (fresh.shared_folders || []).map((sf) => ({ source_dir: sf.source_dir, target_tag: sf.target_tag, read_only: !!sf.read_only })),
+				shared_folders: (fresh.shared_folders && fresh.shared_folders.length)
+					? fresh.shared_folders.map((sf) => ({ source_dir: sf.source_dir, target_tag: sf.target_tag, read_only: !!sf.read_only }))
+					: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 			}
 			this.existingDisks = (fresh.disks || []).map((d) => ({ path: d.path, gib: d.gib }))
 		},
@@ -327,7 +329,9 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
-					shared_folders: this.form.shared_folders || [],
+					shared_folders: (this.form.shared_folders && this.form.shared_folders.length)
+						? this.form.shared_folders
+						: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {

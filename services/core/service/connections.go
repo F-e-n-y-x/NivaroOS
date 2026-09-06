@@ -80,7 +80,10 @@ func (s *connectionsStruct) MountSmaba(username, host, directory, port, mountPoi
 }
 
 func (s *connectionsStruct) UnmountSmaba(mountPoint string) error {
-	return mount.Unmount(mountPoint)
+	if err := mount.Unmount(mountPoint); err == nil {
+		return nil
+	}
+	return unix.Unmount(mountPoint, unix.MNT_DETACH)
 }
 
 func NewConnectionsService(db *gorm.DB) ConnectionsService {

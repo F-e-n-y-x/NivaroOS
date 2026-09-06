@@ -1,4 +1,5 @@
-/build/
+/build/*
+!/build/sysroot/
 /backups/
 node_modules/
 *.log

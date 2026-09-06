@@ -75,28 +75,19 @@ func InitNetworkMount() {
 		connection := service.MyService.Connections().GetConnectionByID(fmt.Sprint(v.ID))
 		directories, err := samba.GetSambaSharesList(connection.Host, connection.Port, connection.Username, connection.Password)
 		if err != nil {
-			service.MyService.Connections().DeleteConnection(fmt.Sprint(connection.ID))
-			logger.Error("mount samba err", zap.Any("err", err), zap.Any("info", connection))
+			// Do NOT delete the connection if host is temporarily unreachable on boot!
+			logger.Info("samba host currently unreachable on boot, keeping connection", zap.Any("err", err), zap.Any("host", connection.Host))
 			continue
 		}
 		baseHostPath := "/mnt/" + connection.Host
-
-		mountPointList, err := service.MyService.System().GetDirPath(baseHostPath)
-		if err != nil {
-			logger.Error("get mount point err", zap.Any("err", err))
-			continue
-		}
-		for _, v := range mountPointList {
-			service.MyService.Connections().UnmountSmaba(v.Path)
-		}
-
-		os.RemoveAll(baseHostPath)
-
 		file.IsNotExistMkDir(baseHostPath)
-		for _, v := range directories {
-			mountPoint := baseHostPath + "/" + v
+
+		for _, dirName := range directories {
+			mountPoint := baseHostPath + "/" + dirName
 			file.IsNotExistMkDir(mountPoint)
-			service.MyService.Connections().MountSmaba(connection.Username, connection.Host, v, connection.Port, mountPoint, connection.Password)
+			if !service.IsMounted(mountPoint) {
+				_ = service.MyService.Connections().MountSmaba(connection.Username, connection.Host, dirName, connection.Port, mountPoint, connection.Password)
+			}
 		}
 		connection.Directories = strings.Join(directories, ",")
 		service.MyService.Connections().UpdateConnection(&connection)

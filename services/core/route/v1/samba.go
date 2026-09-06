@@ -11,16 +11,13 @@ package v1
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/samba"
@@ -219,25 +216,42 @@ func DeleteSambaConnections(ctx echo.Context) error {
 	if connection.Username == "" {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.Record_NOT_EXIST, Message: common_err.GetMsg(common_err.Record_NOT_EXIST)})
 	}
-	mountPointList, err := samba.GetSambaSharesList(connection.Host, connection.Port, connection.Username, connection.Password)
-	// mountPointList, err := service.MyService.System().GetDirPath(connection.MountPoint)
-	if err != nil {
-		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-	}
+
 	baseHostPath := "/mnt/" + connection.Host
-	for _, v := range mountPointList {
-		if service.IsMounted(baseHostPath + "/" + v) {
-			err := service.MyService.Connections().UnmountSmaba(baseHostPath + "/" + v)
-			if err != nil {
-				logger.Error("unmount smaba error", zap.Error(err), zap.Any("path", baseHostPath+"/"+v))
-				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+	dirSet := make(map[string]bool)
+	if connection.Directories != "" {
+		for _, d := range strings.Split(connection.Directories, ",") {
+			d = strings.TrimSpace(d)
+			if d != "" {
+				dirSet[d] = true
 			}
 		}
 	}
-	dir, _ := ioutil.ReadDir(connection.MountPoint)
-	if len(dir) == 0 {
-		os.RemoveAll(connection.MountPoint)
+	if mountPointList, err := samba.GetSambaSharesList(connection.Host, connection.Port, connection.Username, connection.Password); err == nil {
+		for _, d := range mountPointList {
+			if d != "" {
+				dirSet[d] = true
+			}
+		}
 	}
+	if entries, err := os.ReadDir(baseHostPath); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				dirSet[e.Name()] = true
+			}
+		}
+	}
+
+	for d := range dirSet {
+		sharePath := filepath.Join(baseHostPath, d)
+		_ = service.MyService.Connections().UnmountSmaba(sharePath)
+		_ = os.Remove(sharePath) // Safe: only removes empty dir, never deletes files
+	}
+	_ = os.Remove(baseHostPath)
+	if connection.MountPoint != "" && connection.MountPoint != baseHostPath {
+		_ = os.Remove(connection.MountPoint)
+	}
+
 	service.MyService.Connections().DeleteConnection(id)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }

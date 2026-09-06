@@ -218,6 +218,8 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 					Files   []CompanionFileItem `json:"files"`
 				}
 				if err := json.NewDecoder(resp.Body).Decode(&body); err == nil && body.Success {
+					dev.LastSeen = time.Now()
+					dev.IsOnline = true
 					return body.Files, nil
 				}
 			}
@@ -255,6 +257,8 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 					var items []CompanionFileItem
 					data, _ := json.Marshal(filesRaw)
 					json.Unmarshal(data, &items)
+					dev.LastSeen = time.Now()
+					dev.IsOnline = true
 					return items, nil
 				}
 			case <-time.After(5 * time.Second):
@@ -293,6 +297,9 @@ func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("device returned status %d", resp.StatusCode)
 	}
+
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
 
 	fileName := filepath.Base(phonePath)
 	for k, v := range resp.Header {
@@ -333,18 +340,53 @@ func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 	return nil
 }
 
+func probeCompanionOnline(dev *CompanionDevice) {
+	// 1. Check WebSocket connection
+	companionWSMu.RLock()
+	ws, hasWS := companionWSConns[dev.ID]
+	companionWSMu.RUnlock()
+	if hasWS && ws != nil {
+		dev.LastSeen = time.Now()
+		dev.IsOnline = true
+		return
+	}
+
+	// 2. If seen recently (under 3 minutes), consider online
+	if time.Since(dev.LastSeen) <= 3*time.Minute {
+		dev.IsOnline = true
+		return
+	}
+
+	// 3. Proactive LAN check on port 8765
+	devIP := dev.IP
+	if devIP != "" && devIP != "Local Device" && devIP != "Local" && !strings.HasPrefix(devIP, "127.") {
+		port := dev.Port
+		if port <= 0 {
+			port = 8765
+		}
+		client := &http.Client{Timeout: 800 * time.Millisecond}
+		resp, err := client.Get(fmt.Sprintf("http://%s:%d/status", devIP, port))
+		if err == nil && resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			dev.LastSeen = time.Now()
+			dev.IsOnline = true
+			return
+		}
+	}
+
+	dev.IsOnline = false
+}
+
 // GET /v1/companion/devices
 func GetCompanionDevices(ctx echo.Context) error {
 	companionMu.Lock()
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
 
-	now := time.Now()
 	list := make([]*CompanionDevice, 0, len(companionDevices))
 
+	var wg sync.WaitGroup
 	for _, dev := range companionDevices {
-		// Mark offline if not seen for 3 minutes
-		dev.IsOnline = now.Sub(dev.LastSeen) <= 3*time.Minute
 		if dev.Port <= 0 {
 			dev.Port = 8765
 		}
@@ -353,12 +395,21 @@ func GetCompanionDevices(ctx echo.Context) error {
 		}
 		dev.SharesStorage = true
 
-		// Compute size of files backed up to the server companion folder
 		if dev.StoragePath != "" {
 			dev.ServerStorageUsed = folderSize(dev.StoragePath)
 		}
+
+		wg.Add(1)
+		go func(d *CompanionDevice) {
+			defer wg.Done()
+			probeCompanionOnline(d)
+		}(dev)
+
 		list = append(list, dev)
 	}
+	wg.Wait()
+
+	saveCompanionDevicesLocked()
 
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
@@ -605,6 +656,8 @@ func GetCompanionDeviceStorage(ctx echo.Context) error {
 		})
 	}
 
+	probeCompanionOnline(dev)
+
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "success",
@@ -615,7 +668,7 @@ func GetCompanionDeviceStorage(ctx echo.Context) error {
 			"storage_total": dev.StorageTotal,
 			"storage_used":  dev.StorageUsed,
 			"storage_free":  dev.StorageTotal - dev.StorageUsed,
-			"is_online":     time.Since(dev.LastSeen) <= 3*time.Minute,
+			"is_online":     dev.IsOnline,
 		},
 	})
 }
@@ -644,20 +697,17 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 		}
 	}
 
-	isOnline := time.Since(dev.LastSeen) <= 3*time.Minute
-	if isOnline {
-		items, err := FetchCompanionFilesFromDevice(dev, phonePath)
-		if err == nil {
-			return ctx.JSON(http.StatusOK, model.Result{
-				Success: common_err.SUCCESS,
-				Message: "success",
-				Data: echo.Map{
-					"device": dev,
-					"path":   phonePath,
-					"files":  items,
-				},
-			})
-		}
+	items, err := FetchCompanionFilesFromDevice(dev, phonePath)
+	if err == nil {
+		return ctx.JSON(http.StatusOK, model.Result{
+			Success: common_err.SUCCESS,
+			Message: "success",
+			Data: echo.Map{
+				"device": dev,
+				"path":   phonePath,
+				"files":  items,
+			},
+		})
 	}
 
 	// Fallback to reading server local directory
@@ -684,7 +734,7 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 		})
 	}
 
-	items := make([]CompanionFileItem, 0, len(entries))
+	items = make([]CompanionFileItem, 0, len(entries))
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {

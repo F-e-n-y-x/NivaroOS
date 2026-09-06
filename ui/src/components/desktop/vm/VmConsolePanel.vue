@@ -166,7 +166,27 @@
 									<span class="share-status-dot"></span> {{ vm.shared_folders.length }} {{ $t('Active') }}
 								</span>
 							</div>
-							<p class="device-menu-hint">{{ $t('Direct host directory pass-through via VirtIO-FS with full disk space and zero-network instant access.') }}</p>
+							<p class="device-menu-hint">{{ $t('Direct host directory pass-through via VirtIO-FS. Files placed in the shared folder appear instantly inside the VM.') }}</p>
+
+							<!-- Auto-Shared Folder Section (/DATA/VMs/share) -->
+							<div class="share-auto-box">
+								<div class="share-auto-header">
+									<b-icon icon="folder-sync" size="is-small" custom-class="has-text-info"></b-icon>
+									<span class="share-auto-title">{{ $t('Auto-Shared Folder') }}</span>
+									<span class="share-auto-tag">/DATA/VMs/share</span>
+								</div>
+								<p class="share-auto-desc">{{ $t('Synced automatically between host and guest. Drop files here to share with this VM.') }}</p>
+								<div class="share-auto-actions">
+									<button type="button" class="share-action-btn is-small is-primary" @click="openShareInFiles('/DATA/VMs/share')">
+										<b-icon icon="folder-open" size="is-small"></b-icon>
+										<span>{{ $t('Open in Files') }}</span>
+									</button>
+									<button type="button" class="share-action-btn is-small" @click="copyCommand('/DATA/VMs/share')">
+										<b-icon icon="content-copy" size="is-small"></b-icon>
+										<span>{{ $t('Copy Path') }}</span>
+									</button>
+								</div>
+							</div>
 
 							<!-- Active Shares List -->
 							<div v-if="vm && vm.shared_folders && vm.shared_folders.length" class="share-list-section">
@@ -239,10 +259,10 @@
 											<b-icon icon="content-copy" size="is-small"></b-icon>
 										</button>
 									</div>
-									<p class="instructions-note">{{ $t('Each shared folder then appears as a subfolder there, e.g. /mnt/{example}.', { example: (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'my-folder' }) }}</p>
+									<p class="instructions-note">{{ $t('Your shared folder is mounted directly at /mnt (or /mnt/{example}).', { example: (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'share' }) }}</p>
 								</div>
 								<div v-else class="instructions-body">
-									<p class="win-instruct-text">{{ $t('Insert Guest Tools CD and run NivaroOS-Guest-Tools-Setup.bat inside Windows to auto-install all drivers & mount shared folders.') }}</p>
+									<p class="win-instruct-text">{{ $t('Insert Guest Tools CD and run NivaroOS-Guest-Tools-Setup.bat inside Windows to auto-install all drivers & mount shared folder (Drive Z:).') }}</p>
 									<button type="button" class="insert-virtio-btn" :disabled="virtioWinBusy" @click="insertVirtioWinCD">
 										<b-icon v-if="virtioWinBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
 										<b-icon v-else icon="disc" size="is-small"></b-icon>
@@ -1008,6 +1028,16 @@ export default {
 					duration: 2500,
 				})
 			}
+		},
+		openShareInFiles(dir = '/DATA/VMs/share') {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'files',
+				title: this.$t('Files'),
+				component: 'FilesApp',
+				width: 960,
+				height: 620,
+				props: { initialPath: dir },
+			})
 		},
 		sendCtrlAltDel() {
 			if (this.rfb) this.rfb.sendCtrlAltDel()
@@ -2470,10 +2500,71 @@ export default {
 		}
 	}
 
+	&.is-small {
+		padding: 0.25rem 0.55rem;
+		font-size: 0.7rem;
+	}
+
+	&.is-outlined {
+		background: transparent;
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		&:hover:not(:disabled) {
+			background: rgba(255, 255, 255, 0.1);
+		}
+	}
+
 	&:disabled {
 		opacity: 0.4;
 		cursor: default;
 	}
+}
+
+.share-auto-box {
+	background: rgba(59, 130, 246, 0.08);
+	border: 1px solid rgba(59, 130, 246, 0.25);
+	border-radius: 8px;
+	padding: 0.55rem 0.65rem;
+	margin-top: 0.35rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.share-auto-header {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.share-auto-title {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #fff;
+}
+
+.share-auto-tag {
+	font-size: 0.68rem;
+	color: #93c5fd;
+	background: rgba(59, 130, 246, 0.2);
+	padding: 0.05rem 0.35rem;
+	border-radius: 4px;
+	font-family: monospace;
+	font-weight: 600;
+	margin-left: auto;
+}
+
+.share-auto-desc {
+	font-size: 0.7rem;
+	color: rgba(255, 255, 255, 0.7);
+	line-height: 1.25;
+	margin: 0;
+}
+
+.share-auto-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-top: 0.2rem;
 }
 
 .share-active-box {

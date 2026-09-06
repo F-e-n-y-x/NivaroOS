@@ -956,9 +956,16 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		return VM{}, err
 	}
 
-	if len(req.SharedFolders) > 0 {
-		_ = SyncVMShareDir(req.Name, req.SharedFolders)
+	if len(req.SharedFolders) == 0 {
+		req.SharedFolders = []SharedFolderSpec{
+			{
+				SourceDir: EnsureAutoShareDir(),
+				TargetTag: "share",
+				ReadOnly:  false,
+			},
+		}
 	}
+	_ = SyncVMShareDir(req.Name, req.SharedFolders)
 
 	data := domainXMLData{
 		Name:          req.Name,
@@ -1122,6 +1129,15 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 		return VM{}, err
 	}
 
+	if len(req.SharedFolders) == 0 {
+		req.SharedFolders = []SharedFolderSpec{
+			{
+				SourceDir: EnsureAutoShareDir(),
+				TargetTag: "share",
+				ReadOnly:  false,
+			},
+		}
+	}
 	_ = SyncVMShareDir(name, req.SharedFolders)
 
 	data := domainXMLData{
@@ -1258,7 +1274,18 @@ func (s *LibvirtStore) DeleteVM(name string, wipeDisk bool) error {
 	// bind-mounted under vmSharesBaseDir/<name> indefinitely - unmount them
 	// and remove the now-orphaned unified share directory along with it.
 	_ = SyncVMShareDir(name, nil)
-	_ = os.RemoveAll(getVMShareDir(name))
+	vmShareDir := getVMShareDir(name)
+	if entries, err := os.ReadDir(vmShareDir); err == nil {
+		for _, entry := range entries {
+			tp := filepath.Join(vmShareDir, entry.Name())
+			if isMounted(tp) {
+				_ = exec.Command("umount", "-l", tp).Run()
+			}
+			_ = os.Remove(tp)
+		}
+	}
+	_ = os.Remove(filepath.Join(vmShareDir, ".shares.json"))
+	_ = os.Remove(vmShareDir)
 
 	for _, path := range diskPaths {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
