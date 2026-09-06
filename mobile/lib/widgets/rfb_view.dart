@@ -585,13 +585,6 @@ class _RfbViewState extends State<RfbView> {
                                 _buildVncCanvas()
                               else
                                 _buildStreamCanvas(),
-
-                              if (_inputMode == InputControlMode.trackpad)
-                                Positioned(
-                                  left: _cursorX,
-                                  top: _cursorY,
-                                  child: _buildVirtualCursor(),
-                                ),
                             ],
                           ),
                         ),
@@ -1404,15 +1397,6 @@ class _RfbViewState extends State<RfbView> {
       },
     );
   }
-
-  Widget _buildVirtualCursor() {
-    return IgnorePointer(
-      child: CustomPaint(
-        size: const Size(20, 24),
-        painter: _MouseCursorPainter(color: _dragLocked ? NivaroColors.warning : Colors.white),
-      ),
-    );
-  }
 }
 
 class _TrackpadBtn extends StatelessWidget {
@@ -1532,42 +1516,3 @@ class _KeyBtn extends StatelessWidget {
   }
 }
 
-class _MouseCursorPainter extends CustomPainter {
-  final Color color;
-  _MouseCursorPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(0, 16)
-      ..lineTo(4.5, 12)
-      ..lineTo(8, 18)
-      ..lineTo(10.5, 16.5)
-      ..lineTo(7, 11)
-      ..lineTo(13, 11)
-      ..close();
-
-    final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeJoin = StrokeJoin.round;
-
-    final fillPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final outlinePaint = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    canvas.drawPath(path, shadowPaint);
-    canvas.drawPath(path, fillPaint);
-    canvas.drawPath(path, outlinePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MouseCursorPainter oldDelegate) => oldDelegate.color != color;
-}

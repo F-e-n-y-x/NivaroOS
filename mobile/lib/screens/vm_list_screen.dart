@@ -561,10 +561,11 @@ class _VmListScreenState extends State<VmListScreen> {
                                 MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
                               );
                             },
-                      icon: const Icon(Icons.monitor_rounded, size: 18),
-                      label: const Text('Open Console'),
+                      icon: const Icon(Icons.monitor_rounded, size: 18, color: Colors.white),
+                      label: const Text('Open Console', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                       style: FilledButton.styleFrom(
                         backgroundColor: NivaroColors.primary,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
                       ),
@@ -587,10 +588,11 @@ class _VmListScreenState extends State<VmListScreen> {
                       onPressed: busy ? null : () => _act(vm, _client.start),
                       icon: busy
                           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.play_arrow_rounded, size: 18),
-                      label: const Text('Start VM'),
+                          : const Icon(Icons.play_arrow_rounded, size: 18, color: Colors.white),
+                      label: const Text('Start VM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                       style: FilledButton.styleFrom(
                         backgroundColor: NivaroColors.success,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
                       ),

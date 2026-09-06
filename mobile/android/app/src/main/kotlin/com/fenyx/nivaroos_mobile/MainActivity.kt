@@ -38,6 +38,13 @@ class MainActivity : FlutterActivity() {
                 } catch (e: Exception) {
                     result.success(-1)
                 }
+            } else if (call.method == "getHardwareId") {
+                try {
+                    val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+                    result.success(androidId)
+                } catch (e: Exception) {
+                    result.success("")
+                }
             } else {
                 result.notImplemented()
             }

@@ -142,12 +142,20 @@ class DeviceSyncService {
   Future<String> getDeviceId() async {
     if (_cachedDeviceId != null) return _cachedDeviceId!;
     var id = await StorageService.instance.getCompanionDeviceId();
+    if (Platform.isAndroid) {
+      try {
+        final hardwareId = await _platformChannel.invokeMethod<String>('getHardwareId');
+        if (hardwareId != null && hardwareId.trim().isNotEmpty) {
+          id = 'dev_android_${hardwareId.trim()}';
+        }
+      } catch (_) {}
+    }
     if (id == null || id.isEmpty) {
       final rand = Random().nextInt(99999999);
       final ts = DateTime.now().millisecondsSinceEpoch;
       id = 'dev_${Platform.operatingSystem}_${ts}_$rand';
-      await StorageService.instance.setCompanionDeviceId(id);
     }
+    await StorageService.instance.setCompanionDeviceId(id);
     _cachedDeviceId = id;
     return id;
   }
@@ -308,7 +316,7 @@ class DeviceSyncService {
 
   Future<List<CompanionDevice>> listCompanionDevices() async {
     final currentDev = await getLocalDeviceInfo();
-    final List<CompanionDevice> list = [];
+    final List<CompanionDevice> rawList = [];
 
     try {
       final res = await ApiClient.instance.get('/companion/devices');
@@ -316,14 +324,84 @@ class DeviceSyncService {
       for (final item in data) {
         if (item is Map<String, dynamic>) {
           final d = CompanionDevice.fromJson(item, currentDeviceId: currentDev.id);
-          list.add(d);
+          rawList.add(d);
         }
       }
     } catch (e) {
       debugPrint('[DeviceSyncService] Error fetching devices: $e');
     }
 
-    if (!list.any((d) => d.id == currentDev.id)) {
+    // Deduplicate server list by ID, IP, and model+name
+    final list = <CompanionDevice>[];
+    final seenIds = <String>{};
+    final seenIps = <String>{};
+    final seenModels = <String>{};
+
+    for (final dev in rawList) {
+      if (seenIds.contains(dev.id)) continue;
+
+      final ip = dev.ipAddress.trim();
+      final isRealIp = ip.isNotEmpty && ip != 'Local' && ip != 'Local Device' && !ip.startsWith('127.');
+      if (isRealIp && seenIps.contains(ip)) continue;
+
+      final modelName = '${dev.model.trim().toLowerCase()}_${dev.name.trim().toLowerCase()}';
+      if (modelName != '_' && seenModels.contains(modelName)) continue;
+
+      seenIds.add(dev.id);
+      if (isRealIp) seenIps.add(ip);
+      if (modelName != '_') seenModels.add(modelName);
+      list.add(dev);
+    }
+
+    // Match current device against the deduplicated list
+    int matchIndex = -1;
+    for (int i = 0; i < list.length; i++) {
+      final d = list[i];
+      if (d.id == currentDev.id) {
+        matchIndex = i;
+        break;
+      }
+      final dIp = d.ipAddress.trim();
+      final cIp = currentDev.ipAddress.trim();
+      final isRealIp = cIp.isNotEmpty && cIp != 'Local' && cIp != 'Local Device' && !cIp.startsWith('127.');
+      if (isRealIp && dIp == cIp) {
+        matchIndex = i;
+        break;
+      }
+      if (d.model.isNotEmpty && currentDev.model.isNotEmpty &&
+          d.model.toLowerCase() == currentDev.model.toLowerCase() &&
+          d.name.toLowerCase() == currentDev.name.toLowerCase()) {
+        matchIndex = i;
+        break;
+      }
+    }
+
+    if (matchIndex >= 0) {
+      final matched = list[matchIndex];
+      // If server device ID was different from local, adopt it so future calls match
+      if (_cachedDeviceId != matched.id) {
+        _cachedDeviceId = matched.id;
+        unawaited(StorageService.instance.setCompanionDeviceId(matched.id));
+      }
+
+      list[matchIndex] = CompanionDevice(
+        id: matched.id,
+        name: currentDev.name.isNotEmpty ? currentDev.name : matched.name,
+        model: currentDev.model.isNotEmpty ? currentDev.model : matched.model,
+        osVersion: currentDev.osVersion.isNotEmpty ? currentDev.osVersion : matched.osVersion,
+        appVersion: currentDev.appVersion.isNotEmpty ? currentDev.appVersion : matched.appVersion,
+        platform: currentDev.platform.isNotEmpty ? currentDev.platform : matched.platform,
+        ipAddress: (currentDev.ipAddress.isNotEmpty && currentDev.ipAddress != 'Local Device') ? currentDev.ipAddress : matched.ipAddress,
+        totalStorageBytes: currentDev.totalStorageBytes > 0 ? currentDev.totalStorageBytes : matched.totalStorageBytes,
+        usedStorageBytes: currentDev.usedStorageBytes > 0 ? currentDev.usedStorageBytes : matched.usedStorageBytes,
+        batteryLevel: currentDev.batteryLevel,
+        isOnline: true,
+        isCurrentDevice: true,
+        storagePath: matched.storagePath,
+        serverStorageUsed: matched.serverStorageUsed,
+        lastActive: DateTime.now(),
+      );
+    } else {
       list.insert(0, currentDev);
     }
 

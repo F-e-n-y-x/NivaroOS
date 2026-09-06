@@ -128,7 +128,61 @@ func loadCompanionDevicesLocked() {
 	}
 }
 
+func deduplicateCompanionDevicesLocked() {
+	toDelete := make([]string, 0)
+	seenIP := make(map[string]*CompanionDevice)
+	seenModelName := make(map[string]*CompanionDevice)
+
+	for id, dev := range companionDevices {
+		ip := strings.TrimSpace(dev.IP)
+		isRealIP := ip != "" && ip != "Local Device" && ip != "Local" && !strings.HasPrefix(ip, "127.")
+		modelNameKey := strings.ToLower(strings.TrimSpace(dev.Model + "_" + dev.Name))
+
+		if isRealIP {
+			if existing, found := seenIP[ip]; found {
+				if dev.LastSeen.After(existing.LastSeen) {
+					toDelete = append(toDelete, existing.ID)
+					seenIP[ip] = dev
+					if exKey := strings.ToLower(strings.TrimSpace(existing.Model + "_" + existing.Name)); exKey != "" && exKey != "_" {
+						seenModelName[exKey] = dev
+					}
+				} else {
+					toDelete = append(toDelete, id)
+					continue
+				}
+			} else {
+				seenIP[ip] = dev
+			}
+		}
+
+		if modelNameKey != "_" && modelNameKey != "" {
+			if existing, found := seenModelName[modelNameKey]; found && existing.ID != dev.ID {
+				if dev.LastSeen.After(existing.LastSeen) {
+					toDelete = append(toDelete, existing.ID)
+					seenModelName[modelNameKey] = dev
+				} else {
+					toDelete = append(toDelete, id)
+					continue
+				}
+			} else {
+				seenModelName[modelNameKey] = dev
+			}
+		}
+	}
+
+	for _, delID := range toDelete {
+		delete(companionDevices, delID)
+		companionWSMu.Lock()
+		if ws, ok := companionWSConns[delID]; ok {
+			ws.Close()
+			delete(companionWSConns, delID)
+		}
+		companionWSMu.Unlock()
+	}
+}
+
 func saveCompanionDevicesLocked() error {
+	deduplicateCompanionDevicesLocked()
 	filePath := getCompanionConfigPath()
 	list := make([]*CompanionDevice, 0, len(companionDevices))
 	for _, dev := range companionDevices {
@@ -382,6 +436,7 @@ func GetCompanionDevices(ctx echo.Context) error {
 	companionMu.Lock()
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
+	deduplicateCompanionDevicesLocked()
 
 	list := make([]*CompanionDevice, 0, len(companionDevices))
 
@@ -451,9 +506,6 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	devStoragePath := filepath.Join(getCompanionStorageBasePath(), sanitized)
 	os.MkdirAll(devStoragePath, 0755)
 
-	existing, exists := companionDevices[input.ID]
-	now := time.Now()
-
 	resolvedIP := input.IP
 	if resolvedIP == "" || resolvedIP == "Local Device" || resolvedIP == "Local" || strings.HasPrefix(resolvedIP, "127.") {
 		resolvedIP = realIP
@@ -469,42 +521,72 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		rootPath = "/storage/emulated/0"
 	}
 
-	if exists {
+	var matchedDev *CompanionDevice
+	var oldKey string
+	now := time.Now()
+
+	if existing, exists := companionDevices[input.ID]; exists {
+		matchedDev = existing
+	} else {
+		// Look for existing device with matching IP or matching Model + Name
+		isRealIP := resolvedIP != "" && resolvedIP != "Local Device" && resolvedIP != "Local" && !strings.HasPrefix(resolvedIP, "127.")
+		for id, dev := range companionDevices {
+			if isRealIP && strings.TrimSpace(dev.IP) == strings.TrimSpace(resolvedIP) {
+				matchedDev = dev
+				oldKey = id
+				break
+			}
+			if input.Model != "" && input.Name != "" &&
+				strings.EqualFold(strings.TrimSpace(dev.Model), strings.TrimSpace(input.Model)) &&
+				strings.EqualFold(strings.TrimSpace(dev.Name), strings.TrimSpace(input.Name)) {
+				matchedDev = dev
+				oldKey = id
+				break
+			}
+		}
+	}
+
+	if matchedDev != nil {
+		if oldKey != "" && oldKey != input.ID {
+			delete(companionDevices, oldKey)
+			matchedDev.ID = input.ID
+			companionDevices[input.ID] = matchedDev
+		}
 		if input.Name != "" {
-			existing.Name = input.Name
+			matchedDev.Name = input.Name
 		}
 		if input.Model != "" {
-			existing.Model = input.Model
+			matchedDev.Model = input.Model
 		}
 		if input.Platform != "" {
-			existing.Platform = input.Platform
+			matchedDev.Platform = input.Platform
 		}
 		if input.OSVersion != "" {
-			existing.OSVersion = input.OSVersion
+			matchedDev.OSVersion = input.OSVersion
 		}
 		if input.AppVersion != "" {
-			existing.AppVersion = input.AppVersion
+			matchedDev.AppVersion = input.AppVersion
 		}
 		if resolvedIP != "" {
-			existing.IP = resolvedIP
+			matchedDev.IP = resolvedIP
 		}
-		existing.Port = resolvedPort
-		existing.SharesStorage = true
-		existing.RootPath = rootPath
+		matchedDev.Port = resolvedPort
+		matchedDev.SharesStorage = true
+		matchedDev.RootPath = rootPath
 		if input.StorageUsed > 0 {
-			existing.StorageUsed = input.StorageUsed
+			matchedDev.StorageUsed = input.StorageUsed
 		}
 		if input.StorageTotal > 0 {
-			existing.StorageTotal = input.StorageTotal
+			matchedDev.StorageTotal = input.StorageTotal
 		}
 		if input.BatteryLevel > 0 {
-			existing.BatteryLevel = input.BatteryLevel
+			matchedDev.BatteryLevel = input.BatteryLevel
 		}
-		existing.IsOnline = true
-		existing.LastSeen = now
-		existing.StoragePath = devStoragePath
+		matchedDev.IsOnline = true
+		matchedDev.LastSeen = now
+		matchedDev.StoragePath = devStoragePath
 		if input.CustomProps != nil {
-			existing.CustomProps = input.CustomProps
+			matchedDev.CustomProps = input.CustomProps
 		}
 	} else {
 		newDev := &CompanionDevice{
