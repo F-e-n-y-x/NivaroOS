@@ -45,7 +45,7 @@ DEBUG=""
 CLI_WIDTH=""
 CLI_HEIGHT=""
 STEP_NUM=0
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 START_TIME=0
 DATE_TAG="$(date +'%Y%m%d-%H%M%S')"
 
@@ -551,7 +551,7 @@ parse_args() {
 select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		if [ "$WITH_VM" = "yes" ]; then
-			TOTAL_STEPS=10
+			TOTAL_STEPS=11
 		fi
 		return
 	fi
@@ -560,7 +560,7 @@ select_addons() {
 	if [ -n "$YES" ] || [ ! -t 0 ]; then
 		if [ -e /dev/kvm ]; then
 			WITH_VM=yes
-			TOTAL_STEPS=10
+			TOTAL_STEPS=11
 		else
 			WITH_VM=no
 		fi
@@ -598,7 +598,7 @@ select_addons() {
 	fi
 
 	if [ "$WITH_VM" = "yes" ]; then
-		TOTAL_STEPS=10
+		TOTAL_STEPS=11
 		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} VM Manager enabled."
 	else
 		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} VM Manager skipped (can be enabled anytime via CLI: 'nivaroos vm enable')."
@@ -1300,6 +1300,47 @@ verify_health() {
 }
 
 # ------------------------------------------------------------------------------
+# mDNS Advertisement (lets the NivaroOS mobile app auto-discover this
+# server on the local network instead of the user typing an IP address)
+# ------------------------------------------------------------------------------
+install_mdns_advertisement() {
+	run_step "Advertising This Server on the Local Network (mDNS)" "
+		if command -v apt-get >/dev/null 2>&1; then
+			pkg_install avahi-daemon avahi-utils
+		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+			pkg_install avahi avahi-tools
+		elif command -v pacman >/dev/null 2>&1; then
+			pkg_install avahi
+		elif command -v zypper >/dev/null 2>&1; then
+			pkg_install avahi
+		elif command -v apk >/dev/null 2>&1; then
+			pkg_install avahi avahi-tools
+		fi
+
+		if command -v avahi-daemon >/dev/null 2>&1; then
+			mkdir -p /etc/avahi/services
+			mdns_port=\"${DETECTED_PORT:-80}\"
+			cat > /etc/avahi/services/nivaroos.service <<MDNSEOF
+<?xml version=\"1.0\" standalone='no'?>
+<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">
+<service-group>
+	<name replace-wildcards=\"yes\">NivaroOS on %h</name>
+	<service>
+		<type>_nivaroos._tcp</type>
+		<port>\${mdns_port}</port>
+	</service>
+</service-group>
+MDNSEOF
+			echo '/etc/avahi/services/nivaroos.service' >> \"$MANIFEST_FILE\"
+			systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+			systemctl reload avahi-daemon >/dev/null 2>&1 || systemctl restart avahi-daemon >/dev/null 2>&1 || true
+		else
+			echo 'avahi-daemon not available on this system - the mobile app will still work, just via manually entering this server'\''s address instead of auto-discovery.'
+		fi
+	"
+}
+
+# ------------------------------------------------------------------------------
 # Uninstall Wrapper Installation
 # ------------------------------------------------------------------------------
 install_uninstall_wrapper() {
@@ -1485,6 +1526,7 @@ main() {
 	start_core_services
 	verify_health
 	install_uninstall_wrapper
+	install_mdns_advertisement
 
 	print_summary
 }

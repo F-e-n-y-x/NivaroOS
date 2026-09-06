@@ -1,69 +1,94 @@
-# NivaroOS Companion App
+# NivaroOS Mobile
 
-A native Android (and, later, iOS) app for NivaroOS. Like the Home
-Assistant, Plex, or Portainer apps, this isn't a separate reimplementation
-of the dashboard - it's a thin native shell that connects to *your own*
-NivaroOS server and shows you the real, live dashboard, so every feature
-(Files, VM console, Settings, everything) is available with zero
-duplicated code to maintain, and updates the moment your server does.
+A real, native Android app for NivaroOS (built with [Flutter](https://flutter.dev),
+so the same codebase can add iOS later - `flutter create --platforms ios`,
+built on a Mac with Xcode, no code here assumes Android specifically). This
+is **not** a wrapper around the web dashboard - it's its own native UI
+talking directly to NivaroOS's REST APIs. The one deliberate exception is
+a VM's live console screen, which embeds the existing, already-working
+web console for that one specialized, protocol-heavy view - see
+`lib/screens/vm_console_screen.dart` for the reasoning.
 
-## How it works
+## Features
 
-1. On first launch, the app asks for your server's address (the same
-   thing you'd type into a browser - an IP like `192.168.1.10` or a
-   domain name) and remembers it.
-2. From then on, it loads your NivaroOS dashboard directly, full-screen,
-   with a native app icon/splash screen instead of a browser tab.
-3. "Change Server" is available from the account menu inside the app
-   (Settings/account panel) if you ever need to point it at a different
-   NivaroOS install.
+- **Auto-discovery**: finds NivaroOS servers on your local network via
+  mDNS/DNS-SD (the same mechanism printers and Chromecasts use to announce
+  themselves) - no typing an IP address unless your network blocks
+  multicast traffic, in which case manual entry is right there too.
+- **Native login**, talking to the real `/v1/users/login` API.
+- **Dashboard**: live CPU/memory/storage stats.
+- **Files**: browse, download, upload, delete - real native Android file
+  handling (native file picker, native "open with", proper folder
+  navigation), not an embedded file browser page.
+- **VMs**: list, start/stop, and open a live console.
+- **Settings**: change server, log out.
 
-This directory (`mobile/`) is a [Capacitor](https://capacitorjs.com/)
-project. `www/index.html` is the *entire* bundled content - just that
-first-run "enter your server" screen; everything else the app shows comes
-live from your server, not from anything baked into the app itself.
+## Architecture
+
+- `lib/services/api_client.dart` - the main NivaroOS gateway API (auth,
+  dashboard, files). Auto-refreshes an expired session token once before
+  giving up, matching the web app's own retry behavior.
+- `lib/services/vm_client.dart` - the VM sidecar's own separate API (a
+  different port from the main gateway, and - as found and documented
+  during this app's own security review of NivaroOS itself - currently no
+  authentication of its own; this client reflects that reality rather than
+  pretending otherwise).
+- `lib/services/discovery_service.dart` - mDNS server discovery.
+- `lib/services/storage_service.dart` - the server address + session
+  tokens, kept in the platform keystore (`flutter_secure_storage`), not
+  plain SharedPreferences.
+- `lib/screens/` - one file per screen; `home_shell.dart` is the bottom
+  tab bar shell.
+
+## Server-side requirement for auto-discovery
+
+The app finds servers via mDNS (`_nivaroos._tcp`). NivaroOS's own installer
+(`installer/install.sh`'s `install_mdns_advertisement` step) sets this up
+automatically - it installs `avahi-daemon` if missing and publishes
+`/etc/avahi/services/nivaroos.service` advertising whatever port the
+dashboard was configured on. Without this, the app still works fine -
+users just enter their server's address manually the first time.
 
 ## Building it yourself
 
-Requires Node.js, a JDK (21+), and the Android SDK (command-line tools +
-`platform-tools` + `platforms;android-34` + `build-tools;34.0.0`).
+Requires a JDK (17-21), the Android SDK (`platform-tools`,
+`platforms;android-34` or newer, `build-tools;34.0.0` or newer), and
+[Flutter](https://docs.flutter.dev/get-started/install) (stable channel).
 
 ```sh
 cd mobile
-npm install
-npx cap sync android
-cd android
-./gradlew assembleDebug   # -> app/build/outputs/apk/debug/app-debug.apk
+flutter pub get
+flutter build apk --debug   # -> build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-Or push to `master` and download the built APK from this repo's GitHub
-Actions run (`.github/workflows/android-build.yml`) - no local Android
-toolchain needed.
+For a release build you'll need your own signing key (see
+[Flutter's signing guide](https://docs.flutter.dev/deployment/android)) -
+`app/build.gradle` currently builds debug-signed only.
 
 ## Installing the APK
 
-This is a debug build (self-signed automatically by Gradle), not a Play
-Store release - Android will warn about installing from an unknown source
-the first time; that's expected for a self-hosted app like this one.
+This is a debug build, not a Play Store release - Android will warn about
+installing from an unknown source the first time; that's expected for a
+self-hosted app like this one.
 
-## Regenerating icons/splash screens
+## Regenerating the app icon
 
-Source images live in `assets/` (`icon-only.png`, `icon-foreground.png`,
-`icon-background.png`, `splash.png`, `splash-dark.png`). After changing
-any of them:
+Source images live in `assets/icon/` (`icon.png` - the full app icon;
+`icon_foreground.png` - the same mark centered with padding, for Android's
+adaptive icon safe zone). After changing either:
 
 ```sh
-npx capacitor-assets generate --android
+flutter pub get
+dart run flutter_launcher_icons
 ```
 
 ## Known limitations (v1)
 
+- File uploads are single-shot (no chunking/resume) - fine for typical
+  phone-sized files, but the web app's own chunked-upload protocol for
+  very large files isn't replicated here yet.
 - Self-signed/untrusted HTTPS certificates aren't handled specially -
   either use plain HTTP on your LAN (cleartext traffic is allowed), or a
   certificate a real CA (or one Android already trusts) has issued.
-- No native file picker / push notifications / biometric lock yet - the
-  live dashboard's own upload/console/etc. UI is used as-is. These are
-  natural follow-ups since the Capacitor plugin bridge is already wired
-  in (see `ui/src/utils/nativeApp.js`).
-- iOS: not yet added (`npx cap add ios` on a Mac with Xcode would do it -
-  the bootstrap page and app code here don't assume Android specifically).
+- No push notifications / biometric app-lock yet.
+- iOS: not yet added.

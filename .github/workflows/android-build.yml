@@ -1,10 +1,10 @@
 name: Build Android app
 
-# Builds the NivaroOS companion app (mobile/) into an installable debug
-# APK on every push that touches it, and publishes the APK as a downloadable
-# workflow artifact - this repo doesn't commit prebuilt binaries, and this
-# workflow's Android SDK/Gradle toolchain is heavier than something worth
-# requiring of every contributor's own machine.
+# Builds the NivaroOS native Android app (mobile/, a Flutter project) into
+# an installable debug APK on every push that touches it, and publishes it
+# as a downloadable workflow artifact - the Android/Flutter toolchain is
+# heavier than something worth requiring of every contributor's own
+# machine just to get a build.
 on:
   push:
     branches: [master]
@@ -27,24 +27,18 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
-      - uses: actions/setup-node@v4
+      - uses: subosito/flutter-action@v2
         with:
-          node-version: '20'
+          channel: stable
 
-      - name: Install mobile shell dependencies
-        run: npm install
-
-      - name: Sync Capacitor Android project
-        run: npx cap sync android
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build debug APK
-        working-directory: mobile/android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: flutter build apk --debug
 
       - uses: actions/upload-artifact@v4
         with:
           name: nivaroos-android-debug
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
