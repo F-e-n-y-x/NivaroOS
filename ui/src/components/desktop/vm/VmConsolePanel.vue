@@ -1156,7 +1156,7 @@ export default {
 					event.target.closest('.vm-overlay') ||
 					event.target.closest('.modal') ||
 					event.target.closest('.dialog') ||
-					event.target.closest('.vm-dropdown-popper-root') ||
+					event.target.closest('.vm-dropdown') ||
 					event.target.closest('.vm-dropdown-menu') ||
 					event.target.closest('.popper')
 				) {

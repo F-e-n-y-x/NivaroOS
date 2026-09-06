@@ -3,27 +3,65 @@
 		ref="dropdownRoot"
 		class="vm-dropdown"
 		:class="{
+			'is-open': isOpen,
 			'is-dark': dark,
 			'is-disabled': disabled,
 			'is-small': size === 'small',
 			'is-compact': size === 'compact',
+			'align-right': resolvedAlign === 'right',
+			'align-left': resolvedAlign === 'left',
+			'direction-up': resolvedDirection === 'up',
 		}"
 	>
-		<popper
-			ref="popperRef"
-			trigger="click"
-			:append-to-body="appendToBody"
+		<!-- Trigger Button -->
+		<button
+			ref="triggerRef"
+			type="button"
+			class="vm-dropdown-trigger"
+			:class="{ 'is-active': isOpen }"
 			:disabled="disabled"
-			transition="dropdown-fade"
-			:options="popperOptions"
-			root-class="vm-dropdown-popper-root"
-			@show="updateTriggerWidth"
+			:title="selectedLabel"
+			aria-haspopup="listbox"
+			:aria-expanded="isOpen ? 'true' : 'false'"
+			@click.stop="toggleMenu"
+			@keydown.esc.stop="closeMenu"
+			@keydown.down.prevent="onTriggerDown"
+			@keydown.up.prevent="onTriggerUp"
 		>
+			<div class="trigger-content">
+				<b-icon
+					v-if="selectedOption && selectedOption.icon || icon"
+					:icon="(selectedOption && selectedOption.icon) || icon"
+					class="trigger-icon"
+					size="is-small"
+				></b-icon>
+				<div class="trigger-label-group">
+					<span class="trigger-label" :class="{ 'is-placeholder': !hasValue && !selectedOption }">{{ selectedLabel }}</span>
+					<span
+						v-if="selectedOption && selectedOption.state"
+						class="trigger-state-dot"
+						:class="'is-' + selectedOption.state"
+						:title="selectedOption.stateLabel || selectedOption.state"
+					></span>
+				</div>
+			</div>
+			<b-icon icon="chevron-down" class="trigger-chevron" size="is-small"></b-icon>
+		</button>
+
+		<!-- Dropdown Menu -->
+		<transition name="dropdown-fade">
 			<div
+				v-show="isOpen"
+				ref="menuRef"
 				class="vm-dropdown-menu"
-				:class="{ 'is-dark': dark }"
+				:class="{
+					'is-dark': dark,
+					'is-up': resolvedDirection === 'up',
+					'is-right': resolvedAlign === 'right',
+				}"
 				:style="menuStyle"
 				role="listbox"
+				tabindex="-1"
 			>
 				<div v-if="!normalizedOptions.length" class="vm-dropdown-empty">
 					<b-icon icon="information-outline" size="is-small"></b-icon>
@@ -38,12 +76,14 @@
 						'is-selected': isSelected(opt.value),
 						'is-disabled': opt.disabled,
 						'is-rich': !!(opt.specs || opt.sublabel || opt.state),
+						'is-focused': idx === highlightedIndex,
 					}"
 					:disabled="opt.disabled"
 					:title="opt.label + (opt.specs ? ' · ' + opt.specs : '')"
 					role="option"
 					:aria-selected="isSelected(opt.value)"
-					@click="selectOption(opt)"
+					@click.stop="selectOption(opt)"
+					@mouseenter="highlightedIndex = idx"
 				>
 					<slot name="option" :option="opt" :is-selected="isSelected(opt.value)">
 						<div v-if="opt.specs || opt.sublabel || opt.state" class="item-rich-content">
@@ -75,36 +115,13 @@
 					</slot>
 				</button>
 			</div>
-
-			<button
-				slot="reference"
-				type="button"
-				class="vm-dropdown-trigger"
-				:disabled="disabled"
-				:title="selectedLabel"
-				@keydown.esc="closeMenu"
-			>
-				<div class="trigger-content">
-					<b-icon v-if="selectedOption && selectedOption.icon || icon" :icon="(selectedOption && selectedOption.icon) || icon" class="trigger-icon" size="is-small"></b-icon>
-					<div class="trigger-label-group">
-						<span class="trigger-label" :class="{ 'is-placeholder': !hasValue }">{{ selectedLabel }}</span>
-						<span v-if="selectedOption && selectedOption.state" class="trigger-state-dot" :class="'is-' + selectedOption.state" :title="selectedOption.stateLabel || selectedOption.state"></span>
-					</div>
-				</div>
-				<b-icon icon="chevron-down" class="trigger-chevron" size="is-small"></b-icon>
-			</button>
-		</popper>
+		</transition>
 	</div>
 </template>
 
 <script>
-import Popper from 'vue-popperjs'
-
 export default {
 	name: 'vm-dropdown',
-	components: {
-		Popper,
-	},
 	props: {
 		value: { type: [String, Number, Boolean], default: '' },
 		options: { type: Array, default: () => [] },
@@ -120,7 +137,10 @@ export default {
 	},
 	data() {
 		return {
-			triggerWidth: 0,
+			isOpen: false,
+			highlightedIndex: -1,
+			autoDirection: 'down',
+			autoAlign: 'left',
 		}
 	},
 	computed: {
@@ -167,40 +187,111 @@ export default {
 		selectedIcon() {
 			return this.selectedOption ? this.selectedOption.icon : ''
 		},
-		// Popper.js placement string derived from the direction/align props - the
-		// 'flip'/'preventOverflow' modifiers let it escape whatever scrollable
-		// ancestor the trigger lives in, which position:absolute-in-place couldn't.
-		popperOptions() {
-			const vertical = this.direction === 'up' ? 'top' : this.direction === 'down' ? 'bottom' : 'auto'
-			const suffix = this.align === 'right' ? '-end' : this.align === 'left' ? '-start' : ''
-			return {
-				placement: `${vertical}${suffix}`,
-				modifiers: {
-					offset: { offset: '0,4' },
-					preventOverflow: { boundariesElement: 'viewport', padding: 8 },
-					flip: { enabled: true, boundariesElement: 'viewport' },
-				},
-			}
+		resolvedDirection() {
+			if (this.direction === 'auto') return this.autoDirection
+			return this.direction || 'down'
+		},
+		resolvedAlign() {
+			if (this.align === 'auto') return this.autoAlign
+			return this.align || 'left'
 		},
 		menuStyle() {
-			return this.triggerWidth ? { minWidth: `${Math.max(this.triggerWidth, 220)}px` } : null
+			return null
 		},
 	},
+	watch: {
+		isOpen(val) {
+			if (val) {
+				this.calculatePlacement()
+				this.setInitialHighlight()
+				this.$nextTick(() => {
+					this.scrollToSelected()
+				})
+			}
+		},
+	},
+	mounted() {
+		document.addEventListener('pointerdown', this.onOutsidePointerDown, true)
+		document.addEventListener('keydown', this.onDocumentKeyDown)
+	},
+	beforeDestroy() {
+		document.removeEventListener('pointerdown', this.onOutsidePointerDown, true)
+		document.removeEventListener('keydown', this.onDocumentKeyDown)
+	},
 	methods: {
-		updateTriggerWidth() {
-			this.triggerWidth = this.$refs.dropdownRoot ? this.$refs.dropdownRoot.offsetWidth : 0
+		toggleMenu() {
+			if (this.disabled) return
+			this.isOpen = !this.isOpen
 		},
 		closeMenu() {
-			if (this.$refs.popperRef) this.$refs.popperRef.doClose()
+			this.isOpen = false
 		},
 		selectOption(opt) {
 			if (opt.disabled) return
 			this.$emit('input', opt.value)
 			this.$emit('change', opt.value)
-			this.closeMenu()
+			this.isOpen = false
 		},
 		isSelected(val) {
 			return this.value === val
+		},
+		onOutsidePointerDown(e) {
+			if (!this.isOpen) return
+			if (this.$refs.dropdownRoot && !this.$refs.dropdownRoot.contains(e.target)) {
+				this.isOpen = false
+			}
+		},
+		onDocumentKeyDown(e) {
+			if (!this.isOpen) return
+			if (e.key === 'Escape') {
+				this.isOpen = false
+				e.stopPropagation()
+			}
+		},
+		onTriggerDown() {
+			if (!this.isOpen) {
+				this.isOpen = true
+			} else {
+				this.navigateHighlight(1)
+			}
+		},
+		onTriggerUp() {
+			if (!this.isOpen) {
+				this.isOpen = true
+			} else {
+				this.navigateHighlight(-1)
+			}
+		},
+		navigateHighlight(delta) {
+			if (!this.normalizedOptions.length) return
+			const len = this.normalizedOptions.length
+			let next = this.highlightedIndex + delta
+			if (next < 0) next = len - 1
+			if (next >= len) next = 0
+			this.highlightedIndex = next
+		},
+		setInitialHighlight() {
+			const idx = this.normalizedOptions.findIndex((opt) => opt.value === this.value)
+			this.highlightedIndex = idx >= 0 ? idx : 0
+		},
+		scrollToSelected() {
+			if (!this.$refs.menuRef) return
+			const sel = this.$refs.menuRef.querySelector('.vm-dropdown-item.is-selected')
+			if (sel) {
+				sel.scrollIntoView({ block: 'nearest' })
+			}
+		},
+		calculatePlacement() {
+			if (!this.$refs.dropdownRoot) return
+			const rect = this.$refs.dropdownRoot.getBoundingClientRect()
+			const spaceBelow = window.innerHeight - rect.bottom
+			const spaceAbove = rect.top
+			if (this.direction === 'auto') {
+				this.autoDirection = spaceBelow < 220 && spaceAbove > spaceBelow ? 'up' : 'down'
+			}
+			if (this.align === 'auto') {
+				this.autoAlign = rect.left + 240 > window.innerWidth ? 'right' : 'left'
+			}
 		},
 	},
 }
@@ -244,7 +335,8 @@ export default {
 		border-color: rgba(37, 99, 235, 0.45);
 		background: #f8fafc;
 	}
-	&:focus {
+	&:focus,
+	&.is-active {
 		border-color: #2563eb;
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 	}
@@ -309,14 +401,22 @@ export default {
 	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.vm-dropdown.is-open .trigger-chevron {
+	transform: rotate(180deg);
+}
+
 .vm-dropdown-menu {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	min-width: 100%;
 	width: max-content;
 	max-width: min(32rem, calc(100vw - 2rem));
 	z-index: 3000;
 	background: #ffffff;
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
-	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.05);
+	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18), 0 4px 10px rgba(0, 0, 0, 0.06);
 	padding: 0.35rem;
 	max-height: 18rem;
 	overflow-y: auto;
@@ -326,6 +426,16 @@ export default {
 	flex-direction: column;
 	gap: 0.2rem;
 	box-sizing: border-box;
+
+	&.is-right {
+		left: auto;
+		right: 0;
+	}
+
+	&.is-up {
+		top: auto;
+		bottom: calc(100% + 4px);
+	}
 
 	&::-webkit-scrollbar {
 		width: 5px;
@@ -370,7 +480,8 @@ export default {
 	min-height: 2.1rem;
 	white-space: nowrap;
 
-	&:hover:not(:disabled) {
+	&:hover:not(:disabled),
+	&.is-focused:not(:disabled) {
 		background: #f1f5f9;
 		color: #0f172a;
 	}
@@ -564,7 +675,7 @@ export default {
 	border-radius: 6px;
 }
 
-/* Dark Mode (for Console panel and dark themes) */
+/* Dark Mode */
 .vm-dropdown.is-dark .vm-dropdown-trigger {
 	background: rgba(255, 255, 255, 0.08);
 	border-color: rgba(255, 255, 255, 0.16);
@@ -575,7 +686,8 @@ export default {
 		background: rgba(255, 255, 255, 0.12);
 		border-color: rgba(255, 255, 255, 0.28);
 	}
-	&:focus {
+	&:focus,
+	&.is-active {
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 	}
@@ -590,10 +702,6 @@ export default {
 	color: rgba(255, 255, 255, 0.4);
 }
 
-// The menu itself carries its own .is-dark modifier (bound from the `dark`
-// prop) rather than relying on a `.vm-dropdown.is-dark` ancestor selector,
-// because vue-popperjs's append-to-body mode moves this element out from
-// under .vm-dropdown and into <body> once it opens.
 .vm-dropdown-menu.is-dark {
 	background: #242424;
 	border-color: rgba(255, 255, 255, 0.14);
@@ -611,7 +719,8 @@ export default {
 	.vm-dropdown-item {
 		color: rgba(255, 255, 255, 0.85);
 
-		&:hover:not(:disabled) {
+		&:hover:not(:disabled),
+		&.is-focused:not(:disabled) {
 			background: rgba(255, 255, 255, 0.09);
 			color: #ffffff;
 		}
@@ -659,11 +768,7 @@ export default {
 		background: rgba(255, 255, 255, 0.08);
 	}
 }
-</style>
 
-<style>
-/* Unscoped: vue-popperjs renders/animates this element outside VmDropdown's
-   own template (appended to <body>), so a scoped selector would never match it. */
 .dropdown-fade-enter-active,
 .dropdown-fade-leave-active {
 	transition: opacity 0.15s ease, transform 0.15s ease;
