@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../services/api_client.dart';
 import '../models/file_entry.dart';
 import '../utils/format.dart';
+import '../widgets/common.dart';
 
 class FilesScreen extends StatefulWidget {
   const FilesScreen({super.key});
@@ -21,6 +22,7 @@ class _FilesScreenState extends State<FilesScreen> {
   List<FileEntry> _entries = [];
   bool _loading = true;
   String? _error;
+  bool _gridView = true;
   final Set<String> _busyPaths = {};
 
   @override
@@ -105,17 +107,13 @@ class _FilesScreenState extends State<FilesScreen> {
     try {
       final uri = Uri.parse('${ApiClient.instance.baseUrl}/v1/file/upload');
       final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll({'Authorization': await _authHeader()});
+      request.headers.addAll({'Authorization': await ApiClient.instance.currentAuthHeader()});
       request.fields['path'] = _path;
       request.fields['filename'] = picked.name;
       request.fields['relativePath'] = picked.name;
       request.fields['totalChunks'] = '1';
       request.fields['chunkNumber'] = '1';
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        picked.bytes!,
-        filename: picked.name,
-      ));
+      request.files.add(http.MultipartFile.fromBytes('file', picked.bytes!, filename: picked.name));
       final streamed = await request.send();
       if (streamed.statusCode != 200) {
         throw Exception('Upload failed (HTTP ${streamed.statusCode}).');
@@ -126,13 +124,6 @@ class _FilesScreenState extends State<FilesScreen> {
     } finally {
       if (mounted) setState(() => _busyPaths.remove('__upload__'));
     }
-  }
-
-  Future<String> _authHeader() async {
-    // ApiClient keeps the token in memory only - this mirrors the same
-    // value it would send itself, needed here since MultipartRequest
-    // can't go through ApiClient's own get/post helpers.
-    return ApiClient.instance.currentAuthHeader();
   }
 
   Future<void> _delete(FileEntry entry) async {
@@ -154,9 +145,6 @@ class _FilesScreenState extends State<FilesScreen> {
 
     setState(() => _busyPaths.add(entry.path));
     try {
-      // DELETE /v1/batch expects a raw JSON array body (a list of paths),
-      // not query params - a distinct enough shape from every other call
-      // in this app that ApiClient exposes it as its own method.
       await ApiClient.instance.deleteWithBody('/batch', [entry.path]);
       await _load();
     } catch (e) {
@@ -166,113 +154,203 @@ class _FilesScreenState extends State<FilesScreen> {
     }
   }
 
+  void _showMenu(FileEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: NivaroColors.surfaceRaised,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(entry.isDir ? 'Folder' : formatBytes(entry.size)),
+            ),
+            const Divider(height: 1),
+            if (!entry.isDir)
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Download'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _download(entry);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: NivaroColors.danger),
+              title: const Text('Delete', style: TextStyle(color: NivaroColors.danger)),
+              onTap: () {
+                Navigator.pop(context);
+                _delete(entry);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showError(Object e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
     );
   }
 
-  IconData _iconFor(FileEntry entry) {
-    if (entry.isDir) return Icons.folder;
+  ({Color color, IconData glyph}) _styleFor(FileEntry entry) {
+    if (entry.isDir) {
+      final key = entry.name.toLowerCase();
+      return (color: folderAccents[key] ?? folderDefaultAccent, glyph: Icons.folder_rounded);
+    }
     switch (entry.extension) {
       case 'jpg':
       case 'jpeg':
       case 'png':
       case 'gif':
       case 'webp':
-        return Icons.image_outlined;
+        return (color: const Color(0xFF8B5CF6), glyph: Icons.image_rounded);
       case 'mp4':
       case 'mkv':
       case 'mov':
-        return Icons.movie_outlined;
+        return (color: const Color(0xFFE84D8A), glyph: Icons.movie_rounded);
       case 'mp3':
       case 'wav':
       case 'flac':
-        return Icons.audiotrack_outlined;
+        return (color: NivaroColors.info, glyph: Icons.audiotrack_rounded);
       case 'pdf':
-        return Icons.picture_as_pdf_outlined;
+        return (color: NivaroColors.danger, glyph: Icons.picture_as_pdf_rounded);
       case 'zip':
       case 'tar':
       case 'gz':
-        return Icons.folder_zip_outlined;
+        return (color: NivaroColors.warning, glyph: Icons.folder_zip_rounded);
       default:
-        return Icons.insert_drive_file_outlined;
+        return (color: const Color(0xFF6B7280), glyph: Icons.insert_drive_file_rounded);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final uploading = _busyPaths.contains('__upload__');
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Files'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Row(
               children: [
-                _crumb('DATA', () {
-                  setState(() => _path = '/DATA');
-                  _load();
-                }),
-                for (var i = 0; i < _segments.length; i++) ...[
-                  if (i > 0 || _segments[i] != 'DATA') ...[
-                    const Icon(Icons.chevron_right, size: 16, color: NivaroColors.textMuted),
-                    _crumb(_segments[i], () => _goToSegment(i)),
-                  ],
-                ],
+                const Expanded(child: Text('Files', style: nivaroTitleStyle)),
+                RoundIconButton(
+                  icon: _gridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                  onPressed: () => setState(() => _gridView = !_gridView),
+                ),
+                const SizedBox(width: 8),
+                RoundIconButton(
+                  icon: uploading ? Icons.hourglass_top_rounded : Icons.upload_rounded,
+                  onPressed: uploading ? null : _upload,
+                ),
               ],
             ),
           ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: uploading ? null : _upload,
-        child: uploading
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.upload_outlined),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center),
-                    ),
-                  )
-                : _entries.isEmpty
-                    ? const Center(child: Text('This folder is empty.', style: TextStyle(color: NivaroColors.textMuted)))
-                    : ListView.separated(
-                        itemCount: _entries.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, i) {
-                          final entry = _entries[i];
-                          final busy = _busyPaths.contains(entry.path);
-                          return ListTile(
-                            leading: Icon(_iconFor(entry), color: entry.isDir ? NivaroColors.primary : NivaroColors.textMuted),
-                            title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: entry.isDir ? null : Text(formatBytes(entry.size)),
-                            trailing: busy
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                : PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      if (value == 'delete') _delete(entry);
-                                      if (value == 'download' && !entry.isDir) _download(entry);
-                                    },
-                                    itemBuilder: (context) => [
-                                      if (!entry.isDir) const PopupMenuItem(value: 'download', child: Text('Download')),
-                                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                                    ],
-                                  ),
-                            onTap: busy ? null : () => _open(entry),
-                          );
-                        },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: SizedBox(
+              height: 32,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _crumb('DATA', () {
+                    setState(() => _path = '/DATA');
+                    _load();
+                  }),
+                  for (var i = 0; i < _segments.length; i++)
+                    if (i > 0 || _segments[i] != 'DATA') ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 2),
+                        child: Icon(Icons.chevron_right_rounded, size: 16, color: NivaroColors.textFaint),
                       ),
+                      _crumb(_segments[i], () => _goToSegment(i)),
+                    ],
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? ListView(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(40),
+                              child: Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center),
+                            ),
+                          ],
+                        )
+                      : _entries.isEmpty
+                          ? ListView(
+                              children: const [
+                                Padding(
+                                  padding: EdgeInsets.all(40),
+                                  child: Center(child: Text('This folder is empty.', style: TextStyle(color: NivaroColors.textMuted))),
+                                ),
+                              ],
+                            )
+                          : _gridView
+                              ? GridView.builder(
+                                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
+                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    mainAxisSpacing: 16,
+                                    crossAxisSpacing: 14,
+                                    childAspectRatio: 0.82,
+                                  ),
+                                  itemCount: _entries.length,
+                                  itemBuilder: (context, i) {
+                                    final entry = _entries[i];
+                                    final style = _styleFor(entry);
+                                    return FolderTile(
+                                      name: entry.name,
+                                      color: style.color,
+                                      glyph: style.glyph,
+                                      onTap: () => _open(entry),
+                                      onMore: () => _showMenu(entry),
+                                    );
+                                  },
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
+                                  itemCount: _entries.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                  itemBuilder: (context, i) {
+                                    final entry = _entries[i];
+                                    final busy = _busyPaths.contains(entry.path);
+                                    final style = _styleFor(entry);
+                                    return DarkCard(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                      child: ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(color: style.color.withOpacity(0.18), borderRadius: BorderRadius.circular(12)),
+                                          child: Icon(style.glyph, color: style.color, size: 20),
+                                        ),
+                                        title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        subtitle: entry.isDir ? null : Text(formatBytes(entry.size), style: const TextStyle(color: NivaroColors.textMuted)),
+                                        trailing: busy
+                                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                            : IconButton(icon: const Icon(Icons.more_vert, color: NivaroColors.textMuted), onPressed: () => _showMenu(entry)),
+                                        onTap: busy ? null : () => _open(entry),
+                                      ),
+                                    );
+                                  },
+                                ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -280,9 +358,10 @@ class _FilesScreenState extends State<FilesScreen> {
   Widget _crumb(String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: NivaroColors.textMuted)),
       ),
     );
   }

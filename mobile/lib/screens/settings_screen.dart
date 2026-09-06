@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
+import '../widgets/common.dart';
 import 'discovery_screen.dart';
 import 'login_screen.dart';
 
@@ -80,46 +81,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          const SizedBox(height: 8),
-          _SectionLabel('Account'),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          children: [
+            Row(
               children: [
-                ListTile(
-                  leading: const CircleAvatar(backgroundColor: NivaroColors.primary, child: Icon(Icons.person, color: Colors.white)),
-                  title: Text(_username.isEmpty ? 'Signed in' : _username, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text(ApiClient.instance.baseUrl, style: const TextStyle(fontSize: 12)),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.dns_outlined),
-                  title: const Text('Change Server'),
-                  onTap: _changeServer,
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: NivaroColors.danger),
-                  title: const Text('Log Out', style: TextStyle(color: NivaroColors.danger)),
-                  onTap: _logout,
-                ),
+                RoundIconButton(icon: Icons.arrow_back_rounded, onPressed: () => Navigator.of(context).pop()),
+                const SizedBox(width: 12),
+                const Expanded(child: Text('Settings', style: nivaroTitleStyle)),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          _SectionLabel('About'),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('App Version'),
-              trailing: Text(_version, style: const TextStyle(color: NivaroColors.textMuted)),
+            const SizedBox(height: 24),
+            _SectionLabel('Account'),
+            const SizedBox(height: 10),
+            DarkCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: NivaroColors.primary,
+                      child: Text(
+                        _username.isEmpty ? '?' : _username.substring(0, 1).toUpperCase(),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    title: Text(_username.isEmpty ? 'Signed in' : _username, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(ApiClient.instance.baseUrl, style: const TextStyle(fontSize: 12, color: NivaroColors.textMuted)),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.dns_outlined, color: NivaroColors.textMuted),
+                    title: const Text('Change Server'),
+                    onTap: _changeServer,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: NivaroColors.danger),
+                    title: const Text('Log Out', style: TextStyle(color: NivaroColors.danger)),
+                    onTap: _logout,
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+            _SectionLabel('About'),
+            const SizedBox(height: 10),
+            DarkCard(
+              padding: EdgeInsets.zero,
+              child: ListTile(
+                leading: const Icon(Icons.info_outline, color: NivaroColors.textMuted),
+                title: const Text('App Version'),
+                trailing: Text(_version, style: const TextStyle(color: NivaroColors.textMuted)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -131,13 +149,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NivaroColors.textMuted, letterSpacing: 0.5),
-      ),
-    );
+    return Text(text, style: nivaroSectionLabelStyle);
   }
 }
 

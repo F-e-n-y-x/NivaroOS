@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/vm_client.dart';
+import '../widgets/common.dart';
 import 'vm_console_screen.dart';
 
 class VmListScreen extends StatefulWidget {
@@ -79,91 +80,99 @@ class _VmListScreenState extends State<VmListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Virtual Machines'),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
-      ),
-      body: RefreshIndicator(
+    return SafeArea(
+      bottom: false,
+      child: RefreshIndicator(
         onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center),
-                    ),
-                  )
-                : _vms.isEmpty
-                    ? const Center(child: Text('No virtual machines yet.', style: TextStyle(color: NivaroColors.textMuted)))
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _vms.length,
-                        itemBuilder: (context, i) {
-                          final vm = _vms[i];
-                          final busy = _busy.contains(vm.name);
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(width: 8, height: 8, decoration: BoxDecoration(color: _stateColor(vm.state), shape: BoxShape.circle)),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(vm.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
-                                      Text(vm.state, style: TextStyle(color: _stateColor(vm.state), fontSize: 12, fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${vm.vcpus} vCPU · ${(vm.memoryMib / 1024).toStringAsFixed(1)} GB RAM · ${vm.diskGib} GB disk',
-                                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      if (vm.isRunning) ...[
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: busy
-                                                ? null
-                                                : () => Navigator.of(context).push(
-                                                      MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
-                                                    ),
-                                            icon: const Icon(Icons.monitor_outlined, size: 18),
-                                            label: const Text('Console'),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 140),
+          children: [
+            Row(
+              children: [
+                const Expanded(child: Text('Virtual Machines', style: nivaroTitleStyle)),
+                RoundIconButton(icon: Icons.refresh_rounded, onPressed: _load),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 60),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 60),
+                child: Center(child: Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center)),
+              )
+            else if (_vms.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 60),
+                child: Center(child: Text('No virtual machines yet.', style: TextStyle(color: NivaroColors.textMuted))),
+              )
+            else
+              ..._vms.map((vm) {
+                final busy = _busy.contains(vm.name);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DarkCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(width: 8, height: 8, decoration: BoxDecoration(color: _stateColor(vm.state), shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(vm.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+                            Text(vm.state, style: TextStyle(color: _stateColor(vm.state), fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${vm.vcpus} vCPU · ${(vm.memoryMib / 1024).toStringAsFixed(1)} GB RAM · ${vm.diskGib} GB disk',
+                          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            if (vm.isRunning) ...[
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: busy
+                                      ? null
+                                      : () => Navigator.of(context).push(
+                                            MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: busy ? null : () => _act(vm, _client.shutdown),
-                                            icon: const Icon(Icons.power_settings_new, size: 18, color: NivaroColors.danger),
-                                            label: const Text('Stop', style: TextStyle(color: NivaroColors.danger)),
-                                          ),
-                                        ),
-                                      ] else
-                                        Expanded(
-                                          child: ElevatedButton.icon(
-                                            onPressed: busy ? null : () => _act(vm, _client.start),
-                                            icon: busy
-                                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                                : const Icon(Icons.play_arrow, size: 18),
-                                            label: const Text('Start'),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
+                                  icon: const Icon(Icons.monitor_outlined, size: 18),
+                                  label: const Text('Console'),
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: busy ? null : () => _act(vm, _client.shutdown),
+                                  icon: const Icon(Icons.power_settings_new, size: 18, color: NivaroColors.danger),
+                                  label: const Text('Stop', style: TextStyle(color: NivaroColors.danger)),
+                                ),
+                              ),
+                            ] else
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: busy ? null : () => _act(vm, _client.start),
+                                  icon: busy
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.play_arrow, size: 18),
+                                  label: const Text('Start'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }

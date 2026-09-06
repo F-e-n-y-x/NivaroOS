@@ -2,8 +2,6 @@ module github.com/F-e-n-y-x/NivaroOS/services/message-bus
 
 go 1.23.4
 
-toolchain go1.23.4
-
 require (
 	github.com/glebarez/sqlite v1.7.0
 	github.com/gobwas/ws v1.1.0

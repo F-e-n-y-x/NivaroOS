@@ -2,8 +2,6 @@ module github.com/F-e-n-y-x/NivaroOS/services/user
 
 go 1.23.4
 
-toolchain go1.23.4
-
 require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/deepmap/oapi-codegen v1.12.4

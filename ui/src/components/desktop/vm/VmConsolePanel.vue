@@ -1497,6 +1497,8 @@ export default {
 	color: #fff;
 }
 .console-toolbar {
+	position: relative;
+	z-index: 20;
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
@@ -1506,6 +1508,7 @@ export default {
 	background: #141416;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	user-select: none;
+	overflow: visible;
 }
 .vm-identity {
 	display: flex;
@@ -1542,22 +1545,8 @@ export default {
 	align-items: center;
 	gap: 0.35rem;
 	flex-wrap: nowrap;
-	// This console window has overflow:hidden forced on its whole content
-	// area (see DesktopWindow.vue's isNoScrollWindow), so a phone-width
-	// window with no room for all ~10 buttons here would otherwise clip
-	// most of them off entirely with no way to reach them at all - letting
-	// this one row scroll horizontally (min-width:0 is required for a flex
-	// child to actually shrink enough for overflow-x to take effect) keeps
-	// every control reachable regardless of window width.
 	min-width: 0;
-	overflow-x: auto;
-	overflow-y: visible;
-	-webkit-overflow-scrolling: touch;
-	scrollbar-width: none;
-
-	&::-webkit-scrollbar {
-		display: none;
-	}
+	overflow: visible;
 }
 .toolbar-group {
 	display: inline-flex;
@@ -1619,6 +1608,22 @@ export default {
 	&.close-btn:hover {
 		background: rgba(239, 68, 68, 0.25);
 		color: #ef4444;
+	}
+}
+
+@media (max-width: 680px) {
+	.toolbar-btn span {
+		display: none;
+	}
+	.toolbar-btn {
+		padding: 0.32rem 0.42rem;
+	}
+	.toolbar-actions {
+		gap: 0.2rem;
+	}
+	.toolbar-group {
+		gap: 0.1rem;
+		padding: 0.12rem;
 	}
 }
 .menu-wrapper {

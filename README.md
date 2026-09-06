@@ -37,7 +37,69 @@ curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer
 
 Once installation finishes, open your browser and navigate to `http://<your-server-ip>` to access your desktop!
 
-### Uninstalling
+---
+
+## 🐳 Run with Docker (Try Without Installing)
+
+Want to test NivaroOS without modifying your host system? You can run NivaroOS instantly in a Docker container:
+
+### Quick `docker run`
+
+```bash
+docker run -d \
+  --name nivaroos \
+  --restart unless-stopped \
+  --privileged \
+  -p 80:80 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v nivaroos_data:/DATA \
+  -v nivaroos_config:/etc/nivaroos \
+  ghcr.io/f-e-n-y-x/nivaroos:latest
+```
+
+### Using `docker compose`
+
+Clone the repo or save the following `docker-compose.yml`:
+
+```yaml
+version: "3.8"
+
+services:
+  nivaroos:
+    image: ghcr.io/f-e-n-y-x/nivaroos:latest
+    container_name: nivaroos
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nivaroos_data:/DATA
+      - nivaroos_config:/etc/nivaroos
+    environment:
+      - TZ=UTC
+      - PORT=80
+
+volumes:
+  nivaroos_data:
+    name: nivaroos_data
+  nivaroos_config:
+    name: nivaroos_config
+```
+
+Then start the container:
+
+```bash
+docker compose up -d
+```
+
+Navigate to `http://localhost` (or `http://<server-ip>`) to explore NivaroOS!
+
+> **Note**: Mounting `/var/run/docker.sock` enables NivaroOS to orchestrate container applications directly from the App Store and Container Studio.
+
+---
+
+### Uninstalling Bare-Metal Installation
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/uninstall.sh | sudo bash

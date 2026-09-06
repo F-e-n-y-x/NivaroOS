@@ -2,8 +2,6 @@ module github.com/F-e-n-y-x/NivaroOS/services/gateway
 
 go 1.23.4
 
-toolchain go1.23.4
-
 require (
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/spf13/viper v1.18.2

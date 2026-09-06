@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  nivaroos:
+    image: ghcr.io/f-e-n-y-x/nivaroos:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nivaroos
+    restart: unless-stopped
+    privileged: true
+    network_mode: bridge
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nivaroos_data:/DATA
+      - nivaroos_config:/etc/nivaroos
+    environment:
+      - TZ=UTC
+      - PORT=80
+
+volumes:
+  nivaroos_data:
+    name: nivaroos_data
+  nivaroos_config:
+    name: nivaroos_config

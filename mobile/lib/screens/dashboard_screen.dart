@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:percent_indicator/percent_indicator.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
+import '../services/storage_service.dart';
 import '../models/dashboard_stats.dart';
 import '../utils/format.dart';
+import '../widgets/common.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -17,10 +18,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DashboardStats? _stats;
   String? _error;
   Timer? _timer;
+  String _username = '';
+
+  NetSample? _lastNet;
+  DateTime? _lastNetAt;
+  double _netUpRate = 0;
+  double _netDownRate = 0;
 
   @override
   void initState() {
     super.initState();
+    StorageService.instance.getUsername().then((u) {
+      if (mounted && u != null) setState(() => _username = u);
+    });
     _load();
     _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
   }
@@ -44,6 +54,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .toList();
       stats = stats.withDisks(disks);
 
+      final net = stats.primaryNet;
+      final now = DateTime.now();
+      if (net != null && _lastNet != null && _lastNetAt != null) {
+        final elapsed = now.difference(_lastNetAt!).inMilliseconds / 1000;
+        if (elapsed > 0) {
+          final upDelta = net.bytesSent - _lastNet!.bytesSent;
+          final downDelta = net.bytesRecv - _lastNet!.bytesRecv;
+          _netUpRate = upDelta > 0 ? upDelta / elapsed : 0;
+          _netDownRate = downDelta > 0 ? downDelta / elapsed : 0;
+        }
+      }
+      if (net != null) {
+        _lastNet = net;
+        _lastNetAt = now;
+      }
+
       if (!mounted) return;
       setState(() {
         _stats = stats;
@@ -55,149 +81,213 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _confirmAndSetState(String state, String title, String body) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(title, style: const TextStyle(color: NivaroColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiClient.instance.put('/sys/state/$state');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The operation will complete shortly.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
+        );
+      }
+    }
+  }
+
+  String get _host {
+    final base = ApiClient.instance.baseUrl;
+    try {
+      return Uri.parse(base).host;
+    } catch (_) {
+      return base;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final stats = _stats;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
-      body: RefreshIndicator(
+    return SafeArea(
+      bottom: false,
+      child: RefreshIndicator(
         onRefresh: _load,
-        child: stats == null
-            ? _error != null
-                ? _ErrorState(message: _error!, onRetry: _load)
-                : const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Row(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 140),
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: NivaroColors.surface,
+                  child: Text(
+                    _username.isEmpty ? '?' : _username.substring(0, 1).toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: NivaroColors.textPrimary),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _StatRing(
-                          label: 'CPU',
-                          percent: (stats.cpuPercent / 100).clamp(0, 1),
-                          text: '${stats.cpuPercent.toStringAsFixed(0)}%',
-                          color: NivaroColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _StatRing(
-                          label: 'Memory',
-                          percent: (stats.memUsedPercent / 100).clamp(0, 1),
-                          text: '${stats.memUsedPercent.toStringAsFixed(0)}%',
-                          color: NivaroColors.success,
-                        ),
-                      ),
+                      Text(_username.isEmpty ? 'Signed in' : _username, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                      Text('NivaroOS', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)} memory used',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: NivaroColors.textMuted),
+                  onSelected: (v) {
+                    if (v == 'restart') {
+                      _confirmAndSetState('restart', 'Restart', 'This restarts the whole server. Everything running on it will be interrupted.');
+                    } else if (v == 'off') {
+                      _confirmAndSetState('off', 'Shut Down', 'This powers off the whole server. You will need physical or remote-power access to turn it back on.');
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'restart', child: Text('Restart')),
+                    PopupMenuItem(value: 'off', child: Text('Shut Down', style: TextStyle(color: NivaroColors.danger))),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LanBadge(address: _host),
+            const SizedBox(height: 28),
+            const Text('Monitor', style: nivaroSectionLabelStyle),
+            const SizedBox(height: 12),
+            if (stats == null)
+              _error != null
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: Text(_error!, style: const TextStyle(color: NivaroColors.textMuted), textAlign: TextAlign.center)),
+                    )
+                  : const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+            else ...[
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.25,
+                children: [
+                  StatRingCard(
+                    label: 'CPU',
+                    percent: stats.cpuPercent / 100,
+                    value: '${stats.cpuPercent.toStringAsFixed(0)}%',
+                    color: NivaroColors.primary,
                   ),
-                  const SizedBox(height: 24),
-                  const Text('Storage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 12),
-                  if (stats.disks.isEmpty)
-                    const Text('No storage devices reported.', style: TextStyle(color: NivaroColors.textMuted)),
-                  ...stats.disks.map((d) => Card(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      d.label.isNotEmpty ? d.label : d.mountPoint,
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Text(d.percent, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              LinearPercentIndicator(
-                                percent: d.fraction,
-                                lineHeight: 8,
-                                barRadius: const Radius.circular(4),
-                                progressColor: NivaroColors.primary,
-                                backgroundColor: const Color(0xFFE2E8F0),
-                                padding: EdgeInsets.zero,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${formatBytes(d.usedBytes)} of ${formatBytes(d.sizeBytes)}',
-                                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )),
+                  StatValueCard(
+                    label: 'CPU Temperature',
+                    child: Text(
+                      stats.cpuTemperature != null ? '${stats.cpuTemperature!.toStringAsFixed(0)}°C' : '—',
+                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: NivaroColors.success),
+                    ),
+                  ),
+                  StatRingCard(
+                    label: 'Memory',
+                    percent: stats.memUsedPercent / 100,
+                    value: '${stats.memUsedPercent.toStringAsFixed(0)}%',
+                    color: NivaroColors.success,
+                  ),
+                  StatValueCard(
+                    label: stats.primaryNet?.name.isNotEmpty == true ? 'Network · ${stats.primaryNet!.name}' : 'Network',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _NetRow(icon: Icons.arrow_upward_rounded, label: '${formatBytes(_netUpRate)}/s'),
+                        const SizedBox(height: 6),
+                        _NetRow(icon: Icons.arrow_downward_rounded, label: '${formatBytes(_netDownRate)}/s'),
+                      ],
+                    ),
+                  ),
                 ],
               ),
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)} memory used',
+                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 28),
+              const Text('Storage', style: nivaroSectionLabelStyle),
+              const SizedBox(height: 12),
+              if (stats.disks.isEmpty)
+                const Text('No storage devices reported.', style: TextStyle(color: NivaroColors.textMuted))
+              else
+                ...stats.disks.map((d) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: DarkCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    d.label.isNotEmpty ? d.label : d.mountPoint,
+                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(d.percent, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            DotStorageBar(fraction: d.fraction),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${formatBytes(d.usedBytes)} of ${formatBytes(d.sizeBytes)}',
+                              style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _StatRing extends StatelessWidget {
+class _NetRow extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final double percent;
-  final String text;
-  final Color color;
-  const _StatRing({required this.label, required this.percent, required this.text, required this.color});
+  const _NetRow({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Column(
-          children: [
-            CircularPercentIndicator(
-              radius: 44,
-              lineWidth: 8,
-              percent: percent,
-              center: Text(text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              progressColor: color,
-              backgroundColor: color.withOpacity(0.12),
-              circularStrokeCap: CircularStrokeCap.round,
-            ),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorState({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: NivaroColors.danger, size: 36),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: NivaroColors.textMuted)),
-            const SizedBox(height: 12),
-            OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
-        ),
-      ),
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: NivaroColors.info),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: NivaroColors.textPrimary)),
+      ],
     );
   }
 }

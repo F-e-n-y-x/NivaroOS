@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
+import '../theme.dart';
 
 /// The one deliberate exception to "this app is native, not a website
 /// wrapper": a VM's live remote display. NivaroOS's own console view
@@ -34,7 +35,7 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF1E1E1E))
+      ..setBackgroundColor(NivaroColors.background)
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) {
           if (mounted) setState(() => _loading = false);
@@ -59,9 +60,9 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: NivaroColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF262626),
+        backgroundColor: NivaroColors.surface,
         foregroundColor: Colors.white,
         title: Text(widget.vmName),
       ),

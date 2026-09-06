@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
+import '../widgets/common.dart';
 import 'home_shell.dart';
 import 'discovery_screen.dart';
 
@@ -73,63 +74,79 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                const Icon(Icons.cloud_outlined, size: 48, color: NivaroColors.primary),
-                const SizedBox(height: 8),
-                const Text('Sign in to NivaroOS', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                FutureBuilder<String>(
-                  future: Future.value(ApiClient.instance.baseUrl),
-                  builder: (context, snap) => Text(
-                    snap.data ?? '',
-                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _usernameController,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(labelText: 'Username'),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscure,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _login(),
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13)),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _login,
-                    child: _loading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Sign In'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton(onPressed: _changeServer, child: const Text('Not your server? Change it')),
+                RoundIconButton(icon: Icons.arrow_back_rounded, onPressed: _changeServer),
+                const SizedBox(width: 12),
+                const Text('Login', style: nivaroTitleStyle),
               ],
             ),
-          ),
+            const SizedBox(height: 24),
+            DarkCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(child: Text('NivaroOS', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.dns_rounded, color: NivaroColors.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  LanBadge(address: ApiClient.instance.baseUrl.replaceFirst(RegExp(r'^https?://'), '')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _usernameController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Username'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscure,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _login(),
+              decoration: InputDecoration(
+                labelText: 'Password',
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13)),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _login,
+                child: _loading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Login'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(child: TextButton(onPressed: _changeServer, child: const Text('Not your server? Change it'))),
+          ],
         ),
+      ),
       ),
     );
   }
