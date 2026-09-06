@@ -35,17 +35,22 @@ type connectionsStruct struct {
 }
 
 func (s *connectionsStruct) GetConnectionByHost(host string) (connections []model2.ConnectionsDBModel) {
-	s.db.Select("username,host,status,id").Where("host = ?", host).Find(&connections)
+	s.db.Where("host = ?", host).Find(&connections)
 	return
 }
 
 func (s *connectionsStruct) GetConnectionByID(id string) (connections model2.ConnectionsDBModel) {
-	s.db.Select("username,password,host,status,id,directories,mount_point,port").Where("id = ?", id).First(&connections)
+	s.db.Where("id = ?", id).First(&connections)
 	return
 }
 
+// GetConnectionsList previously restricted its column selection to exclude
+// "directories" - since every share this connection found on the remote
+// host is stored there (comma-joined), the list this feeds (Settings and
+// Files' Network Storage sidebar) always showed an empty directories value
+// even for a connection that mounted real, browsable shares.
 func (s *connectionsStruct) GetConnectionsList() (connections []model2.ConnectionsDBModel) {
-	s.db.Select("username,host,port,status,id,mount_point").Find(&connections)
+	s.db.Find(&connections)
 	return
 }
 

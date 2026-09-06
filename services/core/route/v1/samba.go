@@ -209,6 +209,7 @@ func PostSambaConnectionsCreate(ctx echo.Context) error {
 	service.MyService.Connections().CreateConnection(&connectionDBModel)
 
 	connection.ID = connectionDBModel.ID
+	connection.Directories = connectionDBModel.Directories
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: connection})
 }
 
