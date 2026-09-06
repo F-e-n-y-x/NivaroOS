@@ -618,18 +618,29 @@ export default {
 	align-items: flex-end;
 	gap: 0.65rem;
 	padding: 0.5rem 0.75rem 0.4rem;
-	background: $backDropColor;
-	backdrop-filter: $backDropBlur;
-	-webkit-backdrop-filter: $backDropBlur;
-	border: $backDropBorder;
 	border-radius: 22px;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
 	z-index: 99990;
 	max-width: calc(100vw - 1rem);
 	overflow: visible;
+
+	&::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: $backDropColor;
+		backdrop-filter: $backDropBlur;
+		-webkit-backdrop-filter: $backDropBlur;
+		border: $backDropBorder;
+		border-radius: 22px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
+		z-index: 0;
+		pointer-events: none;
+	}
 }
 
 .dock-sep {
+	position: relative;
+	z-index: 1;
 	align-self: stretch;
 	width: 1px;
 	background: rgba(255, 255, 255, 0.15);
@@ -638,6 +649,7 @@ export default {
 
 .dock-item {
 	position: relative;
+	z-index: 1;
 	border: none;
 	background: transparent;
 	padding: 0;
@@ -645,11 +657,12 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	transition: transform 0.15s ease;
+	transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 	transform-origin: bottom center;
 
 	&:hover {
-		transform: translateY(-8px) scale(1.18);
+		z-index: 10;
+		transform: translateY(-10px) scale(1.18);
 	}
 
 	&:active {

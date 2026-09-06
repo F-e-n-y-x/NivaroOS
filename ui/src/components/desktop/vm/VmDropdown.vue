@@ -212,10 +212,14 @@ export default {
 	},
 	mounted() {
 		document.addEventListener('pointerdown', this.onOutsidePointerDown, true)
+		document.addEventListener('mousedown', this.onOutsidePointerDown, true)
+		document.addEventListener('touchstart', this.onOutsidePointerDown, true)
 		document.addEventListener('keydown', this.onDocumentKeyDown)
 	},
 	beforeDestroy() {
 		document.removeEventListener('pointerdown', this.onOutsidePointerDown, true)
+		document.removeEventListener('mousedown', this.onOutsidePointerDown, true)
+		document.removeEventListener('touchstart', this.onOutsidePointerDown, true)
 		document.removeEventListener('keydown', this.onDocumentKeyDown)
 	},
 	methods: {
