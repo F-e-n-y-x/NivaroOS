@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dashboard_screen.dart';
 import 'files_screen.dart';
 import 'vm_list_screen.dart';
@@ -7,12 +8,7 @@ import 'settings_screen.dart';
 import '../services/storage_service.dart';
 import '../widgets/common.dart';
 
-/// The app's main navigation. Real native screens behind each tab - nothing
-/// rendered via a webview here (the one deliberate exception, a VM's live
-/// console, lives one level deeper - see vm_console_screen.dart's own doc
-/// comment for why). The nav itself is a floating pill + a separate avatar
-/// button (opens Settings), matching the reference app rather than a stock
-/// full-width Material bottom bar.
+/// Main Application Shell with floating pill navigation bar and smooth tab transitions.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -21,14 +17,25 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  static const _filesTabIndex = 1;
+
   int _index = 0;
   String _avatarInitial = '?';
+  final _filesKey = GlobalKey<FilesScreenState>();
 
-  static const _screens = [
-    DashboardScreen(),
-    FilesScreen(),
-    VmListScreen(),
-    AppsScreen(),
+  void _switchToTab(int i) {
+    setState(() => _index = i);
+  }
+
+  late final List<Widget> _screens = [
+    DashboardScreen(
+      onOpenFiles: () => _switchToTab(1),
+      onOpenVms: () => _switchToTab(2),
+      onOpenApps: () => _switchToTab(3),
+    ),
+    FilesScreen(key: _filesKey),
+    const VmListScreen(),
+    const AppsScreen(),
   ];
 
   @override
@@ -47,25 +54,42 @@ class _HomeShellState extends State<HomeShell> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
+  Future<void> _onPopInvoked(bool didPop, Object? result) async {
+    if (didPop) return;
+    if (_index == _filesTabIndex) {
+      final handled = _filesKey.currentState?.handleBack() ?? false;
+      if (handled) return;
+    }
+    if (_index != 0) {
+      setState(() => _index = 0);
+      return;
+    }
+    SystemNavigator.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: Stack(
-        children: [
-          IndexedStack(index: _index, children: _screens),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: FloatingNavBar(
-              currentIndex: _index,
-              onTap: (i) => setState(() => _index = i),
-              onAvatarTap: _openSettings,
-              avatarInitial: _avatarInitial,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _onPopInvoked,
+      child: Scaffold(
+        extendBody: true,
+        body: Stack(
+          children: [
+            IndexedStack(index: _index, children: _screens),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: FloatingNavBar(
+                currentIndex: _index,
+                onTap: _switchToTab,
+                onAvatarTap: _openSettings,
+                avatarInitial: _avatarInitial,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

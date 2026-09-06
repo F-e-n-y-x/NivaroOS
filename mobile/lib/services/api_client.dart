@@ -94,6 +94,20 @@ class ApiClient {
     return http.get(_uri(path, query), headers: _headers(json: false));
   }
 
+  /// A GET request that needs a specific `Accept` header to get a raw
+  /// non-JSON body back (app-management's "give me the compose YAML, not
+  /// the JSON description" convention: same route, different Accept).
+  Future<http.Response> getWithAccept(String path, String accept, {Map<String, dynamic>? query}) {
+    return http.get(_uri(path, query), headers: {..._headers(json: false), 'Accept': accept});
+  }
+
+  /// POST with a raw non-JSON body and an explicit content type - used for
+  /// installing a compose app, which the backend reads as raw YAML text
+  /// rather than a JSON-encoded object.
+  Future<Map<String, dynamic>> postBody(String path, String body, String contentType, {Map<String, dynamic>? query}) async {
+    return _send(() => http.post(_uri(path, query), headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
+  }
+
   Future<Map<String, dynamic>> _send(Future<http.Response> Function() request, {bool isRetry = false}) async {
     http.Response res;
     try {

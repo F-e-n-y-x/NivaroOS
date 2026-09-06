@@ -1,23 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/services.dart';
 import '../services/api_client.dart';
-import '../services/storage_service.dart';
+import '../services/rfb_client.dart';
+import '../services/vm_client.dart';
 import '../theme.dart';
+import '../widgets/rfb_view.dart';
 
-/// The one deliberate exception to "this app is native, not a website
-/// wrapper": a VM's live remote display. NivaroOS's own console view
-/// already renders this correctly (a real, working VNC-over-websocket
-/// bridge) - reimplementing an RFB/VNC client natively here, blind,
-/// without a real device to verify it against, would be a worse and
-/// riskier outcome than reusing the one already-proven implementation for
-/// just this one specialized, inherently-visual screen. Everything else in
-/// this app (discovery, login, dashboard, files, VM list/power control,
-/// settings) is genuinely native - see home_shell.dart.
-///
-/// The embedded page is its own separate browser context with no
-/// knowledge of this app's already-authenticated session, so the current
-/// tokens are handed off via one-time query params the web app itself
-/// reads and clears on load (see ui/src/main.js's handleMobileAppTokenHandoff).
+/// Native touch-first VM console screen connecting directly to the sidecar's
+/// RFB websocket bridge.
 class VmConsoleScreen extends StatefulWidget {
   final String vmName;
   const VmConsoleScreen({super.key, required this.vmName});
@@ -27,34 +17,88 @@ class VmConsoleScreen extends StatefulWidget {
 }
 
 class _VmConsoleScreenState extends State<VmConsoleScreen> {
-  late final WebViewController _controller;
-  bool _loading = true;
+  late final RfbClient _client;
+  late final VmClient _vmClient;
+  String? _connectError;
 
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(NivaroColors.background)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageFinished: (_) {
-          if (mounted) setState(() => _loading = false);
-        },
-      ));
-    _load();
+    final host = Uri.parse(ApiClient.instance.baseUrl).host;
+    _vmClient = VmClient(host);
+    _client = RfbClient(host: host, port: 28641, vmName: widget.vmName);
+    _client.connect().catchError((e) {
+      if (mounted) setState(() => _connectError = e.toString());
+    });
   }
 
-  Future<void> _load() async {
-    final token = await StorageService.instance.getAccessToken();
-    final refresh = await StorageService.instance.getRefreshToken();
-    final base = ApiClient.instance.baseUrl;
-    final url = Uri.parse('$base/vm-console/${Uri.encodeComponent(widget.vmName)}').replace(
-      queryParameters: {
-        if (token != null) 'token': token,
-        if (refresh != null) 'refresh': refresh,
-      },
+  @override
+  void dispose() {
+    _client.close();
+    super.dispose();
+  }
+
+  Future<void> _power() async {
+    HapticFeedback.lightImpact();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: NivaroColors.surfaceRaised,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
+                title: const Text('Graceful Shutdown', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Send ACPI shutdown signal'),
+                onTap: () => Navigator.pop(context, 'shutdown'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.restart_alt_rounded, color: NivaroColors.warning),
+                title: const Text('Reset / Reboot', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Hard reset the virtual machine'),
+                onTap: () => Navigator.pop(context, 'reset'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.stop_circle_rounded, color: NivaroColors.danger),
+                title: const Text('Force Power Off', style: TextStyle(color: NivaroColors.danger, fontWeight: FontWeight.w600)),
+                subtitle: const Text('Instantly kill power to VM'),
+                onTap: () => Navigator.pop(context, 'force-off'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    _controller.loadRequest(url);
+    if (action == null) return;
+    try {
+      HapticFeedback.mediumImpact();
+      switch (action) {
+        case 'shutdown':
+          await _vmClient.shutdown(widget.vmName);
+          break;
+        case 'force-off':
+          await _vmClient.forceOff(widget.vmName);
+          break;
+        case 'reset':
+          await _vmClient.reset(widget.vmName);
+          break;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Action $action dispatched successfully.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
+        );
+      }
+    }
   }
 
   @override
@@ -64,14 +108,80 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> {
       appBar: AppBar(
         backgroundColor: NivaroColors.surface,
         foregroundColor: Colors.white,
-        title: Text(widget.vmName),
-      ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_loading) const Center(child: CircularProgressIndicator()),
+        elevation: 0,
+        title: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: NivaroColors.success,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.vmName,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Native RFB Console',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.danger),
+            tooltip: 'Power Menu',
+            onPressed: _power,
+          ),
         ],
       ),
+      body: _connectError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline_rounded, color: NivaroColors.danger, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Connection Failed',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _connectError!,
+                      style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: () {
+                        setState(() => _connectError = null);
+                        _client.connect().catchError((e) {
+                          if (mounted) setState(() => _connectError = e.toString());
+                        });
+                      },
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Retry Connection'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : RfbView(client: _client, onPower: _power),
     );
   }
 }
+

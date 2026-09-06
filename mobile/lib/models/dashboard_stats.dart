@@ -26,6 +26,11 @@ class DiskUsage {
     final v = double.tryParse(cleaned) ?? 0;
     return (v / 100).clamp(0, 1);
   }
+
+  /// EFI system partitions are real disk entries the sys API reports, but
+  /// they're not a place a user ever wants to browse or think of as "a
+  /// drive" - hide them from Storage/Drives sections everywhere.
+  bool get isSystemPartition => label.toLowerCase().contains('efi') || mountPoint.toLowerCase().contains('efi');
 }
 
 /// A single network interface's cumulative counters, as reported by
@@ -92,6 +97,19 @@ class DashboardStats {
       netSamples: netRaw.map((e) => NetSample.fromJson(e as Map<String, dynamic>)).toList(),
       disks: const [],
     );
+  }
+
+  int get storageUsed => disks.where((d) => !d.isSystemPartition).fold(0, (sum, d) => sum + d.usedBytes);
+  int get storageTotal => disks.where((d) => !d.isSystemPartition).fold(0, (sum, d) => sum + d.sizeBytes);
+  double get storageFraction {
+    final total = storageTotal;
+    if (total <= 0) return 0.0;
+    return (storageUsed / total).clamp(0.0, 1.0);
+  }
+  String get storagePercentText {
+    final total = storageTotal;
+    if (total <= 0) return '0%';
+    return '${(storageFraction * 100).toStringAsFixed(0)}%';
   }
 
   DashboardStats withDisks(List<DiskUsage> disks) => DashboardStats(

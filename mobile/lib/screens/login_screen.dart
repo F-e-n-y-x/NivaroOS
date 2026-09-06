@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
@@ -6,6 +7,8 @@ import '../widgets/common.dart';
 import 'home_shell.dart';
 import 'discovery_screen.dart';
 
+/// Clean, modern Material 3 login screen with server status badge,
+/// password obscurity toggle, and haptic feedback.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -25,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
     if (username.isEmpty || password.isEmpty) return;
 
+    HapticFeedback.mediumImpact();
     setState(() {
       _loading = true;
       _error = null;
@@ -57,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _changeServer() async {
+    HapticFeedback.lightImpact();
     await StorageService.instance.clearAll();
     ApiClient.instance.clearSession();
     if (!mounted) return;
@@ -72,82 +77,172 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final serverHost = ApiClient.instance.baseUrl.replaceFirst(RegExp(r'^https?://'), '');
+
     return Scaffold(
       body: SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                RoundIconButton(icon: Icons.arrow_back_rounded, onPressed: _changeServer),
-                const SizedBox(width: 12),
-                const Text('Login', style: nivaroTitleStyle),
-              ],
-            ),
-            const SizedBox(height: 24),
-            DarkCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Action Row
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      const Expanded(child: Text('NivaroOS', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17))),
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.dns_rounded, color: NivaroColors.primary),
-                      ),
-                    ],
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: _changeServer,
                   ),
-                  const SizedBox(height: 16),
-                  LanBadge(address: ApiClient.instance.baseUrl.replaceFirst(RegExp(r'^https?://'), '')),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _changeServer,
+                    icon: const Icon(Icons.dns_rounded, size: 16),
+                    label: const Text('Change Server'),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _usernameController,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: 'Username'),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _passwordController,
-              obscureText: _obscure,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _login(),
-              decoration: InputDecoration(
-                labelText: 'Password',
-                suffixIcon: IconButton(
-                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                  onPressed: () => setState(() => _obscure = !_obscure),
+              const SizedBox(height: 16),
+
+              // Glowing Header Card
+              DarkCard(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                NivaroColors.primary,
+                                NivaroColors.primaryLight,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.dns_rounded, color: Colors.white, size: 26),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'NivaroOS Server',
+                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Sign in to manage server instances',
+                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    LanBadge(address: serverHost),
+                  ],
                 ),
               ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13)),
-            ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _login,
-                child: _loading
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Login'),
+              const SizedBox(height: 28),
+
+              // Title
+              Text(
+                'Welcome Back',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Center(child: TextButton(onPressed: _changeServer, child: const Text('Not your server? Change it'))),
-          ],
+              const SizedBox(height: 6),
+              const Text(
+                'Enter your NivaroOS administrator credentials to continue.',
+                style: TextStyle(color: NivaroColors.textMuted, fontSize: 13.5),
+              ),
+              const SizedBox(height: 24),
+
+              // Username Field
+              TextField(
+                controller: _usernameController,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: 'Username or Email',
+                  prefixIcon: const Icon(Icons.person_rounded, size: 20),
+                  filled: true,
+                  fillColor: NivaroColors.surfaceRaised,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(NivaroShape.large),
+                    borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Password Field
+              TextField(
+                controller: _passwordController,
+                obscureText: _obscure,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _login(),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_rounded, size: 20),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  filled: true,
+                  fillColor: NivaroColors.surfaceRaised,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(NivaroShape.large),
+                    borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                  ),
+                ),
+              ),
+
+              if (_error != null) ...[
+                const SizedBox(height: 14),
+                DarkCard(
+                  color: NivaroColors.danger.withValues(alpha: 0.15),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: NivaroColors.danger, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13))),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 28),
+
+              // Login Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: _loading ? null : _login,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: NivaroColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
+                  ),
+                  child: _loading
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      : const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
+
