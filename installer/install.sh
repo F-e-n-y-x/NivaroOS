@@ -46,6 +46,8 @@ CLI_WIDTH=""
 CLI_HEIGHT=""
 STEP_NUM=0
 TOTAL_STEPS=10
+CURRENT_STEP_TITLE=""
+CURRENT_STEP_PID=""
 START_TIME=0
 DATE_TAG="$(date +'%Y%m%d-%H%M%S')"
 
@@ -112,12 +114,65 @@ log_raw() {
 	fi
 }
 
+
+# Kills a process and every descendant of it. A step's command is often a
+# pipeline or a multi-command chain running as children of the subshell
+# run_step backgrounds - killing just that subshell's own PID does not stop
+# them (bash does not forward a signal from a killed subshell to its own
+# children), which left orphaned processes running after a cancelled step.
+kill_tree() {
+	local pid="$1"
+	local sig="${2:-TERM}"
+	local child children
+	# A leaf process has no children, so `pgrep -P` exits 1 (its normal
+	# "found nothing" status) - guard the substitution itself, not just
+	# uses of its output, or the script's own ERR trap misfires here.
+	children="$(pgrep -P "$pid" 2>/dev/null || true)"
+	for child in $children; do
+		kill_tree "$child" "$sig"
+	done
+	kill -"$sig" "$pid" 2>/dev/null || true
+}
+
 cleanup_on_exit() {
 	if [ "$IS_TTY" = "true" ]; then
 		printf "\033[?25h" # Restore cursor
 	fi
 }
-trap cleanup_on_exit EXIT INT TERM
+trap cleanup_on_exit EXIT
+
+# Previously, INT/TERM were routed through cleanup_on_exit too - which only
+# restores the cursor and does not exit. Bash does not terminate a script on
+# a trapped signal unless the handler says so, so pressing Ctrl+C (or the
+# installer receiving SIGTERM) did *nothing visible*: the spinner kept
+# running against a step whose background job might itself be gone, forever,
+# with no message and no way to cancel short of killing the whole terminal/
+# session from outside - which is indistinguishable from "the installer
+# crashed silently". This handler actually stops the run, kills whatever
+# step was still in flight, and says so.
+handle_interrupt() {
+	local sig="$1"
+	if [ -n "$CURRENT_STEP_PID" ] && kill -0 "$CURRENT_STEP_PID" 2>/dev/null; then
+		kill_tree "$CURRENT_STEP_PID" TERM
+		sleep 0.3
+		kill_tree "$CURRENT_STEP_PID" KILL
+	fi
+	if [ "$IS_TTY" = "true" ]; then
+		printf "\033[?25h\n"
+	else
+		printf "\n"
+	fi
+	if [ -n "$CURRENT_STEP_TITLE" ]; then
+		warn "Installation cancelled (${sig}) during step ${STEP_NUM}/${TOTAL_STEPS}: ${CURRENT_STEP_TITLE}"
+	else
+		warn "Installation cancelled (${sig})."
+	fi
+	info "Nothing further will run. Log so far: ${INSTALL_LOG}"
+	info "Re-run this script to resume/retry - completed steps are safe to repeat."
+	exit 130
+}
+trap 'handle_interrupt INT' INT
+trap 'handle_interrupt TERM' TERM
 
 strip_ansi() {
 	printf '%b' "$1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\033\[[0-9;]*[a-zA-Z]//g' | tr '\r\t' '  '
@@ -301,10 +356,23 @@ print_diagnostics_card() {
 	
 	render_diag_line() {
 		local label="$1" val="$2"
-		local clean_text="• ${label}: ${val}"
-		if [ "${#clean_text}" -gt "$inner_width" ]; then
-			clean_text="${clean_text:0:$inner_width}"
+		local prefix="• ${label}: "
+		# The old version computed a truncated preview just to size the
+		# padding, then printed the ORIGINAL untruncated label/value anyway -
+		# so a long value (a long docker version string, a long distro
+		# name) sailed straight past the box's right border instead of
+		# actually being cut to fit, breaking the border exactly like the
+		# "Docker Engine" line did.
+		local avail=$((inner_width - ${#prefix}))
+		if [ "$avail" -lt 1 ]; then avail=1; fi
+		if [ "${#val}" -gt "$avail" ]; then
+			if [ "$avail" -gt 1 ]; then
+				val="${val:0:$((avail - 1))}…"
+			else
+				val="${val:0:$avail}"
+			fi
 		fi
+		local clean_text="${prefix}${val}"
 		local pad_len=$((inner_width - ${#clean_text}))
 		local pad=""
 		if [ "$pad_len" -gt 0 ]; then
@@ -685,6 +753,7 @@ run_step() {
 	local title="$1"
 	shift
 	STEP_NUM=$((STEP_NUM + 1))
+	CURRENT_STEP_TITLE="$title"
 	local step_tag="[${STEP_NUM}/${TOTAL_STEPS}]"
 	local start_ts
 	start_ts=$(date +%s)
@@ -719,6 +788,7 @@ run_step() {
 			eval "$*"
 		) > "$log_file" 2>&1 </dev/null &
 		local cmd_pid=$!
+		CURRENT_STEP_PID="$cmd_pid"
 
 		local frame_idx=0
 		local num_frames=${#SPINNER_FRAMES[@]}
@@ -812,6 +882,7 @@ run_step() {
 
 		wait "$cmd_pid"
 		local exit_code=$?
+		CURRENT_STEP_PID=""
 		local end_ts
 		end_ts=$(date +%s)
 		local total_elapsed=$((end_ts - start_ts))
@@ -979,11 +1050,14 @@ DOCKEREOF
 				d_running=true
 				break
 			fi
+			echo \"Waiting for Docker daemon to respond (attempt \${i}/10)...\"
 			sleep 1
 		done
 
 		if [ \"\$d_running\" = \"false\" ]; then
-			echo \"Docker daemon failed to start or respond within 10 seconds.\" >&2
+			echo \"Docker daemon failed to start or respond within 10 seconds. Recent status:\" >&2
+			systemctl status docker --no-pager -l 2>&1 | tail -n 15 >&2 || true
+			journalctl -u docker --no-pager -n 20 2>&1 >&2 || true
 			exit 1
 		fi
 	"

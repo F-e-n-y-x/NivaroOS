@@ -9,8 +9,10 @@ import 'login_screen.dart';
 import 'server_profiles_screen.dart';
 import 'system_updates_screen.dart';
 import 'system_logs_screen.dart';
+import 'dart:io';
 import 'companion_devices_screen.dart';
 import '../services/device_sync_service.dart';
+import '../services/background_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,6 +25,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _username = '';
   String _serverUrl = '';
   String _appVersion = 'v1.0.0';
+  bool _bgServiceRunning = false;
+  bool _isIgnoringBattery = false;
+  bool _autoStartBoot = true;
 
   @override
   void initState() {
@@ -34,13 +39,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final u = await StorageService.instance.getUsername();
     final s = await StorageService.instance.getServerUrl();
     final info = await PackageInfo.fromPlatform();
+    final bgRunning = await BackgroundService.instance.isServiceRunning();
+    final isIgnoringBattery = await BackgroundService.instance.isIgnoringBatteryOptimizations();
+    final autoBoot = await BackgroundService.instance.isAutoStartOnBoot();
     if (mounted) {
       setState(() {
         _username = u ?? 'User';
         _serverUrl = s ?? '';
         _appVersion = 'v${info.version}+${info.buildNumber}';
+        _bgServiceRunning = bgRunning;
+        _isIgnoringBattery = isIgnoringBattery;
+        _autoStartBoot = autoBoot;
       });
     }
+  }
+
+  Future<void> _toggleBgService(bool enabled) async {
+    HapticFeedback.lightImpact();
+    if (enabled) {
+      await BackgroundService.instance.startService();
+    } else {
+      await BackgroundService.instance.stopService();
+    }
+    final isRunning = await BackgroundService.instance.isServiceRunning();
+    if (mounted) setState(() => _bgServiceRunning = isRunning);
+  }
+
+  Future<void> _requestBatteryWhitelist() async {
+    HapticFeedback.lightImpact();
+    await BackgroundService.instance.requestIgnoreBatteryOptimizations();
+    await Future.delayed(const Duration(milliseconds: 800));
+    final isIgnoring = await BackgroundService.instance.isIgnoringBatteryOptimizations();
+    if (mounted) {
+      setState(() => _isIgnoringBattery = isIgnoring);
+      if (isIgnoring) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleAutoStartBoot(bool enabled) async {
+    HapticFeedback.lightImpact();
+    await BackgroundService.instance.setAutoStartOnBoot(enabled);
+    if (mounted) setState(() => _autoStartBoot = enabled);
   }
 
   Future<void> _logout() async {
@@ -259,6 +302,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // Background & Unattended Execution
+              if (Platform.isAndroid) ...[
+                const SectionHeader(title: 'Background & Unattended Service'),
+                DarkCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        secondary: Icon(
+                          _bgServiceRunning ? Icons.cloud_sync_rounded : Icons.sync_disabled_rounded,
+                          color: _bgServiceRunning ? NivaroColors.successLight : NivaroColors.textMuted,
+                        ),
+                        title: const Text('Keep Running in Background', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          _bgServiceRunning
+                              ? 'Foreground service active · Keeps storage sharing & sync alive'
+                              : 'Service stopped · Background file sync paused',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        value: _bgServiceRunning,
+                        activeColor: NivaroColors.primaryLight,
+                        onChanged: _toggleBgService,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: Icon(
+                          _isIgnoringBattery ? Icons.battery_charging_full_rounded : Icons.battery_alert_rounded,
+                          color: _isIgnoringBattery ? NivaroColors.successLight : NivaroColors.warningLight,
+                        ),
+                        title: const Text('Battery Optimization Exemption', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          _isIgnoringBattery
+                              ? 'Unrestricted · Android will not pause sync in sleep or Doze mode'
+                              : 'Optimized · Android Doze may cut network when screen is locked',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: _isIgnoringBattery
+                            ? const Icon(Icons.check_circle_rounded, color: NivaroColors.successLight, size: 22)
+                            : OutlinedButton(
+                                onPressed: _requestBatteryWhitelist,
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  side: const BorderSide(color: NivaroColors.warningLight),
+                                ),
+                                child: const Text('Allow', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
+                              ),
+                        onTap: _requestBatteryWhitelist,
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
+                        secondary: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
+                        title: const Text('Start on Device Boot', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text(
+                          'Automatically launches background companion service when phone turns on',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        value: _autoStartBoot,
+                        activeColor: NivaroColors.primaryLight,
+                        onChanged: _toggleAutoStartBoot,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
 
               // About Card
               const SectionHeader(title: 'About NivaroOS Mobile'),

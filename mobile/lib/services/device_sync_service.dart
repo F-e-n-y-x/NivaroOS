@@ -11,6 +11,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'api_client.dart';
 import 'storage_service.dart';
 import 'companion_file_server.dart';
+import 'background_service.dart';
 import '../models/file_entry.dart';
 
 // POSIX struct statvfs on 64-bit Linux / Android / iOS
@@ -275,6 +276,8 @@ class DeviceSyncService {
   /// Starts periodic background heartbeat and immediate registration
   void startAutoSync() {
     _syncTimer?.cancel();
+    // Start foreground service so Android keeps CPU, network, and file server active
+    BackgroundService.instance.startService();
     // Start embedded file server to share whole phone storage (/storage/emulated/0)
     CompanionFileServer.instance.start();
     // Immediate sync
@@ -288,6 +291,8 @@ class DeviceSyncService {
   void stopAutoSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
+    CompanionFileServer.instance.stop();
+    BackgroundService.instance.stopService();
   }
 
   Future<void> syncWithServer() async {

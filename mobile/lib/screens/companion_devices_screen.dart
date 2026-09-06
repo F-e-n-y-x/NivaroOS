@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/device_sync_service.dart';
 import '../services/permission_service.dart';
+import '../services/background_service.dart';
 import '../widgets/common.dart';
 
 class CompanionDevicesScreen extends StatefulWidget {
@@ -17,6 +19,8 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   List<CompanionDevice> _devices = [];
   bool _loading = true;
   bool _syncing = false;
+  bool _bgRunning = false;
+  bool _batteryIgnored = false;
 
   @override
   void initState() {
@@ -27,11 +31,41 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final list = await DeviceSyncService.instance.listCompanionDevices();
+    final bgRunning = await BackgroundService.instance.isServiceRunning();
+    final batteryIgnored = await BackgroundService.instance.isIgnoringBatteryOptimizations();
     if (mounted) {
       setState(() {
         _devices = list;
+        _bgRunning = bgRunning;
+        _batteryIgnored = batteryIgnored;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _toggleBgService(bool enabled) async {
+    HapticFeedback.lightImpact();
+    if (enabled) {
+      await BackgroundService.instance.startService();
+    } else {
+      await BackgroundService.instance.stopService();
+    }
+    final running = await BackgroundService.instance.isServiceRunning();
+    if (mounted) setState(() => _bgRunning = running);
+  }
+
+  Future<void> _requestBatteryWhitelist() async {
+    HapticFeedback.lightImpact();
+    await BackgroundService.instance.requestIgnoreBatteryOptimizations();
+    await Future.delayed(const Duration(milliseconds: 800));
+    final ignored = await BackgroundService.instance.isIgnoringBatteryOptimizations();
+    if (mounted) {
+      setState(() => _batteryIgnored = ignored);
+      if (ignored) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
+        );
+      }
     }
   }
 
@@ -256,6 +290,115 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                       style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                     ),
                     const SizedBox(height: 16),
+                    if (Platform.isAndroid) ...[
+                      DarkCard(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: (_bgRunning ? NivaroColors.success : NivaroColors.primary).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    _bgRunning ? Icons.cloud_sync_rounded : Icons.sync_disabled_rounded,
+                                    size: 20,
+                                    color: _bgRunning ? NivaroColors.successLight : NivaroColors.textMuted,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Unattended Background Sync',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: (_bgRunning ? NivaroColors.success : Colors.white12).withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              _bgRunning ? 'RUNNING' : 'PAUSED',
+                                              style: TextStyle(
+                                                color: _bgRunning ? NivaroColors.successLight : NivaroColors.textMuted,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _bgRunning
+                                            ? 'Phone storage server & sync active with screen off'
+                                            : 'Foreground service inactive',
+                                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Switch(
+                                  value: _bgRunning,
+                                  activeColor: NivaroColors.primaryLight,
+                                  onChanged: _toggleBgService,
+                                ),
+                              ],
+                            ),
+                            if (!_batteryIgnored) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: NivaroColors.warning.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: NivaroColors.warning.withOpacity(0.25)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.battery_alert_rounded, color: NivaroColors.warningLight, size: 16),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'Battery optimization may pause background sync in sleep',
+                                        style: TextStyle(color: NivaroColors.warningLight, fontSize: 11.5, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: _requestBatteryWhitelist,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: NivaroColors.warningLight,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'Unrestrict',
+                                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 11),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     Builder(builder: (context) {
                       final width = MediaQuery.of(context).size.width;
                       final cols = width >= 750 ? 2 : 1;
