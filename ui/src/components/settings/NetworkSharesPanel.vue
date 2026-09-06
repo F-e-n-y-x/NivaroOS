@@ -52,14 +52,14 @@
 					<input type="radio" :checked="form.anonymous" @change="form.anonymous = true" />
 					<div class="access-option-text">
 						<span class="access-option-title">{{ $t('Anyone on the network') }}</span>
-						<span class="access-option-desc">{{ $t('No sign-in required - simplest option for a home network') }}</span>
+						<span class="access-option-desc">{{ $t("No sign-in required. Windows 10/11 blocks this kind of connection by default though - if it doesn't show up there, use \"Requires SMB sign-in\" instead.") }}</span>
 					</div>
 				</label>
 				<label class="access-option" :class="{ active: !form.anonymous }">
 					<input type="radio" :checked="!form.anonymous" @change="form.anonymous = false" />
 					<div class="access-option-text">
 						<span class="access-option-title">{{ $t('Requires SMB sign-in') }}</span>
-						<span class="access-option-desc">{{ $t('Only accounts added under SMB Users below can connect') }}</span>
+						<span class="access-option-desc">{{ $t('Works everywhere, including Windows. Only accounts added under Settings > Users > SMB Users can connect.') }}</span>
 					</div>
 				</label>
 			</div>
