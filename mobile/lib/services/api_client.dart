@@ -40,6 +40,7 @@ class ApiClient {
   }
 
   String get baseUrl => _baseUrl ?? '';
+  String? get accessToken => _accessToken;
   bool get hasSession => _accessToken != null && _accessToken!.isNotEmpty;
 
   void setSession(String accessToken, String refreshToken) {

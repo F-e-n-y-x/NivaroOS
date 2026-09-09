@@ -16,6 +16,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	v2Route "github.com/F-e-n-y-x/NivaroOS/services/core/route/v2"
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -164,6 +165,14 @@ func InitFile() http.Handler {
 			return
 		}
 		filePath := r.URL.Query().Get("path")
+		if dev, phonePath := v1.GetCompanionDeviceByStoragePath(filePath); dev != nil {
+			if !file.Exists(filePath) {
+				if err := v1.ProxyCompanionStream(dev, phonePath, w, r); err == nil {
+					return
+				}
+			}
+		}
+
 		fileName := path.Base(filePath)
 		w.Header().Add("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
 		http.ServeFile(w, r, filePath)

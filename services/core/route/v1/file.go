@@ -955,6 +955,13 @@ func PutFileContent(ctx echo.Context) error {
 func GetFileImage(ctx echo.Context) error {
 	t := ctx.QueryParam("type")
 	path := ctx.QueryParam("path")
+	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
+		if !file.Exists(path) {
+			if err := ProxyCompanionStream(dev, phonePath, ctx.Response().Writer, ctx.Request()); err == nil {
+				return nil
+			}
+		}
+	}
 	if !file.Exists(path) {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.FILE_ALREADY_EXISTS)})
 	}

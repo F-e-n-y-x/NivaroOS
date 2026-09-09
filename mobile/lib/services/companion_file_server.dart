@@ -214,12 +214,55 @@ class CompanionFileServer {
       return;
     }
 
+    final isDownload = req.uri.queryParameters['download'] == '1' || req.uri.queryParameters['download'] == 'true';
     final stat = file.statSync();
     final fileName = filePath.split(Platform.pathSeparator).last;
-    req.response.headers.set('Content-Length', stat.size.toString());
-    req.response.headers.set('Content-Disposition', 'attachment; filename="$fileName"');
+    final totalSize = stat.size;
+    final disposition = isDownload ? 'attachment; filename="$fileName"' : 'inline; filename="$fileName"';
+
+    req.response.headers.set('Accept-Ranges', 'bytes');
+    req.response.headers.set('Content-Disposition', disposition);
     req.response.headers.contentType = _getContentTypeForFile(fileName);
 
+    // Support HTTP Range requests (crucial for video streaming & seekable audio/PDFs)
+    final rangeHeader = req.headers.value('range');
+    if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
+      final rangeValue = rangeHeader.substring(6).trim();
+      final parts = rangeValue.split('-');
+      int start = 0;
+      int end = totalSize - 1;
+
+      if (parts[0].isNotEmpty) {
+        start = int.tryParse(parts[0]) ?? 0;
+        if (parts.length > 1 && parts[1].isNotEmpty) {
+          end = int.tryParse(parts[1]) ?? (totalSize - 1);
+        }
+      } else if (parts.length > 1 && parts[1].isNotEmpty) {
+        final suffix = int.tryParse(parts[1]) ?? 0;
+        start = totalSize - suffix;
+        if (start < 0) start = 0;
+      }
+
+      if (start < 0) start = 0;
+      if (end >= totalSize) end = totalSize - 1;
+
+      if (start <= end && start < totalSize) {
+        final chunkSize = (end - start) + 1;
+        req.response.statusCode = HttpStatus.partialContent;
+        req.response.headers.set('Content-Range', 'bytes $start-$end/$totalSize');
+        req.response.headers.set('Content-Length', chunkSize.toString());
+        await file.openRead(start, end + 1).pipe(req.response);
+        return;
+      } else {
+        req.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+        req.response.headers.set('Content-Range', 'bytes */$totalSize');
+        await req.response.close();
+        return;
+      }
+    }
+
+    req.response.statusCode = HttpStatus.ok;
+    req.response.headers.set('Content-Length', totalSize.toString());
     await file.openRead().pipe(req.response);
   }
 
@@ -264,8 +307,9 @@ class CompanionFileServer {
   }
 
   ContentType _getContentTypeForFile(String name) {
-    final ext = name.split('.').last.toLowerCase();
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     switch (ext) {
+      // Images
       case 'jpg':
       case 'jpeg':
         return ContentType('image', 'jpeg');
@@ -275,20 +319,81 @@ class CompanionFileServer {
         return ContentType('image', 'webp');
       case 'gif':
         return ContentType('image', 'gif');
+      case 'svg':
+        return ContentType('image', 'svg+xml');
+      case 'bmp':
+        return ContentType('image', 'bmp');
+      case 'ico':
+        return ContentType('image', 'x-icon');
+      case 'heic':
+      case 'heif':
+        return ContentType('image', 'heic');
+
+      // Video
       case 'mp4':
         return ContentType('video', 'mp4');
       case 'mkv':
         return ContentType('video', 'x-matroska');
+      case 'webm':
+        return ContentType('video', 'webm');
+      case 'mov':
+        return ContentType('video', 'quicktime');
+      case 'avi':
+        return ContentType('video', 'x-msvideo');
+      case '3gp':
+        return ContentType('video', '3gpp');
+      case 'ts':
+        return ContentType('video', 'mp2t');
+
+      // Audio
       case 'mp3':
         return ContentType('audio', 'mpeg');
+      case 'wav':
+        return ContentType('audio', 'wav');
+      case 'ogg':
+        return ContentType('audio', 'ogg');
+      case 'm4a':
+        return ContentType('audio', 'mp4');
+      case 'aac':
+        return ContentType('audio', 'aac');
+      case 'flac':
+        return ContentType('audio', 'flac');
+      case 'opus':
+        return ContentType('audio', 'opus');
+
+      // Documents & Text
       case 'pdf':
         return ContentType('application', 'pdf');
       case 'json':
         return ContentType.json;
       case 'txt':
+      case 'log':
+      case 'md':
+      case 'csv':
         return ContentType.text;
+      case 'html':
+      case 'htm':
+        return ContentType.html;
+      case 'xml':
+        return ContentType('application', 'xml');
       case 'zip':
         return ContentType('application', 'zip');
+      case 'tar':
+        return ContentType('application', 'x-tar');
+      case 'gz':
+        return ContentType('application', 'gzip');
+      case 'docx':
+        return ContentType('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document');
+      case 'xlsx':
+        return ContentType('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      case 'pptx':
+        return ContentType('application', 'vnd.openxmlformats-officedocument.presentationml.presentation');
+      case 'doc':
+        return ContentType('application', 'msword');
+      case 'xls':
+        return ContentType('application', 'vnd.ms-excel');
+      case 'ppt':
+        return ContentType('application', 'vnd.ms-powerpoint');
       default:
         return ContentType.binary;
     }
@@ -304,6 +409,10 @@ class CompanionFileServer {
 
     try {
       final base = ApiClient.instance.baseUrl;
+      if (base.isEmpty) {
+        _scheduleReconnect();
+        return;
+      }
       final uri = Uri.parse(base);
       final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
       final devId = await StorageService.instance.getCompanionDeviceId();
@@ -312,9 +421,27 @@ class CompanionFileServer {
         return;
       }
 
-      final wsUrl = '$wsScheme://${uri.host}:${uri.port}/v1/companion/devices/$devId/ws';
-      debugPrint('[CompanionFileServer] Connecting WebSocket tunnel to $wsUrl');
-      _ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 10));
+      final token = ApiClient.instance.accessToken ?? (await StorageService.instance.getAccessToken());
+      if (token == null || token.isEmpty) {
+        _scheduleReconnect();
+        return;
+      }
+
+      final wsUri = uri.replace(
+        scheme: wsScheme,
+        path: '/v1/companion/devices/$devId/ws',
+        queryParameters: {
+          'token': token,
+        },
+      );
+
+      debugPrint('[CompanionFileServer] Connecting WebSocket tunnel to $wsUri');
+      _ws = await WebSocket.connect(
+        wsUri.toString(),
+        headers: {
+          'Authorization': token,
+        },
+      ).timeout(const Duration(seconds: 10));
       _ws!.pingInterval = const Duration(seconds: 15);
 
       _ws!.listen((message) {

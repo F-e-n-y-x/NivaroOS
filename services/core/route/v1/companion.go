@@ -324,8 +324,8 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 	return nil, fmt.Errorf("device %s (%s) is unreachable", dev.Name, dev.IP)
 }
 
-// ProxyCompanionFileDownload streams a file from the companion device to the Echo HTTP response
-func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo.Context) error {
+// ProxyCompanionStream streams a file from the companion device to http.ResponseWriter with Range and inline preview support
+func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.ResponseWriter, r *http.Request) error {
 	devIP := dev.IP
 	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
 		return fmt.Errorf("companion device has no direct LAN IP")
@@ -336,37 +336,64 @@ func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo
 		port = 8765
 	}
 	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequest("GET", urlStr, nil)
+	if r != nil && r.URL.Query().Get("download") == "1" {
+		urlStr += "&download=1"
+	}
+
+	var req *http.Request
+	var err error
+	if r != nil {
+		req, err = http.NewRequestWithContext(r.Context(), "GET", urlStr, nil)
+	} else {
+		req, err = http.NewRequest("GET", urlStr, nil)
+	}
 	if err != nil {
 		return err
 	}
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	// Forward Range header for video/media seeking and partial content
+	if r != nil {
+		if rangeH := r.Header.Get("Range"); rangeH != "" {
+			req.Header.Set("Range", rangeH)
+		}
+	}
+
+	client := &http.Client{Timeout: 60 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("device returned status %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("companion device returned status %d", resp.StatusCode)
 	}
 
 	dev.LastSeen = time.Now()
 	dev.IsOnline = true
 
-	fileName := filepath.Base(phonePath)
-	for k, v := range resp.Header {
-		if len(v) > 0 {
-			ctx.Response().Header().Set(k, v[0])
+	// Forward critical media/streaming headers
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if val := resp.Header.Get(h); val != "" {
+			w.Header().Set(h, val)
 		}
 	}
-	if ctx.Response().Header().Get("Content-Disposition") == "" {
-		ctx.Response().Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
-	}
 
-	_, err = io.Copy(ctx.Response().Writer, resp.Body)
+	fileName := filepath.Base(phonePath)
+	disposition := "inline; filename*=utf-8''" + url.PathEscape(fileName)
+	if r != nil && r.URL.Query().Get("download") == "1" {
+		disposition = "attachment; filename*=utf-8''" + url.PathEscape(fileName)
+	}
+	w.Header().Set("Content-Disposition", disposition)
+
+	w.WriteHeader(resp.StatusCode)
+	_, err = io.Copy(w, resp.Body)
 	return err
+}
+
+// ProxyCompanionFileDownload streams a file from the companion device to the Echo HTTP response
+func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo.Context) error {
+	return ProxyCompanionStream(dev, phonePath, ctx.Response().Writer, ctx.Request())
 }
 
 // ProxyCompanionFileDelete sends a delete request to the companion device
