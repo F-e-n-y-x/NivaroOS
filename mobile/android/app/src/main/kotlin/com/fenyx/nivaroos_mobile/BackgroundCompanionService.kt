@@ -1,5 +1,6 @@
 package com.fenyx.nivaroos_mobile
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,6 +13,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 
 class BackgroundCompanionService : Service() {
 
@@ -49,6 +51,7 @@ class BackgroundCompanionService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -82,24 +85,65 @@ class BackgroundCompanionService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
+        acquireLocks()
         isRunning = true
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        try {
+            val restartIntent = Intent(applicationContext, BackgroundCompanionService::class.java).apply {
+                action = ACTION_START
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_ONE_SHOT
+            }
+            val pendingIntent = PendingIntent.getService(applicationContext, 101, restartIntent, flags)
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            alarmManager?.set(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + 1500,
+                pendingIntent
+            )
+        } catch (_: Exception) {}
+    }
+
     private fun acquireLocks() {
         try {
-            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-            wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nivaroos:companion_bg_wakelock")?.apply {
-                setReferenceCounted(false)
-                acquire()
+            if (wakeLock == null || !wakeLock!!.isHeld) {
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                wakeLock = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nivaroos:companion_bg_wakelock")?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
             }
         } catch (_: Exception) {}
 
         try {
             val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            multicastLock = wifi?.createMulticastLock("nivaroos:companion_bg_multicast")?.apply {
-                setReferenceCounted(false)
-                acquire()
+            if (multicastLock == null || !multicastLock!!.isHeld) {
+                multicastLock = wifi?.createMulticastLock("nivaroos:companion_bg_multicast")?.apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+
+            if (wifiLock == null || !wifiLock!!.isHeld) {
+                if (wifi != null) {
+                    val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                    } else {
+                        @Suppress("DEPRECATION")
+                        WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                    }
+                    wifiLock = wifi.createWifiLock(mode, "nivaroos:companion_bg_wifilock").apply {
+                        setReferenceCounted(false)
+                        acquire()
+                    }
+                }
             }
         } catch (_: Exception) {}
     }
@@ -113,6 +157,11 @@ class BackgroundCompanionService : Service() {
         try {
             multicastLock?.let { if (it.isHeld) it.release() }
             multicastLock = null
+        } catch (_: Exception) {}
+
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+            wifiLock = null
         } catch (_: Exception) {}
     }
 

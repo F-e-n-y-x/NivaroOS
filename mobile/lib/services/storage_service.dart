@@ -41,12 +41,41 @@ class StorageService {
     await _storage.write(key: _keyAccessToken, value: accessToken);
     await _storage.write(key: _keyRefreshToken, value: refreshToken);
     await _storage.write(key: _keyUsername, value: username);
+
+    // Keep active server profile in sync
+    try {
+      final currentUrl = await getServerUrl();
+      if (currentUrl != null && currentUrl.isNotEmpty) {
+        final profiles = await getProfiles();
+        final idx = profiles.indexWhere((p) => p.url.trim() == currentUrl.trim() || p.id == 'default');
+        if (idx >= 0) {
+          final updated = profiles[idx].copyWith(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            username: username,
+            lastConnected: DateTime.now(),
+          );
+          await saveProfile(updated);
+        } else {
+          final newProfile = ServerProfile(
+            id: currentUrl,
+            name: 'Primary Server',
+            url: currentUrl,
+            username: username,
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            lastConnected: DateTime.now(),
+          );
+          await saveProfile(newProfile);
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> clearSession() async {
     await _storage.delete(key: _keyAccessToken);
     await _storage.delete(key: _keyRefreshToken);
-    await _storage.delete(key: _keyUsername);
+    // Keep username and serverUrl so user can re-authenticate easily without re-typing server address
   }
 
   // --- Multi-Server Profiles Management ---

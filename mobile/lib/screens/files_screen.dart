@@ -8,12 +8,14 @@ import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/shortcuts_service.dart';
 import '../services/permission_service.dart';
+import '../services/storage_service.dart';
 import '../models/file_entry.dart';
 import '../models/dashboard_stats.dart';
 import '../models/cloud_account.dart';
 import '../models/favorite_folder.dart';
 import '../utils/format.dart';
 import 'file_viewer_screen.dart';
+import 'login_screen.dart';
 
 enum FileCategoryFilter {
   all,
@@ -409,6 +411,23 @@ class FilesScreenState extends State<FilesScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _cloudLoading = false);
+    }
+  }
+
+  Future<void> _promptReauth() async {
+    HapticFeedback.lightImpact();
+    final username = await StorageService.instance.getUsername();
+    if (!mounted) return;
+    final success = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          isReauth: true,
+          initialUsername: username,
+        ),
+      ),
+    );
+    if (success == true && mounted) {
+      _load();
     }
   }
 
@@ -2627,10 +2646,28 @@ class FilesScreenState extends State<FilesScreen> {
             const SizedBox(height: 12),
             Text(_error ?? 'Could not load folder contents.', style: const TextStyle(color: Colors.white, fontSize: 14), textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => _load(),
-              child: const Text('Try Again'),
-            ),
+            if (ApiClient.isAuthError(_error)) ...[
+              FilledButton.icon(
+                onPressed: _promptReauth,
+                icon: const Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
+                label: const Text('Sign In Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: NivaroColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => _load(),
+                child: const Text('Try Again', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+              ),
+            ] else
+              ElevatedButton(
+                onPressed: () => _load(),
+                child: const Text('Try Again'),
+              ),
           ],
         ),
       ),

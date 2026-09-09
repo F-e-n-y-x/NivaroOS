@@ -11,7 +11,9 @@ import 'discovery_screen.dart';
 /// Clean, modern Material 3 login screen with server status badge,
 /// password obscurity toggle, and haptic feedback.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool isReauth;
+  final String? initialUsername;
+  const LoginScreen({super.key, this.isReauth = false, this.initialUsername});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -23,6 +25,20 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscure = true;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialUsername != null && widget.initialUsername!.isNotEmpty) {
+      _usernameController.text = widget.initialUsername!;
+    } else {
+      StorageService.instance.getUsername().then((u) {
+        if (mounted && u != null && u.isNotEmpty && _usernameController.text.isEmpty) {
+          setState(() => _usernameController.text = u);
+        }
+      });
+    }
+  }
 
   Future<void> _login() async {
     final username = _usernameController.text.trim();
@@ -57,12 +73,24 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       DeviceSyncService.instance.startAutoSync();
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+      if (widget.isReauth && Navigator.canPop(context)) {
+        Navigator.of(context).pop(true);
+      } else {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+      }
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _handleBack() async {
+    if (widget.isReauth && Navigator.canPop(context)) {
+      Navigator.of(context).pop(false);
+      return;
+    }
+    await _changeServer();
   }
 
   Future<void> _changeServer() async {
@@ -99,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: _changeServer,
+                        onPressed: _handleBack,
                       ),
                       const Spacer(),
                       TextButton.icon(

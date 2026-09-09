@@ -5,9 +5,11 @@ import 'files_screen.dart';
 import 'vm_list_screen.dart';
 import 'apps_screen.dart';
 import 'settings_screen.dart';
+import 'login_screen.dart';
 import '../services/storage_service.dart';
 import '../services/permission_service.dart';
 import '../services/device_sync_service.dart';
+import '../services/api_client.dart';
 import '../widgets/common.dart';
 
 /// Main Application Shell with floating pill navigation bar and smooth tab transitions.
@@ -23,6 +25,7 @@ class _HomeShellState extends State<HomeShell> {
 
   int _index = 0;
   String _avatarInitial = '?';
+  bool _showingReauth = false;
   final _filesKey = GlobalKey<FilesScreenState>();
 
   void _switchToTab(int i) {
@@ -46,6 +49,33 @@ class _HomeShellState extends State<HomeShell> {
     _loadAvatar();
     PermissionService.requestInitialPermissions();
     DeviceSyncService.instance.startAutoSync();
+    ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
+  }
+
+  @override
+  void dispose() {
+    ApiClient.sessionExpiredNotifier.removeListener(_onSessionExpired);
+    super.dispose();
+  }
+
+  void _onSessionExpired() {
+    if (!mounted || _showingReauth) return;
+    if (ApiClient.sessionExpiredNotifier.value) {
+      _showingReauth = true;
+      StorageService.instance.getUsername().then((username) {
+        if (!mounted) return;
+        Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(
+              isReauth: true,
+              initialUsername: username,
+            ),
+          ),
+        ).then((_) {
+          _showingReauth = false;
+        });
+      });
+    }
   }
 
   Future<void> _loadAvatar() async {

@@ -14,6 +14,7 @@ import 'vm_console_screen.dart';
 import 'system_updates_screen.dart';
 import 'system_logs_screen.dart';
 import 'terminal_screen.dart';
+import 'login_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onOpenFiles;
@@ -72,6 +73,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadSilently() async {
     await _fetchStats();
+  }
+
+  Future<void> _promptReauth() async {
+    HapticFeedback.lightImpact();
+    final username = await StorageService.instance.getUsername();
+    if (!mounted) return;
+    final success = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          isReauth: true,
+          initialUsername: username,
+        ),
+      ),
+    );
+    if (success == true && mounted) {
+      _load();
+    }
   }
 
   Future<void> _fetchStats() async {
@@ -362,8 +380,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
                             const SizedBox(height: 10),
                             Text(_error!, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
-                            const SizedBox(height: 12),
-                            OutlinedButton(onPressed: _load, child: const Text('Retry Connection')),
+                            const SizedBox(height: 14),
+                            if (ApiClient.isAuthError(_error)) ...[
+                              FilledButton.icon(
+                                onPressed: _promptReauth,
+                                icon: const Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
+                                label: const Text('Sign In Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: NivaroColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: _load,
+                                child: const Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+                              ),
+                            ] else
+                              OutlinedButton(onPressed: _load, child: const Text('Retry Connection')),
                           ],
                         ),
                       ),

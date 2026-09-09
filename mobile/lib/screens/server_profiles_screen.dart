@@ -8,6 +8,7 @@ import '../services/storage_service.dart';
 import '../services/api_client.dart';
 import '../widgets/common.dart';
 import 'home_shell.dart';
+import 'login_screen.dart';
 
 class ServerProfilesScreen extends StatefulWidget {
   const ServerProfilesScreen({super.key});
@@ -49,13 +50,23 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   }
 
   Future<void> _switchToProfile(ServerProfile profile) async {
-    if (profile.url == _activeUrl) return;
     HapticFeedback.mediumImpact();
 
     await StorageService.instance.switchProfile(profile);
     ApiClient.instance.setBaseUrl(profile.url);
-    if (profile.accessToken != null && profile.refreshToken != null) {
+    if (profile.accessToken != null && profile.refreshToken != null && profile.accessToken!.isNotEmpty) {
       ApiClient.instance.setSession(profile.accessToken!, profile.refreshToken!);
+    } else {
+      ApiClient.instance.clearSession();
+    }
+
+    if (!ApiClient.instance.hasSession) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => LoginScreen(initialUsername: profile.username)),
+        );
+      }
+      return;
     }
 
     if (mounted) {
@@ -69,6 +80,24 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
         MaterialPageRoute(builder: (_) => const HomeShell()),
         (route) => false,
       );
+    }
+  }
+
+  Future<void> _reauthProfile(ServerProfile profile) async {
+    HapticFeedback.lightImpact();
+    await StorageService.instance.setServerUrl(profile.url);
+    ApiClient.instance.setBaseUrl(profile.url);
+    if (!mounted) return;
+    final success = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          isReauth: true,
+          initialUsername: profile.username,
+        ),
+      ),
+    );
+    if (success == true && mounted) {
+      _load();
     }
   }
 
@@ -246,9 +275,11 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                                 ).timeout(const Duration(seconds: 4));
 
                                 if (res.statusCode == 200) {
-                                  final data = jsonDecode(res.body);
-                                  accessToken = data['data']?['token'] ?? data['token'];
-                                  refreshToken = data['data']?['refresh_token'] ?? data['refresh_token'];
+                                  final body = jsonDecode(res.body) as Map<String, dynamic>;
+                                  final data = body['data'] as Map<String, dynamic>? ?? body;
+                                  final token = data['token'] as Map<String, dynamic>? ?? data;
+                                  accessToken = token['access_token']?.toString();
+                                  refreshToken = token['refresh_token']?.toString();
                                 } else {
                                   setSheetState(() {
                                     isSaving = false;
@@ -403,52 +434,64 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                 ],
               ),
             ),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, size: 20, color: NivaroColors.textSecondary),
-              onSelected: (val) {
-                if (val == 'switch') {
-                  _switchToProfile(profile);
-                } else if (val == 'edit') {
-                  _addOrEditProfile(profile);
-                } else if (val == 'delete') {
-                  _deleteProfile(profile);
-                }
-              },
-              itemBuilder: (context) => [
-                if (!isActive)
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, size: 20, color: NivaroColors.textSecondary),
+                onSelected: (val) {
+                  if (val == 'switch') {
+                    _switchToProfile(profile);
+                  } else if (val == 'relogin') {
+                    _reauthProfile(profile);
+                  } else if (val == 'edit') {
+                    _addOrEditProfile(profile);
+                  } else if (val == 'delete') {
+                    _deleteProfile(profile);
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (!isActive)
+                    const PopupMenuItem(
+                      value: 'switch',
+                      child: Row(
+                        children: [
+                          Icon(Icons.swap_horiz_rounded, color: NivaroColors.successLight, size: 18),
+                          SizedBox(width: 8),
+                          Text('Switch to Server'),
+                        ],
+                      ),
+                    ),
                   const PopupMenuItem(
-                    value: 'switch',
+                    value: 'relogin',
                     child: Row(
                       children: [
-                        Icon(Icons.swap_horiz_rounded, color: NivaroColors.successLight, size: 18),
+                        Icon(Icons.lock_open_rounded, color: NivaroColors.primaryLight, size: 18),
                         SizedBox(width: 8),
-                        Text('Switch to Server'),
+                        Text('Sign In / Re-authenticate'),
                       ],
                     ),
                   ),
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit_rounded, color: NivaroColors.primaryLight, size: 18),
-                      SizedBox(width: 8),
-                      Text('Edit Profile'),
-                    ],
-                  ),
-                ),
-                if (_profiles.length > 1)
                   const PopupMenuItem(
-                    value: 'delete',
+                    value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight, size: 18),
+                        Icon(Icons.edit_rounded, color: NivaroColors.primaryLight, size: 18),
                         SizedBox(width: 8),
-                        Text('Delete Profile'),
+                        Text('Edit Profile'),
                       ],
                     ),
                   ),
-              ],
-            ),
+                  if (_profiles.length > 1)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight, size: 18),
+                          SizedBox(width: 8),
+                          Text('Delete Profile'),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
       ),

@@ -10,12 +10,16 @@ package service
 
 import (
 	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 	"io"
 	"mime/multipart"
 	"os"
+	"path/filepath"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -112,11 +116,40 @@ func (u *userService) GetKeyPair() (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
 
 // 获取用户Service
 func NewUserService(db *gorm.DB) UserService {
-	// DO NOT store private key anywhere - keep it in memory ONLY!!!
-	privateKey, publicKey, err := jwt.GenerateKeyPair()
-	if err != nil {
-		logger.Error("failed to generate key pair for JWT", zap.Error(err))
-		return nil
+	keyPath := filepath.Join(config.AppInfo.DBPath, "jwt_key.pem")
+	if config.AppInfo.DBPath == "" {
+		keyPath = "/var/lib/nivaroos/db/jwt_key.pem"
+	}
+
+	var privateKey *ecdsa.PrivateKey
+	var publicKey *ecdsa.PublicKey
+	var err error
+
+	if data, readErr := os.ReadFile(keyPath); readErr == nil {
+		block, _ := pem.Decode(data)
+		if block != nil {
+			if key, parseErr := x509.ParseECPrivateKey(block.Bytes); parseErr == nil {
+				privateKey = key
+				publicKey = &key.PublicKey
+			}
+		}
+	}
+
+	if privateKey == nil {
+		privateKey, publicKey, err = jwt.GenerateKeyPair()
+		if err != nil {
+			logger.Error("failed to generate key pair for JWT", zap.Error(err))
+			return nil
+		}
+
+		if der, marshalErr := x509.MarshalECPrivateKey(privateKey); marshalErr == nil {
+			block := &pem.Block{
+				Type:  "EC PRIVATE KEY",
+				Bytes: der,
+			}
+			_ = os.MkdirAll(filepath.Dir(keyPath), 0700)
+			_ = os.WriteFile(keyPath, pem.EncodeToMemory(block), 0600)
+		}
 	}
 
 	return &userService{

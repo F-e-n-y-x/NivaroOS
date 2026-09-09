@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'storage_service.dart';
 
@@ -21,9 +22,12 @@ class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
 
+  static final ValueNotifier<bool> sessionExpiredNotifier = ValueNotifier(false);
+
   String? _baseUrl;
   String? _accessToken;
   String? _refreshToken;
+  Future<bool>? _refreshFuture;
 
   Future<void> init() async {
     _baseUrl = await StorageService.instance.getServerUrl();
@@ -41,11 +45,24 @@ class ApiClient {
   void setSession(String accessToken, String refreshToken) {
     _accessToken = accessToken;
     _refreshToken = refreshToken;
+    sessionExpiredNotifier.value = false;
   }
 
   void clearSession() {
     _accessToken = null;
     _refreshToken = null;
+    sessionExpiredNotifier.value = false;
+  }
+
+  static bool isAuthError(dynamic error) {
+    if (error == null) return false;
+    if (error is ApiException && error.statusCode == 401) return true;
+    final str = error.toString().toLowerCase();
+    return str.contains('unauthorized') ||
+        str.contains('verification failure') ||
+        str.contains('token is invalid') ||
+        str.contains('token expired') ||
+        str.contains('session expired');
   }
 
   Uri _uri(String path, [Map<String, dynamic>? query]) {
@@ -198,7 +215,7 @@ class ApiClient {
       throw ApiException('Could not reach the server. Check your connection and the server address.');
     }
 
-    if (res.statusCode == 401 && !isRetry && _refreshToken != null) {
+    if (res.statusCode == 401 && !isRetry) {
       final refreshed = await _tryRefresh();
       if (refreshed) return _send(request, isRetry: true);
     }
@@ -207,38 +224,82 @@ class ApiClient {
     try {
       decoded = res.body.isEmpty ? {} : jsonDecode(res.body) as Map<String, dynamic>;
     } catch (_) {
+      if (res.statusCode == 401) {
+        _handleAuthFailure();
+        throw ApiException('Unauthorized - please sign in again.', statusCode: 401);
+      }
       throw ApiException('Unexpected response from server (HTTP ${res.statusCode}).', statusCode: res.statusCode);
     }
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return decoded;
     }
+
+    if (res.statusCode == 401) {
+      _handleAuthFailure();
+      throw ApiException('Unauthorized - please sign in again.', statusCode: 401);
+    }
+
     final message = decoded['message']?.toString() ?? 'Request failed (HTTP ${res.statusCode}).';
     throw ApiException(message, statusCode: res.statusCode);
   }
 
   Future<bool> _tryRefresh() async {
-    if (_refreshToken == null) return false;
+    if (_refreshToken == null || _refreshToken!.isEmpty) {
+      _handleAuthFailure();
+      return false;
+    }
+
+    if (_refreshFuture != null) {
+      return _refreshFuture!;
+    }
+
+    _refreshFuture = _executeRefresh();
     try {
+      return await _refreshFuture!;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<bool> _executeRefresh() async {
+    try {
+      // Send refresh request without expired Authorization header
       final res = await http.post(
         _uri('/users/refresh'),
-        headers: _headers(),
+        headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'refresh_token': _refreshToken}),
       );
-      if (res.statusCode != 200) return false;
+      if (res.statusCode != 200) {
+        _handleAuthFailure();
+        return false;
+      }
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final data = decoded['data'] as Map<String, dynamic>?;
-      if (data == null || data['access_token'] == null) return false;
+      if (data == null || data['access_token'] == null) {
+        _handleAuthFailure();
+        return false;
+      }
       _accessToken = data['access_token'] as String;
-      _refreshToken = data['refresh_token'] as String;
+      if (data['refresh_token'] != null) {
+        _refreshToken = data['refresh_token'] as String;
+      }
+      sessionExpiredNotifier.value = false;
+      final username = await StorageService.instance.getUsername() ?? '';
       await StorageService.instance.setSession(
         accessToken: _accessToken!,
         refreshToken: _refreshToken!,
-        username: await StorageService.instance.getUsername() ?? '',
+        username: username,
       );
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  void _handleAuthFailure() {
+    _accessToken = null;
+    sessionExpiredNotifier.value = true;
+    StorageService.instance.clearSession();
   }
 }

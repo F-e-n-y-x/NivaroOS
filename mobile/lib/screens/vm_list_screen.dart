@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
+import '../services/storage_service.dart';
 import '../services/vm_client.dart';
 import '../widgets/common.dart';
 import 'vm_console_screen.dart';
 import 'vm_form_screen.dart';
+import 'login_screen.dart';
 
 /// Virtual Machine management screen with live screen preview thumbnails,
 /// real-time status badges, hypervisor specs, and direct console access.
@@ -46,6 +48,23 @@ class _VmListScreenState extends State<VmListScreen> {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _promptReauth() async {
+    HapticFeedback.lightImpact();
+    final username = await StorageService.instance.getUsername();
+    if (!mounted) return;
+    final success = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          isReauth: true,
+          initialUsername: username,
+        ),
+      ),
+    );
+    if (success == true && mounted) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -309,7 +328,25 @@ class _VmListScreenState extends State<VmListScreen> {
                           const SizedBox(height: 12),
                           Text(_error!, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
                           const SizedBox(height: 14),
-                          OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                          if (ApiClient.isAuthError(_error)) ...[
+                            FilledButton.icon(
+                              onPressed: _promptReauth,
+                              icon: const Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
+                              label: const Text('Sign In Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: NivaroColors.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+                            ),
+                          ] else
+                            OutlinedButton(onPressed: _load, child: const Text('Retry')),
                         ],
                       ),
                     ),

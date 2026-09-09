@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
-import 'package:nivaroos_mobile/services/permission_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
 
 /// Embedded HTTP and WebSocket server running inside the Android/iOS companion app.
@@ -145,10 +144,6 @@ class CompanionFileServer {
     String queryPath = req.uri.queryParameters['path'] ?? defaultRootPath;
     if (queryPath.isEmpty || queryPath == '/') {
       queryPath = defaultRootPath;
-    }
-
-    if (Platform.isAndroid) {
-      await PermissionService.requestManageStorage();
     }
 
     final dir = Directory(queryPath);
@@ -320,6 +315,7 @@ class CompanionFileServer {
       final wsUrl = '$wsScheme://${uri.host}:${uri.port}/v1/companion/devices/$devId/ws';
       debugPrint('[CompanionFileServer] Connecting WebSocket tunnel to $wsUrl');
       _ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 10));
+      _ws!.pingInterval = const Duration(seconds: 15);
 
       _ws!.listen((message) {
         _handleWebSocketMessage(message);

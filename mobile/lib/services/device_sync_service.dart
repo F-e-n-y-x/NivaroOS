@@ -286,12 +286,18 @@ class DeviceSyncService {
     _syncTimer?.cancel();
     // Start foreground service so Android keeps CPU, network, and file server active
     BackgroundService.instance.startService();
+    // Request battery optimizations exemption if not already granted so Doze mode does not suspend network
+    BackgroundService.instance.isIgnoringBatteryOptimizations().then((isIgnoring) {
+      if (!isIgnoring) {
+        BackgroundService.instance.requestIgnoreBatteryOptimizations();
+      }
+    });
     // Start embedded file server to share whole phone storage (/storage/emulated/0)
     CompanionFileServer.instance.start();
     // Immediate sync
     syncWithServer();
-    // Heartbeat every 45 seconds
-    _syncTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+    // Heartbeat every 30 seconds
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       syncWithServer();
     });
   }
@@ -306,6 +312,12 @@ class DeviceSyncService {
   Future<void> syncWithServer() async {
     if (!ApiClient.instance.hasSession) return;
     try {
+      if (!CompanionFileServer.instance.isRunning) {
+        await CompanionFileServer.instance.start();
+      } else {
+        // Ensure WebSocket tunnel is alive
+        CompanionFileServer.instance.connectWebSocketTunnel();
+      }
       final device = await getLocalDeviceInfo();
       await ApiClient.instance.post('/companion/register', body: device.toJson());
       debugPrint('[DeviceSyncService] Synced: ${device.name} | Storage: ${device.usedStorageBytes ~/ (1024*1024*1024)}GB / ${device.totalStorageBytes ~/ (1024*1024*1024)}GB | Battery: ${device.batteryLevel}%');
