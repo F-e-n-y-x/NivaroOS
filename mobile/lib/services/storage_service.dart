@@ -1,19 +1,18 @@
 import 'dart:convert';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/server_profile.dart';
 
 /// Everything this app needs to remember between launches - multi-server profiles,
-/// active server connection, and credentials - kept in the platform keystore.
+/// active server connection, and credentials - kept in local app storage and cached in memory.
 class StorageService {
   StorageService._();
   static final StorageService instance = StorageService._();
 
-  final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-      resetOnError: true,
-    ),
-  );
+  final Map<String, String> _cache = {};
+  bool _initialized = false;
+  File? _file;
 
   static const _keyServerUrl = 'server_url';
   static const _keyAccessToken = 'access_token';
@@ -24,70 +23,86 @@ class StorageService {
   static const _keyCompanionDeviceName = 'companion_device_name';
   static const _keyCompanionDeviceId = 'companion_device_id';
 
-  Future<String?> getCompanionDeviceName() async {
+  Future<void> init() async {
+    if (_initialized) return;
     try {
-      return await _storage.read(key: _keyCompanionDeviceName);
-    } catch (_) {
-      return null;
+      final dir = await getApplicationDocumentsDirectory();
+      _file = File('${dir.path}/nivaroos_storage.json');
+      if (await _file!.exists()) {
+        final content = await _file!.readAsString();
+        if (content.trim().isNotEmpty) {
+          final data = jsonDecode(content) as Map<String, dynamic>;
+          for (final entry in data.entries) {
+            if (entry.value != null) {
+              _cache[entry.key] = entry.value.toString();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[StorageService] Error loading storage file: $e');
     }
+    _initialized = true;
+  }
+
+  Future<void> _persist() async {
+    try {
+      if (_file == null) {
+        final dir = await getApplicationDocumentsDirectory();
+        _file = File('${dir.path}/nivaroos_storage.json');
+      }
+      await _file!.writeAsString(jsonEncode(_cache), flush: true);
+    } catch (e) {
+      debugPrint('[StorageService] Error saving storage file: $e');
+    }
+  }
+
+  Future<String?> getCompanionDeviceName() async {
+    if (!_initialized) await init();
+    return _cache[_keyCompanionDeviceName];
   }
 
   Future<void> setCompanionDeviceName(String name) async {
-    try {
-      await _storage.write(key: _keyCompanionDeviceName, value: name);
-    } catch (_) {}
+    if (!_initialized) await init();
+    _cache[_keyCompanionDeviceName] = name;
+    await _persist();
   }
 
   Future<String?> getCompanionDeviceId() async {
-    try {
-      return await _storage.read(key: _keyCompanionDeviceId);
-    } catch (_) {
-      return null;
-    }
+    if (!_initialized) await init();
+    return _cache[_keyCompanionDeviceId];
   }
 
   Future<void> setCompanionDeviceId(String id) async {
-    try {
-      await _storage.write(key: _keyCompanionDeviceId, value: id);
-    } catch (_) {}
+    if (!_initialized) await init();
+    _cache[_keyCompanionDeviceId] = id;
+    await _persist();
   }
 
   Future<String?> getServerUrl() async {
-    try {
-      return await _storage.read(key: _keyServerUrl);
-    } catch (_) {
-      return null;
-    }
+    if (!_initialized) await init();
+    return _cache[_keyServerUrl];
   }
 
   Future<void> setServerUrl(String url) async {
-    try {
-      await _storage.write(key: _keyServerUrl, value: url);
-    } catch (_) {}
+    if (!_initialized) await init();
+    _cache[_keyServerUrl] = url;
+    await _persist();
   }
 
   Future<String?> getAccessToken() async {
-    try {
-      return await _storage.read(key: _keyAccessToken);
-    } catch (_) {
-      return null;
-    }
+    if (!_initialized) await init();
+    return _cache[_keyAccessToken];
   }
 
   Future<String?> getRefreshToken() async {
-    try {
-      return await _storage.read(key: _keyRefreshToken);
-    } catch (_) {
-      return null;
-    }
+    if (!_initialized) await init();
+    return _cache[_keyRefreshToken];
   }
 
   Future<String?> getUsername() async {
-    try {
-      return await _storage.read(key: _keyUsername);
-    } catch (_) {
-      return null;
-    }
+    if (!_initialized) await init();
+    return _cache[_keyUsername];
   }
 
   Future<void> setSession({
@@ -95,9 +110,11 @@ class StorageService {
     required String refreshToken,
     required String username,
   }) async {
-    await _storage.write(key: _keyAccessToken, value: accessToken);
-    await _storage.write(key: _keyRefreshToken, value: refreshToken);
-    await _storage.write(key: _keyUsername, value: username);
+    if (!_initialized) await init();
+    _cache[_keyAccessToken] = accessToken;
+    _cache[_keyRefreshToken] = refreshToken;
+    _cache[_keyUsername] = username;
+    await _persist();
 
     // Keep active server profile in sync
     try {
@@ -130,16 +147,18 @@ class StorageService {
   }
 
   Future<void> clearSession() async {
-    await _storage.delete(key: _keyAccessToken);
-    await _storage.delete(key: _keyRefreshToken);
-    // Keep username and serverUrl so user can re-authenticate easily without re-typing server address
+    if (!_initialized) await init();
+    _cache.remove(_keyAccessToken);
+    _cache.remove(_keyRefreshToken);
+    await _persist();
   }
 
   // --- Multi-Server Profiles Management ---
 
   Future<List<ServerProfile>> getProfiles() async {
+    if (!_initialized) await init();
     try {
-      final raw = await _storage.read(key: _keyServerProfiles);
+      final raw = _cache[_keyServerProfiles];
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> list = jsonDecode(raw);
         final profiles = list.map((e) => ServerProfile.fromJson(e as Map<String, dynamic>)).toList();
@@ -162,7 +181,8 @@ class StorageService {
           lastConnected: DateTime.now(),
         );
         final raw = jsonEncode([defaultProfile.toJson()]);
-        await _storage.write(key: _keyServerProfiles, value: raw);
+        _cache[_keyServerProfiles] = raw;
+        await _persist();
         return [defaultProfile];
       }
     } catch (_) {}
@@ -170,9 +190,10 @@ class StorageService {
   }
 
   Future<void> saveProfile(ServerProfile profile) async {
+    if (!_initialized) await init();
     List<ServerProfile> profiles = [];
     try {
-      final raw = await _storage.read(key: _keyServerProfiles);
+      final raw = _cache[_keyServerProfiles];
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> list = jsonDecode(raw);
         profiles = list.map((e) => ServerProfile.fromJson(e as Map<String, dynamic>)).toList();
@@ -187,27 +208,41 @@ class StorageService {
     }
 
     final raw = jsonEncode(profiles.map((p) => p.toJson()).toList());
-    await _storage.write(key: _keyServerProfiles, value: raw);
+    _cache[_keyServerProfiles] = raw;
+    await _persist();
   }
 
   Future<void> deleteProfile(String id) async {
+    if (!_initialized) await init();
     List<ServerProfile> profiles = [];
     try {
-      final raw = await _storage.read(key: _keyServerProfiles);
+      final raw = _cache[_keyServerProfiles];
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> list = jsonDecode(raw);
         profiles = list.map((e) => ServerProfile.fromJson(e as Map<String, dynamic>)).toList();
       }
     } catch (_) {}
+
     profiles.removeWhere((p) => p.id == id);
     final raw = jsonEncode(profiles.map((p) => p.toJson()).toList());
-    await _storage.write(key: _keyServerProfiles, value: raw);
+    _cache[_keyServerProfiles] = raw;
+    await _persist();
   }
 
-  Future<String?> getActiveProfileId() => _storage.read(key: _keyActiveProfileId);
+  Future<String?> getActiveProfileId() async {
+    if (!_initialized) await init();
+    return _cache[_keyActiveProfileId];
+  }
+
+  Future<void> setActiveProfileId(String id) async {
+    if (!_initialized) await init();
+    _cache[_keyActiveProfileId] = id;
+    await _persist();
+  }
 
   Future<void> switchProfile(ServerProfile profile) async {
-    await _storage.write(key: _keyActiveProfileId, value: profile.id);
+    if (!_initialized) await init();
+    _cache[_keyActiveProfileId] = profile.id;
     await setServerUrl(profile.url);
     if (profile.accessToken != null && profile.refreshToken != null) {
       await setSession(
@@ -216,12 +251,13 @@ class StorageService {
         username: profile.username,
       );
     }
-    // Update last connected time
     final updated = profile.copyWith(lastConnected: DateTime.now());
     await saveProfile(updated);
   }
 
   Future<void> clearAll() async {
-    await _storage.deleteAll();
+    if (!_initialized) await init();
+    _cache.clear();
+    await _persist();
   }
 }
