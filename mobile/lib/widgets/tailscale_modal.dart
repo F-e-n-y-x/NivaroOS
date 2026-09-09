@@ -54,7 +54,6 @@ class _TailscaleModalState extends State<TailscaleModal> {
   }
 
   Future<void> _toggleState(bool target) async {
-    HapticFeedback.mediumImpact();
     setState(() => _toggling = true);
     try {
       await TailscaleService.instance.setState(target);
@@ -142,7 +141,6 @@ class _TailscaleModalState extends State<TailscaleModal> {
 
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$label copied to clipboard'),

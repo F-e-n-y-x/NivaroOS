@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
@@ -124,7 +123,6 @@ class _AppsScreenState extends State<AppsScreen> {
   }
 
   Future<void> _promptReauth() async {
-    HapticFeedback.lightImpact();
     final username = await StorageService.instance.getUsername();
     if (!mounted) return;
     final success = await Navigator.of(context).push<bool>(
@@ -307,7 +305,6 @@ class _AppsScreenState extends State<AppsScreen> {
   }
 
   Future<void> _openApp(ComposeApp app) async {
-    HapticFeedback.lightImpact();
     if (app.appType == 'system') {
       _openSystemApp(app.id);
       return;
@@ -455,7 +452,6 @@ class _AppsScreenState extends State<AppsScreen> {
 
   Future<void> _toggleApp(ComposeApp app) async {
     if (_busy.contains(app.id)) return;
-    HapticFeedback.mediumImpact();
     setState(() => _busy.add(app.id));
     final action = app.isRunning ? 'stop' : 'start';
     try {
@@ -473,7 +469,6 @@ class _AppsScreenState extends State<AppsScreen> {
 
   Future<void> _restartApp(ComposeApp app) async {
     if (_busy.contains(app.id)) return;
-    HapticFeedback.mediumImpact();
     setState(() => _busy.add(app.id));
     try {
       await ApiClient.instance.put('/v2/app_management/compose/${app.id}/state', body: {'state': 'restart'});
@@ -489,7 +484,6 @@ class _AppsScreenState extends State<AppsScreen> {
   }
 
   void _showAppDetails(ComposeApp app) {
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -906,7 +900,6 @@ class _FilterChip extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: () {
-        HapticFeedback.lightImpact();
         onSelected();
       },
       child: Container(

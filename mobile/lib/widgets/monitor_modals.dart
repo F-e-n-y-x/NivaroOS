@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/speedtest_service.dart';
@@ -79,7 +78,6 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
 
   Future<void> _startWanTest() async {
     if (_wanTesting) return;
-    HapticFeedback.mediumImpact();
     setState(() {
       _wanTesting = true;
       _wanPhase = SpeedtestPhase.connecting;
@@ -122,7 +120,6 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
         _wanDown = res.downloadMbps;
         _wanUp = res.uploadMbps;
       });
-      HapticFeedback.lightImpact();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -134,7 +131,6 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
 
   Future<void> _startLinkTest() async {
     if (_linkTesting) return;
-    HapticFeedback.mediumImpact();
     setState(() {
       _linkTesting = true;
       _linkPhase = SpeedtestPhase.connecting;
@@ -177,7 +173,6 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
         _linkDown = res.downloadMbps;
         _linkUp = res.uploadMbps;
       });
-      HapticFeedback.lightImpact();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -891,7 +886,6 @@ class RamDetailModal extends StatelessWidget {
   }
 
   Future<void> _flushCache(BuildContext context) async {
-    HapticFeedback.mediumImpact();
     try {
       await ApiClient.instance.post('/sys/update'); // trigger background sync
       if (context.mounted) {

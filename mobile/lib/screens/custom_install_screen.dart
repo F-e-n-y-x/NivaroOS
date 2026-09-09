@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../widgets/common.dart';
@@ -49,7 +48,6 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
   Future<void> _deploy() async {
     final yaml = _yamlCtrl.text.trim();
     if (yaml.isEmpty) return;
-    HapticFeedback.mediumImpact();
     setState(() => _installing = true);
     try {
       await ApiClient.instance.postBody('/v2/app_management/compose', yaml, 'application/yaml');
@@ -91,7 +89,6 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
                   child: ActionChip(
                     label: Text(t.name, style: const TextStyle(fontSize: 12)),
                     onPressed: () {
-                      HapticFeedback.selectionClick();
                       setState(() => _yamlCtrl.text = t.yaml);
                     },
                   ),

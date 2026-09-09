@@ -22,15 +22,6 @@ class PermissionService {
     } catch (e) {
       debugPrint('[PermissionService] Error requesting notification permission: $e');
     }
-
-    try {
-      final storageStatus = await Permission.manageExternalStorage.status;
-      if (!storageStatus.isGranted) {
-        await Permission.manageExternalStorage.request();
-      }
-    } catch (e) {
-      debugPrint('[PermissionService] Error requesting storage permission: $e');
-    }
   }
 
   /// Request Manage External Storage (All Files Access) for full file explorer capabilities.

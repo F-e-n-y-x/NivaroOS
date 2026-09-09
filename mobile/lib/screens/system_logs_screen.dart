@@ -83,7 +83,6 @@ class _SystemLogsScreenState extends State<SystemLogsScreen> {
             icon: const Icon(Icons.copy_rounded, size: 20),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _logs));
-              HapticFeedback.lightImpact();
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Logs copied.')));
             },
           ),

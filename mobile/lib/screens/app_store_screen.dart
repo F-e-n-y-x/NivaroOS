@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../models/container_entry.dart';
@@ -228,7 +227,6 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
   }
 
   Future<void> _installApp(String id, String title) async {
-    HapticFeedback.mediumImpact();
     final portCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,

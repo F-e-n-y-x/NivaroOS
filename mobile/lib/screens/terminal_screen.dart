@@ -291,7 +291,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _sendSpecialKey(String key) {
-    HapticFeedback.lightImpact();
     switch (key) {
       case 'ESC':
         _sendInput('\x1b');
@@ -335,7 +334,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   void _copyAllOutput() {
-    HapticFeedback.lightImpact();
     final plainText = _outputLines.map(_stripAnsi).join('\n');
     Clipboard.setData(ClipboardData(text: plainText));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -599,7 +597,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(6),
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         _sendInput('$macro\r');
                       },
                       child: Container(

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
@@ -51,7 +50,6 @@ class _VmListScreenState extends State<VmListScreen> {
   }
 
   Future<void> _promptReauth() async {
-    HapticFeedback.lightImpact();
     final username = await StorageService.instance.getUsername();
     if (!mounted) return;
     final success = await Navigator.of(context).push<bool>(
@@ -89,7 +87,6 @@ class _VmListScreenState extends State<VmListScreen> {
   }
 
   Future<void> _act(Vm vm, Future<void> Function(String) action) async {
-    HapticFeedback.mediumImpact();
     setState(() => _busy.add(vm.name));
     try {
       await action(vm.name);
@@ -111,7 +108,6 @@ class _VmListScreenState extends State<VmListScreen> {
   }
 
   Future<void> _createVm() async {
-    HapticFeedback.selectionClick();
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => VmFormScreen(client: _client)),
     );
@@ -119,7 +115,6 @@ class _VmListScreenState extends State<VmListScreen> {
   }
 
   Future<void> _editVm(Vm vm) async {
-    HapticFeedback.selectionClick();
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => VmFormScreen(client: _client, existing: vm)),
     );
@@ -127,7 +122,6 @@ class _VmListScreenState extends State<VmListScreen> {
   }
 
   Future<void> _deleteVm(Vm vm) async {
-    HapticFeedback.mediumImpact();
     final wipe = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -171,7 +165,6 @@ class _VmListScreenState extends State<VmListScreen> {
 
   void _showMenu(Vm vm) {
     final busy = _busy.contains(vm.name);
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: NivaroColors.surfaceContainerHigh,
@@ -496,7 +489,6 @@ class _VmListScreenState extends State<VmListScreen> {
           if (vm.isRunning) ...[
             GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
                 );
@@ -593,7 +585,6 @@ class _VmListScreenState extends State<VmListScreen> {
                       onPressed: busy
                           ? null
                           : () {
-                              HapticFeedback.lightImpact();
                               Navigator.of(context).push(
                                 MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
                               );

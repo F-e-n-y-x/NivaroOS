@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/device_sync_service.dart';
 import '../services/permission_service.dart';
@@ -44,7 +43,6 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   }
 
   Future<void> _toggleBgService(bool enabled) async {
-    HapticFeedback.lightImpact();
     if (enabled) {
       await BackgroundService.instance.startService();
     } else {
@@ -55,7 +53,6 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   }
 
   Future<void> _requestBatteryWhitelist() async {
-    HapticFeedback.lightImpact();
     await BackgroundService.instance.requestIgnoreBatteryOptimizations();
     await Future.delayed(const Duration(milliseconds: 800));
     final ignored = await BackgroundService.instance.isIgnoringBatteryOptimizations();
@@ -108,7 +105,6 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   }
 
   Future<void> _syncNow() async {
-    HapticFeedback.lightImpact();
     setState(() => _syncing = true);
     await DeviceSyncService.instance.syncWithServer();
     await _load();
@@ -183,7 +179,6 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
     );
 
     if (newName != null && newName.isNotEmpty && newName != dev.name) {
-      HapticFeedback.mediumImpact();
       try {
         await DeviceSyncService.instance.updateRemoteDeviceName(dev.id, newName);
         await _load();
@@ -246,7 +241,6 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
   }
 
   Future<void> _requestStoragePermission() async {
-    HapticFeedback.lightImpact();
     final granted = await PermissionService.requestManageStorage();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

@@ -67,7 +67,6 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
   }
 
   void _toggleOrientation() {
-    HapticFeedback.lightImpact();
     setState(() => _manualLandscape = !_manualLandscape);
     if (_manualLandscape) {
       SystemChrome.setPreferredOrientations([
@@ -106,7 +105,6 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
   }
 
   Future<void> _powerMenu() async {
-    HapticFeedback.lightImpact();
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: NivaroColors.surfaceContainerHighest,
@@ -144,7 +142,6 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
     );
     if (action == null) return;
     try {
-      HapticFeedback.mediumImpact();
       switch (action) {
         case 'shutdown':
           await _vmClient.shutdown(widget.vmName);
@@ -171,7 +168,6 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
   }
 
   Future<void> _snapshotsMenu() async {
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -182,7 +178,6 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
   }
 
   Future<void> _isoMenu() async {
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: NivaroColors.surfaceContainerHighest,

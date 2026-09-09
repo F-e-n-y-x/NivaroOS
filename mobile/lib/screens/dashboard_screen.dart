@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
@@ -76,7 +75,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _promptReauth() async {
-    HapticFeedback.lightImpact();
     final username = await StorageService.instance.getUsername();
     if (!mounted) return;
     final success = await Navigator.of(context).push<bool>(
@@ -142,7 +140,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _confirmAndSetState(String state, String title, String body) async {
-    HapticFeedback.mediumImpact();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -177,7 +174,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _flushCache() async {
-    HapticFeedback.mediumImpact();
     try {
       await ApiClient.instance.post('/sys/update');
       if (mounted) {
@@ -554,7 +550,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icon: Icons.terminal_rounded,
                       label: 'Terminal',
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const TerminalScreen()),
                         );
@@ -649,7 +644,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return DarkCard(
       padding: EdgeInsets.zero,
       onTap: () {
-        HapticFeedback.lightImpact();
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
         );
@@ -746,7 +740,6 @@ class _QuickButton extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          HapticFeedback.lightImpact();
           if (onTap != null) onTap!();
         },
         child: Container(

@@ -227,7 +227,6 @@ class _RfbViewState extends State<RfbView> {
 
   void setMode(ConsoleDisplayMode mode) {
     if (_mode == mode) return;
-    HapticFeedback.selectionClick();
     setState(() => _mode = mode);
     if (mode == ConsoleDisplayMode.stream) {
       _startStream();
@@ -238,7 +237,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _toggleKeyboard() {
-    HapticFeedback.lightImpact();
     setState(() {
       _keyboardOpen = !_keyboardOpen;
       if (_keyboardOpen) {
@@ -270,13 +268,11 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _sendSingleKey(int key) {
-    HapticFeedback.lightImpact();
     widget.client.sendKey(key, true);
     widget.client.sendKey(key, false);
   }
 
   void _sendKeyCombination(List<int> keys) {
-    HapticFeedback.mediumImpact();
     for (final k in keys) {
       widget.client.sendKey(k, true);
     }
@@ -287,7 +283,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _toggleLatch(String mod) {
-    HapticFeedback.lightImpact();
     setState(() {
       if (mod == 'ctrl') _ctrlLatched = !_ctrlLatched;
       if (mod == 'alt') _altLatched = !_altLatched;
@@ -314,7 +309,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _sendMouseClick(int button) {
-    HapticFeedback.lightImpact();
     final x = _cursorX.round().clamp(0, _vmWidth - 1);
     final y = _cursorY.round().clamp(0, _vmHeight - 1);
     widget.client.sendPointer(x, y, button);
@@ -324,7 +318,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _sendDoubleClick() {
-    HapticFeedback.mediumImpact();
     final x = _cursorX.round().clamp(0, _vmWidth - 1);
     final y = _cursorY.round().clamp(0, _vmHeight - 1);
     widget.client.sendPointer(x, y, 1);
@@ -340,7 +333,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _sendWheel(bool up) {
-    HapticFeedback.selectionClick();
     final x = _cursorX.round().clamp(0, _vmWidth - 1);
     final y = _cursorY.round().clamp(0, _vmHeight - 1);
     widget.client.sendPointer(x, y, up ? 8 : 16);
@@ -350,7 +342,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _toggleDragLock() {
-    HapticFeedback.mediumImpact();
     setState(() => _dragLocked = !_dragLocked);
     final x = _cursorX.round().clamp(0, _vmWidth - 1);
     final y = _cursorY.round().clamp(0, _vmHeight - 1);
@@ -358,7 +349,6 @@ class _RfbViewState extends State<RfbView> {
   }
 
   void _cycleSensitivity() {
-    HapticFeedback.selectionClick();
     setState(() {
       if (_trackpadSensitivity < 1.4) {
         _trackpadSensitivity = 1.75;
@@ -629,7 +619,6 @@ class _RfbViewState extends State<RfbView> {
               bottom: _showExtendedKeys ? 54 : 16,
               child: InkWell(
                 onTap: () {
-                  HapticFeedback.lightImpact();
                   setState(() => _showTrackpadDock = true);
                 },
                 borderRadius: BorderRadius.circular(20),
@@ -815,7 +804,6 @@ class _RfbViewState extends State<RfbView> {
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
                   onPressed: () {
-                    HapticFeedback.lightImpact();
                     setState(() => _showTrackpadDock = false);
                   },
                 ),
@@ -921,7 +909,6 @@ class _RfbViewState extends State<RfbView> {
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             onPressed: () {
-              HapticFeedback.lightImpact();
               setState(() => _showTrackpadDock = false);
             },
           ),
@@ -992,7 +979,6 @@ class _RfbViewState extends State<RfbView> {
                 const SizedBox(width: 6),
                 InkWell(
                   onTap: () {
-                    HapticFeedback.lightImpact();
                     setState(() {
                       _inputMode = _inputMode == InputControlMode.trackpad ? InputControlMode.touch : InputControlMode.trackpad;
                     });
@@ -1055,7 +1041,6 @@ class _RfbViewState extends State<RfbView> {
                   padding: const EdgeInsets.all(4),
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    HapticFeedback.lightImpact();
                     setState(() => _showHudControls = false);
                   },
                 ),
@@ -1082,7 +1067,6 @@ class _RfbViewState extends State<RfbView> {
                   padding: const EdgeInsets.all(4),
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    HapticFeedback.lightImpact();
                     _transformController.value = Matrix4.identity();
                   },
                 ),
@@ -1194,7 +1178,6 @@ class _RfbViewState extends State<RfbView> {
           ),
           InkWell(
             onTap: () {
-              HapticFeedback.lightImpact();
               setState(() {
                 _inputMode = _inputMode == InputControlMode.trackpad ? InputControlMode.touch : InputControlMode.trackpad;
               });
@@ -1255,7 +1238,6 @@ class _RfbViewState extends State<RfbView> {
             tooltip: 'Reset Zoom (1:1)',
             visualDensity: VisualDensity.compact,
             onPressed: () {
-              HapticFeedback.lightImpact();
               _transformController.value = Matrix4.identity();
             },
           ),
@@ -1296,7 +1278,6 @@ class _RfbViewState extends State<RfbView> {
             tooltip: 'Hide Controls',
             visualDensity: VisualDensity.compact,
             onPressed: () {
-              HapticFeedback.lightImpact();
               setState(() => _showHudControls = false);
             },
           ),
@@ -1309,7 +1290,6 @@ class _RfbViewState extends State<RfbView> {
   Widget _buildMiniHud() {
     return InkWell(
       onTap: () {
-        HapticFeedback.lightImpact();
         setState(() => _showHudControls = true);
       },
       borderRadius: BorderRadius.circular(22),
@@ -1425,7 +1405,6 @@ class _TrackpadBtn extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            HapticFeedback.lightImpact();
             onTap();
           },
           borderRadius: BorderRadius.circular(10),
@@ -1482,7 +1461,6 @@ class _KeyBtn extends StatelessWidget {
       padding: const EdgeInsets.only(right: 5),
       child: InkWell(
         onTap: () {
-          HapticFeedback.lightImpact();
           onTap();
         },
         borderRadius: BorderRadius.circular(6),

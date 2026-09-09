@@ -44,34 +44,60 @@ class _BootstrapState extends State<_Bootstrap> {
   }
 
   Future<void> _decide() async {
-    // Request permissions on startup
-    PermissionService.requestInitialPermissions();
+    try {
+      // Small pause to let initial Flutter frame render
+      await Future.delayed(const Duration(milliseconds: 60));
 
-    await ApiClient.instance.init();
-    if (!mounted) return;
+      // Request essential notification permission in background
+      PermissionService.requestInitialPermissions();
 
-    final serverUrl = await StorageService.instance.getServerUrl();
-    if (!mounted) return;
+      try {
+        await ApiClient.instance.init().timeout(const Duration(seconds: 2));
+      } catch (e) {
+        debugPrint('[_Bootstrap] ApiClient init warning: $e');
+      }
 
-    if (serverUrl == null || serverUrl.isEmpty) {
+      if (!mounted) return;
+
+      String? serverUrl;
+      try {
+        serverUrl = await StorageService.instance.getServerUrl().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => null,
+        );
+      } catch (e) {
+        debugPrint('[_Bootstrap] StorageService read warning: $e');
+      }
+
+      if (!mounted) return;
+
+      if (serverUrl == null || serverUrl.trim().isEmpty) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
+        );
+        return;
+      }
+
+      if (!ApiClient.instance.hasSession) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+        return;
+      }
+
+      DeviceSyncService.instance.startAutoSync();
+
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
+        MaterialPageRoute(builder: (_) => const HomeShell()),
       );
-      return;
+    } catch (e, st) {
+      debugPrint('[_Bootstrap] Boot error: $e\n$st');
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DiscoveryScreen()),
+        );
+      }
     }
-
-    if (!ApiClient.instance.hasSession) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-      return;
-    }
-
-    DeviceSyncService.instance.startAutoSync();
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeShell()),
-    );
   }
 
   @override

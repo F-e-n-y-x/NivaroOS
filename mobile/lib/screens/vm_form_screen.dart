@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/vm_client.dart';
 import '../widgets/common.dart';
@@ -101,7 +100,6 @@ class _VmFormScreenState extends State<VmFormScreen> {
   }
 
   void _applyPreset(dynamic p) {
-    HapticFeedback.selectionClick();
     setState(() {
       if (_nameCtrl.text.isEmpty) _nameCtrl.text = p.name.toString().replaceAll(' ', '-').toLowerCase();
       _vcpus = p.vcpus;
@@ -114,7 +112,6 @@ class _VmFormScreenState extends State<VmFormScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    HapticFeedback.mediumImpact();
     setState(() => _saving = true);
 
     final bootOrder = _bootCdromFirst && _selectedIso != null && _selectedIso!.isNotEmpty

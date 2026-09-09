@@ -363,7 +363,6 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
 
   Future<void> _saveFile() async {
     if (_isSaving) return;
-    HapticFeedback.mediumImpact();
     setState(() => _isSaving = true);
     try {
       final newText = _textController.text;
@@ -417,7 +416,6 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
 
   Future<void> _saveToDeviceDownloads() async {
     if (_savingToDevice) return;
-    HapticFeedback.mediumImpact();
     setState(() => _savingToDevice = true);
     try {
       Directory? dir;
@@ -465,7 +463,6 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
   }
 
   Future<void> _openWithExternalApp() async {
-    HapticFeedback.lightImpact();
     if (_cachedLocalPath != null) {
       final res = await OpenFilex.open(_cachedLocalPath!);
       if (res.type != ResultType.done && mounted) {
@@ -673,7 +670,6 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             tooltip: 'Copy path',
             onPressed: () {
               Clipboard.setData(ClipboardData(text: widget.path));
-              HapticFeedback.lightImpact();
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File path copied to clipboard.')));
             },
           ),

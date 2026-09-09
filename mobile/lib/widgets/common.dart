@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../utils/app_icons.dart';
 
@@ -95,7 +94,6 @@ class RoundIconButton extends StatelessWidget {
         onTap: onPressed == null
             ? null
             : () {
-                HapticFeedback.lightImpact();
                 onPressed!();
               },
         customBorder: const CircleBorder(),
@@ -213,7 +211,6 @@ class DarkCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
           onTap: () {
-            HapticFeedback.lightImpact();
             onTap!();
           },
           child: card,
@@ -249,7 +246,6 @@ class LanBadge extends StatelessWidget {
       child: InkWell(
         onTap: onTap != null
             ? () {
-                HapticFeedback.lightImpact();
                 onTap!();
               }
             : null,
@@ -413,7 +409,6 @@ class MonitorCard extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
           onTap: () {
-            HapticFeedback.lightImpact();
             onTap!();
           },
           child: card,
@@ -662,12 +657,10 @@ class FavoriteCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
         onTap: () {
-          HapticFeedback.lightImpact();
           onTap();
         },
         onLongPress: onLongPress != null
             ? () {
-                HapticFeedback.mediumImpact();
                 onLongPress!();
               }
             : null,
@@ -832,7 +825,6 @@ class FloatingNavBar extends StatelessWidget {
                       label: item.label,
                       selected: selected,
                       onTap: () {
-                        HapticFeedback.lightImpact();
                         onTap(i);
                       },
                     ),
@@ -848,7 +840,6 @@ class FloatingNavBar extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(29),
               onTap: () {
-                HapticFeedback.lightImpact();
                 onAvatarTap();
               },
               child: Container(
@@ -982,11 +973,9 @@ class AppTile extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () {
-        HapticFeedback.lightImpact();
         if (onTap != null) onTap!();
       },
       onLongPress: () {
-        HapticFeedback.mediumImpact();
         if (onLongPress != null) onLongPress!();
       },
       child: Column(

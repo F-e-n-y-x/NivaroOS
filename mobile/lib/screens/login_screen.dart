@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
@@ -48,7 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    HapticFeedback.mediumImpact();
     setState(() {
       _loading = true;
       _error = null;
@@ -94,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _changeServer() async {
-    HapticFeedback.lightImpact();
     await StorageService.instance.clearAll();
     ApiClient.instance.clearSession();
     if (!mounted) return;

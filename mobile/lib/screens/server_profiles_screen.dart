@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../theme.dart';
@@ -50,7 +49,6 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   }
 
   Future<void> _switchToProfile(ServerProfile profile) async {
-    HapticFeedback.mediumImpact();
 
     await StorageService.instance.switchProfile(profile);
     ApiClient.instance.setBaseUrl(profile.url);
@@ -84,7 +82,6 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   }
 
   Future<void> _reauthProfile(ServerProfile profile) async {
-    HapticFeedback.lightImpact();
     await StorageService.instance.setServerUrl(profile.url);
     ApiClient.instance.setBaseUrl(profile.url);
     if (!mounted) return;
@@ -102,7 +99,6 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   }
 
   Future<void> _addOrEditProfile([ServerProfile? existing]) async {
-    HapticFeedback.lightImpact();
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final urlCtrl = TextEditingController(text: existing?.url ?? '');
     final userCtrl = TextEditingController(text: existing?.username ?? 'admin');

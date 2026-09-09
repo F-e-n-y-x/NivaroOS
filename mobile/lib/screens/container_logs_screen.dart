@@ -66,7 +66,6 @@ class _ContainerLogsScreenState extends State<ContainerLogsScreen> {
 
   void _copyAll() {
     Clipboard.setData(ClipboardData(text: _logs));
-    HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Logs copied to clipboard.')));
   }
 

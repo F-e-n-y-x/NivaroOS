@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../services/discovery_service.dart';
 import '../services/storage_service.dart';
@@ -41,7 +40,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
   }
 
   Future<void> _scan() async {
-    HapticFeedback.lightImpact();
     setState(() {
       _scanning = true;
       _found.clear();
@@ -61,7 +59,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
   }
 
   Future<void> _connect(String url) async {
-    HapticFeedback.mediumImpact();
     final normalized = url.startsWith('http') ? url : 'http://$url';
     await StorageService.instance.setServerUrl(normalized);
     await ApiClient.instance.init();

@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../services/device_sync_service.dart';
 import '../theme.dart';
@@ -237,7 +236,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _addNewTab([String path = _defaultHomePath, String? name, bool isLocal = false]) {
-    HapticFeedback.lightImpact();
     final tabName = name ?? (path == _defaultHomePath ? 'Storage' : path.split('/').where((s) => s.isNotEmpty).lastOrNull ?? 'Folder');
     final newTab = FileTab(
       id: 'tab_${DateTime.now().millisecondsSinceEpoch}',
@@ -259,7 +257,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _closeTab(int index) {
-    HapticFeedback.lightImpact();
     if (_tabs.length <= 1) {
       setState(() {
         _tabs[0] = FileTab.initial();
@@ -283,7 +280,6 @@ class FilesScreenState extends State<FilesScreen> {
 
   void _switchTab(int index) {
     if (index == _activeTabIndex) return;
-    HapticFeedback.selectionClick();
     setState(() {
       _activeTabIndex = index;
       _searchController.text = _currentTab.searchQuery;
@@ -415,7 +411,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   Future<void> _promptReauth() async {
-    HapticFeedback.lightImpact();
     final username = await StorageService.instance.getUsername();
     if (!mounted) return;
     final success = await Navigator.of(context).push<bool>(
@@ -506,7 +501,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   Future<void> _openLocalDeviceStorage() async {
-    HapticFeedback.lightImpact();
     final granted = await PermissionService.requestManageStorage();
     if (!granted && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -517,7 +511,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _goToHome() {
-    HapticFeedback.lightImpact();
     final tab = _currentTab;
     setState(() {
       tab.atHome = true;
@@ -540,7 +533,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _openPath(String target, {bool newTab = false, bool isLocal = false, bool fromHome = false}) {
-    HapticFeedback.lightImpact();
     if (newTab) {
       _addNewTab(target, null, isLocal);
       return;
@@ -583,7 +575,6 @@ class FilesScreenState extends State<FilesScreen> {
   void _navigateUp() {
     final tab = _currentTab;
     if (tab.atHome) return;
-    HapticFeedback.lightImpact();
     if (tab.isSelectionMode) {
       setState(() {
         tab.isSelectionMode = false;
@@ -633,7 +624,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _toggleFavorite() async {
-    HapticFeedback.lightImpact();
     final tab = _currentTab;
     if (tab.atHome || tab.isLocalDevice) return;
     final path = tab.path;
@@ -715,7 +705,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _toggleSelection(String path) {
-    HapticFeedback.selectionClick();
     final tab = _currentTab;
     setState(() {
       if (tab.selectedPaths.contains(path)) {
@@ -731,7 +720,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _selectAll() {
-    HapticFeedback.lightImpact();
     final tab = _currentTab;
     setState(() {
       tab.selectedPaths.addAll(_filteredEntries.map((e) => e.path));
@@ -964,7 +952,6 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   void _showEntryActions(FileEntry entry) {
-    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: NivaroColors.surfaceContainerHighest,
@@ -1138,7 +1125,6 @@ class FilesScreenState extends State<FilesScreen> {
             tooltip: 'More Options',
             color: NivaroColors.surfaceContainerHighest,
             onSelected: (val) {
-              HapticFeedback.lightImpact();
               switch (val) {
                 case 'view_compact':
                   setState(() => tab.viewMode = 'compact');
@@ -1478,7 +1464,6 @@ class FilesScreenState extends State<FilesScreen> {
               visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle)),
               onSelected: (_) {
-                HapticFeedback.selectionClick();
                 setState(() => tab.categoryFilter = cat.$1);
               },
             ),
@@ -1811,7 +1796,6 @@ class FilesScreenState extends State<FilesScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          HapticFeedback.lightImpact();
           onTap?.call();
         },
         borderRadius: BorderRadius.circular(16),
@@ -2342,7 +2326,6 @@ class FilesScreenState extends State<FilesScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          HapticFeedback.lightImpact();
           if (dev.isCurrentDevice) {
             _openLocalDeviceStorage();
           } else {

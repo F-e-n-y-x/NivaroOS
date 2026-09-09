@@ -8,7 +8,12 @@ class StorageService {
   StorageService._();
   static final StorageService instance = StorageService._();
 
-  final _storage = const FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+  );
 
   static const _keyServerUrl = 'server_url';
   static const _keyAccessToken = 'access_token';
@@ -19,19 +24,71 @@ class StorageService {
   static const _keyCompanionDeviceName = 'companion_device_name';
   static const _keyCompanionDeviceId = 'companion_device_id';
 
-  Future<String?> getCompanionDeviceName() => _storage.read(key: _keyCompanionDeviceName);
-  Future<void> setCompanionDeviceName(String name) => _storage.write(key: _keyCompanionDeviceName, value: name);
+  Future<String?> getCompanionDeviceName() async {
+    try {
+      return await _storage.read(key: _keyCompanionDeviceName);
+    } catch (_) {
+      return null;
+    }
+  }
 
-  Future<String?> getCompanionDeviceId() => _storage.read(key: _keyCompanionDeviceId);
-  Future<void> setCompanionDeviceId(String id) => _storage.write(key: _keyCompanionDeviceId, value: id);
+  Future<void> setCompanionDeviceName(String name) async {
+    try {
+      await _storage.write(key: _keyCompanionDeviceName, value: name);
+    } catch (_) {}
+  }
 
+  Future<String?> getCompanionDeviceId() async {
+    try {
+      return await _storage.read(key: _keyCompanionDeviceId);
+    } catch (_) {
+      return null;
+    }
+  }
 
-  Future<String?> getServerUrl() => _storage.read(key: _keyServerUrl);
-  Future<void> setServerUrl(String url) => _storage.write(key: _keyServerUrl, value: url);
+  Future<void> setCompanionDeviceId(String id) async {
+    try {
+      await _storage.write(key: _keyCompanionDeviceId, value: id);
+    } catch (_) {}
+  }
 
-  Future<String?> getAccessToken() => _storage.read(key: _keyAccessToken);
-  Future<String?> getRefreshToken() => _storage.read(key: _keyRefreshToken);
-  Future<String?> getUsername() => _storage.read(key: _keyUsername);
+  Future<String?> getServerUrl() async {
+    try {
+      return await _storage.read(key: _keyServerUrl);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setServerUrl(String url) async {
+    try {
+      await _storage.write(key: _keyServerUrl, value: url);
+    } catch (_) {}
+  }
+
+  Future<String?> getAccessToken() async {
+    try {
+      return await _storage.read(key: _keyAccessToken);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> getRefreshToken() async {
+    try {
+      return await _storage.read(key: _keyRefreshToken);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> getUsername() async {
+    try {
+      return await _storage.read(key: _keyUsername);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> setSession({
     required String accessToken,

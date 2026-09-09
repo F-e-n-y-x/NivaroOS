@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
@@ -55,7 +54,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleBgService(bool enabled) async {
-    HapticFeedback.lightImpact();
     if (enabled) {
       await BackgroundService.instance.startService();
     } else {
@@ -66,7 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _requestBatteryWhitelist() async {
-    HapticFeedback.lightImpact();
     await BackgroundService.instance.requestIgnoreBatteryOptimizations();
     await Future.delayed(const Duration(milliseconds: 800));
     final isIgnoring = await BackgroundService.instance.isIgnoringBatteryOptimizations();
@@ -81,13 +78,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleAutoStartBoot(bool enabled) async {
-    HapticFeedback.lightImpact();
     await BackgroundService.instance.setAutoStartOnBoot(enabled);
     if (mounted) setState(() => _autoStartBoot = enabled);
   }
 
   Future<void> _logout() async {
-    HapticFeedback.mediumImpact();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -115,7 +110,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
   Future<void> _showPowerSheet() async {
-    HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
