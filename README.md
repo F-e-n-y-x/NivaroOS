@@ -2,30 +2,29 @@
   <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="NivaroOS Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
 </p>
 
-<h1 align="center">NivaroOS</h1>
+<h1 align="center">NivaroOS v1.0</h1>
 
 <p align="center">
-  <strong>A modern, self-hosted personal cloud OS and container platform.</strong><br>
-  Desktop-class multitasking, Docker container studio, KVM virtual machines, file management, and a rich ZimaOS-inspired App Store — all in one unified, windowed web workspace.
+  <strong>A modern, self-hosted personal cloud OS, container platform, and companion mobile ecosystem.</strong><br>
+  Desktop-class windowed multitasking, Docker container studio, KVM virtual machines, unified file management with companion device integration, and a rich ZimaOS-inspired App Store — seamlessly bridged with a native mobile companion app.
 </p>
 
 <p align="center">
-  <a href="https://github.com/F-e-n-y-x/NivaroOS/releases"><img src="https://img.shields.io/github/v/release/F-e-n-y-x/NivaroOS?color=2563eb&style=flat-square" alt="Release"></a>
+  <a href="https://github.com/F-e-n-y-x/NivaroOS/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Release-v1.0.0-2563eb?style=flat-square" alt="Version 1.0.0"></a>
   <a href="https://github.com/F-e-n-y-x/NivaroOS/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu-orange?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Android-orange?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
 </p>
 
 ---
 
-## ⚡ Quick Install
+## ⚡ Quick Install (Host OS)
 
 Install NivaroOS on any clean **Debian 12+** or **Ubuntu 22.04+** system with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/install.sh | sudo bash
 ```
-
 
 #### Installer Flags & Options
 
@@ -39,11 +38,18 @@ Once installation finishes, open your browser and navigate to `http://<your-serv
 
 ---
 
+## 📱 Mobile Companion App
+
+NivaroOS includes a native Flutter mobile app for Android and iOS that brings your entire personal cloud and server infrastructure into your pocket.
+
+- **Download APK**: Grab the latest release APK from the [Releases](https://github.com/F-e-n-y-x/NivaroOS/releases/tag/v1.0.0) page (`NivaroOS.apk`).
+- **Source Code**: Available in the [`mobile/`](mobile/) directory.
+
+---
+
 ## 🐳 Run with Docker (Try Without Installing)
 
 Want to test NivaroOS without modifying your host system? You can run NivaroOS instantly in a Docker container:
-
-### Quick `docker run`
 
 ```bash
 docker run -d \
@@ -57,111 +63,102 @@ docker run -d \
   ghcr.io/f-e-n-y-x/nivaroos:latest
 ```
 
-### Using `docker compose`
+---
 
-Clone the repo or save the following `docker-compose.yml`:
+## 🌟 Comprehensive Feature Set
 
-```yaml
-version: "3.8"
+### 🖥️ WebUI Desktop Experience
 
-services:
-  nivaroos:
-    image: ghcr.io/f-e-n-y-x/nivaroos:latest
-    container_name: nivaroos
-    restart: unless-stopped
-    privileged: true
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - nivaroos_data:/DATA
-      - nivaroos_config:/etc/nivaroos
-    environment:
-      - TZ=UTC
-      - PORT=80
+#### 1. Windowed Desktop & Multitasking
+- **Native Windowed Environment**: Run multiple applications side-by-side with full window management controls (minimize, maximize, drag, resize handles, snap, and dock pinning).
+- **Session Persistence**: Automatically saves and restores open window states, dimensions, and desktop positions across browser reloads.
+- **Modern Glassmorphic UI**: Translucent frosted-glass headers, customizable backdrop blur, custom wallpaper uploads, and synchronized lock/login screen backgrounds.
+- **Top Bar & Notification Center**: Quick access to system status, companion devices, running tasks, notifications, and power controls.
 
-volumes:
-  nivaroos_data:
-    name: nivaroos_data
-  nivaroos_config:
-    name: nivaroos_config
-```
+#### 2. ZimaOS-Inspired Windowed App Store
+- **Extensive Catalog**: Browse, search, and install from an expansive catalog of 400+ containerized self-hosted applications with instant category filtering.
+- **Discover & Spotlight Carousel**: Animated hero banner showcasing trending apps, categorized curated rows for Media, AI/LLMs, Home Automation, and Developer Tools.
+- **App Details & Screenshots**: Interactive 16:9 lightbox screenshot viewer, system memory requirements, developer links, architecture tags (`amd64`, `arm64`), and mapped port listings.
+- **Custom App Repositories**: Easily add and manage custom third-party community app store sources.
 
-Then start the container:
+#### 3. Container Studio & Bidirectional Compose Sync
+- **Card-Based Visual Editor**: Intuitive forms to configure container images, web UI ports, dynamic host/container port mappings (TCP/UDP), volume mounts (`rw`/`ro`), environment variables, restart policies, resource limits (CPU/RAM), and hardware device passthrough (NVIDIA GPU, `/dev/dri`).
+- **Live 2-Way Compose YAML Sync**: Real-time bidirectional synchronization between visual configuration cards and the monospace Docker Compose YAML editor. Changes made in the form immediately update the YAML, and direct edits in YAML instantly update the form.
+- **Import & Export**: Drag-and-drop Docker Compose files, convert `docker run` commands with one click, or export configurations as standard Compose files.
 
-```bash
-docker compose up -d
-```
+#### 4. Real-time Download & Install HUD
+- **Floating Global Install Dock**: Sleek floating card displaying live pulling and extracting stages, dynamic progress bars, and completion badges.
+- **Desktop Grid Live Installing Tiles**: Newly added applications appear immediately on your desktop grid with animated SVG progress rings while downloading.
 
-Navigate to `http://localhost` (or `http://<server-ip>`) to explore NivaroOS!
+#### 5. KVM Virtual Machine Manager
+- **Full QEMU / KVM Virtualization**: Provision, launch, and manage full Linux and Windows virtual machines.
+- **Integrated Web Console (noVNC)**: High-performance graphical and terminal access to VMs directly within a movable desktop window or in standalone full-screen mode.
+- **Flexible Hardware Sizing**: Configure vCPUs, RAM allocation, virtual disks, ISO boot installation media, and network interfaces.
 
-> **Note**: Mounting `/var/run/docker.sock` enables NivaroOS to orchestrate container applications directly from the App Store and Container Studio.
+#### 6. Files & Storage Hub
+- **Modern File Browser**: Fast hierarchical tree navigation, drag-and-drop transfers, chunked multi-file upload tray, batch actions, and breadcrumb trails.
+- **Multi-Format Previews**:
+  - **Video Player**: Integrated Artplayer with seekable HTTP Range (`206 Partial Content`) streaming for smooth scrubbing.
+  - **Audio Player**: Clean playback controls and playlist support.
+  - **PDF Viewer**: Document viewer with page navigation and zoom controls.
+  - **Office Documents**: Inline rendering of `.docx`, `.xlsx`, and `.pptx` documents.
+  - **Code & Markdown**: Syntax highlighting for dozens of programming languages and rich Markdown previews.
+  - **Image Viewer**: High-resolution viewer with pan, zoom, and thumbnail caching.
+
+#### 7. Companion Device Storage Integration
+- **Direct Phone Storage Access**: Browse your companion mobile device storage (`/storage/emulated/0`) directly from the WebUI Files app under `/DATA/Companion/<Device_Name>`.
+- **Inline Streaming & Previews**: Stream phone videos, listen to music, view high-res photos, and inspect PDFs stored on your mobile phone directly in your desktop browser without downloading the full files first.
+- **Two-Way File Transfers**: Download files from your server to your phone or upload documents from your browser directly into phone storage.
+- **Telemetry & Monitoring**: Companion Devices section in Settings reports live phone battery level, charging state, available phone storage, Wi-Fi SSID, and connection status.
+
+#### 8. System Telemetry & Monitoring
+- **Desktop Hardware Widgets**: Live telemetry meters for CPU usage (per-core breakdowns), memory consumption, disk I/O, and network throughput.
+- **NVIDIA GPU Monitor**: Dedicated widget displaying GPU core utilization, VRAM usage, temperature, power draw, and active GPU processes.
+- **In-Browser Terminal**: Fully featured SSH terminal console running in a movable desktop window.
+- **System Package Updater**: Integrated updates panel for upgrading underlying Debian/Ubuntu packages with a single click.
 
 ---
 
-### Uninstalling Bare-Metal Installation
+### 📱 Mobile Companion App (`nivaroos_mobile`)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/F-e-n-y-x/NivaroOS/master/installer/uninstall.sh | sudo bash
-```
+#### 1. Instant Discovery & Dashboard
+- **mDNS Network Auto-Discovery**: Automatically discovers NivaroOS servers on your local Wi-Fi network without manually typing IP addresses.
+- **Secure Token Authentication**: Seamless JWT authentication with auto-refresh and secure persistent storage.
+- **Real-Time Server Metrics**: Live dashboard displaying server CPU load, RAM allocation, storage pool capacity, temperature, and uptime.
 
-Stops and removes all NivaroOS services, binaries, and config, and deletes the cloned source under `/opt/nivaroos`. Your app data, VM disks, and files under `/DATA` are left untouched, so you can re-run the install command above for a clean reinstall. To also wipe `/DATA` (irreversible), add `--purge-data` - run interactively so you're asked to type `DELETE` to confirm, or pass `--yes` too for a non-interactive purge.
+#### 2. Unified Mobile File Manager
+- **Cross-Storage Browsing**: Seamlessly browse server storage drives, internal pools, external USB drives, and local phone storage (`/storage/emulated/0`) within one cohesive app.
+- **In-App Media Viewers**:
+  - Fullscreen video player with swipe gesture controls for brightness, volume, and playback speed.
+  - Audio player with scrubber and background playback.
+  - PDF reader with smooth zooming and page navigation.
+  - Markdown viewer and source code syntax viewer.
+- **Fast File Operations**: Rename, move, delete, upload to server, and download to phone.
 
-The Go toolchain, Node.js, pnpm, and Docker are left in place since the installer doesn't own them.
+#### 3. Embedded Companion Storage Server & Reverse Tunnel
+- **Local HTTP & WebSocket Server**: Built-in HTTP server running on port 8765 exposing whole phone storage to NivaroOS.
+- **HTTP Range Streaming**: Supports `Range: bytes=...` headers (`206 Partial Content`) for instant video scrubbing and document streaming.
+- **Persistent Reverse Tunnel**: Connects a persistent WebSocket tunnel back to the NivaroOS core server, allowing remote file access and streaming even behind NAT or without port forwarding.
+- **Unattended Standby Background Service**: Persistent Android foreground service with WakeLock to keep storage accessible 24/7 even when the screen is off or device is in deep standby.
 
----
+#### 4. Remote VM Console & Trackpad
+- **Remote KVM Display**: Connect to virtual machines running on your NivaroOS server with a fast RFB/VNC client.
+- **Intuitive Trackpad Mode**: Control the remote mouse cursor using your phone's screen as a precision trackpad with tap-to-click, left/right mouse buttons, and two-finger scrolling.
+- **Virtual On-Screen Keyboard**: Full input support including modifier keys (`Ctrl`, `Alt`, `Shift`, `Esc`, `Tab`, `Del`, `Super/Win`) and Function keys (`F1`–`F12`).
 
-## ✨ Key Features
+#### 5. Mobile App Store & Docker Management
+- **Catalog Browsing**: Browse the 400+ NivaroOS app store directly on mobile.
+- **Container Lifecycle Controls**: Start, stop, restart, pause, and inspect running Docker containers from anywhere.
 
-### 🪟 Desktop Multitasking & Window Management
-- **Native Windowed Experience**: Run multiple applications side-by-side with complete window controls (minimize, maximize, drag, resize handles, and dock pinning).
-- **Session Persistence**: Restores open windows, sizes, and desktop grid coordinates automatically across page reloads.
-- **Glassmorphism & Personalization**: Modern frosted-glass themes, customizable backdrop blur intensity, custom wallpaper uploads, and login screen wallpaper synchronization.
-
-### 🛍️ ZimaOS-Inspired Windowed App Store
-- **Windowed Catalog Browser**: Responsive grid with categories, instant search over 400+ self-hosted applications, and source repository managers.
-- **Discover & Spotlight Carousel**:
-  - Hero carousel with animated app highlights, tags, and quick-action triggers.
-  - Curated rows for **Media & Streaming**, **AI & LLMs**, **Developer & DevOps Tools**, and **Networking**.
-- **16:9 Screenshots & Lightbox**: High-resolution screenshot galleries with interactive full-screen lightbox previews.
-- **In-Window Detail Drawer**: In-depth app overview, memory requirements, developer info, architecture compatibility (`amd64`, `arm64`), and port specifications.
-
-### 🐳 Container Studio & Bidirectional YAML Sync
-- **Dedicated Container Studio**: Replaces legacy dialogs with a modern card-based container configuration workspace.
-- **Card-Based Visual Editor**:
-  - General & Image configuration with quick tag selectors (`:latest`, `:alpine`, `:stable`).
-  - Web UI portal routing and scheme configuration (`http://` / `https://`).
-  - Dynamic Port Mappings (Host ➔ Container, TCP/UDP).
-  - Storage & Volume Mounts (Host Path ➔ Container Path, `rw`/`ro` modes).
-  - Environment Variables (Monospace key-value pairs).
-  - Advanced Options: Network drivers (`bridge`, `host`, custom networks), restart policies, memory limits, root privileged container toggles, and hardware device passthrough (`/dev/dri`).
-- **Live Two-Way Compose YAML Sync**: Real-time bidirectional updates between the visual form and dark monospace Compose code editor.
-- **Import & Export**: Convert `docker run` commands or drag-and-drop `.yaml` compose files directly into the studio, or export `.yaml` files with one click.
-
-### 🚀 Real-time Download & Install Experience
-- **Floating Global Install HUD**: Sleek glassmorphic download progress card floating above the desktop dock showing live pulling/extracting stages, progress bars, and success badges.
-- **Desktop Grid Live Downloading Tile**: New container apps appear immediately on your desktop grid while downloading with animated SVG circular progress rings.
-- **In-Store Live Progress**: Quick install buttons throughout the catalog show real-time percentage progress.
-
-### 🖥️ KVM Virtual Machine Manager
-- **QEMU / KVM Virtualization**: Create, configure, and manage full Linux and Windows virtual machines.
-- **Integrated noVNC Console**: Web-based graphical and terminal access to VMs directly within a movable desktop window or standalone mode.
-- **Hardware Sizing**: Adjust vCPUs, RAM, virtual disks, ISO boot media, and network interfaces.
-
-### 📁 Files & Storage Hub
-- **Modern File Browser**: Fast tree navigation, drag-and-drop transfers, batch operations, breadcrumbs, and search.
-- **Built-in File Previews**: View images, video streaming, audio, markdown, syntax-highlighted source code, PDFs, and Office documents (`.docx`, `.xlsx`).
-- **Drive & USB Notifications**: Native snackbar alerts for newly attached storage devices with one-click navigation to Files.
-
-### ⚙️ System Metrics & Monitoring
-- **Desktop Telemetry Widgets**: Translucent real-time CPU (per-core), RAM, GPU, Disk I/O, and Network traffic monitors.
-- **In-Browser Terminal**: Full interactive SSH / terminal console in a resizable window.
+#### 6. Speed & Link Diagnostics
+- **LAN Link Benchmark**: Measures real-time direct transfer speed between your mobile phone and the NivaroOS server.
+- **Internet Speed Test**: Benchmarks your server's connection to the internet (download, upload, and latency) with smooth animated speedometer gauges.
 
 ---
 
 ## 🏗️ Architecture & Services
 
-NivaroOS is engineered as a modular microservices architecture communicating via a unified message bus and reverse-proxy gateway:
+NivaroOS is built on a modular microservices architecture communicating over an event-driven message bus and unified gateway:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -178,62 +175,54 @@ NivaroOS is engineered as a modular microservices architecture communicating via
 │  Core   │ │  User   │ │  App   │ │ Local  │ │  VM   │ │  GPU   │
 │ Daemon  │ │ Service │ │  Mgmt  │ │Storage │ │Sidecar│ │Sidecar │
 │ (v1/v2) │ │ (Auth)  │ │(Docker)│ │(Disks) │ │(KVM)  │ │(nvidia)│
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └──────┘ └────────┘
-       ▲          ▲          ▲          ▲          ▲
-       └──────────┴─────┬────┴──────────┴──────────┘
-                        │ Message Bus (Socket.IO)
-               ┌────────▼────────┐
-               │   Message Bus   │
-               │ (services/msg)  │
-               └─────────────────┘
-
-               ┌─────────────────────────────┐
-               │  nivaroos-cli (admin CLI)   │
-               │  talks to the same APIs,    │
-               │  independent of the UI      │
-               └─────────────────────────────┘
+└────┬────┘ └─────────┘ └─────────┘ └─────────┘ └──────┘ └────────┘
+     │ (WS Tunnel / LAN Proxy)
+┌────▼────────────────────────┐
+│   Mobile Companion Device   │
+│  (Flutter / HTTP & WS / BG) │
+└─────────────────────────────┘
 ```
 
 | Service | Directory | Description |
 | :--- | :--- | :--- |
-| **Gateway** | `services/gateway` | High-performance reverse proxy routing UI static assets and API endpoints. |
-| **Core Daemon** | `services/core` | System management daemon, hardware monitoring, notifications, and legacy API handlers. |
-| **User Service** | `services/user` | User authentication, JWT sessions, profiles, and wallpaper preferences. |
+| **Gateway** | `services/gateway` | High-performance reverse proxy routing UI static assets, WebSocket tunnels, and API endpoints. |
+| **Core Daemon** | `services/core` | System management daemon, companion device proxying, hardware monitoring, and notifications. |
+| **User Service** | `services/user` | User authentication, JWT sessions, user profiles, and desktop preferences. |
 | **App Management** | `services/app-management` | Docker container and Compose lifecycle orchestrator with 400+ app catalog indexer. |
 | **Local Storage** | `services/local-storage` | Block storage detection, filesystem formatting, storage pool allocation, and mount management. |
 | **Message Bus** | `services/message-bus` | Real-time event broker and WebSocket broadcasting daemon. |
-| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. Optional at install time. |
-| **GPU Sidecar** | `services/gpu-sidecar` | NVIDIA GPU stats (utilization, memory, temperature, processes) for the desktop telemetry widget. |
-| **CLI** | `cli/` | `nivaroos-cli` — a standalone admin command-line tool for managing services and toggling optional add-ons after install. |
+| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. |
+| **GPU Sidecar** | `services/gpu-sidecar` | NVIDIA GPU metrics (utilization, memory, temperature, processes) for the desktop telemetry widget. |
+| **CLI** | `cli/` | `nivaroos-cli` — standalone admin command-line tool for managing services and add-ons. |
 | **Frontend UI** | `ui/` | Responsive windowed desktop Single Page Application. |
+| **Mobile App** | `mobile/` | Native Flutter companion app for Android and iOS. |
 
 ---
 
 ## 🖥️ Command-Line Interface
 
-Every install also gets `nivaroos-cli`, an admin CLI independent of the web UI:
+Every installation includes `nivaroos-cli`, an administrative CLI independent of the web UI:
 
 ```bash
 nivaroos-cli --help
 ```
 
-Optional add-ons (currently just VM Manager) can be toggled after the fact, without re-running the installer:
+Toggle optional add-ons like the VM Manager at any time:
 
 ```bash
 nivaroos-cli vm enable    # builds and starts the VM Manager service
-nivaroos-cli vm disable   # stops it (VM disk images under /DATA/VMs are left untouched)
+nivaroos-cli vm disable   # stops VM Manager (VM disks under /DATA/VMs remain safe)
 ```
-
-`nivaroos-cli` also has command groups for app management, the gateway, local storage, the message bus, users, and health checks — see `nivaroos-cli <group> --help` for each.
 
 ---
 
-## 🛠️ Development & Building from Source
+## 🛠️ Building from Source
 
 ### Prerequisites
 - **Go**: `1.23.4+`
 - **Node.js**: `18+` or `20+`
 - **pnpm**: `9+`
+- **Flutter**: `3.22+` (for mobile app)
 - **Docker Engine**: `20.10+` with `docker compose`
 
 ### 1. Build the Frontend UI
@@ -245,9 +234,8 @@ pnpm run build
 Compiled production assets are output to `ui/build/sysroot/var/lib/nivaroos/www/`.
 
 ### 2. Build Backend Go Services & CLI
-Every service's `main.go` lives at its module root (no `cmd/` subdirectory), so each builds with a plain `go build .`:
 ```bash
-# Core Daemon (binary is named "nivaroos", no suffix - it owns the legacy API)
+# Core Daemon
 cd services/core && go build -o /usr/local/bin/nivaroos .
 
 # Gateway
@@ -268,30 +256,20 @@ cd services/message-bus && go build -o /usr/local/bin/nivaroos-message-bus .
 # GPU Sidecar
 cd services/gpu-sidecar && go build -o /usr/local/bin/nivaroos-gpu-sidecar .
 
-# VM Sidecar (optional - needs libvirt-dev and gcc for its cgo bindings)
+# VM Sidecar (optional)
 cd services/vm-sidecar && go build -o /usr/local/bin/nivaroos-vm-sidecar .
 
 # CLI
 cd cli && go build -o /usr/local/bin/nivaroos-cli .
 ```
 
-Each service also has its own `go generate ./...` step for its OpenAPI-derived `codegen/` package, already committed to this repo - only re-run it if you change an API spec.
-
-### 3. Run Test Suites
+### 3. Build the Mobile App
 ```bash
-# Frontend Unit Tests (Vitest)
-cd ui && pnpm vitest run
-
-# Backend Go Services Unit Tests
-cd services/core && go test ./...
-cd services/app-management && go test ./...
-cd services/gateway && go test ./...
-cd services/user && go test ./...
-cd services/local-storage && go test ./...
-cd services/message-bus && go test ./...
-cd services/vm-sidecar && go test ./...
-cd services/common && go test ./...
+cd mobile
+flutter pub get
+flutter build apk --release
 ```
+The output APK will be generated at `mobile/build/app/outputs/flutter-apk/app-release.apk`.
 
 ---
 
@@ -308,18 +286,6 @@ NivaroOS is a fork of [CasaOS](https://github.com/IceWhaleTech/CasaOS), original
 
 ---
 
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-1. Fork the project repository.
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request.
-
----
-
 ## 📄 License
 
 Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE) for more information.
-

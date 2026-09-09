@@ -2,7 +2,7 @@ package common
 
 const (
 	SERVICENAME = "nivaroos"
-	VERSION     = "0.4.15"
+	VERSION     = "1.0.0"
 	BODY        = " "
 	RANW_NAME   = "IceWhale-RemoteAccess"
 )

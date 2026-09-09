@@ -254,7 +254,7 @@ export default {
 			this.$api.sys.getVersion().then(res => {
 				if (res.data.success === 200) {
 					const data = res.data.data
-					this.currentVersion = data.current_version || 'v0.4.5'
+					this.currentVersion = data.current_version || 'v1.0.0'
 					this.needUpdate = !!data.need_update
 					this.latestVersion = data.version && data.version.version ? data.version.version : ''
 				}

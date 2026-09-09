@@ -1,6 +1,6 @@
 {
   "name": "nivaroos-ui",
-  "version": "v0.4.5",
+  "version": "v1.0.0",
   "private": true,
   "scripts": {
     "dev": "vue-cli-service serve --mode dev",
