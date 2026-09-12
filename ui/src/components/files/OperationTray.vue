@@ -108,9 +108,7 @@ export default {
 	max-height: 45%;
 	display: flex;
 	flex-direction: column;
-	background: #fff;
-	border-radius: 12px;
-	border: 1px solid rgb(228 233 237);
+	background: var(--theme-card-bg, #fff); border-radius: 12px; border: 1px solid var(--theme-card-border, rgb(228 233 237)); color: var(--theme-text-primary, #2c3e50);
 	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
 	overflow: hidden;
 }
@@ -126,7 +124,7 @@ export default {
 	background: rgba(0, 0, 0, 0.015);
 }
 .header-icon {
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 	flex-shrink: 0;
 }
 .operation-tray-list {
@@ -180,7 +178,7 @@ export default {
 .status-text.is-success {
 	flex-shrink: 0;
 	font-weight: 600;
-	color: #257942;
+	color: var(--color-success, #257942);
 }
 .progress-track {
 	margin-top: 0.35rem;
@@ -192,7 +190,7 @@ export default {
 .progress-fill {
 	height: 100%;
 	border-radius: 999px;
-	background: #3273dc;
+	background: var(--color-primary, #3273dc);
 	transition: width 0.15s ease;
 }
 </style>

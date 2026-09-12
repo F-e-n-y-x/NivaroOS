@@ -218,7 +218,7 @@ export default {
 	height: 220px;
 	margin: 0.5rem auto 1.25rem;
 	overflow: hidden;
-	background-color: #0f172a;
+	background-color: var(--theme-text-primary, #0f172a);
 	background-image: repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0% 25%, transparent 0% 50%);
 	background-size: 16px 16px;
 	background-position: 50% 50%;
@@ -266,13 +266,13 @@ export default {
 		width: 7.5rem;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: #334155;
+		color: var(--theme-text-secondary, #334155);
 		display: flex;
 		align-items: center;
 
 		i {
 			font-size: 1.1rem;
-			color: #64748b;
+			color: var(--theme-text-muted, #64748b);
 		}
 	}
 
@@ -287,7 +287,7 @@ export default {
 		width: 2.5rem;
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		text-align: right;
 	}
 }

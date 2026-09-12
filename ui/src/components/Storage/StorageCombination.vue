@@ -152,7 +152,7 @@ export default {
 </script>
 <style lang="scss" scoped>
 .border-1 {
-	border: 1px solid #e6e6e6;
+	border: 1px solid var(--theme-card-border, #e6e6e6);
 	border-radius: 4px;
 }
 

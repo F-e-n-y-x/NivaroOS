@@ -316,18 +316,18 @@ export default {
 	background: rgba(0, 0, 0, 0.2);
 	border: 2px solid #fff;
 	&.online {
-		background: #3dd06a;
+		background: rgba(61, 208, 106, 0.85);
 	}
 }
 .peer-name {
 	font-size: 0.8rem;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	max-width: 6.5rem;
 	text-align: center;
 }
 .peer-progress {
 	font-size: 0.7rem;
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 	font-weight: 600;
 }
 .hidden-file-input {

@@ -244,9 +244,9 @@ export default {
 .message-alert {
 	padding: 0.4rem 1rem;
 	margin-bottom: 1.75rem;
-	background: #fff7e6;
+	background: rgba(245, 158, 11, 0.1);
 	border-radius: 4px;
-	color: #d99000;
+	color: #d97706;
 	font-size: 0.875rem;
 }
 </style>
@@ -259,6 +259,6 @@ export default {
 }
 
 .smb-media {
-	color: #999;
+	color: var(--theme-text-muted, #999);
 }
 </style>

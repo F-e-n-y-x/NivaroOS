@@ -322,14 +322,13 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5rem;
-	background: #ffffff;
-	border: 1px solid rgba(0, 0, 0, 0.12);
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.12)); color: var(--theme-text-primary, inherit);
 	border-radius: 8px;
 	padding: 0.45rem 0.75rem;
 	font-family: inherit;
 	font-size: 0.82rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	cursor: pointer;
 	outline: none;
 	transition: all 0.15s ease;
@@ -337,8 +336,7 @@ export default {
 
 	&:hover:not(:disabled) {
 		border-color: rgba(37, 99, 235, 0.45);
-		background: #f8fafc;
-	}
+		background: var(--theme-card-hover, #f8fafc); }
 	&:focus,
 	&.is-active {
 		border-color: #2563eb;
@@ -356,7 +354,7 @@ export default {
 }
 
 .trigger-icon {
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	flex-shrink: 0;
 }
 
@@ -375,7 +373,7 @@ export default {
 	text-align: left;
 
 	&.is-placeholder {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 		font-weight: normal;
 	}
 }
@@ -384,7 +382,7 @@ export default {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: #94a3b8;
+	background: var(--theme-text-muted, #94a3b8);
 	flex-shrink: 0;
 
 	&.is-running {
@@ -400,7 +398,7 @@ export default {
 }
 
 .trigger-chevron {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	flex-shrink: 0;
 	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -417,7 +415,7 @@ export default {
 	width: max-content;
 	max-width: min(32rem, calc(100vw - 2rem));
 	z-index: 3000;
-	background: #ffffff;
+	background: var(--theme-dropdown-bg, #ffffff); border-color: var(--theme-card-border, rgba(0, 0, 0, 0.09));
 	border: 1px solid rgba(0, 0, 0, 0.09);
 	border-radius: 10px;
 	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18), 0 4px 10px rgba(0, 0, 0, 0.06);
@@ -459,7 +457,7 @@ export default {
 	gap: 0.4rem;
 	padding: 0.6rem 0.75rem;
 	font-size: 0.78rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	justify-content: center;
 }
 
@@ -476,7 +474,7 @@ export default {
 	padding: 0.45rem 0.65rem;
 	font-family: inherit;
 	font-size: 0.8rem;
-	color: #334155;
+	color: var(--theme-text-primary, #334155);
 	cursor: pointer;
 	text-align: left;
 	outline: none;
@@ -486,12 +484,11 @@ export default {
 
 	&:hover:not(:disabled),
 	&.is-focused:not(:disabled) {
-		background: #f1f5f9;
-		color: #0f172a;
+		background: var(--theme-card-hover, #f1f5f9); color: var(--theme-text-primary, #0f172a);
 	}
 
 	&.is-selected {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		color: #2563eb;
 		font-weight: 600;
 	}
@@ -523,18 +520,15 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #f1f5f9;
-	color: #64748b;
-	transition: all 0.12s ease;
+	background: var(--theme-pill-bg, #f1f5f9); color: var(--theme-pill-color, #64748b); transition: all 0.12s ease;
 
 	&.is-running {
-		background: #ecfdf5;
+		background: rgba(16, 185, 129, 0.1);
 		color: #059669;
 	}
 
 	&.is-paused {
-		background: #fffbeb;
-		color: #d97706;
+		background: var(--theme-warning-soft, #fffbeb); color: #fbbf24;
 	}
 
 	&.is-crashed {
@@ -566,7 +560,7 @@ export default {
 .item-title {
 	font-size: 0.825rem;
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -580,7 +574,7 @@ export default {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: #94a3b8;
+	background: var(--theme-text-muted, #94a3b8);
 	flex-shrink: 0;
 
 	&.is-running {
@@ -598,7 +592,7 @@ export default {
 .item-state-text {
 	font-size: 0.68rem;
 	font-weight: 500;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	text-transform: capitalize;
 
 	&.is-running {
@@ -614,7 +608,7 @@ export default {
 
 .item-specs {
 	font-size: 0.7rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -642,7 +636,7 @@ export default {
 }
 
 .item-icon {
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	flex-shrink: 0;
 
 	.is-selected & {
@@ -657,7 +651,7 @@ export default {
 
 .item-meta {
 	font-size: 0.68rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	font-weight: normal;
 	flex-shrink: 0;
 	white-space: nowrap;

@@ -120,9 +120,9 @@ export default {
 	align-items: center;
 	gap: 0.85rem;
 	padding: 0.65rem 0.85rem;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
 	border-radius: 10px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	color: rgba(0, 0, 0, 0.6);
 }
 // Matches VmStorage.vue's .iso-icon / VmNetworks.vue's .network-icon
@@ -141,7 +141,7 @@ export default {
 
 	&.is-ssd {
 		background: rgba(50, 115, 220, 0.1);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 	}
 }
 .vm-disk-main {
@@ -176,10 +176,10 @@ export default {
 	}
 	::v-deep input {
 		text-align: center;
-		border-color: rgb(228 233 237) !important;
+		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 	}
 	::v-deep .button {
-		border-color: rgb(228 233 237) !important;
+		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 		background: rgba(0, 0, 0, 0.04) !important;
 		color: rgba(0, 0, 0, 0.55) !important;
 		box-shadow: none !important;
@@ -255,7 +255,7 @@ export default {
 	border: 1px dashed rgb(200 207 214);
 	border-radius: 8px;
 	background: transparent;
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 	font-family: inherit;
 	font-size: 0.8rem;
 	font-weight: 600;

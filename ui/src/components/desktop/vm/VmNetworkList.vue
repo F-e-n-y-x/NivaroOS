@@ -121,7 +121,7 @@ export default {
 	padding: 0.75rem 1rem;
 	border: 1px solid rgba(0, 0, 0, 0.08);
 	border-radius: 12px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 .vm-net-controls {
@@ -140,11 +140,11 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #f1f5f9;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-muted, #64748b);
 
 	&.is-bridge {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		color: #2563eb;
 	}
 }
@@ -152,7 +152,7 @@ export default {
 	flex-shrink: 0;
 	border: none;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
@@ -164,7 +164,7 @@ export default {
 
 	&:hover {
 		color: #dc2626;
-		background: #fee2e2;
+		background: rgba(239, 68, 68, 0.1);
 	}
 }
 .vm-net-mode, .vm-net-model {
@@ -193,6 +193,6 @@ export default {
 }
 .vm-net-hint {
 	font-size: 0.78rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 </style>

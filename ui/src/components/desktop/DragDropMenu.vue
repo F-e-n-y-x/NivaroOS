@@ -79,7 +79,7 @@ export default {
 .drag-drop-menu {
 	position: fixed;
 	z-index: 2000;
-	background: #fff;
+	background: var(--theme-menu-bg, #fff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.1));
 	border-radius: 6px;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 	padding: 0.25rem;

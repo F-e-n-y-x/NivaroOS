@@ -6,7 +6,7 @@
 
 
 .modal-card {
-    background: rgba(255, 255, 255, 1);
+    background: var(--theme-card-bg, rgba(255, 255, 255, 1));
     border-radius: $backDropBorderRadius;
 
     .close-container {
@@ -42,7 +42,7 @@
 
     .modal-card-head {
         padding: 1.25rem 1.25rem .5rem 1.5rem;
-        border-bottom: 1px solid rgb(228 233 237);
+        border-bottom: 1px solid var(--theme-card-border, rgb(228 233 237));
     }
 
     .modal-card-body {
@@ -78,7 +78,7 @@
         .pagination-ellipsis {
             font-size: .875rem;
             height: 2.714em;
-            border: 1px solid #CFCFCF !important;
+            border: 1px solid var(--theme-input-border, #CFCFCF) !important;
             border-radius: 4px;
 
             &:focus {
@@ -175,9 +175,7 @@
 
                     &.is-active {
                         a {
-                            background: #FFFFFF;
-                            border: .5px solid rgba(0, 0, 0, .2);
-                            color: #000000;
+                            background: var(--theme-card-bg, #FFFFFF); border: .5px solid var(--theme-card-border, rgba(0, 0, 0, .2)); color: var(--theme-text-primary, #000000);
                             z-index: 1;
                             box-shadow: 0px .5px 1px rgba(0, 0, 0, .2);
                         }
@@ -226,7 +224,7 @@
 
 .dialog {
     .modal-card {
-        background-color: #FFFFFF !important;
+        background-color: var(--theme-card-bg, #FFFFFF) !important;
         border-radius: 12px !important;
         border: 1px solid rgba(0, 0, 0, 0.08) !important;
         box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.2) inset !important;
@@ -237,20 +235,20 @@
             height: auto;
             padding: 1rem 1.25rem 0.75rem 1.25rem;
             border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-            background: #ffffff;
+            background: var(--theme-card-bg, #ffffff); border-color: var(--theme-card-border, rgba(0, 0, 0, 0.06));
 
             .modal-card-title {
                 font-size: 0.9375rem;
                 font-weight: 600;
-                color: #0f172a;
+                color: var(--theme-text-primary, #0f172a);
             }
         }
 
         .modal-card-body {
             padding: 1rem 1.25rem;
             border: none;
-            background: #ffffff;
-            color: #334155;
+            background: var(--theme-card-bg, #ffffff);
+            color: var(--theme-text-secondary, #334155);
             font-size: 0.85rem;
             line-height: 1.45;
         }
@@ -266,7 +264,7 @@
         .modal-card-foot {
             padding: 0.75rem 1.25rem 1rem 1.25rem;
             border-top: 1px solid rgba(0, 0, 0, 0.06);
-            background: #ffffff;
+            background: var(--theme-card-bg, #ffffff); border-color: var(--theme-card-border, rgba(0, 0, 0, 0.06));
             gap: 0.5rem;
             justify-content: flex-end;
 

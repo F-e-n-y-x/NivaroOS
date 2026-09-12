@@ -46,10 +46,10 @@ body > .dropdown {
 
         .dropdown-content {
             padding: 5px !important;
-            background: #ffffff !important;
+            background: var(--theme-dropdown-bg, #ffffff) !important;
             border-radius: 10px !important;
             box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-            border: 1px solid rgba(0, 0, 0, 0.08) !important;
+            border: 1px solid var(--theme-dropdown-border, rgba(0, 0, 0, 0.08)) !important;
 
             .dropdown-item {
                 padding: 0 !important;

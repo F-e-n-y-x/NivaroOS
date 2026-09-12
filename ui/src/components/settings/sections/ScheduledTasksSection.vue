@@ -658,12 +658,12 @@ export default {
 		font-size: 15px;
 		font-weight: 500;
 		line-height: 1.2;
-		color: #18181b;
+		color: var(--theme-text-primary, #18181b);
 	}
 
 	.stat-lbl {
 		font-size: 11px;
-		color: #71717a;
+		color: var(--theme-text-muted, #71717a);
 	}
 }
 
@@ -671,15 +671,15 @@ export default {
 	display: flex;
 	flex-direction: column;
 	padding: 12px 14px;
-	background: rgba(255, 255, 255, 0.7);
-	border: 1px solid rgba(0, 0, 0, 0.07);
+	background: var(--theme-card-bg, rgba(255, 255, 255, 0.7));
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: 12px;
 	cursor: pointer;
 	height: 100%;
 	transition: all 0.15s ease;
 
 	&:hover {
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 		border-color: rgba(37, 99, 235, 0.3);
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
 		transform: translateY(-2px);
@@ -699,28 +699,25 @@ export default {
 	.template-title {
 		font-size: 13px;
 		font-weight: 500;
-		color: #18181b;
+		color: var(--theme-text-primary, #18181b);
 		line-height: 1.35;
 	}
 
 	.template-desc {
 		font-size: 11px;
-		color: #71717a;
+		color: var(--theme-text-muted, #71717a);
 		line-height: 1.3;
 	}
 }
 
 .task-item-row {
 	padding: 12px 16px;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.05));
 
 	&:last-child {
 		border-bottom: none;
 	}
 
-	// Same clipped-and-unreachable risk as ContainersSection's row-control -
-	// an enable toggle plus up to 4 action buttons (including the
-	// text-labeled "Run Now") had no wrap.
 	.row-control {
 		flex-wrap: wrap;
 		row-gap: 0.4rem;
@@ -731,7 +728,7 @@ export default {
 .task-name {
 	font-size: 0.85rem;
 	font-weight: 500;
-	color: #18181b;
+	color: var(--theme-text-primary, #18181b);
 }
 
 .target-name {
@@ -812,9 +809,9 @@ export default {
 .target-pill {
 	font-size: 11px;
 	padding: 1px 8px;
-	background: rgba(0, 0, 0, 0.05);
+	background: var(--theme-pill-bg, rgba(0, 0, 0, 0.05));
 	border-radius: 9999px;
-	color: #3f3f46;
+	color: var(--theme-text-secondary, #3f3f46);
 	max-width: 320px;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -861,7 +858,7 @@ export default {
 
 .window-overlay-card {
 	position: relative;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff);
 	border-radius: 12px;
 	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
 	max-height: calc(100% - 2rem);
@@ -869,7 +866,7 @@ export default {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	border: 1px solid rgba(0, 0, 0, 0.08);
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 
 	&.delete-card {
 		width: 24rem;
@@ -885,14 +882,14 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: 0.75rem 1rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-	background: #ffffff;
+	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
+	background: var(--theme-card-bg, #ffffff);
 }
 
 .window-overlay-title {
 	font-size: 0.875rem;
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	display: flex;
 	align-items: center;
 }
@@ -900,7 +897,7 @@ export default {
 .window-overlay-close {
 	border: none;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	cursor: pointer;
 	padding: 2px;
 	border-radius: 4px;
@@ -908,8 +905,8 @@ export default {
 	align-items: center;
 
 	&:hover {
-		color: #0f172a;
-		background: rgba(0, 0, 0, 0.05);
+		color: var(--theme-text-primary, #0f172a);
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
 	}
 }
 
@@ -917,7 +914,7 @@ export default {
 	padding: 1rem;
 	overflow-y: auto;
 	font-size: 0.85rem;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	line-height: 1.45;
 }
 
@@ -927,8 +924,8 @@ export default {
 	justify-content: flex-end;
 	gap: 0.5rem;
 	padding: 0.75rem 1rem;
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
-	background: #ffffff;
+	border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
+	background: var(--theme-card-bg, #ffffff);
 }
 
 .task-log-viewer {
@@ -954,8 +951,9 @@ export default {
 }
 
 .empty-card {
-	background: rgba(255, 255, 255, 0.5);
-	border: 1px dashed rgba(0, 0, 0, 0.12);
+	background: var(--theme-card-subtle, rgba(255, 255, 255, 0.5));
+	border: 1px dashed var(--theme-card-border, rgba(0, 0, 0, 0.12));
 	border-radius: 12px;
 }
 </style>
+

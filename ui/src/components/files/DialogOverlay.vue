@@ -31,7 +31,7 @@ export default {
 	z-index: 40;
 }
 .dialog-card {
-	background: #fff;
+	background: var(--theme-card-bg, #fff); border: 1px solid var(--theme-card-border, rgb(228 233 237)); color: var(--theme-text-primary, #2c3e50);
 	border-radius: 8px;
 	width: min(22rem, calc(100% - 2rem));
 	max-height: calc(100% - 2rem);
@@ -43,7 +43,7 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: 0.75rem 1rem;
-	border-bottom: 1px solid rgb(228 233 237);
+	border-bottom: 1px solid var(--theme-card-border, rgb(228 233 237)); color: var(--theme-text-primary, #2c3e50);
 }
 .dialog-body { padding: 1rem; }
 </style>

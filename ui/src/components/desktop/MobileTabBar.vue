@@ -85,10 +85,10 @@ export default {
 	z-index: 99990;
 	display: flex;
 	align-items: stretch;
-	background: rgba(255, 255, 255, 0.96);
+	background: var(--theme-menu-bg, rgba(255, 255, 255, 0.96));
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	border-top: 1px solid rgba(0, 0, 0, 0.08);
+	border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	// The home indicator / gesture-nav area on real phones sits below this -
 	// this keeps tab labels from ever being crowded against the very edge.
 	padding-bottom: env(safe-area-inset-bottom, 0);
@@ -104,7 +104,7 @@ export default {
 	padding: 0.4rem 0.25rem 0.35rem;
 	border: none;
 	background: transparent;
-	color: rgba(44, 62, 80, 0.5);
+	color: var(--theme-text-muted, rgba(44, 62, 80, 0.5));
 	font-size: 0.68rem;
 	cursor: pointer;
 

@@ -290,7 +290,7 @@ export default {
 .vm-list-title {
 	font-size: 1.15rem;
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	margin: 0;
 	letter-spacing: -0.01em;
 }
@@ -322,7 +322,7 @@ export default {
 	display: flex;
 	justify-content: center;
 	padding: 3rem 0;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
@@ -336,24 +336,24 @@ export default {
 	justify-content: center;
 	padding: 3.5rem 1rem;
 	text-align: center;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	> ::v-deep .icon {
 		width: 2.5rem;
 		height: 2.5rem;
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 
 	.vm-empty-title {
 		font-size: 0.95rem;
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		margin: 0.5rem 0 0.25rem;
 	}
 	.vm-empty-hint {
 		margin: 0 0 1rem;
 		font-size: 0.8rem;
-		color: #64748b;
+		color: var(--theme-text-secondary, #64748b);
 	}
 }
 .create-btn-large {
@@ -397,7 +397,7 @@ export default {
 	border-radius: 12px;
 	border: 1px solid rgba(0, 0, 0, 0.08);
 	overflow: hidden;
-	background: #fff;
+	background: var(--theme-card-bg, #fff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 	transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 
@@ -418,7 +418,7 @@ export default {
 	overflow: hidden;
 
 	&.is-off {
-		background: #f1f5f9;
+		background: var(--theme-card-subtle, #f1f5f9);
 	}
 
 	&:hover .vm-preview-overlay {
@@ -432,7 +432,7 @@ export default {
 	background: #000;
 }
 .vm-preview-placeholder {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
@@ -464,7 +464,7 @@ export default {
 .vm-name {
 	font-weight: 600;
 	font-size: 0.92rem;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -478,17 +478,17 @@ export default {
 	font-weight: 500;
 	padding: 0.2rem 0.55rem;
 	border-radius: 9999px;
-	background: #f1f5f9;
-	color: #475569;
+	background: var(--theme-pill-bg, #f1f5f9);
+	color: var(--theme-pill-color, #475569);
 }
 .vm-state-dot {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: #94a3b8;
+	background: var(--theme-text-muted, #94a3b8);
 }
 .vm-state-badge.is-running {
-	background: #ecfdf5;
+	background: rgba(16, 185, 129, 0.1);
 	color: #059669;
 
 	.vm-state-dot {
@@ -505,7 +505,7 @@ export default {
 	}
 }
 .vm-state-badge.is-paused {
-	background: #fffbeb;
+	background: var(--theme-warning-soft, #fffbeb);
 	color: #d97706;
 
 	.vm-state-dot {
@@ -522,7 +522,7 @@ export default {
 	align-items: center;
 	gap: 0.3rem;
 	font-size: 0.74rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 .vm-card-actions {
 	display: flex;
@@ -530,7 +530,7 @@ export default {
 	justify-content: space-between;
 	padding: 0.25rem 0.85rem 0.85rem;
 	border-top: none;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff);
 }
 .vm-action-group {
 	display: flex;
@@ -554,15 +554,14 @@ export default {
 		transform: translateX(1px);
 	}
 	border: none;
-	background: #f8fafc;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f8fafc);
+	color: var(--theme-text-secondary, #64748b);
 	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
 
 	&:hover:not(:disabled) {
-		background: #e2e8f0;
-		color: #0f172a;
+		background: var(--theme-card-hover, #e2e8f0); color: var(--theme-text-primary, #0f172a);
 	}
 	&:active:not(:disabled) {
 		transform: scale(0.95);

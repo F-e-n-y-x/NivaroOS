@@ -121,8 +121,7 @@ export default {
 	width: 100%;
 	position: relative;
 	overflow: hidden;
-	background: #ffffff;
-	color: #1e293b;
+	background: var(--theme-bg-window, #ffffff); color: var(--theme-text-primary, #1e293b);
 	font-family: $family-sans-serif;
 }
 
@@ -131,14 +130,14 @@ export default {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	background: #ffffff;
+	background: var(--theme-bg-window, #ffffff);
 }
 
 .settings-content {
 	flex: 1;
 	overflow-y: auto;
 	padding: 1.5rem 2.25rem 3rem;
-	background: #ffffff;
+	background: var(--theme-bg-window, #ffffff);
 
 	&.is-narrow {
 		padding: 1rem 1rem 2rem;

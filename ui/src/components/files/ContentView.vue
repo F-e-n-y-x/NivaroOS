@@ -761,11 +761,9 @@ export default {
 	justify-content: space-between;
 	padding: 0.35rem 1rem;
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	border-top: 1px solid rgba(0, 0, 0, 0.06);
-	background: #ffffff;
-	user-select: none;
-	flex-shrink: 0;
+	background: var(--theme-titlebar-bg, #ffffff); border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06)); user-select: none; flex-shrink: 0;
 	z-index: 15;
 
 	.status-selected-pill {
@@ -781,7 +779,7 @@ export default {
 	.status-btn {
 		background: transparent;
 		border: none;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		cursor: pointer;
 		padding: 0.2rem;
 		border-radius: 4px;
@@ -793,7 +791,7 @@ export default {
 		transition: all 0.12s ease;
 
 		&:hover {
-			color: #1e293b;
+			color: var(--theme-text-primary, #1e293b);
 			background: rgba(0, 0, 0, 0.06);
 		}
 	}
@@ -803,7 +801,7 @@ export default {
 	flex-shrink: 0;
 	margin: 0.75rem 0.75rem 0.25rem 0.75rem;
 	padding: 0.75rem 1rem;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgb(228 233 237)); color: var(--theme-text-primary, #0f172a);
 	border: 1px solid rgb(228 233 237);
 	border-radius: 12px;
 	display: flex;
@@ -837,7 +835,7 @@ export default {
 .banner-device-name {
 	font-weight: 700;
 	font-size: 0.95rem;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 .banner-pill {
 	font-size: 0.68rem;
@@ -851,18 +849,18 @@ export default {
 	}
 	&.is-offline {
 		background: rgba(148, 163, 184, 0.15);
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 	}
 }
 .banner-battery {
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	display: flex;
 	align-items: center;
 }
 .banner-subtext {
 	font-size: 0.75rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 }
 .banner-storage-row {
 	display: flex;
@@ -871,7 +869,7 @@ export default {
 }
 .banner-storage-label {
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	font-weight: 500;
 	white-space: nowrap;
 }
@@ -885,7 +883,7 @@ export default {
 	flex: 1 1 auto;
 	max-width: 140px;
 	height: 6px;
-	background: #e2e8f0;
+	background: var(--theme-card-border, #e2e8f0);
 	border-radius: 3px;
 	overflow: hidden;
 }
@@ -897,7 +895,7 @@ export default {
 }
 .banner-storage-pct {
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	font-weight: 600;
 }
 </style>

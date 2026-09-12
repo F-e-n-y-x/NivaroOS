@@ -1,0 +1,2561 @@
+// Dark Mode Theme Styles for NivaroOS
+// True Black & Neutral Dark Grey Theme Architecture
+// Fully comprehensive coverage for all windows, cards, dialogs, dropdowns, and components
+// High-Contrast WCAG Accessible Theme (Dark Reader / Modern OS standard)
+
+html[data-theme="dark"],
+html.is-dark {
+	color-scheme: dark;
+
+	// Design Token overrides for dark theme (True Black & Neutral Dark Grey)
+	// ── Layout Borders ─────────────────────────────────────
+	--color-border:              rgba(255, 255, 255, 0.1);
+	--color-border-strong:       rgba(255, 255, 255, 0.2);
+
+	// ── Legacy text muted aliases ───────────────────────────
+	--color-text-muted:          #a1a1aa;
+	--color-text-muted-light:    #a1a1aa;
+
+	// ── Link color ─────────────────────────────────────────
+	--color-link:                #60a5fa;
+
+	// ── Theme Tokens: Backgrounds ───────────────────────────
+	--theme-bg:                  #000000;
+	--theme-bg-secondary:        #0c0c0e;
+	--theme-bg-subtle:           #18181b;
+
+	// Window glass / frame
+	--theme-bg-window:           #121214;
+	--theme-bg-window-opaque:    #121214;
+	--theme-window-glass-bg:     rgba(18, 18, 20, var(--ui-backdrop-alpha, 0.96));
+	--theme-window-border:       rgba(255, 255, 255, 0.12);
+	--theme-window-shadow:       0 16px 48px rgba(0, 0, 0, 0.85);
+	--theme-titlebar-bg:         #161618;
+	--theme-titlebar-border:     rgba(255, 255, 255, 0.1);
+
+	// Card / panel surfaces
+	--theme-card-bg:             #18181b;
+	--theme-card-subtle:         #202024;
+	--theme-card-border:         rgba(255, 255, 255, 0.1);
+	--theme-card-hover:          rgba(255, 255, 255, 0.06);
+	--theme-card-selected:       rgba(59, 130, 246, 0.2);
+
+	// Dropdown / menu / popover
+	--theme-menu-bg:             rgba(18, 18, 20, 0.95);
+	--theme-dropdown-bg:         #1e1e22;
+	--theme-dropdown-border:     rgba(255, 255, 255, 0.12);
+
+	// Sidebar
+	--theme-sidebar-bg:          #0d0d0f;
+	--theme-sidebar-border:      rgba(255, 255, 255, 0.08);
+
+	// Modal / overlay
+	--theme-modal-bg:            #18181b;
+	--theme-modal-border:        rgba(255, 255, 255, 0.12);
+	--theme-modal-overlay:       rgba(0, 0, 0, 0.65);
+
+	// ── Theme Tokens: Form Inputs ───────────────────────────
+	--theme-input-bg:            #18181b;
+	--theme-input-border:        rgba(255, 255, 255, 0.18);
+	--theme-input-focus:         #3b82f6;
+	--theme-input-text:          #f4f4f5;
+	--theme-input-placeholder:   #71717a;
+
+	// ── Theme Tokens: Text ──────────────────────────────────
+	--theme-text-primary:        #f4f4f5;
+	--theme-text-secondary:      #d4d4d8;
+	--theme-text-muted:          #a1a1aa;
+
+	// ── Theme Tokens: Pills / Badges ───────────────────────
+	--theme-pill-bg:             #27272a;
+	--theme-pill-color:          #d4d4d8;
+	--theme-pill-border:         rgba(255, 255, 255, 0.1);
+
+	// ── Theme Tokens: Table / List rows ────────────────────
+	--theme-table-head-bg:       #161618;
+	--theme-table-row-hover:     rgba(255, 255, 255, 0.04);
+	--theme-table-divider:       rgba(255, 255, 255, 0.07);
+
+	// ── Theme Tokens: Focus ring ────────────────────────────
+	--theme-focus-ring:          rgba(96, 165, 250, 0.4);
+
+	// ── Semantic status soft colors ─────────────────────────
+	--theme-warning-soft:        rgba(245, 158, 11, 0.15);
+	--theme-success-soft:        rgba(34, 197, 94, 0.15);
+	--theme-danger-soft:         rgba(248, 113, 113, 0.15);
+	--theme-info-soft:           rgba(56, 189, 248, 0.15);
+
+
+
+
+	// Root & App container overrides
+	background-color: #000000;
+	color: #f4f4f5;
+
+	body {
+		background-color: transparent;
+		color: #f4f4f5;
+	}
+
+	#app {
+		color: #f4f4f5;
+	}
+
+	// Global Scrollbars
+	* {
+		scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+	}
+	*::-webkit-scrollbar-thumb {
+		background-color: rgba(255, 255, 255, 0.25) !important;
+		border-radius: 9999px;
+	}
+	*::-webkit-scrollbar-track {
+		background-color: transparent !important;
+	}
+
+	// ==========================================
+	// 1. Typography, Headings & Accessible Text Classes
+	// ==========================================
+	h1, h2, h3, h4, h5, h6,
+	.title {
+		color: #f4f4f5 !important;
+	}
+
+	.subtitle {
+		color: #d4d4d8 !important;
+	}
+
+	strong, b, th, dt {
+		color: #f4f4f5 !important;
+	}
+
+	label, .label, .field-label, .field-label label {
+		color: #f4f4f5 !important;
+		font-weight: 500;
+	}
+
+	.help {
+		color: #a1a1aa !important;
+	}
+
+	.has-background-white,
+	.has-background-white-bis,
+	.has-background-white-ter,
+	.has-background-light {
+		background-color: #18181b !important;
+		color: #f4f4f5 !important;
+	}
+
+	.has-text-dark,
+	.has-text-black,
+	.has-text-black-bis,
+	.has-text-black-ter,
+	.has-text-grey-darker,
+	.has-text-grey-dark {
+		color: #f4f4f5 !important;
+	}
+
+	.has-text-grey {
+		color: #d4d4d8 !important;
+	}
+
+	.has-text-grey-light {
+		color: #a1a1aa !important;
+	}
+
+	.text-muted,
+	.has-text-muted {
+		color: #a1a1aa !important;
+	}
+
+	// High-contrast accessible status colors
+	.has-text-success {
+		color: #4ade80 !important;
+	}
+	.has-text-danger {
+		color: #f87171 !important;
+	}
+	.has-text-warning {
+		color: #fbbf24 !important;
+	}
+	.has-text-info,
+	.has-text-link {
+		color: #60a5fa !important;
+	}
+
+	a:not(.button) {
+		color: #60a5fa;
+		&:hover {
+			color: #93c5fd;
+		}
+	}
+
+	hr, .hr {
+		background-color: rgba(255, 255, 255, 0.1) !important;
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// Bulma Content
+	.content {
+		h1, h2, h3, h4, h5, h6 {
+			color: #f4f4f5 !important;
+		}
+		p, ul, ol, dl {
+			color: #d4d4d8 !important;
+		}
+		strong {
+			color: #f4f4f5 !important;
+		}
+		code {
+			background-color: #27272a !important;
+			color: #60a5fa !important;
+		}
+		pre {
+			background-color: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	// ==========================================
+	// 2. Buttons, Inputs & Form Controls
+	// ==========================================
+	.button:not(.is-primary):not(.is-danger):not(.is-success):not(.is-warning):not(.is-info) {
+		background-color: #1e1e22 !important;
+		border-color: rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+
+		&:hover {
+			background-color: #27272a !important;
+			color: #ffffff !important;
+			border-color: rgba(255, 255, 255, 0.25) !important;
+		}
+
+		&:active {
+			background-color: #323238 !important;
+		}
+
+		&.is-light {
+			background-color: #27272a !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	.icon-button {
+		background: rgba(255, 255, 255, 0.08) !important;
+		color: #d4d4d8 !important;
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.18) !important;
+			color: #ffffff !important;
+		}
+
+		&.is-confirm {
+			background: rgba(16, 185, 129, 0.22) !important;
+			color: #34d399 !important;
+		}
+	}
+
+	.input,
+	.textarea,
+	.select select {
+		background-color: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.18) !important;
+		color: #f4f4f5 !important;
+
+		&:focus {
+			border-color: #3b82f6 !important;
+			box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4) !important;
+		}
+
+		&::placeholder {
+			color: #a1a1aa !important;
+		}
+	}
+
+	.select:not(.is-multiple):not(.is-loading)::after {
+		border-color: #f4f4f5 !important;
+	}
+
+	option {
+		background-color: #18181b !important;
+		color: #f4f4f5 !important;
+	}
+
+	.tag:not(.is-primary):not(.is-danger):not(.is-success):not(.is-warning):not(.is-info) {
+		background-color: #27272a !important;
+		color: #f4f4f5 !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// Tags with status colors in dark mode
+	.tag.is-success {
+		background-color: rgba(34, 197, 94, 0.2) !important;
+		color: #4ade80 !important;
+		border: 1px solid rgba(74, 222, 128, 0.3) !important;
+	}
+	.tag.is-danger {
+		background-color: rgba(239, 68, 68, 0.2) !important;
+		color: #f87171 !important;
+		border: 1px solid rgba(248, 113, 113, 0.3) !important;
+	}
+	.tag.is-warning {
+		background-color: rgba(245, 158, 11, 0.2) !important;
+		color: #fbbf24 !important;
+		border: 1px solid rgba(251, 191, 36, 0.3) !important;
+	}
+	.tag.is-info {
+		background-color: rgba(59, 130, 246, 0.2) !important;
+		color: #60a5fa !important;
+		border: 1px solid rgba(96, 165, 250, 0.3) !important;
+	}
+
+	.switch:hover input[type="checkbox"] + .check {
+		border-color: rgba(255, 255, 255, 0.35);
+	}
+
+	.b-checkbox.checkbox,
+	.b-radio.radio {
+		color: #f4f4f5 !important;
+
+		&:hover .check {
+			border-color: rgba(255, 255, 255, 0.4) !important;
+		}
+
+		.check {
+			border: 2px solid rgba(255, 255, 255, 0.25) !important;
+			background-color: #18181b !important;
+		}
+
+		input[type="checkbox"]:checked + .check,
+		input[type="radio"]:checked + .check {
+			background-color: #3b82f6 !important;
+			border-color: #3b82f6 !important;
+		}
+	}
+
+	// Pretty range sliders
+	input[type='range'].pretty-range {
+		&::-webkit-slider-runnable-track {
+			background: linear-gradient(to right,
+				var(--color-primary, #3b82f6) var(--pct, 50%),
+				rgba(255, 255, 255, 0.18) var(--pct, 50%)) !important;
+		}
+		&::-webkit-slider-thumb {
+			background: #f4f4f5 !important;
+			border: 1px solid rgba(255, 255, 255, 0.25) !important;
+			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6) !important;
+		}
+		&::-moz-range-track {
+			background: rgba(255, 255, 255, 0.18) !important;
+		}
+		&::-moz-range-thumb {
+			background: #f4f4f5 !important;
+			border: 1px solid rgba(255, 255, 255, 0.25) !important;
+		}
+	}
+
+	// ==========================================
+	// 3. Bulma Boxes, Cards, Tabs & Tables
+	// ==========================================
+	.box {
+		background-color: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+	}
+
+	.card {
+		background-color: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+		box-shadow: none !important;
+
+		.card-header {
+			background-color: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.card-header-title {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.card-content {
+			background-color: #18181b !important;
+			color: #f4f4f5 !important;
+		}
+
+		.card-footer {
+			background-color: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.card-footer-item {
+				border-color: rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	.table {
+		background-color: transparent !important;
+		color: #f4f4f5 !important;
+
+		thead th {
+			color: #d4d4d8 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+		}
+
+		tbody tr {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+			&:hover {
+				background-color: rgba(255, 255, 255, 0.04) !important;
+			}
+
+			td {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	.tabs {
+		ul {
+			border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+		}
+
+		li a {
+			color: #d4d4d8 !important;
+			border-bottom-color: transparent !important;
+
+			&:hover {
+				color: #f4f4f5 !important;
+				border-bottom-color: rgba(255, 255, 255, 0.3) !important;
+			}
+		}
+
+		li.is-active a {
+			color: #60a5fa !important;
+			border-bottom-color: #3b82f6 !important;
+		}
+
+		&.is-toggle {
+			ul {
+				background: #121214 !important;
+				box-shadow: none !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+				li {
+					a {
+						color: #d4d4d8 !important;
+						border: none !important;
+
+						&:hover {
+							background: rgba(255, 255, 255, 0.06) !important;
+							color: #f4f4f5 !important;
+						}
+					}
+
+					&.is-active a {
+						background: #27272a !important;
+						color: #f4f4f5 !important;
+						border: none !important;
+						box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+					}
+				}
+			}
+		}
+	}
+
+	// ==========================================
+	// 4. Modals, Dialogs, Toasts & Snackbars
+	// ==========================================
+	.modal-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8) !important;
+
+		.modal-card-head {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.modal-card-title {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.modal-card-body {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+
+		.modal-card-foot {
+			background: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	.dialog .modal-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8) !important;
+
+		.modal-card-head {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+			.modal-card-title {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.modal-card-body {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+
+			p, span, div {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.modal-card-foot {
+			background: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	.toast {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.16) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+
+		p, div {
+			color: #f4f4f5 !important;
+		}
+
+		&.is-success,
+		&.is-danger,
+		&.is-warning {
+			background: #1e1e22 !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	.notices {
+		.snackbar {
+			background: #1e1e22 !important;
+			border: 1px solid rgba(255, 255, 255, 0.16) !important;
+			color: #f4f4f5 !important;
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+
+			.text {
+				color: #f4f4f5 !important;
+			}
+
+			&.is-file {
+				background: #1e1e22 !important;
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	// ==========================================
+	// 5. Desktop Windows & Titlebars
+	// ==========================================
+	.desktop-window {
+		background: rgba(18, 18, 20, var(--ui-backdrop-alpha, 0.96)) !important;
+		border: 1px solid rgba(255, 255, 255, 0.12) !important;
+		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8) !important;
+
+		&.window-opaque {
+			background: #121214 !important;
+		}
+
+		.window-titlebar {
+			background: #161618 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.window-title {
+				color: #f4f4f5 !important;
+			}
+
+			.window-btn-action {
+				color: rgba(255, 255, 255, 0.75) !important;
+				&:hover {
+					background: rgba(255, 255, 255, 0.14) !important;
+					color: #ffffff !important;
+				}
+			}
+		}
+
+		.window-content {
+			background: #121214;
+			color: #f4f4f5;
+		}
+	}
+
+	// ==========================================
+	// 6. Desktop Menus, Dock, Trays & System Tray
+	// ==========================================
+	// Wallpaper Desktop Context Menu
+	.desktop-context-menu {
+		background: rgba(18, 18, 20, 0.95) !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+
+		.ctx-item {
+			color: #f4f4f5 !important;
+
+			.ctx-icon {
+				color: #d4d4d8 !important;
+			}
+
+			&:hover {
+				background: #2563eb !important;
+				color: #ffffff !important;
+
+				.ctx-icon {
+					color: #ffffff !important;
+				}
+			}
+		}
+
+		.ctx-divider {
+			background: rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	// Taskbar Dock Context Menu
+	.dock-context-menu {
+		background: rgba(18, 18, 20, 0.95) !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+
+		.ctx-header-title {
+			color: #f4f4f5 !important;
+		}
+
+		.ctx-header-sub {
+			color: #a1a1aa !important;
+		}
+
+		.ctx-item {
+			color: #f4f4f5 !important;
+
+			.ctx-icon {
+				color: #d4d4d8 !important;
+			}
+
+			&:hover {
+				background: #2563eb !important;
+				color: #ffffff !important;
+
+				.ctx-icon {
+					color: #ffffff !important;
+				}
+			}
+
+			&.is-danger {
+				color: #f87171 !important;
+				.ctx-icon {
+					color: #f87171 !important;
+				}
+				&:hover {
+					background: #dc2626 !important;
+					color: #ffffff !important;
+					.ctx-icon {
+						color: #ffffff !important;
+					}
+				}
+			}
+		}
+
+		.ctx-divider {
+			background: rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	// Drag & Drop Menu
+	.drag-drop-menu {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+
+		.menu-item {
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.08) !important;
+			}
+		}
+	}
+
+	// App & Folder card 3-dot dropdowns
+	.dropdown.app-card-drop,
+	.app-card-drop,
+	body > .dropdown,
+	.dropdown {
+		.dropdown-menu .dropdown-content {
+			background: #1e1e22 !important;
+			border: 1px solid rgba(255, 255, 255, 0.14) !important;
+			box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7) !important;
+			color: #f4f4f5 !important;
+
+			.dropdown-item {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.08) !important;
+					color: #ffffff !important;
+				}
+
+				a, button, span {
+					color: #d4d4d8 !important;
+					&:hover {
+						color: #ffffff !important;
+					}
+				}
+			}
+
+			.dropdown-divider {
+				background-color: rgba(255, 255, 255, 0.1) !important;
+			}
+		}
+	}
+
+	// Notification Center Popover
+	.notification-popover {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75) !important;
+
+		.notif-header {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.notif-title {
+				color: #f4f4f5 !important;
+			}
+
+			.unread-pill {
+				background: rgba(59, 130, 246, 0.2) !important;
+				color: #60a5fa !important;
+			}
+
+			.hdr-action-btn {
+				color: #d4d4d8 !important;
+				&:hover {
+					background: rgba(255, 255, 255, 0.1) !important;
+					color: #f4f4f5 !important;
+				}
+			}
+		}
+
+		.notif-filters {
+			background: #121214 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.filter-tab {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					color: #f4f4f5 !important;
+					background: rgba(255, 255, 255, 0.06) !important;
+				}
+
+				&.active {
+					background: #222226 !important;
+					color: #60a5fa !important;
+					box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+				}
+			}
+		}
+
+		.notif-empty {
+			color: #a1a1aa !important;
+			.empty-bell {
+				color: #52525b !important;
+			}
+		}
+
+		.notif-item {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.04) !important;
+			}
+
+			&.is-unread {
+				background: rgba(59, 130, 246, 0.1) !important;
+
+				&:hover {
+					background: rgba(59, 130, 246, 0.16) !important;
+				}
+			}
+
+			.notif-item-title {
+				color: #f4f4f5 !important;
+			}
+
+			.notif-time {
+				color: #a1a1aa !important;
+			}
+
+			.notif-msg {
+				color: #d4d4d8 !important;
+			}
+
+			.notif-action-btn {
+				background: #1f1f23 !important;
+				border: 1px solid rgba(255, 255, 255, 0.14) !important;
+				color: #60a5fa !important;
+
+				&:hover {
+					background: #3b82f6 !important;
+					color: #ffffff !important;
+					border-color: #3b82f6 !important;
+				}
+			}
+
+			.notif-del-btn {
+				color: #a1a1aa !important;
+				&:hover {
+					color: #f87171 !important;
+					background: rgba(239, 68, 68, 0.18) !important;
+				}
+			}
+		}
+	}
+
+	// Date & Time Pill Quick Control Menu
+	.quick-control-menu {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 20px 48px rgba(0, 0, 0, 0.75) !important;
+
+		.user-name {
+			color: #f4f4f5 !important;
+		}
+
+		.user-badge {
+			color: #d4d4d8 !important;
+		}
+
+		.hdr-btn {
+			background: #1f1f23 !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #d4d4d8 !important;
+
+			&:hover {
+				background: #27272a !important;
+				color: #f4f4f5 !important;
+				border-color: rgba(255, 255, 255, 0.25) !important;
+			}
+
+			&.is-logout:hover {
+				background: rgba(239, 68, 68, 0.2) !important;
+				color: #f87171 !important;
+				border-color: rgba(239, 68, 68, 0.4) !important;
+			}
+		}
+
+		.clock-hero-card {
+			background: #121214 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.hero-time {
+				color: #f4f4f5 !important;
+			}
+			.hero-date {
+				color: #d4d4d8 !important;
+			}
+		}
+
+		.cal-month-year {
+			color: #f4f4f5 !important;
+		}
+
+		.cal-btn-today,
+		.cal-arrow-btn {
+			background: #1f1f23 !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #d4d4d8 !important;
+
+			&:hover {
+				background: #27272a !important;
+				color: #f4f4f5 !important;
+				border-color: rgba(255, 255, 255, 0.25) !important;
+			}
+		}
+
+		.cal-weekday-label {
+			color: #a1a1aa !important;
+		}
+
+		.cal-day-cell {
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.08) !important;
+			}
+
+			&.is-other-month {
+				color: #71717a !important;
+			}
+
+			&.is-selected {
+				background: rgba(59, 130, 246, 0.25) !important;
+				border: 1px solid rgba(59, 130, 246, 0.5) !important;
+				color: #60a5fa !important;
+			}
+
+			&.is-today {
+				background: #3b82f6 !important;
+				color: #ffffff !important;
+			}
+		}
+
+		.menu-divider {
+			background-color: rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.pwr-btn {
+			background: #1f1f23 !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: #27272a !important;
+				border-color: rgba(255, 255, 255, 0.25) !important;
+			}
+		}
+	}
+
+	// File Operation & Container Install Banners
+	.file-op-status,
+	.file-op-card,
+	.container-install-banner,
+	.container-install-status {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75) !important;
+
+		.op-name, .install-title, .status-title {
+			color: #f4f4f5 !important;
+		}
+		.op-sub, .install-sub, .status-desc {
+			color: #d4d4d8 !important;
+		}
+	}
+
+	// ==========================================
+	// 7. Settings App & Subpanels
+	// ==========================================
+	.settings-app {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.settings-sidebar,
+		.settings-nav {
+			background: #0d0d0f !important;
+			border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.nav-header {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+				.nav-title {
+					color: #f4f4f5 !important;
+				}
+			}
+
+			.nav-item {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #f4f4f5 !important;
+				}
+
+				&.is-active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+
+					.nav-label {
+						color: #60a5fa !important;
+					}
+				}
+			}
+		}
+
+		.settings-main,
+		.settings-content {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+
+		.settings-search {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.15) !important;
+
+			input {
+				background: transparent !important;
+				color: #f4f4f5 !important;
+
+				&::placeholder {
+					color: #a1a1aa !important;
+				}
+			}
+
+			.search-icon {
+				color: #a1a1aa !important;
+			}
+		}
+
+		.search-results-dropdown {
+			background: #1e1e22 !important;
+			border: 1px solid rgba(255, 255, 255, 0.14) !important;
+			box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75) !important;
+
+			.search-result-item {
+				color: #f4f4f5 !important;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+				}
+			}
+		}
+
+		.section-title {
+			color: #f4f4f5 !important;
+		}
+
+		.setting-card-title {
+			color: #d4d4d8 !important;
+		}
+
+		.setting-card {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			box-shadow: none !important;
+		}
+
+		.setting-row {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.02) !important;
+			}
+
+			.row-icon {
+				color: #d4d4d8 !important;
+			}
+
+			.setting-title,
+			.row-label {
+				color: #f4f4f5 !important;
+			}
+
+			.setting-desc,
+			.row-desc {
+				color: #d4d4d8 !important;
+			}
+
+			.slider-hint,
+			.slider-value {
+				background: #27272a !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.segmented-control {
+			background: #121214 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.segmented-option {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					color: #f4f4f5 !important;
+				}
+
+				&.active {
+					background: #27272a !important;
+					color: #60a5fa !important;
+					box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+				}
+			}
+		}
+
+		// Cards inside settings sections
+		.package-card,
+		.schedule-card,
+		.user-card,
+		.companion-device-card,
+		.drive-card,
+		.storage-pool-card,
+		.container-card,
+		.update-inset-box,
+		.account-card,
+		.section-card,
+		.mount-card,
+		.adv-card,
+		.entry-card {
+			background: #1e1e22 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+
+			.account-name,
+			.card-title,
+			.device-name,
+			.package-name {
+				color: #f4f4f5 !important;
+			}
+
+			.account-sub,
+			.card-desc,
+			.device-sub,
+			.package-desc {
+				color: #d4d4d8 !important;
+			}
+		}
+
+		.account-toggle-chip {
+			background: rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+
+			&.on {
+				background: rgba(59, 130, 246, 0.25) !important;
+				color: #60a5fa !important;
+			}
+		}
+	}
+
+	// Settings Overlay Dialogs (Disks, Users, Cloud Accounts, Fstab, etc.)
+	.settings-overlay-backdrop {
+		background: rgba(0, 0, 0, 0.65) !important;
+	}
+
+	.settings-overlay-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8) !important;
+		color: #f4f4f5 !important;
+	}
+
+	.settings-overlay-head {
+		background: #18181b !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+
+		.settings-overlay-title {
+			color: #f4f4f5 !important;
+		}
+
+		.settings-overlay-close {
+			background: rgba(255, 255, 255, 0.08) !important;
+			color: #d4d4d8 !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.18) !important;
+				color: #ffffff !important;
+			}
+		}
+	}
+
+	.settings-overlay-body {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.provider-tile {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: #222226 !important;
+			}
+
+			&.active {
+				border-color: #3b82f6 !important;
+				background: rgba(59, 130, 246, 0.2) !important;
+				color: #60a5fa !important;
+			}
+		}
+
+		.provider-group-label {
+			color: #a1a1aa !important;
+		}
+
+		.log-view {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	.settings-overlay-foot {
+		background: #18181b !important;
+		border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// ==========================================
+	// 8. Files App & Viewers
+	// ==========================================
+	.files-app {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.files-body {
+			background: #121214 !important;
+		}
+
+		.tab-bar,
+		.files-tab-bar {
+			background: #09090b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.tab {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #f4f4f5 !important;
+				}
+
+				&.active {
+					background: #18181b !important;
+					color: #f4f4f5 !important;
+					border-top: 2px solid #3b82f6 !important;
+				}
+			}
+
+			.tab-action {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.1) !important;
+					color: #f4f4f5 !important;
+				}
+			}
+		}
+
+		.files-toolbar {
+			background: #141416 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.crumb {
+				color: #d4d4d8 !important;
+				&:hover { color: #f4f4f5 !important; }
+				&.current { color: #f4f4f5 !important; }
+				&:not(:last-child)::after { color: #71717a !important; }
+			}
+
+			.action-btn {
+				background: #1f1f23 !important;
+				border: 1px solid rgba(255, 255, 255, 0.12) !important;
+				color: #f4f4f5 !important;
+
+				&:hover {
+					background: #27272a !important;
+					color: #ffffff !important;
+				}
+			}
+
+			.view-trigger {
+				color: #d4d4d8 !important;
+				&:hover {
+					background: rgba(255, 255, 255, 0.08) !important;
+					color: #f4f4f5 !important;
+				}
+				&.is-active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+				}
+			}
+
+			.selection-bar .selection-label {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.files-sidebar {
+			background: #0d0d0f !important;
+			border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.sidebar-header {
+				.sidebar-title {
+					color: #a1a1aa !important;
+				}
+			}
+
+			.sidebar-section-label {
+				color: #a1a1aa !important;
+			}
+
+			.tree-node {
+				color: #f4f4f5 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #ffffff !important;
+				}
+
+				&.active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+				}
+			}
+
+			.nav-entry {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #f4f4f5 !important;
+				}
+
+				&.active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+				}
+			}
+		}
+
+		.content-view {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+
+			.companion-device-banner {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+				.banner-device-name {
+					color: #f4f4f5 !important;
+				}
+
+				.banner-subtext {
+					color: #d4d4d8 !important;
+				}
+
+				.banner-storage-row {
+					color: #d4d4d8 !important;
+				}
+			}
+
+			.content-status-bar {
+				background: #141416 !important;
+				border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #d4d4d8 !important;
+
+				.status-btn {
+					color: #d4d4d8 !important;
+					&:hover {
+						color: #f4f4f5 !important;
+						background: rgba(255, 255, 255, 0.1) !important;
+					}
+				}
+			}
+
+			.grid-item {
+				color: #f4f4f5 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+				}
+
+				&.selected {
+					background: rgba(59, 130, 246, 0.25) !important;
+				}
+
+				.name {
+					color: #f4f4f5 !important;
+				}
+
+				.date {
+					color: #d4d4d8 !important;
+				}
+			}
+
+			.list-row {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+				color: #f4f4f5 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.05) !important;
+				}
+
+				&.selected {
+					background: rgba(59, 130, 246, 0.25) !important;
+				}
+
+				.name {
+					color: #f4f4f5 !important;
+				}
+
+				.size,
+				.date {
+					color: #d4d4d8 !important;
+				}
+			}
+		}
+
+		// Files Shared View & Drop View
+		.shared-view {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+
+			.shared-name {
+				color: #f4f4f5 !important;
+			}
+			.shared-path {
+				color: #d4d4d8 !important;
+			}
+			.shared-row:hover {
+				background: rgba(255, 255, 255, 0.05) !important;
+			}
+			.shared-empty {
+				color: #a1a1aa !important;
+			}
+		}
+
+		.drop-view {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+
+			.peer-name {
+				color: #f4f4f5 !important;
+			}
+			.empty-title {
+				color: #f4f4f5 !important;
+			}
+			.empty-hint {
+				color: #d4d4d8 !important;
+			}
+			.peer-tile:hover {
+				background: rgba(255, 255, 255, 0.05) !important;
+			}
+		}
+
+		// Trays & Dialogs in Files
+		.operation-tray,
+		.upload-tray {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.14) !important;
+			box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7) !important;
+			color: #f4f4f5 !important;
+
+			.operation-tray-header,
+			.upload-tray-header {
+				background: #121214 !important;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.operation-tray-item,
+			.upload-tray-item {
+				color: #f4f4f5 !important;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.04) !important;
+				}
+			}
+		}
+
+		.dialog-overlay {
+			background: rgba(0, 0, 0, 0.65) !important;
+
+			.dialog-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.14) !important;
+				color: #f4f4f5 !important;
+				box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8) !important;
+			}
+
+			.dialog-header {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+
+				.dialog-title {
+					color: #f4f4f5 !important;
+				}
+			}
+
+			.dialog-body {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.folder-list {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #f4f4f5 !important;
+		}
+
+		// File Viewers & Editors
+		.doc-viewer,
+		.excel-viewer,
+		.code-editor-wrap,
+		.markdown-editor-wrap,
+		.image-viewer,
+		.viewer-chrome,
+		.pdf-viewer,
+		.video-player {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+
+			.viewer-header,
+			.toolbar,
+			.editor-header {
+				background: #18181b !important;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	// ==========================================
+	// 9. VM Manager App
+	// ==========================================
+	.vm-app {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.vm-nav {
+			background: #0d0d0f !important;
+			border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.nav-item {
+				color: #d4d4d8 !important;
+
+				.icon {
+					color: #a1a1aa !important;
+				}
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #f4f4f5 !important;
+
+					.icon {
+						color: #f4f4f5 !important;
+					}
+				}
+
+				&.active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+
+					.icon {
+						color: #60a5fa !important;
+					}
+				}
+			}
+		}
+
+		.vm-content {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+
+		// VM Setup Screen
+		.vm-setup-screen,
+		.setup-screen {
+			background: #121214 !important;
+
+			.setup-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		// VM List
+		.vm-list {
+			.vm-header {
+				background: #121214 !important;
+			}
+
+			.vm-search-input,
+			.search-bar-input {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.15) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.vm-filter-tab {
+				color: #d4d4d8 !important;
+
+				&.active {
+					background: #222226 !important;
+					color: #60a5fa !important;
+				}
+			}
+
+			.vm-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+				box-shadow: none !important;
+
+				.vm-name {
+					color: #f4f4f5 !important;
+				}
+			}
+
+			.vm-stat-box,
+			.stat-box {
+				background: #121214 !important;
+				border: 1px solid rgba(255, 255, 255, 0.08) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.vm-action-btn {
+				background: #222226 !important;
+				border-color: rgba(255, 255, 255, 0.14) !important;
+				color: #f4f4f5 !important;
+
+				&:hover {
+					background: #2e2e34 !important;
+					color: #ffffff !important;
+				}
+			}
+		}
+
+		// VM Snapshots
+		.vm-snapshots {
+			background: #121214 !important;
+
+			.snapshot-card,
+			.snapshot-sidebar,
+			.snapshot-detail,
+			.tree-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.snapshot-item {
+				color: #f4f4f5 !important;
+				border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.05) !important;
+				}
+
+				&.active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+				}
+			}
+		}
+
+		// VM Networks
+		.vm-networks {
+			background: #121214 !important;
+
+			.network-card,
+			.net-card,
+			.bridge-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		// VM Storage
+		.vm-storage {
+			background: #121214 !important;
+
+			.storage-card,
+			.pool-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		// VM Modals & Pickers
+		.create-vm-modal,
+		.edit-vm-modal,
+		.vm-overlay-panel {
+			.modal-card-body {
+				background: #121214 !important;
+				color: #f4f4f5 !important;
+			}
+
+			.form-card,
+			.spec-card,
+			.hardware-picker-card,
+			.config-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.1) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.step-indicator,
+			.stepper-step {
+				color: #d4d4d8 !important;
+
+				&.active {
+					color: #60a5fa !important;
+				}
+			}
+		}
+
+		.vm-file-picker-dialog {
+			.picker-card,
+			.dialog-card {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.14) !important;
+				color: #f4f4f5 !important;
+			}
+
+			.file-row,
+			.crumb {
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	// ==========================================
+	// 10. Scheduled Tasks Window
+	// ==========================================
+	.task-window {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.task-header-card {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			box-shadow: none !important;
+
+			.task-header-title {
+				color: #f4f4f5 !important;
+			}
+			.task-header-desc {
+				color: #d4d4d8 !important;
+			}
+		}
+
+		.setting-card {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			box-shadow: none !important;
+		}
+
+		.setting-row {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+			.row-icon {
+				color: #d4d4d8 !important;
+			}
+			.row-label {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.segmented-control {
+			background: #121214 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.segmented-option {
+				color: #d4d4d8 !important;
+
+				&.active {
+					background: #27272a !important;
+					color: #60a5fa !important;
+					box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+				}
+			}
+		}
+
+		.chip-btn {
+			background: #222226 !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: #2e2e34 !important;
+				border-color: #3b82f6 !important;
+				color: #60a5fa !important;
+			}
+		}
+
+		.task-window-foot {
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	// ==========================================
+	// 11. Custom App Editor (LegacyAppEditPanel)
+	// ==========================================
+	.app-editor-container {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.editor-hero-section {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+
+		.hero-icon-preview {
+			background: #121214 !important;
+			border: 1px solid rgba(255, 255, 255, 0.18) !important;
+		}
+
+		.field-lbl,
+		.tab-item,
+		.tab-nav-btn {
+			color: #f4f4f5 !important;
+
+			&.active {
+				color: #60a5fa !important;
+				border-bottom-color: #3b82f6 !important;
+			}
+		}
+
+		.tab-nav,
+		.editor-tabs {
+			background: #121214 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.form-section,
+		.port-row,
+		.volume-row,
+		.env-row {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+
+		.editor-footer {
+			background: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	// ==========================================
+	// 12. App Store App & App Panels
+	// ==========================================
+	.appstore-app {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.appstore-sidebar {
+			background: #0d0d0f !important;
+			border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.sidebar-brand {
+				border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+				.brand-title {
+					color: #f4f4f5 !important;
+				}
+				.brand-subtitle {
+					color: #a1a1aa !important;
+				}
+			}
+
+			.nav-item {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					background: rgba(255, 255, 255, 0.06) !important;
+					color: #f4f4f5 !important;
+				}
+
+				&.is-active {
+					background: rgba(59, 130, 246, 0.2) !important;
+					color: #60a5fa !important;
+				}
+			}
+
+			.sidebar-footer {
+				border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+			}
+		}
+
+		.appstore-main,
+		.appstore-content {
+			background: #121214 !important;
+		}
+
+		.main-header {
+			background: #121214 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.search-wrapper,
+		.search-bar-wrap input {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.15) !important;
+			color: #f4f4f5 !important;
+
+			&::placeholder {
+				color: #a1a1aa !important;
+			}
+		}
+
+		.hero-carousel {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.hero-title {
+				color: #f4f4f5 !important;
+			}
+			.hero-desc {
+				color: #d4d4d8 !important;
+			}
+		}
+
+		.section-title {
+			color: #f4f4f5 !important;
+		}
+		.section-subtitle {
+			color: #d4d4d8 !important;
+		}
+
+		.app-card {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			&:hover {
+				background: #222226 !important;
+				border-color: rgba(255, 255, 255, 0.2) !important;
+			}
+
+			.app-title {
+				color: #f4f4f5 !important;
+			}
+			.app-desc {
+				color: #d4d4d8 !important;
+			}
+			.app-author {
+				color: #a1a1aa !important;
+			}
+		}
+
+		.detail-drawer {
+			background: #18181b !important;
+			border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
+			color: #f4f4f5 !important;
+
+			.drawer-title {
+				color: #f4f4f5 !important;
+			}
+			.drawer-desc {
+				color: #d4d4d8 !important;
+			}
+			.drawer-meta-label {
+				color: #a1a1aa !important;
+			}
+			.drawer-meta-value {
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.category-pill {
+			background: #1e1e22 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: #27272a !important;
+			}
+
+			&.is-active {
+				background: rgba(59, 130, 246, 0.2) !important;
+				color: #60a5fa !important;
+				border-color: #3b82f6 !important;
+			}
+		}
+
+		.custom-installer-view {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+
+		.app-sources-modal {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.14) !important;
+			color: #f4f4f5 !important;
+
+			.source-list-item {
+				background: #121214 !important;
+				border: 1px solid rgba(255, 255, 255, 0.08) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+	}
+
+	// App Modals & Detail Dialogs
+	.app-panel {
+		.modal-card-head {
+			background-color: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+		.modal-card-body {
+			background-color: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+		.modal-card-foot {
+			background-color: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	.app-detial {
+		.modal-card-head {
+			background: #18181b !important;
+			color: #f4f4f5 !important;
+		}
+		.modal-card-body {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+		.store-title {
+			color: #f4f4f5 !important;
+		}
+		.subtitle {
+			color: #d4d4d8 !important;
+		}
+		.github-markdown-body {
+			background: transparent !important;
+			color: #f4f4f5 !important;
+
+			h1, h2, h3, h4, h5, h6, p, li, strong {
+				color: #f4f4f5 !important;
+			}
+			code {
+				background: #27272a !important;
+				color: #60a5fa !important;
+			}
+			pre {
+				background: #18181b !important;
+				border: 1px solid rgba(255, 255, 255, 0.12) !important;
+			}
+		}
+	}
+
+	.folder-modal-card {
+		.modal-card-head {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+		.modal-card-body {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	.icon-editor-card,
+	.tip-editor-card {
+		.modal-card-head {
+			background: #18181b !important;
+		}
+		.modal-card-body {
+			background: #121214 !important;
+			color: #f4f4f5 !important;
+		}
+		.modal-card-foot {
+			background: #18181b !important;
+		}
+	}
+
+	// ==========================================
+	// 13. Storage Manager Panels
+	// ==========================================
+	.storage-modal,
+	.storage-manager {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.background-item,
+		.storage-card,
+		.combination-box {
+			background-color: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+
+		.title {
+			color: #f4f4f5 !important;
+		}
+
+		p {
+			color: #d4d4d8 !important;
+		}
+
+		._has-background-gray-100 {
+			background-color: #27272a !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	// ==========================================
+	// 14. System Update Window
+	// ==========================================
+	.system-update-window {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.update-header {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.notes-card,
+		.release-notes-box {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+
+		.update-footer {
+			background: #18181b !important;
+			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
+	// ==========================================
+	// 15. Folder Window
+	// ==========================================
+	.folder-window {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+
+		.app-card a,
+		.app-card p,
+		.app-card .app-label,
+		.folder-card .app-label {
+			color: #f4f4f5 !important;
+			text-shadow: none !important;
+		}
+
+		.app-card:hover .cards-content {
+			background: rgba(255, 255, 255, 0.08) !important;
+		}
+	}
+
+	// ==========================================
+	// 16. Mobile Shell
+	// ==========================================
+	.mobile-screen-host {
+		background: #000000 !important;
+		color: #f4f4f5 !important;
+
+		.mobile-screen-header {
+			background: #121214 !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+			color: #f4f4f5 !important;
+		}
+	}
+
+	.mobile-tab-bar {
+		background: rgba(18, 18, 20, 0.95) !important;
+		border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+		.mobile-tab-item {
+			color: #a1a1aa !important;
+
+			&.active {
+				color: #60a5fa !important;
+			}
+		}
+	}
+
+	// ==========================================
+	// 17. Wallpaper Modal & Misc
+	// ==========================================
+	.wallpaper-modal,
+	.wallpaper-picker {
+		.upload-tile {
+			background: rgba(255, 255, 255, 0.03) !important;
+			border-color: rgba(255, 255, 255, 0.15) !important;
+		}
+
+		.upload-tile-inner {
+			color: #d4d4d8 !important;
+		}
+	}
+
+	// ==========================================
+	// 18. Comprehensive Text Color Overrides
+	// Covers all scoped Vue component styles with hardcoded light-mode colors
+	// e.g. #1e293b, #64748b, #334155, #0f172a, #475569, #94a3b8, #cbd5e1, #e2e8f0, #f1f5f9
+	// ==========================================
+
+	// Universal text color overrides for scoped styles
+	// These use high-specificity selectors to beat scoped Vue styles
+	.settings-app *,
+	.settings-overlay-card *,
+	.settings-overlay-body * {
+		border-color: transparent; // reset, let explicit rules apply
+	}
+
+	// AboutPanel — hardcoded #1e293b, #64748b, #334155 text
+	.settings-app .about-version-label,
+	.settings-app .about-build-label,
+	.settings-app .about-value {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .about-sub,
+	.settings-app .about-meta {
+		color: #d4d4d8 !important;
+	}
+	.settings-app .about-pill,
+	.settings-app .about-chip,
+	.settings-app .version-pill {
+		background: #27272a !important;
+		border-color: rgba(255, 255, 255, 0.12) !important;
+		color: #d4d4d8 !important;
+	}
+	.settings-app .about-stat-box,
+	.settings-app .stat-card {
+		background: #202024 !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	.settings-app .about-divider,
+	.settings-app .stat-divider {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+		background: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// ScheduledTasksSection — hardcoded #18181b (text!), #0f172a, #334155, #71717a
+	// (Note: #18181b here is used as text color, NOT a background — dark mode fix needed)
+	.settings-app .task-name,
+	.settings-app .task-label,
+	.settings-app .task-title-text,
+	.settings-app .task-key,
+	.settings-app .schedule-title {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .task-sub,
+	.settings-app .task-desc,
+	.settings-app .task-meta,
+	.settings-app .schedule-desc,
+	.settings-app .task-cron-display,
+	.settings-app .task-time-label {
+		color: #a1a1aa !important;
+	}
+	.settings-app .task-status-pill,
+	.settings-app .cron-chip {
+		background: #27272a !important;
+		border-color: rgba(255, 255, 255, 0.1) !important;
+		color: #d4d4d8 !important;
+	}
+	.settings-app .task-log-box,
+	.settings-app .cron-log {
+		background: #0d0d0f !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	// Inset boxes in ScheduledTasksSection
+	.settings-app .inset-card,
+	.settings-app .task-inset,
+	.settings-app .task-run-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	// Borders in tasks sections
+	.settings-app .task-divider {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// UpdatesSection — hardcoded #1e293b, #475569, #94a3b8, #64748b, #cbd5e1
+	.settings-app .update-pkg-name,
+	.settings-app .update-title,
+	.settings-app .update-label {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .update-version,
+	.settings-app .update-sub,
+	.settings-app .update-meta,
+	.settings-app .update-size {
+		color: #a1a1aa !important;
+	}
+	.settings-app .update-card,
+	.settings-app .update-pkg-row,
+	.settings-app .update-inset-box {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	.settings-app .update-terminal,
+	.settings-app .update-log-box {
+		background: #0d0d0f !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// SystemSection — hardcoded #1e293b, #64748b, #475569
+	.settings-app .sys-stat-label,
+	.settings-app .sys-title,
+	.settings-app .sys-key {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .sys-value,
+	.settings-app .sys-sub {
+		color: #d4d4d8 !important;
+	}
+	.settings-app .sys-stat-card,
+	.settings-app .sys-info-row {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.08) !important;
+		color: #f4f4f5 !important;
+	}
+	// Borders in system section
+	.settings-app .sys-divider {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// ContainersSection — hardcoded #1e293b, #f59e0b (kept), #ffffff
+	.settings-app .container-name,
+	.settings-app .container-title,
+	.settings-app .container-label {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .container-sub,
+	.settings-app .container-meta {
+		color: #a1a1aa !important;
+	}
+	.settings-app .container-status-running {
+		color: #4ade80 !important;
+	}
+	.settings-app .container-status-stopped {
+		color: #f87171 !important;
+	}
+
+	// CompanionSection — hardcoded #64748b
+	.settings-app .companion-label,
+	.settings-app .companion-sub,
+	.settings-app .device-status-label {
+		color: #a1a1aa !important;
+	}
+	.settings-app .companion-card,
+	.settings-app .companion-device {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// NetworkSharesPanel — hardcoded #1e293b
+	.settings-overlay-body .share-name,
+	.settings-overlay-body .share-label,
+	.settings-overlay-body .share-path {
+		color: #f4f4f5 !important;
+	}
+
+	// SettingsNav — hardcoded #94a3b8, #475569
+	.settings-nav .nav-section-label {
+		color: #71717a !important;
+	}
+	.settings-nav .nav-item-label {
+		color: #d4d4d8 !important;
+	}
+
+	// SettingsOverlay — border #f1f5f9 hardcoded
+	.settings-overlay-card .overlay-divider,
+	.settings-overlay-head {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// AppearanceSection — #eff6ff selected state background
+	.settings-app .theme-card-option.is-selected {
+		border-color: #3b82f6 !important;
+		background: rgba(59, 130, 246, 0.2) !important;
+		box-shadow: 0 0 0 1px #3b82f6 !important;
+	}
+	.settings-app .theme-title {
+		color: #f4f4f5 !important;
+	}
+	.settings-app .theme-sub {
+		color: #a1a1aa !important;
+	}
+
+	// FstabPanel — all the inner cards
+	.settings-overlay-body .fstab-card,
+	.settings-overlay-body .fstab-row,
+	.settings-overlay-body .mount-entry {
+		background: #1e1e22 !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	.settings-overlay-body .fstab-label,
+	.settings-overlay-body .fstab-key,
+	.settings-overlay-body .mount-point {
+		color: #f4f4f5 !important;
+	}
+	.settings-overlay-body .fstab-sub,
+	.settings-overlay-body .fstab-meta {
+		color: #a1a1aa !important;
+	}
+
+	// AppStoreApp — light tinted backgrounds #eff6ff, #fee2e2, #ecfdf5 etc.
+	.appstore-app .is-blue {
+		background: rgba(59, 130, 246, 0.2) !important;
+		color: #93c5fd !important;
+	}
+	.appstore-app .is-emerald {
+		background: rgba(16, 185, 129, 0.2) !important;
+		color: #6ee7b7 !important;
+	}
+	.appstore-app .is-indigo {
+		background: rgba(99, 102, 241, 0.2) !important;
+		color: #a5b4fc !important;
+	}
+	.appstore-app .is-purple {
+		background: rgba(168, 85, 247, 0.2) !important;
+		color: #d8b4fe !important;
+	}
+	.appstore-app .status-bar-installed,
+	.appstore-app .status-installed {
+		background: rgba(59, 130, 246, 0.2) !important;
+		border: 1px solid rgba(59, 130, 246, 0.3) !important;
+		color: #93c5fd !important;
+	}
+	.appstore-app .status-error,
+	.appstore-app .error-banner {
+		background: rgba(239, 68, 68, 0.15) !important;
+		border: 1px solid rgba(239, 68, 68, 0.25) !important;
+		color: #fca5a5 !important;
+	}
+	.appstore-app .custom-header,
+	.appstore-app .installer-header {
+		background: #0d0d0f !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+	// AppStore list border
+	.appstore-app .app-row-border {
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+	}
+
+	// FileList components
+	.list-item-wrapper .list-item,
+	.file-panel-item {
+		color: #f4f4f5 !important;
+		background: #18181b !important;
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+
+	// ShareModal, UpdateCompleteModal, ShareSelectDialog — hardcoded #f8f8f8
+	.share-modal-body,
+	.update-complete-body,
+	.share-select-dialog-body {
+		background: #121214 !important;
+		color: #f4f4f5 !important;
+	}
+	.share-modal-card,
+	.update-complete-card,
+	.share-select-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.12) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// fileList/ListItem — #e0e0e0, #b6e0ff progress
+	.list-item .progress-bar-bg {
+		background: #27272a !important;
+	}
+	.list-item .progress-bar-fill {
+		background: #3b82f6 !important;
+	}
+
+	// RemoteAccessPanel — #1f6feb, #1f8a4c (link colors in light mode look ok but in dark need adjustment)
+	.settings-overlay-body .remote-link {
+		color: #60a5fa !important;
+	}
+	.settings-overlay-body .remote-status-ok {
+		color: #4ade80 !important;
+	}
+
+	// Widget cards
+	.widget-card {
+		background: var(--theme-card-bg) !important;
+		border: 1px solid var(--theme-card-border) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// Dock tooltip / badge
+	.dock-tooltip {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// Network widget chart label
+	.network-widget .chart-label {
+		color: #a1a1aa !important;
+	}
+
+	// General catch-all for any remaining light text in scoped styles
+	// These target the exact slate color values commonly used
+	[style*="color: #1e293b"],
+	[style*="color: #0f172a"],
+	[style*="color: #334155"],
+	[style*="color: #475569"] {
+		color: #f4f4f5 !important;
+	}
+	[style*="color: #64748b"],
+	[style*="color: #94a3b8"],
+	[style*="color: #71717a"] {
+		color: #a1a1aa !important;
+	}
+
+	// ==========================================
+	// 19. Semantic Tinted Backgrounds (Status Colors)
+	// #eff6ff (blue info) → rgba(59,130,246,0.18)
+	// #fee2e2 (red danger) → rgba(239,68,68,0.18)
+	// #ecfdf5 (green success) → rgba(16,185,129,0.18)
+	// #fef2f2 (deep red) → rgba(239,68,68,0.15)
+	// These appear in VM, NotificationCenter, DateTimePill, AppStore etc.
+	// ==========================================
+
+	// NotificationCenter — action button unread highlight
+	.notification-popover .notif-action-btn-bg,
+	.notification-popover .notif-unread-bg {
+		background: rgba(59, 130, 246, 0.18) !important;
+	}
+
+	// DateTimePill — logout/danger hover, shutdown buttons
+	.quick-control-menu .pwr-btn-danger,
+	.quick-control-menu .danger-zone {
+		background: rgba(239, 68, 68, 0.18) !important;
+	}
+
+	// VM Network List — bridge status colors
+	.vm-app .network-status-active,
+	.vm-app .bridge-status-active,
+	.vm-app .net-active-badge {
+		background: rgba(59, 130, 246, 0.18) !important;
+		color: #93c5fd !important;
+	}
+	.vm-app .network-status-error,
+	.vm-app .bridge-status-error,
+	.vm-app .net-error-badge {
+		background: rgba(239, 68, 68, 0.18) !important;
+		color: #fca5a5 !important;
+	}
+
+	// VM Storage — pool status
+	.vm-app .pool-status-active {
+		background: rgba(59, 130, 246, 0.18) !important;
+		color: #93c5fd !important;
+	}
+	.vm-app .pool-status-error,
+	.vm-app .pool-status-inactive {
+		background: rgba(239, 68, 68, 0.18) !important;
+		color: #fca5a5 !important;
+	}
+}
+

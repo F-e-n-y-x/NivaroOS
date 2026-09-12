@@ -735,7 +735,7 @@ export default {
 	}
 	&.active {
 		background: rgba(50, 115, 220, 0.14);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 		font-weight: 600;
 	}
 	&.drop-target {
@@ -778,7 +778,7 @@ export default {
 	line-height: 13px;
 	text-align: center;
 	border-radius: 24px;
-	border: 1px solid #ffffff;
+	border: 1px solid var(--theme-card-border, rgba(255,255,255,0.3));
 	top: -0.5rem;
 	left: 0.9rem;
 }
@@ -817,7 +817,7 @@ export default {
 }
 .companion-storage-text {
 	font-size: 0.68rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1.1;
 	white-space: nowrap;
 	overflow: hidden;

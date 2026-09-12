@@ -688,8 +688,7 @@ export default {
 	flex-direction: column;
 	height: 100%;
 	padding: 1.25rem 1.5rem;
-	background: #f8fafc;
-	color: #1e293b;
+	background: var(--theme-bg-window, #f8fafc); color: var(--theme-text-primary, #1e293b);
 }
 
 .task-window-body {
@@ -703,7 +702,7 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: 12px 14px;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 12px;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
@@ -744,18 +743,18 @@ export default {
 	.task-header-title {
 		font-size: 14px;
 		font-weight: 600;
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 
 	.task-header-desc {
 		font-size: 11px;
-		color: #64748b;
+		color: var(--theme-text-secondary, #64748b);
 		line-height: 1.3;
 	}
 }
 
 .setting-card {
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 12px;
 	padding: 8px 14px;
@@ -782,7 +781,7 @@ export default {
 
 	.row-icon {
 		margin-right: 12px;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		flex-shrink: 0;
 	}
 
@@ -791,7 +790,7 @@ export default {
 		min-width: 0;
 		font-size: 13px;
 		font-weight: 500;
-		color: #334155;
+		color: var(--theme-text-secondary, #334155);
 	}
 
 	.row-control {
@@ -821,7 +820,7 @@ export default {
 		padding: 4px 6px;
 		font-size: 11px;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		border-radius: 6px;
 		cursor: pointer;
 		display: flex;
@@ -831,8 +830,7 @@ export default {
 		transition: all 0.15s ease;
 
 		&.active {
-			background: #ffffff;
-			color: #2563eb;
+			background: var(--theme-card-bg, #ffffff); color: var(--color-primary, #2563eb);
 			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 			font-weight: 600;
 		}
@@ -847,7 +845,7 @@ export default {
 
 	.chips-label {
 		font-size: 10px;
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 		margin-right: 2px;
 	}
 
@@ -857,7 +855,7 @@ export default {
 		border-radius: 4px;
 		padding: 1px 6px;
 		font-size: 10px;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 		cursor: pointer;
 		transition: all 0.12s ease;
 

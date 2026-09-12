@@ -79,7 +79,7 @@
 // on the page's gray background - rows inside are separated by a divider,
 // not by gaps, so a group reads as one unit (ZimaOS-style grouping).
 .setting-card {
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: 14px;
 	border: 1px solid rgba(0, 0, 0, 0.07);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -306,9 +306,7 @@
 	padding: 0.18rem 0.6rem;
 	border-radius: 999px;
 	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	font-size: 0.725rem;
-	color: #475569;
+	background: var(--theme-pill-bg, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0); font-size: 0.725rem; color: var(--theme-pill-color, #475569);
 	white-space: nowrap;
 
 	&.is-good,
@@ -459,7 +457,7 @@
 // reads as a mess of separate buttons rather than one cohesive switch).
 .segmented-control {
 	display: inline-flex;
-	background: #f1f5f9;
+	background: var(--theme-card-subtle, #f1f5f9);
 	border-radius: 9px;
 	padding: 0.2rem;
 	margin-bottom: 1.25rem;
@@ -485,7 +483,7 @@
 	}
 
 	&.active {
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff); color: var(--theme-text-primary, #1e293b);
 		color: #1e293b;
 		font-weight: 500;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -512,7 +510,7 @@
 	min-width: 2.6rem;
 	padding: 0.15rem 0.5rem;
 	border-radius: 999px;
-	background: #f1f5f9;
+	background: var(--theme-card-subtle, #f1f5f9); color: var(--theme-text-primary, #1e293b);
 	color: #1e293b;
 	font-size: 0.75rem;
 	font-weight: 500;

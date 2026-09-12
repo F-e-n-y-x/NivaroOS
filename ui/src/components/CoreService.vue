@@ -718,7 +718,7 @@ export default {
 	}
 
 	::v-deep .swiper-pagination-bullet-active {
-		background: #FFFFFF;
+		background: var(--theme-card-bg, #FFFFFF);
 	}
 }
 </style>

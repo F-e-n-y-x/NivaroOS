@@ -169,7 +169,7 @@ export default {
 .vm-section-title {
 	font-size: 1.15rem;
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	margin: 0;
 	letter-spacing: -0.01em;
 }
@@ -199,7 +199,7 @@ export default {
 	display: flex;
 	justify-content: center;
 	padding: 3rem 0;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
@@ -218,7 +218,7 @@ export default {
 	padding: 0.75rem 1rem;
 	border: 1px solid rgba(0, 0, 0, 0.07);
 	border-radius: 10px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
@@ -235,11 +235,11 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #f1f5f9;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-muted, #64748b);
 
 	&.is-ssd {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		color: #2563eb;
 	}
 }
@@ -252,12 +252,12 @@ export default {
 }
 .iso-name-target {
 	font-weight: 400;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	font-size: 0.75rem;
 }
 .iso-name {
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	font-size: 0.875rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -265,13 +265,13 @@ export default {
 }
 .iso-meta {
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 .iso-remove {
 	flex-shrink: 0;
 	border: none;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
@@ -283,7 +283,7 @@ export default {
 
 	&:hover {
 		color: #dc2626;
-		background: #fee2e2;
+		background: rgba(239, 68, 68, 0.1);
 	}
 }
 .vm-empty {
@@ -294,18 +294,18 @@ export default {
 	gap: 0.5rem;
 	padding: 3.5rem 1rem;
 	text-align: center;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
 		height: 2.5rem;
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 
 	.vm-empty-title {
 		font-size: 0.95rem;
 		font-weight: 600;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 		margin: 0.25rem 0 0;
 	}
 }

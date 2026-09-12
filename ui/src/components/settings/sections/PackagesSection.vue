@@ -787,7 +787,7 @@ export default {
 	display: block;
 	font-size: 0.775rem;
 	font-weight: 500;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	margin-bottom: 0.35rem;
 }
 
@@ -798,9 +798,9 @@ export default {
 }
 
 .comp-toggle-chip {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #64748b;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	background: var(--theme-card-subtle, #f8fafc);
+	color: var(--theme-text-muted, #64748b);
 	padding: 0.25rem 0.65rem;
 	border-radius: 999px;
 	font-size: 0.75rem;
@@ -812,9 +812,9 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-		border-color: #cbd5e1;
+		background: var(--theme-card-subtle, #f1f5f9);
+		color: var(--theme-text-primary, #1e293b);
+		border-color: var(--theme-card-border, #cbd5e1);
 	}
 
 	&.selected {
@@ -826,8 +826,8 @@ export default {
 }
 
 .live-preview-box {
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 8px;
 	padding: 0.65rem 0.85rem;
 }
@@ -837,7 +837,7 @@ export default {
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-bottom: 0.3rem;
 	display: flex;
 	align-items: center;
@@ -847,9 +847,9 @@ export default {
 	display: block;
 	font-family: $family-monospace;
 	font-size: 0.75rem;
-	color: #1e293b;
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	color: var(--theme-text-primary, #1e293b);
+	background: var(--theme-card-bg, #ffffff);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 6px;
 	padding: 0.4rem 0.6rem;
 	white-space: pre-wrap;
@@ -874,21 +874,21 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.65rem;
-	background: #f8fafc;
+	background: var(--theme-card-subtle, #f8fafc);
 	border-radius: 12px;
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	padding: 0.65rem 1rem;
 	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 
 	&:focus-within {
 		border-color: #2563eb;
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 	}
 }
 
 .search-icon {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	flex-shrink: 0;
 }
 
@@ -901,17 +901,17 @@ export default {
 	font-family: inherit;
 	font-size: 0.875rem;
 	font-weight: 400;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 
 	&::placeholder {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 	}
 }
 
 .search-clear {
 	border: none;
 	background: rgba(0, 0, 0, 0.05);
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	border-radius: 50%;
 	width: 1.35rem;
 	height: 1.35rem;
@@ -974,16 +974,16 @@ export default {
 .pkg-name {
 	font-size: 0.875rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	font-family: $family-monospace;
 }
 
 .pkg-version {
 	font-size: 0.75rem;
 	font-weight: 400;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	font-family: $family-monospace;
-	background: #f1f5f9;
+	background: var(--theme-card-subtle, #f1f5f9);
 	padding: 0.15rem 0.45rem;
 	border-radius: 4px;
 }
@@ -992,7 +992,7 @@ export default {
 .pkg-section,
 .pkg-arch {
 	font-size: 0.725rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	background: rgba(0, 0, 0, 0.03);
 	padding: 0.1rem 0.4rem;
 	border-radius: 4px;
@@ -1012,7 +1012,7 @@ export default {
 .pkg-desc {
 	font-size: 0.775rem;
 	font-weight: 400;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1.35;
 }
 
@@ -1029,7 +1029,7 @@ export default {
 	font-family: $family-monospace;
 
 	.old-ver {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 		text-decoration: line-through;
 	}
 
@@ -1079,8 +1079,8 @@ export default {
 	font-weight: 500;
 	padding: 0.1rem 0.4rem;
 	border-radius: 4px;
-	background: #f1f5f9;
-	color: #1e293b;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-primary, #1e293b);
 	font-size: 0.725rem;
 
 	&.deb-src {
@@ -1096,11 +1096,11 @@ export default {
 
 .source-suite {
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .source-file {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	font-size: 0.725rem;
 	margin-left: auto;
 }
@@ -1114,9 +1114,9 @@ export default {
 .comp-chip {
 	padding: 0.1rem 0.45rem;
 	border-radius: 4px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	color: var(--theme-text-muted, #64748b);
 	font-size: 0.7rem;
 	font-family: $family-monospace;
 }

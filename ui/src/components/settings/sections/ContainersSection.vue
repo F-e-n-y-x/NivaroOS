@@ -614,7 +614,7 @@ export default {
 		font-size: 17px;
 		font-weight: 500;
 		line-height: 1.2;
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	.stat-lbl {
@@ -626,7 +626,7 @@ export default {
 .container-name {
 	font-size: 0.85rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .font-medium {
@@ -660,17 +660,18 @@ export default {
 
 	.container-search-input {
 		padding: 4px 24px 4px 26px;
-		background: rgba(0, 0, 0, 0.04);
-		border: 1px solid rgba(0, 0, 0, 0.08);
+		background: var(--theme-input-bg, rgba(0, 0, 0, 0.04));
+		border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 		border-radius: 6px;
 		font-size: 12px;
 		width: 100%;
 		max-width: 190px;
 		outline: none;
+		color: var(--theme-text-primary, #1e293b);
 
 		&:focus {
 			border-color: var(--color-primary);
-			background: #fff;
+			background: var(--theme-card-bg, #fff);
 		}
 	}
 
@@ -690,8 +691,8 @@ export default {
 	gap: 4px;
 
 	.filter-pill {
-		background: rgba(0, 0, 0, 0.04);
-		border: 1px solid rgba(0, 0, 0, 0.06);
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.04));
+		border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 		color: var(--color-text-muted);
 		font-size: 11px;
 		font-weight: 500;
@@ -703,8 +704,8 @@ export default {
 		transition: all 0.15s ease;
 
 		&:hover {
-			background: rgba(0, 0, 0, 0.08);
-			color: #1e293b;
+			background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
+			color: var(--theme-text-primary, #1e293b);
 		}
 
 		&.active {
@@ -727,6 +728,7 @@ export default {
 		}
 	}
 }
+
 
 .container-item-row {
 	padding: 12px 16px;

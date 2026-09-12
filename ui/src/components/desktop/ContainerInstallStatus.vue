@@ -271,7 +271,7 @@ export default {
 	height: 36px;
 	border-radius: 0.5rem;
 	object-fit: cover;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff);
 	padding: 2px;
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
@@ -371,7 +371,7 @@ export default {
 
 .task-status-text {
 	font-size: 0.71875rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -380,7 +380,7 @@ export default {
 .task-dismiss-btn {
 	background: transparent;
 	border: none;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	font-size: 16px;
 	cursor: pointer;
 	padding: 0.2rem;

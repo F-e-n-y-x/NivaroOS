@@ -413,7 +413,7 @@ export default {
 .datetime-preview {
 	font-size: 0.85rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .custom-format-input {
@@ -422,7 +422,7 @@ export default {
 
 .icon-button {
 	border: none;
-	background: rgba(0, 0, 0, 0.05);
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
 	width: 1.6rem;
 	height: 1.6rem;
 	border-radius: 50%;
@@ -430,12 +430,12 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.09);
-		color: #1e293b;
+		background: var(--theme-card-border, rgba(0, 0, 0, 0.09));
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	&.is-confirm {
@@ -450,8 +450,8 @@ export default {
 
 .format-guide-box {
 	padding: 0.75rem 1.25rem 1rem;
-	background: #f8fafc;
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
+	background: var(--theme-card-subtle, #f8fafc);
+	border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 }
 
 .format-guide-chips {
@@ -463,9 +463,9 @@ export default {
 .format-chip {
 	padding: 0.2rem 0.55rem;
 	border-radius: 6px;
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
-	color: #475569;
+	background: var(--theme-card-bg, #ffffff);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	color: var(--theme-text-secondary, #475569);
 	font-size: 0.725rem;
 	cursor: pointer;
 	transition: all 0.12s ease;
@@ -480,7 +480,8 @@ export default {
 	&:hover {
 		border-color: #2563eb;
 		background: rgba(37, 99, 235, 0.05);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 }
 </style>
+

@@ -258,13 +258,13 @@ export default {
 }
 .btn-secondary {
 	background: rgba(0, 0, 0, 0.06);
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);
 	}
 }
 .btn-primary {
-	background: #3273dc;
+	background: var(--color-primary, #3273dc);
 	color: #fff;
 	&:hover {
 		background: #2366d1;

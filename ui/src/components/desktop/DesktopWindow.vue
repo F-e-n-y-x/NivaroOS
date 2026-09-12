@@ -5,7 +5,7 @@
 	class="desktop-window"
 	:class="{
 		'window-dark': isDarkWindow,
-		'window-opaque': ['FilesApp', 'FolderWindow', 'SettingsApp', 'AppStoreApp', 'ScheduledTaskWindow'].includes(win.component),
+		'window-opaque': isOpaqueWindow,
 		'window-minimized': win.minimized,
 		'window-console': isConsoleWindow,
 		'window-no-scroll': isNoScrollWindow,
@@ -86,6 +86,9 @@ export default {
 		// white window titlebar sitting directly above that read as a
 		// visibly mismatched seam, so these windows get the same dark
 		// titlebar treatment TerminalPanel already uses.
+		isOpaqueWindow() {
+			return !['TerminalPanel', 'ContainerConsolePanel', 'VmConsolePanel'].includes(this.win.component)
+		},
 		isDarkWindow() {
 			return DARK_WINDOW_COMPONENTS.includes(this.win.component)
 		},
@@ -284,11 +287,11 @@ export default {
 	position: fixed;
 	display: flex;
 	flex-direction: column;
-	background: rgba(255, 255, 255, var(--ui-backdrop-alpha, 1));
+	background: var(--theme-bg-window-opaque, #ffffff);
 	backdrop-filter: $backDropBlur;
-	border: 1px solid rgba(0, 0, 0, 0.08);
+	border: 1px solid var(--theme-window-border, rgba(0, 0, 0, 0.08));
 	border-radius: $backDropBorderRadius;
-	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+	box-shadow: var(--theme-window-shadow, 0 12px 40px rgba(0, 0, 0, 0.25));
 	overflow: hidden;
 
 	// Minimized windows stay mounted (see WindowManager) so their state
@@ -303,7 +306,7 @@ export default {
 	// listing (icons, thumbnails, text) reads better against a flat
 	// background than through the global blur/alpha settings.
 	&.window-opaque {
-		background: #ffffff !important;
+		background: var(--theme-bg-window-opaque, #ffffff) !important;
 		backdrop-filter: none !important;
 		-webkit-backdrop-filter: none !important;
 	}
@@ -313,7 +316,7 @@ export default {
 	// window chrome around it instead of leaving a mismatched light bar
 	// on top of a black body.
 	&.window-dark {
-		background: rgba(30, 30, 30, var(--ui-backdrop-alpha, 1));
+		background: #18181b !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
 		border-color: rgba(255, 255, 255, 0.08);
 
 		.window-titlebar {
@@ -341,8 +344,8 @@ export default {
 	height: 2.5rem;
 	padding: 0 0.75rem;
 	cursor: grab;
-	background: #fff;
-	border-bottom: 1px solid rgb(228 233 237);
+	background: var(--theme-titlebar-bg, #fff);
+	border-bottom: 1px solid var(--theme-titlebar-border, rgb(228 233 237));
 	user-select: none;
 	// Without this, a touch-drag on the titlebar competes with the
 	// browser's own pan/scroll gesture instead of just moving the window.
@@ -352,7 +355,7 @@ export default {
 .window-title {
 	flex: 0 1 auto;
 	min-width: 0;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	font-size: 0.85rem;
 	font-weight: 500;
 }

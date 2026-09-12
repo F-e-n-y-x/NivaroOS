@@ -108,12 +108,12 @@ export default {
 	padding: 1.5rem;
 	border: 1px solid var(--color-border-strong);
 	border-radius: var(--radius-card);
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 }
 .section-title {
 	font-size: 1.1rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	margin: 0 0 0.75rem;
 }
 

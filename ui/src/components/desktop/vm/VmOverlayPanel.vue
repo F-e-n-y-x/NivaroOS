@@ -67,7 +67,7 @@ export default {
 
 .vm-overlay-card {
 	position: relative;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 12px;
 	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 	max-height: calc(100% - 1.5rem);
@@ -96,7 +96,7 @@ export default {
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.045);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		box-shadow: none;
 		transition: background 0.15s ease, color 0.15s ease;
 
@@ -132,7 +132,7 @@ export default {
 	padding: 0.75rem 1rem;
 	border-bottom: 1px solid rgb(228 233 237);
 	font-weight: 600;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 }
 
 .vm-overlay-close {

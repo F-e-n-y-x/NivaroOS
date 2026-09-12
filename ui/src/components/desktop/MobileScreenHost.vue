@@ -142,7 +142,7 @@ export default {
 	inset: 0;
 	display: flex;
 	flex-direction: column;
-	background: #ffffff;
+	background: var(--theme-bg-window, #ffffff);
 
 	&.is-dark {
 		background: #1e1e1e;
@@ -168,8 +168,8 @@ export default {
 	align-items: center;
 	height: 2.75rem;
 	padding: 0 0.5rem;
-	background: #fff;
-	border-bottom: 1px solid rgb(228 233 237);
+	background: var(--theme-bg-window, #fff);
+	border-bottom: 1px solid var(--theme-card-border, rgb(228 233 237));
 	// This is the mobile equivalent of a titlebar's drag handle - it isn't
 	// draggable (no window to drag), but a stray touch-scroll gesture
 	// starting here shouldn't fight with tapping the back button.
@@ -185,7 +185,7 @@ export default {
 	height: 2.25rem;
 	border: none;
 	background: transparent;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	cursor: pointer;
 	border-radius: 50%;
 
@@ -203,7 +203,7 @@ export default {
 .mobile-screen-title {
 	flex: 1 1 auto;
 	min-width: 0;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	font-size: 0.95rem;
 	font-weight: 500;
 }

@@ -143,9 +143,9 @@ export default {
 	align-items: center;
 	gap: 0.85rem;
 	padding: 0.65rem 0.85rem;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
 	border-radius: 10px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	color: rgba(0, 0, 0, 0.6);
 	cursor: pointer;
 
@@ -170,7 +170,7 @@ export default {
 
 	&.active {
 		background: rgba(50, 115, 220, 0.1);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 	}
 }
 .vm-hw-main {

@@ -215,7 +215,7 @@ export default {
 
 .icon-button {
 	border: none;
-	background: rgba(0, 0, 0, 0.05);
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
 	width: 1.6rem;
 	height: 1.6rem;
 	border-radius: 50%;
@@ -223,12 +223,12 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-left: 0.35rem;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.09);
-		color: #1e293b;
+		background: var(--theme-card-border, rgba(0, 0, 0, 0.09));
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	&.is-confirm {
@@ -253,7 +253,7 @@ export default {
 .log-header-row {
 	.row-label {
 		font-weight: 500;
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 }
 
@@ -261,14 +261,15 @@ export default {
 	margin: 0 1.25rem 1.25rem;
 	max-height: 14rem;
 	overflow: auto;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 8px;
 	padding: 0.75rem;
 	font-family: $family-monospace;
 	font-size: 0.725rem;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	white-space: pre-wrap;
 	word-break: break-word;
 }
 </style>
+

@@ -310,7 +310,7 @@ export default {
 
 	&.is-offline {
 		background: rgba(148, 163, 184, 0.15);
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		.status-dot {
 			background: #94a3b8;
 		}
@@ -321,8 +321,8 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	font-size: 0.6875rem;
-	color: #64748b;
-	background: rgba(0, 0, 0, 0.04);
+	color: var(--theme-text-muted, #64748b);
+	background: var(--theme-pill-bg, rgba(0, 0, 0, 0.04));
 	padding: 1px 6px;
 	border-radius: 6px;
 }
@@ -334,9 +334,10 @@ export default {
 .companion-progress-track {
 	height: 4px;
 	border-radius: 2px;
-	background: rgba(0, 0, 0, 0.08);
+	background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	overflow: hidden;
 }
+
 
 .companion-progress-fill {
 	height: 100%;

@@ -17,8 +17,13 @@
 			<mobile-screen-host></mobile-screen-host>
 			<mobile-tab-bar></mobile-tab-bar>
 		</template>
-		<notification-center></notification-center>
-		<date-time-pill></date-time-pill>
+
+		<!-- Desktop System Tray (Notification Center & Clock Pill) -->
+		<div class="desktop-status-tray" v-if="!isMobileShell">
+			<notification-center></notification-center>
+			<date-time-pill></date-time-pill>
+		</div>
+
 		<drag-drop-menu></drag-drop-menu>
 		<file-operation-status></file-operation-status>
 		<container-install-status></container-install-status>
@@ -89,3 +94,20 @@ export default {
 	}
 }
 </script>
+
+<style lang="scss" scoped>
+.desktop-status-tray {
+	position: fixed;
+	right: 1.5rem;
+	bottom: 0.9rem;
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	z-index: 99995;
+	pointer-events: none;
+
+	> * {
+		pointer-events: auto;
+	}
+}
+</style>

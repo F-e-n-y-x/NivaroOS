@@ -287,7 +287,7 @@ export default {
 
 	&:hover:not(:disabled) {
 		background: rgba(0, 0, 0, 0.09);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	&:disabled {

@@ -207,7 +207,7 @@ export default {
 .vm-section-title {
 	font-size: 1.15rem;
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	margin: 0;
 	letter-spacing: -0.01em;
 }
@@ -236,7 +236,7 @@ export default {
 	display: flex;
 	justify-content: center;
 	padding: 3rem 0;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
@@ -255,7 +255,7 @@ export default {
 	padding: 0.75rem 1rem;
 	border: 1px solid rgba(0, 0, 0, 0.07);
 	border-radius: 10px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
@@ -272,11 +272,11 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #f1f5f9;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-muted, #64748b);
 
 	&.is-active {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		color: #2563eb;
 	}
 }
@@ -289,12 +289,12 @@ export default {
 }
 .network-name {
 	font-weight: 600;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	font-size: 0.875rem;
 }
 .network-meta {
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 .network-status {
 	flex-shrink: 0;
@@ -305,11 +305,11 @@ export default {
 	font-weight: 500;
 	padding: 0.15rem 0.5rem;
 	border-radius: 9999px;
-	background: #f1f5f9;
-	color: #64748b;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-muted, #64748b);
 
 	&.is-active {
-		background: #ecfdf5;
+		background: rgba(16, 185, 129, 0.1);
 		color: #059669;
 
 		.status-dot {
@@ -321,13 +321,13 @@ export default {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: #94a3b8;
+	background: var(--theme-text-muted, #94a3b8);
 }
 .network-remove {
 	flex-shrink: 0;
 	border: none;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
@@ -348,12 +348,12 @@ export default {
 	align-items: center;
 	gap: 0.45rem;
 	font-size: 0.85rem;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	cursor: pointer;
 }
 .static-ip-hint {
 	font-size: 0.78rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: -0.25rem;
 }
 .vm-empty {
@@ -364,18 +364,18 @@ export default {
 	gap: 0.5rem;
 	padding: 3.5rem 1rem;
 	text-align: center;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	::v-deep .icon {
 		width: 2.5rem;
 		height: 2.5rem;
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 
 	.vm-empty-title {
 		font-size: 0.95rem;
 		font-weight: 600;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 		margin: 0.25rem 0 0;
 	}
 }

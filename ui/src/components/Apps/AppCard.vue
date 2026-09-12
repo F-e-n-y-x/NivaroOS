@@ -1040,11 +1040,11 @@ export default {
 					color: hsla(208, 20%, 20%, 1);
 
 					&.running {
-						color: #779e2a !important;
+						color: #84cc16 !important;
 					}
 
 					&.exited {
-						color: #ff1616 !important;
+						color: #f87171 !important;
 					}
 				}
 

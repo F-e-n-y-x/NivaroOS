@@ -35,8 +35,7 @@ export default {
 	flex-shrink: 0;
 	width: 13.5rem;
 	padding: 1.25rem 0.75rem;
-	background: #ffffff;
-	border-right: 1px solid rgba(0, 0, 0, 0.06);
+	background: var(--theme-card-subtle, #ffffff); border-right: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	display: flex;
 	flex-direction: column;
 	gap: 0.35rem;
@@ -59,7 +58,7 @@ export default {
 	font-weight: 500;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 }
 
 .nav-list {
@@ -75,7 +74,7 @@ export default {
 	gap: 0.75rem;
 	border: none;
 	background: transparent;
-	color: #475569;
+	color: var(--theme-text-secondary, #475569);
 	padding: 0.6rem 0.85rem;
 	font-size: 0.85rem;
 	font-weight: 400;
@@ -86,7 +85,7 @@ export default {
 	transition: background 0.12s ease, color 0.12s ease;
 
 	.icon {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 		transition: color 0.12s ease;
 		width: 20px;
 		height: 20px;
@@ -117,17 +116,15 @@ export default {
 	}
 
 	&:hover {
-		background: #f8fafc;
-		color: #1e293b;
+		background: var(--theme-card-hover, #f8fafc); color: var(--theme-text-primary, #1e293b);
 
 		.icon {
-			color: #1e293b;
+			color: var(--theme-text-primary, #1e293b);
 		}
 	}
 
 	&.active {
-		background: #f1f5f9;
-		color: #1e293b;
+		background: var(--theme-card-bg, #f1f5f9); color: var(--theme-text-primary, #1e293b);
 		font-weight: 500;
 
 		.icon {

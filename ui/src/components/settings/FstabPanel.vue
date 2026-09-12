@@ -902,7 +902,7 @@ export default {
 
 	&:hover:not(:disabled) {
 		background: rgba(0, 0, 0, 0.1);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	&:disabled {
@@ -933,7 +933,7 @@ export default {
 }
 
 .mount-card {
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border: 1px solid rgba(0, 0, 0, 0.08);
 	border-radius: 12px;
 	padding: 0.85rem;
@@ -988,7 +988,7 @@ export default {
 
 	&.is-default {
 		background: rgba(100, 116, 139, 0.1);
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 	}
 }
 
@@ -1006,7 +1006,7 @@ export default {
 .drive-main-name {
 	font-size: 0.88rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	max-width: 11rem;
 }
 
@@ -1047,7 +1047,7 @@ export default {
 
 	&.is-unmounted {
 		background: rgba(100, 116, 139, 0.1);
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 	}
 
 	&.is-missing {
@@ -1108,7 +1108,7 @@ export default {
 		font-family: monospace;
 		font-size: 0.78rem;
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		flex: 1;
 	}
 
@@ -1118,7 +1118,7 @@ export default {
 		opacity: 0.5;
 		cursor: pointer;
 		font-size: 0.85rem;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 		padding: 0;
 		display: flex;
 		align-items: center;
@@ -1131,7 +1131,7 @@ export default {
 	gap: 0.6rem;
 	flex-wrap: wrap;
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .spec-item {
@@ -1148,7 +1148,7 @@ export default {
 	}
 
 	&.is-muted {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 	}
 }
 
@@ -1158,7 +1158,7 @@ export default {
 		background: rgba(0, 0, 0, 0.04);
 		padding: 0.1rem 0.35rem;
 		border-radius: 4px;
-		color: #64748b;
+		color: var(--theme-text-muted, #64748b);
 	}
 }
 
@@ -1181,7 +1181,7 @@ export default {
 
 .boot-toggle-label {
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .action-buttons-wrap {
@@ -1192,12 +1192,12 @@ export default {
 
 .action-btn {
 	border: 1px solid rgba(0, 0, 0, 0.08);
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 6px;
 	padding: 0.25rem 0.5rem;
 	font-size: 0.72rem;
 	font-weight: 500;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	display: inline-flex;
 	align-items: center;
 	gap: 0.25rem;
@@ -1210,7 +1210,7 @@ export default {
 
 	&:hover:not(:disabled) {
 		background: rgba(0, 0, 0, 0.04);
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 
 	&:disabled {
@@ -1251,7 +1251,7 @@ export default {
 
 /* Empty State Card */
 .fstab-empty-card {
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border: 1px dashed rgba(0, 0, 0, 0.12);
 	border-radius: 12px;
 	padding: 2.2rem 1.5rem;
@@ -1277,13 +1277,13 @@ export default {
 .empty-title {
 	font-size: 0.95rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	margin-bottom: 0.3rem;
 }
 
 .empty-desc {
 	font-size: 0.78rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	max-width: 26rem;
 	margin-bottom: 0.85rem;
 	line-height: 1.4;
@@ -1307,12 +1307,12 @@ export default {
 	padding: 0.35rem 0;
 
 	&:hover {
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 }
 
 .system-card {
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border: 1px solid rgba(0, 0, 0, 0.06);
 	border-radius: 10px;
 	padding: 0.85rem;
@@ -1320,7 +1320,7 @@ export default {
 
 .system-desc {
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-bottom: 0.65rem;
 }
 
@@ -1342,7 +1342,7 @@ export default {
 
 .system-row-icon {
 	font-size: 1.1rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	flex-shrink: 0;
 }
 
@@ -1355,21 +1355,21 @@ export default {
 	display: flex;
 	align-items: center;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .protected-pill {
 	font-size: 0.65rem;
 	font-weight: 600;
 	background: rgba(100, 116, 139, 0.12);
-	color: #475569;
+	color: var(--theme-text-secondary, #475569);
 	padding: 0.1rem 0.4rem;
 	border-radius: 4px;
 }
 
 .system-meta {
 	font-size: 0.7rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: 0.1rem;
 }
 
@@ -1394,7 +1394,7 @@ export default {
 }
 
 .in-window-modal-card {
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 16px;
 	width: 100%;
 	max-width: 580px;
@@ -1416,13 +1416,13 @@ export default {
 .modal-card-title {
 	font-size: 1.05rem;
 	font-weight: 700;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	margin: 0;
 }
 
 .modal-subtitle {
 	font-size: 0.75rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: 0.15rem;
 }
 
@@ -1436,11 +1436,11 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 }
 
@@ -1460,7 +1460,7 @@ export default {
 	gap: 0.45rem;
 	font-size: 0.82rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	margin-bottom: 0.45rem;
 }
 
@@ -1479,7 +1479,7 @@ export default {
 
 .wizard-subhint {
 	font-size: 0.73rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-bottom: 0.65rem;
 }
 
@@ -1495,7 +1495,7 @@ export default {
 	align-items: center;
 	gap: 0.6rem;
 	border: 1px solid rgba(0, 0, 0, 0.08);
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 10px;
 	padding: 0.55rem 0.75rem;
 	cursor: pointer;
@@ -1536,7 +1536,7 @@ export default {
 
 	&.is-default {
 		background: rgba(100, 116, 139, 0.1);
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 	}
 }
 
@@ -1548,12 +1548,12 @@ export default {
 .candidate-name {
 	font-size: 0.8rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .candidate-meta {
 	font-size: 0.68rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .fs-text {
@@ -1609,7 +1609,7 @@ export default {
 
 .preset-card {
 	border: 1px solid rgba(0, 0, 0, 0.08);
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 10px;
 	padding: 0.6rem 0.75rem;
 	display: flex;
@@ -1648,12 +1648,12 @@ export default {
 .preset-title {
 	font-size: 0.8rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .preset-desc {
 	font-size: 0.68rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1.25;
 	margin-top: 0.15rem;
 }
@@ -1682,7 +1682,7 @@ export default {
 
 .quick-title {
 	font-size: 0.7rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .path-pill {
@@ -1693,7 +1693,7 @@ export default {
 	font-size: 0.68rem;
 	font-family: monospace;
 	cursor: pointer;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 
 	&:hover {
 		border-color: var(--color-primary);
@@ -1728,12 +1728,12 @@ export default {
 .title-text {
 	font-size: 0.78rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .sub-text {
 	font-size: 0.68rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .advanced-box {
@@ -1761,7 +1761,7 @@ export default {
 	gap: 0.5rem;
 	padding: 0.75rem 1.25rem;
 	border-top: 1px solid rgba(0, 0, 0, 0.06);
-	background: #f8fafc;
+	background: var(--theme-card-subtle, #f8fafc);
 }
 
 .error-note {

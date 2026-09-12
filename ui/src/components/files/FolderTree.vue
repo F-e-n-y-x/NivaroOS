@@ -405,7 +405,7 @@ export default {
 	}
 	&.active {
 		background: rgba(50, 115, 220, 0.14);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 		font-weight: 600;
 	}
 	&.drop-target {

@@ -76,11 +76,11 @@ export default {
 	}
 
 	&:hover {
-		background-color: #e0e0e0;
+		background-color: var(--theme-card-border, #e0e0e0);
 	}
 
 	&.active {
-		background-color: #b6e0ff;
+		background-color: rgba(59, 130, 246, 0.15);
 	}
 }
 </style>

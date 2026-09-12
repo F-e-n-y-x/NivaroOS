@@ -374,7 +374,7 @@ export default {
 	align-items: center;
 	gap: 0.4rem;
 	border: 1px solid rgba(0, 0, 0, 0.08);
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	border-radius: 8px;
 	padding: 0.45rem 0.75rem;
 	font-size: 0.8rem;

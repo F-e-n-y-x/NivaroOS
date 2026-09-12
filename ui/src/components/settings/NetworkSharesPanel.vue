@@ -252,7 +252,7 @@ export default {
 .access-option-title {
 	font-size: 0.825rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .access-option-desc {
@@ -265,8 +265,9 @@ export default {
 	align-items: center;
 	gap: 0.6rem;
 	font-size: 0.8125rem;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	cursor: pointer;
 	margin-bottom: 0.25rem;
 }
 </style>
+

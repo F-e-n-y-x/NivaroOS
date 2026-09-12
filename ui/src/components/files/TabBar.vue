@@ -123,8 +123,7 @@ export default {
 		background: rgba(0, 0, 0, 0.04);
 	}
 	&.active {
-		background: #fff;
-		color: #2c3e50;
+		background: var(--theme-card-bg, #fff); color: var(--theme-text-primary, #2c3e50);
 		font-weight: 600;
 	}
 	&.drop-target {

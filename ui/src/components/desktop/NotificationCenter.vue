@@ -164,14 +164,24 @@ export default {
 	},
 	mounted() {
 		document.addEventListener('click', this.onOutsideClick)
+		this.onCloseTrayPopovers = (sender) => {
+			if (sender !== 'notification') {
+				this.menuOpen = false
+			}
+		}
+		this.$EventBus.$on('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
 	beforeDestroy() {
 		if (this.unsubscribe) this.unsubscribe()
 		document.removeEventListener('click', this.onOutsideClick)
+		this.$EventBus.$off('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
 	methods: {
 		toggleMenu() {
 			this.menuOpen = !this.menuOpen
+			if (this.menuOpen) {
+				this.$EventBus.$emit('desktop:close-tray-popovers', 'notification')
+			}
 		},
 		onOutsideClick() {
 			this.menuOpen = false
@@ -243,10 +253,9 @@ export default {
 
 <style lang="scss" scoped>
 .notification-center-wrap {
-	position: fixed;
-	right: 14.5rem;
-	bottom: 0.9rem;
-	z-index: 500;
+	position: static;
+	display: flex;
+	align-items: center;
 }
 
 .notification-pill {
@@ -305,25 +314,27 @@ export default {
 	right: 0;
 	bottom: calc(100% + 0.75rem);
 	width: 23.5rem;
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	max-width: calc(100vw - 3rem);
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, #e2e8f0); color: var(--theme-text-primary, #1e293b);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 18px;
 	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.05);
 	user-select: none;
 	display: flex;
 	flex-direction: column;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	overflow: hidden;
+	z-index: 1000;
 }
 
 .notif-header {
 	padding: 12px 16px;
-	border-bottom: 1px solid #f1f5f9;
+	border-bottom: 1px solid var(--theme-card-border, #f1f5f9);
 }
 
 .notif-title {
 	font-size: 0.9rem;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 }
 
 .unread-pill {
@@ -338,7 +349,7 @@ export default {
 .hdr-action-btn {
 	background: transparent;
 	border: none;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	cursor: pointer;
 	padding: 4px;
 	border-radius: 6px;
@@ -348,8 +359,7 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #0f172a;
+		background: var(--theme-card-hover, #f1f5f9); color: var(--theme-text-primary, #0f172a);
 	}
 }
 
@@ -357,8 +367,8 @@ export default {
 	display: flex;
 	gap: 4px;
 	padding: 8px 12px;
-	background: #f8fafc;
-	border-bottom: 1px solid #f1f5f9;
+	background: var(--theme-card-subtle, #f8fafc); border-bottom: 1px solid var(--theme-card-border, #f1f5f9);
+	border-bottom: 1px solid var(--theme-card-border, #f1f5f9);
 	overflow-x: auto;
 }
 
@@ -367,7 +377,7 @@ export default {
 	border: none;
 	font-size: 11px;
 	font-weight: 500;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	padding: 3px 8px;
 	border-radius: 6px;
 	cursor: pointer;
@@ -375,13 +385,12 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover {
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 		background: rgba(0, 0, 0, 0.04);
 	}
 
 	&.active {
-		background: #ffffff;
-		color: #2563eb;
+		background: var(--theme-card-bg, #ffffff); color: var(--color-primary, #2563eb);
 		font-weight: 600;
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 	}
@@ -398,10 +407,10 @@ export default {
 }
 
 .notif-empty {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 
 	.empty-bell {
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 }
 
@@ -415,7 +424,7 @@ export default {
 	transition: background 0.12s ease;
 
 	&:hover {
-		background: #f8fafc;
+		background: var(--theme-card-hover, #f8fafc);
 
 		.notif-del-btn {
 			opacity: 1;
@@ -426,7 +435,7 @@ export default {
 		background: rgba(239, 246, 255, 0.5);
 
 		&:hover {
-			background: #eff6ff;
+			background: rgba(59, 130, 246, 0.1);
 		}
 	}
 
@@ -445,8 +454,7 @@ export default {
 	flex-shrink: 0;
 	margin-right: 10px;
 	margin-top: 2px;
-	background: #f1f5f9;
-	color: #64748b;
+	background: var(--theme-pill-bg, #f1f5f9); color: var(--theme-pill-color, #64748b);
 
 	&.app {
 		background: rgba(14, 165, 233, 0.12);
@@ -458,7 +466,7 @@ export default {
 	}
 	&.vm {
 		background: rgba(139, 92, 246, 0.12);
-		color: #7c3aed;
+		color: #a78bfa;
 	}
 	&.schedule, &.maintenance {
 		background: rgba(245, 158, 11, 0.12);
@@ -486,7 +494,7 @@ export default {
 
 .notif-item-title {
 	font-size: 12px;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -495,20 +503,19 @@ export default {
 
 .notif-time {
 	font-size: 10px;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	flex-shrink: 0;
 }
 
 .notif-msg {
 	font-size: 11px;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1.35;
 	word-break: break-word;
 }
 
 .notif-action-btn {
-	background: #ffffff;
-	border: 1px solid #cbd5e1;
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, #cbd5e1);
 	border-radius: 6px;
 	font-size: 11px;
 	font-weight: 600;
@@ -533,7 +540,7 @@ export default {
 	opacity: 0;
 	background: transparent;
 	border: none;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	cursor: pointer;
 	padding: 2px;
 	border-radius: 4px;

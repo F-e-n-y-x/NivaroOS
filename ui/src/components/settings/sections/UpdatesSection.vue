@@ -420,37 +420,37 @@ export default {
 .update-hero-title {
 	font-size: 0.95rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	line-height: 1.25;
 }
 
 .update-hero-meta {
 	font-size: 0.8rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: 0.2rem;
 }
 
 .update-inset-box {
 	margin: 0 1.25rem 0.85rem;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 8px;
 	padding: 0.75rem 1rem;
 
 	.commit-label {
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 	}
 
 	.commit-time {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 	}
 
 	.commit-msg {
 		font-size: 0.8125rem;
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		font-family: monospace;
 		white-space: pre-wrap;
 		word-break: break-word;
@@ -477,7 +477,7 @@ export default {
 }
 
 .sub-row {
-	background: rgba(0, 0, 0, 0.015);
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.015));
 	padding: 0.75rem 1.25rem;
 }
 
@@ -492,9 +492,9 @@ export default {
 }
 
 .filter-row {
-	background: #f8fafc;
+	background: var(--theme-card-subtle, #f8fafc);
 	padding: 0.65rem 1.25rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 }
 
 .pkg-search-input {
@@ -510,17 +510,17 @@ export default {
 	padding: 0.75rem 1.25rem;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.015);
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.015));
 	}
 }
 
 .package-name-line {
 	font-size: 0.85rem;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .suite-tag {
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	font-size: 0.7rem;
 }
 
@@ -529,12 +529,12 @@ export default {
 	font-family: 'Consolas', 'Monaco', monospace;
 
 	.ver-curr {
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 	}
 
 	.ver-arrow {
 		font-size: 0.75rem;
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 
 	.ver-new {
@@ -558,5 +558,6 @@ export default {
 	word-break: break-word;
 	scrollbar-width: thin;
 	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
 }
 </style>

@@ -2,12 +2,46 @@
 	<section class="settings-section">
 		<h2 class="section-title">{{ $t('Appearance') }}</h2>
 
+		<h3 class="setting-card-title">{{ $t('Color Theme') }}</h3>
+		<div class="setting-card">
+			<div class="theme-picker-grid">
+				<div
+					v-for="opt in themeOptions"
+					:key="opt.value"
+					class="theme-card-option"
+					:class="{ 'is-selected': currentThemeMode === opt.value }"
+					@click="selectTheme(opt.value)"
+					role="button"
+					tabindex="0"
+					@keydown.enter="selectTheme(opt.value)"
+					@keydown.space.prevent="selectTheme(opt.value)"
+				>
+					<div class="theme-preview-box">
+						<img :src="themeIcons[opt.value]" :alt="opt.label" class="theme-preview-img" />
+					</div>
+
+					<div class="theme-meta">
+						<div class="theme-text">
+							<span class="theme-title">
+								<b-icon :icon="opt.icon" pack="mdi" size="is-16" class="mr-1"></b-icon>
+								{{ $t(opt.label) }}
+							</span>
+							<span class="theme-sub">{{ $t(opt.desc) }}</span>
+						</div>
+						<div class="check-icon" v-if="currentThemeMode === opt.value">
+							<b-icon icon="check-circle" pack="casa" size="is-20"></b-icon>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<h3 class="setting-card-title">{{ $t('Wallpaper') }}</h3>
 		<div class="setting-card">
 			<wallpaper-modal embedded></wallpaper-modal>
 		</div>
 
-		<h3 class="setting-card-title">{{ $t('Theme & Window Style') }}</h3>
+		<h3 class="setting-card-title">{{ $t('Window Transparency & Blur') }}</h3>
 		<div class="setting-card">
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="circle-opacity" pack="mdi" size="is-20"></b-icon>
@@ -43,7 +77,7 @@
 				<b-icon class="row-icon" icon="restore" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">
 					<div class="setting-title">{{ $t('Reset to Defaults') }}</div>
-					<div class="setting-desc">{{ $t('Restore standard transparency and blur values') }}</div>
+					<div class="setting-desc">{{ $t('Restore standard theme, transparency and blur values') }}</div>
 				</div>
 				<div class="row-control">
 					<b-button rounded size="is-small" @click="resetToDefaults">{{ $t('Reset') }}</b-button>
@@ -61,8 +95,16 @@
 <script>
 import WallpaperModal from '@/components/wallpaper/WallpaperModal.vue'
 import WidgetVisibilityPanel from '@/components/settings/WidgetVisibilityPanel.vue'
+import { THEME_MODES, getStoredThemeMode, applyTheme } from '@/utils/theme'
+import lightIcon from '@/assets/img/theme/light.svg'
+import darkIcon from '@/assets/img/theme/dark.svg'
+import autoIcon from '@/assets/img/theme/auto.svg'
 
 export const ROWS = [
+	{ label: 'Color Theme' },
+	{ label: 'Dark mode' },
+	{ label: 'Light mode' },
+	{ label: 'Auto theme' },
 	{ label: 'Wallpaper' },
 	{ label: 'Window transparency' },
 	{ label: 'Window blur' },
@@ -74,15 +116,60 @@ export default {
 	components: { WallpaperModal, WidgetVisibilityPanel },
 	data() {
 		return {
+			currentThemeMode: getStoredThemeMode(),
+			themeOptions: [
+				{
+					value: THEME_MODES.AUTO,
+					label: 'Auto (System)',
+					desc: 'Follow system appearance',
+					icon: 'theme-light-dark'
+				},
+				{
+					value: THEME_MODES.LIGHT,
+					label: 'Light Mode',
+					desc: 'Clean bright interface',
+					icon: 'white-balance-sunny'
+				},
+				{
+					value: THEME_MODES.DARK,
+					label: 'Dark Mode',
+					desc: 'Eye-friendly dark interface',
+					icon: 'weather-night'
+				}
+			],
 			backdropAlphaPct: 40,
-			backdropBlurPx: 5
+			backdropBlurPx: 5,
+			themeIcons: {
+				[THEME_MODES.LIGHT]: lightIcon,
+				[THEME_MODES.DARK]: darkIcon,
+				[THEME_MODES.AUTO]: autoIcon
+			}
 		}
 	},
 	created() {
 		this.restoreBackdropSettings()
 	},
+	mounted() {
+		this.onThemeChangeHandler = (e) => {
+			if (e && e.detail && e.detail.mode) {
+				this.currentThemeMode = e.detail.mode
+			}
+		}
+		window.addEventListener('nivaroos:theme-change', this.onThemeChangeHandler)
+	},
+	beforeDestroy() {
+		if (this.onThemeChangeHandler) {
+			window.removeEventListener('nivaroos:theme-change', this.onThemeChangeHandler)
+		}
+	},
 	methods: {
+		selectTheme(mode) {
+			this.currentThemeMode = mode
+			applyTheme(mode)
+			this.saveAppearanceSettings()
+		},
 		restoreBackdropSettings() {
+			this.currentThemeMode = getStoredThemeMode()
 			const alpha = localStorage.getItem('uiBackdropAlpha')
 			const blur = localStorage.getItem('uiBackdropBlur')
 			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 40
@@ -90,7 +177,11 @@ export default {
 
 			this.$api.users.getCustomStorage('appearance').then(res => {
 				if (res.data.success === 200 && res.data.data) {
-					const { alpha, blur } = res.data.data
+					const { alpha, blur, theme } = res.data.data
+					if (theme && Object.values(THEME_MODES).includes(theme)) {
+						this.currentThemeMode = theme
+						applyTheme(theme)
+					}
 					if (alpha !== undefined && alpha !== null) {
 						this.backdropAlphaPct = Math.round(parseFloat(alpha) * 100)
 						document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
@@ -109,7 +200,8 @@ export default {
 			this._saveTimer = setTimeout(() => {
 				const alpha = this.backdropAlphaPct / 100
 				const blur = this.backdropBlurPx
-				this.$api.users.setCustomStorage('appearance', { alpha, blur }).catch(() => {})
+				const theme = this.currentThemeMode
+				this.$api.users.setCustomStorage('appearance', { alpha, blur, theme }).catch(() => {})
 			}, 300)
 		},
 		applyBackdropAlpha() {
@@ -126,6 +218,8 @@ export default {
 		resetToDefaults() {
 			this.backdropAlphaPct = 40
 			this.backdropBlurPx = 5
+			this.currentThemeMode = THEME_MODES.AUTO
+			applyTheme(THEME_MODES.AUTO)
 			this.applyBackdropAlpha()
 			this.applyBackdropBlur()
 			this.$buefy.toast.open({ message: this.$t('Appearance reset to defaults'), type: 'is-success' })
@@ -138,4 +232,95 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.theme-picker-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 1rem;
+	padding: 1.25rem;
+
+	@media (max-width: 680px) {
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+		padding: 1rem;
+	}
+}
+
+.theme-card-option {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	background: var(--theme-card-bg, #f8fafc); border-color: var(--theme-card-border, #e2e8f0);
+	border: 2px solid var(--theme-card-border, #e2e8f0);
+	border-radius: 12px;
+	padding: 0.85rem;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	outline: none;
+	user-select: none;
+
+	&:hover {
+		border-color: var(--theme-card-border, #cbd5e1);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	}
+
+	&.is-selected {
+		border-color: #2563eb;
+		background: rgba(37, 99, 235, 0.08);
+		box-shadow: 0 0 0 1px #2563eb;
+	}
+}
+
+.theme-preview-box {
+	width: 100%;
+	border-radius: 8px;
+	overflow: hidden;
+	margin-bottom: 0.75rem;
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	line-height: 0;
+
+	.theme-preview-img {
+		width: 100%;
+		height: auto;
+		display: block;
+		border-radius: 7px;
+	}
+}
+
+.theme-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+
+	.theme-text {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+
+		.theme-title {
+			display: flex;
+			align-items: center;
+			font-size: 0.85rem;
+			font-weight: 600;
+			color: var(--theme-text-primary, #1e293b);
+			white-space: nowrap;
+		}
+
+		.theme-sub {
+			font-size: 0.725rem;
+			color: var(--theme-text-secondary, #64748b);
+			margin-top: 2px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.check-icon {
+		color: #2563eb;
+		flex-shrink: 0;
+		margin-left: 6px;
+	}
+}
 </style>
+

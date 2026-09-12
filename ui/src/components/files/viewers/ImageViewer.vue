@@ -171,7 +171,7 @@ export default {
 	// dark viewer background, instead of just disappearing into it.
 	&.svg-backdrop {
 		background-image: url("data:image/svg+xml;utf8,%3C?xml version='1.0' encoding='UTF-8'?%3E%3Csvg xmlns='http://www.w3.org/2000/svg' width='50' height='50' viewBox='0 0 16 16'%3E%3Cpath fill='%23ccc' d='M8 6.5A1.5 1.5 0 1 0 8 9.5A1.5 1.5 0 1 0 8 6.5z' fill-opacity='0.1' /%3E%3C/svg%3E");
-		background-color: #fff;
+		background-color: var(--theme-bg-window, #fff);
 	}
 }
 .svg-image {

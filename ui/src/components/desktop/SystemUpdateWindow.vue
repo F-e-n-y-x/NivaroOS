@@ -290,12 +290,12 @@ export default {
 
 	&.is-running {
 		background: rgba(51, 136, 255, 0.15);
-		color: #3388ff;
+		color: var(--color-primary, #3388ff);
 	}
 
 	&.is-success {
 		background: rgba(40, 204, 135, 0.15);
-		color: #28cc87;
+		color: #34d399;
 	}
 
 	&.is-failed {
@@ -333,7 +333,7 @@ export default {
 .progress-bar-animated {
 	width: 40%;
 	height: 100%;
-	background: #3388ff;
+	background: var(--color-primary, #3388ff);
 	position: absolute;
 	animation: progress-slide 1.5s infinite linear;
 }
@@ -341,7 +341,7 @@ export default {
 .progress-bar-done {
 	width: 100%;
 	height: 100%;
-	background: #28cc87;
+	background: #22c55e;
 }
 
 .progress-bar-failed {
@@ -370,7 +370,7 @@ export default {
 
 .terminal-top-bar {
 	padding: 0.35rem 0.85rem;
-	background: #222222;
+	background: var(--theme-card-subtle, #222222);
 	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 	flex-shrink: 0;
 }
@@ -391,7 +391,7 @@ export default {
 	height: 1.25rem;
 	padding: 0 0.5rem;
 	background: rgba(51, 136, 255, 0.2);
-	color: #3388ff;
+	color: var(--color-primary, #3388ff);
 }
 
 .terminal-action-btn {
@@ -411,7 +411,7 @@ export default {
 	}
 
 	&.active {
-		color: #3388ff;
+		color: var(--color-primary, #3388ff);
 	}
 }
 
@@ -439,10 +439,10 @@ export default {
 		color: #f6bd3b;
 	}
 	&.is-success {
-		color: #28cc87;
+		color: #34d399;
 	}
 	&.is-info {
-		color: #3388ff;
+		color: var(--color-primary, #3388ff);
 	}
 }
 
@@ -452,7 +452,7 @@ export default {
 	margin-top: 0.25rem;
 
 	.terminal-prompt {
-		color: #28cc87;
+		color: #34d399;
 		font-weight: bold;
 		margin-right: 0.4rem;
 		font-family: 'Consolas', 'Monaco', monospace;
@@ -461,7 +461,7 @@ export default {
 	.terminal-cursor {
 		width: 7px;
 		height: 14px;
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 		animation: cursor-blink 1s infinite;
 	}
 }

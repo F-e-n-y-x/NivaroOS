@@ -22,6 +22,7 @@
 import CasaWallpaper from './components/wallpaper/CasaWallpaper.vue'
 import WindowManager from './components/desktop/WindowManager.vue'
 import {mixin}       from './mixins/mixin';
+import { initTheme, applyTheme } from './utils/theme';
 
 const customIconConfig = {
 	customIconPacks: {
@@ -105,6 +106,7 @@ export default {
 	},
 
 	created() {
+		initTheme();
 		console.log(`%c
 _____             _____ _____
 |     |___ ___ ___|     |   __|
@@ -145,6 +147,9 @@ _____             _____ _____
 					if (data.appearance.blur !== undefined && data.appearance.blur !== null) {
 						document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
 						localStorage.setItem('uiBackdropBlur', data.appearance.blur)
+					}
+					if (data.appearance.theme) {
+						applyTheme(data.appearance.theme)
 					}
 				}
 			}
@@ -191,7 +196,7 @@ _____             _____ _____
 	font-size: 0.875rem;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	overflow-y: hidden;
 
 	&.is-dark-bg {

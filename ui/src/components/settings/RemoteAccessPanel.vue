@@ -268,13 +268,13 @@ export default {
 .setting-chip.is-feature {
 	border-color: rgba(31, 111, 235, 0.25);
 	background: rgba(31, 111, 235, 0.06);
-	color: #1f6feb;
+	color: var(--color-link, #1f6feb);
 }
 
 .setting-chip.is-online {
 	border-color: rgba(35, 168, 90, 0.3);
 	background: rgba(35, 168, 90, 0.08);
-	color: #1f8a4c;
+	color: var(--color-success, #1f8a4c);
 }
 
 .advanced-toggle {

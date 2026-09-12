@@ -501,7 +501,7 @@ export default {
 	flex-direction: column;
 	height: 100%;
 	padding: 1rem;
-	background: #fff;
+	background: var(--theme-bg-window, #fff); color: var(--theme-text-primary, #1e293b);
 	// Belt-and-suspenders: this window's content must never scroll
 	// horizontally regardless of what's inside it - the step header
 	// overflow above is the real fix, this just guarantees nothing else
@@ -545,7 +545,7 @@ export default {
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.045);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		box-shadow: none;
 		transition: background 0.15s ease, color 0.15s ease;
 
@@ -627,10 +627,10 @@ export default {
 	}
 	::v-deep input {
 		text-align: center;
-		border-color: rgb(228 233 237) !important;
+		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 	}
 	::v-deep .button {
-		border-color: rgb(228 233 237) !important;
+		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 		background: rgba(0, 0, 0, 0.04) !important;
 		color: rgba(0, 0, 0, 0.55) !important;
 		box-shadow: none !important;
@@ -673,8 +673,7 @@ export default {
 	}
 	&:focus {
 		outline: none;
-		border-color: var(--color-primary);
-		background: #fff;
+		border-color: var(--color-primary); background: var(--theme-input-bg, #fff);
 	}
 }
 .slider-value-unit {
@@ -737,7 +736,7 @@ export default {
 	text-align: center;
 	font-size: 0.78rem;
 	font-weight: 600;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -759,9 +758,9 @@ export default {
 	align-items: center;
 	gap: 0.4rem;
 	padding: 0.85rem 0.5rem;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
 	border-radius: 10px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 	color: rgba(0, 0, 0, 0.6);
 	cursor: pointer;
 	font-family: inherit;
@@ -791,13 +790,13 @@ export default {
 	gap: 0.5rem;
 	width: 100%;
 	max-width: 18rem;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
 	border-radius: 8px;
-	background: #fff;
+	background: var(--theme-card-bg, #fff); color: var(--theme-text-primary, #2c3e50);
 	padding: 0.4rem 0.65rem;
 	font-family: inherit;
 	font-size: 0.8rem;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	cursor: pointer;
 
 	&:hover {
@@ -840,13 +839,12 @@ export default {
 	::v-deep select {
 		width: 100%;
 		height: 2.2rem;
-		border: 1px solid rgb(228 233 237);
+		border: 1px solid var(--theme-card-border, rgb(228 233 237));
 		border-radius: 8px;
-		background: #fff;
-		padding: 0 2rem 0 0.65rem;
+		background: var(--theme-input-bg, #fff); color: var(--theme-text-primary, inherit); padding: 0 2rem 0 0.65rem;
 		font-family: inherit;
 		font-size: 0.8rem;
-		color: #2c3e50;
+		color: var(--theme-text-primary, #2c3e50);
 		box-shadow: none;
 
 		&:hover {
@@ -870,7 +868,7 @@ export default {
 }
 .review-value {
 	font-weight: 600;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	font-size: 0.85rem;
 	text-align: right;
 	overflow-wrap: anywhere;

@@ -46,7 +46,7 @@ export default {
 	height: 100%;
 	width: 100%;
 	.docx-wrapper {
-		background-color: #fff;
+		background-color: var(--theme-bg-window, #fff);
 		> section.docx {
 			box-shadow: none;
 		}

@@ -1788,7 +1788,7 @@ export default {
 // appPanel global style
 .app-panel {
 	.modal-card-head {
-		background-color: hsla(208, 16%, 94%, 1);
+		background-color: var(--theme-card-subtle, hsla(208, 16%, 94%, 1));
 	}
 
 	._stepStoreList {
@@ -1815,7 +1815,7 @@ export default {
 	transition: background 0.3s ease;
 
 	&:hover {
-		background-color: hsl(0, 0%, 97%);
+		background-color: var(--theme-card-bg, hsl(0, 0%, 97%));
 	}
 }
 
@@ -1845,7 +1845,7 @@ export default {
 
 	.level {
 		.footing {
-			color: hsl(0, 0%, 48%);
+			color: var(--theme-text-muted, hsl(0, 0%, 48%));
 		}
 	}
 
@@ -2043,9 +2043,9 @@ export default {
 	height: 2rem;
 	margin-top: 0.5rem;
 	margin-bottom: 1rem;
-	background: #fff6e5;
+	background: rgba(217, 119, 6, 0.1);
 	border-radius: 0.25rem;
-	color: #d99000;
+	color: #d97706;
 	font-size: 0.875rem;
 	font-style: normal;
 }

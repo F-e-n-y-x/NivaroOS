@@ -111,8 +111,8 @@ export default {
 <style lang="scss" scoped>
 .file-operation-status {
 	position: fixed;
-	right: 1rem;
-	bottom: 1rem;
+	right: 1.5rem;
+	bottom: 4.8rem;
 	z-index: 1900;
 	display: flex;
 	flex-direction: column;
@@ -158,7 +158,7 @@ export default {
 }
 .task-progress-fill {
 	height: 100%;
-	background: #3273dc;
+	background: var(--color-primary, #3273dc);
 	transition: width 0.2s ease;
 }
 .task-meta {

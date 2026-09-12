@@ -184,7 +184,7 @@ export default {
 	gap: 0.25rem;
 	margin-bottom: 0.5rem;
 	padding: 0.35rem 0.5rem;
-	background: rgba(0, 0, 0, 0.04);
+	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.04));
 	border-radius: 6px;
 	font-size: 0.8rem;
 }
@@ -192,7 +192,7 @@ export default {
 .crumb {
 	border: none;
 	background: none;
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 	font-family: inherit;
 	font-size: inherit;
 	font-weight: 500;
@@ -206,7 +206,7 @@ export default {
 	}
 
 	&:last-child {
-		color: #2c3e50;
+		color: var(--theme-text-primary, #2c3e50);
 		font-weight: 600;
 		cursor: default;
 
@@ -225,7 +225,7 @@ export default {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	border: 1px solid rgb(228 233 237);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
 	border-radius: 8px;
 	padding: 0.25rem;
 	display: flex;
@@ -236,7 +236,7 @@ export default {
 .picker-status {
 	padding: 2rem;
 	text-align: center;
-	color: rgba(0, 0, 0, 0.45);
+	color: var(--theme-text-muted, rgba(0, 0, 0, 0.45));
 	font-size: 0.85rem;
 }
 
@@ -253,12 +253,12 @@ export default {
 	cursor: pointer;
 	font-family: inherit;
 	font-size: 0.85rem;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	user-select: none;
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.04);
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.04));
 	}
 
 	&.selected {
@@ -277,11 +277,11 @@ export default {
 }
 
 .folder-glyph {
-	color: #eab308;
+	color: #ca8a04;
 }
 
 .file-glyph {
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 }
 
 .item-name {
@@ -302,7 +302,7 @@ export default {
 
 	&:hover {
 		background: rgba(50, 115, 220, 0.2);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 	}
 }
 

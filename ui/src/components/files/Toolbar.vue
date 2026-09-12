@@ -288,7 +288,7 @@ export default {
 	gap: 0.75rem;
 	height: 2.75rem;
 	padding: 0 0.85rem;
-	background: #fff;
+	background: var(--theme-titlebar-bg, #fff); border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 .breadcrumb-bar {
@@ -314,15 +314,15 @@ export default {
 }
 .crumb {
 	font-size: 0.8125rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	cursor: pointer;
 
 	&:hover:not(.current) {
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 	}
 
 	&.current {
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		font-weight: 600;
 		cursor: default;
 	}
@@ -350,23 +350,22 @@ export default {
 	gap: 0.3rem;
 	padding: 0.3rem 0.6rem;
 	border: 1px solid rgba(0, 0, 0, 0.08);
-	background: #fff;
-	border-radius: 6px;
+	background: var(--theme-card-bg, #fff); border-radius: 6px;
 	font-size: 0.75rem;
 	font-weight: 500;
-	color: #334155;
+	color: var(--theme-text-primary, #334155); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	cursor: pointer;
 	transition: all 0.12s ease;
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.04);
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 }
 .paste-btn {
 	background: rgba(50, 115, 220, 0.1);
 	border-color: rgba(50, 115, 220, 0.3);
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 
 	&:hover {
 		background: rgba(50, 115, 220, 0.2);
@@ -397,7 +396,7 @@ export default {
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.06);
-		color: #2c3e50;
+		color: var(--theme-text-primary, #2c3e50);
 	}
 
 	&.is-active {

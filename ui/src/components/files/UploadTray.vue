@@ -273,9 +273,7 @@ export default {
 	max-height: 45%;
 	display: flex;
 	flex-direction: column;
-	background: #fff;
-	border-radius: 12px;
-	border: 1px solid rgb(228 233 237);
+	background: var(--theme-card-bg, #fff); border-radius: 12px; border: 1px solid var(--theme-card-border, rgb(228 233 237)); color: var(--theme-text-primary, #2c3e50);
 	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
 	overflow: hidden;
 }
@@ -291,7 +289,7 @@ export default {
 	background: rgba(0, 0, 0, 0.015);
 }
 .header-icon {
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 	flex-shrink: 0;
 }
 .header-title {
@@ -321,7 +319,7 @@ export default {
 .cancel-icon {
 	flex-shrink: 0;
 	color: rgba(0, 0, 0, 0.35);
-	&:hover { color: #cc0f35; }
+	&:hover { color: var(--color-danger, #cc0f35); }
 }
 .upload-tray-item {
 	display: flex;
@@ -367,7 +365,7 @@ export default {
 	}
 }
 .item-icon {
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 
 	.is-success & {
 		color: #48c774;
@@ -413,13 +411,13 @@ export default {
 .percentage {
 	flex-shrink: 0;
 	font-weight: 600;
-	color: #3273dc;
+	color: var(--color-primary, #3273dc);
 }
 .status-text {
 	flex-shrink: 0;
 	font-weight: 600;
-	&.is-success { color: #257942; }
-	&.is-error { color: #cc0f35; }
+	&.is-success { color: var(--color-success, #257942); }
+	&.is-error { color: var(--color-danger, #cc0f35); }
 	&.is-waiting { color: rgba(0, 0, 0, 0.4); font-weight: 400; }
 }
 .progress-track {
@@ -432,7 +430,7 @@ export default {
 .progress-fill {
 	height: 100%;
 	border-radius: 999px;
-	background: #3273dc;
+	background: var(--color-primary, #3273dc);
 	transition: width 0.15s ease;
 
 	// A file queued but not yet started has no real percentage to show -

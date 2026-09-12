@@ -114,7 +114,7 @@ export default {
 	height: 100%;
 	overflow: auto;
 	padding: 1.5rem;
-	background: #fff;
+	background: var(--theme-bg-window, #fff); color: var(--theme-text-primary, #1e293b);
 }
 .mark-container {
 	max-width: 48rem;
@@ -146,7 +146,7 @@ export default {
 	}
 	code {
 		background-color: rgba(97, 97, 97, 0.1);
-		color: #616161;
+		color: var(--theme-text-muted, #616161);
 	}
 	pre {
 		background: #0d0d0d;
@@ -188,13 +188,13 @@ export default {
 }
 .btn-secondary {
 	background: rgba(0, 0, 0, 0.06);
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);
 	}
 }
 .btn-primary {
-	background: #3273dc;
+	background: var(--color-primary, #3273dc);
 	color: #fff;
 	&:hover {
 		background: #2366d1;

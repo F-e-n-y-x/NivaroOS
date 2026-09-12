@@ -358,7 +358,7 @@ export default {
 	flex-direction: column;
 	height: 100%;
 	padding: 1rem;
-	background: #fff;
+	background: var(--theme-bg-window, #fff); color: var(--theme-text-primary, #1e293b);
 
 	// Mirrors Settings' own is-narrow row-stacking rule - see
 	// CreateVmModal.vue's identical block for the full reasoning.
@@ -393,7 +393,7 @@ export default {
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.045);
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		box-shadow: none;
 		transition: background 0.15s ease, color 0.15s ease;
 
@@ -473,13 +473,10 @@ export default {
 	gap: 0.5rem;
 	width: 100%;
 	max-width: 18rem;
-	border: 1px solid rgb(228 233 237);
-	border-radius: 8px;
-	background: #fff;
-	padding: 0.4rem 0.65rem;
+	border: 1px solid var(--theme-card-border, rgb(228 233 237)); border-radius: 8px; background: var(--theme-input-bg, #fff); color: var(--theme-text-primary, inherit); padding: 0.4rem 0.65rem;
 	font-family: inherit;
 	font-size: 0.8rem;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	cursor: pointer;
 
 	&:hover {
@@ -522,13 +519,10 @@ export default {
 	::v-deep select {
 		width: 100%;
 		height: 2.2rem;
-		border: 1px solid rgb(228 233 237);
-		border-radius: 8px;
-		background: #fff;
-		padding: 0 2rem 0 0.65rem;
+		border: 1px solid var(--theme-card-border, rgb(228 233 237)); border-radius: 8px; background: var(--theme-input-bg, #fff); color: var(--theme-text-primary, inherit); padding: 0 2rem 0 0.65rem;
 		font-family: inherit;
 		font-size: 0.8rem;
-		color: #2c3e50;
+		color: var(--theme-text-primary, #2c3e50);
 		box-shadow: none;
 
 		&:hover {
@@ -573,7 +567,7 @@ export default {
 	&:focus {
 		outline: none;
 		border-color: var(--color-primary);
-		background: #fff;
+		background: var(--theme-input-bg, #fff);
 	}
 }
 .slider-value-unit {
@@ -599,9 +593,7 @@ export default {
 	align-items: center;
 	gap: 0.75rem;
 	padding: 0.6rem 0.75rem;
-	border: 1px solid rgb(228 233 237);
-	border-radius: 10px;
-	background: #fff;
+	border: 1px solid var(--theme-card-border, rgb(228 233 237)); border-radius: 10px; background: var(--theme-card-bg, #fff); color: var(--theme-text-primary, inherit);
 }
 
 .vm-share-icon {
@@ -634,7 +626,7 @@ export default {
 	font-size: 0.82rem;
 	font-weight: 600;
 	font-family: monospace;
-	color: #2c3e50;
+	color: var(--theme-text-primary, #2c3e50);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;

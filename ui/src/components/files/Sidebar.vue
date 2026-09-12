@@ -131,7 +131,7 @@ export default {
 	&:hover { background: rgba(0, 0, 0, 0.05); }
 	&.active {
 		background: rgba(50, 115, 220, 0.14);
-		color: #3273dc;
+		color: var(--color-primary, #3273dc);
 		font-weight: 600;
 	}
 	// Compact/rail mode: a tight square hugging just the icon, centered in

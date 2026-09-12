@@ -1,43 +1,129 @@
-// Root Style
+// ============================================================
+// NivaroOS Design Token System — Light Mode Defaults
+// All dark mode overrides are in _dark.scss
+// Token naming convention:
+//   --theme-*   : UI surface/layout tokens (backgrounds, borders, text)
+//   --color-*   : Semantic/brand colors (primary, danger, success, etc.)
+//   --radius-*  : Border radius scale
+// To add dark mode support to a new component: use var(--theme-*) tokens
+// and they will automatically resolve correctly in both light and dark mode.
+// ============================================================
 
 :root {
     --swiper-navigation-size: 24px !important;
     --background: $main-background-color;
 
-    // --- Shared design tokens ---
-    // Introduced to converge the many independently-drifted hex values found
-    // across Settings/VM panels (see the UI/UX audit this was built from) onto
-    // one canonical value per semantic role. Additive only: nothing consumes
-    // these until a component is explicitly migrated to reference them, so
-    // adding this block changes no existing rendering on its own.
-    --color-primary: #2563eb;
-    --color-primary-hover: #1d4ed8;
-    --color-primary-soft: rgba(37, 99, 235, 0.1);
+    // ── Semantic Status Colors ──────────────────────────────
+    // These are accent/status colors that adjust for dark mode in _dark.scss
+    --color-primary:        #2563eb;
+    --color-primary-hover:  #1d4ed8;
+    --color-primary-soft:   rgba(37, 99, 235, 0.1);
+    --color-primary-text:   #ffffff;
 
-    --color-danger: #ef4444;
-    --color-danger-hover: #dc2626;
-    --color-danger-soft: rgba(239, 68, 68, 0.1);
+    --color-danger:         #ef4444;
+    --color-danger-hover:   #dc2626;
+    --color-danger-soft:    rgba(239, 68, 68, 0.1);
+    --color-danger-text:    #ffffff;
 
-    --color-success: #16a34a;
-    --color-success-soft: rgba(22, 163, 74, 0.1);
+    --color-success:        #16a34a;
+    --color-success-hover:  #15803d;
+    --color-success-soft:   rgba(22, 163, 74, 0.1);
+    --color-success-text:   #ffffff;
 
-    --color-warning: #d97706;
-    --color-warning-soft: rgba(217, 119, 6, 0.1);
+    --color-warning:        #d97706;
+    --color-warning-hover:  #b45309;
+    --color-warning-soft:   rgba(217, 119, 6, 0.1);
+    --color-warning-text:   #ffffff;
 
-    --color-info: #0284c7;
-    --color-info-soft: rgba(2, 132, 199, 0.1);
+    --color-info:           #0284c7;
+    --color-info-soft:      rgba(2, 132, 199, 0.1);
 
-    --color-border: rgba(0, 0, 0, 0.08);
-    --color-border-strong: rgba(0, 0, 0, 0.12);
+    --color-link:           #1d4ed8;
 
-    --color-text-muted: #64748b;
+    // ── Layout Borders ─────────────────────────────────────
+    --color-border:         rgba(0, 0, 0, 0.08);
+    --color-border-strong:  rgba(0, 0, 0, 0.14);
+
+    // ── Legacy text muted aliases ───────────────────────────
+    --color-text-muted:       #64748b;
     --color-text-muted-light: #94a3b8;
 
-    --radius-card: 12px;
-    --radius-modal: 14px;
+    // ── Border Radius Scale ─────────────────────────────────
+    --radius-sm:     6px;
+    --radius-card:   12px;
+    --radius-modal:  14px;
     --radius-control: 8px;
-    --radius-pill: 999px;
+    --radius-pill:   999px;
+
+    // ── Theme Tokens: Backgrounds ───────────────────────────
+    // Desktop / app shell background
+    --theme-bg:              #f8fafc;
+    --theme-bg-secondary:    #ffffff;
+    --theme-bg-subtle:       #f1f5f9;
+
+    // Window glass / frame
+    --theme-bg-window:         #ffffff;
+    --theme-bg-window-opaque:  #ffffff;
+    --theme-window-glass-bg:   rgba(255, 255, 255, var(--ui-backdrop-alpha, 1));
+    --theme-window-border:     rgba(0, 0, 0, 0.08);
+    --theme-window-shadow:     0 12px 40px rgba(0, 0, 0, 0.25);
+    --theme-titlebar-bg:       #ffffff;
+    --theme-titlebar-border:   rgb(228, 233, 237);
+
+    // Card / panel surfaces
+    --theme-card-bg:       #ffffff;
+    --theme-card-subtle:   #f8fafc;
+    --theme-card-border:   rgba(0, 0, 0, 0.08);
+    --theme-card-hover:    rgba(0, 0, 0, 0.03);
+    --theme-card-selected: rgba(37, 99, 235, 0.08);
+
+    // Dropdown / menu / popover
+    --theme-menu-bg:          rgba(255, 255, 255, 0.95);
+    --theme-dropdown-bg:      #ffffff;
+    --theme-dropdown-border:  rgba(0, 0, 0, 0.1);
+
+    // Sidebar
+    --theme-sidebar-bg:       #f8fafc;
+    --theme-sidebar-border:   rgba(0, 0, 0, 0.06);
+
+    // Modal / overlay
+    --theme-modal-bg:         #ffffff;
+    --theme-modal-border:     rgba(0, 0, 0, 0.08);
+    --theme-modal-overlay:    rgba(0, 0, 0, 0.35);
+
+    // ── Theme Tokens: Form Inputs ───────────────────────────
+    --theme-input-bg:         #f8fafc;
+    --theme-input-border:     rgba(0, 0, 0, 0.15);
+    --theme-input-focus:      #2563eb;
+    --theme-input-text:       #0f172a;
+    --theme-input-placeholder: #94a3b8;
+
+    // ── Theme Tokens: Text ──────────────────────────────────
+    // Use these for all non-semantic text so dark mode works automatically
+    --theme-text-primary:   #0f172a;    // headings, labels, values
+    --theme-text-secondary: #475569;    // descriptions, subtitles
+    --theme-text-muted:     #94a3b8;    // timestamps, meta, hints
+
+    // ── Theme Tokens: Pills / Badges ───────────────────────
+    --theme-pill-bg:         #f1f5f9;
+    --theme-pill-color:      #475569;
+    --theme-pill-border:     rgba(0, 0, 0, 0.08);
+
+    // ── Theme Tokens: Table / List rows ────────────────────
+    --theme-table-head-bg:   #f8fafc;
+    --theme-table-row-hover: rgba(0, 0, 0, 0.02);
+    --theme-table-divider:   rgba(0, 0, 0, 0.06);
+
+    // ── Theme Tokens: Focus ring ────────────────────────────
+    --theme-focus-ring:      rgba(37, 99, 235, 0.4);
+
+    // ── Semantic status token aliases ───────────────────────
+    --theme-warning-soft:    rgba(217, 119, 6, 0.1);
+    --theme-success-soft:    rgba(22, 163, 74, 0.1);
+    --theme-danger-soft:     rgba(239, 68, 68, 0.1);
+    --theme-info-soft:       rgba(2, 132, 199, 0.1);
 }
+
 
 * {
     -webkit-tap-highlight-color: transparent;

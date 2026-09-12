@@ -997,15 +997,14 @@ export default {
 	height: 100%;
 	display: flex;
 	flex-direction: column;
-	background: #f8fafc;
-	color: #0f172a;
+	background: var(--theme-bg-window, #f8fafc); color: var(--theme-text-primary, #0f172a);
 	user-select: none;
 	overflow: hidden;
 }
 
 /* Light-Grey (Close to White) Authentic Transparency Checkerboard (Used ONLY in Studio Viewport) */
 .transparency-checkerboard {
-	background-color: #ffffff;
+	background-color: var(--theme-card-bg, #ffffff);
 	background-image: repeating-conic-gradient(#e2e8f0 0% 25%, #ffffff 0% 50%);
 	background-size: 14px 14px;
 	background-position: 0 0;
@@ -1018,8 +1017,7 @@ export default {
 	align-items: center;
 	gap: 1rem;
 	padding: 0.85rem 1.25rem;
-	background: #ffffff;
-	border-bottom: 1px solid #e2e8f0;
+	background: var(--theme-titlebar-bg, #ffffff); border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
 }
 
 .hero-icon-preview {
@@ -1030,8 +1028,8 @@ export default {
 	min-height: 60px;
 	flex-shrink: 0;
 	overflow: hidden;
-	background: #f8fafc;
-	border: 1px solid #cbd5e1;
+	background: var(--theme-card-subtle, #f8fafc); border: 1px solid var(--theme-card-border, #cbd5e1);
+	border: 1px solid var(--theme-card-border, #cbd5e1);
 	box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 	cursor: pointer;
 	transition: all 0.15s ease;
@@ -1099,7 +1097,7 @@ export default {
 .field-lbl {
 	font-size: 0.72rem;
 	font-weight: 600;
-	color: #475569;
+	color: var(--theme-text-secondary, #475569);
 }
 
 .input-with-reset {
@@ -1112,14 +1110,14 @@ export default {
 		right: 8px;
 		background: transparent;
 		border: none;
-		color: #94a3b8;
+		color: var(--theme-text-muted, #94a3b8);
 		cursor: pointer;
 		font-size: 1rem;
 		padding: 0;
 		line-height: 1;
 
 		&:hover {
-			color: #475569;
+			color: var(--theme-text-secondary, #475569);
 		}
 	}
 }
@@ -1134,12 +1132,12 @@ export default {
 .sugg-hint {
 	font-size: 0.68rem;
 	font-weight: 600;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	display: inline-flex;
 	align-items: center;
 
 	i {
-		color: #eab308;
+		color: #fbbf24;
 	}
 }
 
@@ -1150,8 +1148,8 @@ export default {
 }
 
 .sugg-pill {
-	border: 1px solid #cbd5e1;
-	background: #f8fafc;
+	border: 1px solid var(--theme-card-border, #cbd5e1);
+	background: var(--theme-card-subtle, #f8fafc);
 	border-radius: 4px;
 	padding: 0.12rem 0.4rem;
 	font-size: 0.65rem;
@@ -1162,7 +1160,7 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		border-color: #2563eb;
 	}
 
@@ -1191,8 +1189,8 @@ export default {
 	display: flex;
 	gap: 0.35rem;
 	padding: 0.45rem 1.25rem;
-	background: #f1f5f9;
-	border-bottom: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f1f5f9);
+	border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
 	overflow-x: auto;
 }
 
@@ -1203,7 +1201,7 @@ export default {
 	border-radius: 6px;
 	font-size: 0.75rem;
 	font-weight: 600;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	cursor: pointer;
 	transition: all 0.12s ease;
 	display: inline-flex;
@@ -1215,14 +1213,14 @@ export default {
 	}
 
 	&:hover {
-		color: #1e293b;
+		color: var(--theme-text-primary, #1e293b);
 		background: rgba(255, 255, 255, 0.6);
 	}
 
 	&.active {
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 		color: #2563eb;
-		border-color: #cbd5e1;
+		border-color: var(--theme-card-border, #cbd5e1);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 	}
 }
@@ -1232,7 +1230,7 @@ export default {
 	flex: 1 1 auto;
 	overflow-y: auto;
 	display: flex;
-	background: #ffffff;
+	background: var(--theme-card-bg, #ffffff);
 }
 
 /* Tab 1: App Store Catalog (Clean Normal Background - No Checkerboard) */
@@ -1264,8 +1262,8 @@ export default {
 	align-items: center;
 	padding: 0.45rem 0.3rem 0.35rem;
 	border-radius: 8px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	cursor: pointer;
 	transition: all 0.15s ease;
 	text-align: center;
@@ -1275,8 +1273,8 @@ export default {
 		width: 38px;
 		height: 38px;
 		border-radius: 8px;
-		background: #ffffff;
-		border: 1px solid #f1f5f9;
+		background: var(--theme-card-bg, #ffffff);
+		border: 1px solid var(--theme-card-border, #f1f5f9);
 		overflow: hidden;
 		margin-bottom: 0.25rem;
 		display: flex;
@@ -1309,7 +1307,7 @@ export default {
 	.catalog-label {
 		font-size: 0.65rem;
 		font-weight: 500;
-		color: #334155;
+		color: var(--theme-text-secondary, #334155);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1318,14 +1316,14 @@ export default {
 
 	&:hover {
 		border-color: #2563eb;
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 		transform: translateY(-2px);
 		box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
 	}
 
 	&.is-active {
 		border-color: #2563eb;
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 	}
 }
@@ -1334,7 +1332,7 @@ export default {
 	grid-column: 1 / -1;
 	padding: 2rem 1rem;
 	text-align: center;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	font-size: 0.8rem;
 	display: flex;
 	flex-direction: column;
@@ -1359,8 +1357,8 @@ export default {
 }
 
 .import-card {
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-bg, #ffffff);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 12px;
 	padding: 1.25rem 1.1rem;
 	display: flex;
@@ -1370,13 +1368,13 @@ export default {
 	transition: all 0.18s ease;
 
 	&.dropzone-card {
-		border: 2px dashed #cbd5e1;
+		border: 2px dashed var(--theme-card-border, #cbd5e1);
 		cursor: pointer;
-		background: #ffffff;
+		background: var(--theme-card-bg, #ffffff);
 
 		&:hover {
 			border-color: #2563eb;
-			background: #eff6ff;
+			background: rgba(59, 130, 246, 0.1);
 			transform: translateY(-2px);
 			box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
 
@@ -1389,11 +1387,11 @@ export default {
 	}
 
 	&.url-card {
-		background: #f8fafc;
-		border: 1px solid #e2e8f0;
+		background: var(--theme-card-subtle, #f8fafc);
+		border: 1px solid var(--theme-card-border, #e2e8f0);
 
 		&:hover {
-			border-color: #cbd5e1;
+			border-color: var(--theme-card-border, #cbd5e1);
 			box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
 		}
 	}
@@ -1410,26 +1408,26 @@ export default {
 	margin-bottom: 0.6rem;
 
 	&.is-blue {
-		background: #eff6ff;
+		background: rgba(59, 130, 246, 0.1);
 		color: #2563eb;
 	}
 
 	&.is-purple {
-		background: #f5f3ff;
-		color: #7c3aed;
+		background: rgba(124, 58, 237, 0.1);
+		color: #a78bfa;
 	}
 }
 
 .import-card-title {
 	font-size: 0.85rem;
 	font-weight: 700;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	margin: 0 0 0.25rem;
 }
 
 .import-card-desc {
 	font-size: 0.72rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1.35;
 	margin: 0 0 0.85rem;
 	min-height: 2.2rem;
@@ -1440,9 +1438,9 @@ export default {
 }
 
 .btn-browse {
-	border: 1px solid #cbd5e1;
-	background: #f8fafc;
-	color: #334155;
+	border: 1px solid var(--theme-card-border, #cbd5e1);
+	background: var(--theme-card-subtle, #f8fafc);
+	color: var(--theme-text-secondary, #334155);
 	border-radius: 6px;
 	font-size: 0.72rem;
 	font-weight: 600;
@@ -1464,8 +1462,8 @@ export default {
 .fmt-tag {
 	font-size: 0.62rem;
 	font-weight: 700;
-	color: #64748b;
-	background: #f1f5f9;
+	color: var(--theme-text-muted, #64748b);
+	background: var(--theme-card-subtle, #f1f5f9);
 	padding: 0.1rem 0.4rem;
 	border-radius: 4px;
 	letter-spacing: 0.02em;
@@ -1488,7 +1486,7 @@ export default {
 
 .helper-hint {
 	font-size: 0.65rem;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	display: inline-flex;
 	align-items: center;
 }
@@ -1535,7 +1533,7 @@ export default {
 	height: 160px;
 	border-radius: 14px;
 	overflow: hidden;
-	border: 1px solid #cbd5e1;
+	border: 1px solid var(--theme-card-border, #cbd5e1);
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 	user-select: none;
 
@@ -1587,7 +1585,7 @@ export default {
 
 .canvas-caption {
 	font-size: 0.68rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: 0.5rem;
 	text-align: center;
 	max-width: 170px;
@@ -1602,8 +1600,8 @@ export default {
 }
 
 .control-box {
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 10px;
 	padding: 0.65rem 0.85rem;
 }
@@ -1618,7 +1616,7 @@ export default {
 .control-title {
 	font-size: 0.75rem;
 	font-weight: 600;
-	color: #334155;
+	color: var(--theme-text-secondary, #334155);
 	display: flex;
 	align-items: center;
 }
@@ -1638,12 +1636,12 @@ export default {
 		width: 22px;
 		height: 22px;
 		border-radius: 5px;
-		border: 1px solid #cbd5e1;
-		background: #ffffff;
+		border: 1px solid var(--theme-card-border, #cbd5e1);
+		background: var(--theme-card-bg, #ffffff);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 		cursor: pointer;
 		font-size: 0.75rem;
 		padding: 0;
@@ -1674,13 +1672,13 @@ export default {
 
 .pill-btn {
 	flex: 1;
-	border: 1px solid #cbd5e1;
-	background: #ffffff;
+	border: 1px solid var(--theme-card-border, #cbd5e1);
+	background: var(--theme-card-bg, #ffffff);
 	border-radius: 5px;
 	padding: 0.2rem 0.25rem;
 	font-size: 0.65rem;
 	font-weight: 600;
-	color: #475569;
+	color: var(--theme-text-secondary, #475569);
 	cursor: pointer;
 	transition: all 0.12s ease;
 	text-align: center;
@@ -1720,10 +1718,10 @@ export default {
 	transition: transform 0.12s ease, box-shadow 0.12s ease;
 
 	&.is-none {
-		background: #f1f5f9;
-		color: #64748b;
+		background: var(--theme-card-subtle, #f1f5f9);
+		color: var(--theme-text-muted, #64748b);
 		border-style: dashed;
-		border-color: #cbd5e1;
+		border-color: var(--theme-card-border, #cbd5e1);
 	}
 
 	&:hover {
@@ -1736,7 +1734,7 @@ export default {
 	}
 
 	.is-dark-check {
-		color: #0f172a;
+		color: var(--theme-text-primary, #0f172a);
 	}
 }
 
@@ -1744,14 +1742,14 @@ export default {
 	width: 20px;
 	height: 20px;
 	border-radius: 50%;
-	border: 1px solid #cbd5e1;
-	background: #ffffff;
+	border: 1px solid var(--theme-card-border, #cbd5e1);
+	background: var(--theme-card-bg, #ffffff);
 	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	position: relative;
-	color: #475569;
+	color: var(--theme-text-secondary, #475569);
 	font-size: 0.7rem;
 	overflow: hidden;
 
@@ -1798,15 +1796,15 @@ export default {
 .monogram-picker-card {
 	width: 100%;
 	max-width: 380px;
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 12px;
 	padding: 1.25rem;
 	text-align: center;
 
 	.monogram-desc {
 		font-size: 0.75rem;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 	}
 }
 
@@ -1843,8 +1841,8 @@ export default {
 .editor-footer-bar {
 	flex-shrink: 0;
 	padding: 0.65rem 1.25rem;
-	background: #ffffff;
-	border-top: 1px solid #e2e8f0;
+	background: var(--theme-card-bg, #ffffff);
+	border-top: 1px solid var(--theme-card-border, #e2e8f0);
 	display: flex;
 	align-items: center;
 }
@@ -1863,7 +1861,7 @@ export default {
 	transition: background 0.12s ease;
 
 	&:hover {
-		background: #fee2e2;
+		background: rgba(239, 68, 68, 0.1);
 	}
 }
 

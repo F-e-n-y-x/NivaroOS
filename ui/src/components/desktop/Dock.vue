@@ -729,10 +729,10 @@ export default {
 .dock-context-menu {
 	position: fixed;
 	width: 215px;
-	background: rgba(255, 255, 255, 0.95);
+	background: var(--theme-menu-bg, rgba(255, 255, 255, 0.95));
 	backdrop-filter: blur(24px) saturate(180%);
 	-webkit-backdrop-filter: blur(24px) saturate(180%);
-	border: 1px solid rgba(255, 255, 255, 0.65);
+	border: 1px solid var(--theme-card-border, rgba(255, 255, 255, 0.65));
 	border-radius: 12px;
 	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1);
 	padding: 0.35rem;
@@ -765,12 +765,12 @@ export default {
 
 .ctx-header-title {
 	font-size: 0.8125rem;
-	color: #0f172a;
+	color: var(--theme-text-primary, #0f172a);
 	line-height: 1.2;
 }
 
 .ctx-header-sub {
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	line-height: 1;
 }
 
@@ -784,7 +784,7 @@ export default {
 	font-family: inherit;
 	font-size: 0.8125rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	transition: all 0.12s ease;
 	cursor: pointer;
 	border: none;
@@ -795,7 +795,7 @@ export default {
 		font-size: 1.15rem;
 		width: 1.25rem;
 		text-align: center;
-		color: #475569;
+		color: var(--theme-text-secondary, #475569);
 		flex-shrink: 0;
 		line-height: 1;
 		transition: color 0.12s ease;

@@ -1,6 +1,6 @@
 <template>
 	<div class="datetime-pill-wrap">
-		<button type="button" class="datetime-pill" :class="{ 'is-active': menuOpen }" @click.stop="menuOpen = !menuOpen">
+		<button type="button" class="datetime-pill" :class="{ 'is-active': menuOpen }" @click.stop="toggleMenu">
 			<div class="datetime-text">
 				<template v-if="customFormat">
 					<span class="pill-time">{{ customText }}</span>
@@ -258,12 +258,25 @@ export default {
 		this.updateClock()
 		this.timer = setInterval(this.updateClock, 1000)
 		document.addEventListener('click', this.closeMenu)
+		this.onCloseTrayPopovers = (sender) => {
+			if (sender !== 'datetime') {
+				this.menuOpen = false
+			}
+		}
+		this.$EventBus.$on('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
 	beforeDestroy() {
 		clearInterval(this.timer)
 		document.removeEventListener('click', this.closeMenu)
+		this.$EventBus.$off('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
 	methods: {
+		toggleMenu() {
+			this.menuOpen = !this.menuOpen
+			if (this.menuOpen) {
+				this.$EventBus.$emit('desktop:close-tray-popovers', 'datetime')
+			}
+		},
 		updateClock() {
 			const today = new Date()
 			if (this.customFormat) {
@@ -326,10 +339,9 @@ export default {
 
 <style lang="scss" scoped>
 .datetime-pill-wrap {
-	position: fixed;
-	right: 1.5rem;
-	bottom: 0.9rem;
-	z-index: 500;
+	position: static;
+	display: flex;
+	align-items: center;
 }
 
 .datetime-pill {
@@ -380,8 +392,9 @@ export default {
 	right: 0;
 	bottom: calc(100% + 0.75rem);
 	width: 20rem;
-	background: #ffffff;
-	border: 1px solid #e2e8f0;
+	max-width: calc(100vw - 3rem);
+	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, #e2e8f0); color: var(--theme-text-primary, #1e293b);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 18px;
 	box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.05);
 	padding: 0.9rem;
@@ -389,7 +402,8 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 0.65rem;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
+	z-index: 1000;
 }
 
 .menu-top-header {
@@ -430,7 +444,7 @@ export default {
 .user-name {
 	font-size: 0.875rem;
 	font-weight: 600;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	line-height: 1.2;
 	white-space: nowrap;
 	overflow: hidden;
@@ -439,7 +453,7 @@ export default {
 
 .user-badge {
 	font-size: 0.6875rem;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	font-weight: 400;
 }
 
@@ -450,9 +464,9 @@ export default {
 }
 
 .hdr-btn {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #64748b;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	background: var(--theme-card-subtle, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0); color: var(--theme-text-secondary, #64748b);
+	color: var(--theme-text-muted, #64748b);
 	border-radius: 50%;
 	width: 2rem;
 	height: 2rem;
@@ -473,22 +487,21 @@ export default {
 	}
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-		border-color: #cbd5e1;
+		background: var(--theme-card-hover, #f1f5f9); color: var(--theme-text-primary, #1e293b);
+		border-color: var(--theme-card-border, #cbd5e1);
 		transform: translateY(-1px);
 	}
 
 	&.is-logout:hover {
-		background: #fee2e2;
+		background: rgba(239, 68, 68, 0.1);
 		color: #dc2626;
 		border-color: #fca5a5;
 	}
 }
 
 .clock-hero-card {
-	background: #f8fafc;
-	border: 1px solid #e2e8f0;
+	background: var(--theme-card-subtle, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0);
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: 12px;
 	padding: 0.75rem 0.85rem;
 	text-align: center;
@@ -497,7 +510,7 @@ export default {
 .hero-time {
 	font-size: 1.6rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	font-variant-numeric: tabular-nums;
 	line-height: 1.15;
 }
@@ -505,7 +518,7 @@ export default {
 .hero-date {
 	font-size: 0.75rem;
 	font-weight: 500;
-	color: #64748b;
+	color: var(--theme-text-muted, #64748b);
 	margin-top: 0.25rem;
 	display: flex;
 	align-items: center;
@@ -529,7 +542,7 @@ export default {
 .cal-month-year {
 	font-size: 0.875rem;
 	font-weight: 700;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 }
 
 .cal-nav-controls {
@@ -539,9 +552,9 @@ export default {
 }
 
 .cal-btn-today {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #475569;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	background: var(--theme-card-subtle, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0); color: var(--theme-text-secondary, #475569);
+	color: var(--theme-text-secondary, #475569);
 	border-radius: 6px;
 	padding: 0.15rem 0.5rem;
 	font-size: 0.7rem;
@@ -550,16 +563,15 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-		border-color: #cbd5e1;
+		background: var(--theme-card-hover, #f1f5f9); color: var(--theme-text-primary, #1e293b);
+		border-color: var(--theme-card-border, #cbd5e1);
 	}
 }
 
 .cal-arrow-btn {
-	border: 1px solid #e2e8f0;
-	background: #f8fafc;
-	color: #64748b;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
+	background: var(--theme-card-subtle, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0); color: var(--theme-text-secondary, #64748b);
+	color: var(--theme-text-muted, #64748b);
 	border-radius: 6px;
 	width: 1.6rem;
 	height: 1.6rem;
@@ -580,9 +592,8 @@ export default {
 	}
 
 	&:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-		border-color: #cbd5e1;
+		background: var(--theme-card-hover, #f1f5f9); color: var(--theme-text-primary, #1e293b);
+		border-color: var(--theme-card-border, #cbd5e1);
 	}
 }
 
@@ -595,7 +606,7 @@ export default {
 .cal-weekday-label {
 	font-size: 0.6875rem;
 	font-weight: 600;
-	color: #94a3b8;
+	color: var(--theme-text-muted, #94a3b8);
 	text-transform: uppercase;
 	padding: 0.2rem 0;
 }
@@ -617,15 +628,15 @@ export default {
 	cursor: pointer;
 	font-size: 0.775rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary, #1e293b);
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: #f1f5f9;
+		background: var(--theme-card-hover, #f1f5f9);
 	}
 
 	&.is-other-month {
-		color: #cbd5e1;
+		color: var(--theme-text-muted, #cbd5e1);
 	}
 
 	&.is-selected {
@@ -650,7 +661,7 @@ export default {
 
 .pwr-btn {
 	flex: 1;
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--theme-card-border, #e2e8f0);
 	padding: 0.55rem 0.75rem;
 	border-radius: 10px;
 	font-size: 0.775rem;
@@ -676,30 +687,30 @@ export default {
 	}
 
 	&.is-restart {
-		background: #f8fafc;
-		color: #1e293b;
+		background: var(--theme-card-subtle, #f8fafc);
+		color: var(--theme-text-primary, #1e293b);
 
 		&:hover {
-			background: #f1f5f9;
-			border-color: #cbd5e1;
+			background: var(--theme-card-hover, #f1f5f9);
+			border-color: var(--theme-card-border, #cbd5e1);
 		}
 	}
 
 	&.is-shutdown {
-		background: #fee2e2;
-		border-color: #fecaca;
+		background: rgba(239, 68, 68, 0.1);
+		border-color: rgba(239, 68, 68, 0.4);
 		color: #dc2626;
 
 		&:hover {
-			background: #fca5a5;
-			color: #991b1b;
+			background: rgba(252, 165, 165, 0.3);
+			color: #f87171;
 		}
 	}
 }
 
 .menu-divider {
 	height: 1px;
-	background: #f1f5f9;
+	background: var(--theme-card-border, #f1f5f9);
 	margin: 0 0.15rem;
 }
 

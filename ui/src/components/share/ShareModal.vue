@@ -139,7 +139,7 @@ export default {
 .update-info-container {
 	overflow: hidden;
 	min-height: 20rem;
-	background: #f8f8f8;
+	background: var(--theme-card-subtle, #f8f8f8);
 	border: 1px solid rgba(0, 0, 0, 0.1);
 	border-radius: 0.75rem;
 	padding: 1.5rem;

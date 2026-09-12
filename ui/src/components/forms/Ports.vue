@@ -156,7 +156,7 @@ export default {
 <style lang="scss">
 .info {
 	font-size: 0.875rem;
-	color: #5a5a5a;
+	color: var(--theme-text-secondary, #5a5a5a);
 }
 
 .port-item {

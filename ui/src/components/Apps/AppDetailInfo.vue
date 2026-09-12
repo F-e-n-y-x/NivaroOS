@@ -308,7 +308,7 @@ export default {
 		img {
 			max-width: 90vw;
 			max-height: 90vh;
-			border: 3px solid #ccc;
+			border: 3px solid var(--theme-card-border, #ccc);
 			border-radius: 1rem;
 			box-shadow: 0 0 40px 0 rgba(255, 255, 255, 0.2);
 		}
@@ -319,7 +319,7 @@ export default {
 
 		&::before,
 		&::after {
-			background: #fff;
+			background: var(--theme-card-bg, #fff);
 		}
 	}
 }

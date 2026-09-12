@@ -87,7 +87,7 @@ export default {
 
 	/* Gary/800 */
 
-	color: #29343D;
+	color: var(--theme-text-primary, #29343D);
 }
 
 ._b-line {
