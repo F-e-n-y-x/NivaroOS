@@ -677,6 +677,61 @@ html.is-dark {
 		}
 	}
 
+	// Files & Sidebar Context Menu
+	.files-context-menu,
+	.sidebar-context-menu {
+		background: rgba(18, 18, 20, 0.96) !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+
+		.ctx-header {
+			.ctx-badge {
+				background: rgba(59, 130, 246, 0.2) !important;
+				color: #60a5fa !important;
+			}
+		}
+
+		.ctx-item {
+			color: #f4f4f5 !important;
+
+			.ctx-icon {
+				color: #d4d4d8 !important;
+			}
+
+			.ctx-check {
+				color: #60a5fa !important;
+			}
+
+			&:hover {
+				background: #2563eb !important;
+				color: #ffffff !important;
+
+				.ctx-icon,
+				.ctx-check {
+					color: #ffffff !important;
+				}
+			}
+
+			&.is-danger {
+				color: #f87171 !important;
+				.ctx-icon {
+					color: #f87171 !important;
+				}
+				&:hover {
+					background: #dc2626 !important;
+					color: #ffffff !important;
+					.ctx-icon {
+						color: #ffffff !important;
+					}
+				}
+			}
+		}
+
+		.ctx-divider {
+			background: rgba(255, 255, 255, 0.1) !important;
+		}
+	}
+
 	// Drag & Drop Menu
 	.drag-drop-menu {
 		background: #1e1e22 !important;
@@ -2557,5 +2612,76 @@ html.is-dark {
 		background: rgba(239, 68, 68, 0.18) !important;
 		color: #fca5a5 !important;
 	}
+
+	// ==========================================
+	// 20. Login, Welcome, In-Window Modals & Chips
+	// ==========================================
+
+	// Login & Welcome Cards
+	.login-panel,
+	.welcome-panel {
+		background: rgba(24, 24, 27, 0.9) !important;
+		border: 1px solid rgba(255, 255, 255, 0.14) !important;
+		box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8) !important;
+		color: #f4f4f5 !important;
+
+		.label {
+			color: #f4f4f5 !important;
+		}
+
+		.input {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.18) !important;
+			color: #f4f4f5 !important;
+		}
+
+		.title,
+		.subtitle {
+			color: #f4f4f5 !important;
+		}
+	}
+
+	// In-Window & Overlay Cards
+	.fstab-empty-card,
+	.in-window-modal-card,
+	.mount-card,
+	.preset-card,
+	.system-card {
+		background: #18181b !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		color: #f4f4f5 !important;
+	}
+
+	// Setting chips
+	.setting-chip {
+		background: #27272a !important;
+		border: 1px solid rgba(255, 255, 255, 0.12) !important;
+		color: #d4d4d8 !important;
+	}
+
+	// VM File Picker Dialog (Breadcrumbs & Rows)
+	.picker-breadcrumb {
+		background: #202024 !important;
+		color: #d4d4d8 !important;
+	}
+
+	.picker-list {
+		background: #18181b !important;
+		border-color: rgba(255, 255, 255, 0.12) !important;
+
+		.picker-row {
+			color: #f4f4f5 !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.08) !important;
+			}
+
+			&.is-selected {
+				background: rgba(59, 130, 246, 0.25) !important;
+				color: #60a5fa !important;
+			}
+		}
+	}
 }
+
 

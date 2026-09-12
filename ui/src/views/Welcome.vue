@@ -221,7 +221,7 @@ export default {
 		padding: 2.5rem 4rem;
 
 		.label {
-			color: #dfdfdf;
+			color: var(--theme-text-primary, #1e293b);
 		}
 
 		.input {
@@ -258,7 +258,7 @@ export default {
 		padding: 2rem !important;
 
 		.label {
-			color: #dfdfdf;
+			color: var(--theme-text-primary, #1e293b);
 		}
 
 		.input {

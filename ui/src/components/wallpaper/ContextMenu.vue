@@ -269,6 +269,6 @@ export default {
 .ctx-divider {
 	height: 1px;
 	margin: 0.35rem 0.4rem;
-	background: rgba(0, 0, 0, 0.08);
+	background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 }
 </style>
