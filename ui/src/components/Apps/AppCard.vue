@@ -447,6 +447,11 @@ export default {
 						id: 'vms', title: this.$t('VMs'), component: 'VmManagerApp', width: 880, height: 560
 					})
 					break;
+				case "Host Desktop":
+					this.$store.commit('OPEN_WINDOW', {
+						id: 'host-desktop', title: this.$t('Host Desktop'), component: 'HostDesktopPanel', width: 1024, height: 680
+					})
+					break;
 				default:
 					break;
 			}

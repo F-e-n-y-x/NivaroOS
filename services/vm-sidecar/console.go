@@ -132,6 +132,59 @@ func handleConsole(store *LibvirtStore) http.HandlerFunc {
 	}
 }
 
+func handleHostConsole() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		addr := "127.0.0.1:5900"
+		tcpConn, err := net.Dial("tcp", addr)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("connect to host desktop VNC server at %s: %v (is host desktop server running?)", addr, err), http.StatusBadGateway)
+			return
+		}
+		defer tcpConn.Close()
+
+		wsConn, err := consoleUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("host console: websocket upgrade: %v", err)
+			return
+		}
+		defer wsConn.Close()
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			buf := make([]byte, 32*1024)
+			for {
+				n, err := tcpConn.Read(buf)
+				if n > 0 {
+					if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+						return
+					}
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+
+		for {
+			msgType, data, err := wsConn.ReadMessage()
+			if err != nil {
+				break
+			}
+			if msgType != websocket.BinaryMessage {
+				continue
+			}
+			if _, err := tcpConn.Write(data); err != nil {
+				break
+			}
+		}
+		_ = tcpConn.Close()
+		<-done
+	}
+}
+
 func RegisterConsoleRoutes(mux *http.ServeMux, store *LibvirtStore) {
 	mux.HandleFunc("GET /vms/{name}/console", handleConsole(store))
+	mux.HandleFunc("GET /host/console", handleHostConsole())
 }
+

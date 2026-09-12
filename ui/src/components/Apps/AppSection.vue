@@ -160,8 +160,17 @@ const builtInApplications = [
 		icon: require(`@/assets/img/app/vm-manager.png`),
 		status: 'running',
 		app_type: 'system'
+	},
+	{
+		id: '6',
+		name: 'Host Desktop',
+		title: { en_us: 'Host Desktop' },
+		icon: require(`@/assets/img/app/desktop.svg`),
+		status: 'running',
+		app_type: 'system'
 	}
 ]
+
 
 const orderConfig = 'app_order'
 const CELL_W = 88

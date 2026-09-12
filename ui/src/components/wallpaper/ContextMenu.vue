@@ -33,6 +33,11 @@
 		<div class="ctx-divider"></div>
 
 		<!-- 3. System Utilities -->
+		<button class="ctx-item" @click="openHostDesktop">
+			<i class="mdi mdi-monitor-dashboard ctx-icon"></i>
+			<span class="ctx-label">{{ $t('Host PC Desktop') }}</span>
+		</button>
+
 		<button class="ctx-item" @click="openTerminal">
 			<i class="mdi mdi-console ctx-icon"></i>
 			<span class="ctx-label">{{ $t('Terminal') }}</span>
@@ -151,6 +156,16 @@ export default {
 				component: 'SettingsApp',
 				width: 760,
 				height: 540
+			})
+		},
+		openHostDesktop() {
+			this.close()
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'host-desktop',
+				title: this.$t('Host Desktop'),
+				component: 'HostDesktopPanel',
+				width: 1024,
+				height: 680
 			})
 		},
 		openTerminal() {

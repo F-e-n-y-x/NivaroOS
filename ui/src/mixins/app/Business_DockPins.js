@@ -13,12 +13,15 @@ export const SYSTEM_NAME_MAP = {
 	terminal: 'Terminal',
 	vms: 'VMs',
 	settings: 'Settings',
+	'host-desktop': 'Host Desktop',
+	'Host Desktop': 'Host Desktop',
 	'Files': 'Files',
 	'App Store': 'App Store',
 	'Terminal': 'Terminal',
 	'VMs': 'VMs',
 	'Settings': 'Settings'
 }
+
 
 export default {
 	methods: {

@@ -52,6 +52,16 @@ export default [
 		}
 	},
 	{
+		path: '/host-desktop',
+		name: 'HostDesktopStandalone',
+		hidden: true,
+		component: () => import('@/views/HostDesktopStandalone.vue'),
+		meta: {
+			requireAuth: true,
+			showBackground: false
+		}
+	},
+	{
 		path: '/launch',
 		name: 'AppLauncherCheck',
 		hidden: true,

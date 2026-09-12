@@ -21,12 +21,14 @@ import FolderWindow from '@/components/desktop/FolderWindow.vue'
 import SystemUpdateWindow from '@/components/desktop/SystemUpdateWindow.vue'
 import ContainerConsolePanel from '@/components/desktop/ContainerConsolePanel.vue'
 import ScheduledTaskWindow from '@/components/desktop/ScheduledTaskWindow.vue'
+import HostDesktopPanel from '@/components/desktop/HostDesktopPanel.vue'
 
 export const COMPONENT_REGISTRY = {
 	FilesApp,
 	TerminalPanel,
 	ContainerConsolePanel,
 	VmConsolePanel,
+	HostDesktopPanel,
 	CreateVmModal,
 	EditVmModal,
 	SettingsApp,
@@ -54,10 +56,11 @@ export const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerC
 // window titlebar sitting directly above that read as a visibly mismatched
 // seam, so these windows get the same dark titlebar treatment TerminalPanel
 // already uses.
-export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel']
+export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel', 'HostDesktopPanel']
 
-export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel']
+export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel']
 
 export function resolveComponent(name) {
 	return COMPONENT_REGISTRY[name]
 }
+
