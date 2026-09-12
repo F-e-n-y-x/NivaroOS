@@ -3,8 +3,8 @@
 	Host PC / Server Desktop Console.
 	Streams the host machine's physical / X11 desktop display (:0) directly
 	into the NivaroOS desktop window or standalone browser tab via noVNC (RFB).
-	Includes keyboard/mouse controls, special key shortcuts, clipboard sync,
-	scaling modes, and one-click "Open in New Tab".
+	Includes quick display size & resolution changer, auto-match window size,
+	zoom controls, scaling modes, virtual keyboard, and one-click "New Tab".
 -->
 <template>
 	<div class="host-desktop-panel">
@@ -21,7 +21,149 @@
 			</div>
 
 			<div class="toolbar-actions">
-				<!-- Segment 1: Input & Virtual Keyboard -->
+				<!-- Segment 1: Quick Display Size & Resolution Changer -->
+				<div class="toolbar-group">
+					<div ref="displaySizeMenuWrapper" class="menu-wrapper">
+						<button
+							type="button"
+							class="toolbar-btn display-size-btn"
+							:class="{ active: displaySizeMenuOpen }"
+							:title="$t('Change Server Display Resolution & Size')"
+							@click="displaySizeMenuOpen = !displaySizeMenuOpen"
+						>
+							<b-icon icon="monitor-screenshot" custom-size="mdi-16px"></b-icon>
+							<span class="display-res-badge">{{ currentResolution || '1920x1080' }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+
+						<div v-if="displaySizeMenuOpen" class="dropdown-popover display-size-menu">
+							<div class="popover-section-title">
+								<b-icon icon="aspect-ratio" custom-size="mdi-14px"></b-icon>
+								<span>{{ $t('Display Resolution') }}</span>
+							</div>
+
+							<!-- Auto Match Window Option -->
+							<button
+								type="button"
+								class="popover-item auto-match-item"
+								:disabled="resizingHost"
+								@click="matchWindowResolution"
+							>
+								<b-icon icon="arrow-expand-all" custom-size="mdi-16px" class="match-icon"></b-icon>
+								<div class="popover-item-text">
+									<div class="item-title">{{ $t('Match Current Window') }}</div>
+									<div class="item-desc">{{ currentWindowEstimate }}</div>
+								</div>
+								<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" custom-size="mdi-14px"></b-icon>
+							</button>
+
+							<div class="popover-divider"></div>
+
+							<!-- Standard Preset Resolutions -->
+							<div class="resolution-list">
+								<button
+									v-for="r in availableResolutions"
+									:key="r.width + 'x' + r.height"
+									type="button"
+									class="popover-item res-item"
+									:class="{ active: currentResolution === `${r.width}x${r.height}` }"
+									:disabled="resizingHost"
+									@click="changeResolution(r.width, r.height)"
+								>
+									<b-icon icon="monitor" custom-size="mdi-15px"></b-icon>
+									<span class="res-label">{{ r.label }}</span>
+									<b-icon
+										v-if="currentResolution === `${r.width}x${r.height}`"
+										icon="check"
+										custom-size="mdi-14px"
+										class="check-icon"
+									></b-icon>
+								</button>
+							</div>
+
+							<div class="popover-divider"></div>
+
+							<!-- Custom Resolution Input -->
+							<div class="custom-res-form" @click.stop>
+								<span class="custom-res-label">{{ $t('Custom') }}:</span>
+								<input
+									v-model.number="customWidth"
+									type="number"
+									class="custom-res-input"
+									placeholder="1920"
+									min="640"
+									max="7680"
+								/>
+								<span class="custom-res-sep">×</span>
+								<input
+									v-model.number="customHeight"
+									type="number"
+									class="custom-res-input"
+									placeholder="1080"
+									min="480"
+									max="4320"
+								/>
+								<button
+									type="button"
+									class="custom-res-apply-btn"
+									:disabled="resizingHost || !customWidth || !customHeight"
+									@click="applyCustomResolution"
+								>
+									{{ $t('Set') }}
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- View Scaling & Zoom Controls -->
+					<div class="zoom-controls">
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							:class="{ active: scaleMode === 'fit' }"
+							:title="$t('Fit display proportionally to window')"
+							@click="setScaleMode('fit')"
+						>
+							<b-icon icon="fit-to-page-outline" custom-size="mdi-16px"></b-icon>
+						</button>
+
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							:class="{ active: scaleMode === 'actual' }"
+							:title="$t('Actual 1:1 pixel size (100%)')"
+							@click="setScaleMode('actual')"
+						>
+							<b-icon icon="aspect-ratio" custom-size="mdi-16px"></b-icon>
+						</button>
+
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn zoom-btn"
+							:disabled="zoomPercent <= 25"
+							:title="$t('Zoom Out')"
+							@click="adjustZoom(-25)"
+						>
+							<b-icon icon="minus" custom-size="mdi-14px"></b-icon>
+						</button>
+
+						<span class="zoom-badge" :title="$t('Current Display Scale')">{{ zoomPercent }}%</span>
+
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn zoom-btn"
+							:disabled="zoomPercent >= 300"
+							:title="$t('Zoom In')"
+							@click="adjustZoom(25)"
+						>
+							<b-icon icon="plus" custom-size="mdi-14px"></b-icon>
+						</button>
+					</div>
+				</div>
+
+				<div class="toolbar-divider"></div>
+
+				<!-- Segment 2: Input Controls & Keyboard -->
 				<div class="toolbar-group">
 					<button
 						type="button"
@@ -82,19 +224,8 @@
 
 				<div class="toolbar-divider"></div>
 
-				<!-- Segment 2: Viewport & Quality Controls -->
+				<!-- Segment 3: Quality & Window Controls -->
 				<div class="toolbar-group">
-					<!-- Scale Toggle -->
-					<button
-						type="button"
-						class="toolbar-btn"
-						:title="scaleToFit ? $t('Show actual 1:1 resolution') : $t('Fit to window')"
-						@click="toggleScale"
-					>
-						<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
-						<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
-					</button>
-
 					<!-- Quality Preset Dropdown -->
 					<div ref="qualityMenuWrapper" class="menu-wrapper">
 						<button
@@ -117,11 +248,11 @@
 								@click="setQualityMode(q.mode)"
 							>
 								<b-icon :icon="q.icon" custom-size="mdi-16px"></b-icon>
-								<div class="quality-text">
-									<div class="quality-title">{{ q.label }}</div>
-									<div class="quality-desc">{{ q.desc }}</div>
+								<div class="popover-item-text">
+									<div class="item-title">{{ q.label }}</div>
+									<div class="item-desc">{{ q.desc }}</div>
 								</div>
-								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-14px" class="quality-check"></b-icon>
+								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-14px" class="check-icon"></b-icon>
 							</button>
 						</div>
 					</div>
@@ -162,14 +293,19 @@
 			</div>
 		</div>
 
-		<!-- Main Screen Canvas Area -->
+		<!-- Main Screen Viewport Container -->
 		<div
 			ref="screenWrapper"
 			class="screen-wrapper"
+			:class="{ 'is-fit': scaleMode === 'fit', 'is-scrollable': scaleMode !== 'fit' }"
 			tabindex="0"
 			@click="focusCanvas"
 		>
-			<div ref="screen" class="vnc-canvas"></div>
+			<div
+				ref="screen"
+				class="vnc-canvas-container"
+				:style="canvasTransformStyle"
+			></div>
 
 			<!-- Connecting / Disconnected Overlay -->
 			<div v-if="status !== 'connected'" class="screen-state-overlay">
@@ -255,6 +391,7 @@
 
 <script>
 import RFB from '@novnc/novnc'
+import axios from 'axios'
 
 const SPECIAL_KEYSYMS = {
 	Backspace: 0xff08,
@@ -306,16 +443,35 @@ export default {
 		return {
 			rfb: null,
 			status: 'disconnected', // connecting, connected, disconnected
-			scaleToFit: true,
+			scaleMode: 'fit', // 'fit', 'actual', 'custom'
+			zoomPercent: 100,
 			isFullscreen: false,
 			keyboardOpen: false,
 			keysMenuOpen: false,
 			qualityMenuOpen: false,
+			displaySizeMenuOpen: false,
 			qualityMode: 'auto',
 			isShiftActive: false,
 			isCapsActive: false,
 			isCtrlActive: false,
 			isAltActive: false,
+			resizingHost: false,
+			currentResolution: '1920x1080',
+			currentWidth: 1920,
+			currentHeight: 1080,
+			customWidth: 1920,
+			customHeight: 1080,
+			containerWidth: 1280,
+			containerHeight: 720,
+			availableResolutions: [
+				{ width: 1920, height: 1080, label: '1920 x 1080 (1080p FHD)' },
+				{ width: 1600, height: 900, label: '1600 x 900 (HD+)' },
+				{ width: 1440, height: 900, label: '1440 x 900 (WXGA+)' },
+				{ width: 1366, height: 768, label: '1366 x 768 (Laptop HD)' },
+				{ width: 1280, height: 720, label: '1280 x 720 (720p HD)' },
+				{ width: 1024, height: 768, label: '1024 x 768 (XGA 4:3)' },
+				{ width: 800, height: 600, label: '800 x 600 (SVGA 4:3)' },
+			],
 			qualityOptions: [
 				{ mode: 'auto', label: 'Auto Balanced', desc: 'Optimal framerate and clarity', icon: 'speedometer' },
 				{ mode: 'smooth', label: 'Smooth / Low Latency', desc: 'Fastest response time', icon: 'lightning-bolt' },
@@ -334,16 +490,40 @@ export default {
 		qualityLabel() {
 			return QUALITY_PRESETS[this.qualityMode]?.label || this.$t('Auto')
 		},
+		currentWindowEstimate() {
+			const w = Math.max(640, Math.round(this.containerWidth))
+			const h = Math.max(480, Math.round(this.containerHeight))
+			return `${w} × ${h}`
+		},
+		canvasTransformStyle() {
+			if (this.scaleMode === 'actual') {
+				const scale = this.zoomPercent / 100
+				return {
+					transform: scale !== 1 ? `scale(${scale})` : 'none',
+					transformOrigin: 'top center',
+				}
+			}
+			return {}
+		},
 	},
 	mounted() {
+		this.fetchHostDisplayInfo()
 		this.connect()
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
-		this.resizeObserver = new ResizeObserver(() => {
-			if (this.rfb && this.scaleToFit) {
+
+		this.resizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				if (entry.contentRect) {
+					this.containerWidth = entry.contentRect.width
+					this.containerHeight = entry.contentRect.height
+				}
+			}
+			if (this.rfb && this.scaleMode === 'fit') {
 				this.rfb.scaleViewport = true
 			}
 		})
+
 		if (this.$refs.screenWrapper) {
 			this.resizeObserver.observe(this.$refs.screenWrapper)
 		}
@@ -357,16 +537,106 @@ export default {
 		}
 	},
 	methods: {
+		getApiBase() {
+			const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
+			const host = window.location.hostname || '127.0.0.1'
+			return `${proto}//${host}:28641`
+		},
+		async fetchHostDisplayInfo() {
+			try {
+				const res = await axios.get(`${this.getApiBase()}/host/display`)
+				if (res.data) {
+					this.currentResolution = res.data.current || '1920x1080'
+					this.currentWidth = res.data.width || 1920
+					this.currentHeight = res.data.height || 1080
+					this.customWidth = this.currentWidth
+					this.customHeight = this.currentHeight
+					if (res.data.resolutions && res.data.resolutions.length) {
+						this.availableResolutions = res.data.resolutions
+					}
+				}
+			} catch (e) {
+				console.warn('Failed to fetch host display info:', e)
+			}
+		},
+		async changeResolution(width, height) {
+			this.resizingHost = true
+			try {
+				const res = await axios.post(`${this.getApiBase()}/host/display`, { width, height })
+				if (res.data) {
+					this.currentResolution = `${width}x${height}`
+					this.currentWidth = width
+					this.currentHeight = height
+					this.customWidth = width
+					this.customHeight = height
+					this.$buefy.toast.open({
+						message: `${this.$t('Display changed to')} ${width}×${height}`,
+						type: 'is-success',
+						position: 'is-top',
+						duration: 2500,
+					})
+				}
+				this.displaySizeMenuOpen = false
+				// Re-apply viewport scaling to adapt to new dimensions
+				this.$nextTick(() => {
+					if (this.rfb && this.scaleMode === 'fit') {
+						this.rfb.scaleViewport = true
+					}
+				})
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: e.response?.data?.error || this.$t('Failed to change display resolution'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 3500,
+				})
+			} finally {
+				this.resizingHost = false
+			}
+		},
+		matchWindowResolution() {
+			let w = Math.round(this.containerWidth || window.innerWidth)
+			let h = Math.round(this.containerHeight || window.innerHeight)
+			// Snap to even numbers for video/framebuffer alignment
+			if (w % 2 !== 0) w -= 1
+			if (h % 2 !== 0) h -= 1
+			w = Math.max(640, Math.min(3840, w))
+			h = Math.max(480, Math.min(2160, h))
+			this.changeResolution(w, h)
+		},
+		applyCustomResolution() {
+			if (this.customWidth && this.customHeight) {
+				this.changeResolution(this.customWidth, this.customHeight)
+			}
+		},
+		setScaleMode(mode) {
+			this.scaleMode = mode
+			if (!this.rfb) return
+			if (mode === 'fit') {
+				this.rfb.scaleViewport = true
+				this.rfb.clipViewport = false
+				this.zoomPercent = 100
+			} else if (mode === 'actual') {
+				this.rfb.scaleViewport = false
+				this.rfb.clipViewport = false
+			}
+		},
+		adjustZoom(delta) {
+			if (this.scaleMode === 'fit') {
+				this.scaleMode = 'actual'
+				if (this.rfb) this.rfb.scaleViewport = false
+			}
+			const next = Math.max(25, Math.min(300, this.zoomPercent + delta))
+			this.zoomPercent = next
+		},
 		getHostConsoleUrl() {
 			const hostname = window.location.hostname || '127.0.0.1'
 			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			// Primary port 28641 through NivaroOS vm-sidecar /host/console route
 			return `${wsProto}//${hostname}:28641/host/console`
 		},
 		getFallbackConsoleUrl() {
 			const hostname = window.location.hostname || '127.0.0.1'
 			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			// Direct websockify port
 			return `${wsProto}//${hostname}:28642`
 		},
 		connect() {
@@ -378,7 +648,6 @@ export default {
 
 			try {
 				this.initRfb(primaryUrl, () => {
-					// On error with primary, attempt fallback
 					console.warn('Primary host console connection failed, trying websockify fallback...')
 					this.initRfb(fallbackUrl, () => {
 						this.status = 'disconnected'
@@ -393,8 +662,9 @@ export default {
 		initRfb(url, onError) {
 			if (!this.$refs.screen) return
 			this.rfb = new RFB(this.$refs.screen, url)
-			this.rfb.scaleViewport = this.scaleToFit
+			this.rfb.scaleViewport = (this.scaleMode === 'fit')
 			this.rfb.clipViewport = false
+			this.rfb.resizeSession = true
 			this.applyQualitySettings()
 
 			this.rfb.addEventListener('connect', () => {
@@ -434,12 +704,6 @@ export default {
 				}
 			})
 		},
-		toggleScale() {
-			this.scaleToFit = !this.scaleToFit
-			if (this.rfb) {
-				this.rfb.scaleViewport = this.scaleToFit
-			}
-		},
 		applyQualitySettings() {
 			if (!this.rfb) return
 			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.auto
@@ -463,7 +727,6 @@ export default {
 			this.isFullscreen = !!document.fullscreenElement
 		},
 		openInNewTab() {
-			// Opens the Host Desktop in a full-page standalone browser tab
 			const routeUrl = this.$router.resolve({ name: 'HostDesktopStandalone' })
 			window.open(routeUrl.href, '_blank')
 		},
@@ -596,6 +859,9 @@ export default {
 			})
 		},
 		onOutsideClick(e) {
+			if (this.$refs.displaySizeMenuWrapper && !this.$refs.displaySizeMenuWrapper.contains(e.target)) {
+				this.displaySizeMenuOpen = false
+			}
 			if (this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(e.target)) {
 				this.keysMenuOpen = false
 			}
@@ -627,10 +893,15 @@ export default {
 	justify-content: space-between;
 	background: #141416;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	padding: 0.4rem 0.75rem;
-	height: 42px;
+	padding: 0.35rem 0.75rem;
+	height: 44px;
 	flex-shrink: 0;
 	gap: 0.5rem;
+	overflow-x: auto;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
 }
 
 .toolbar-identity {
@@ -639,6 +910,7 @@ export default {
 	gap: 0.5rem;
 	font-weight: 600;
 	font-size: 0.85rem;
+	flex-shrink: 0;
 
 	.monitor-icon {
 		color: #38bdf8;
@@ -689,12 +961,13 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
+	flex-shrink: 0;
 }
 
 .toolbar-group {
 	display: flex;
 	align-items: center;
-	gap: 0.25rem;
+	gap: 0.3rem;
 }
 
 .toolbar-divider {
@@ -718,6 +991,7 @@ export default {
 	cursor: pointer;
 	transition: all 0.15s ease;
 	line-height: 1.2;
+	white-space: nowrap;
 
 	&:hover {
 		background: #27272a;
@@ -733,6 +1007,23 @@ export default {
 
 	&.icon-only-btn {
 		padding: 0.25rem 0.4rem;
+	}
+
+	&.display-size-btn {
+		background: rgba(56, 189, 248, 0.1);
+		color: #38bdf8;
+		border-color: rgba(56, 189, 248, 0.3);
+
+		&:hover, &.active {
+			background: #0284c7;
+			color: #ffffff;
+			border-color: #0284c7;
+		}
+
+		.display-res-badge {
+			font-weight: 600;
+			letter-spacing: 0.02em;
+		}
 	}
 
 	&.new-tab-btn {
@@ -752,6 +1043,43 @@ export default {
 	}
 }
 
+/* Zoom Controls */
+.zoom-controls {
+	display: inline-flex;
+	align-items: center;
+	background: #18181b;
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 6px;
+	padding: 1px 2px;
+	gap: 2px;
+
+	.zoom-btn {
+		border: none;
+		background: transparent;
+		padding: 3px 5px;
+		color: #a1a1aa;
+
+		&:hover:not(:disabled) {
+			color: #ffffff;
+			background: rgba(255, 255, 255, 0.1);
+		}
+
+		&:disabled {
+			opacity: 0.35;
+			cursor: not-allowed;
+		}
+	}
+
+	.zoom-badge {
+		font-size: 0.725rem;
+		font-weight: 600;
+		color: #d4d4d8;
+		padding: 0 4px;
+		min-width: 38px;
+		text-align: center;
+	}
+}
+
 /* Dropdown Menus */
 .menu-wrapper {
 	position: relative;
@@ -760,14 +1088,32 @@ export default {
 .dropdown-popover {
 	position: absolute;
 	top: calc(100% + 4px);
-	right: 0;
+	left: 0;
 	z-index: 1000;
 	background: #18181b;
 	border: 1px solid rgba(255, 255, 255, 0.14);
-	border-radius: 8px;
-	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8);
-	padding: 0.3rem;
-	min-width: 170px;
+	border-radius: 10px;
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85);
+	padding: 0.4rem;
+	min-width: 220px;
+}
+
+.popover-section-title {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.7rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #a1a1aa;
+	padding: 0.35rem 0.6rem 0.25rem;
+}
+
+.popover-divider {
+	height: 1px;
+	background: rgba(255, 255, 255, 0.08);
+	margin: 0.35rem 0;
 }
 
 .popover-item {
@@ -775,72 +1121,176 @@ export default {
 	align-items: center;
 	gap: 0.5rem;
 	width: 100%;
-	padding: 0.4rem 0.6rem;
+	padding: 0.45rem 0.65rem;
 	border: none;
 	background: transparent;
 	color: #f4f4f5;
 	font-size: 0.8rem;
-	border-radius: 5px;
+	border-radius: 6px;
 	cursor: pointer;
 	text-align: left;
 	transition: background 0.12s ease;
 
-	&:hover {
+	&:hover:not(:disabled) {
 		background: #2563eb;
 		color: #ffffff;
+
+		.item-desc {
+			color: #e0f2fe;
+		}
 	}
 
-	&.quality-item {
-		justify-content: space-between;
+	&.active {
+		background: rgba(37, 99, 235, 0.25);
+		color: #60a5fa;
+	}
 
-		.quality-text {
-			flex: 1;
-			margin-left: 0.35rem;
-		}
+	&:disabled {
+		opacity: 0.5;
+		cursor: wait;
+	}
 
-		.quality-title {
-			font-weight: 500;
+	.check-icon {
+		margin-left: auto;
+		color: #4ade80;
+	}
+
+	.popover-item-text {
+		flex: 1;
+
+		.item-title {
+			font-weight: 600;
 			font-size: 0.8rem;
 		}
 
-		.quality-desc {
+		.item-desc {
 			font-size: 0.7rem;
 			color: #a1a1aa;
 		}
+	}
 
-		&:hover .quality-desc {
-			color: #e0f2fe;
-		}
-
-		&.active {
-			background: rgba(37, 99, 235, 0.25);
-			color: #60a5fa;
+	&.auto-match-item {
+		.match-icon {
+			color: #38bdf8;
 		}
 	}
 }
 
-/* Screen Wrapper */
-.screen-wrapper {
-	flex: 1;
-	position: relative;
-	background: #000000;
-	overflow: hidden;
+.resolution-list {
+	max-height: 240px;
+	overflow-y: auto;
+
+	&::-webkit-scrollbar {
+		width: 4px;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 2px;
+	}
+}
+
+.custom-res-form {
 	display: flex;
 	align-items: center;
-	justify-content: center;
+	gap: 0.3rem;
+	padding: 0.35rem 0.5rem;
+	font-size: 0.75rem;
+
+	.custom-res-label {
+		color: #a1a1aa;
+	}
+
+	.custom-res-input {
+		width: 58px;
+		background: #27272a;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 4px;
+		color: #ffffff;
+		padding: 2px 4px;
+		font-size: 0.75rem;
+		text-align: center;
+		outline: none;
+
+		&:focus {
+			border-color: #3b82f6;
+		}
+	}
+
+	.custom-res-sep {
+		color: #71717a;
+	}
+
+	.custom-res-apply-btn {
+		background: #2563eb;
+		color: #ffffff;
+		border: none;
+		border-radius: 4px;
+		padding: 2px 8px;
+		font-size: 0.725rem;
+		font-weight: 600;
+		cursor: pointer;
+
+		&:hover:not(:disabled) {
+			background: #1d4ed8;
+		}
+
+		&:disabled {
+			opacity: 0.4;
+			cursor: not-allowed;
+		}
+	}
+}
+
+/* Screen Viewport Wrapper */
+.screen-wrapper {
+	flex: 1 1 auto;
+	min-height: 0;
+	position: relative;
+	background: #000000;
 	outline: none;
 
-	.vnc-canvas {
-		width: 100%;
-		height: 100%;
+	&.is-fit {
+		overflow: hidden;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 
-		::v-deep canvas {
-			outline: none;
-			max-width: 100%;
-			max-height: 100%;
+		.vnc-canvas-container {
+			width: 100%;
+			height: 100%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			::v-deep canvas {
+				outline: none;
+				width: auto !important;
+				height: auto !important;
+				max-width: 100% !important;
+				max-height: 100% !important;
+				object-fit: contain;
+				display: block;
+				margin: auto;
+			}
+		}
+	}
+
+	&.is-scrollable {
+		overflow: auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+
+		.vnc-canvas-container {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			margin: auto;
+
+			::v-deep canvas {
+				outline: none;
+				display: block;
+			}
 		}
 	}
 }
@@ -915,7 +1365,7 @@ export default {
 .virtual-keyboard-drawer {
 	background: #141416;
 	border-top: 1px solid rgba(255, 255, 255, 0.12);
-	padding: 0.6rem 0.85rem;
+	padding: 0.5rem 0.75rem;
 	flex-shrink: 0;
 	box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
 
@@ -923,7 +1373,7 @@ export default {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 0.4rem;
+		margin-bottom: 0.35rem;
 		color: #a1a1aa;
 		font-size: 0.75rem;
 
@@ -951,7 +1401,7 @@ export default {
 	.keyboard-body {
 		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
+		gap: 0.25rem;
 	}
 
 	.kb-row {
@@ -961,8 +1411,8 @@ export default {
 	}
 
 	.kb-key {
-		min-width: 34px;
-		height: 32px;
+		min-width: 32px;
+		height: 30px;
 		background: #222226;
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		color: #f4f4f5;
@@ -1010,11 +1460,11 @@ export default {
 		}
 
 		&.kb-key-enter {
-			min-width: 54px;
+			min-width: 50px;
 		}
 
 		&.kb-key-arrow {
-			min-width: 30px;
+			min-width: 28px;
 			color: #60a5fa;
 		}
 	}
