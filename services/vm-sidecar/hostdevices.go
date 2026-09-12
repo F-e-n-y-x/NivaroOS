@@ -174,9 +174,12 @@ type DisplayResolution struct {
 
 var standardResolutions = []DisplayResolution{
 	{Width: 1920, Height: 1080, Label: "1920 x 1080 (1080p Full HD)"},
+	{Width: 1680, Height: 1050, Label: "1680 x 1050 (WSXGA+ 16:10)"},
 	{Width: 1600, Height: 900, Label: "1600 x 900 (HD+)"},
 	{Width: 1440, Height: 900, Label: "1440 x 900 (WXGA+)"},
 	{Width: 1366, Height: 768, Label: "1366 x 768 (Standard Laptop)"},
+	{Width: 1280, Height: 1024, Label: "1280 x 1024 (SXGA 5:4)"},
+	{Width: 1280, Height: 800, Label: "1280 x 800 (WXGA 16:10)"},
 	{Width: 1280, Height: 720, Label: "1280 x 720 (720p HD)"},
 	{Width: 1024, Height: 768, Label: "1024 x 768 (XGA 4:3)"},
 	{Width: 800, Height: 600, Label: "800 x 600 (SVGA 4:3)"},
@@ -227,13 +230,29 @@ func SetHostDisplay(w, h int) error {
 		return fmt.Errorf("resolution out of supported range (640x480 - 7680x4320)")
 	}
 	resStr := fmt.Sprintf("%dx%d", w, h)
-	cmd := exec.Command("xrandr", "-display", ":0", "--fb", resStr)
-	if auth := getHostXAuth(); auth != "" {
-		cmd.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
+	auth := getHostXAuth()
+
+	// 1. Try setting mode on active connected output (HDMI-0)
+	cmdMode := exec.Command("xrandr", "-display", ":0", "--output", "HDMI-0", "--mode", resStr)
+	if auth != "" {
+		cmdMode.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
 	} else {
-		cmd.Env = append(os.Environ(), "DISPLAY=:0")
+		cmdMode.Env = append(os.Environ(), "DISPLAY=:0")
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := cmdMode.CombinedOutput(); err == nil {
+		return nil
+	} else {
+		_ = out
+	}
+
+	// 2. Fallback: try setting framebuffer size
+	cmdFb := exec.Command("xrandr", "-display", ":0", "--fb", resStr)
+	if auth != "" {
+		cmdFb.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
+	} else {
+		cmdFb.Env = append(os.Environ(), "DISPLAY=:0")
+	}
+	if out, err := cmdFb.CombinedOutput(); err != nil {
 		return fmt.Errorf("xrandr: %s (%w)", string(out), err)
 	}
 	return nil

@@ -1,221 +1,82 @@
 <!-- src/components/desktop/HostDesktopPanel.vue -->
 <!--
 	Host PC / Server Desktop Console.
-	Streams the host machine's physical / X11 desktop display (:0) directly
+	Streams the host machine's physical X11 desktop display (:0) directly
 	into the NivaroOS desktop window or standalone browser tab via noVNC (RFB).
-	Includes quick display size & resolution changer, auto-match window size,
-	zoom controls, scaling modes, virtual keyboard, and one-click "New Tab".
+	Follows the exact UI architecture, design tokens, and components of VmConsolePanel:
+	- Console toolbar with identity, status pill, and grouped action bars
+	- Draggable floating on-screen keyboard (identical layout, shortcuts, and behavior)
+	- Keys shortcut menu (Ctrl+Alt+Del, Win Key, Alt+Tab, Ctrl+Shift+Esc, Alt+F4)
+	- Quick clipboard paste modal (with keystroke typing and clipboard paste)
+	- Quick display size & resolution changer with presets, auto-match window, and custom WxH
+	- View scaling toggle (Fit to Window vs 1:1 Actual Size)
+	- Speedometer quality presets (High Quality, Balanced, Low Bandwidth)
+	- Dedicated Fullscreen and Open in New Tab actions
+	- Console statusbar displaying live connection dot, resolution, quality, scale, and display info
 -->
 <template>
 	<div class="host-desktop-panel">
 		<!-- Main Console Toolbar -->
-		<div class="desktop-console-toolbar">
+		<div class="console-toolbar">
 			<!-- Identity / Status -->
-			<div class="toolbar-identity">
-				<b-icon icon="monitor-dashboard" custom-size="mdi-18px" class="monitor-icon"></b-icon>
-				<span class="toolbar-title">{{ $t('Host Desktop') }}</span>
-				<span class="status-pill" :class="'is-' + status">
-					<span class="status-dot"></span>
-					{{ statusText }}
-				</span>
+			<div class="vm-identity">
+				<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
+				<span class="vm-name">{{ $t('Host Desktop') }}</span>
+				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
 			</div>
 
 			<div class="toolbar-actions">
-				<!-- Segment 1: Quick Display Size & Resolution Changer -->
-				<div class="toolbar-group">
-					<div ref="displaySizeMenuWrapper" class="menu-wrapper">
-						<button
-							type="button"
-							class="toolbar-btn display-size-btn"
-							:class="{ active: displaySizeMenuOpen }"
-							:title="$t('Change Server Display Resolution & Size')"
-							@click="displaySizeMenuOpen = !displaySizeMenuOpen"
-						>
-							<b-icon icon="monitor-screenshot" custom-size="mdi-16px"></b-icon>
-							<span class="display-res-badge">{{ currentResolution || '1920x1080' }}</span>
-							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
-						</button>
-
-						<div v-if="displaySizeMenuOpen" class="dropdown-popover display-size-menu">
-							<div class="popover-section-title">
-								<b-icon icon="aspect-ratio" custom-size="mdi-14px"></b-icon>
-								<span>{{ $t('Display Resolution') }}</span>
-							</div>
-
-							<!-- Auto Match Window Option -->
-							<button
-								type="button"
-								class="popover-item auto-match-item"
-								:disabled="resizingHost"
-								@click="matchWindowResolution"
-							>
-								<b-icon icon="arrow-expand-all" custom-size="mdi-16px" class="match-icon"></b-icon>
-								<div class="popover-item-text">
-									<div class="item-title">{{ $t('Match Current Window') }}</div>
-									<div class="item-desc">{{ currentWindowEstimate }}</div>
-								</div>
-								<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" custom-size="mdi-14px"></b-icon>
-							</button>
-
-							<div class="popover-divider"></div>
-
-							<!-- Standard Preset Resolutions -->
-							<div class="resolution-list">
-								<button
-									v-for="r in availableResolutions"
-									:key="r.width + 'x' + r.height"
-									type="button"
-									class="popover-item res-item"
-									:class="{ active: currentResolution === `${r.width}x${r.height}` }"
-									:disabled="resizingHost"
-									@click="changeResolution(r.width, r.height)"
-								>
-									<b-icon icon="monitor" custom-size="mdi-15px"></b-icon>
-									<span class="res-label">{{ r.label }}</span>
-									<b-icon
-										v-if="currentResolution === `${r.width}x${r.height}`"
-										icon="check"
-										custom-size="mdi-14px"
-										class="check-icon"
-									></b-icon>
-								</button>
-							</div>
-
-							<div class="popover-divider"></div>
-
-							<!-- Custom Resolution Input -->
-							<div class="custom-res-form" @click.stop>
-								<span class="custom-res-label">{{ $t('Custom') }}:</span>
-								<input
-									v-model.number="customWidth"
-									type="number"
-									class="custom-res-input"
-									placeholder="1920"
-									min="640"
-									max="7680"
-								/>
-								<span class="custom-res-sep">×</span>
-								<input
-									v-model.number="customHeight"
-									type="number"
-									class="custom-res-input"
-									placeholder="1080"
-									min="480"
-									max="4320"
-								/>
-								<button
-									type="button"
-									class="custom-res-apply-btn"
-									:disabled="resizingHost || !customWidth || !customHeight"
-									@click="applyCustomResolution"
-								>
-									{{ $t('Set') }}
-								</button>
-							</div>
-						</div>
-					</div>
-
-					<!-- View Scaling & Zoom Controls -->
-					<div class="zoom-controls">
-						<button
-							type="button"
-							class="toolbar-btn icon-only-btn"
-							:class="{ active: scaleMode === 'fit' }"
-							:title="$t('Fit display proportionally to window')"
-							@click="setScaleMode('fit')"
-						>
-							<b-icon icon="fit-to-page-outline" custom-size="mdi-16px"></b-icon>
-						</button>
-
-						<button
-							type="button"
-							class="toolbar-btn icon-only-btn"
-							:class="{ active: scaleMode === 'actual' }"
-							:title="$t('Actual 1:1 pixel size (100%)')"
-							@click="setScaleMode('actual')"
-						>
-							<b-icon icon="aspect-ratio" custom-size="mdi-16px"></b-icon>
-						</button>
-
-						<button
-							type="button"
-							class="toolbar-btn icon-only-btn zoom-btn"
-							:disabled="zoomPercent <= 25"
-							:title="$t('Zoom Out')"
-							@click="adjustZoom(-25)"
-						>
-							<b-icon icon="minus" custom-size="mdi-14px"></b-icon>
-						</button>
-
-						<span class="zoom-badge" :title="$t('Current Display Scale')">{{ zoomPercent }}%</span>
-
-						<button
-							type="button"
-							class="toolbar-btn icon-only-btn zoom-btn"
-							:disabled="zoomPercent >= 300"
-							:title="$t('Zoom In')"
-							@click="adjustZoom(25)"
-						>
-							<b-icon icon="plus" custom-size="mdi-14px"></b-icon>
-						</button>
-					</div>
-				</div>
-
-				<div class="toolbar-divider"></div>
-
-				<!-- Segment 2: Input Controls & Keyboard -->
+				<!-- Segment 1: Input Controls -->
 				<div class="toolbar-group">
 					<button
 						type="button"
 						class="toolbar-btn icon-only-btn"
 						:class="{ active: keyboardOpen }"
-						:title="$t('On-Screen Virtual Keyboard')"
+						:title="$t('On-Screen Keyboard')"
 						@click="keyboardOpen = !keyboardOpen"
 					>
 						<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
 					</button>
 
-					<!-- Keys Menu Dropdown -->
 					<div ref="keysMenuWrapper" class="menu-wrapper">
 						<button
 							type="button"
 							class="toolbar-btn"
-							:title="$t('Send Key Combinations')"
+							:title="$t('Send Key Shortcuts')"
 							@click="keysMenuOpen = !keysMenuOpen"
 						>
 							<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Keys') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
-						<div v-if="keysMenuOpen" class="dropdown-popover keys-menu">
-							<button type="button" class="popover-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
+						<div v-if="keysMenuOpen" class="power-menu keys-menu">
+							<button type="button" class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
 								<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon>
-								<span>Ctrl + Alt + Del</span>
+								<span>Ctrl+Alt+Del</span>
 							</button>
-							<button type="button" class="popover-item" @click="sendWinKey(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
 								<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon>
-								<span>{{ $t('Windows Key') }}</span>
+								<span>{{ $t('Win Key') }}</span>
 							</button>
-							<button type="button" class="popover-item" @click="sendAltTab(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
 								<b-icon icon="tab" custom-size="mdi-16px"></b-icon>
 								<span>Alt + Tab</span>
 							</button>
-							<button type="button" class="popover-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
 								<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon>
-								<span>Ctrl + Shift + Esc</span>
+								<span>Ctrl+Shift+Esc</span>
 							</button>
-							<button type="button" class="popover-item" @click="sendAltF4(); keysMenuOpen = false">
+							<button type="button" class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
 								<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon>
 								<span>Alt + F4</span>
 							</button>
 						</div>
 					</div>
 
-					<!-- Paste Clipboard -->
 					<button
 						type="button"
 						class="toolbar-btn icon-only-btn"
-						:title="$t('Paste text into Host Desktop')"
+						:title="$t('Paste clipboard text into Host')"
 						@click="pasteClipboard"
 					>
 						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
@@ -224,174 +85,356 @@
 
 				<div class="toolbar-divider"></div>
 
-				<!-- Segment 3: Quality & Window Controls -->
+				<!-- Segment 2: View & Stream Controls -->
 				<div class="toolbar-group">
-					<!-- Quality Preset Dropdown -->
+					<!-- Display Resolution & Size Menu -->
+					<div ref="displayMenuWrapper" class="menu-wrapper">
+						<button
+							type="button"
+							class="toolbar-btn"
+							:class="{ active: displayMenuOpen }"
+							:title="$t('Display Resolution & Size')"
+							@click="displayMenuOpen = !displayMenuOpen"
+						>
+							<b-icon icon="monitor-screenshot" custom-size="mdi-16px"></b-icon>
+							<span>{{ currentResolution || '1920x1080' }}</span>
+							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+						</button>
+
+						<div v-if="displayMenuOpen" class="device-menu display-dropdown-menu">
+							<div class="device-menu-header-row">
+								<div class="header-title-group">
+									<b-icon icon="monitor-screenshot" size="is-small"></b-icon>
+									<p class="device-menu-title">{{ $t('Display Resolution') }}</p>
+								</div>
+								<span class="active-resolution-badge">{{ currentResolution || '1920x1080' }}</span>
+							</div>
+							<p class="device-menu-hint">{{ $t('Dynamically change host physical display resolution.') }}</p>
+
+							<!-- Auto Match Window Option -->
+							<div
+								class="device-menu-row auto-match-row"
+								:class="{ disabled: resizingHost }"
+								@click="matchWindowResolution"
+							>
+								<div class="device-row-icon active">
+									<b-icon icon="arrow-expand-all" size="is-small"></b-icon>
+								</div>
+								<div class="network-row-details">
+									<span class="network-row-label">{{ $t('Match Current Window') }}</span>
+									<span class="network-row-meta">{{ currentWindowEstimate }}</span>
+								</div>
+								<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+							</div>
+
+							<p class="device-menu-title device-menu-title-divided">{{ $t('Preset Resolutions') }}</p>
+							<div class="device-menu-scrollable">
+								<div
+									v-for="r in availableResolutions"
+									:key="r.width + 'x' + r.height"
+									class="device-menu-row"
+									:class="{ active: currentResolution === `${r.width}x${r.height}` }"
+									@click="changeResolution(r.width, r.height)"
+								>
+									<div class="device-row-icon" :class="{ active: currentResolution === `${r.width}x${r.height}` }">
+										<b-icon icon="monitor" size="is-small"></b-icon>
+									</div>
+									<span class="device-menu-desc">{{ r.label }}</span>
+									<b-icon
+										v-if="currentResolution === `${r.width}x${r.height}`"
+										icon="check"
+										size="is-small"
+										custom-class="has-text-success"
+									></b-icon>
+								</div>
+							</div>
+
+							<p class="device-menu-title device-menu-title-divided">{{ $t('Custom Resolution') }}</p>
+							<div class="custom-res-row" @click.stop>
+								<input
+									v-model.number="customWidth"
+									type="number"
+									class="custom-res-field"
+									placeholder="1920"
+									min="640"
+									max="7680"
+								/>
+								<span class="custom-res-multiply">×</span>
+								<input
+									v-model.number="customHeight"
+									type="number"
+									class="custom-res-field"
+									placeholder="1080"
+									min="480"
+									max="4320"
+								/>
+								<button
+									type="button"
+									class="custom-res-btn"
+									:disabled="resizingHost || !customWidth || !customHeight"
+									@click="applyCustomResolution"
+								>
+									<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+									<span v-else>{{ $t('Set') }}</span>
+								</button>
+							</div>
+						</div>
+					</div>
+
+					<!-- Fit vs 1:1 Scale Toggle -->
+					<button
+						type="button"
+						class="toolbar-btn"
+						:title="scaleToFit ? $t('Show actual size (1:1)') : $t('Scale to fit window')"
+						@click="toggleScale"
+					>
+						<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
+						<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
+					</button>
+
+					<!-- Bandwidth & Stream Quality Menu -->
 					<div ref="qualityMenuWrapper" class="menu-wrapper">
 						<button
 							type="button"
 							class="toolbar-btn"
-							:title="$t('Streaming Quality Mode')"
+							:title="$t('Display & Bandwidth Quality')"
 							@click="qualityMenuOpen = !qualityMenuOpen"
 						>
 							<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
-							<span>{{ qualityLabel }}</span>
+							<span>{{ qualityModeLabel }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
-						<div v-if="qualityMenuOpen" class="dropdown-popover quality-menu">
+						<div v-if="qualityMenuOpen" class="power-menu quality-menu">
 							<button
 								v-for="q in qualityOptions"
 								:key="q.mode"
 								type="button"
-								class="popover-item quality-item"
+								class="power-menu-item quality-menu-item"
 								:class="{ active: qualityMode === q.mode }"
 								@click="setQualityMode(q.mode)"
 							>
-								<b-icon :icon="q.icon" custom-size="mdi-16px"></b-icon>
-								<div class="popover-item-text">
-									<div class="item-title">{{ q.label }}</div>
-									<div class="item-desc">{{ q.desc }}</div>
-								</div>
-								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-14px" class="check-icon"></b-icon>
+								<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
+								<span class="quality-menu-text">
+									<span class="quality-menu-title">{{ $t(q.label) }}</span>
+									<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
+								</span>
+								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
 							</button>
 						</div>
 					</div>
 
-					<!-- Reconnect Button -->
-					<button
-						v-if="status === 'disconnected'"
-						type="button"
-						class="toolbar-btn reconnect-btn"
-						:title="$t('Reconnect to Host Desktop')"
-						@click="connect"
-					>
-						<b-icon icon="refresh" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Reconnect') }}</span>
-					</button>
-
-					<!-- Open in New Tab Button -->
-					<button
-						type="button"
-						class="toolbar-btn new-tab-btn"
-						:title="$t('Open Host Desktop in New Tab / Window')"
-						@click="openInNewTab"
-					>
-						<b-icon icon="open-in-new" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('New Tab') }}</span>
-					</button>
-
-					<!-- Fullscreen -->
+					<!-- Fullscreen Action -->
 					<button
 						type="button"
 						class="toolbar-btn icon-only-btn"
 						:title="$t('Fullscreen')"
 						@click="toggleFullscreen"
 					>
-						<b-icon :icon="isFullscreen ? 'fullscreen-exit' : 'fullscreen'" custom-size="mdi-16px"></b-icon>
+						<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
 					</button>
-				</div>
-			</div>
-		</div>
 
-		<!-- Main Screen Viewport Container -->
-		<div
-			ref="screenWrapper"
-			class="screen-wrapper"
-			:class="{ 'is-fit': scaleMode === 'fit', 'is-scrollable': scaleMode !== 'fit' }"
-			tabindex="0"
-			@click="focusCanvas"
-		>
-			<div
-				ref="screen"
-				class="vnc-canvas-container"
-				:style="canvasTransformStyle"
-			></div>
-
-			<!-- Connecting / Disconnected Overlay -->
-			<div v-if="status !== 'connected'" class="screen-state-overlay">
-				<div class="state-card">
-					<b-icon
-						:icon="status === 'connecting' ? 'loading' : 'alert-circle-outline'"
-						custom-size="mdi-48px"
-						:class="{ 'spin-icon': status === 'connecting', 'error-icon': status === 'disconnected' }"
-					></b-icon>
-					<h3 class="state-title">
-						{{ status === 'connecting' ? $t('Connecting to Host Desktop...') : $t('Disconnected from Host Desktop') }}
-					</h3>
-					<p class="state-sub">
-						{{ status === 'connecting' ? $t('Establishing direct display stream to physical session :0') : $t('Display session ended or host service restarted.') }}
-					</p>
+					<!-- Open Standalone Tab Action -->
 					<button
-						v-if="status === 'disconnected'"
 						type="button"
-						class="action-reconnect-btn"
-						@click="connect"
+						class="toolbar-btn icon-only-btn"
+						:title="$t('Open in New Tab')"
+						@click="openInNewTab"
 					>
-						<b-icon icon="refresh" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Reconnect Now') }}</span>
+						<b-icon icon="open-in-new" custom-size="mdi-16px"></b-icon>
 					</button>
 				</div>
-			</div>
-		</div>
 
-		<!-- Virtual On-Screen Keyboard Drawer -->
-		<div v-if="keyboardOpen" class="virtual-keyboard-drawer">
-			<div class="drawer-header">
-				<div class="drawer-title">
-					<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
-					<span>{{ $t('Virtual Keyboard') }}</span>
-				</div>
-				<button type="button" class="drawer-close" @click="keyboardOpen = false">
-					<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+				<!-- Optional Close Button for Standalone Tab Wrapper -->
+				<button
+					v-if="showClose"
+					type="button"
+					class="toolbar-btn icon-only-btn close-btn"
+					:title="$t('Close')"
+					@click="$emit('close')"
+				>
+					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 				</button>
 			</div>
-			<div class="keyboard-body">
-				<!-- Row 1: Function Keys -->
-				<div class="kb-row">
-					<button type="button" class="kb-key kb-key-fn" @click="sendSpecialKey('Escape', 'Escape')">Esc</button>
-					<button v-for="n in 12" :key="'f'+n" type="button" class="kb-key kb-key-fn" @click="sendSpecialKey('F'+n, 'F'+n)">F{{ n }}</button>
-					<button type="button" class="kb-key kb-key-fn" @click="sendSpecialKey('Delete', 'Delete')">Del</button>
+		</div>
+
+		<!-- Display Canvas Screen Container -->
+		<div
+			ref="screen"
+			class="console-screen"
+			:class="{ 'is-scrollable': !scaleToFit }"
+		></div>
+
+		<!-- Disconnected / Reconnecting Overlay -->
+		<div v-if="status !== 'connected'" class="console-status">
+			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+			<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
+			<span>{{ statusText }}</span>
+			<button v-if="status === 'disconnected'" class="reconnect-btn" @click="connect">
+				{{ $t('Reconnect') }}
+			</button>
+		</div>
+
+		<!-- Floating Draggable On-Screen Keyboard -->
+		<div
+			v-show="keyboardOpen"
+			ref="keyboard"
+			class="on-screen-keyboard"
+			:style="keyboardStyle"
+		>
+			<div class="osk-header" @pointerdown="startKeyboardDrag">
+				<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
+				<span class="osk-title">{{ $t('Keyboard') }}</span>
+				<button
+					type="button"
+					class="osk-close"
+					:title="$t('Close')"
+					@pointerdown.stop
+					@mousedown.stop
+					@click.stop="closeKeyboard"
+				>
+					<b-icon icon="close" size="is-small"></b-icon>
+				</button>
+			</div>
+			<div class="osk-keys">
+				<div class="osk-alpha">
+					<div v-for="(row, i) in keyboardRows" :key="'a' + i" class="osk-row">
+						<button
+							v-for="key in row"
+							:key="key.code"
+							type="button"
+							class="osk-key"
+							:style="keyStyle(key)"
+							:class="{ active: key.sticky && stickyState(key.sticky) }"
+							@click="pressKey(key)"
+						>
+							{{ keyLabel(key) }}
+						</button>
+					</div>
 				</div>
-				<!-- Row 2: Numbers -->
-				<div class="kb-row">
-					<button v-for="k in numberRow" :key="k" type="button" class="kb-key" @click="sendCharKey(k)">{{ k }}</button>
-					<button type="button" class="kb-key kb-key-action" @click="sendSpecialKey('Backspace', 'Backspace')">⌫</button>
+				<div class="osk-side">
+					<div class="osk-row osk-fn-spacer"></div>
+					<div v-for="(row, i) in navRows" :key="'n' + i" class="osk-row">
+						<button
+							v-for="key in row"
+							:key="key.code"
+							type="button"
+							class="osk-key"
+							:style="keyStyle(key)"
+							@click="pressKey(key)"
+						>
+							{{ keyLabel(key) }}
+						</button>
+					</div>
+					<div class="osk-side-fill"></div>
+					<div v-for="(row, i) in arrowRows" :key="'r' + i" class="osk-row">
+						<button
+							v-for="(key, j) in row"
+							:key="j"
+							type="button"
+							class="osk-key"
+							:class="{ 'osk-key-empty': !key }"
+							:style="keyStyle(key || { u: 1 })"
+							:disabled="!key"
+							@click="key && pressKey(key)"
+						>
+							{{ key ? keyLabel(key) : '' }}
+						</button>
+					</div>
 				</div>
-				<!-- Row 3: QWERTY -->
-				<div class="kb-row">
-					<button type="button" class="kb-key kb-key-action" @click="sendSpecialKey('Tab', 'Tab')">Tab</button>
-					<button v-for="k in ['q','w','e','r','t','y','u','i','o','p']" :key="k" type="button" class="kb-key" @click="sendCharKey(k)">{{ isShiftActive ? k.toUpperCase() : k }}</button>
-				</div>
-				<!-- Row 4: ASDF -->
-				<div class="kb-row">
-					<button type="button" class="kb-key kb-key-action" :class="{ active: isCapsActive }" @click="isCapsActive = !isCapsActive">Caps</button>
-					<button v-for="k in ['a','s','d','f','g','h','j','k','l']" :key="k" type="button" class="kb-key" @click="sendCharKey(k)">{{ (isShiftActive || isCapsActive) ? k.toUpperCase() : k }}</button>
-					<button type="button" class="kb-key kb-key-action kb-key-enter" @click="sendSpecialKey('Enter', 'Enter')">Enter</button>
-				</div>
-				<!-- Row 5: ZXCV -->
-				<div class="kb-row">
-					<button type="button" class="kb-key kb-key-action" :class="{ active: isShiftActive }" @click="isShiftActive = !isShiftActive">Shift</button>
-					<button v-for="k in ['z','x','c','v','b','n','m']" :key="k" type="button" class="kb-key" @click="sendCharKey(k)">{{ (isShiftActive || isCapsActive) ? k.toUpperCase() : k }}</button>
-					<button type="button" class="kb-key kb-key-arrow" @click="sendSpecialKey('ArrowUp', 'ArrowUp')">▲</button>
-				</div>
-				<!-- Row 6: Modifiers & Space -->
-				<div class="kb-row">
-					<button type="button" class="kb-key kb-key-action" :class="{ active: isCtrlActive }" @click="toggleModifier('Control', 'isCtrlActive')">Ctrl</button>
-					<button type="button" class="kb-key kb-key-action" :class="{ active: isAltActive }" @click="toggleModifier('Alt', 'isAltActive')">Alt</button>
-					<button type="button" class="kb-key kb-key-action" @click="sendWinKey">Win</button>
-					<button type="button" class="kb-key kb-key-space" @click="sendCharKey(' ')">Space</button>
-					<button type="button" class="kb-key kb-key-arrow" @click="sendSpecialKey('ArrowLeft', 'ArrowLeft')">◀</button>
-					<button type="button" class="kb-key kb-key-arrow" @click="sendSpecialKey('ArrowDown', 'ArrowDown')">▼</button>
-					<button type="button" class="kb-key kb-key-arrow" @click="sendSpecialKey('ArrowRight', 'ArrowRight')">▶</button>
+				<div class="osk-shortcuts-col">
+					<button
+						v-for="s in shortcuts"
+						:key="s.key"
+						type="button"
+						class="osk-key osk-shortcut-btn"
+						:style="keyStyle({ u: 1 })"
+						:title="$t(s.label)"
+						@click="sendShortcut(s.key)"
+					>
+						<b-icon :icon="s.icon" size="is-small"></b-icon>
+					</button>
 				</div>
 			</div>
 		</div>
+
+		<!-- Statusbar at the Bottom -->
+		<div class="console-statusbar">
+			<span class="statusbar-item" :class="{ 'is-live': status === 'connected' }">
+				<span class="activity-dot"></span>{{ statusText }}
+			</span>
+			<span class="statusbar-item">
+				<b-icon icon="monitor" size="is-small"></b-icon>
+				{{ currentResolution || '1920x1080' }}
+			</span>
+			<span class="statusbar-item">
+				<b-icon icon="speedometer" size="is-small"></b-icon>
+				{{ qualityModeLabel }}
+			</span>
+			<span class="statusbar-item">
+				<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" size="is-small"></b-icon>
+				{{ scaleToFit ? $t('Fit') : $t('1:1') }}
+			</span>
+			<span class="statusbar-item">
+				<b-icon icon="desktop-classic" size="is-small"></b-icon>
+				{{ $t('Display :0') }}
+			</span>
+		</div>
+
+		<!-- Quick Paste & Type Modal -->
+		<vm-overlay-panel
+			:active="showPasteDialog"
+			:title="$t('Paste Text to Host Desktop')"
+			max-width="30rem"
+			@close="showPasteDialog = false"
+		>
+			<div class="paste-modal-content">
+				<p class="paste-modal-desc">
+					{{ $t('Type or paste text (Ctrl+V) to send to the host desktop.') }}
+				</p>
+				<textarea
+					ref="pasteInput"
+					v-model="pasteText"
+					class="paste-modal-textarea"
+					rows="4"
+					:placeholder="$t('Paste your text here...')"
+					@keydown.enter.ctrl="sendPasteText(false)"
+				></textarea>
+				<div class="paste-modal-actions">
+					<button type="button" class="paste-action-btn" @click="sendPasteText(true)">
+						<b-icon icon="keyboard-outline" size="is-small"></b-icon>
+						<span>{{ $t('Type Keystrokes') }}</span>
+					</button>
+					<button
+						type="button"
+						class="paste-action-btn is-primary"
+						:disabled="!pasteText"
+						@click="sendPasteText(false)"
+					>
+						<b-icon icon="content-paste" size="is-small"></b-icon>
+						<span>{{ $t('Paste Clipboard') }}</span>
+					</button>
+				</div>
+			</div>
+		</vm-overlay-panel>
 	</div>
 </template>
 
 <script>
 import RFB from '@novnc/novnc'
 import axios from 'axios'
+import VmOverlayPanel from '@/components/desktop/vm/VmOverlayPanel.vue'
+
+const QUALITY_PRESETS = {
+	high: { qualityLevel: 9, compressionLevel: 1 },
+	balanced: { qualityLevel: 6, compressionLevel: 2 },
+	low: { qualityLevel: 2, compressionLevel: 8 },
+}
+
+const QUALITY_OPTIONS = [
+	{ mode: 'high', icon: 'high-definition', label: 'High Quality', desc: 'Sharpest picture, most data' },
+	{ mode: 'balanced', icon: 'tune-vertical', label: 'Balanced', desc: 'Good picture, moderate data' },
+	{ mode: 'low', icon: 'speedometer-slow', label: 'Low Bandwidth', desc: 'Softer picture, least lag' },
+]
 
 const SPECIAL_KEYSYMS = {
 	Backspace: 0xff08,
@@ -413,6 +456,7 @@ const SPECIAL_KEYSYMS = {
 	Insert: 0xff63,
 	PageUp: 0xff55,
 	PageDown: 0xff56,
+	Menu: 0xff67,
 	F1: 0xffbe,
 	F2: 0xffbf,
 	F3: 0xffc0,
@@ -427,314 +471,500 @@ const SPECIAL_KEYSYMS = {
 	F12: 0xffc9,
 }
 
-const QUALITY_PRESETS = {
-	auto: { qualityLevel: 7, compressionLevel: 2, label: 'Auto Balanced' },
-	smooth: { qualityLevel: 5, compressionLevel: 1, label: 'Smooth / Low Latency' },
-	crisp: { qualityLevel: 9, compressionLevel: 4, label: 'High Fidelity (Crisp)' },
-	lowbw: { qualityLevel: 2, compressionLevel: 9, label: 'Low Bandwidth' },
-}
+const SHORTCUTS = [
+	{ key: 'c', label: 'Copy', icon: 'content-copy' },
+	{ key: 'x', label: 'Cut', icon: 'content-cut' },
+	{ key: 'v', label: 'Paste', icon: 'content-paste' },
+	{ key: 'z', label: 'Undo', icon: 'undo' },
+	{ key: 'a', label: 'Select All', icon: 'select-all' },
+]
+
+const KEYBOARD_ROWS = [
+	[
+		{ code: 'Escape', special: 'Escape', label: 'Esc' },
+		{ code: 'F1', special: 'F1', label: 'F1', gapBefore: 1.7 }, { code: 'F2', special: 'F2', label: 'F2' }, { code: 'F3', special: 'F3', label: 'F3' },
+		{ code: 'F4', special: 'F4', label: 'F4' }, { code: 'F5', special: 'F5', label: 'F5', gapBefore: 1.7 }, { code: 'F6', special: 'F6', label: 'F6' },
+		{ code: 'F7', special: 'F7', label: 'F7' }, { code: 'F8', special: 'F8', label: 'F8' }, { code: 'F9', special: 'F9', label: 'F9', gapBefore: 1.7 },
+		{ code: 'F10', special: 'F10', label: 'F10' }, { code: 'F11', special: 'F11', label: 'F11' }, { code: 'F12', special: 'F12', label: 'F12' },
+	],
+	[
+		{ code: 'Backquote', base: '`', shift: '~' }, { code: 'Digit1', base: '1', shift: '!' }, { code: 'Digit2', base: '2', shift: '@' },
+		{ code: 'Digit3', base: '3', shift: '#' }, { code: 'Digit4', base: '4', shift: '$' }, { code: 'Digit5', base: '5', shift: '%' },
+		{ code: 'Digit6', base: '6', shift: '^' }, { code: 'Digit7', base: '7', shift: '&' }, { code: 'Digit8', base: '8', shift: '*' },
+		{ code: 'Digit9', base: '9', shift: '(' }, { code: 'Digit0', base: '0', shift: ')' }, { code: 'Minus', base: '-', shift: '_' },
+		{ code: 'Equal', base: '=', shift: '+' }, { code: 'Backspace', special: 'Backspace', label: '⌫', u: 2 },
+	],
+	[
+		{ code: 'Tab', special: 'Tab', label: 'Tab', u: 1.5 }, { code: 'KeyQ', base: 'q', shift: 'Q' }, { code: 'KeyW', base: 'w', shift: 'W' },
+		{ code: 'KeyE', base: 'e', shift: 'E' }, { code: 'KeyR', base: 'r', shift: 'R' }, { code: 'KeyT', base: 't', shift: 'T' },
+		{ code: 'KeyY', base: 'y', shift: 'Y' }, { code: 'KeyU', base: 'u', shift: 'U' }, { code: 'KeyI', base: 'i', shift: 'I' },
+		{ code: 'KeyO', base: 'o', shift: 'O' }, { code: 'KeyP', base: 'p', shift: 'P' }, { code: 'BracketLeft', base: '[', shift: '{' },
+		{ code: 'BracketRight', base: ']', shift: '}' }, { code: 'Backslash', base: '\\', shift: '|', u: 1.5 },
+	],
+	[
+		{ code: 'CapsLock', special: 'CapsLock', label: 'Caps', u: 1.75, sticky: 'capsLockActive' },
+		{ code: 'KeyA', base: 'a', shift: 'A' }, { code: 'KeyS', base: 's', shift: 'S' }, { code: 'KeyD', base: 'd', shift: 'D' },
+		{ code: 'KeyF', base: 'f', shift: 'F' }, { code: 'KeyG', base: 'g', shift: 'G' }, { code: 'KeyH', base: 'h', shift: 'H' },
+		{ code: 'KeyJ', base: 'j', shift: 'J' }, { code: 'KeyK', base: 'k', shift: 'K' }, { code: 'KeyL', base: 'l', shift: 'L' },
+		{ code: 'Semicolon', base: ';', shift: ':' }, { code: 'Quote', base: "'", shift: '"' },
+		{ code: 'Enter', special: 'Enter', label: 'Enter', u: 2.25 },
+	],
+	[
+		{ code: 'ShiftLeft', special: 'Shift', label: 'Shift', u: 2.25, sticky: 'shiftActive' },
+		{ code: 'KeyZ', base: 'z', shift: 'Z' }, { code: 'KeyX', base: 'x', shift: 'X' }, { code: 'KeyC', base: 'c', shift: 'C' },
+		{ code: 'KeyV', base: 'v', shift: 'V' }, { code: 'KeyB', base: 'b', shift: 'B' }, { code: 'KeyN', base: 'n', shift: 'N' },
+		{ code: 'KeyM', base: 'm', shift: 'M' }, { code: 'Comma', base: ',', shift: '<' }, { code: 'Period', base: '.', shift: '>' },
+		{ code: 'Slash', base: '/', shift: '?' }, { code: 'ShiftRight', special: 'Shift', label: 'Shift', u: 2.75, sticky: 'shiftActive' },
+	],
+	[
+		{ code: 'ControlLeft', special: 'Control', label: 'Ctrl', u: 1.5, sticky: 'ctrlActive' },
+		{ code: 'MetaLeft', special: 'Super', label: 'Win', u: 1.25 },
+		{ code: 'AltLeft', special: 'Alt', label: 'Alt', u: 1.25, sticky: 'altActive' },
+		{ code: 'Space', base: ' ', label: 'Space', u: 6.25 },
+		{ code: 'AltRight', special: 'Alt', label: 'Alt', u: 1.25 },
+		{ code: 'MetaRight', special: 'Super', label: 'Win', u: 1.25 },
+		{ code: 'ContextMenu', special: 'Menu', label: 'Menu', u: 1.25 },
+		{ code: 'ControlRight', special: 'Control', label: 'Ctrl', u: 1.5 },
+	],
+]
+
+const NAV_ROWS = [
+	[{ code: 'Insert', special: 'Insert', label: 'Ins' }, { code: 'Home', special: 'Home', label: 'Home' }, { code: 'PageUp', special: 'PageUp', label: 'PgUp' }],
+	[{ code: 'Delete', special: 'Delete', label: 'Del' }, { code: 'End', special: 'End', label: 'End' }, { code: 'PageDown', special: 'PageDown', label: 'PgDn' }],
+]
+
+const ARROW_ROWS = [
+	[null, { code: 'ArrowUp', special: 'ArrowUp', label: '▲' }, null],
+	[{ code: 'ArrowLeft', special: 'ArrowLeft', label: '◀' }, { code: 'ArrowDown', special: 'ArrowDown', label: '▼' }, { code: 'ArrowRight', special: 'ArrowRight', label: '▶' }],
+]
 
 export default {
-	name: 'host-desktop-panel',
+	name: 'HostDesktopPanel',
+	components: {
+		VmOverlayPanel,
+	},
 	props: {
-		showClose: { type: Boolean, default: false },
+		showClose: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		return {
 			rfb: null,
-			status: 'disconnected', // connecting, connected, disconnected
-			scaleMode: 'fit', // 'fit', 'actual', 'custom'
-			zoomPercent: 100,
-			isFullscreen: false,
-			keyboardOpen: false,
+			status: 'connecting',
 			keysMenuOpen: false,
 			qualityMenuOpen: false,
-			displaySizeMenuOpen: false,
-			qualityMode: 'auto',
-			isShiftActive: false,
-			isCapsActive: false,
-			isCtrlActive: false,
-			isAltActive: false,
-			resizingHost: false,
+			displayMenuOpen: false,
+			scaleToFit: true,
+			qualityMode: 'high',
+			qualityOptions: QUALITY_OPTIONS,
+			keyboardOpen: false,
+			keyboardPos: null,
+			shiftActive: false,
+			capsLockActive: false,
+			ctrlActive: false,
+			altActive: false,
+			showPasteDialog: false,
+			pasteText: '',
 			currentResolution: '1920x1080',
-			currentWidth: 1920,
-			currentHeight: 1080,
-			customWidth: 1920,
-			customHeight: 1080,
-			containerWidth: 1280,
-			containerHeight: 720,
-			availableResolutions: [
-				{ width: 1920, height: 1080, label: '1920 x 1080 (1080p FHD)' },
-				{ width: 1600, height: 900, label: '1600 x 900 (HD+)' },
-				{ width: 1440, height: 900, label: '1440 x 900 (WXGA+)' },
-				{ width: 1366, height: 768, label: '1366 x 768 (Laptop HD)' },
-				{ width: 1280, height: 720, label: '1280 x 720 (720p HD)' },
-				{ width: 1024, height: 768, label: '1024 x 768 (XGA 4:3)' },
-				{ width: 800, height: 600, label: '800 x 600 (SVGA 4:3)' },
-			],
-			qualityOptions: [
-				{ mode: 'auto', label: 'Auto Balanced', desc: 'Optimal framerate and clarity', icon: 'speedometer' },
-				{ mode: 'smooth', label: 'Smooth / Low Latency', desc: 'Fastest response time', icon: 'lightning-bolt' },
-				{ mode: 'crisp', label: 'High Fidelity (Crisp)', desc: 'Sharpest text & detail', icon: 'image-filter-hdr' },
-				{ mode: 'lowbw', label: 'Low Bandwidth', desc: 'Conserves network data', icon: 'wifi-strength-1' },
-			],
-			numberRow: ['1','2','3','4','5','6','7','8','9','0','-','='],
+			availableResolutions: [],
+			resizingHost: false,
+			currentWindowEstimate: '1920 × 1080',
+			customWidth: null,
+			customHeight: null,
+			keyboardRows: KEYBOARD_ROWS,
+			navRows: NAV_ROWS,
+			arrowRows: ARROW_ROWS,
+			shortcuts: SHORTCUTS,
 		}
 	},
 	computed: {
 		statusText() {
-			if (this.status === 'connected') return this.$t('Connected')
-			if (this.status === 'connecting') return this.$t('Connecting...')
-			return this.$t('Disconnected')
-		},
-		qualityLabel() {
-			return QUALITY_PRESETS[this.qualityMode]?.label || this.$t('Auto')
-		},
-		currentWindowEstimate() {
-			const w = Math.max(640, Math.round(this.containerWidth))
-			const h = Math.max(480, Math.round(this.containerHeight))
-			return `${w} × ${h}`
-		},
-		canvasTransformStyle() {
-			if (this.scaleMode === 'actual') {
-				const scale = this.zoomPercent / 100
-				return {
-					transform: scale !== 1 ? `scale(${scale})` : 'none',
-					transformOrigin: 'top center',
-				}
+			switch (this.status) {
+				case 'connected':
+					return this.$t('Connected')
+				case 'connecting':
+					return this.$t('Connecting...')
+				case 'disconnected':
+				default:
+					return this.$t('Disconnected')
 			}
-			return {}
+		},
+		qualityModeLabel() {
+			const m = this.qualityOptions.find((q) => q.mode === this.qualityMode)
+			return m ? this.$t(m.label) : this.qualityMode
+		},
+		keyboardStyle() {
+			if (!this.keyboardPos) return {}
+			return {
+				left: this.keyboardPos.x + 'px',
+				top: this.keyboardPos.y + 'px',
+				bottom: 'auto',
+				transform: 'none',
+			}
+		},
+	},
+	watch: {
+		status: {
+			immediate: true,
+			handler(val) {
+				this.$emit('status-change', val)
+			},
+		},
+		keyboardOpen(open) {
+			if (open) {
+				this.$nextTick(() => {
+					const target = document.fullscreenElement ? this.$el : document.body
+					if (this.$refs.keyboard && this.$refs.keyboard.parentNode !== target) {
+						target.appendChild(this.$refs.keyboard)
+					}
+					if (!this.keyboardPos && this.$refs.keyboard) {
+						const kbRect = this.$refs.keyboard.getBoundingClientRect()
+						this.keyboardPos = {
+							x: Math.max(10, Math.round((window.innerWidth - kbRect.width) / 2)),
+							y: Math.max(10, Math.round(window.innerHeight - kbRect.height - 50)),
+						}
+					}
+					this.clampKeyboardPos()
+				})
+			}
+		},
+		displayMenuOpen(open) {
+			if (open) {
+				this.updateWindowEstimate()
+			}
 		},
 	},
 	mounted() {
-		this.fetchHostDisplayInfo()
+		try {
+			const savedQuality = localStorage.getItem('host_desktop_quality_mode')
+			if (savedQuality && QUALITY_PRESETS[savedQuality]) {
+				this.qualityMode = savedQuality
+			}
+		} catch (e) {}
+
 		this.connect()
+		this.fetchHostDisplay()
+
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
+		window.addEventListener('resize', this.onWindowResize)
 
-		this.resizeObserver = new ResizeObserver((entries) => {
-			for (const entry of entries) {
-				if (entry.contentRect) {
-					this.containerWidth = entry.contentRect.width
-					this.containerHeight = entry.contentRect.height
-				}
-			}
-			if (this.rfb && this.scaleMode === 'fit') {
-				this.rfb.scaleViewport = true
-			}
+		this.panelResizeObserver = new ResizeObserver(() => {
+			this.clampKeyboardPos()
+			this.updateWindowEstimate()
 		})
-
-		if (this.$refs.screenWrapper) {
-			this.resizeObserver.observe(this.$refs.screenWrapper)
-		}
+		this.panelResizeObserver.observe(this.$el)
 	},
 	beforeDestroy() {
-		this.disconnect()
+		if (this.rfb) {
+			this.rfb.disconnect()
+			this.rfb = null
+		}
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		document.removeEventListener('fullscreenchange', this.onFullscreenChange)
-		if (this.resizeObserver) {
-			this.resizeObserver.disconnect()
+		window.removeEventListener('resize', this.onWindowResize)
+
+		if (this.panelResizeObserver) {
+			this.panelResizeObserver.disconnect()
+		}
+		if (this.$refs.keyboard && this.$refs.keyboard.parentNode) {
+			this.$refs.keyboard.parentNode.removeChild(this.$refs.keyboard)
 		}
 	},
 	methods: {
-		getApiBase() {
-			const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
-			const host = window.location.hostname || '127.0.0.1'
-			return `${proto}//${host}:28641`
-		},
-		async fetchHostDisplayInfo() {
-			try {
-				const res = await axios.get(`${this.getApiBase()}/host/display`)
-				if (res.data) {
-					this.currentResolution = res.data.current || '1920x1080'
-					this.currentWidth = res.data.width || 1920
-					this.currentHeight = res.data.height || 1080
-					this.customWidth = this.currentWidth
-					this.customHeight = this.currentHeight
-					if (res.data.resolutions && res.data.resolutions.length) {
-						this.availableResolutions = res.data.resolutions
-					}
-				}
-			} catch (e) {
-				console.warn('Failed to fetch host display info:', e)
+		connect() {
+			if (this.rfb) {
+				this.rfb.disconnect()
+				this.rfb = null
 			}
-		},
-		async changeResolution(width, height) {
-			this.resizingHost = true
+			this.status = 'connecting'
+
+			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+			const host = window.location.hostname || '127.0.0.1'
+			const url = `${proto}//${host}:28641/host/console`
+
 			try {
-				const res = await axios.post(`${this.getApiBase()}/host/display`, { width, height })
-				if (res.data) {
-					this.currentResolution = `${width}x${height}`
-					this.currentWidth = width
-					this.currentHeight = height
-					this.customWidth = width
-					this.customHeight = height
-					this.$buefy.toast.open({
-						message: `${this.$t('Display changed to')} ${width}×${height}`,
-						type: 'is-success',
-						position: 'is-top',
-						duration: 2500,
-					})
-				}
-				this.displaySizeMenuOpen = false
-				// Re-apply viewport scaling to adapt to new dimensions
-				this.$nextTick(() => {
-					if (this.rfb && this.scaleMode === 'fit') {
-						this.rfb.scaleViewport = true
+				this.rfb = new RFB(this.$refs.screen, url)
+				this.rfb.scaleViewport = this.scaleToFit
+				this.rfb.resizeSession = false
+
+				const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
+				this.rfb.qualityLevel = preset.qualityLevel
+				this.rfb.compressionLevel = preset.compressionLevel
+
+				this.rfb.addEventListener('connect', () => {
+					this.status = 'connected'
+					const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
+					this.rfb.qualityLevel = p.qualityLevel
+					this.rfb.compressionLevel = p.compressionLevel
+				})
+
+				this.rfb.addEventListener('disconnect', () => {
+					this.status = 'disconnected'
+				})
+
+				this.rfb.addEventListener('clipboard', (e) => {
+					const text = e.detail && e.detail.text
+					if (text && navigator.clipboard && navigator.clipboard.writeText) {
+						navigator.clipboard.writeText(text).catch(() => {})
+					}
+				})
+
+				this.rfb.addEventListener('fbsize', (e) => {
+					if (e.detail && e.detail.width && e.detail.height) {
+						this.currentResolution = `${e.detail.width}x${e.detail.height}`
 					}
 				})
 			} catch (e) {
+				this.status = 'disconnected'
+			}
+		},
+
+		async fetchHostDisplay() {
+			try {
+				const res = await axios.get('/api/host/display')
+				if (res.data) {
+					this.currentResolution = res.data.current || this.currentResolution
+					this.availableResolutions = res.data.resolutions || []
+				}
+			} catch (e) {
+				// Direct sidecar port fallback
+				try {
+					const host = window.location.hostname || '127.0.0.1'
+					const res = await axios.get(`//${host}:28641/host/display`)
+					if (res.data) {
+						this.currentResolution = res.data.current || this.currentResolution
+						this.availableResolutions = res.data.resolutions || []
+					}
+				} catch (err) {}
+			}
+		},
+
+		async changeResolution(width, height) {
+			if (!width || !height || this.resizingHost) return
+			this.resizingHost = true
+			try {
+				let res = null
+				try {
+					res = await axios.post('/api/host/display', { width, height })
+				} catch (e) {
+					const host = window.location.hostname || '127.0.0.1'
+					res = await axios.post(`//${host}:28641/host/display`, { width, height })
+				}
+				if (res && res.data) {
+					this.currentResolution = res.data.current || `${width}x${height}`
+				}
+				this.displayMenuOpen = false
 				this.$buefy.toast.open({
-					message: e.response?.data?.error || this.$t('Failed to change display resolution'),
+					message: `${this.$t('Host Display Resolution')}: ${width}×${height}`,
+					type: 'is-success',
+					duration: 2500,
+				})
+			} catch (e) {
+				this.$buefy.toast.open({
+					message: this.$t('Failed to change display resolution'),
 					type: 'is-danger',
-					position: 'is-top',
 					duration: 3500,
 				})
 			} finally {
 				this.resizingHost = false
 			}
 		},
-		matchWindowResolution() {
-			let w = Math.round(this.containerWidth || window.innerWidth)
-			let h = Math.round(this.containerHeight || window.innerHeight)
-			// Snap to even numbers for video/framebuffer alignment
-			if (w % 2 !== 0) w -= 1
-			if (h % 2 !== 0) h -= 1
-			w = Math.max(640, Math.min(3840, w))
-			h = Math.max(480, Math.min(2160, h))
-			this.changeResolution(w, h)
-		},
-		applyCustomResolution() {
-			if (this.customWidth && this.customHeight) {
-				this.changeResolution(this.customWidth, this.customHeight)
-			}
-		},
-		setScaleMode(mode) {
-			this.scaleMode = mode
-			if (!this.rfb) return
-			if (mode === 'fit') {
-				this.rfb.scaleViewport = true
-				this.rfb.clipViewport = false
-				this.zoomPercent = 100
-			} else if (mode === 'actual') {
-				this.rfb.scaleViewport = false
-				this.rfb.clipViewport = false
-			}
-		},
-		adjustZoom(delta) {
-			if (this.scaleMode === 'fit') {
-				this.scaleMode = 'actual'
-				if (this.rfb) this.rfb.scaleViewport = false
-			}
-			const next = Math.max(25, Math.min(300, this.zoomPercent + delta))
-			this.zoomPercent = next
-		},
-		getHostConsoleUrl() {
-			const hostname = window.location.hostname || '127.0.0.1'
-			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			return `${wsProto}//${hostname}:28641/host/console`
-		},
-		getFallbackConsoleUrl() {
-			const hostname = window.location.hostname || '127.0.0.1'
-			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			return `${wsProto}//${hostname}:28642`
-		},
-		connect() {
-			this.disconnect()
-			this.status = 'connecting'
 
-			const primaryUrl = this.getHostConsoleUrl()
-			const fallbackUrl = this.getFallbackConsoleUrl()
-
-			try {
-				this.initRfb(primaryUrl, () => {
-					console.warn('Primary host console connection failed, trying websockify fallback...')
-					this.initRfb(fallbackUrl, () => {
-						this.status = 'disconnected'
-					})
-				})
-			} catch (e) {
-				this.initRfb(fallbackUrl, () => {
-					this.status = 'disconnected'
-				})
-			}
-		},
-		initRfb(url, onError) {
+		updateWindowEstimate() {
 			if (!this.$refs.screen) return
-			this.rfb = new RFB(this.$refs.screen, url)
-			this.rfb.scaleViewport = (this.scaleMode === 'fit')
-			this.rfb.clipViewport = false
-			this.rfb.resizeSession = true
-			this.applyQualitySettings()
-
-			this.rfb.addEventListener('connect', () => {
-				this.status = 'connected'
-				this.applyQualitySettings()
-				this.focusCanvas()
-			})
-
-			this.rfb.addEventListener('disconnect', (e) => {
-				if (this.status === 'connecting' && onError) {
-					onError(e)
-				} else {
-					this.status = 'disconnected'
-				}
-			})
-
-			this.rfb.addEventListener('clipboard', (e) => {
-				const text = e.detail && e.detail.text
-				if (text && navigator.clipboard && navigator.clipboard.writeText) {
-					navigator.clipboard.writeText(text).catch(() => {})
-				}
-			})
-		},
-		disconnect() {
-			if (this.rfb) {
-				try {
-					this.rfb.disconnect()
-				} catch (e) {}
-				this.rfb = null
+			const w = Math.round(this.$refs.screen.clientWidth)
+			const h = Math.round(this.$refs.screen.clientHeight)
+			if (w > 0 && h > 0) {
+				this.currentWindowEstimate = `${w} × ${h}`
 			}
 		},
-		focusCanvas() {
-			this.$nextTick(() => {
-				if (this.$refs.screen) {
-					const canvas = this.$refs.screen.querySelector('canvas')
-					if (canvas) canvas.focus()
-				}
-			})
+
+		async matchWindowResolution() {
+			if (!this.$refs.screen || this.resizingHost) return
+			const w = Math.max(640, Math.round(this.$refs.screen.clientWidth))
+			const h = Math.max(480, Math.round(this.$refs.screen.clientHeight))
+			await this.changeResolution(w, h)
 		},
-		applyQualitySettings() {
-			if (!this.rfb) return
-			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.auto
-			this.rfb.qualityLevel = preset.qualityLevel
-			this.rfb.compressionLevel = preset.compressionLevel
+
+		async applyCustomResolution() {
+			if (!this.customWidth || !this.customHeight) return
+			await this.changeResolution(this.customWidth, this.customHeight)
 		},
+
+		toggleScale() {
+			this.scaleToFit = !this.scaleToFit
+			if (this.rfb) {
+				this.rfb.scaleViewport = this.scaleToFit
+			}
+		},
+
 		setQualityMode(mode) {
 			this.qualityMode = mode
-			this.applyQualitySettings()
 			this.qualityMenuOpen = false
-		},
-		toggleFullscreen() {
-			if (!document.fullscreenElement) {
-				const target = this.$el || document.documentElement
-				target.requestFullscreen().catch(() => {})
-			} else {
-				document.exitFullscreen().catch(() => {})
-			}
-		},
-		onFullscreenChange() {
-			this.isFullscreen = !!document.fullscreenElement
-		},
-		openInNewTab() {
-			const routeUrl = this.$router.resolve({ name: 'HostDesktopStandalone' })
-			window.open(routeUrl.href, '_blank')
-		},
-		sendCtrlAltDel() {
+			try {
+				localStorage.setItem('host_desktop_quality_mode', mode)
+			} catch (e) {}
 			if (this.rfb) {
-				this.rfb.sendCtrlAltDel()
+				const preset = QUALITY_PRESETS[mode] || QUALITY_PRESETS.high
+				this.rfb.qualityLevel = preset.qualityLevel
+				this.rfb.compressionLevel = preset.compressionLevel
+			}
+			this.$buefy.toast.open({
+				message: `${this.$t('Bandwidth profile')}: ${this.qualityModeLabel}`,
+				type: 'is-info',
+				duration: 2000,
+			})
+		},
+
+		toggleFullscreen() {
+			if (document.fullscreenElement) {
+				document.exitFullscreen()
+			} else {
+				this.$el.requestFullscreen()
 			}
 		},
+
+		openInNewTab() {
+			window.open('/#/host-desktop', '_blank')
+		},
+
+		onOutsideClick(event) {
+			if (!event || !event.target) return
+			if (typeof event.target.closest === 'function') {
+				if (
+					event.target.closest('.vm-overlay') ||
+					event.target.closest('.modal') ||
+					event.target.closest('.dialog') ||
+					event.target.closest('.device-menu') ||
+					event.target.closest('.power-menu')
+				) {
+					return
+				}
+			}
+			if (this.keysMenuOpen && this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(event.target)) {
+				this.keysMenuOpen = false
+			}
+			if (this.qualityMenuOpen && this.$refs.qualityMenuWrapper && !this.$refs.qualityMenuWrapper.contains(event.target)) {
+				this.qualityMenuOpen = false
+			}
+			if (this.displayMenuOpen && this.$refs.displayMenuWrapper && !this.$refs.displayMenuWrapper.contains(event.target)) {
+				this.displayMenuOpen = false
+			}
+		},
+
+		onWindowResize() {
+			this.clampKeyboardPos()
+			this.updateWindowEstimate()
+		},
+
+		onFullscreenChange() {
+			if (!this.keyboardOpen || !this.$refs.keyboard) return
+			const target = document.fullscreenElement ? this.$el : document.body
+			if (this.$refs.keyboard.parentNode !== target) {
+				target.appendChild(this.$refs.keyboard)
+			}
+			this.$nextTick(() => {
+				this.clampKeyboardPos()
+			})
+		},
+
+		closeKeyboard() {
+			this.keyboardOpen = false
+		},
+
+		startKeyboardDrag(event) {
+			const header = event.currentTarget
+			header.setPointerCapture(event.pointerId)
+			const kbEl = this.$refs.keyboard
+			if (!kbEl) return
+			const kbRect = kbEl.getBoundingClientRect()
+			const offsetX = event.clientX - kbRect.left
+			const offsetY = event.clientY - kbRect.top
+			const onMove = (e) => {
+				const maxX = Math.max(0, window.innerWidth - kbRect.width)
+				const maxY = Math.max(0, window.innerHeight - kbRect.height)
+				const x = Math.max(0, Math.min(e.clientX - offsetX, maxX))
+				const y = Math.max(0, Math.min(e.clientY - offsetY, maxY))
+				this.keyboardPos = { x, y }
+			}
+			const onUp = () => {
+				header.releasePointerCapture(event.pointerId)
+				header.removeEventListener('pointermove', onMove)
+				header.removeEventListener('pointerup', onUp)
+				header.removeEventListener('pointercancel', onUp)
+			}
+			header.addEventListener('pointermove', onMove)
+			header.addEventListener('pointerup', onUp)
+			header.addEventListener('pointercancel', onUp)
+		},
+
+		clampKeyboardPos() {
+			if (!this.keyboardPos || !this.$refs.keyboard) return
+			const kbRect = this.$refs.keyboard.getBoundingClientRect()
+			const maxX = Math.max(0, window.innerWidth - kbRect.width)
+			const maxY = Math.max(0, window.innerHeight - kbRect.height)
+			const x = Math.max(0, Math.min(this.keyboardPos.x, maxX))
+			const y = Math.max(0, Math.min(this.keyboardPos.y, maxY))
+			if (x !== this.keyboardPos.x || y !== this.keyboardPos.y) {
+				this.keyboardPos = { x, y }
+			}
+		},
+
+		stickyState(prop) {
+			return this[prop]
+		},
+
+		keyStyle(key) {
+			const KEY_REM = 2.3
+			const GAP_REM = 0.25
+			const u = key.u || 1
+			const style = { width: `${u * KEY_REM + (u - 1) * GAP_REM}rem` }
+			if (key.gapBefore) style.marginLeft = `${key.gapBefore}rem`
+			return style
+		},
+
+		keyLabel(key) {
+			if (key.special) return key.label
+			return this.shiftActive ? key.shift || key.base : key.base
+		},
+
+		pressKey(key) {
+			if (!this.rfb) return
+			if (key.sticky) {
+				this[key.sticky] = !this[key.sticky]
+				this.rfb.sendKey(SPECIAL_KEYSYMS[key.special], key.code, this[key.sticky])
+				return
+			}
+			if (key.special) {
+				const keysym = SPECIAL_KEYSYMS[key.special]
+				this.rfb.sendKey(keysym, key.code, true)
+				this.rfb.sendKey(keysym, key.code, false)
+				return
+			}
+			const ch = this.shiftActive ? key.shift || key.base : key.base
+			const keysym = ch.charCodeAt(0)
+			this.rfb.sendKey(keysym, key.code, true)
+			this.rfb.sendKey(keysym, key.code, false)
+		},
+
+		sendShortcut(letter) {
+			if (!this.rfb) return
+			const ctrl = SPECIAL_KEYSYMS.Control
+			const code = 'Key' + letter.toUpperCase()
+			const keysym = letter.charCodeAt(0)
+			this.rfb.sendKey(ctrl, 'ControlLeft', true)
+			this.rfb.sendKey(keysym, code, true)
+			this.rfb.sendKey(keysym, code, false)
+			this.rfb.sendKey(ctrl, 'ControlLeft', false)
+		},
+
+		sendCtrlAltDel() {
+			if (this.rfb) this.rfb.sendCtrlAltDel()
+		},
+
 		sendWinKey() {
 			if (!this.rfb) return
 			const winKey = SPECIAL_KEYSYMS.Super
@@ -743,6 +973,7 @@ export default {
 				if (this.rfb) this.rfb.sendKey(winKey, 'MetaLeft', false)
 			}, 60)
 		},
+
 		sendAltTab() {
 			if (!this.rfb) return
 			const alt = SPECIAL_KEYSYMS.Alt
@@ -756,6 +987,7 @@ export default {
 				}
 			}, 60)
 		},
+
 		sendCtrlShiftEsc() {
 			if (!this.rfb) return
 			const ctrl = SPECIAL_KEYSYMS.Control
@@ -772,6 +1004,7 @@ export default {
 				}
 			}, 60)
 		},
+
 		sendAltF4() {
 			if (!this.rfb) return
 			const alt = SPECIAL_KEYSYMS.Alt
@@ -785,33 +1018,7 @@ export default {
 				}
 			}, 60)
 		},
-		sendCharKey(char) {
-			if (!this.rfb) return
-			const targetChar = (this.isShiftActive || this.isCapsActive) ? char.toUpperCase() : char
-			const keysym = targetChar.charCodeAt(0)
-			this.rfb.sendKey(keysym, 'Key' + targetChar.toUpperCase(), true)
-			setTimeout(() => {
-				if (this.rfb) this.rfb.sendKey(keysym, 'Key' + targetChar.toUpperCase(), false)
-			}, 30)
-			if (this.isShiftActive) this.isShiftActive = false
-		},
-		sendSpecialKey(symName, code) {
-			if (!this.rfb) return
-			const keysym = SPECIAL_KEYSYMS[symName]
-			if (keysym) {
-				this.rfb.sendKey(keysym, code, true)
-				setTimeout(() => {
-					if (this.rfb) this.rfb.sendKey(keysym, code, false)
-				}, 40)
-			}
-		},
-		toggleModifier(symName, stateProp) {
-			this[stateProp] = !this[stateProp]
-			if (this.rfb) {
-				const keysym = SPECIAL_KEYSYMS[symName]
-				this.rfb.sendKey(keysym, symName, this[stateProp])
-			}
-		},
+
 		async pasteClipboard() {
 			if (!this.rfb) return
 			let text = ''
@@ -821,139 +1028,116 @@ export default {
 				}
 			} catch (e) {}
 
-			if (!text) {
-				this.$buefy.dialog.prompt({
-					title: this.$t('Paste to Host Desktop'),
-					message: this.$t('Enter or paste text to send to host machine:'),
-					inputAttrs: { placeholder: this.$t('Type or paste text here...') },
-					trapFocus: true,
-					onConfirm: val => {
-						if (val) this.typeStringIntoRemote(val)
-					}
+			if (text) {
+				this.rfb.clipboardPasteFrom(text)
+				this.$buefy.toast.open({
+					message: this.$t('Pasted into Host clipboard'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
 				})
 			} else {
-				this.typeStringIntoRemote(text)
+				this.pasteText = ''
+				this.showPasteDialog = true
+				this.$nextTick(() => {
+					if (this.$refs.pasteInput) this.$refs.pasteInput.focus()
+				})
 			}
 		},
-		typeStringIntoRemote(str) {
-			if (!this.rfb || !str) return
-			for (let i = 0; i < str.length; i++) {
-				const ch = str[i]
-				setTimeout(() => {
-					if (!this.rfb) return
-					if (ch === '\n') {
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', true)
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', false)
+
+		sendPasteText(asKeystrokes = false) {
+			if (!this.rfb || !this.pasteText) return
+			if (asKeystrokes) {
+				const str = this.pasteText
+				for (let i = 0; i < str.length; i++) {
+					const char = str[i]
+					if (char === '\n') {
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', true)
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', false)
 					} else {
-						const keysym = ch.charCodeAt(0)
-						this.rfb.sendKey(keysym, 'Key' + ch.toUpperCase(), true)
-						this.rfb.sendKey(keysym, 'Key' + ch.toUpperCase(), false)
+						const code = str.charCodeAt(i)
+						this.rfb.sendKey(code, null, true)
+						this.rfb.sendKey(code, null, false)
 					}
-				}, i * 15)
+				}
+				this.$buefy.toast.open({
+					message: this.$t('Typed text into Host'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
+				})
+			} else {
+				this.rfb.clipboardPasteFrom(this.pasteText)
+				this.$buefy.toast.open({
+					message: this.$t('Pasted into Host clipboard'),
+					type: 'is-success',
+					position: 'is-top',
+					duration: 2000,
+				})
 			}
-			this.$buefy.toast.open({
-				message: this.$t('Pasted text into host session'),
-				type: 'is-success',
-				position: 'is-top',
-				duration: 2000
-			})
+			this.pasteText = ''
+			this.showPasteDialog = false
 		},
-		onOutsideClick(e) {
-			if (this.$refs.displaySizeMenuWrapper && !this.$refs.displaySizeMenuWrapper.contains(e.target)) {
-				this.displaySizeMenuOpen = false
-			}
-			if (this.$refs.keysMenuWrapper && !this.$refs.keysMenuWrapper.contains(e.target)) {
-				this.keysMenuOpen = false
-			}
-			if (this.$refs.qualityMenuWrapper && !this.$refs.qualityMenuWrapper.contains(e.target)) {
-				this.qualityMenuOpen = false
-			}
-		}
-	}
+	},
 }
 </script>
 
 <style lang="scss" scoped>
 .host-desktop-panel {
+	position: absolute;
+	inset: 0;
+	background: #000;
 	display: flex;
 	flex-direction: column;
-	width: 100%;
-	height: 100%;
-	background: #09090b;
-	color: #f4f4f5;
+	color: #fff;
 	overflow: hidden;
-	position: relative;
-	user-select: none;
 }
 
-/* Toolbar */
-.desktop-console-toolbar {
+.console-toolbar {
+	position: relative;
+	z-index: 20;
+	flex-shrink: 0;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	background: #141416;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-	padding: 0.35rem 0.75rem;
-	height: 44px;
-	flex-shrink: 0;
 	gap: 0.5rem;
-	overflow-x: auto;
-
-	&::-webkit-scrollbar {
-		display: none;
-	}
+	padding: 0.4rem 0.65rem;
+	background: #141416;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	user-select: none;
+	overflow: visible;
 }
 
-.toolbar-identity {
+.vm-identity {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
+}
+
+.vm-name {
 	font-weight: 600;
 	font-size: 0.85rem;
-	flex-shrink: 0;
-
-	.monitor-icon {
-		color: #38bdf8;
-	}
-
-	.toolbar-title {
-		color: #f4f4f5;
-		white-space: nowrap;
-	}
+	letter-spacing: -0.01em;
 }
 
 .status-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-	font-size: 0.6875rem;
-	font-weight: 500;
-	padding: 0.15rem 0.5rem;
-	border-radius: 9999px;
-	text-transform: capitalize;
-
-	.status-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-	}
+	font-size: 0.68rem;
+	padding: 0.1rem 0.5rem;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.7);
 
 	&.is-connected {
-		background: rgba(34, 197, 94, 0.15);
-		color: #4ade80;
-		.status-dot { background: #22c55e; }
+		background: rgba(72, 199, 116, 0.2);
+		color: #48c774;
 	}
-
 	&.is-connecting {
-		background: rgba(234, 179, 8, 0.15);
-		color: #facc15;
-		.status-dot { background: #eab308; }
+		background: rgba(255, 221, 87, 0.15);
+		color: #ffdd57;
 	}
-
 	&.is-disconnected {
-		background: rgba(239, 68, 68, 0.15);
-		color: #f87171;
-		.status-dot { background: #ef4444; }
+		background: rgba(255, 56, 96, 0.15);
+		color: #ff3860;
 	}
 }
 
@@ -961,512 +1145,665 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
-	flex-shrink: 0;
+	flex-wrap: nowrap;
+	min-width: 0;
+	overflow: visible;
 }
 
 .toolbar-group {
-	display: flex;
+	display: inline-flex;
 	align-items: center;
-	gap: 0.3rem;
+	gap: 0.2rem;
+	background: rgba(255, 255, 255, 0.05);
+	padding: 0.18rem;
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .toolbar-divider {
 	width: 1px;
-	height: 18px;
-	background: rgba(255, 255, 255, 0.12);
-	margin: 0 0.25rem;
+	height: 1.25rem;
+	background: rgba(255, 255, 255, 0.1);
+	margin: 0 0.15rem;
+	flex-shrink: 0;
 }
 
 .toolbar-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35rem;
-	background: #1e1e22;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	color: #d4d4d8;
-	border-radius: 6px;
-	padding: 0.25rem 0.55rem;
-	font-size: 0.775rem;
+	gap: 0.3rem;
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.85);
+	font-family: inherit;
+	font-size: 0.75rem;
 	font-weight: 500;
+	padding: 0.32rem 0.55rem;
+	border-radius: 6px;
 	cursor: pointer;
-	transition: all 0.15s ease;
-	line-height: 1.2;
 	white-space: nowrap;
+	transition: all 0.14s ease;
 
-	&:hover {
-		background: #27272a;
-		color: #ffffff;
-		border-color: rgba(255, 255, 255, 0.22);
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.12);
+		color: #fff;
 	}
-
 	&.active {
-		background: #2563eb;
-		color: #ffffff;
-		border-color: #3b82f6;
+		background: rgba(255, 255, 255, 0.22);
+		color: #fff;
+		font-weight: 600;
+	}
+	&:disabled {
+		opacity: 0.35;
+		cursor: default;
 	}
 
 	&.icon-only-btn {
-		padding: 0.25rem 0.4rem;
+		padding: 0.32rem 0.42rem;
 	}
 
-	&.display-size-btn {
-		background: rgba(56, 189, 248, 0.1);
-		color: #38bdf8;
-		border-color: rgba(56, 189, 248, 0.3);
-
-		&:hover, &.active {
-			background: #0284c7;
-			color: #ffffff;
-			border-color: #0284c7;
-		}
-
-		.display-res-badge {
-			font-weight: 600;
-			letter-spacing: 0.02em;
-		}
-	}
-
-	&.new-tab-btn {
-		color: #60a5fa;
-		border-color: rgba(96, 165, 250, 0.3);
-
-		&:hover {
-			background: #2563eb;
-			color: #ffffff;
-			border-color: #2563eb;
-		}
-	}
-
-	&.reconnect-btn {
-		color: #fbbf24;
-		border-color: rgba(251, 191, 36, 0.3);
+	&.close-btn:hover {
+		background: rgba(239, 68, 68, 0.25);
+		color: #ef4444;
 	}
 }
 
-/* Zoom Controls */
-.zoom-controls {
-	display: inline-flex;
-	align-items: center;
-	background: #18181b;
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 6px;
-	padding: 1px 2px;
-	gap: 2px;
-
-	.zoom-btn {
-		border: none;
-		background: transparent;
-		padding: 3px 5px;
-		color: #a1a1aa;
-
-		&:hover:not(:disabled) {
-			color: #ffffff;
-			background: rgba(255, 255, 255, 0.1);
-		}
-
-		&:disabled {
-			opacity: 0.35;
-			cursor: not-allowed;
-		}
+@media (max-width: 680px) {
+	.toolbar-btn span {
+		display: none;
 	}
-
-	.zoom-badge {
-		font-size: 0.725rem;
-		font-weight: 600;
-		color: #d4d4d8;
-		padding: 0 4px;
-		min-width: 38px;
-		text-align: center;
+	.toolbar-btn {
+		padding: 0.32rem 0.42rem;
+	}
+	.toolbar-actions {
+		gap: 0.2rem;
+	}
+	.toolbar-group {
+		gap: 0.1rem;
+		padding: 0.12rem;
 	}
 }
 
-/* Dropdown Menus */
 .menu-wrapper {
 	position: relative;
 }
 
-.dropdown-popover {
+.power-menu {
 	position: absolute;
-	top: calc(100% + 4px);
+	top: calc(100% + 0.45rem);
 	left: 0;
 	z-index: 1000;
-	background: #18181b;
+	background: #1e1e24;
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	border-radius: 10px;
-	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85);
-	padding: 0.4rem;
-	min-width: 220px;
-}
-
-.popover-section-title {
+	box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+	padding: 0.35rem;
+	min-width: 11rem;
 	display: flex;
-	align-items: center;
-	gap: 0.35rem;
-	font-size: 0.7rem;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	color: #a1a1aa;
-	padding: 0.35rem 0.6rem 0.25rem;
+	flex-direction: column;
+	gap: 0.15rem;
 }
 
-.popover-divider {
-	height: 1px;
-	background: rgba(255, 255, 255, 0.08);
-	margin: 0.35rem 0;
+.keys-menu {
+	left: 0 !important;
+	right: auto !important;
+	min-width: 12rem;
 }
 
-.popover-item {
+.power-menu-item {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
-	width: 100%;
-	padding: 0.45rem 0.65rem;
 	border: none;
-	background: transparent;
-	color: #f4f4f5;
+	background: none;
+	color: #fff;
+	font-family: inherit;
 	font-size: 0.8rem;
-	border-radius: 6px;
+	padding: 0.4rem 0.5rem;
+	border-radius: 5px;
 	cursor: pointer;
 	text-align: left;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.08);
+	}
+	&.active {
+		background: rgba(255, 255, 255, 0.14);
+		font-weight: 600;
+	}
+}
+
+.quality-menu {
+	min-width: 14rem;
+	left: auto !important;
+	right: 0 !important;
+}
+
+.quality-menu-item {
+	align-items: flex-start;
+	gap: 0.6rem;
+	padding: 0.5rem;
+}
+
+.quality-menu-text {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	min-width: 0;
+}
+
+.quality-menu-title {
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.quality-menu-desc {
+	font-size: 0.68rem;
+	color: rgba(255, 255, 255, 0.5);
+	white-space: normal;
+}
+
+.quality-menu-check {
+	margin-left: auto;
+	flex-shrink: 0;
+	color: #48c774;
+}
+
+/* Device Menu / Display Menu Dropdown */
+.device-menu {
+	position: absolute;
+	top: calc(100% + 0.35rem);
+	right: 0;
+	z-index: 1000;
+	background: #262626;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 12px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+	padding: 0.75rem;
+	width: 21rem;
+	max-width: calc(100vw - 2rem);
+	overflow: visible !important;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+
+.display-dropdown-menu {
+	left: auto !important;
+	right: 0 !important;
+}
+
+.device-menu-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0.2rem;
+}
+
+.header-title-group {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+
+	.device-menu-title {
+		margin: 0;
+	}
+}
+
+.active-resolution-badge {
+	font-size: 0.68rem;
+	font-family: monospace;
+	font-weight: 600;
+	color: #60a5fa;
+	background: rgba(37, 99, 235, 0.18);
+	padding: 0.12rem 0.4rem;
+	border-radius: 4px;
+}
+
+.device-menu-title {
+	font-size: 0.72rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: rgba(255, 255, 255, 0.5);
+	margin: 0 0 0.25rem;
+}
+
+.device-menu-title-divided {
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.device-menu-hint {
+	font-size: 0.72rem;
+	color: rgba(255, 255, 255, 0.45);
+	margin: 0.1rem 0 0.3rem;
+}
+
+.device-menu-scrollable {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	max-height: 12rem;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+	&::-webkit-scrollbar {
+		width: 5px;
+	}
+	&::-webkit-scrollbar-thumb {
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 4px;
+	}
+}
+
+.device-menu-row {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	padding: 0.45rem 0.55rem;
+	border-radius: 8px;
+	cursor: pointer;
+	color: #fff;
+	font-size: 0.78rem;
 	transition: background 0.12s ease;
 
-	&:hover:not(:disabled) {
-		background: #2563eb;
-		color: #ffffff;
-
-		.item-desc {
-			color: #e0f2fe;
-		}
+	&:hover:not(.disabled) {
+		background: rgba(255, 255, 255, 0.06);
 	}
+	&.active {
+		background: rgba(37, 99, 235, 0.15);
+	}
+	&.disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+}
+
+.auto-match-row {
+	background: rgba(59, 130, 246, 0.08);
+	border: 1px solid rgba(59, 130, 246, 0.22);
+}
+
+.device-row-icon {
+	flex-shrink: 0;
+	width: 1.9rem;
+	height: 1.9rem;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(255, 255, 255, 0.08);
+	color: rgba(255, 255, 255, 0.5);
 
 	&.active {
 		background: rgba(37, 99, 235, 0.25);
 		color: #60a5fa;
 	}
-
-	&:disabled {
-		opacity: 0.5;
-		cursor: wait;
-	}
-
-	.check-icon {
-		margin-left: auto;
-		color: #4ade80;
-	}
-
-	.popover-item-text {
-		flex: 1;
-
-		.item-title {
-			font-weight: 600;
-			font-size: 0.8rem;
-		}
-
-		.item-desc {
-			font-size: 0.7rem;
-			color: #a1a1aa;
-		}
-	}
-
-	&.auto-match-item {
-		.match-icon {
-			color: #38bdf8;
-		}
-	}
 }
 
-.resolution-list {
-	max-height: 240px;
-	overflow-y: auto;
-
-	&::-webkit-scrollbar {
-		width: 4px;
-	}
-	&::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 2px;
-	}
+.network-row-details {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
 }
 
-.custom-res-form {
+.network-row-label {
+	font-size: 0.78rem;
+	font-weight: 600;
+	color: #fff;
+}
+
+.network-row-meta {
+	font-size: 0.68rem;
+	color: rgba(255, 255, 255, 0.5);
+}
+
+.device-menu-desc {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.custom-res-row {
 	display: flex;
 	align-items: center;
-	gap: 0.3rem;
+	gap: 0.4rem;
+	margin-top: 0.2rem;
+}
+
+.custom-res-field {
+	flex: 1;
+	width: 4rem;
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 6px;
 	padding: 0.35rem 0.5rem;
+	color: #fff;
 	font-size: 0.75rem;
+	font-family: monospace;
 
-	.custom-res-label {
-		color: #a1a1aa;
-	}
-
-	.custom-res-input {
-		width: 58px;
-		background: #27272a;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		border-radius: 4px;
-		color: #ffffff;
-		padding: 2px 4px;
-		font-size: 0.75rem;
-		text-align: center;
+	&:focus {
 		outline: none;
-
-		&:focus {
-			border-color: #3b82f6;
-		}
-	}
-
-	.custom-res-sep {
-		color: #71717a;
-	}
-
-	.custom-res-apply-btn {
-		background: #2563eb;
-		color: #ffffff;
-		border: none;
-		border-radius: 4px;
-		padding: 2px 8px;
-		font-size: 0.725rem;
-		font-weight: 600;
-		cursor: pointer;
-
-		&:hover:not(:disabled) {
-			background: #1d4ed8;
-		}
-
-		&:disabled {
-			opacity: 0.4;
-			cursor: not-allowed;
-		}
+		border-color: rgba(59, 130, 246, 0.6);
 	}
 }
 
-/* Screen Viewport Wrapper */
-.screen-wrapper {
+.custom-res-multiply {
+	color: rgba(255, 255, 255, 0.4);
+	font-weight: 600;
+}
+
+.custom-res-btn {
+	border: none;
+	background: rgba(255, 255, 255, 0.18);
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	font-weight: 600;
+	padding: 0.35rem 0.8rem;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background 0.14s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.28);
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+
+/* Console Screen */
+.console-screen {
 	flex: 1 1 auto;
 	min-height: 0;
 	position: relative;
-	background: #000000;
-	outline: none;
-
-	&.is-fit {
-		overflow: hidden;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-
-		.vnc-canvas-container {
-			width: 100%;
-			height: 100%;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-
-			::v-deep canvas {
-				outline: none;
-				width: auto !important;
-				height: auto !important;
-				max-width: 100% !important;
-				max-height: 100% !important;
-				object-fit: contain;
-				display: block;
-				margin: auto;
-			}
-		}
-	}
+	overflow: hidden;
 
 	&.is-scrollable {
 		overflow: auto;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-
-		.vnc-canvas-container {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			margin: auto;
-
-			::v-deep canvas {
-				outline: none;
-				display: block;
-			}
-		}
 	}
 }
 
-.screen-state-overlay {
+.console-status {
 	position: absolute;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.82);
-	backdrop-filter: blur(8px);
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.75rem;
+	color: rgba(255, 255, 255, 0.7);
+
+	::v-deep .icon {
+		width: 2.25rem;
+		height: 2.25rem;
+	}
+}
+
+.reconnect-btn {
+	border: none;
+	background: #3273dc;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.8rem;
+	font-weight: 600;
+	padding: 0.5rem 1rem;
+	border-radius: 6px;
+	cursor: pointer;
+
+	&:hover {
+		background: #2366d1;
+	}
+}
+
+/* Floating On-Screen Keyboard */
+.on-screen-keyboard {
+	position: fixed !important;
+	left: 50%;
+	bottom: 2rem;
+	transform: translateX(-50%);
+	z-index: 100000 !important;
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+	width: fit-content;
+	max-width: calc(100vw - 2rem);
+	overflow-x: auto;
+	padding: 0.5rem 0.75rem 0.75rem;
+	background: rgba(38, 38, 38, 0.95);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: 14px;
+	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+	user-select: none;
+}
+
+.osk-header {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding-bottom: 0.35rem;
+	margin-bottom: 0.15rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.6);
+	cursor: move;
+}
+
+.osk-title {
+	font-size: 0.72rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	flex: 1 1 auto;
+}
+
+.osk-close {
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.6);
+	cursor: pointer;
+	display: flex;
+	padding: 0.15rem;
+	border-radius: 4px;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: #fff;
+	}
+}
+
+.osk-keys {
+	display: flex;
+	gap: 0.6rem;
+}
+
+.osk-alpha {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.osk-side {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.osk-fn-spacer {
+	height: 2.3rem;
+	visibility: hidden;
+}
+
+.osk-side-fill {
+	flex: 1 1 auto;
+	min-height: 0.25rem;
+}
+
+.osk-shortcuts-col {
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end;
+	gap: 0.25rem;
+}
+
+.osk-shortcut-btn {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 50;
 }
 
-.state-card {
-	background: #18181b;
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 14px;
-	padding: 2rem 2.5rem;
-	text-align: center;
-	max-width: 440px;
-	box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8);
+.osk-row {
+	display: flex;
+	gap: 0.25rem;
+}
 
-	.spin-icon {
-		color: #38bdf8;
-		animation: spin 1.2s linear infinite;
+.osk-key {
+	flex: 0 0 auto;
+	border: none;
+	border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+	background: #454545;
+	color: #fff;
+	font-family: inherit;
+	font-size: 0.75rem;
+	padding: 0.55rem 0.25rem;
+	border-radius: 5px;
+	cursor: pointer;
+	min-width: 0;
+
+	&:hover {
+		background: #4f4f4f;
 	}
-
-	.error-icon {
-		color: #f87171;
+	&:active {
+		background: #3a3a3a;
+		border-bottom-width: 0;
+		transform: translateY(2px);
 	}
-
-	.state-title {
-		font-size: 1.15rem;
-		font-weight: 600;
-		margin: 1rem 0 0.5rem;
-		color: #f4f4f5;
+	&.osk-key-empty {
+		visibility: hidden;
+		pointer-events: none;
 	}
-
-	.state-sub {
-		font-size: 0.825rem;
-		color: #a1a1aa;
-		line-height: 1.4;
-		margin-bottom: 1.25rem;
-	}
-
-	.action-reconnect-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		background: #2563eb;
-		color: #ffffff;
-		border: none;
-		padding: 0.5rem 1.2rem;
-		border-radius: 8px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.15s ease;
-
-		&:hover {
-			background: #1d4ed8;
-		}
+	&.active {
+		background: #7a7a7a;
+		border-bottom-color: rgba(0, 0, 0, 0.25);
 	}
 }
 
-@keyframes spin {
-	100% { transform: rotate(360deg); }
-}
-
-/* Virtual Keyboard Drawer */
-.virtual-keyboard-drawer {
-	background: #141416;
-	border-top: 1px solid rgba(255, 255, 255, 0.12);
-	padding: 0.5rem 0.75rem;
+/* Console Statusbar */
+.console-statusbar {
 	flex-shrink: 0;
-	box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.35rem 0.85rem;
+	background: #1a1a1a;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	font-size: 0.72rem;
+	color: rgba(255, 255, 255, 0.55);
+	flex-wrap: wrap;
 
-	.drawer-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 0.35rem;
-		color: #a1a1aa;
-		font-size: 0.75rem;
+	::v-deep .icon {
+		width: 1rem;
+		height: 1rem;
+		margin-right: 0.25rem;
+	}
+}
 
-		.drawer-title {
-			display: flex;
-			align-items: center;
-			gap: 0.35rem;
-		}
+.statusbar-item {
+	display: flex;
+	align-items: center;
+	white-space: nowrap;
+}
 
-		.drawer-close {
-			border: none;
-			background: transparent;
-			color: #a1a1aa;
-			cursor: pointer;
-			padding: 2px;
-			border-radius: 4px;
+.activity-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.3);
+	margin-right: 0.4rem;
+	flex-shrink: 0;
+}
 
-			&:hover {
-				color: #ffffff;
-				background: rgba(255, 255, 255, 0.1);
-			}
+.statusbar-item.is-live .activity-dot {
+	background: #48c774;
+	box-shadow: 0 0 4px #48c774;
+}
+
+/* Paste Modal */
+.paste-modal-content {
+	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.paste-modal-desc {
+	font-size: 0.8rem;
+	color: rgba(255, 255, 255, 0.7);
+	margin: 0;
+}
+
+.paste-modal-textarea {
+	width: 100%;
+	background: rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 8px;
+	padding: 0.6rem;
+	color: #fff;
+	font-family: monospace;
+	font-size: 0.82rem;
+	resize: vertical;
+
+	&:focus {
+		outline: none;
+		border-color: rgba(255, 255, 255, 0.4);
+	}
+}
+
+.paste-modal-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+.paste-action-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	border: none;
+	border-radius: 6px;
+	padding: 0.4rem 0.85rem;
+	font-family: inherit;
+	font-size: 0.78rem;
+	font-weight: 600;
+	cursor: pointer;
+	background: rgba(255, 255, 255, 0.12);
+	color: #fff;
+	transition: background 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.22);
+	}
+	&.is-primary {
+		background: rgba(255, 255, 255, 0.22);
+		&:hover:not(:disabled) {
+			background: rgba(255, 255, 255, 0.32);
 		}
 	}
-
-	.keyboard-body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.kb-row {
-		display: flex;
-		gap: 0.25rem;
-		justify-content: center;
-	}
-
-	.kb-key {
-		min-width: 32px;
-		height: 30px;
-		background: #222226;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		color: #f4f4f5;
-		border-radius: 5px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		cursor: pointer;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		transition: all 0.1s ease;
-		padding: 0 0.35rem;
-
-		&:hover {
-			background: #323238;
-			border-color: rgba(255, 255, 255, 0.25);
-		}
-
-		&:active {
-			background: #2563eb;
-			color: #ffffff;
-			transform: translateY(1px);
-		}
-
-		&.active {
-			background: #2563eb;
-			color: #ffffff;
-			border-color: #3b82f6;
-		}
-
-		&.kb-key-fn {
-			font-size: 0.6875rem;
-			color: #93c5fd;
-			background: #1b1f2b;
-		}
-
-		&.kb-key-action {
-			background: #1a1a1e;
-			color: #cbd5e1;
-		}
-
-		&.kb-key-space {
-			flex: 1;
-			max-width: 240px;
-		}
-
-		&.kb-key-enter {
-			min-width: 50px;
-		}
-
-		&.kb-key-arrow {
-			min-width: 28px;
-			color: #60a5fa;
-		}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 }
 </style>
