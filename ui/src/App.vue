@@ -19,8 +19,8 @@
 </template>
 
 <script>
-import CasaWallpaper from './components/wallpaper/CasaWallpaper.vue'
-import WindowManager from './components/desktop/WindowManager.vue'
+import CasaWallpaper from '@/shell/wallpaper/CasaWallpaper.vue'
+import WindowManager from '@/shell/desktop/WindowManager.vue'
 import {mixin}       from './mixins/mixin';
 import { initTheme, applyTheme } from './utils/theme';
 

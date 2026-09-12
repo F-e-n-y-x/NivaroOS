@@ -30,16 +30,6 @@ export default [
 			showWindows: true
 		}
 	},
-	// {
-	// 	path: '/files',
-	// 	name: 'Files',
-	// 	hidden: true,
-	// 	component: () => import('@/components/filebrowser/FilePanel.vue'),
-	// 	meta: {
-	// 		requireAuth: true,
-	// 		showBackground: true
-	// 	}
-	// },
 	{
 		path: '/vm-console/:name',
 		name: 'VmConsoleStandalone',
@@ -75,7 +65,7 @@ export default [
 		path: '/developmentElement',
 		name: 'DevelopmentElement',
 		hidden: true,
-		component: () => import('@/components/Apps/AppPanel.vue'),
+		component: () => import('@/apps/app-store/AppPanel.vue'),
 		meta: {
 			requireAuth: true,
 			showBackground: false

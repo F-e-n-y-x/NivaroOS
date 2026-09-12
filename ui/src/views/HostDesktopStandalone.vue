@@ -12,7 +12,7 @@
 </template>
 
 <script>
-import HostDesktopPanel from '@/components/desktop/HostDesktopPanel.vue'
+import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
 
 export default {
 	name: 'host-desktop-standalone',

@@ -1,0 +1,552 @@
+<template>
+	<div
+	:id="'window-' + win.id"
+	:style="windowStyle"
+	class="desktop-window"
+	:class="{
+		'window-dark': isDarkWindow,
+		'window-opaque': isOpaqueWindow,
+		'window-minimized': win.minimized,
+		'window-console': isConsoleWindow,
+		'window-no-scroll': isNoScrollWindow,
+		'window-touch': isTouchDevice,
+	}"
+	@pointerdown="focus"
+	@drop.stop
+>
+		<div v-if="!ownTitlebarComponents.includes(win.component)" class="window-titlebar" @pointerdown="startDrag">
+			<b-icon v-if="isConsoleWindow" icon="monitor" custom-size="mdi-16px" class="window-title-icon"></b-icon>
+			<span class="window-title" :class="{ 'one-line': !isConsoleWindow }">{{ win.title }}</span>
+			<span v-if="isConsoleWindow && consoleStatus" class="window-title-status" :class="'is-' + consoleStatus">{{ consoleStatusText }}</span>
+			<div class="window-titlebar-spacer"></div>
+			<div class="window-controls">
+				<button v-if="isConsoleWindow" type="button" class="window-btn-action" :title="$t('Open in New Tab')" @click.stop="openConsoleTab">
+					<b-icon icon="open-in-new" custom-size="mdi-14px"></b-icon>
+				</button>
+				<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="minimize"></button>
+				<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="close"></button>
+			</div>
+		</div>
+		<div class="window-content">
+			<!-- FilesApp has no window-titlebar above (see v-if) - its own tab
+			     bar takes over as the draggable top bar and carries the
+			     close/minimize controls itself (no maximize, by design). -->
+			<component :is="resolvedComponent" ref="content" v-bind="win.props" @close="close" @minimize="minimize" @drag-start="startDrag" @status-change="onConsoleStatusChange"></component>
+		</div>
+
+		<!-- A phone-sized window always fills the screen (see OPEN_WINDOW) -
+		     there's nowhere meaningful to drag or resize it to, and real
+		     mobile apps aren't freely resizable either. A tablet keeps the
+		     full desktop-style windowing, since it has genuine room for an
+		     overlapping multi-window layout. -->
+		<template v-if="!isMobileViewport">
+			<div class="resize-handle resize-right" @pointerdown.stop="startResize('right', $event)"></div>
+			<div class="resize-handle resize-left" @pointerdown.stop="startResize('left', $event)"></div>
+			<div class="resize-handle resize-bottom" @pointerdown.stop="startResize('bottom', $event)"></div>
+			<div class="resize-handle resize-top" @pointerdown.stop="startResize('top', $event)"></div>
+			<div class="resize-handle resize-corner-br" @pointerdown.stop="startResize('corner-br', $event)"></div>
+			<div class="resize-handle resize-corner-tl" @pointerdown.stop="startResize('corner-tl', $event)"></div>
+			<div class="resize-handle resize-corner-tr" @pointerdown.stop="startResize('corner-tr', $event)"></div>
+			<div class="resize-handle resize-corner-bl" @pointerdown.stop="startResize('corner-bl', $event)"></div>
+		</template>
+	</div>
+</template>
+
+<script>
+import { COMPONENT_REGISTRY, OWN_TITLEBAR_COMPONENTS, DARK_WINDOW_COMPONENTS, NO_SCROLL_COMPONENTS } from '@/utils/desktop/windowRegistry'
+
+const MIN_WIDTH = 360
+const MIN_HEIGHT = 280
+
+export default {
+	name: 'desktop-window',
+	props: {
+		win: {
+			type: Object,
+			required: true
+		}
+	},
+	data() {
+		return {
+			// Only VmConsolePanel emits this (see its status watcher) - the
+			// titlebar shows an icon + connection pill for it instead of
+			// leaving that to a second, redundant identity bar inside the
+			// console's own content area.
+			consoleStatus: null
+		}
+	},
+	computed: {
+		resolvedComponent() {
+			return COMPONENT_REGISTRY[this.win.component]
+		},
+		ownTitlebarComponents() {
+			return OWN_TITLEBAR_COMPONENTS
+		},
+		// Every viewer's own ViewerChrome toolbar is dark (#262626) - a
+		// white window titlebar sitting directly above that read as a
+		// visibly mismatched seam, so these windows get the same dark
+		// titlebar treatment TerminalPanel already uses.
+		isOpaqueWindow() {
+			return !['TerminalPanel', 'ContainerConsolePanel', 'VmConsolePanel'].includes(this.win.component)
+		},
+		isDarkWindow() {
+			return DARK_WINDOW_COMPONENTS.includes(this.win.component)
+		},
+		isConsoleWindow() {
+			return this.win.component === 'VmConsolePanel'
+		},
+		isNoScrollWindow() {
+			return NO_SCROLL_COMPONENTS.includes(this.win.component)
+		},
+		// 8px-wide edge resize handles are fine for a mouse pointer but
+		// impractical to grab with a finger - widened via .window-touch
+		// below, only for devices that actually have touch (a mouse-only
+		// desktop keeps the original hit targets exactly as they were).
+		isTouchDevice() {
+			return this.$store.state.isTouchDevice
+		},
+		isMobileViewport() {
+			return this.$store.state.isMobile
+		},
+		consoleStatusText() {
+			return (
+				{
+					connecting: this.$t('Connecting...'),
+					connected: this.$t('Connected'),
+					disconnected: this.$t('Disconnected'),
+				}[this.consoleStatus] || this.consoleStatus
+			)
+		},
+		windowStyle() {
+			return {
+				left: this.win.x + 'px',
+				top: this.win.y + 'px',
+				width: this.win.width + 'px',
+				height: this.win.height + 'px',
+				zIndex: this.win.zIndex
+			}
+		}
+	},
+	methods: {
+		focus() {
+			this.$store.commit('FOCUS_WINDOW', this.win.id)
+		},
+
+		onConsoleStatusChange(status) {
+			this.consoleStatus = status
+		},
+
+		close() {
+			// Some window contents (CodeEditor/MarkdownEditor, with unsaved-edit
+			// state) need to intervene before the window actually closes - e.g.
+			// showing their own in-window "save before closing?" prompt, then
+			// emitting close themselves once that's resolved (already wired
+			// via @close="close" below). Everything else has no such method,
+			// so it falls straight through to closing immediately, unchanged.
+			const content = this.$refs.content
+			if (content && typeof content.requestClose === 'function') {
+				content.requestClose()
+				return
+			}
+			this.$store.commit('CLOSE_WINDOW', this.win.id)
+		},
+
+		minimize() {
+			this.$store.commit('TOGGLE_MINIMIZE_WINDOW', this.win.id)
+		},
+
+		openConsoleTab() {
+			const name = (this.win.props && this.win.props.vmName) || this.win.title
+			if (!name) return
+			const url = this.$router.resolve({ name: 'VmConsoleStandalone', params: { name } }).href
+			window.open(url, '_blank')
+		},
+
+		startDrag(e) {
+			this.focus()
+			// A fullscreen phone window has nowhere meaningful to be dragged
+			// to - focus() above still runs (e.g. for FilesApp/TerminalPanel's
+			// own tab bar, which doubles as their titlebar), just not the
+			// actual drag.
+			if (this.isMobileViewport) return
+			const startX = e.clientX
+			const startY = e.clientY
+			const originX = this.win.x
+			const originY = this.win.y
+			let pending = null
+			let frame = null
+			// Fast mouse movement during a drag can select nearby page text
+			// (tab labels, breadcrumbs, etc.) as a native browser artifact,
+			// since not every bit of window chrome sets user-select: none
+			// itself - suppressing it document-wide for the drag's duration
+			// is the standard, bulletproof fix window-manager UIs use.
+			document.body.style.userSelect = 'none'
+
+			const flush = () => {
+				frame = null
+				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
+			}
+
+			const onMove = moveEvent => {
+				const dx = moveEvent.clientX - startX
+				const dy = moveEvent.clientY - startY
+				const maxX = Math.max(0, window.innerWidth - this.win.width)
+				const maxY = Math.max(0, window.innerHeight - this.win.height)
+				pending = {
+					id: this.win.id,
+					x: Math.min(maxX, Math.max(0, originX + dx)),
+					y: Math.min(maxY, Math.max(0, originY + dy))
+				}
+				if (!frame) frame = requestAnimationFrame(flush)
+			}
+			const onUp = () => {
+				window.removeEventListener('pointermove', onMove)
+				window.removeEventListener('pointerup', onUp)
+				if (frame) cancelAnimationFrame(frame)
+				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
+				this.$store.commit('PERSIST_WINDOWS')
+				document.body.style.userSelect = ''
+			}
+			window.addEventListener('pointermove', onMove)
+			window.addEventListener('pointerup', onUp)
+		},
+
+		// direction is one of: right, left, bottom, top, corner-br,
+		// corner-tl, corner-tr, corner-bl. Resizing from the left/top
+		// (or a corner touching either) has to move x/y to keep the
+		// OPPOSITE edge fixed while the dragged edge follows the cursor -
+		// otherwise the window would just grow from a fixed top-left
+		// origin regardless of which edge you actually dragged.
+		startResize(direction, e) {
+			this.focus()
+			const startX = e.clientX
+			const startY = e.clientY
+			const originWidth = this.win.width
+			const originHeight = this.win.height
+			const originX = this.win.x
+			const originY = this.win.y
+
+			const affectsRight = ['right', 'corner-br', 'corner-tr'].includes(direction)
+			const affectsLeft = ['left', 'corner-tl', 'corner-bl'].includes(direction)
+			const affectsBottom = ['bottom', 'corner-br', 'corner-bl'].includes(direction)
+			const affectsTop = ['top', 'corner-tl', 'corner-tr'].includes(direction)
+
+			let pending = null
+			let frame = null
+			document.body.style.userSelect = 'none'
+			const flush = () => {
+				frame = null
+				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
+			}
+
+			const onMove = moveEvent => {
+				const dx = moveEvent.clientX - startX
+				const dy = moveEvent.clientY - startY
+				const rect = { id: this.win.id }
+
+				if (affectsRight) {
+					const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - originX)
+					rect.width = Math.min(maxWidth, Math.max(MIN_WIDTH, originWidth + dx))
+				} else if (affectsLeft) {
+					const maxWidth = Math.max(MIN_WIDTH, originX + originWidth)
+					const newWidth = Math.min(maxWidth, Math.max(MIN_WIDTH, originWidth - dx))
+					rect.width = newWidth
+					rect.x = Math.max(0, originX + originWidth - newWidth)
+				}
+
+				if (affectsBottom) {
+					const maxHeight = Math.max(MIN_HEIGHT, window.innerHeight - originY)
+					rect.height = Math.min(maxHeight, Math.max(MIN_HEIGHT, originHeight + dy))
+				} else if (affectsTop) {
+					const maxHeight = Math.max(MIN_HEIGHT, originY + originHeight)
+					const newHeight = Math.min(maxHeight, Math.max(MIN_HEIGHT, originHeight - dy))
+					rect.height = newHeight
+					rect.y = Math.max(0, originY + originHeight - newHeight)
+				}
+
+				pending = rect
+				if (!frame) frame = requestAnimationFrame(flush)
+			}
+			const onUp = () => {
+				window.removeEventListener('pointermove', onMove)
+				window.removeEventListener('pointerup', onUp)
+				if (frame) cancelAnimationFrame(frame)
+				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
+				this.$store.commit('PERSIST_WINDOWS')
+				document.body.style.userSelect = ''
+			}
+			window.addEventListener('pointermove', onMove)
+			window.addEventListener('pointerup', onUp)
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.desktop-window {
+	position: fixed;
+	display: flex;
+	flex-direction: column;
+	background: var(--theme-bg-window-opaque, #ffffff);
+	backdrop-filter: $backDropBlur;
+	border: 1px solid var(--theme-window-border, rgba(0, 0, 0, 0.08));
+	border-radius: $backDropBorderRadius;
+	box-shadow: var(--theme-window-shadow, 0 12px 40px rgba(0, 0, 0, 0.25));
+	overflow: hidden;
+
+	// Minimized windows stay mounted (see WindowManager) so their state
+	// (a live terminal session, in-progress work) survives - just hide
+	// them visually instead of removing them from the DOM.
+	&.window-minimized {
+		display: none;
+	}
+
+	// Files gets a plain opaque white background, not the shared
+	// translucent/blurred glass look every other window uses - the file
+	// listing (icons, thumbnails, text) reads better against a flat
+	// background than through the global blur/alpha settings.
+	&.window-opaque {
+		background: var(--theme-bg-window-opaque, #ffffff) !important;
+		backdrop-filter: none !important;
+		-webkit-backdrop-filter: none !important;
+	}
+
+	// Terminal's content is black by convention (real terminal apps
+	// keep dark content even in an otherwise light desktop) - match the
+	// window chrome around it instead of leaving a mismatched light bar
+	// on top of a black body.
+	&.window-dark {
+		background: #18181b !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+		border-color: rgba(255, 255, 255, 0.08);
+
+		.window-titlebar {
+			background: #262626;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+		}
+
+		.window-title {
+			color: rgba(255, 255, 255, 0.85);
+		}
+	}
+
+	&.window-console,
+	&.window-no-scroll {
+		.window-content {
+			overflow: hidden !important;
+		}
+	}
+}
+
+.window-titlebar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	height: 2.5rem;
+	padding: 0 var(--space-3);
+	cursor: grab;
+	background: var(--theme-titlebar-bg, #fff);
+	border-bottom: 1px solid var(--theme-titlebar-border, rgb(228 233 237));
+	user-select: none;
+	// Without this, a touch-drag on the titlebar competes with the
+	// browser's own pan/scroll gesture instead of just moving the window.
+	touch-action: none;
+}
+
+.window-title {
+	flex: 0 1 auto;
+	min-width: 0;
+	color: var(--theme-text-primary, #2c3e50);
+	font-size: var(--font-base);
+	font-weight: 500;
+}
+// Absorbs the leftover space so the title (+ icon/status pill, on a
+// console window) sit snugly together on the left instead of the title
+// itself stretching to push everything else all the way to the far right.
+.window-titlebar-spacer {
+	flex: 1 1 auto;
+}
+
+// Only ever shown on a console window (always dark - see isDarkWindow),
+// so these assume a dark titlebar rather than needing a light variant too.
+.window-title-icon {
+	flex-shrink: 0;
+	margin-right: var(--space-2);
+	color: rgba(255, 255, 255, 0.6);
+}
+.window-title-status {
+	flex-shrink: 0;
+	margin-left: var(--space-2);
+	font-size: var(--font-2xs);
+	padding: 0.1rem var(--space-2);
+	border-radius: var(--radius-pill);
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.7);
+
+	&.is-connected {
+		background: rgba(72, 199, 116, 0.2);
+		color: #48c774;
+	}
+	&.is-connecting {
+		background: rgba(255, 221, 87, 0.15);
+		color: #ffdd57;
+	}
+	&.is-disconnected {
+		background: rgba(255, 56, 96, 0.15);
+		color: #ff3860;
+	}
+}
+
+.window-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-shrink: 0;
+}
+
+.window-btn-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.35rem;
+	height: 1.35rem;
+	border-radius: var(--radius-xs);
+	border: none;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.65);
+	cursor: pointer;
+	padding: 0;
+	margin-right: 0.15rem;
+	transition: all 0.12s ease;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.15);
+		color: #ffffff;
+	}
+
+	&:active {
+		transform: scale(0.95);
+	}
+}
+
+.window-btn {
+	width: 0.85rem;
+	height: 0.85rem;
+	border-radius: 50%;
+	border: none;
+	cursor: pointer;
+	padding: 0;
+}
+
+.window-btn-minimize {
+	background: #f6bd3b;
+}
+
+.window-btn-close {
+	background: #f2534a;
+}
+
+.window-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	position: relative;
+}
+
+.resize-handle {
+	position: absolute;
+	z-index: 100;
+	touch-action: none;
+}
+
+.resize-right {
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 8px;
+	cursor: ew-resize;
+}
+
+.resize-left {
+	top: 0;
+	left: 0;
+	bottom: 0;
+	width: 8px;
+	cursor: ew-resize;
+}
+
+.resize-bottom {
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 8px;
+	cursor: ns-resize;
+}
+
+.resize-top {
+	left: 0;
+	right: 0;
+	top: 0;
+	height: 8px;
+	cursor: ns-resize;
+}
+
+.resize-corner-br {
+	right: 0;
+	bottom: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	z-index: 101;
+}
+
+.resize-corner-tl {
+	left: 0;
+	top: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	z-index: 101;
+}
+
+.resize-corner-tr {
+	right: 0;
+	top: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nesw-resize;
+	z-index: 101;
+}
+
+.resize-corner-bl {
+	left: 0;
+	bottom: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nesw-resize;
+	z-index: 101;
+}
+
+// A touch device gets meaningfully wider hit targets on the same visual
+// edges - the resize-handle elements are otherwise invisible chrome, so
+// growing them doesn't change how the window looks, only how easy it is
+// to grab.
+.window-touch {
+	.resize-right,
+	.resize-left {
+		width: 16px;
+	}
+
+	.resize-bottom,
+	.resize-top {
+		height: 16px;
+	}
+
+	.resize-corner-br,
+	.resize-corner-tl,
+	.resize-corner-tr,
+	.resize-corner-bl {
+		width: 28px;
+		height: 28px;
+	}
+}
+</style>

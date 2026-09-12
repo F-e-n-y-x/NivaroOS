@@ -12,6 +12,13 @@ html.is-dark {
 	--color-border:              rgba(255, 255, 255, 0.1);
 	--color-border-strong:       rgba(255, 255, 255, 0.2);
 
+	// ── Elevation Scale (denser than light mode - a black shadow
+	// on a black surface needs more spread/opacity to read at all) ──
+	--shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+	--shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+	--shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+	--shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.8);
+
 	// ── Legacy text muted aliases ───────────────────────────
 	--color-text-muted:          #a1a1aa;
 	--color-text-muted-light:    #a1a1aa;
@@ -725,6 +732,20 @@ html.is-dark {
 					}
 				}
 			}
+
+			&.is-warning {
+				color: #fbbf24 !important;
+				.ctx-icon {
+					color: #fbbf24 !important;
+				}
+				&:hover {
+					background: #b45309 !important;
+					color: #ffffff !important;
+					.ctx-icon {
+						color: #ffffff !important;
+					}
+				}
+			}
 		}
 
 		.ctx-divider {
@@ -863,6 +884,36 @@ html.is-dark {
 				color: #d4d4d8 !important;
 			}
 
+			.notif-avatar {
+				background: rgba(255, 255, 255, 0.08) !important;
+				color: #d4d4d8 !important;
+
+				&.app {
+					background: rgba(14, 165, 233, 0.18) !important;
+					color: #60a5fa !important;
+				}
+				&.storage, &.usb {
+					background: rgba(16, 185, 129, 0.18) !important;
+					color: #4ade80 !important;
+				}
+				&.vm {
+					background: rgba(139, 92, 246, 0.18) !important;
+					color: #c4b5fd !important;
+				}
+				&.schedule, &.maintenance {
+					background: rgba(245, 158, 11, 0.18) !important;
+					color: #fbbf24 !important;
+				}
+				&.error {
+					background: rgba(239, 68, 68, 0.18) !important;
+					color: #f87171 !important;
+				}
+				&.warning {
+					background: rgba(245, 158, 11, 0.18) !important;
+					color: #fbbf24 !important;
+				}
+			}
+
 			.notif-action-btn {
 				background: #1f1f23 !important;
 				border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -882,7 +933,17 @@ html.is-dark {
 					background: rgba(239, 68, 68, 0.18) !important;
 				}
 			}
+
+			.unread-dot {
+				background: #3b82f6 !important;
+			}
 		}
+	}
+
+	// Notification Bell Trigger — unread badge (matches lightened accent blue)
+	.notification-pill .unread-badge {
+		background: #3b82f6 !important;
+		border-color: rgba(255, 255, 255, 0.3) !important;
 	}
 
 	// Date & Time Pill Quick Control Menu
@@ -986,6 +1047,17 @@ html.is-dark {
 			&:hover {
 				background: #27272a !important;
 				border-color: rgba(255, 255, 255, 0.25) !important;
+			}
+
+			&.is-shutdown {
+				background: rgba(239, 68, 68, 0.18) !important;
+				border-color: rgba(239, 68, 68, 0.4) !important;
+				color: #f87171 !important;
+
+				&:hover {
+					background: rgba(239, 68, 68, 0.3) !important;
+					color: #fca5a5 !important;
+				}
 			}
 		}
 	}
@@ -1734,47 +1806,6 @@ html.is-dark {
 			}
 		}
 
-		// VM Modals & Pickers
-		.create-vm-modal,
-		.edit-vm-modal,
-		.vm-overlay-panel {
-			.modal-card-body {
-				background: #121214 !important;
-				color: #f4f4f5 !important;
-			}
-
-			.form-card,
-			.spec-card,
-			.hardware-picker-card,
-			.config-card {
-				background: #18181b !important;
-				border: 1px solid rgba(255, 255, 255, 0.1) !important;
-				color: #f4f4f5 !important;
-			}
-
-			.step-indicator,
-			.stepper-step {
-				color: #d4d4d8 !important;
-
-				&.active {
-					color: #60a5fa !important;
-				}
-			}
-		}
-
-		.vm-file-picker-dialog {
-			.picker-card,
-			.dialog-card {
-				background: #18181b !important;
-				border: 1px solid rgba(255, 255, 255, 0.14) !important;
-				color: #f4f4f5 !important;
-			}
-
-			.file-row,
-			.crumb {
-				color: #f4f4f5 !important;
-			}
-		}
 	}
 
 	// ==========================================
@@ -2049,23 +2080,6 @@ html.is-dark {
 		}
 	}
 
-	// App Modals & Detail Dialogs
-	.app-panel {
-		.modal-card-head {
-			background-color: #18181b !important;
-			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-			color: #f4f4f5 !important;
-		}
-		.modal-card-body {
-			background-color: #121214 !important;
-			color: #f4f4f5 !important;
-		}
-		.modal-card-foot {
-			background-color: #18181b !important;
-			border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
-		}
-	}
-
 	.app-detial {
 		.modal-card-head {
 			background: #18181b !important;
@@ -2099,6 +2113,88 @@ html.is-dark {
 		}
 	}
 
+	// VMdEditor (Tips editor & App description preview) - 3rd-party
+	// component ships a light-only theme with no dark variant, so its
+	// chrome is repainted here. Used by TipEditorModal and AppDetailInfo.
+	.v-md-editor {
+		background-color: #18181b !important;
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+
+		.v-md-editor__toolbar {
+			background: #18181b !important;
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.v-md-editor__toolbar-item {
+			color: #d4d4d8 !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.08) !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.v-md-editor__left-area,
+		.v-md-editor__editor-wrapper {
+			border-color: rgba(255, 255, 255, 0.1) !important;
+		}
+
+		.v-md-editor__left-area-title,
+		.v-md-editor__toc-nav-item {
+			color: #f4f4f5 !important;
+		}
+
+		.v-md-textarea-editor {
+			pre, textarea {
+				color: #f4f4f5 !important;
+			}
+			textarea::placeholder {
+				color: #71717a !important;
+			}
+		}
+
+		.v-md-editor__menu {
+			background-color: #1e1e22 !important;
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+		}
+
+		.v-md-editor__menu-item {
+			color: #d4d4d8 !important;
+		}
+	}
+
+	// Bare selector so Tips editor's rendered preview (outside .app-detial)
+	// also gets readable markdown text/code colors.
+	.github-markdown-body {
+		background: transparent !important;
+		color: #f4f4f5 !important;
+
+		h1, h2, h3, h4, h5, h6, p, li, strong, td, th {
+			color: #f4f4f5 !important;
+		}
+		a {
+			color: #60a5fa !important;
+		}
+		code {
+			background: #27272a !important;
+			color: #60a5fa !important;
+		}
+		pre {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.12) !important;
+		}
+		blockquote {
+			color: #a1a1aa !important;
+			border-left-color: rgba(255, 255, 255, 0.2) !important;
+		}
+		table, th, td {
+			border-color: rgba(255, 255, 255, 0.12) !important;
+		}
+		hr {
+			background-color: rgba(255, 255, 255, 0.12) !important;
+		}
+	}
+
 	.folder-modal-card {
 		.modal-card-head {
 			background: #18181b !important;
@@ -2127,18 +2223,9 @@ html.is-dark {
 	// ==========================================
 	// 13. Storage Manager Panels
 	// ==========================================
-	.storage-modal,
-	.storage-manager {
+	.storage-modal {
 		background: #121214 !important;
 		color: #f4f4f5 !important;
-
-		.background-item,
-		.storage-card,
-		.combination-box {
-			background-color: #18181b !important;
-			border: 1px solid rgba(255, 255, 255, 0.1) !important;
-			color: #f4f4f5 !important;
-		}
 
 		.title {
 			color: #f4f4f5 !important;
@@ -2206,7 +2293,7 @@ html.is-dark {
 		background: #000000 !important;
 		color: #f4f4f5 !important;
 
-		.mobile-screen-header {
+		.mobile-screen-bar {
 			background: #121214 !important;
 			border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 			color: #f4f4f5 !important;
@@ -2325,6 +2412,25 @@ html.is-dark {
 	.settings-app .task-divider {
 		border-color: rgba(255, 255, 255, 0.1) !important;
 	}
+	// ScheduledTasksSection — .type-pill category badges keep their light-mode
+	// saturated text color (#2563eb/#f43f5e/#0ea5e9/#d97706/#8b5cf6) on a
+	// translucent tint; over a dark card that tint reads as near-black and
+	// the text fails contrast, so lighten per hue (background tint unchanged).
+	.settings-app .type-pill.type-backup {
+		color: #93c5fd !important;
+	}
+	.settings-app .type-pill.type-vm {
+		color: #fda4af !important;
+	}
+	.settings-app .type-pill.type-container {
+		color: #7dd3fc !important;
+	}
+	.settings-app .type-pill.type-maintenance {
+		color: #fcd34d !important;
+	}
+	.settings-app .type-pill.type-command {
+		color: #d8b4fe !important;
+	}
 
 	// UpdatesSection — hardcoded #1e293b, #475569, #94a3b8, #64748b, #cbd5e1
 	.settings-app .update-pkg-name,
@@ -2389,6 +2495,22 @@ html.is-dark {
 	.settings-app .container-status-stopped {
 		color: #f87171 !important;
 	}
+	// ContainersSection — .status-pill (the running/stopped chip actually
+	// rendered per-row) has its own hardcoded dark-text-on-light-tint colors
+	// (#059669 / #dc2626) that fail contrast once the tint sits on a dark
+	// card; lighten to match the .container-status-* convention above.
+	.settings-app .status-pill.is-running {
+		color: #4ade80 !important;
+		.dot {
+			background: #4ade80 !important;
+		}
+	}
+	.settings-app .status-pill.is-stopped {
+		color: #f87171 !important;
+		.dot {
+			background: #f87171 !important;
+		}
+	}
 
 	// CompanionSection — hardcoded #64748b
 	.settings-app .companion-label,
@@ -2401,6 +2523,12 @@ html.is-dark {
 		background: #1e1e22 !important;
 		border: 1px solid rgba(255, 255, 255, 0.1) !important;
 		color: #f4f4f5 !important;
+	}
+
+	// CompanionSection — status tag text color (#059669 is unreadable on dark cards)
+	.settings-app .companion-status-tag.is-online {
+		background: rgba(16, 185, 129, 0.18) !important;
+		color: #34d399 !important;
 	}
 
 	// NetworkSharesPanel — hardcoded #1e293b
@@ -2657,6 +2785,37 @@ html.is-dark {
 		background: #27272a !important;
 		border: 1px solid rgba(255, 255, 255, 0.12) !important;
 		color: #d4d4d8 !important;
+	}
+
+	// Setting chip status/accent variants (RemoteAccessPanel, DriveDetailsPanel) —
+	// without these, the blanket .setting-chip rule above (being !important) wipes
+	// out their green/blue accent colors in dark mode.
+	.setting-chip.is-good,
+	.setting-chip.is-online {
+		background: rgba(16, 185, 129, 0.18) !important;
+		border-color: rgba(16, 185, 129, 0.35) !important;
+		color: #6ee7b7 !important;
+	}
+	.setting-chip.is-feature {
+		background: rgba(59, 130, 246, 0.18) !important;
+		border-color: rgba(59, 130, 246, 0.35) !important;
+		color: #93c5fd !important;
+	}
+
+	// FstabPanel — mount-card status & preset-card selection accents
+	// (the blanket .mount-card / .preset-card rule above is !important and
+	// otherwise wipes out these state-indicating tints in dark mode)
+	.mount-card.is-unmounted {
+		background: #202024 !important;
+	}
+	.mount-card.is-missing {
+		border-color: rgba(248, 113, 113, 0.4) !important;
+		background: rgba(248, 113, 113, 0.08) !important;
+	}
+	.preset-card.active,
+	.preset-card:hover {
+		border-color: #3b82f6 !important;
+		background: rgba(59, 130, 246, 0.15) !important;
 	}
 
 	// VM File Picker Dialog (Breadcrumbs & Rows)

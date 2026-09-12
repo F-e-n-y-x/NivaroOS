@@ -13,7 +13,7 @@
 </template>
 
 <script>
-import VmConsolePanel from '@/components/desktop/vm/VmConsolePanel.vue'
+import VmConsolePanel from '@/apps/vm/VmConsolePanel.vue'
 
 export default {
 	name: 'vm-console-standalone',

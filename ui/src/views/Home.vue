@@ -21,8 +21,8 @@
 </template>
 
 <script>
-import SideBar from '@/components/SideBar.vue'
-import AppSection from '@/components/Apps/AppSection.vue'
+import SideBar from '@/shell/SideBar.vue'
+import AppSection from '@/apps/app-store/AppSection.vue'
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 
@@ -223,9 +223,9 @@ export default {
 	align-items: flex-start;
 	width: 100%;
 	height: 100%;
-	padding: 1.25rem 1.5rem calc(80px + 1rem) 1.5rem;
+	padding: var(--space-5) var(--space-6) calc(80px + var(--space-4)) var(--space-6);
 	overflow: hidden;
-	gap: 1.5rem;
+	gap: var(--space-6);
 }
 
 .desktop-canvas-area {

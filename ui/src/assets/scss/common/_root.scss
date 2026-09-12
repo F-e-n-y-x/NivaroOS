@@ -49,11 +49,46 @@
     --color-text-muted-light: #94a3b8;
 
     // ── Border Radius Scale ─────────────────────────────────
+    --radius-xs:     4px;
     --radius-sm:     6px;
     --radius-card:   12px;
     --radius-modal:  14px;
     --radius-control: 8px;
     --radius-pill:   999px;
+
+    // ── Typography Scale ────────────────────────────────────
+    // One shared scale for every app - pick the nearest step
+    // instead of a bespoke rem/px value.
+    --font-2xs:   0.6875rem;  // 11px - smallest meta/timestamps
+    --font-xs:    0.75rem;    // 12px - captions, badges, helper text
+    --font-sm:    0.8125rem;  // 13px - secondary/compact body text
+    --font-base:  0.875rem;   // 14px - default body text
+    --font-md:    1rem;       // 16px - emphasized body, section labels
+    --font-lg:    1.125rem;   // 18px - subheadings
+    --font-xl:    1.25rem;    // 20px - headings
+    --font-2xl:   1.5rem;     // 24px - large headings / hero
+    --font-3xl:   2rem;       // 32px - modal/panel top-level h1
+
+    // ── Spacing Scale ───────────────────────────────────────
+    // Use for gap/padding/margin instead of one-off values.
+    --space-1: 0.25rem;  // 4px
+    --space-2: 0.5rem;   // 8px
+    --space-3: 0.75rem;  // 12px
+    --space-4: 1rem;     // 16px
+    --space-5: 1.25rem;  // 20px
+    --space-6: 1.5rem;   // 24px
+    --space-8: 2rem;     // 32px
+    --space-10: 2.5rem;  // 40px - large empty-state/drawer padding
+    --space-12: 3rem;    // 48px
+    --space-14: 3.5rem;  // 56px
+    --space-16: 4rem;    // 64px - onboarding/hero-scale spacing
+
+    // ── Elevation Scale ─────────────────────────────────────
+    // Shadows lighten automatically in dark mode via _dark.scss.
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.18);
+    --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.25);
 
     // ── Theme Tokens: Backgrounds ───────────────────────────
     // Desktop / app shell background

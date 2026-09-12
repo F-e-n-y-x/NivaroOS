@@ -126,7 +126,7 @@ export const mixin = {
 					}
 				})
 			}
-			return require(`@/assets/img/filebrowser/${icon}.svg`)
+			return require(`@/assets/img/files/${icon}.svg`)
 		},
 		getPanelType(item) {
 			const ext = this.getFileExt(item);

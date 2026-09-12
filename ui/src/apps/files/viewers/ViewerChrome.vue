@@ -1,0 +1,92 @@
+<!-- src/apps/files/viewers/ViewerChrome.vue -->
+<!--
+	Shared wrapper for every file viewer. Each viewer opens as its own
+	standalone desktop window (DesktopWindow.vue's COMPONENT_REGISTRY), so
+	the window's own titlebar already shows the file name and provides
+	close/minimize/maximize - this only supplies a floating control bar
+	(download, plus whatever viewer-specific controls a given viewer needs:
+	ImageViewer's zoom/rotate/prev-next, CodeEditor's Save), pinned to the
+	bottom of the content like a media player's on-screen controls, rather
+	than a bar docked at the top.
+-->
+<template>
+	<div class="viewer-shell">
+		<div class="viewer-body" :class="{ 'no-overflow': noOverflow }">
+			<slot></slot>
+		</div>
+		<div class="viewer-toolbar">
+			<div v-if="hasActions" class="viewer-actions">
+				<slot name="actions"></slot>
+			</div>
+			<span v-if="hasActions" class="toolbar-divider"></span>
+			<b-icon icon="download-outline" custom-size="mdi-18px" class="is-clickable" @click.native="$emit('download')"></b-icon>
+		</div>
+	</div>
+</template>
+
+<script>
+export default {
+	name: 'files-viewer-chrome',
+	props: {
+		noOverflow: {
+			type: Boolean,
+			default: false
+		}
+	},
+	computed: {
+		hasActions() {
+			return !!this.$slots.actions
+		},
+	},
+}
+</script>
+
+<style lang="scss" scoped>
+.viewer-shell {
+	position: absolute;
+	inset: 0;
+	background: #1e1e1e;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.viewer-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+
+	&.no-overflow {
+		overflow: hidden !important;
+	}
+}
+.viewer-toolbar {
+	position: absolute;
+	left: 50%;
+	bottom: 1.25rem;
+	transform: translateX(-50%);
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	background: rgba(30, 30, 30, 0.85);
+	backdrop-filter: blur(10px);
+	border-radius: var(--radius-pill);
+	box-shadow: var(--shadow-md);
+	color: #fff;
+}
+.viewer-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.toolbar-divider {
+	width: 1px;
+	height: 1.1rem;
+	background: rgba(255, 255, 255, 0.25);
+}
+</style>

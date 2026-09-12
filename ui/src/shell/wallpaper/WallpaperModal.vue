@@ -1,0 +1,305 @@
+<template>
+	<div class="modal-card wallpaper-picker" :class="{ 'is-embedded': embedded }">
+		<header v-if="!embedded" class="modal-card-head">
+			<div class="is-flex-grow-1">
+				<h3 class="title is-header">{{ $t('Change wallpaper') }}</h3>
+			</div>
+		</header>
+
+		<section class="modal-card-body">
+			<div class="wallpaper-grid">
+				<button v-for="(item, index) in wallpaperItems" :key="'wallpaper' + index" class="wallpaper-tile"
+					:class="{ active: checkActive(item.path) }" @click="changeWallpaper(item.path)">
+					<img :src="item.path" :alt="item.name" />
+					<span v-if="checkActive(item.path)" class="tile-check">
+						<b-icon icon="check-outline" pack="casa" size="is-16"></b-icon>
+					</span>
+				</button>
+
+				<button v-for="item in galleryItems" :key="item.path" class="wallpaper-tile"
+					:class="{ active: checkActive(item.path) }" @click="changeWallpaper(item.path)">
+					<img :src="item.path" :alt="item.name" />
+					<span v-if="checkActive(item.path)" class="tile-check">
+						<b-icon icon="check-outline" pack="casa" size="is-16"></b-icon>
+					</span>
+				</button>
+
+				<button class="wallpaper-tile upload-tile" :class="{ active: checkActiveFrom('Upload') }">
+					<div id="upload-wallpaper" class="upload-tile-inner">
+						<b-icon icon="picture-upload-outline" pack="casa" size="is-large"></b-icon>
+						<span>{{ $t('Upload') }}</span>
+					</div>
+					<b-loading v-model="isUpLoading" :can-cancel="false" :is-full-page="false"></b-loading>
+				</button>
+			</div>
+		</section>
+
+		<footer v-if="isDirty" class="wallpaper-apply-bar is-flex is-align-items-center">
+			<div class="is-flex-grow-1"></div>
+			<div>
+				<b-button :label="$t('Cancel')" rounded size="is-small" @click="cancel" />
+				<b-button :label="$t('Apply')" :loading="isLoading" expaned rounded size="is-small" type="is-primary" @click="saveChange" />
+			</div>
+		</footer>
+	</div>
+</template>
+
+<script>
+const wallpaperConfig = "wallpaper"
+const galleryPath = "/DATA/Gallery/Wallpaper"
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']
+import Uploader from 'simple-uploader.js'
+import { mixin } from '@/mixins/mixin'
+
+export default {
+	mixins: [mixin],
+	props: {
+		// Embedded inside Settings - no floating overlay to close, so
+		// Cancel just reverts the live preview back to what's applied.
+		embedded: {
+			type: Boolean,
+			default: false
+		}
+	},
+	data() {
+		return {
+			isLoading: false,
+			isUpLoading: false,
+			uploader: null,
+			attributes: {
+				accept: 'image/png, image/jpeg, image/svg+xml, image/bmp, image/png, image/gif'
+			},
+			wallpaperItems: [
+				{
+					name: "Built-in wallpaper 1",
+					path: require('@/assets/background/wallpaper01.jpg')
+				},
+				{
+					name: "Built-in wallpaper 2",
+					path: require('@/assets/background/wallpaper02.jpg')
+				}
+			],
+			backgroundStyleObj: {
+				backgroundImage: `url(${this.parseUrl(this.$store.state.wallpaperObject.path)})`
+			},
+			path: this.$store.state.wallpaperObject.path,
+			from: this.$store.state.wallpaperObject.from,
+			galleryItems: []
+		}
+	},
+	components: {},
+	created() {
+		this.loadGallery()
+		this.uploader = new Uploader({
+			target: `${this.$protocol}//${this.$baseURL}/v2/casaos/file/upload`,
+			singleFile: true,
+			testChunks: false,
+			uploadMethod: "POST",
+			allowDuplicateUploads: true,
+			chunkSize: 1024 * 1024 * 1024 * 1024,
+			query: (file) => ({ path: galleryPath, name: file.name })
+		});
+
+	},
+	mounted() {
+		this.uploader.assignBrowse(document.getElementById('upload-wallpaper'), false, true, this.attributes)
+		this.uploader.on('filesSubmitted', () => {
+			this.isUpLoading = true
+			this.$api.sys.getVersion().then(res => {
+				this.uploader.opts.headers.Authorization = this.$store.state.access_token || localStorage.getItem("access_token")
+				this.uploader.upload()
+			})
+		})
+		this.uploader.on('fileError', () => {
+			this.isUpLoading = false
+			this.$buefy.toast.open({
+				message: this.$t('Upload failed, please try again!'),
+				type: 'is-danger'
+			})
+		})
+		// Uploaded straight into the gallery folder (not the old single-slot
+		// avatar-style endpoint) so it shows up as a real, re-selectable
+		// tile - not just a hidden "currently applied" file with no history.
+		this.uploader.on('fileSuccess', (rootFile) => {
+			this.isUpLoading = false
+			const uploadPath = this.getFileUrl({ path: `${galleryPath}/${rootFile.name}`, is_dir: false })
+			this.loadGallery()
+			this.path = uploadPath
+			this.from = "Upload"
+			this.applyWallpaper(uploadPath, "Upload")
+		})
+
+	},
+	computed: {
+		isDirty() {
+			return false
+		}
+	},
+	methods: {
+		applyWallpaper(path, from) {
+			let cleanPath = path
+			if (cleanPath && cleanPath.includes('path=')) {
+				try {
+					const urlObj = new URL(cleanPath, 'http://localhost')
+					const extracted = urlObj.searchParams.get('path')
+					if (extracted) {
+						cleanPath = extracted
+					}
+				} catch (e) {}
+			}
+			const data = {
+				path: cleanPath,
+				from: from || this.from || "Built-in"
+			}
+			this.path = cleanPath
+			this.from = data.from
+			localStorage.setItem('wallpaper', cleanPath)
+			this.$store.commit('SET_WALLPAPER', data)
+			this.$messageBus('dashboardsetting_wallpaper', cleanPath.toString())
+
+			this.$api.users.setCustomStorage(wallpaperConfig, data).catch(err => {
+				console.error('Failed to save wallpaper setting', err)
+			})
+		},
+		cancel() {
+			this.path = this.$store.state.wallpaperObject.path
+			this.from = this.$store.state.wallpaperObject.from
+			this.$emit('close')
+		},
+		saveChange() {
+			this.applyWallpaper(this.path, this.from)
+			this.$emit('close')
+		},
+		loadGallery() {
+			this.$api.folder.getList(galleryPath).then(res => {
+				if (res.data.success !== 200) return
+				const content = (res.data.data && res.data.data.content) || []
+				this.galleryItems = content
+					.filter(f => !f.is_dir && imageExtensions.some(ext => f.name.toLowerCase().endsWith(ext)))
+					.map(f => ({ name: f.name, path: this.getFileUrl({ path: f.path, is_dir: false }) }))
+			}).catch(() => {
+				this.galleryItems = []
+			})
+		},
+		changeWallpaper(path) {
+			this.path = path
+			this.from = path.includes('/DATA/') ? 'Gallery' : 'Built-in'
+			this.applyWallpaper(path, this.from)
+		},
+
+		checkActive(path) {
+			const current = (this.$store.state.wallpaperObject && this.$store.state.wallpaperObject.path) || this.path
+			return current == path || this.path == path
+		},
+		checkActiveFrom(from) {
+			return this.from == from
+		},
+		getTargetUrl() {
+			const accessToken = localStorage.getItem("access_token")
+			return `${this.$protocol}//${this.$baseURL}/v1/users/current/image/${wallpaperConfig}?token=${accessToken}&type=wallpaper`
+		},
+		parseUrl(serverUrl) {
+			if (!serverUrl) return ''
+			const newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`)
+			return newUrl;
+		},
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+// Buefy's base .modal-card rule (meant for a floating, centered dialog)
+// pins width to 640px with auto margins above 769px - embedded here inside
+// a Settings card, it needs to fill whatever width the card actually has
+// so the wallpaper grid can adapt its column count to the window size.
+.modal-card.is-embedded {
+	box-shadow: none;
+	background: transparent;
+	width: 100%;
+	max-width: none;
+	max-height: none;
+	margin: 0;
+	overflow: visible;
+}
+
+.wallpaper-picker .modal-card-body {
+	padding: var(--space-5);
+}
+
+.wallpaper-apply-bar {
+	padding: 0 var(--space-5) var(--space-5);
+
+	> div:last-child {
+		display: flex;
+		gap: var(--space-2);
+	}
+}
+
+.wallpaper-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+	grid-auto-rows: 6.5rem;
+	gap: 0.9rem;
+	max-height: calc(6.5rem * 2 + 0.9rem);
+	overflow-y: auto;
+	padding-right: var(--space-1);
+}
+
+.wallpaper-tile {
+	position: relative;
+	border-radius: var(--radius-card);
+	border: 2px solid transparent;
+	overflow: hidden;
+	cursor: pointer;
+	padding: 0;
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.03));
+	transition: border-color 0.15s ease, transform 0.15s ease;
+
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	&:hover {
+		transform: translateY(-1px);
+	}
+
+	&.active {
+		border-color: hsla(208, 100%, 50%, 1);
+	}
+}
+
+.tile-check {
+	position: absolute;
+	top: 0.4rem;
+	right: 0.4rem;
+	width: 1.3rem;
+	height: 1.3rem;
+	border-radius: 50%;
+	background: hsla(208, 100%, 50%, 1);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.upload-tile {
+	background: rgba(0, 0, 0, 0.02);
+	border-color: rgba(0, 0, 0, 0.1);
+	border-style: dashed;
+}
+
+.upload-tile-inner {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	color: rgba(44, 62, 80, 0.6);
+	font-size: var(--font-xs);
+}
+</style>

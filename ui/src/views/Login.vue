@@ -147,8 +147,8 @@ export default {
 		text-align: left;
 		background: var(--theme-card-bg, rgba(255, 255, 255, 0.46));
 		backdrop-filter: blur(1rem);
-		border-radius: 8px;
-		padding: 2.5rem 4rem;
+		border-radius: var(--radius-control);
+		padding: var(--space-8) var(--space-16);
 
 		.label {
 			color: var(--theme-text-primary, #1e293b);
@@ -160,16 +160,16 @@ export default {
 		}
 
 		&.step1 {
-			padding: 4rem 6rem;
+			padding: var(--space-16) 6rem;
 		}
 
 		&.step2 {
-			padding: 2.5rem 4rem;
+			padding: var(--space-8) var(--space-16);
 			width: 32rem;
 		}
 
 		&.step3 {
-			padding: 4rem 8rem;
+			padding: var(--space-16) 8rem;
 		}
 
 		&.step4 {
@@ -183,9 +183,9 @@ export default {
 		text-align: left;
 		background: var(--theme-card-bg, rgba(255, 255, 255, 0.46));
 		backdrop-filter: blur(1rem);
-		border-radius: 8px;
-		margin: 0 2rem;
-		padding: 2rem !important;
+		border-radius: var(--radius-control);
+		margin: 0 var(--space-8);
+		padding: var(--space-8) !important;
 
 		.label {
 			color: var(--theme-text-primary, #1e293b);
@@ -202,21 +202,21 @@ export default {
 		}
 
 		.is-3 {
-			font-size: 1.5rem;
+			font-size: var(--font-2xl);
 		}
 
 		&.step1 {
 			.is-2 {
-				font-size: 1.5rem;
+				font-size: var(--font-2xl);
 			}
 
 			.subtitle {
-				font-size: 1rem;
+				font-size: var(--font-md);
 			}
 		}
 
 		&.step3 {
-			padding: 4rem !important;
+			padding: var(--space-16) !important;
 		}
 	}
 }
