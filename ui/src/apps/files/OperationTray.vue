@@ -14,7 +14,7 @@
 	be open in a given tab.
 -->
 <template>
-	<div v-if="taskList.length" class="operation-tray">
+	<div v-if="taskList.length" class="operation-tray" role="status" aria-live="polite" :aria-label="$t('File operation progress')">
 		<div class="operation-tray-header">
 			<b-icon icon="swap-horizontal" custom-size="mdi-18px" class="header-icon"></b-icon>
 			<span class="header-title">{{ headerText }}</span>
@@ -148,7 +148,7 @@ export default {
 .item-icon {
 	flex-shrink: 0;
 	margin-top: var(--space-1);
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.35));
+	color: var(--color-text-muted, #64748b);
 
 	.is-finished & {
 		color: #48c774;

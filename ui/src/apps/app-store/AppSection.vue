@@ -415,7 +415,27 @@ export default {
 
 				let allApps = concat(builtInApplications, orgAppList, linkAppList)
 
-				const folders = await this.getFolders()
+				let folders = await this.getFolders()
+				const initialFolderIdByAppName = {}
+				folders.forEach(f => {
+					f.appNames.forEach(n => { initialFolderIdByAppName[n] = f.id })
+				})
+
+				// Auto-file containers deployed outside the App Store (Portainer/CLI
+				// docker-compose, not the app's own custom-install flow) into a
+				// dedicated folder instead of leaving them loose on the desktop.
+				// Skips anything already in a folder - including one the user
+				// deliberately moved back out, tracked via getContainerAutoExcludes().
+				const unfiledContainers = allApps.filter(item => item.app_type === 'container' && !initialFolderIdByAppName[item.name])
+				if (unfiledContainers.length) {
+					const excludes = await this.getContainerAutoExcludes()
+					const toFile = unfiledContainers.filter(item => !excludes.includes(item.name))
+					if (toFile.length) {
+						await this.autoFileContainerApps(toFile.map(item => item.name))
+						folders = await this.getFolders()
+					}
+				}
+
 				const folderIdByAppName = {}
 				folders.forEach(f => {
 					f.appNames.forEach(n => { folderIdByAppName[n] = f.id })
@@ -833,7 +853,16 @@ export default {
 		},
 
 		handleRemoveFromFolder({ item, folderId }) {
-			this.removeAppFromFolder(item.name, folderId).then(() => this.getList())
+			this.removeAppFromFolder(item.name, folderId).then(async (folders) => {
+				// If this was the auto-filed "Other Containers" folder, remember the
+				// user's choice permanently so getList() won't re-file it right back
+				// in on its next refresh.
+				const folder = folders.find(f => f.id === folderId)
+				if (folder && folder.isAutoContainerFolder) {
+					await this.addContainerAutoExclude(item.name)
+				}
+				this.getList()
+			})
 		},
 
 		async openLegacyEditModal(item) {

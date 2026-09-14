@@ -3,9 +3,17 @@
  * concept stored in per-user custom storage (same mechanism as
  * widgets_config/app_order), never touching app-management or containers.
  *
- * Folder shape: { id, name, icon, appNames: [] }
+ * Folder shape: { id, name, icon, appNames: [], isAutoContainerFolder? }
  */
 const foldersConfig = 'app_folders'
+
+// Containers deployed outside the App Store (e.g. `docker compose up` via
+// Portainer/CLI - app_type: "container" from GetAppGrid) get auto-filed
+// into this folder instead of littering the desktop. `isAutoContainerFolder`
+// marks it so it survives a rename and so getList() can find it without
+// depending on a fixed id/name.
+export const AUTO_CONTAINER_FOLDER_NAME = 'Other Containers'
+const containerAutoExcludeConfig = 'container_auto_folder_excludes'
 
 export default {
 	methods: {
@@ -85,6 +93,52 @@ export default {
 			}
 			await this.saveFolders(folders)
 			return folders
+		},
+
+		// Files the given app names into the (possibly newly-created) auto
+		// container folder in one read-modify-write, so two apps discovered
+		// unfiled in the same getList() tick don't race each other's
+		// getFolders()/saveFolders() pair and clobber one another.
+		async autoFileContainerApps(appNames) {
+			if (!appNames.length) return null
+			const folders = await this.getFolders()
+			let folder = folders.find(f => f.isAutoContainerFolder)
+			if (!folder) {
+				folder = {
+					id: 'folder-' + Date.now(),
+					name: AUTO_CONTAINER_FOLDER_NAME,
+					icon: null,
+					appNames: [],
+					isAutoContainerFolder: true
+				}
+				folders.push(folder)
+			}
+			appNames.forEach(name => {
+				if (!folder.appNames.includes(name)) folder.appNames.push(name)
+			})
+			await this.saveFolders(folders)
+			return folder
+		},
+
+		async getContainerAutoExcludes() {
+			try {
+				const res = await this.$api.users.getCustomStorage(containerAutoExcludeConfig)
+				return (res.data && res.data.data) || []
+			} catch (e) {
+				console.error('getContainerAutoExcludes', e)
+				return []
+			}
+		},
+
+		// Called when the user removes an app from the auto container folder
+		// (moves it back out) - remembered permanently so getList() doesn't
+		// re-file it right back in on its next 8s refresh.
+		async addContainerAutoExclude(appName) {
+			const excludes = await this.getContainerAutoExcludes()
+			if (!excludes.includes(appName)) {
+				excludes.push(appName)
+				await this.$api.users.setCustomStorage(containerAutoExcludeConfig, excludes)
+			}
 		}
 	}
 }

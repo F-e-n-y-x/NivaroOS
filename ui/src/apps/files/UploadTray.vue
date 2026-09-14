@@ -9,12 +9,14 @@
 			.click() on a file input, even though display:none on the input
 			itself is fine. -->
 		<input ref="fileInput" type="file" multiple style="display: none" @change="onFileInputChange" />
-		<div v-show="visible" class="upload-tray">
+		<div v-show="visible" class="upload-tray" role="status" aria-live="polite" :aria-label="$t('Upload progress')">
 			<div class="upload-tray-header">
 				<b-icon icon="tray-arrow-up" custom-size="mdi-18px" class="header-icon"></b-icon>
 				<span class="header-title">{{ headerText }}</span>
 				<span v-if="status === 'uploading' && totalSpeed > 0" class="total-speed">{{ formatSize(totalSpeed) }}/s</span>
-				<b-icon icon="close" class="is-clickable dismiss-icon" custom-size="mdi-16px" @click.native="dismiss"></b-icon>
+				<button type="button" class="icon-btn dismiss-icon" :aria-label="$t('Dismiss')" @click="dismiss">
+					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
+				</button>
 			</div>
 			<ul class="upload-tray-list">
 				<li v-for="file in trackedFiles" :key="file.uid" class="upload-tray-item" :class="'is-' + file.status">
@@ -32,11 +34,15 @@
 							<span v-else-if="file.status === 'success'" class="status-text is-success">{{ $t('Done') }}</span>
 							<template v-else-if="file.progress === 0">
 								<span class="status-text is-waiting">{{ $t('Waiting') }}</span>
-								<b-icon icon="close" custom-size="mdi-14px" class="is-clickable cancel-icon" :title="$t('Cancel')" @click.native="cancelFile(file)"></b-icon>
+								<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
+									<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+								</button>
 							</template>
 							<template v-else>
 								<span class="percentage">{{ file.progress }}%</span>
-								<b-icon icon="close" custom-size="mdi-14px" class="is-clickable cancel-icon" :title="$t('Cancel')" @click.native="cancelFile(file)"></b-icon>
+								<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
+									<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+								</button>
 							</template>
 						</div>
 						<div class="item-subrow">
@@ -309,16 +315,34 @@ export default {
 	flex-shrink: 0;
 	font-weight: 400;
 	font-size: var(--font-xs);
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.45));
+	color: var(--color-text-muted, #64748b);
+}
+// Reset for both icon-only <button>s below - a bare <button> carries the
+// browser/OS's own default border and background, which must be reset
+// explicitly or it shows through in both themes.
+.icon-btn {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	padding: 2px;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	line-height: 1;
+
+	&:focus-visible {
+		outline: 2px solid var(--theme-focus-ring, rgba(37, 99, 235, 0.4));
+		outline-offset: 1px;
+	}
 }
 .dismiss-icon {
-	flex-shrink: 0;
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.4));
+	color: var(--color-text-muted, #64748b);
 	&:hover { color: var(--theme-text-primary, rgba(0, 0, 0, 0.7)); }
 }
 .cancel-icon {
-	flex-shrink: 0;
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.35));
+	color: var(--color-text-muted, #64748b);
 	&:hover { color: var(--color-danger, #cc0f35); }
 }
 .upload-tray-item {
@@ -393,12 +417,12 @@ export default {
 .file-size {
 	flex-shrink: 0;
 	font-size: var(--font-2xs);
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.4));
+	color: var(--color-text-muted, #64748b);
 }
 .file-speed {
 	flex-shrink: 0;
 	font-size: var(--font-2xs);
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.4));
+	color: var(--color-text-muted, #64748b);
 }
 .file-name {
 	flex: 1 1 auto;
@@ -418,7 +442,7 @@ export default {
 	font-weight: 600;
 	&.is-success { color: var(--color-success, #257942); }
 	&.is-error { color: var(--color-danger, #cc0f35); }
-	&.is-waiting { color: var(--theme-text-muted, rgba(0, 0, 0, 0.4)); font-weight: 400; }
+	&.is-waiting { color: var(--color-text-muted, #64748b); font-weight: 400; }
 }
 .progress-track {
 	margin-top: var(--space-2);
