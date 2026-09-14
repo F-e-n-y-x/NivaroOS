@@ -1473,13 +1473,19 @@ fi
 # what causes stale/corrupted patches on the stream. Polling instead of
 # trusting damage events costs a little CPU but eliminates that class of
 # artifact entirely.
+# -fixscreen X=5: -noxdamage alone doesn't fully fix it - the compositor
+# can still leave x11vnc's own tile-comparison believing certain regions
+# are unchanged when the actually-displayed (composited) content moved on
+# without it. X=5 forces a genuine full re-read of the X11 framebuffer
+# from the X server every 5s, bypassing that comparison entirely, so any
+# such patch self-heals within 5 seconds regardless of what caused it.
 # -localhost: this server is reachable only via the vm-sidecar's WebSocket
 # proxy (which always connects over 127.0.0.1) - there is no legitimate
 # reason to expose a raw, unauthenticated VNC port to the network.
 if [ -n \"\$AUTH\" ]; then
-    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -noxdamage -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 else
-    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 fi
 HOSTDESKEOF
 		chmod +x /usr/local/bin/nivaroos-host-desktop.sh

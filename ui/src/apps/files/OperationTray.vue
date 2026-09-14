@@ -142,7 +142,7 @@ export default {
 	font-size: var(--font-xs);
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.03);
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.03));
 	}
 }
 .item-icon {
@@ -184,7 +184,7 @@ export default {
 	margin-top: var(--space-1);
 	height: 4px;
 	border-radius: var(--radius-pill);
-	background: rgba(50, 115, 220, 0.12);
+	background: var(--theme-info-soft, rgba(50, 115, 220, 0.12));
 	overflow: hidden;
 }
 .progress-fill {

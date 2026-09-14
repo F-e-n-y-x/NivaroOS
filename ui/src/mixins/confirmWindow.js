@@ -12,12 +12,19 @@
 export const confirmWindowMixin = {
 	data() {
 		return {
-			_confirmWindowState: null,
+			// NOT "_confirmWindowState" - Vue 2 never proxies a data() key
+			// starting with "_" or "$" onto the instance (reserved for its
+			// own internals), so `this._confirmWindowState = x` would just
+			// set a plain, non-reactive property no computed/template
+			// binding would ever see change. That's not a style nitpick,
+			// it silently broke every confirm window: the popup never
+			// opened, with no warning in a production build.
+			confirmWindowState: null,
 		}
 	},
 	computed: {
 		confirmWindowProps() {
-			const s = this._confirmWindowState
+			const s = this.confirmWindowState
 			return {
 				active: !!s,
 				title: (s && s.title) || '',
@@ -33,16 +40,16 @@ export const confirmWindowMixin = {
 	},
 	methods: {
 		confirmWindow(options) {
-			this._confirmWindowState = options
+			this.confirmWindowState = options
 		},
 		_onConfirmWindowConfirm() {
-			const onConfirm = this._confirmWindowState && this._confirmWindowState.onConfirm
-			this._confirmWindowState = null
+			const onConfirm = this.confirmWindowState && this.confirmWindowState.onConfirm
+			this.confirmWindowState = null
 			if (onConfirm) onConfirm()
 		},
 		_onConfirmWindowCancel() {
-			const onCancel = this._confirmWindowState && this._confirmWindowState.onCancel
-			this._confirmWindowState = null
+			const onCancel = this.confirmWindowState && this.confirmWindowState.onCancel
+			this.confirmWindowState = null
 			if (onCancel) onCancel()
 		},
 	},

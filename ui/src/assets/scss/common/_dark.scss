@@ -1124,39 +1124,6 @@ html.is-dark {
 			color: #f4f4f5 !important;
 		}
 
-		.settings-search {
-			background: #18181b !important;
-			border: 1px solid rgba(255, 255, 255, 0.15) !important;
-
-			input {
-				background: transparent !important;
-				color: #f4f4f5 !important;
-
-				&::placeholder {
-					color: #a1a1aa !important;
-				}
-			}
-
-			.search-icon {
-				color: #a1a1aa !important;
-			}
-		}
-
-		.search-results-dropdown {
-			background: #1e1e22 !important;
-			border: 1px solid rgba(255, 255, 255, 0.14) !important;
-			box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75) !important;
-
-			.search-result-item {
-				color: #f4f4f5 !important;
-				border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-
-				&:hover {
-					background: rgba(255, 255, 255, 0.06) !important;
-				}
-			}
-		}
-
 		.section-title {
 			color: #f4f4f5 !important;
 		}

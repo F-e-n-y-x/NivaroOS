@@ -16,10 +16,17 @@
 			<div class="drop-grid"></div>
 			<div v-if="dragPreviewStyle" class="drop-preview" :style="dragPreviewStyle"></div>
 			<div v-if="marqueeStyle" class="marquee-box" :style="marqueeStyle"></div>
+			<!-- @dragstart.prevent: the icon's <img> (via b-image) is natively
+			     draggable by default in every browser - without preventing it, a
+			     real mouse drag can get hijacked partway through by the browser's
+			     own HTML5 image-drag instead of this component's custom
+			     mousemove/mouseup tracking, which then stops receiving events
+			     until the drag is cancelled - the icon needed a second, separate
+			     click to actually complete the drop. -->
 			<div v-for="item in positionedAppList" :key="'app-' + item.name" :id="'app-' + item.name"
 				:data-app-name="item.name"
 				class="app-slot" :class="{ dragging: draggingName === item.name, selected: selectedNames.includes(item.name) }" :style="slotStyle(item)"
-				@mousedown="startDrag(item, $event)" @click.capture="swallowClickAfterDrag">
+				@mousedown="startDrag(item, $event)" @click.capture="swallowClickAfterDrag" @dragstart.prevent>
 				<folder-card
 					v-if="item.app_type === 'folder'"
 					:folder="item.folderData"

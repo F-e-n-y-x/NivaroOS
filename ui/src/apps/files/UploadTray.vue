@@ -355,10 +355,10 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(50, 115, 220, 0.1);
+	background: var(--theme-info-soft, rgba(50, 115, 220, 0.1));
 
 	.is-success & {
-		background: rgba(72, 199, 116, 0.15);
+		background: var(--theme-success-soft, rgba(72, 199, 116, 0.15));
 	}
 	.is-error & {
 		background: rgba(255, 56, 96, 0.15);
@@ -424,7 +424,7 @@ export default {
 	margin-top: var(--space-2);
 	height: 4px;
 	border-radius: var(--radius-pill);
-	background: rgba(50, 115, 220, 0.12);
+	background: var(--theme-info-soft, rgba(50, 115, 220, 0.12));
 	overflow: hidden;
 }
 .progress-fill {

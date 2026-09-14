@@ -963,14 +963,24 @@ func GetFileImage(ctx echo.Context) error {
 		}
 	}
 	if !file.Exists(path) {
-		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.FILE_ALREADY_EXISTS)})
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DOES_NOT_EXIST, Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST)})
 	}
 	if t == "thumbnail" {
 		f, err := file.GetImage(path, 100, 0)
 		if err != nil {
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 		}
+		if kind, _ := filetype.Match(f); kind != filetype.Unknown {
+			ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
+		}
 		ctx.Response().Writer.Write(f)
+		// Without this, execution fell through into the full-image path
+		// below on every thumbnail request - re-reading and appending the
+		// entire original file's bytes right after the thumbnail into the
+		// same response body, so every thumbnail request downloaded the
+		// whole original image for nothing (and produced a technically
+		// invalid response body two images concatenated together).
+		return nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -980,6 +990,9 @@ func GetFileImage(ctx echo.Context) error {
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+	}
+	if kind, _ := filetype.Match(data); kind != filetype.Unknown {
+		ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
 	}
 	ctx.Response().Writer.Write(data)
 	return nil
