@@ -15,6 +15,30 @@ const foldersConfig = 'app_folders'
 export const AUTO_CONTAINER_FOLDER_NAME = 'Other Containers'
 const containerAutoExcludeConfig = 'container_auto_folder_excludes'
 
+// Best-effort project detection from Docker Compose's own default container
+// naming convention - `<project>-<service>-<index>` (Compose v2, the
+// default today) or `<project>_<service>_<index>` (Compose v1 /
+// COMPOSE_COMPATIBILITY mode). There's no backend field for this (would
+// need a container-label plumbed through app-management's API, which is
+// blocked on an unrelated broken dependency chain in this build - see
+// project notes), so this is a heuristic: it assumes the service name
+// itself has no dash/underscore, which holds for typical single-word
+// service names (web, db, redis, nginx...) but can mis-split a service
+// name that itself contains one. A container started with a custom
+// `container_name` (bypassing the convention entirely) returns null and
+// falls back to the generic "Other Containers" folder, same as before.
+function parseComposeProject(rawName) {
+	if (!rawName) return null
+	const name = rawName.replace(/^\//, '')
+	const m = name.match(/^(.+)[-_][^-_]+[-_]\d+$/)
+	return m ? m[1] : null
+}
+export { parseComposeProject }
+
+function makeFolderId() {
+	return 'folder-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+}
+
 export default {
 	methods: {
 		async getFolders() {
@@ -95,29 +119,38 @@ export default {
 			return folders
 		},
 
-		// Files the given app names into the (possibly newly-created) auto
-		// container folder in one read-modify-write, so two apps discovered
-		// unfiled in the same getList() tick don't race each other's
-		// getFolders()/saveFolders() pair and clobber one another.
-		async autoFileContainerApps(appNames) {
-			if (!appNames.length) return null
+		// Files each group's app names into its own compose-project folder
+		// (creating it on first sight) - or, for containers with no detected
+		// project, the shared "Other Containers" folder - in one
+		// read-modify-write so several groups discovered unfiled in the same
+		// getList() tick don't race each other's getFolders()/saveFolders()
+		// pair and clobber one another.
+		//
+		// groups: [{ project: string|null, appNames: string[] }]
+		async autoFileContainerApps(groups) {
+			if (!groups.length) return
 			const folders = await this.getFolders()
-			let folder = folders.find(f => f.isAutoContainerFolder)
-			if (!folder) {
-				folder = {
-					id: 'folder-' + Date.now(),
-					name: AUTO_CONTAINER_FOLDER_NAME,
-					icon: null,
-					appNames: [],
-					isAutoContainerFolder: true
+			groups.forEach(({ project, appNames }) => {
+				if (!appNames.length) return
+				let folder = project
+					? folders.find(f => f.composeProject === project)
+					: folders.find(f => f.isAutoContainerFolder && !f.composeProject)
+				if (!folder) {
+					folder = {
+						id: makeFolderId(),
+						name: project || AUTO_CONTAINER_FOLDER_NAME,
+						icon: null,
+						appNames: [],
+						isAutoContainerFolder: true
+					}
+					if (project) folder.composeProject = project
+					folders.push(folder)
 				}
-				folders.push(folder)
-			}
-			appNames.forEach(name => {
-				if (!folder.appNames.includes(name)) folder.appNames.push(name)
+				appNames.forEach(name => {
+					if (!folder.appNames.includes(name)) folder.appNames.push(name)
+				})
 			})
 			await this.saveFolders(folders)
-			return folder
 		},
 
 		async getContainerAutoExcludes() {

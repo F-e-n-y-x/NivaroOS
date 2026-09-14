@@ -9,53 +9,55 @@
 			.click() on a file input, even though display:none on the input
 			itself is fine. -->
 		<input ref="fileInput" type="file" multiple style="display: none" @change="onFileInputChange" />
-		<div v-show="visible" class="upload-tray" role="status" aria-live="polite" :aria-label="$t('Upload progress')">
-			<div class="upload-tray-header">
-				<b-icon icon="tray-arrow-up" custom-size="mdi-18px" class="header-icon"></b-icon>
-				<span class="header-title">{{ headerText }}</span>
-				<span v-if="status === 'uploading' && totalSpeed > 0" class="total-speed">{{ formatSize(totalSpeed) }}/s</span>
-				<button type="button" class="icon-btn dismiss-icon" :aria-label="$t('Dismiss')" @click="dismiss">
-					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
-				</button>
+		<transition name="tray-pop">
+			<div v-show="visible" class="upload-tray" role="status" aria-live="polite" :aria-label="$t('Upload progress')">
+				<div class="upload-tray-header">
+					<b-icon icon="tray-arrow-up" custom-size="mdi-18px" class="header-icon"></b-icon>
+					<span class="header-title">{{ headerText }}</span>
+					<span v-if="status === 'uploading' && totalSpeed > 0" class="total-speed">{{ formatSize(totalSpeed) }}/s</span>
+					<button type="button" class="icon-btn close-icon" :aria-label="$t('Close')" @click="dismiss">
+						<b-icon icon="close" custom-size="mdi-16px"></b-icon>
+					</button>
+				</div>
+				<ul class="upload-tray-list">
+					<li v-for="file in trackedFiles" :key="file.uid" class="upload-tray-item" :class="'is-' + file.status">
+						<div class="item-icon-badge">
+							<b-icon
+								class="item-icon"
+								custom-size="mdi-18px"
+								:icon="file.status === 'error' ? 'alert-circle' : file.status === 'success' ? 'check-circle' : 'file-outline'"
+							></b-icon>
+						</div>
+						<div class="item-body">
+							<div class="item-row">
+								<span class="file-name" :title="file.name">{{ file.name }}</span>
+								<span v-if="file.status === 'error'" class="status-text is-error" :title="file.message">{{ $t('Error') }}</span>
+								<span v-else-if="file.status === 'success'" class="status-text is-success">{{ $t('Done') }}</span>
+								<template v-else-if="file.progress === 0">
+									<span class="status-text is-waiting">{{ $t('Waiting') }}</span>
+									<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
+										<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+									</button>
+								</template>
+								<template v-else>
+									<span class="percentage">{{ file.progress }}%</span>
+									<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
+										<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+									</button>
+								</template>
+							</div>
+							<div class="item-subrow">
+								<span class="file-size">{{ formatSize(file.size) }}</span>
+								<span v-if="file.status === 'uploading' && file.speed > 0" class="file-speed">{{ formatSize(file.speed) }}/s</span>
+							</div>
+							<div v-if="file.status === 'uploading'" class="progress-track">
+								<div class="progress-fill" :class="{ 'is-indeterminate': file.progress === 0 }" :style="file.progress > 0 ? { width: file.progress + '%' } : {}"></div>
+							</div>
+						</div>
+					</li>
+				</ul>
 			</div>
-			<ul class="upload-tray-list">
-				<li v-for="file in trackedFiles" :key="file.uid" class="upload-tray-item" :class="'is-' + file.status">
-					<div class="item-icon-badge">
-						<b-icon
-							class="item-icon"
-							custom-size="mdi-18px"
-							:icon="file.status === 'error' ? 'alert-circle' : file.status === 'success' ? 'check-circle' : 'file-outline'"
-						></b-icon>
-					</div>
-					<div class="item-body">
-						<div class="item-row">
-							<span class="file-name" :title="file.name">{{ file.name }}</span>
-							<span v-if="file.status === 'error'" class="status-text is-error" :title="file.message">{{ $t('Error') }}</span>
-							<span v-else-if="file.status === 'success'" class="status-text is-success">{{ $t('Done') }}</span>
-							<template v-else-if="file.progress === 0">
-								<span class="status-text is-waiting">{{ $t('Waiting') }}</span>
-								<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
-									<b-icon icon="close" custom-size="mdi-14px"></b-icon>
-								</button>
-							</template>
-							<template v-else>
-								<span class="percentage">{{ file.progress }}%</span>
-								<button type="button" class="icon-btn cancel-icon" :aria-label="$t('Cancel')" @click="cancelFile(file)">
-									<b-icon icon="close" custom-size="mdi-14px"></b-icon>
-								</button>
-							</template>
-						</div>
-						<div class="item-subrow">
-							<span class="file-size">{{ formatSize(file.size) }}</span>
-							<span v-if="file.status === 'uploading' && file.speed > 0" class="file-speed">{{ formatSize(file.speed) }}/s</span>
-						</div>
-						<div v-if="file.status === 'uploading'" class="progress-track">
-							<div class="progress-fill" :class="{ 'is-indeterminate': file.progress === 0 }" :style="file.progress > 0 ? { width: file.progress + '%' } : {}"></div>
-						</div>
-					</div>
-				</li>
-			</ul>
-		</div>
+		</transition>
 	</div>
 </template>
 
@@ -202,14 +204,9 @@ export default {
 			this.totalSpeed = 0
 			this.$emit('uploaded')
 			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-			const hasError = this.trackedFiles.some((file) => file.status === 'error')
-			if (!hasError) {
-				setTimeout(() => {
-					this.visible = false
-					this.trackedFiles = []
-					this.rawFileMap = {}
-				}, 2000)
-			}
+			// No auto-hide here - the tray stays up with its "Completed"
+			// header and each file's "Done" checkmark until the user closes
+			// it themselves via the header's close button.
 		})
 	},
 	beforeDestroy() {
@@ -337,7 +334,7 @@ export default {
 		outline-offset: 1px;
 	}
 }
-.dismiss-icon {
+.close-icon {
 	color: var(--color-text-muted, #64748b);
 	&:hover { color: var(--theme-text-primary, rgba(0, 0, 0, 0.7)); }
 }
@@ -469,5 +466,14 @@ export default {
 @keyframes upload-indeterminate {
 	0% { margin-left: -40%; }
 	100% { margin-left: 100%; }
+}
+.tray-pop-enter-active,
+.tray-pop-leave-active {
+	transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.tray-pop-enter,
+.tray-pop-leave-to {
+	opacity: 0;
+	transform: translateY(8px);
 }
 </style>

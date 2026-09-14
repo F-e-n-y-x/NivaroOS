@@ -14,36 +14,36 @@
 	be open in a given tab.
 -->
 <template>
-	<div v-if="taskList.length" class="operation-tray" role="status" aria-live="polite" :aria-label="$t('File operation progress')">
-		<div class="operation-tray-header">
-			<b-icon icon="swap-horizontal" custom-size="mdi-18px" class="header-icon"></b-icon>
-			<span class="header-title">{{ headerText }}</span>
+	<transition name="tray-pop">
+		<div v-if="taskList.length" class="operation-tray" role="status" aria-live="polite" :aria-label="$t('File operation progress')">
+			<div class="operation-tray-header">
+				<b-icon icon="swap-horizontal" custom-size="mdi-18px" class="header-icon"></b-icon>
+				<span class="header-title">{{ headerText }}</span>
+				<button type="button" class="icon-btn close-icon" :aria-label="$t('Close')" @click="closeTray">
+					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
+				</button>
+			</div>
+			<ul class="operation-tray-list">
+				<li v-for="task in taskList" :key="task.id" class="operation-tray-item" :class="{ 'is-finished': task.finished }">
+					<b-icon class="item-icon" custom-size="mdi-18px" :icon="task.finished ? 'check-circle' : task.type === 'move' ? 'content-cut' : 'content-copy'"></b-icon>
+					<div class="item-body">
+						<div class="item-row">
+							<span class="dest-name" :title="task.to">{{ baseName(task.to) || task.to }}</span>
+							<span v-if="task.finished" class="status-text is-success">{{ $t('Done') }}</span>
+							<span v-else class="percentage">{{ task.percent }}%</span>
+						</div>
+						<div v-if="!task.finished" class="progress-track">
+							<div class="progress-fill" :style="{ width: task.percent + '%' }"></div>
+						</div>
+					</div>
+				</li>
+			</ul>
 		</div>
-		<ul class="operation-tray-list">
-			<li v-for="task in taskList" :key="task.id" class="operation-tray-item" :class="{ 'is-finished': task.finished }">
-				<b-icon class="item-icon" custom-size="mdi-18px" :icon="task.finished ? 'check-circle' : task.type === 'move' ? 'content-cut' : 'content-copy'"></b-icon>
-				<div class="item-body">
-					<div class="item-row">
-						<span class="dest-name" :title="task.to">{{ baseName(task.to) || task.to }}</span>
-						<span v-if="task.finished" class="status-text is-success">{{ $t('Done') }}</span>
-						<span v-else class="percentage">{{ task.percent }}%</span>
-					</div>
-					<div v-if="!task.finished" class="progress-track">
-						<div class="progress-fill" :style="{ width: task.percent + '%' }"></div>
-					</div>
-				</div>
-			</li>
-		</ul>
-	</div>
+	</transition>
 </template>
 
 <script>
 import { baseName } from '@/utils/files/path'
-
-// How long a finished task stays visible (with a "Done" checkmark) before
-// being dropped from the tray - matches UploadTray's own completed-file
-// fade delay.
-const FINISHED_LINGER_MS = 2000
 
 export default {
 	name: 'operation-tray',
@@ -83,14 +83,16 @@ export default {
 					percent,
 					startedAt: existing ? existing.startedAt : Date.now(),
 				})
-				if (task.finished) {
-					setTimeout(() => this.$delete(this.tasks, task.id), FINISHED_LINGER_MS)
-				}
+				// No auto-remove here - a finished task stays listed with its
+				// "Done" checkmark until the user closes the tray themselves.
 			})
 		},
 	},
 	methods: {
 		baseName,
+		closeTray() {
+			this.tasks = {}
+		},
 	},
 }
 </script>
@@ -126,6 +128,33 @@ export default {
 .header-icon {
 	color: var(--color-primary, #3273dc);
 	flex-shrink: 0;
+}
+.header-title {
+	flex: 1 1 auto;
+}
+// Reset for the icon-only close <button> below - a bare <button> carries the
+// browser/OS's own default border and background, which must be reset
+// explicitly or it shows through in both themes.
+.icon-btn {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	padding: 2px;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	line-height: 1;
+	color: var(--color-text-muted, #64748b);
+
+	&:hover {
+		color: var(--theme-text-primary, rgba(0, 0, 0, 0.7));
+	}
+	&:focus-visible {
+		outline: 2px solid var(--theme-focus-ring, rgba(37, 99, 235, 0.4));
+		outline-offset: 1px;
+	}
 }
 .operation-tray-list {
 	overflow-y: auto;
@@ -192,5 +221,14 @@ export default {
 	border-radius: var(--radius-pill);
 	background: var(--color-primary, #3273dc);
 	transition: width 0.15s ease;
+}
+.tray-pop-enter-active,
+.tray-pop-leave-active {
+	transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.tray-pop-enter,
+.tray-pop-leave-to {
+	opacity: 0;
+	transform: translateY(8px);
 }
 </style>

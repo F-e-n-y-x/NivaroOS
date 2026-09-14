@@ -121,7 +121,7 @@ import events from '@/events/events'
 import last from 'lodash/last'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import business_LinkApp from '@/mixins/app/Business_LinkApp'
-import business_Folders from '@/mixins/app/Business_Folders'
+import business_Folders, { parseComposeProject } from '@/mixins/app/Business_Folders'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import isEqual from 'lodash/isEqual'
 import { ice_i18n } from '@/mixins/base/common-i18n'
@@ -423,15 +423,23 @@ export default {
 
 				// Auto-file containers deployed outside the App Store (Portainer/CLI
 				// docker-compose, not the app's own custom-install flow) into a
-				// dedicated folder instead of leaving them loose on the desktop.
-				// Skips anything already in a folder - including one the user
-				// deliberately moved back out, tracked via getContainerAutoExcludes().
+				// dedicated folder per compose project instead of leaving them loose
+				// on the desktop or dumped together in one bucket. Skips anything
+				// already in a folder - including one the user deliberately moved
+				// back out, tracked via getContainerAutoExcludes().
 				const unfiledContainers = allApps.filter(item => item.app_type === 'container' && !initialFolderIdByAppName[item.name])
 				if (unfiledContainers.length) {
 					const excludes = await this.getContainerAutoExcludes()
 					const toFile = unfiledContainers.filter(item => !excludes.includes(item.name))
 					if (toFile.length) {
-						await this.autoFileContainerApps(toFile.map(item => item.name))
+						const groupsByProject = {}
+						toFile.forEach(item => {
+							const project = parseComposeProject(ice_i18n(item.title))
+							const key = project || ''
+							if (!groupsByProject[key]) groupsByProject[key] = { project: project || null, appNames: [] }
+							groupsByProject[key].appNames.push(item.name)
+						})
+						await this.autoFileContainerApps(Object.values(groupsByProject))
 						folders = await this.getFolders()
 					}
 				}
