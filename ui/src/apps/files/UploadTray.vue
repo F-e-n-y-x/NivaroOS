@@ -345,6 +345,10 @@ export default {
 	color: var(--color-text-muted, #64748b);
 	&:hover { color: var(--color-danger, #cc0f35); }
 }
+// No per-item border here (unlike an earlier revision) - a 1px stroke on
+// every single row, nested inside the tray's own outer border, is what read
+// as a stray "box stroke" in both themes. Matches OperationTray's list
+// items, which distinguish state with background tint alone.
 .upload-tray-item {
 	display: flex;
 	align-items: flex-start;
@@ -353,22 +357,19 @@ export default {
 	margin-bottom: var(--space-1);
 	border-radius: var(--radius-card);
 	font-size: var(--font-sm);
-	background: var(--theme-card-hover, rgba(0, 0, 0, 0.02));
-	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.04));
+	background: transparent;
 
 	&:last-child {
 		margin-bottom: 0;
 	}
 	&:hover {
-		background: var(--color-border-strong, rgba(0, 0, 0, 0.04));
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.03));
 	}
 	&.is-success {
-		background: rgba(72, 199, 116, 0.06);
-		border-color: rgba(72, 199, 116, 0.15);
+		background: var(--theme-success-soft, rgba(72, 199, 116, 0.08));
 	}
 	&.is-error {
-		background: rgba(255, 56, 96, 0.06);
-		border-color: rgba(255, 56, 96, 0.15);
+		background: rgba(255, 56, 96, 0.08);
 	}
 }
 .item-icon-badge {
