@@ -30,7 +30,7 @@
 						</div>
 						<div class="item-body">
 							<div class="item-row">
-								<span class="file-name" :title="file.name">{{ file.name }}</span>
+								<span class="upload-file-name" :title="file.name">{{ file.name }}</span>
 								<span v-if="file.status === 'error'" class="status-text is-error" :title="file.message">{{ $t('Error') }}</span>
 								<span v-else-if="file.status === 'success'" class="status-text is-success">{{ $t('Done') }}</span>
 								<template v-else-if="file.progress === 0">
@@ -422,7 +422,7 @@ export default {
 	font-size: var(--font-2xs);
 	color: var(--color-text-muted, #64748b);
 }
-.file-name {
+.upload-file-name {
 	flex: 1 1 auto;
 	min-width: 0;
 	overflow: hidden;
