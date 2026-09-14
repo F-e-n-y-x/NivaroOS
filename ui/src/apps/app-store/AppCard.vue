@@ -1231,5 +1231,14 @@ export default {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+
+	// The label text sits inside a bare <a> (see template) - without this,
+	// it inherits the framework's default link color (blue) instead of the
+	// white set above, since that default is an explicit UA/Bulma rule on
+	// `a`, not just an inherited value this parent's color can override.
+	a {
+		color: inherit;
+		text-decoration: none;
+	}
 }
 </style>

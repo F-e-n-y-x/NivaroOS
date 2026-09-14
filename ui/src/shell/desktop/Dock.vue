@@ -850,6 +850,6 @@ export default {
 .ctx-divider {
 	height: 1px;
 	margin: var(--space-1) var(--space-2);
-	background: rgba(0, 0, 0, 0.08);
+	background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 }
 </style>
