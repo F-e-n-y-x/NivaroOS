@@ -6,6 +6,7 @@
 
 
 .modal-card {
+    position: relative;
     background: var(--theme-card-bg, rgba(255, 255, 255, 1));
     border-radius: $backDropBorderRadius;
 

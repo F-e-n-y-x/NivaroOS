@@ -21,15 +21,19 @@
 			</div>
 		</div>
 
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow';
+
 export default {
 	name: "smart-block",
+	mixins: [confirmWindowMixin],
 	methods: {
 		goToDiscord() {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: ' ',
 				message: this.$t('Have an idea? Shoot it on Discord!'),
 				hasIcon: true,

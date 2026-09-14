@@ -57,12 +57,16 @@
 		</div>
 
 		<div v-if="!users.length" class="account-empty">{{ $t('No additional system users yet.') }}</div>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+
 export default {
 	name: 'system-users-panel',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			users: [],
@@ -103,8 +107,7 @@ export default {
 			this.$api.sys.setSystemUserGroups(user.username, { [group]: value }).then(() => this.refresh())
 		},
 		confirmDelete(user) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Delete system user'),
 				message: this.$t('This permanently removes {user} and its home directory. Continue?', { user: user.username }),
 				type: 'is-danger',

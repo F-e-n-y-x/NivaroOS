@@ -128,12 +128,14 @@
 				</footer>
 			</div>
 		</b-modal>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</section>
 </template>
 
 <script>
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 dayjs.extend(relativeTime)
 
@@ -141,6 +143,7 @@ export const ROWS = [{ label: 'Overview' }, { label: 'Connected Devices' }]
 
 export default {
 	name: 'companion-section',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			devices: [],
@@ -233,7 +236,7 @@ export default {
 			}
 		},
 		confirmDelete(dev) {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Remove Companion Device'),
 				message: this.$t('Are you sure you want to remove "{name}"? It will need to reconnect to pair again.', { name: dev.name || dev.model }),
 				confirmText: this.$t('Remove'),

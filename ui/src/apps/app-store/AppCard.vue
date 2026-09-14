@@ -173,6 +173,8 @@
 			</b-tooltip>
 			<!-- Card Content End -->
 		</div>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
@@ -188,6 +190,7 @@ import tipEditorModal from "@/apps/app-store/TipEditorModal.vue";
 import YAML from "yaml";
 import commonI18n, { ice_i18n } from "@/mixins/base/common-i18n";
 import FileSaver from 'file-saver';
+import { confirmWindowMixin } from '@/mixins/confirmWindow';
 
 export default {
 	name: "app-card",
@@ -195,7 +198,7 @@ export default {
 		cTooltip,
 		tipEditorModal,
 	},
-	mixins: [business_ShowNewAppTag, business_OpenThirdApp, business_LinkApp, business_DockPins, commonI18n],
+	mixins: [business_ShowNewAppTag, business_OpenThirdApp, business_LinkApp, business_DockPins, commonI18n, confirmWindowMixin],
 	inject: ["homeShowFiles", "openAppStore"],
 	data() {
 		return {
@@ -550,7 +553,7 @@ export default {
 		uninstallConfirm() {
 			this.$messageBus('apps_uninstall', this.item.name);
 			this.$refs.dro.isActive = false
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Attention'),
 				message: this.$t(`Data cannot be recovered after deletion! <br/>Continue on to uninstall this application?<br/>{divS}Delete userdata ( config folder ){divE}`, {
 					divS: `<div class="is-flex is-align-items-center mt-4"><input type="checkbox"  id="checkDelConfig">`,
@@ -682,12 +685,11 @@ export default {
 					item.status = res.data.data
 					this.updateState()
 				} else {
-					this.$buefy.dialog.alert({
+					this.confirmWindow({
 						title: 'Error',
 						message: res.data.data || res.data.message,
 						type: 'is-danger',
-						ariaRole: 'alertdialog',
-						ariaModal: true
+						cancelText: ''
 					})
 				}
 			}).catch((err) => {
@@ -707,12 +709,11 @@ export default {
 				this.updateState()
 				item.status = status
 			}).catch((err) => {
-				this.$buefy.dialog.alert({
+				this.confirmWindow({
 					title: 'Error',
 					message: err.response.data.data || err.response.data.message,
 					type: 'is-danger',
-					ariaRole: 'alertdialog',
-					ariaModal: true
+					cancelText: ''
 				})
 			})
 		},

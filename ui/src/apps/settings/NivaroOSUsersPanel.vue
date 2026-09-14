@@ -29,12 +29,16 @@
 		</div>
 
 		<div v-if="!otherUsers.length" class="account-empty">{{ $t('No other NivaroOS users yet - your own account is managed above.') }}</div>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+
 export default {
 	name: 'nivaroos-users-panel',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			users: [],
@@ -83,8 +87,7 @@ export default {
 			}
 		},
 		async confirmDelete(username) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Delete NivaroOS user'),
 				message: this.$t('Delete the NivaroOS account {user}?', { user: username }),
 				type: 'is-danger',

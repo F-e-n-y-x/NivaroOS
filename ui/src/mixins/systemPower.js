@@ -2,7 +2,10 @@
 // the System settings panel and the desktop date/time pill menu - keeping
 // the actual power/poll logic in one place avoids the two surfaces
 // drifting out of sync with each other.
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+
 export default {
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			showPowerModal: false,
@@ -11,10 +14,9 @@ export default {
 		}
 	},
 	methods: {
-		confirmPower(key, containerSelector) {
+		confirmPower(key) {
 			const isRestart = key === 'Restart'
-			this.$buefy.dialog.confirm({
-				...(containerSelector ? { container: containerSelector } : {}),
+			this.confirmWindow({
 				title: this.$t(key),
 				message: isRestart ? this.$t('Restart the system now?') : this.$t('Shut down the system now?'),
 				type: 'is-danger',

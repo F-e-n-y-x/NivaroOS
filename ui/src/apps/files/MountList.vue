@@ -177,11 +177,14 @@
 
 		<sidebar-context-menu ref="contextMenu" @eject="handleEject"></sidebar-context-menu>
 		<b-loading v-model="isLoading" :is-full-page="false"></b-loading>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import { mixin } from '@/mixins/mixin'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import events from '@/events/events'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 import SidebarContextMenu from './SidebarContextMenu.vue'
@@ -190,7 +193,7 @@ const HOVER_OPEN_DELAY = 700
 
 export default {
 	name: 'mount-list',
-	mixins: [mixin],
+	mixins: [mixin, confirmWindowMixin],
 	inject: ['filesController'],
 	components: {
 		SidebarContextMenu,
@@ -566,7 +569,7 @@ export default {
 				this.dorpdown = !this.dorpdown
 				return
 			}
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Data Protected'),
 				message: this.$t('Changing internal files may break the structure of the NivaroOS HD'),
 				confirmText: this.$t('Continue'),
@@ -720,6 +723,7 @@ export default {
 
 <style lang="scss" scoped>
 .mount-list {
+	position: relative;
 	padding: var(--space-1) var(--space-2);
 }
 .tree-node {

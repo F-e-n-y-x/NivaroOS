@@ -225,35 +225,134 @@ func GetHostDisplay() (HostDisplayInfo, error) {
 	}, nil
 }
 
+// xrandrEnv builds the environment every xrandr/cvt invocation against the
+// host's display needs - DRYs up what used to be four copy-pasted if/else
+// blocks across GetHostDisplay/SetHostDisplay.
+func xrandrEnv(auth string) []string {
+	if auth != "" {
+		return append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
+	}
+	return append(os.Environ(), "DISPLAY=:0")
+}
+
+// getConnectedOutput finds the actual connected display output's name (e.g.
+// "HDMI-0", "DP-1", "eDP-1") - this varies by GPU/driver and cabling, so it
+// can never be hardcoded the way a previous version of this function
+// assumed ("HDMI-0"), which silently failed on any other output name and
+// fell back to a bare framebuffer resize that doesn't actually change the
+// monitor's own output mode.
+func getConnectedOutput(auth string) (string, error) {
+	cmd := exec.Command("xrandr", "-display", ":0")
+	cmd.Env = xrandrEnv(auth)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("xrandr: %w", err)
+	}
+	// Prefer the primary connected output if xrandr reports one, otherwise
+	// the first connected output found.
+	re := regexp.MustCompile(`(?m)^(\S+) connected primary`)
+	if match := re.FindStringSubmatch(string(out)); len(match) == 2 {
+		return match[1], nil
+	}
+	re = regexp.MustCompile(`(?m)^(\S+) connected`)
+	if match := re.FindStringSubmatch(string(out)); len(match) == 2 {
+		return match[1], nil
+	}
+	return "", fmt.Errorf("no connected display output found")
+}
+
 func SetHostDisplay(w, h int) error {
 	if w < 640 || h < 480 || w > 7680 || h > 4320 {
 		return fmt.Errorf("resolution out of supported range (640x480 - 7680x4320)")
 	}
-	resStr := fmt.Sprintf("%dx%d", w, h)
 	auth := getHostXAuth()
 
-	// 1. Try setting mode on active connected output (HDMI-0)
-	cmdMode := exec.Command("xrandr", "-display", ":0", "--output", "HDMI-0", "--mode", resStr)
-	if auth != "" {
-		cmdMode.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
-	} else {
-		cmdMode.Env = append(os.Environ(), "DISPLAY=:0")
-	}
-	if out, err := cmdMode.CombinedOutput(); err == nil {
-		return nil
-	} else {
-		_ = out
+	// The NVIDIA proprietary driver (confirmed via Xorg.0.log on real
+	// deployments of this) does not support RandR's dynamic mode creation
+	// (xrandr --newmode/--addmode fail with a BadName/RRCreateMode X error,
+	// verified directly against a running instance) - nvidia-settings'
+	// CurrentMetaMode is NVIDIA's own, driver-correct way to set an
+	// arbitrary resolution live, and is what actually works here.
+	if _, err := exec.LookPath("nvidia-settings"); err == nil {
+		if err := setHostDisplayNvidia(w, h, auth); err == nil {
+			return nil
+		}
+		// Fall through to the generic xrandr path below - e.g. an NVIDIA
+		// card running the open-source nouveau driver instead, where
+		// nvidia-settings is installed but CurrentMetaMode isn't a valid
+		// NV-CONTROL attribute.
 	}
 
-	// 2. Fallback: try setting framebuffer size
-	cmdFb := exec.Command("xrandr", "-display", ":0", "--fb", resStr)
-	if auth != "" {
-		cmdFb.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
-	} else {
-		cmdFb.Env = append(os.Environ(), "DISPLAY=:0")
+	return setHostDisplayXrandr(w, h, auth)
+}
+
+// setHostDisplayNvidia asks the NVIDIA driver itself to switch to an
+// arbitrary resolution via a ViewPortIn/ViewPortOut metamode - this is a
+// live, no-restart resolution change, unlike editing xorg.conf.
+func setHostDisplayNvidia(w, h int, auth string) error {
+	dpy, err := getNvidiaDisplayName(auth)
+	if err != nil {
+		return err
 	}
-	if out, err := cmdFb.CombinedOutput(); err != nil {
+	resStr := fmt.Sprintf("%dx%d", w, h)
+	metaMode := fmt.Sprintf("%s: nvidia-auto-select @%s +0+0 {ViewPortIn=%s, ViewPortOut=%s+0+0}", dpy, resStr, resStr, resStr)
+	cmd := exec.Command("nvidia-settings", "--assign", "CurrentMetaMode="+metaMode)
+	cmd.Env = xrandrEnv(auth)
+	if out, err := cmd.CombinedOutput(); err != nil || strings.Contains(string(out), "ERROR:") {
+		return fmt.Errorf("nvidia-settings: %s (%w)", string(out), err)
+	}
+	return nil
+}
+
+// getNvidiaDisplayName finds NVIDIA's own display identifier (e.g. "DPY-0")
+// from its current metamode - this varies by GPU/connector, so (matching
+// getConnectedOutput's reasoning for the plain-xrandr path) it can't be
+// hardcoded either.
+func getNvidiaDisplayName(auth string) (string, error) {
+	cmd := exec.Command("nvidia-settings", "-q", "CurrentMetaMode", "-t")
+	cmd.Env = xrandrEnv(auth)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("nvidia-settings -q CurrentMetaMode: %w", err)
+	}
+	// -t's terse output is "id=..., switchable=..., source=... :: DPY-0:
+	// nvidia-auto-select @... +0+0 {...}" - anchor on the "::" separator
+	// before the display name, or a naive `(\S+):` matches the "::" itself.
+	re := regexp.MustCompile(`::\s*(\S+):`)
+	match := re.FindStringSubmatch(string(out))
+	if len(match) != 2 {
+		return "", fmt.Errorf("could not parse nvidia-settings display name from: %s", string(out))
+	}
+	return match[1], nil
+}
+
+// setHostDisplayXrandr is the plain-RandR path for non-NVIDIA drivers
+// (Intel/AMD's open-source drivers support --newmode/--addmode properly,
+// unlike NVIDIA's proprietary one). It only handles resolutions that are
+// already a known mode for the connected output (standard/EDID-detected
+// resolutions almost always are) - genuinely custom resolutions fall back
+// to a framebuffer-only resize, which changes the VNC-visible canvas size
+// without necessarily matching the physical output's own mode.
+func setHostDisplayXrandr(w, h int, auth string) error {
+	resStr := fmt.Sprintf("%dx%d", w, h)
+
+	output, err := getConnectedOutput(auth)
+	if err != nil {
+		return err
+	}
+
+	cmdMode := exec.Command("xrandr", "-display", ":0", "--output", output, "--mode", resStr)
+	cmdMode.Env = xrandrEnv(auth)
+	if out, err := cmdMode.CombinedOutput(); err == nil {
+		return nil
+	} else if !strings.Contains(string(out), "cannot find mode") {
 		return fmt.Errorf("xrandr: %s (%w)", string(out), err)
+	}
+
+	cmdFb := exec.Command("xrandr", "-display", ":0", "--fb", resStr)
+	cmdFb.Env = xrandrEnv(auth)
+	if out, err := cmdFb.CombinedOutput(); err != nil {
+		return fmt.Errorf("xrandr --fb: %s (%w)", string(out), err)
 	}
 	return nil
 }

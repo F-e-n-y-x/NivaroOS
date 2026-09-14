@@ -264,6 +264,15 @@
 			:class="{ 'is-scrollable': !scaleToFit }"
 		></div>
 
+		<!-- Changing the host's actual display mode mid-stream produces a few
+		     garbled/corrupted frames while x11vnc catches up to the new
+		     framebuffer size - this covers that transition instead of
+		     showing it. -->
+		<div v-if="resizingHost" class="console-resizing-overlay">
+			<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+			<span>{{ $t('Adjusting display resolution...') }}</span>
+		</div>
+
 		<!-- Disconnected / Reconnecting Overlay -->
 		<div v-if="status !== 'connected'" class="console-status">
 			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
@@ -556,6 +565,7 @@ export default {
 			reconnectAttempt: 0,
 			reconnectTimer: null,
 			intentionalDisconnect: false,
+			resizeSettleResolve: null,
 			keysMenuOpen: false,
 			qualityMenuOpen: false,
 			displayMenuOpen: false,
@@ -728,6 +738,10 @@ export default {
 					if (e.detail && e.detail.width && e.detail.height) {
 						this.currentResolution = `${e.detail.width}x${e.detail.height}`
 					}
+					if (this.resizeSettleResolve) {
+						this.resizeSettleResolve()
+						this.resizeSettleResolve = null
+					}
 				})
 			} catch (e) {
 				this.status = 'disconnected'
@@ -799,6 +813,14 @@ export default {
 					type: 'is-success',
 					duration: 2500,
 				})
+				// Changing the host's actual X server mode produces a few
+				// garbled frames while x11vnc (via -xrandr resize) catches up
+				// to the new framebuffer size. Wait for noVNC's `fbsize` event
+				// (confirmation the resize was actually detected) - or a
+				// timeout, in case it's somehow missed - plus a short settle
+				// buffer, before the overlay covering the canvas comes down.
+				await this.waitForResize(4000)
+				await new Promise((resolve) => setTimeout(resolve, 700))
 			} catch (e) {
 				this.$buefy.toast.open({
 					message: this.$t('Failed to change display resolution'),
@@ -807,7 +829,15 @@ export default {
 				})
 			} finally {
 				this.resizingHost = false
+				this.resizeSettleResolve = null
 			}
+		},
+
+		waitForResize(timeoutMs) {
+			return new Promise((resolve) => {
+				this.resizeSettleResolve = resolve
+				setTimeout(resolve, timeoutMs)
+			})
 		},
 
 		updateWindowEstimate() {
@@ -1580,6 +1610,24 @@ export default {
 	align-items: center;
 	gap: var(--space-3);
 	color: rgba(255, 255, 255, 0.7);
+
+	::v-deep .icon {
+		width: 2.25rem;
+		height: 2.25rem;
+	}
+}
+
+.console-resizing-overlay {
+	position: absolute;
+	inset: 0;
+	background: #000;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-3);
+	color: rgba(255, 255, 255, 0.85);
+	z-index: 5;
 
 	::v-deep .icon {
 		width: 2.25rem;

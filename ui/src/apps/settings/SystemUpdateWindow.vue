@@ -66,12 +66,16 @@
 				</div>
 			</div>
 		</div>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+
 export default {
 	name: 'SystemUpdateWindow',
+	mixins: [confirmWindowMixin],
 	props: {
 		initialMode: {
 			type: String,
@@ -246,7 +250,7 @@ export default {
 			})
 		},
 		rebootSystem() {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Reboot System'),
 				message: this.$t('A system reboot is recommended to apply kernel and base updates. Reboot now?'),
 				type: 'is-warning',
@@ -269,6 +273,7 @@ export default {
 	height: 100%;
 	background: #1e1e1e;
 	box-sizing: border-box;
+	position: relative;
 }
 
 .updater-status-bar {

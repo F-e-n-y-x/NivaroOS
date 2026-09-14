@@ -375,8 +375,9 @@ func DirPath(ctx echo.Context) error {
 	}
 	// Hide the files or folders in operation
 	fileQueue := make(map[string]string)
-	if len(service.OpStrArr) > 0 {
-		for _, v := range service.OpStrArr {
+	opStrArrSnapshot := service.OpStrArrSnapshot()
+	if len(opStrArrSnapshot) > 0 {
+		for _, v := range opStrArrSnapshot {
 			v, ok := service.FileQueue.Load(v)
 			if !ok {
 				continue
@@ -788,8 +789,7 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 
 	uid := uuid.NewString()
 	service.FileQueue.Store(uid, list)
-	service.OpStrArr = append(service.OpStrArr, uid)
-	if len(service.OpStrArr) == 1 {
+	if service.OpStrArrPush(uid) {
 		go service.ExecOpFile()
 		go service.CheckFileStatus()
 
@@ -989,18 +989,10 @@ func DeleteOperateFileOrDir(ctx echo.Context) error {
 	id := ctx.Param("id")
 	if id == "0" {
 		service.FileQueue = sync.Map{}
-		service.OpStrArr = []string{}
+		service.OpStrArrReset([]string{})
 	} else {
-
 		service.FileQueue.Delete(id)
-		tempList := []string{}
-		for _, v := range service.OpStrArr {
-			if v != id {
-				tempList = append(tempList, v)
-			}
-		}
-		service.OpStrArr = tempList
-
+		service.OpStrArrRemove(id)
 	}
 
 	go service.MyService.Notify().SendFileOperateNotify(true)

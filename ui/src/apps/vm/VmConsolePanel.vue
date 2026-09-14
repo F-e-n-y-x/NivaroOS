@@ -539,12 +539,15 @@
 				</div>
 			</div>
 		</vm-overlay-panel>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import RFB from '@novnc/novnc'
 import { vmSidecar } from '@/api/vmSidecar'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import VmDropdown from './VmDropdown.vue'
 import VmFilePickerDialog from './VmFilePickerDialog.vue'
 import VmOverlayPanel from './VmOverlayPanel.vue'
@@ -702,6 +705,7 @@ const ARROW_ROWS = [
 
 export default {
 	name: 'vm-console-panel',
+	mixins: [confirmWindowMixin],
 	components: {
 		VmDropdown,
 		VmFilePickerDialog,
@@ -1320,7 +1324,7 @@ export default {
 			}
 		},
 		async detachDiskConfirm(disk) {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Detach Disk'),
 				message: this.$t('Detach') + ` ${disk.target}? ` + this.$t('The backing file is kept, not deleted - only unplug a disk the guest has safely unmounted, the same risk as unplugging a live USB drive.'),
 				confirmText: this.$t('Detach'),

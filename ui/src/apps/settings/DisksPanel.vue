@@ -76,16 +76,19 @@
 			<div v-if="!usb.length" class="account-empty">{{ $t('No USB drives connected.') }}</div>
 		</div>
 		<p v-if="error" class="error-note">{{ error }}</p>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import DriveDetailsPanel from '@/apps/settings/DriveDetailsPanel.vue'
 import { formatSize } from '@/utils/formatSize'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
 	name: 'disks-panel',
 	components: { DriveDetailsPanel },
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			disks: [],
@@ -144,8 +147,7 @@ export default {
 			})
 		},
 		confirmAdd(disk) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Use disk for storage'),
 				message: this.$t('Format and mount {path} for use as storage? Any existing data on it will be erased.', { path: disk.path }),
 				type: 'is-danger',
@@ -166,8 +168,7 @@ export default {
 			})
 		},
 		confirmRemove(disk) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Remove disk'),
 				message: this.$t('Unmount and stop using {path} for storage?', { path: disk.path }),
 				type: 'is-danger',
@@ -182,8 +183,7 @@ export default {
 			})
 		},
 		confirmEject(child) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Eject USB drive'),
 				message: this.$t('Safely eject {mount}?', { mount: child.mount_point }),
 				type: 'is-danger',
@@ -199,6 +199,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.disks-panel {
+	position: relative;
+}
+
 .error-note {
 	padding: 0 var(--space-5) var(--space-3);
 	color: var(--color-danger, #ef4444);

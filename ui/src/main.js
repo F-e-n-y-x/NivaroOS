@@ -13,6 +13,7 @@ import VueSocialSharing from 'vue-social-sharing'
 import VueSocketIOExt from 'vue-socket.io-extended';
 import messageBus from '@/events/index.js'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
+import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
 
 
 // Import Styles
@@ -64,6 +65,7 @@ const socket = io( {
 });
 
 Vue.use(Buefy)
+Vue.component('ConfirmWindow', ConfirmWindow)
 Vue.use(VueFullscreen)
 Vue.use(VAnimateCss, { animateCSSPath: '/css/animate.min.css' });
 Vue.use(Vue2TouchEvents)

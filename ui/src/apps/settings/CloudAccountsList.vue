@@ -84,14 +84,17 @@
 		<div v-if="!accounts.length" class="account-empty">
 			{{ $t('Nothing connected yet - add one below and it shows up as a location in Files.') }}
 		</div>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import events from '@/events/events'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
 	name: 'cloud-accounts-list',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			accounts: [],
@@ -248,8 +251,7 @@ export default {
 			})
 		},
 		confirmRemove(account) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Remove account'),
 				message: this.$t('Disconnect {name}? This unmounts it from Files - it will no longer be accessible from here.', { name: account.name || account.fs }),
 				type: 'is-danger',
@@ -271,6 +273,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.cloud-accounts-list {
+	position: relative;
+}
+
 .icon-button {
 	flex-shrink: 0;
 	border: none;

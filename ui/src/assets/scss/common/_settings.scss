@@ -2,6 +2,11 @@
 	width: 100%;
 	display: flex;
 	flex-direction: column;
+	// Containing block for a <confirm-window> rendered inside a section, so a
+	// confirm prompt from any panel using this root class stays confined to
+	// this window instead of escaping to backdrop-filter'd ancestors (see
+	// ConfirmWindow.vue's own comment for the full explanation).
+	position: relative;
 }
 
 .section-header {
@@ -342,6 +347,11 @@
 .account-list {
 	display: flex;
 	flex-direction: column;
+	// Containing block for a <confirm-window> rendered inside a panel using
+	// this root class, so a confirm prompt stays confined to this window
+	// instead of escaping to backdrop-filter'd ancestors (see
+	// ConfirmWindow.vue's own comment for the full explanation).
+	position: relative;
 }
 
 .account-row {

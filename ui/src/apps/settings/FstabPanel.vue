@@ -484,12 +484,14 @@
 		</div>
 
 		<p v-if="error" class="error-note">{{ error }}</p>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import { formatSize } from '@/utils/formatSize'
 import events from '@/events/events'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 const emptyDraft = () => ({
 	uuid: '',
@@ -558,6 +560,7 @@ const WINDOWS_PRESET = {
 
 export default {
 	name: 'fstab-panel',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			mounts: [],
@@ -789,8 +792,7 @@ export default {
 			})
 		},
 		confirmRemove(m) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Remove from /etc/fstab?'),
 				message: this.$t(
 					'<b>{name}</b> ({mount}) will be removed from startup mounts.<br><br><b>Note:</b> Your drive and all its contents stay 100% safe and are NOT erased. You can mount it again anytime.',

@@ -96,6 +96,8 @@
 					@apply="handleFolderIconEdited" @close="showFolderIconEditor = false"></icon-editor-modal>
 			</template>
 		</b-modal>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
@@ -117,6 +119,7 @@ import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverride
 import isEqual from 'lodash/isEqual'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import defaultAppIcon from '@/assets/img/app-icons/default.svg'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 const SYNCTHING_STORE_ID = 74
 
@@ -188,7 +191,7 @@ export default {
 		AddToFolderPanel,
 		IconEditorModal
 	},
-	mixins: [business_ShowNewAppTag, business_LinkApp, business_Folders, business_LegacyAppOverrides],
+	mixins: [business_ShowNewAppTag, business_LinkApp, business_Folders, business_LegacyAppOverrides, confirmWindowMixin],
 	data() {
 		return {
 			defaultAppIcon,
@@ -785,7 +788,7 @@ export default {
 		},
 
 		deleteFolderConfirm(folder) {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				message: this.$t('Delete this folder? Apps inside it are not affected.'),
 				onConfirm: async () => {
 					await this.deleteFolder(folder.id)

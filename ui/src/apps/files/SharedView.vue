@@ -52,14 +52,17 @@
 		</div>
 
 		<b-loading v-model="isLoading" :is-full-page="false"></b-loading>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import copy from 'clipboard-copy'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
 	name: 'files-shared-view',
+	mixins: [confirmWindowMixin],
 	inject: ['filesController'],
 	data() {
 		return {
@@ -120,7 +123,7 @@ export default {
 			this.$buefy.toast.open({ message: this.$t('Link copied'), type: 'is-success' })
 		},
 		confirmRevokeQuickShare(item) {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Revoke Share Link'),
 				message: this.$t('Are you sure you want to revoke this share link? Anyone with the link will no longer be able to access the file.'),
 				confirmText: this.$t('Revoke'),
@@ -146,7 +149,7 @@ export default {
 		// Mirrors legacy FilePanel.vue's handleUnShare (the $EventBus.UN_SHARE handler that
 		// ActionButton.vue/ContextMenu.vue in the old filebrowser both delegate to).
 		confirmUnshare(item) {
-			this.$buefy.dialog.confirm({
+			this.confirmWindow({
 				title: this.$t('Unsharing Folder'),
 				message: this.$t('Are you sure you want to unshare this Folder?'),
 				confirmText: this.$t('UnShare'),

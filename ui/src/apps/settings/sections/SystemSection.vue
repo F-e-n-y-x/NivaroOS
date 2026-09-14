@@ -186,6 +186,7 @@
 				<b-button rounded size="is-small" type="is-primary" @click="resetPowerModal">{{ $t('OK') }}</b-button>
 			</template>
 		</settings-overlay>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</section>
 </template>
 
@@ -194,6 +195,7 @@ import AboutPanel from '@/apps/settings/AboutPanel.vue'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
 import systemPower from '@/mixins/systemPower'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import messages from '@/assets/lang'
 import { formatTime, formatDate, formatStrftime, STRFTIME_TOKEN_LIST, STRFTIME_SHORTCUTS } from '@/utils/dateTimeFormat'
 
@@ -219,7 +221,7 @@ const DATE_FORMAT_OPTIONS = [
 export default {
 	name: 'system-section',
 	components: { AboutPanel, SettingsOverlay },
-	mixins: [mixin, systemPower],
+	mixins: [mixin, systemPower, confirmWindowMixin],
 	data() {
 		return {
 			barData: {

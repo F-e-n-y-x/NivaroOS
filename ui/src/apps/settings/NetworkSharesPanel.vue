@@ -85,17 +85,20 @@
 				</b-button>
 			</template>
 		</settings-overlay>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 const emptyForm = () => ({ path: '', name: '', anonymous: true, read_only: false })
 
 export default {
 	name: 'network-shares-panel',
 	components: { SettingsOverlay },
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			shares: [],
@@ -177,8 +180,7 @@ export default {
 			})
 		},
 		confirmDelete(share) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Delete share'),
 				message: this.$t('Stop sharing {path}? The folder and its files are not deleted - only removed from the network.', { path: share.path }),
 				type: 'is-danger',
@@ -197,6 +199,7 @@ export default {
 .shares-panel {
 	display: flex;
 	flex-direction: column;
+	position: relative;
 }
 
 .share-meta-sep {

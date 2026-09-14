@@ -64,18 +64,21 @@
 				</b-button>
 			</template>
 		</settings-overlay>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import events from '@/events/events'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 const emptyForm = () => ({ host: '', username: '', password: '', port: '' })
 
 export default {
 	name: 'network-connections-panel',
 	components: { SettingsOverlay },
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			connections: [],
@@ -136,8 +139,7 @@ export default {
 			})
 		},
 		confirmDisconnect(c) {
-			this.$buefy.dialog.confirm({
-				container: '#window-settings',
+			this.confirmWindow({
 				title: this.$t('Disconnect'),
 				message: this.$t('Disconnect from {host}? This unmounts it from Files - the files stay on that device, untouched.', { host: c.host }),
 				type: 'is-danger',
@@ -159,6 +161,7 @@ export default {
 .connections-panel {
 	display: flex;
 	flex-direction: column;
+	position: relative;
 }
 
 .share-meta-sep {

@@ -627,6 +627,8 @@
 			</template>
 		</footer>
 		<!-- Modal-Card Footer End -->
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
@@ -652,6 +654,7 @@ import { ice_i18n } from '@/mixins/base/common-i18n'
 import { parse } from 'yaml'
 import AppStoreSourceManagement from '@/apps/app-store/AppStoreSourceManagement.vue'
 import { vOnClickOutside } from '@vueuse/components'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 const data = [
 	'AUDIT_CONTROL',
@@ -696,7 +699,7 @@ export default {
 		ValidationObserver,
 		ValidationProvider
 	},
-	mixins: [business_ShowNewAppTag, business_OpenThirdApp],
+	mixins: [business_ShowNewAppTag, business_OpenThirdApp, confirmWindowMixin],
 	directives: {
 		OnClickOutside: vOnClickOutside
 	},
@@ -1477,7 +1480,7 @@ export default {
 				events: {
 					update: e => {
 						this.dockerComposeConfig = e
-						this.$buefy.dialog.alert({
+						this.confirmWindow({
 							title: '⚠️ ' + this.$t('Attention'),
 							message:
 								'<div class="nobrk"><h4 class="title is-5">' +
@@ -1508,7 +1511,8 @@ export default {
 								'<p class="mt-3">' +
 								this.$t('Feel free to suggest improvements to this feature in Discord Server!') +
 								'</p></div>',
-							type: 'is-dark'
+							type: 'is-dark',
+							cancelText: ''
 						})
 					}
 				},

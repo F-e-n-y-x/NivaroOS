@@ -23,14 +23,17 @@
 			<!-- Init State End -->
 
 		</div>
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
 <script>
 import events from '@/events/events';
+import { confirmWindowMixin } from '@/mixins/confirmWindow';
 
 export default {
 	name: "sync-block",
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			isLoading: false,
@@ -105,14 +108,13 @@ export default {
 				if (this.isSyncRunning) {
 					window.open(this.syncBaseURL, '_blank');
 				} else {
-					this.$buefy.dialog.confirm({
+					this.confirmWindow({
 						title: ' ',
 						message: this.$t('Syncthing is not running, start it?'),
 						hasIcon: true,
-						closeOnConfirm: false,
 						confirmText: this.$t('Start'),
 						cancelText: this.$t('Cancel'),
-						onConfirm: (value, { close }) => {
+						onConfirm: () => {
 							this.$buefy.toast.open({
 								message: this.$t(`Starting Syncthing...`),
 								type: 'is-white'
@@ -122,7 +124,6 @@ export default {
 								if (res.data.success == 200) {
 									this.$EventBus.$emit(events.RELOAD_APP_LIST);
 									setTimeout(() => {
-										close()
 										window.open(this.syncBaseURL, '_blank');
 
 									}, 2000)

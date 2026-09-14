@@ -114,6 +114,8 @@
 				<div>{{ $t(powerMessage) }}</div>
 			</b-message>
 		</b-modal>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
@@ -339,7 +341,7 @@ export default {
 
 <style lang="scss" scoped>
 .datetime-pill-wrap {
-	position: static;
+	position: relative;
 	display: flex;
 	align-items: center;
 }
