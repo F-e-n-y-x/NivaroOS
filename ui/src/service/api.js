@@ -11,6 +11,7 @@ import port from './port.js';
 import sys from './sys.js';
 import storage from './storage.js';
 import samba from './samba.js';
+import quickshare from './quickshare.js';
 import tailscale from './tailscale.js';
 import users from "./users.js";
 import local_storage from "./local_storage.js";
@@ -34,6 +35,7 @@ export default {
 	fstab,
 	storage,
 	samba,
+	quickshare,
 	tailscale,
 	companion,
 	driver,

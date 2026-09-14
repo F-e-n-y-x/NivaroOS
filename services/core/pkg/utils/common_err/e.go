@@ -56,6 +56,8 @@ const (
 	//share
 	SHARE_ALREADY_EXISTS      = 70001
 	SHARE_NAME_ALREADY_EXISTS = 70002
+	QUICKSHARE_NOT_FOUND      = 70003
+	QUICKSHARE_EXPIRED        = 70004
 )
 
 var MsgFlags = map[int]string{
@@ -104,6 +106,8 @@ var MsgFlags = map[int]string{
 	//share
 	SHARE_ALREADY_EXISTS:      "Share already exists",
 	SHARE_NAME_ALREADY_EXISTS: "Share name already exists",
+	QUICKSHARE_NOT_FOUND:      "This share link doesn't exist or has already been revoked",
+	QUICKSHARE_EXPIRED:        "This share link has expired",
 	//
 	SOURCE_DES_SAME:     "Source and destination cannot be the same.",
 	FILE_DOES_NOT_EXIST: "File does not exist",

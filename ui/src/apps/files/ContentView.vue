@@ -98,6 +98,7 @@
 			@paste="paste"
 			@select-all="selectAll"
 			@rename-request="$emit('rename-request', $event)"
+			@share-request="$emit('share-request', $event)"
 			@detail-request="$emit('detail-request', $event)"
 			@delete-request="$emit('delete-request', $event)"
 			@open-request="openItem"
@@ -326,8 +327,6 @@ export default {
 			// operations aren't frequent enough for the extra refreshes
 			// elsewhere to matter.
 			const anyFinished = (fileOperate.data || []).some((task) => task.finished)
-			// eslint-disable-next-line no-console
-			console.log('[DEBUG socket file:operate]', { path: this.path, anyFinished, data: fileOperate.data })
 			if (anyFinished) this.reload()
 		},
 	},
@@ -662,8 +661,11 @@ export default {
 		// DOM event scoped to ContentView's own root element (see the `tabindex`
 		// + `@paste` wiring on the template's root `<section>`), so it only
 		// fires while focus is within this Files window's content area.
-		// No reload() on success - see the `sockets` block above for why an
-		// immediate reload here used to show a stale listing.
+		// No reload() here on success - the `sockets` block above is the
+		// real completion signal (this is an async, queued operation on the
+		// backend; the HTTP response only confirms it was queued). Blindly
+		// reloading on a timer after the HTTP response used to show a stale
+		// listing since the actual copy/move hadn't finished yet.
 		paste() {
 			if (this.$store.state.operateObject == null) return
 			const operateObject = this.$store.state.operateObject
@@ -672,10 +674,6 @@ export default {
 				.then((res) => {
 					if (res.data.success === 200) {
 						this.$store.commit('SET_OPERATE_OBJECT', null)
-						this.reload()
-						this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-						setTimeout(() => this.reload(), 400)
-						setTimeout(() => this.reload(), 1200)
 					} else {
 						this.$buefy.toast.open({
 							message: res.data.message,

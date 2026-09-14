@@ -39,6 +39,11 @@ func InitV1Router() http.Handler {
 		return ctx.String(200, "pong")
 	})
 	e.GET("/v1/recover/:type", v1.GetRecoverStorage)
+	// Quick Share redemption is deliberately public (no JWT) - the opaque,
+	// unguessable :id is the only credential, exactly like a Dropbox/Drive
+	// share link. It never accepts a raw path, only a token that was
+	// generated server-side by the authenticated create endpoint below.
+	e.GET("/v1/qs/:id", v1.GetQuickShareRedeem)
 	v1Group := e.Group("/v1")
 	//	e.Any("/v1/test", v1.CheckNetwork)
 	v1Group.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
@@ -210,6 +215,13 @@ func InitV1Router() http.Handler {
 				v1SharesGroup.DELETE("/:id", v1.DeleteSambaShares)
 				v1SharesGroup.GET("/status", v1.GetSambaStatus)
 			}
+		}
+		v1QuickShareGroup := v1Group.Group("/quickshare")
+		v1QuickShareGroup.Use()
+		{
+			v1QuickShareGroup.GET("", v1.GetQuickSharesList)
+			v1QuickShareGroup.POST("", v1.PostCreateQuickShare)
+			v1QuickShareGroup.DELETE("/:id", v1.DeleteQuickShare)
 		}
 		v1NotifyGroup := v1Group.Group("/notify")
 		v1NotifyGroup.Use()

@@ -49,6 +49,7 @@
 				@new-folder="onNewFolder"
 				@new-file="onNewFile"
 				@rename-request="onRenameRequest"
+				@share-request="onShareRequest"
 				@detail-request="onDetailRequest"
 				@delete-request="onDeleteRequest"
 				@open-new-tab-request="onOpenInNewTab"
@@ -68,6 +69,7 @@
 		<new-folder-dialog v-if="activeDialog === 'new-folder'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-folder-dialog>
 		<new-file-dialog v-if="activeDialog === 'new-file'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-file-dialog>
 		<rename-dialog v-if="activeDialog === 'rename'" :item="dialogItem" @renamed="onDialogCreated" @close="activeDialog = null"></rename-dialog>
+		<share-dialog v-if="activeDialog === 'share'" :item="dialogItem" @close="activeDialog = null"></share-dialog>
 		<detail-dialog v-if="activeDialog === 'detail'" :item="dialogItem" @close="activeDialog = null"></detail-dialog>
 		<compress-dialog v-if="activeDialog === 'compress'" :current-path="controller.currentPath" :items="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></compress-dialog>
 		<extract-dialog v-if="activeDialog === 'extract'" :current-path="controller.currentPath" :item="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></extract-dialog>
@@ -85,6 +87,7 @@
 
 <script>
 import { classifyWidth } from '@/utils/files/breakpoints'
+import { shellQuote } from '@/utils/files/path'
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import FilesToolbar from './Toolbar.vue'
@@ -99,6 +102,7 @@ import OperationTray from './OperationTray.vue'
 import NewFolderDialog from './dialogs/NewFolderDialog.vue'
 import NewFileDialog from './dialogs/NewFileDialog.vue'
 import RenameDialog from './dialogs/RenameDialog.vue'
+import ShareDialog from './dialogs/ShareDialog.vue'
 import DetailDialog from './dialogs/DetailDialog.vue'
 import ShareSelectDialog from './dialogs/ShareSelectDialog.vue'
 import ConfirmDialog from './dialogs/ConfirmDialog.vue'
@@ -138,6 +142,7 @@ export default {
 		NewFolderDialog,
 		NewFileDialog,
 		RenameDialog,
+		ShareDialog,
 		DetailDialog,
 		ShareSelectDialog,
 		ConfirmDialog,
@@ -166,6 +171,7 @@ export default {
 				openNewFile: this.onNewFile,
 				openUpload: this.onUpload,
 				openNewWindow: this.openNewWindow,
+				openTerminal: this.openTerminal,
 			},
 			resizeObserver: null,
 			activeDialog: null,
@@ -274,6 +280,21 @@ export default {
 				height: 620,
 			})
 		},
+		// Opens a Terminal window already `cd`'d into the folder the user
+		// right-clicked in - same OPEN_WINDOW + initCommand mechanism
+		// Settings' cloud-account "Open Terminal" already uses (TerminalCard
+		// types initCommand into the shell as soon as it connects).
+		openTerminal() {
+			const path = this.controller.currentPath
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'terminal-' + Date.now(),
+				title: this.$t('Terminal'),
+				component: 'TerminalPanel',
+				width: 720,
+				height: 480,
+				props: { initCommand: `cd ${shellQuote(path)}` },
+			})
+		},
 		setActiveSection(section) {
 			this.controller.activeSection = section
 		},
@@ -287,10 +308,14 @@ export default {
 		onNewFile() {
 			this.activeDialog = 'new-file'
 		},
+		// New folder/file, rename, compress, and extract are all synchronous
+		// on the backend (the HTTP response only returns once the operation
+		// has actually completed), so a single immediate reload is reliable
+		// - unlike paste/copy/move, which are queued and rely on the
+		// `nivaroos:file:operate` socket event instead (see ContentView.vue).
 		onDialogCreated() {
 			this.activeContentView && this.activeContentView.reload()
 			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 400)
 			this.activeDialog = null
 		},
 		onShareCreated() {
@@ -300,6 +325,10 @@ export default {
 		onRenameRequest(item) {
 			this.dialogItem = item
 			this.activeDialog = 'rename'
+		},
+		onShareRequest(item) {
+			this.dialogItem = item
+			this.activeDialog = 'share'
 		},
 		onDetailRequest(item) {
 			this.dialogItem = item

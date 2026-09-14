@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'vitest'
-import { baseName, parentPath, joinPath } from './path'
+import { baseName, parentPath, joinPath, shellQuote } from './path'
 
 describe('baseName', () => {
 	test.each([
@@ -27,5 +27,17 @@ describe('joinPath', () => {
 	})
 	test('trailing slash on dir', () => {
 		expect(joinPath('/DATA/', 'tower')).toBe('/DATA/tower')
+	})
+})
+
+describe('shellQuote', () => {
+	test('plain path', () => {
+		expect(shellQuote('/DATA/tower')).toBe("'/DATA/tower'")
+	})
+	test('path with a space', () => {
+		expect(shellQuote('/DATA/My Photos')).toBe("'/DATA/My Photos'")
+	})
+	test('path with an embedded single quote', () => {
+		expect(shellQuote("/DATA/O'Brien")).toBe("'/DATA/O'\\''Brien'")
 	})
 })

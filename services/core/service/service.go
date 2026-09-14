@@ -37,6 +37,7 @@ type Repository interface {
 	Notify() NotifyServer
 	Rely() RelyService
 	Shares() SharesService
+	QuickShares() QuickShareService
 	System() SystemService
 	Storage() StorageService
 	Schedule() ScheduleService
@@ -60,6 +61,7 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 		system:      NewSystemService(),
 		health:      NewHealthService(),
 		shares:      NewSharesService(db),
+		quickShares: NewQuickShareService(db),
 		storage:     NewStorageService(),
 		schedule:    NewScheduleService(),
 		other:       NewOtherService(),
@@ -76,6 +78,7 @@ type store struct {
 	rely        RelyService
 	system      SystemService
 	shares      SharesService
+	quickShares QuickShareService
 	connections ConnectionsService
 	gateway     external.ManagementService
 	storage     StorageService
@@ -110,6 +113,10 @@ func (s *store) Connections() ConnectionsService {
 
 func (s *store) Shares() SharesService {
 	return s.shares
+}
+
+func (s *store) QuickShares() QuickShareService {
+	return s.quickShares
 }
 
 func (c *store) Rely() RelyService {

@@ -80,11 +80,12 @@
 					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
 					<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
 				</button>
-				<button class="ctx-item" @click="act('share')">
-					<i class="mdi mdi-share-variant-outline ctx-icon"></i>
-					<span class="ctx-label">{{ $t('Share') }}</span>
-				</button>
 			</template>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item" @click="act('share')">
+				<i class="mdi mdi-share-variant-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Share') }}</span>
+			</button>
 			<div class="ctx-divider"></div>
 			<button class="ctx-item is-danger" @click="act('delete')">
 				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
@@ -133,6 +134,10 @@
 			<button class="ctx-item" @click="act('open-window')">
 				<i class="mdi mdi-open-in-new ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Open in New Window') }}</span>
+			</button>
+			<button class="ctx-item" @click="act('open-terminal')">
+				<i class="mdi mdi-console ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open in Terminal') }}</span>
 			</button>
 		</template>
 	</div>
@@ -248,6 +253,11 @@ export default {
 						this.filesController.openNewWindow(this.filesController.currentPath)
 					}
 					break
+				case 'open-terminal':
+					if (this.filesController && this.filesController.openTerminal) {
+						this.filesController.openTerminal()
+					}
+					break
 				case 'copy-selection':
 					this.$emit('copy-selection')
 					break
@@ -292,7 +302,7 @@ export default {
 					}
 					break
 				case 'share':
-					this.shareFolder()
+					this.$emit('share-request', this.item)
 					break
 				case 'delete':
 					this.$emit('delete-request', this.item)
@@ -336,14 +346,6 @@ export default {
 			})
 		},
 
-		async shareFolder() {
-			try {
-				await this.$api.samba.createShare([{ path: this.item.path, anonymous: true }])
-				this.$buefy.toast.open({ message: this.$t('Share created successfully'), type: 'is-success' })
-			} catch (error) {
-				this.$buefy.toast.open({ message: error.response.data.message, type: 'is-danger' })
-			}
-		},
 	},
 }
 </script>

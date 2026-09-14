@@ -553,6 +553,9 @@ export default {
 		return {
 			rfb: null,
 			status: 'connecting',
+			reconnectAttempt: 0,
+			reconnectTimer: null,
+			intentionalDisconnect: false,
 			keysMenuOpen: false,
 			qualityMenuOpen: false,
 			displayMenuOpen: false,
@@ -658,6 +661,8 @@ export default {
 		this.panelResizeObserver.observe(this.$el)
 	},
 	beforeDestroy() {
+		this.intentionalDisconnect = true
+		this.clearReconnectTimer()
 		if (this.rfb) {
 			this.rfb.disconnect()
 			this.rfb = null
@@ -675,10 +680,13 @@ export default {
 	},
 	methods: {
 		connect() {
+			this.clearReconnectTimer()
 			if (this.rfb) {
+				this.intentionalDisconnect = true
 				this.rfb.disconnect()
 				this.rfb = null
 			}
+			this.intentionalDisconnect = false
 			this.status = 'connecting'
 
 			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -696,6 +704,7 @@ export default {
 
 				this.rfb.addEventListener('connect', () => {
 					this.status = 'connected'
+					this.reconnectAttempt = 0
 					const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
 					this.rfb.qualityLevel = p.qualityLevel
 					this.rfb.compressionLevel = p.compressionLevel
@@ -703,6 +712,9 @@ export default {
 
 				this.rfb.addEventListener('disconnect', () => {
 					this.status = 'disconnected'
+					if (!this.intentionalDisconnect) {
+						this.scheduleReconnect()
+					}
 				})
 
 				this.rfb.addEventListener('clipboard', (e) => {
@@ -719,7 +731,32 @@ export default {
 				})
 			} catch (e) {
 				this.status = 'disconnected'
+				if (!this.intentionalDisconnect) {
+					this.scheduleReconnect()
+				}
 			}
+		},
+
+		clearReconnectTimer() {
+			if (this.reconnectTimer) {
+				clearTimeout(this.reconnectTimer)
+				this.reconnectTimer = null
+			}
+		},
+
+		// Exponential backoff (1s, 2s, 4s, 8s, capped at 15s) so a dropped
+		// connection recovers on its own once the network/host comes back,
+		// without hammering the server with rapid retries.
+		scheduleReconnect() {
+			this.clearReconnectTimer()
+			const delay = Math.min(15000, 1000 * Math.pow(2, this.reconnectAttempt))
+			this.reconnectAttempt += 1
+			this.reconnectTimer = setTimeout(() => {
+				this.reconnectTimer = null
+				if (!this.intentionalDisconnect) {
+					this.connect()
+				}
+			}, delay)
 		},
 
 		async fetchHostDisplay() {

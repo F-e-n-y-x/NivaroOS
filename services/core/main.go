@@ -138,6 +138,8 @@ func main() {
 		"/v1/batch",
 		"/v1/image",
 		"/v1/samba",
+		"/v1/quickshare",
+		"/v1/qs",
 		"/v1/notify",
 		"/v1/driver",
 		// "/v1/cloud" is served by nivaroos-local-storage's in-process rclone
@@ -152,7 +154,6 @@ func main() {
 		"/v1/test",
 		route.V2APIPath,
 		route.V2DocPath,
-		route.V3FilePath,
 	}
 	for _, apiPath := range routers {
 		err = service.MyService.Gateway().CreateRoute(&model.Route{

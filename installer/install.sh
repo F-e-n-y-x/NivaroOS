@@ -45,6 +45,7 @@ CUSTOM_PORT=""
 DETECTED_PORT="80"
 IS_UPGRADE="false"
 WITH_VM=""
+WITH_HOST_DESKTOP=""
 YES=""
 DEBUG=""
 CLI_WIDTH=""
@@ -578,6 +579,8 @@ parse_args() {
 		case "$1" in
 			--with-vm) WITH_VM=yes ;;
 			--without-vm) WITH_VM=no ;;
+			--with-host-desktop) WITH_HOST_DESKTOP=yes ;;
+			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
 				shift
@@ -603,6 +606,8 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}             Automatic non-interactive installation (accept all defaults)"
 				printf '%b\n' "  ${COLOR_CYAN}--with-vm${COLOR_RESET}             Install VM Manager with QEMU/KVM, libvirt & web console"
 				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}          Skip VM Manager installation (can be enabled later via CLI)"
+				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}   Stream this machine's own desktop over VNC (requires VM Manager)"
+				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET} Skip Host Desktop streaming installation"
 				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}         Custom HTTP dashboard port (default: 80 or next free port)"
 				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}        Force specific terminal box width (default: auto-detect)"
 				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}     Git branch or tag to install (default: master)"
@@ -626,11 +631,77 @@ parse_args() {
 	done
 }
 
+detect_desktop_environment() {
+	local dm
+	for dm in lightdm gdm gdm3 sddm xdm; do
+		if systemctl list-unit-files 2>/dev/null | grep -q "^${dm}\.service"; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# Host Desktop streams this machine's own display over VNC through the same
+# vm-sidecar the VM Manager installs - without it there is nothing to serve
+# the stream to, so it can never be offered on its own.
+resolve_host_desktop() {
+	if [ "$WITH_VM" != "yes" ]; then
+		if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+			printf '%b\n' "  ${COLOR_YELLOW}ℹ Host Desktop requires VM Manager (shares its vm-sidecar) - enabling VM Manager too.${COLOR_RESET}"
+			WITH_VM=yes
+			TOTAL_STEPS=11
+		else
+			WITH_HOST_DESKTOP=no
+			return
+		fi
+	fi
+
+	if [ -n "$WITH_HOST_DESKTOP" ]; then
+		if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+			TOTAL_STEPS=$((TOTAL_STEPS + 1))
+		fi
+		return
+	fi
+
+	if ! detect_desktop_environment; then
+		WITH_HOST_DESKTOP=no
+		return
+	fi
+
+	if [ -n "$YES" ] || [ ! -t 0 ]; then
+		# A desktop environment is present, but streaming someone's physical
+		# desktop is a bigger behavioral/security change than a background
+		# service, so default to off in unattended mode unless requested.
+		WITH_HOST_DESKTOP=no
+		return
+	fi
+
+	printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} ${COLOR_BOLD}Host Desktop${COLOR_RESET} (stream this machine's own desktop over VNC)"
+	printf '%b\n' "    ${COLOR_GREEN}✔ Desktop environment detected.${COLOR_RESET}"
+
+	local hd_reply=""
+	printf '%b' "\n  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Enable Host Desktop streaming add-on?${COLOR_RESET} [y/N]: "
+	read -r hd_reply </dev/tty || hd_reply=""
+
+	case "$hd_reply" in
+		[yY]|[yY][eE][sS]) WITH_HOST_DESKTOP=yes ;;
+		*) WITH_HOST_DESKTOP=no ;;
+	esac
+
+	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		TOTAL_STEPS=$((TOTAL_STEPS + 1))
+		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} Host Desktop streaming enabled."
+	else
+		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} Host Desktop streaming skipped (can be enabled anytime by re-running the installer)."
+	fi
+}
+
 select_addons() {
 	if [ -n "$WITH_VM" ]; then
 		if [ "$WITH_VM" = "yes" ]; then
 			TOTAL_STEPS=11
 		fi
+		resolve_host_desktop
 		return
 	fi
 
@@ -642,6 +713,7 @@ select_addons() {
 		else
 			WITH_VM=no
 		fi
+		resolve_host_desktop
 		return
 	fi
 
@@ -681,6 +753,8 @@ select_addons() {
 	else
 		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} VM Manager skipped (can be enabled anytime via CLI: 'nivaroos vm enable')."
 	fi
+
+	resolve_host_desktop
 }
 
 # ------------------------------------------------------------------------------
@@ -1341,6 +1415,104 @@ VMEOF
 }
 
 # ------------------------------------------------------------------------------
+# Host Desktop Streaming Installation (Optional Add-on, requires VM Manager -
+# it streams over the same vm-sidecar the VM Manager installs)
+# ------------------------------------------------------------------------------
+install_host_desktop() {
+	run_step "Installing Host Desktop Streaming (x11vnc & websockify)" "
+		# Best-effort: x11vnc/websockify aren't in every distro's official
+		# repos (notably Arch/Alpine). This is an optional add-on, so a
+		# missing package here should not abort the whole installation -
+		# we just warn and the feature stays unavailable until installed
+		# manually.
+		pkg_install x11vnc websockify || true
+
+		if ! command -v x11vnc >/dev/null 2>&1; then
+			echo 'x11vnc could not be installed automatically on this distro - Host Desktop streaming will be unavailable until it is installed manually.' >&2
+		fi
+
+		cat > /usr/local/bin/nivaroos-host-desktop.sh <<'HOSTDESKEOF'
+#!/bin/bash
+set -e
+
+# Find X authority file
+find_auth() {
+    for f in /var/run/lightdm/root/:0 /run/lightdm/root/:0 /root/.Xauthority /home/*/.Xauthority; do
+        if [ -f \"\$f\" ]; then
+            echo \"\$f\"
+            return 0
+        fi
+    done
+    echo \"\"
+}
+
+# Wait for X server on :0 if not yet ready
+for i in {1..30}; do
+    if [ -S /tmp/.X11-unix/X0 ] || xdpyinfo -display :0 >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+AUTH=\$(find_auth)
+
+# Set initial default framebuffer resolution to 1920x1080 if currently lower (e.g. 640x480 headless default)
+if [ -n \"\$AUTH\" ]; then
+    DISPLAY=:0 XAUTHORITY=\"\$AUTH\" xrandr --fb 1920x1080 2>/dev/null || true
+else
+    xrandr -display :0 --fb 1920x1080 2>/dev/null || true
+fi
+
+# Start websockify proxy on port 28642 if not already running
+if ! ss -tulpn | grep -q \":28642 \"; then
+    /usr/bin/websockify -D 28642 127.0.0.1:5900 2>/dev/null || true
+fi
+
+# -noxdamage: some desktop compositors (GL-based effects) make the X11
+# damage extension unreliable, silently missing change events - which is
+# what causes stale/corrupted patches on the stream. Polling instead of
+# trusting damage events costs a little CPU but eliminates that class of
+# artifact entirely.
+# -localhost: this server is reachable only via the vm-sidecar's WebSocket
+# proxy (which always connects over 127.0.0.1) - there is no legitimate
+# reason to expose a raw, unauthenticated VNC port to the network.
+if [ -n \"\$AUTH\" ]; then
+    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -noxdamage -localhost -rfbport 5900 -nopw
+else
+    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -localhost -rfbport 5900 -nopw
+fi
+HOSTDESKEOF
+		chmod +x /usr/local/bin/nivaroos-host-desktop.sh
+		echo '/usr/local/bin/nivaroos-host-desktop.sh' >> \"$MANIFEST_FILE\"
+
+		cat > /usr/lib/systemd/system/nivaroos-host-desktop.service <<'HOSTDESKSVCEOF'
+[Unit]
+Description=NivaroOS Host Desktop Remote VNC Server
+After=network.target lightdm.service display-manager.service
+Wants=lightdm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nivaroos-host-desktop.sh
+Restart=always
+RestartSec=3
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+HOSTDESKSVCEOF
+		echo '/usr/lib/systemd/system/nivaroos-host-desktop.service' >> \"$MANIFEST_FILE\"
+
+		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
+
+		systemctl daemon-reload >/dev/null 2>&1 || true
+		if command -v x11vnc >/dev/null 2>&1; then
+			systemctl enable --now nivaroos-host-desktop >/dev/null 2>&1 || true
+		fi
+	"
+}
+
+# ------------------------------------------------------------------------------
 # Web Dashboard UI Assets
 # ------------------------------------------------------------------------------
 install_ui() {
@@ -1616,6 +1788,14 @@ print_summary() {
 		render_sum_line "${s_gpu}    ${COLOR_MUTED}○ VM Virtualization (Off)${COLOR_RESET}"
 	fi
 
+	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		local s_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
+		if ! systemctl is-active --quiet nivaroos-host-desktop.service 2>/dev/null; then s_hd="${COLOR_RED}✖ Host Desktop${COLOR_RESET}"; fi
+		render_sum_line "${s_hd}"
+	else
+		render_sum_line "${COLOR_MUTED}○ Host Desktop (Off)${COLOR_RESET}"
+	fi
+
 	render_sum_line ""
 	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}"
 	render_sum_line "• Management CLI:     ${COLOR_CYAN}nivaroos --help${COLOR_RESET}"
@@ -1657,6 +1837,10 @@ main() {
 
 	if [ "$WITH_VM" = "yes" ]; then
 		install_vm_manager
+	fi
+
+	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		install_host_desktop
 	fi
 
 	install_ui

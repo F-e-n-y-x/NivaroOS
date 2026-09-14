@@ -181,7 +181,13 @@ export const mixin = {
 					parameters.files = path
 					return apiUrl + "?" + qs.stringify(parameters)
 				} else {
-					apiUrl = `/v3/file`;
+					// `/v3/file` was never actually registered on the backend
+					// (only added to the gateway's routing table, which just
+					// means it 404'd instead of being rejected) - every
+					// single-file download silently failed. `/v1/file` is the
+					// real, working handler (GetDownloadSingleFile), already
+					// used the same way by every other branch here.
+					apiUrl = `${this.baseUrl}file`;
 					parameters.path = items.path
 					return apiUrl + "?" + qs.stringify(parameters)
 				}

@@ -113,7 +113,7 @@ export default {
 .nav-entry {
 	// <button> elements don't inherit the page's font by default in most
 	// browsers (they use the OS's system UI font instead) - without this,
-	// "SMB Share"/"Files Drop" render in a visibly different font/weight
+	// "Share"/"Files Drop" render in a visibly different font/weight
 	// than the plain-<div> tree-node items above them (DATA, Downloads, etc).
 	font: inherit;
 	font-size: var(--font-sm);
