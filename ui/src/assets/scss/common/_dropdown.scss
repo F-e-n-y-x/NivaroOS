@@ -92,6 +92,16 @@ body > .dropdown {
                     }
                 }
             }
+
+            // Buefy's own .dropdown-divider only ever sets margin - no
+            // border/background of its own - so the <hr> rendered nothing
+            // but blank space between action groups (e.g. before
+            // Restart/Stop). Give it a real, visible, theme-aware line.
+            .dropdown-divider {
+                height: 1px !important;
+                border: none !important;
+                background-color: var(--theme-dropdown-border, rgba(0, 0, 0, 0.1)) !important;
+            }
         }
     }
 }

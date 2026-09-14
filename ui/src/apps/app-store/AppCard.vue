@@ -1232,12 +1232,14 @@ export default {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 
-	// The label text sits inside a bare <a> (see template) - without this,
-	// it inherits the framework's default link color (blue) instead of the
-	// white set above, since that default is an explicit UA/Bulma rule on
-	// `a`, not just an inherited value this parent's color can override.
+	// The label text sits inside a bare <a> (see template). A non-!important
+	// `color: inherit` here previously lost a same-specificity tie against
+	// _card.scss's `.common-card a { color: white }` depending on runtime
+	// style-injection order (not the static bundle's byte order) - forcing
+	// it with !important removes that ambiguity instead of relying on which
+	// happens to load last.
 	a {
-		color: inherit;
+		color: #fff !important;
 		text-decoration: none;
 	}
 }
