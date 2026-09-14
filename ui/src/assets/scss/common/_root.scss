@@ -116,6 +116,10 @@
     --theme-menu-bg:          rgba(255, 255, 255, 0.95);
     --theme-dropdown-bg:      #ffffff;
     --theme-dropdown-border:  rgba(0, 0, 0, 0.1);
+    // Hovered/selected menu item - neutral black/white tone (not the blue
+    // accent) so a highlighted row reads as "selected", not as a link.
+    --theme-menu-item-hover-bg:   rgba(0, 0, 0, 0.9);
+    --theme-menu-item-hover-text: #ffffff;
 
     // Sidebar
     --theme-sidebar-bg:       #f8fafc;

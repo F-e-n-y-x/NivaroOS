@@ -51,6 +51,11 @@ html.is-dark {
 	--theme-menu-bg:             rgba(18, 18, 20, 0.95);
 	--theme-dropdown-bg:         #1e1e22;
 	--theme-dropdown-border:     rgba(255, 255, 255, 0.12);
+	// Inverted from light mode: the menu itself is already dark, so a
+	// hovered/selected row instead brightens to a near-white pill with
+	// near-black text - same "inverted selection" effect either way.
+	--theme-menu-item-hover-bg:   rgba(255, 255, 255, 0.92);
+	--theme-menu-item-hover-text: #0a0a0a;
 
 	// Sidebar
 	--theme-sidebar-bg:          #0d0d0f;

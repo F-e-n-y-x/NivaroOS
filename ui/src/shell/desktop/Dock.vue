@@ -817,11 +817,11 @@ export default {
 	}
 
 	&:hover {
-		background: #2563eb;
-		color: #ffffff;
+		background: var(--theme-menu-item-hover-bg, rgba(0, 0, 0, 0.9));
+		color: var(--theme-menu-item-hover-text, #ffffff);
 
 		.ctx-icon {
-			color: #ffffff;
+			color: var(--theme-menu-item-hover-text, #ffffff);
 		}
 	}
 

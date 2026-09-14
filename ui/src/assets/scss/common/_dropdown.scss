@@ -75,11 +75,11 @@ body > .dropdown {
                 }
 
                 &:hover {
-                    background: #2563eb !important;
-                    color: #ffffff !important;
+                    background: var(--theme-menu-item-hover-bg, rgba(0, 0, 0, 0.9)) !important;
+                    color: var(--theme-menu-item-hover-text, #ffffff) !important;
 
                     i, .mdi {
-                        color: #ffffff !important;
+                        color: var(--theme-menu-item-hover-text, #ffffff) !important;
                     }
                 }
 
