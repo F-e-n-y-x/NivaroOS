@@ -207,8 +207,18 @@ const mutations = {
 		// handles make impractical anyway. Overriding to fill the viewport
 		// here, once, means none of those call sites need to know or care
 		// what device they're running on.
-		if (state.isMobile || state.isTablet) {
+		const isDialog = component === 'ConfirmDialogWindow' || (props && props.isDialog)
+		if ((state.isMobile || state.isTablet) && !isDialog) {
 			rect = fitWindowToViewport(state)
+		} else if (isDialog) {
+			const w = Math.min(window.innerWidth - 24, width || 420)
+			const h = Math.min(window.innerHeight - 24, height || 210)
+			rect = {
+				x: Math.max(12, Math.round((window.innerWidth - w) / 2)),
+				y: Math.max(30, Math.round((window.innerHeight - h) / 2)),
+				width: w,
+				height: h
+			}
 		}
 		state.windows.push({
 			id,

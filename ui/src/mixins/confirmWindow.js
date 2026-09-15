@@ -40,7 +40,41 @@ export const confirmWindowMixin = {
 	},
 	methods: {
 		confirmWindow(options) {
-			this.confirmWindowState = options
+			if (!options) return
+			const dialogId = 'dialog-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
+			const width = options.width || 420
+			const height = options.height || 210
+			const x = options.x !== undefined ? options.x : Math.max(16, Math.round((window.innerWidth - width) / 2))
+			const y = options.y !== undefined ? options.y : Math.max(40, Math.round((window.innerHeight - height) / 2))
+
+			if (this.$store && this.$store.commit) {
+				this.$store.commit('OPEN_WINDOW', {
+					id: dialogId,
+					title: options.title || (this.$t ? this.$t('Confirmation') : 'Confirmation'),
+					component: 'ConfirmDialogWindow',
+					props: {
+						id: dialogId,
+						isDialog: true,
+						title: options.title || '',
+						message: options.message || '',
+						confirmText: options.confirmText || (this.$t ? this.$t('Confirm') : 'Confirm'),
+						cancelText: options.cancelText || (this.$t ? this.$t('Cancel') : 'Cancel'),
+						type: options.type || 'is-primary',
+						hasIcon: options.hasIcon !== undefined ? options.hasIcon : true,
+						icon: options.icon || '',
+						iconPack: options.iconPack || 'mdi',
+						onConfirm: options.onConfirm,
+						onCancel: options.onCancel
+					},
+					width,
+					height,
+					x,
+					y
+				})
+			} else {
+				// Fallback to local confirmWindowState if store is not available
+				this.confirmWindowState = options
+			}
 		},
 		_onConfirmWindowConfirm() {
 			const onConfirm = this.confirmWindowState && this.confirmWindowState.onConfirm

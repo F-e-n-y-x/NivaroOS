@@ -394,49 +394,13 @@
 				<b-button rounded size="is-small" type="is-primary" @click="showLogModal = false">{{ $t('Done') }}</b-button>
 			</template>
 		</settings-overlay>
-
-		<!-- Uninstall Confirm Overlay -->
-		<settings-overlay
-			:active="!!uninstallTarget"
-			:title="$t('Uninstall Package')"
-			width="24rem"
-			@close="uninstallTarget = null"
-		>
-			<div>
-				{{ $t('Are you sure you want to uninstall') }} <strong class="has-text-dark">{{ uninstallTarget }}</strong>?
-			</div>
-			<template #footer>
-				<b-button rounded size="is-small" @click="uninstallTarget = null">{{ $t('Cancel') }}</b-button>
-				<b-button rounded size="is-small" type="is-danger" :loading="processingPkg === uninstallTarget" @click="performUninstall">
-					{{ $t('Uninstall') }}
-				</b-button>
-			</template>
-		</settings-overlay>
-
-		<!-- Delete Source Confirm Overlay -->
-		<settings-overlay
-			:active="!!deleteSourceTarget"
-			:title="$t('Remove Repository Source')"
-			width="26rem"
-			@close="deleteSourceTarget = null"
-		>
-			<div v-if="deleteSourceTarget">
-				{{ $t('Remove repository source from') }} <strong class="has-text-dark">{{ getFilename(deleteSourceTarget.file) }}:{{ deleteSourceTarget.line }}</strong>?
-				<div class="is-size-7 text-muted mt-2">{{ deleteSourceTarget.raw }}</div>
-			</div>
-			<template #footer>
-				<b-button rounded size="is-small" @click="deleteSourceTarget = null">{{ $t('Cancel') }}</b-button>
-				<b-button rounded size="is-small" type="is-danger" @click="performDeleteSource">
-					{{ $t('Remove') }}
-				</b-button>
-			</template>
-		</settings-overlay>
 	</section>
 </template>
 
 <script>
 import debounce from 'lodash/debounce'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export const ROWS = [
 	{ label: 'Search & Install Packages' },
@@ -450,6 +414,7 @@ export default {
 	components: {
 		SettingsOverlay
 	},
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			activeTab: 'search',
@@ -489,9 +454,7 @@ export default {
 
 			showLogModal: false,
 			logTitle: '',
-			logContent: '',
-			uninstallTarget: null,
-			deleteSourceTarget: null
+			logContent: ''
 		}
 	},
 	computed: {
@@ -639,34 +602,35 @@ export default {
 		},
 
 		confirmUninstall(name) {
-			this.uninstallTarget = name
-		},
-
-		performUninstall() {
-			const name = this.uninstallTarget
-			if (!name) return
-			this.processingPkg = name
-			this.$api.sys.uninstallAptPackages([name])
-				.then(res => {
-					this.processingPkg = null
-					this.uninstallTarget = null
-					this.$buefy.toast.open({ message: this.$t('Package uninstalled successfully'), type: 'is-success' })
-					this.onSearchInput()
-					this.fetchInstalled()
-					if (res.data.data && res.data.data.output) {
-						this.logTitle = `${this.$t('Uninstall')}: ${name}`
-						this.logContent = res.data.data.output
+			this.confirmWindow({
+				title: this.$t('Uninstall Package'),
+				message: `${this.$t('Are you sure you want to uninstall')} <strong>"${name}"</strong>?`,
+				type: 'is-danger',
+				icon: 'trash-can-outline',
+				confirmText: this.$t('Uninstall'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: async () => {
+					this.processingPkg = name
+					try {
+						const res = await this.$api.sys.uninstallAptPackages([name])
+						this.$buefy.toast.open({ message: this.$t('Package uninstalled successfully'), type: 'is-success' })
+						this.onSearchInput()
+						this.fetchInstalled()
+						if (res.data.data && res.data.data.output) {
+							this.logTitle = `${this.$t('Uninstall')}: ${name}`
+							this.logContent = res.data.data.output
+							this.showLogModal = true
+						}
+					} catch (err) {
+						const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Uninstall failed')
+						this.logTitle = `${this.$t('Uninstall Failed')}: ${name}`
+						this.logContent = msg
 						this.showLogModal = true
+					} finally {
+						this.processingPkg = null
 					}
-				})
-				.catch(err => {
-					this.processingPkg = null
-					this.uninstallTarget = null
-					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Uninstall failed')
-					this.logTitle = `${this.$t('Uninstall Failed')}: ${name}`
-					this.logContent = msg
-					this.showLogModal = true
-				})
+				}
+			})
 		},
 
 		upgradeSingle(name) {
@@ -748,22 +712,24 @@ export default {
 		},
 
 		deleteSource(source) {
-			this.deleteSourceTarget = source
-		},
-
-		performDeleteSource() {
-			const source = this.deleteSourceTarget
-			if (!source) return
-			this.$api.sys.deleteAptSource(source.file, source.line)
-				.then(() => {
-					this.deleteSourceTarget = null
-					this.$buefy.toast.open({ message: this.$t('Source removed'), type: 'is-success' })
-					this.fetchSources()
-				})
-				.catch(() => {
-					this.deleteSourceTarget = null
-					this.$buefy.toast.open({ message: this.$t('Failed to remove source'), type: 'is-danger' })
-				})
+			const filename = this.getFilename(source.file)
+			this.confirmWindow({
+				title: this.$t('Remove Repository Source'),
+				message: `${this.$t('Remove repository source from')} <strong>${filename}:${source.line}</strong>?<br><span class="is-size-7 text-muted mt-2">${source.raw}</span>`,
+				type: 'is-danger',
+				icon: 'trash-can-outline',
+				confirmText: this.$t('Remove'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: async () => {
+					try {
+						await this.$api.sys.deleteAptSource(source.file, source.line)
+						this.$buefy.toast.open({ message: this.$t('Source removed'), type: 'is-success' })
+						this.fetchSources()
+					} catch {
+						this.$buefy.toast.open({ message: this.$t('Failed to remove source'), type: 'is-danger' })
+					}
+				}
+			})
 		}
 	}
 }

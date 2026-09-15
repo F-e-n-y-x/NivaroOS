@@ -1,28 +1,14 @@
-<!--
-	A confirm dialog confined to the app's own window bounds, not Buefy's
-	$buefy.dialog.confirm() - that renders as position:fixed against the
-	whole viewport, but window chrome elsewhere in this app sets
-	backdrop-filter for its glass effect, which makes that ancestor the
-	containing block for any position:fixed descendant. In practice this
-	means a "confirm" prompt from inside one small app window freezes the
-	entire simulated desktop behind a dimmed backdrop - every other window,
-	the dock, the taskbar - instead of just that one window.
-	This is the same position:absolute-confined-to-the-window pattern
-	VmOverlayPanel.vue and Files' DialogOverlay.vue already use
-	successfully - render this as a child of the calling app's own root
-	element (which needs `position: relative`, matching the convention
-	already used throughout this codebase) rather than at the document root,
-	and it naturally covers only that window.
--->
 <template>
 	<div v-if="active" class="confirm-window">
 		<div class="confirm-window-backdrop" @click="$emit('cancel')"></div>
-		<div class="confirm-window-card">
-			<div v-if="hasIcon" class="confirm-window-icon" :class="type">
-				<b-icon :icon="icon" :pack="iconPack" custom-size="mdi-24px"></b-icon>
+		<div class="confirm-window-card" :style="cardStyle">
+			<div class="confirm-window-header" @pointerdown="startDrag">
+				<div v-if="hasIcon" class="confirm-window-icon" :class="type">
+					<b-icon :icon="icon" :pack="iconPack" custom-size="mdi-24px"></b-icon>
+				</div>
+				<div class="confirm-window-title">{{ title }}</div>
 			</div>
-			<div class="confirm-window-title">{{ title }}</div>
-			<div class="confirm-window-message">{{ message }}</div>
+			<div class="confirm-window-message" v-html="message"></div>
 			<div class="confirm-window-actions">
 				<b-button @click="$emit('cancel')">{{ cancelText }}</b-button>
 				<b-button :type="type" @click="$emit('confirm')">{{ confirmText }}</b-button>
@@ -40,19 +26,61 @@ export default {
 		message: { type: String, default: '' },
 		confirmText: { type: String, default: 'OK' },
 		cancelText: { type: String, default: 'Cancel' },
-		// Matches Buefy's own `type` values ('is-danger', 'is-primary', ...)
-		// so existing $buefy.dialog.confirm call sites need no remapping.
 		type: { type: String, default: 'is-primary' },
 		hasIcon: { type: Boolean, default: false },
 		icon: { type: String, default: 'alert' },
 		iconPack: { type: String, default: 'mdi' },
 	},
+	data() {
+		return {
+			dragOffset: { x: 0, y: 0 }
+		}
+	},
+	watch: {
+		active(val) {
+			if (val) {
+				this.dragOffset = { x: 0, y: 0 }
+			}
+		}
+	},
+	computed: {
+		cardStyle() {
+			if (this.dragOffset.x || this.dragOffset.y) {
+				return { transform: `translate(${this.dragOffset.x}px, ${this.dragOffset.y}px)` }
+			}
+			return {}
+		}
+	},
+	methods: {
+		startDrag(e) {
+			if (e.target.closest('button, input, select, textarea, a')) return
+			const startX = e.clientX
+			const startY = e.clientY
+			const originX = this.dragOffset.x
+			const originY = this.dragOffset.y
+			document.body.style.userSelect = 'none'
+
+			const onMove = moveEvent => {
+				this.dragOffset = {
+					x: originX + (moveEvent.clientX - startX),
+					y: originY + (moveEvent.clientY - startY)
+				}
+			}
+			const onUp = () => {
+				window.removeEventListener('pointermove', onMove)
+				window.removeEventListener('pointerup', onUp)
+				document.body.style.userSelect = ''
+			}
+			window.addEventListener('pointermove', onMove)
+			window.addEventListener('pointerup', onUp)
+		}
+	}
 }
 </script>
 
 <style lang="scss" scoped>
 .confirm-window {
-	position: absolute;
+	position: fixed;
 	inset: 0;
 	z-index: 2000;
 	display: flex;
@@ -74,7 +102,7 @@ export default {
 	color: var(--theme-text-primary, #1e293b);
 	border-radius: var(--radius-card);
 	box-shadow: var(--shadow-xl);
-	width: min(22rem, 100%);
+	width: min(24rem, 100%);
 	max-height: calc(100% - 1.5rem);
 	padding: var(--space-5);
 	display: flex;
@@ -82,6 +110,20 @@ export default {
 	align-items: center;
 	text-align: center;
 	gap: var(--space-2);
+}
+
+.confirm-window-header {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100%;
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+
+	&:active {
+		cursor: grabbing;
+	}
 }
 
 .confirm-window-icon {
@@ -117,6 +159,8 @@ export default {
 .confirm-window-message {
 	color: var(--theme-text-secondary, #475569);
 	font-size: var(--font-sm);
+	line-height: 1.5;
+	word-break: break-word;
 }
 
 .confirm-window-actions {

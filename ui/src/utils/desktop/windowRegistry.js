@@ -14,6 +14,9 @@ import CodeEditor from '@/apps/files/viewers/CodeEditor.vue'
 import DocViewer from '@/apps/files/viewers/DocViewer.vue'
 import ExcelViewer from '@/apps/files/viewers/ExcelViewer.vue'
 import PdfViewer from '@/apps/files/viewers/PdfViewer.vue'
+import MarkdownEditor from '@/apps/files/viewers/MarkdownEditor.vue'
+import UnsupportedViewer from '@/apps/files/viewers/UnsupportedViewer.vue'
+import DetailWindow from '@/apps/files/DetailWindow.vue'
 import VmConsolePanel from '@/apps/vm/VmConsolePanel.vue'
 import CreateVmModal from '@/apps/vm/CreateVmModal.vue'
 import EditVmModal from '@/apps/vm/EditVmModal.vue'
@@ -21,6 +24,8 @@ import FolderWindow from '@/apps/files/FolderWindow.vue'
 import SystemUpdateWindow from '@/apps/settings/SystemUpdateWindow.vue'
 import ContainerConsolePanel from '@/shell/desktop/ContainerConsolePanel.vue'
 import ScheduledTaskWindow from '@/apps/settings/ScheduledTaskWindow.vue'
+import ScheduledTaskLogWindow from '@/apps/settings/ScheduledTaskLogWindow.vue'
+import ConfirmDialogWindow from '@/shared/basicComponents/ConfirmDialogWindow.vue'
 import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
 
 export const COMPONENT_REGISTRY = {
@@ -41,9 +46,14 @@ export const COMPONENT_REGISTRY = {
 	DocViewer,
 	ExcelViewer,
 	PdfViewer,
+	MarkdownEditor,
+	UnsupportedViewer,
+	DetailWindow,
 	FolderWindow,
 	SystemUpdateWindow,
-	ScheduledTaskWindow
+	ScheduledTaskWindow,
+	ScheduledTaskLogWindow,
+	ConfirmDialogWindow
 }
 
 // These components' own top row IS the window's titlebar (draggable, with
@@ -56,7 +66,7 @@ export const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerC
 // window titlebar sitting directly above that read as a visibly mismatched
 // seam, so these windows get the same dark titlebar treatment TerminalPanel
 // already uses.
-export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'VmConsolePanel', 'HostDesktopPanel']
+export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'MarkdownEditor', 'UnsupportedViewer', 'VmConsolePanel', 'HostDesktopPanel', 'ScheduledTaskLogWindow']
 
 export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel']
 

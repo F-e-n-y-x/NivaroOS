@@ -10,6 +10,7 @@
 		'window-console': isConsoleWindow,
 		'window-no-scroll': isNoScrollWindow,
 		'window-touch': isTouchDevice,
+		'window-dialog': isDialogWindow,
 	}"
 	@pointerdown="focus"
 	@drop.stop
@@ -23,7 +24,7 @@
 				<button v-if="isConsoleWindow" type="button" class="window-btn-action" :title="$t('Open in New Tab')" @click.stop="openConsoleTab">
 					<b-icon icon="open-in-new" custom-size="mdi-14px"></b-icon>
 				</button>
-				<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="minimize"></button>
+				<button v-if="!isDialogWindow" class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="minimize"></button>
 				<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="close"></button>
 			</div>
 		</div>
@@ -39,7 +40,7 @@
 		     mobile apps aren't freely resizable either. A tablet keeps the
 		     full desktop-style windowing, since it has genuine room for an
 		     overlapping multi-window layout. -->
-		<template v-if="!isMobileViewport">
+		<template v-if="!isMobileViewport && !isDialogWindow">
 			<div class="resize-handle resize-right" @pointerdown.stop="startResize('right', $event)"></div>
 			<div class="resize-handle resize-left" @pointerdown.stop="startResize('left', $event)"></div>
 			<div class="resize-handle resize-bottom" @pointerdown.stop="startResize('bottom', $event)"></div>
@@ -97,6 +98,9 @@ export default {
 		},
 		isNoScrollWindow() {
 			return NO_SCROLL_COMPONENTS.includes(this.win.component)
+		},
+		isDialogWindow() {
+			return this.win.component === 'ConfirmDialogWindow' || (this.win.props && this.win.props.isDialog)
 		},
 		// 8px-wide edge resize handles are fine for a mouse pointer but
 		// impractical to grab with a finger - widened via .window-touch
@@ -333,6 +337,16 @@ export default {
 	&.window-no-scroll {
 		.window-content {
 			overflow: hidden !important;
+		}
+	}
+
+	&.window-dialog {
+		box-shadow: var(--theme-window-shadow, 0 16px 48px rgba(0, 0, 0, 0.35));
+
+		.window-content {
+			overflow: hidden !important;
+			display: flex;
+			flex-direction: column;
 		}
 	}
 }

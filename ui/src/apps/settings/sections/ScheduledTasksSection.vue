@@ -205,73 +205,12 @@
 				</div>
 			</div>
 		</div>
-
-		<!-- ==================== IN-WINDOW DELETE CONFIRMATION ==================== -->
-		<div v-if="targetDeleteTask" class="window-overlay">
-			<div class="window-overlay-backdrop" @click="targetDeleteTask = null"></div>
-			<div class="window-overlay-card delete-card">
-				<header class="window-overlay-head">
-					<span class="window-overlay-title">
-						<i class="mdi mdi-trash-can-outline mr-1 has-text-danger"></i>
-						{{ $t('Delete Scheduled Task') }}
-					</span>
-					<button type="button" class="window-overlay-close" @click="targetDeleteTask = null">
-						<b-icon icon="close" size="is-small"></b-icon>
-					</button>
-				</header>
-				<div class="window-overlay-body">
-					<p class="mb-1">
-						{{ $t('Are you sure you want to delete scheduled task') }}
-						<strong>"{{ targetDeleteTask.name }}"</strong>?
-					</p>
-					<p class="is-size-7 text-muted">{{ $t('This operation cannot be undone.') }}</p>
-				</div>
-				<footer class="window-overlay-foot">
-					<b-button rounded size="is-small" @click="targetDeleteTask = null">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-danger" :loading="deletingTask" @click="performDeleteTask">
-						<i class="mdi mdi-trash-can-outline mr-1"></i>
-						{{ $t('Delete') }}
-					</b-button>
-				</footer>
-			</div>
-		</div>
-
-		<!-- ==================== IN-WINDOW LOG VIEWER ==================== -->
-		<div v-if="selectedLogTask" class="window-overlay">
-			<div class="window-overlay-backdrop" @click="selectedLogTask = null"></div>
-			<div class="window-overlay-card log-card">
-				<header class="window-overlay-head">
-					<span class="window-overlay-title">
-						<i class="mdi mdi-text-box-outline mr-1 has-text-info"></i>
-						{{ selectedLogTask.name }} &middot; {{ $t('Execution Output') }}
-					</span>
-					<button type="button" class="window-overlay-close" @click="selectedLogTask = null">
-						<b-icon icon="close" size="is-small"></b-icon>
-					</button>
-				</header>
-				<div class="window-overlay-body p-0">
-					<div class="task-log-viewer scrollbars">
-						<div class="log-meta p-3 is-flex is-align-items-center is-justify-content-between">
-							<div>
-								<span class="log-target-name mr-2">{{ selectedLogTask.target_name || selectedLogTask.name }}</span>
-								<span class="text-muted is-size-7">Action: {{ selectedLogTask.action || selectedLogTask.type }}</span>
-							</div>
-							<div class="is-size-7 text-muted">
-								{{ selectedLogTask.last_run }}
-							</div>
-						</div>
-						<pre class="task-output-pre p-3">{{ selectedLogTask.last_output || $t('No output text recorded.') }}</pre>
-					</div>
-				</div>
-				<footer class="window-overlay-foot">
-					<b-button rounded size="is-small" @click="selectedLogTask = null">{{ $t('Close') }}</b-button>
-				</footer>
-			</div>
-		</div>
 	</section>
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+
 export const ROWS = [
 	{ label: 'Scheduled Tasks' },
 	{ label: 'Cron Jobs & Automation' },
@@ -283,14 +222,12 @@ export const ROWS = [
 
 export default {
 	name: 'scheduled-tasks-section',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			tasks: [],
 			loadingTasks: false,
 			runningId: null,
-			targetDeleteTask: null,
-			deletingTask: false,
-			selectedLogTask: null,
 			targetVms: [],
 			targetContainers: [],
 			targetClouds: [],
@@ -508,34 +445,43 @@ export default {
 			}
 		},
 		viewTaskLog(t) {
-			this.selectedLogTask = t
+			this.$store.commit('OPEN_WINDOW', {
+				id: `task-log-${t.id}`,
+				title: `${t.name} · ${this.$t('Execution Output')}`,
+				component: 'ScheduledTaskLogWindow',
+				props: { task: t },
+				width: 620,
+				height: 480
+			})
 		},
 		confirmDelete(t) {
-			this.targetDeleteTask = t
-		},
-		async performDeleteTask() {
-			if (!this.targetDeleteTask) return
-			this.deletingTask = true
-			try {
-				await this.$api.schedules.deleteSchedule(this.targetDeleteTask.id)
-				this.$buefy.toast.open({
-					message: this.$t('Task deleted'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000
-				})
-				this.targetDeleteTask = null
-				await this.fetchTasks()
-			} catch (err) {
-				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to delete task'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 3000
-				})
-			} finally {
-				this.deletingTask = false
-			}
+			this.confirmWindow({
+				title: this.$t('Delete Scheduled Task'),
+				message: `${this.$t('Are you sure you want to delete scheduled task')} <strong>"${t.name}"</strong>?<br><span class="is-size-7 text-muted">${this.$t('This operation cannot be undone.')}</span>`,
+				type: 'is-danger',
+				icon: 'trash-can-outline',
+				confirmText: this.$t('Delete'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: async () => {
+					try {
+						await this.$api.schedules.deleteSchedule(t.id)
+						this.$buefy.toast.open({
+							message: this.$t('Task deleted'),
+							type: 'is-success',
+							position: 'is-top',
+							duration: 2000
+						})
+						await this.fetchTasks()
+					} catch (err) {
+						this.$buefy.toast.open({
+							message: err.message || this.$t('Failed to delete task'),
+							type: 'is-danger',
+							position: 'is-top',
+							duration: 3000
+						})
+					}
+				}
+			})
 		},
 		getTypeIcon(type) {
 			switch (type) {
@@ -626,8 +572,11 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: var(--space-3) var(--space-4);
-	background: rgba(255, 255, 255, 0.6);
-	border: 1px solid rgba(0, 0, 0, 0.06);
+	// Was a hardcoded light-mode-only translucent white/black pair while the
+	// near-identical card just below this in the same file already used
+	// theme tokens - rendered as a barely-visible pale box in dark mode.
+	background: var(--theme-card-bg, rgba(255, 255, 255, 0.6));
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	border-radius: var(--radius-card);
 
 	.stat-icon {
@@ -835,118 +784,6 @@ export default {
 	}
 	&.bg-danger {
 		background: #ef4444;
-	}
-}
-
-/* In-Window Overlay & Dialogs */
-.window-overlay {
-	position: absolute;
-	inset: 0;
-	z-index: 2000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
-}
-
-.window-overlay-backdrop {
-	position: absolute;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.25);
-	backdrop-filter: blur(2px);
-}
-
-.window-overlay-card {
-	position: relative;
-	background: var(--theme-card-bg, #ffffff);
-	border-radius: var(--radius-modal);
-	box-shadow: var(--shadow-lg);
-	max-height: calc(100% - 2rem);
-	max-width: calc(100% - 2rem);
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
-
-	&.delete-card {
-		width: 24rem;
-	}
-
-	&.log-card {
-		width: 40rem;
-	}
-}
-
-.window-overlay-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: var(--space-3) var(--space-4);
-	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
-	background: var(--theme-card-bg, #ffffff);
-}
-
-.window-overlay-title {
-	font-size: var(--font-base);
-	font-weight: 600;
-	color: var(--theme-text-primary, #0f172a);
-	display: flex;
-	align-items: center;
-}
-
-.window-overlay-close {
-	border: none;
-	background: transparent;
-	color: var(--theme-text-muted, #94a3b8);
-	cursor: pointer;
-	padding: var(--space-1);
-	border-radius: var(--radius-xs);
-	display: flex;
-	align-items: center;
-
-	&:hover {
-		color: var(--theme-text-primary, #0f172a);
-		background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
-	}
-}
-
-.window-overlay-body {
-	padding: var(--space-4);
-	overflow-y: auto;
-	font-size: var(--font-base);
-	color: var(--theme-text-secondary, #334155);
-	line-height: 1.45;
-}
-
-.window-overlay-foot {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
-	padding: var(--space-3) var(--space-4);
-	border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
-	background: var(--theme-card-bg, #ffffff);
-}
-
-.task-log-viewer {
-	background: #121214;
-	color: #e4e4e7;
-	max-height: 380px;
-	overflow-y: auto;
-
-	.log-meta {
-		border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-		background: #18181b;
-	}
-
-	.task-output-pre {
-		background: transparent;
-		color: #a1a1aa;
-		font-family: monospace;
-		font-size: 12px;
-		white-space: pre-wrap;
-		word-break: break-all;
-		margin: 0;
 	}
 }
 
