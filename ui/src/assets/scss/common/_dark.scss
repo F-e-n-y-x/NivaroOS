@@ -804,6 +804,29 @@ html.is-dark {
 						color: var(--theme-menu-item-hover-text, #0a0a0a) !important;
 					}
 				}
+
+			}
+
+			// Section 2's generic `.button:not(.is-primary):not(...):hover`
+			// rule (line ~235) matches these dropdown buttons too (they're
+			// type="is-text", none of the excluded variants). That rule and
+			// this one are an exact same-specificity tie (both 7 classes +
+			// !important) once written as plain "...dropdown-item
+			// .button:hover" - which one wins a tie depends on cascade
+			// order, and this codebase has already broken that way once
+			// this session (the label-color fix). `.dropdown-item
+			// .dropdown-item .button:hover` repeats the same class on
+			// purpose - CSS counts each class token toward specificity even
+			// when duplicated, so this outranks the generic rule outright
+			// instead of relying on a tie-break.
+			.dropdown-item.dropdown-item .button:hover {
+				background: var(--theme-menu-item-hover-bg, rgba(255, 255, 255, 0.92)) !important;
+				color: var(--theme-menu-item-hover-text, #0a0a0a) !important;
+				border-color: transparent !important;
+
+				i, .mdi {
+					color: var(--theme-menu-item-hover-text, #0a0a0a) !important;
+				}
 			}
 
 			.dropdown-divider {
