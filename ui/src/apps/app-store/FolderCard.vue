@@ -2,27 +2,28 @@
 	<div :class="{ 'drag-target': isDragTarget }" :data-folder-id="folder.id"
 		class="common-card is-flex is-align-items-center is-justify-content-center app-card folder-card"
 		@contextmenu.prevent.stop="handleCardContextMenu">
-		<div class="action-btn">
-			<b-dropdown ref="dro" :mobile-modal="false" append-to-body aria-role="list" class="app-card-drop"
-				:triggers="['contextmenu']" animation="fade1" :position="dropdownPosition">
-				<template #trigger>
-					<p role="button"></p>
-				</template>
-				<b-dropdown-item :focusable="false" aria-role="menu-item" custom>
-					<b-button expanded type="is-text" @click="closeMenuThen('rename', folder)">
-						<i class="mdi mdi-pencil-outline mr-2"></i>
-						{{ $t('Rename') }}
-					</b-button>
-					<b-button expanded type="is-text" @click="closeMenuThen('editIcon', folder)">
-						<i class="mdi mdi-image-edit-outline mr-2"></i>
-						{{ $t('Edit icon') }}
-					</b-button>
-					<b-button class="has-text-red" expanded type="is-text" @click="closeMenuThen('delete', folder)">
-						<i class="mdi mdi-trash-can-outline mr-2"></i>
-						{{ $t('Delete folder') }}
-					</b-button>
-				</b-dropdown-item>
-			</b-dropdown>
+
+		<!-- Desktop Context Menu (portal mounted to body on open) -->
+		<div
+			v-show="menuVisible"
+			ref="menu"
+			class="desktop-context-menu"
+			:style="{ top: menuY + 'px', left: menuX + 'px' }"
+			@contextmenu.prevent.stop
+		>
+			<button class="ctx-item" @click="closeMenuThen('rename', folder)">
+				<i class="mdi mdi-pencil-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Rename') }}</span>
+			</button>
+			<button class="ctx-item" @click="closeMenuThen('editIcon', folder)">
+				<i class="mdi mdi-image-edit-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Edit icon') }}</span>
+			</button>
+			<div class="ctx-divider"></div>
+			<button class="ctx-item is-danger" @click="closeMenuThen('delete', folder)">
+				<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Delete folder') }}</span>
+			</button>
 		</div>
 
 		<div class="blur-background"></div>
@@ -48,6 +49,8 @@
 </template>
 
 <script>
+const MENU_WIDTH = 224
+
 export default {
 	name: 'folder-card',
 	props: {
@@ -62,12 +65,29 @@ export default {
 	},
 	data() {
 		return {
-			dropdownPosition: 'is-bottom-left'
+			menuVisible: false,
+			menuX: 0,
+			menuY: 0
 		}
 	},
 	computed: {
 		previewApps() {
 			return (this.folder.apps || []).slice(0, 4)
+		}
+	},
+	mounted() {
+		this.handleCloseOtherMenus = sender => {
+			if (sender !== this) {
+				this.closeMenu()
+			}
+		}
+		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
+	},
+	beforeDestroy() {
+		this.closeMenu()
+		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
+		if (this.$refs.menu && this.$refs.menu.parentNode) {
+			this.$refs.menu.parentNode.removeChild(this.$refs.menu)
 		}
 	},
 	methods: {
@@ -80,20 +100,75 @@ export default {
 			this.$emit('open', this.folder)
 		},
 		handleCardContextMenu(event) {
-			if (!this.$refs.dro) return
-			const rightOffset = window.innerWidth - (event ? event.clientX : 0) - 200
-			const horizontalPos = rightOffset > 0 ? 'right' : 'left'
-			const bottomOffset = window.innerHeight - (event ? event.clientY : 0) - 200
-			const verticalPos = bottomOffset > 0 ? 'bottom' : 'top'
-			this.dropdownPosition = `is-${verticalPos}-${horizontalPos}`
-			this.$refs.dro.isActive = true
-		},
-
-		closeMenuThen(eventName, ...args) {
-			if (this.$refs.dro) {
-				this.$refs.dro.isActive = false
+			if (event) {
+				event.preventDefault()
+				event.stopPropagation()
 			}
+
+			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
+
+			const targetContainer = document.fullscreenElement || document.body
+			if (this.$refs.menu && this.$refs.menu.parentNode !== targetContainer) {
+				targetContainer.appendChild(this.$refs.menu)
+			}
+
+			const clientX = event ? event.clientX : window.innerWidth / 2
+			const clientY = event ? event.clientY : window.innerHeight / 2
+
+			let x = Math.max(12, Math.min(window.innerWidth - MENU_WIDTH - 16, clientX))
+			let y = Math.max(12, clientY)
+
+			this.menuX = x
+			this.menuY = y
+			this.menuVisible = true
+
+			this.addEventListeners()
+
+			this.$nextTick(() => {
+				if (!this.$refs.menu) return
+				const rect = this.$refs.menu.getBoundingClientRect()
+				const maxBottom = window.innerHeight - 80 // Above taskbar dock
+				if (rect.bottom > maxBottom) {
+					const adjustedY = Math.max(12, clientY - rect.height)
+					this.menuY = Math.min(adjustedY, maxBottom - rect.height)
+				}
+				if (rect.right > window.innerWidth - 12) {
+					this.menuX = Math.max(12, window.innerWidth - rect.width - 12)
+				}
+			})
+		},
+		closeMenu() {
+			if (!this.menuVisible) return
+			this.menuVisible = false
+			this.removeEventListeners()
+		},
+		closeMenuThen(eventName, ...args) {
+			this.closeMenu()
 			this.$emit(eventName, ...args)
+		},
+		onOutsideClick(event) {
+			if (this.menuVisible && this.$refs.menu && !this.$refs.menu.contains(event.target)) {
+				this.closeMenu()
+			}
+		},
+		onKeyDown(event) {
+			if (event.key === 'Escape' && this.menuVisible) {
+				this.closeMenu()
+			}
+		},
+		addEventListeners() {
+			document.addEventListener('mousedown', this.onOutsideClick)
+			document.addEventListener('keydown', this.onKeyDown)
+			window.addEventListener('blur', this.closeMenu)
+			window.addEventListener('resize', this.closeMenu)
+			window.addEventListener('scroll', this.closeMenu, true)
+		},
+		removeEventListeners() {
+			document.removeEventListener('mousedown', this.onOutsideClick)
+			document.removeEventListener('keydown', this.onKeyDown)
+			window.removeEventListener('blur', this.closeMenu)
+			window.removeEventListener('resize', this.closeMenu)
+			window.removeEventListener('scroll', this.closeMenu, true)
 		}
 	}
 }

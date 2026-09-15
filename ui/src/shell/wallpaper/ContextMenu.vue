@@ -76,12 +76,21 @@ export default {
 		this.$EventBus.$on(events.SHOW_HOME_CONTEXT_MENU, event => {
 			this.open(event)
 		})
+		this.handleCloseOtherMenus = sender => {
+			if (sender !== this) {
+				this.close()
+			}
+		}
+		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.addEventListener('mousedown', this.onOutsideClick)
+		document.addEventListener('keydown', this.onKeyDown)
 		window.addEventListener('blur', this.close)
 		window.addEventListener('resize', this.close)
 	},
 	beforeDestroy() {
+		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.removeEventListener('mousedown', this.onOutsideClick)
+		document.removeEventListener('keydown', this.onKeyDown)
 		window.removeEventListener('blur', this.close)
 		window.removeEventListener('resize', this.close)
 	},
@@ -121,6 +130,7 @@ export default {
 				(target.classList && target.classList.contains('desktop-viewport'))
 
 			if (isDesktopCanvas) {
+				this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
 				const maxLeft = Math.max(12, window.innerWidth - MENU_WIDTH - 16)
 				const maxTop = Math.max(12, window.innerHeight - MENU_HEIGHT - 80) // Above taskbar dock
 
@@ -134,6 +144,11 @@ export default {
 		},
 		onOutsideClick(event) {
 			if (this.visible && this.$refs.menu && !this.$refs.menu.contains(event.target)) {
+				this.close()
+			}
+		},
+		onKeyDown(event) {
+			if (event.key === 'Escape' && this.visible) {
 				this.close()
 			}
 		},
@@ -224,16 +239,8 @@ export default {
 	animation: ctxFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes ctxFadeIn {
-	from {
-		opacity: 0;
-		transform: scale(0.96) translateY(-4px);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1) translateY(0);
-	}
-}
+// @keyframes ctxFadeIn is defined once, globally, in
+// assets/scss/common/_dropdown.scss - see that file for why.
 
 .ctx-item {
 	display: flex;

@@ -2,141 +2,127 @@
 	<div class="common-card is-flex is-align-items-center is-justify-content-center  app-card"
 		@contextmenu.prevent.stop="handleCardContextMenu" @mouseleave="hover = true" @mouseover="hover = true">
 
-		<!-- Action Button Start: right-click only, no visible hover trigger -->
-		<div v-if="!isUninstalling" class="action-btn">
-			<b-dropdown ref="dro" :mobile-modal="false" :triggers="['contextmenu']" animation="fade1"
-				append-to-body aria-role="list" class="app-card-drop" :position="dropdownPosition"
-				@active-change="setDropState">
-				<template #trigger>
-					<p role="button"></p>
-				</template>
+		<!-- Desktop Context Menu (portal mounted to body on open) -->
+		<div
+			v-show="menuVisible"
+			ref="menu"
+			class="desktop-context-menu"
+			:style="{ top: menuY + 'px', left: menuX + 'px' }"
+			@contextmenu.prevent.stop
+		>
+			<!-- 1. Open / Launch / Import -->
+			<button v-if="isSystemApp" class="ctx-item" @click="openApp(item)">
+				<i class="mdi mdi-open-in-new ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
+			</button>
+			<button v-else-if="isContainerApp && item.overrideUrl" class="ctx-item" @click="openApp(item)">
+				<i class="mdi mdi-open-in-new ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
+			</button>
+			<button v-if="isContainerApp" class="ctx-item" @click="closeMenuThen('importApp', item, false)">
+				<i class="mdi mdi-download-box-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Import to NivaroOS') }}</span>
+			</button>
+			<button v-else-if="!isSystemApp && item.status === 'running'" class="ctx-item" @click="openApp(item)">
+				<i class="mdi mdi-open-in-new ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
+			</button>
+			<button v-else-if="!isSystemApp && !isContainerApp" class="ctx-item" @click="openApp(item)">
+				<i class="mdi mdi-play-circle-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('launch-and-open') }}</span>
+			</button>
 
-				<b-dropdown-item v-if="isSystemApp" :focusable="false" aria-role="menu-item" custom>
-					<b-button expanded type="is-text" @click="closeMenuThen('editLegacyApp', item)">
-						<i class="mdi mdi-pencil-outline mr-2"></i>
-						{{ $t('Edit') }}
-					</b-button>
-					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
-						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
-						{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}
-					</b-button>
-					<b-button v-if="!folderId" expanded type="is-text" @click="closeMenuThen('addToFolder', item)">
-						<i class="mdi mdi-folder-plus-outline mr-2"></i>
-						{{ $t('Add to folder') }}
-					</b-button>
-					<b-button v-if="folderId" expanded type="is-text" @click="closeMenuThen('removeFromFolder', { item, folderId })">
-						<i class="mdi mdi-folder-remove-outline mr-2"></i>
-						{{ $t('Remove from folder') }}
-					</b-button>
-				</b-dropdown-item>
+			<!-- 2. Tips & Settings -->
+			<button v-if="isV2App" class="ctx-item" @click="openTips(item.name)">
+				<i class="mdi mdi-lightbulb-on-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Tips') }}</span>
+			</button>
+			<button v-if="isV2App || isLinkApp" class="ctx-item" @click="configApp()">
+				<i class="mdi mdi-tune-variant ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Setting') }}</span>
+			</button>
 
-				<b-dropdown-item v-else :focusable="false" aria-role="menu-item" custom>
-					<b-button v-if="isContainerApp && item.overrideUrl" expanded tag="a" type="is-text" @click="openApp(item)">
-						<i class="mdi mdi-open-in-new mr-2"></i>
-						{{ $t('Open') }}
-					</b-button>
-					<b-button v-if="isContainerApp" expanded tag="a" type="is-text" @click="closeMenuThen('importApp', item, false)">
-						<i class="mdi mdi-download-box-outline mr-2"></i>
-						{{ $t('Import to NivaroOS') }}
-					</b-button>
-					<b-button v-else-if="item.status === 'running'" expanded tag="a" type="is-text" @click="openApp(item)">
-						<i class="mdi mdi-open-in-new mr-2"></i>
-						{{ $t('Open') }}
-					</b-button>
-					<b-button v-else-if="!isContainerApp" expanded tag="a" type="is-text" @click="openApp(item)">
-						<i class="mdi mdi-play-circle-outline mr-2"></i>
-						{{ $t('launch-and-open') }}
-					</b-button>
-					<b-button v-if="isV2App" expanded size="is-16" type="is-text" @click="openTips(item.name)">
-						<i class="mdi mdi-lightbulb-on-outline mr-2"></i>
-						{{ $t('Tips') }}
-					</b-button>
-					<b-button v-if="isV2App || isLinkApp" expanded type="is-text" @click="configApp()">
-						<i class="mdi mdi-tune-variant mr-2"></i>
-						{{ $t('Setting') }}
-					</b-button>
+			<!-- 3. Logs & Terminal (for containers / v1 / v2) -->
+			<button v-if="isContainerApp || isV2App || isV1App" class="ctx-item" @click="openContainerConsole('logs')">
+				<i class="mdi mdi-text-box-search-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Logs') }}</span>
+			</button>
+			<button v-if="isContainerApp || isV2App || isV1App" class="ctx-item" @click="openContainerConsole('terminal')">
+				<i class="mdi mdi-console ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Terminal') }}</span>
+			</button>
 
-					<!-- Logs & Terminal Console for all containers -->
-					<b-button v-if="isContainerApp || isV2App || isV1App" expanded type="is-text" @click="openContainerConsole('logs')">
-						<i class="mdi mdi-text-box-search-outline mr-2"></i>
-						{{ $t('Logs') }}
-					</b-button>
-					<b-button v-if="isContainerApp || isV2App || isV1App" expanded type="is-text" @click="openContainerConsole('terminal')">
-						<i class="mdi mdi-console mr-2"></i>
-						{{ $t('Terminal') }}
-					</b-button>
+			<!-- 4. Edit (Rename / icon / roundness) - available for all apps -->
+			<button class="ctx-item" @click="closeMenuThen('editLegacyApp', item)">
+				<i class="mdi mdi-pencil-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Edit') }}</span>
+			</button>
 
-					<!-- Rename/icon/roundness - available for every app type -->
-					<b-button expanded type="is-text" @click="closeMenuThen('editLegacyApp', item)">
-						<i class="mdi mdi-pencil-outline mr-2"></i>
-						{{ $t('Edit') }}
-					</b-button>
+			<!-- 5. Advanced Container Management (update check, compose export, rebuild) -->
+			<button v-if="isV2App && !item.is_uncontrolled" class="ctx-item" :disabled="isCheckThenUpdate || isUpdating" @click="checkAppVersion(item.name)">
+				<i class="mdi mdi-update ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Check then update') }}</span>
+				<i v-if="isCheckThenUpdate || isUpdating" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+			</button>
+			<button v-if="isV1App" class="ctx-item" @click="exportYAML(item)">
+				<i class="mdi mdi-file-export-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Export as Compose') }}</span>
+			</button>
+			<button v-if="isV1App" class="ctx-item" :disabled="isRebuilding" @click="rebuild(item)">
+				<i class="mdi mdi-hammer-wrench ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Rebuild') }}</span>
+				<i v-if="isRebuilding" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+			</button>
 
-					<b-button v-if="isV2App && !item.is_uncontrolled" expanded type="is-text" @click="checkAppVersion(item.name)">
-						<i class="mdi mdi-update mr-2"></i>
-						{{ $t('Check then update') }}
-						<b-loading :active="isCheckThenUpdate || isUpdating" :is-full-page="false">
-							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
-						</b-loading>
-					</b-button>
+			<div class="ctx-divider"></div>
 
-					<b-button v-if="isV1App" expanded type="is-text" @click="exportYAML(item)">
-						<i class="mdi mdi-file-export-outline mr-2"></i>
-						{{ $t('Export as Compose') }}
-					</b-button>
+			<!-- 6. Pinning & Folders -->
+			<button class="ctx-item" @click="togglePin">
+				<i :class="isPinned ? 'mdi mdi-pin-off-outline ctx-icon' : 'mdi mdi-pin-outline ctx-icon'"></i>
+				<span class="ctx-label">{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}</span>
+			</button>
+			<button v-if="!folderId" class="ctx-item" @click="closeMenuThen('addToFolder', item)">
+				<i class="mdi mdi-folder-plus-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Add to folder') }}</span>
+			</button>
+			<button v-if="folderId" class="ctx-item" @click="closeMenuThen('removeFromFolder', { item, folderId })">
+				<i class="mdi mdi-folder-remove-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Remove from folder') }}</span>
+			</button>
 
-					<b-button v-if="isV1App" :loading="isRebuilding" expanded type="is-text" @click="rebuild(item)">
-						<i class="mdi mdi-hammer-wrench mr-2"></i>
-						{{ $t('Rebuild') }}
-					</b-button>
+			<!-- 7. Lifecycle (Restart, Start / Stop) -->
+			<template v-if="!isLinkApp && !isSystemApp">
+				<div class="ctx-divider"></div>
+				<button class="ctx-item" :disabled="item.status !== 'running' || isRestarting" @click="restartApp">
+					<i class="mdi mdi-restart ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Restart') }}</span>
+					<i v-if="isRestarting" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+				</button>
+				<button class="ctx-item" :class="{ 'is-danger': item.status === 'running' }" :disabled="isStarting" @click="toggle(item)">
+					<i :class="item.status === 'running' ? 'mdi mdi-stop-circle-outline ctx-icon' : 'mdi mdi-play-circle-outline ctx-icon'"></i>
+					<span class="ctx-label">{{ item.status === 'running' ? $t('Stop') : $t('Start') }}</span>
+					<i v-if="isStarting" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+				</button>
+			</template>
 
-					<b-button v-if="isLinkApp" class="mb-1" expanded type="is-text" @click="uninstallApp(true)">
-						<i class="mdi mdi-delete-outline mr-2"></i>
-						{{ $t('Delete') }}
-						<b-loading v-model="isUninstalling" :is-full-page="false">
-							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
-						</b-loading>
-					</b-button>
-					<b-button v-else-if="!isContainerApp" class="has-text-red" expanded type="is-text" @click="uninstallConfirm">
-						<i class="mdi mdi-trash-can-outline mr-2"></i>
-						{{ $t('Uninstall') }}
-						<b-loading v-model="isUninstalling" :is-full-page="false">
-							<img :src="require('@/assets/img/loading/waiting.svg')" alt="pending" class="ml-4 is-24x24" />
-						</b-loading>
-					</b-button>
-
-					<b-button expanded type="is-text" class="pin-dock-btn" @click="togglePin">
-						<i :class="isPinned ? 'mdi mdi-pin-off-outline mr-2' : 'mdi mdi-pin-outline mr-2'"></i>
-						{{ isPinned ? $t('Unpin from taskbar') : $t('Pin to taskbar') }}
-					</b-button>
-
-					<b-button v-if="!folderId" expanded type="is-text" @click="closeMenuThen('addToFolder', item)">
-						<i class="mdi mdi-folder-plus-outline mr-2"></i>
-						{{ $t('Add to folder') }}
-					</b-button>
-					<b-button v-if="folderId" expanded type="is-text" @click="closeMenuThen('removeFromFolder', { item, folderId })">
-						<i class="mdi mdi-folder-remove-outline mr-2"></i>
-						{{ $t('Remove from folder') }}
-					</b-button>
-
-					<!-- Start / Stop / Restart — at the bottom for all non-link app types -->
-					<template v-if="!isLinkApp">
-						<hr class="dropdown-divider" style="margin: 4px 0;" />
-						<b-button :loading="isRestarting" expanded type="is-text" @click="restartApp"
-							:disabled="item.status != 'running'">
-							<i class="mdi mdi-restart mr-2"></i>
-							{{ $t('Restart') }}
-						</b-button>
-						<b-button :class="item.status === 'running' ? 'has-text-red' : ''" :loading="isStarting"
-							expanded type="is-text" @click="toggle(item)">
-							<i :class="item.status === 'running' ? 'mdi mdi-stop-circle-outline mr-2' : 'mdi mdi-play-circle-outline mr-2'"></i>
-							{{ item.status === 'running' ? $t('Stop') : $t('Start') }}
-						</b-button>
-					</template>
-				</b-dropdown-item>
-			</b-dropdown>
+			<!-- 8. Deletion & Uninstall (Destructive actions at bottom) -->
+			<template v-if="isLinkApp">
+				<div class="ctx-divider"></div>
+				<button class="ctx-item is-danger" :disabled="isUninstalling" @click="uninstallApp(true)">
+					<i class="mdi mdi-delete-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Delete') }}</span>
+					<i v-if="isUninstalling" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+				</button>
+			</template>
+			<template v-else-if="!isContainerApp && !isSystemApp">
+				<div class="ctx-divider"></div>
+				<button class="ctx-item is-danger" :disabled="isUninstalling" @click="uninstallConfirm">
+					<i class="mdi mdi-trash-can-outline ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Uninstall') }}</span>
+					<i v-if="isUninstalling" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
+				</button>
+			</template>
 		</div>
-		<!-- Action Button End -->
 		<div class="blur-background"></div>
 		<div class="cards-content" @click="handleCardClick(item, $event)" @dblclick="handleCardDblClick(item, $event)">
 			<!-- Card Content Start -->
@@ -180,6 +166,7 @@
 
 <script>
 import events from '@/events/events';
+import { escapeHtml } from '@/utils/escapeHtml';
 import cTooltip from '@/shared/basicComponents/tooltip/tooltip.vue';
 import business_ShowNewAppTag from "@/mixins/app/Business_ShowNewAppTag";
 import business_OpenThirdApp from "@/mixins/app/Business_OpenThirdApp";
@@ -204,6 +191,9 @@ export default {
 		return {
 			hover: false,
 			dropState: false,
+			menuVisible: false,
+			menuX: 0,
+			menuY: 0,
 			isUninstalling: false,
 			isCloning: false,
 			isCheckThenUpdate: false,
@@ -293,15 +283,25 @@ export default {
 		this.$EventBus.$on(events.RELOAD_APP_LIST, this.checkPinStatus)
 	},
 
+	mounted() {
+		this.handleCloseOtherMenus = sender => {
+			if (sender !== this) {
+				this.closeMenu()
+			}
+		}
+		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
+	},
+
 	beforeDestroy() {
+		this.closeMenu()
 		this.$EventBus.$off(events.RELOAD_APP_LIST, this.checkPinStatus)
+		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
+		if (this.$refs.menu && this.$refs.menu.parentNode) {
+			this.$refs.menu.parentNode.removeChild(this.$refs.menu)
+		}
 	},
 
 	watch: {
-		hover(val) {
-			if (!val && this.dropState)
-				this.$refs.dro.toggle();
-		},
 		isLoading(active) {
 			// design :: The first display is three seconds long
 			if (this.isCheckThenUpdate && this.activeTimer === undefined) {
@@ -337,18 +337,85 @@ export default {
 			})
 		},
 
-		// Buefy's dropdown 'contextmenu' trigger only fires on the trigger
-		// slot itself (the small dots icon) - this makes right-clicking
-		// anywhere on the card open the same menu.
 		handleCardContextMenu(event) {
-			if (!this.$refs.dro) return
+			if (event) {
+				event.preventDefault()
+				event.stopPropagation()
+			}
+			if (this.isUninstalling) return
+
+			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
 			this.checkPinStatus()
-			const rightOffset = window.innerWidth - event.clientX - 220
-			const horizontalPos = rightOffset > 0 ? "right" : "left"
-			const bottomOffset = window.innerHeight - event.clientY - 380
-			const verticalPos = bottomOffset > 0 ? "bottom" : "top"
-			this.dropdownPosition = `is-${verticalPos}-${horizontalPos}`
-			this.$refs.dro.isActive = true
+
+			const targetContainer = document.fullscreenElement || document.body
+			if (this.$refs.menu && this.$refs.menu.parentNode !== targetContainer) {
+				targetContainer.appendChild(this.$refs.menu)
+			}
+
+			const MENU_WIDTH = 224
+			const clientX = event ? event.clientX : window.innerWidth / 2
+			const clientY = event ? event.clientY : window.innerHeight / 2
+
+			let x = Math.max(12, Math.min(window.innerWidth - MENU_WIDTH - 16, clientX))
+			let y = Math.max(12, clientY)
+
+			this.menuX = x
+			this.menuY = y
+			this.menuVisible = true
+
+			this.addEventListeners()
+
+			this.$nextTick(() => {
+				if (!this.$refs.menu) return
+				const rect = this.$refs.menu.getBoundingClientRect()
+				const maxBottom = window.innerHeight - 80 // Above taskbar dock
+				if (rect.bottom > maxBottom) {
+					const adjustedY = Math.max(12, clientY - rect.height)
+					this.menuY = Math.min(adjustedY, maxBottom - rect.height)
+				}
+				if (rect.right > window.innerWidth - 12) {
+					this.menuX = Math.max(12, window.innerWidth - rect.width - 12)
+				}
+			})
+		},
+
+		closeMenu() {
+			if (!this.menuVisible) return
+			this.menuVisible = false
+			this.removeEventListeners()
+		},
+
+		closeMenuThen(eventName, ...args) {
+			this.closeMenu()
+			this.$emit(eventName, ...args)
+		},
+
+		onOutsideClick(event) {
+			if (this.menuVisible && this.$refs.menu && !this.$refs.menu.contains(event.target)) {
+				this.closeMenu()
+			}
+		},
+
+		onKeyDown(event) {
+			if (event.key === 'Escape' && this.menuVisible) {
+				this.closeMenu()
+			}
+		},
+
+		addEventListeners() {
+			document.addEventListener('mousedown', this.onOutsideClick)
+			document.addEventListener('keydown', this.onKeyDown)
+			window.addEventListener('blur', this.closeMenu)
+			window.addEventListener('resize', this.closeMenu)
+			window.addEventListener('scroll', this.closeMenu, true)
+		},
+
+		removeEventListeners() {
+			document.removeEventListener('mousedown', this.onOutsideClick)
+			document.removeEventListener('keydown', this.onKeyDown)
+			window.removeEventListener('blur', this.closeMenu)
+			window.removeEventListener('resize', this.closeMenu)
+			window.removeEventListener('scroll', this.closeMenu, true)
 		},
 
 		togglePin() {
@@ -367,19 +434,9 @@ export default {
 					queue: false
 				})
 			})
-			if (this.$refs.dro) this.$refs.dro.isActive = false
+			this.closeMenu()
 		},
 
-		// Menu items that open something else (a modal, another panel)
-		// need to close this dropdown first - it was staying open,
-		// rendered on top of whatever opened next, since none of these
-		// custom emits ever touched dro.isActive.
-		closeMenuThen(eventName, ...args) {
-			if (this.$refs.dro) {
-				this.$refs.dro.isActive = false
-			}
-			this.$emit(eventName, ...args)
-		},
 		/**
 		 * @description: Open app in new windows
 		 * @param {String} status App status
@@ -396,9 +453,10 @@ export default {
 			this.openApp(item)
 		},
 		openApp(item) {
+			this.closeMenu()
 			if (this.isContainerApp) {
 				// Importing is an explicit menu action now (see the
-				// dropdown button above) rather than triggered by clicking
+				// context menu item) rather than triggered by clicking
 				// the icon. Clicking opens the custom URL set via Edit, if
 				// any, otherwise does nothing.
 				if (item.overrideUrl) {
@@ -413,7 +471,6 @@ export default {
 				this.removeIdFromSessionStorage(item.name);
 			} else {
 				// type is one of 'official' or 'community'.
-				this.$refs.dro.isActive = false
 				if (item.status === 'running') {
 					this.openAppToNewWindow(item)
 				} else {
@@ -470,7 +527,7 @@ export default {
 		},
 
 		openContainerConsole(initialTab = 'terminal') {
-			this.$refs.dro.isActive = false;
+			this.closeMenu();
 			const containerId = this.item.name || this.item.id;
 			let containerName = this.item.title || this.item.name || containerId;
 			if (typeof containerName === 'object' && containerName !== null) {
@@ -513,7 +570,7 @@ export default {
 			} else if (this.isV1App || this.isContainerApp) {
 				this.restartAppV1();
 			}
-			this.$refs.dro.isActive = false;
+			this.closeMenu();
 		},
 
 		restartAppV1() {
@@ -552,7 +609,7 @@ export default {
 		 */
 		uninstallConfirm() {
 			this.$messageBus('apps_uninstall', this.item.name);
-			this.$refs.dro.isActive = false
+			this.closeMenu();
 			this.confirmWindow({
 				title: this.$t('Attention'),
 				message: this.$t(`Data cannot be recovered after deletion! <br/>Continue on to uninstall this application?<br/>{divS}Delete userdata ( config folder ){divE}`, {
@@ -574,6 +631,7 @@ export default {
 		 * @return {*} void
 		 */
 		uninstallApp(checkDelConfig) {
+			this.closeMenu();
 			this.isUninstalling = true
 			this.removeIdFromSessionStorage(this.item.name);
 			if (this.isLinkApp) {
@@ -618,7 +676,7 @@ export default {
 		 * @return {*} void
 		 */
 		updateState() {
-			this.$refs.dro.isActive = false
+			this.closeMenu();
 			this.$emit("updateState")
 			this.$EventBus.$emit(events.UPDATE_SYNC_STATUS);
 		},
@@ -631,7 +689,7 @@ export default {
 						'accept': 'application/yaml'
 					}
 				}).then(res => res.data)
-				this.$refs.dro.isActive = false
+				this.closeMenu();
 				this.$buefy.modal.open({
 					parent: this,
 					component: tipEditorModal,
@@ -657,7 +715,7 @@ export default {
 		 */
 		configApp() {
 			this.$messageBus('apps_setting', this.item.name);
-			this.$refs.dro.isActive = false;
+			this.closeMenu();
 			this.$emit("configApp", this.item, this.isV2App);
 		},
 
@@ -676,7 +734,7 @@ export default {
 			} else if (this.isV1App || this.isContainerApp) {
 				this.toggleAppV1(item, status);
 			}
-			this.$refs.dro.isActive = false
+			this.closeMenu();
 		},
 
 		toggleAppV1(item, status) {
@@ -758,7 +816,7 @@ export default {
 						})
 					}).then(() => {
 						this.isCloning = false;
-						this.$refs.dro.isActive = false
+						this.closeMenu();
 					})
 				}
 			}).catch(() => {
@@ -770,6 +828,7 @@ export default {
 		},
 
 		exportYAML(item) {
+			this.closeMenu();
 			this.$api.container.exportAsCompose(item.name).then(res => {
 				const blob = new Blob([res.data], { type: '' });
 				FileSaver.saveAs(blob, `${item.image}.yaml`);
@@ -782,6 +841,7 @@ export default {
 		},
 
 		async rebuild(app) {
+			this.closeMenu();
 			this.isRebuilding = true;
 			try {
 				// 1. get yaml
@@ -800,10 +860,11 @@ export default {
 			}
 			// 4.sockiet :: install-end :: change UI status.
 			// this.isRebuilding = false;
-			this.$refs.dro.isActive = false;
+			this.closeMenu();
 		},
 
 		checkAppVersion(name) {
+			this.closeMenu();
 			this.isCheckThenUpdate = true;
 			this.$openAPI.appManagement.compose.updateComposeApp(name).then(resp => {
 				// 200:
@@ -828,7 +889,7 @@ export default {
 					type: 'is-danger'
 				})
 			}).finally(() => {
-				this.$refs.dro.isActive = false
+				this.closeMenu();
 				this.isCheckThenUpdate = false;
 			})
 		},
@@ -954,8 +1015,11 @@ export default {
 				return
 			}
 			this.isUpdating = false;
+			// item.name comes from the installed app's manifest, not
+			// developer-authored text - escape before it hits toast.open's
+			// v-html-rendered message.
 			this.$buefy.toast.open({
-				message: this.$t(`{appName} is the latest version!`, { appName: this.item.name }),
+				message: this.$t(`{appName} is the latest version!`, { appName: escapeHtml(this.item.name) }),
 				type: 'is-success',
 				duration: 5000
 			})
@@ -966,7 +1030,7 @@ export default {
 				this.isRebuilding = false;
 				// 5.message toast
 				this.$buefy.toast.open({
-					message: this.$t(`{title} rebulid completed`, { title: ice_i18n(this.item.title) }),
+					message: this.$t(`{title} rebulid completed`, { title: escapeHtml(ice_i18n(this.item.title)) }),
 					type: 'is-success'
 				})
 			}
@@ -1003,130 +1067,7 @@ export default {
 	color: #fff;
 }
 
-.app-card-drop {
-	.dropdown-menu {
-		min-width: 10rem;
 
-		.dropdown-content {
-			padding: var(--space-1) !important;
-			background: none;
-			background: hsla(0, 0%, 100%, 1);
-			border-radius: var(--radius-card);
-
-			.dropdown-item {
-				padding: 0;
-
-				&>* {
-					margin: 1px 0;
-				}
-			}
-
-			.button {
-				padding-left: var(--space-4);
-				padding-right: var(--space-4);
-				border-radius: var(--radius-sm);
-
-				span {
-					line-height: 1.25rem !important;
-					height: 1.25rem !important;
-				}
-
-				span+span i {
-					color: var(--theme-text-secondary);
-				}
-
-				&.is-text {
-					text-decoration: none;
-					justify-content: flex-start;
-					outline: none;
-					transition: all 0.2s;
-					border: none !important;
-					height: 2rem;
-					font-size: var(--font-base);
-					color: var(--theme-text-primary);
-
-					&.running {
-						color: #84cc16 !important;
-					}
-
-					&.exited {
-						color: #f87171 !important;
-					}
-				}
-
-				&.has-text-red {
-					&:hover {
-						background: var(--color-danger-soft);
-					}
-
-					&:active {
-						background: rgba(239, 68, 68, 0.2);
-					}
-				}
-
-				&:focus {
-					background: none;
-					box-shadow: none;
-					outline: none;
-				}
-
-				&:hover {
-					background-color: var(--theme-card-hover);
-				}
-
-				&:active {
-					background-color: var(--theme-card-selected);
-				}
-			}
-
-			.gap {
-				margin-left: calc(-1 * var(--space-1));
-				margin-right: calc(-1 * var(--space-1));
-			}
-
-			._b-bor {
-				border-top: var(--theme-card-border) 1px solid;
-
-				.is-text {
-					text-decoration: none;
-					justify-content: center !important;
-				}
-
-				.column {
-					margin-bottom: calc(-1 * var(--space-1));
-
-					.button {
-						margin: var(--space-1);
-						height: 2rem;
-					}
-				}
-
-				.column:first-child {
-					border-right: var(--theme-card-border) 1px solid;
-				}
-			}
-
-			/*common*/
-			.loading-overlay {
-				&.is-active {
-					background: var(--theme-card-hover) !important;
-					justify-content: flex-start;
-				}
-
-				.loading-background {
-					background: none;
-				}
-			}
-
-
-			.is-24x24 {
-				width: 1.5rem;
-				height: 1.5rem;
-			}
-
-		}
-	}
-}
 
 .in-card.b-tooltip {
 	&.is-top .tooltip-content {

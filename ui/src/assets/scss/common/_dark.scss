@@ -611,7 +611,7 @@ html.is-dark {
 	// ==========================================
 	// 6. Desktop Menus, Dock, Trays & System Tray
 	// ==========================================
-	// Wallpaper Desktop Context Menu
+	// Desktop Context Menu (wallpaper canvas, app cards, folder cards)
 	.desktop-context-menu {
 		background: rgba(18, 18, 20, 0.95) !important;
 		border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -624,13 +624,42 @@ html.is-dark {
 				color: #d4d4d8 !important;
 			}
 
+			.ctx-spinner {
+				color: #d4d4d8 !important;
+			}
+
 			&:hover {
 				background: #2563eb !important;
 				color: #ffffff !important;
 
-				.ctx-icon {
+				.ctx-icon,
+				.ctx-spinner {
 					color: #ffffff !important;
 				}
+			}
+
+			&.is-danger {
+				color: var(--color-danger, #ef4444) !important;
+
+				.ctx-icon {
+					color: var(--color-danger, #ef4444) !important;
+				}
+
+				&:hover {
+					background: var(--color-danger, #ef4444) !important;
+					color: #ffffff !important;
+
+					.ctx-icon,
+					.ctx-spinner {
+						color: #ffffff !important;
+					}
+				}
+			}
+
+			&:disabled {
+				opacity: 0.45 !important;
+				cursor: not-allowed !important;
+				pointer-events: none !important;
 			}
 		}
 

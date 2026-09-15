@@ -263,12 +263,19 @@ export default {
 		this.$EventBus.$on(events.RELOAD_APP_LIST, this.loadDockItems)
 	},
 	mounted() {
+		this.handleCloseOtherMenus = sender => {
+			if (sender !== this) {
+				this.closeCtxMenu()
+			}
+		}
+		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('blur', this.closeCtxMenu)
 		window.addEventListener('resize', this.closeCtxMenu)
 	},
 	beforeDestroy() {
 		this.$EventBus.$off(events.RELOAD_APP_LIST, this.loadDockItems)
+		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('blur', this.closeCtxMenu)
 		window.removeEventListener('resize', this.closeCtxMenu)
@@ -298,6 +305,7 @@ export default {
 			this.ctxMenu.visible = false
 		},
 		openDockContextMenu(event, target) {
+			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
 			const menuWidth = 215
 			const maxLeft = Math.max(12, window.innerWidth - menuWidth - 16)
 			const left = Math.max(12, Math.min(maxLeft, event.clientX - menuWidth / 2))
