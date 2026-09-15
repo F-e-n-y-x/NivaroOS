@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'api_client.dart';
 import 'storage_service.dart';
 import 'companion_file_server.dart';
@@ -201,16 +202,28 @@ class DeviceSyncService {
     };
   }
 
+  // battery_plus, not the custom `_platformChannel` (com.fenyx.nivaroos/
+  // device_info) - that channel's native handler is only ever registered in
+  // MainActivity.configureFlutterEngine(), which the headless background
+  // isolate's own separate FlutterEngine (see background_sync_isolate.dart)
+  // never runs. Confirmed live: syncing from the background isolate always
+  // logged "MissingPluginException ... getBatteryLevel" and silently fell
+  // back to a hardcoded 100%, regardless of the phone's real battery.
+  // battery_plus is a real federated plugin, auto-registered on every
+  // FlutterEngine the same way device_info_plus already correctly works
+  // from this same background isolate (its device name/model resolves
+  // fine) - a custom ad-hoc MethodChannel tied to one Activity never will.
+  final Battery _battery = Battery();
+
   Future<int> getRealBatteryLevel() async {
-    if (Platform.isAndroid) {
-      try {
-        final level = await _platformChannel.invokeMethod<int>('getBatteryLevel');
-        if (level != null && level >= 0 && level <= 100) {
-          return level;
-        }
-      } catch (e) {
-        debugPrint('[DeviceSyncService] Battery query notice: $e');
+    if (!Platform.isAndroid) return 100;
+    try {
+      final level = await _battery.batteryLevel;
+      if (level >= 0 && level <= 100) {
+        return level;
       }
+    } catch (e) {
+      debugPrint('[DeviceSyncService] Battery query notice: $e');
     }
     return 100;
   }

@@ -2,6 +2,7 @@ package com.fenyx.nivaroos_mobile
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
@@ -31,13 +32,7 @@ class MainActivity : FlutterActivity() {
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->
             if (call.method == "getBatteryLevel") {
-                try {
-                    val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-                    val level = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
-                    result.success(level)
-                } catch (e: Exception) {
-                    result.success(-1)
-                }
+                result.success(getBatteryLevel())
             } else if (call.method == "getHardwareId") {
                 try {
                     val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: ""
@@ -135,6 +130,37 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    // BatteryManager.BATTERY_PROPERTY_CAPACITY returns -1 on some
+    // devices/OEM skins instead of throwing (confirmed live on a Redmi/
+    // HyperOS tablet - it silently always returned -1, which the Dart side's
+    // `level >= 0` check then rejected, falling back to its hardcoded 100%
+    // default forever, regardless of real battery state). The sticky
+    // ACTION_BATTERY_CHANGED broadcast's EXTRA_LEVEL/EXTRA_SCALE is the
+    // older but universally-supported way every Android device implements,
+    // since it's how the system's own battery icon gets its value - used as
+    // the primary source now, with BATTERY_PROPERTY_CAPACITY only as a
+    // fallback if that broadcast is ever unavailable.
+    private fun getBatteryLevel(): Int {
+        try {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryStatus = applicationContext.registerReceiver(null, filter)
+            val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) {
+                return (level * 100 / scale)
+            }
+        } catch (e: Exception) {
+            // fall through to the BatteryManager property below
+        }
+
+        return try {
+            val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        } catch (e: Exception) {
+            -1
         }
     }
 
