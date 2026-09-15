@@ -51,11 +51,21 @@ func GetStorageList(c *gin.Context) {
 
 		tempSystemDisk := false
 		children := 1
+		// currentDisk.Tran only ever says "usb" (from lsblk/udev's ID_BUS) -
+		// it can't tell a USB2 drive from a USB3 one. classifyUSBTransport
+		// reads the real negotiated link speed from sysfs and reports "usb3"
+		// when it's SuperSpeed or faster, so the Files app can show the
+		// right port-speed icon; falls back to plain "usb" if that can't be
+		// determined, and passes every non-USB transport through unchanged.
+		diskType := currentDisk.Tran
+		if diskType == "usb" {
+			diskType = service.MyService.Disk().ClassifyUSBTransport(currentDisk.Path)
+		}
 		tempDisk := model1.Storages{
 			DiskName: currentDisk.Model,
 			Path:     currentDisk.Path,
 			Size:     currentDisk.Size,
-			Type:     currentDisk.Tran,
+			Type:     diskType,
 		}
 
 		storageArr := []model1.Storage{}

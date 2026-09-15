@@ -19,4 +19,6 @@ type File struct {
 	Id             string `json:"id"`
 	To             string `json:"to"`
 	Type           string `json:"type"`
+	// Speed is bytes/sec, sampled server-side over the last poll interval.
+	Speed int64 `json:"speed"`
 }

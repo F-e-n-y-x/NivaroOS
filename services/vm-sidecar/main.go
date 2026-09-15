@@ -12,6 +12,7 @@ import (
 func main() {
 	addr := flag.String("addr", ":28641", "address to listen on")
 	uri := flag.String("libvirt-uri", "qemu:///system", "libvirt connection URI")
+	runtimePath := flag.String("runtime-path", "/var/run/nivaroos", "NivaroOS runtime directory (for locating user-service's JWKS endpoint)")
 	flag.Parse()
 
 	// Connection to libvirt is lazy (see LibvirtStore.getConn) - the
@@ -32,7 +33,7 @@ func main() {
 	RegisterHostRoutes(mux)
 
 	log.Printf("nivaroos-vm-sidecar listening on %s (libvirt: %s)", *addr, *uri)
-	log.Fatal(http.ListenAndServe(*addr, withCORS(mux)))
+	log.Fatal(http.ListenAndServe(*addr, withCORS(requireAuth(mux, *runtimePath))))
 }
 
 func withCORS(next http.Handler) http.Handler {

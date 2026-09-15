@@ -46,6 +46,8 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
+require github.com/fsnotify/fsnotify v1.7.0 // indirect
+
 require (
 	github.com/F-e-n-y-x/NivaroOS/services/common v0.0.0-00010101000000-000000000000
 	github.com/andybalholm/brotli v1.0.5 // indirect

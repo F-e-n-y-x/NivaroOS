@@ -114,6 +114,7 @@ func (i *notifyServer) SendFileOperateNotify(nowSend bool) {
 			task.TotalSize = temp.TotalSize
 			task.To = temp.To
 			task.Type = temp.Type
+			task.Speed = temp.Speed
 			if task.TotalSize < 0 {
 				// Sizes not computed yet (see ComputeOperateSizes) - the
 				// task is queued/copying already, just not able to report a

@@ -8,6 +8,28 @@ ExecStart=/usr/bin/nivaroos-user -c /etc/nivaroos/user-service.conf
 PIDFile=/var/run/nivaroos/user-service.pid
 Restart=always
 Type=notify
+# Defense-in-depth hardening that's safe regardless of this service's exact
+# file-access footprint - none of these Go network/file-management daemons
+# legitimately need kernel module loading, clock/hostname changes, realtime
+# scheduling, or writable+executable memory, so blocking them costs nothing
+# and closes off standard privilege-escalation/persistence paths for
+# whatever a future RCE in this service might otherwise reach for.
+# (ProtectSystem=strict/ReadWritePaths isn't applied here - this service's
+# full file-access footprint isn't narrow/verified enough to allowlist
+# without risking breaking a real write path, same reasoning already
+# documented in the vm-sidecar/gpu-sidecar units.)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target

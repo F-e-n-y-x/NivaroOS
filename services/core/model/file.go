@@ -21,6 +21,11 @@ type FileOperate struct {
 	// actually stopped this task's in-flight copy, as opposed to it
 	// finishing normally - lets the UI show "Cancelled" instead of "Done".
 	Cancelled bool `json:"cancelled"`
+	// Speed is bytes/sec, sampled by CheckFileStatus() from the delta between
+	// consecutive polls - internal only (never bound from a client request,
+	// never marshalled back out of this struct directly; SendFileOperateNotify
+	// copies it into notify.File.Speed for the broadcast to the UI).
+	Speed int64 `json:"-"`
 }
 
 type FileItem struct {

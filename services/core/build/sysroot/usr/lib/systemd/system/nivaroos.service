@@ -8,6 +8,23 @@ ExecStart=/usr/bin/nivaroos -c /etc/nivaroos/casaos.conf
 PIDFile=/var/run/nivaroos/casaos.pid
 Restart=always
 Type=notify
+# Deliberately NOT hardened like the other 5 core services' units - this
+# one is different in a way that matters: route/v1/localterm.go's WsLocalTerm
+# spawns a real `bash -l` login shell as an actual host user for the built-in
+# Terminal app, and systemd process restrictions apply to every child that
+# service process spawns, this shell included. NoNewPrivileges=true (tried
+# here previously) blocks the kernel's own no_new_privs flag from ever being
+# cleared, which is exactly what sudo/su need to escalate - every `sudo`/`su`
+# in that terminal failed with "sudo: the 'no new privileges' flag is set"
+# the moment this was added. The other candidates in that same hardening
+# pass conflict the same way for a REAL admin shell (PrivateTmp hides the
+# system's actual /tmp from someone doing real sysadmin work, ProtectClock
+# blocks `sudo date -s`, ProtectKernelModules blocks `modprobe`, etc.) - this
+# service's own core feature set requires NOT sandboxing it this way. If
+# revisiting this, ProtectSystem=strict-with-allowlist is a different,
+# narrower approach that wouldn't touch process capabilities/no_new_privs at
+# all - still untried here for the same file-access-footprint-uncertainty
+# reason as the vm-sidecar/gpu-sidecar units document.
 
 [Install]
 WantedBy=multi-user.target

@@ -17,4 +17,7 @@ type Connections struct {
 	Port        string `json:"port"`
 	MountPoint  string `json:"mount_point"`
 	Directories string `json:"directories"`
+	Size        string `json:"size,omitempty"`
+	Avail       string `json:"avail,omitempty"`
+	Used        string `json:"used,omitempty"`
 }

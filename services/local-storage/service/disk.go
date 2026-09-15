@@ -53,6 +53,10 @@ type DiskService interface {
 	SmartCTL(path string) model.SmartctlA
 	SmartCTLFull(path string) model.SmartctlA
 	SmartTest(path, testType string) error
+	// ClassifyUSBTransport reports "usb3" for a USB-attached disk whose real
+	// sysfs link speed is SuperSpeed (5 Gbit/s) or faster, otherwise "usb" -
+	// see service/usb_speed.go.
+	ClassifyUSBTransport(path string) string
 	GetStandby(path string) int
 	SetStandby(path string, minutes int) error
 	UmountPointAndRemoveDir(m model.LSBLKModel) error
@@ -140,6 +144,10 @@ func (d *diskService) EnsureDefaultMergePoint() bool {
 func (d *diskService) RemoveLSBLKCache() {
 	key := "system_lsblk"
 	Cache.Delete(key)
+}
+
+func (d *diskService) ClassifyUSBTransport(path string) string {
+	return classifyUSBTransport(path)
 }
 
 func (d *diskService) UmountUSB(path string) error {

@@ -14,10 +14,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sys/unix"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/samba"
@@ -131,19 +133,46 @@ func DeleteSambaShares(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }
 
+// statfsUsage reads real block-device usage for an already-mounted path via
+// statfs(2) - the same syscall `df` itself uses - so it works for any live
+// mount (cifs, rclone/FUSE, local) without shelling out. Returns ok=false for
+// an unmounted/stale mountpoint (e.g. a samba connection that's registered
+// but not currently connected) so callers can omit the usage fields instead
+// of reporting 0/0.
+func statfsUsage(path string) (size, avail, used uint64, ok bool) {
+	if path == "" {
+		return 0, 0, 0, false
+	}
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return 0, 0, 0, false
+	}
+	bsize := uint64(st.Bsize)
+	size = st.Blocks * bsize
+	avail = st.Bavail * bsize
+	used = size - (st.Bfree * bsize)
+	return size, avail, used, true
+}
+
 // client
 func GetSambaConnectionsList(ctx echo.Context) error {
 	connections := service.MyService.Connections().GetConnectionsList()
 	connectionList := []model.Connections{}
 	for _, v := range connections {
-		connectionList = append(connectionList, model.Connections{
+		item := model.Connections{
 			ID:          v.ID,
 			Username:    v.Username,
 			Port:        v.Port,
 			Host:        v.Host,
 			MountPoint:  v.MountPoint,
 			Directories: v.Directories,
-		})
+		}
+		if size, avail, used, ok := statfsUsage(v.MountPoint); ok {
+			item.Size = strconv.FormatUint(size, 10)
+			item.Avail = strconv.FormatUint(avail, 10)
+			item.Used = strconv.FormatUint(used, 10)
+		}
+		connectionList = append(connectionList, item)
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: connectionList})
 }

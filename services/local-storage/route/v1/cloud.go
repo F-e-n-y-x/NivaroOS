@@ -2,6 +2,7 @@ package v1
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
@@ -9,7 +10,29 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sys/unix"
 )
+
+// statfsUsage reads live block usage for an already-mounted path via
+// statfs(2), the same syscall `df` uses - confirmed working against rclone's
+// FUSE mounts (they implement statfs from the backend's real quota, e.g.
+// Google Drive's About() call) as well as local/cifs mounts. Returns
+// ok=false for a path that isn't actually mounted right now, so callers can
+// omit usage instead of reporting 0/0.
+func statfsUsage(path string) (size, avail, used uint64, ok bool) {
+	if path == "" {
+		return 0, 0, 0, false
+	}
+	var st unix.Statfs_t
+	if err := unix.Statfs(path, &st); err != nil {
+		return 0, 0, 0, false
+	}
+	bsize := uint64(st.Bsize)
+	size = st.Blocks * bsize
+	avail = st.Bavail * bsize
+	used = size - (st.Bfree * bsize)
+	return size, avail, used, true
+}
 
 func ListStorages(c *gin.Context) {
 	// var req model.PageReq
@@ -41,13 +64,19 @@ func ListStorages(c *gin.Context) {
 	for _, v := range r.MountPoints {
 		t := service.MyService.Storage().GetAttributeValueByName(v.Fs, "type")
 		name := service.MyService.Storage().GetAttributeValueByName(v.Fs, "username")
-		list = append(list, httper.MountPoint{
+		item := httper.MountPoint{
 			Fs:         v.Fs,
 			Icon:       cloudProviderIcon(t),
 			MountPoint: v.MountPoint,
 			Name:       name,
 			Type:       t,
-		})
+		}
+		if size, avail, used, ok := statfsUsage(v.MountPoint); ok {
+			item.Size = strconv.FormatUint(size, 10)
+			item.Avail = strconv.FormatUint(avail, 10)
+			item.Used = strconv.FormatUint(used, 10)
+		}
+		list = append(list, item)
 	}
 
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: list})

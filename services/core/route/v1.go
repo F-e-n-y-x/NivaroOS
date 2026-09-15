@@ -144,6 +144,7 @@ func InitV1Router() http.Handler {
 		v1FileGroup.Use()
 		{
 			v1FileGroup.GET("", v1.GetDownloadSingleFile) // download/:path
+			v1FileGroup.GET("/stream", v1.GetStreamRemuxVideo)
 			v1FileGroup.POST("", v1.PostCreateFile)
 			v1FileGroup.PUT("", v1.PutFileContent)
 			v1FileGroup.DELETE("", v1.DeleteFile)

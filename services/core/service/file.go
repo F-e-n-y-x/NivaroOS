@@ -339,13 +339,29 @@ func ComputeOperateSizes(uid string) {
 	FileQueue.Store(uid, cur)
 }
 
+// checkFileStatusPollInterval controls both how often CheckFileStatus
+// re-measures destination size and how often that progress is broadcast to
+// the UI. It used to be 3s with nothing broadcasting in between at all (see
+// the removed-call note below) - even after fixing that, 3s is still far
+// coarser than a real copy dialog: most everyday copies (a few hundred MB on
+// local SSD/same-host storage) land well inside a single 3s window, so the
+// UI would still only ever see "Preparing" then "Done" with nothing shown
+// between them. 400ms keeps multiple samples in flight for those common
+// cases while staying cheap - each tick's cost is a recursive stat-based
+// size walk of every unfinished item's destination path, not a full re-copy.
+const checkFileStatusPollInterval = 400 * time.Millisecond
+
 // file move or copy and send notify
 func CheckFileStatus() {
+	lastTick := time.Now()
 	for {
 		snapshot := OpStrArrSnapshot()
 		if len(snapshot) == 0 {
 			return
 		}
+		now := time.Now()
+		elapsed := now.Sub(lastTick).Seconds()
+		lastTick = now
 		for _, v := range snapshot {
 			var total int64 = 0
 			item, ok := FileQueue.Load(v)
@@ -353,6 +369,7 @@ func CheckFileStatus() {
 				continue
 			}
 			temp := item.(model.FileOperate)
+			prevProcessed := temp.ProcessedSize
 			for i := 0; i < len(temp.Item); i++ {
 				if !temp.Item[i].Finished {
 					size, err := file.GetFileOrDirSize(temp.To + "/" + filepath.Base(temp.Item[i].From))
@@ -369,9 +386,24 @@ func CheckFileStatus() {
 				}
 			}
 			temp.ProcessedSize = total
+			if !temp.Finished && elapsed > 0 && total > prevProcessed {
+				temp.Speed = int64(float64(total-prevProcessed) / elapsed)
+			} else {
+				temp.Speed = 0
+			}
 			FileQueue.Store(v, temp)
 		}
-		time.Sleep(time.Second * 3)
+		// This loop was only ever updating FileQueue for itself to read back
+		// later - nothing broadcast these intermediate samples to the UI, so
+		// the only notify events a client ever received were the initial
+		// "queued, size unknown" one (PostOperateFileOrDir) and the final
+		// "finished" one (FileOperate) - i.e. exactly the "stuck on
+		// Preparing, then jumps straight to Done" symptom, regardless of how
+		// long the operation actually took. Broadcasting the freshly-sampled
+		// progress/speed here on every tick is what actually makes this a
+		// live progress bar.
+		go MyService.Notify().SendFileOperateNotify(true)
+		time.Sleep(checkFileStatusPollInterval)
 	}
 }
 func IsMounted(path string) bool {

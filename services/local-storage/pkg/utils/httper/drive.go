@@ -19,6 +19,9 @@ type MountPoint struct {
 	Icon       string `json:"icon"`
 	Name       string `json:"name"`
 	Type       string `json:"type"`
+	Size       string `json:"size,omitempty"`
+	Avail      string `json:"avail,omitempty"`
+	Used       string `json:"used,omitempty"`
 }
 type MountResult struct {
 	Error string `json:"error"`

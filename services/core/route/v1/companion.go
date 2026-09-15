@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +42,21 @@ type CompanionDevice struct {
 	StoragePath       string                 `json:"storage_path"`
 	ServerStorageUsed int64                  `json:"server_storage_used"` // actual size of backed-up files on server
 	CustomProps       map[string]interface{} `json:"custom_props,omitempty"`
+	// Secret authenticates every direct server->phone HTTP call this device's
+	// embedded CompanionFileServer receives (download/upload/delete/files) -
+	// that server has no other way to verify a LAN caller. Generated once at
+	// registration (over the already-JWT-authenticated /companion/register
+	// call) and handed back to the phone in that one response only -
+	// json:"-" keeps it out of every other response (GetCompanionDevices,
+	// GetCompanionDeviceStorage, etc.) that any authenticated NivaroOS user
+	// browsing the sidebar can see - and, as a side effect, out of the
+	// companion_devices.json persistence file too (saveCompanionDevicesLocked
+	// marshals this same struct), so a core service restart clears every
+	// device's secret. That's fine: the phone re-registers every 30s
+	// (device_sync_service.dart's heartbeat) and gets a freshly generated one
+	// then - direct phone calls just fail for up to that long after a
+	// restart, not silently or insecurely.
+	Secret string `json:"-"`
 }
 
 type CompanionRegistrationDTO struct {
@@ -195,6 +212,18 @@ func saveCompanionDevicesLocked() error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
+// generateCompanionSecret returns a random 32-byte hex string for a new
+// device's Secret field. crypto/rand, not math/rand - this is a credential,
+// not a display ID (unlike CompanionDevice.ID, which does appear in URLs
+// and logs and must stay separate from this).
+func generateCompanionSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func sanitizeFilename(name string) string {
 	res := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == ' ' || r == '.' {
@@ -263,6 +292,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 		urlStr := fmt.Sprintf("http://%s:%d/files?path=%s", devIP, port, url.QueryEscape(phonePath))
 		req, err := http.NewRequest("GET", urlStr, nil)
 		if err == nil {
+			req.Header.Set("X-Companion-Secret", dev.Secret)
 			client := &http.Client{Timeout: 3 * time.Second}
 			resp, err := client.Do(req)
 			if err == nil && resp.StatusCode == http.StatusOK {
@@ -350,6 +380,7 @@ func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.Respons
 	if err != nil {
 		return err
 	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
 
 	// Forward Range header for video/media seeking and partial content
 	if r != nil {
@@ -412,6 +443,7 @@ func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -639,12 +671,29 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		companionDevices[input.ID] = newDev
 	}
 
+	registered := companionDevices[input.ID]
+	if registered.Secret == "" {
+		secret, err := generateCompanionSecret()
+		if err != nil {
+			logger.Error("failed to generate companion device secret", zap.Error(err))
+		} else {
+			registered.Secret = secret
+		}
+	}
+
 	saveCompanionDevicesLocked()
 
+	// The secret rides alongside (not inside) the device object - Secret's
+	// own json:"-" tag means `registered` itself never serializes it, so
+	// every OTHER endpoint returning a CompanionDevice (list, storage, etc.)
+	// stays safe even though this handler needs to hand it to the phone.
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "companion device registered",
-		Data:    companionDevices[input.ID],
+		Data: map[string]interface{}{
+			"device": registered,
+			"secret": registered.Secret,
+		},
 	})
 }
 

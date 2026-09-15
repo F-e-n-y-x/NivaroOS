@@ -11,8 +11,23 @@ DEVBASE=$2
 
 DEVICE="/dev/${DEVBASE}"
 
-# See if this drive is already mounted, and if so where
-MOUNT_POINT=$(lsblk -l -p -o name,mountpoint | grep ${DEVICE} | awk '{print $2}')
+# See if this drive is already mounted, and if so where.
+#
+# lsblk needs the device's /dev node and udev database entry, which are
+# both already gone by the time a udev "remove" event runs this script -
+# so on removal that lookup silently comes back empty, do_umount() below
+# just logs a warning and does nothing, and the mount-point directory is
+# never cleaned up (this is why orphaned /DATA/USB_Storage_* folders pile
+# up after real unplugs). /proc/mounts still has the entry at that point
+# since nothing has unmounted it yet, so that's what removal must use.
+if [ "${ACTION}" = "remove" ]; then
+  MOUNT_POINT=$(awk -v dev="${DEVICE}" '$1 == dev {print $2}' /proc/mounts | head -n1)
+  # /proc/mounts escapes spaces in paths as \040 - undo that so the later
+  # quoted uses below see the real path.
+  MOUNT_POINT="${MOUNT_POINT//\\040/ }"
+else
+  MOUNT_POINT=$(lsblk -l -p -o name,mountpoint | grep "${DEVICE}" | awk '{print $2}')
+fi
 
 do_mount() {
 
@@ -28,26 +43,24 @@ do_mount() {
   #ID_FS_LABEL_ENC=新加卷
   #ID_FS_TYPE=ntfs
 
-  # Figure out a mount point to use
-  # LABEL=${ID_FS_LABEL}
-  LABEL=${DEVBASE}
-  if grep -q " /DATA/USB_Storage_${LABEL} " /etc/mtab; then
-    # Already in use, make a unique one
-    LABEL+="_${DEVBASE}"
-  fi
-  DEV_LABEL="${LABEL}"
-
-  # Use the device name in case the drive doesn't have label
-  if [ -z ${DEV_LABEL} ]; then
+  # Folder is "<label> <device base>" (e.g. "Backup sdb1") so the drive's
+  # own name is what shows up in /DATA, not a generic USB_Storage_sdb1 -
+  # falls back to just the device base for an unlabeled drive. Sanitized:
+  # a filesystem label can contain '/' or other characters that aren't
+  # safe as a single path component, and DEVBASE already guarantees this
+  # is unique on its own, so no separate collision check is needed.
+  SAFE_LABEL=$(echo "${ID_FS_LABEL}" | tr -s '/\\' '_')
+  if [ -n "${SAFE_LABEL}" ]; then
+    DEV_LABEL="${SAFE_LABEL} ${DEVBASE}"
+  else
     DEV_LABEL="${DEVBASE}"
   fi
 
-
- MOUNT_POINT="/DATA/USB_Storage_${DEV_LABEL}"
+  MOUNT_POINT="/DATA/${DEV_LABEL}"
 
   ${log} "Mount point: ${MOUNT_POINT}"
 
-  mkdir -p ${MOUNT_POINT}
+  mkdir -p "${MOUNT_POINT}"
 
 
   # MOUNT_POINT="/DATA/USB_Storage1"
@@ -84,27 +97,49 @@ do_mount() {
   #
   #  ${log} "Mounted ${DEVICE} at ${MOUNT_POINT}"
 
+  # ${MOUNT_POINT} is quoted everywhere below - it can now contain a space
+  # (the filesystem label), and an unquoted expansion here would word-split
+  # it into two arguments and break every one of these commands.
+  #
+  # None of these checked their own exit code - if the mount/ntfs-3g command
+  # itself failed (most commonly: another automounter, e.g. devmon/udisks2,
+  # won the race for this same device and already mounted it somewhere else
+  # first, like /media/$USER/<label> - device busy), this still fell through
+  # to a "success" exit, leaving the mkdir -p'd directory above sitting in
+  # /DATA empty and permanently unmounted, with nothing pointing at why.
   case ${ID_FS_TYPE} in
   vfat)
-    mount -t vfat -o rw,relatime,users,gid=100,umask=000,shortname=mixed,utf8=1,flush ${DEVICE} ${MOUNT_POINT}
+    mount -t vfat -o rw,relatime,users,gid=100,umask=000,shortname=mixed,utf8=1,flush ${DEVICE} "${MOUNT_POINT}"
+    mount_status=$?
     ;;
   ext[2-4])
-    mount -o noatime ${DEVICE} ${MOUNT_POINT} >/dev/null 2>&1
+    mount -o noatime ${DEVICE} "${MOUNT_POINT}"
+    mount_status=$?
     ;;
   exfat)
-    mount -t exfat ${DEVICE} ${MOUNT_POINT} >/dev/null 2>&1
+    mount -t exfat ${DEVICE} "${MOUNT_POINT}"
+    mount_status=$?
     ;;
   ntfs)
-    ntfs-3g ${DEVICE} ${MOUNT_POINT}
+    ntfs-3g ${DEVICE} "${MOUNT_POINT}"
+    mount_status=$?
     ;;
   iso9660)
-    mount -t iso9660 ${DEVICE} ${MOUNT_POINT}
+    mount -t iso9660 ${DEVICE} "${MOUNT_POINT}"
+    mount_status=$?
     ;;
   *)
-    /bin/rmdir "${MOUNT_POINT}"
+    ${log} "Unsupported filesystem type for ${DEVICE}: ${ID_FS_TYPE}"
+    /bin/rmdir "${MOUNT_POINT}" 2>/dev/null
     exit 0
     ;;
   esac
+
+  if [ "${mount_status}" -ne 0 ]; then
+    ${log} "Failed to mount ${DEVICE} at ${MOUNT_POINT} (exit ${mount_status}) - probably already mounted elsewhere by another automounter; removing the empty directory instead of leaving it behind"
+    /bin/rmdir "${MOUNT_POINT}" 2>/dev/null
+    exit 1
+  fi
 }
 
 do_umount() {
@@ -112,15 +147,22 @@ do_umount() {
   if [[ -z ${MOUNT_POINT} ]]; then
     ${log} "Warning: ${DEVICE} is not mounted"
   else
-    #/bin/kill -9 $(lsof ${MOUNT_POINT})
-    umount -l ${DEVICE}
+    umount -l "${DEVICE}"
     ${log} "Unmounted ${DEVICE} from ${MOUNT_POINT}"
-    if [ "`ls -A ${MOUNT_POINT}`" = "" ]; then
+    if [ -z "$(ls -A "${MOUNT_POINT}" 2>/dev/null)" ]; then
       /bin/rm -fr "${MOUNT_POINT}"
     fi
-    sed -i.bak "\@${MOUNT_POINT}@d" /var/log/usb-mount.track
+    sed -i.bak "\@${MOUNT_POINT}@d" /var/log/usb-mount.track 2>/dev/null
   fi
 
+  # Safety net: sweep for any other USB mount-point folders left behind by
+  # an earlier removal that, for whatever reason, didn't get cleaned up
+  # above (a crash or power loss mid-unmount, a manually yanked drive from
+  # before this fix existed, etc). AutoRemoveUnuseDir already existed in
+  # helper.sh for exactly this - it just was never actually called from
+  # anywhere.
+  # shellcheck source=helper.sh
+  source /usr/share/nivaroos/shell/helper.sh 2>/dev/null && AutoRemoveUnuseDir
 }
 
 case "${ACTION}" in

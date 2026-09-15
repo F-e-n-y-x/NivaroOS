@@ -140,18 +140,22 @@ GetPartitionSectors() {
 
 #检查没有使用的挂载点删除文件夹
 AutoRemoveUnuseDir() {
-  DIRECTORY="/DATA/"
-  dir=$(ls -l $DIRECTORY | grep "USB_Storage_sd[a-z][0-9]" | awk '/^d/ {print $NF}')
-  for i in $dir; do
-
-    path="$DIRECTORY$i"
-    mountStr=$(mountpoint $path)
-    notMountpoint="is not a mountpoint"
-    if [[ $mountStr =~ $notMountpoint ]]; then
-      if [ "$(ls -A $path)" = "" ]; then
-        rm -fr $path
+  DIRECTORY="/DATA"
+  # Matches both this script's current "<label> sdX#" USB mount-point
+  # folders and the legacy "USB_Storage_sdX#" ones from before that naming
+  # changed - a device-basename token is always present either as the
+  # whole name (unlabeled drive) or its trailing " sdX#" word (labeled
+  # drive). find -print0/read -d '' (not `ls | awk`) so a label containing
+  # spaces doesn't get split into multiple broken paths.
+  find "${DIRECTORY}" -maxdepth 1 -mindepth 1 -type d \
+    \( -regex '.*/USB_Storage_sd[a-z][0-9]+' -o -regex '.* sd[a-z][0-9]+' -o -regex '.*/sd[a-z][0-9]+' \) \
+    -print0 |
+  while IFS= read -r -d '' path; do
+    if ! mountpoint -q "${path}"; then
+      if [ -z "$(ls -A "${path}" 2>/dev/null)" ]; then
+        rm -fr "${path}"
       else
-        echo "$path is not empty"
+        echo "${path} is not empty"
       fi
     fi
   done
