@@ -3,7 +3,6 @@ import '../theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
 import '../widgets/common.dart';
-import '../services/device_sync_service.dart';
 import 'home_shell.dart';
 import 'discovery_screen.dart';
 
@@ -69,7 +68,12 @@ class _LoginScreenState extends State<LoginScreen> {
         refreshToken: refreshToken,
         username: username,
       );
-      DeviceSyncService.instance.enableBackgroundSync();
+      // Not triggered here - HomeShell.initState() is the single place that
+      // starts background sync (see its comment). This used to also fire
+      // here, so a fresh login fired it twice within milliseconds, right as
+      // the Navigator below was mid-transition into HomeShell - confirmed
+      // via a real on-device crash log that startForeground() was never
+      // actually reached in that window.
       if (!mounted) return;
       if (widget.isReauth && Navigator.canPop(context)) {
         Navigator.of(context).pop(true);

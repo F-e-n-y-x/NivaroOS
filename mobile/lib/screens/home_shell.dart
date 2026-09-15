@@ -47,9 +47,35 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _loadAvatar();
-    PermissionService.requestInitialPermissions();
-    DeviceSyncService.instance.enableBackgroundSync();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
+    _startBackgroundSync();
+  }
+
+  // The single place background sync gets started (previously also fired
+  // from main.dart on a cold start with an existing session, and from
+  // login_screen.dart right after a fresh login - HomeShell.initState()
+  // runs in both of those cases too, since it's the very next screen either
+  // way, so those were redundant, near-simultaneous duplicate calls firing
+  // exactly when the Navigator was mid-transition. Confirmed via a real
+  // on-device crash log (android.app.RemoteServiceException
+  // $ForegroundServiceDidNotStartInTimeException) that the native foreground
+  // service's startForeground() call was never reached within Android's
+  // window when that happened.
+  //
+  // Requests the notification permission FIRST and waits for it - the
+  // background service's whole visible purpose is its persistent
+  // notification, and starting it before Android has decided whether
+  // notifications are even allowed is asking for exactly the kind of
+  // platform-level foreground-service edge case that got us here - then
+  // defers the actual native service start to after this screen's first
+  // frame (addPostFrameCallback) instead of doing it mid-build/transition.
+  Future<void> _startBackgroundSync() async {
+    await PermissionService.requestInitialPermissions();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      DeviceSyncService.instance.enableBackgroundSync();
+    });
   }
 
   @override

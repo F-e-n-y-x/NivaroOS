@@ -46,7 +46,18 @@ class BackgroundService {
         autoStart: false,
         autoStartOnBoot: autoStartOnBoot,
         isForegroundMode: true,
-        notificationChannelId: 'nivaroos_companion_service',
+        // Deliberately NOT setting notificationChannelId - confirmed via a
+        // real on-device crash log (android.app.RemoteServiceException
+        // $CannotPostForegroundServiceNotificationException: Bad
+        // notification for startForeground) that this plugin's native
+        // BackgroundService.onCreate() only calls createNotificationChannel()
+        // when notificationChannelId is left null; give it a custom one and
+        // that channel is never registered with NotificationManager at all,
+        // so posting the foreground notification against a channel that
+        // doesn't exist crashes the app the moment the service starts -
+        // exactly the "after I enter my credentials the app just stops"
+        // report this was chasing. Leaving this unset lets the plugin use
+        // and auto-create its own default channel ("FOREGROUND_DEFAULT").
         initialNotificationTitle: 'NivaroOS Companion Active',
         initialNotificationContent: 'Storage sharing & device sync running unattended',
         foregroundServiceNotificationId: 42843,

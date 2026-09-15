@@ -6,7 +6,6 @@ import 'screens/discovery_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
 import 'services/permission_service.dart';
-import 'services/device_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +19,13 @@ void main() async {
     final serverUrl = await StorageService.instance.getServerUrl();
     if (serverUrl != null && serverUrl.trim().isNotEmpty) {
       if (ApiClient.instance.hasSession) {
-        DeviceSyncService.instance.enableBackgroundSync();
+        // Not triggered here - HomeShell.initState() is the single place
+        // that starts background sync now (see its comment for why: this
+        // used to also fire from login_screen.dart, so a fresh login fired
+        // it twice within milliseconds of each other, right as the
+        // Navigator was mid-transition into HomeShell - confirmed via a
+        // real on-device crash log (ForegroundServiceDidNotStartInTimeException)
+        // that startForeground() was never actually reached in that window.
         initialScreen = const HomeShell();
       } else {
         initialScreen = const LoginScreen();
