@@ -23,7 +23,19 @@
         <!-- The actual background sync service (headless Dart isolate) and
              its boot-restart receiver are registered by the
              flutter_background_service plugin's own manifest merge - see
-             lib/services/background_service.dart / background_sync_isolate.dart. -->
+             lib/services/background_service.dart / background_sync_isolate.dart.
+             That plugin manifest deliberately ships its <service> with no
+             foregroundServiceType (it's configurable per app) - Android 14+
+             throws MissingForegroundServiceTypeException and kills the whole
+             app the instant startForeground() is called with a type that
+             isn't declared here, so this override (merged onto the same
+             component by matching android:name) is required, not optional.
+             Must match AndroidConfiguration's foregroundServiceTypes in
+             background_service.dart ([AndroidForegroundType.dataSync]). -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="true" />
 
         <activity
             android:name=".MainActivity"
