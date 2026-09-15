@@ -114,16 +114,29 @@ func (i *notifyServer) SendFileOperateNotify(nowSend bool) {
 			task.TotalSize = temp.TotalSize
 			task.To = temp.To
 			task.Type = temp.Type
-			if task.ProcessedSize == 0 {
+			if task.TotalSize < 0 {
+				// Sizes not computed yet (see ComputeOperateSizes) - the
+				// task is queued/copying already, just not able to report a
+				// percentage yet.
+				task.Status = "CALCULATING"
+			} else if task.ProcessedSize == 0 {
 				task.Status = "STARTING"
 			} else {
 				task.Status = "PROCESSING"
 			}
 
-			if temp.Finished || temp.ProcessedSize >= temp.TotalSize {
+			// TotalSize < 0 means "still calculating" (see ComputeOperateSizes) -
+			// without this guard, ProcessedSize(0) >= TotalSize(-1) would mark a
+			// brand new task Finished before it even started.
+			if temp.Finished || (temp.TotalSize >= 0 && temp.ProcessedSize >= temp.TotalSize) {
 
 				task.Finished = true
-				task.Status = "FINISHED"
+				task.Cancelled = temp.Cancelled
+				if temp.Cancelled {
+					task.Status = "CANCELLED"
+				} else {
+					task.Status = "FINISHED"
+				}
 				FileQueue.Delete(v)
 				OpStrArrPopFront()
 				go ExecOpFile()
@@ -184,15 +197,22 @@ func (i *notifyServer) SendFileOperateNotify(nowSend bool) {
 				task.TotalSize = temp.TotalSize
 				task.To = temp.To
 				task.Type = temp.Type
-				if task.ProcessedSize == 0 {
+				if task.TotalSize < 0 {
+					task.Status = "CALCULATING"
+				} else if task.ProcessedSize == 0 {
 					task.Status = "STARTING"
 				} else {
 					task.Status = "PROCESSING"
 				}
-				if temp.Finished || temp.ProcessedSize >= temp.TotalSize {
+				if temp.Finished || (temp.TotalSize >= 0 && temp.ProcessedSize >= temp.TotalSize) {
 
 					task.Finished = true
-					task.Status = "FINISHED"
+					task.Cancelled = temp.Cancelled
+					if temp.Cancelled {
+						task.Status = "CANCELLED"
+					} else {
+						task.Status = "FINISHED"
+					}
 					FileQueue.Delete(v)
 					OpStrArrPopFront()
 					go ExecOpFile()

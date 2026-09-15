@@ -17,6 +17,10 @@ type FileOperate struct {
 	To            string     `json:"to" binding:"required"`
 	Style         string     `json:"style"`
 	Finished      bool       `json:"finished"`
+	// Cancelled is set once a user-initiated cancel (DELETE .../task/:id)
+	// actually stopped this task's in-flight copy, as opposed to it
+	// finishing normally - lets the UI show "Cancelled" instead of "Done".
+	Cancelled bool `json:"cancelled"`
 }
 
 type FileItem struct {

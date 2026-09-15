@@ -11,6 +11,7 @@ package notify
 
 type File struct {
 	Finished       bool   `json:"finished"`
+	Cancelled      bool   `json:"cancelled"`
 	ProcessedSize  int64  `json:"processed_size"`
 	ProcessingPath string `json:"processing_path"`
 	Status         string `json:"status"`

@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -767,24 +766,29 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SOURCE_DES_SAME, Message: common_err.GetMsg(common_err.SOURCE_DES_SAME)})
 	}
 
-	var total int64 = 0
+	// Source-size lookup used to run right here, synchronously, before this
+	// handler could respond at all - for a large folder that's a real
+	// multi-second stall (a full recursive filepath.Walk per item) with zero
+	// UI feedback the whole time, not perceived lag. The mount check for
+	// "move" still runs up front (it's a fast lookup, not a tree walk, and
+	// this request must still be able to reject a move off a mounted path
+	// before queuing anything); actual sizes are now computed by
+	// ComputeOperateSizes after the task is already queued and copying has
+	// already started, since copying itself never needed them - only the
+	// percentage shown to the user did. -1 marks "not computed yet" (0 would
+	// be indistinguishable from "processed >= total", which is checked
+	// elsewhere as "already finished").
 	for i := 0; i < len(list.Item); i++ {
-
-		size, err := file.GetFileOrDirSize(list.Item[i].From)
-		if err != nil {
-			continue
-		}
-		list.Item[i].Size = size
-		total += size
 		if list.Type == "move" {
 			mounted := service.IsMounted(list.Item[i].From)
 			if mounted {
 				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
 			}
 		}
+		list.Item[i].Size = -1
 	}
 
-	list.TotalSize = total
+	list.TotalSize = -1
 	list.ProcessedSize = 0
 
 	uid := uuid.NewString()
@@ -796,6 +800,7 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 		go service.MyService.Notify().SendFileOperateNotify(false)
 
 	}
+	go service.ComputeOperateSizes(uid)
 
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
@@ -1001,11 +1006,9 @@ func GetFileImage(ctx echo.Context) error {
 func DeleteOperateFileOrDir(ctx echo.Context) error {
 	id := ctx.Param("id")
 	if id == "0" {
-		service.FileQueue = sync.Map{}
-		service.OpStrArrReset([]string{})
+		service.CancelAllOperateTasks()
 	} else {
-		service.FileQueue.Delete(id)
-		service.OpStrArrRemove(id)
+		service.CancelOperateTask(id)
 	}
 
 	go service.MyService.Notify().SendFileOperateNotify(true)

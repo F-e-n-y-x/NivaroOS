@@ -151,6 +151,14 @@ export default {
 				message: '',
 				speed: 0,
 			})
+			// Show the tray the instant a file is queued, not only once the
+			// network request actually starts (uploadStart) - a dropped file
+			// otherwise sat tracked-but-invisible for however long
+			// simple-uploader.js takes to begin reading/chunking it. The
+			// "Waiting" + indeterminate-bar state (below) already covers this
+			// gap visually once shown.
+			this.visible = true
+			this.status = 'uploading'
 		})
 
 		this.uploaderInstance.on('filesSubmitted', () => {

@@ -3,6 +3,7 @@ package file
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -336,6 +337,73 @@ func CopyDir(src string, dst string, style string) error {
 
 		if fd.IsDir() {
 			if err = CopyDir(srcfp, dstfp, style); err != nil {
+				fmt.Println(err)
+			}
+		} else {
+			if err = CopyFile(srcfp, dstfp, style); err != nil {
+				fmt.Println(err)
+			}
+		}
+	}
+	return nil
+}
+
+// CopyDirCtx is CopyDir with a cancellation check before every file/
+// subdirectory it's about to copy - added so a user-cancelled copy/move
+// actually stops writing to disk at the next file boundary, instead of
+// silently continuing in the background after the UI drops it from the
+// queue (which is all the previous "cancel" - just removing the task from
+// FileQueue/opStrArr - ever did). Deliberately a separate function rather
+// than changing CopyDir/CopyFile in place: those two have other callers
+// elsewhere that don't have a context to pass in, and their lenient
+// behavior on a plain copy error (log and keep going with the next sibling)
+// needs to stay lenient - only ctx.Err() (an actual cancellation) should
+// abort the whole walk here.
+func CopyDirCtx(ctx context.Context, src string, dst string, style string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	var err error
+	var fds []os.FileInfo
+	var srcinfo os.FileInfo
+
+	if srcinfo, err = os.Stat(src); err != nil {
+		return err
+	}
+	if !srcinfo.IsDir() {
+		if err = CopyFile(src, dst, style); err != nil {
+			fmt.Println(err)
+		}
+		return nil
+	}
+	lastPath := src[strings.LastIndex(src, "/")+1:]
+	dst += "/" + lastPath
+	if Exists(dst) {
+		if style == "skip" {
+			return nil
+		} else {
+			os.Remove(dst)
+		}
+	}
+	if err = os.MkdirAll(dst, srcinfo.Mode()); err != nil {
+		return err
+	}
+	if fds, err = ioutil.ReadDir(src); err != nil {
+		return err
+	}
+	for _, fd := range fds {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		srcfp := path.Join(src, fd.Name())
+		dstfp := dst
+
+		if fd.IsDir() {
+			if err = CopyDirCtx(ctx, srcfp, dstfp, style); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return err
+				}
 				fmt.Println(err)
 			}
 		} else {
