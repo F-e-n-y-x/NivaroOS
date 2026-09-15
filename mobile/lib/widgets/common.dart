@@ -18,13 +18,15 @@ class PulsingStatusDot extends StatefulWidget {
   State<PulsingStatusDot> createState() => _PulsingStatusDotState();
 }
 
-class _PulsingStatusDotState extends State<PulsingStatusDot> with SingleTickerProviderStateMixin {
+class _PulsingStatusDotState extends State<PulsingStatusDot>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
   )..repeat(reverse: true);
 
-  late final Animation<double> _anim = Tween<double>(begin: 0.45, end: 1.0).animate(
+  late final Animation<double> _anim =
+      Tween<double>(begin: 0.45, end: 1.0).animate(
     CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
   );
 
@@ -106,7 +108,8 @@ class RoundIconButton extends StatelessWidget {
             border: Border.all(color: NivaroColors.borderSubtle),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: size * 0.5, color: iconColor ?? NivaroColors.textPrimary),
+          child: Icon(icon,
+              size: size * 0.5, color: iconColor ?? NivaroColors.textPrimary),
         ),
       ),
     );
@@ -199,7 +202,8 @@ class DarkCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
         border: Border.all(color: NivaroColors.borderSubtle),
         boxShadow: const [
-          BoxShadow(color: Color(0x2B000000), blurRadius: 12, offset: Offset(0, 4)),
+          BoxShadow(
+              color: Color(0x2B000000), blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
       child: child,
@@ -240,7 +244,8 @@ class LanBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = isOnline ? NivaroColors.successLight : NivaroColors.dangerLight;
+    final statusColor =
+        isOnline ? NivaroColors.successLight : NivaroColors.dangerLight;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -281,7 +286,10 @@ class LanBadge extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${pingMs}ms',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: NivaroColors.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
               const SizedBox(width: 10),
@@ -300,7 +308,8 @@ class LanBadge extends StatelessWidget {
                 ),
               ),
               if (onTap != null)
-                const Icon(Icons.speed_rounded, size: 16, color: NivaroColors.primaryLight),
+                const Icon(Icons.speed_rounded,
+                    size: 16, color: NivaroColors.primaryLight),
             ],
           ),
         ),
@@ -340,7 +349,8 @@ class MonitorCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
         border: Border.all(color: NivaroColors.borderSubtle),
         boxShadow: const [
-          BoxShadow(color: Color(0x2B000000), blurRadius: 10, offset: Offset(0, 3)),
+          BoxShadow(
+              color: Color(0x2B000000), blurRadius: 10, offset: Offset(0, 3)),
         ],
       ),
       child: Column(
@@ -373,7 +383,8 @@ class MonitorCard extends StatelessWidget {
                 ),
               ),
               if (onTap != null)
-                const Icon(Icons.chevron_right_rounded, size: 16, color: NivaroColors.textFaint),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 16, color: NivaroColors.textFaint),
             ],
           ),
           const SizedBox(height: 8),
@@ -394,7 +405,8 @@ class MonitorCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               subtitle!,
-              style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+              style:
+                  const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -454,13 +466,17 @@ class DriveCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: isUsb ? NivaroColors.accent.withOpacity(0.12) : NivaroColors.primary.withOpacity(0.12),
+                  color: isUsb
+                      ? NivaroColors.accent.withOpacity(0.12)
+                      : NivaroColors.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(NivaroShape.medium),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   isUsb ? Icons.usb_rounded : Icons.storage_rounded,
-                  color: isUsb ? NivaroColors.accentLight : NivaroColors.primaryLight,
+                  color: isUsb
+                      ? NivaroColors.accentLight
+                      : NivaroColors.primaryLight,
                   size: 19,
                 ),
               ),
@@ -471,7 +487,10 @@ class DriveCard extends StatelessWidget {
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: NivaroColors.textPrimary),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: NivaroColors.textPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -496,7 +515,8 @@ class DriveCard extends StatelessWidget {
               ),
               if (onTap != null) ...[
                 const SizedBox(width: 6),
-                const Icon(Icons.chevron_right_rounded, size: 18, color: NivaroColors.textFaint),
+                const Icon(Icons.chevron_right_rounded,
+                    size: 18, color: NivaroColors.textFaint),
               ],
             ],
           ),
@@ -507,7 +527,11 @@ class DriveCard extends StatelessWidget {
               value: fraction.clamp(0.0, 1.0),
               backgroundColor: NivaroColors.surfaceRaised,
               valueColor: AlwaysStoppedAnimation<Color>(
-                fraction > 0.90 ? NivaroColors.dangerLight : (fraction > 0.80 ? NivaroColors.warningLight : NivaroColors.primaryLight),
+                fraction > 0.90
+                    ? NivaroColors.dangerLight
+                    : (fraction > 0.80
+                        ? NivaroColors.warningLight
+                        : NivaroColors.primaryLight),
               ),
               minHeight: 5,
             ),
@@ -596,25 +620,34 @@ class CloudAccountCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         name,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: NivaroColors.textPrimary),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                            color: NivaroColors.textPrimary),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: NivaroColors.success.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text('Connected', style: TextStyle(color: NivaroColors.successLight, fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: const Text('Connected',
+                          style: TextStyle(
+                              color: NivaroColors.successLight,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '$providerTitle · $mountPoint',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                  style: const TextStyle(
+                      color: NivaroColors.textMuted, fontSize: 11.5),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -622,7 +655,8 @@ class CloudAccountCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: NivaroColors.textFaint),
+          const Icon(Icons.chevron_right_rounded,
+              size: 18, color: NivaroColors.textFaint),
         ],
       ),
     );
@@ -671,7 +705,10 @@ class FavoriteCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(NivaroShape.largeIncreased),
             border: Border.all(color: NivaroColors.borderSubtle),
             boxShadow: const [
-              BoxShadow(color: Color(0x2B000000), blurRadius: 10, offset: Offset(0, 3)),
+              BoxShadow(
+                  color: Color(0x2B000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 3)),
             ],
           ),
           child: Row(
@@ -699,17 +736,25 @@ class FavoriteCard extends StatelessWidget {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: NivaroColors.textPrimary),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13.5,
+                                color: NivaroColors.textPrimary),
                           ),
                         ),
                         if (isCustom)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
                             decoration: BoxDecoration(
                               color: NivaroColors.primary.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text('Pinned', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                            child: const Text('Pinned',
+                                style: TextStyle(
+                                    color: NivaroColors.primaryLight,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.bold)),
                           ),
                       ],
                     ),
@@ -719,7 +764,8 @@ class FavoriteCard extends StatelessWidget {
                         path!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                        style: const TextStyle(
+                            color: NivaroColors.textMuted, fontSize: 11),
                       ),
                     ],
                   ],
@@ -748,7 +794,10 @@ class StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? (state == 'running' ? NivaroColors.successLight : NivaroColors.textMuted);
+    final c = color ??
+        (state == 'running'
+            ? NivaroColors.successLight
+            : NivaroColors.textMuted);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -801,71 +850,85 @@ class FloatingNavBar extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-          // Left Floating Pill for 4 tabs with fluid adaptive item widths
-          Expanded(
-            child: Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xF0121722),
-                borderRadius: BorderRadius.circular(29),
-                border: Border.all(color: NivaroColors.borderSubtle),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x77000000), blurRadius: 20, offset: Offset(0, 6)),
-                ],
-              ),
-              child: Row(
-                children: List.generate(_items.length, (i) {
-                  final item = _items[i];
-                  final selected = i == currentIndex;
-                  return Expanded(
-                    flex: selected ? 5 : 2,
-                    child: _NavBarPillItem(
-                      icon: item.icon,
-                      label: item.label,
-                      selected: selected,
-                      onTap: () {
-                        onTap(i);
-                      },
-                    ),
-                  );
-                }),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Right Separate Floating Circle for Settings
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(29),
-              onTap: () {
-                onAvatarTap();
-              },
-              child: Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [NivaroColors.primary, NivaroColors.primaryDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+              // Left Floating Pill for 4 tabs with fluid adaptive item widths
+              Expanded(
+                child: Container(
+                  height: 58,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF0121722),
+                    borderRadius: BorderRadius.circular(29),
+                    border: Border.all(color: NivaroColors.borderSubtle),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Color(0x77000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 6)),
+                    ],
                   ),
-                  shape: BoxShape.circle,
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x66000000), blurRadius: 18, offset: Offset(0, 6)),
-                  ],
-                  border: Border.all(color: NivaroColors.borderHighlight, width: 1.5),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  avatarInitial,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
+                  child: Row(
+                    children: List.generate(_items.length, (i) {
+                      final item = _items[i];
+                      final selected = i == currentIndex;
+                      return Expanded(
+                        flex: selected ? 5 : 2,
+                        child: _NavBarPillItem(
+                          icon: item.icon,
+                          label: item.label,
+                          selected: selected,
+                          onTap: () {
+                            onTap(i);
+                          },
+                        ),
+                      );
+                    }),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+              const SizedBox(width: 10),
+              // Right Separate Floating Circle for Settings
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(29),
+                  onTap: () {
+                    onAvatarTap();
+                  },
+                  child: Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          NivaroColors.primary,
+                          NivaroColors.primaryDark
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: const [
+                        BoxShadow(
+                            color: Color(0x66000000),
+                            blurRadius: 18,
+                            offset: Offset(0, 6)),
+                      ],
+                      border: Border.all(
+                          color: NivaroColors.borderHighlight, width: 1.5),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      avatarInitial,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -898,10 +961,14 @@ class _NavBarPillItem extends StatelessWidget {
           curve: Curves.easeOutCubic,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: selected ? NivaroColors.primary.withOpacity(0.25) : Colors.transparent,
+            color: selected
+                ? NivaroColors.primary.withOpacity(0.25)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: selected ? NivaroColors.primaryLight.withOpacity(0.55) : Colors.transparent,
+              color: selected
+                  ? NivaroColors.primaryLight.withOpacity(0.55)
+                  : Colors.transparent,
               width: 1,
             ),
           ),
@@ -913,7 +980,9 @@ class _NavBarPillItem extends StatelessWidget {
               Icon(
                 icon,
                 size: selected ? 20 : 21,
-                color: selected ? NivaroColors.primaryLight : NivaroColors.textMuted,
+                color: selected
+                    ? NivaroColors.primaryLight
+                    : NivaroColors.textMuted,
               ),
               AnimatedCrossFade(
                 firstChild: Padding(
@@ -931,7 +1000,9 @@ class _NavBarPillItem extends StatelessWidget {
                   ),
                 ),
                 secondChild: const SizedBox.shrink(),
-                crossFadeState: selected ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                crossFadeState: selected
+                    ? CrossFadeState.showFirst
+                    : CrossFadeState.showSecond,
                 duration: const Duration(milliseconds: 240),
                 firstCurve: Curves.easeOutCubic,
                 secondCurve: Curves.easeInCubic,
@@ -978,50 +1049,66 @@ class AppTile extends StatelessWidget {
       onLongPress: () {
         if (onLongPress != null) onLongPress!();
       },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              NivaroAppIcon(
-                iconUrl: iconUrl,
-                name: name,
-                imageName: imageName,
-                size: 58,
-                radius: 15,
-                customRadiusPercent: customRadiusPercent,
-              ),
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: running ? NivaroColors.success : NivaroColors.textFaint,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: NivaroColors.surface, width: 2),
+      // GridView.builder forces every item into a tight cellWidth x
+      // cellHeight box (that's what childAspectRatio actually sizes) - this
+      // tile's own content (icon + label) is shorter than that, and Column's
+      // default mainAxisAlignment.start left it pinned to the top of the
+      // cell with dead space below, instead of centered in it. Center here
+      // (Column's mainAxisSize.min alone doesn't help once the parent gives
+      // it a tight constraint - it still fills the cell, just top-aligns
+      // its children within that space) fixes every grid density (3-9
+      // columns) at once rather than hand-tuning padding per breakpoint.
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                NivaroAppIcon(
+                  iconUrl: iconUrl,
+                  name: name,
+                  imageName: imageName,
+                  size: 58,
+                  radius: 15,
+                  customRadiusPercent: customRadiusPercent,
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: running
+                          ? NivaroColors.success
+                          : NivaroColors.textFaint,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: NivaroColors.surface, width: 2),
+                    ),
                   ),
                 ),
-              ),
-              if (badge != null)
-                Positioned(
-                  top: -4,
-                  right: -4,
-                  child: badge!,
-                ),
-            ],
-          ),
-          const SizedBox(height: 7),
-          Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: NivaroColors.textPrimary),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-        ],
+                if (badge != null)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: badge!,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(
+              name,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: NivaroColors.textPrimary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

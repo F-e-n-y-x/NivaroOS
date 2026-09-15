@@ -40,7 +40,11 @@ class _HomeShellState extends State<HomeShell> {
     ),
     FilesScreen(key: _filesKey),
     const VmListScreen(),
-    const AppsScreen(),
+    AppsScreen(
+      onOpenFiles: () => _switchToTab(1),
+      onOpenVms: () => _switchToTab(2),
+      onOpenSettings: _openSettings,
+    ),
   ];
 
   @override
@@ -90,14 +94,16 @@ class _HomeShellState extends State<HomeShell> {
       _showingReauth = true;
       StorageService.instance.getUsername().then((username) {
         if (!mounted) return;
-        Navigator.of(context).push<bool>(
+        Navigator.of(context)
+            .push<bool>(
           MaterialPageRoute(
             builder: (_) => LoginScreen(
               isReauth: true,
               initialUsername: username,
             ),
           ),
-        ).then((_) {
+        )
+            .then((_) {
           _showingReauth = false;
         });
       });
@@ -111,7 +117,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _openSettings() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
   Future<void> _onPopInvoked(bool didPop, Object? result) async {

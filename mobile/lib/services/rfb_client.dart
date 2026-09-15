@@ -16,9 +16,14 @@ class RfbException implements Exception {
 class RfbClient {
   final String host;
   final int port;
-  final String vmName;
+  // Null for the host desktop's own console (/host/console) - a VM name
+  // targets that VM's console (/vms/{name}/console) instead. Same RFB
+  // protocol either way (vm-sidecar's ConsoleRoutes proxies both to a VNC
+  // server - x11vnc for the host, QEMU's built-in VNC for a VM), so one
+  // client class covers both.
+  final String? vmName;
 
-  RfbClient({required this.host, required this.port, required this.vmName});
+  RfbClient({required this.host, required this.port, this.vmName});
 
   WebSocketChannel? _channel;
   final _ByteQueueReader _reader = _ByteQueueReader();
@@ -57,7 +62,11 @@ class RfbClient {
     // this change addresses.
     const scheme = 'ws';
     final token = ApiClient.instance.accessToken ?? '';
-    final uri = Uri.parse('$scheme://$host:$port/vms/${Uri.encodeComponent(vmName)}/console?token=${Uri.encodeComponent(token)}');
+    final path = vmName != null
+        ? '/vms/${Uri.encodeComponent(vmName!)}/console'
+        : '/host/console';
+    final uri = Uri.parse(
+        '$scheme://$host:$port$path?token=${Uri.encodeComponent(token)}');
     final channel = IOWebSocketChannel.connect(uri);
     _channel = channel;
     _sub = channel.stream.listen(
@@ -163,12 +172,22 @@ class RfbClient {
     final msg = Uint8List(20);
     msg[0] = 0;
     msg.setRange(4, 20, [
-      32, 24, 0, 1,
-      0, 255,
-      0, 255,
-      0, 255,
-      16, 8, 0,
-      0, 0, 0,
+      32,
+      24,
+      0,
+      1,
+      0,
+      255,
+      0,
+      255,
+      0,
+      255,
+      16,
+      8,
+      0,
+      0,
+      0,
+      0,
     ]);
     _channel!.sink.add(msg);
   }
@@ -185,7 +204,8 @@ class RfbClient {
     _channel!.sink.add(msg.buffer.asUint8List());
   }
 
-  void _requestUpdate({required bool incremental, int x = 0, int y = 0, int? w, int? h}) {
+  void _requestUpdate(
+      {required bool incremental, int x = 0, int y = 0, int? w, int? h}) {
     final msg = ByteData(10);
     msg.setUint8(0, 3);
     msg.setUint8(1, incremental ? 1 : 0);
@@ -292,7 +312,9 @@ class RfbClient {
       }
       var destOffset = (destRow * width + rx) * 4;
       for (var col = 0; col < rw; col++) {
-        if (rx + col < width && destOffset + 3 < fb.length && srcOffset + 2 < data.length) {
+        if (rx + col < width &&
+            destOffset + 3 < fb.length &&
+            srcOffset + 2 < data.length) {
           fb[destOffset] = data[srcOffset + 2];
           fb[destOffset + 1] = data[srcOffset + 1];
           fb[destOffset + 2] = data[srcOffset];
@@ -330,7 +352,8 @@ class RfbClient {
     final fb = _framebuffer;
     if (fb == null || width <= 0 || height <= 0) return;
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(fb, width, height, ui.PixelFormat.rgba8888, completer.complete);
+    ui.decodeImageFromPixels(
+        fb, width, height, ui.PixelFormat.rgba8888, completer.complete);
     final image = await completer.future;
     final old = frame.value;
     frame.value = image;
@@ -365,7 +388,8 @@ class _ByteQueueReader {
   void close() {
     _closed = true;
     for (final p in _pending) {
-      if (!p.completer.isCompleted) p.completer.completeError(RfbException('Console connection closed.'));
+      if (!p.completer.isCompleted)
+        p.completer.completeError(RfbException('Console connection closed.'));
     }
     _pending.clear();
   }
@@ -380,7 +404,8 @@ class _ByteQueueReader {
   }
 
   Future<Uint8List> read(int length) {
-    if (_closed) return Future.error(RfbException('Console connection closed.'));
+    if (_closed)
+      return Future.error(RfbException('Console connection closed.'));
     final completer = Completer<Uint8List>();
     _pending.add(_PendingRead(length, completer));
     _drain();

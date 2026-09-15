@@ -66,7 +66,8 @@ class VmNetwork {
 
   Map<String, dynamic> toJson() => {
         'mode': mode,
-        if (bridgeName != null && bridgeName!.isNotEmpty) 'bridge_name': bridgeName,
+        if (bridgeName != null && bridgeName!.isNotEmpty)
+          'bridge_name': bridgeName,
         'model': model,
         if (mac != null) 'mac': mac,
         'link_state': linkState,
@@ -109,8 +110,12 @@ class Vm {
         memoryMib: (j['memory_mib'] as num?)?.toInt() ?? 0,
         diskGib: (j['disk_gib'] as num?)?.toInt() ?? 0,
         networkMode: j['network_mode'] as String? ?? '',
-        disks: (j['disks'] as List<dynamic>? ?? []).map((e) => VmDisk.fromJson(e as Map<String, dynamic>)).toList(),
-        networks: (j['networks'] as List<dynamic>? ?? []).map((e) => VmNetwork.fromJson(e as Map<String, dynamic>)).toList(),
+        disks: (j['disks'] as List<dynamic>? ?? [])
+            .map((e) => VmDisk.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        networks: (j['networks'] as List<dynamic>? ?? [])
+            .map((e) => VmNetwork.fromJson(e as Map<String, dynamic>))
+            .toList(),
         isoPath: j['iso_path'] as String?,
         firmware: j['firmware'] as String? ?? 'bios',
         displayWidth: (j['display_width'] as num?)?.toInt() ?? 1280,
@@ -126,8 +131,43 @@ class VmIso {
   final String path;
   VmIso({required this.name, required this.path});
   factory VmIso.fromJson(Map<String, dynamic> j) => VmIso(
-        name: j['name'] as String? ?? (j['path'] as String? ?? '').split('/').last,
+        name: j['name'] as String? ??
+            (j['path'] as String? ?? '').split('/').last,
         path: j['path'] as String? ?? '',
+      );
+}
+
+class DisplayResolution {
+  final int width;
+  final int height;
+  final String label;
+  DisplayResolution(
+      {required this.width, required this.height, required this.label});
+  factory DisplayResolution.fromJson(Map<String, dynamic> j) =>
+      DisplayResolution(
+        width: (j['width'] as num?)?.toInt() ?? 0,
+        height: (j['height'] as num?)?.toInt() ?? 0,
+        label: j['label'] as String? ?? '',
+      );
+}
+
+class HostDisplay {
+  final String current;
+  final int width;
+  final int height;
+  final List<DisplayResolution> resolutions;
+  HostDisplay(
+      {required this.current,
+      required this.width,
+      required this.height,
+      required this.resolutions});
+  factory HostDisplay.fromJson(Map<String, dynamic> j) => HostDisplay(
+        current: j['current'] as String? ?? '',
+        width: (j['width'] as num?)?.toInt() ?? 0,
+        height: (j['height'] as num?)?.toInt() ?? 0,
+        resolutions: (j['resolutions'] as List<dynamic>? ?? [])
+            .map((e) => DisplayResolution.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 
@@ -176,7 +216,8 @@ class VmClient {
   }
 
   Future<Vm> getVm(String name) async {
-    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}'), headers: _authHeaders());
+    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}'),
+        headers: _authHeaders());
     _checkOk(res);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -202,14 +243,24 @@ class VmClient {
       'vcpus': vcpus,
       'memory_mib': memoryMib,
       'firmware': firmware,
-      if (diskGib != null && diskGib > 0) 'disks': [VmDisk(path: '', gib: diskGib, bus: diskBus, ssd: ssd).toJson()],
+      if (diskGib != null && diskGib > 0)
+        'disks': [
+          VmDisk(path: '', gib: diskGib, bus: diskBus, ssd: ssd).toJson()
+        ],
       if (isoPath != null && isoPath.isNotEmpty) 'iso_path': isoPath,
-      'networks': [VmNetwork(mode: networkMode, bridgeName: bridgeName, model: nicModel).toJson()],
-      if (displayWidth != null && displayWidth > 0) 'display_width': displayWidth,
-      if (displayHeight != null && displayHeight > 0) 'display_height': displayHeight,
+      'networks': [
+        VmNetwork(mode: networkMode, bridgeName: bridgeName, model: nicModel)
+            .toJson()
+      ],
+      if (displayWidth != null && displayWidth > 0)
+        'display_width': displayWidth,
+      if (displayHeight != null && displayHeight > 0)
+        'display_height': displayHeight,
       if (bootOrder != null && bootOrder.isNotEmpty) 'boot_order': bootOrder,
     };
-    final res = await http.post(_uri('/vms'), headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode(body));
+    final res = await http.post(_uri('/vms'),
+        headers: _authHeaders({'Content-Type': 'application/json'}),
+        body: jsonEncode(body));
     _checkOk(res, okCodes: const [200, 201]);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -235,19 +286,37 @@ class VmClient {
       if (memoryMib != null) 'memory_mib': memoryMib,
       if (firmware != null) 'firmware': firmware,
       if (isoPath != null) 'iso_path': isoPath,
-      if (diskGib != null && diskGib > 0) 'disks': [VmDisk(path: '', gib: diskGib, bus: diskBus ?? 'virtio', ssd: ssd ?? true).toJson()],
-      if (networkMode != null) 'networks': [VmNetwork(mode: networkMode, bridgeName: bridgeName, model: nicModel ?? 'virtio').toJson()],
+      if (diskGib != null && diskGib > 0)
+        'disks': [
+          VmDisk(
+                  path: '',
+                  gib: diskGib,
+                  bus: diskBus ?? 'virtio',
+                  ssd: ssd ?? true)
+              .toJson()
+        ],
+      if (networkMode != null)
+        'networks': [
+          VmNetwork(
+                  mode: networkMode,
+                  bridgeName: bridgeName,
+                  model: nicModel ?? 'virtio')
+              .toJson()
+        ],
       if (displayWidth != null) 'display_width': displayWidth,
       if (displayHeight != null) 'display_height': displayHeight,
       if (bootOrder != null) 'boot_order': bootOrder,
     };
-    final res = await http.put(_uri('/vms/${Uri.encodeComponent(name)}'), headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode(body));
+    final res = await http.put(_uri('/vms/${Uri.encodeComponent(name)}'),
+        headers: _authHeaders({'Content-Type': 'application/json'}),
+        body: jsonEncode(body));
     _checkOk(res);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   Future<void> deleteVm(String name, {bool wipeDisk = false}) async {
-    final uri = _uri('/vms/${Uri.encodeComponent(name)}', {'wipe_disk': '$wipeDisk'});
+    final uri =
+        _uri('/vms/${Uri.encodeComponent(name)}', {'wipe_disk': '$wipeDisk'});
     final res = await http.delete(uri, headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
@@ -256,7 +325,9 @@ class VmClient {
     final res = await http.get(_uri('/isos'), headers: _authHeaders());
     _checkOk(res);
     final decoded = jsonDecode(res.body);
-    final list = decoded is List ? decoded : (decoded as Map<String, dynamic>)['isos'] as List<dynamic>? ?? [];
+    final list = decoded is List
+        ? decoded
+        : (decoded as Map<String, dynamic>)['isos'] as List<dynamic>? ?? [];
     return list.map((e) => VmIso.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -267,31 +338,42 @@ class VmClient {
 
   Future<void> insertCDROM(String name, String isoPath) async {
     final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/cdrom'),
-        headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'iso_path': isoPath}));
+        headers: _authHeaders({'Content-Type': 'application/json'}),
+        body: jsonEncode({'iso_path': isoPath}));
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> ejectCDROM(String name) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/cdrom/eject'), headers: _authHeaders());
+    final res = await http.post(
+        _uri('/vms/${Uri.encodeComponent(name)}/cdrom/eject'),
+        headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> insertVirtioWin(String name) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/insert-virtio-win'), headers: _authHeaders());
+    final res = await http.post(
+        _uri('/vms/${Uri.encodeComponent(name)}/insert-virtio-win'),
+        headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<List<VmSnapshot>> listSnapshots(String name) async {
-    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}/snapshots'), headers: _authHeaders());
+    final res = await http.get(
+        _uri('/vms/${Uri.encodeComponent(name)}/snapshots'),
+        headers: _authHeaders());
     _checkOk(res);
     final decoded = jsonDecode(res.body) as List<dynamic>;
-    return decoded.map((e) => VmSnapshot.fromJson(e as Map<String, dynamic>)).toList();
+    return decoded
+        .map((e) => VmSnapshot.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<VmSnapshot> createSnapshot(String name, {String? snapName, String? description}) async {
+  Future<VmSnapshot> createSnapshot(String name,
+      {String? snapName, String? description}) async {
     final body = <String, dynamic>{
       if (snapName != null && snapName.isNotEmpty) 'name': snapName,
-      if (description != null && description.isNotEmpty) 'description': description,
+      if (description != null && description.isNotEmpty)
+        'description': description,
     };
     final res = await http.post(
       _uri('/vms/${Uri.encodeComponent(name)}/snapshots'),
@@ -303,12 +385,20 @@ class VmClient {
   }
 
   Future<void> revertSnapshot(String name, String snapName) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}/revert'), headers: _authHeaders());
+    final res = await http.post(
+        _uri(
+            '/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}/revert'),
+        headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
-  Future<void> deleteSnapshot(String name, String snapName, {bool children = false}) async {
-    final res = await http.delete(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}', {'children': '$children'}), headers: _authHeaders());
+  Future<void> deleteSnapshot(String name, String snapName,
+      {bool children = false}) async {
+    final res = await http.delete(
+        _uri(
+            '/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}',
+            {'children': '$children'}),
+        headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
@@ -321,8 +411,28 @@ class VmClient {
     _checkOk(res, okCodes: const [200, 204]);
   }
 
+  // Host desktop's own display resolution - has no per-VM equivalent, this
+  // is the actual host X server's mode (x11vnc serves whatever's on it).
+  Future<HostDisplay> getHostDisplay() async {
+    final res = await http.get(_uri('/host/display'), headers: _authHeaders());
+    _checkOk(res);
+    return HostDisplay.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<HostDisplay> setHostDisplay(int width, int height) async {
+    final res = await http.post(
+      _uri('/host/display'),
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({'width': width, 'height': height}),
+    );
+    _checkOk(res, okCodes: const [200, 204]);
+    return HostDisplay.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   Future<void> _action(String name, String action) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/$action'), headers: _authHeaders());
+    final res = await http.post(
+        _uri('/vms/${Uri.encodeComponent(name)}/$action'),
+        headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
@@ -330,7 +440,9 @@ class VmClient {
     if (okCodes.contains(res.statusCode)) return;
     try {
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
-      throw VmException(decoded['error']?.toString() ?? decoded['message']?.toString() ?? 'VM request failed (HTTP ${res.statusCode}).');
+      throw VmException(decoded['error']?.toString() ??
+          decoded['message']?.toString() ??
+          'VM request failed (HTTP ${res.statusCode}).');
     } catch (e) {
       if (e is VmException) rethrow;
       throw VmException('VM request failed (HTTP ${res.statusCode}).');
