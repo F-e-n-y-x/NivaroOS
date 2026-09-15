@@ -795,8 +795,13 @@ html.is-dark {
 
 				a, button, span {
 					color: #d4d4d8 !important;
+					// NOT #ffffff here - .button:hover in _dropdown.scss already
+					// sets the near-white pill background for a hovered row in
+					// dark mode (--theme-menu-item-hover-bg), so forcing white
+					// text here too made it invisible (white-on-near-white).
+					// Match the same near-black token instead.
 					&:hover {
-						color: #ffffff !important;
+						color: var(--theme-menu-item-hover-text, #0a0a0a) !important;
 					}
 				}
 			}
