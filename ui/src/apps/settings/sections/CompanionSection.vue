@@ -136,6 +136,7 @@
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { mixin } from '@/mixins/mixin'
 
 dayjs.extend(relativeTime)
 
@@ -143,7 +144,7 @@ export const ROWS = [{ label: 'Overview' }, { label: 'Connected Devices' }]
 
 export default {
 	name: 'companion-section',
-	mixins: [confirmWindowMixin],
+	mixins: [mixin, confirmWindowMixin],
 	data() {
 		return {
 			devices: [],
@@ -270,7 +271,16 @@ export default {
 			})
 		},
 		downloadApk() {
-			window.open('/DATA/Downloads/NivaroOS.apk', '_blank')
+			// Was window.open('/DATA/Downloads/NivaroOS.apk', ...) - a raw
+			// filesystem path with no auth token and no real server route
+			// behind it, not an actual download URL. Route through the same
+			// authenticated file-download endpoint (GetDownloadSingleFile)
+			// every other download in this app already uses via
+			// downloadFile()/getFileUrl() - it also now sends the correct
+			// APK content-type (was being sniffed as "application/zip" since
+			// an APK is a zip container at the byte level, which is why the
+			// download showed up with a .zip extension).
+			this.downloadFile({ is_dir: false, path: '/DATA/Downloads/NivaroOS.apk', name: 'NivaroOS.apk' })
 		},
 		formatBytes(bytes) {
 			if (!bytes || bytes === 0) return '0 B'

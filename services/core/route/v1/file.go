@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net/http"
 	"net/url"
 	url2 "net/url"
@@ -235,6 +236,31 @@ func GetDownloadFile(ctx echo.Context) error {
 	return nil
 }
 
+// extensionMIMEOverrides covers extensions whose content is a ZIP container
+// at the byte level (so filetype.Match's sniffing would only ever identify
+// them as "application/zip") and whose system mime.types entry can't be
+// relied on to exist (.apk in particular is routinely absent from a Linux
+// box's /etc/mime.types, since it's an Android-specific format).
+var extensionMIMEOverrides = map[string]string{
+	".apk":  "application/vnd.android.package-archive",
+	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	".jar":  "application/java-archive",
+	".epub": "application/epub+zip",
+}
+
+func extensionMIMEType(fileName string) string {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		return ""
+	}
+	if v, ok := extensionMIMEOverrides[ext]; ok {
+		return v
+	}
+	return mime.TypeByExtension(ext)
+}
+
 func GetDownloadSingleFile(ctx echo.Context) error {
 	filePath := ctx.QueryParam("path")
 	if len(filePath) == 0 {
@@ -288,20 +314,35 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 	// for the exact same request against a local-disk file) - which is why
 	// video (and every other file type) only ever failed for cloud-mounted
 	// files, never local ones.
-	buffer := make([]byte, 261)
-	if sniffFile, sniffErr := os.Open(filePath); sniffErr == nil {
-		_, _ = sniffFile.Read(buffer)
-		sniffFile.Close()
-		if kind, _ := filetype.Match(buffer); kind != filetype.Unknown {
-			// Response header, not Request - every one of these used to be
-			// ctx.Request().Header.Add(...), which mutates the *incoming*
-			// request Echo already finished routing, never reaching the
-			// client. Harmless for Content-Type specifically (ServeContent
-			// falls back to sniffing the extension itself when the response
-			// Content-Type isn't already set), but real dead code, and the
-			// Content-Disposition case below was silently never taking
-			// effect at all.
-			ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
+	// Extension-based lookup first, byte-sniffing only as a fallback for an
+	// extension it doesn't recognize - content-sniffing can't tell an APK,
+	// DOCX/XLSX/PPTX, JAR, or EPUB apart from a plain ZIP file, since
+	// they're all zip containers at the byte level. Sniffing-first served
+	// every one of these as "application/zip", and a browser's download
+	// manager then renames the saved file's extension to match that
+	// Content-Type instead of trusting Content-Disposition's real filename
+	// - confirmed live: downloading an .apk from the Files app or the
+	// Companion Devices "Get Android App" button showed up as
+	// "NivaroOS.zip" in both Android's own download manager and desktop
+	// Chrome/Firefox.
+	if mimeType := extensionMIMEType(fileName); mimeType != "" {
+		ctx.Response().Header().Set("Content-Type", mimeType)
+	} else {
+		buffer := make([]byte, 261)
+		if sniffFile, sniffErr := os.Open(filePath); sniffErr == nil {
+			_, _ = sniffFile.Read(buffer)
+			sniffFile.Close()
+			if kind, _ := filetype.Match(buffer); kind != filetype.Unknown {
+				// Response header, not Request - every one of these used to be
+				// ctx.Request().Header.Add(...), which mutates the *incoming*
+				// request Echo already finished routing, never reaching the
+				// client. Harmless for Content-Type specifically (ServeContent
+				// falls back to sniffing the extension itself when the response
+				// Content-Type isn't already set), but real dead code, and the
+				// Content-Disposition case below was silently never taking
+				// effect at all.
+				ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
+			}
 		}
 	}
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
