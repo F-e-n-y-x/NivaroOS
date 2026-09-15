@@ -621,6 +621,9 @@ export default {
 			return `Cron: ${cron}`
 		},
 		close() {
+			if (this.$store) {
+				this.$store.commit('CLOSE_WINDOW', 'scheduled-task-editor')
+			}
 			this.$emit('close')
 		},
 		async saveTask() {
@@ -763,7 +766,9 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: var(--space-3) 0;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+	// Was a hardcoded black-tinted divider - invisible against this same
+	// card's dark-mode background (var(--theme-card-bg) a few rules up).
+	border-bottom: 1px solid var(--theme-table-divider, rgba(0, 0, 0, 0.04));
 
 	&:last-child {
 		border-bottom: none;
@@ -806,7 +811,7 @@ export default {
 
 .segmented-control {
 	display: inline-flex;
-	background: rgba(0, 0, 0, 0.04);
+	background: var(--theme-pill-bg, rgba(0, 0, 0, 0.04));
 	padding: var(--space-1);
 	border-radius: var(--radius-control);
 	width: 100%;
@@ -848,8 +853,8 @@ export default {
 	}
 
 	.chip-btn {
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.02));
 		border-radius: var(--radius-xs);
 		padding: var(--space-1) var(--space-2);
 		font-size: var(--font-2xs);
@@ -891,6 +896,6 @@ export default {
 	gap: var(--space-2);
 	padding-top: var(--space-3);
 	margin-top: var(--space-3);
-	border-top: 1px solid rgba(0, 0, 0, 0.06);
+	border-top: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 }
 </style>

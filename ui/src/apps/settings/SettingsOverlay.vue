@@ -5,7 +5,7 @@
 			<div class="settings-overlay-card" :style="cardStyle">
 				<header class="settings-overlay-head" @pointerdown="startDrag">
 					<span class="settings-overlay-title">{{ title }}</span>
-					<button type="button" class="settings-overlay-close" @click="$emit('close')">
+					<button type="button" class="settings-overlay-close" @pointerdown.stop @click.stop="$emit('close')">
 						<b-icon icon="close" size="is-small" pack="mdi"></b-icon>
 					</button>
 				</header>

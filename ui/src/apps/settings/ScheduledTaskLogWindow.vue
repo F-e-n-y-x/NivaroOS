@@ -20,7 +20,7 @@
 		</div>
 
 		<div class="task-log-foot">
-			<b-button rounded size="is-small" @click="$emit('close')">
+			<b-button rounded size="is-small" @click="close">
 				{{ $t('Close') }}
 			</b-button>
 		</div>
@@ -37,6 +37,13 @@ export default {
 		}
 	},
 	methods: {
+		close() {
+			const id = `task-log-${(this.task && this.task.id) || ''}`
+			if (this.$store) {
+				this.$store.commit('CLOSE_WINDOW', id)
+			}
+			this.$emit('close')
+		},
 		copyOutput() {
 			const text = this.task.last_output || ''
 			if (!text) return

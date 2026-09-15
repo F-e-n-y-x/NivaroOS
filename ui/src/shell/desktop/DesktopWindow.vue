@@ -20,19 +20,19 @@
 			<span class="window-title" :class="{ 'one-line': !isConsoleWindow }">{{ win.title }}</span>
 			<span v-if="isConsoleWindow && consoleStatus" class="window-title-status" :class="'is-' + consoleStatus">{{ consoleStatusText }}</span>
 			<div class="window-titlebar-spacer"></div>
-			<div class="window-controls">
-				<button v-if="isConsoleWindow" type="button" class="window-btn-action" :title="$t('Open in New Tab')" @click.stop="openConsoleTab">
+			<div class="window-controls" @pointerdown.stop>
+				<button v-if="isConsoleWindow" type="button" class="window-btn-action" :title="$t('Open in New Tab')" @pointerdown.stop @click.stop="openConsoleTab">
 					<b-icon icon="open-in-new" custom-size="mdi-14px"></b-icon>
 				</button>
-				<button v-if="!isDialogWindow" class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="minimize"></button>
-				<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="close"></button>
+				<button v-if="!isDialogWindow" class="window-btn window-btn-minimize" :title="$t('Minimize')" @pointerdown.stop @click.stop="minimize"></button>
+				<button class="window-btn window-btn-close" :title="$t('Close')" @pointerdown.stop @click.stop="close"></button>
 			</div>
 		</div>
 		<div class="window-content">
 			<!-- FilesApp has no window-titlebar above (see v-if) - its own tab
 			     bar takes over as the draggable top bar and carries the
 			     close/minimize controls itself (no maximize, by design). -->
-			<component :is="resolvedComponent" ref="content" v-bind="win.props" @close="close" @minimize="minimize" @drag-start="startDrag" @status-change="onConsoleStatusChange"></component>
+			<component :is="resolvedComponent" ref="content" v-bind="win.props" @close="forceClose" @minimize="minimize" @drag-start="startDrag" @status-change="onConsoleStatusChange"></component>
 		</div>
 
 		<!-- A phone-sized window always fills the screen (see OPEN_WINDOW) -
@@ -144,14 +144,32 @@ export default {
 			// Some window contents (CodeEditor/MarkdownEditor, with unsaved-edit
 			// state) need to intervene before the window actually closes - e.g.
 			// showing their own in-window "save before closing?" prompt, then
-			// emitting close themselves once that's resolved (already wired
-			// via @close="close" below). Everything else has no such method,
-			// so it falls straight through to closing immediately, unchanged.
+			// emitting close themselves once that's resolved (wired to
+			// forceClose below, NOT this method - requestClose() itself emits
+			// 'close' the moment there's nothing unsaved to prompt about,
+			// which if routed back through this same close() would call
+			// requestClose() again, which emits 'close' again... an
+			// unconditional, synchronous, same-call-stack infinite loop every
+			// single time a CodeEditor/MarkdownEditor window with no unsaved
+			// changes was closed - a stack overflow that killed the click
+			// with nothing visible happening, which is exactly what "close
+			// button doesn't work, but only for text files" was). Everything
+			// else has no requestClose method at all, so it falls straight
+			// through to closing immediately, unchanged.
 			const content = this.$refs.content
 			if (content && typeof content.requestClose === 'function') {
 				content.requestClose()
 				return
 			}
+			this.forceClose()
+		},
+		// The one and only thing that actually closes this window - the
+		// close button goes through close() above first (to give
+		// CodeEditor/MarkdownEditor a chance to ask about unsaved changes);
+		// a content component's own @close emit (after it's already made
+		// that call itself) comes straight here instead, never back through
+		// close()/requestClose() again.
+		forceClose() {
 			this.$store.commit('CLOSE_WINDOW', this.win.id)
 		},
 

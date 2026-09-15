@@ -57,6 +57,7 @@ export default {
 		async handleConfirm() {
 			if (this.loading) return
 			this.responded = true
+			const winId = this.id || (this.$parent && this.$parent.win && this.$parent.win.id)
 			if (typeof this.onConfirm === 'function') {
 				try {
 					const res = this.onConfirm()
@@ -64,28 +65,45 @@ export default {
 						this.loading = true
 						await res
 					}
+				} catch (err) {
+					console.error('Error during onConfirm in ConfirmDialogWindow:', err)
 				} finally {
 					this.loading = false
+					if (winId && this.$store) {
+						this.$store.commit('CLOSE_WINDOW', winId)
+					}
 					this.$emit('close')
 				}
 				return
+			}
+			if (winId && this.$store) {
+				this.$store.commit('CLOSE_WINDOW', winId)
 			}
 			this.$emit('close')
 		},
 		handleCancel() {
 			this.responded = true
-			this.$emit('close')
 			if (typeof this.onCancel === 'function') {
-				this.onCancel()
+				try {
+					this.onCancel()
+				} catch (err) {
+					console.error('Error during onCancel in ConfirmDialogWindow:', err)
+				}
 			}
-		},
-		requestClose() {
-			this.handleCancel()
+			const winId = this.id || (this.$parent && this.$parent.win && this.$parent.win.id)
+			if (winId && this.$store) {
+				this.$store.commit('CLOSE_WINDOW', winId)
+			}
+			this.$emit('close')
 		}
 	},
 	beforeDestroy() {
 		if (!this.responded && typeof this.onCancel === 'function') {
-			this.onCancel()
+			try {
+				this.onCancel()
+			} catch (err) {
+				console.error('Error during onCancel beforeDestroy in ConfirmDialogWindow:', err)
+			}
 		}
 	}
 }

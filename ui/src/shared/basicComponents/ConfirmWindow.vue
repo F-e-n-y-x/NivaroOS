@@ -2,6 +2,9 @@
 	<div v-if="active" class="confirm-window">
 		<div class="confirm-window-backdrop" @click="$emit('cancel')"></div>
 		<div class="confirm-window-card" :style="cardStyle">
+			<button type="button" class="confirm-window-close" :title="$t('Close')" @pointerdown.stop @click.stop="$emit('cancel')">
+				<b-icon icon="close" size="is-small" pack="mdi"></b-icon>
+			</button>
 			<div class="confirm-window-header" @pointerdown="startDrag">
 				<div v-if="hasIcon" class="confirm-window-icon" :class="type">
 					<b-icon :icon="icon" :pack="iconPack" custom-size="mdi-24px"></b-icon>
@@ -110,6 +113,26 @@ export default {
 	align-items: center;
 	text-align: center;
 	gap: var(--space-2);
+}
+
+.confirm-window-close {
+	position: absolute;
+	top: var(--space-3);
+	right: var(--space-3);
+	border: none;
+	background: transparent;
+	color: var(--theme-text-muted, #94a3b8);
+	cursor: pointer;
+	padding: var(--space-1);
+	border-radius: var(--radius-xs);
+	display: flex;
+	align-items: center;
+	z-index: 2;
+
+	&:hover {
+		color: var(--theme-text-primary, #0f172a);
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
+	}
 }
 
 .confirm-window-header {
