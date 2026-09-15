@@ -53,6 +53,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
   double? _wanDown;
   double? _wanUp;
   WanSpeedtestResult? _wanResult;
+  String? _wanError;
 
   // Link Speedtest State
   bool _linkTesting = false;
@@ -63,6 +64,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
   double? _linkDown;
   double? _linkUp;
   LinkSpeedResult? _linkResult;
+  String? _linkError;
 
   @override
   void initState() {
@@ -87,6 +89,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
       _wanDown = null;
       _wanUp = null;
       _wanResult = null;
+      _wanError = null;
     });
 
     try {
@@ -120,11 +123,12 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
         _wanDown = res.downloadMbps;
         _wanUp = res.uploadMbps;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _wanTesting = false;
         _wanPhase = SpeedtestPhase.error;
+        _wanError = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
@@ -140,6 +144,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
       _linkDown = null;
       _linkUp = null;
       _linkResult = null;
+      _linkError = null;
     });
 
     try {
@@ -173,11 +178,12 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
         _linkDown = res.downloadMbps;
         _linkUp = res.uploadMbps;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _linkTesting = false;
         _linkPhase = SpeedtestPhase.error;
+        _linkError = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
@@ -317,16 +323,26 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                             : _wanPhase == SpeedtestPhase.upload
                                 ? 'TESTING UPLOAD THROUGHPUT...'
                                 : 'CONNECTING TO CLOUDFLARE CDN...')
-                    : _wanResult != null
-                        ? 'SERVER WAN BENCHMARK COMPLETE'
-                        : 'READY FOR BENCHMARK',
-                style: const TextStyle(
+                    : _wanPhase == SpeedtestPhase.error
+                        ? 'TEST FAILED'
+                        : _wanResult != null
+                            ? 'SERVER WAN BENCHMARK COMPLETE'
+                            : 'READY FOR BENCHMARK',
+                style: TextStyle(
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w800,
                   fontSize: 11.5,
-                  color: NivaroColors.textMuted,
+                  color: _wanPhase == SpeedtestPhase.error ? NivaroColors.dangerLight : NivaroColors.textMuted,
                 ),
               ),
+              if (_wanPhase == SpeedtestPhase.error && _wanError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _wanError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: NivaroColors.textMuted),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Digital Speed Meter with Smooth Easing
@@ -481,16 +497,26 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                             : _linkPhase == SpeedtestPhase.upload
                                 ? 'TRANSFERRING CLIENT UPLOAD (TX)...'
                                 : 'CONNECTING TO SERVER...')
-                    : _linkResult != null
-                        ? 'PHONE <-> SERVER LINK BENCHMARK COMPLETE'
-                        : 'DIRECT LINK BENCHMARK',
-                style: const TextStyle(
+                    : _linkPhase == SpeedtestPhase.error
+                        ? 'TEST FAILED'
+                        : _linkResult != null
+                            ? 'PHONE <-> SERVER LINK BENCHMARK COMPLETE'
+                            : 'DIRECT LINK BENCHMARK',
+                style: TextStyle(
                   letterSpacing: 1.2,
                   fontWeight: FontWeight.w800,
                   fontSize: 11.5,
-                  color: NivaroColors.textMuted,
+                  color: _linkPhase == SpeedtestPhase.error ? NivaroColors.dangerLight : NivaroColors.textMuted,
                 ),
               ),
+              if (_linkPhase == SpeedtestPhase.error && _linkError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _linkError!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: NivaroColors.textMuted),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Digital Speed Meter

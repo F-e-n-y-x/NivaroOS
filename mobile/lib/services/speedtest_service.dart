@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -141,7 +140,12 @@ class SpeedtestService {
           pings.add(max(2, sw.elapsedMilliseconds));
         }
       } catch (_) {
-        pings.add(14 + i * 2);
+        // Real failure, not counted - this used to fabricate a plausible-
+        // looking "14 + i*2"ms value per failed probe instead of skipping
+        // it, so a completely offline device still showed a smooth, real-
+        // looking ping graph. Only genuinely measured probes count now; if
+        // every single one fails, that's a real connectivity failure (see
+        // the check right after this loop), not something to paper over.
       }
       final curAvg = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 15;
       onProgress?.call(
@@ -153,10 +157,11 @@ class SpeedtestService {
       await Future.delayed(const Duration(milliseconds: 25));
     }
 
-    final avgPing = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 16;
-    final jitter = pings.isNotEmpty
-        ? (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round()
-        : 2;
+    if (pings.isEmpty) {
+      throw Exception('Could not reach the internet - every ping probe failed. Check your connection and try again.');
+    }
+    final avgPing = (pings.reduce((a, b) => a + b) / pings.length).round();
+    final jitter = (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round();
 
     // 3. Multi-threaded Download Throughput Stream with Smooth Ticker
     final downWatch = Stopwatch()..start();
@@ -251,8 +256,10 @@ class SpeedtestService {
       finalDown = (totalDownBytes * 8.0) / (downWatch.elapsedMilliseconds * 1000.0);
       peakDown = finalDown;
     } else {
-      finalDown = 115.0;
-      peakDown = 145.0;
+      // Every download worker failed to transfer a single byte - used to
+      // silently report a fabricated "115.0 Mbps" here instead of surfacing
+      // that the test itself never actually worked.
+      throw Exception('Download test failed - no data could be transferred. Check your internet connection.');
     }
 
     // 4. Multi-stream Upload Throughput Stream with Smooth Ticker
@@ -349,8 +356,10 @@ class SpeedtestService {
       finalUp = (totalUpBytes * 8.0) / (upWatch.elapsedMilliseconds * 1000.0);
       peakUp = finalUp;
     } else {
-      finalUp = finalDown * 0.75;
-      peakUp = peakDown * 0.78;
+      // Used to derive a fake upload number from the (real) download result
+      // (finalDown * 0.75) instead of reporting that upload specifically
+      // failed - misleading even when download genuinely worked.
+      throw Exception('Upload test failed - no data could be transferred, though download measured ${finalDown.toStringAsFixed(1)} Mbps.');
     }
 
     onProgress?.call(
@@ -406,9 +415,9 @@ class SpeedtestService {
         sw.stop();
         if (res.statusCode == 200) {
           pings.add(max(1, sw.elapsedMilliseconds));
-        } else {
-          pings.add(2);
         }
+        // A non-200 isn't a real round-trip measurement - used to fake one
+        // ("pings.add(2)") instead of just not counting it.
       } catch (_) {
         try {
           final swFallback = Stopwatch()..start();
@@ -416,7 +425,8 @@ class SpeedtestService {
           swFallback.stop();
           pings.add(max(1, swFallback.elapsedMilliseconds));
         } catch (_) {
-          pings.add(2);
+          // Both the primary ping endpoint and this fallback failed - a
+          // real miss, not counted (was faked as "2ms" here too).
         }
       }
       final curAvg = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 2;
@@ -429,12 +439,13 @@ class SpeedtestService {
       await Future.delayed(const Duration(milliseconds: 15));
     }
 
-    final minPing = pings.isNotEmpty ? pings.reduce(min) : 1;
-    final maxPing = pings.isNotEmpty ? pings.reduce(max) : 4;
-    final avgPing = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 2;
-    final jitter = pings.isNotEmpty
-        ? (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round()
-        : 1;
+    if (pings.isEmpty) {
+      throw Exception('Could not reach the NivaroOS server for the link test - every probe failed.');
+    }
+    final minPing = pings.reduce(min);
+    final maxPing = pings.reduce(max);
+    final avgPing = (pings.reduce((a, b) => a + b) / pings.length).round();
+    final jitter = (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round();
 
     // 2. Parallel Local Download (Rx) Multi-stream Saturation Test
     final linkDownWatch = Stopwatch()..start();
@@ -499,9 +510,9 @@ class SpeedtestService {
               if (stopLinkDown || linkDownWatch.elapsedMilliseconds >= linkDurationMs) break;
             }
           } else {
-            // Fallback: Read API JSON if custom gateway endpoint is unavailable
-            final res = await ApiClient.instance.get('/sys/network-interfaces');
-            totalTransferred += utf8.encode(jsonEncode(res)).length * 100;
+            // A non-200 response transferred no real data - used to count
+            // an unrelated small API call's JSON response as if it were
+            // (repeated 100x) real download throughput instead.
             await Future.delayed(const Duration(milliseconds: 10));
           }
         } catch (_) {
@@ -534,8 +545,10 @@ class SpeedtestService {
       linkDownSpeed = (totalTransferred * 8.0) / (linkDownWatch.elapsedMilliseconds * 1000.0);
       peakLinkDown = linkDownSpeed;
     } else {
-      linkDownSpeed = 500.0;
-      peakLinkDown = 650.0;
+      // Used to silently report a fabricated "500.0 Mbps" here instead of
+      // surfacing that the local link test never actually transferred
+      // anything.
+      throw Exception('Link download test failed - no data could be transferred to/from the server.');
     }
 
     // 3. Local Upload (Tx) Multi-stream Throughput Benchmark directly to NivaroOS Gateway
@@ -604,9 +617,9 @@ class SpeedtestService {
           if (res.statusCode == 200 || res.statusCode == 204) {
             totalUpTransferred += localUploadPayload.length;
           } else {
-            // Fallback ping payload
-            await ApiClient.instance.get('/sys/version/current');
-            totalUpTransferred += 32 * 1024;
+            // A non-200 response uploaded nothing real - used to count a
+            // fixed 32KB as if it were real transferred data just because
+            // an unrelated small API call happened to succeed.
             await Future.delayed(const Duration(milliseconds: 10));
           }
         } catch (_) {
@@ -636,7 +649,9 @@ class SpeedtestService {
     } else if (linkUpWatch.elapsedMilliseconds > 0 && totalUpTransferred > 0) {
       linkUpSpeed = (totalUpTransferred * 8.0) / (linkUpWatch.elapsedMilliseconds * 1000.0);
     } else {
-      linkUpSpeed = linkDownSpeed * 0.85;
+      // Used to derive a fake upload number from the (real) download result
+      // instead of reporting that upload specifically failed.
+      throw Exception('Link upload test failed - no data could be transferred, though download measured ${linkDownSpeed.toStringAsFixed(1)} Mbps.');
     }
 
     onProgress?.call(
