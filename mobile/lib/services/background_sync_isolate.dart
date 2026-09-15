@@ -20,9 +20,17 @@ import 'device_sync_service.dart';
 Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
-  if (service is AndroidServiceInstance) {
-    service.setAsForegroundService();
-  }
+  // No explicit setAsForegroundService() call here - AndroidConfiguration's
+  // isForegroundMode: true (background_service.dart) already makes the
+  // native plugin call startForeground() automatically as soon as this
+  // isolate starts (BackgroundService.java's runService() ->
+  // updateNotificationInfo(), unconditional on isForeground). An unawaited,
+  // redundant second call to it here served no purpose the config didn't
+  // already cover, and matches neither this package's own example (which
+  // only ever calls it in response to an explicit foreground/background
+  // toggle event, never unconditionally at startup) nor the "no unnecessary
+  // native calls in a codepath already known to be crash-prone" standard
+  // the rest of this fix applies.
 
   await StorageService.instance.init();
   await ApiClient.instance.init();
