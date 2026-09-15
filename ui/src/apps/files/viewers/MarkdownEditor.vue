@@ -42,6 +42,7 @@ import { Editor, EditorContent } from '@tiptap/vue-2'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
 import Typography from '@tiptap/extension-typography'
+import { Markdown } from 'tiptap-markdown'
 
 export default {
 	name: 'files-markdown-editor',
@@ -61,7 +62,24 @@ export default {
 	async mounted() {
 		const content = await this.readFile()
 		this.editor = new Editor({
-			extensions: [StarterKit, Highlight, Typography],
+			extensions: [
+				StarterKit,
+				Highlight,
+				Typography,
+				// Without this, `content` below (the file's raw markdown
+				// text, e.g. "# Heading\n\n**bold**") was handed to Tiptap
+				// with nothing that knows how to parse markdown syntax, so
+				// it rendered as one literal, unformatted paragraph of "#
+				// Heading ** bold **" - and saving wrote getHTML()'s HTML
+				// back into a .md file, corrupting it. This extension makes
+				// `content` parse as real markdown on load, and
+				// editor.storage.markdown.getMarkdown() (used in saveFile()
+				// below) serialize back to markdown on save instead of HTML.
+				// html:false so raw HTML embedded in someone else's .md file
+				// (e.g. a synced/shared note) can't inject into the editor's
+				// DOM - only real markdown syntax renders as formatting.
+				Markdown.configure({ html: false }),
+			],
 			content,
 			onUpdate: () => {
 				this.isChange = true
@@ -81,7 +99,7 @@ export default {
 			return this.code
 		},
 		saveFile(leave) {
-			const content = this.editor.getHTML()
+			const content = this.editor.storage.markdown.getMarkdown()
 			this.$api.file.update(this.item.path, content).then((res) => {
 				if (res.data.success === 200) {
 					this.isChange = false

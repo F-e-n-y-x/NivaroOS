@@ -26,6 +26,7 @@ import sortBy from 'lodash/sortBy';
 import SyncBlock from "@/apps/syncthing/SyncBlock.vue";
 import SmartBlock from "@/apps/smart-home/SmartBlock.vue";
 import events from "@/events/events";
+import { escapeHtml } from "@/utils/escapeHtml";
 import Business_ShowNewAppTag from "@/mixins/app/Business_ShowNewAppTag";
 import DiskLearnMore from "@/apps/storage/DiskLearnMore.vue";
 import last from "lodash/last";
@@ -521,8 +522,12 @@ export default {
 			});
 		},
 		"app:apply-changes-end"(res) {
+			// app:name comes from whatever compose/app manifest was
+			// installed (including a user's own "Custom Install" source) -
+			// not developer-authored text, so it must be escaped before
+			// going into toast.open's v-html-rendered message.
 			this.$buefy.toast.open({
-				message: "The setting of " + res.Properties["app:name"] + " is complete",
+				message: "The setting of " + escapeHtml(res.Properties["app:name"]) + " is complete",
 				duration: 5000,
 				type: "is-success"
 			})
@@ -543,7 +548,7 @@ export default {
 		},
 		"app:apply-changes-error"(res) {
 			this.$buefy.toast.open({
-				message: res.Properties.message,
+				message: escapeHtml(res.Properties.message),
 				duration: 5000,
 				type: "is-danger"
 			})

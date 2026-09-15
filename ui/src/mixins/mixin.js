@@ -30,6 +30,44 @@ const typeMap = {
 }
 const hasThumbImageType = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg']
 
+// item.type here is only ever set for a folder that IS a disk's own mount
+// point (ContentView.vue's fetchMountTypes() only assigns it when
+// item.path exactly matches a mount_point from $api.storage.list() -  see
+// isProtectedMountFolder below), not for ordinary files/folders living on
+// one - internal SATA/NVMe drives use the same values as removable USB
+// ones (a drive being "external" isn't a distinct type from lsblk's own
+// "tran" field, which this ultimately comes from).
+const DRIVE_MOUNT_TYPES = ['usb', 'usb3', 'sata', 'nvme', 'spi', 'sas', 'ata']
+
+// Special-folder icon lookup for getIconFile() below - keyed by lowercased,
+// trimmed folder name so "Downloads", "download", "DOWNLOAD" etc. all match
+// the same entry, instead of one hardcoded exact-case string per folder.
+// Includes common singular/plural and synonym variants (a folder synced in
+// from a phone or NAS won't necessarily use NivaroOS's own default names).
+const FOLDER_NAME_ICON_MAP = {
+	desktop: 'folder-desktop',
+	vms: 'folder-vms',
+	vm: 'folder-vms',
+	'virtual machines': 'folder-vms',
+	companion: 'folder-companion',
+	media: 'folder-video',
+	video: 'folder-video',
+	videos: 'folder-video',
+	movies: 'folder-video',
+	download: 'folder-download',
+	downloads: 'folder-download',
+	document: 'folder-documents',
+	documents: 'folder-documents',
+	docs: 'folder-documents',
+	gallery: 'folder-pictures',
+	picture: 'folder-pictures',
+	pictures: 'folder-pictures',
+	photo: 'folder-pictures',
+	photos: 'folder-pictures',
+	appdata: 'folder-application',
+	'app data': 'folder-application',
+}
+
 // eslint-disable-next-line no-unused-vars
 const filePanelMap = {
 	'code-editor': union(typeMap['text-x-generic'], typeMap['text-css'], typeMap['text-html'], typeMap['text-x-cmake'], typeMap['text-dockerfile']),
@@ -37,7 +75,11 @@ const filePanelMap = {
 	"image-viewer": typeMap['image-x-generic'],
 	"doc-viewer": union(typeMap['application-vnd.ms-word']),
 	"excel-viewer": union(typeMap['application-vnd.ms-excel']),
-	// "mark-down-editor":typeMap['text-markdown'],
+	// Was commented out because MarkdownEditor.vue used to save getHTML()
+	// output back into the .md file, corrupting it (see that component's
+	// own header comment) - now fixed with the tiptap-markdown extension,
+	// so .md can actually be opened by it.
+	"mark-down-editor": typeMap['text-markdown'],
 	"pdf-viewer": typeMap['application-pdf'],
 }
 export const wallpaperType = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'svg']
@@ -92,28 +134,36 @@ export const mixin = {
 			const isDir = (has(item, 'is_dir') || has(item, "isFolder")) ? item.is_dir : false;
 			let icon = "unknown";
 			if (isDir) {
-				if (item.path === '/DATA/Desktop' || item.name === 'Desktop') {
+				// Matched case-insensitively (and by common singular/plural/
+				// synonym variants) rather than an exact-case `===` against
+				// one hardcoded name - a folder named "download", "DOWNLOAD"
+				// or "downloads" (e.g. synced from a phone/NAS that uses a
+				// different casing convention than NivaroOS's own default
+				// folder names) should still get its special icon, not fall
+				// through to the generic folder glyph.
+				const normalizedName = (item.name || '').trim().toLowerCase()
+				if (item.path === '/DATA/Desktop' || FOLDER_NAME_ICON_MAP[normalizedName] === 'folder-desktop') {
 					icon = "folder-desktop"
-				} else if (item.path === '/DATA/VMs' || item.name === 'VMs') {
+				} else if (item.path === '/DATA/VMs' || FOLDER_NAME_ICON_MAP[normalizedName] === 'folder-vms') {
 					icon = "folder-vms"
+				} else if (item.path === '/DATA/Companion' || FOLDER_NAME_ICON_MAP[normalizedName] === 'folder-companion') {
+					icon = "folder-companion"
 				} else if (item.type == "application") {
 					icon = "folder-application"
+				} else if (item.type == "companion-tablet") {
+					icon = "folder-tablet_companion"
+				} else if (item.type == "companion-mobile") {
+					icon = "folder-mobile_companion"
+				} else if (item.type == "usb3") {
+					icon = "folder-usb3"
 				} else if (item.type == "usb") {
 					icon = "folder-usb"
 				} else if (["sata", "nvme", "spi", "sas"].includes(item.type)) {
 					icon = "folder-hdd"
 				} else if (item.type == "home") {
 					icon = "folder-root"
-				} else if (item.name == "Media") {
-					icon = "folder-video"
-				} else if (item.name == "Downloads") {
-					icon = "folder-download"
-				} else if (item.name == "Documents") {
-					icon = "folder-documents"
-				} else if (item.name == "Gallery") {
-					icon = "folder-pictures"
-				} else if (item.name == "AppData") {
-					icon = "folder-application"
+				} else if (FOLDER_NAME_ICON_MAP[normalizedName]) {
+					icon = FOLDER_NAME_ICON_MAP[normalizedName]
 				} else {
 					icon = "folder-default"
 				}
@@ -141,6 +191,31 @@ export const mixin = {
 		},
 		getFileExt(item) {
 			return item.name.substring(item.name.lastIndexOf('.') + 1);
+		},
+		// True for a folder that IS a mounted drive or connected location's
+		// own root - deleting it (as opposed to a normal file/folder living
+		// on one) doesn't do what a user expects: at best it's blocked
+		// server-side (route/v1/file.go's DeleteFile already refuses any
+		// currently-mounted path via IsMounted()) after an "are you sure"
+		// prompt that had no way of knowing that; at worst, for a location
+		// that isn't currently mounted for some reason, it silently deletes
+		// the mount point directory drives/shares get reconnected into.
+		// Mirrors what the backend already protects (mount roots, /DATA,
+		// direct /mnt children) so the UI never offers to delete something
+		// the server would reject anyway.
+		isProtectedMountFolder(item) {
+			if (!item || !item.is_dir) return false
+			if (item.path === '/DATA') return true
+			if (DRIVE_MOUNT_TYPES.includes(item.type)) return true
+			// A direct child of /mnt (e.g. /mnt/my-nas, /mnt/my-cloud-drive)
+			// is a network/cloud connection's own mount root - same "/mnt/"
+			// one-level-deep rule DeleteFile itself uses. Something nested
+			// further under one (/mnt/my-nas/some-folder) is an ordinary
+			// folder living on that connection, not the connection itself.
+			if (item.path && item.path.startsWith('/mnt/')) {
+				return item.path.slice('/mnt/'.length).split('/').filter(Boolean).length === 1
+			}
+			return false
 		},
 		/**
 		 * @description: Download File
@@ -200,6 +275,23 @@ export const mixin = {
 				parameters.files = path
 				return apiUrl + "?" + qs.stringify(parameters)
 			}
+		},
+
+		// Same URL shape as getFileUrl(), pointed at the backend's on-the-fly
+		// remux endpoint (GetStreamRemuxVideo) instead of raw file-serving -
+		// for a video container no browser can play natively at all
+		// (Matroska/.mkv), regardless of the codec inside. Only rewraps the
+		// container (ffmpeg `-c copy`, no re-encode), so this only actually
+		// fixes playback when the codecs already inside are browser-
+		// decodable (H.264/AAC is the common case) - kept to a single-item,
+		// non-directory use (VideoPlayer.vue's only caller) since streaming
+		// a batch or a folder through ffmpeg doesn't mean anything.
+		getStreamUrl(item) {
+			const parameters = {
+				token: this.$store.state.access_token,
+				path: item.path,
+			}
+			return `${this.baseUrl}file/stream?${qs.stringify(parameters)}`
 		},
 
 		// check if has thumb

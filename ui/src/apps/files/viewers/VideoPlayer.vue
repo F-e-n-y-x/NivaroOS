@@ -9,8 +9,13 @@
 	same libraries, new chrome only.
 -->
 <template>
-	<files-viewer-chrome :no-overflow="true" @download="downloadFile(item)">
-		<div class="video-player-body">
+	<files-viewer-chrome :no-overflow="true" @download="downloadFile(item)" @viewer-resize="onViewerResize">
+		<div v-if="hasError" class="viewer-error-state">
+			<b-icon icon="file-alert-outline" custom-size="mdi-48px"></b-icon>
+			<p>{{ errorMessage }}</p>
+			<b-button type="is-primary" icon-left="download-outline" @click="downloadFile(item)">{{ $t('Download') }}</b-button>
+		</div>
+		<div v-else class="video-player-body">
 			<div v-if="poster" class="audio-blur-background" :style="{ backgroundImage: `url(${poster})` }"></div>
 			<div v-if="isVideo" ref="artRef" class="player"></div>
 			<aplayer
@@ -35,6 +40,16 @@ import * as mm from 'music-metadata-browser'
 
 Aplayer.disableVersionBadge = true
 
+// Extensions with no native browser support at all, regardless of the
+// codec inside them - Chrome/Firefox only reliably play mp4/m4v/webm
+// natively. Every one of these needs the backend's on-the-fly remux
+// endpoint (GetStreamRemuxVideo) instead of raw file-serving. Sourced from
+// mixins/mixin.js's own typeMap['video-x-generic'] list, minus the three
+// natively-fine ones - .mov specifically was the other format reported
+// broken alongside .mkv, and QuickTime's container isn't natively
+// supported in Chrome/Firefox any more than Matroska is.
+const NEEDS_REMUX_EXTENSIONS = ['mkv', '3gp', 'avi', 'm2ts', 'flv', 'vob', 'ts', 'mts', 'mov', 'wmv', 'rm', 'rmvb', 'asf', 'mpg', 'mpeg', 'f4v']
+
 export default {
 	name: 'files-video-player',
 	mixins: [mixin],
@@ -49,6 +64,8 @@ export default {
 			poster: '',
 			audioTitle: this.item.name,
 			audioArtist: '...',
+			hasError: false,
+			errorMessage: '',
 		}
 	},
 	computed: {
@@ -68,8 +85,22 @@ export default {
 			if (this.isAudio) {
 				this.loadAudioMetadata()
 			} else {
+				const needsRemux = NEEDS_REMUX_EXTENSIONS.includes(this.getFileExt(this.item).toLowerCase())
 				this.instance = new Artplayer({
-					url: this.getFileUrl(this.item),
+					url: needsRemux ? this.getStreamUrl(this.item) : this.getFileUrl(this.item),
+					// Explicit, rather than left to Artplayer's own
+					// type-sniffing (which falls back to reading a
+					// "file extension" off the URL - both getFileUrl() and
+					// getStreamUrl() end in `&token=<JWT>`, and a JWT's
+					// header.payload.signature shape means the URL's last
+					// "." isn't a file extension at all here, it's an
+					// arbitrary fragment of the signature). Harmless for the
+					// native case (nothing in this app registers a
+					// customType handler Artplayer would need `type` to
+					// select), but removes any ambiguity for the remux case,
+					// where this must read as mp4 - that's the one thing the
+					// backend endpoint always actually returns.
+					type: needsRemux ? 'mp4' : this.getFileExt(this.item).toLowerCase(),
 					container: this.$refs.artRef,
 					setting: true,
 					flip: true,
@@ -86,6 +117,17 @@ export default {
 					airplay: true,
 					lang: this.$i18n.locale.replace('_', '-'),
 				})
+				// Artplayer's own docs list these as the two error events -
+				// 'video:error' is the native <video> element's own decode/
+				// network failure (e.g. exactly the "container/codec this
+				// browser can't play" case), 'error' is Artplayer's own
+				// higher-level failure (e.g. exhausted its reconnect
+				// attempts). Previously unhandled: a failure here left the
+				// player either stuck on its loading spinner forever, or
+				// silently blank, with nothing on screen explaining why and
+				// no way to tell without opening devtools.
+				this.instance.on('video:error', () => this.onPlaybackError())
+				this.instance.on('error', () => this.onPlaybackError())
 			}
 		})
 	},
@@ -95,6 +137,22 @@ export default {
 		}
 	},
 	methods: {
+		onPlaybackError() {
+			this.hasError = true
+			this.errorMessage = this.$t(
+				'This video couldn’t be played - the file may be corrupted, or use a video/audio codec this browser can’t decode.'
+			)
+		},
+		// Artplayer only re-runs its own internal layout math on the
+		// browser's native `window` resize event (or a fullscreen/orientation
+		// change) - it has no ResizeObserver of its own, so resizing just
+		// this window (a CSS-only change, `window` itself never fires
+		// resize) left the video at its original size/position. 'resize' is
+		// a documented public event (types/events.d.ts) instance.emit() can
+		// trigger the same internal re-layout externally.
+		onViewerResize() {
+			this.instance && this.instance.emit && this.instance.emit('resize')
+		},
 		async loadAudioMetadata() {
 			const fileUrl = this.getFileUrl(this.item)
 			const metadata = await mm.fetchFromUrl(fileUrl)
@@ -110,6 +168,16 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.viewer-error-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-6);
+	max-width: 24rem;
+	text-align: center;
+	color: #fff;
+}
 .video-player-body {
 	position: relative;
 	width: 100%;
@@ -130,6 +198,21 @@ export default {
 		max-width: 100% !important;
 		max-height: 100% !important;
 		overflow: hidden !important;
+	}
+
+	// Artplayer's own built-in stylesheet hardcodes this (the big
+	// play/pause/loading icon shown over the video) to
+	// `position:absolute;bottom:65px;right:30px` - genuinely by design, not
+	// a conflict with anything here, it's just not centered by default.
+	// Re-centering it properly (not just nudging the bottom/right offsets,
+	// which would still be off-center for any player size other than
+	// whatever Artplayer tuned those two numbers for).
+	::v-deep .art-state {
+		top: 50% !important;
+		left: 50% !important;
+		bottom: auto !important;
+		right: auto !important;
+		transform: translate(-50%, -50%) !important;
 	}
 
 	::v-deep .art-video-player video {

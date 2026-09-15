@@ -62,18 +62,29 @@
 		<div
 			v-for="item in localStorageList"
 			:key="item.path"
-			class="tree-node"
+			class="tree-node companion-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
 			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'local' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
+			:title="item.storageText ? `${item.name} (${item.storageText})` : item.name"
 		>
 			<span class="tree-node-icon">
 				<b-icon :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="casa-22px"></b-icon>
 			</span>
-			<span class="tree-node-label one-line">{{ item.name }}</span>
+			<div class="companion-node-body">
+				<div class="companion-node-row">
+					<span class="tree-node-label one-line">{{ item.name }}</span>
+				</div>
+				<div v-if="item.storageTotal > 0" class="companion-storage-meta">
+					<span class="companion-storage-text">{{ item.storageText }}</span>
+					<div class="companion-storage-meter">
+						<div class="companion-storage-bar" :style="{ width: item.storagePercent + '%' }"></div>
+					</div>
+				</div>
+			</div>
 		</div>
 		<!-- Local Storage List End -->
 
@@ -81,21 +92,32 @@
 		<div
 			v-for="item in networkStorageList"
 			:key="item.path"
-			class="tree-node"
+			class="tree-node companion-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
 			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'network' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
+			:title="item.storageText ? `${item.name} (${item.storageText})` : item.name"
 		>
 			<span class="tree-node-icon">
 				<b-icon :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="casa-22px"></b-icon>
 			</span>
-			<span class="tree-node-label one-line">{{ item.name }}</span>
-			<span class="tree-node-right-icon" @click.stop="umountNetwork(item)">
-				<b-icon icon="eject" :pack="item.pack" class="casa-color-gray" custom-size="casa-16px"></b-icon>
-			</span>
+			<div class="companion-node-body">
+				<div class="companion-node-row">
+					<span class="tree-node-label one-line">{{ item.name }}</span>
+					<span class="tree-node-right-icon" @click.stop="umountNetwork(item)">
+						<b-icon icon="eject" :pack="item.pack" class="casa-color-gray" custom-size="casa-16px"></b-icon>
+					</span>
+				</div>
+				<div v-if="item.storageTotal > 0" class="companion-storage-meta">
+					<span class="companion-storage-text">{{ item.storageText }}</span>
+					<div class="companion-storage-meter">
+						<div class="companion-storage-bar" :style="{ width: item.storagePercent + '%' }"></div>
+					</div>
+				</div>
+			</div>
 		</div>
 		<!-- Network Storage List End -->
 
@@ -103,21 +125,32 @@
 		<div
 			v-for="item in usbStorageList"
 			:key="item.path"
-			class="tree-node"
+			class="tree-node companion-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
 			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'usb' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
+			:title="item.storageText ? `${item.name} (${item.storageText})` : item.name"
 		>
 			<span class="tree-node-icon">
 				<b-icon :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="casa-22px"></b-icon>
 			</span>
-			<span class="tree-node-label one-line">{{ item.name }}</span>
-			<span class="tree-node-right-icon" @click.stop="umountUsb(item)">
-				<b-icon icon="eject" :pack="item.pack" class="casa-color-gray" custom-size="casa-16px"></b-icon>
-			</span>
+			<div class="companion-node-body">
+				<div class="companion-node-row">
+					<span class="tree-node-label one-line">{{ item.name }}</span>
+					<span class="tree-node-right-icon" @click.stop="umountUsb(item)">
+						<b-icon icon="eject" :pack="item.pack" class="casa-color-gray" custom-size="casa-16px"></b-icon>
+					</span>
+				</div>
+				<div v-if="item.storageTotal > 0" class="companion-storage-meta">
+					<span class="companion-storage-text">{{ item.storageText }}</span>
+					<div class="companion-storage-meter">
+						<div class="companion-storage-bar" :style="{ width: item.storagePercent + '%' }"></div>
+					</div>
+				</div>
+			</div>
 		</div>
 		<!-- USB List End -->
 
@@ -125,22 +158,33 @@
 		<div
 			v-for="item in cloudStorageList"
 			:key="item.path"
-			class="tree-node"
+			class="tree-node companion-node"
 			:class="{ active: isItemActive(item), 'drop-target': dragHoverPath === item.path }"
 			@click="open(item)"
 			@contextmenu.prevent="onContextMenu({ ...item, is_dir: true, mountType: 'cloud' }, $event)"
 			@dragover="onDragOver(item, $event)"
 			@dragleave="onDragLeave(item)"
 			@drop="onDrop(item, $event)"
+			:title="item.storageText ? `${item.name} (${item.storageText})` : item.name"
 		>
 			<span class="tree-node-icon">
 				<b-image v-if="item.icon_type === 'svg'" :src="item.icon" style="width: 19px; height: 19px;"></b-image>
 				<b-icon v-else :icon="item.icon" :pack="item.pack" class="casa-color-blue" custom-size="mdi-19px"></b-icon>
 			</span>
-			<span class="tree-node-label one-line">{{ item.name }}</span>
-			<span class="tree-node-right-icon" @click.stop="umountCloud(item)">
-				<b-icon icon="eject" pack="casa" class="casa-color-gray" custom-size="casa-16px"></b-icon>
-			</span>
+			<div class="companion-node-body">
+				<div class="companion-node-row">
+					<span class="tree-node-label one-line">{{ item.name }}</span>
+					<span class="tree-node-right-icon" @click.stop="umountCloud(item)">
+						<b-icon icon="eject" pack="casa" class="casa-color-gray" custom-size="casa-16px"></b-icon>
+					</span>
+				</div>
+				<div v-if="item.storageTotal > 0" class="companion-storage-meta">
+					<span class="companion-storage-text">{{ item.storageText }}</span>
+					<div class="companion-storage-meter">
+						<div class="companion-storage-bar" :style="{ width: item.storagePercent + '%' }"></div>
+					</div>
+				</div>
+			</div>
 		</div>
 		<!-- Cloud List End -->
 
@@ -273,7 +317,10 @@ export default {
 				dataList.forEach((item) => {
 					;(item.children || []).forEach((part) => {
 						if (!mergeRes.find((mp) => mp === part.uuid)) {
-							if (item.type === 'usb') {
+							// item.type is now 'usb3' for a SuperSpeed+ drive
+							// (see local-storage's ClassifyUSBTransport), not just
+							// 'usb' - both still belong in the USB bucket here.
+							if (item.type === 'usb' || item.type === 'usb3') {
 								usbStorageArray.push(part)
 							} else {
 								storageArray.push(part)
@@ -290,6 +337,7 @@ export default {
 						visible: true,
 						selected: true,
 						extensions: null,
+						...this.storageStats(parseInt(storage.used, 10), parseInt(storage.size, 10)),
 					}
 				})
 				this.usbStorageList = usbStorageArray.map((storage) => {
@@ -301,6 +349,7 @@ export default {
 						visible: true,
 						selected: true,
 						extensions: null,
+						...this.storageStats(parseInt(storage.used, 10), parseInt(storage.size, 10)),
 					}
 				})
 			} catch (error) {
@@ -369,6 +418,7 @@ export default {
 						visible: true,
 						selected: true,
 						extensions: null,
+						...this.storageStats(parseInt(storage.used, 10), parseInt(storage.size, 10)),
 					}
 				})
 			} catch (error) {
@@ -419,6 +469,7 @@ export default {
 						visible: true,
 						selected: true,
 						extensions: null,
+						...this.storageStats(parseInt(storage.used, 10), parseInt(storage.size, 10)),
 					}
 				})
 			} catch (error) {
@@ -432,6 +483,17 @@ export default {
 			const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
 			const i = Math.floor(Math.log(bytes) / Math.log(k))
 			return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+		},
+
+		// Shared with getCompanionDevices() - same storageUsed/storageTotal/
+		// storagePercent/storageText shape drives the same space-bar markup
+		// (.companion-storage-meta etc.) for USB/local/network/cloud entries.
+		storageStats(usedBytes, totalBytes) {
+			const storageUsed = usedBytes > 0 ? usedBytes : 0
+			const storageTotal = totalBytes > 0 ? totalBytes : 0
+			const storagePercent = storageTotal > 0 ? Math.min(100, Math.round((storageUsed / storageTotal) * 100)) : 0
+			const storageText = storageTotal > 0 ? `${this.formatBytes(storageUsed)} / ${this.formatBytes(storageTotal)}` : ''
+			return { storageUsed, storageTotal, storagePercent, storageText }
 		},
 
 		// Companion Devices

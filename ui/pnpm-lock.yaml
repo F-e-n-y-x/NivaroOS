@@ -174,8 +174,8 @@ importers:
         specifier: ^2.5.0
         version: 2.5.0
       tiptap-markdown:
-        specifier: ^0.6.1
-        version: 0.6.1(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(prosemirror-model@1.25.11)
+        specifier: ^0.8.10
+        version: 0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
       ua-parser-js:
         specifier: ^1.0.35
         version: 1.0.41
@@ -1970,17 +1970,23 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
+  '@types/linkify-it@3.0.5':
+    resolution: {integrity: sha512-yg6E+u0/+Zjva+buc3EIb+29XEg4wltq7cSmd4Uc2EE/1nUVmxyzpX6gUXD0V8jIrG0r7YeOGVIbYRkxeooCtw==}
+
   '@types/linkify-it@5.0.0':
     resolution: {integrity: sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q==}
 
-  '@types/markdown-it@12.2.3':
-    resolution: {integrity: sha512-GKMHFfv3458yYy+v/N8gjufHO6MSZKCOXpZc5GXIWWy8uldwfmPn98vp81gZ5f9SVw8YYBctgfJ22a2d7AOMeQ==}
+  '@types/markdown-it@13.0.9':
+    resolution: {integrity: sha512-1XPwR0+MgXLWfTn9gCsZ55AHOKW1WN+P9vr0PaQh5aerR9LLQXUbjfEAFhjmEmyoYFWAyuN2Mqkn40MZ4ukjBw==}
 
   '@types/markdown-it@14.2.0':
     resolution: {integrity: sha512-NoQ2yGlLWj4wpxMs+TYmRKk3thDrQ97agr7sFqfLsAlvoS8SNQuTrlObhFqG9iugdTtgOE9jpJ6FNM4ZGsa5xQ==}
 
   '@types/mdast@3.0.15':
     resolution: {integrity: sha512-LnwD+mUEfxWMa1QpDraczIn6k0Ee3SMicuYSSzS6ZYl2gKS09EClnJYGd8Du6rfc5r/GZEk5o1mRb8TaTj03sQ==}
+
+  '@types/mdurl@1.0.5':
+    resolution: {integrity: sha512-6L6VymKTzYSrEf4Nev4Xa1LCHKrlTlYCBMTlQKFuddo1CvQcE52I0mwfOJayueUC7MJuXOeHTcIU683lzd0cUA==}
 
   '@types/mdurl@2.0.0':
     resolution: {integrity: sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg==}
@@ -8144,11 +8150,10 @@ packages:
   tippy.js@6.3.7:
     resolution: {integrity: sha512-E1d3oP2emgJ9dRQZdf3Kkn0qJgI6ZLpyS5z6ZkY1DF3kaQaBsGZsndEpHwx+eC+tYM41HaSNvNtLx8tU57FzTQ==}
 
-  tiptap-markdown@0.6.1:
-    resolution: {integrity: sha512-z4BBOhH5o3W9OmKZW+9+DDQgplmZiqOhSUBtOVgwh/I3RFepqsCvoHwgBiCBK6DTlPZFUSb5VDmZJMhiDDrc9w==}
+  tiptap-markdown@0.8.10:
+    resolution: {integrity: sha512-iDVkR2BjAqkTDtFX0h94yVvE2AihCXlF0Q7RIXSJPRSR5I0PA1TMuAg6FHFpmqTn4tPxJ0by0CK7PUMlnFLGEQ==}
     peerDependencies:
-      '@tiptap/core': ^2.0.0-beta.129
-      prosemirror-model: ^1.14.1
+      '@tiptap/core': ^2.0.3
 
   tmp@0.0.33:
     resolution: {integrity: sha512-jRCJlojKnZ3addtTOjdIqoRuPEKBvNXcGYqzO6zWZX8KfKEpnGY5jfggJQ3EjKuu8D4bJRr0y+cYJFmYbImXGw==}
@@ -10845,12 +10850,14 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
+  '@types/linkify-it@3.0.5': {}
+
   '@types/linkify-it@5.0.0': {}
 
-  '@types/markdown-it@12.2.3':
+  '@types/markdown-it@13.0.9':
     dependencies:
-      '@types/linkify-it': 5.0.0
-      '@types/mdurl': 2.0.0
+      '@types/linkify-it': 3.0.5
+      '@types/mdurl': 1.0.5
 
   '@types/markdown-it@14.2.0':
     dependencies:
@@ -10860,6 +10867,8 @@ snapshots:
   '@types/mdast@3.0.15':
     dependencies:
       '@types/unist': 2.0.11
+
+  '@types/mdurl@1.0.5': {}
 
   '@types/mdurl@2.0.0': {}
 
@@ -17796,14 +17805,13 @@ snapshots:
     dependencies:
       '@popperjs/core': 2.11.8
 
-  tiptap-markdown@0.6.1(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(prosemirror-model@1.25.11):
+  tiptap-markdown@0.8.10(@tiptap/core@2.27.2(@tiptap/pm@2.27.2)):
     dependencies:
       '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
-      '@types/markdown-it': 12.2.3
-      markdown-it: 12.3.2
+      '@types/markdown-it': 13.0.9
+      markdown-it: 14.3.1
       markdown-it-task-lists: 2.1.1
       prosemirror-markdown: 1.13.6
-      prosemirror-model: 1.25.11
 
   tmp@0.0.33:
     dependencies:

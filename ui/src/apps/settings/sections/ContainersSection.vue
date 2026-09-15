@@ -282,6 +282,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+
 export const ROWS = [
 	{ label: 'Container Updates' },
 	{ label: 'Docker Container Auto-Update' },
@@ -441,16 +443,19 @@ export default {
 					if (idx !== -1) {
 						this.$set(this.containers, idx, updated)
 					}
+					// c.name is a Docker container name - not developer-authored
+					// text - so it must be escaped before it hits toast.open's
+					// v-html-rendered message.
 					if (updated.has_update) {
 						this.$buefy.toast.open({
-							message: `${c.name}: ${this.$t('New image update found!')}`,
+							message: `${escapeHtml(c.name)}: ${this.$t('New image update found!')}`,
 							type: 'is-info',
 							position: 'is-top',
 							duration: 3000
 						})
 					} else {
 						this.$buefy.toast.open({
-							message: `${c.name}: ${this.$t('Container is already up to date')}`,
+							message: `${escapeHtml(c.name)}: ${this.$t('Container is already up to date')}`,
 							type: 'is-success',
 							position: 'is-top',
 							duration: 2000
@@ -474,7 +479,7 @@ export default {
 			try {
 				await this.$api.container.updateContainer(c.id)
 				this.$buefy.toast.open({
-					message: `${c.name} ${this.$t('updated successfully!')}`,
+					message: `${escapeHtml(c.name)} ${this.$t('updated successfully!')}`,
 					type: 'is-success',
 					position: 'is-top',
 					duration: 3000
@@ -529,7 +534,7 @@ export default {
 			try {
 				await this.$api.container.updateState(c.id, 'restart')
 				this.$buefy.toast.open({
-					message: `${c.name} ${this.$t('restarted')}`,
+					message: `${escapeHtml(c.name)} ${this.$t('restarted')}`,
 					type: 'is-success',
 					position: 'is-top',
 					duration: 2000

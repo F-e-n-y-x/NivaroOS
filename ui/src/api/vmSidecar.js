@@ -9,8 +9,20 @@ const protocol = isHttps ? 'https:' : 'http:'
 const wsProtocol = isHttps ? 'wss:' : 'ws:'
 const BASE_URL = `${protocol}//${hostname}:28641`
 
+// The sidecar now requires the same JWT every other NivaroOS API call sends
+// (it used to accept anything from the LAN with no auth at all) - read it
+// the same way service.js's axios instance does, straight from localStorage,
+// since this client talks to the sidecar's own port directly rather than
+// through that axios instance.
+function authToken() {
+	return localStorage.getItem('access_token') || ''
+}
+
 async function request(path, options = {}) {
-	const res = await fetch(`${BASE_URL}${path}`, options)
+	const headers = { ...(options.headers || {}) }
+	const token = authToken()
+	if (token) headers.Authorization = token
+	const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
 	if (!res.ok) {
 		let body = {}
 		try {
@@ -48,7 +60,8 @@ export const vmSidecar = {
 	// InstallResult carries its own success flag regardless of HTTP
 	// status (500 on failure) - read the body directly instead of
 	// throwing, so the caller can show the failed step/output.
-	runSetupInstall: () => fetch(`${BASE_URL}/setup/install`, { method: 'POST' }).then(res => res.json()),
+	runSetupInstall: () =>
+		fetch(`${BASE_URL}/setup/install`, { method: 'POST', headers: { Authorization: authToken() } }).then(res => res.json()),
 
 	listVMs: () => request('/vms'),
 	getVM: name => request(`/vms/${encodeURIComponent(name)}`),
@@ -104,8 +117,11 @@ export const vmSidecar = {
 	deleteSnapshot: (name, snapName, children) =>
 		request(`/vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(snapName)}${children ? '?children=true' : ''}`, { method: 'DELETE' }),
 
-	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console`,
+	// Neither a WebSocket handshake nor a plain <img src> can carry a custom
+	// header, so the token has to ride as a query param here - the sidecar's
+	// auth accepts either (see vm-sidecar/auth.go).
+	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console?token=${encodeURIComponent(authToken())}`,
 	// A cache-busting `t` param is left for the caller to append when
 	// polling (a plain <img src> won't re-fetch an unchanged URL).
-	screenshotUrl: name => `${BASE_URL}/vms/${encodeURIComponent(name)}/screenshot`
+	screenshotUrl: name => `${BASE_URL}/vms/${encodeURIComponent(name)}/screenshot?token=${encodeURIComponent(authToken())}`
 }

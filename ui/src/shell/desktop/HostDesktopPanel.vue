@@ -701,7 +701,11 @@ export default {
 
 			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 			const host = window.location.hostname || '127.0.0.1'
-			const url = `${proto}//${host}:28641/host/console`
+			// vm-sidecar now requires the same JWT every other API call sends - a
+			// WebSocket handshake can't carry a custom header, so it rides as a
+			// query param (see vm-sidecar/auth.go).
+			const token = localStorage.getItem('access_token') || ''
+			const url = `${proto}//${host}:28641/host/console?token=${encodeURIComponent(token)}`
 
 			try {
 				this.rfb = new RFB(this.$refs.screen, url)
@@ -784,7 +788,9 @@ export default {
 				// Direct sidecar port fallback
 				try {
 					const host = window.location.hostname || '127.0.0.1'
-					const res = await axios.get(`//${host}:28641/host/display`)
+					const res = await axios.get(`//${host}:28641/host/display`, {
+						headers: { Authorization: localStorage.getItem('access_token') || '' },
+					})
 					if (res.data) {
 						this.currentResolution = res.data.current || this.currentResolution
 						this.availableResolutions = res.data.resolutions || []
@@ -802,7 +808,11 @@ export default {
 					res = await axios.post('/api/host/display', { width, height })
 				} catch (e) {
 					const host = window.location.hostname || '127.0.0.1'
-					res = await axios.post(`//${host}:28641/host/display`, { width, height })
+					res = await axios.post(
+						`//${host}:28641/host/display`,
+						{ width, height },
+						{ headers: { Authorization: localStorage.getItem('access_token') || '' } }
+					)
 				}
 				if (res && res.data) {
 					this.currentResolution = res.data.current || `${width}x${height}`

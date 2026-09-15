@@ -11,7 +11,7 @@
 -->
 <template>
 	<div class="viewer-shell">
-		<div class="viewer-body" :class="{ 'no-overflow': noOverflow }">
+		<div ref="viewerBody" class="viewer-body" :class="{ 'no-overflow': noOverflow }">
 			<slot></slot>
 		</div>
 		<div class="viewer-toolbar">
@@ -37,6 +37,50 @@ export default {
 		hasActions() {
 			return !!this.$slots.actions
 		},
+	},
+	// Every viewer here embeds a third-party rendering library (viewerjs,
+	// Artplayer, CodeMirror, @vue-office/*) that draws into a canvas or
+	// otherwise computes its layout in JS rather than relying purely on
+	// CSS - most of them size that layout once, at mount/init time, and
+	// never re-check it afterwards. A NivaroOS desktop window resizing
+	// only ever changes this element's CSS width/height (see
+	// DesktopWindow.vue's drag-resize handles) - the browser's own
+	// `window` never fires a resize event, which is the ONLY signal most
+	// of these libraries listen for (if they listen for anything at all).
+	// That mismatch is what made every one of these viewers look "stuck"
+	// at its original size, cropped or off-center, after resizing its
+	// window - not a bug in any single viewer, but this shared assumption
+	// none of them make explicitly.
+	//
+	// A ResizeObserver on the actual content box (not `window`) is the
+	// correct fix regardless of which library is inside: it fires for
+	// this exact scenario (and window resize, sidebar toggle, tab
+	// switch - anything that changes this box's real rendered size),
+	// so each viewer can re-sync itself the same way it already knows how
+	// to (an update()/refresh()/resize() call, or an internal API) via
+	// the `viewer-resize` event, without every viewer needing to
+	// duplicate its own observer.
+	mounted() {
+		if (typeof ResizeObserver === 'undefined') return
+		let frame = null
+		this.resizeObserver = new ResizeObserver((entries) => {
+			// rAF-coalesced: a drag-resize fires many observer callbacks in
+			// quick succession (one per frame the mouse moves), and forcing
+			// every one of those straight into a library's own re-layout
+			// call would fight the drag itself for CPU instead of just
+			// tracking the final size.
+			if (frame) cancelAnimationFrame(frame)
+			frame = requestAnimationFrame(() => {
+				frame = null
+				const entry = entries[entries.length - 1]
+				const { width, height } = entry.contentRect
+				if (width > 0 && height > 0) this.$emit('viewer-resize', { width, height })
+			})
+		})
+		this.resizeObserver.observe(this.$refs.viewerBody)
+	},
+	beforeDestroy() {
+		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 }
 </script>

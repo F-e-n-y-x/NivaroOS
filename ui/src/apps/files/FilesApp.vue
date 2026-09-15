@@ -62,15 +62,13 @@
 				@extract-request="onExtractRequest"
 			></files-content-view>
 			<files-shared-view ref="sharedView" v-show="controller.activeSection === 'shared'" @add-share="activeDialog = 'share-select'"></files-shared-view>
-			<files-drop-view v-show="controller.activeSection === 'drop'"></files-drop-view>
-			<operation-tray></operation-tray>
+			<operation-tray :offset-bottom="uploadTrayOffset"></operation-tray>
 			<slot></slot>
 		</div>
 		<new-folder-dialog v-if="activeDialog === 'new-folder'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-folder-dialog>
 		<new-file-dialog v-if="activeDialog === 'new-file'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-file-dialog>
 		<rename-dialog v-if="activeDialog === 'rename'" :item="dialogItem" @renamed="onDialogCreated" @close="activeDialog = null"></rename-dialog>
 		<share-dialog v-if="activeDialog === 'share'" :item="dialogItem" @close="activeDialog = null"></share-dialog>
-		<detail-dialog v-if="activeDialog === 'detail'" :item="dialogItem" @close="activeDialog = null"></detail-dialog>
 		<compress-dialog v-if="activeDialog === 'compress'" :current-path="controller.currentPath" :items="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></compress-dialog>
 		<extract-dialog v-if="activeDialog === 'extract'" :current-path="controller.currentPath" :item="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></extract-dialog>
 		<share-select-dialog v-if="activeDialog === 'share-select'" @created="onShareCreated" @close="activeDialog = null"></share-select-dialog>
@@ -97,13 +95,11 @@ import FolderTree from './FolderTree.vue'
 import MountList from './MountList.vue'
 import FilesContentView from './ContentView.vue'
 import FilesSharedView from './SharedView.vue'
-import FilesDropView from './DropView.vue'
 import OperationTray from './OperationTray.vue'
 import NewFolderDialog from './dialogs/NewFolderDialog.vue'
 import NewFileDialog from './dialogs/NewFileDialog.vue'
 import RenameDialog from './dialogs/RenameDialog.vue'
 import ShareDialog from './dialogs/ShareDialog.vue'
-import DetailDialog from './dialogs/DetailDialog.vue'
 import ShareSelectDialog from './dialogs/ShareSelectDialog.vue'
 import ConfirmDialog from './dialogs/ConfirmDialog.vue'
 import CompressDialog from './dialogs/CompressDialog.vue'
@@ -119,7 +115,12 @@ const VIEWER_WINDOW_CONFIG = {
 	'doc-viewer': { component: 'DocViewer', width: 850, height: 650 },
 	'excel-viewer': { component: 'ExcelViewer', width: 850, height: 650 },
 	'pdf-viewer': { component: 'PdfViewer', width: 800, height: 680 },
+	'mark-down-editor': { component: 'MarkdownEditor', width: 800, height: 650 },
 }
+// Falls back to here whenever getPanelType() finds no entry in
+// filePanelMap (mixins/mixin.js) at all - genuinely unknown extensions,
+// and known-but-unviewable ones (archives, disk images, PSD/AI, exe/apk).
+const UNSUPPORTED_VIEWER_CONFIG = { component: 'UnsupportedViewer', width: 480, height: 420 }
 
 export default {
 	name: 'files-app',
@@ -137,13 +138,11 @@ export default {
 		MountList,
 		FilesContentView,
 		FilesSharedView,
-		FilesDropView,
 		OperationTray,
 		NewFolderDialog,
 		NewFileDialog,
 		RenameDialog,
 		ShareDialog,
-		DetailDialog,
 		ShareSelectDialog,
 		ConfirmDialog,
 		CompressDialog,
@@ -174,6 +173,15 @@ export default {
 				openTerminal: this.openTerminal,
 			},
 			resizeObserver: null,
+			// UploadTray (nested per-tab inside ContentView) and OperationTray
+			// (rendered once, below) are both pinned to the same bottom-right
+			// corner - fine when only one is ever up at a time, but a paste
+			// running while a file is uploading showed them stacked directly
+			// on top of each other. Tracks the active tab's upload tray's own
+			// rendered height (0 when it isn't showing) so OperationTray can
+			// shift up out of its way - see uploadTrayResizeObserver below.
+			uploadTrayOffset: 0,
+			uploadTrayResizeObserver: null,
 			activeDialog: null,
 			dialogItem: null,
 			// One entry per open tab, each independently tracking its own
@@ -201,13 +209,24 @@ export default {
 			this.controller.breakpoints = classifyWidth(width)
 		})
 		this.resizeObserver.observe(this.$refs.root)
+		if (typeof ResizeObserver !== 'undefined') {
+			this.uploadTrayResizeObserver = new ResizeObserver((entries) => {
+				const box = entries[0].contentRect
+				// v-show="false" (no upload in progress, or a background tab)
+				// reports a zero-size contentRect - exactly "out of
+				// OperationTray's way" already, no visibility check needed.
+				this.uploadTrayOffset = box.height > 0 ? box.height + 12 : 0
+			})
+		}
 		if (!this.$store.state.currentPath) {
 			this.navigate('/DATA')
 		}
 		this.refsReady++
+		this.$nextTick(this.retargetUploadTrayObserver)
 	},
 	beforeDestroy() {
 		this.resizeObserver && this.resizeObserver.disconnect()
+		this.uploadTrayResizeObserver && this.uploadTrayResizeObserver.disconnect()
 	},
 	computed: {
 		// Resolves the ContentView instance for whichever tab is currently
@@ -225,14 +244,33 @@ export default {
 			return Array.isArray(refs) ? refs[index] : refs
 		},
 	},
+	watch: {
+		// Only the active tab's own UploadTray can ever actually be visible
+		// (every other tab's whole ContentView, upload tray included, is
+		// v-show="false") - re-point the observer at it, rather than one per
+		// tab, whenever which tab is active changes.
+		activeContentView() {
+			this.retargetUploadTrayObserver()
+		},
+	},
 	methods: {
+		retargetUploadTrayObserver() {
+			if (!this.uploadTrayResizeObserver) return
+			this.uploadTrayResizeObserver.disconnect()
+			const uploadTray = this.activeContentView && this.activeContentView.$refs && this.activeContentView.$refs.uploadTray
+			if (uploadTray && uploadTray.$el) {
+				this.uploadTrayResizeObserver.observe(uploadTray.$el)
+			} else {
+				this.uploadTrayOffset = 0
+			}
+		},
 		navigate(path) {
 			this.controller.currentPath = path
 			this.$store.commit('SET_CURRENT_PATH', path)
 			// Navigating to a folder always means "go back to browsing" -
-			// without this, there was no way out of the Shared/Drop sections
-			// (their sidebar nav entries only ever set activeSection forward,
-			// never back) once you clicked into them.
+			// without this, there was no way out of the Shared section (its
+			// sidebar nav entry only ever sets activeSection forward, never
+			// back) once you clicked into it.
 			this.controller.activeSection = 'browser'
 			const activeTab = this.tabs.find((t) => t.id === this.activeTabId)
 			if (activeTab) activeTab.path = path
@@ -330,9 +368,21 @@ export default {
 			this.dialogItem = item
 			this.activeDialog = 'share'
 		},
+		// Opens as its own movable desktop window (registered in
+		// DesktopWindow.vue's COMPONENT_REGISTRY) rather than the old
+		// in-window DialogOverlay modal - that had a backdrop covering the
+		// whole Files window, blocking browsing until you closed it, and
+		// couldn't be dragged out of the way. Just file info; no reason
+		// looking at it should stop you doing anything else in Files.
 		onDetailRequest(item) {
-			this.dialogItem = item
-			this.activeDialog = 'detail'
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'detail-' + Date.now(),
+				title: this.$t('Detail'),
+				component: 'DetailWindow',
+				width: 360,
+				height: 460,
+				props: { item },
+			})
 		},
 		onUpload() {
 			this.activeContentView && this.activeContentView.triggerUpload()
@@ -343,22 +393,19 @@ export default {
 		onPaste() {
 			this.activeContentView && this.activeContentView.paste()
 		},
-		// getPanelType (from the mixin) preserves an existing legacy quirk
-		// deliberately: .md files aren't in filePanelMap, so they fall
-		// through to the Detail dialog rather than opening
-		// MarkdownEditor - not "fixed" here, matches current production
-		// behavior exactly. Viewers open as their own desktop window
-		// (registered in DesktopWindow.vue's COMPONENT_REGISTRY), matching
-		// how double-clicking a file opens a separate app window on a real
+		// Viewers open as their own desktop window (registered in
+		// DesktopWindow.vue's COMPONENT_REGISTRY), matching how
+		// double-clicking a file opens a separate app window on a real
 		// desktop, rather than replacing the Files window's own content.
+		// A type getPanelType (from the mixin) doesn't recognize at all -
+		// an archive, disk image, PSD/AI, or any other extension with no
+		// registered viewer - opens UnsupportedViewer instead of nothing:
+		// same windowed experience as every real viewer, with a Download
+		// action front and center rather than a dead end. Right-click's own
+		// "Detail" action is unaffected - a separate code path.
 		onOpenFile(item) {
 			const type = this.getPanelType(item)
-			const config = VIEWER_WINDOW_CONFIG[type]
-			if (!config) {
-				this.dialogItem = item
-				this.activeDialog = 'detail'
-				return
-			}
+			const config = VIEWER_WINDOW_CONFIG[type] || UNSUPPORTED_VIEWER_CONFIG
 			const props = { item }
 			if (type === 'image-viewer') {
 				props.list = (this.activeContentView && this.activeContentView.listing) || []
@@ -405,8 +452,7 @@ export default {
 		onDeleteSelection() {
 			const items = this.selectedItems()
 			if (!items.length) return
-			this.dialogItem = items
-			this.activeDialog = 'confirm-delete'
+			this.startDelete(items)
 		},
 		// Both only ever shown by Toolbar.vue when exactly one item is
 		// selected (its own singleItem computed), so selectedItems()[0] is
@@ -457,7 +503,34 @@ export default {
 		// solved via DialogOverlay. deleteItem() (the mixin method) already
 		// handles both a single item Object and an Array the same way.
 		onDeleteRequest(item) {
-			this.dialogItem = item
+			this.startDelete([item])
+		},
+		// Shared by onDeleteRequest (single item) and onDeleteSelection
+		// (batch): strips out any mounted-drive/connection root
+		// (isProtectedMountFolder, from the mixin) before ever showing the
+		// "are you sure?" prompt, instead of only finding out it's refused
+		// after confirming - the backend would reject one of these anyway
+		// (DeleteFile's own IsMounted() check), but silently, for the whole
+		// batch at once, leaving the rest of a multi-select undeleted too
+		// with no explanation. This tells the user which item(s) it's
+		// protecting and why, then still deletes whatever's left over, if
+		// anything.
+		startDelete(items) {
+			const protectedItems = items.filter((item) => this.isProtectedMountFolder(item))
+			const deletable = items.filter((item) => !this.isProtectedMountFolder(item))
+			if (protectedItems.length) {
+				const names = protectedItems.map((item) => item.name || item.path).join(', ')
+				this.$buefy.toast.open({
+					message:
+						protectedItems.length === 1
+							? this.$t('{name} is a mounted drive or connected location and can’t be deleted here — eject or disconnect it from Storage settings instead.', { name: names })
+							: this.$t('{names} are mounted drives or connected locations and can’t be deleted here — eject or disconnect them from Storage settings instead.', { names }),
+					type: 'is-warning',
+					duration: 6000,
+				})
+			}
+			if (!deletable.length) return
+			this.dialogItem = deletable.length === 1 ? deletable[0] : deletable
 			this.activeDialog = 'confirm-delete'
 		},
 		performDelete() {

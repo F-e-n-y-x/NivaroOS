@@ -11,7 +11,7 @@
 	delete confirmation and to MarkdownEditor.vue).
 -->
 <template>
-	<files-viewer-chrome @download="downloadFile(item)">
+	<files-viewer-chrome @download="downloadFile(item)" @viewer-resize="onViewerResize">
 		<template #actions>
 			<b-icon icon="content-save" custom-size="mdi-18px" class="is-clickable" @click.native="saveFile(false)"></b-icon>
 		</template>
@@ -33,7 +33,6 @@ import { mixin } from '@/mixins/mixin'
 import ViewerChrome from './ViewerChrome.vue'
 import DialogOverlay from '../DialogOverlay.vue'
 
-import mime from 'mime'
 // Core
 import { codemirror } from 'vue-codemirror'
 import 'codemirror/lib/codemirror.css'
@@ -106,6 +105,20 @@ import 'codemirror/mode/lua/lua'
 import 'codemirror/mode/ruby/ruby'
 import 'codemirror/mode/rust/rust'
 import 'codemirror/mode/shell/shell'
+// Added: these have real extensions in mixins/mixin.js's typeMap (routed
+// here by filePanelMap) that had no imported mode at all - they fell back
+// to plain, unhighlighted text every time, silently, since CodeMirror just
+// renders content as-is for a mode it doesn't recognize rather than erroring.
+import 'codemirror/mode/perl/perl'
+import 'codemirror/mode/vb/vb'
+import 'codemirror/mode/vbscript/vbscript'
+import 'codemirror/mode/swift/swift'
+import 'codemirror/mode/r/r'
+import 'codemirror/mode/stex/stex'
+import 'codemirror/mode/diff/diff'
+import 'codemirror/mode/dockerfile/dockerfile'
+import 'codemirror/mode/toml/toml'
+import 'codemirror/mode/properties/properties'
 
 // Lint libs
 import { CSSLint } from 'csslint'
@@ -117,6 +130,49 @@ window.CSSLint = CSSLint
 window.JSHINT = JSHINT
 window.jsonlint = jsonlint
 window.jsyaml = jsyaml
+
+// Explicit extension -> CodeMirror mode, replacing the old mime.getType(ext)
+// lookup: the `mime` package's type names frequently don't match a
+// CodeMirror mode name at all (e.g. mime has no opinion on "go" or "rs",
+// and the couple of extensions it does resolve, like text/x-python, only
+// worked here because they happened to collide with CodeMirror's own mode
+// name) - real coverage was down to whichever handful of extensions someone
+// had already special-cased, not everything typeMap routes here. Every
+// extension below has a mode actually imported above; anything not listed
+// here still opens fine, just as plain unhighlighted text (never an error).
+const EXT_MODE_MAP = {
+	js: 'text/javascript', json: 'application/json', jsonld: 'application/json',
+	vue: 'text/x-vue',
+	go: 'text/x-go',
+	py: 'text/x-python',
+	rb: 'text/x-ruby',
+	rs: 'text/x-rustsrc', rust: 'text/x-rustsrc',
+	php: 'application/x-httpd-php',
+	lua: 'text/x-lua',
+	sql: 'text/x-sql',
+	sh: 'text/x-sh',
+	yaml: 'text/x-yaml', yml: 'text/x-yaml',
+	xml: 'application/xml', rss: 'application/xml', atom: 'application/xml',
+	html: 'text/html', htm: 'text/html', shtml: 'text/html', shtm: 'text/html',
+	css: 'text/css',
+	less: 'text/x-less',
+	scss: 'text/x-scss', sass: 'text/x-sass',
+	c: 'text/x-csrc', h: 'text/x-csrc',
+	cpp: 'text/x-c++src',
+	cs: 'text/x-csharp',
+	java: 'text/x-java',
+	perl: 'text/x-perl', pl: 'text/x-perl',
+	vb: 'text/x-vb', vbs: 'text/vbscript',
+	swift: 'text/x-swift',
+	r: 'text/x-rsrc',
+	tex: 'text/x-stex',
+	diff: 'text/x-diff',
+	dockerfile: 'text/x-dockerfile', makefile: 'text/x-cmake', cmake: 'text/x-cmake',
+	toml: 'text/x-toml',
+	ini: 'text/x-properties', cfg: 'text/x-properties', conf: 'text/x-properties',
+	properties: 'text/x-properties', gitconfig: 'text/x-properties',
+	asp: 'application/x-aspx', aspx: 'application/x-aspx', jsp: 'application/x-jsp',
+}
 
 export default {
 	name: 'files-code-editor',
@@ -176,18 +232,18 @@ export default {
 		onCmReady() {
 			this.isChange = false
 		},
+		// CodeMirror 5 measures character/line dimensions from its wrapper
+		// element once and caches them - its own docs call out exactly this
+		// scenario ("if you...resize it") as needing an explicit refresh().
+		// Without this, a resized window left the gutter/line-wrapping
+		// stale at the old width until a click or keystroke forced
+		// CodeMirror to remeasure on its own.
+		onViewerResize() {
+			this.codemirror && this.codemirror.refresh()
+		},
 		readFile() {
-			const ext = this.getFileExt(this.item)
-			let mode = mime.getType(ext) == null ? 'text/javascript' : mime.getType(ext)
-			if (ext.toLowerCase() == 'makefile') {
-				mode = 'text/x-cmake'
-			} else if (ext.toLowerCase() == 'py') {
-				mode = 'text/x-python'
-			} else if (ext.toLowerCase() == 'go') {
-				mode = 'text/x-go'
-			} else if (ext.toLowerCase() == 'vue') {
-				mode = 'text/x-vue'
-			}
+			const ext = this.getFileExt(this.item).toLowerCase()
+			const mode = EXT_MODE_MAP[ext] || 'text/plain'
 			this.codemirror.setOption('mode', mode)
 			this.$api.file.download(this.item.path).then((res) => {
 				this.code = typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : String(res.data)

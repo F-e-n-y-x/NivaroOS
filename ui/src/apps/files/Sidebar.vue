@@ -1,6 +1,10 @@
 <!-- src/apps/files/Sidebar.vue -->
 <template>
-	<aside class="files-sidebar" :class="{ collapsed: isCollapsed }">
+	<aside
+		class="files-sidebar"
+		:class="{ collapsed: isCollapsed, resizing: isResizing }"
+		:style="!isCollapsed ? { width: sidebarWidth + 'px' } : null"
+	>
 		<div class="sidebar-header">
 			<b-icon
 				:icon="isCollapsed ? 'chevron-right' : 'chevron-left'"
@@ -25,17 +29,36 @@
 				<span v-if="!isCollapsed">{{ $t('FilesShare') }}</span>
 			</button>
 		</div>
+		<div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize"></div>
 	</aside>
 </template>
 
 <script>
+const SIDEBAR_WIDTH_KEY = 'files-sidebar-width'
+const MIN_SIDEBAR_WIDTH = 180
+const MAX_SIDEBAR_WIDTH = 480
+const DEFAULT_SIDEBAR_WIDTH = 240 // matches the old fixed 15rem at the default 16px root font size
+
 export default {
 	name: 'files-sidebar',
 	inject: ['filesController'],
+	data() {
+		const stored = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10)
+		return {
+			sidebarWidth: stored >= MIN_SIDEBAR_WIDTH && stored <= MAX_SIDEBAR_WIDTH ? stored : DEFAULT_SIDEBAR_WIDTH,
+			isResizing: false,
+			resizeStartX: 0,
+			resizeStartWidth: 0,
+		}
+	},
 	computed: {
 		isCollapsed() {
 			return this.filesController.sidebarCollapsed || this.filesController.breakpoints.sidebarCollapsed
 		},
+	},
+	beforeDestroy() {
+		window.removeEventListener('mousemove', this.onResizeMove)
+		window.removeEventListener('mouseup', this.onResizeEnd)
 	},
 	methods: {
 		// Clicking an already-active section switches back to browsing - without
@@ -44,6 +67,24 @@ export default {
 		// that's not obvious from the Share screen itself).
 		toggleSection(section) {
 			this.filesController.setActiveSection(this.filesController.activeSection === section ? 'browser' : section)
+		},
+		startResize(event) {
+			this.isResizing = true
+			this.resizeStartX = event.clientX
+			this.resizeStartWidth = this.sidebarWidth
+			window.addEventListener('mousemove', this.onResizeMove)
+			window.addEventListener('mouseup', this.onResizeEnd)
+			event.preventDefault()
+		},
+		onResizeMove(event) {
+			const next = this.resizeStartWidth + (event.clientX - this.resizeStartX)
+			this.sidebarWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, next))
+		},
+		onResizeEnd() {
+			this.isResizing = false
+			window.removeEventListener('mousemove', this.onResizeMove)
+			window.removeEventListener('mouseup', this.onResizeEnd)
+			localStorage.setItem(SIDEBAR_WIDTH_KEY, String(this.sidebarWidth))
 		},
 	},
 }
@@ -60,6 +101,24 @@ export default {
 	border-right: 1px solid rgb(228 233 237);
 	transition: width 0.15s ease;
 	&.collapsed { width: 4rem; }
+	// No animated width transition while actively dragging - it fights the
+	// mousemove handler's own updates and lags visibly behind the cursor.
+	&.resizing { transition: none; }
+}
+.resize-handle {
+	position: absolute;
+	top: 0;
+	right: -3px;
+	width: 6px;
+	height: 100%;
+	cursor: col-resize;
+	z-index: 5;
+	&:hover {
+		background: rgba(50, 115, 220, 0.25);
+	}
+}
+.files-sidebar.resizing .resize-handle {
+	background: rgba(50, 115, 220, 0.35);
 }
 .sidebar-header {
 	flex-shrink: 0;

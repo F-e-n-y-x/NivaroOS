@@ -33,7 +33,7 @@
 					:key="activeWindow.id"
 					ref="content"
 					v-bind="activeWindow.props"
-					@close="closeActive"
+					@close="forceCloseActive"
 					@minimize="minimizeActive"
 					@drag-start="noop"
 					@status-change="onConsoleStatusChange"
@@ -114,12 +114,21 @@ export default {
 				this.closeActive()
 			}
 		},
+		// Same fix, same reasoning as DesktopWindow.vue's close()/forceClose()
+		// split: requestClose() emits 'close' immediately whenever there's
+		// nothing unsaved to prompt about, which - if routed back through
+		// this same method - called requestClose() again, which emitted
+		// 'close' again, forever (a synchronous stack overflow that killed
+		// the close/back action with nothing visibly happening).
 		closeActive() {
 			const content = this.$refs.content
 			if (content && typeof content.requestClose === 'function') {
 				content.requestClose()
 				return
 			}
+			this.forceCloseActive()
+		},
+		forceCloseActive() {
 			this.$store.commit('CLOSE_WINDOW', this.activeWindow.id)
 		},
 		minimizeActive() {

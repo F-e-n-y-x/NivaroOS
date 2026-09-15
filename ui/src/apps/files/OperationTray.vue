@@ -22,10 +22,18 @@
 -->
 <template>
 	<transition name="tray-pop">
-		<div v-if="taskList.length" class="operation-tray" role="status" aria-live="polite" :aria-label="$t('File operation progress')">
+		<div
+			v-if="taskList.length"
+			class="operation-tray"
+			role="status"
+			aria-live="polite"
+			:aria-label="$t('File operation progress')"
+			:style="offsetBottom ? { bottom: `calc(0.75rem + ${offsetBottom}px)` } : null"
+		>
 			<div class="operation-tray-header">
 				<b-icon icon="swap-horizontal" custom-size="mdi-18px" class="header-icon"></b-icon>
 				<span class="header-title">{{ headerText }}</span>
+				<span v-if="totalSpeed > 0" class="total-speed">{{ formatSize(totalSpeed) }}/s</span>
 				<button type="button" class="icon-btn close-icon" :aria-label="$t('Close')" @click="closeTray">
 					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 				</button>
@@ -44,6 +52,7 @@
 							<span v-else-if="task.finished" class="status-text is-success">{{ $t('Done') }}</span>
 							<span v-else-if="task.preparing" class="status-text is-waiting">{{ $t('Preparing') }}</span>
 							<span v-else class="percentage">{{ task.percent }}%</span>
+							<span v-if="!task.finished && !task.cancelled && !task.preparing && task.speed > 0" class="item-speed">{{ formatSize(task.speed) }}/s</span>
 							<button
 								v-if="!task.finished"
 								type="button"
@@ -67,9 +76,19 @@
 
 <script>
 import { baseName } from '@/utils/files/path'
+import { formatSize } from '@/utils/formatSize'
 
 export default {
 	name: 'operation-tray',
+	props: {
+		// Extra px to push this tray up by, so it doesn't sit directly on
+		// top of UploadTray (same bottom-right corner) when both are up at
+		// once - see FilesApp.vue's uploadTrayResizeObserver.
+		offsetBottom: {
+			type: Number,
+			default: 0,
+		},
+	},
 	data() {
 		return { tasks: {} }
 	},
@@ -86,6 +105,12 @@ export default {
 				: active[0].type === 'move'
 				? this.$t('Moving')
 				: this.$t('Copying')
+		},
+		// Sum of every active task's server-sampled bytes/sec, same treatment
+		// as UploadTray's totalSpeed - a single at-a-glance number in the
+		// header, alongside each task's own speed in its row.
+		totalSpeed() {
+			return this.taskList.filter((t) => !t.finished && !t.cancelled).reduce((sum, t) => sum + (t.speed || 0), 0)
 		},
 	},
 	sockets: {
@@ -115,6 +140,7 @@ export default {
 					cancelling: existing ? existing.cancelling && !task.finished : false,
 					preparing,
 					percent,
+					speed: task.speed || 0,
 					startedAt: existing ? existing.startedAt : Date.now(),
 				})
 				// No auto-remove here - a finished task stays listed with its
@@ -125,6 +151,7 @@ export default {
 	},
 	methods: {
 		baseName,
+		formatSize,
 		closeTray() {
 			this.tasks = {}
 		},
@@ -175,6 +202,12 @@ export default {
 }
 .header-title {
 	flex: 1 1 auto;
+}
+.total-speed {
+	flex-shrink: 0;
+	font-weight: 400;
+	font-size: var(--font-xs);
+	color: var(--color-text-muted, #64748b);
 }
 // Reset for the icon-only close <button> below - a bare <button> carries the
 // browser/OS's own default border and background, which must be reset
@@ -278,6 +311,11 @@ export default {
 	flex-shrink: 0;
 	font-weight: 600;
 	color: var(--theme-text-secondary, rgba(0, 0, 0, 0.6));
+}
+.item-speed {
+	flex-shrink: 0;
+	font-size: var(--font-2xs);
+	color: var(--color-text-muted, #64748b);
 }
 .status-text {
 	flex-shrink: 0;

@@ -270,7 +270,12 @@ export default {
 			handler(path) {
 				this.clearSelection()
 				this.fetchListing(path)
-				if (path && path.startsWith('/DATA/Companion/')) {
+				// Exact '/DATA/Companion' is the per-device folder listing itself
+				// (needs the device list to classify each row mobile/tablet for
+				// its icon - see fetchCompanionFolderTypes()); the '/...' prefix
+				// case is being *inside* one device's own folder (needs it for
+				// the companionDeviceInfo banner).
+				if (path && (path === '/DATA/Companion' || path.startsWith('/DATA/Companion/'))) {
 					this.fetchCompanionDevices()
 				}
 			},
@@ -329,6 +334,44 @@ export default {
 			const anyFinished = (fileOperate.data || []).some((task) => task.finished)
 			if (anyFinished) this.reload()
 		},
+		// Live updates for changes made outside this tab entirely - another
+		// device over Samba, a scheduled task, a companion sync, a second
+		// browser tab - see service/file_watch.go on the backend. Path-scoped
+		// (unlike the file:operate handler above): an inotify watch only
+		// exists for directories someone is actually viewing, so this only
+		// ever fires for a path some open window cares about, and reloading
+		// every such window instead of just the matching one would be wasted
+		// work. The `this.loading` guard avoids piling up overlapping
+		// requests if changes keep landing faster than one reload completes.
+		'nivaroos:file:changed'(res) {
+			// SendNotify (backend) JSON-encodes each Properties value
+			// individually (see e.g. Cpu.vue's sys_cpu handling) - a plain
+			// string comparison against the raw Properties.path would never
+			// match since it's still wrapped in an extra pair of quotes.
+			if (!res.Properties || this.loading) return
+			let changedPath
+			try {
+				changedPath = JSON.parse(res.Properties.path)
+			} catch (e) {
+				return
+			}
+			if (changedPath === this.path) this.reload()
+		},
+		// A USB/HDD plug/eject changes which mount_point -> type entries
+		// fetchMountTypes() knows about, but that map is only ever fetched
+		// once (mounted() above) - without this, a drive plugged in after
+		// this pane was opened shows up in the /DATA listing (via the
+		// nivaroos:file:changed watch) with the generic folder icon instead
+		// of folder-usb/folder-usb3/folder-hdd until a full page reload
+		// re-runs fetchMountTypes() from scratch. Re-fetching the map here
+		// (rather than only patching in place) also picks up a removed
+		// drive's mount_point falling out of the map.
+		'local-storage:disk:added'() {
+			setTimeout(() => this.fetchMountTypes(), 500)
+		},
+		'local-storage:disk:removed'() {
+			setTimeout(() => this.fetchMountTypes(), 500)
+		},
 	},
 	methods: {
 		focusRoot() {
@@ -352,10 +395,12 @@ export default {
 							write: item.write,
 							extensions: item.extensions,
 							// Present from the start (even as undefined) so a later
-							// mountTypes patch in fetchMountTypes() reassigns an
+							// mountTypes/companion-devices patch reassigns an
 							// existing reactive property rather than adding a new
 							// one - Vue 2 can't track newly-added properties.
-							type: this.mountTypes[item.path],
+							type:
+								this.mountTypes[item.path] ||
+								(path === '/DATA/Companion' ? this.classifyCompanionFolderType(item.path, item.name) : undefined),
 						}))
 						const visible = this.showHidden ? mapped : mapped.filter((item) => !item.name.startsWith('.'))
 						this.listing = orderBy(visible, ['is_dir'], ['desc'])
@@ -402,7 +447,51 @@ export default {
 			try {
 				const res = await this.$api.companion.getDevices()
 				this.companionDeviceList = res.data?.data || []
-			} catch (_) {}
+				// Same reasoning as fetchMountTypes()'s post-load patch: the
+				// '/DATA/Companion' listing itself can render before this
+				// call resolves, so already-built rows need their `type`
+				// reassigned once the device list is actually in.
+				if (this.path === '/DATA/Companion') {
+					this.listing.forEach((item) => {
+						const type = this.classifyCompanionFolderType(item.path, item.name)
+						if (type) item.type = type
+					})
+				}
+			} catch (_) {
+				// No companion devices paired (or the call failed) - folders
+				// just fall back to the generic companion icon set below.
+			}
+		},
+		// Matches a '/DATA/Companion' child folder back to the paired device
+		// it belongs to and classifies it mobile vs. tablet, for the
+		// folder-mobile_companion / folder-tablet_companion icons. Mirrors
+		// the matching + tablet heuristic in the companionDeviceInfo
+		// computed prop above (path/name against dev.storage_path or a
+		// sanitized device name) - kept as a separate method rather than a
+		// shared helper since that prop also needs an MDI icon/banner data,
+		// not just a two-way mobile/tablet split; if the matching rule ever
+		// changes, update both.
+		classifyCompanionFolderType(path, name) {
+			if (!path || !this.companionDeviceList.length) return null
+			const pathLower = path.toLowerCase()
+			const dev = this.companionDeviceList.find((d) => {
+				const devName = d.name || d.device_name || 'Companion'
+				const cleanName = devName.toLowerCase().replace(/[^a-z0-9]/g, '_')
+				return (
+					(d.storage_path && path.startsWith(d.storage_path)) ||
+					pathLower.includes(cleanName) ||
+					pathLower.includes(devName.toLowerCase())
+				)
+			})
+			if (!dev) return null
+			const model = (dev.model || '').toLowerCase()
+			const devName = (dev.name || '').toLowerCase()
+			const nameLower = (name || '').toLowerCase()
+			const isTablet =
+				model.includes('tablet') || model.includes('tab') || model.includes('pad') || model.includes('ruan') ||
+				devName.includes('tablet') || devName.includes('tab') || devName.includes('pad') ||
+				nameLower.includes('tablet') || nameLower.includes('tab') || nameLower.includes('pad')
+			return isTablet ? 'companion-tablet' : 'companion-mobile'
 		},
 		openItem(item) {
 			if (item.is_dir) {

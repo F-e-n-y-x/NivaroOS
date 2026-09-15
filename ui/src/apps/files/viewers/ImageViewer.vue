@@ -20,7 +20,7 @@
 	viewerjs at all.
 -->
 <template>
-	<files-viewer-chrome :no-overflow="true" @download="downloadFile(currentItem)">
+	<files-viewer-chrome :no-overflow="true" @download="downloadFile(currentItem)" @viewer-resize="onViewerResize">
 		<template #actions>
 			<b-icon
 				v-if="itemList.length > 1"
@@ -130,6 +130,22 @@ export default {
 		inited(viewer) {
 			this.viewer = viewer
 			this.viewer.show()
+		},
+		// viewerjs computes its canvas/pan-zoom geometry from the container
+		// size once, at init, and only ever re-computes it by listening for
+		// the browser's own `window` resize event internally
+		// (src/js/events.js: addListener(window, 'resize', this.resize)) -
+		// which a NivaroOS window resize never fires (CSS-only change, the
+		// real window never resizes). update() (what this called before) is
+		// a DIFFERENT method entirely - it only re-scans the <img> source
+		// list for additions/removals/src changes, never touches layout, so
+		// it did nothing for this and images stayed clipped/off-center after
+		// a resize exactly as reported. resize() (verified in viewerjs's own
+		// source: src/js/handlers.js, called from that same internal window
+		// listener) is what actually calls initContainer()/initViewer()/
+		// renderViewer()/renderImage() - the real fix.
+		onViewerResize() {
+			this.viewer && this.viewer.resize()
 		},
 		next() {
 			if (this.currentItemIndex < this.itemList.length - 1) {

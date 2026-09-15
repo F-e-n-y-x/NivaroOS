@@ -366,16 +366,8 @@ export default {
 	animation: ctxFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes ctxFadeIn {
-	from {
-		opacity: 0;
-		transform: scale(0.96) translateY(-4px);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1) translateY(0);
-	}
-}
+// @keyframes ctxFadeIn is defined once, globally, in
+// assets/scss/common/_dropdown.scss - see that file for why.
 
 .ctx-header {
 	padding: var(--space-1) var(--space-2) var(--space-1);
@@ -385,8 +377,8 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	padding: var(--space-1) var(--space-2);
-	background: rgba(37, 99, 235, 0.08);
-	color: #2563eb;
+	background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	color: var(--color-primary, #2563eb);
 	border-radius: var(--radius-sm);
 	font-size: var(--font-xs);
 	font-weight: 600;
@@ -428,33 +420,33 @@ export default {
 
 	.ctx-check {
 		font-size: var(--font-md);
-		color: #2563eb;
+		color: var(--color-primary, #2563eb);
 		margin-left: auto;
 		flex-shrink: 0;
 	}
 
 	&:hover {
-		background: #2563eb;
-		color: #ffffff;
+		background: var(--theme-menu-item-hover-bg, rgba(0, 0, 0, 0.9));
+		color: var(--theme-menu-item-hover-text, #ffffff);
 
 		.ctx-icon {
-			color: #ffffff;
+			color: var(--theme-menu-item-hover-text, #ffffff);
 		}
 
 		.ctx-check {
-			color: #ffffff;
+			color: var(--theme-menu-item-hover-text, #ffffff);
 		}
 	}
 
 	&.is-danger {
-		color: #dc2626;
+		color: var(--color-danger, #ef4444);
 
 		.ctx-icon {
-			color: #dc2626;
+			color: var(--color-danger, #ef4444);
 		}
 
 		&:hover {
-			background: #dc2626;
+			background: var(--color-danger-hover, #dc2626);
 			color: #ffffff;
 
 			.ctx-icon {
@@ -471,6 +463,6 @@ export default {
 .ctx-divider {
 	height: 1px;
 	margin: var(--space-1) var(--space-2);
-	background: rgba(0, 0, 0, 0.08);
+	background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 }
 </style>
