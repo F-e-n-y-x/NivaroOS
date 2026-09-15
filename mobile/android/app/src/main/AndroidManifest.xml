@@ -20,22 +20,10 @@
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher">
-        <service
-            android:name=".BackgroundCompanionService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <receiver
-            android:name=".BootReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
+        <!-- The actual background sync service (headless Dart isolate) and
+             its boot-restart receiver are registered by the
+             flutter_background_service plugin's own manifest merge - see
+             lib/services/background_service.dart / background_sync_isolate.dart. -->
 
         <activity
             android:name=".MainActivity"

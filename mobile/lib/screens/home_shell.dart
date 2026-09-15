@@ -48,7 +48,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _loadAvatar();
     PermissionService.requestInitialPermissions();
-    DeviceSyncService.instance.startAutoSync();
+    DeviceSyncService.instance.enableBackgroundSync();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
   }
 

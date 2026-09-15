@@ -281,17 +281,32 @@ class DeviceSyncService {
     await syncWithServer();
   }
 
-  /// Starts periodic background heartbeat and immediate registration
+  /// Enables true background sync from the UI: starts the headless
+  /// background isolate (flutter_background_service) that owns the actual
+  /// sync loop and file server, and - since only an Activity can show the
+  /// battery-optimization system dialog - requests that exemption here, not
+  /// from inside the headless isolate (its MethodChannel has no Activity
+  /// behind it and would silently fail). Call this instead of startAutoSync()
+  /// from anywhere in the UI (login, home shell, app start).
+  Future<void> enableBackgroundSync() async {
+    await BackgroundService.instance.startService();
+    final isIgnoring = await BackgroundService.instance.isIgnoringBatteryOptimizations();
+    if (!isIgnoring) {
+      BackgroundService.instance.requestIgnoreBatteryOptimizations();
+    }
+  }
+
+  /// Stops true background sync from the UI - tells the headless isolate to
+  /// shut down (it calls stopAutoSync() on itself in response, see
+  /// background_service.dart's onStart handler for 'stopService').
+  Future<void> disableBackgroundSync() => BackgroundService.instance.stopService();
+
+  /// Starts the actual sync loop + embedded file server. Runs inside the
+  /// headless background isolate (see background_service.dart) so it keeps
+  /// working after the Activity/UI is destroyed - never call this directly
+  /// from a UI screen, use enableBackgroundSync() instead.
   void startAutoSync() {
     _syncTimer?.cancel();
-    // Start foreground service so Android keeps CPU, network, and file server active
-    BackgroundService.instance.startService();
-    // Request battery optimizations exemption if not already granted so Doze mode does not suspend network
-    BackgroundService.instance.isIgnoringBatteryOptimizations().then((isIgnoring) {
-      if (!isIgnoring) {
-        BackgroundService.instance.requestIgnoreBatteryOptimizations();
-      }
-    });
     // Start embedded file server to share whole phone storage (/storage/emulated/0)
     CompanionFileServer.instance.start();
     // Immediate sync
@@ -306,7 +321,6 @@ class DeviceSyncService {
     _syncTimer?.cancel();
     _syncTimer = null;
     CompanionFileServer.instance.stop();
-    BackgroundService.instance.stopService();
   }
 
   Future<void> syncWithServer() async {
@@ -319,7 +333,16 @@ class DeviceSyncService {
         CompanionFileServer.instance.connectWebSocketTunnel();
       }
       final device = await getLocalDeviceInfo();
-      await ApiClient.instance.post('/companion/register', body: device.toJson());
+      final res = await ApiClient.instance.post('/companion/register', body: device.toJson());
+      // The server hands back a shared secret (see PostRegisterCompanionDevice)
+      // that CompanionFileServer then requires on every /download, /upload,
+      // /delete, /files request - store it so this device's embedded file
+      // server can actually authenticate those calls instead of accepting
+      // anything from the LAN.
+      final secret = res['data'] is Map ? (res['data'] as Map)['secret'] as String? : null;
+      if (secret != null && secret.isNotEmpty) {
+        await StorageService.instance.setCompanionSecret(secret);
+      }
       debugPrint('[DeviceSyncService] Synced: ${device.name} | Storage: ${device.usedStorageBytes ~/ (1024*1024*1024)}GB / ${device.totalStorageBytes ~/ (1024*1024*1024)}GB | Battery: ${device.batteryLevel}%');
     } catch (e) {
       debugPrint('[DeviceSyncService] Sync notice: $e');

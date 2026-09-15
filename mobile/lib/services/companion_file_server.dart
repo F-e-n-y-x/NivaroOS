@@ -91,6 +91,33 @@ class CompanionFileServer {
     res.headers.set('Access-Control-Allow-Headers', '*');
   }
 
+  // The NivaroOS server sends this back as X-Companion-Secret on every
+  // /download, /upload, /delete, /files call once it's registered this
+  // device (PostRegisterCompanionDevice generates it over the phone's own
+  // authenticated session and hands it back exactly once). Without this
+  // check, this HTTP server is a fully open LAN file server - any device on
+  // the same network could read/write/delete anywhere this app can reach.
+  Future<bool> _checkAuth(HttpRequest req) async {
+    final expected = await StorageService.instance.getCompanionSecret();
+    if (expected == null || expected.isEmpty) {
+      // No secret yet (app just installed, hasn't completed its first
+      // heartbeat registration) - fail closed rather than silently allowing
+      // every request through.
+      req.response.statusCode = HttpStatus.serviceUnavailable;
+      req.response.write(jsonEncode({'success': false, 'message': 'Device not yet registered with server'}));
+      await req.response.close();
+      return false;
+    }
+    final provided = req.headers.value('x-companion-secret');
+    if (provided == null || provided != expected) {
+      req.response.statusCode = HttpStatus.unauthorized;
+      req.response.write(jsonEncode({'success': false, 'message': 'Unauthorized'}));
+      await req.response.close();
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _handleRequest(HttpRequest req) async {
     _addCorsHeaders(req.response);
     if (req.method == 'OPTIONS') {
@@ -102,14 +129,20 @@ class CompanionFileServer {
     final path = req.uri.path;
     try {
       if (path == '/status' || path == '/') {
+        // Deliberately unauthenticated - a liveness/identity probe only
+        // (probeCompanionOnline on the server side), no file access.
         await _handleStatus(req);
       } else if (path == '/files') {
+        if (!await _checkAuth(req)) return;
         await _handleListFiles(req);
       } else if (path == '/download') {
+        if (!await _checkAuth(req)) return;
         await _handleDownload(req);
       } else if (path == '/upload') {
+        if (!await _checkAuth(req)) return;
         await _handleUpload(req);
       } else if (path == '/delete') {
+        if (!await _checkAuth(req)) return;
         await _handleDelete(req);
       } else {
         req.response.statusCode = HttpStatus.notFound;

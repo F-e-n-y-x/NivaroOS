@@ -69,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
         refreshToken: refreshToken,
         username: username,
       );
-      DeviceSyncService.instance.startAutoSync();
+      DeviceSyncService.instance.enableBackgroundSync();
       if (!mounted) return;
       if (widget.isReauth && Navigator.canPop(context)) {
         Navigator.of(context).pop(true);

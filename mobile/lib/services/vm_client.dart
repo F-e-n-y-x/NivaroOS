@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/vm_snapshot.dart';
+import 'api_client.dart';
 
 class VmException implements Exception {
   final String message;
@@ -141,24 +142,41 @@ class VmClient {
     return uri.replace(queryParameters: query.map((k, v) => MapEntry(k, '$v')));
   }
 
+  // vm-sidecar now requires the same JWT every other NivaroOS API call sends
+  // (it used to accept anything reaching its port unauthenticated) - every
+  // request here needs it, and the console/screenshot URLs (below) can't
+  // carry a header at all, so those attach it as a query param instead.
+  Map<String, String> _authHeaders([Map<String, String>? extra]) {
+    final token = ApiClient.instance.accessToken;
+    return {
+      if (extra != null) ...extra,
+      if (token != null && token.isNotEmpty) 'Authorization': token,
+    };
+  }
+
+  String _authQuery() {
+    final token = ApiClient.instance.accessToken ?? '';
+    return Uri.encodeComponent(token);
+  }
+
   String screenshotUrl(String name, [int? timestamp]) {
     final t = timestamp ?? DateTime.now().millisecondsSinceEpoch;
-    return 'http://$host:$port/vms/${Uri.encodeComponent(name)}/screenshot?t=$t';
+    return 'http://$host:$port/vms/${Uri.encodeComponent(name)}/screenshot?t=$t&token=${_authQuery()}';
   }
 
   String consoleWsUrl(String name) {
-    return 'ws://$host:$port/vms/${Uri.encodeComponent(name)}/console';
+    return 'ws://$host:$port/vms/${Uri.encodeComponent(name)}/console?token=${_authQuery()}';
   }
 
   Future<List<Vm>> listVms() async {
-    final res = await http.get(_uri('/vms'));
+    final res = await http.get(_uri('/vms'), headers: _authHeaders());
     _checkOk(res);
     final list = jsonDecode(res.body) as List<dynamic>;
     return list.map((e) => Vm.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<Vm> getVm(String name) async {
-    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}'));
+    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}'), headers: _authHeaders());
     _checkOk(res);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -191,7 +209,7 @@ class VmClient {
       if (displayHeight != null && displayHeight > 0) 'display_height': displayHeight,
       if (bootOrder != null && bootOrder.isNotEmpty) 'boot_order': bootOrder,
     };
-    final res = await http.post(_uri('/vms'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    final res = await http.post(_uri('/vms'), headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode(body));
     _checkOk(res, okCodes: const [200, 201]);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -223,19 +241,19 @@ class VmClient {
       if (displayHeight != null) 'display_height': displayHeight,
       if (bootOrder != null) 'boot_order': bootOrder,
     };
-    final res = await http.put(_uri('/vms/${Uri.encodeComponent(name)}'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    final res = await http.put(_uri('/vms/${Uri.encodeComponent(name)}'), headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode(body));
     _checkOk(res);
     return Vm.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   Future<void> deleteVm(String name, {bool wipeDisk = false}) async {
     final uri = _uri('/vms/${Uri.encodeComponent(name)}', {'wipe_disk': '$wipeDisk'});
-    final res = await http.delete(uri);
+    final res = await http.delete(uri, headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<List<VmIso>> listIsos() async {
-    final res = await http.get(_uri('/isos'));
+    final res = await http.get(_uri('/isos'), headers: _authHeaders());
     _checkOk(res);
     final decoded = jsonDecode(res.body);
     final list = decoded is List ? decoded : (decoded as Map<String, dynamic>)['isos'] as List<dynamic>? ?? [];
@@ -249,22 +267,22 @@ class VmClient {
 
   Future<void> insertCDROM(String name, String isoPath) async {
     final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/cdrom'),
-        headers: {'Content-Type': 'application/json'}, body: jsonEncode({'iso_path': isoPath}));
+        headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'iso_path': isoPath}));
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> ejectCDROM(String name) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/cdrom/eject'));
+    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/cdrom/eject'), headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> insertVirtioWin(String name) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/insert-virtio-win'));
+    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/insert-virtio-win'), headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<List<VmSnapshot>> listSnapshots(String name) async {
-    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}/snapshots'));
+    final res = await http.get(_uri('/vms/${Uri.encodeComponent(name)}/snapshots'), headers: _authHeaders());
     _checkOk(res);
     final decoded = jsonDecode(res.body) as List<dynamic>;
     return decoded.map((e) => VmSnapshot.fromJson(e as Map<String, dynamic>)).toList();
@@ -277,7 +295,7 @@ class VmClient {
     };
     final res = await http.post(
       _uri('/vms/${Uri.encodeComponent(name)}/snapshots'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     );
     _checkOk(res, okCodes: const [200, 201]);
@@ -285,26 +303,26 @@ class VmClient {
   }
 
   Future<void> revertSnapshot(String name, String snapName) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}/revert'));
+    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}/revert'), headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> deleteSnapshot(String name, String snapName, {bool children = false}) async {
-    final res = await http.delete(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}', {'children': '$children'}));
+    final res = await http.delete(_uri('/vms/${Uri.encodeComponent(name)}/snapshots/${Uri.encodeComponent(snapName)}', {'children': '$children'}), headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> setNetworkLink(String name, String mac, String state) async {
     final res = await http.post(
       _uri('/vms/${Uri.encodeComponent(name)}/network/link'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authHeaders({'Content-Type': 'application/json'}),
       body: jsonEncode({'mac': mac, 'state': state}),
     );
     _checkOk(res, okCodes: const [200, 204]);
   }
 
   Future<void> _action(String name, String action) async {
-    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/$action'));
+    final res = await http.post(_uri('/vms/${Uri.encodeComponent(name)}/$action'), headers: _authHeaders());
     _checkOk(res, okCodes: const [200, 204]);
   }
 

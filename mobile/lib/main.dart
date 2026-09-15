@@ -20,7 +20,7 @@ void main() async {
     final serverUrl = await StorageService.instance.getServerUrl();
     if (serverUrl != null && serverUrl.trim().isNotEmpty) {
       if (ApiClient.instance.hasSession) {
-        DeviceSyncService.instance.startAutoSync();
+        DeviceSyncService.instance.enableBackgroundSync();
         initialScreen = const HomeShell();
       } else {
         initialScreen = const LoginScreen();

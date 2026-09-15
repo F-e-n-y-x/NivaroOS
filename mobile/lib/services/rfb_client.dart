@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'api_client.dart';
 
 class RfbException implements Exception {
   final String message;
@@ -42,8 +43,21 @@ class RfbClient {
     _closed = false;
     error.value = null;
 
+    // vm-sidecar now requires the same JWT every other NivaroOS API call
+    // sends (it used to accept any connection on this port, unauthenticated)
+    // - a WebSocket handshake can't carry a custom header, so it rides as a
+    // query param, same as vmSidecar.js's consoleUrl() on the web side.
+    //
+    // Still plain ws://, not wss:// - vm-sidecar's own HTTP server has no
+    // TLS listener at all (see vm-sidecar/main.go's http.ListenAndServe),
+    // so pixel data and input events are unencrypted on the wire regardless
+    // of this fix. Fixing that needs TLS termination added to vm-sidecar
+    // itself (a real cert, not just a URL scheme change) - a separate,
+    // larger task from closing the "anyone on the LAN can connect" hole
+    // this change addresses.
     const scheme = 'ws';
-    final uri = Uri.parse('$scheme://$host:$port/vms/${Uri.encodeComponent(vmName)}/console');
+    final token = ApiClient.instance.accessToken ?? '';
+    final uri = Uri.parse('$scheme://$host:$port/vms/${Uri.encodeComponent(vmName)}/console?token=${Uri.encodeComponent(token)}');
     final channel = IOWebSocketChannel.connect(uri);
     _channel = channel;
     _sub = channel.stream.listen(

@@ -71,39 +71,47 @@ class _TailscaleModalState extends State<TailscaleModal> {
 
   Future<void> _connectWithAuthKey() async {
     final ctrl = TextEditingController();
+    bool obscure = true;
     final key = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: const Text('Connect to Tailscale'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your Tailscale Auth Key (tskey-auth-...) from admin.tailscale.com/keys:',
-              style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              decoration: const InputDecoration(
-                hintText: 'tskey-auth-kXXXXX...',
-                border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: NivaroColors.surfaceContainerHighest,
+          title: const Text('Connect to Tailscale'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your Tailscale Auth Key (tskey-auth-...) from admin.tailscale.com/keys:',
+                style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
               ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                obscureText: obscure,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'tskey-auth-kXXXXX...',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
+                    onPressed: () => setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
+              onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+              child: const Text('Connect'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Connect'),
-          ),
-        ],
       ),
     );
 

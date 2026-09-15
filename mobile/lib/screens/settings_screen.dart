@@ -27,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _bgServiceRunning = false;
   bool _isIgnoringBattery = false;
   bool _autoStartBoot = true;
+  bool _isSamsungDevice = false;
 
   @override
   void initState() {
@@ -41,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bgRunning = await BackgroundService.instance.isServiceRunning();
     final isIgnoringBattery = await BackgroundService.instance.isIgnoringBatteryOptimizations();
     final autoBoot = await BackgroundService.instance.isAutoStartOnBoot();
+    final isSamsung = await BackgroundService.instance.isSamsungDevice();
     if (mounted) {
       setState(() {
         _username = u ?? 'User';
@@ -49,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _bgServiceRunning = bgRunning;
         _isIgnoringBattery = isIgnoringBattery;
         _autoStartBoot = autoBoot;
+        _isSamsungDevice = isSamsung;
       });
     }
   }
@@ -99,7 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    DeviceSyncService.instance.stopAutoSync();
+    await DeviceSyncService.instance.disableBackgroundSync();
     await StorageService.instance.clearAll();
     ApiClient.instance.clearSession();
     if (mounted) {
@@ -346,6 +349,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                         onTap: _requestBatteryWhitelist,
                       ),
+                      if (_isSamsungDevice) ...[
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.phonelink_lock_rounded, color: NivaroColors.warningLight),
+                          title: const Text('Samsung "Sleeping Apps"', style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text(
+                            'Samsung phones can still stop sync in the background even after the exemption above - open Battery usage for this app and add it to "Never sleeping apps"',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          trailing: OutlinedButton(
+                            onPressed: () => BackgroundService.instance.openSamsungBatterySettings(),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              side: const BorderSide(color: NivaroColors.warningLight),
+                            ),
+                            child: const Text('Open', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
+                          ),
+                          onTap: () => BackgroundService.instance.openSamsungBatterySettings(),
+                        ),
+                      ],
                       const Divider(height: 1),
                       SwitchListTile(
                         secondary: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),

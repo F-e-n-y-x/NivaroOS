@@ -50,25 +50,16 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Background Service & Unattended Execution channel
+        // Background Service & Unattended Execution channel. Starting/
+        // stopping the actual sync service itself is handled entirely by
+        // flutter_background_service now (see background_service.dart) -
+        // this channel only covers OEM/system settings a headless Dart
+        // isolate has no Activity to drive: the Doze whitelist dialog,
+        // Samsung's separate battery manager, and the auto-start-on-boot
+        // preference flutter_background_service's own boot receiver reads.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/background_service").setMethodCallHandler { call, result ->
             val prefs = getSharedPreferences("nivaroos_bg_prefs", Context.MODE_PRIVATE)
             when (call.method) {
-                "startService" -> {
-                    val title = call.argument<String>("title")
-                    val message = call.argument<String>("message")
-                    BackgroundCompanionService.start(this, title, message)
-                    prefs.edit().putBoolean("bg_service_enabled", true).apply()
-                    result.success(true)
-                }
-                "stopService" -> {
-                    BackgroundCompanionService.stop(this)
-                    prefs.edit().putBoolean("bg_service_enabled", false).apply()
-                    result.success(true)
-                }
-                "isServiceRunning" -> {
-                    result.success(BackgroundCompanionService.isRunning)
-                }
                 "isIgnoringBatteryOptimizations" -> {
                     val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
                     val isIgnoring = pm?.isIgnoringBatteryOptimizations(packageName) ?: false
@@ -118,6 +109,29 @@ class MainActivity : FlutterActivity() {
                     val enabled = call.argument<Boolean>("enabled") ?: true
                     prefs.edit().putBoolean("auto_start_boot", enabled).apply()
                     result.success(true)
+                }
+                "isSamsungDevice" -> {
+                    result.success(Build.MANUFACTURER.equals("samsung", ignoreCase = true))
+                }
+                "openSamsungBatterySettings" -> {
+                    // No public AOSP Intent action reaches Samsung's own
+                    // "Sleeping apps" / "Deep sleeping apps" list directly -
+                    // these are One UI-specific screens with no documented,
+                    // stable component name across OS versions/models. This
+                    // opens the closest reliable entry point: this app's own
+                    // battery usage settings page, from which "Never sleeping
+                    // apps" is one tap away on One UI (the UI text prompt in
+                    // Settings screen tells the user that next step).
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:$packageName")
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("INTENT_ERROR", e.message, null)
+                    }
                 }
                 else -> result.notImplemented()
             }
