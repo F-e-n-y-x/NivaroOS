@@ -1,8 +1,5 @@
 <template>
 	<aside class="settings-nav" :class="{ 'is-compact': compact }">
-		<div v-if="!compact" class="nav-header">
-			<span class="nav-title">{{ $t('Settings') }}</span>
-		</div>
 		<nav class="nav-list">
 			<button
 				v-for="s in sections"
@@ -34,8 +31,9 @@ export default {
 .settings-nav {
 	flex-shrink: 0;
 	width: 13.5rem;
-	padding: var(--space-5) var(--space-3);
-	background: var(--theme-card-subtle, #ffffff); border-right: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
+	padding: var(--space-3);
+	background: var(--theme-card-subtle, #ffffff);
+	border-right: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
@@ -45,20 +43,8 @@ export default {
 	&.is-compact {
 		width: 4rem;
 		align-items: center;
-		padding: var(--space-5) var(--space-2);
+		padding: var(--space-3) var(--space-2);
 	}
-}
-
-.nav-header {
-	padding: var(--space-1) var(--space-3) var(--space-2);
-}
-
-.nav-title {
-	font-size: var(--font-2xs);
-	font-weight: 500;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: var(--theme-text-muted, #94a3b8);
 }
 
 .nav-list {

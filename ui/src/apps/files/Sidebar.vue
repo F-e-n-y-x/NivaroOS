@@ -2,9 +2,9 @@
 <template>
 	<aside class="files-sidebar" :class="{ collapsed: isCollapsed }">
 		<div class="sidebar-header">
-			<span v-if="!isCollapsed" class="sidebar-title">{{ $t('Files') }}</span>
 			<b-icon
 				:icon="isCollapsed ? 'chevron-right' : 'chevron-left'"
+				:title="isCollapsed ? $t('Expand sidebar') : $t('Collapse sidebar')"
 				custom-size="mdi-18px"
 				class="is-clickable"
 				@click.native="filesController.toggleSidebar()"
@@ -24,15 +24,6 @@
 				<b-icon icon="share-outline" pack="casa" class="casa-color-blue" custom-size="casa-22px"></b-icon>
 				<span v-if="!isCollapsed">{{ $t('FilesShare') }}</span>
 			</button>
-			<button
-				class="nav-entry"
-				:class="{ active: filesController.activeSection === 'drop', rail: isCollapsed }"
-				:title="$t('FilesDrop')"
-				@click="toggleSection('drop')"
-			>
-				<b-icon icon="drop" pack="casa" class="casa-color-blue" custom-size="casa-22px"></b-icon>
-				<span v-if="!isCollapsed">{{ $t('FilesDrop') }}</span>
-			</button>
 		</div>
 	</aside>
 </template>
@@ -48,9 +39,9 @@ export default {
 	},
 	methods: {
 		// Clicking an already-active section switches back to browsing - without
-		// this, Share/Drop were one-way doors (their only other exit was
-		// navigating to a folder via the tree/mounts, which also resets back to
-		// 'browser', but that's not obvious from the Share/Drop screens themselves).
+		// this, Share was a one-way door (its only other exit was navigating to
+		// a folder via the tree/mounts, which also resets back to 'browser', but
+		// that's not obvious from the Share screen itself).
 		toggleSection(section) {
 			this.filesController.setActiveSection(this.filesController.activeSection === section ? 'browser' : section)
 		},
@@ -74,15 +65,13 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	padding: var(--space-3) var(--space-3) var(--space-2);
+	justify-content: flex-end;
+	padding: var(--space-2) var(--space-3);
 }
-.sidebar-title {
-	font-size: var(--font-2xs);
-	font-weight: 700;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: rgba(0, 0, 0, 0.4);
+
+.files-sidebar.collapsed .sidebar-header {
+	justify-content: center;
+	padding: var(--space-2) 0;
 }
 .sidebar-body {
 	flex: 1 1 auto;
@@ -113,8 +102,8 @@ export default {
 .nav-entry {
 	// <button> elements don't inherit the page's font by default in most
 	// browsers (they use the OS's system UI font instead) - without this,
-	// "Share"/"Files Drop" render in a visibly different font/weight
-	// than the plain-<div> tree-node items above them (DATA, Downloads, etc).
+	// "Share" renders in a visibly different font/weight than the plain-
+	// <div> tree-node items above it (DATA, Downloads, etc).
 	font: inherit;
 	font-size: var(--font-sm);
 	display: flex;
