@@ -77,33 +77,6 @@
 		</div>
 		<!-- App List End -->
 
-		<b-modal v-model="showFolderModal" :can-cancel="['escape', 'outside']" animation="zoom-in" aria-modal
-				 has-modal-card>
-			<template #default>
-				<folder-modal v-if="activeFolder" :folder="activeFolder" @close="showFolderModal = false"
-					@configApp="showConfigPanel" @importApp="showContainerPanel"
-					@removeFromFolder="handleRemoveFromFolder" @updateState="getList"
-					@editLegacyApp="openLegacyEditModal"></folder-modal>
-			</template>
-		</b-modal>
-
-		<b-modal v-model="showAddToFolderModal" :can-cancel="['escape', 'outside']" animation="zoom-in" aria-modal
-				 has-modal-card>
-			<template #default>
-				<add-to-folder-panel :folders="addToFolderChoices" @close="showAddToFolderModal = false"
-					@confirm="handleAddToFolderConfirm"></add-to-folder-panel>
-			</template>
-		</b-modal>
-
-		<b-modal v-model="showFolderIconEditor" :can-cancel="['escape', 'outside']" animation="zoom-in" aria-modal
-				 has-modal-card>
-			<template #default>
-				<icon-editor-modal v-if="folderIconEditTarget" :initial-radius="folderIconEditTarget.iconRadius || 0"
-					:src="folderIconEditTarget.icon || (folderIconEditTarget.apps[0] && folderIconEditTarget.apps[0].icon) || defaultAppIcon"
-					@apply="handleFolderIconEdited" @close="showFolderIconEditor = false"></icon-editor-modal>
-			</template>
-		</b-modal>
-
 		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
@@ -111,11 +84,7 @@
 <script>
 import AppCard from './AppCard.vue'
 import AppCardSkeleton from './AppCardSkeleton.vue'
-import ExternalLinkPanel from '@/apps/app-store/ExternalLinkPanel'
 import FolderCard from './FolderCard.vue'
-import FolderModal from './FolderModal.vue'
-import AddToFolderPanel from './AddToFolderPanel.vue'
-import IconEditorModal from './IconEditorModal.vue'
 import concat from 'lodash/concat'
 import events from '@/events/events'
 import last from 'lodash/last'
@@ -193,10 +162,7 @@ export default {
 	components: {
 		AppCard,
 		AppCardSkeleton,
-		FolderCard,
-		FolderModal,
-		AddToFolderPanel,
-		IconEditorModal
+		FolderCard
 	},
 	mixins: [business_ShowNewAppTag, business_LinkApp, business_Folders, business_LegacyAppOverrides, confirmWindowMixin],
 	data() {
@@ -207,13 +173,6 @@ export default {
 			positions: [],
 			isLoading: true,
 			skCount: 6,
-			activeFolder: null,
-			showFolderModal: false,
-			showAddToFolderModal: false,
-			addToFolderItem: null,
-			addToFolderChoices: [],
-			showFolderIconEditor: false,
-			folderIconEditTarget: null,
 			draggingName: null,
 			dragGhost: null,
 			dragOverFolderId: null,
@@ -330,6 +289,9 @@ export default {
 		this.$EventBus.$on(events.REMOVE_FROM_FOLDER, ({ item, folderId }) => {
 			this.handleRemoveFromFolder({ item, folderId })
 		})
+		this.$EventBus.$on(events.REMOVE_MULTIPLE_FROM_FOLDER, ({ items, folderId }) => {
+			this.handleRemoveMultipleFromFolder({ items, folderId })
+		})
 		this.$EventBus.$on(events.GET_APP_LIST, () => {
 			this.getList()
 		})
@@ -351,6 +313,7 @@ export default {
 		this.$EventBus.$off(events.SHOW_CREATE_FOLDER_PROMPT)
 		this.$EventBus.$off(events.ARRANGE_APPS)
 		this.$EventBus.$off(events.REMOVE_FROM_FOLDER)
+		this.$EventBus.$off(events.REMOVE_MULTIPLE_FROM_FOLDER)
 		this.$EventBus.$off(events.GET_APP_LIST)
 		this.$EventBus.$off(events.SHOW_CONFIG_PANEL)
 		this.$EventBus.$off(events.SHOW_CONTAINER_PANEL)
@@ -458,11 +421,6 @@ export default {
 					}
 				}))
 				allApps = concat(folderPseudoItems, ungrouped)
-
-				if (this.activeFolder) {
-					const refreshed = folderPseudoItems.find(f => f.name === this.activeFolder.id)
-					this.activeFolder = refreshed ? refreshed.folderData : null
-				}
 
 				// Sync any open FolderWindow windows with fresh folder data
 				folderPseudoItems.forEach(f => {
@@ -827,40 +785,57 @@ export default {
 				message: this.$t('Delete this folder? Apps inside it are not affected.'),
 				onConfirm: async () => {
 					await this.deleteFolder(folder.id)
-					if (this.activeFolder && this.activeFolder.id === folder.id) {
-						this.showFolderModal = false
-						this.activeFolder = null
-					}
 					this.getList()
 				}
 			})
 		},
 
 		async addToFolderPrompt(item) {
-			this.addToFolderItem = item
-			this.addToFolderChoices = await this.getFolders()
-			this.showAddToFolderModal = true
-		},
-
-		async handleAddToFolderConfirm(name) {
-			let folder = this.addToFolderChoices.find(f => f.name === name)
-			if (!folder) {
-				folder = await this.createFolder(name)
-			}
-			await this.addAppToFolder(this.addToFolderItem.name, folder.id)
-			this.getList()
+			const folders = await this.getFolders()
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'add-to-folder',
+				title: this.$t('Add to folder'),
+				component: 'AddToFolderPanel',
+				props: { folders, itemName: item.name, isDialog: true },
+				width: 420,
+				height: 210
+			})
 		},
 
 		openFolderIconEditor(folder) {
-			this.folderIconEditTarget = folder
-			this.showFolderIconEditor = true
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'folder-icon-editor',
+				title: this.$t('Edit icon'),
+				component: 'IconEditorModal',
+				props: {
+					initialRadius: folder.iconRadius || 0,
+					src: folder.icon || (folder.apps[0] && folder.apps[0].icon) || defaultAppIcon,
+					folderId: folder.id,
+					isDialog: true
+				},
+				width: 420,
+				height: 420
+			})
 		},
 
-		handleFolderIconEdited({ dataUrl, radius }) {
-			this.setFolderIcon(this.folderIconEditTarget.id, dataUrl, radius).then(() => this.getList())
+		// Places item(s) dragged out of a folder at the actual cursor drop
+		// point on the desktop canvas (converted from viewport to canvas-
+		// local coordinates), instead of leaving them to reconcileAppPositions'
+		// generic "first free cell" fallback - otherwise the app visibly
+		// teleports to an unrelated corner of the desktop instead of landing
+		// where it was actually dropped. Must run (and be saved) BEFORE the
+		// next getList(), since that's what reconcileAppPositions treats as
+		// this item's authoritative saved position.
+		placeDroppedItems(names, clientX, clientY) {
+			if (clientX === undefined || clientY === undefined || !this.$refs.canvas) return
+			const canvasRect = this.$refs.canvas.getBoundingClientRect()
+			const targetX = clientX - canvasRect.left - CELL_W / 2
+			const targetY = clientY - canvasRect.top - CELL_H / 2
+			names.forEach(name => this.placeItem(name, targetX, targetY))
+			this.savePositions()
 		},
 
-		handleRemoveFromFolder({ item, folderId }) {
+		handleRemoveFromFolder({ item, folderId, clientX, clientY }) {
 			this.removeAppFromFolder(item.name, folderId).then(async (folders) => {
 				// If this was the auto-filed "Other Containers" folder, remember the
 				// user's choice permanently so getList() won't re-file it right back
@@ -869,6 +844,19 @@ export default {
 				if (folder && folder.isAutoContainerFolder) {
 					await this.addContainerAutoExclude(item.name)
 				}
+				this.placeDroppedItems([item.name], clientX, clientY)
+				this.getList()
+			})
+		},
+
+		handleRemoveMultipleFromFolder({ items, folderId, clientX, clientY }) {
+			const appNames = items.map(i => i.name)
+			this.removeAppsFromFolder(appNames, folderId).then(async (folders) => {
+				const folder = folders.find(f => f.id === folderId)
+				if (folder && folder.isAutoContainerFolder) {
+					await this.addContainerAutoExcludes(appNames)
+				}
+				this.placeDroppedItems(appNames, clientX, clientY)
 				this.getList()
 			})
 		},
@@ -934,20 +922,13 @@ export default {
 		},
 
 		async showExternalLinkPanel(item = {}) {
-			this.$buefy.modal.open({
-				parent: this,
-				component: ExternalLinkPanel,
-				hasModalCard: true,
-				trapFocus: true,
-				canCancel: ['escape', 'x', 'outside'],
-				scroll: 'keep',
-				animation: 'zoom-in',
-				events: {
-					updateState: () => {
-						this.$messageBus('apps_external')
-						this.getList()
-					}
-				},
+			const displayName = item.name ? ` - ${item.name}` : ''
+			this.$store.commit('OPEN_WINDOW', {
+				id: item.name ? `edit-weblink-${item.name}` : 'add-weblink',
+				title: `${this.$t('Add Web Link')}${displayName}`,
+				component: 'ExternalLinkPanel',
+				width: 520,
+				height: 380,
 				props: {
 					linkName: item.name,
 					linkHost: item.hostname,

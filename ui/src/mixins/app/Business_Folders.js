@@ -91,6 +91,20 @@ export default {
 			return folders
 		},
 
+		// Same as removeAppFromFolder but for several apps at once, in a
+		// single read-modify-write - calling removeAppFromFolder in a loop
+		// would race itself (each call's getFolders() can miss the previous
+		// call's not-yet-saved removal), silently leaving some apps behind.
+		async removeAppsFromFolder(appNames, folderId) {
+			const folders = await this.getFolders()
+			const folder = folders.find(f => f.id === folderId)
+			if (folder) {
+				folder.appNames = folder.appNames.filter(n => !appNames.includes(n))
+			}
+			await this.saveFolders(folders)
+			return folders
+		},
+
 		async deleteFolder(folderId) {
 			const folders = await this.getFolders()
 			const remaining = folders.filter(f => f.id !== folderId)
@@ -167,9 +181,21 @@ export default {
 		// (moves it back out) - remembered permanently so getList() doesn't
 		// re-file it right back in on its next 8s refresh.
 		async addContainerAutoExclude(appName) {
+			return this.addContainerAutoExcludes([appName])
+		},
+
+		// Batched version - see removeAppsFromFolder for why a loop of single
+		// read-modify-write calls would race itself.
+		async addContainerAutoExcludes(appNames) {
 			const excludes = await this.getContainerAutoExcludes()
-			if (!excludes.includes(appName)) {
-				excludes.push(appName)
+			let changed = false
+			appNames.forEach(name => {
+				if (!excludes.includes(name)) {
+					excludes.push(name)
+					changed = true
+				}
+			})
+			if (changed) {
 				await this.$api.users.setCustomStorage(containerAutoExcludeConfig, excludes)
 			}
 		}

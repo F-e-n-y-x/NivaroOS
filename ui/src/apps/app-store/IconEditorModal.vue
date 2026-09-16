@@ -1,11 +1,5 @@
 <template>
 	<div class="modal-card icon-editor-card">
-		<header class="modal-card-head">
-			<div class="is-flex-grow-1">
-				<h3 class="title is-header">{{ $t('Edit Icon') }}</h3>
-			</div>
-			<b-icon class="close-button" icon="close-outline" pack="casa" @click.native="$emit('close')" />
-		</header>
 		<section class="modal-card-body">
 			<div ref="viewport" class="icon-editor-viewport" @mousedown="startDrag" @touchstart="startDrag">
 				<div class="icon-editor-crop" :style="{ borderRadius: radius + '%' }">
@@ -46,11 +40,15 @@
 </template>
 
 <script>
+import events from '@/events/events'
+import business_Folders from '@/mixins/app/Business_Folders'
+
 const VIEWPORT_SIZE = 220
 const OUTPUT_SIZE = 256
 
 export default {
 	name: 'IconEditorModal',
+	mixins: [business_Folders],
 	props: {
 		src: {
 			type: String,
@@ -71,6 +69,15 @@ export default {
 		initialRadius: {
 			type: Number,
 			default: 0
+		},
+		// When set, apply() saves directly to this folder itself instead of
+		// relying on a parent-listened 'apply' event - needed once this
+		// component is opened as a standalone desktop window rather than
+		// embedded inline, since the shared window chrome only forwards
+		// close/minimize/drag-start/status-change, not custom business events.
+		folderId: {
+			type: String,
+			default: null
 		}
 	},
 	data() {
@@ -169,6 +176,7 @@ export default {
 			canvas.height = OUTPUT_SIZE
 			const ctx = canvas.getContext('2d')
 
+			let payload
 			try {
 				const img = this.$refs.img
 				const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
@@ -180,23 +188,30 @@ export default {
 				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
 				ctx.restore()
 
-				this.$emit('apply', {
+				payload = {
 					dataUrl: canvas.toDataURL('image/png'),
 					rawSrc: this.src,
 					zoom: this.zoom,
 					offsetX: this.offsetX,
 					offsetY: this.offsetY,
 					radius: this.radius
-				})
+				}
 			} catch (e) {
 				// Cross-origin image fallback
-				this.$emit('apply', {
+				payload = {
 					dataUrl: null,
 					rawSrc: this.src,
 					zoom: this.zoom,
 					offsetX: this.offsetX,
 					offsetY: this.offsetY,
 					radius: this.radius
+				}
+			}
+			this.$emit('apply', payload)
+
+			if (this.folderId) {
+				this.setFolderIcon(this.folderId, payload.dataUrl, payload.radius).then(() => {
+					this.$EventBus.$emit(events.GET_APP_LIST)
 				})
 			}
 			this.$emit('close')

@@ -27,6 +27,9 @@ import ScheduledTaskWindow from '@/apps/settings/ScheduledTaskWindow.vue'
 import ScheduledTaskLogWindow from '@/apps/settings/ScheduledTaskLogWindow.vue'
 import ConfirmDialogWindow from '@/shared/basicComponents/ConfirmDialogWindow.vue'
 import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
+import AddToFolderPanel from '@/apps/app-store/AddToFolderPanel.vue'
+import IconEditorModal from '@/apps/app-store/IconEditorModal.vue'
+import ExternalLinkPanel from '@/apps/app-store/ExternalLinkPanel.vue'
 
 export const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -53,7 +56,10 @@ export const COMPONENT_REGISTRY = {
 	SystemUpdateWindow,
 	ScheduledTaskWindow,
 	ScheduledTaskLogWindow,
-	ConfirmDialogWindow
+	ConfirmDialogWindow,
+	AddToFolderPanel,
+	IconEditorModal,
+	ExternalLinkPanel
 }
 
 // These components' own top row IS the window's titlebar (draggable, with

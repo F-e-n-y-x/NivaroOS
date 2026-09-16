@@ -1,13 +1,5 @@
 <template>
 	<div class="modal-card">
-		<!-- Modal-Card Header Start -->
-		<header class="modal-card-head">
-			<div class="is-flex-grow-1">
-				<h3 class="title is-header">{{ $t('Add to folder') }}</h3>
-			</div>
-			<b-icon class="close-button" icon="close-outline" pack="casa" @click.native="$emit('close')" />
-		</header>
-		<!-- Modal-Card Header End -->
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body">
 			<div class="node-card">
@@ -32,12 +24,38 @@
 	</div>
 </template>
 
+<style lang="scss" scoped>
+.modal-card {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-card-body {
+	flex: 1 1 auto;
+}
+</style>
+
 <script>
+import events from '@/events/events'
+import business_Folders from '@/mixins/app/Business_Folders'
+
 export default {
+	mixins: [business_Folders],
 	props: {
 		folders: {
 			type: Array,
 			default: () => []
+		},
+		// When set, confirm() adds this app to the chosen/new folder itself
+		// instead of relying on a parent-listened 'confirm' event - needed
+		// once this component is opened as a standalone desktop window
+		// rather than embedded inline, since the shared window chrome only
+		// forwards close/minimize/drag-start/status-change, not custom
+		// business events.
+		itemName: {
+			type: String,
+			default: null
 		}
 	},
 	data() {
@@ -58,9 +76,18 @@ export default {
 		})
 	},
 	methods: {
-		confirm() {
+		async confirm() {
 			if (!this.name) return
 			this.$emit('confirm', this.name)
+
+			if (this.itemName) {
+				let folder = this.folders.find(f => f.name === this.name)
+				if (!folder) {
+					folder = await this.createFolder(this.name)
+				}
+				await this.addAppToFolder(this.itemName, folder.id)
+				this.$EventBus.$emit(events.GET_APP_LIST)
+			}
 			this.$emit('close')
 		}
 	}

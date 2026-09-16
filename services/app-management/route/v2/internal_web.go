@@ -178,7 +178,7 @@ func WebAppGridItemAdapterV1(app *model.MyAppList) (*codegen.WebAppGridItem, err
 
 	item := &codegen.WebAppGridItem{
 		AppType:  codegen.V1app,
-		Name:     &app.ID,
+		Name:     &app.Name,
 		Status:   &app.State,
 		Image:    &app.Image,
 		Hostname: &app.Host,
@@ -202,7 +202,7 @@ func WebAppGridItemAdapterContainer(container *model.MyAppList) (*codegen.WebApp
 
 	item := &codegen.WebAppGridItem{
 		AppType: codegen.Container,
-		Name:    &container.ID,
+		Name:    &container.Name,
 		Status:  &container.State,
 		Image:   &container.Image,
 		Title: &map[string]string{

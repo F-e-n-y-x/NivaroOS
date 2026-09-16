@@ -23,6 +23,7 @@ const events = {
 	SET_WIDGET_HIDDEN: 'setWidgetHidden',
 	SET_STORAGE_WIDGET_HIDDEN_MOUNTS: 'setStorageWidgetHiddenMounts',
 	REMOVE_FROM_FOLDER: 'removeFromFolder',
+	REMOVE_MULTIPLE_FROM_FOLDER: 'removeMultipleFromFolder',
 	GET_APP_LIST: 'getAppList',
 	SHOW_CONFIG_PANEL: 'showConfigPanel',
 	SHOW_CONTAINER_PANEL: 'showContainerPanel',
