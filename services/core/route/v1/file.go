@@ -199,7 +199,20 @@ func GetDownloadFile(ctx echo.Context) error {
 			// 获取文件的名称
 			fileName := path.Base(filePath)
 			ctx.Response().Header().Add("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
-			ctx.File(filePath)
+			// Was a bare `ctx.File(filePath)` with no return - this already
+			// writes the complete file body to the response, but execution
+			// then fell through into the zip-archive code below (same
+			// ar.Create/AddFile path used for real multi-file batches), which
+			// wrote a second, zip-format stream onto that same response
+			// writer right after the file's own bytes. Every single-file
+			// download that came through this /batch endpoint (e.g. the
+			// Files app top bar's download button for exactly one selected
+			// item, before it was fixed to use the single-file endpoint
+			// instead) got the real file's bytes followed by trailing zip
+			// junk appended past EOF - a corrupted file. `return ctx.File(...)`
+			// matches the same early-return pattern GetLocalFile already uses
+			// above (line 140) for its own ctx.File call.
+			return ctx.File(filePath)
 		}
 	}
 

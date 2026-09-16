@@ -447,7 +447,16 @@ export default {
 			this.operate('move', this.selectedItems())
 		},
 		onDownloadSelection() {
-			this.downloadFile(this.selectedItems())
+			// downloadFile()/getFileUrl() (src/mixins/mixin.js) route a plain
+			// object through the real single-file endpoint (GetDownloadSingleFile)
+			// but always route an Array - even a single-item one - through the
+			// /batch zip endpoint (GetDownloadFile). Unwrapping a length-1
+			// selection here keeps this in step with right-click "Download"
+			// (ContextMenu.vue), which already calls downloadFile(this.item) with
+			// a plain object, so a single selected file downloads as itself
+			// instead of being wrapped in a one-entry zip.
+			const items = this.selectedItems()
+			this.downloadFile(items.length === 1 ? items[0] : items)
 		},
 		onDeleteSelection() {
 			const items = this.selectedItems()
