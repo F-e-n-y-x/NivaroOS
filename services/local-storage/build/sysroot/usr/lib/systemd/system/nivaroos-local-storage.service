@@ -23,14 +23,35 @@ Type=notify
 # full file-access footprint isn't narrow/verified enough to allowlist
 # without risking breaking a real write path, same reasoning already
 # documented in the vm-sidecar/gpu-sidecar units.)
+#
+# PrivateTmp, ProtectKernelModules, ProtectKernelLogs, ProtectControlGroups,
+# and ProtectKernelTunables are deliberately NOT set (each tried here,
+# reverted) - every one of them works by bind-mounting something read-only/
+# masked, which requires systemd to put this service in its own mount
+# namespace, and as part of that sandbox systemd forces the namespace's
+# root to MS_SLAVE propagation (a real security measure: an isolated/
+# compromised service shouldn't be able to affect the host's mount table).
+# Adding MountFlags=shared back (also tried) only keeps this service's OWN
+# mounts shared with each other inside that already-detached namespace - it
+# can't reconnect the namespace's root to the host's original peer group,
+# so it fixed nothing. Confirmed live via /proc/1/mountinfo, with each of
+# these tried individually and in combination: a TeraBox remote (fully
+# valid, verified working in-process via fs.NewFs + List, and even fully
+# browsable when nsenter'd directly into this service's own mount
+# namespace) never appeared in the host's real mount table under ANY of
+# them - not a code or credentials bug. Every FUSE mount this service
+# creates needs to land in the host's real mount table for this service's
+# actual job (every mount needs to be visible/usable elsewhere on the box,
+# e.g. by nivaroos-core's file-serving), which fundamentally conflicts with
+# mount-namespace isolation the same way NoNewPrivileges conflicted with
+# the Terminal app's sudo/su (see nivaroos.service). Google Drive appeared
+# to work under some of these because its mount completes fast enough to
+# "sneak out" during a narrow window before systemd finishes detaching the
+# namespace - a race, not something to rely on; TeraBox's much heavier
+# cookie/jsToken/upload-host handshake never wins that race.
 NoNewPrivileges=true
-PrivateTmp=true
 ProtectClock=true
 ProtectHostname=true
-ProtectKernelLogs=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 LockPersonality=true
