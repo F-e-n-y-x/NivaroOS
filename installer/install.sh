@@ -1921,7 +1921,12 @@ install_core_services() {
 			systemctl stop \"\$u\" >/dev/null 2>&1 || true
 		done
 
-		mkdir -p /var/lib/nivaroos /var/run/nivaroos /etc/nivaroos /DATA/AppData /DATA/Documents /DATA/Downloads /DATA/Media /DATA/Gallery /DATA/VMs/share
+		# /DATA/Gallery/Wallpaper specifically - not just /DATA/Gallery - since
+		# ui/src/shell/wallpaper/WallpaperModal.vue uploads directly into that
+		# subdirectory and the upload handler doesn't create it on the fly;
+		# without it, uploading a custom wallpaper fails on every fresh
+		# install.
+		mkdir -p /var/lib/nivaroos /var/run/nivaroos /etc/nivaroos /DATA/AppData /DATA/Documents /DATA/Downloads /DATA/Media /DATA/Gallery/Wallpaper /DATA/VMs/share
 		chmod 777 /DATA/VMs/share 2>/dev/null || true
 		touch \"$MANIFEST_FILE\"
 

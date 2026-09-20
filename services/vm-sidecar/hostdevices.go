@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -194,6 +195,21 @@ func getHostXAuth() string {
 	for _, f := range candidates {
 		if _, err := os.Stat(f); err == nil {
 			return f
+		}
+	}
+	// A regular (non-root) user's own desktop login session - the common
+	// case for a physical/VM desktop not using lightdm's root autologin -
+	// keeps its Xauthority cookie under their home directory, not any of
+	// the fixed root-owned paths above. Without this fallback, every
+	// xrandr call below silently fails to open the display on exactly
+	// that kind of device (auth == ""), which is what made the resolution
+	// changer look like it just didn't work - matches the same fallback
+	// installer/install.sh's own x11vnc wrapper script already has.
+	if matches, err := filepath.Glob("/home/*/.Xauthority"); err == nil {
+		for _, m := range matches {
+			if _, statErr := os.Stat(m); statErr == nil {
+				return m
+			}
 		}
 	}
 	return ""
