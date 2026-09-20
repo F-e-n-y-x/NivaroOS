@@ -12,12 +12,28 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 )
 
 const hostDesktopScriptPath = "/usr/local/bin/nivaroos-host-desktop.sh"
+
+// deStatusScriptPath is where installer/install.sh copies
+// installer/host-desktop-de-install.sh (same pattern as gpu-sidecar's own
+// driverScriptPath for gpu-driver-install.sh).
+const deStatusScriptPath = "/usr/local/bin/nivaroos-host-desktop-de-install.sh"
+
+// deStatusTimeout only needs to cover a few sysfs/systemctl/pgrep checks -
+// all fast and local - so this stays short, unlike an actual DE install
+// (which the dashboard runs in a real terminal instead, not through an
+// HTTP endpoint - see the panel's installDesktopEnvironment(), mirroring
+// how the GPU widget's driver install works, for why: a package install
+// can prompt interactively and take minutes, which a blocking HTTP
+// request can't usefully show or answer).
+const deStatusTimeout = 10 * time.Second
 
 const hostDesktopScriptContent = `#!/bin/bash
 set -e
@@ -131,5 +147,28 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"installed": IsHostDesktopInstalled()})
+	})
+
+	// Whether streaming is installed (above) and whether there's a
+	// compatible (X11) desktop for it to actually stream are separate
+	// questions - see installer/host-desktop-de-install.sh's own header
+	// comment for the full reasoning. This just passes its --status
+	// output straight through, exactly like gpu-sidecar's /driver-status
+	// does for gpu-driver-install.sh.
+	mux.HandleFunc("GET /host/desktop/de-status", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := os.Stat(deStatusScriptPath); err != nil {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), deStatusTimeout)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "bash", deStatusScriptPath, "--status").Output()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(out)
 	})
 }

@@ -26,6 +26,60 @@
 			<p v-if="installError" class="not-installed-error">{{ installError }}</p>
 		</div>
 	</div>
+	<div v-else-if="installChecked && needsDesktopChoice" class="host-desktop-panel host-desktop-not-installed">
+		<div class="not-installed-card">
+			<b-icon icon="monitor-question" custom-size="mdi-36px"></b-icon>
+			<h3>{{ $t('No compatible desktop to stream') }}</h3>
+			<p v-if="deState === 'no_de'">
+				{{ $t('This machine has no desktop environment installed yet.') }}
+			</p>
+			<p v-else>
+				{{ $t('{de} is running under Wayland, which Host Desktop cannot capture - only an X11 session can be streamed.', { de: deName || $t('Your desktop') }) }}
+			</p>
+			<div class="de-choice-list">
+				<button
+					v-if="deState === 'wayland_only' && (deName === 'gnome' || deName === 'plasma')"
+					type="button"
+					class="de-choice-btn"
+					@click="chooseDesktop('x11-companion')"
+				>
+					{{ $t('Add an X11 session to your existing {de} (recommended)', { de: deName }) }}
+				</button>
+				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'xfce')">
+					{{ $t('Install XFCE alongside (lightweight, most compatible)') }}
+				</button>
+				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'cinnamon')">
+					{{ $t('Install Cinnamon alongside (modern look)') }}
+				</button>
+				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'mate')">
+					{{ $t('Install MATE alongside (lightweight, classic look)') }}
+				</button>
+				<button
+					v-if="deState === 'wayland_only'"
+					type="button"
+					class="de-choice-btn de-choice-destructive"
+					@click="openReplaceDesktopPrompt"
+				>
+					{{ $t('Replace {de} entirely (destructive)', { de: deName }) }}
+				</button>
+			</div>
+			<div v-if="showReplacePrompt" class="de-replace-confirm">
+				<p>{{ $t('This removes {de} and installs the desktop you pick next. Type its name to confirm:', { de: deName }) }}</p>
+				<div class="de-replace-row">
+					<select v-model="replaceChoice" class="de-replace-select">
+						<option value="xfce">XFCE</option>
+						<option value="cinnamon">Cinnamon</option>
+						<option value="mate">MATE</option>
+					</select>
+					<input v-model="replaceConfirmText" type="text" :placeholder="deName" class="de-replace-input" />
+					<b-button type="is-danger" :disabled="replaceConfirmText !== deName" @click="confirmReplaceDesktop">
+						{{ $t('Replace') }}
+					</b-button>
+				</div>
+			</div>
+			<p v-if="installError" class="not-installed-error">{{ installError }}</p>
+		</div>
+	</div>
 	<div v-else-if="installChecked" class="host-desktop-panel">
 		<!-- Main Console Toolbar -->
 		<div class="console-toolbar">
@@ -608,9 +662,18 @@ export default {
 			installChecked: false,
 			installing: false,
 			installError: '',
+			deChecked: false,
+			deState: '',
+			deName: '',
+			showReplacePrompt: false,
+			replaceChoice: 'xfce',
+			replaceConfirmText: '',
 		}
 	},
 	computed: {
+		needsDesktopChoice() {
+			return this.deChecked && this.deState !== '' && this.deState !== 'supported'
+		},
 		statusText() {
 			switch (this.status) {
 				case 'connected':
@@ -814,9 +877,67 @@ export default {
 			}
 			this.installChecked = true
 			if (this.installed) {
-				this.connect()
-				this.fetchHostDisplay()
+				await this.checkDeStatus()
+				if (!this.needsDesktopChoice) {
+					this.connect()
+					this.fetchHostDisplay()
+				}
 			}
+		},
+
+		// Streaming (x11vnc) being installed and there being an X11 desktop
+		// for it to actually capture are separate questions - see
+		// installer/host-desktop-de-install.sh's header comment. If this
+		// check itself is unavailable (older backend, transient error), we
+		// treat it as supported rather than blocking an otherwise-working
+		// panel behind a check that can't answer.
+		async checkDeStatus() {
+			try {
+				let res = null
+				try {
+					res = await axios.get('/api/host/desktop/de-status')
+				} catch (e) {
+					const host = window.location.hostname || '127.0.0.1'
+					res = await axios.get(`//${host}:28641/host/desktop/de-status`, {
+						headers: { Authorization: localStorage.getItem('access_token') || '' },
+					})
+				}
+				this.deState = (res.data && res.data.state) || 'supported'
+				this.deName = (res.data && res.data.de_name) || ''
+			} catch (e) {
+				this.deState = 'supported'
+			}
+			this.deChecked = true
+		},
+
+		chooseDesktop(action, de, confirm) {
+			this.installError = ''
+			const parts = [`sudo bash /usr/local/bin/nivaroos-host-desktop-de-install.sh --action=${action}`]
+			if (de) parts.push(`--de=${de}`)
+			if (confirm) parts.push(`--confirm=${confirm}`)
+			try {
+				this.$store.commit('OPEN_WINDOW', {
+					id: 'terminal-host-desktop-de-' + Date.now(),
+					title: this.$t('Set Up Desktop'),
+					component: 'TerminalPanel',
+					props: { initCommand: parts.join(' ') },
+					width: 820,
+					height: 480,
+				})
+			} catch (e) {
+				this.installError = this.$t('Could not open a terminal - see system logs.')
+			}
+		},
+
+		openReplaceDesktopPrompt() {
+			this.showReplacePrompt = true
+			this.replaceConfirmText = ''
+		},
+
+		confirmReplaceDesktop() {
+			if (this.replaceConfirmText !== this.deName) return
+			this.chooseDesktop('replace', this.replaceChoice, this.deName)
+			this.showReplacePrompt = false
 		},
 
 		async installHostDesktop() {
@@ -1270,6 +1391,65 @@ export default {
 
 .not-installed-error {
 	color: #f14668;
+}
+
+.de-choice-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2, 0.5rem);
+	width: 100%;
+}
+
+.de-choice-btn {
+	width: 100%;
+	padding: 0.6rem 0.9rem;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.06);
+	color: #fff;
+	font-size: 0.85rem;
+	text-align: left;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.de-choice-btn:hover {
+	background: rgba(255, 255, 255, 0.12);
+}
+
+.de-choice-destructive {
+	border-color: rgba(241, 70, 104, 0.4);
+	color: #f14668;
+}
+
+.de-replace-confirm {
+	width: 100%;
+	margin-top: var(--space-2, 0.5rem);
+	padding-top: var(--space-2, 0.5rem);
+	border-top: 1px solid rgba(255, 255, 255, 0.1);
+
+	p {
+		margin: 0 0 var(--space-2, 0.5rem);
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+}
+
+.de-replace-row {
+	display: flex;
+	gap: var(--space-2, 0.5rem);
+	align-items: center;
+}
+
+.de-replace-select,
+.de-replace-input {
+	flex: 1;
+	padding: 0.4rem 0.6rem;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: rgba(255, 255, 255, 0.06);
+	color: #fff;
+	font-size: 0.85rem;
 }
 
 .console-toolbar {
