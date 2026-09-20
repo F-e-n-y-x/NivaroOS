@@ -20,7 +20,15 @@ if [ -z "${BASH_VERSION:-}" ]; then
 	exec bash "$0" "$@"
 fi
 
-set -euo pipefail
+# -E (errtrace) is the fix for a silent-death class of bug: without it, a
+# `trap ... ERR` is NOT inherited into shell functions, command
+# substitutions, or subshells - it only fires for a failing command at the
+# script's own top level. Nearly everything here (every step, every helper)
+# runs inside a function, so any unexpected failure inside one would just
+# exit immediately via `set -e` with the ERR trap never firing at all - no
+# on_fatal_error message, nothing - which looks exactly like the installer
+# quietly dying mid-run for no visible reason.
+set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
