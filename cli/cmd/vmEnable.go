@@ -43,6 +43,10 @@ var vmEnableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Build and enable the VM Manager service",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := ensureRoot(); err != nil {
+			return err
+		}
+
 		if _, err := os.Stat(nivaroosSrcDir); err != nil {
 			return fmt.Errorf("%s not found - run the NivaroOS installer first: %w", nivaroosSrcDir, err)
 		}

@@ -24,25 +24,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var vmDisableCmd = &cobra.Command{
+var hostDesktopDisableCmd = &cobra.Command{
 	Use:   "disable",
-	Short: "Stop and disable the VM Manager service (does not delete VM data)",
+	Short: "Stop and disable Host Desktop streaming",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := ensureRoot(); err != nil {
 			return err
 		}
 
-		c := exec.Command("systemctl", "disable", "--now", "nivaroos-vm-sidecar.service")
+		c := exec.Command("systemctl", "disable", "--now", "nivaroos-host-desktop.service")
 		out, err := c.CombinedOutput()
 		if err != nil && !strings.Contains(string(out), "not found") && !strings.Contains(string(out), "does not exist") {
 			fmt.Fprint(os.Stderr, string(out))
-			return fmt.Errorf("systemctl disable --now nivaroos-vm-sidecar.service: %w", err)
+			return fmt.Errorf("systemctl disable --now nivaroos-host-desktop.service: %w", err)
 		}
-		fmt.Println("VM Manager is disabled. VM disk images under /DATA/VMs were left untouched.")
+		fmt.Println("Host Desktop streaming is disabled.")
 		return nil
 	},
 }
 
 func init() {
-	vmCmd.AddCommand(vmDisableCmd)
+	hostDesktopCmd.AddCommand(hostDesktopDisableCmd)
 }
