@@ -49,10 +49,62 @@ find_auth() {
     echo ""
 }
 
-# Wait for X server on :0 if not yet ready
+x_is_up() {
+    [ -S /tmp/.X11-unix/X0 ] || xdpyinfo -display :0 >/dev/null 2>&1
+}
+
+# No physical monitor connected on any output? Every mainstream KMS driver
+# (modesetting/amdgpu/intel/nouveau/nvidia) refuses to bring up a display at
+# all in that case unless told otherwise - this, not x11vnc or websockify,
+# is what actually breaks Host Desktop on a headless/rack server: lightdm's
+# own Xorg never starts, so :0 never appears no matter how long the wait
+# loop below runs.
+no_monitor_connected() {
+    local f
+    for f in /sys/class/drm/*/status; do
+        [ -f "$f" ] || continue
+        if [ "$(cat "$f" 2>/dev/null)" = "connected" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+XORG_HEADLESS_CONF=/etc/X11/xorg.conf.d/10-nivaroos-headless.conf
+
+# AllowEmptyInitialConfiguration is a no-op when a monitor genuinely is
+# connected, and only takes effect for whichever driver actually binds the
+# card - so writing one Device section per common driver name is safe
+# rather than needing to guess which one this machine uses.
+write_headless_xorg_conf() {
+    [ -f "$XORG_HEADLESS_CONF" ] && return 0
+    mkdir -p /etc/X11/xorg.conf.d
+    : > "$XORG_HEADLESS_CONF"
+    for drv in modesetting amdgpu intel nouveau nvidia; do
+        cat >> "$XORG_HEADLESS_CONF" <<CONFEOF
+Section "Device"
+    Identifier "NivaroOSHeadless-${drv}"
+    Driver "${drv}"
+    Option "AllowEmptyInitialConfiguration" "true"
+EndSection
+
+CONFEOF
+    done
+}
+
+# Wait for X server on :0 if not yet ready. If it still isn't up halfway
+# through and no monitor is plugged in, apply the headless fix and restart
+# the display manager once - only when X genuinely isn't up yet, so a
+# working headed session is never disrupted just because this check ran.
+HEADLESS_FIX_APPLIED=false
 for i in {1..30}; do
-    if [ -S /tmp/.X11-unix/X0 ] || xdpyinfo -display :0 >/dev/null 2>&1; then
+    if x_is_up; then
         break
+    fi
+    if [ "$i" -eq 10 ] && [ "$HEADLESS_FIX_APPLIED" = false ] && no_monitor_connected; then
+        write_headless_xorg_conf
+        systemctl restart display-manager.service 2>/dev/null || systemctl restart lightdm.service 2>/dev/null || systemctl restart sddm.service 2>/dev/null || true
+        HEADLESS_FIX_APPLIED=true
     fi
     sleep 1
 done
