@@ -1430,6 +1430,18 @@ print_error_card() {
 on_fatal_error() {
 	local exit_code=$?
 	local line_no="$1"
+	# If this fires while a step's live spinner loop is mid-frame (e.g. an
+	# unexpected error in the renderer itself, not a step command failure -
+	# those are handled separately and already close this first), we're
+	# still on the alternate screen buffer. Printing the error there and
+	# then exiting - which restores the real screen via cleanup_on_exit's
+	# EXIT trap - would silently discard the very message just printed,
+	# leaving the terminal looking like nothing happened at all instead of
+	# showing why it stopped.
+	if [ "$IN_ALT_SCREEN" = "true" ]; then
+		printf "\033[?1049l\033[?25h"
+		IN_ALT_SCREEN="false"
+	fi
 	if [ "$exit_code" -ne 0 ]; then
 		log_raw "Fatal error at line ${line_no} (exit code ${exit_code})"
 		error "Installation terminated unexpectedly at line ${line_no} (exit code ${exit_code})."
@@ -2257,8 +2269,6 @@ install_ui() {
 			echo 'Could not find or build the web dashboard (no prebuilt www files found). The rest of NivaroOS will run, but the dashboard will be empty until you build ui/ manually.' >&2
 			exit 1
 		fi
-
-		cp -rf \"\$ui_source_dir\"/* /var/lib/nivaroos/www/
 	"
 }
 
