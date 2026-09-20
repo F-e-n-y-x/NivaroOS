@@ -1195,6 +1195,19 @@ func PostFileUpload(ctx echo.Context) error {
 		fullDstPath = path + "/" + relative
 	}
 
+	// The single-chunk branch below already did this right before opening
+	// fullDstPath - but the chunked branch (totalChunks > 1, the common
+	// case for a several-MB image like a wallpaper) only creates a
+	// dirPath subfolder when the upload's relative path actually has one,
+	// and never the destination directory itself. A target path whose
+	// directory doesn't exist yet (e.g. a fresh install where nothing has
+	// ever been uploaded to it before) silently failed for exactly that
+	// reason. Doing it once here, before either branch, covers both.
+	if err := os.MkdirAll(filepath.Dir(fullDstPath), 0o755); err != nil {
+		logger.Error("error creating destination directory for `"+fullDstPath+"`", zap.Error(err))
+		return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+	}
+
 	if !file.CheckNotExist(tempDir + chunkNumber) {
 		if err := file.RMDir(tempDir + chunkNumber); err != nil {
 			logger.Error("error when trying to remove existing `"+tempDir+chunkNumber+"`", zap.Error(err))
@@ -1254,7 +1267,6 @@ func PostFileUpload(ctx echo.Context) error {
 			}
 		}
 	} else {
-		_ = os.MkdirAll(filepath.Dir(fullDstPath), 0755)
 		out, err := os.OpenFile(fullDstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			logger.Error("error when trying to open `"+fullDstPath+"` for creation", zap.Error(err))
