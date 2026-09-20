@@ -1651,6 +1651,15 @@ VMEOF
 		systemctl daemon-reload >/dev/null 2>&1 || true
 		systemctl enable --now libvirtd >/dev/null 2>&1 || true
 		systemctl enable --now nivaroos-vm-sidecar >/dev/null 2>&1 || true
+
+		# CLI-only on purpose - see nivaroos-bridge.sh's own header comment
+		# for why bridge networking (which can cut off the very session
+		# managing it) is never exposed as a WebUI button.
+		if [ -f \"${SRC_DIR}/installer/nivaroos-bridge.sh\" ]; then
+			cp -f \"${SRC_DIR}/installer/nivaroos-bridge.sh\" /usr/local/bin/nivaroos-bridge
+			chmod 755 /usr/local/bin/nivaroos-bridge
+			echo '/usr/local/bin/nivaroos-bridge' >> \"$MANIFEST_FILE\"
+		fi
 	"
 }
 
