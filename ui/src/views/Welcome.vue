@@ -3,10 +3,6 @@
 		<div v-if="!isLoading" v-animate-css="initAni" :class="'step' + step" class="login-panel is-shadow">
 
 			<div v-if="step == 1" class="has-text-centered">
-				<div v-animate-css="s1Ani" class=" is-flex is-justify-content-center">
-					<b-image :src="require('@/assets/img/logo/casa-dark.svg')" class="is-128x128 mb-4 welcome-hero-logo"></b-image>
-				</div>
-
 				<h2 v-animate-css="s2Ani" class="title is-2 mb-5 has-text-centered __attached_title">{{
 						$t('Welcome to NivaroOS')
 					}}</h2>
@@ -92,11 +88,6 @@ export default {
 			initAni: {
 				classes: 'zoomIn',
 				delay: 1000,
-				duration: 700
-			},
-			s1Ani: {
-				classes: 'fadeInUp',
-				delay: 1300,
 				duration: 700
 			},
 			s2Ani: {
@@ -208,18 +199,6 @@ export default {
 	height: 120px;
 }
 
-// casa-dark.svg's wordmark is drawn in dark navy (#0E3157), meant to sit on
-// a light card. In dark mode the welcome/login card background flips to
-// near-black (section 20 of _dark.scss), which drops the logo's contrast
-// to roughly 1.3:1 against it - effectively invisible. Add a soft light
-// glow behind the artwork (via the image's own alpha channel) so the
-// wordmark stays legible without needing a separate dark-mode asset.
-html.is-dark,
-html[data-theme="dark"] {
-	.welcome-hero-logo img {
-		filter: drop-shadow(0 0 1.5px rgba(244, 244, 245, 0.9)) drop-shadow(0 0 4px rgba(244, 244, 245, 0.55));
-	}
-}
 
 #login-page {
 	height: calc(100% - 5.5rem);

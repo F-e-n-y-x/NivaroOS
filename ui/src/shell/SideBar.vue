@@ -24,6 +24,13 @@ const widgetsComponents = require.context(
 
 const widgetsConfig = "widgets_config"
 
+// The order new widgets appear in before anyone has dragged anything -
+// otherwise it falls out of require.context()'s incidental alphabetical
+// file enumeration (Cpu, Disks, Gpu, Network, Ram), which is fragile
+// (renaming a widget's file would silently reorder the default layout)
+// and wasn't the intended default order anyway.
+const DEFAULT_WIDGET_ORDER = ['cpu', 'ram', 'gpu', 'network', 'disks']
+
 // Rough content-height estimates, used only to decide when a widget
 // column has run out of vertical room and a second one is needed - not
 // for actual layout/sizing (each widget still sizes itself naturally in
@@ -200,6 +207,15 @@ export default {
 			const fresh = this.apps
 				.filter(a => !keptNames.includes(a.app.name))
 				.map(a => ({ name: a.app.name, hidden: false }))
+				.sort((a, b) => {
+					// A widget not in the default order list at all (e.g. a new
+					// one added later) sorts after every known widget rather than
+					// to the front, matching this function's existing "append
+					// unseen widgets at the end" behavior.
+					const ai = DEFAULT_WIDGET_ORDER.indexOf(a.name)
+					const bi = DEFAULT_WIDGET_ORDER.indexOf(b.name)
+					return (ai === -1 ? DEFAULT_WIDGET_ORDER.length : ai) - (bi === -1 ? DEFAULT_WIDGET_ORDER.length : bi)
+				})
 			return kept.concat(fresh)
 		},
 
