@@ -89,6 +89,7 @@ import has from "lodash/has";
 import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
+import { subscribeContainerUsage } from "@/utils/containerUsagePoller.js";
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -105,7 +106,7 @@ export default {
 
 	data() {
 		return {
-			timer: null,
+			unsubscribeUsage: null,
 			showMore: false,
 			totalMemory: 0,
 			usedMemory: 0,
@@ -145,12 +146,6 @@ export default {
 		this.totalMemory = this.$store.state.hardwareInfo.mem.total;
 		this.dimms = this.$store.state.hardwareInfo.mem.dimms || [];
 		this.updateCharts(this.$store.state.hardwareInfo.mem);
-		this.getDockerUsage();
-		this.timer = setInterval(() => {
-			if (this.showMore) {
-				this.getDockerUsage();
-			}
-		}, 1000);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -159,47 +154,52 @@ export default {
 		});
 	},
 	beforeDestroy() {
-		clearInterval(this.timer);
+		if (this.unsubscribeUsage) {
+			this.unsubscribeUsage();
+		}
 	},
 	methods: {
 		updateCharts(mem) {
 			this.ramSeries = mem.usedPercent;
 			this.usedMemory = mem.used;
 		},
-		getDockerUsage() {
-			this.$api.container.getHardwareUsage().then((res) => {
-				this.containerRamList = res.data.data.map((item) => {
-					let id = 0;
-					const getCacheValue = (item) => {
-						if (has(item.data.memory_stats.stats, "inactive_file")) {
-							return item.data.memory_stats.stats.inactive_file;
-						} else if (has(item.data.memory_stats.stats, "cache")) {
-							return item.data.memory_stats.stats.cache;
-						} else if (has(item.data.memory_stats.stats, "total_inactive_file")) {
-							return item.data.memory_stats.stats.total_inactive_file;
-						} else {
-							return 0;
-						}
-					};
-					const used_memory = "stats" in item.data.memory_stats ? item.data.memory_stats.usage - getCacheValue(item) : NaN;
-					id++;
-					return {
-						id: id,
-						usage: isNaN(used_memory) ? 0 : used_memory,
-						icon: item.icon,
-						title: item.title,
-					};
-				});
-				this.containerRamList = slice(orderBy(this.containerRamList, ["usage"], ["desc"]), 0, 8);
+		applyUsage(res) {
+			this.containerRamList = res.data.data.map((item) => {
+				let id = 0;
+				const getCacheValue = (item) => {
+					if (has(item.data.memory_stats.stats, "inactive_file")) {
+						return item.data.memory_stats.stats.inactive_file;
+					} else if (has(item.data.memory_stats.stats, "cache")) {
+						return item.data.memory_stats.stats.cache;
+					} else if (has(item.data.memory_stats.stats, "total_inactive_file")) {
+						return item.data.memory_stats.stats.total_inactive_file;
+					} else {
+						return 0;
+					}
+				};
+				const used_memory = "stats" in item.data.memory_stats ? item.data.memory_stats.usage - getCacheValue(item) : NaN;
+				id++;
+				return {
+					id: id,
+					usage: isNaN(used_memory) ? 0 : used_memory,
+					icon: item.icon,
+					title: item.title,
+				};
 			});
+			this.containerRamList = slice(orderBy(this.containerRamList, ["usage"], ["desc"]), 0, 8);
 		},
 
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
 				this.$messageBus("widget_ram", "open");
+				this.unsubscribeUsage = subscribeContainerUsage((res) => this.applyUsage(res));
 			} else {
 				this.$messageBus("widget_ram", "close");
+				if (this.unsubscribeUsage) {
+					this.unsubscribeUsage();
+					this.unsubscribeUsage = null;
+				}
 			}
 		},
 	},

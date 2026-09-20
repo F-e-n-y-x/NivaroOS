@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
@@ -13,6 +14,25 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+// nvidiaSMITimeout bounds each nvidia-smi invocation so a hung/slow driver
+// can't block an HTTP request (and the goroutine serving it) indefinitely.
+const nvidiaSMITimeout = 3 * time.Second
+
+// cacheTTL reuses the last successful reading for a short window so that
+// several near-simultaneous polls (multiple open dashboard tabs, or the
+// widget's own poll racing a manual refresh) don't each spawn a fresh pair
+// of nvidia-smi subprocesses.
+const cacheTTL = 1 * time.Second
+
+var (
+	cacheMu   sync.Mutex
+	cached    gpuStats
+	cachedAt  time.Time
+	cacheGood bool
 )
 
 type gpuStats struct {
@@ -35,7 +55,9 @@ type gpuProcess struct {
 }
 
 func queryGPU() (gpuStats, error) {
-	out, err := exec.Command("nvidia-smi",
+	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "nvidia-smi",
 		"--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
 		"--format=csv,noheader,nounits").Output()
 	if err != nil {
@@ -67,7 +89,9 @@ func queryGPU() (gpuStats, error) {
 // query-compute-apps, since pmon reports per-process utilization % directly
 // (query-compute-apps only reports memory, not utilization).
 func queryProcesses() []gpuProcess {
-	out, err := exec.Command("nvidia-smi", "pmon", "-c", "1", "-s", "u").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "nvidia-smi", "pmon", "-c", "1", "-s", "u").Output()
 	if err != nil {
 		return nil
 	}
@@ -101,12 +125,31 @@ func handleGPUStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
+	cacheMu.Lock()
+	if cacheGood && time.Since(cachedAt) < cacheTTL {
+		stats := cached
+		cacheMu.Unlock()
+		json.NewEncoder(w).Encode(stats)
+		return
+	}
+	cacheMu.Unlock()
+
 	stats, err := queryGPU()
 	if err != nil {
+		cacheMu.Lock()
+		cacheGood = false
+		cacheMu.Unlock()
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(gpuStats{Error: err.Error()})
 		return
 	}
+
+	cacheMu.Lock()
+	cached = stats
+	cachedAt = time.Now()
+	cacheGood = true
+	cacheMu.Unlock()
+
 	json.NewEncoder(w).Encode(stats)
 }
 

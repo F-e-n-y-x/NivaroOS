@@ -110,10 +110,10 @@ func (s *EventServiceWS) Unsubscribe(sourceID string, name string, c chan model.
 		return ErrEventNameNotFound
 	}
 
-	for i, subscriber := range s.subscriberChannels[sourceID][name] {
-		mutex.Lock()
-		defer mutex.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 
+	for i, subscriber := range s.subscriberChannels[sourceID][name] {
 		if subscriber == c {
 			logger.Info("unsubscribing from event type", zap.String("sourceID", sourceID), zap.String("name", name), zap.Int("subscriber", i))
 			if i >= len(s.subscriberChannels[sourceID][name]) {

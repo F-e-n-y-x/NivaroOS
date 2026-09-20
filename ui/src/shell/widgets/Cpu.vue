@@ -107,6 +107,7 @@ import orderBy from "lodash/orderBy";
 import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
+import { subscribeContainerUsage } from "@/utils/containerUsagePoller.js";
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -123,7 +124,7 @@ export default {
 
 	data() {
 		return {
-			timer: null,
+			unsubscribeUsage: null,
 			showMore: false,
 			showCores: localStorage.getItem("cpuShowCores") !== "false",
 			cpuCores: 0,
@@ -173,12 +174,6 @@ export default {
 		this.modelName = this.$store.state.hardwareInfo.cpu.model_name || "";
 		this.mhz = this.$store.state.hardwareInfo.cpu.mhz || 0;
 		this.updateCharts(this.$store.state.hardwareInfo.cpu);
-		this.getDockerUsage();
-		this.timer = setInterval(() => {
-			if (this.showMore) {
-				this.getDockerUsage();
-			}
-		}, 1000);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -187,7 +182,9 @@ export default {
 		});
 	},
 	beforeDestroy() {
-		clearInterval(this.timer);
+		if (this.unsubscribeUsage) {
+			this.unsubscribeUsage();
+		}
 	},
 	methods: {
 		splitCpuModelName(raw) {
@@ -241,36 +238,39 @@ export default {
 			}
 		},
 
-		getDockerUsage() {
-			this.$api.container.getHardwareUsage().then((res) => {
-				let id = 0;
-				this.containerCpuList = res.data.data.map((item) => {
-					let usage = 0;
-					if (item.previous != null) {
-						const cpu_delta =
-							item.data.cpu_stats.cpu_usage.total_usage - item.previous.cpu_stats.cpu_usage.total_usage;
-						const system_cpu_delta =
-							item.data.cpu_stats.system_cpu_usage - item.previous.cpu_stats.system_cpu_usage + 1;
-						usage = Math.floor((cpu_delta / system_cpu_delta) * 1000) / 10;
-					}
-					id++;
-					return {
-						id: id,
-						usage: isNaN(usage) || usage < 0 ? 0 : usage,
-						icon: item.icon,
-						title: item.title,
-					};
-				});
-				this.containerCpuList = slice(orderBy(this.containerCpuList, ["usage"], ["desc"]), 0, 8);
+		applyUsage(res) {
+			let id = 0;
+			this.containerCpuList = res.data.data.map((item) => {
+				let usage = 0;
+				if (item.previous != null) {
+					const cpu_delta =
+						item.data.cpu_stats.cpu_usage.total_usage - item.previous.cpu_stats.cpu_usage.total_usage;
+					const system_cpu_delta =
+						item.data.cpu_stats.system_cpu_usage - item.previous.cpu_stats.system_cpu_usage + 1;
+					usage = Math.floor((cpu_delta / system_cpu_delta) * 1000) / 10;
+				}
+				id++;
+				return {
+					id: id,
+					usage: isNaN(usage) || usage < 0 ? 0 : usage,
+					icon: item.icon,
+					title: item.title,
+				};
 			});
+			this.containerCpuList = slice(orderBy(this.containerCpuList, ["usage"], ["desc"]), 0, 8);
 		},
 
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
 				this.$messageBus("widget_cpu", "open");
+				this.unsubscribeUsage = subscribeContainerUsage((res) => this.applyUsage(res));
 			} else {
 				this.$messageBus("widget_cpu", "close");
+				if (this.unsubscribeUsage) {
+					this.unsubscribeUsage();
+					this.unsubscribeUsage = null;
+				}
 			}
 		},
 

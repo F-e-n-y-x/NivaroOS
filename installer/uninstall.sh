@@ -13,10 +13,12 @@ set -euo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
+DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 
 PURGE_DATA=""
+REMOVE_PROVISIONED_DESKTOP=""
 YES=""
 CLI_WIDTH=""
 CLI_HEIGHT=""
@@ -208,6 +210,7 @@ parse_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--purge-data) PURGE_DATA=yes ;;
+			--remove-provisioned-desktop) REMOVE_PROVISIONED_DESKTOP=yes ;;
 			--yes|-y|--unattended) YES=yes ;;
 			--width=*) CLI_WIDTH="${1#*=}" ;;
 			--width|-w)
@@ -218,10 +221,11 @@ parse_args() {
 				print_banner
 				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} uninstall.sh [options]\n"
 				printf '%b\n' "${COLOR_BOLD}Options:${COLOR_RESET}"
-				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}             Automatic non-interactive uninstall (skip confirmation)"
-				printf '%b\n' "  ${COLOR_CYAN}--purge-data${COLOR_RESET}          Permanently delete /DATA (all app configs, VM disks, files)"
-				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}        Force specific terminal box width (default: auto-detect)"
-				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}            Display this help message and exit"
+				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}                       Automatic non-interactive uninstall (skip confirmation)"
+				printf '%b\n' "  ${COLOR_CYAN}--purge-data${COLOR_RESET}                    Permanently delete /DATA (all app configs, VM disks, files)"
+				printf '%b\n' "  ${COLOR_CYAN}--remove-provisioned-desktop${COLOR_RESET}    Also remove the desktop environment install.sh installed for Host Desktop streaming (never touches a desktop you already had)"
+				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}                  Force specific terminal box width (default: auto-detect)"
+				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}                      Display this help message and exit"
 				printf '\n'
 				exit 0
 				;;
@@ -451,6 +455,7 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-local-storage.service \
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
+			/usr/lib/systemd/system/nivaroos-host-desktop.service \
 			/usr/lib/systemd/system/rclone.service \
 			/usr/lib/systemd/system/usb-mount@.service \
 			/etc/systemd/system/nivaroos* \
@@ -475,6 +480,9 @@ remove_binaries() {
 			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
 			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
+			/usr/local/bin/nivaroos-host-desktop.sh \
+			/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf \
+			/etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
 			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
 			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
 		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos /usr/share/nivaroos
@@ -487,6 +495,45 @@ purge_data_if_requested() {
 	else
 		run_step "Preserving user data in /DATA" "true"
 	fi
+}
+
+# install.sh records what it provisioned (format "alongside:<de>" or
+# "replaced:<de>") to DESKTOP_PROVISION_MARKER only when it had to install or
+# swap a desktop environment for Host Desktop streaming - never when the
+# machine already had a working one. Captured here, before remove_binaries
+# deletes /var/lib/nivaroos (and the marker with it), so there is still
+# something to act on afterward.
+PROVISIONED_DESKTOP_INFO=""
+capture_provisioned_desktop_marker() {
+	if [ -f "$DESKTOP_PROVISION_MARKER" ]; then
+		PROVISIONED_DESKTOP_INFO="$(cat "$DESKTOP_PROVISION_MARKER" 2>/dev/null || echo "")"
+	fi
+}
+
+remove_provisioned_desktop_if_requested() {
+	if [ -z "$PROVISIONED_DESKTOP_INFO" ]; then
+		return
+	fi
+	local de="${PROVISIONED_DESKTOP_INFO#*:}"
+	if [ "$REMOVE_PROVISIONED_DESKTOP" != "yes" ]; then
+		info "A desktop environment (${de}) was installed by NivaroOS for Host Desktop streaming and is being left in place."
+		info "Remove it too with: nivaroos-uninstall --remove-provisioned-desktop"
+		return
+	fi
+	run_step "Removing Desktop Environment Provisioned for Host Desktop (${de})" "
+		if command -v apt-get >/dev/null 2>&1; then
+			case '${de}' in
+				xfce) apt-get purge -y xfce4 >/dev/null 2>&1 || true ;;
+				cinnamon) apt-get purge -y cinnamon-core cinnamon >/dev/null 2>&1 || true ;;
+				mate) apt-get purge -y mate-desktop-environment-core mate-desktop-environment >/dev/null 2>&1 || true ;;
+			esac
+			apt-get autoremove -y >/dev/null 2>&1 || true
+		elif command -v pacman >/dev/null 2>&1; then
+			pacman -Rns --noconfirm '${de}' >/dev/null 2>&1 || true
+		elif command -v dnf >/dev/null 2>&1; then
+			dnf remove -y '@${de}-desktop-environment' >/dev/null 2>&1 || true
+		fi
+	"
 }
 
 print_summary() {
@@ -547,6 +594,11 @@ main() {
 	print_banner
 	confirm_uninstall
 
+	capture_provisioned_desktop_marker
+	if [ -n "$PROVISIONED_DESKTOP_INFO" ] && [ "$REMOVE_PROVISIONED_DESKTOP" = "yes" ]; then
+		TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	fi
+
 	info "Beginning NivaroOS teardown..."
 	printf "\n"
 
@@ -554,6 +606,7 @@ main() {
 	remove_unit_files
 	remove_binaries
 	purge_data_if_requested
+	remove_provisioned_desktop_if_requested
 
 	print_summary
 }

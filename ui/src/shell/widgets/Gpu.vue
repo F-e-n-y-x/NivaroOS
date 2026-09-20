@@ -95,7 +95,16 @@ import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
 
 const SIDECAR_URL = `http://${window.location.hostname}:28640/gpu-stats`;
-const POLL_INTERVAL_MS = 2000;
+// Polling this hits the gpu-sidecar, which shells out to nvidia-smi twice
+// per request - fine at a snappy interval while the process list is open
+// and someone is actually watching it, wasteful kept up at that same rate
+// for the entire time the dashboard tab merely happens to be open. The
+// main gauge (utilization/VRAM/temp/power) has no other live-update path
+// (unlike Cpu.vue/Ram.vue, which get pushed real-time over the websocket
+// regardless of expand state), so this never stops entirely - it just
+// backs off to a slower interval while collapsed instead of pausing.
+const POLL_INTERVAL_EXPANDED_MS = 2000;
+const POLL_INTERVAL_COLLAPSED_MS = 6000;
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -143,7 +152,7 @@ export default {
 	},
 	created() {
 		this.poll();
-		this.timer = setInterval(this.poll, POLL_INTERVAL_MS);
+		this.timer = setInterval(this.poll, POLL_INTERVAL_COLLAPSED_MS);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -184,6 +193,8 @@ export default {
 
 		showMoreInfo() {
 			this.showMore = !this.showMore;
+			clearInterval(this.timer);
+			this.timer = setInterval(this.poll, this.showMore ? POLL_INTERVAL_EXPANDED_MS : POLL_INTERVAL_COLLAPSED_MS);
 		},
 	},
 };

@@ -102,10 +102,10 @@ func (s *ActionServiceWS) Unsubscribe(sourceID string, name string, c chan model
 		return ErrActionNameNotFound
 	}
 
-	for i, subscriber := range s.subscriberChannels[sourceID][name] {
-		s.mutex.Lock()
-		defer s.mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 
+	for i, subscriber := range s.subscriberChannels[sourceID][name] {
 		if subscriber == c {
 			if i >= len(s.subscriberChannels[sourceID][name]) {
 				logger.Error("the i-th subscriber is removed before we get here - concurrency issue?", zap.Int("subscriber", i), zap.Int("total", len(s.subscriberChannels[sourceID][name])))

@@ -1689,7 +1689,11 @@ type CenterHandler struct {
 	// 注销通道，有用户关闭连接 则将该用户剔出集合map中
 	unregister chan *Client
 	// 用户集合，每个用户本身也在跑两个协程，监听用户的读、写的状态
-	clients map[string]*Client
+	// clientsMu guards clients: monitoring() mutates it from its own
+	// goroutine while HTTP handlers (ConnectWebSocket, GetPeers) and other
+	// connections' readPump goroutines read it concurrently.
+	clientsMu sync.RWMutex
+	clients   map[string]*Client
 }
 
 type Client struct {
@@ -1757,7 +1761,10 @@ func ConnectWebSocket(ctx echo.Context) error {
 		kickoutList := []Client{}
 		count := len(list) - 10
 		for i := len(list) - 1; count > 0 && i > -1; i-- {
-			if _, ok := handler.clients[list[i].ID]; !ok {
+			handler.clientsMu.RLock()
+			_, stillConnected := handler.clients[list[i].ID]
+			handler.clientsMu.RUnlock()
+			if !stillConnected {
 				count--
 				kickoutList = append(kickoutList, Client{ID: list[i].ID, Name: service.GetNameByDB(list[i]), IP: list[i].IP})
 				service.MyService.Peer().DeletePeer(list[i].ID)
@@ -1782,15 +1789,25 @@ func ConnectWebSocket(ctx echo.Context) error {
 	pmsg["peer"] = currentPeer
 	pby, err := json.Marshal(pmsg)
 	fmt.Println(err)
+	handler.clientsMu.RLock()
+	existingClients := make([]*Client, 0, len(handler.clients))
 	for _, v := range handler.clients {
-		v.send <- pby
+		existingClients = append(existingClients, v)
+	}
+	handler.clientsMu.RUnlock()
+	for _, v := range existingClients {
+		select {
+		case v.send <- pby:
+		default:
+			// v's send buffer is full (slow/stuck peer) - drop this
+			// notification rather than blocking the new peer's own
+			// connection setup; v's own pumps will notice if it's truly dead.
+		}
 	}
 	// client.handler.broadcast <- pby
 	clients := []PeerModel{}
-	for _, v := range client.handler.clients {
-		if _, ok := handler.clients[v.ID]; ok {
-			clients = append(clients, PeerModel{ID: v.ID, Name: v.Name, RtcSupported: v.RtcSupported})
-		}
+	for _, v := range existingClients {
+		clients = append(clients, PeerModel{ID: v.ID, Name: v.Name, RtcSupported: v.RtcSupported})
 	}
 
 	other := make(map[string]interface{})
@@ -1909,7 +1926,9 @@ func (c *Client) readPump() {
 		to := gjson.GetBytes(message, "to")
 
 		if len(to.String()) > 0 {
+			c.handler.clientsMu.RLock()
 			toC := c.handler.clients[to.String()]
+			c.handler.clientsMu.RUnlock()
 			if toC == nil {
 				continue
 			}
@@ -1918,7 +1937,12 @@ func (c *Client) readPump() {
 			data["sender"] = c.ID
 			delete(data, "to")
 			message, err = json.Marshal(data)
-			toC.send <- message
+			select {
+			case toC.send <- message:
+			default:
+				// toC's send buffer is full (slow/stuck peer) - drop this
+				// direct message rather than blocking this reader's pump.
+			}
 			continue
 		}
 
@@ -1931,27 +1955,46 @@ func (ch *CenterHandler) monitoring() {
 		select {
 		// 注册，新用户连接过来会推进注册通道，这里接收推进来的用户指针
 		case client := <-ch.register:
+			ch.clientsMu.Lock()
 			ch.clients[client.ID] = client
+			ch.clientsMu.Unlock()
 			// 注销，关闭连接或连接异常会将用户推出群聊
 		case client := <-ch.unregister:
+			ch.clientsMu.Lock()
 			delete(ch.clients, client.ID)
+			ch.clientsMu.Unlock()
 			// 消息，监听到有新消息到来
 		case message := <-ch.broadcast:
 			println("消息来了，message：" + string(message))
 			// 推送给每个用户的通道，每个用户都有跑协程起了writePump的监听
+			ch.clientsMu.RLock()
 			for _, client := range ch.clients {
-				client.send <- message
+				select {
+				case client.send <- message:
+				default:
+					// This client's send buffer is full (slow/stuck peer).
+					// Dropping here instead of blocking is critical: this is
+					// the single monitoring() goroutine that also owns
+					// register/unregister, so a blocking send here used to
+					// freeze peer discovery and file-transfer signaling for
+					// every connected device until the whole service was
+					// restarted. The stuck client's own writePump/readPump
+					// will still notice the dead connection and unregister.
+				}
 			}
+			ch.clientsMu.RUnlock()
 		}
 	}
 }
 
 func GetPeers(ctx echo.Context) error {
 	peers := service.MyService.Peer().GetPeers()
+	handler.clientsMu.RLock()
 	for i := 0; i < len(peers); i++ {
 		if _, ok := handler.clients[peers[i].ID]; ok {
 			peers[i].Online = true
 		}
 	}
+	handler.clientsMu.RUnlock()
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: peers})
 }

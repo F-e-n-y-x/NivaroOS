@@ -46,12 +46,15 @@ DETECTED_PORT="80"
 IS_UPGRADE="false"
 WITH_VM=""
 WITH_HOST_DESKTOP=""
+WITH_SAMBA=""
+WITH_MDNS=""
 YES=""
 DEBUG=""
 CLI_WIDTH=""
 CLI_HEIGHT=""
+BASE_STEPS=9
 STEP_NUM=0
-TOTAL_STEPS=10
+TOTAL_STEPS=$BASE_STEPS
 CURRENT_STEP_TITLE=""
 CURRENT_STEP_PID=""
 START_TIME=0
@@ -61,6 +64,33 @@ LOG_DIR="/var/log/nivaroos"
 INSTALL_LOG="${LOG_DIR}/install-${DATE_TAG}.log"
 LATEST_LOG="${LOG_DIR}/install.log"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
+
+# ------------------------------------------------------------------------------
+# Desktop Environment / Host Desktop Streaming State
+#
+# Host Desktop streaming works by pointing x11vnc at display :0. x11vnc can
+# only ever capture an X11 session - it cannot see anything running under
+# Wayland. A display manager being installed (gdm/lightdm/sddm) says nothing
+# about whether the session it actually launches is X11 or Wayland, so all of
+# this state exists to answer the real question ("will streaming work") and
+# to fix it when the answer is no, instead of just checking "is a DE present"
+# and hoping for the best.
+# ------------------------------------------------------------------------------
+KVM_AVAILABLE="no"
+DE_SUPPORT_STATE=""        # supported | wayland_only | no_de
+DETECTED_DE_NAME=""        # gnome | plasma | xfce | cinnamon | mate | lxqt | budgie | deepin | lxde | ""
+DETECTED_XSESSION_NAME=""  # the .desktop id (no extension) of a usable X11 session, if any
+DETECTED_DM="none"         # lightdm | gdm3 | gdm | sddm | xdm | none
+DESKTOP_ACTION="none"      # none | ensure_x11_default | install_x11_companion | install_new_de_alongside | replace_de
+DESKTOP_ENV_CHOICE=""      # xfce | cinnamon | mate
+REPLACE_DESKTOP=""
+DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
+
+# Checkbox-menu widget state (see checkbox_menu()) - deliberately global so a
+# caller can populate them, invoke the widget, and read the results back.
+CBM_LABELS=()
+CBM_DESCS=()
+CBM_STATE=()
 
 export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export DEBIAN_FRONTEND=noninteractive
@@ -293,11 +323,11 @@ print_banner() {
 	printf "\n"
 	printf '%b' "${COLOR_BOLD}${COLOR_CYAN}"
 	cat <<'EOF'
-    _   _ _                         ___  ____  
-   | \ | (_)_   ____ _ _ __ ___    / _ \/ ___| 
-   |  \| | \ \ / / _` | '__/ _ \  | | | \___ \ 
+    _   _ _                         ___  ____
+   | \ | (_)_   ____ _ _ __ ___    / _ \/ ___|
+   |  \| | \ \ / / _` | '__/ _ \  | | | \___ \
    | |\  | |\ V / (_| | | | (_) | | |_| |___) |
-   |_| \_|_| \_/ \__,_|_|  \___/   \___/|____/ 
+   |_| \_|_| \_/ \__,_|_|  \___/   \___/|____/
 EOF
 	printf '%b\n' "${COLOR_RESET}"
 	printf '%b\n\n' "   ${COLOR_PURPLE}✦${COLOR_RESET} ${COLOR_BOLD}Modern Self-Hosted Personal Cloud & Container Platform${COLOR_RESET} ${COLOR_PURPLE}✦${COLOR_RESET}"
@@ -359,7 +389,7 @@ print_diagnostics_card() {
 	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
 
 	printf '%b\n' "${COLOR_MUTED}╭──${COLOR_BOLD}${COLOR_WHITE}${title_tag}${COLOR_RESET}${COLOR_MUTED}${top_dashes}╮${COLOR_RESET}"
-	
+
 	render_diag_line() {
 		local label="$1" val="$2"
 		local prefix="• ${label}: "
@@ -581,6 +611,16 @@ parse_args() {
 			--without-vm) WITH_VM=no ;;
 			--with-host-desktop) WITH_HOST_DESKTOP=yes ;;
 			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
+			--with-samba) WITH_SAMBA=yes ;;
+			--without-samba) WITH_SAMBA=no ;;
+			--with-mdns) WITH_MDNS=yes ;;
+			--without-mdns) WITH_MDNS=no ;;
+			--desktop-environment=*) DESKTOP_ENV_CHOICE="${1#*=}" ;;
+			--desktop-environment)
+				shift
+				DESKTOP_ENV_CHOICE="${1:-}"
+				;;
+			--replace-desktop) REPLACE_DESKTOP=yes ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
 				shift
@@ -603,16 +643,22 @@ parse_args() {
 				print_banner
 				printf '%b\n' "${COLOR_BOLD}Usage:${COLOR_RESET} install.sh [options]\n"
 				printf '%b\n' "${COLOR_BOLD}Options:${COLOR_RESET}"
-				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}             Automatic non-interactive installation (accept all defaults)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-vm${COLOR_RESET}             Install VM Manager with QEMU/KVM, libvirt & web console"
-				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}          Skip VM Manager installation (can be enabled later via CLI)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}   Stream this machine's own desktop over VNC (requires VM Manager)"
-				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET} Skip Host Desktop streaming installation"
-				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}         Custom HTTP dashboard port (default: 80 or next free port)"
-				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}        Force specific terminal box width (default: auto-detect)"
-				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}     Git branch or tag to install (default: master)"
-				printf '%b\n' "  ${COLOR_CYAN}--debug${COLOR_RESET}               Show detailed verbose logs during installation"
-				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}            Display this help message and exit"
+				printf '%b\n' "  ${COLOR_CYAN}-y, --yes${COLOR_RESET}                    Automatic non-interactive installation (accept all defaults, skips the selection menu)"
+				printf '%b\n' "  ${COLOR_CYAN}--with-vm${COLOR_RESET}                    Install VM Manager with QEMU/KVM, libvirt & web console"
+				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}                 Skip VM Manager installation (can be enabled later via CLI)"
+				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}          Stream this machine's own desktop over VNC (requires VM Manager)"
+				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
+				printf '%b\n' "  ${COLOR_CYAN}--with-samba${COLOR_RESET}                 Install Samba so the dashboard's Network Shares feature actually works"
+				printf '%b\n' "  ${COLOR_CYAN}--without-samba${COLOR_RESET}              Skip Samba (Network Shares will stay non-functional)"
+				printf '%b\n' "  ${COLOR_CYAN}--with-mdns${COLOR_RESET}                  Advertise this server via mDNS for mobile-app auto-discovery"
+				printf '%b\n' "  ${COLOR_CYAN}--without-mdns${COLOR_RESET}               Skip mDNS advertisement"
+				printf '%b\n' "  ${COLOR_CYAN}--desktop-environment <de>${COLOR_RESET}   Desktop to install/pair for Host Desktop: xfce, cinnamon, or mate (default: xfce)"
+				printf '%b\n' "  ${COLOR_CYAN}--replace-desktop${COLOR_RESET}            Allow replacing an existing Wayland-only desktop instead of installing alongside it (destructive)"
+				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}                Custom HTTP dashboard port (default: 80 or next free port)"
+				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}               Force specific terminal box width (default: auto-detect)"
+				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}            Git branch or tag to install (default: master)"
+				printf '%b\n' "  ${COLOR_CYAN}--debug${COLOR_RESET}                      Show detailed verbose logs during installation"
+				printf '%b\n' "  ${COLOR_CYAN}-h, --help${COLOR_RESET}                   Display this help message and exit"
 				printf '\n'
 				exit 0
 				;;
@@ -621,140 +667,699 @@ parse_args() {
 				exit 1
 				;;
 		esac
-		# The two-token flags above (--port, --width/-w, --branch/-b) already
-		# shift once themselves to consume their value - if that value was
-		# the last argument on the command line, $# is already 0 here, and
-		# an unconditional shift would fail ("shift count out of range"),
-		# which set -e turns into the whole installer aborting over a
-		# missing flag value instead of just falling back to its default.
+		# The two-token flags above (--port, --width/-w, --branch/-b,
+		# --desktop-environment) already shift once themselves to consume
+		# their value - if that value was the last argument on the command
+		# line, $# is already 0 here, and an unconditional shift would fail
+		# ("shift count out of range"), which set -e turns into the whole
+		# installer aborting over a missing flag value instead of just
+		# falling back to its default.
 		[ $# -eq 0 ] || shift
 	done
 }
 
-detect_desktop_environment() {
+# ------------------------------------------------------------------------------
+# Interactive Checkbox Multi-Select Widget
+#
+# Populate the global CBM_LABELS/CBM_DESCS/CBM_STATE arrays (same length,
+# CBM_STATE holding "0"/"1"), then call checkbox_menu "<title>". On return,
+# CBM_STATE holds the user's final choices. Space toggles, up/down (or j/k)
+# moves, Enter confirms, Ctrl+C cancels the whole installation cleanly.
+# Only ever call this when already known to be an interactive TTY - callers
+# are responsible for the "$YES"/"[ -t 0 ]" non-interactive fallback.
+# ------------------------------------------------------------------------------
+checkbox_menu() {
+	local title="$1"
+	local n=${#CBM_LABELS[@]}
+	local cur=0
+	local key="" rest=""
+	local old_stty=""
+	old_stty="$(stty -g </dev/tty 2>/dev/null || true)"
+	stty raw -echo </dev/tty 2>/dev/null || true
+	printf "\033[?25l"
+
+	local first_draw=true
+	local drawn_lines=0
+	local i out
+
+	while true; do
+		out=""
+		out+="\r\n  ${COLOR_BOLD}${COLOR_WHITE}${title}${COLOR_RESET}\r\n"
+		out+="  ${COLOR_MUTED}up/down or j/k move   space toggle   enter confirm${COLOR_RESET}\r\n\r\n"
+		for ((i=0; i<n; i++)); do
+			local box="[ ]"
+			local label_color="${COLOR_WHITE}"
+			if [ "${CBM_STATE[$i]}" = "1" ]; then
+				box="[x]"
+				label_color="${COLOR_GREEN}"
+			fi
+			local pointer="   "
+			if [ "$i" -eq "$cur" ]; then
+				pointer="${COLOR_CYAN} > ${COLOR_RESET}"
+			fi
+			out+="  ${pointer}${COLOR_BOLD}${box}${COLOR_RESET} ${label_color}${CBM_LABELS[$i]}${COLOR_RESET}\r\n"
+			if [ -n "${CBM_DESCS[$i]:-}" ]; then
+				out+="      ${COLOR_MUTED}${CBM_DESCS[$i]}${COLOR_RESET}\r\n"
+			fi
+		done
+
+		if [ "$first_draw" = "false" ]; then
+			printf "\033[%dA" "$drawn_lines"
+		fi
+		first_draw=false
+		printf '%b' "$out"
+		drawn_lines="$(printf '%b' "$out" | wc -l)"
+
+		key=""
+		IFS= read -rsn1 key </dev/tty || true
+		if [ "$key" = "$(printf '\033')" ]; then
+			rest=""
+			IFS= read -rsn2 -t 0.01 rest </dev/tty || true
+			key="${key}${rest}"
+		fi
+
+		case "$key" in
+			$'\033[A'|k|K) cur=$(( (cur - 1 + n) % n )) ;;
+			$'\033[B'|j|J) cur=$(( (cur + 1) % n )) ;;
+			' ')
+				if [ "${CBM_STATE[$cur]}" = "1" ]; then
+					CBM_STATE[$cur]=0
+				else
+					CBM_STATE[$cur]=1
+				fi
+				;;
+			"$(printf '\003')")
+				stty "$old_stty" </dev/tty 2>/dev/null || true
+				printf "\033[?25h\n"
+				warn "Installation cancelled."
+				exit 130
+				;;
+			"")
+				break
+				;;
+			*) : ;;
+		esac
+	done
+
+	printf "\033[?25h"
+	if [ -n "$old_stty" ]; then
+		stty "$old_stty" </dev/tty 2>/dev/null || true
+	fi
+	printf "\r\n"
+}
+
+# ------------------------------------------------------------------------------
+# Desktop Environment / X11 Support Detection
+# ------------------------------------------------------------------------------
+
+# Populates DETECTED_DM, DETECTED_DE_NAME, DETECTED_XSESSION_NAME and
+# DE_SUPPORT_STATE. Safe to call repeatedly (e.g. re-run after provisioning
+# to see whether it actually fixed things).
+detect_display_server_support() {
+	DETECTED_DM="none"
 	local dm
-	for dm in lightdm gdm gdm3 sddm xdm; do
+	for dm in lightdm gdm3 gdm sddm xdm; do
 		if systemctl list-unit-files 2>/dev/null | grep -q "^${dm}\.service"; then
-			return 0
+			DETECTED_DM="$dm"
+			break
 		fi
 	done
-	return 1
+
+	DETECTED_DE_NAME=""
+	DETECTED_XSESSION_NAME=""
+	DE_SUPPORT_STATE="no_de"
+
+	if [ "$DETECTED_DM" = "none" ] && [ ! -d /usr/share/xsessions ] && [ ! -d /usr/share/wayland-sessions ]; then
+		return
+	fi
+
+	# Prefer whatever is actually running right now (the strongest signal
+	# for "this is the desktop in real use"), falling back to whatever
+	# session files happen to be installed if nobody is logged in yet.
+	local de_map=(
+		"gnome-shell:gnome" "plasmashell:plasma" "xfce4-session:xfce"
+		"cinnamon:cinnamon" "cinnamon-session:cinnamon" "mate-session:mate"
+		"lxqt-session:lxqt" "budgie-wm:budgie" "budgie-panel:budgie"
+		"deepin-session:deepin" "lxsession:lxde"
+	)
+	local m proc_name de_id
+	for m in "${de_map[@]}"; do
+		proc_name="${m%%:*}"
+		de_id="${m##*:}"
+		if pgrep -x "$proc_name" >/dev/null 2>&1; then
+			DETECTED_DE_NAME="$de_id"
+			break
+		fi
+	done
+
+	if [ -z "$DETECTED_DE_NAME" ] && [ -d /usr/share/xsessions ]; then
+		local f base
+		for f in /usr/share/xsessions/*.desktop; do
+			[ -e "$f" ] || continue
+			base="$(basename "$f" .desktop)"
+			case "$base" in
+				gnome*) DETECTED_DE_NAME="gnome" ;;
+				plasma*|kde*) DETECTED_DE_NAME="plasma" ;;
+				xfce*) DETECTED_DE_NAME="xfce" ;;
+				cinnamon*) DETECTED_DE_NAME="cinnamon" ;;
+				mate*) DETECTED_DE_NAME="mate" ;;
+				lxqt*) DETECTED_DE_NAME="lxqt" ;;
+				budgie*) DETECTED_DE_NAME="budgie" ;;
+				deepin*) DETECTED_DE_NAME="deepin" ;;
+				[Ll][Xx][Dd][Ee]*) DETECTED_DE_NAME="lxde" ;;
+			esac
+			[ -n "$DETECTED_DE_NAME" ] && break
+		done
+	fi
+
+	if [ -z "$DETECTED_DE_NAME" ] && [ -d /usr/share/wayland-sessions ]; then
+		local f base
+		for f in /usr/share/wayland-sessions/*.desktop; do
+			[ -e "$f" ] || continue
+			base="$(basename "$f" .desktop)"
+			case "$base" in
+				gnome*) DETECTED_DE_NAME="gnome" ;;
+				plasma*|kde*) DETECTED_DE_NAME="plasma" ;;
+				*) DETECTED_DE_NAME="$base" ;;
+			esac
+			[ -n "$DETECTED_DE_NAME" ] && break
+		done
+	fi
+
+	if [ -z "$DETECTED_DE_NAME" ] && [ "$DETECTED_DM" = "none" ]; then
+		DE_SUPPORT_STATE="no_de"
+		return
+	fi
+
+	# x11vnc (what Host Desktop streaming actually runs) can only capture an
+	# X11 session, never Wayland - so finding *a* xsessions entry that
+	# genuinely matches the detected desktop is the real test, not just
+	# "a display manager service exists".
+	if [ -d /usr/share/xsessions ]; then
+		local f base
+		for f in /usr/share/xsessions/*.desktop; do
+			[ -e "$f" ] || continue
+			base="$(basename "$f" .desktop)"
+			case "$base" in
+				*wayland*) continue ;;
+			esac
+			case "${DETECTED_DE_NAME}:${base}" in
+				gnome:gnome*|plasma:plasma*|plasma:kde*|xfce:xfce*|cinnamon:cinnamon*|mate:mate*|lxqt:lxqt*|budgie:budgie*|deepin:deepin*|lxde:[Ll][Xx][Dd][Ee]*)
+					DETECTED_XSESSION_NAME="$base"
+					break
+					;;
+			esac
+		done
+		# Detected DE didn't map to a known id but at least one non-Wayland
+		# xsession exists anyway - trust that over guessing wrong.
+		if [ -z "$DETECTED_XSESSION_NAME" ]; then
+			for f in /usr/share/xsessions/*.desktop; do
+				[ -e "$f" ] || continue
+				base="$(basename "$f" .desktop)"
+				case "$base" in *wayland*) continue ;; esac
+				DETECTED_XSESSION_NAME="$base"
+				break
+			done
+		fi
+	fi
+
+	if [ -n "$DETECTED_XSESSION_NAME" ]; then
+		DE_SUPPORT_STATE="supported"
+	elif [ -n "$DETECTED_DE_NAME" ]; then
+		DE_SUPPORT_STATE="wayland_only"
+	else
+		DE_SUPPORT_STATE="no_de"
+	fi
 }
 
-# Host Desktop streams this machine's own display over VNC through the same
-# vm-sidecar the VM Manager installs - without it there is nothing to serve
-# the stream to, so it can never be offered on its own.
-resolve_host_desktop() {
-	if [ "$WITH_VM" != "yes" ]; then
-		if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
-			printf '%b\n' "  ${COLOR_YELLOW}ℹ Host Desktop requires VM Manager (shares its vm-sidecar) - enabling VM Manager too.${COLOR_RESET}"
-			WITH_VM=yes
-			TOTAL_STEPS=11
-		else
-			WITH_HOST_DESKTOP=no
-			return
-		fi
+# ------------------------------------------------------------------------------
+# Desktop Environment / X11 Provisioning Helpers
+# ------------------------------------------------------------------------------
+ensure_apt_universe_enabled() {
+	if ! command -v apt-get >/dev/null 2>&1; then return 0; fi
+	if ! command -v add-apt-repository >/dev/null 2>&1; then
+		apt-get install -y software-properties-common >/dev/null 2>&1 || true
 	fi
+	if command -v add-apt-repository >/dev/null 2>&1; then
+		add-apt-repository -y universe >/dev/null 2>&1 || true
+	fi
+	pkg_update
+}
 
-	if [ -n "$WITH_HOST_DESKTOP" ]; then
-		if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
-			TOTAL_STEPS=$((TOTAL_STEPS + 1))
-		fi
+pkg_install_xorg_stack() {
+	if command -v apt-get >/dev/null 2>&1; then
+		pkg_install xserver-xorg xinit
+	elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+		pkg_install xorg-x11-server-Xorg xorg-x11-xinit
+	elif command -v pacman >/dev/null 2>&1; then
+		pkg_install xorg-server xorg-xinit
+	elif command -v zypper >/dev/null 2>&1; then
+		pkg_install xorg-x11-server
+	elif command -v apk >/dev/null 2>&1; then
+		pkg_install xorg-server xinit
+	fi
+}
+
+pkg_install_display_manager() {
+	pkg_install lightdm lightdm-gtk-greeter
+}
+
+# Adds a real X11 session to a DE that currently only offers Wayland,
+# without touching anything else about the existing install.
+pkg_install_x11_companion() {
+	local de="$1"
+	case "$de" in
+		gnome)
+			if command -v apt-get >/dev/null 2>&1; then
+				pkg_install xserver-xorg gnome-session
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				pkg_install xorg-x11-server-Xorg gnome-session-xsession
+			elif command -v pacman >/dev/null 2>&1; then
+				pkg_install xorg-server gnome-session
+			elif command -v zypper >/dev/null 2>&1; then
+				pkg_install xorg-x11-server gnome-session
+			fi
+			;;
+		plasma)
+			if command -v apt-get >/dev/null 2>&1; then
+				pkg_install xserver-xorg plasma-workspace-x11
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				pkg_install xorg-x11-server-Xorg plasma-workspace-x11
+			elif command -v pacman >/dev/null 2>&1; then
+				pkg_install xorg-server plasma-workspace
+			elif command -v zypper >/dev/null 2>&1; then
+				pkg_install xorg-x11-server
+			fi
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+pkg_install_de() {
+	local de="$1"
+	case "$de" in
+		xfce)
+			if command -v apt-get >/dev/null 2>&1; then
+				pkg_install xfce4 xfce4-terminal
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				dnf group install -y "Xfce Desktop" >/dev/null 2>&1 || dnf install -y @xfce-desktop-environment >/dev/null 2>&1 || pkg_install xfce4-session xfce4-panel xfdesktop xfce4-settings xfce4-terminal
+			elif command -v pacman >/dev/null 2>&1; then
+				pkg_install xfce4 xfce4-goodies
+			elif command -v zypper >/dev/null 2>&1; then
+				zypper install -y -t pattern xfce >/dev/null 2>&1 || pkg_install xfce4-session
+			elif command -v apk >/dev/null 2>&1; then
+				pkg_install xfce4 xfce4-terminal
+			fi
+			;;
+		cinnamon)
+			if command -v apt-get >/dev/null 2>&1; then
+				pkg_install cinnamon-core || pkg_install cinnamon
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				dnf group install -y "Cinnamon Desktop" >/dev/null 2>&1 || dnf install -y @cinnamon-desktop-environment >/dev/null 2>&1 || pkg_install cinnamon-desktop
+			elif command -v pacman >/dev/null 2>&1; then
+				pkg_install cinnamon
+			elif command -v zypper >/dev/null 2>&1; then
+				zypper install -y -t pattern cinnamon >/dev/null 2>&1 || pkg_install cinnamon
+			elif command -v apk >/dev/null 2>&1; then
+				pkg_install cinnamon
+			fi
+			;;
+		mate)
+			if command -v apt-get >/dev/null 2>&1; then
+				pkg_install mate-desktop-environment-core || pkg_install mate-desktop-environment
+			elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+				dnf group install -y "MATE Desktop" >/dev/null 2>&1 || dnf install -y @mate-desktop-environment >/dev/null 2>&1 || pkg_install mate-desktop
+			elif command -v pacman >/dev/null 2>&1; then
+				pkg_install mate mate-extra
+			elif command -v zypper >/dev/null 2>&1; then
+				zypper install -y -t pattern mate >/dev/null 2>&1 || pkg_install mate
+			elif command -v apk >/dev/null 2>&1; then
+				pkg_install mate-desktop
+			fi
+			;;
+	esac
+}
+
+# Best-effort removal of an existing desktop, only ever invoked after the
+# operator has explicitly, interactively confirmed replacement (see
+# resolve_desktop_environment_support). Never called from a non-interactive
+# / --yes run.
+remove_desktop_environment() {
+	local de="$1"
+	case "$de" in
+		gnome)
+			if command -v apt-get >/dev/null 2>&1; then
+				apt-get purge -y gnome-shell gnome-session ubuntu-desktop gdm3 gdm >/dev/null 2>&1 || true
+			elif command -v dnf >/dev/null 2>&1; then
+				dnf group remove -y "GNOME Desktop" >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then
+				pacman -Rns --noconfirm gnome gdm >/dev/null 2>&1 || true
+			fi
+			;;
+		plasma)
+			if command -v apt-get >/dev/null 2>&1; then
+				apt-get purge -y plasma-desktop sddm >/dev/null 2>&1 || true
+			elif command -v dnf >/dev/null 2>&1; then
+				dnf group remove -y "KDE Plasma Workspaces" >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then
+				pacman -Rns --noconfirm plasma sddm >/dev/null 2>&1 || true
+			fi
+			;;
+		xfce)
+			if command -v apt-get >/dev/null 2>&1; then
+				apt-get purge -y xfce4 >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then
+				pacman -Rns --noconfirm xfce4 >/dev/null 2>&1 || true
+			fi
+			;;
+		cinnamon)
+			if command -v apt-get >/dev/null 2>&1; then
+				apt-get purge -y cinnamon-core cinnamon >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then
+				pacman -Rns --noconfirm cinnamon >/dev/null 2>&1 || true
+			fi
+			;;
+		mate)
+			if command -v apt-get >/dev/null 2>&1; then
+				apt-get purge -y mate-desktop-environment-core mate-desktop-environment >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then
+				pacman -Rns --noconfirm mate >/dev/null 2>&1 || true
+			fi
+			;;
+		*)
+			echo "Don't know how to safely remove '${de}' automatically - leaving it in place and installing alongside it instead." >&2
+			;;
+	esac
+	if command -v apt-get >/dev/null 2>&1; then
+		apt-get autoremove -y >/dev/null 2>&1 || true
+	fi
+}
+
+# Points the display manager at a real X11 session by default, so streaming
+# works right after boot without the user having to manually pick "Xorg" at
+# the login screen every time.
+configure_default_x11_session() {
+	detect_display_server_support
+	if [ "$DE_SUPPORT_STATE" != "supported" ]; then
 		return
 	fi
+	case "$DETECTED_DM" in
+		lightdm)
+			mkdir -p /etc/lightdm/lightdm.conf.d
+			cat > /etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf <<LIGHTDMEOF
+[Seat:*]
+user-session=${DETECTED_XSESSION_NAME}
+LIGHTDMEOF
+			echo '/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf' >> "$MANIFEST_FILE"
+			;;
+		gdm3|gdm)
+			local gdm_conf="/etc/gdm3/custom.conf"
+			[ -f "$gdm_conf" ] || gdm_conf="/etc/gdm/custom.conf"
+			if [ -f "$gdm_conf" ]; then
+				if grep -q "^WaylandEnable" "$gdm_conf" 2>/dev/null; then
+					sed -i 's/^WaylandEnable=.*/WaylandEnable=false/' "$gdm_conf"
+				elif grep -q "^\[daemon\]" "$gdm_conf" 2>/dev/null; then
+					sed -i '/^\[daemon\]/a WaylandEnable=false' "$gdm_conf"
+				else
+					printf '\n[daemon]\nWaylandEnable=false\n' >> "$gdm_conf"
+				fi
+			fi
+			;;
+		sddm)
+			mkdir -p /etc/sddm.conf.d
+			cat > /etc/sddm.conf.d/60-nivaroos-host-desktop.conf <<SDDMEOF
+[Autologin]
+Session=${DETECTED_XSESSION_NAME}
+SDDMEOF
+			echo '/etc/sddm.conf.d/60-nivaroos-host-desktop.conf' >> "$MANIFEST_FILE"
+			;;
+	esac
+}
 
-	if ! detect_desktop_environment; then
-		WITH_HOST_DESKTOP=no
-		return
-	fi
-
-	if [ -n "$YES" ] || [ ! -t 0 ]; then
-		# A desktop environment is present, but streaming someone's physical
-		# desktop is a bigger behavioral/security change than a background
-		# service, so default to off in unattended mode unless requested.
-		WITH_HOST_DESKTOP=no
-		return
-	fi
-
-	printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} ${COLOR_BOLD}Host Desktop${COLOR_RESET} (stream this machine's own desktop over VNC)"
-	printf '%b\n' "    ${COLOR_GREEN}✔ Desktop environment detected.${COLOR_RESET}"
-
-	local hd_reply=""
-	printf '%b' "\n  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Enable Host Desktop streaming add-on?${COLOR_RESET} [y/N]: "
-	read -r hd_reply </dev/tty || hd_reply=""
-
-	case "$hd_reply" in
-		[yY]|[yY][eE][sS]) WITH_HOST_DESKTOP=yes ;;
-		*) WITH_HOST_DESKTOP=no ;;
+# Runs inside a run_step subshell - reads the DESKTOP_ACTION/DETECTED_*
+# globals decided earlier by resolve_desktop_environment_support().
+run_desktop_provisioning() {
+	case "$DESKTOP_ACTION" in
+		ensure_x11_default)
+			: # Already has a working X11 session - just lock it in as default below.
+			;;
+		install_x11_companion)
+			echo "Adding an X11 session to your existing ${DETECTED_DE_NAME} desktop..."
+			pkg_install_x11_companion "$DETECTED_DE_NAME" || true
+			;;
+		install_new_de_alongside)
+			echo "Installing ${DESKTOP_ENV_CHOICE} alongside your current desktop, for streaming..."
+			ensure_apt_universe_enabled
+			pkg_install_xorg_stack || true
+			if [ "$DETECTED_DM" = "none" ]; then
+				pkg_install_display_manager || true
+			fi
+			pkg_install_de "$DESKTOP_ENV_CHOICE" || true
+			mkdir -p /var/lib/nivaroos
+			echo "alongside:${DESKTOP_ENV_CHOICE}" > "$DESKTOP_PROVISION_MARKER"
+			;;
+		replace_de)
+			echo "Removing existing desktop environment (${DETECTED_DE_NAME:-unknown}) and installing ${DESKTOP_ENV_CHOICE}..."
+			remove_desktop_environment "$DETECTED_DE_NAME"
+			ensure_apt_universe_enabled
+			pkg_install_xorg_stack || true
+			if [ "$DETECTED_DM" = "none" ]; then
+				pkg_install_display_manager || true
+			fi
+			pkg_install_de "$DESKTOP_ENV_CHOICE" || true
+			mkdir -p /var/lib/nivaroos
+			echo "replaced:${DESKTOP_ENV_CHOICE}" > "$DESKTOP_PROVISION_MARKER"
+			;;
 	esac
 
-	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
-		TOTAL_STEPS=$((TOTAL_STEPS + 1))
-		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} Host Desktop streaming enabled."
+	systemctl daemon-reload >/dev/null 2>&1 || true
+	configure_default_x11_session
+
+	detect_display_server_support
+	if [ "$DE_SUPPORT_STATE" = "supported" ]; then
+		echo "Desktop Environment ready for streaming: ${DETECTED_DE_NAME:-unknown} via ${DETECTED_XSESSION_NAME}."
 	else
-		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} Host Desktop streaming skipped (can be enabled anytime by re-running the installer)."
+		echo "Could not fully verify a working X11 session after provisioning - Host Desktop may still show a blank stream. Check 'journalctl -u nivaroos-host-desktop' after reboot." >&2
 	fi
 }
 
-select_addons() {
-	if [ -n "$WITH_VM" ]; then
-		if [ "$WITH_VM" = "yes" ]; then
-			TOTAL_STEPS=11
-		fi
-		resolve_host_desktop
-		return
-	fi
+provision_desktop_environment() {
+	run_step "Configuring Desktop Environment for Streaming" "run_desktop_provisioning"
+}
 
-	# Default to auto-detecting KVM in non-interactive mode
+# Interactive decision-making only (fast, no package installs here) - run
+# once during the selection phase, before the progress pipeline starts.
+resolve_desktop_environment_support() {
+	DESKTOP_ACTION="none"
+	detect_display_server_support
+
+	case "$DE_SUPPORT_STATE" in
+		supported)
+			printf '%b\n' "  ${COLOR_GREEN}✔ Detected ${DETECTED_DE_NAME:-a desktop environment} with a working X11 session (${DETECTED_XSESSION_NAME}) - Host Desktop streaming will work.${COLOR_RESET}"
+			DESKTOP_ACTION="ensure_x11_default"
+			return
+			;;
+		wayland_only)
+			printf '%b\n' "  ${COLOR_YELLOW}⚠ Detected ${DETECTED_DE_NAME:-your desktop} running under Wayland with no X11 session installed.${COLOR_RESET}"
+			printf '%b\n' "    ${COLOR_MUTED}Host Desktop streaming uses x11vnc, which cannot capture a Wayland session - without a fix it would silently show a blank/frozen stream.${COLOR_RESET}"
+			;;
+		no_de)
+			printf '%b\n' "  ${COLOR_YELLOW}⚠ No desktop environment detected on this machine - there is nothing yet for Host Desktop to stream.${COLOR_RESET}"
+			;;
+	esac
+
 	if [ -n "$YES" ] || [ ! -t 0 ]; then
-		if [ -e /dev/kvm ]; then
-			WITH_VM=yes
-			TOTAL_STEPS=11
+		# --replace-desktop is the operator explicitly pre-authorizing a
+		# destructive swap for this run - only honor it here (skipping the
+		# interactive typed-name confirmation entirely) when there is
+		# actually something worth replacing; a healthy X11 desktop is
+		# never touched just because the flag was passed.
+		if [ "$REPLACE_DESKTOP" = "yes" ] && [ "$DE_SUPPORT_STATE" = "wayland_only" ]; then
+			DESKTOP_ACTION="replace_de"
+			DESKTOP_ENV_CHOICE="${DESKTOP_ENV_CHOICE:-xfce}"
+			printf '%b\n\n' "  ${COLOR_YELLOW}--replace-desktop given: removing ${DETECTED_DE_NAME:-the current desktop} and installing ${DESKTOP_ENV_CHOICE} instead.${COLOR_RESET}"
+		elif [ "$DE_SUPPORT_STATE" = "wayland_only" ] && { [ "$DETECTED_DE_NAME" = "gnome" ] || [ "$DETECTED_DE_NAME" = "plasma" ]; }; then
+			DESKTOP_ACTION="install_x11_companion"
+			printf '%b\n\n' "  ${COLOR_MUTED}Non-interactive mode: applying the safe, non-destructive fix automatically.${COLOR_RESET}"
 		else
-			WITH_VM=no
+			DESKTOP_ACTION="install_new_de_alongside"
+			DESKTOP_ENV_CHOICE="${DESKTOP_ENV_CHOICE:-xfce}"
+			printf '%b\n\n' "  ${COLOR_MUTED}Non-interactive mode: applying the safe, non-destructive fix automatically.${COLOR_RESET}"
 		fi
-		resolve_host_desktop
 		return
 	fi
 
-	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Optional Add-on Components:${COLOR_RESET}"
-	printf '%b\n' "  ${COLOR_PURPLE}◆${COLOR_RESET} ${COLOR_BOLD}VM Manager${COLOR_RESET} (Hardware Virtualization, QEMU/KVM, Libvirt, Web Console & VirtIO-FS)"
-	if [ -e /dev/kvm ]; then
-		printf '%b\n' "    ${COLOR_GREEN}✔ KVM Hardware Acceleration detected on this CPU.${COLOR_RESET}"
+	printf '\n'
+	local options=() actions=()
+	if [ "$DE_SUPPORT_STATE" = "wayland_only" ] && { [ "$DETECTED_DE_NAME" = "gnome" ] || [ "$DETECTED_DE_NAME" = "plasma" ]; }; then
+		options+=("Add an X11 session to your existing ${DETECTED_DE_NAME} desktop (recommended - keeps everything else unchanged)")
+		actions+=("install_x11_companion")
+	fi
+	options+=("Install XFCE alongside your current setup, just for streaming (lightweight, most compatible)")
+	actions+=("install_new_de_alongside:xfce")
+	options+=("Install Cinnamon alongside your current setup, just for streaming (modern look, heavier)")
+	actions+=("install_new_de_alongside:cinnamon")
+	options+=("Install MATE alongside your current setup, just for streaming (lightweight, classic look)")
+	actions+=("install_new_de_alongside:mate")
+	if [ "$DE_SUPPORT_STATE" = "wayland_only" ]; then
+		options+=("Replace your current desktop entirely with a chosen one (destructive - removes ${DETECTED_DE_NAME:-your current desktop})")
+		actions+=("replace_de")
+	fi
+	options+=("Skip Host Desktop for now")
+	actions+=("skip")
+
+	local i
+	for i in "${!options[@]}"; do
+		printf '%b\n' "    ${COLOR_CYAN}$((i+1)))${COLOR_RESET} ${options[$i]}"
+	done
+	local choice=""
+	printf '%b' "\n  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Choose how to proceed [1]:${COLOR_RESET} "
+	read -r choice </dev/tty || choice=""
+	[ -z "$choice" ] && choice=1
+	local idx=$((choice - 1))
+	if [ "$idx" -lt 0 ] || [ "$idx" -ge "${#actions[@]}" ]; then idx=0; fi
+	local picked="${actions[$idx]}"
+
+	case "$picked" in
+		install_x11_companion)
+			DESKTOP_ACTION="install_x11_companion"
+			;;
+		install_new_de_alongside:*)
+			DESKTOP_ACTION="install_new_de_alongside"
+			DESKTOP_ENV_CHOICE="${picked#*:}"
+			;;
+		replace_de)
+			printf '\n'
+			printf '%b\n' "    ${COLOR_CYAN}1)${COLOR_RESET} XFCE   ${COLOR_CYAN}2)${COLOR_RESET} Cinnamon   ${COLOR_CYAN}3)${COLOR_RESET} MATE"
+			local de_choice=""
+			printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Replace with which desktop? [1]:${COLOR_RESET} "
+			read -r de_choice </dev/tty || de_choice=""
+			case "$de_choice" in
+				2) DESKTOP_ENV_CHOICE="cinnamon" ;;
+				3) DESKTOP_ENV_CHOICE="mate" ;;
+				*) DESKTOP_ENV_CHOICE="xfce" ;;
+			esac
+			# --replace-desktop on the command line already IS the
+			# operator's explicit authorization for this destructive
+			# action, given before this menu even ran - picking "Replace"
+			# from the menu is the second, in-the-moment confirmation, so
+			# the typed-name safety net below is for the case where the
+			# flag was never given and this is the only confirmation.
+			if [ "$REPLACE_DESKTOP" = "yes" ]; then
+				DESKTOP_ACTION="replace_de"
+				printf '%b\n\n' "  ${COLOR_YELLOW}--replace-desktop given: skipping the extra typed confirmation.${COLOR_RESET}"
+			else
+				printf '%b\n' "\n  ${COLOR_RED}This will remove your current desktop environment (${DETECTED_DE_NAME:-unknown}) and install ${DESKTOP_ENV_CHOICE}.${COLOR_RESET}"
+				printf '%b' "  Type the desktop's name (${COLOR_BOLD}${DETECTED_DE_NAME:-unknown}${COLOR_RESET}) to confirm, or press Enter to cancel: "
+				local confirm_reply=""
+				read -r confirm_reply </dev/tty || confirm_reply=""
+				if [ -n "$DETECTED_DE_NAME" ] && [ "$confirm_reply" = "$DETECTED_DE_NAME" ]; then
+					DESKTOP_ACTION="replace_de"
+				else
+					info "Replacement cancelled - installing ${DESKTOP_ENV_CHOICE} alongside your current desktop instead."
+					DESKTOP_ACTION="install_new_de_alongside"
+				fi
+			fi
+			;;
+		skip)
+			DESKTOP_ACTION="none"
+			WITH_HOST_DESKTOP="no"
+			info "Host Desktop skipped - your other component selections are unaffected."
+			;;
+	esac
+	printf '\n'
+}
+
+# ------------------------------------------------------------------------------
+# Component Selection
+# ------------------------------------------------------------------------------
+compute_default_selections() {
+	if [ -e /dev/kvm ]; then KVM_AVAILABLE="yes"; else KVM_AVAILABLE="no"; fi
+
+	if [ -z "$WITH_VM" ]; then
+		if [ "$KVM_AVAILABLE" = "yes" ]; then WITH_VM=yes; else WITH_VM=no; fi
+	fi
+	[ -z "$WITH_HOST_DESKTOP" ] && WITH_HOST_DESKTOP=no
+	[ -z "$WITH_SAMBA" ] && WITH_SAMBA=yes
+	[ -z "$WITH_MDNS" ] && WITH_MDNS=yes
+}
+
+select_components() {
+	compute_default_selections
+
+	if [ -n "$YES" ] || [ ! -t 0 ]; then
+		: # Respect flags/detected defaults as-is, no menu.
 	else
-		printf '%b\n' "    ${COLOR_YELLOW}ℹ KVM hardware acceleration not detected; software emulation will be used.${COLOR_RESET}"
-	fi
+		printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Select Optional Components:${COLOR_RESET}"
+		printf '%b\n\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager) always installs.${COLOR_RESET}"
 
-	local prompt_default="Y/n"
-	if [ ! -e /dev/kvm ]; then
-		prompt_default="y/N"
-	fi
-
-	local reply=""
-	printf '%b' "\n  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Enable VM Manager add-on?${COLOR_RESET} [${prompt_default}]: "
-	read -r reply </dev/tty || reply=""
-
-	if [ -z "$reply" ]; then
-		if [ -e /dev/kvm ]; then
-			WITH_VM=yes
+		local vm_desc hd_desc
+		if [ "$KVM_AVAILABLE" = "yes" ]; then
+			vm_desc="KVM hardware acceleration detected on this CPU."
 		else
-			WITH_VM=no
+			vm_desc="No KVM acceleration detected - VMs would use slower software emulation."
 		fi
-	else
-		case "$reply" in
-			[yY]|[yY][eE][sS]) WITH_VM=yes ;;
-			*) WITH_VM=no ;;
-		esac
+		hd_desc="Requires VM Manager (shares its vm-sidecar). Streams this machine's own physical desktop."
+
+		CBM_LABELS=(
+			"VM Manager - QEMU/KVM, Libvirt, Web Console, VirtIO-FS"
+			"Host Desktop Streaming - stream this machine's own desktop over VNC"
+			"Samba File Sharing - SMB network shares managed from the dashboard"
+			"mDNS Discovery - lets the NivaroOS mobile app auto-find this server"
+		)
+		CBM_DESCS=(
+			"$vm_desc"
+			"$hd_desc"
+			"Installs and enables the samba service - without it, Network Shares in the dashboard silently does nothing."
+			"Installs avahi so the mobile app finds this server by name instead of you typing an IP address."
+		)
+		CBM_STATE=(
+			"$([ "$WITH_VM" = "yes" ] && echo 1 || echo 0)"
+			"$([ "$WITH_HOST_DESKTOP" = "yes" ] && echo 1 || echo 0)"
+			"$([ "$WITH_SAMBA" = "yes" ] && echo 1 || echo 0)"
+			"$([ "$WITH_MDNS" = "yes" ] && echo 1 || echo 0)"
+		)
+
+		checkbox_menu "Select Optional Components"
+
+		WITH_VM="$([ "${CBM_STATE[0]}" = "1" ] && echo yes || echo no)"
+		WITH_HOST_DESKTOP="$([ "${CBM_STATE[1]}" = "1" ] && echo yes || echo no)"
+		WITH_SAMBA="$([ "${CBM_STATE[2]}" = "1" ] && echo yes || echo no)"
+		WITH_MDNS="$([ "${CBM_STATE[3]}" = "1" ] && echo yes || echo no)"
 	fi
 
-	if [ "$WITH_VM" = "yes" ]; then
-		TOTAL_STEPS=11
-		printf '%b\n\n' "  ${COLOR_GREEN}✔${COLOR_RESET} VM Manager enabled."
-	else
-		printf '%b\n\n' "  ${COLOR_MUTED}○${COLOR_RESET} VM Manager skipped (can be enabled anytime via CLI: 'nivaroos vm enable')."
+	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
+		printf '%b\n\n' "  ${COLOR_YELLOW}ℹ Host Desktop requires VM Manager (shares its vm-sidecar) - enabling VM Manager too.${COLOR_RESET}"
+		WITH_VM=yes
 	fi
 
-	resolve_host_desktop
+	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		resolve_desktop_environment_support
+	fi
+
+	TOTAL_STEPS=$BASE_STEPS
+	[ "$WITH_VM" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		TOTAL_STEPS=$((TOTAL_STEPS + 2)) # provisioning step + the streaming service step
+	fi
+	[ "$WITH_SAMBA" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	[ "$WITH_MDNS" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
+
+	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Selected Components:${COLOR_RESET}"
+	local mark_vm="${COLOR_MUTED}○ VM Manager (off)${COLOR_RESET}"
+	local mark_hd="${COLOR_MUTED}○ Host Desktop (off)${COLOR_RESET}"
+	local mark_sm="${COLOR_MUTED}○ Samba File Sharing (off)${COLOR_RESET}"
+	local mark_md="${COLOR_MUTED}○ mDNS Discovery (off)${COLOR_RESET}"
+	[ "$WITH_VM" = "yes" ] && mark_vm="${COLOR_GREEN}✔ VM Manager${COLOR_RESET}"
+	[ "$WITH_HOST_DESKTOP" = "yes" ] && mark_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
+	[ "$WITH_SAMBA" = "yes" ] && mark_sm="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
+	[ "$WITH_MDNS" = "yes" ] && mark_md="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
+	printf '%b\n' "  ${mark_vm}"
+	printf '%b\n' "  ${mark_hd}"
+	printf '%b\n' "  ${mark_sm}"
+	printf '%b\n\n' "  ${mark_md}"
 }
 
 # ------------------------------------------------------------------------------
@@ -781,7 +1386,7 @@ print_error_card() {
 
 	printf "\n"
 	printf '%b\n' "${COLOR_RED}╭──${COLOR_BOLD}${title_tag}${COLOR_RESET}${COLOR_RED}${top_dashes}╮${COLOR_RESET}"
-	
+
 	render_err_line() {
 		local text="$1"
 		local plain
@@ -1416,7 +2021,10 @@ VMEOF
 
 # ------------------------------------------------------------------------------
 # Host Desktop Streaming Installation (Optional Add-on, requires VM Manager -
-# it streams over the same vm-sidecar the VM Manager installs)
+# it streams over the same vm-sidecar the VM Manager installs). By the time
+# this runs, provision_desktop_environment() has already made sure an X11
+# session actually exists and is the default - this step only installs the
+# VNC bridge itself.
 # ------------------------------------------------------------------------------
 install_host_desktop() {
 	run_step "Installing Host Desktop Streaming (x11vnc & websockify)" "
@@ -1516,6 +2124,42 @@ HOSTDESKSVCEOF
 			systemctl enable --now nivaroos-host-desktop >/dev/null 2>&1 || true
 		fi
 	"
+}
+
+# ------------------------------------------------------------------------------
+# Samba Network File Sharing (Optional Add-on)
+#
+# services/core/service/shares.go writes /etc/samba/smb.nivaroos.conf and
+# restarts the "smbd" unit whenever shares change from the dashboard - but it
+# only ever writes /etc/samba/smb.conf if that file already exists, and does
+# nothing (silently, no error) if it doesn't. Without the samba package
+# actually installed, /etc/samba never exists, smbd is never a valid unit,
+# and Network Shares in the dashboard quietly does nothing forever. This
+# step is what makes that feature real.
+# ------------------------------------------------------------------------------
+provision_samba() {
+	if command -v apt-get >/dev/null 2>&1; then
+		pkg_install samba
+	elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+		pkg_install samba samba-common-tools
+	elif command -v pacman >/dev/null 2>&1; then
+		pkg_install samba
+	elif command -v zypper >/dev/null 2>&1; then
+		pkg_install samba
+	elif command -v apk >/dev/null 2>&1; then
+		pkg_install samba samba-common-tools
+	else
+		echo "No known package manager found - cannot install Samba automatically. Network Shares will stay unavailable until 'samba' is installed manually." >&2
+		return 0
+	fi
+
+	mkdir -p /etc/samba
+	systemctl enable --now smbd >/dev/null 2>&1 || systemctl enable --now smb >/dev/null 2>&1 || systemctl enable --now samba >/dev/null 2>&1 || true
+	systemctl enable --now nmbd >/dev/null 2>&1 || systemctl enable --now nmb >/dev/null 2>&1 || true
+}
+
+install_samba() {
+	run_step "Installing Samba Network File Sharing" "provision_samba"
 }
 
 # ------------------------------------------------------------------------------
@@ -1719,7 +2363,7 @@ print_summary() {
 
 	printf "\n"
 	printf '%b\n' "${COLOR_GREEN}╭──${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN}${top_dashes}╮${COLOR_RESET}"
-	
+
 	render_sum_line() {
 		local text="$1"
 		local plain
@@ -1797,9 +2441,27 @@ print_summary() {
 	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
 		local s_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
 		if ! systemctl is-active --quiet nivaroos-host-desktop.service 2>/dev/null; then s_hd="${COLOR_RED}✖ Host Desktop${COLOR_RESET}"; fi
-		render_sum_line "${s_hd}"
+		local hd_de_note=""
+		if [ -n "$DETECTED_DE_NAME" ]; then
+			hd_de_note=" ${COLOR_MUTED}(${DETECTED_DE_NAME} via ${DETECTED_XSESSION_NAME:-X11})${COLOR_RESET}"
+		fi
+		render_sum_line "${s_hd}${hd_de_note}"
 	else
 		render_sum_line "${COLOR_MUTED}○ Host Desktop (Off)${COLOR_RESET}"
+	fi
+
+	if [ "$WITH_SAMBA" = "yes" ]; then
+		local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
+		if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
+			s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
+		fi
+		local s_mdns="${COLOR_MUTED}○ mDNS Discovery (Off)${COLOR_RESET}"
+		[ "$WITH_MDNS" = "yes" ] && s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
+		render_sum_line "${s_smb}    ${s_mdns}"
+	else
+		local s_mdns="${COLOR_MUTED}○ mDNS Discovery (Off)${COLOR_RESET}"
+		[ "$WITH_MDNS" = "yes" ] && s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
+		render_sum_line "${COLOR_MUTED}○ Samba File Sharing (Off)${COLOR_RESET}    ${s_mdns}"
 	fi
 
 	render_sum_line ""
@@ -1826,7 +2488,7 @@ main() {
 	print_banner
 	print_diagnostics_card
 	resolve_port_conflict
-	select_addons
+	select_components
 
 	if [ "$IS_UPGRADE" = "true" ]; then
 		info "Starting NivaroOS automated upgrade pipeline..."
@@ -1846,14 +2508,22 @@ main() {
 	fi
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
+		provision_desktop_environment
 		install_host_desktop
+	fi
+
+	if [ "$WITH_SAMBA" = "yes" ]; then
+		install_samba
 	fi
 
 	install_ui
 	start_core_services
 	verify_health
 	install_uninstall_wrapper
-	install_mdns_advertisement
+
+	if [ "$WITH_MDNS" = "yes" ]; then
+		install_mdns_advertisement
+	fi
 
 	print_summary
 }
