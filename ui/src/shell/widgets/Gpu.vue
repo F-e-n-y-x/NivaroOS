@@ -64,6 +64,17 @@
 			</div>
 
 			<!-- Sleek Fallback when no Discrete GPU is Detected -->
+			<div v-else-if="driverSuggestion" class="gpu-unavailable-card">
+				<i class="mdi mdi-download-circle-outline gpu-unavail-icon"></i>
+				<div class="gpu-unavail-title">{{ $t("GPU driver not installed") }}</div>
+				<div class="gpu-unavail-desc">
+					{{ $t("Detected a {vendor} GPU with no working driver.", { vendor: driverSuggestionLabel }) }}
+				</div>
+				<button class="widget-icon-btn install-driver-btn" :disabled="installingDriver" @click="installDriver">
+					{{ installingDriver ? $t("Installing...") : $t("Install Driver") }}
+				</button>
+				<div v-if="installError" class="gpu-unavail-desc install-error">{{ installError }}</div>
+			</div>
 			<div v-else class="gpu-unavailable-card">
 				<i class="mdi mdi-monitor-dashboard gpu-unavail-icon"></i>
 				<div class="gpu-unavail-title">{{ $t("Integrated Graphics") }}</div>
@@ -94,7 +105,10 @@ import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
 
-const SIDECAR_URL = `http://${window.location.hostname}:28640/gpu-stats`;
+const SIDECAR_HOST = `http://${window.location.hostname}:28640`;
+const SIDECAR_URL = `${SIDECAR_HOST}/gpu-stats`;
+const DRIVER_STATUS_URL = `${SIDECAR_HOST}/driver-status`;
+const DRIVER_INSTALL_URL = `${SIDECAR_HOST}/driver-install`;
 // Polling this hits the gpu-sidecar, which shells out to nvidia-smi twice
 // per request - fine at a snappy interval while the process list is open
 // and someone is actually watching it, wasteful kept up at that same rate
@@ -132,6 +146,9 @@ export default {
 			temperature: 0,
 			powerDraw: 0,
 			processes: [],
+			driverSuggestion: null,
+			installingDriver: false,
+			installError: "",
 		};
 	},
 	computed: {
@@ -148,6 +165,10 @@ export default {
 		},
 		powerAndTemperature() {
 			return `${this.powerDraw.toFixed(0)}W · ${this.temperatureDisplay}`;
+		},
+		driverSuggestionLabel() {
+			const labels = { nvidia: "NVIDIA", amd: "AMD", intel: "Intel" };
+			return labels[this.driverSuggestion] || this.driverSuggestion;
 		},
 	},
 	created() {
@@ -188,6 +209,45 @@ export default {
 				})
 				.catch(() => {
 					this.unavailable = true;
+					this.checkDriverStatus();
+				});
+		},
+
+		checkDriverStatus() {
+			fetch(DRIVER_STATUS_URL)
+				.then((res) => (res.ok ? res.json() : null))
+				.then((data) => {
+					const gpus = (data && data.gpus) || [];
+					const broken = gpus.find((g) => !g.driver_working);
+					this.driverSuggestion = broken ? broken.vendor : null;
+				})
+				.catch(() => {
+					this.driverSuggestion = null;
+				});
+		},
+
+		installDriver() {
+			this.installingDriver = true;
+			this.installError = "";
+			fetch(DRIVER_INSTALL_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ vendor: this.driverSuggestion }),
+			})
+				.then((res) => res.json())
+				.then((data) => {
+					if (data.success) {
+						this.driverSuggestion = null;
+						this.poll();
+					} else {
+						this.installError = this.$t("Install failed - see system logs.");
+					}
+				})
+				.catch(() => {
+					this.installError = this.$t("Install failed - see system logs.");
+				})
+				.finally(() => {
+					this.installingDriver = false;
 				});
 		},
 

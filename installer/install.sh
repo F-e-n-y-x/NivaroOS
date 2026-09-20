@@ -2477,6 +2477,15 @@ install_uninstall_wrapper() {
 			ln -sf /usr/bin/nivaroos-uninstall /usr/local/bin/nivaroos-uninstall 2>/dev/null || true
 			echo '/usr/bin/nivaroos-uninstall' >> \"$MANIFEST_FILE\"
 		fi
+
+		# nivaroos-gpu-sidecar shells out to this exact path when the
+		# dashboard's GPU widget suggests installing a driver - see
+		# services/gpu-sidecar/main.go.
+		if [ -f \"${SRC_DIR}/installer/gpu-driver-install.sh\" ]; then
+			cp -f \"${SRC_DIR}/installer/gpu-driver-install.sh\" /usr/local/bin/nivaroos-gpu-driver-install.sh
+			chmod 755 /usr/local/bin/nivaroos-gpu-driver-install.sh
+			echo '/usr/local/bin/nivaroos-gpu-driver-install.sh' >> \"$MANIFEST_FILE\"
+		fi
 	"
 }
 

@@ -153,11 +153,82 @@ func handleGPUStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+// driverScriptPath is where installer/install.sh copies
+// installer/gpu-driver-install.sh during setup (install_uninstall_wrapper) -
+// shelling out to it here rather than reimplementing detection in Go keeps
+// there being exactly one place (that script) that knows how to detect a
+// GPU vendor and install its driver across every supported distro.
+const driverScriptPath = "/usr/local/bin/nivaroos-gpu-driver-install.sh"
+
+// driverStatusTimeout only needs to cover an lspci call and a couple of
+// lsmod/nvidia-smi checks - all fast, local, no network - so this stays
+// short deliberately, unlike driverInstallTimeout.
+const driverStatusTimeout = 10 * time.Second
+
+// driverInstallTimeout has to cover a real package manager install (apt
+// update + install a driver package, possibly pulling in a fair amount of
+// data) - this is the one gpu-sidecar request that's expected to take a
+// while, not something to make snappy.
+const driverInstallTimeout = 5 * time.Minute
+
+func handleDriverStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	ctx, cancel := context.WithTimeout(context.Background(), driverStatusTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "bash", driverScriptPath, "--status").Output()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	// The script already prints a well-formed {"gpus":[...]} JSON object -
+	// pass it straight through rather than re-modeling it into a Go struct
+	// just to re-serialize the same shape back out.
+	w.Write(out)
+}
+
+func handleDriverInstall(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "POST required"})
+		return
+	}
+
+	var body struct {
+		Vendor string `json:"vendor"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body) // vendor is optional - empty means auto-detect
+
+	ctx, cancel := context.WithTimeout(context.Background(), driverInstallTimeout)
+	defer cancel()
+
+	args := []string{driverScriptPath}
+	if body.Vendor != "" {
+		args = append(args, "--vendor="+body.Vendor)
+	}
+	out, err := exec.CommandContext(ctx, "bash", args...).CombinedOutput()
+
+	success := err == nil
+	w.WriteHeader(http.StatusOK) // the install attempt itself always completed - failure is reported in the body, not the transport
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": success,
+		"output":  string(out),
+	})
+}
+
 func main() {
 	addr := flag.String("addr", ":28640", "address to listen on")
 	flag.Parse()
 
 	http.HandleFunc("/gpu-stats", handleGPUStats)
+	http.HandleFunc("/driver-status", handleDriverStatus)
+	http.HandleFunc("/driver-install", handleDriverInstall)
 	log.Printf("nivaroos-gpu-sidecar listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
