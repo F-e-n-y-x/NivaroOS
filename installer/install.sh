@@ -46,17 +46,16 @@ DETECTED_PORT="80"
 IS_UPGRADE="false"
 WITH_VM=""
 WITH_HOST_DESKTOP=""
-WITH_SAMBA=""
-WITH_MDNS=""
 YES=""
 DEBUG=""
 CLI_WIDTH=""
 CLI_HEIGHT=""
-BASE_STEPS=9
+BASE_STEPS=11
 STEP_NUM=0
 TOTAL_STEPS=$BASE_STEPS
 CURRENT_STEP_TITLE=""
 CURRENT_STEP_PID=""
+IN_ALT_SCREEN="false"
 START_TIME=0
 DATE_TAG="$(date +'%Y%m%d-%H%M%S')"
 
@@ -185,6 +184,10 @@ kill_tree() {
 }
 
 cleanup_on_exit() {
+	if [ "$IN_ALT_SCREEN" = "true" ]; then
+		printf "\033[?1049l"
+		IN_ALT_SCREEN="false"
+	fi
 	if [ "$IS_TTY" = "true" ]; then
 		printf "\033[?25h" # Restore cursor
 	fi
@@ -206,6 +209,10 @@ handle_interrupt() {
 		kill_tree "$CURRENT_STEP_PID" TERM
 		sleep 0.3
 		kill_tree "$CURRENT_STEP_PID" KILL
+	fi
+	if [ "$IN_ALT_SCREEN" = "true" ]; then
+		printf "\033[?1049l"
+		IN_ALT_SCREEN="false"
 	fi
 	if [ "$IS_TTY" = "true" ]; then
 		printf "\033[?25h\n"
@@ -625,10 +632,6 @@ parse_args() {
 			--without-vm) WITH_VM=no ;;
 			--with-host-desktop) WITH_HOST_DESKTOP=yes ;;
 			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
-			--with-samba) WITH_SAMBA=yes ;;
-			--without-samba) WITH_SAMBA=no ;;
-			--with-mdns) WITH_MDNS=yes ;;
-			--without-mdns) WITH_MDNS=no ;;
 			--desktop-environment=*) DESKTOP_ENV_CHOICE="${1#*=}" ;;
 			--desktop-environment)
 				shift
@@ -662,10 +665,6 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}                 Skip VM Manager installation (can be enabled later via CLI)"
 				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}          Stream this machine's own desktop over VNC (requires VM Manager)"
 				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
-				printf '%b\n' "  ${COLOR_CYAN}--with-samba${COLOR_RESET}                 Install Samba so the dashboard's Network Shares feature actually works"
-				printf '%b\n' "  ${COLOR_CYAN}--without-samba${COLOR_RESET}              Skip Samba (Network Shares will stay non-functional)"
-				printf '%b\n' "  ${COLOR_CYAN}--with-mdns${COLOR_RESET}                  Advertise this server via mDNS for mobile-app auto-discovery"
-				printf '%b\n' "  ${COLOR_CYAN}--without-mdns${COLOR_RESET}               Skip mDNS advertisement"
 				printf '%b\n' "  ${COLOR_CYAN}--desktop-environment <de>${COLOR_RESET}   Desktop to install/pair for Host Desktop: xfce, cinnamon, or mate (default: xfce)"
 				printf '%b\n' "  ${COLOR_CYAN}--replace-desktop${COLOR_RESET}            Allow replacing an existing Wayland-only desktop instead of installing alongside it (destructive)"
 				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}                Custom HTTP dashboard port (default: 80 or next free port)"
@@ -1296,10 +1295,15 @@ compute_default_selections() {
 		if [ "$KVM_AVAILABLE" = "yes" ]; then WITH_VM=yes; else WITH_VM=no; fi
 	fi
 	[ -z "$WITH_HOST_DESKTOP" ] && WITH_HOST_DESKTOP=no
-	[ -z "$WITH_SAMBA" ] && WITH_SAMBA=yes
-	[ -z "$WITH_MDNS" ] && WITH_MDNS=yes
 }
 
+# Samba and mDNS are core parts of NivaroOS (Network Shares and mobile-app
+# discovery are always-on dashboard features, not add-ons) - they always
+# install, with no flag to skip them, the same as Docker or the web
+# dashboard itself. Only VM Manager and Host Desktop are optional enough to
+# warrant a selection screen: VM Manager pulls in QEMU/KVM/libvirt, and Host
+# Desktop can provision or replace a desktop environment - both are real,
+# consequential choices. Samba/mDNS are neither.
 select_components() {
 	compute_default_selections
 
@@ -1307,7 +1311,8 @@ select_components() {
 		: # Respect flags/detected defaults as-is, no menu.
 	else
 		printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Select Optional Components:${COLOR_RESET}"
-		printf '%b\n\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager) always installs.${COLOR_RESET}"
+		printf '%b\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager, Samba File${COLOR_RESET}"
+		printf '%b\n\n' "  ${COLOR_MUTED}Sharing, mDNS Discovery) always installs.${COLOR_RESET}"
 
 		local vm_desc hd_desc
 		if [ "$KVM_AVAILABLE" = "yes" ]; then
@@ -1320,28 +1325,20 @@ select_components() {
 		CBM_LABELS=(
 			"VM Manager - QEMU/KVM, Libvirt, Web Console, VirtIO-FS"
 			"Host Desktop Streaming - stream this machine's own desktop over VNC"
-			"Samba File Sharing - SMB network shares managed from the dashboard"
-			"mDNS Discovery - lets the NivaroOS mobile app auto-find this server"
 		)
 		CBM_DESCS=(
 			"$vm_desc"
 			"$hd_desc"
-			"Installs and enables the samba service - without it, Network Shares in the dashboard silently does nothing."
-			"Installs avahi so the mobile app finds this server by name instead of you typing an IP address."
 		)
 		CBM_STATE=(
 			"$([ "$WITH_VM" = "yes" ] && echo 1 || echo 0)"
 			"$([ "$WITH_HOST_DESKTOP" = "yes" ] && echo 1 || echo 0)"
-			"$([ "$WITH_SAMBA" = "yes" ] && echo 1 || echo 0)"
-			"$([ "$WITH_MDNS" = "yes" ] && echo 1 || echo 0)"
 		)
 
 		checkbox_menu "Select Optional Components"
 
 		WITH_VM="$([ "${CBM_STATE[0]}" = "1" ] && echo yes || echo no)"
 		WITH_HOST_DESKTOP="$([ "${CBM_STATE[1]}" = "1" ] && echo yes || echo no)"
-		WITH_SAMBA="$([ "${CBM_STATE[2]}" = "1" ] && echo yes || echo no)"
-		WITH_MDNS="$([ "${CBM_STATE[3]}" = "1" ] && echo yes || echo no)"
 	fi
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
@@ -1358,22 +1355,14 @@ select_components() {
 	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
 		TOTAL_STEPS=$((TOTAL_STEPS + 2)) # provisioning step + the streaming service step
 	fi
-	[ "$WITH_SAMBA" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
-	[ "$WITH_MDNS" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 
 	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Selected Components:${COLOR_RESET}"
 	local mark_vm="${COLOR_MUTED}○ VM Manager (off)${COLOR_RESET}"
 	local mark_hd="${COLOR_MUTED}○ Host Desktop (off)${COLOR_RESET}"
-	local mark_sm="${COLOR_MUTED}○ Samba File Sharing (off)${COLOR_RESET}"
-	local mark_md="${COLOR_MUTED}○ mDNS Discovery (off)${COLOR_RESET}"
 	[ "$WITH_VM" = "yes" ] && mark_vm="${COLOR_GREEN}✔ VM Manager${COLOR_RESET}"
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && mark_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
-	[ "$WITH_SAMBA" = "yes" ] && mark_sm="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
-	[ "$WITH_MDNS" = "yes" ] && mark_md="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
 	printf '%b\n' "  ${mark_vm}"
-	printf '%b\n' "  ${mark_hd}"
-	printf '%b\n' "  ${mark_sm}"
-	printf '%b\n\n' "  ${mark_md}"
+	printf '%b\n\n' "  ${mark_hd}"
 }
 
 # ------------------------------------------------------------------------------
@@ -1502,10 +1491,29 @@ run_step() {
 
 		local frame_idx=0
 		local num_frames=${#SPINNER_FRAMES[@]}
-		local first_render=true
-		local last_rendered_lines=0
 
-		printf "\033[?25l"
+		# Draw the live spinner+log box on the terminal's ALTERNATE screen
+		# buffer, not the normal scrolling one. The previous approach drew
+		# in the normal buffer and returned to the top of its own box each
+		# frame with a relative "cursor up N lines" - which only stays
+		# correct as long as nothing has caused the terminal to scroll
+		# since the last frame. A long-running step (like compiling all the
+		# Go services) renders hundreds of frames, and the moment any of
+		# them pushed the box against the bottom of the terminal and the
+		# terminal scrolled, "up N lines" started landing one or more rows
+		# above where the box's top actually was - so every subsequent
+		# frame got printed as a brand new set of lines instead of
+		# overwriting, which is exactly the "[5/14] ... repeated many
+		# times" behavior. The alternate screen buffer never scrolls (it's
+		# always exactly the terminal's current size) and "\033[H" (home)
+		# is an absolute position, not a relative one - so this can't
+		# desync regardless of how long the step runs or how the terminal
+		# gets resized mid-step. Leaving the alternate buffer (\033[?1049l)
+		# restores the real screen exactly as it looked before entering,
+		# so none of these frames ever touch real scrollback - only the
+		# final one-line result (printed after leaving, below) does.
+		printf "\033[?1049h\033[?25l"
+		IN_ALT_SCREEN="true"
 
 		while kill -0 "$cmd_pid" 2>/dev/null; do
 			local current_ts
@@ -1527,17 +1535,11 @@ run_step() {
 			elif [ "$TERM_ROWS" -ge 42 ]; then
 				num_log_lines=14
 			fi
-			local total_rendered_lines=$((num_log_lines + 3))
 
-			if [ "$first_render" = "false" ]; then
-				printf "\033[%dA" "$last_rendered_lines"
-			else
-				first_render=false
-			fi
-			last_rendered_lines="$total_rendered_lines"
+			printf "\033[H"
 
 			# Top Half: Progress Header with Animated Spinner & Live Timer
-			printf "\r\033[2K  %b %b %b %b(%ds)%b\n" \
+			printf "\033[2K  %b %b %b %b(%ds)%b\r\n" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
@@ -1550,7 +1552,7 @@ run_step() {
 			local top_dashes=""
 			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
-			printf "\r\033[2K%b╭──%b%s%b%s╮%b\n" \
+			printf "\033[2K%b╭──%b%s%b%s╮%b\r\n" \
 				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
@@ -1564,7 +1566,7 @@ run_step() {
 				if [ "$inner_width" -gt 3 ]; then
 					empty_pad="$(printf '%*s' "$((inner_width - 3))" '')"
 				fi
-				printf "\r\033[2K%b│%b  ...%s  %b│%b\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
+				printf "\033[2K%b│%b  ...%s  %b│%b\r\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			for l in "${lines[@]}"; do
@@ -1578,13 +1580,17 @@ run_step() {
 				if [ "$pad_len" -gt 0 ]; then
 					pad="$(printf '%*s' "$pad_len" '')"
 				fi
-				printf "\r\033[2K%b│%b  %s%s  %b│%b\n" \
+				printf "\033[2K%b│%b  %s%s  %b│%b\r\n" \
 					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "$pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			local bot_dashes=""
 			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\r\033[2K%b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+			printf "\033[2K%b╰%s╯%b\r\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+
+			# Erase anything left over below this frame from a taller
+			# previous one (e.g. the terminal just got shrunk).
+			printf "\033[J"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
@@ -1599,16 +1605,11 @@ run_step() {
 
 		cat "$log_file" >> "$INSTALL_LOG" 2>/dev/null || true
 
-		# Cleanly erase the live activity pane on completion
-		if [ "$first_render" = "false" ]; then
-			printf "\033[%dA" "$last_rendered_lines"
-			for ((c=0; c<last_rendered_lines; c++)); do
-				printf "\r\033[2K\n"
-			done
-			printf "\033[%dA" "$last_rendered_lines"
-		fi
-
-		printf "\033[?25h"
+		# Leave the alternate screen - this restores the real screen
+		# exactly as it was before entering, with none of the spinner
+		# frames ever having touched it.
+		printf "\033[?1049l\033[?25h"
+		IN_ALT_SCREEN="false"
 
 		if [ "$exit_code" -eq 0 ]; then
 			log_raw "<<< COMPLETED STEP ${STEP_NUM}: ${title} [${total_elapsed}s]"
@@ -1984,16 +1985,23 @@ GWCONF
 # ------------------------------------------------------------------------------
 install_vm_manager() {
 	run_step "Installing VM Manager (QEMU/KVM & Libvirt Sidecar)" "
+		# pkg-config + the libvirt dev headers are build-time-only
+		# requirements of the vm-sidecar's cgo libvirt.org/go/libvirt
+		# bindings - without them 'go build' fails outright with
+		# 'exec: \"pkg-config\": executable file not found in \$PATH' (or,
+		# with pkg-config present but no dev headers, a '.pc file not
+		# found' error instead). Runtime-only libvirt packages
+		# (libvirt-daemon-system/libvirt-clients etc.) never pull these in.
 		if command -v apt-get >/dev/null 2>&1; then
-			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils
+			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils pkg-config libvirt-dev
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf
+			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf pkgconf-pkg-config libvirt-devel
 		elif command -v pacman >/dev/null 2>&1; then
-			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf
+			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf pkgconf
 		elif command -v zypper >/dev/null 2>&1; then
-			pkg_install qemu-kvm qemu-tools libvirt libvirt-client virt-install bridge-utils qemu-ovmf-x86_64
+			pkg_install qemu-kvm qemu-tools libvirt libvirt-client virt-install bridge-utils qemu-ovmf-x86_64 pkg-config libvirt-devel
 		elif command -v apk >/dev/null 2>&1; then
-			pkg_install qemu-system-x86_64 qemu-img libvirt libvirt-daemon virt-install bridge dnsmasq ovmf
+			pkg_install qemu-system-x86_64 qemu-img libvirt libvirt-daemon virt-install bridge dnsmasq ovmf pkgconf libvirt-dev
 		else
 			echo 'No known package manager found (apt/dnf/yum/pacman/zypper/apk) - cannot install QEMU/libvirt automatically. Skipping VM Manager; install those packages yourself and re-run with --with-vm.' >&2
 			exit 1
@@ -2141,7 +2149,8 @@ HOSTDESKSVCEOF
 }
 
 # ------------------------------------------------------------------------------
-# Samba Network File Sharing (Optional Add-on)
+# Samba Network File Sharing (Core - always installed, not a selectable
+# add-on, since Network Shares is a core dashboard feature)
 #
 # services/core/service/shares.go writes /etc/samba/smb.nivaroos.conf and
 # restarts the "smbd" unit whenever shares change from the dashboard - but it
@@ -2273,8 +2282,10 @@ verify_health() {
 }
 
 # ------------------------------------------------------------------------------
-# mDNS Advertisement (lets the NivaroOS mobile app auto-discover this
-# server on the local network instead of the user typing an IP address)
+# mDNS Advertisement (Core - always installed, not a selectable add-on,
+# since mobile-app discovery is a core feature). Lets the NivaroOS mobile
+# app auto-discover this server on the local network instead of the user
+# typing an IP address.
 # ------------------------------------------------------------------------------
 install_mdns_advertisement() {
 	run_step "Advertising This Server on the Local Network (mDNS)" "
@@ -2464,19 +2475,15 @@ print_summary() {
 		render_sum_line "${COLOR_MUTED}○ Host Desktop (Off)${COLOR_RESET}"
 	fi
 
-	if [ "$WITH_SAMBA" = "yes" ]; then
-		local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
-		if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
-			s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
-		fi
-		local s_mdns="${COLOR_MUTED}○ mDNS Discovery (Off)${COLOR_RESET}"
-		[ "$WITH_MDNS" = "yes" ] && s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
-		render_sum_line "${s_smb}    ${s_mdns}"
-	else
-		local s_mdns="${COLOR_MUTED}○ mDNS Discovery (Off)${COLOR_RESET}"
-		[ "$WITH_MDNS" = "yes" ] && s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
-		render_sum_line "${COLOR_MUTED}○ Samba File Sharing (Off)${COLOR_RESET}    ${s_mdns}"
+	local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
+	if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
+		s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
 	fi
+	local s_mdns="${COLOR_GREEN}✔ mDNS Discovery${COLOR_RESET}"
+	if ! systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+		s_mdns="${COLOR_RED}✖ mDNS Discovery${COLOR_RESET}"
+	fi
+	render_sum_line "${s_smb}    ${s_mdns}"
 
 	render_sum_line ""
 	render_sum_line "${COLOR_BOLD}${COLOR_WHITE}Quick Start Commands:${COLOR_RESET}"
@@ -2516,6 +2523,7 @@ main() {
 	check_docker
 	clone_or_update_repo
 	install_core_services
+	install_samba
 
 	if [ "$WITH_VM" = "yes" ]; then
 		install_vm_manager
@@ -2526,18 +2534,11 @@ main() {
 		install_host_desktop
 	fi
 
-	if [ "$WITH_SAMBA" = "yes" ]; then
-		install_samba
-	fi
-
 	install_ui
 	start_core_services
 	verify_health
 	install_uninstall_wrapper
-
-	if [ "$WITH_MDNS" = "yes" ]; then
-		install_mdns_advertisement
-	fi
+	install_mdns_advertisement
 
 	print_summary
 }
