@@ -2007,14 +2007,18 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/nivaroos-gpu-sidecar
 Restart=always
-# Conservative hardening - this service doesn't need write access to /home
-# or to modify /usr, /boot or /etc, but still needs root-equivalent access
-# to query GPU/driver state, so this stops short of ProtectSystem=strict
-# or a narrow ReadWritePaths allowlist that risks blocking a real write
-# path this installer can't fully enumerate.
+# ProtectSystem=full (read-only /usr, /boot, /etc) was fine when this
+# service only ever ran `nvidia-smi` - it now also runs
+# gpu-driver-install.sh's real `apt-get install <driver package>` on
+# request, which unavoidably writes new files under /usr like any package
+# install does. Read-only /usr made every such install fail silently
+# (permission/read-only-filesystem errors from inside apt), which is
+# exactly what made the GPU widget's "Install Driver" button not work.
+# NoNewPrivileges/ProtectHome stay - neither blocks a package install and
+# both are still free hardening for the far more common nvidia-smi-only
+# code path.
 NoNewPrivileges=true
 ProtectHome=true
-ProtectSystem=full
 
 [Install]
 WantedBy=multi-user.target
