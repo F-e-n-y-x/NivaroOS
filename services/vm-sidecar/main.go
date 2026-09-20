@@ -31,6 +31,7 @@ func main() {
 	RegisterConsoleRoutes(mux, store)
 	RegisterScreenshotRoutes(mux, store)
 	RegisterHostRoutes(mux)
+	RegisterHostDesktopInstallRoutes(mux)
 
 	log.Printf("nivaroos-vm-sidecar listening on %s (libvirt: %s)", *addr, *uri)
 	log.Fatal(http.ListenAndServe(*addr, withCORS(requireAuth(mux, *runtimePath))))

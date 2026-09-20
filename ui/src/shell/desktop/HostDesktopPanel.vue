@@ -15,7 +15,18 @@
 	- Console statusbar displaying live connection dot, resolution, quality, scale, and display info
 -->
 <template>
-	<div class="host-desktop-panel">
+	<div v-if="installed === false" class="host-desktop-panel host-desktop-not-installed">
+		<div class="not-installed-card">
+			<b-icon icon="monitor-off" custom-size="mdi-36px"></b-icon>
+			<h3>{{ $t('Host Desktop Streaming is not installed') }}</h3>
+			<p>{{ $t('Install it to stream this machine\'s own physical desktop over VNC.') }}</p>
+			<b-button type="is-primary" :loading="installing" @click="installHostDesktop">
+				{{ $t('Install') }}
+			</b-button>
+			<p v-if="installError" class="not-installed-error">{{ installError }}</p>
+		</div>
+	</div>
+	<div v-else-if="installChecked" class="host-desktop-panel">
 		<!-- Main Console Toolbar -->
 		<div class="console-toolbar">
 			<!-- Identity / Status -->
@@ -426,6 +437,9 @@
 			</div>
 		</vm-overlay-panel>
 	</div>
+	<div v-else class="host-desktop-panel host-desktop-checking">
+		<span>{{ $t('Checking Host Desktop status...') }}</span>
+	</div>
 </template>
 
 <script>
@@ -590,6 +604,10 @@ export default {
 			navRows: NAV_ROWS,
 			arrowRows: ARROW_ROWS,
 			shortcuts: SHORTCUTS,
+			installed: null,
+			installChecked: false,
+			installing: false,
+			installError: '',
 		}
 	},
 	computed: {
@@ -657,8 +675,7 @@ export default {
 			}
 		} catch (e) {}
 
-		this.connect()
-		this.fetchHostDisplay()
+		this.checkInstalled()
 
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
@@ -775,6 +792,60 @@ export default {
 					this.connect()
 				}
 			}, delay)
+		},
+
+		async checkInstalled() {
+			try {
+				const res = await axios.get('/api/host/desktop/installed')
+				this.installed = !!(res.data && res.data.installed)
+			} catch (e) {
+				try {
+					const host = window.location.hostname || '127.0.0.1'
+					const res = await axios.get(`//${host}:28641/host/desktop/installed`, {
+						headers: { Authorization: localStorage.getItem('access_token') || '' },
+					})
+					this.installed = !!(res.data && res.data.installed)
+				} catch (err) {
+					// Can't tell either way - assume installed rather than
+					// blocking an otherwise-working panel behind a transient
+					// network/proxy error unrelated to whether it's installed.
+					this.installed = true
+				}
+			}
+			this.installChecked = true
+			if (this.installed) {
+				this.connect()
+				this.fetchHostDisplay()
+			}
+		},
+
+		async installHostDesktop() {
+			this.installing = true
+			this.installError = ''
+			try {
+				let res = null
+				try {
+					res = await axios.post('/api/host/desktop/install')
+				} catch (e) {
+					const host = window.location.hostname || '127.0.0.1'
+					res = await axios.post(
+						`//${host}:28641/host/desktop/install`,
+						{},
+						{ headers: { Authorization: localStorage.getItem('access_token') || '' } }
+					)
+				}
+				this.installed = !!(res && res.data && res.data.installed)
+				if (this.installed) {
+					this.connect()
+					this.fetchHostDisplay()
+				} else {
+					this.installError = this.$t('Install finished, but the service did not come up - check the server logs.')
+				}
+			} catch (e) {
+				this.installError = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to install Host Desktop streaming')
+			} finally {
+				this.installing = false
+			}
 		},
 
 		async fetchHostDisplay() {
@@ -1168,6 +1239,37 @@ export default {
 	flex-direction: column;
 	color: #fff;
 	overflow: hidden;
+}
+
+.host-desktop-not-installed,
+.host-desktop-checking {
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+}
+
+.not-installed-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-2, 0.5rem);
+	max-width: 360px;
+	padding: var(--space-4, 1.5rem);
+
+	h3 {
+		margin: 0;
+		font-size: 1.1rem;
+	}
+
+	p {
+		margin: 0;
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.9rem;
+	}
+}
+
+.not-installed-error {
+	color: #f14668;
 }
 
 .console-toolbar {
