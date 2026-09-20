@@ -2009,11 +2009,12 @@ ExecStart=/usr/bin/nivaroos-gpu-sidecar
 Restart=always
 # ProtectSystem=full (read-only /usr, /boot, /etc) was fine when this
 # service only ever ran `nvidia-smi` - it now also runs
-# gpu-driver-install.sh's real `apt-get install <driver package>` on
-# request, which unavoidably writes new files under /usr like any package
-# install does. Read-only /usr made every such install fail silently
-# (permission/read-only-filesystem errors from inside apt), which is
-# exactly what made the GPU widget's "Install Driver" button not work.
+# gpu-driver-install.sh on request, which does a real apt-get install of a
+# driver package and so unavoidably writes new files under /usr, like any
+# package install does. Read-only /usr made every such install fail
+# silently (permission/read-only-filesystem errors from inside apt),
+# which is exactly what made the GPU widget's "Install Driver" button not
+# work.
 # NoNewPrivileges/ProtectHome stay - neither blocks a package install and
 # both are still free hardening for the far more common nvidia-smi-only
 # code path.
@@ -2122,7 +2123,36 @@ WantedBy=multi-user.target
 VMEOF
 		echo '/usr/lib/systemd/system/nivaroos-vm-sidecar.service' >> \"$MANIFEST_FILE\"
 
-		mkdir -p /DATA/VMs/Images /DATA/VMs/ISOs /DATA/VMs/Disks
+		# Lowercase 'isos' specifically - every place that actually reads
+		# this directory (vm-sidecar's defaultISODir/insert-virtio-win, and
+		# the Create/Edit VM file pickers in the UI) hardcodes the
+		# lowercase path. This used to create 'ISOs' (capital) instead - a
+		# completely different, never-read directory on a case-sensitive
+		# filesystem - so the real .../isos the app expects was never
+		# created on a fresh install, breaking ISO selection and the
+		# virtio-win driver disk feature both.
+		mkdir -p /DATA/VMs/Images /DATA/VMs/isos /DATA/VMs/Disks
+
+		# virtio-win.iso: the network/storage/balloon/etc. drivers a
+		# Windows guest needs to even see its virtio devices (Linux guests
+		# don't need this - virtio drivers are already built into the
+		# kernel). insert-virtio-win only mounts this file into a VM's CD
+		# drive on request - nothing ever provided the file itself, so
+		# that feature 404'd on every install. Downloaded from the
+		# upstream Fedora virtio-win project's stable build - the same
+		# source Proxmox/oVirt/RHV documentation points admins to. Several
+		# hundred MB, so best-effort with a timeout rather than blocking
+		# (or failing) VM Manager setup over one optional Windows-only
+		# feature on a slow or offline connection.
+		if [ ! -f /DATA/VMs/isos/virtio-win.iso ]; then
+			echo 'Downloading virtio-win.iso (Windows guest drivers) - this can take a while...'
+			curl -fL --connect-timeout 15 --max-time 900 \
+				-o /DATA/VMs/isos/virtio-win.iso.part \
+				https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso \
+				&& mv /DATA/VMs/isos/virtio-win.iso.part /DATA/VMs/isos/virtio-win.iso \
+				|| { echo 'Could not download virtio-win.iso (offline, or the download timed out) - Windows VMs will not have network/storage drivers available until you place virtio-win.iso in /DATA/VMs/isos yourself.' >&2; rm -f /DATA/VMs/isos/virtio-win.iso.part; }
+		fi
+
 		systemctl daemon-reload >/dev/null 2>&1 || true
 		systemctl enable --now libvirtd >/dev/null 2>&1 || true
 		systemctl enable --now nivaroos-vm-sidecar >/dev/null 2>&1 || true
