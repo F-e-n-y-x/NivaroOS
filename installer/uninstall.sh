@@ -9,13 +9,14 @@ if [ -z "${BASH_VERSION:-}" ]; then
 	exec bash "$0" "$@"
 fi
 
-set -euo pipefail
+set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
 ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
+LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
 
 PURGE_DATA=""
 REMOVE_PROVISIONED_DESKTOP=""
@@ -24,6 +25,7 @@ CLI_WIDTH=""
 CLI_HEIGHT=""
 STEP_NUM=0
 TOTAL_STEPS=4
+IN_ALT_SCREEN="false"
 START_TIME=0
 
 # ------------------------------------------------------------------------------
@@ -68,11 +70,33 @@ warn()    { printf '%b\n' "${COLOR_YELLOW}⚠${COLOR_RESET}  ${COLOR_YELLOW}$1${
 error()   { printf '%b\n' "${COLOR_RED}✖${COLOR_RESET}  ${COLOR_RED}$1${COLOR_RESET}" >&2; }
 
 cleanup_on_exit() {
+	if [ "$IN_ALT_SCREEN" = "true" ]; then
+		printf "\033[?1049l"
+		IN_ALT_SCREEN="false"
+	fi
 	if [ "$IS_TTY" = "true" ]; then
 		printf "\033[?25h"
 	fi
 }
 trap cleanup_on_exit EXIT INT TERM
+
+# Without -E (errtrace), this trap would never fire for a failure inside a
+# function - which is everything here, since main() calls nothing but
+# functions - so set -e would abort silently with no message at all. See
+# install.sh's identical fix for the full explanation; this mirrors it.
+on_fatal_error() {
+	local exit_code=$?
+	local line_no="$1"
+	if [ "$IN_ALT_SCREEN" = "true" ]; then
+		printf "\033[?1049l"
+		IN_ALT_SCREEN="false"
+	fi
+	if [ "$exit_code" -ne 0 ]; then
+		error "Uninstall terminated unexpectedly at line ${line_no} (exit code ${exit_code})."
+	fi
+	exit "$exit_code"
+}
+trap 'on_fatal_error "$LINENO"' ERR
 
 strip_ansi() {
 	printf '%b' "$1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\033\[[0-9;]*[a-zA-Z]//g' | tr '\r\t' '  '
@@ -289,10 +313,13 @@ run_step() {
 
 		local frame_idx=0
 		local num_frames=${#SPINNER_FRAMES[@]}
-		local first_render=true
-		local last_rendered_lines=0
 
-		printf "\033[?25l"
+		# Alternate screen + absolute positioning, not relative "cursor up
+		# N lines" on the normal buffer - see install.sh's run_step for the
+		# full explanation (a long-running step scrolling the terminal used
+		# to desync the redraw, printing every frame as new lines forever).
+		printf "\033[?1049h\033[?25l"
+		IN_ALT_SCREEN="true"
 
 		while kill -0 "$cmd_pid" 2>/dev/null; do
 			local current_ts
@@ -306,25 +333,40 @@ run_step() {
 			if [ "$box_width" -lt 38 ]; then box_width=38; fi
 			local inner_width=$((box_width - 6))
 
-			# 10 Live Activity Lines by default
-			local num_log_lines=10
-			if [ "$TERM_ROWS" -le 16 ]; then
-				num_log_lines=$((TERM_ROWS - 6))
-				if [ "$num_log_lines" -lt 4 ]; then num_log_lines=4; fi
-			elif [ "$TERM_ROWS" -ge 42 ]; then
-				num_log_lines=14
+			# Fill however much vertical space is actually available
+			# (reserving 3 rows for the header + box borders), capped so an
+			# extreme terminal doesn't turn this into a huge wall of text -
+			# see install.sh's run_step for the full explanation.
+			local reserved_lines=3
+			local available_lines=$((TERM_ROWS - reserved_lines))
+			local max_log_lines=30
+			local num_log_lines="$available_lines"
+			if [ "$num_log_lines" -gt "$max_log_lines" ]; then
+				num_log_lines="$max_log_lines"
 			fi
-			local total_rendered_lines=$((num_log_lines + 3))
 
-			if [ "$first_render" = "false" ]; then
-				printf "\033[%dA" "$last_rendered_lines"
-			else
-				first_render=false
+			printf "\033[H"
+
+			if [ "$available_lines" -lt 3 ]; then
+				local status_line="  ${frame} ${step_tag} ${title} (${elapsed}s)"
+				local clean_status
+				clean_status="$(strip_ansi "$status_line")"
+				if [ "${#clean_status}" -gt "$TERM_COLS" ]; then
+					clean_status="${clean_status:0:$TERM_COLS}"
+				fi
+				printf "\033[2K%b%s%b\r\n" "${COLOR_CYAN}" "$clean_status" "${COLOR_RESET}"
+				printf "\033[J"
+				frame_idx=$(( (frame_idx + 1) % num_frames ))
+				sleep 0.08
+				continue
 			fi
-			last_rendered_lines="$total_rendered_lines"
+
+			if [ "$num_log_lines" -lt 3 ]; then
+				num_log_lines=3
+			fi
 
 			# Top Half: Progress Header with Animated Spinner & Live Timer
-			printf "\r\033[2K  %b %b %b %b(%ds)%b\n" \
+			printf "\033[2K  %b %b %b %b(%ds)%b\r\n" \
 				"${COLOR_CYAN}${frame}${COLOR_RESET}" \
 				"${COLOR_BOLD}${COLOR_BLUE}${step_tag}${COLOR_RESET}" \
 				"${COLOR_WHITE}${title}${COLOR_RESET}" \
@@ -337,7 +379,7 @@ run_step() {
 			local top_dashes=""
 			for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
-			printf "\r\033[2K%b╭──%b%s%b%s╮%b\n" \
+			printf "\033[2K%b╭──%b%s%b%s╮%b\r\n" \
 				"${COLOR_MUTED}" "${COLOR_CYAN}" "${title_tag}" "${COLOR_MUTED}" "${top_dashes}" "${COLOR_RESET}"
 
 			local lines=()
@@ -351,7 +393,7 @@ run_step() {
 				if [ "$inner_width" -gt 3 ]; then
 					empty_pad="$(printf '%*s' "$((inner_width - 3))" '')"
 				fi
-				printf "\r\033[2K%b│%b  ...%s  %b│%b\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
+				printf "\033[2K%b│%b  ...%s  %b│%b\r\n" "${COLOR_MUTED}" "${COLOR_MUTED}" "$empty_pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			for l in "${lines[@]}"; do
@@ -365,34 +407,44 @@ run_step() {
 				if [ "$pad_len" -gt 0 ]; then
 					pad="$(printf '%*s' "$pad_len" '')"
 				fi
-				printf "\r\033[2K%b│%b  %s%s  %b│%b\n" \
+				printf "\033[2K%b│%b  %s%s  %b│%b\r\n" \
 					"${COLOR_MUTED}" "${COLOR_WHITE}" "$clean_l" "$pad" "${COLOR_MUTED}" "${COLOR_RESET}"
 			done
 
 			local bot_dashes=""
 			for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
-			printf "\r\033[2K%b╰%s╯%b\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+			printf "\033[2K%b╰%s╯%b\r\n" "${COLOR_MUTED}" "${bot_dashes}" "${COLOR_RESET}"
+
+			# Erase anything left over below this frame from a taller
+			# previous one (e.g. the terminal just got shrunk).
+			printf "\033[J"
 
 			frame_idx=$(( (frame_idx + 1) % num_frames ))
 			sleep 0.08
 		done
 
+		# `wait` for a specific PID returns that job's own exit status - if
+		# nonzero, `wait` itself counts as a failing command under set -e,
+		# which (together with the ERR trap firing regardless of errexit
+		# state) would abort right here before the pass/fail handling below
+		# ever runs. Both the trap and errexit have to be suspended around
+		# this one call - see install.sh's run_step for the full
+		# explanation of why `set +e` alone is not sufficient.
+		trap '' ERR
+		set +e
 		wait "$cmd_pid"
 		local exit_code=$?
+		set -e
+		trap 'on_fatal_error "$LINENO"' ERR
 		local end_ts
 		end_ts=$(date +%s)
 		local total_elapsed=$((end_ts - start_ts))
 
-		# Cleanly erase live activity pane on completion
-		if [ "$first_render" = "false" ]; then
-			printf "\033[%dA" "$last_rendered_lines"
-			for ((c=0; c<last_rendered_lines; c++)); do
-				printf "\r\033[2K\n"
-			done
-			printf "\033[%dA" "$last_rendered_lines"
-		fi
-
-		printf "\033[?25h"
+		# Leave the alternate screen - restores the real screen exactly as
+		# it was before entering, so none of the spinner frames above ever
+		# touched real scrollback.
+		printf "\033[?1049l\033[?25h"
+		IN_ALT_SCREEN="false"
 
 		if [ "$exit_code" -eq 0 ]; then
 			printf "\r\033[2K  %b %b %b %b[%ds]%b\n" \
@@ -536,6 +588,50 @@ remove_provisioned_desktop_if_requested() {
 	"
 }
 
+LEFTOVER_ITEMS=""
+
+# Every previous step is best-effort (`|| true` throughout, matching
+# install.sh's own convention of never letting one missing/already-gone
+# file abort the whole run) - which means nothing so far actually confirms
+# the teardown worked. This is the one step that does: it checks, after
+# the fact, whether every unit and binary this project can create is
+# actually gone, rather than just trusting each removal attempt silently
+# succeeded.
+verify_teardown() {
+	run_step "Verifying Teardown Completed Cleanly" "
+		: > \"$LEFTOVER_FILE\"
+		for u in $ALL_UNITS; do
+			if systemctl list-unit-files \"\$u\" 2>/dev/null | grep -q \"^\$u\"; then
+				echo \"unit still present: \$u\" >> \"$LEFTOVER_FILE\"
+			fi
+			if systemctl is-active --quiet \"\$u\" 2>/dev/null; then
+				echo \"unit still active: \$u\" >> \"$LEFTOVER_FILE\"
+			fi
+		done
+		for b in /usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
+			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
+			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
+			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-cli \
+			/usr/local/bin/nivaroos-host-desktop.sh; do
+			if [ -e \"\$b\" ]; then
+				echo \"binary still present: \$b\" >> \"$LEFTOVER_FILE\"
+			fi
+		done
+		if [ -d /var/lib/nivaroos ] || [ -d /etc/nivaroos ]; then
+			echo \"config/state directory still present (/var/lib/nivaroos or /etc/nivaroos)\" >> \"$LEFTOVER_FILE\"
+		fi
+		if [ -s \"$LEFTOVER_FILE\" ]; then
+			echo \"Found \$(wc -l < \"$LEFTOVER_FILE\") leftover item(s) - see summary below.\"
+		else
+			echo 'Nothing left behind - clean teardown confirmed.'
+		fi
+	"
+	if [ -s "$LEFTOVER_FILE" ]; then
+		LEFTOVER_ITEMS="$(cat "$LEFTOVER_FILE")"
+	fi
+	rm -f "$LEFTOVER_FILE"
+}
+
 print_summary() {
 	local end_ts
 	end_ts=$(date +%s)
@@ -549,14 +645,19 @@ print_summary() {
 	local bot_dashes=""
 	for ((d=0; d<box_width-2; d++)); do bot_dashes+="─"; done
 
+	local summary_color="$COLOR_GREEN"
 	local top_title=" ✔  NivaroOS Successfully Uninstalled! (completed in ${total_duration}s) "
+	if [ -n "$LEFTOVER_ITEMS" ]; then
+		summary_color="$COLOR_YELLOW"
+		top_title=" ⚠  Uninstall Completed With Leftovers (completed in ${total_duration}s) "
+	fi
 	local top_dashes_len=$((box_width - ${#top_title} - 4))
 	if [ "$top_dashes_len" -lt 2 ]; then top_dashes_len=2; fi
 	local top_dashes=""
 	for ((d=0; d<top_dashes_len; d++)); do top_dashes+="─"; done
 
 	printf "\n"
-	printf '%b\n' "${COLOR_GREEN}╭──${COLOR_BOLD}${COLOR_GREEN}${top_title}${COLOR_RESET}${COLOR_GREEN}${top_dashes}╮${COLOR_RESET}"
+	printf '%b\n' "${summary_color}╭──${COLOR_BOLD}${summary_color}${top_title}${COLOR_RESET}${summary_color}${top_dashes}╮${COLOR_RESET}"
 	
 	render_unsum_line() {
 		local text="$1"
@@ -570,7 +671,7 @@ print_summary() {
 		if [ "$pad_len" -gt 0 ]; then
 			pad="$(printf '%*s' "$pad_len" '')"
 		fi
-		printf '%b\n' "${COLOR_GREEN}│${COLOR_RESET}  ${text}${pad}  ${COLOR_GREEN}│${COLOR_RESET}"
+		printf '%b\n' "${summary_color}│${COLOR_RESET}  ${text}${pad}  ${summary_color}│${COLOR_RESET}"
 	}
 
 	render_unsum_line ""
@@ -581,10 +682,19 @@ print_summary() {
 	else
 		render_unsum_line "• ${COLOR_GREEN}/DATA directory was preserved safely.${COLOR_RESET}"
 	fi
+	if [ -n "$LEFTOVER_ITEMS" ]; then
+		render_unsum_line ""
+		render_unsum_line "${COLOR_YELLOW}• Some items could not be confirmed removed:${COLOR_RESET}"
+		while IFS= read -r item; do
+			[ -z "$item" ] && continue
+			render_unsum_line "  ${COLOR_YELLOW}- ${item}${COLOR_RESET}"
+		done <<< "$LEFTOVER_ITEMS"
+		render_unsum_line "${COLOR_MUTED}  Check for a stuck process or an unwritable path; a repeat run of this uninstaller is safe.${COLOR_RESET}"
+	fi
 	render_unsum_line ""
 	render_unsum_line "${COLOR_MUTED}Thank you for using NivaroOS!${COLOR_RESET}"
 	render_unsum_line ""
-	printf '%b\n\n' "${COLOR_GREEN}╰${bot_dashes}╯${COLOR_RESET}"
+	printf '%b\n\n' "${summary_color}╰${bot_dashes}╯${COLOR_RESET}"
 }
 
 main() {
@@ -598,6 +708,7 @@ main() {
 	if [ -n "$PROVISIONED_DESKTOP_INFO" ] && [ "$REMOVE_PROVISIONED_DESKTOP" = "yes" ]; then
 		TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	fi
+	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # verify_teardown
 
 	info "Beginning NivaroOS teardown..."
 	printf "\n"
@@ -607,6 +718,7 @@ main() {
 	remove_binaries
 	purge_data_if_requested
 	remove_provisioned_desktop_if_requested
+	verify_teardown
 
 	print_summary
 }
