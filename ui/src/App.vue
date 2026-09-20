@@ -217,12 +217,13 @@ html.is-compact-view {
 }
 
 /* Window/panel backdrop transparency + blur - adjustable from Settings >
-Appearance (see SettingsApp.vue's applyBackdrop). Windows are fully
-opaque/white by default (no see-through glass) - lower the alpha
-slider there if some transparency is wanted instead. */
+Appearance (see AppearanceSection.vue's restoreBackdropSettings/
+resetToDefaults, which these two values must match). 0.9 alpha is
+mostly-opaque "glass" rather than fully solid - lower it there for more
+see-through, or raise to 1 for fully opaque. */
 :root {
-	--ui-backdrop-alpha: 0.4;
-	--ui-backdrop-blur: 16px;
+	--ui-backdrop-alpha: 0.9;
+	--ui-backdrop-blur: 10px;
 }
 
 </style>

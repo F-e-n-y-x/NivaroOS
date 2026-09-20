@@ -137,8 +137,8 @@ export default {
 					icon: 'weather-night'
 				}
 			],
-			backdropAlphaPct: 40,
-			backdropBlurPx: 16,
+			backdropAlphaPct: 90,
+			backdropBlurPx: 10,
 			themeIcons: {
 				[THEME_MODES.LIGHT]: lightIcon,
 				[THEME_MODES.DARK]: darkIcon,
@@ -182,8 +182,8 @@ export default {
 			this.currentThemeMode = getStoredThemeMode()
 			const alpha = localStorage.getItem('uiBackdropAlpha')
 			const blur = localStorage.getItem('uiBackdropBlur')
-			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 40
-			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 16
+			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 90
+			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 10
 
 			this.$api.users.getCustomStorage('appearance').then(res => {
 				if (res.data.success === 200 && res.data.data) {
@@ -222,12 +222,12 @@ export default {
 			this.saveAppearanceSettings()
 		},
 		resetToDefaults() {
-			this.backdropAlphaPct = 40
-			this.backdropBlurPx = 16
+			this.backdropAlphaPct = 90
+			this.backdropBlurPx = 10
 			this.currentThemeMode = THEME_MODES.AUTO
 			applyTheme(THEME_MODES.AUTO)
-			const alpha = 0.4
-			const blur = 16
+			const alpha = 0.9
+			const blur = 10
 			document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
 			localStorage.setItem('uiBackdropAlpha', alpha)
 			document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`)
