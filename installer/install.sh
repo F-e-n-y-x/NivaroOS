@@ -1527,16 +1527,50 @@ run_step() {
 			if [ "$box_width" -lt 38 ]; then box_width=38; fi
 			local inner_width=$((box_width - 6))
 
-			# 10 Live Activity Lines by default, adaptable for small/tall terminals
+			# The box is drawn from the absolute top of the (alternate)
+			# screen every frame, so its total height must never exceed
+			# the terminal's CURRENT row count or it gets clipped/overlaps
+			# at the bottom - unlike the old scrolling-buffer approach,
+			# there's no scrollback to fall back on here. Reserve 3 rows
+			# for the spinner/header line plus the box's own top and
+			# bottom borders, and fit the log lines into whatever's left,
+			# recomputed every frame so a live terminal resize (SIGWINCH)
+			# is honored immediately rather than only at the next step.
+			local reserved_lines=3
+			local available_lines=$((TERM_ROWS - reserved_lines))
 			local num_log_lines=10
-			if [ "$TERM_ROWS" -le 16 ]; then
-				num_log_lines=$((TERM_ROWS - 6))
-				if [ "$num_log_lines" -lt 4 ]; then num_log_lines=4; fi
-			elif [ "$TERM_ROWS" -ge 42 ]; then
+			if [ "$TERM_ROWS" -ge 42 ]; then
 				num_log_lines=14
+			fi
+			if [ "$num_log_lines" -gt "$available_lines" ]; then
+				num_log_lines="$available_lines"
 			fi
 
 			printf "\033[H"
+
+			if [ "$available_lines" -lt 3 ]; then
+				# Even the minimum useful box (3 log lines + header + top/
+				# bottom borders = 6 rows) doesn't fit a terminal this
+				# short. Rather than draw something guaranteed to overflow
+				# it, fall back to a single status line - still absolutely
+				# positioned and cleared with \033[J, so it stays fully
+				# adaptive with no leftover content regardless of size.
+				local status_line="  ${frame} ${step_tag} ${title} (${elapsed}s)"
+				local clean_status
+				clean_status="$(strip_ansi "$status_line")"
+				if [ "${#clean_status}" -gt "$TERM_COLS" ]; then
+					clean_status="${clean_status:0:$TERM_COLS}"
+				fi
+				printf "\033[2K%b%s%b\r\n" "${COLOR_CYAN}" "$clean_status" "${COLOR_RESET}"
+				printf "\033[J"
+				frame_idx=$(( (frame_idx + 1) % num_frames ))
+				sleep 0.08
+				continue
+			fi
+
+			if [ "$num_log_lines" -lt 3 ]; then
+				num_log_lines=3
+			fi
 
 			# Top Half: Progress Header with Animated Spinner & Live Timer
 			printf "\033[2K  %b %b %b %b(%ds)%b\r\n" \
