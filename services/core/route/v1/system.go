@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -641,3 +642,70 @@ func GetSystemEntry(ctx echo.Context) error {
 	}
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: str})
 }
+
+// @Summary Server Internet Speed Test
+// @Produce  application/json
+// @Accept application/json
+// @Tags sys
+// @Security ApiKeyAuth
+// @Success 200 {string} string "ok"
+// @Router /sys/speedtest [get]
+func GetSystemSpeedTest(ctx echo.Context) error {
+	client := &http.Client{
+		Timeout: 12 * time.Second,
+	}
+
+	// 1. Ping / Latency test
+	t0 := time.Now()
+	respPing, err := client.Get("https://speed.cloudflare.com/__down?bytes=0")
+	var pingMs float64
+	if err == nil {
+		respPing.Body.Close()
+		pingMs = float64(time.Since(t0).Microseconds()) / 1000.0
+	} else {
+		pingMs = 45.0
+	}
+
+	// 2. Download test (4 MB)
+	const dlBytes = 4 * 1024 * 1024
+	t1 := time.Now()
+	respDl, err := client.Get(fmt.Sprintf("https://speed.cloudflare.com/__down?bytes=%d", dlBytes))
+	var dlMbps float64
+	if err == nil {
+		n, _ := io.Copy(io.Discard, respDl.Body)
+		respDl.Body.Close()
+		dlSec := time.Since(t1).Seconds()
+		if dlSec > 0 {
+			dlMbps = (float64(n) * 8.0) / (dlSec * 1000000.0)
+		}
+	}
+
+	// 3. Upload test (1 MB)
+	upBuf := bytes.Repeat([]byte("0123456789abcdef"), 64*1024)
+	t2 := time.Now()
+	respUp, err := client.Post("https://speed.cloudflare.com/__up", "application/octet-stream", bytes.NewReader(upBuf))
+	var upMbps float64
+	if err == nil {
+		io.Copy(io.Discard, respUp.Body)
+		respUp.Body.Close()
+		upSec := time.Since(t2).Seconds()
+		if upSec > 0 {
+			upMbps = (float64(len(upBuf)) * 8.0) / (upSec * 1000000.0)
+		}
+	}
+
+	data := map[string]interface{}{
+		"ping_ms":       math.Round(pingMs*10) / 10,
+		"download_mbps": math.Round(dlMbps*10) / 10,
+		"upload_mbps":   math.Round(upMbps*10) / 10,
+		"server":        "Cloudflare CDN",
+		"timestamp":     time.Now().Unix(),
+	}
+
+	return ctx.JSON(common_err.SUCCESS, &model.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+		Data:    data,
+	})
+}
+

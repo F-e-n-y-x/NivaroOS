@@ -173,7 +173,6 @@ import business_OpenThirdApp from "@/mixins/app/Business_OpenThirdApp";
 import business_LinkApp from "@/mixins/app/Business_LinkApp";
 import business_DockPins from "@/mixins/app/Business_DockPins";
 import isNull from "lodash/isNull";
-import tipEditorModal from "@/apps/app-store/TipEditorModal.vue";
 import YAML from "yaml";
 import commonI18n, { ice_i18n } from "@/mixins/base/common-i18n";
 import FileSaver from 'file-saver';
@@ -183,7 +182,6 @@ export default {
 	name: "app-card",
 	components: {
 		cTooltip,
-		tipEditorModal,
 	},
 	mixins: [business_ShowNewAppTag, business_OpenThirdApp, business_LinkApp, business_DockPins, commonI18n, confirmWindowMixin],
 	inject: ["homeShowFiles", "openAppStore"],
@@ -690,19 +688,17 @@ export default {
 					}
 				}).then(res => res.data)
 				this.closeMenu();
-				this.$buefy.modal.open({
-					parent: this,
-					component: tipEditorModal,
-					hasModalCard: true,
-					customClass: 'network-storage-modal',
-					trapFocus: true,
-					canCancel: [],
-					// scroll: "keep",
-					animation: "zoom-in",
+				this.$store.commit('OPEN_WINDOW', {
+					id: 'tip-editor-' + name,
+					title: this.$t('Tips'),
+					component: 'TipEditorModal',
 					props: {
+						isDialog: true,
 						composeData: YAML.parse(ret),
 						name
-					}
+					},
+					width: 440,
+					height: 480
 				})
 			} catch (e) {
 				console.log('openTips Error:', e)

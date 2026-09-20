@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mholt/archiver/v3"
 )
@@ -238,10 +239,10 @@ func CopyFile(src, dst, style string) error {
 	if _, err = io.Copy(dstfd, srcfd); err != nil {
 		return err
 	}
-	if srcinfo, err = os.Stat(src); err != nil {
-		return err
+	if srcinfo, err = os.Stat(src); err == nil {
+		_ = os.Chmod(dst, srcinfo.Mode())
 	}
-	return os.Chmod(dst, srcinfo.Mode())
+	return nil
 }
 
 /**
@@ -280,10 +281,10 @@ func CopySingleFile(src, dst, style string) error {
 	if _, err = io.Copy(dstfd, srcfd); err != nil {
 		return err
 	}
-	if srcinfo, err = os.Stat(src); err != nil {
-		return err
+	if srcinfo, err = os.Stat(src); err == nil {
+		_ = os.Chmod(dst, srcinfo.Mode())
 	}
-	return os.Chmod(dst, srcinfo.Mode())
+	return nil
 }
 
 // Check for duplicate file names
@@ -307,25 +308,19 @@ func CopyDir(src string, dst string, style string) error {
 		return err
 	}
 	if !srcinfo.IsDir() {
-		if err = CopyFile(src, dst, style); err != nil {
-			fmt.Println(err)
-		}
-		return nil
+		return CopyFile(src, dst, style)
 	}
-	// dstPath := dst
 	lastPath := src[strings.LastIndex(src, "/")+1:]
 	dst += "/" + lastPath
-	// for i := 0; Exists(dst); i++ {
-	// 	dst = dstPath + "/" + lastPath + strconv.Itoa(i+1)
-	// }
 	if Exists(dst) {
 		if style == "skip" {
 			return nil
-		} else {
-			os.Remove(dst)
+		}
+		if dinfo, err := os.Stat(dst); err == nil && !dinfo.IsDir() {
+			_ = os.Remove(dst)
 		}
 	}
-	if err = os.MkdirAll(dst, srcinfo.Mode()); err != nil {
+	if err = os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
 	if fds, err = ioutil.ReadDir(src); err != nil {
@@ -333,7 +328,7 @@ func CopyDir(src string, dst string, style string) error {
 	}
 	for _, fd := range fds {
 		srcfp := path.Join(src, fd.Name())
-		dstfp := dst // path.Join(dst, fd.Name())
+		dstfp := dst
 
 		if fd.IsDir() {
 			if err = CopyDir(srcfp, dstfp, style); err != nil {
@@ -372,21 +367,19 @@ func CopyDirCtx(ctx context.Context, src string, dst string, style string) error
 		return err
 	}
 	if !srcinfo.IsDir() {
-		if err = CopyFile(src, dst, style); err != nil {
-			fmt.Println(err)
-		}
-		return nil
+		return CopyFile(src, dst, style)
 	}
 	lastPath := src[strings.LastIndex(src, "/")+1:]
 	dst += "/" + lastPath
 	if Exists(dst) {
 		if style == "skip" {
 			return nil
-		} else {
-			os.Remove(dst)
+		}
+		if dinfo, err := os.Stat(dst); err == nil && !dinfo.IsDir() {
+			_ = os.Remove(dst)
 		}
 	}
-	if err = os.MkdirAll(dst, srcinfo.Mode()); err != nil {
+	if err = os.MkdirAll(dst, 0755); err != nil {
 		return err
 	}
 	if fds, err = ioutil.ReadDir(src); err != nil {
@@ -408,6 +401,9 @@ func CopyDirCtx(ctx context.Context, src string, dst string, style string) error
 			}
 		} else {
 			if err = CopyFile(srcfp, dstfp, style); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return err
+				}
 				fmt.Println(err)
 			}
 		}
@@ -447,34 +443,32 @@ func WriteToFullPath(data []byte, fullPath string, perm fs.FileMode) error {
 func SpliceFiles(dir, path string, length int, startPoint int) error {
 	fullPath := path
 
-	if err := IsNotExistCreateFile(fullPath); err != nil {
-		return err
-	}
-
-	file, _ := os.OpenFile(fullPath,
+	file, err := os.OpenFile(fullPath,
 		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
 		0o666,
 	)
-
+	if err != nil {
+		return err
+	}
 	defer file.Close()
 
 	bufferedWriter := bufio.NewWriter(file)
 
-	// todo: here should have a goroutine to remove each partial file after it is read, to save disk space
-
-	for i := 0; i < length+startPoint-1; i++ {
-		data, err := ioutil.ReadFile(dir + "/" + strconv.Itoa(i+startPoint))
+	for i := 0; i < length; i++ {
+		data, err := ioutil.ReadFile(filepath.Join(dir, strconv.Itoa(i+startPoint)))
 		if err != nil {
 			return err
 		}
-		if _, err := bufferedWriter.Write(data); err != nil { // recommend to use https://github.com/iceber/iouring-go for faster write
+		if _, err := bufferedWriter.Write(data); err != nil {
 			return err
 		}
 	}
 
-	bufferedWriter.Flush()
+	if err := bufferedWriter.Flush(); err != nil {
+		return err
+	}
 
-	return nil
+	return file.Close()
 }
 
 func GetCompressionAlgorithm(t string) (string, archiver.Writer, error) {
@@ -826,3 +820,22 @@ func ParseFromHead(read_data []byte, read_total int, boundary []byte, stream io.
 	}
 	return nil, nil, fmt.Errorf("reach to sream EOF")
 }
+
+// GenerateDuplicatePath returns a non-conflicting path for copying/duplicating
+// a file or directory within the same parent folder (e.g. "name (copy).ext").
+func GenerateDuplicatePath(dir, baseName string) string {
+	ext := filepath.Ext(baseName)
+	nameWithoutExt := strings.TrimSuffix(baseName, ext)
+	candidate := filepath.Join(dir, fmt.Sprintf("%s (copy)%s", nameWithoutExt, ext))
+	if CheckNotExist(candidate) {
+		return candidate
+	}
+	for i := 2; i < 1000; i++ {
+		candidate = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", nameWithoutExt, i, ext))
+		if CheckNotExist(candidate) {
+			return candidate
+		}
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", nameWithoutExt, time.Now().Unix(), ext))
+}
+

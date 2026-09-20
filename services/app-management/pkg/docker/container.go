@@ -53,6 +53,22 @@ func CloneContainer(ctx context.Context, id string, newName string) (string, err
 	}
 
 	config := runtimeConfig(containerInfo, imageInfo)
+
+	// RecreateContainer clones under a temporary "<name>-XXXX" name (see
+	// caller) before removing the old container and renaming the clone back
+	// to the original name. A plain (non-casaos-labeled) container has no
+	// other stable identity - the frontend keys folder placement and icon/
+	// display overrides on this container's name - so without this label,
+	// the temp-named clone briefly looks like a brand new, never-seen
+	// container mid-update and gets dropped into "Other Containers" with a
+	// default icon. Recording the pre-clone name here lets the container
+	// list report the real name throughout the whole recreate window,
+	// before the final rename below ever happens.
+	if config.Labels == nil {
+		config.Labels = map[string]string{}
+	}
+	config.Labels["nivaroos.recreate_original_name"] = strings.TrimPrefix(containerInfo.Name, "/")
+
 	hostConfig := hostConfig(containerInfo)
 	networkConfig := &network.NetworkingConfig{EndpointsConfig: containerInfo.NetworkSettings.Networks}
 	simpleNetworkConfig := simpleNetworkConfig(networkConfig)

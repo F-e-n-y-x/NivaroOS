@@ -29,7 +29,7 @@
 							<span class="theme-sub">{{ $t(opt.desc) }}</span>
 						</div>
 						<div class="check-icon" v-if="currentThemeMode === opt.value">
-							<b-icon icon="check-circle" pack="casa" size="is-20"></b-icon>
+							<b-icon icon="check-circle" pack="mdi" size="is-20"></b-icon>
 						</div>
 					</div>
 				</div>
@@ -138,7 +138,7 @@ export default {
 				}
 			],
 			backdropAlphaPct: 40,
-			backdropBlurPx: 5,
+			backdropBlurPx: 16,
 			themeIcons: {
 				[THEME_MODES.LIGHT]: lightIcon,
 				[THEME_MODES.DARK]: darkIcon,
@@ -158,6 +158,10 @@ export default {
 		window.addEventListener('nivaroos:theme-change', this.onThemeChangeHandler)
 	},
 	beforeDestroy() {
+		if (this._saveTimer) {
+			clearTimeout(this._saveTimer)
+			this._saveTimer = null
+		}
 		if (this.onThemeChangeHandler) {
 			window.removeEventListener('nivaroos:theme-change', this.onThemeChangeHandler)
 		}
@@ -166,22 +170,24 @@ export default {
 		selectTheme(mode) {
 			this.currentThemeMode = mode
 			applyTheme(mode)
-			this.saveAppearanceSettings()
+			if (this._saveTimer) {
+				clearTimeout(this._saveTimer)
+				this._saveTimer = null
+			}
+			const alpha = this.backdropAlphaPct / 100
+			const blur = this.backdropBlurPx
+			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: mode }).catch(() => {})
 		},
 		restoreBackdropSettings() {
 			this.currentThemeMode = getStoredThemeMode()
 			const alpha = localStorage.getItem('uiBackdropAlpha')
 			const blur = localStorage.getItem('uiBackdropBlur')
 			this.backdropAlphaPct = alpha !== null ? Math.round(parseFloat(alpha) * 100) : 40
-			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 5
+			this.backdropBlurPx = blur !== null ? parseFloat(blur) : 16
 
 			this.$api.users.getCustomStorage('appearance').then(res => {
 				if (res.data.success === 200 && res.data.data) {
-					const { alpha, blur, theme } = res.data.data
-					if (theme && Object.values(THEME_MODES).includes(theme)) {
-						this.currentThemeMode = theme
-						applyTheme(theme)
-					}
+					const { alpha, blur } = res.data.data
 					if (alpha !== undefined && alpha !== null) {
 						this.backdropAlphaPct = Math.round(parseFloat(alpha) * 100)
 						document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
@@ -217,11 +223,20 @@ export default {
 		},
 		resetToDefaults() {
 			this.backdropAlphaPct = 40
-			this.backdropBlurPx = 5
+			this.backdropBlurPx = 16
 			this.currentThemeMode = THEME_MODES.AUTO
 			applyTheme(THEME_MODES.AUTO)
-			this.applyBackdropAlpha()
-			this.applyBackdropBlur()
+			const alpha = 0.4
+			const blur = 16
+			document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
+			localStorage.setItem('uiBackdropAlpha', alpha)
+			document.documentElement.style.setProperty('--ui-backdrop-blur', `${blur}px`)
+			localStorage.setItem('uiBackdropBlur', blur)
+			if (this._saveTimer) {
+				clearTimeout(this._saveTimer)
+				this._saveTimer = null
+			}
+			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: THEME_MODES.AUTO }).catch(() => {})
 			this.$buefy.toast.open({ message: this.$t('Appearance reset to defaults'), type: 'is-success' })
 		},
 		rangeStyle(value, min, max) {

@@ -1,12 +1,5 @@
 <template>
 	<div class="modal-card">
-		<header class="is-flex is-align-items-center pt-4 pb-3 pl-4 pr-4 _b-line">
-			<div class="is-flex-grow-1 ml-2 mt-1">
-				<h3 class="_header-title">{{ $t('Build data station') }}</h3>
-			</div>
-			<!--			<img alt="" src="@/assets/img/learn/learnmore.svg" @click="close">-->
-			<b-icon custom-class="mr-1" icon="close-outline" size="is-medium" @click.native="close"></b-icon>
-		</header>
 		<section>
 			<div class="pl-4 pr-4 pt-4 pb-4 _b-line _font">
 				<div v-show="steps === 1" class="ml-2 mr-2">

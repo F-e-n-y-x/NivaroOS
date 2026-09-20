@@ -34,26 +34,36 @@ const ContentDigestHeader = "Docker-Content-Digest"
 
 // CompareDigest ...
 func CompareDigest(imageName string, repoDigests []string) (bool, error) {
+	match, _, err := CompareDigestWithResult(imageName, repoDigests)
+	return match, err
+}
+
+// CompareDigestWithResult checks remote registry for digest and returns (match, remoteDigest, error)
+func CompareDigestWithResult(imageName string, repoDigests []string) (bool, string, error) {
 	var digest string
 
 	token, url, err := tokenAndURL(imageName)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 
 	if digest, err = GetDigest(url, token); err != nil {
-		return false, err
+		return false, "", err
 	}
 
-	for _, dig := range repoDigests {
-		localDigest := strings.Split(dig, "@")[1]
+	digest = strings.TrimSpace(digest)
 
-		if localDigest == digest {
-			return true, nil
+	for _, dig := range repoDigests {
+		actualDig := strings.TrimSpace(dig)
+		if parts := strings.Split(actualDig, "@"); len(parts) > 1 {
+			actualDig = strings.TrimSpace(parts[1])
+		}
+		if actualDig != "" && digest != "" && actualDig == digest {
+			return true, digest, nil
 		}
 	}
 
-	return false, nil
+	return false, digest, nil
 }
 
 // TransformAuth from a base64 encoded json object to base64 encoded string

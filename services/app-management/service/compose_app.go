@@ -231,7 +231,9 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 
 	// prepare for message bus events
 	eventProperties := common.PropertiesFromContext(ctx)
-	eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	if eventProperties != nil {
+		eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	}
 
 	if err := a.UpdateEventPropertiesFromStoreInfo(eventProperties); err != nil {
 		logger.Info("failed to update event properties from store info", zap.Error(err), zap.String("name", a.Name))
@@ -657,7 +659,9 @@ func (a *ComposeApp) Apply(ctx context.Context, newComposeYAML []byte) error {
 
 	// prepare for message bus events
 	eventProperties := common.PropertiesFromContext(ctx)
-	eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	if eventProperties != nil {
+		eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	}
 
 	// prepare for message bus events
 	if err := newComposeApp.UpdateEventPropertiesFromStoreInfo(eventProperties); err != nil {
@@ -689,7 +693,9 @@ func (a *ComposeApp) SetStatus(ctx context.Context, status codegen.RequestCompos
 	defer dockerClient.Close()
 
 	eventProperties := common.PropertiesFromContext(ctx)
-	eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	if eventProperties != nil {
+		eventProperties[common.PropertyTypeAppName.Name] = a.Name
+	}
 
 	switch status {
 	case codegen.RequestComposeAppStatusStart:

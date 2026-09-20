@@ -33,6 +33,13 @@ export default {
 	props: {
 		initPath: String,
 		isDir: Boolean,
+		// Called directly when opened as a standalone desktop window - the
+		// shared window chrome only forwards close/minimize, not custom
+		// business events like 'reloadPath'.
+		onReloadPath: {
+			type: Function,
+			default: null
+		}
 	},
 	data() {
 		return {
@@ -74,6 +81,7 @@ export default {
 			this.errorType = ""
 			this.$emit('close');
 			this.$emit("reloadPath", path)
+			if (typeof this.onReloadPath === 'function') this.onReloadPath(path)
 		},
 		errorCallBack(message) {
 			this.errorType = "is-danger"

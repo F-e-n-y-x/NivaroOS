@@ -352,20 +352,19 @@ export default {
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-4);
 	border: $backDropBorder;
-	color: $white;
+	color: var(--theme-desktop-glass-text, #0f172a);
 	background-color: $backDropColor;
 	backdrop-filter: $backDropBlur;
 	-webkit-backdrop-filter: $backDropBlur;
 	border-radius: var(--radius-pill);
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), $backDropShadow;
+	box-shadow: var(--theme-desktop-glass-shadow);
 	white-space: nowrap;
 	cursor: pointer;
 	transition: all 0.15s ease;
 
 	&:hover,
 	&.is-active {
-		filter: brightness(1.15);
-		box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3), $backDropShadow;
+		box-shadow: var(--theme-desktop-glass-hover-shadow);
 		transform: translateY(-1px);
 	}
 }
@@ -387,6 +386,7 @@ export default {
 
 .pill-date {
 	opacity: 0.85;
+	color: var(--theme-desktop-glass-text-sub, inherit);
 }
 
 .quick-control-menu {

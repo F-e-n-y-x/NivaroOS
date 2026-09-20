@@ -1,33 +1,49 @@
 <template>
-	<div :style="cssVariables">
-		<div class="container">
-			<svg class="circle-container" viewBox="2 -3 28 38" xmlns="http://www.w3.org/2000/svg">
-				<linearGradient id="gradient" x1="0.17" x2="0.83" y1="0.13" y2="0.87">
-					<stop :style="{ stopColor: stop2 }" offset="0%"/>
-					<stop :style="{ stopColor: stop1 }" offset="100%"/>
-				</linearGradient>
+	<div class="radial-gauge-container" :style="cssVariables">
+		<div class="gauge-circle-box">
+			<svg class="gauge-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<linearGradient :id="gradientId" x1="0%" y1="0%" x2="100%" y2="100%">
+						<stop :stop-color="activeStop1" offset="0%"/>
+						<stop :stop-color="activeStop2" offset="100%"/>
+					</linearGradient>
+				</defs>
+				<!-- Background Track (Full 360 concentric circle) -->
 				<circle
-					class="circle-container__background"
-					cx="16"
-					cy="16"
-					r="16"
+					class="gauge-track"
+					cx="50"
+					cy="50"
+					r="37"
 					shape-rendering="geometricPrecision"
 				></circle>
+				<!-- Progress Stroke (Starts at 12 o'clock, wraps clockwise) -->
 				<circle
-					:style="{ 'stroke-dashoffset': inPercent }"
-					class="circle-container__progress"
-					cx="16"
-					cy="16"
-					r="16"
+					class="gauge-progress"
+					cx="50"
+					cy="50"
+					r="37"
+					:stroke-dasharray="circumference"
+					:stroke-dashoffset="progressOffset"
+					:stroke="`url(#${gradientId})`"
 					shape-rendering="geometricPrecision"
 				></circle>
 			</svg>
-			<div class="overlay">
-				<div class="per">{{ percent }}</div>
-				<div class="label">{{ label }}</div>
+			<!-- Perfectly Centered Text Overlay -->
+			<div class="gauge-center-content">
+				<div class="gauge-val-row">
+					<span class="gauge-number">{{ clampedPercent }}</span>
+					<span class="gauge-percent">%</span>
+				</div>
+				<div v-if="label" class="gauge-label">{{ label }}</div>
 			</div>
 		</div>
-		<div :class="{ 'is-clickable': extendContentClickable }" class="bar-content" @click="extendClick">
+		<!-- Optional Legacy Bottom Pill -->
+		<div
+			v-if="extendContent"
+			class="gauge-extend-badge"
+			:class="{ 'is-clickable': extendContentClickable }"
+			@click="extendClick"
+		>
 			{{ extendContent }}
 		</div>
 	</div>
@@ -35,10 +51,11 @@
 
 <script>
 export default {
+	name: "RadialBar",
 	props: {
 		dotDiameter: {
 			type: String,
-			default: "92px",
+			default: "76px",
 		},
 		circleBorderWidth: {
 			type: String,
@@ -46,15 +63,15 @@ export default {
 		},
 		circleBackgroundColor: {
 			type: String,
-			default: "rgba(255, 255, 255, 0.4)",
+			default: "",
 		},
 		stopColorStart: {
 			type: String,
-			default: "#33FFAA",
+			default: "",
 		},
 		stopColorEnd: {
 			type: String,
-			default: "#FFD580",
+			default: "",
 		},
 		percent: {
 			type: Number,
@@ -74,21 +91,52 @@ export default {
 		},
 	},
 
-	data() {
-		return {
-			stop1: this.stopColorStart,
-			stop2: this.stopColorEnd,
-		};
-	},
 	computed: {
-		inPercent() {
-			return (100 - this.percent) * 0.75;
+		gradientId() {
+			return `radial-bar-grad-${this._uid}`
+		},
+		clampedPercent() {
+			const p = Math.round(this.percent)
+			if (isNaN(p) || p < 0) return 0
+			if (p > 100) return 100
+			return p
+		},
+		// Circumference for r=37 is 2 * PI * 37 = 232.478
+		circumference() {
+			return 232.478
+		},
+		progressOffset() {
+			if (this.clampedPercent <= 0) return this.circumference
+			if (this.clampedPercent >= 100) return 0
+			return this.circumference * (1 - this.clampedPercent / 100)
+		},
+		activeStop1() {
+			if (this.stopColorStart && this.stopColorStart !== '#33FFAA') {
+				return this.stopColorStart
+			}
+			if (this.clampedPercent >= 90) return '#ef4444' // red
+			if (this.clampedPercent >= 75) return '#f59e0b' // amber
+			if (this.label === 'RAM') return '#8b5cf6' // purple
+			if (this.label === 'GPU' || this.label === 'CORE') return '#10b981' // emerald
+			if (this.label === 'VRAM') return '#06b6d4' // cyan
+			return '#2563eb' // royal blue default
+		},
+		activeStop2() {
+			if (this.stopColorEnd && this.stopColorEnd !== '#FFD580') {
+				return this.stopColorEnd
+			}
+			if (this.clampedPercent >= 90) return '#f97316' // orange
+			if (this.clampedPercent >= 75) return '#eab308' // yellow
+			if (this.label === 'RAM') return '#6366f1' // indigo
+			if (this.label === 'GPU' || this.label === 'CORE') return '#34d399' // mint
+			if (this.label === 'VRAM') return '#38bdf8' // sky blue
+			return '#38bdf8' // sky blue default
 		},
 		cssVariables() {
 			return {
-				"--dot-diameter": this.dotDiameter,
-				"--circle-border-width": this.circleBorderWidth,
-				"--circle-background-color": this.circleBackgroundColor,
+				"--gauge-size": this.dotDiameter,
+				"--gauge-stroke-width": this.circleBorderWidth,
+				"--gauge-track-color": this.circleBackgroundColor || "var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.08))",
 			};
 		},
 	},
@@ -103,89 +151,120 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.container {
-	margin: auto;
-	width: var(--dot-diameter);
-	height: var(--dot-diameter);
+.radial-gauge-container {
+	display: inline-flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+}
+
+.gauge-circle-box {
+	position: relative;
+	width: var(--gauge-size);
+	height: var(--gauge-size);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.gauge-svg {
+	width: 100%;
+	height: 100%;
+	fill: none;
+	overflow: visible;
+}
+
+.gauge-track {
+	fill: none;
+	stroke: var(--gauge-track-color);
+	stroke-width: var(--gauge-stroke-width);
+}
+
+.gauge-progress {
+	fill: none;
+	stroke-width: var(--gauge-stroke-width);
+	stroke-linecap: round;
+	transform: rotate(-90deg);
+	transform-origin: 50% 50%;
+	transition: stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.3s ease;
+}
+
+.gauge-center-content {
+	position: absolute;
+	inset: 0;
 	display: flex;
 	flex-direction: column;
-	justify-items: center;
-	align-content: stretch;
 	align-items: center;
+	justify-content: center;
+	text-align: center;
+	pointer-events: none;
+	user-select: none;
+}
 
-	.circle-container {
-		width: var(--dot-diameter);
-		height: var(--dot-diameter);
-		transform: rotate(-225deg);
-		fill: none;
-		stroke: white;
-		stroke-dasharray: 75 100;
-		stroke-linecap: round;
-	}
+.gauge-val-row {
+	display: inline-flex;
+	align-items: baseline;
+	justify-content: center;
+	line-height: 1;
+}
 
-	.overlay {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		left: 0;
-		top: 0;
-		display: flex;
-		justify-content: center;
-		align-items: center;
-	}
+.gauge-number {
+	font-size: 1.15rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+	color: var(--theme-desktop-glass-text, #0f172a);
+	line-height: 1;
+}
 
-	.per {
-		font-size: var(--font-2xl);
-		font-weight: 500;
-		color: $grey-200;
-		position: relative;
-		line-height: 2rem;
+.gauge-percent {
+	font-size: 0.65rem;
+	font-weight: 500;
+	color: var(--theme-desktop-glass-text-sub, #475569);
+	margin-left: 1px;
+	line-height: 1;
+}
 
-		&::after {
-			content: "%";
-			position: absolute;
-			font-size: var(--font-base);
-			color: $grey-400;
-			bottom: 0.4rem;
-			line-height: 1em;
-			margin-left: 0.1rem;
+.gauge-label {
+	font-size: 0.54rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--theme-desktop-glass-text-sub, #64748b);
+	margin-top: 2px;
+	line-height: 1;
+}
+
+.gauge-extend-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	font-size: 0.66rem;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--theme-desktop-glass-text, #0f172a);
+	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+	border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+	border-radius: var(--radius-sm, 6px);
+	padding: 2px 8px;
+	margin-top: 6px;
+	max-width: 100%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition: all 0.15s ease;
+
+	&.is-clickable {
+		cursor: pointer;
+
+		&:hover {
+			background: var(--theme-card-hover, rgba(0, 0, 0, 0.08));
+			color: var(--color-primary, #2563eb);
+			border-color: var(--color-primary, #2563eb);
 		}
 	}
-
-	.label {
-		position: absolute;
-		font-size: var(--font-base);
-		font-weight: 400;
-		color: $grey-200;
-		bottom: 0;
-		margin-bottom: 0;
-		line-height: 1.25rem;
-	}
-}
-
-.bar-content {
-	text-align: center;
-	font-size: var(--font-base);
-	font-weight: 500;
-	color: $grey-200;
-	line-height: 1.25rem;
-	margin-top: var(--space-1);
-}
-
-.circle-container__background {
-	fill: none;
-	stroke: var(--circle-background-color);
-	stroke-width: var(--circle-border-width);
-	stroke-dasharray: 75 100;
-	stroke-linecap: round;
-}
-
-.circle-container__progress {
-	fill: none;
-	stroke-linecap: round;
-	stroke: url(#gradient);
-	stroke-dasharray: 75 100;
-	stroke-width: var(--circle-border-width);
-	transition: stroke-dashoffset 1s ease-in-out;
 }
 </style>

@@ -275,13 +275,15 @@ export default {
 }
 
 .widgets-column {
-	flex: 0 0 19rem;
-	width: 19rem;
+	flex: 0 0 19.5rem;
+	width: 19.5rem;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
+	padding: 4px 6px 16px;
 	min-height: 4rem;
-	height: calc(100vh - 7rem);
+	height: 100%;
+	max-height: calc(100vh - 7rem);
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-width: none;

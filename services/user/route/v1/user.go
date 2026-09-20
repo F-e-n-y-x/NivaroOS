@@ -830,7 +830,18 @@ func GetPublicWallpaper(c *gin.Context) {
 				wpData := file.ReadFullFile(wpJsonPath)
 				if gjson.ValidBytes(wpData) {
 					parsed := gjson.ParseBytes(wpData)
+					themeReq := strings.ToLower(c.Query("theme"))
+					if themeReq == "" {
+						themeReq = strings.ToLower(c.Query("mode"))
+					}
 					wpPath := parsed.Get("path").String()
+					if parsed.Get("dualMode").Bool() {
+						if themeReq == "light" && parsed.Get("light.path").Exists() && parsed.Get("light.path").String() != "" {
+							wpPath = parsed.Get("light.path").String()
+						} else if themeReq == "dark" && parsed.Get("dark.path").Exists() && parsed.Get("dark.path").String() != "" {
+							wpPath = parsed.Get("dark.path").String()
+						}
+					}
 
 					// If path is a URL containing path= parameter, extract the real filesystem path
 					if strings.Contains(wpPath, "path=") {
@@ -939,22 +950,7 @@ func GetUserStatus(c *gin.Context) {
 				if data["wallpaper"] == nil && file.Exists(wpPath) {
 					wpData := file.ReadFullFile(wpPath)
 					if gjson.ValidBytes(wpData) {
-						parsed := gjson.ParseBytes(wpData)
-						rawPath := parsed.Get("path").String()
-						from := parsed.Get("from").String()
-						if strings.Contains(rawPath, "path=") {
-							u, err := url2.Parse(rawPath)
-							if err == nil {
-								realPath := u.Query().Get("path")
-								if realPath != "" {
-									rawPath = realPath
-								}
-							}
-						}
-						data["wallpaper"] = map[string]string{
-							"path": rawPath,
-							"from": from,
-						}
+						data["wallpaper"] = json2.RawMessage(string(wpData))
 					}
 				}
 				appPath := filepath.Join(config.AppInfo.UserDataPath, entry.Name(), "appearance.json")

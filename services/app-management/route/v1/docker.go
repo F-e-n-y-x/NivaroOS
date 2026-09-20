@@ -798,7 +798,8 @@ func CheckContainerUpdate(ctx echo.Context) error {
 func UpdateContainer(ctx echo.Context) error {
 	id := ctx.Param("id")
 	mgr := service.GetContainerUpdateManager()
-	if err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id); err != nil {
+	info, err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id)
+	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
 			Success: common_err.SERVICE_ERROR,
 			Message: err.Error(),
@@ -807,6 +808,7 @@ func UpdateContainer(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, modelCommon.Result{
 		Success: common_err.SUCCESS,
 		Message: "Container updated successfully",
+		Data:    info,
 	})
 }
 
@@ -875,7 +877,7 @@ func SetAutoUpdateConfig(ctx echo.Context) error {
 
 func CheckAllContainersUpdate(ctx echo.Context) error {
 	mgr := service.GetContainerUpdateManager()
-	containers, err := mgr.GetAllContainersWithUpdates(ctx.Request().Context())
+	containers, err := mgr.CheckAllContainersUpdate(ctx.Request().Context())
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
 			Success: common_err.SERVICE_ERROR,
@@ -883,14 +885,9 @@ func CheckAllContainersUpdate(ctx echo.Context) error {
 		})
 	}
 
-	for _, c := range containers {
-		go func(name string) {
-			_, _ = mgr.CheckContainerUpdate(context.Background(), name)
-		}(c.Name)
-	}
-
 	return ctx.JSON(http.StatusOK, modelCommon.Result{
 		Success: common_err.SUCCESS,
-		Message: "Checking all containers in background",
+		Message: "Checked all containers for updates",
+		Data:    containers,
 	})
 }

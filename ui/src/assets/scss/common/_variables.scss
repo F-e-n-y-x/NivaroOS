@@ -262,12 +262,12 @@ $link-focus-border: $primary;
 
 // BackDrop - alpha/blur are runtime-adjustable (Settings > Appearance)
 // via the --ui-backdrop-* custom properties set on :root in App.vue;
-// these SCSS values are only the fallback for that var().
-$backDropColor: rgba(53, 54, 58, var(--ui-backdrop-alpha, 0.82));
-$backDropBlur: blur(var(--ui-backdrop-blur, 6px)) saturate(150%);
-$backDropBorder: none;
-$backDropBorderRadius: 10px;
-$backDropShadow: rgb(255 255 255 / 12.5%) 0.5px 1px 1px 0px inset;
+// desktop glass colors dynamically adapt to Light and Dark mode tokens.
+$backDropColor: var(--theme-desktop-glass-bg, rgba(255, 255, 255, 0.85));
+$backDropBlur: blur(var(--ui-backdrop-blur, 20px)) saturate(180%);
+$backDropBorder: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
+$backDropBorderRadius: 16px;
+$backDropShadow: var(--theme-desktop-glass-shadow);
 
 // Avatar
 $avatar-border-color: hsl(0, 0%, 89%);

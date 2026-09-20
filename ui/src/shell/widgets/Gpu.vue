@@ -1,47 +1,86 @@
 <template>
-	<div class="widget has-text-grey-100 gpu">
+	<div class="widget gpu">
 		<div class="blur-background"></div>
-		<div class="widget-content pb-1">
+		<div class="widget-content">
 			<!-- Header Start -->
-			<div class="widget-header is-flex">
-				<div class="widget-title is-flex-grow-1">
-					{{ $t("GPU Status") }}
+			<div class="widget-header">
+				<div class="widget-header-left">
+					<div class="widget-badge is-gpu">
+						<i class="mdi mdi-expansion-card"></i>
+					</div>
+					<div class="widget-header-text">
+						<span class="widget-title">{{ $t("Graphics") }}</span>
+						<span class="widget-header-meta" :title="gpuName">
+							{{ gpuName ? gpuName + (driverVersion ? ' · v' + driverVersion : '') : (!unavailable ? $t("Discrete Graphics") : $t("Integrated Display")) }}
+						</span>
+					</div>
 				</div>
-				<div class="widget-icon-button is-flex-shrink-0" @click="showMoreInfo">
-					<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
+				<div class="widget-header-right">
+					<div v-if="!unavailable" class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
+					</div>
 				</div>
 			</div>
 			<!-- Header End -->
 
-			<div v-if="!unavailable && gpuName" class="is-size-7 has-text-grey-400 one-line mb-2">
-				{{ gpuName }} · {{ $t("Driver") }} {{ driverVersion }}
+			<!-- Hero Grid: Left = Dial (outside box), Right = VRAM Meter Card + Temp & Power Cards -->
+			<div v-if="!unavailable" class="widget-hero-grid">
+				<div class="hero-gauge-box">
+					<radial-bar
+						:percent="Math.round(utilizationPercent)"
+						label="GPU"
+					></radial-bar>
+				</div>
+				<div class="hero-info-bento">
+					<!-- VRAM Meter Card with Live Progress Track -->
+					<div class="vram-meter-card" :title="$t('VRAM Usage') + ` (${Math.round(memoryPercent)}%)`">
+						<div class="vram-card-top">
+							<span class="vram-label">{{ $t('VRAM') }}</span>
+							<div class="vram-metrics">
+								<span class="vram-usage-text">{{ renderSize(memoryUsedBytes) }} / {{ renderSize(memoryTotalBytes) }}</span>
+								<span class="vram-pct-badge">{{ Math.round(memoryPercent) }}%</span>
+							</div>
+						</div>
+						<div class="vram-progress-track">
+							<div
+								class="vram-progress-fill"
+								:style="{ width: Math.min(100, Math.max(3, Math.round(memoryPercent))) + '%' }"
+							></div>
+						</div>
+					</div>
+
+					<!-- Bottom Specs Grid: Temp & Power (Driver detail removed) -->
+					<div class="bento-specs-grid">
+						<div class="spec-tile" :title="$t('Temperature')">
+							<span class="spec-label">{{ $t('Temp') }}</span>
+							<span class="spec-val">{{ temperatureDisplay }}</span>
+						</div>
+						<div class="spec-tile" :title="$t('Power Consumption')">
+							<span class="spec-label">{{ $t('Power') }}</span>
+							<span class="spec-val">{{ powerDraw.toFixed(0) }}W</span>
+						</div>
+					</div>
+				</div>
 			</div>
 
-			<div v-if="unavailable" class="has-text-centered is-size-7 py-4">
-				{{ $t("GPU sidecar unavailable") }}
+			<!-- Sleek Fallback when no Discrete GPU is Detected -->
+			<div v-else class="gpu-unavailable-card">
+				<i class="mdi mdi-monitor-dashboard gpu-unavail-icon"></i>
+				<div class="gpu-unavail-title">{{ $t("Integrated Graphics") }}</div>
+				<div class="gpu-unavail-desc">{{ $t("No discrete GPU telemetry sidecar detected on system.") }}</div>
 			</div>
-			<div v-else class="columns is-mobile mt-0 mb-1">
-				<div class="column is-half has-text-centered">
-					<radial-bar :extendContent="powerAndTemperature" :extendContentClickable="true"
-						:percent="parseInt(utilizationPercent)" label="GPU" @extendContentClick="showMoreInfo"></radial-bar>
+
+			<!-- Top GPU Processes -->
+			<div v-if="showMore && !unavailable" class="more-info">
+				<div class="process-section-title">{{ $t("Top GPU Processes") }}</div>
+				<div v-if="processes.length === 0" class="has-text-centered is-size-7 py-2 text-muted">
+					{{ $t("No active GPU processes") }}
 				</div>
-				<div class="column is-half has-text-centered">
-					<radial-bar :extendContent="renderSize(memoryTotalBytes)" :percent="parseInt(memoryPercent)"
-						label="VRAM"></radial-bar>
-				</div>
-			</div>
-			<div v-if="showMore && !unavailable">
-				<div class="more-info pt-1 pb-1">
-					<div v-if="processes.length === 0" class="is-size-7 has-text-centered py-2">
-						{{ $t("No processes using the GPU") }}
+				<div v-for="(item, index) in processes" :key="item.pid + '-' + index" class="process-row">
+					<div class="is-flex-grow-1 is-flex is-align-items-center is-clipped">
+						<span class="one-line process-name">{{ item.command }} ({{ item.pid }})</span>
 					</div>
-					<div v-for="(item, index) in processes" :key="item.pid + '-' + index"
-						class="is-flex is-size-7 is-align-items-center mb-2">
-						<div class="is-flex-grow-1 is-flex is-align-items-center is-clipped">
-							<span class="one-line">{{ item.command }} ({{ item.pid }})</span>
-						</div>
-						<div class="is-flex-shrink-0">{{ item.usage }}%</div>
-					</div>
+					<div class="is-flex-shrink-0 process-usage">{{ item.usage }}%</div>
 				</div>
 			</div>
 		</div>
@@ -63,8 +102,8 @@ export default {
 	name: "gpu",
 	icon: "system-outline",
 	title: "GPU Status",
-	gridCols: 3, // "normal" size - 3 icon-columns wide (see SideBar.vue)
-	gridRows: 2, // "normal" size - 2 icon-rows tall
+	gridCols: 3,
+	gridRows: 2,
 	initShow: true,
 	mixins: [smoothReflow, mixin],
 	components: {
@@ -91,8 +130,15 @@ export default {
 			if (!this.memoryTotalBytes) return 0;
 			return (this.memoryUsedBytes / this.memoryTotalBytes) * 100;
 		},
+		temperatureDisplay() {
+			const format = localStorage.getItem("temperatureFormat") || "°C";
+			if (format === "°F") {
+				return Math.round((this.temperature * 9) / 5 + 32) + "°F";
+			}
+			return Math.round(this.temperature) + "°C";
+		},
 		powerAndTemperature() {
-			return `${this.powerDraw.toFixed(0)}W / ${this.temperature.toFixed(0)}°C`;
+			return `${this.powerDraw.toFixed(0)}W · ${this.temperatureDisplay}`;
 		},
 	},
 	created() {
@@ -147,15 +193,11 @@ export default {
 .widget {
 	&.gpu {
 		.arrow-btn {
-			transition: all 0.3s;
+			transition: transform 0.25s ease;
 
 			&.open {
 				transform: rotate(90deg);
 			}
-		}
-
-		.more-info {
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
 		}
 	}
 }

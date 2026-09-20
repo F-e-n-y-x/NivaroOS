@@ -761,6 +761,67 @@ class FilesScreenState extends State<FilesScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cut ${_clipboardPaths.length} items to clipboard.')));
   }
 
+  Future<void> _uploadLocalEntity(String srcPath, String destDirPath) async {
+    final isDir = FileSystemEntity.isDirectorySync(srcPath);
+    final auth = await ApiClient.instance.currentAuthHeader();
+    final uri = Uri.parse('${ApiClient.instance.baseUrl}/v1/file/upload');
+
+    if (!isDir) {
+      final fileName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'file';
+      final req = http.MultipartRequest('POST', uri);
+      if (auth.isNotEmpty) req.headers['Authorization'] = auth;
+      req.fields['path'] = destDirPath;
+      req.fields['filename'] = fileName;
+      req.fields['relativePath'] = fileName;
+      req.fields['totalChunks'] = '1';
+      req.fields['chunkNumber'] = '1';
+      req.files.add(await http.MultipartFile.fromPath('file', srcPath, filename: fileName));
+      final streamed = await req.send();
+      if (streamed.statusCode >= 400) {
+        final respStr = await streamed.stream.bytesToString();
+        throw Exception('Upload of $fileName failed (HTTP ${streamed.statusCode}): $respStr');
+      }
+    } else {
+      final baseDir = Directory(srcPath);
+      final baseDirName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'folder';
+      final entities = baseDir.listSync(recursive: true, followLinks: false);
+      for (final entity in entities) {
+        if (_transferCancelled) break;
+        if (entity is File) {
+          final rel = entity.path.substring(baseDir.path.length).replaceAll(r'\', '/');
+          final targetRel = '$baseDirName${rel.startsWith('/') ? rel : '/$rel'}';
+          final fileName = entity.path.split(Platform.pathSeparator).last;
+          final req = http.MultipartRequest('POST', uri);
+          if (auth.isNotEmpty) req.headers['Authorization'] = auth;
+          req.fields['path'] = destDirPath;
+          req.fields['filename'] = fileName;
+          req.fields['relativePath'] = targetRel;
+          req.fields['totalChunks'] = '1';
+          req.fields['chunkNumber'] = '1';
+          req.files.add(await http.MultipartFile.fromPath('file', entity.path, filename: fileName));
+          final streamed = await req.send();
+          if (streamed.statusCode >= 400) {
+            final respStr = await streamed.stream.bytesToString();
+            throw Exception('Upload of $targetRel failed (HTTP ${streamed.statusCode}): $respStr');
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await destination.create(recursive: true);
+    await for (final entity in source.list(recursive: false)) {
+      final name = entity.path.split(Platform.pathSeparator).last;
+      final destPath = '${destination.path}/$name';
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(destPath));
+      } else if (entity is File) {
+        await entity.copy(destPath);
+      }
+    }
+  }
+
   Future<void> _pasteClipboard() async {
     if (_clipboardPaths.isEmpty) return;
     final tab = _currentTab;
@@ -776,52 +837,91 @@ class FilesScreenState extends State<FilesScreen> {
     });
 
     try {
-      for (int i = 0; i < total; i++) {
-        if (_transferCancelled) break;
-        final srcPath = _clipboardPaths[i];
-        final fileName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'file';
-
+      if (!_clipboardIsLocal && !tab.isLocalDevice) {
+        // Remote to Remote (Server <-> Companion <-> Server)
+        // Submit all items to the backend batch task engine
         setState(() {
-          _transferCurrentIndex = i + 1;
-          _transferCurrentFile = fileName;
-          _transferProgress = (i + 1) / total;
+          _transferCurrentIndex = 1;
+          _transferCurrentFile = '${_clipboardPaths.length} remote items';
+          _transferProgress = 0.5;
         });
 
-        if (_clipboardIsLocal && !tab.isLocalDevice) {
-          // Upload local phone file to server
-          final auth = await ApiClient.instance.currentAuthHeader();
-          final uri = Uri.parse('${ApiClient.instance.baseUrl}/v1/file?path=${tab.path}');
-          final req = http.MultipartRequest('POST', uri);
-          if (auth.isNotEmpty) req.headers['Authorization'] = auth;
-          req.files.add(await http.MultipartFile.fromPath('file', srcPath, filename: fileName));
-          final streamed = await req.send();
-          if (streamed.statusCode >= 400) {
-            throw Exception('Upload failed with HTTP ${streamed.statusCode}');
-          }
-        } else if (!_clipboardIsLocal && tab.isLocalDevice) {
-          // Download server file to local phone storage
-          final res = await ApiClient.instance.getRaw('/file', query: {'path': srcPath});
-          if (res.statusCode == 200) {
-            final destFile = File('${tab.path}/$fileName');
-            await destFile.writeAsBytes(res.bodyBytes);
-          } else {
-            throw Exception('Download failed with HTTP ${res.statusCode}');
-          }
-        } else if (!_clipboardIsLocal && !tab.isLocalDevice) {
-          // Server-to-server copy/move
-          final endpoint = _clipboardOp == 'move' ? '/file/move' : '/file/copy';
-          await ApiClient.instance.post(endpoint, body: {
-            'from': srcPath,
-            'to': '${tab.path}/$fileName',
+        final items = _clipboardPaths.map((p) => {'from': p}).toList();
+        try {
+          await ApiClient.instance.post('/batch/task', body: {
+            'type': _clipboardOp,
+            'item': items,
+            'to': tab.path,
+            'style': 'overwrite',
           });
-        } else {
-          // Local-to-local copy/move
-          final srcFile = File(srcPath);
-          final destPath = '${tab.path}/$fileName';
-          if (_clipboardOp == 'move') {
-            await srcFile.rename(destPath);
+        } catch (_) {
+          // Fallback to direct copy/move endpoint
+          for (int i = 0; i < total; i++) {
+            if (_transferCancelled) break;
+            final srcPath = _clipboardPaths[i];
+            final fileName = srcPath.split('/').where((s) => s.isNotEmpty).lastOrNull ?? 'file';
+            setState(() {
+              _transferCurrentIndex = i + 1;
+              _transferCurrentFile = fileName;
+              _transferProgress = (i + 1) / total;
+            });
+            final endpoint = _clipboardOp == 'move' ? '/file/move' : '/file/copy';
+            await ApiClient.instance.post(endpoint, body: {
+              'from': srcPath,
+              'to': '${tab.path}/$fileName',
+            });
+          }
+        }
+        await Future.delayed(const Duration(milliseconds: 600));
+      } else {
+        // Local to Remote, Remote to Local, or Local to Local
+        for (int i = 0; i < total; i++) {
+          if (_transferCancelled) break;
+          final srcPath = _clipboardPaths[i];
+          final fileName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'file';
+
+          setState(() {
+            _transferCurrentIndex = i + 1;
+            _transferCurrentFile = fileName;
+            _transferProgress = (i + 1) / total;
+          });
+
+          if (_clipboardIsLocal && !tab.isLocalDevice) {
+            // Upload local phone file/folder to server or companion mount
+            await _uploadLocalEntity(srcPath, tab.path);
+            if (_clipboardOp == 'move') {
+              if (FileSystemEntity.isDirectorySync(srcPath)) {
+                await Directory(srcPath).delete(recursive: true);
+              } else {
+                await File(srcPath).delete();
+              }
+            }
+          } else if (!_clipboardIsLocal && tab.isLocalDevice) {
+            // Download server or companion file to local phone storage
+            final destFile = File('${tab.path}/$fileName');
+            await ApiClient.instance.downloadFileStream(srcPath, destFile);
+            if (_clipboardOp == 'move') {
+              try {
+                await ApiClient.instance.deleteWithBody('/file/delete', [srcPath]);
+              } catch (_) {}
+            }
           } else {
-            await srcFile.copy(destPath);
+            // Local-to-local copy/move
+            final isDir = FileSystemEntity.isDirectorySync(srcPath);
+            final destPath = '${tab.path}/$fileName';
+            if (_clipboardOp == 'move') {
+              if (isDir) {
+                await Directory(srcPath).rename(destPath);
+              } else {
+                await File(srcPath).rename(destPath);
+              }
+            } else {
+              if (isDir) {
+                await _copyDirectory(Directory(srcPath), Directory(destPath));
+              } else {
+                await File(srcPath).copy(destPath);
+              }
+            }
           }
         }
       }

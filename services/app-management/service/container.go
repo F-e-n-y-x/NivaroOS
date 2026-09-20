@@ -321,8 +321,19 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 
 			nivaroosApps = append(nivaroosApps, nivaroosApp)
 		} else {
+			// Mid-update (see CloneContainer), a plain container briefly runs
+			// under a temporary "<name>-XXXX" name before being renamed back -
+			// prefer the pre-clone name recorded there so this container's
+			// identity (folder placement, icon/display overrides, all keyed on
+			// name by the frontend) stays continuous through that window
+			// instead of the temp clone looking like a brand new container.
+			name := strings.ReplaceAll(m.Names[0], "/", "")
+			if orig, ok := m.Labels["nivaroos.recreate_original_name"]; ok && orig != "" {
+				name = orig
+			}
+
 			localApp := model.MyAppList{
-				Name:     strings.ReplaceAll(m.Names[0], "/", ""),
+				Name:     name,
 				Icon:     "",
 				State:    m.State,
 				CustomID: m.ID,

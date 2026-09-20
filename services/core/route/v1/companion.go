@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +19,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
@@ -120,6 +124,12 @@ func getCompanionConfigPath() string {
 	return path
 }
 
+func getCompanionSecretsPath() string {
+	path := "/var/lib/nivaroos/companion_secrets.json"
+	os.MkdirAll("/var/lib/nivaroos", 0755)
+	return path
+}
+
 func loadCompanionDevicesLocked() {
 	if companionLoaded {
 		return
@@ -141,6 +151,18 @@ func loadCompanionDevicesLocked() {
 			}
 			dev.SharesStorage = true
 			companionDevices[dev.ID] = dev
+		}
+	}
+	// Restore credentials securely persisted to companion_secrets.json
+	secData, secErr := os.ReadFile(getCompanionSecretsPath())
+	if secErr == nil {
+		var secrets map[string]string
+		if err := json.Unmarshal(secData, &secrets); err == nil {
+			for id, sec := range secrets {
+				if dev, ok := companionDevices[id]; ok && sec != "" {
+					dev.Secret = sec
+				}
+			}
 		}
 	}
 }
@@ -202,12 +224,21 @@ func saveCompanionDevicesLocked() error {
 	deduplicateCompanionDevicesLocked()
 	filePath := getCompanionConfigPath()
 	list := make([]*CompanionDevice, 0, len(companionDevices))
+	secrets := make(map[string]string)
 	for _, dev := range companionDevices {
 		list = append(list, dev)
+		if dev.Secret != "" {
+			secrets[dev.ID] = dev.Secret
+		}
 	}
 	data, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
+	}
+	if len(secrets) > 0 {
+		if secData, err := json.MarshalIndent(secrets, "", "  "); err == nil {
+			_ = os.WriteFile(getCompanionSecretsPath(), secData, 0600)
+		}
 	}
 	return os.WriteFile(filePath, data, 0644)
 }
@@ -453,6 +484,197 @@ func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 	return nil
 }
 
+// ProxyCompanionFileRename sends a rename request to the companion device with fallback to streaming
+func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) error {
+	devIP := dev.IP
+	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+		return fmt.Errorf("companion device has no direct LAN IP")
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	// Try /rename endpoint first
+	urlStr := fmt.Sprintf("http://%s:%d/rename?old_path=%s&new_path=%s", devIP, port, url.QueryEscape(oldPath), url.QueryEscape(newPath))
+	req, err := http.NewRequest("POST", urlStr, nil)
+	if err == nil {
+		req.Header.Set("X-Companion-Secret", dev.Secret)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				dev.LastSeen = time.Now()
+				dev.IsOnline = true
+				return nil
+			}
+		}
+	}
+
+	// Fallback: download old -> upload new -> delete old
+	tmpFile, err := os.CreateTemp("", "nivaroos-comp-rename-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmpFile.Name()
+	defer os.Remove(tmpName)
+
+	dlUrl := fmt.Sprintf("http://%s:%d/download?path=%s&download=1", devIP, port, url.QueryEscape(oldPath))
+	dlReq, err := http.NewRequest("GET", dlUrl, nil)
+	if err != nil {
+		tmpFile.Close()
+		return err
+	}
+	dlReq.Header.Set("X-Companion-Secret", dev.Secret)
+	client := &http.Client{Timeout: 60 * time.Minute}
+	dlResp, err := client.Do(dlReq)
+	if err != nil {
+		tmpFile.Close()
+		return err
+	}
+	defer dlResp.Body.Close()
+	if dlResp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		return fmt.Errorf("failed to read companion file for rename (status %d)", dlResp.StatusCode)
+	}
+	if _, err := io.Copy(tmpFile, dlResp.Body); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	tmpFile.Close()
+
+	ulSrc, err := os.Open(tmpName)
+	if err != nil {
+		return err
+	}
+	defer ulSrc.Close()
+	ulStat, _ := ulSrc.Stat()
+
+	ulUrl := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(newPath))
+	ulReq, err := http.NewRequest("POST", ulUrl, ulSrc)
+	if err != nil {
+		return err
+	}
+	ulReq.ContentLength = ulStat.Size()
+	ulReq.Header.Set("X-Companion-Secret", dev.Secret)
+	ulReq.Header.Set("Content-Type", "application/octet-stream")
+	ulResp, err := client.Do(ulReq)
+	if err != nil {
+		return err
+	}
+	defer ulResp.Body.Close()
+	if ulResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to write companion file for rename (status %d)", ulResp.StatusCode)
+	}
+
+	_ = ProxyCompanionFileDelete(dev, oldPath)
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
+	return nil
+}
+
+// ProxyCompanionMkdir creates a directory on the companion device
+func ProxyCompanionMkdir(dev *CompanionDevice, phonePath string) error {
+	devIP := dev.IP
+	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+		return fmt.Errorf("companion device has no direct LAN IP")
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	// Try /mkdir endpoint
+	urlStr := fmt.Sprintf("http://%s:%d/mkdir?path=%s", devIP, port, url.QueryEscape(phonePath))
+	req, err := http.NewRequest("POST", urlStr, nil)
+	if err == nil {
+		req.Header.Set("X-Companion-Secret", dev.Secret)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				dev.LastSeen = time.Now()
+				dev.IsOnline = true
+				return nil
+			}
+		}
+	}
+
+	// Fallback: upload placeholder into path, which forces parent directory creation on phone
+	dummyPath := filepath.Join(phonePath, ".init")
+	ulUrl := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(dummyPath))
+	ulReq, err := http.NewRequest("POST", ulUrl, strings.NewReader(""))
+	if err != nil {
+		return err
+	}
+	ulReq.Header.Set("X-Companion-Secret", dev.Secret)
+	client := &http.Client{Timeout: 5 * time.Second}
+	ulResp, err := client.Do(ulReq)
+	if err != nil {
+		return err
+	}
+	defer ulResp.Body.Close()
+	_ = ProxyCompanionFileDelete(dev, dummyPath)
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
+	return nil
+}
+
+// ProxyCompanionUploadStream streams content to the companion device at phonePath
+func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader io.Reader, size int64) error {
+	devIP := dev.IP
+	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+		return fmt.Errorf("companion device has no direct LAN IP")
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	urlStr := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(phonePath))
+	req, err := http.NewRequest("POST", urlStr, reader)
+	if err != nil {
+		return err
+	}
+	if size >= 0 {
+		req.ContentLength = size
+	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	client := &http.Client{Timeout: 60 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
+	}
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
+	return nil
+}
+
+// ProxyCompanionUploadFile uploads a local file to the companion device at phonePath
+func ProxyCompanionUploadFile(dev *CompanionDevice, localPath, phonePath string) error {
+	f, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	return ProxyCompanionUploadStream(dev, phonePath, f, st.Size())
+}
+
+// DownloadCompanionItemToLocal downloads a companion device file or folder into a local filesystem path
+func DownloadCompanionItemToLocal(ctx context.Context, companionSrc, localDst string) error {
+	h := &companionIOHandlerImpl{}
+	return h.CopyFromCompanion(ctx, companionSrc, localDst, "overwrite", nil)
+}
+
 func probeCompanionOnline(dev *CompanionDevice) {
 	// 1. Check WebSocket connection
 	companionWSMu.RLock()
@@ -464,13 +686,7 @@ func probeCompanionOnline(dev *CompanionDevice) {
 		return
 	}
 
-	// 2. If seen recently (under 3 minutes), consider online
-	if time.Since(dev.LastSeen) <= 3*time.Minute {
-		dev.IsOnline = true
-		return
-	}
-
-	// 3. Proactive LAN check on port 8765
+	// 2. Proactive LAN check on port 8765
 	devIP := dev.IP
 	if devIP != "" && devIP != "Local Device" && devIP != "Local" && !strings.HasPrefix(devIP, "127.") {
 		port := dev.Port
@@ -487,8 +703,41 @@ func probeCompanionOnline(dev *CompanionDevice) {
 		}
 	}
 
+	// 3. If seen recently (under 75 seconds - two sync intervals), consider online
+	if time.Since(dev.LastSeen) <= 75*time.Second {
+		dev.IsOnline = true
+		return
+	}
+
 	dev.IsOnline = false
 }
+
+// IsCompanionFolderVisible returns true if the folder corresponds to an online companion device.
+// If the companion device is offline or the folder does not belong to any active companion, returns false.
+func IsCompanionFolderVisible(folderPath string) bool {
+	companionMu.Lock()
+	defer companionMu.Unlock()
+	loadCompanionDevicesLocked()
+
+	cleanFolder := filepath.Clean(folderPath)
+	base := filepath.Clean(getCompanionStorageBasePath())
+	if cleanFolder == base {
+		return true
+	}
+
+	for _, dev := range companionDevices {
+		if dev.StoragePath != "" && filepath.Clean(dev.StoragePath) == cleanFolder {
+			probeCompanionOnline(dev)
+			return dev.IsOnline
+		}
+		if dev.Name != "" && filepath.Clean(filepath.Join(base, sanitizeFilename(dev.Name))) == cleanFolder {
+			probeCompanionOnline(dev)
+			return dev.IsOnline
+		}
+	}
+	return false
+}
+
 
 // GET /v1/companion/devices
 func GetCompanionDevices(ctx echo.Context) error {
@@ -558,13 +807,6 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		}
 	}
 
-	sanitized := sanitizeFilename(input.Name)
-	if sanitized == "" {
-		sanitized = input.ID
-	}
-	devStoragePath := filepath.Join(getCompanionStorageBasePath(), sanitized)
-	os.MkdirAll(devStoragePath, 0755)
-
 	resolvedIP := input.IP
 	if resolvedIP == "" || resolvedIP == "Local Device" || resolvedIP == "Local" || strings.HasPrefix(resolvedIP, "127.") {
 		resolvedIP = realIP
@@ -611,9 +853,64 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 			matchedDev.ID = input.ID
 			companionDevices[input.ID] = matchedDev
 		}
-		if input.Name != "" {
-			matchedDev.Name = input.Name
+
+		inputIsUserRenamed := false
+		if input.CustomProps != nil {
+			if ur, ok := input.CustomProps["user_renamed"].(bool); ok && ur {
+				inputIsUserRenamed = true
+			}
 		}
+
+		devIsUserRenamed := false
+		if matchedDev.CustomProps != nil {
+			if ur, ok := matchedDev.CustomProps["user_renamed"].(bool); ok && ur {
+				devIsUserRenamed = true
+			}
+		}
+
+		// Only rename the existing device if:
+		// 1) The incoming request was explicitly user_renamed from client, OR
+		// 2) The existing device was never user-renamed and incoming has a different non-empty name
+		shouldRename := false
+		if inputIsUserRenamed && input.Name != "" && input.Name != matchedDev.Name {
+			shouldRename = true
+		} else if !devIsUserRenamed && input.Name != "" && input.Name != matchedDev.Name {
+			shouldRename = true
+		}
+
+		if shouldRename {
+			oldPath := matchedDev.StoragePath
+			newSanitized := sanitizeFilename(input.Name)
+			if newSanitized == "" {
+				newSanitized = matchedDev.ID
+			}
+			newPath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
+			if oldPath != "" && oldPath != newPath {
+				if _, err := os.Stat(oldPath); err == nil {
+					os.Rename(oldPath, newPath)
+				}
+			}
+			os.MkdirAll(newPath, 0755)
+			matchedDev.Name = input.Name
+			matchedDev.StoragePath = newPath
+			if inputIsUserRenamed {
+				if matchedDev.CustomProps == nil {
+					matchedDev.CustomProps = make(map[string]interface{})
+				}
+				matchedDev.CustomProps["user_renamed"] = true
+			}
+		} else {
+			// Device name is preserved! Ensure its existing storage path exists.
+			if matchedDev.StoragePath == "" {
+				sanitized := sanitizeFilename(matchedDev.Name)
+				if sanitized == "" {
+					sanitized = matchedDev.ID
+				}
+				matchedDev.StoragePath = filepath.Join(getCompanionStorageBasePath(), sanitized)
+			}
+			os.MkdirAll(matchedDev.StoragePath, 0755)
+		}
+
 		if input.Model != "" {
 			matchedDev.Model = input.Model
 		}
@@ -643,11 +940,22 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		}
 		matchedDev.IsOnline = true
 		matchedDev.LastSeen = now
-		matchedDev.StoragePath = devStoragePath
 		if input.CustomProps != nil {
-			matchedDev.CustomProps = input.CustomProps
+			if matchedDev.CustomProps == nil {
+				matchedDev.CustomProps = make(map[string]interface{})
+			}
+			for k, v := range input.CustomProps {
+				matchedDev.CustomProps[k] = v
+			}
 		}
 	} else {
+		newSanitized := sanitizeFilename(input.Name)
+		if newSanitized == "" {
+			newSanitized = input.ID
+		}
+		devStoragePath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
+		os.MkdirAll(devStoragePath, 0755)
+
 		newDev := &CompanionDevice{
 			ID:            input.ID,
 			Name:          input.Name,
@@ -673,11 +981,20 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 
 	registered := companionDevices[input.ID]
 	if registered.Secret == "" {
-		secret, err := generateCompanionSecret()
-		if err != nil {
-			logger.Error("failed to generate companion device secret", zap.Error(err))
-		} else {
-			registered.Secret = secret
+		if headerSecret := ctx.Request().Header.Get("X-Companion-Secret"); headerSecret != "" {
+			registered.Secret = headerSecret
+		} else if input.CustomProps != nil {
+			if propSecret, ok := input.CustomProps["secret"].(string); ok && propSecret != "" {
+				registered.Secret = propSecret
+			}
+		}
+		if registered.Secret == "" {
+			secret, err := generateCompanionSecret()
+			if err != nil {
+				logger.Error("failed to generate companion device secret", zap.Error(err))
+			} else {
+				registered.Secret = secret
+			}
 		}
 	}
 
@@ -731,13 +1048,22 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 	if update.Name != "" && update.Name != dev.Name {
 		oldPath := dev.StoragePath
 		newSanitized := sanitizeFilename(update.Name)
+		if newSanitized == "" {
+			newSanitized = dev.ID
+		}
 		newPath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
 		if oldPath != "" && oldPath != newPath {
-			os.Rename(oldPath, newPath)
+			if _, err := os.Stat(oldPath); err == nil {
+				os.Rename(oldPath, newPath)
+			}
 		}
 		os.MkdirAll(newPath, 0755)
 		dev.Name = update.Name
 		dev.StoragePath = newPath
+		if dev.CustomProps == nil {
+			dev.CustomProps = make(map[string]interface{})
+		}
+		dev.CustomProps["user_renamed"] = true
 	}
 
 	if update.StorageTotal > 0 {
@@ -750,7 +1076,12 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 		dev.BatteryLevel = update.BatteryLevel
 	}
 	if update.CustomProps != nil {
-		dev.CustomProps = update.CustomProps
+		if dev.CustomProps == nil {
+			dev.CustomProps = make(map[string]interface{})
+		}
+		for k, v := range update.CustomProps {
+			dev.CustomProps[k] = v
+		}
 	}
 
 	saveCompanionDevicesLocked()
@@ -776,17 +1107,35 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
 
-	if _, exists := companionDevices[id]; !exists {
+	dev, exists := companionDevices[id]
+	if !exists {
 		return ctx.JSON(http.StatusNotFound, model.Result{
 			Success: common_err.SERVICE_ERROR,
 			Message: "companion device not found",
 		})
 	}
 
+	// 1. Remove storage folder on disk if detached or unpaired
+	base := getCompanionStorageBasePath()
+	cleanBase := filepath.Clean(base)
+	if dev.StoragePath != "" {
+		cleanStorage := filepath.Clean(dev.StoragePath)
+		if cleanStorage != cleanBase && strings.HasPrefix(cleanStorage, cleanBase) {
+			os.RemoveAll(cleanStorage)
+		}
+	}
+	if dev.Name != "" {
+		namePath := filepath.Clean(filepath.Join(base, sanitizeFilename(dev.Name)))
+		if namePath != cleanBase && strings.HasPrefix(namePath, cleanBase) {
+			os.RemoveAll(namePath)
+		}
+	}
+
+	// 2. Remove device from map and save
 	delete(companionDevices, id)
 	saveCompanionDevicesLocked()
 
-	// Close any active WS connection
+	// 3. Close any active WS connection
 	companionWSMu.Lock()
 	if ws, ok := companionWSConns[id]; ok {
 		ws.Close()
@@ -1116,4 +1465,310 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 	}
 
 	return nil
+}
+
+type companionIOHandlerImpl struct{}
+
+func (h *companionIOHandlerImpl) IsCompanionPath(p string) bool {
+	cleanP := filepath.Clean(p)
+	base := getCompanionStorageBasePath()
+	if cleanP == base || strings.HasPrefix(cleanP, base+"/") {
+		return true
+	}
+	dev, _ := GetCompanionDeviceByStoragePath(cleanP)
+	return dev != nil
+}
+
+func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, error) {
+	dev, phonePath := GetCompanionDeviceByStoragePath(p)
+	if dev == nil || dev.IP == "" {
+		return 0, fmt.Errorf("companion device not found or offline")
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	items, err := FetchCompanionFilesFromDevice(dev, phonePath)
+	if err == nil && len(items) > 0 {
+		var total int64 = 0
+		for _, it := range items {
+			total += it.Size
+		}
+		return total, nil
+	}
+	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", dev.IP, port, url.QueryEscape(phonePath))
+	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
+	req.Header.Set("Range", "bytes=0-0")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if cr := resp.Header.Get("Content-Range"); cr != "" {
+		if idx := strings.LastIndex(cr, "/"); idx != -1 {
+			if s, err := strconv.ParseInt(cr[idx+1:], 10, 64); err == nil {
+				return s, nil
+			}
+		}
+	}
+	if resp.ContentLength > 0 {
+		return resp.ContentLength, nil
+	}
+	return 0, nil
+}
+
+func isCompanionFile(dev *CompanionDevice, phonePath string) bool {
+	devIP := dev.IP
+	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+		return false
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
+	req.Header.Set("Range", "bytes=0-0")
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent
+}
+
+func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companionSrc, dst, style string, onProgress func(int64)) error {
+	dev, phonePath := GetCompanionDeviceByStoragePath(companionSrc)
+	if dev == nil {
+		return fmt.Errorf("device not found for path: %s", companionSrc)
+	}
+
+	// 1. Check if source path is a file on the companion device
+	if isCompanionFile(dev, phonePath) {
+		targetFile := dst
+		dinfo, statErr := os.Stat(dst)
+		if (statErr == nil && dinfo.IsDir()) || strings.HasSuffix(dst, "/") {
+			targetFile = filepath.Join(dst, filepath.Base(companionSrc))
+		}
+		return h.downloadFileFromCompanion(ctx, dev, phonePath, targetFile, style, onProgress)
+	}
+
+	// 2. Otherwise treat as directory
+	files, err := FetchCompanionFilesFromDevice(dev, phonePath)
+	if err == nil {
+		targetDir := dst
+		dinfo, statErr := os.Stat(dst)
+		if (statErr == nil && dinfo.IsDir()) || strings.HasSuffix(dst, "/") {
+			targetDir = filepath.Join(dst, filepath.Base(companionSrc))
+		}
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			return err
+		}
+		for _, it := range files {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			childSrc := filepath.Join(companionSrc, it.Name)
+			if it.IsDir {
+				if err := h.CopyFromCompanion(ctx, childSrc, targetDir, style, onProgress); err != nil {
+					logger.Error("CopyFromCompanion recursive error", zap.Error(err))
+				}
+			} else {
+				childDst := filepath.Join(targetDir, it.Name)
+				if err := h.downloadFileFromCompanion(ctx, dev, it.Path, childDst, style, onProgress); err != nil {
+					logger.Error("CopyFromCompanion file download error", zap.Error(err))
+				}
+			}
+		}
+		return nil
+	}
+
+	// 3. Fallback: attempt single file download
+	targetFile := dst
+	dinfo, statErr := os.Stat(dst)
+	if (statErr == nil && dinfo.IsDir()) || strings.HasSuffix(dst, "/") {
+		targetFile = filepath.Join(dst, filepath.Base(companionSrc))
+	}
+	return h.downloadFileFromCompanion(ctx, dev, phonePath, targetFile, style, onProgress)
+}
+
+func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, dev *CompanionDevice, phonePath, targetFile, style string, onProgress func(int64)) error {
+	if style == "skip" && file.Exists(targetFile) {
+		return nil
+	}
+	// If a directory with the exact same name was erroneously created previously, remove it
+	if fi, statErr := os.Stat(targetFile); statErr == nil && fi.IsDir() {
+		_ = os.RemoveAll(targetFile)
+	}
+	if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
+		return err
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s&download=1", dev.IP, port, url.QueryEscape(phonePath))
+	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Companion-Secret", dev.Secret)
+	client := &http.Client{Timeout: 60 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("companion download failed with status %d", resp.StatusCode)
+	}
+
+	out, err := os.OpenFile(targetFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	var written int64
+	buf := make([]byte, 64*1024)
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		n, readErr := resp.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			written += int64(n)
+			if onProgress != nil {
+				onProgress(written)
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			return readErr
+		}
+	}
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
+	return nil
+}
+
+func (h *companionIOHandlerImpl) CopyToCompanion(ctx context.Context, src, companionDst, style string, onProgress func(int64)) error {
+	dev, phoneDestDir := GetCompanionDeviceByStoragePath(companionDst)
+	if dev == nil {
+		return fmt.Errorf("companion device not found for target %s", companionDst)
+	}
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if srcInfo.IsDir() {
+		baseDirName := filepath.Base(src)
+		return filepath.Walk(src, func(currentPath string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil || ctx.Err() != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(src, currentPath)
+			if err != nil {
+				return err
+			}
+			targetPhonePath := filepath.Join(phoneDestDir, baseDirName, rel)
+			return h.uploadFileToCompanion(ctx, dev, currentPath, targetPhonePath, onProgress)
+		})
+	}
+	targetPhonePath := filepath.Join(phoneDestDir, filepath.Base(src))
+	return h.uploadFileToCompanion(ctx, dev, src, targetPhonePath, onProgress)
+}
+
+func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev *CompanionDevice, localSrc, targetPhonePath string, onProgress func(int64)) error {
+	srcFile, err := os.Open(localSrc)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	srcStat, _ := srcFile.Stat()
+	fileSize := srcStat.Size()
+
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	urlStr := fmt.Sprintf("http://%s:%d/upload?path=%s", dev.IP, port, url.QueryEscape(targetPhonePath))
+
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		buf := make([]byte, 64*1024)
+		var sent int64
+		for {
+			if ctx.Err() != nil {
+				pw.CloseWithError(ctx.Err())
+				return
+			}
+			n, rErr := srcFile.Read(buf)
+			if n > 0 {
+				if _, wErr := pw.Write(buf[:n]); wErr != nil {
+					return
+				}
+				sent += int64(n)
+				if onProgress != nil {
+					onProgress(sent)
+				}
+			}
+			if rErr != nil {
+				return
+			}
+		}
+	}()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, pr)
+	if err != nil {
+		return err
+	}
+	req.ContentLength = fileSize
+	req.Header.Set("X-Companion-Secret", dev.Secret)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	client := &http.Client{Timeout: 60 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
+	}
+	dev.LastSeen = time.Now()
+	dev.IsOnline = true
+	return nil
+}
+
+func (h *companionIOHandlerImpl) DeleteCompanionPath(ctx context.Context, p string) error {
+	dev, phonePath := GetCompanionDeviceByStoragePath(p)
+	if dev == nil {
+		return fmt.Errorf("companion device not found for path: %s", p)
+	}
+	return ProxyCompanionFileDelete(dev, phonePath)
+}
+
+func init() {
+	service.CompanionHandler = &companionIOHandlerImpl{}
 }

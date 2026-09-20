@@ -15,7 +15,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -199,16 +198,48 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	}
 }
 
+type CompanionIOHandler interface {
+	IsCompanionPath(path string) bool
+	GetSize(ctx context.Context, path string) (int64, error)
+	CopyFromCompanion(ctx context.Context, companionSrc, dst, style string, onProgress func(processed int64)) error
+	CopyToCompanion(ctx context.Context, src, companionDst, style string, onProgress func(processed int64)) error
+	DeleteCompanionPath(ctx context.Context, path string) error
+}
+
+var (
+	CompanionHandler CompanionIOHandler
+	runningFileOps   sync.Map
+)
+
+func updateOperateItemProgress(taskId string, itemIndex int, processed int64) {
+	item, ok := FileQueue.Load(taskId)
+	if !ok {
+		return
+	}
+	cur := item.(model.FileOperate)
+	if itemIndex < len(cur.Item) {
+		cur.Item[itemIndex].ProcessedSize = processed
+		var total int64 = 0
+		for _, it := range cur.Item {
+			total += it.ProcessedSize
+		}
+		cur.ProcessedSize = total
+		FileQueue.Store(taskId, cur)
+	}
+}
+
 func FileOperate(k string) {
+	if _, loaded := runningFileOps.LoadOrStore(k, true); loaded {
+		return
+	}
+	defer runningFileOps.Delete(k)
+
 	list, ok := FileQueue.Load(k)
 	if !ok {
 		return
 	}
 
 	temp := list.(model.FileOperate)
-	if temp.ProcessedSize > 0 {
-		return
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	OpCancelFuncs.Store(k, cancel)
@@ -224,58 +255,129 @@ func FileOperate(k string) {
 			break
 		}
 		v := temp.Item[i]
-		if temp.Type == "move" {
-			lastPath := v.From[strings.LastIndex(v.From, "/")+1:]
-			if !file.CheckNotExist(temp.To + "/" + lastPath) {
-				if temp.Style == "skip" {
-					temp.Item[i].Finished = true
-					continue
-				} else {
-					os.RemoveAll(temp.To + "/" + lastPath)
-				}
-			}
-			err := file.CopyDirCtx(ctx, v.From, temp.To, temp.Style)
-			if errors.Is(err, context.Canceled) {
-				cancelled = true
-				break
-			}
+		isFromCompanion := CompanionHandler != nil && CompanionHandler.IsCompanionPath(v.From)
+		isToCompanion := CompanionHandler != nil && CompanionHandler.IsCompanionPath(temp.To)
+
+		var opErr error
+		if isFromCompanion && isToCompanion {
+			// Companion -> Companion: stage into a temp directory preserving original filename
+			tmpDir, err := os.MkdirTemp("", "nivaroos-comp-xfer-*")
 			if err == nil {
-				err = os.RemoveAll(v.From)
-				if err != nil {
-					logger.Error("file move error", zap.Any("err", err))
-					err = file.MoveFile(v.From, temp.To+"/"+lastPath)
-					if err != nil {
-						logger.Error("MoveFile error", zap.Any("err", err))
-						continue
-					}
-
+				origName := filepath.Base(v.From)
+				stagedPath := filepath.Join(tmpDir, origName)
+				opErr = CompanionHandler.CopyFromCompanion(ctx, v.From, stagedPath, "overwrite", func(p int64) {
+					updateOperateItemProgress(k, i, p)
+				})
+				if opErr == nil {
+					opErr = CompanionHandler.CopyToCompanion(ctx, stagedPath, temp.To, temp.Style, func(p int64) {
+						updateOperateItemProgress(k, i, p)
+					})
 				}
+				_ = os.RemoveAll(tmpDir)
+			} else {
+				opErr = err
 			}
-
-		} else if temp.Type == "copy" {
-			err := file.CopyDirCtx(ctx, v.From, temp.To, temp.Style)
-			if errors.Is(err, context.Canceled) {
-				cancelled = true
-				break
+			if opErr == nil && temp.Type == "move" {
+				_ = CompanionHandler.DeleteCompanionPath(ctx, v.From)
 			}
-			if err != nil {
-				continue
+		} else if isFromCompanion {
+			// Companion -> Local / Cloud
+			opErr = CompanionHandler.CopyFromCompanion(ctx, v.From, temp.To, temp.Style, func(p int64) {
+				updateOperateItemProgress(k, i, p)
+			})
+			if opErr == nil && temp.Type == "move" {
+				_ = CompanionHandler.DeleteCompanionPath(ctx, v.From)
+			}
+		} else if isToCompanion {
+			// Local / Cloud -> Companion
+			opErr = CompanionHandler.CopyToCompanion(ctx, v.From, temp.To, temp.Style, func(p int64) {
+				updateOperateItemProgress(k, i, p)
+			})
+			if opErr == nil && temp.Type == "move" {
+				_ = os.RemoveAll(v.From)
 			}
 		} else {
-			continue
+			// Standard local <-> local, local <-> cloud, cloud <-> cloud
+			lastPath := filepath.Base(v.From)
+			destItemPath := filepath.Join(temp.To, lastPath)
+			if temp.Type == "move" {
+				if !file.CheckNotExist(destItemPath) {
+					if temp.Style == "skip" {
+						temp.Item[i].Finished = true
+						continue
+					} else {
+						if dinfo, statErr := os.Stat(destItemPath); statErr == nil && !dinfo.IsDir() {
+							_ = os.Remove(destItemPath)
+						}
+					}
+				}
+				// Try fast filesystem rename first (instantaneous on same disk or rclone remote)
+				if renameErr := os.Rename(v.From, destItemPath); renameErr == nil {
+					temp.Item[i].Finished = true
+					continue
+				}
+				opErr = file.CopyDirCtx(ctx, v.From, temp.To, temp.Style)
+				if errors.Is(opErr, context.Canceled) {
+					cancelled = true
+					break
+				}
+				if opErr == nil {
+					removeErr := os.RemoveAll(v.From)
+					if removeErr != nil {
+						logger.Error("file move RemoveAll error, attempting MoveFile", zap.Error(removeErr))
+						moveErr := file.MoveFile(v.From, destItemPath)
+						if moveErr != nil {
+							logger.Error("MoveFile error", zap.Error(moveErr))
+							continue
+						}
+					}
+				}
+			} else if temp.Type == "copy" {
+				if filepath.Clean(temp.To) == filepath.Clean(filepath.Dir(v.From)) {
+					// Duplicate in same folder: create non-conflicting name (e.g. file (copy).ext)
+					dupPath := file.GenerateDuplicatePath(temp.To, lastPath)
+					srcInfo, statErr := os.Stat(v.From)
+					if statErr == nil {
+						if srcInfo.IsDir() {
+							opErr = file.CopyDirCtx(ctx, v.From, filepath.Dir(dupPath), temp.Style)
+							_ = os.Rename(filepath.Join(temp.To, lastPath), dupPath)
+						} else {
+							opErr = file.CopySingleFile(v.From, dupPath, "overwrite")
+						}
+					} else {
+						opErr = statErr
+					}
+				} else {
+					opErr = file.CopyDirCtx(ctx, v.From, temp.To, temp.Style)
+				}
+				if errors.Is(opErr, context.Canceled) {
+					cancelled = true
+					break
+				}
+				if opErr != nil {
+					logger.Error("file copy error", zap.Error(opErr))
+					continue
+				}
+			} else {
+				continue
+			}
 		}
 
+		if errors.Is(opErr, context.Canceled) {
+			cancelled = true
+			break
+		}
+
+		if opErr == nil {
+			temp.Item[i].Finished = true
+			if temp.Item[i].Size > 0 {
+				temp.Item[i].ProcessedSize = temp.Item[i].Size
+			}
+		}
 	}
 	temp.Finished = true
 	temp.Cancelled = cancelled
 	FileQueue.Store(k, temp)
-	// CheckFileStatus/SendFileOperateNotify's own loop only samples progress
-	// every 3s - without this, a small/fast operation that finishes well
-	// inside that window sits in a silent gap where it's already done on
-	// disk but the UI hasn't been told yet, making it look like the paste/
-	// upload never completed. Pinging immediately on actual completion
-	// closes that gap; the poll loop still owns in-progress percentage
-	// updates for slower operations.
 	go MyService.Notify().SendFileOperateNotify(true)
 }
 
@@ -310,7 +412,13 @@ func ComputeOperateSizes(uid string) {
 	sizes := make([]int64, len(temp.Item))
 	var total int64 = 0
 	for i := range temp.Item {
-		size, err := file.GetFileOrDirSize(temp.Item[i].From)
+		var size int64 = 0
+		var err error
+		if CompanionHandler != nil && CompanionHandler.IsCompanionPath(temp.Item[i].From) {
+			size, err = CompanionHandler.GetSize(context.Background(), temp.Item[i].From)
+		} else {
+			size, err = file.GetFileOrDirSize(temp.Item[i].From)
+		}
 		if err != nil {
 			size = 0
 		}
@@ -341,14 +449,7 @@ func ComputeOperateSizes(uid string) {
 
 // checkFileStatusPollInterval controls both how often CheckFileStatus
 // re-measures destination size and how often that progress is broadcast to
-// the UI. It used to be 3s with nothing broadcasting in between at all (see
-// the removed-call note below) - even after fixing that, 3s is still far
-// coarser than a real copy dialog: most everyday copies (a few hundred MB on
-// local SSD/same-host storage) land well inside a single 3s window, so the
-// UI would still only ever see "Preparing" then "Done" with nothing shown
-// between them. 400ms keeps multiple samples in flight for those common
-// cases while staying cheap - each tick's cost is a recursive stat-based
-// size walk of every unfinished item's destination path, not a full re-copy.
+// the UI.
 const checkFileStatusPollInterval = 400 * time.Millisecond
 
 // file move or copy and send notify
@@ -372,14 +473,17 @@ func CheckFileStatus() {
 			prevProcessed := temp.ProcessedSize
 			for i := 0; i < len(temp.Item); i++ {
 				if !temp.Item[i].Finished {
-					size, err := file.GetFileOrDirSize(temp.To + "/" + filepath.Base(temp.Item[i].From))
+					if CompanionHandler != nil && (CompanionHandler.IsCompanionPath(temp.To) || CompanionHandler.IsCompanionPath(temp.Item[i].From)) {
+						total += temp.Item[i].ProcessedSize
+						continue
+					}
+					targetPath := filepath.Join(temp.To, filepath.Base(temp.Item[i].From))
+					size, err := file.GetFileOrDirSize(targetPath)
 					if err != nil {
+						total += temp.Item[i].ProcessedSize
 						continue
 					}
 					temp.Item[i].ProcessedSize = size
-					if size == temp.Item[i].Size {
-						temp.Item[i].Finished = true
-					}
 					total += size
 				} else {
 					total += temp.Item[i].ProcessedSize
@@ -393,15 +497,6 @@ func CheckFileStatus() {
 			}
 			FileQueue.Store(v, temp)
 		}
-		// This loop was only ever updating FileQueue for itself to read back
-		// later - nothing broadcast these intermediate samples to the UI, so
-		// the only notify events a client ever received were the initial
-		// "queued, size unknown" one (PostOperateFileOrDir) and the final
-		// "finished" one (FileOperate) - i.e. exactly the "stuck on
-		// Preparing, then jumps straight to Done" symptom, regardless of how
-		// long the operation actually took. Broadcasting the freshly-sampled
-		// progress/speed here on every tick is what actually makes this a
-		// live progress bar.
 		go MyService.Notify().SendFileOperateNotify(true)
 		time.Sleep(checkFileStatusPollInterval)
 	}

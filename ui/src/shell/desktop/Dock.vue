@@ -646,7 +646,7 @@ export default {
 		border: $backDropBorder;
 		/* left as-is, matches .dock's outer radius above */
 		border-radius: 22px;
-		box-shadow: var(--shadow-lg), $backDropShadow;
+		box-shadow: var(--theme-desktop-glass-shadow, 0 8px 24px rgba(0, 0, 0, 0.12));
 		z-index: 0;
 		pointer-events: none;
 	}
@@ -657,7 +657,7 @@ export default {
 	z-index: 1;
 	align-self: stretch;
 	width: 1px;
-	background: rgba(255, 255, 255, 0.15);
+	background: var(--theme-desktop-glass-border, rgba(255, 255, 255, 0.15));
 	/* 0.15rem kept as-is: hairline separator nudge, rounding to --space-1 would nearly double it */
 	margin: var(--space-1) 0.15rem;
 }
@@ -697,8 +697,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.4);
-	color: #fff;
+	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.4));
+	color: var(--theme-text-primary, #fff);
 }
 
 .dock-dot {
@@ -709,7 +709,7 @@ export default {
 	width: 5px;
 	height: 5px;
 	border-radius: 50%;
-	background: $white;
+	background: var(--theme-desktop-glass-dot, #ffffff);
 
 	&.minimized {
 		opacity: 0.4;

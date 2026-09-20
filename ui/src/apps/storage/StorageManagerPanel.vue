@@ -445,26 +445,14 @@ export default {
 				console.log(e)
 			}
 
-			this.$buefy.modal.open({
-				parent: this,
-				component: () => import('@/apps/storage/MergeStorages.vue'),
-				hasModalCard: true,
-				trapFocus: true,
-				ariaModal: true,
-				canCancel: ['escape'],
-				onCancel: () => {
-					this.$EventBus.$emit(events.REFRESH_DISKLIST);
-				},
-				events: {
-					close: () => {
-						this.$EventBus.$emit(events.REFRESH_DISKLIST);
-					}
-				},
-				props: {
-					mergeStorageList
-				}
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'merge-storages',
+				title: this.$t('Merge Storages'),
+				component: 'MergeStorages',
+				props: { mergeStorageList },
+				width: 480,
+				height: 560
 			})
-
 		},
 
 		/**

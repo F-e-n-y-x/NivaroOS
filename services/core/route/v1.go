@@ -78,6 +78,7 @@ func InitV1Router() http.Handler {
 
 			v1SysGroup.POST("/update", v1.SystemUpdate)
 			v1SysGroup.GET("/packages/check", v1.GetSystemPackageUpdates)
+			v1SysGroup.GET("/packages/upgrades", v1.GetSystemPackageUpdates)
 			v1SysGroup.POST("/packages/refresh", v1.PostRefreshPackageUpdates)
 			v1SysGroup.POST("/packages/upgrade", v1.PostSystemPackageUpgrade)
 			v1SysGroup.GET("/packages/upgrade/status", v1.GetSystemPackageUpgradeStatus)
@@ -133,6 +134,7 @@ func InitV1Router() http.Handler {
 			v1SysGroup.GET("/proxy", v1.GetSystemProxy)
 			v1SysGroup.PUT("/state/:state", v1.PutSystemState)
 			v1SysGroup.GET("/entry", v1.GetSystemEntry)
+			v1SysGroup.GET("/speedtest", v1.GetSystemSpeedTest)
 		}
 		v1PortGroup := v1Group.Group("/port")
 		v1PortGroup.Use()
@@ -158,6 +160,8 @@ func InitV1Router() http.Handler {
 			// v1FileGroup.POST("/upload", v1.PostFileUpload)
 			v1FileGroup.POST("/upload", v1.PostFileUpload)
 			v1FileGroup.GET("/upload", v1.GetFileUpload)
+			v1FileGroup.POST("/copy", v1.PostFileCopy)
+			v1FileGroup.POST("/move", v1.PostFileMove)
 			// v1FileGroup.GET("/download", v1.UserFileDownloadCommonService)
 			v1FileGroup.GET("/ws", v1.ConnectWebSocket)
 			v1FileGroup.GET("/peers", v1.GetPeers)

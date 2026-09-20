@@ -22,7 +22,7 @@
 import CasaWallpaper from '@/shell/wallpaper/CasaWallpaper.vue'
 import WindowManager from '@/shell/desktop/WindowManager.vue'
 import {mixin}       from './mixins/mixin';
-import { initTheme, applyTheme } from './utils/theme';
+import { initTheme, applyTheme, THEME_MODES } from './utils/theme';
 
 const customIconConfig = {
 	customIconPacks: {
@@ -148,7 +148,7 @@ _____             _____ _____
 						document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
 						localStorage.setItem('uiBackdropBlur', data.appearance.blur)
 					}
-					if (data.appearance.theme) {
+					if (data.appearance.theme && Object.values(THEME_MODES).includes(data.appearance.theme)) {
 						applyTheme(data.appearance.theme)
 					}
 				}
@@ -222,7 +222,7 @@ opaque/white by default (no see-through glass) - lower the alpha
 slider there if some transparency is wanted instead. */
 :root {
 	--ui-backdrop-alpha: 0.4;
-	--ui-backdrop-blur: 5px;
+	--ui-backdrop-blur: 16px;
 }
 
 </style>

@@ -1,38 +1,59 @@
 <template>
-	<div class="widget has-text-white disk is-relative">
+	<div class="widget disk is-relative">
 		<div class="blur-background"></div>
 		<div class="widget-content">
 			<!-- Header Start -->
-			<div class="widget-header is-flex">
-				<div class="widget-title is-flex-grow-1">
-					{{ $t('Storage') }}
+			<div class="widget-header">
+				<div class="widget-header-left">
+					<div class="widget-badge is-disks">
+						<i class="mdi mdi-database-outline"></i>
+					</div>
+					<div class="widget-header-text">
+						<span class="widget-title">{{ $t('Storage') }}</span>
+						<span class="widget-header-meta">
+							{{ visibleDisks.length }} {{ visibleDisks.length === 1 ? $t('Drive Mounted') : $t('Drives Mounted') }}
+						</span>
+					</div>
 				</div>
-				<div class="widget-icon-button is-flex-shrink-0" @click="showDiskManagement">
-					<b-icon icon="settings-outline" pack="casa" size="is-20"></b-icon>
+				<div class="widget-header-right">
+					<div class="widget-icon-btn" :title="$t('Storage Settings')" @click="showDiskManagement">
+						<i class="mdi mdi-cog-outline"></i>
+					</div>
 				</div>
 			</div>
 			<!-- Header End -->
 
-			<!-- Unified Disks & USB Drives List -->
-			<div class="columns is-mobile is-multiline pt-2">
-				<p v-if="!visibleDisks.length" class="disk-info no-disks column is-full">{{ $t('No drives to show.') }}</p>
-				<div v-for="d in visibleDisks" :key="d.mount_point" class="column is-full pb-0 mb-2">
-					<div class="is-flex is-align-items-center">
-						<div class="header-icon is-flex-shrink-0">
-							<b-image :src="d.is_usb ? require('@/assets/img/storage/USB.svg') : require('@/assets/img/storage/storage.svg')" class="is-64x64"></b-image>
-						</div>
-						<div class="ml-2 is-flex-grow-1 min-w-0">
-							<h4 class="title is-size-14px mb-1 mt-0 has-text-left has-text-white one-line" :title="getDiskTitle(d)">
+			<!-- Unified Bento Disks & USB Drives List -->
+			<div class="disks-bento-list pt-1">
+				<div v-if="!visibleDisks.length" class="has-text-centered is-size-7 py-3 text-muted">
+					{{ $t('No storage drives found') }}
+				</div>
+				<div v-for="d in visibleDisks" :key="d.mount_point" class="disk-bento-card">
+					<div class="disk-card-top">
+						<div class="disk-card-left">
+							<span class="disk-type-pill" :class="d.is_usb ? 'is-usb' : 'is-internal'">
+								<i class="mdi" :class="d.is_usb ? 'mdi-usb' : 'mdi-harddisk'"></i>
+								{{ d.is_usb ? 'USB' : (d.mount_point === '/' ? 'System' : 'NVMe') }}
+							</span>
+							<span class="disk-name" :title="getDiskTitle(d)">
 								{{ getDiskTitle(d) }}
-							</h4>
-							<p class="has-text-left is-size-14px disk-info">
-								{{ $t('Used') }}: {{ d.used }}<br>
-								{{ $t('Total') }}: {{ d.total }}
-							</p>
+							</span>
 						</div>
+						<span class="disk-pct-badge">{{ percentValue(d.percent) }}%</span>
 					</div>
-					<b-progress :type="percentValue(d.percent) | getProgressType" :value="percentValue(d.percent)" class="mt-2"
-						size="is-small"></b-progress>
+
+					<div class="disk-track">
+						<div
+							class="disk-fill"
+							:class="getDiskBarClass(d.percent)"
+							:style="{ width: percentValue(d.percent) + '%' }"
+						></div>
+					</div>
+
+					<div class="disk-meta-row">
+						<span>{{ d.used }} / {{ d.total }}</span>
+						<span class="free-pill">{{ getFreeDisplay(d) }}</span>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -108,7 +129,7 @@ export default {
 		},
 
 		getDiskTitle(d) {
-			if (d.mount_point === '/') return this.$t('System')
+			if (d.mount_point === '/') return this.$t('System Root')
 			if (d.is_usb) {
 				if (d.model && d.label && d.label !== 'New Volume') {
 					return `${d.model} (${d.label})`
@@ -129,17 +150,34 @@ export default {
 			return parseInt(percent, 10) || 0
 		},
 
+		getDiskBarClass(percent) {
+			const p = parseInt(percent, 10) || 0
+			if (p >= 90) return 'is-danger'
+			if (p >= 75) return 'is-warning'
+			return 'is-normal'
+		},
+
+		getFreeDisplay(d) {
+			if (d.free) return `${d.free} ${this.$t('Free')}`
+			const freePct = 100 - this.percentValue(d.percent)
+			return `${freePct}% ${this.$t('Free')}`
+		},
+
 		showDiskManagement() {
 			this.$messageBus('widget_storagemanager');
 			this.$store.commit('OPEN_WINDOW', {
-				id: 'settings', title: this.$t('Settings'), component: 'SettingsApp', width: 760, height: 540,
-				props: { section: 'appearance' }
+				id: 'settings',
+				title: this.$t('Settings'),
+				component: 'SettingsApp',
+				width: 760,
+				height: 540,
+				props: { section: 'storage' }
 			})
 		},
 	},
 	sockets: {
 		"nivaroos:system:utilization"() {
-			// Periodically keep disks in sync when utilization ticks
+			// Kept in sync with system updates
 		},
 		"local-storage:disk:added"() {
 			this.refresh()
@@ -150,37 +188,3 @@ export default {
 	}
 }
 </script>
-
-<style lang="scss">
-.disk {
-	.progress {
-		border-radius: var(--radius-sm);
-		height: 12px;
-
-		&::-webkit-progress-bar {
-			background: rgba(172, 184, 195, 0.4);
-		}
-
-		&::-webkit-progress-value {
-			opacity: 1;
-			border-radius: var(--radius-sm);
-		}
-
-	}
-
-	.disk-info {
-		font-size: var(--font-base);
-		line-height: 1.25rem;
-		font-weight: 400;
-		color: $grey-400;
-	}
-
-	.no-disks {
-		padding: var(--space-2) 0;
-	}
-
-	.min-w-0 {
-		min-width: 0;
-	}
-}
-</style>

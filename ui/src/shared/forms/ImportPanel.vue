@@ -86,7 +86,14 @@ export default {
   props: {
     netWorks: Array,
     oriNetWorks: Array,
-    deviceMemory: Number
+    deviceMemory: Number,
+    // Called directly when opened as a standalone desktop window - the
+    // shared window chrome only forwards close/minimize, not custom
+    // business events like 'update'.
+    onUpdate: {
+      type: Function,
+      default: null
+    }
   },
   methods: {
     /**
@@ -100,11 +107,13 @@ export default {
         this.dockerComposeCommands = composerize(cleanedCommand);
         this.dockerComposeCommands = this.addTitleToYaml(this.dockerComposeCommands)
         this.$emit('update', this.dockerComposeCommands)
+        if (typeof this.onUpdate === 'function') this.onUpdate(this.dockerComposeCommands)
         this.$emit('close')
       } else if (this.activeTab == 0) {
         this.dockerComposeCommands = this.addTitleToYaml(this.dockerComposeCommands)
         this.errors = ""
         this.$emit('update', this.dockerComposeCommands)
+        if (typeof this.onUpdate === 'function') this.onUpdate(this.dockerComposeCommands)
         this.$emit('close')
       } else if (this.activeTab == 2) {
         if (this.appFileLoaded) {

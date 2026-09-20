@@ -227,6 +227,7 @@ export default {
 				})
 				this.renameModalActive = false
 				this.fetchDevices()
+				this.$EventBus?.$emit('reload-file-list')
 			} catch (err) {
 				this.$buefy.toast.open({
 					message: this.$t('Failed to rename device: ') + (err.response?.data?.message || err.message),
@@ -251,6 +252,7 @@ export default {
 							type: 'is-success'
 						})
 						this.fetchDevices()
+						this.$EventBus?.$emit('reload-file-list')
 					} catch (err) {
 						this.$buefy.toast.open({
 							message: this.$t('Failed to remove device: ') + err.message,

@@ -75,6 +75,10 @@
 				<span class="ctx-label">{{ $t('Extract') }}</span>
 			</button>
 			<template v-if="item.is_dir">
+				<button v-if="hasClipboard" class="ctx-item" @click="act('paste-into')">
+					<i class="mdi mdi-content-paste ctx-icon"></i>
+					<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+				</button>
 				<div class="ctx-divider"></div>
 				<button class="ctx-item" @click="act('favorite')">
 					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
@@ -241,6 +245,9 @@ export default {
 					break
 				case 'paste':
 					this.$emit('paste')
+					break
+				case 'paste-into':
+					this.$emit('paste-into', this.item && this.item.path)
 					break
 				case 'select-all':
 					this.$emit('select-all')

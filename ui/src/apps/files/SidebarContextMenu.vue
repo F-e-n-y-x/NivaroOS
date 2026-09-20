@@ -22,6 +22,13 @@
 
 		<div class="ctx-divider"></div>
 
+		<template v-if="hasClipboard">
+			<button class="ctx-item" @click="act('paste-into')">
+				<i class="mdi mdi-content-paste ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Paste into folder') }}</span>
+			</button>
+		</template>
+
 		<button class="ctx-item" @click="act('toggle-favorite')">
 			<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
 			<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
@@ -69,6 +76,9 @@ export default {
 		}
 	},
 	computed: {
+		hasClipboard() {
+			return !!(this.$store.state.operateObject && this.$store.state.operateObject.item && this.$store.state.operateObject.item.length)
+		},
 		isFavorite() {
 			if (!this.item || !this.item.path) return false
 			const shortcuts = this.$store.state.shortcutData || []
@@ -128,6 +138,26 @@ export default {
 				return
 			}
 			switch (action) {
+				case 'paste-into':
+					if (this.item && this.item.path && this.$store.state.operateObject) {
+						const opObj = this.$store.state.operateObject
+						this.$api.batch
+							.task({ ...opObj, to: this.item.path, style: 'overwrite' })
+							.then((res) => {
+								if (res.data.success === 200) {
+									if (opObj.type === 'move') {
+										this.$store.commit('SET_OPERATE_OBJECT', null)
+									}
+									this.$EventBus.$emit(events.RELOAD_FILE_LIST)
+								} else {
+									this.$buefy.toast.open({
+										message: res.data.message,
+										type: 'is-danger',
+									})
+								}
+							})
+					}
+					break
 				case 'open':
 					if (this.filesController && this.filesController.navigate) {
 						this.filesController.navigate(this.item.path)

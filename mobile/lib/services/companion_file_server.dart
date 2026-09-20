@@ -144,6 +144,12 @@ class CompanionFileServer {
       } else if (path == '/delete') {
         if (!await _checkAuth(req)) return;
         await _handleDelete(req);
+      } else if (path == '/rename') {
+        if (!await _checkAuth(req)) return;
+        await _handleRename(req);
+      } else if (path == '/mkdir') {
+        if (!await _checkAuth(req)) return;
+        await _handleMkdir(req);
       } else {
         req.response.statusCode = HttpStatus.notFound;
         req.response.write(jsonEncode({'success': false, 'message': 'Not found'}));
@@ -339,6 +345,52 @@ class CompanionFileServer {
     await req.response.close();
   }
 
+  Future<void> _handleRename(HttpRequest req) async {
+    final oldPath = req.uri.queryParameters['old_path'];
+    final newPath = req.uri.queryParameters['new_path'];
+    if (oldPath == null || oldPath.isEmpty || newPath == null || newPath.isEmpty) {
+      req.response.statusCode = HttpStatus.badRequest;
+      req.response.write(jsonEncode({'success': false, 'message': 'old_path and new_path required'}));
+      await req.response.close();
+      return;
+    }
+    final file = File(oldPath);
+    if (file.existsSync()) {
+      await file.parent.create(recursive: true);
+      await file.rename(newPath);
+      req.response.headers.contentType = ContentType.json;
+      req.response.write(jsonEncode({'success': true, 'old_path': oldPath, 'new_path': newPath}));
+      await req.response.close();
+      return;
+    }
+    final dir = Directory(oldPath);
+    if (dir.existsSync()) {
+      await dir.rename(newPath);
+      req.response.headers.contentType = ContentType.json;
+      req.response.write(jsonEncode({'success': true, 'old_path': oldPath, 'new_path': newPath}));
+      await req.response.close();
+      return;
+    }
+    req.response.statusCode = HttpStatus.notFound;
+    req.response.write(jsonEncode({'success': false, 'message': 'path not found: $oldPath'}));
+    await req.response.close();
+  }
+
+  Future<void> _handleMkdir(HttpRequest req) async {
+    final dirPath = req.uri.queryParameters['path'];
+    if (dirPath == null || dirPath.isEmpty) {
+      req.response.statusCode = HttpStatus.badRequest;
+      req.response.write(jsonEncode({'success': false, 'message': 'path required'}));
+      await req.response.close();
+      return;
+    }
+    final dir = Directory(dirPath);
+    await dir.create(recursive: true);
+    req.response.headers.contentType = ContentType.json;
+    req.response.write(jsonEncode({'success': true, 'path': dirPath}));
+    await req.response.close();
+  }
+
   ContentType _getContentTypeForFile(String name) {
     final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
     switch (ext) {
@@ -520,32 +572,53 @@ class CompanionFileServer {
 
       if (action == 'list') {
         final queryPath = data['path'] as String? ?? defaultRootPath;
-        final dir = Directory(queryPath);
-        final List<Map<String, dynamic>> items = [];
-        if (dir.existsSync()) {
-          final entities = dir.listSync(followLinks: false);
-          for (final entity in entities) {
-            try {
-              final isDir = entity is Directory;
-              final stat = entity.statSync();
-              final name = entity.path.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
-              items.add({
-                'name': name,
-                'path': entity.path,
-                'is_dir': isDir,
-                'size': isDir ? 0 : stat.size,
-                'modified': stat.modified.toUtc().toIso8601String(),
-              });
-            } catch (_) {}
-          }
-          items.sort((a, b) {
-            final aDir = a['is_dir'] as bool;
-            final bDir = b['is_dir'] as bool;
-            if (aDir && !bDir) return -1;
-            if (!aDir && bDir) return 1;
-            return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
-          });
+        final fileEntity = File(queryPath);
+        if (fileEntity.existsSync()) {
+          _ws?.add(jsonEncode({
+            'id': reqId,
+            'action': 'list_response',
+            'success': false,
+            'is_file': true,
+            'message': 'Path is a file: $queryPath',
+            'files': [],
+          }));
+          return;
         }
+        final dir = Directory(queryPath);
+        if (!dir.existsSync()) {
+          _ws?.add(jsonEncode({
+            'id': reqId,
+            'action': 'list_response',
+            'success': false,
+            'is_file': false,
+            'message': 'Directory not found: $queryPath',
+            'files': [],
+          }));
+          return;
+        }
+        final List<Map<String, dynamic>> items = [];
+        final entities = dir.listSync(followLinks: false);
+        for (final entity in entities) {
+          try {
+            final isDir = entity is Directory;
+            final stat = entity.statSync();
+            final name = entity.path.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
+            items.add({
+              'name': name,
+              'path': entity.path,
+              'is_dir': isDir,
+              'size': isDir ? 0 : stat.size,
+              'modified': stat.modified.toUtc().toIso8601String(),
+            });
+          } catch (_) {}
+        }
+        items.sort((a, b) {
+          final aDir = a['is_dir'] as bool;
+          final bDir = b['is_dir'] as bool;
+          if (aDir && !bDir) return -1;
+          if (!aDir && bDir) return 1;
+          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+        });
 
         _ws?.add(jsonEncode({
           'id': reqId,

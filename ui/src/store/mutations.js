@@ -62,8 +62,43 @@ const mutations = {
 	},
 
 	SET_WALLPAPER(state, wallpaper) {
-		localStorage.setItem('wallpaper', wallpaper.path)
-		state.wallpaperObject = wallpaper
+		if (!wallpaper) return
+		if (typeof wallpaper === 'string') {
+			localStorage.setItem('wallpaper', wallpaper)
+			state.wallpaperObject = {
+				path: wallpaper,
+				from: wallpaper.includes('/DATA/') ? 'Gallery' : 'Built-in',
+				dualMode: localStorage.getItem('wallpaper_dual_mode') !== 'false',
+				light: { path: localStorage.getItem('wallpaper_light') || wallpaper },
+				dark: { path: localStorage.getItem('wallpaper_dark') || wallpaper }
+			}
+			return
+		}
+		if (typeof wallpaper === 'object') {
+			const dual = wallpaper.dualMode !== undefined
+				? Boolean(wallpaper.dualMode)
+				: (localStorage.getItem('wallpaper_dual_mode') !== 'false')
+			const lightPath = (wallpaper.light && wallpaper.light.path) || localStorage.getItem('wallpaper_light') || wallpaper.path
+			const darkPath = (wallpaper.dark && wallpaper.dark.path) || localStorage.getItem('wallpaper_dark') || wallpaper.path
+
+			if (wallpaper.path) {
+				localStorage.setItem('wallpaper', wallpaper.path)
+			}
+			localStorage.setItem('wallpaper_dual_mode', String(dual))
+			if (lightPath) {
+				localStorage.setItem('wallpaper_light', lightPath)
+			}
+			if (darkPath) {
+				localStorage.setItem('wallpaper_dark', darkPath)
+			}
+
+			state.wallpaperObject = {
+				...wallpaper,
+				dualMode: dual,
+				light: { path: lightPath, ...(wallpaper.light || {}) },
+				dark: { path: darkPath, ...(wallpaper.dark || {}) }
+			}
+		}
 	},
 
 	SET_DEFAULT_WALLPAPER(state) {
@@ -264,6 +299,14 @@ const mutations = {
 		if (y !== undefined) win.y = y
 		if (width !== undefined) win.width = width
 		if (height !== undefined) win.height = height
+	},
+
+	UPDATE_WINDOW_PROPS(state, { id, title, props }) {
+		const win = state.windows.find(w => w.id === id)
+		if (!win) return
+		if (title !== undefined) win.title = title
+		if (props) win.props = { ...win.props, ...props }
+		persistWindows(state)
 	},
 
 	// Drag/resize call UPDATE_WINDOW_RECT on every mousemove for a smooth

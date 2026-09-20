@@ -55,8 +55,6 @@
 </template>
 
 <script>
-import FeedbackPanel from './feedback/FeedbackPanel.vue'
-import ShareModal from '@/apps/files/share/ShareModal.vue'
 import Popper from 'vue-popperjs';
 
 
@@ -69,30 +67,26 @@ export default {
 		showFeedback() {
 			// messageBus :: feedback
 			this.$messageBus('connect_feedback');
-			this.$buefy.modal.open({
-				parent: this,
-				component: FeedbackPanel,
-				hasModalCard: true,
-				customClass: 'feedback-modal',
-				trapFocus: true,
-				canCancel: [],
-				scroll: "keep",
-				animation: "zoom-in",
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'feedback-panel',
+				title: this.$t('Feedback / Issue Report'),
+				component: 'FeedbackPanel',
+				props: { isDialog: true },
+				width: 460,
+				height: 480
 			})
 		},
 
 		showShareModal() {
 			// messageBus :: share
 			this.$messageBus('connect_sharenivaroos');
-			this.$buefy.modal.open({
-				parent: this,
-				component: ShareModal,
-				hasModalCard: true,
-				customClass: 'network-storage-modal',
-				trapFocus: true,
-				canCancel: [],
-				scroll: "keep",
-				animation: "zoom-in",
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'share-modal',
+				title: this.$t('Share NivaroOS'),
+				component: 'ShareModal',
+				props: { isDialog: true },
+				width: 460,
+				height: 420
 			})
 		}
 	},

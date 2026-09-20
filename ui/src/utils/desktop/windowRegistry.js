@@ -26,10 +26,20 @@ import ContainerConsolePanel from '@/shell/desktop/ContainerConsolePanel.vue'
 import ScheduledTaskWindow from '@/apps/settings/ScheduledTaskWindow.vue'
 import ScheduledTaskLogWindow from '@/apps/settings/ScheduledTaskLogWindow.vue'
 import ConfirmDialogWindow from '@/shared/basicComponents/ConfirmDialogWindow.vue'
+import PromptDialogWindow from '@/shared/basicComponents/PromptDialogWindow.vue'
 import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
 import AddToFolderPanel from '@/apps/app-store/AddToFolderPanel.vue'
 import IconEditorModal from '@/apps/app-store/IconEditorModal.vue'
 import ExternalLinkPanel from '@/apps/app-store/ExternalLinkPanel.vue'
+import MergeStorages from '@/apps/storage/MergeStorages.vue'
+import TipEditorModal from '@/apps/app-store/TipEditorModal.vue'
+import ImportPanel from '@/shared/forms/ImportPanel.vue'
+import AppTerminalPanel from '@/apps/app-store/AppTerminalPanel.vue'
+import CreatePanel from '@/apps/files/fileList/CreatePanel.vue'
+import FeedbackPanel from '@/shared/feedback/FeedbackPanel.vue'
+import ShareModal from '@/apps/files/share/ShareModal.vue'
+import DiskLearnMore from '@/apps/storage/DiskLearnMore.vue'
+import FilePanel from '@/apps/files/fileList/FilePanel.vue'
 
 export const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -57,9 +67,19 @@ export const COMPONENT_REGISTRY = {
 	ScheduledTaskWindow,
 	ScheduledTaskLogWindow,
 	ConfirmDialogWindow,
+	PromptDialogWindow,
 	AddToFolderPanel,
 	IconEditorModal,
-	ExternalLinkPanel
+	ExternalLinkPanel,
+	MergeStorages,
+	TipEditorModal,
+	ImportPanel,
+	AppTerminalPanel,
+	CreatePanel,
+	FeedbackPanel,
+	ShareModal,
+	DiskLearnMore,
+	FilePanel
 }
 
 // These components' own top row IS the window's titlebar (draggable, with

@@ -1,18 +1,5 @@
 <template>
 	<div class="modal-card">
-		<!-- Modal-Card Header Start -->
-		<header class="modal-card-head">
-			<div class="is-flex-grow-1">
-				<h3 class="title is-header">{{ $t('Tips') }}</h3>
-			</div>
-			<div>
-				<div class="is-flex is-align-items-center">
-					<b-icon class="close-button" icon="close-outline" pack="casa" @click.native="$emit('close');" />
-				</div>
-			</div>
-		</header>
-		<!-- Modal-Card Header End -->
-
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body">
 			<VMdEditor v-model="tips" :mode="controlEditorState" :placeholder="$t('Something to remember eg. password')"
@@ -30,7 +17,7 @@
 		<footer v-if="!name" class="modal-card-foot is-flex is-align-items-center">
 			<div class="is-flex-grow-1"></div>
 			<div class="is-flex is-flex-direction-row-reverse">
-				<b-button rounded size="is-small" type="is-primary" @click="$emit('submit') && $emit('close')">{{ $t('Next Steps') }}
+				<b-button rounded size="is-small" type="is-primary" @click="handleSubmit">{{ $t('Next Steps') }}
 				</b-button>
 			</div>
 		</footer>
@@ -75,6 +62,13 @@ export default {
 		name: {
 			type: String,
 			// required: true
+		},
+		// Called directly when opened as a standalone desktop window - the
+		// shared window chrome only forwards close/minimize, not custom
+		// business events like 'submit'.
+		onSubmit: {
+			type: Function,
+			default: null
 		}
 	},
 	computed: {
@@ -113,6 +107,11 @@ export default {
 	mounted() {
 	},
 	methods: {
+		handleSubmit() {
+			this.$emit('submit')
+			if (typeof this.onSubmit === 'function') this.onSubmit()
+			this.$emit('close')
+		},
 		/*
 		* 1、进入编辑状态
 		* 2、保存

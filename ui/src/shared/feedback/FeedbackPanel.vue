@@ -4,11 +4,6 @@
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body ">
 
-			<h3 class="title is-3">{{ $t('Feedback / Issue Report') }}</h3>
-			<div class="close-container">
-				<button class="delete" type="button" @click="$emit('close')"/>
-			</div>
-
 			<div class="is-flex-grow-1 is-relative">
 				<b-field :label="$t('Title')">
 					<b-input v-model="postTitle" :placeholder="$t('Start with [Issue], [App Request], or [Feature Request]...')"

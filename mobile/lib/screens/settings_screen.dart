@@ -28,6 +28,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isIgnoringBattery = false;
   bool _autoStartBoot = true;
   bool _isSamsungDevice = false;
+  String _serverVersion = '';
+  int _serverPkgUpdates = 0;
+  int _serverSecurityUpdates = 0;
+  bool _serverHasReleaseUpdate = false;
 
   @override
   void initState() {
@@ -43,6 +47,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isIgnoringBattery = await BackgroundService.instance.isIgnoringBatteryOptimizations();
     final autoBoot = await BackgroundService.instance.isAutoStartOnBoot();
     final isSamsung = await BackgroundService.instance.isSamsungDevice();
+
+    String serverVer = '';
+    bool hasReleaseUpdate = false;
+    try {
+      final vRes = await ApiClient.instance.get('/sys/version/check');
+      if (vRes['data'] is Map) {
+        final d = vRes['data'] as Map<String, dynamic>;
+        serverVer = d['current_version']?.toString() ?? '';
+        if (serverVer.isNotEmpty && !serverVer.startsWith('v')) serverVer = 'v$serverVer';
+        hasReleaseUpdate = d['need_update'] == true;
+      }
+    } catch (_) {}
+
+    int pkgUpdates = 0;
+    int secUpdates = 0;
+    try {
+      final pkgRes = await ApiClient.instance.get('/sys/packages/check');
+      if (pkgRes['data'] is Map) {
+        final d = pkgRes['data'] as Map<String, dynamic>;
+        pkgUpdates = d['count'] as int? ?? 0;
+        secUpdates = d['security_count'] as int? ?? 0;
+      }
+    } catch (_) {}
+
     if (mounted) {
       setState(() {
         _username = u ?? 'User';
@@ -52,6 +80,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _isIgnoringBattery = isIgnoringBattery;
         _autoStartBoot = autoBoot;
         _isSamsungDevice = isSamsung;
+        _serverVersion = serverVer;
+        _serverPkgUpdates = pkgUpdates;
+        _serverSecurityUpdates = secUpdates;
+        _serverHasReleaseUpdate = hasReleaseUpdate;
       });
     }
   }
@@ -273,11 +305,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.system_update_rounded, color: NivaroColors.successLight),
-                      title: const Text('System Updates', style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: const Text('Check for NivaroOS release updates'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SystemUpdatesScreen())),
+                      leading: Icon(
+                        Icons.system_update_rounded,
+                        color: (_serverSecurityUpdates > 0
+                            ? NivaroColors.dangerLight
+                            : (_serverHasReleaseUpdate || _serverPkgUpdates > 0
+                                ? NivaroColors.warningLight
+                                : NivaroColors.successLight)),
+                      ),
+                      title: const Text('Server & System Updates', style: TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        _serverVersion.isNotEmpty
+                            ? 'Server $_serverVersion · ${_serverPkgUpdates > 0 ? "$_serverPkgUpdates APT packages upgradable${_serverSecurityUpdates > 0 ? ' ($_serverSecurityUpdates security)' : ''}" : "All packages up to date"}'
+                            : 'Check for NivaroOS release and server package updates',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_serverHasReleaseUpdate || _serverPkgUpdates > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: (_serverSecurityUpdates > 0 ? NivaroColors.danger : NivaroColors.warning).withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: (_serverSecurityUpdates > 0 ? NivaroColors.dangerLight : NivaroColors.warningLight).withOpacity(0.4),
+                                ),
+                              ),
+                              child: Text(
+                                _serverHasReleaseUpdate ? 'New Release' : '$_serverPkgUpdates Updates',
+                                style: TextStyle(
+                                  color: _serverSecurityUpdates > 0 ? NivaroColors.dangerLight : NivaroColors.warningLight,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.chevron_right_rounded),
+                        ],
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SystemUpdatesScreen()),
+                      ).then((_) => _load()),
                     ),
                     const Divider(height: 1),
                     ListTile(

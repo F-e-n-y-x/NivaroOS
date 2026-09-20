@@ -500,7 +500,7 @@ export default {
 		async getCompanionDevices() {
 			try {
 				const res = await this.$api.companion.getDevices()
-				const list = res.data?.data || []
+				const list = (res.data?.data || []).filter((dev) => dev.is_online)
 				this.companionDeviceList = list.map((dev) => {
 					const name = dev.name || dev.device_name || 'Companion'
 					const model = (dev.model || '').toLowerCase()

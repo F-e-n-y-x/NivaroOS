@@ -1,59 +1,99 @@
 <template>
-	<div class="widget has-text-grey-100 cpu">
+	<div class="widget cpu">
 		<div class="blur-background"></div>
-		<div class="widget-content pb-1">
-			<!-- Header Start -->
-			<div class="widget-header is-flex">
-				<div class="widget-title is-flex-grow-1">
-					{{ cpuVendor ? cpuVendor + " " : "" }}{{ $t("CPU Status") }}
-				</div>
-				<div v-if="percpu.length > 1" :class="{ active: showCores }" :title="$t('Toggle per-core usage')"
-					class="widget-icon-button cores-toggle is-flex-shrink-0 mr-1" @click="toggleCores">
-					<span class="cores-toggle-dot"></span>
-					<span class="cores-toggle-dot"></span>
-					<span class="cores-toggle-dot"></span>
-					<span class="cores-toggle-dot"></span>
-				</div>
-				<div class="widget-icon-button is-flex-shrink-0" @click="showMoreInfo">
-					<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
-				</div>
-			</div>
-			<!-- Header End -->
-
-			<div class="columns is-mobile mt-0 mb-1">
-				<div class="column is-half has-text-centered">
-					<radial-bar :extendContent="power + temperature" :extendContentClickable="true"
-						:percent="parseInt(cpuSeries)" label="CPU" @extendContentClick="changeFormat"></radial-bar>
-				</div>
-				<div v-if="cpuModelShort" class="column is-half cpu-info is-flex is-flex-direction-column is-justify-content-center has-text-centered">
-					<div class="is-size-7 model-wrap">{{ cpuModelShort }}</div>
-					<div class="is-size-7 has-text-grey-400 mt-1">{{ cpuCores }}C / {{ percpu.length }}T</div>
-					<div v-if="mhz" class="is-size-7 has-text-grey-400">{{ (mhz / 1000).toFixed(1) }} GHz</div>
-				</div>
-			</div>
-
-			<div v-if="percpu.length > 1 && showCores" class="cores-grid mb-2 px-2">
-				<div v-for="(p, index) in percpu" :key="'core-' + index" :title="`${$t('Core')} ${index}: ${Math.round(p)}%`"
-					class="core-row">
-					<div class="core-track">
-						<div :style="{ width: p + '%' }" class="core-fill"></div>
+		<div class="widget-content">
+			<!-- Header -->
+			<div class="widget-header">
+				<div class="widget-header-left">
+					<div class="widget-badge is-cpu">
+						<i class="mdi mdi-cpu-64-bit"></i>
 					</div>
-					<div class="core-pct">{{ Math.round(p) }}%</div>
+					<div class="widget-header-text">
+						<span class="widget-title">{{ $t("Processor") }}</span>
+						<span class="widget-header-meta" :title="cpuModelShort">
+							{{ cpuModelShort || (cpuVendor ? cpuVendor + ' Architecture' : 'System CPU') }}
+						</span>
+					</div>
+				</div>
+				<div class="widget-header-right">
+					<div
+						v-if="percpu.length > 1"
+						:class="{ active: showCores }"
+						:title="$t('Toggle per-core usage')"
+						class="widget-icon-btn"
+						@click="toggleCores"
+					>
+						<i class="mdi mdi-view-grid-outline"></i>
+					</div>
+					<div class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
+					</div>
 				</div>
 			</div>
 
-			<div v-if="showMore">
-				<div class="more-info pt-1 pb-1">
-					<div v-for="(item, index) in containerCpuList" :key="item.title + index + '-cpu'">
-						<div v-if="!isNaN(item.usage)" class="is-flex is-size-7 is-align-items-center mb-2">
-							<div class="is-flex-grow-1 is-flex is-align-items-center is-clipped">
-								<b-image :lazy="false" :src="item.icon"
-									:src-fallback="require('@/assets/img/app-icons/default.svg')"
-									class="is-16x16 mr-2 is-flex-shrink-0"></b-image>
-								<span class="one-line">{{ item.title }}</span>
-							</div>
-							<div class="is-flex-shrink-0">{{ item.usage }}%</div>
+			<!-- Hero Grid: Left = Dial, Right = 2x2 Bento Spec Grid -->
+			<div class="widget-hero-grid">
+				<div class="hero-gauge-box">
+					<radial-bar
+						:percent="parseInt(cpuSeries)"
+						label="CPU"
+					></radial-bar>
+				</div>
+				<div class="hero-info-bento">
+					<div class="bento-specs-grid">
+						<div class="spec-tile" :title="$t('Clock Speed')">
+							<span class="spec-label">{{ $t('Clock') }}</span>
+							<span class="spec-val">{{ mhz ? (mhz / 1000).toFixed(1) + ' GHz' : 'Dynamic' }}</span>
 						</div>
+						<div class="spec-tile" :title="$t('Cores and Threads')">
+							<span class="spec-label">{{ $t('Cores') }}</span>
+							<span class="spec-val">{{ cpuCores }}C / {{ percpu.length || cpuCores }}T</span>
+						</div>
+						<div class="spec-tile" :title="$t('Temperature / Power') + ' (Click to switch °C/°F)'" @click="changeFormat" style="cursor: pointer;">
+							<span class="spec-label">{{ $t('Thermals') }}</span>
+							<span class="spec-val">{{ temperature || 'Normal' }}{{ powerClean ? ' · ' + powerClean : '' }}</span>
+						</div>
+						<div class="spec-tile" :title="$t('Load State')">
+							<span class="spec-label">{{ $t('Load') }}</span>
+							<span class="spec-val">{{ loadState }}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Realtime Cores Visualizer Matrix -->
+			<div v-if="percpu.length > 1 && showCores" class="mini-cores-visualizer">
+				<div
+					v-for="(p, index) in percpu"
+					:key="'core-' + index"
+					class="mini-core-item"
+					:title="`${$t('Core')} ${index + 1}: ${Math.round(p)}%`"
+				>
+					<div class="mini-core-track">
+						<div class="mini-core-fill" :style="{ height: Math.min(100, Math.max(6, p)) + '%' }"></div>
+					</div>
+					<span class="mini-core-label">{{ Math.round(p) }}%</span>
+				</div>
+			</div>
+
+			<!-- Top Container CPU Processes -->
+			<div v-if="showMore" class="more-info">
+				<div class="process-section-title">{{ $t("Top Processes") }}</div>
+				<div v-if="containerCpuList.length === 0" class="has-text-centered is-size-7 py-2 text-muted">
+					{{ $t("No active container processes") }}
+				</div>
+				<div v-for="(item, index) in containerCpuList" :key="item.title + index + '-cpu'">
+					<div v-if="!isNaN(item.usage)" class="process-row">
+						<div class="is-flex is-align-items-center is-clipped">
+							<b-image
+								:lazy="false"
+								:src="item.icon"
+								:src-fallback="require('@/assets/img/app-icons/default.svg')"
+								class="is-16x16 mr-2 is-flex-shrink-0"
+							></b-image>
+							<span class="one-line process-name">{{ item.title }}</span>
+						</div>
+						<div class="is-flex-shrink-0 process-usage">{{ item.usage }}%</div>
 					</div>
 				</div>
 			</div>
@@ -73,8 +113,8 @@ export default {
 	name: "cpu",
 	icon: "system-outline",
 	title: "CPU Status",
-	gridCols: 3, // "normal" size - 3 icon-columns wide (see SideBar.vue)
-	gridRows: 2, // "normal" size - 2 icon-rows tall
+	gridCols: 3,
+	gridRows: 2,
 	initShow: true,
 	mixins: [smoothReflow, mixin],
 	components: {
@@ -83,7 +123,7 @@ export default {
 
 	data() {
 		return {
-			timmer: null,
+			timer: null,
 			showMore: false,
 			showCores: localStorage.getItem("cpuShowCores") !== "false",
 			cpuCores: 0,
@@ -96,7 +136,7 @@ export default {
 				? localStorage.getItem("temperatureFormat")
 				: "°C",
 			orgTemperature: 0,
-			power: "0W / ",
+			power: "",
 			powerList: [],
 		};
 	},
@@ -108,10 +148,16 @@ export default {
 					: this.celsiusToFahrenheit(this.orgTemperature) + "°F";
 			return temp;
 		},
-		// Splits the raw /proc/cpuinfo model string into a vendor line and a
-		// short model line, stripping vendor-specific noise (trademark
-		// symbols, "CPU @ x.xxGHz", "N-Core Processor") so it reads the same
-		// shape on Intel/AMD/ARM instead of just dumping the raw string.
+		powerClean() {
+			if (!this.power) return "";
+			return this.power.replace(" / ", "").trim();
+		},
+		loadState() {
+			const p = parseInt(this.cpuSeries);
+			if (p < 30) return this.$t("Light");
+			if (p < 75) return this.$t("Moderate");
+			return this.$t("Heavy");
+		},
 		cpuModelParts() {
 			return this.splitCpuModelName(this.modelName);
 		},
@@ -144,14 +190,6 @@ export default {
 		clearInterval(this.timer);
 	},
 	methods: {
-		/**
-		 * @description: Split a raw /proc/cpuinfo model string (which varies
-		 * wildly by vendor) into a short vendor line and a short model line,
-		 * so the widget shows the same shape on any PC instead of dumping
-		 * the raw string.
-		 * @param {string} raw
-		 * @return {{vendor: string, model: string}}
-		 */
 		splitCpuModelName(raw) {
 			if (!raw) return { vendor: "", model: "" };
 			let s = raw
@@ -176,25 +214,16 @@ export default {
 			return { vendor, model: s };
 		},
 
-		/**
-		 * @description: Convert temperature from Celsius to Fahrenheit
-		 * @param {*}
-		 * @return {fahrenheit} Number
-		 */
 		celsiusToFahrenheit(celsius) {
 			let fahrenheit = (celsius * 9) / 5 + 32;
-			return fahrenheit;
+			return Math.round(fahrenheit);
 		},
 
 		changeFormat() {
 			this.temperatureFormat = this.temperatureFormat == "°C" ? "°F" : "°C";
 			localStorage.setItem("temperatureFormat", this.temperatureFormat);
 		},
-		/**
-		 * @description: Update cpu usage
-		 * @param {*}
-		 * @return {*} void
-		 */
+
 		updateCharts(cpu) {
 			this.cpuSeries = cpu.percent;
 			this.percpu = cpu.percpu || [];
@@ -206,23 +235,18 @@ export default {
 						(this.powerList[1].value - this.powerList[0].value) /
 						1000000 /
 						(this.powerList[1].timestamp - this.powerList[0].timestamp)
-					).toFixed(1) + "W / ";
+					).toFixed(1) + "W";
 			} else {
 				this.power = "";
 			}
 		},
-		/**
-		 * @description: Get Docker apps cpu usage
-		 * @param {*}
-		 * @return {*} void
-		 */
+
 		getDockerUsage() {
 			this.$api.container.getHardwareUsage().then((res) => {
 				let id = 0;
 				this.containerCpuList = res.data.data.map((item) => {
 					let usage = 0;
 					if (item.previous != null) {
-						// Look at here  https://docs.docker.com/engine/api/v1.41/#operation/ContainerStats
 						const cpu_delta =
 							item.data.cpu_stats.cpu_usage.total_usage - item.previous.cpu_stats.cpu_usage.total_usage;
 						const system_cpu_delta =
@@ -241,11 +265,6 @@ export default {
 			});
 		},
 
-		/**
-		 * @description: Toggle more info
-		 * @param {*}
-		 * @return {*} void
-		 */
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
@@ -281,79 +300,10 @@ export default {
 .widget {
 	&.cpu {
 		.arrow-btn {
-			transition: all 0.3s;
+			transition: transform 0.25s ease;
 
 			&.open {
 				transform: rotate(90deg);
-			}
-		}
-
-		.cores-toggle {
-			display: grid;
-			grid-template-columns: repeat(2, 5px);
-			grid-template-rows: repeat(2, 5px);
-			gap: 2px;
-			align-content: center;
-			justify-content: center;
-
-			.cores-toggle-dot {
-				width: 5px;
-				height: 5px;
-				border-radius: 1px;
-				background: rgba(255, 255, 255, 0.35);
-				transition: background-color 0.2s;
-			}
-
-			&.active .cores-toggle-dot {
-				background: rgba(255, 255, 255, 0.9);
-			}
-		}
-
-		.more-info {
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
-		}
-
-		.cpu-info {
-			min-width: 0;
-
-			.model-wrap {
-				overflow-wrap: break-word;
-				line-height: 1.25;
-			}
-		}
-
-		.cores-grid {
-			display: grid;
-			grid-template-columns: repeat(2, 1fr);
-			gap: var(--space-2) var(--space-6);
-
-			.core-row {
-				display: flex;
-				align-items: center;
-				gap: 0.05rem;
-			}
-
-			.core-track {
-				flex-grow: 1;
-				height: 5px;
-				background: rgba(255, 255, 255, 0.12);
-				border-radius: var(--radius-pill);
-				overflow: hidden;
-			}
-
-			.core-fill {
-				height: 100%;
-				background: rgba(255, 255, 255, 0.75);
-				border-radius: var(--radius-pill);
-				transition: width 0.5s ease-in-out;
-			}
-
-			.core-pct {
-				flex-shrink: 0;
-				width: 1.6rem;
-				text-align: right;
-				font-size: var(--font-2xs);
-				color: $grey-400;
 			}
 		}
 	}

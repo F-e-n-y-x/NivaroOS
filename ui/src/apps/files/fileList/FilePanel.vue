@@ -60,7 +60,6 @@
 
 <script>
 import ListItem from "./ListItem.vue"
-import CreatePanel from './CreatePanel.vue'
 import trimStart from 'lodash/trimStart'
 import dropRight from 'lodash/dropRight'
 
@@ -83,6 +82,13 @@ export default {
 			type: Boolean,
 			default: true
 		},
+		// Called directly when opened as a standalone desktop window - the
+		// shared window chrome only forwards close/minimize, not custom
+		// business events like 'updatePath'.
+		onUpdatePath: {
+			type: Function,
+			default: null
+		}
 	},
 	computed: {
 		// get Last foler name for breadcrumb
@@ -150,6 +156,7 @@ export default {
 		selectFile() {
 			this.$emit('close');
 			this.$emit('updatePath', this.activePath);
+			if (typeof this.onUpdatePath === 'function') this.onUpdatePath(this.activePath)
 		},
 		activeFile(val) {
 			this.activePath = (this.activePath == val) ? this.path : val;
@@ -159,26 +166,21 @@ export default {
 		},
 		// show create folder or file panel
 		showCreatePanel(isFolder) {
-			this.$buefy.modal.open({
-				parent: this,
-				component: CreatePanel,
-				hasModalCard: true,
-				customClass: 'file-sel-modal',
-				trapFocus: true,
-				canCancel: [],
-				scroll: "keep",
-				animation: "zoom-in",
-				events: {
-					'reloadPath': (path) => {
-
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'file-panel-create-' + (isFolder ? 'folder' : 'file'),
+				title: isFolder ? this.$t('Create Folder') : this.$t('Create File'),
+				component: 'CreatePanel',
+				props: {
+					isDialog: true,
+					initPath: (this.path == "") ? this.rootPath : this.path,
+					isDir: isFolder,
+					onReloadPath: (path) => {
 						this.getFileList(this.path);
 						this.activePath = path;
 					}
 				},
-				props: {
-					initPath: (this.path == "") ? this.rootPath : this.path,
-					isDir: isFolder
-				}
+				width: 420,
+				height: 220
 			})
 		}
 	},

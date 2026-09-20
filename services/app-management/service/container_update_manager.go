@@ -15,6 +15,8 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 )
 
@@ -202,10 +204,21 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 			cfg = m.configs[c.ID]
 		}
 
+		displayImage := c.Image
+		if strings.HasPrefix(displayImage, "sha256:") || len(displayImage) == 12 {
+			if cfg.Image != "" && !strings.HasPrefix(cfg.Image, "sha256:") {
+				displayImage = cfg.Image
+			} else {
+				if inspect, err := cli.ContainerInspect(ctx, c.ID); err == nil && inspect.Config != nil && inspect.Config.Image != "" {
+					displayImage = inspect.Config.Image
+				}
+			}
+		}
+
 		info := ContainerUpdateInfo{
 			ID:                 c.ID,
 			Name:               name,
-			Image:              c.Image,
+			Image:              displayImage,
 			ImageID:            c.ImageID,
 			State:              c.State,
 			Status:             c.Status,
@@ -232,17 +245,102 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	}
 	defer cli.Close()
 
-	inspect, err := cli.ContainerInspect(ctx, nameOrID)
+	inspect, raw, err := cli.ContainerInspectWithRaw(ctx, nameOrID, false)
 	if err != nil {
 		return nil, err
 	}
+
+	var rawInspect struct {
+		ImageManifestDescriptor *struct {
+			Digest string `json:"digest"`
+		} `json:"ImageManifestDescriptor"`
+	}
+	_ = json.Unmarshal(raw, &rawInspect)
 
 	imageName := inspect.Config.Image
 	if imageName == "" {
 		return nil, fmt.Errorf("container has no image")
 	}
 
-	isUpdated, pullErr := MyService.Docker().PullLatestImage(ctx, imageName)
+	hasUpdate := false
+	var currentDigest, latestDigest string
+
+	// Build image reference with tag (e.g. portainer/portainer-ce:latest)
+	imageRef := imageName
+	if !strings.Contains(imageRef, ":") && !strings.Contains(imageRef, "@") && !strings.HasPrefix(imageRef, "sha256:") {
+		imageRef = imageRef + ":latest"
+	}
+
+	// Inspect local image for this container to get repo digests and image ID
+	imageInfo, _, imgErr := cli.ImageInspectWithRaw(ctx, inspect.Image)
+	if imgErr == nil && len(imageInfo.RepoDigests) > 0 {
+		parts := strings.Split(imageInfo.RepoDigests[0], "@")
+		if len(parts) > 1 {
+			currentDigest = parts[1]
+		} else {
+			currentDigest = imageInfo.RepoDigests[0]
+		}
+	}
+	if currentDigest == "" {
+		if rawInspect.ImageManifestDescriptor != nil && rawInspect.ImageManifestDescriptor.Digest != "" {
+			currentDigest = rawInspect.ImageManifestDescriptor.Digest
+		} else if inspect.Image != "" {
+			currentDigest = inspect.Image
+		}
+	}
+
+	var digestsToCompare []string
+	if imgErr == nil && len(imageInfo.RepoDigests) > 0 {
+		digestsToCompare = append(digestsToCompare, imageInfo.RepoDigests...)
+	}
+	if currentDigest != "" {
+		digestsToCompare = append(digestsToCompare, currentDigest)
+	}
+	if inspect.Image != "" {
+		digestsToCompare = append(digestsToCompare, inspect.Image)
+	}
+	if rawInspect.ImageManifestDescriptor != nil && rawInspect.ImageManifestDescriptor.Digest != "" {
+		digestsToCompare = append(digestsToCompare, rawInspect.ImageManifestDescriptor.Digest)
+	}
+
+	// If image is pinned by sha256, it cannot be updated from remote registry
+	if strings.Contains(imageName, "@sha256:") || strings.HasPrefix(imageName, "sha256:") {
+		hasUpdate = false
+	} else {
+		// 1. Check if host Docker already has a newer image ID pulled for this tag
+		localLatest, _, localErr := cli.ImageInspectWithRaw(ctx, imageRef)
+		if localErr == nil && localLatest.ID != "" && inspect.Image != "" && localLatest.ID != inspect.Image {
+			hasUpdate = true
+			if len(localLatest.RepoDigests) > 0 {
+				parts := strings.Split(localLatest.RepoDigests[0], "@")
+				if len(parts) > 1 {
+					latestDigest = parts[1]
+				} else {
+					latestDigest = localLatest.RepoDigests[0]
+				}
+			}
+			if latestDigest == "" {
+				latestDigest = localLatest.ID
+			}
+		}
+
+		// 2. Query remote registry for the latest manifest digest
+		match, remoteDigest, checkErr := docker.CompareDigestWithResult(imageRef, digestsToCompare)
+		if checkErr == nil {
+			if !match && remoteDigest != "" {
+				hasUpdate = true
+				latestDigest = remoteDigest
+			} else if match {
+				// Remote registry matched one of our local digests
+				// Only clear update if local image is also not newer
+				if localErr != nil || localLatest.ID == inspect.Image {
+					hasUpdate = false
+				}
+			}
+		} else {
+			logger.Info("registry digest compare failed for image", zap.String("image", imageRef), zap.Error(checkErr))
+		}
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -255,50 +353,186 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	cfg.ImageID = inspect.Image
 	cfg.State = inspect.State.Status
 	cfg.LastCheckedAt = time.Now().Format(time.RFC3339)
-
-	if pullErr == nil {
-		cfg.HasUpdate = isUpdated
+	cfg.HasUpdate = hasUpdate
+	if currentDigest != "" {
+		cfg.CurrentDigest = currentDigest
+	}
+	if latestDigest != "" {
+		cfg.LatestDigest = latestDigest
 	}
 
 	m.configs[name] = cfg
+	m.configs[inspect.ID] = cfg
 	_ = m.saveLocked()
 
-	return &cfg, pullErr
+	return &cfg, nil
 }
 
-func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context, nameOrID string) error {
+func (m *ContainerUpdateManager) CheckAllContainersUpdate(ctx context.Context) ([]ContainerUpdateInfo, error) {
 	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer cli.Close()
+
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+
+	type job struct {
+		id string
+	}
+	jobs := make(chan job, len(containers))
+	for _, c := range containers {
+		jobs <- job{id: c.ID}
+	}
+	close(jobs)
+
+	workerCount := 4
+	if len(containers) < workerCount {
+		workerCount = len(containers)
+	}
+	if workerCount < 1 {
+		workerCount = 1
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				checkCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+				_, _ = m.CheckContainerUpdate(checkCtx, j.id)
+				cancel()
+			}
+		}()
+	}
+	wg.Wait()
+
+	return m.GetAllContainersWithUpdates(ctx)
+}
+
+func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID string) (*ContainerUpdateInfo, error) {
+	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
 	}
 	defer cli.Close()
 
 	inspect, err := cli.ContainerInspect(ctx, nameOrID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	name := strings.TrimPrefix(inspect.Name, "/")
+	cfg := m.configs[name]
+	if cfg.ID == "" {
+		cfg = m.configs[inspect.ID]
+	}
+
+	info := &ContainerUpdateInfo{
+		ID:                 inspect.ID,
+		Name:               name,
+		Image:              inspect.Config.Image,
+		ImageID:            inspect.Image,
+		State:              inspect.State.Status,
+		Status:             inspect.State.Status,
+		HasUpdate:          cfg.HasUpdate,
+		CurrentDigest:      cfg.CurrentDigest,
+		LatestDigest:       cfg.LatestDigest,
+		AutoUpdateEnabled:  cfg.AutoUpdateEnabled,
+		AutoUpdateSchedule: cfg.AutoUpdateSchedule,
+		LastCheckedAt:      cfg.LastCheckedAt,
+		LastUpdatedAt:      cfg.LastUpdatedAt,
+		CreatedAt:          inspect.Created,
+		IsAppStoreApp:      inspect.Config.Labels["casaos.app"] != "" || inspect.Config.Labels["com.docker.compose.project"] != "",
+	}
+	return info, nil
+}
+
+func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context, nameOrID string) (*ContainerUpdateInfo, error) {
+	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
+	}
+	defer cli.Close()
+
+	inspect, err := cli.ContainerInspect(ctx, nameOrID)
+	if err != nil {
+		return nil, err
+	}
+
+	if common.PropertiesFromContext(ctx) == nil {
+		ctx = common.WithProperties(ctx, make(map[string]string))
+	}
+
+	name := strings.TrimPrefix(inspect.Name, "/")
+
+	appIcon := ""
+	if icon, ok := inspect.Config.Labels["casaos.icon"]; ok {
+		appIcon = icon
+	}
+	go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesBegin, map[string]string{
+		common.PropertyTypeAppName.Name:  name,
+		common.PropertyTypeAppTitle.Name: name,
+		common.PropertyTypeAppIcon.Name:  appIcon,
+	})
+
+	var updatedViaCompose bool
 	if projectName := inspect.Config.Labels["com.docker.compose.project"]; projectName != "" {
 		composeApps, err := MyService.Compose().List(ctx)
 		if err == nil {
 			if composeApp, ok := composeApps[projectName]; ok && composeApp != nil {
-				return composeApp.Update(ctx)
+				if storeInfo, _ := composeApp.StoreInfo(true); storeInfo != nil && storeInfo.StoreAppID != nil && *storeInfo.StoreAppID != "" {
+					if updateErr := composeApp.Update(ctx); updateErr == nil {
+						updatedViaCompose = true
+					} else {
+						logger.Info("compose app update failed, falling back to recreate container", zap.Error(updateErr), zap.String("name", projectName))
+					}
+				}
 			}
 		}
 	}
 
-	err = MyService.Docker().RecreateContainer(ctx, inspect.ID, true, true)
-	if err == nil {
-		m.mu.Lock()
-		name := strings.TrimPrefix(inspect.Name, "/")
-		cfg := m.configs[name]
-		cfg.HasUpdate = false
-		cfg.LastUpdatedAt = time.Now().Format(time.RFC3339)
-		m.configs[name] = cfg
-		_ = m.saveLocked()
-		m.mu.Unlock()
+	if !updatedViaCompose {
+		if err := MyService.Docker().RecreateContainer(ctx, inspect.ID, true, true); err != nil {
+			go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesError, map[string]string{
+				common.PropertyTypeAppName.Name: name,
+				common.PropertyTypeMessage.Name: err.Error(),
+			})
+			return nil, err
+		}
 	}
-	return err
+
+	go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesEnd, map[string]string{
+		common.PropertyTypeAppName.Name: name,
+	})
+
+	m.mu.Lock()
+	cfg := m.configs[name]
+	cfg.HasUpdate = false
+	cfg.LastUpdatedAt = time.Now().Format(time.RFC3339)
+	if cfg.LatestDigest != "" {
+		cfg.CurrentDigest = cfg.LatestDigest
+	}
+	delete(m.configs, inspect.ID)
+	if newInspect, err := cli.ContainerInspect(ctx, name); err == nil {
+		cfg.ID = newInspect.ID
+		cfg.ImageID = newInspect.Image
+		cfg.Image = newInspect.Config.Image
+		cfg.State = newInspect.State.Status
+		m.configs[newInspect.ID] = cfg
+	}
+	m.configs[name] = cfg
+	_ = m.saveLocked()
+	m.mu.Unlock()
+
+	return &cfg, nil
 }
 
 func (m *ContainerUpdateManager) RunAutoUpdates() {
@@ -314,7 +548,7 @@ func (m *ContainerUpdateManager) RunAutoUpdates() {
 	for _, c := range containers {
 		if m.global.Enabled || c.AutoUpdateEnabled {
 			logger.Info("auto-updating container", zap.String("name", c.Name), zap.String("image", c.Image))
-			if err := m.UpdateAndRecreateContainer(ctx, c.ID); err != nil {
+			if _, err := m.UpdateAndRecreateContainer(ctx, c.ID); err != nil {
 				logger.Error("failed to auto-update container", zap.String("name", c.Name), zap.Error(err))
 			} else {
 				logger.Info("container auto-updated successfully", zap.String("name", c.Name))

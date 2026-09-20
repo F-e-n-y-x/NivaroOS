@@ -64,6 +64,10 @@ func (ds *dockerService) PullImage(ctx context.Context, imageName string) error 
 func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) (bool, error) {
 	isImageUpdated := false
 
+	if common.PropertiesFromContext(ctx) == nil {
+		ctx = common.WithProperties(ctx, make(map[string]string))
+	}
+
 	go PublishEventWrapper(ctx, common.EventTypeImagePullBegin, map[string]string{
 		common.PropertyTypeImageName.Name: imageName,
 	})
@@ -80,7 +84,9 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 	defer func() {
 		// write image updated information as a property back to context, so both current func and external caller can see it
 		properties := common.PropertiesFromContext(ctx)
-		properties[common.PropertyTypeImageUpdated.Name] = fmt.Sprint(isImageUpdated) // <- instead, do it here.
+		if properties != nil {
+			properties[common.PropertyTypeImageUpdated.Name] = fmt.Sprint(isImageUpdated)
+		}
 	}()
 
 	if strings.HasPrefix(imageName, "sha256:") {

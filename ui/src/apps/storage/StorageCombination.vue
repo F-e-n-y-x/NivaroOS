@@ -63,7 +63,6 @@
 
 <script>
 import {mixin}       from '@/mixins/mixin';
-import MergeStorages from "@/apps/storage/MergeStorages.vue";
 import cToolTip      from "@/shared/basicComponents/tooltip/tooltip.vue";
 
 export default {
@@ -128,22 +127,13 @@ export default {
 				console.log(e)
 			}
 
-			this.$buefy.modal.open({
-				parent: this,
-				component: MergeStorages,
-				hasModalCard: true,
-				trapFocus: true,
-				canCancel: ['escape'],
-				onCancel: () => {
-				},
-				events: {
-					close: () => {
-						this.$emit("reload");
-					}
-				},
-				props: {
-					mergeStorageList
-				}
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'merge-storages',
+				title: this.$t('Merge Storages'),
+				component: 'MergeStorages',
+				props: { mergeStorageList },
+				width: 480,
+				height: 560
 			})
 		},
 

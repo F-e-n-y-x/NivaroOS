@@ -1,54 +1,705 @@
 /************************************
 *
-* Widgets
+* NivaroOS Desktop Widgets Design System
+* Inspired by macOS Sonoma / Sequoia, iStat Menus & CleanMyMac
+* Premium Bento Grid Architecture & Frosted Glass Elevation
 *
 *************************************/
 
 .widget {
-	border-radius: $backDropBorderRadius;
+	border-radius: 18px;
 	position: relative;
-	// position:relative alone doesn't make this a stacking context, so
-	// without an explicit z-index here, this card's own inner z-indexed
-	// elements (.widget-content: 10, .widget-header: 4, the network
-	// dropdown button: 200, etc.) would escape it and compete directly
-	// with siblings at the .widgets-column level (e.g. the next widget
-	// down, or Sortable's dragged/ghost item during a reorder). z-index: 0
-	// contains all of that inside the card.
 	z-index: 0;
-	margin-bottom: 1rem;
-	transition: all 0.3s;
+	margin-bottom: 0.85rem;
+	transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	color: var(--theme-desktop-glass-text, #0f172a);
+	box-shadow: none !important;
 
-	.columns {
-		margin-bottom: 0;
+	// True frosted glass that dynamically respects the user's transparency and blur settings
+	> .blur-background {
+		background-color: var(--theme-desktop-glass-bg, rgba(255, 255, 255, var(--ui-backdrop-alpha, 0.45))) !important;
+		backdrop-filter: blur(var(--ui-backdrop-blur, 16px)) saturate(180%) !important;
+		-webkit-backdrop-filter: blur(var(--ui-backdrop-blur, 16px)) saturate(180%) !important;
+		border-radius: 18px !important;
+		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08)) !important;
+		box-shadow: var(--theme-desktop-glass-shadow) !important;
 	}
-	
+
+	// Strictly guarantee high-contrast readability in light and dark modes
+	&.has-text-grey-100,
+	&.has-text-white {
+		color: var(--theme-desktop-glass-text, #0f172a) !important;
+	}
+
+	.has-text-white,
+	.has-text-light,
+	.has-text-grey-100,
+	.has-text-grey-200 {
+		color: var(--theme-desktop-glass-text, #0f172a) !important;
+	}
+
+	.has-text-grey-400,
+	.has-text-grey {
+		color: var(--theme-desktop-glass-text-sub, #475569) !important;
+	}
+
+	// Strictly ensure zero white/pale text in light mode widgets
+	:root:not([data-theme="dark"]) &,
+	html:not([data-theme="dark"]) & {
+		color: #0f172a !important;
+
+		.has-text-white,
+		.has-text-light,
+		.has-text-grey-100,
+		.has-text-grey-200,
+		.has-text-grey-300 {
+			color: #0f172a !important;
+		}
+
+		.has-text-grey-400,
+		.has-text-grey {
+			color: #475569 !important;
+		}
+	}
+
 	&:hover {
-		box-shadow: 0px 0px 17px 0px rgba(0, 0, 0, 0.2);
+		transform: translateY(-2px);
+
+		> .blur-background {
+			box-shadow: var(--theme-desktop-glass-hover-shadow) !important;
+		}
 	}
 	
 	.widget-content {
-		padding: 1rem 1.25rem;
+		padding: 0.95rem 1.1rem;
 		position: relative;
 		z-index: 10;
 	}
 	
+	/* ── Unified Widget Header ────────────────────────────────────── */
 	.widget-header {
-		margin-right: -0.25rem;
+		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.65rem;
 		position: relative;
 		z-index: 4;
-		
-		.widget-title {
-			color: $grey-100;
-			font-size: 1.125rem;
-			line-height: 1.75rem;
-			font-weight: 500;
+
+		.widget-header-left {
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+			min-width: 0;
+			flex: 1 1 auto;
+		}
+
+		.widget-badge {
+			width: 1.65rem;
+			height: 1.65rem;
+			border-radius: 7px;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			flex-shrink: 0;
+			font-size: 0.9rem;
+
+			&.is-cpu   { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+			&.is-ram   { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; }
+			&.is-disks { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+			&.is-net   { background: rgba(6, 182, 212, 0.12); color: #0891b2; }
+			&.is-gpu   { background: rgba(16, 185, 129, 0.12); color: #059669; }
+		}
+
+		.widget-header-text {
+			display: flex;
+			flex-direction: column;
+			min-width: 0;
 		}
 		
-		.widget-icon-button {
-			width: 1.5rem;
-			height: 1.5rem;
+		.widget-title {
+			color: var(--theme-desktop-glass-text, #0f172a);
+			font-size: 0.82rem;
+			line-height: 1.2;
+			font-weight: 600;
+			letter-spacing: -0.01em;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.widget-header-meta {
+			font-size: 0.66rem;
+			font-weight: 400;
+			line-height: 1.15;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			margin-top: 1px;
+		}
+
+		.widget-header-right {
+			display: flex;
+			align-items: center;
+			gap: 0.25rem;
+			flex-shrink: 0;
+		}
+		
+		.widget-icon-btn {
+			width: 1.55rem;
+			height: 1.55rem;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			border-radius: var(--radius-sm, 6px);
+			border: 1px solid transparent;
 			cursor: pointer;
+			color: var(--theme-desktop-glass-icon, #475569);
+			background: transparent;
+			transition: all 0.15s ease;
+
+			&:hover {
+				background: var(--theme-card-hover, rgba(0, 0, 0, 0.06));
+				color: var(--theme-desktop-glass-text, #0f172a);
+				border-color: var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
+			}
+
+			&.active,
+			&.is-active {
+				background: rgba(37, 99, 235, 0.12);
+				color: #2563eb;
+				border-color: rgba(37, 99, 235, 0.25);
+			}
+
+			.b-icon,
+			.icon,
+			.mdi {
+				color: inherit;
+				font-size: 1rem !important;
+				line-height: 1;
+			}
+		}
+	}
+
+	/* ── Bento Split Layout: Left = Hero Dial, Right = Structured Info ── */
+	.widget-hero-grid {
+		display: grid;
+		grid-template-columns: 76px 1fr;
+		gap: 0.75rem;
+		align-items: center;
+		margin: 0.1rem 0;
+	}
+
+	.hero-gauge-box {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+
+	.hero-info-bento {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 0.3rem;
+		min-width: 0;
+	}
+
+	.bento-hero-title {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--theme-desktop-glass-text, #0f172a);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		line-height: 1.2;
+	}
+
+	.bento-hero-sub {
+		font-size: 0.67rem;
+		font-weight: 400;
+		color: var(--theme-desktop-glass-text-sub, #475569);
+		line-height: 1.2;
+	}
+
+	/* 2x2 Bento Spec Tiles (CPU / Hardware) */
+	.bento-specs-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		margin-top: 0.05rem;
+
+		.spec-tile {
+			display: flex;
+			flex-direction: column;
+			gap: 1px;
+			padding: 3.5px 6px;
+			border-radius: 6px;
+			background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+			border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+			min-width: 0;
+
+			.spec-label {
+				font-size: 0.56rem;
+				font-weight: 500;
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+				color: var(--theme-desktop-glass-text-sub, #64748b);
+				line-height: 1;
+			}
+
+			.spec-val {
+				font-size: 0.7rem;
+				font-weight: 500;
+				font-variant-numeric: tabular-nums;
+				color: var(--theme-desktop-glass-text, #0f172a);
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				line-height: 1.2;
+			}
+		}
+	}
+
+	/* Bento Chips Row */
+	.bento-chips-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin-top: 0.1rem;
+	}
+
+	.bento-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-size: 0.64rem;
+		font-weight: 500;
+		font-variant-numeric: tabular-nums;
+		padding: 2px 6px;
+		border-radius: 5px;
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+		color: var(--theme-desktop-glass-text, #0f172a);
+		white-space: nowrap;
+		line-height: 1.25;
+
+		i, .icon, .mdi {
+			font-size: 0.72rem;
+			color: var(--theme-desktop-glass-text-sub, #64748b);
+			line-height: 1;
+		}
+
+		&.is-primary {
+			color: var(--color-primary, #2563eb);
+			border-color: rgba(37, 99, 235, 0.2);
+			background: rgba(37, 99, 235, 0.06);
+		}
+
+		&.is-purple {
+			color: #8b5cf6;
+			border-color: rgba(139, 92, 246, 0.2);
+			background: rgba(139, 92, 246, 0.06);
+		}
+
+		&.is-emerald {
+			color: #059669;
+			border-color: rgba(16, 185, 129, 0.2);
+			background: rgba(16, 185, 129, 0.06);
+		}
+	}
+
+	/* ── RAM Progress Box ─────────────────────────────────────────── */
+	.ram-track-box {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		width: 100%;
+		margin: 0.1rem 0;
+
+		.ram-progress-track {
+			width: 100%;
+			height: 5px;
+			border-radius: var(--radius-pill, 9999px);
+			background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.08));
+			overflow: hidden;
+		}
+
+		.ram-progress-fill {
+			height: 100%;
+			border-radius: var(--radius-pill, 9999px);
+			background: linear-gradient(90deg, #8b5cf6, #6366f1);
+			transition: width 0.4s ease;
+		}
+	}
+
+	/* ── Mini Core Activity Matrix (Apple Activity Style) ────────── */
+	.mini-cores-visualizer {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 4px 6px;
+		padding: 5px 7px;
+		margin-top: 0.55rem;
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.025));
+		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+		border-radius: 8px;
+
+		.mini-core-item {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			align-items: center;
+		}
+
+		.mini-core-label {
+			font-size: 0.56rem;
+			font-weight: 500;
+			font-variant-numeric: tabular-nums;
+			color: var(--theme-desktop-glass-text-sub, #64748b);
+			line-height: 1;
+		}
+
+		.mini-core-track {
+			width: 100%;
+			height: 18px;
+			background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.07));
+			border-radius: 3px;
+			position: relative;
+			overflow: hidden;
+			display: flex;
+			align-items: flex-end;
+		}
+
+		.mini-core-fill {
+			width: 100%;
+			background: linear-gradient(180deg, #38bdf8, #2563eb);
+			border-radius: 2px;
+			transition: height 0.35s ease;
+		}
+	}
+
+	/* ── Storage / Disks Bento Dashboard ─────────────────────────── */
+	.disks-bento-list {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.disk-bento-card {
+		padding: 6px 8px;
+		border-radius: 8px;
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		transition: background 0.15s ease, border-color 0.15s ease;
+
+		&:hover {
+			background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
+		}
+
+		.disk-card-top {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			min-width: 0;
+		}
+
+		.disk-card-left {
+			display: flex;
+			align-items: center;
+			gap: 0.4rem;
+			min-width: 0;
+			flex: 1 1 auto;
+		}
+
+		.disk-type-pill {
+			font-size: 0.56rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			padding: 1px 4.5px;
+			border-radius: 4px;
+			letter-spacing: 0.03em;
+			flex-shrink: 0;
+
+			&.is-internal {
+				background: rgba(245, 158, 11, 0.12);
+				color: #f59e0b;
+			}
+			&.is-usb {
+				background: rgba(99, 102, 241, 0.12);
+				color: #6366f1;
+			}
+		}
+
+		.disk-name {
+			font-size: 0.74rem;
+			font-weight: 500;
+			color: var(--theme-desktop-glass-text, #0f172a);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			line-height: 1.2;
+		}
+
+		.disk-pct-badge {
+			font-size: 0.72rem;
+			font-weight: 600;
+			font-variant-numeric: tabular-nums;
+			color: var(--theme-desktop-glass-text, #0f172a);
+			flex-shrink: 0;
+			margin-left: 6px;
+		}
+
+		.disk-track {
+			width: 100%;
+			height: 5px;
+			background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.07));
+			border-radius: var(--radius-pill, 9999px);
+			overflow: hidden;
+		}
+
+		.disk-fill {
+			height: 100%;
+			border-radius: var(--radius-pill, 9999px);
+			transition: width 0.4s ease;
+
+			&.is-normal {
+				background: linear-gradient(90deg, #2563eb, #06b6d4);
+			}
+			&.is-warning {
+				background: linear-gradient(90deg, #f59e0b, #fbbf24);
+			}
+			&.is-danger {
+				background: linear-gradient(90deg, #ef4444, #f87171);
+			}
+		}
+
+		.disk-meta-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			font-size: 0.64rem;
+			font-weight: 400;
+			font-variant-numeric: tabular-nums;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+			line-height: 1.2;
+
+			.free-pill {
+				font-weight: 500;
+				color: var(--theme-desktop-glass-text, #0f172a);
+			}
+		}
+	}
+
+	/* ── Network Bento Dashboard ──────────────────────────────────── */
+	.network-stats-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		margin: 0.1rem 0 0.4rem;
+
+		.net-stat-card {
+			padding: 5px 7px;
+			border-radius: 8px;
+			background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+			border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+
+			.net-stat-header {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+
+				.net-stat-icon {
+					width: 16px;
+					height: 16px;
+					border-radius: 4px;
+					display: inline-flex;
+					align-items: center;
+					justify-content: center;
+					font-size: 0.72rem;
+
+					&.is-down {
+						background: rgba(37, 99, 235, 0.12);
+						color: #2563eb;
+					}
+					&.is-up {
+						background: rgba(16, 185, 129, 0.12);
+						color: #10b981;
+					}
+				}
+
+				.net-stat-label {
+					font-size: 0.58rem;
+					font-weight: 500;
+					text-transform: uppercase;
+					letter-spacing: 0.04em;
+					color: var(--theme-desktop-glass-text-sub, #64748b);
+					line-height: 1;
+				}
+			}
+
+			.net-stat-value {
+				font-size: 0.82rem;
+				font-weight: 600;
+				font-variant-numeric: tabular-nums;
+				color: var(--theme-desktop-glass-text, #0f172a);
+				line-height: 1.1;
+
+				.unit {
+					font-size: 0.62rem;
+					font-weight: 400;
+					color: var(--theme-desktop-glass-text-sub, #475569);
+					margin-left: 2px;
+				}
+			}
+		}
+	}
+
+	.net-sparkline-box {
+		width: 100%;
+		height: 52px;
+		border-radius: 6px;
+		overflow: hidden;
+		position: relative;
+	}
+
+	/* ── GPU Bento Dashboard: VRAM Meter Card ─────────────────────── */
+	.vram-meter-card {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 4px 7px;
+		border-radius: 6px;
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
+		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.06));
+		min-width: 0;
+
+		.vram-card-top {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			line-height: 1;
+
+			.vram-label {
+				font-size: 0.56rem;
+				font-weight: 500;
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+				color: var(--theme-desktop-glass-text-sub, #64748b);
+			}
+
+			.vram-metrics {
+				display: flex;
+				align-items: center;
+				gap: 5px;
+			}
+
+			.vram-usage-text {
+				font-size: 0.63rem;
+				font-weight: 500;
+				font-variant-numeric: tabular-nums;
+				color: var(--theme-desktop-glass-text-sub, #475569);
+			}
+
+			.vram-pct-badge {
+				font-size: 0.68rem;
+				font-weight: 600;
+				font-variant-numeric: tabular-nums;
+				color: var(--theme-desktop-glass-text, #0f172a);
+			}
+		}
+
+		.vram-progress-track {
+			width: 100%;
+			height: 5px;
+			border-radius: var(--radius-pill, 9999px);
+			background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.07));
+			overflow: hidden;
+		}
+
+		.vram-progress-fill {
+			height: 100%;
+			border-radius: var(--radius-pill, 9999px);
+			background: linear-gradient(90deg, #0d9488, #06b6d4);
+			transition: width 0.4s ease;
+		}
+	}
+
+	.gpu-unavailable-card {
+		padding: 14px 10px;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 5px;
+		border-radius: 8px;
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.02));
+		border: 1px dashed var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.1));
+
+		.gpu-unavail-icon {
+			font-size: 1.3rem;
+			color: var(--theme-desktop-glass-text-sub, #64748b);
+			line-height: 1;
+		}
+
+		.gpu-unavail-title {
+			font-size: 0.76rem;
+			font-weight: 600;
+			color: var(--theme-desktop-glass-text, #0f172a);
+		}
+
+		.gpu-unavail-desc {
+			font-size: 0.66rem;
+			font-weight: 400;
+			color: var(--theme-desktop-glass-text-sub, #64748b);
+			line-height: 1.3;
+		}
+	}
+
+	/* ── Expandable Detail Section (Top Processes) ─────────────────── */
+	.more-info {
+		margin-top: 0.55rem;
+		padding-top: 0.55rem;
+		border-top: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
+
+		.process-section-title {
+			font-size: 0.6rem;
+			font-weight: 500;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			color: var(--theme-desktop-glass-text-sub, #64748b);
+			margin-bottom: 4px;
+			padding-left: 2px;
+		}
+
+		.process-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 3px 5px;
+			border-radius: var(--radius-xs, 4px);
+			font-size: 0.72rem;
+			transition: background-color 0.12s ease;
+
+			&:hover {
+				background: var(--theme-card-hover, rgba(0, 0, 0, 0.04));
+			}
+
+			.process-name {
+				font-weight: 500;
+				color: var(--theme-desktop-glass-text, #0f172a);
+			}
+
+			.process-usage {
+				font-weight: 600;
+				font-variant-numeric: tabular-nums;
+				color: var(--theme-desktop-glass-text-sub, #475569);
+			}
 		}
 	}
 }
@@ -64,7 +715,6 @@
 		margin-bottom: 0;
 	}
 }
-
 
 .is-noscroll,
 .is-clipped {

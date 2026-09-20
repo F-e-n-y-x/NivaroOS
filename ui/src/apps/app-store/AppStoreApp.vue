@@ -1674,22 +1674,19 @@ export default {
 					}
 
 					if (composeJSON && composeJSON['x-casaos']?.tips?.before_install?.en_us) {
-						this.$buefy.modal.open({
-							parent: this,
-							component: () => import('@/apps/app-store/TipEditorModal.vue'),
-							hasModalCard: true,
-							trapFocus: true,
-							canCancel: [''],
-							scroll: 'keep',
-							animation: 'zoom-in',
-							events: {
-								submit: async () => {
+						this.$store.commit('OPEN_WINDOW', {
+							id: 'tip-editor',
+							title: this.$t('Tips'),
+							component: 'TipEditorModal',
+							props: {
+								isDialog: true,
+								composeData: composeJSON,
+								onSubmit: async () => {
 									await this.executeInstall(res.data, item || { title: id, id })
 								}
 							},
-							props: {
-								composeData: composeJSON
-							}
+							width: 440,
+							height: 480
 						})
 					} else {
 						await this.executeInstall(res.data, item || { title: id, id })
@@ -1853,22 +1850,21 @@ export default {
 			this.formState.devices.splice(idx, 1)
 		},
 		openImportModal() {
-			this.$buefy.modal.open({
-				parent: this,
-				component: () => import('@/shared/forms/ImportPanel.vue'),
-				hasModalCard: true,
-				customClass: 'import-panel-modal',
-				trapFocus: true,
-				canCancel: ['escape', 'x', 'outside'],
-				events: {
-					importInsert: (yaml) => {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'import-panel',
+				title: this.$t('Import'),
+				component: 'ImportPanel',
+				props: {
+					onUpdate: (yaml) => {
 						this.customComposeYaml = yaml
 						const parsed = this.yamlToFormData(yaml)
 						if (parsed) {
 							this.formState = parsed
 						}
 					}
-				}
+				},
+				width: 640,
+				height: 560
 			})
 		},
 		exportYAML() {

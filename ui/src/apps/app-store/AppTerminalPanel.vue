@@ -2,10 +2,6 @@
 	<div class="modal-card">
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body ">
-			<div class="close-container">
-				<button class="delete" type="button" @click="$emit('close')" />
-			</div>
-			<h3 class="title is-3">{{ serviceName || appName }}</h3>
 			<div class="is-flex-grow-1">
 				<b-tabs :animated="false" @input="onInput">
 					<b-tab-item :label="$t('Terminal')" value="terminal">

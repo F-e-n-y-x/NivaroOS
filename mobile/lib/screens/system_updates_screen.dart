@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -19,18 +20,6 @@ import '../widgets/common.dart';
 /// - App: this Flutter app's own installed version (PackageInfo, the actual
 ///   build you're running) vs. the latest GitHub Release's tag + attached
 ///   APK - entirely separate from the server's version.
-///
-/// These used to share one set of state variables - the GitHub Releases
-/// fetch (added for app-update checking) unconditionally overwrote whatever
-/// the real server version-check had just returned, so every card on this
-/// screen (including the "Install Server Update" button's confirmation
-/// dialog, which calls the real POST /sys/update on your server) displayed
-/// this app's own release tag/notes as if they were a server update - and
-/// the "Mobile App" card's "Installed" version was never actually read from
-/// this app at all (PackageInfo was never called anywhere in this file),
-/// just whatever the server check happened to report. Split into
-/// _checkServerUpdate() / _checkAppUpdate() with fully separate state so
-/// neither can leak into the other again.
 class SystemUpdatesScreen extends StatefulWidget {
   const SystemUpdatesScreen({super.key});
 
@@ -47,6 +36,10 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
   bool _serverNeedUpdate = false;
   bool _serverUpdating = false;
   int _upgradablePackages = 0;
+  int _securityCount = 0;
+  List<Map<String, dynamic>> _packageList = [];
+  bool _refreshingRepos = false;
+  bool _upgradingApt = false;
   String? _serverStatusMessage;
   String _lastServerCheckedTime = '';
 
@@ -134,12 +127,35 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     }
 
     int pkgUpgrades = 0;
+    int secUpgrades = 0;
+    List<Map<String, dynamic>> pkgs = [];
     try {
-      final pkgRes = await ApiClient.instance.get('/sys/packages/upgrades');
-      if (pkgRes['data'] is Map && pkgRes['data']['packages'] is List) {
-        pkgUpgrades = (pkgRes['data']['packages'] as List).length;
+      final pkgRes = await ApiClient.instance.get('/sys/packages/check');
+      if (pkgRes['data'] is Map) {
+        final d = pkgRes['data'] as Map<String, dynamic>;
+        pkgUpgrades = d['count'] as int? ?? 0;
+        secUpgrades = d['security_count'] as int? ?? 0;
+        if (d['packages'] is List) {
+          pkgs = (d['packages'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      try {
+        final pkgRes = await ApiClient.instance.get('/sys/packages/upgrades');
+        if (pkgRes['data'] is Map) {
+          final d = pkgRes['data'] as Map<String, dynamic>;
+          pkgUpgrades = d['count'] as int? ?? (d['packages'] is List ? (d['packages'] as List).length : 0);
+          secUpgrades = d['security_count'] as int? ?? 0;
+          if (d['packages'] is List) {
+            pkgs = (d['packages'] as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          }
+        }
+      } catch (_) {}
+    }
 
     final now = DateTime.now();
     final timeStr =
@@ -152,6 +168,8 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         _serverNeedUpdate = needUpdate;
         _serverChangeLog = changeLog;
         _upgradablePackages = pkgUpgrades;
+        _securityCount = secUpgrades;
+        _packageList = pkgs;
         _lastServerCheckedTime = timeStr;
         _serverChecking = false;
       });
@@ -312,19 +330,30 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     }
   }
 
-  Future<void> _upgradeLinuxPackages() async {
-    setState(() {
-      _serverUpdating = true;
-      _serverStatusMessage = 'Upgrading Linux packages on server...';
-    });
-
+  Future<void> _refreshAptRepositories() async {
+    setState(() => _refreshingRepos = true);
     try {
-      final res = await ApiClient.instance.post('/sys/packages/upgrade');
+      final res = await ApiClient.instance.post('/sys/packages/refresh');
+      if (res['data'] is Map && mounted) {
+        final d = res['data'] as Map<String, dynamic>;
+        final count = d['count'] as int? ?? 0;
+        final secCount = d['security_count'] as int? ?? 0;
+        List<Map<String, dynamic>> pkgs = [];
+        if (d['packages'] is List) {
+          pkgs = (d['packages'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+        setState(() {
+          _upgradablePackages = count;
+          _securityCount = secCount;
+          _packageList = pkgs;
+        });
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(res['message']?.toString() ??
-                'Linux packages upgraded successfully!'),
+            content: Text('APT repositories refreshed. $_upgradablePackages packages upgradable.'),
             backgroundColor: NivaroColors.success,
           ),
         );
@@ -332,18 +361,96 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to upgrade packages: $e'),
-            backgroundColor: NivaroColors.danger,
-          ),
+          SnackBar(content: Text('Failed to refresh repositories: $e'), backgroundColor: NivaroColors.danger),
         );
       }
     } finally {
+      if (mounted) setState(() => _refreshingRepos = false);
+    }
+  }
+
+  Future<void> _upgradeLinuxPackages() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: NivaroColors.surfaceRaised,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
+        title: const Row(
+          children: [
+            Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 24),
+            SizedBox(width: 10),
+            Text('Upgrade System Packages', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          ],
+        ),
+        content: Text(
+          'This will execute `apt-get dist-upgrade` on the host server to upgrade $_upgradablePackages packages${_securityCount > 0 ? " (including $_securityCount security updates)" : ""}.\n\nYou can watch live execution logs as packages are configured.',
+          style: const TextStyle(color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: NivaroColors.textMuted)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: NivaroColors.info),
+            child: const Text('Start Upgrade', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _upgradingApt = true);
+
+    try {
+      await ApiClient.instance.post('/sys/packages/upgrade');
       if (mounted) {
-        setState(() => _serverUpdating = false);
-        _checkServerUpdate();
+        _showUpgradeLogsModal();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _upgradingApt = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start package upgrade: $e'), backgroundColor: NivaroColors.danger),
+        );
       }
     }
+  }
+
+  void _showUpgradeLogsModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _UpgradeLogsSheet(
+        onFinished: () {
+          if (mounted) {
+            setState(() => _upgradingApt = false);
+            _checkServerUpdate();
+          }
+        },
+      ),
+    ).then((_) {
+      if (mounted) _checkServerUpdate();
+    });
+  }
+
+  void _showPackagesListSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _PackagesListSheet(
+        packages: _packageList,
+        securityCount: _securityCount,
+        onUpgradeRequested: () {
+          Navigator.of(ctx).pop();
+          _upgradeLinuxPackages();
+        },
+      ),
+    );
   }
 
   // Downloads the APK to a local temp file with progress, then hands it to
@@ -872,17 +979,28 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
     return DarkCard(
       padding: const EdgeInsets.all(18),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: NivaroColors.info.withOpacity(0.15),
+                  color: (_securityCount > 0
+                          ? NivaroColors.danger
+                          : (_upgradablePackages > 0 ? NivaroColors.warning : NivaroColors.info))
+                      .withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.inventory_2_rounded,
-                    color: NivaroColors.infoLight, size: 22),
+                child: Icon(
+                  _securityCount > 0
+                      ? Icons.security_rounded
+                      : Icons.inventory_2_rounded,
+                  color: _securityCount > 0
+                      ? NivaroColors.dangerLight
+                      : (_upgradablePackages > 0 ? NivaroColors.warningLight : NivaroColors.infoLight),
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -891,47 +1009,111 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   children: [
                     const Text('Linux Packages (APT)',
                         style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
+                            fontWeight: FontWeight.w700, fontSize: 14.5)),
                     const SizedBox(height: 2),
                     Text(
                       _upgradablePackages > 0
-                          ? '$_upgradablePackages system package updates available'
-                          : 'Host OS repositories synced & healthy',
+                          ? '$_upgradablePackages package updates available${_securityCount > 0 ? " ($_securityCount security)" : ""}'
+                          : 'Host OS repositories synced & up to date',
                       style: TextStyle(
-                        color: _upgradablePackages > 0
-                            ? NivaroColors.warning
-                            : NivaroColors.textMuted,
+                        color: _securityCount > 0
+                            ? NivaroColors.dangerLight
+                            : (_upgradablePackages > 0
+                                ? NivaroColors.warning
+                                : NivaroColors.textMuted),
                         fontSize: 12,
+                        fontWeight: _upgradablePackages > 0 ? FontWeight.w600 : FontWeight.normal,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(
-                _upgradablePackages > 0
-                    ? Icons.system_update_rounded
-                    : Icons.check_circle_rounded,
-                color: _upgradablePackages > 0
-                    ? NivaroColors.warning
-                    : NivaroColors.successLight,
-                size: 20,
-              ),
+              if (_upgradingApt)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
+                )
+              else
+                Icon(
+                  _upgradablePackages > 0
+                      ? Icons.system_update_rounded
+                      : Icons.check_circle_rounded,
+                  color: _securityCount > 0
+                      ? NivaroColors.dangerLight
+                      : (_upgradablePackages > 0
+                          ? NivaroColors.warning
+                          : NivaroColors.successLight),
+                  size: 20,
+                ),
             ],
           ),
-          if (_upgradablePackages > 0) ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
+          const SizedBox(height: 14),
+          // Actions Row: Refresh and View All
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _refreshingRepos ? null : _refreshAptRepositories,
+                  icon: _refreshingRepos
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 1.5, color: NivaroColors.textPrimary))
+                      : const Icon(Icons.sync_rounded, size: 16),
+                  label: Text(_refreshingRepos ? 'Refreshing...' : 'Refresh Index',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: NivaroColors.textPrimary,
+                    side: const BorderSide(color: NivaroColors.borderSubtle),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+              if (_packageList.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _showPackagesListSheet,
+                    icon: const Icon(Icons.list_alt_rounded, size: 16),
+                    label: Text('View (${_packageList.length})',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: NivaroColors.primaryLight,
+                      side: const BorderSide(color: NivaroColors.borderHighlight),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_upgradingApt) ...[
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _showUpgradeLogsModal,
+              icon: const Icon(Icons.terminal_rounded, size: 18),
+              label: const Text('Upgrade in Progress · View Live Logs',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              style: FilledButton.styleFrom(
+                backgroundColor: NivaroColors.info,
+                minimumSize: const Size(double.infinity, 42),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ] else if (_upgradablePackages > 0) ...[
+            const SizedBox(height: 10),
+            FilledButton.icon(
               onPressed: _serverUpdating ? null : _upgradeLinuxPackages,
               icon: const Icon(Icons.upgrade_rounded, size: 18),
-              label: Text('Upgrade $_upgradablePackages Packages',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 13)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: NivaroColors.warningLight,
-                side: const BorderSide(color: NivaroColors.warning),
-                minimumSize: const Size(double.infinity, 40),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+              label: Text('Upgrade All $_upgradablePackages Packages',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              style: FilledButton.styleFrom(
+                backgroundColor: _securityCount > 0 ? NivaroColors.danger : NivaroColors.primary,
+                minimumSize: const Size(double.infinity, 42),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ],
@@ -975,6 +1157,369 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                 color: NivaroColors.textPrimary),
           ),
       ],
+    );
+  }
+}
+
+class _UpgradeLogsSheet extends StatefulWidget {
+  final VoidCallback onFinished;
+  const _UpgradeLogsSheet({required this.onFinished});
+
+  @override
+  State<_UpgradeLogsSheet> createState() => _UpgradeLogsSheetState();
+}
+
+class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
+  Timer? _timer;
+  List<String> _logs = [];
+  bool _isRunning = true;
+  int _exitCode = 0;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _pollStatus();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _pollStatus());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pollStatus() async {
+    try {
+      final res = await ApiClient.instance.get('/sys/packages/upgrade/status');
+      if (res['data'] is Map && mounted) {
+        final d = res['data'] as Map<String, dynamic>;
+        final running = d['running'] == true;
+        final rawLogs = d['logs'] as List<dynamic>? ?? [];
+        final logs = rawLogs.map((e) => e.toString()).toList();
+        final exitCode = d['exit_code'] as int? ?? 0;
+
+        setState(() {
+          _isRunning = running;
+          _logs = logs;
+          _exitCode = exitCode;
+        });
+
+        if (!running) {
+          _timer?.cancel();
+          widget.onFinished();
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: NivaroColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
+            ),
+            child: Row(
+              children: [
+                if (_isRunning)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
+                  )
+                else
+                  Icon(
+                    _exitCode == 0 ? Icons.check_circle_rounded : Icons.error_rounded,
+                    color: _exitCode == 0 ? NivaroColors.successLight : NivaroColors.dangerLight,
+                    size: 20,
+                  ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isRunning
+                            ? 'Upgrading System Packages...'
+                            : (_exitCode == 0 ? 'Package Upgrade Finished' : 'Upgrade Finished With Code $_exitCode'),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                      ),
+                      Text(
+                        _isRunning ? 'Running apt-get dist-upgrade in background' : '${_logs.length} log lines recorded',
+                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Container(
+              color: const Color(0xFF0D1117),
+              padding: const EdgeInsets.all(14),
+              child: _logs.isEmpty
+                  ? const Center(
+                      child: Text('Waiting for output from apt...',
+                          style: TextStyle(color: NivaroColors.textMuted, fontFamily: 'monospace')),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _logs.length,
+                      itemBuilder: (context, i) {
+                        final line = _logs[i];
+                        Color color = const Color(0xFFC9D1D9);
+                        if (line.toLowerCase().contains('error') || line.toLowerCase().contains('failed')) {
+                          color = NivaroColors.dangerLight;
+                        } else if (line.toLowerCase().contains('setting up') ||
+                            line.toLowerCase().contains('unpacking')) {
+                          color = NivaroColors.infoLight;
+                        } else if (line.toLowerCase().contains('success') ||
+                            line.toLowerCase().contains('completed')) {
+                          color = NivaroColors.successLight;
+                        }
+                        return Text(
+                          line,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11.5,
+                            height: 1.35,
+                            color: color,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackagesListSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> packages;
+  final int securityCount;
+  final VoidCallback onUpgradeRequested;
+
+  const _PackagesListSheet({
+    required this.packages,
+    required this.securityCount,
+    required this.onUpgradeRequested,
+  });
+
+  @override
+  State<_PackagesListSheet> createState() => _PackagesListSheetState();
+}
+
+class _PackagesListSheetState extends State<_PackagesListSheet> {
+  String _filter = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = widget.packages.where((p) {
+      final name = p['name']?.toString().toLowerCase() ?? '';
+      return _filter.isEmpty || name.contains(_filter.toLowerCase());
+    }).toList();
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: NivaroColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: NivaroColors.borderHighlight,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Upgradable APT Packages (${widget.packages.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+                      ),
+                    ),
+                    if (widget.securityCount > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: NivaroColors.danger.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: NivaroColors.dangerLight.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          '${widget.securityCount} Security',
+                          style: const TextStyle(
+                              color: NivaroColors.dangerLight, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  onChanged: (val) => setState(() => _filter = val),
+                  decoration: InputDecoration(
+                    hintText: 'Search packages...',
+                    hintStyle: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: NivaroColors.textMuted),
+                    filled: true,
+                    fillColor: NivaroColors.surfaceRaised,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(
+                    child: Text('No matching packages found.', style: TextStyle(color: NivaroColors.textMuted)),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+                    itemBuilder: (context, i) {
+                      final p = filtered[i];
+                      final isSec = p['is_security'] == true;
+                      return ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                p['name']?.toString() ?? '',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                            ),
+                            if (isSec)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: NivaroColors.danger.withOpacity(0.18),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.security_rounded, color: NivaroColors.dangerLight, size: 12),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Security',
+                                      style: TextStyle(
+                                          color: NivaroColors.dangerLight,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Row(
+                            children: [
+                              Text(
+                                p['current_version']?.toString() ?? '',
+                                style: const TextStyle(
+                                    color: NivaroColors.textMuted, fontSize: 11.5, fontFamily: 'monospace'),
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.arrow_forward_rounded, size: 12, color: NivaroColors.primaryLight),
+                              const SizedBox(width: 6),
+                              Text(
+                                p['new_version']?.toString() ?? '',
+                                style: const TextStyle(
+                                    color: NivaroColors.successLight,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'monospace'),
+                              ),
+                              const Spacer(),
+                              Text(
+                                p['arch']?.toString() ?? '',
+                                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: NivaroColors.borderSubtle)),
+            ),
+            child: FilledButton.icon(
+              onPressed: widget.onUpgradeRequested,
+              icon: const Icon(Icons.upgrade_rounded),
+              label: Text('Upgrade All (${widget.packages.length} Packages)'),
+              style: FilledButton.styleFrom(
+                backgroundColor: NivaroColors.primary,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

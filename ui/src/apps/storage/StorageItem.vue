@@ -70,19 +70,20 @@ export default {
 		removeStorage(path) {
 			this.isRemoving = true;
 
-			this.$buefy.dialog.prompt({
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'storage-remove-password-prompt',
 				title: this.$t('Remove'),
-				message: this.$t('Enter the password to continue:'),
-				inputAttrs: {
-					type: "password"
-				},
-				trapFocus: true,
-				confirmText: this.$t('OK'),
-				cancelText: this.$t('Cancel'),
-				onCancel: () => {
-					this.isRemoving = false;
-				},
-				onConfirm: (value) => {
+				component: 'PromptDialogWindow',
+				props: {
+					isDialog: true,
+					message: this.$t('Enter the password to continue:'),
+					inputType: 'password',
+					confirmText: this.$t('OK'),
+					cancelText: this.$t('Cancel'),
+					onCancel: () => {
+						this.isRemoving = false;
+					},
+					onConfirm: (value) => {
 					let data = {
 						path: path,
 						password: value
@@ -114,26 +115,30 @@ export default {
 						})
 						console.error(e)
 					})
-				}
+					}
+				},
+				width: 380,
+				height: 190
 			})
 		},
 
 		formatStorage(path, mount_point) {
 			this.isFormating = true;
 
-			this.$buefy.dialog.prompt({
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'storage-format-password-prompt',
 				title: this.$t('Format'),
-				message: this.$t('Enter the password to continue:'),
-				inputAttrs: {
-					type: "password"
-				},
-				trapFocus: true,
-				confirmText: this.$t('OK'),
-				cancelText: this.$t('Cancel'),
-				onCancel: () => {
-					this.isFormating = false;
-				},
-				onConfirm: (value) => {
+				component: 'PromptDialogWindow',
+				props: {
+					isDialog: true,
+					message: this.$t('Enter the password to continue:'),
+					inputType: 'password',
+					confirmText: this.$t('OK'),
+					cancelText: this.$t('Cancel'),
+					onCancel: () => {
+						this.isFormating = false;
+					},
+					onConfirm: (value) => {
 					let data = {
 						path: path,
 						volume: mount_point,
@@ -166,7 +171,10 @@ export default {
 						console.error(e)
 					})
 
-				}
+					}
+				},
+				width: 380,
+				height: 190
 			})
 		},
 

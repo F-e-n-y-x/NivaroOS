@@ -7,6 +7,32 @@
 		</header>
 
 		<section class="modal-card-body">
+			<!-- Dual Mode Toggle Bar -->
+			<div class="dual-mode-bar is-flex is-align-items-center is-justify-content-between mb-3">
+				<div class="dual-mode-info is-flex is-align-items-center">
+					<b-icon icon="theme-light-dark" pack="mdi" size="is-18" class="mr-2 has-text-primary" />
+					<div>
+						<div class="dual-mode-title">{{ $t('Dual Mode Wallpaper') }}</div>
+						<div class="dual-mode-sub">{{ $t('Automatically switch wallpaper between Light and Dark mode') }}</div>
+					</div>
+				</div>
+				<b-switch v-model="dualMode" size="is-small" type="is-primary" @input="onDualModeToggled"></b-switch>
+			</div>
+
+			<!-- Mode Tabs (when dual mode is active) -->
+			<div v-if="dualMode" class="wallpaper-mode-tabs is-flex mb-3">
+				<button type="button" class="mode-tab-btn is-flex is-align-items-center"
+					:class="{ active: activeModeTab === 'light' }" @click="activeModeTab = 'light'">
+					<b-icon icon="white-balance-sunny" pack="mdi" size="is-16" class="mr-1" />
+					<span>{{ $t('Light Mode Wallpaper') }}</span>
+				</button>
+				<button type="button" class="mode-tab-btn is-flex is-align-items-center ml-2"
+					:class="{ active: activeModeTab === 'dark' }" @click="activeModeTab = 'dark'">
+					<b-icon icon="weather-night" pack="mdi" size="is-16" class="mr-1" />
+					<span>{{ $t('Dark Mode Wallpaper') }}</span>
+				</button>
+			</div>
+
 			<div class="wallpaper-grid">
 				<button v-for="(item, index) in wallpaperItems" :key="'wallpaper' + index" class="wallpaper-tile"
 					:class="{ active: checkActive(item.path) }" @click="changeWallpaper(item.path)">
@@ -50,6 +76,10 @@ const galleryPath = "/DATA/Gallery/Wallpaper"
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']
 import Uploader from 'simple-uploader.js'
 import { mixin } from '@/mixins/mixin'
+import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
+
+const DEFAULT_LIGHT = require('@/assets/background/wallpaper01.jpg')
+const DEFAULT_DARK = require('@/assets/background/wallpaper02.jpg')
 
 export default {
 	mixins: [mixin],
@@ -62,6 +92,8 @@ export default {
 		}
 	},
 	data() {
+		const storedDual = localStorage.getItem('wallpaper_dual_mode')
+		const currentObj = this.$store.state.wallpaperObject || {}
 		return {
 			isLoading: false,
 			isUpLoading: false,
@@ -69,25 +101,29 @@ export default {
 			attributes: {
 				accept: 'image/png, image/jpeg, image/svg+xml, image/bmp, image/png, image/gif'
 			},
+			dualMode: currentObj.dualMode !== undefined ? Boolean(currentObj.dualMode) : (storedDual !== 'false'),
+			activeModeTab: getEffectiveTheme(getStoredThemeMode()),
+			lightWallpaper: (currentObj.light && currentObj.light.path) || localStorage.getItem('wallpaper_light') || DEFAULT_LIGHT,
+			darkWallpaper: (currentObj.dark && currentObj.dark.path) || localStorage.getItem('wallpaper_dark') || DEFAULT_DARK,
 			wallpaperItems: [
 				{
-					name: "Built-in wallpaper 1",
+					name: "Daylight Peak (Light)",
 					path: require('@/assets/background/wallpaper01.jpg')
 				},
 				{
-					name: "Built-in wallpaper 2",
+					name: "Starry Night (Dark)",
 					path: require('@/assets/background/wallpaper02.jpg')
+				},
+				{
+					name: "Nivaro Landscape",
+					path: require('@/assets/background/default_wallpaper.jpg')
 				}
 			],
-			backgroundStyleObj: {
-				backgroundImage: `url(${this.parseUrl(this.$store.state.wallpaperObject.path)})`
-			},
-			path: this.$store.state.wallpaperObject.path,
-			from: this.$store.state.wallpaperObject.from,
+			path: currentObj.path || localStorage.getItem('wallpaper') || DEFAULT_DARK,
+			from: currentObj.from || "Built-in",
 			galleryItems: []
 		}
 	},
-	components: {},
 	created() {
 		this.loadGallery()
 		this.uploader = new Uploader({
@@ -99,13 +135,12 @@ export default {
 			chunkSize: 1024 * 1024 * 1024 * 1024,
 			query: (file) => ({ path: galleryPath, name: file.name })
 		});
-
 	},
 	mounted() {
 		this.uploader.assignBrowse(document.getElementById('upload-wallpaper'), false, true, this.attributes)
 		this.uploader.on('filesSubmitted', () => {
 			this.isUpLoading = true
-			this.$api.sys.getVersion().then(res => {
+			this.$api.sys.getVersion().then(() => {
 				this.uploader.opts.headers.Authorization = this.$store.state.access_token || localStorage.getItem("access_token")
 				this.uploader.upload()
 			})
@@ -117,18 +152,12 @@ export default {
 				type: 'is-danger'
 			})
 		})
-		// Uploaded straight into the gallery folder (not the old single-slot
-		// avatar-style endpoint) so it shows up as a real, re-selectable
-		// tile - not just a hidden "currently applied" file with no history.
 		this.uploader.on('fileSuccess', (rootFile) => {
 			this.isUpLoading = false
 			const uploadPath = this.getFileUrl({ path: `${galleryPath}/${rootFile.name}`, is_dir: false })
 			this.loadGallery()
-			this.path = uploadPath
-			this.from = "Upload"
 			this.applyWallpaper(uploadPath, "Upload")
 		})
-
 	},
 	computed: {
 		isDirty() {
@@ -147,19 +176,71 @@ export default {
 					}
 				} catch (e) {}
 			}
-			const data = {
-				path: cleanPath,
-				from: from || this.from || "Built-in"
+
+			if (this.dualMode) {
+				if (this.activeModeTab === 'light') {
+					this.lightWallpaper = cleanPath
+					localStorage.setItem('wallpaper_light', cleanPath)
+				} else {
+					this.darkWallpaper = cleanPath
+					localStorage.setItem('wallpaper_dark', cleanPath)
+				}
+			} else {
+				this.lightWallpaper = cleanPath
+				this.darkWallpaper = cleanPath
+				localStorage.setItem('wallpaper_light', cleanPath)
+				localStorage.setItem('wallpaper_dark', cleanPath)
 			}
-			this.path = cleanPath
+
+			const effectiveTheme = getEffectiveTheme(getStoredThemeMode())
+			const activePath = this.dualMode
+				? (effectiveTheme === 'dark' ? this.darkWallpaper : this.lightWallpaper)
+				: cleanPath
+
+			const data = {
+				path: activePath,
+				from: from || this.from || "Built-in",
+				dualMode: this.dualMode,
+				light: {
+					path: this.lightWallpaper,
+					from: (this.activeModeTab === 'light' ? from : 'Built-in') || 'Built-in'
+				},
+				dark: {
+					path: this.darkWallpaper,
+					from: (this.activeModeTab === 'dark' ? from : 'Built-in') || 'Built-in'
+				}
+			}
+
+			this.path = activePath
 			this.from = data.from
-			localStorage.setItem('wallpaper', cleanPath)
+			localStorage.setItem('wallpaper', activePath)
+			localStorage.setItem('wallpaper_dual_mode', String(this.dualMode))
 			this.$store.commit('SET_WALLPAPER', data)
-			this.$messageBus('dashboardsetting_wallpaper', cleanPath.toString())
+			this.$messageBus('dashboardsetting_wallpaper', activePath.toString())
+			this.$EventBus.$emit('desktop:wallpaper-change')
 
 			this.$api.users.setCustomStorage(wallpaperConfig, data).catch(err => {
 				console.error('Failed to save wallpaper setting', err)
 			})
+		},
+		onDualModeToggled(val) {
+			this.dualMode = val
+			localStorage.setItem('wallpaper_dual_mode', String(val))
+			const effectiveTheme = getEffectiveTheme(getStoredThemeMode())
+			const activePath = val
+				? (effectiveTheme === 'dark' ? this.darkWallpaper : this.lightWallpaper)
+				: (this.path || this.darkWallpaper)
+
+			const data = {
+				path: activePath,
+				from: this.from || "Built-in",
+				dualMode: val,
+				light: { path: this.lightWallpaper, from: 'Built-in' },
+				dark: { path: this.darkWallpaper, from: 'Built-in' }
+			}
+			this.$store.commit('SET_WALLPAPER', data)
+			this.$EventBus.$emit('desktop:wallpaper-change')
+			this.$api.users.setCustomStorage(wallpaperConfig, data).catch(() => {})
 		},
 		cancel() {
 			this.path = this.$store.state.wallpaperObject.path
@@ -182,14 +263,28 @@ export default {
 			})
 		},
 		changeWallpaper(path) {
-			this.path = path
-			this.from = path.includes('/DATA/') ? 'Gallery' : 'Built-in'
-			this.applyWallpaper(path, this.from)
+			const from = path.includes('/DATA/') ? 'Gallery' : 'Built-in'
+			this.applyWallpaper(path, from)
 		},
-
+		cleanUrlPath(p) {
+			if (!p) return ''
+			if (p.includes('path=')) {
+				try {
+					const u = new URL(p, 'http://localhost')
+					const extracted = u.searchParams.get('path')
+					if (extracted) return extracted
+				} catch (e) {}
+			}
+			return p
+		},
 		checkActive(path) {
+			const clean = this.cleanUrlPath(path)
+			if (this.dualMode) {
+				const activeTarget = this.activeModeTab === 'light' ? this.lightWallpaper : this.darkWallpaper
+				return this.cleanUrlPath(activeTarget) === clean
+			}
 			const current = (this.$store.state.wallpaperObject && this.$store.state.wallpaperObject.path) || this.path
-			return current == path || this.path == path
+			return this.cleanUrlPath(current) === clean || this.cleanUrlPath(this.path) === clean
 		},
 		checkActiveFrom(from) {
 			return this.from == from
@@ -208,10 +303,6 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-// Buefy's base .modal-card rule (meant for a floating, centered dialog)
-// pins width to 640px with auto margins above 769px - embedded here inside
-// a Settings card, it needs to fill whatever width the card actually has
-// so the wallpaper grid can adapt its column count to the window size.
 .modal-card.is-embedded {
 	box-shadow: none;
 	background: transparent;
@@ -224,6 +315,60 @@ export default {
 
 .wallpaper-picker .modal-card-body {
 	padding: var(--space-5);
+}
+
+.dual-mode-bar {
+	padding: var(--space-2) var(--space-3);
+	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.02));
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
+	border-radius: var(--radius-card, 10px);
+
+	.dual-mode-title {
+		font-size: var(--font-sm, 0.85rem);
+		font-weight: 600;
+		color: var(--theme-text-primary, #0f172a);
+		line-height: 1.2;
+	}
+
+	.dual-mode-sub {
+		font-size: var(--font-xs, 0.75rem);
+		color: var(--theme-text-secondary, #64748b);
+		line-height: 1.2;
+		margin-top: 2px;
+	}
+}
+
+.wallpaper-mode-tabs {
+	display: flex;
+	gap: var(--space-2);
+
+	.mode-tab-btn {
+		flex: 1;
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-sm, 6px);
+		border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
+		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.02));
+		color: var(--theme-text-secondary, #64748b);
+		font-size: var(--font-xs, 0.75rem);
+		font-weight: 600;
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.15s ease;
+
+		&:hover {
+			background: var(--theme-card-hover, rgba(0, 0, 0, 0.04));
+			color: var(--theme-text-primary, #0f172a);
+		}
+
+		&.active {
+			background: var(--theme-card-bg, #ffffff);
+			color: var(--color-primary, #2563eb);
+			border-color: var(--color-primary, #2563eb);
+			box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
+		}
+	}
 }
 
 .wallpaper-apply-bar {
@@ -267,7 +412,7 @@ export default {
 	}
 
 	&.active {
-		border-color: hsla(208, 100%, 50%, 1);
+		border-color: var(--color-primary, #2563eb);
 	}
 }
 
@@ -278,7 +423,7 @@ export default {
 	width: 1.3rem;
 	height: 1.3rem;
 	border-radius: 50%;
-	background: hsla(208, 100%, 50%, 1);
+	background: var(--color-primary, #2563eb);
 	color: #fff;
 	display: flex;
 	align-items: center;

@@ -126,10 +126,7 @@ func (i *notifyServer) SendFileOperateNotify(nowSend bool) {
 				task.Status = "PROCESSING"
 			}
 
-			// TotalSize < 0 means "still calculating" (see ComputeOperateSizes) -
-			// without this guard, ProcessedSize(0) >= TotalSize(-1) would mark a
-			// brand new task Finished before it even started.
-			if temp.Finished || (temp.TotalSize >= 0 && temp.ProcessedSize >= temp.TotalSize) {
+			if temp.Finished {
 
 				task.Finished = true
 				task.Cancelled = temp.Cancelled

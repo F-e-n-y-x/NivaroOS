@@ -59,6 +59,11 @@ const sys = {
 		return api.get(`${PREFIX}/network-interfaces`);
 	},
 
+	// get server internet speedtest
+	getSpeedtest() {
+		return api.get(`${PREFIX}/speedtest`);
+	},
+
 	// get logs
 	getLogs() {
 		return api.get(`${PREFIX}/logs`);

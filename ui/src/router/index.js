@@ -19,27 +19,19 @@ VueRouter.prototype.push = function push(location) {
 	return originalPush.call(this, location).catch((err) => err)
 }
 
+let hasCheckedInit = false
+
 const needInit = async () => {
 	if (store.state.needInitialization) {
 		return true
+	}
+	if (hasCheckedInit) {
+		return false
 	}
 	try {
 		let userStatusRes = await api.users.getUserStatus();
 		if (userStatusRes.data.success === 200) {
 			const data = userStatusRes.data.data
-			if (data.wallpaper && data.wallpaper.path) {
-				store.commit('SET_WALLPAPER', data.wallpaper)
-			}
-			if (data.appearance) {
-				if (data.appearance.alpha !== undefined && data.appearance.alpha !== null) {
-					document.documentElement.style.setProperty('--ui-backdrop-alpha', data.appearance.alpha)
-					localStorage.setItem('uiBackdropAlpha', data.appearance.alpha)
-				}
-				if (data.appearance.blur !== undefined && data.appearance.blur !== null) {
-					document.documentElement.style.setProperty('--ui-backdrop-blur', `${data.appearance.blur}px`)
-					localStorage.setItem('uiBackdropBlur', data.appearance.blur)
-				}
-			}
 			if (!data.initialized) {
 				store.commit('SET_NEED_INITIALIZATION', true)
 				store.commit('SET_INIT_KEY', data.key)
@@ -47,6 +39,7 @@ const needInit = async () => {
 				localStorage.removeItem("refresh_token");
 				return true
 			}
+			hasCheckedInit = true
 			return false
 		} else {
 			return false
@@ -82,6 +75,7 @@ router.beforeEach(async (to, from, next) => {
 						break;
 
 					case "/logout":
+						hasCheckedInit = false;
 						localStorage.removeItem("access_token");
 						localStorage.removeItem("refresh_token");
 						localStorage.removeItem("user");

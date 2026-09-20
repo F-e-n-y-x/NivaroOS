@@ -1,15 +1,5 @@
 <template>
 	<div class="modal-card">
-		<!-- Modal-Card Header Start -->
-		<header class="modal-card-head">
-			<div class="is-flex-grow-1">
-				<h3 class="title is-3">{{ $t('Share NivaroOS') }}</h3>
-			</div>
-			<div>
-				<button class="delete" type="button" @click="$emit('close')"/>
-			</div>
-		</header>
-		<!-- Modal-Card Header End -->
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body ">
 			<div class="node-card  mt-5 mb-5">

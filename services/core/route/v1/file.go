@@ -99,6 +99,33 @@ func GetFilerContent(ctx echo.Context) error {
 			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
 		})
 	}
+	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
+		devIP := dev.IP
+		if devIP != "" && devIP != "Local Device" && !strings.HasPrefix(devIP, "127.") {
+			port := dev.Port
+			if port <= 0 {
+				port = 8765
+			}
+			urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
+			req, err := http.NewRequest("GET", urlStr, nil)
+			if err == nil {
+				req.Header.Set("X-Companion-Secret", dev.Secret)
+				client := &http.Client{Timeout: 30 * time.Second}
+				resp, err := client.Do(req)
+				if err == nil && resp.StatusCode == http.StatusOK {
+					defer resp.Body.Close()
+					info, err := ioutil.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+					if err == nil {
+						return ctx.JSON(common_err.SUCCESS, model.Result{
+							Success: common_err.SUCCESS,
+							Message: common_err.GetMsg(common_err.SUCCESS),
+							Data:    string(info),
+						})
+					}
+				}
+			}
+		}
+	}
 	if !file.Exists(filePath) {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
 			Success: common_err.FILE_DOES_NOT_EXIST,
@@ -131,6 +158,11 @@ func GetLocalFile(ctx echo.Context) error {
 			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
 		})
 	}
+	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
+		if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+			return nil
+		}
+	}
 	if !file.Exists(path) {
 		return ctx.JSON(http.StatusOK, model.Result{
 			Success: common_err.FILE_DOES_NOT_EXIST,
@@ -161,60 +193,72 @@ func GetDownloadFile(ctx echo.Context) error {
 		})
 	}
 	list := strings.Split(files, ",")
-	for _, v := range list {
-		if !file.Exists(v) {
-			if dev, phonePath := GetCompanionDeviceByStoragePath(v); dev != nil {
-				if len(list) == 1 {
-					if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
-						return nil
-					}
-				}
+	if len(list) == 1 {
+		filePath := list[0]
+		if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
+			if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+				return nil
 			}
-			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
-				Success: common_err.FILE_DOES_NOT_EXIST,
-				Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
-			})
+		} else {
+			if !file.Exists(filePath) {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+					Success: common_err.FILE_DOES_NOT_EXIST,
+					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
+				})
+			}
+			info, err := os.Stat(filePath)
+			if err != nil {
+				return ctx.JSON(http.StatusOK, model.Result{
+					Success: common_err.FILE_DOES_NOT_EXIST,
+					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
+				})
+			}
+			if !info.IsDir() {
+				ctx.Request().Header.Add("Content-Type", "application/octet-stream")
+				ctx.Request().Header.Add("Content-Transfer-Encoding", "binary")
+				ctx.Request().Header.Add("Cache-Control", "no-cache")
+				fileName := path.Base(filePath)
+				ctx.Response().Header().Add("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
+				return ctx.File(filePath)
+			}
 		}
 	}
+
+	var tempStageDir string
+	defer func() {
+		if tempStageDir != "" {
+			_ = os.RemoveAll(tempStageDir)
+		}
+	}()
+
+	stagedList := make([]string, len(list))
+	for i, v := range list {
+		if dev, _ := GetCompanionDeviceByStoragePath(v); dev != nil {
+			if tempStageDir == "" {
+				tempStageDir, _ = os.MkdirTemp("", "comp-batch-dl-*")
+			}
+			stagedPath := filepath.Join(tempStageDir, filepath.Base(v))
+			if err := DownloadCompanionItemToLocal(ctx.Request().Context(), v, stagedPath); err != nil {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+					Success: common_err.FILE_DOES_NOT_EXIST,
+					Message: err.Error(),
+				})
+			}
+			stagedList[i] = stagedPath
+		} else {
+			if !file.Exists(v) {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+					Success: common_err.FILE_DOES_NOT_EXIST,
+					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
+				})
+			}
+			stagedList[i] = v
+		}
+	}
+
 	ctx.Request().Header.Add("Content-Type", "application/octet-stream")
 	ctx.Request().Header.Add("Content-Transfer-Encoding", "binary")
 	ctx.Request().Header.Add("Cache-Control", "no-cache")
-	// handles only single files not folders and multiple files
-	if len(list) == 1 {
-
-		filePath := list[0]
-		info, err := os.Stat(filePath)
-		if err != nil {
-			return ctx.JSON(http.StatusOK, model.Result{
-				Success: common_err.FILE_DOES_NOT_EXIST,
-				Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
-			})
-		}
-		if !info.IsDir() {
-
-			// 打开文件
-			fileTmp, _ := os.Open(filePath)
-			defer fileTmp.Close()
-
-			// 获取文件的名称
-			fileName := path.Base(filePath)
-			ctx.Response().Header().Add("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
-			// Was a bare `ctx.File(filePath)` with no return - this already
-			// writes the complete file body to the response, but execution
-			// then fell through into the zip-archive code below (same
-			// ar.Create/AddFile path used for real multi-file batches), which
-			// wrote a second, zip-format stream onto that same response
-			// writer right after the file's own bytes. Every single-file
-			// download that came through this /batch endpoint (e.g. the
-			// Files app top bar's download button for exactly one selected
-			// item, before it was fixed to use the single-file endpoint
-			// instead) got the real file's bytes followed by trailing zip
-			// junk appended past EOF - a corrupted file. `return ctx.File(...)`
-			// matches the same early-return pattern GetLocalFile already uses
-			// above (line 140) for its own ctx.File call.
-			return ctx.File(filePath)
-		}
-	}
 
 	extension, ar, err := file.GetCompressionAlgorithm(t)
 	if err != nil {
@@ -233,14 +277,14 @@ func GetDownloadFile(ctx echo.Context) error {
 		})
 	}
 	defer ar.Close()
-	commonDir := file.CommonPrefix(filepath.Separator, list...)
+	commonDir := file.CommonPrefix(filepath.Separator, stagedList...)
 
 	currentPath := filepath.Base(commonDir)
 
 	name := "_" + currentPath
 	name += extension
 	ctx.Request().Header.Add("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(name))
-	for _, fname := range list {
+	for _, fname := range stagedList {
 		err = file.AddFile(ar, fname, commonDir)
 		if err != nil {
 			log.Printf("Failed to archive %s: %v", fname, err)
@@ -285,10 +329,8 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 	fileName := path.Base(filePath)
 
 	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
-		if !file.Exists(filePath) {
-			if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
-				return nil
-			}
+		if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+			return nil
 		}
 	}
 
@@ -670,6 +712,13 @@ func DirPath(ctx echo.Context) error {
 
 	// Live companion device file proxy
 	if dev, phonePath := GetCompanionDeviceByStoragePath(req.Path); dev != nil {
+		probeCompanionOnline(dev)
+		if !dev.IsOnline {
+			return ctx.JSON(http.StatusNotFound, model.Result{
+				Success: common_err.SERVICE_ERROR,
+				Message: "companion device is offline",
+			})
+		}
 		phoneFiles, err := FetchCompanionFilesFromDevice(dev, phonePath)
 		if err == nil {
 			pathList := make([]ObjResp, 0, len(phoneFiles))
@@ -698,9 +747,31 @@ func DirPath(ctx echo.Context) error {
 		}
 	}
 
+	if dev, _ := GetCompanionDeviceByStoragePath(req.Path); dev != nil {
+		probeCompanionOnline(dev)
+		if !dev.IsOnline {
+			return ctx.JSON(http.StatusNotFound, model.Result{
+				Success: common_err.SERVICE_ERROR,
+				Message: "companion device is offline",
+			})
+		}
+	}
+
 	info, err := service.MyService.System().GetDirPath(req.Path)
 	if err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+	}
+
+	// Filter offline companion device folders when listing /DATA/Companion
+	companionBase := filepath.Clean(getCompanionStorageBasePath())
+	if filepath.Clean(req.Path) == companionBase {
+		filtered := make([]model.Path, 0, len(info))
+		for _, item := range info {
+			if IsCompanionFolderVisible(item.Path) {
+				filtered = append(filtered, item)
+			}
+		}
+		info = filtered
 	}
 	// Best-effort: makes this directory eligible for live-update broadcasts
 	// (see service/file_watch.go) while it's actually being viewed. Never
@@ -811,6 +882,22 @@ func RenamePath(ctx echo.Context) error {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
 	}
 
+	if dev, phoneOld := GetCompanionDeviceByStoragePath(op); dev != nil {
+		devNew, phoneNew := GetCompanionDeviceByStoragePath(np)
+		if devNew != nil && devNew.ID == dev.ID {
+			if err := ProxyCompanionFileRename(dev, phoneOld, phoneNew); err != nil {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+					Success: common_err.SERVICE_ERROR,
+					Message: err.Error(),
+				})
+			}
+			if file.Exists(op) {
+				_ = os.Rename(op, np)
+			}
+			return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+		}
+	}
+
 	success, err := service.MyService.System().RenameFile(op, np)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: success, Message: common_err.GetMsg(success), Data: err})
 }
@@ -831,11 +918,18 @@ func MkdirAll(ctx echo.Context) error {
 	if len(path) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-	// decodedPath, err := url.QueryUnescape(path)
-	// if err != nil {
-	// 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
-	// 	return
-	// }
+
+	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
+		if err := ProxyCompanionMkdir(dev, phonePath); err != nil {
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+				Success: common_err.SERVICE_ERROR,
+				Message: err.Error(),
+			})
+		}
+		_ = os.MkdirAll(path, 0755)
+		return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	}
+
 	code, _ = service.MyService.System().MkdirAll(path)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: code, Message: common_err.GetMsg(code)})
 }
@@ -856,11 +950,19 @@ func PostCreateFile(ctx echo.Context) error {
 	if len(path) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-	// decodedPath, err := url.QueryUnescape(path)
-	// if err != nil {
-	// 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
-	// 	return
-	// }
+
+	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
+		if err := ProxyCompanionUploadStream(dev, phonePath, strings.NewReader(""), 0); err != nil {
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+				Success: common_err.SERVICE_ERROR,
+				Message: err.Error(),
+			})
+		}
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+		_ = file.CreateFile(path)
+		return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	}
+
 	code, _ = service.MyService.System().CreateFile(path)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: code, Message: common_err.GetMsg(code)})
 }
@@ -972,32 +1074,126 @@ func GetFileUpload(ctx echo.Context) error {
 // @Success 200 {string} string "ok"
 // @Router /file/upload [post]
 func PostFileUpload(ctx echo.Context) error {
-	f, _, _ := ctx.Request().FormFile("file")
+	f, h, _ := ctx.Request().FormFile("file")
+	if f == nil {
+		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "missing file"})
+	}
+	defer f.Close()
+
 	relative := ctx.FormValue("relativePath")
 	fileName := ctx.FormValue("filename")
+	if fileName == "" && h != nil {
+		fileName = h.Filename
+	}
+	if relative == "" {
+		relative = fileName
+	}
 	totalChunks, _ := strconv.Atoi(utils.DefaultPostForm(ctx, "totalChunks", "0"))
 	chunkNumber := ctx.FormValue("chunkNumber")
 	dirPath := ""
 	path := ctx.FormValue("path")
 
-	hash := file.GetHashByContent([]byte(fileName))
-
 	if len(path) == 0 {
 		logger.Error("path should not be empty")
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-	tempDir := filepath.Join(path, ".temp", hash+strconv.Itoa(totalChunks)) + "/"
 
-	if fileName != relative {
-		dirPath = strings.TrimSuffix(relative, fileName)
-		tempDir += dirPath
-		if err := file.MkDir(path + "/" + dirPath); err != nil {
-			logger.Error("error when trying to create `"+path+"/"+dirPath+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+	hash := file.GetHashByContent([]byte(fileName))
+
+	// 1. Target is a companion device
+	if dev, phoneDir := GetCompanionDeviceByStoragePath(path); dev != nil {
+		destPhonePath := filepath.Join(phoneDir, relative)
+		stagingBase := filepath.Join("/tmp/nivaroos_uploads", dev.ID, hash+strconv.Itoa(totalChunks))
+		tempDir := stagingBase + "/"
+		if fileName != relative {
+			dirPath = strings.TrimSuffix(relative, fileName)
+			tempDir += dirPath
+		}
+
+		if totalChunks > 1 {
+			if err := file.IsNotExistMkDir(tempDir); err != nil {
+				logger.Error("error creating staging dir for companion", zap.Error(err))
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			chunkPath := filepath.Join(tempDir, chunkNumber)
+			out, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+			if err != nil {
+				logger.Error("error opening staging chunk for companion", zap.Error(err))
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			if _, err := io.Copy(out, f); err != nil {
+				out.Close()
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			out.Close()
+
+			fileNum, err := ioutil.ReadDir(tempDir)
+			if err != nil {
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+
+			if totalChunks == len(fileNum) {
+				assembledPath := filepath.Join(stagingBase, fileName)
+				if err := file.SpliceFiles(tempDir, assembledPath, totalChunks, 1); err != nil {
+					_ = os.RemoveAll(stagingBase)
+					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+				}
+				err = ProxyCompanionUploadFile(dev, assembledPath, destPhonePath)
+				_ = os.RemoveAll(stagingBase)
+				if err != nil {
+					logger.Error("companion upload failed", zap.Error(err))
+					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+				}
+			}
+		} else {
+			// Single chunk/file upload directly to companion
+			tmpF, err := os.CreateTemp("", "comp-upload-*")
+			if err != nil {
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			tmpName := tmpF.Name()
+			defer os.Remove(tmpName)
+			if _, err := io.Copy(tmpF, f); err != nil {
+				tmpF.Close()
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			tmpF.Close()
+
+			if err := ProxyCompanionUploadFile(dev, tmpName, destPhonePath); err != nil {
+				logger.Error("companion upload failed", zap.Error(err))
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+		}
+		return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	}
+
+	// 2. Target is cloud mount or local filesystem
+	isCloud := strings.HasPrefix(path, "/mnt/") || service.IsMounted(path)
+	var tempDir string
+	var stagingBase string
+	if isCloud && totalChunks > 1 {
+		stagingBase = filepath.Join("/tmp/nivaroos_chunks", hash+strconv.Itoa(totalChunks))
+		tempDir = stagingBase + "/"
+		if fileName != relative {
+			dirPath = strings.TrimSuffix(relative, fileName)
+			tempDir += dirPath
+		}
+	} else {
+		tempDir = filepath.Join(path, ".temp", hash+strconv.Itoa(totalChunks)) + "/"
+		if fileName != relative {
+			dirPath = strings.TrimSuffix(relative, fileName)
+			tempDir += dirPath
+			if err := file.MkDir(path + "/" + dirPath); err != nil {
+				logger.Error("error when trying to create `"+path+"/"+dirPath+"`", zap.Error(err))
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
 		}
 	}
 
-	path += "/" + relative
+	fullDstPath := filepath.Join(path, relative)
+	if fileName == relative && !strings.HasSuffix(path, "/") {
+		fullDstPath = path + "/" + relative
+	}
 
 	if !file.CheckNotExist(tempDir + chunkNumber) {
 		if err := file.RMDir(tempDir + chunkNumber); err != nil {
@@ -1012,18 +1208,17 @@ func PostFileUpload(ctx echo.Context) error {
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
 
-		out, err := os.OpenFile(tempDir+chunkNumber, os.O_WRONLY|os.O_CREATE, 0o644)
+		out, err := os.OpenFile(tempDir+chunkNumber, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			logger.Error("error when trying to open `"+tempDir+chunkNumber+"` for creation", zap.Error(err))
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
-
-		defer out.Close()
-
-		if _, err := io.Copy(out, f); err != nil { // recommend to use https://github.com/iceber/iouring-go for faster copy
+		if _, err := io.Copy(out, f); err != nil {
+			out.Close()
 			logger.Error("error when trying to write to `"+tempDir+chunkNumber+"`", zap.Error(err))
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
+		out.Close()
 
 		fileNum, err := ioutil.ReadDir(tempDir)
 		if err != nil {
@@ -1032,29 +1227,48 @@ func PostFileUpload(ctx echo.Context) error {
 		}
 
 		if totalChunks == len(fileNum) {
-			if err := file.SpliceFiles(tempDir, path, totalChunks, 1); err != nil {
-				logger.Error("error when trying to splice files under `"+tempDir+"`", zap.Error(err))
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			go func() {
-				time.Sleep(11 * time.Second)
-				if err := file.RMDir(tempDir); err != nil {
-					logger.Error("error when trying to remove `"+tempDir+"`", zap.Error(err))
+			if isCloud {
+				assembledPath := filepath.Join(stagingBase, fileName)
+				if err := file.SpliceFiles(tempDir, assembledPath, totalChunks, 1); err != nil {
+					_ = os.RemoveAll(stagingBase)
+					logger.Error("error splicing local chunk files for cloud", zap.Error(err))
+					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 				}
-			}()
+				if err := file.CopySingleFile(assembledPath, fullDstPath, "overwrite"); err != nil {
+					_ = os.RemoveAll(stagingBase)
+					logger.Error("error copying assembled file to cloud destination", zap.Error(err))
+					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+				}
+				_ = os.RemoveAll(stagingBase)
+			} else {
+				if err := file.SpliceFiles(tempDir, fullDstPath, totalChunks, 1); err != nil {
+					logger.Error("error when trying to splice files under `"+tempDir+"`", zap.Error(err))
+					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+				}
+				go func() {
+					time.Sleep(5 * time.Second)
+					if err := file.RMDir(tempDir); err != nil {
+						logger.Error("error when trying to remove `"+tempDir+"`", zap.Error(err))
+					}
+				}()
+			}
 		}
 	} else {
-		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
+		_ = os.MkdirAll(filepath.Dir(fullDstPath), 0755)
+		out, err := os.OpenFile(fullDstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
-			logger.Error("error when trying to open `"+path+"` for creation", zap.Error(err))
+			logger.Error("error when trying to open `"+fullDstPath+"` for creation", zap.Error(err))
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
 
-		defer out.Close()
-
-		if _, err := io.Copy(out, f); err != nil { // recommend to use https://github.com/iceber/iouring-go for faster copy
-			logger.Error("error when trying to write to `"+path+"`", zap.Error(err))
+		if _, err := io.Copy(out, f); err != nil {
+			out.Close()
+			logger.Error("error when trying to write to `"+fullDstPath+"`", zap.Error(err))
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
+		}
+		if err := out.Close(); err != nil {
+			logger.Error("error closing `"+fullDstPath+"`", zap.Error(err))
+			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
 	}
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
@@ -1132,27 +1346,20 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 	if len(list.Item) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-	if list.To == list.Item[0].From[:strings.LastIndex(list.Item[0].From, "/")] {
+	cleanTo := filepath.Clean(list.To)
+	cleanFromDir := filepath.Clean(filepath.Dir(list.Item[0].From))
+	if cleanTo == cleanFromDir && list.Type == "move" {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SOURCE_DES_SAME, Message: common_err.GetMsg(common_err.SOURCE_DES_SAME)})
 	}
 
-	// Source-size lookup used to run right here, synchronously, before this
-	// handler could respond at all - for a large folder that's a real
-	// multi-second stall (a full recursive filepath.Walk per item) with zero
-	// UI feedback the whole time, not perceived lag. The mount check for
-	// "move" still runs up front (it's a fast lookup, not a tree walk, and
-	// this request must still be able to reject a move off a mounted path
-	// before queuing anything); actual sizes are now computed by
-	// ComputeOperateSizes after the task is already queued and copying has
-	// already started, since copying itself never needed them - only the
-	// percentage shown to the user did. -1 marks "not computed yet" (0 would
-	// be indistinguishable from "processed >= total", which is checked
-	// elsewhere as "already finished").
 	for i := 0; i < len(list.Item); i++ {
 		if list.Type == "move" {
 			mounted := service.IsMounted(list.Item[i].From)
 			if mounted {
 				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
+			}
+			if dev, phonePath := GetCompanionDeviceByStoragePath(list.Item[i].From); dev != nil && (phonePath == "" || phonePath == dev.RootPath || phonePath == "/storage/emulated/0") {
+				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: "Cannot move companion device root folder"})
 			}
 		}
 		list.Item[i].Size = -1
@@ -1173,6 +1380,54 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 	go service.ComputeOperateSizes(uid)
 
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+}
+
+func PostFileCopy(ctx echo.Context) error {
+	return handleDirectCopyOrMove(ctx, "copy")
+}
+
+func PostFileMove(ctx echo.Context) error {
+	return handleDirectCopyOrMove(ctx, "move")
+}
+
+func handleDirectCopyOrMove(ctx echo.Context, opType string) error {
+	type DirectReq struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	var req DirectReq
+	if err := ctx.Bind(&req); err != nil || req.From == "" || req.To == "" {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
+			Success: common_err.INVALID_PARAMS,
+			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
+		})
+	}
+
+	destDir := req.To
+	if strings.HasSuffix(filepath.Clean(destDir), "/"+filepath.Base(req.From)) {
+		destDir = filepath.Dir(destDir)
+	}
+
+	batchReq := model.FileOperate{
+		Type:  opType,
+		Item:  []model.FileItem{{From: req.From, Size: -1}},
+		To:    destDir,
+		Style: "overwrite",
+	}
+
+	uid := uuid.NewString()
+	service.FileQueue.Store(uid, batchReq)
+	if service.OpStrArrPush(uid) {
+		go service.ExecOpFile()
+		go service.CheckFileStatus()
+		go service.MyService.Notify().SendFileOperateNotify(false)
+	}
+	go service.ComputeOperateSizes(uid)
+
+	return ctx.JSON(common_err.SUCCESS, model.Result{
+		Success: common_err.SUCCESS,
+		Message: common_err.GetMsg(common_err.SUCCESS),
+	})
 }
 
 // @Summary delete file

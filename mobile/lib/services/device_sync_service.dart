@@ -62,6 +62,7 @@ class CompanionDevice {
   final String storagePath;
   final int serverStorageUsed; // bytes backed up on the server companion folder
   final DateTime lastActive;
+  final Map<String, dynamic>? customProps;
 
   CompanionDevice({
     required this.id,
@@ -79,6 +80,7 @@ class CompanionDevice {
     this.storagePath = '',
     this.serverStorageUsed = 0,
     required this.lastActive,
+    this.customProps,
   });
 
   int get freeStorageBytes => (totalStorageBytes - usedStorageBytes).clamp(0, totalStorageBytes);
@@ -101,6 +103,7 @@ class CompanionDevice {
         'is_online': isOnline,
         'storage_path': storagePath,
         'last_seen': lastActive.toUtc().toIso8601String(),
+        'custom_props': customProps ?? {},
       };
 
   factory CompanionDevice.fromJson(Map<String, dynamic> json, {String? currentDeviceId}) {
@@ -257,7 +260,8 @@ class DeviceSyncService {
     final batteryPct = await getRealBatteryLevel();
     final storage = getRealStorageMetrics();
 
-    final displayName = (customName != null && customName.trim().isNotEmpty)
+    final bool isUserRenamed = customName != null && customName.trim().isNotEmpty;
+    final displayName = isUserRenamed
         ? customName.trim()
         : (brand == model || model.startsWith(brand) ? model : '$brand $model'.trim());
 
@@ -278,6 +282,7 @@ class DeviceSyncService {
       isCurrentDevice: true,
       isOnline: true,
       lastActive: DateTime.now(),
+      customProps: isUserRenamed ? {'user_renamed': true} : {},
     );
 
     _currentDevice = device;
@@ -290,7 +295,14 @@ class DeviceSyncService {
   }
 
   Future<void> setDeviceCustomName(String newName) async {
-    await StorageService.instance.setCompanionDeviceName(newName.trim());
+    final trimmed = newName.trim();
+    await StorageService.instance.setCompanionDeviceName(trimmed);
+    try {
+      final devId = await getDeviceId();
+      await ApiClient.instance.put('/companion/devices/$devId', body: {
+        'name': trimmed,
+      });
+    } catch (_) {}
     await syncWithServer();
   }
 
@@ -355,6 +367,16 @@ class DeviceSyncService {
       final secret = res['data'] is Map ? (res['data'] as Map)['secret'] as String? : null;
       if (secret != null && secret.isNotEmpty) {
         await StorageService.instance.setCompanionSecret(secret);
+      }
+      final serverDev = res['data'] is Map ? (res['data'] as Map)['device'] as Map<String, dynamic>? : null;
+      if (serverDev != null) {
+        final serverName = serverDev['name'] as String?;
+        if (serverName != null && serverName.trim().isNotEmpty) {
+          final currentCustom = await StorageService.instance.getCompanionDeviceName();
+          if (currentCustom != serverName.trim()) {
+            await StorageService.instance.setCompanionDeviceName(serverName.trim());
+          }
+        }
       }
       debugPrint('[DeviceSyncService] Synced: ${device.name} | Storage: ${device.usedStorageBytes ~/ (1024*1024*1024)}GB / ${device.totalStorageBytes ~/ (1024*1024*1024)}GB | Battery: ${device.batteryLevel}%');
     } catch (e) {

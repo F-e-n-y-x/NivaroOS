@@ -634,8 +634,6 @@
 
 <script>
 import AppSideBar from './AppSideBar.vue'
-import ImportPanel from '@/shared/forms/ImportPanel.vue'
-import AppTerminalPanel from './AppTerminalPanel.vue'
 import LottieAnimation from 'lottie-web-vue'
 import '@/plugins/vee-validate'
 import uniq from 'lodash/uniq'
@@ -1244,24 +1242,20 @@ export default {
 					if (res.status == 200) {
 						let composeJSON = parse(res.data)
 						if (composeJSON['x-casaos']?.tips?.before_install?.en_us) {
-							this.$buefy.modal.open({
-								parent: this,
-								component: () => import('@/apps/app-store/TipEditorModal.vue'),
-								hasModalCard: true,
-								customClass: '',
-								trapFocus: true,
-								canCancel: [''],
-								scroll: 'keep',
-								animation: 'zoom-in',
-								events: {
-									submit: () => {
+							this.$store.commit('OPEN_WINDOW', {
+								id: 'tip-editor',
+								title: this.$t('Tips'),
+								component: 'TipEditorModal',
+								props: {
+									isDialog: true,
+									composeData: composeJSON,
+									onSubmit: () => {
 										this.currentInstallId = id
 										this.installComposeApp(res.data, id)
 									}
 								},
-								props: {
-									composeData: composeJSON
-								}
+								width: 440,
+								height: 480
 							})
 						} else {
 							this.installComposeApp(res.data, id)
@@ -1468,17 +1462,15 @@ export default {
 		 * @return {*} void
 		 */
 		showImportPanel () {
-			this.$buefy.modal.open({
-				parent: this,
-				component: ImportPanel,
-				hasModalCard: true,
-				customClass: '',
-				trapFocus: true,
-				canCancel: ['escape'],
-				scroll: 'keep',
-				animation: 'zoom-in',
-				events: {
-					update: e => {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'import-panel',
+				title: this.$t('Import'),
+				component: 'ImportPanel',
+				props: {
+					netWorks: this.networks,
+					oriNetWorks: this.tempNetworks,
+					deviceMemory: this.totalMemory,
+					onUpdate: e => {
 						this.dockerComposeConfig = e
 						this.confirmWindow({
 							title: '⚠️ ' + this.$t('Attention'),
@@ -1516,11 +1508,8 @@ export default {
 						})
 					}
 				},
-				props: {
-					netWorks: this.networks,
-					oriNetWorks: this.tempNetworks,
-					deviceMemory: this.totalMemory
-				}
+				width: 640,
+				height: 560
 			})
 		},
 
@@ -1583,20 +1572,17 @@ export default {
 					if (res.status == 200) {
 						const containers = res.data.data.containers
 						const containerId = containers[this.dockerComposeServiceName].ID
-						this.$buefy.modal.open({
-							parent: this,
-							component: AppTerminalPanel,
-							hasModalCard: true,
-							customClass: 'terminal-modal',
-							trapFocus: true,
-							canCancel: [],
-							scroll: 'keep',
-							animation: 'zoom-in',
+						this.$store.commit('OPEN_WINDOW', {
+							id: 'app-terminal-' + containerId,
+							title: this.currentInstallId,
+							component: 'AppTerminalPanel',
 							props: {
 								appid: containerId,
 								appName: this.currentInstallId,
 								serviceName: this.dockerComposeServiceName
-							}
+							},
+							width: 700,
+							height: 480
 						})
 					}
 				})

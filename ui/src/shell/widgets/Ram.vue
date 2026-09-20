@@ -1,46 +1,80 @@
 <template>
-	<div class="widget has-text-grey-100 ram">
+	<div class="widget ram">
 		<div class="blur-background"></div>
-		<div class="widget-content pb-1">
-			<!-- Header Start -->
-			<div class="widget-header is-flex">
-				<div class="widget-title is-flex-grow-1">
-					{{ $t("RAM Status") }}
+		<div class="widget-content">
+			<!-- Header -->
+			<div class="widget-header">
+				<div class="widget-header-left">
+					<div class="widget-badge is-ram">
+						<i class="mdi mdi-memory"></i>
+					</div>
+					<div class="widget-header-text">
+						<span class="widget-title">{{ $t("Memory") }}</span>
+						<span class="widget-header-meta">
+							{{ renderSize(totalMemory) }} {{ $t("Total") }}
+						</span>
+					</div>
 				</div>
-				<div class="widget-icon-button is-flex-shrink-0" @click="showMoreInfo">
-					<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
-				</div>
-			</div>
-			<!-- Header End -->
-
-			<div class="columns is-mobile mt-0 mb-1">
-				<div class="column is-half has-text-centered">
-					<radial-bar :extendContent="renderSize(usedMemory) + ' / ' + renderSize(totalMemory)"
-						:extendContentClickable="true" :percent="parseInt(ramSeries)" label="RAM"
-						@extendContentClick="showMoreInfo"></radial-bar>
-				</div>
-				<div v-if="dimmGroups.length" class="column is-half dimm-info is-flex is-flex-direction-column is-justify-content-center has-text-centered">
-					<div v-for="(g, index) in dimmGroups" :key="'dimm-group-' + index" class="dimm-group">
-						<div class="is-size-7">{{ g.count }} × {{ g.size }}</div>
-						<div class="is-size-7 has-text-grey-400">{{ g.type }}</div>
-						<div class="is-size-7 has-text-grey-400">{{ g.speed }}</div>
-						<div v-if="g.partNumber" class="is-size-7 has-text-grey-400 one-line">{{ g.partNumber }}</div>
+				<div class="widget-header-right">
+					<div class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
 					</div>
 				</div>
 			</div>
 
-			<div v-if="showMore">
-				<div class="more-info pt-1 pb-1">
-					<div v-for="(item, index) in containerRamList" :key="item.title + index + '-ram'">
-						<div v-if="!isNaN(item.usage) && renderSize(item.usage).split(' ')[0] != 0"
-							class="is-flex is-size-7 is-align-items-center mb-2">
-							<div class="is-flex-grow-1 is-flex-shrink-1 is-flex is-align-items-center is-clipped">
-								<b-image :src="item.icon" :src-fallback="require('@/assets/img/app-icons/default.svg')"
-									class="is-16x16 mr-2 is-flex-shrink-0"></b-image>
-								<span class="one-line">{{ item.title }}</span>
-							</div>
-							<div class="is-flex-shrink-0">{{ item.usage | renderSize }}</div>
+			<!-- Hero Grid: Left = Dial, Right = Structured Bento Stats -->
+			<div class="widget-hero-grid">
+				<div class="hero-gauge-box">
+					<radial-bar
+						:percent="parseInt(ramSeries)"
+						label="RAM"
+					></radial-bar>
+				</div>
+				<div class="hero-info-bento">
+					<div class="bento-hero-title">
+						{{ renderSize(usedMemory) }} <span class="has-text-weight-normal is-size-7 text-muted">{{ $t("Used") }}</span>
+					</div>
+					<div class="bento-hero-sub">
+						{{ renderSize(freeMemory) }} {{ $t("Available") }}
+					</div>
+					<div class="ram-track-box">
+						<div class="ram-progress-track">
+							<div class="ram-progress-fill" :style="{ width: Math.min(100, Math.max(2, parseInt(ramSeries))) + '%' }"></div>
 						</div>
+					</div>
+					<div class="bento-chips-row">
+						<template v-if="dimmGroups.length">
+							<span v-for="(g, index) in dimmGroups" :key="'dimm-' + index" class="bento-chip is-purple">
+								<i class="mdi mdi-memory"></i> {{ g.count }}× {{ g.size }} {{ g.type }} {{ g.speed || '' }}
+							</span>
+						</template>
+						<template v-else>
+							<span class="bento-chip is-purple">
+								<i class="mdi mdi-memory"></i> {{ renderSize(totalMemory) }} System RAM
+							</span>
+						</template>
+					</div>
+				</div>
+			</div>
+
+			<!-- Top Memory Consuming Processes -->
+			<div v-if="showMore" class="more-info">
+				<div class="process-section-title">{{ $t("Top Processes") }}</div>
+				<div v-if="containerRamList.length === 0" class="has-text-centered is-size-7 py-2 text-muted">
+					{{ $t("No active container processes") }}
+				</div>
+				<div v-for="(item, index) in containerRamList" :key="item.title + index + '-ram'">
+					<div v-if="!isNaN(item.usage) && renderSize(item.usage).split(' ')[0] != 0" class="process-row">
+						<div class="is-flex is-align-items-center is-clipped">
+							<b-image
+								:lazy="false"
+								:src="item.icon"
+								:src-fallback="require('@/assets/img/app-icons/default.svg')"
+								class="is-16x16 mr-2 is-flex-shrink-0"
+							></b-image>
+							<span class="one-line process-name">{{ item.title }}</span>
+						</div>
+						<div class="is-flex-shrink-0 process-usage">{{ item.usage | renderSize }}</div>
 					</div>
 				</div>
 			</div>
@@ -61,8 +95,8 @@ export default {
 	name: "ram",
 	icon: "system-outline",
 	title: "RAM Status",
-	gridCols: 3, // "normal" size - 3 icon-columns wide (see SideBar.vue)
-	gridRows: 2, // "normal" size - 2 icon-rows tall
+	gridCols: 3,
+	gridRows: 2,
 	initShow: true,
 	mixins: [smoothReflow, mixin],
 	components: {
@@ -81,9 +115,10 @@ export default {
 		};
 	},
 	computed: {
-		// Groups identical DIMMs (matched kits) into one labeled
-		// type/speed/slots/part block instead of repeating the same
-		// size/type/speed per slot, and instead of one run-on line.
+		freeMemory() {
+			const diff = this.totalMemory - this.usedMemory;
+			return diff > 0 ? diff : 0;
+		},
 		dimmGroups() {
 			const groups = [];
 			for (const d of this.dimms) {
@@ -127,20 +162,10 @@ export default {
 		clearInterval(this.timer);
 	},
 	methods: {
-		/**
-		 * @description: Update memory usage
-		 * @param {*}
-		 * @return {*} void
-		 */
 		updateCharts(mem) {
 			this.ramSeries = mem.usedPercent;
 			this.usedMemory = mem.used;
 		},
-		/**
-		 * @description: Get Docker apps memory usage
-		 * @param {*}
-		 * @return {*} void
-		 */
 		getDockerUsage() {
 			this.$api.container.getHardwareUsage().then((res) => {
 				this.containerRamList = res.data.data.map((item) => {
@@ -169,11 +194,6 @@ export default {
 			});
 		},
 
-		/**
-		 * @description: Toggle more info
-		 * @param {*}
-		 * @return {*} void
-		 */
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
@@ -197,25 +217,11 @@ export default {
 .widget {
 	&.ram {
 		.arrow-btn {
-			transition: all 0.3s;
+			transition: transform 0.25s ease;
 
 			&.open {
 				transform: rotate(90deg);
 			}
-		}
-
-		.more-info {
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
-		}
-
-		.dimm-info {
-			min-width: 0;
-		}
-
-		.dimm-group + .dimm-group {
-			margin-top: 0.25rem;
-			padding-top: 0.25rem;
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
 		}
 	}
 }

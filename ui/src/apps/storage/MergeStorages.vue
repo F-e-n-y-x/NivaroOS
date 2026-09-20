@@ -333,6 +333,7 @@ export default {
 						}
 					})
 					this.$EventBus.$emit(events.RELOAD_APP_LIST)
+					this.$EventBus.$emit(events.REFRESH_DISKLIST)
 				}).catch(e => {
 					this.$buefy.toast.open({
 						message: e.response.data.data || e.response.data.message,
@@ -369,6 +370,7 @@ export default {
 			}
 		},
 		cancel() {
+			this.$EventBus.$emit(events.REFRESH_DISKLIST)
 			this.$emit('close')
 		},
 		async test() {

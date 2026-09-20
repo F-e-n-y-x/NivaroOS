@@ -13,6 +13,7 @@ import 'vm_console_screen.dart';
 import 'system_updates_screen.dart';
 import 'system_logs_screen.dart';
 import 'terminal_screen.dart';
+import 'host_desktop_screen.dart';
 import 'login_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -173,16 +174,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _flushCache() async {
-    try {
-      await ApiClient.instance.post('/sys/update');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Memory sync and caches flushed successfully.')),
-        );
-      }
-    } catch (_) {}
-  }
 
   String get _host {
     final base = ApiClient.instance.baseUrl;
@@ -574,9 +565,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                     ),
                     _QuickButton(
-                      icon: Icons.cleaning_services_rounded,
-                      label: 'Flush RAM',
-                      onTap: _flushCache,
+                      icon: Icons.desktop_windows_rounded,
+                      label: 'Host Desktop',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const HostDesktopScreen()),
+                        );
+                      },
                     ),
                   ],
                 );
@@ -611,7 +606,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           fraction: d.fraction,
                           usedBytes: d.usedBytes,
                           sizeBytes: d.sizeBytes,
-                          onTap: widget.onOpenFiles,
+                          onTap: () => _showDriveDetails(context, d),
                         );
                       },
                     );
@@ -626,7 +621,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             fraction: d.fraction,
                             usedBytes: d.usedBytes,
                             sizeBytes: d.sizeBytes,
-                            onTap: widget.onOpenFiles,
+                            onTap: () => _showDriveDetails(context, d),
                           ),
                         )).toList(),
                   );
@@ -639,6 +634,128 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ),
 );
 }
+
+  void _showDriveDetails(BuildContext context, DiskUsage d) {
+    final freeBytes = (d.sizeBytes > d.usedBytes) ? d.sizeBytes - d.usedBytes : 0;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: NivaroColors.surfaceContainerLowest,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: d.isUsb ? NivaroColors.accent.withOpacity(0.15) : NivaroColors.primary.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    d.isUsb ? Icons.usb_rounded : Icons.storage_rounded,
+                    color: d.isUsb ? NivaroColors.accentLight : NivaroColors.primaryLight,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        d.label.isNotEmpty ? d.label : d.mountPoint,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Mount point: ${d.mountPoint}',
+                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: NivaroColors.primary.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    d.percent,
+                    style: const TextStyle(color: NivaroColors.primaryLight, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: d.fraction,
+                minHeight: 8,
+                backgroundColor: NivaroColors.surfaceRaised,
+                color: d.fraction > 0.9 ? NivaroColors.dangerLight : (d.fraction > 0.75 ? NivaroColors.warningLight : NivaroColors.primaryLight),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _statColumn('Used Space', formatBytes(d.usedBytes), NivaroColors.textPrimary),
+                _statColumn('Free Space', formatBytes(freeBytes), NivaroColors.successLight),
+                _statColumn('Total Capacity', formatBytes(d.sizeBytes), NivaroColors.textPrimary),
+              ],
+            ),
+            if (d.filesystem.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('Filesystem: ${d.filesystem}', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+            ],
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                widget.onOpenFiles?.call();
+              },
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('Open in Files Explorer'),
+              style: FilledButton.styleFrom(
+                backgroundColor: NivaroColors.primary,
+                minimumSize: const Size(double.infinity, 46),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statColumn(String label, String value, Color valueColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: valueColor)),
+      ],
+    );
+  }
 
   Widget _buildLiveVmCard(Vm vm) {
     return DarkCard(

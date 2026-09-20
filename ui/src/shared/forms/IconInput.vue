@@ -5,8 +5,6 @@
 </template>
 
 <script>
-import FilePanel from '@/apps/files/fileList/FilePanel.vue'
-
 const DATA_PATH = "/"
 const DEV_PATH = "/dev"
 export default {
@@ -57,26 +55,21 @@ export default {
 			this.showFileModal();
 		},
 		showFileModal() {
-			this.$buefy.modal.open({
-				parent: this,
-				component: FilePanel,
-				hasModalCard: true,
-				customClass: 'file-sel-modal',
-				trapFocus: true,
-				canCancel: [],
-				scroll: "keep",
-				animation: "zoom-in",
-				events: {
-					'updatePath': (e) => {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'icon-input-file-picker',
+				title: this.$t('Select'),
+				component: 'FilePanel',
+				props: {
+					initPath: this.initPath,
+					rootPath: this.rootPath,
+					onUpdatePath: (e) => {
 						this.path = e
 						this.$emit('change', this.path)
 						this.$emit('input', this.path)
 					}
 				},
-				props: {
-					initPath: this.initPath,
-					rootPath: this.rootPath
-				}
+				width: 480,
+				height: 520
 			})
 		}
 	},

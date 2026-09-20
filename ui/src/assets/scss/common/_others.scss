@@ -83,17 +83,16 @@
 .blur-background {
 	width: 100%;
 	height: 100%;
-	background-size: cover;
-	background-position: bottom center;
-	background-attachment: fixed;
-	background-color: $backDropColor;
-	backdrop-filter: $backDropBlur;
+	background-color: var(--theme-desktop-glass-bg, $backDropColor);
+	backdrop-filter: blur(var(--ui-backdrop-blur, 16px)) saturate(180%);
+	-webkit-backdrop-filter: blur(var(--ui-backdrop-blur, 16px)) saturate(180%);
 	border-radius: $backDropBorderRadius;
 	box-shadow: $backDropShadow;
 	border: $backDropBorder;
 	position: absolute;
 	z-index: 0;
 	overflow: hidden;
+	transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .wuji-content {

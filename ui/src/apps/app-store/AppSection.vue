@@ -379,6 +379,37 @@ export default {
 				let allApps = concat(builtInApplications, orgAppList, linkAppList)
 
 				let folders = await this.getFolders()
+
+				// Self-heal: an app can transiently look like a stray "container"
+				// for a single poll (e.g. mid-update, while Docker Compose is
+				// swapping the old container out for the new one) and get
+				// auto-filed into an isAutoContainerFolder bucket by the sweep
+				// below. Once it's positively reclassified as a real app (v1/v2/
+				// link) on a later poll, it needs to leave that bucket on its own -
+				// the sweep below only ever ADDS unfiled containers, it never
+				// removes one, so without this an app mis-filed by a single bad
+				// poll would stay stuck in "Other Containers" (or its compose-
+				// project folder) forever. Only prunes isAutoContainerFolder
+				// buckets - never touches a folder the user created/placed apps
+				// into themselves.
+				const currentAppTypeByName = {}
+				allApps.forEach(item => { currentAppTypeByName[item.name] = item.app_type })
+				let prunedStaleAutoFile = false
+				folders.forEach(f => {
+					if (!f.isAutoContainerFolder) return
+					const kept = f.appNames.filter(n => {
+						const type = currentAppTypeByName[n]
+						return type === undefined || type === 'container'
+					})
+					if (kept.length !== f.appNames.length) {
+						f.appNames = kept
+						prunedStaleAutoFile = true
+					}
+				})
+				if (prunedStaleAutoFile) {
+					await this.saveFolders(folders)
+				}
+
 				const initialFolderIdByAppName = {}
 				folders.forEach(f => {
 					f.appNames.forEach(n => { initialFolderIdByAppName[n] = f.id })
@@ -422,12 +453,12 @@ export default {
 				}))
 				allApps = concat(folderPseudoItems, ungrouped)
 
-				// Sync any open FolderWindow windows with fresh folder data
+				// Sync any open FolderWindow windows with fresh folder data without stealing focus or bumping zIndex
 				folderPseudoItems.forEach(f => {
 					const winId = `folder-${f.folderData.id}`
 					const win = this.$store.state.windows.find(w => w.id === winId)
 					if (win) {
-						this.$store.commit('OPEN_WINDOW', { id: winId, title: f.folderData.name, component: 'FolderWindow', props: { folder: f.folderData } })
+						this.$store.commit('UPDATE_WINDOW_PROPS', { id: winId, title: f.folderData.name, props: { folder: f.folderData } })
 					}
 				})
 
@@ -752,31 +783,47 @@ export default {
 			})
 		},
 
-		async createFolderPrompt() {
-			this.$buefy.dialog.prompt({
-				message: this.$t('New folder name:'),
-				inputAttrs: { placeholder: this.$t('Folder'), maxlength: 30 },
-				trapFocus: true,
-				confirmText: this.$t('Create'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: async (name) => {
-					await this.createFolder(name)
-					this.getList()
-				}
+		createFolderPrompt() {
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'create-folder-prompt',
+				title: this.$t('New folder'),
+				component: 'PromptDialogWindow',
+				props: {
+					isDialog: true,
+					message: this.$t('New folder name:'),
+					placeholder: this.$t('Folder'),
+					maxlength: 30,
+					confirmText: this.$t('Create'),
+					cancelText: this.$t('Cancel'),
+					onConfirm: async (name) => {
+						await this.createFolder(name)
+						this.getList()
+					}
+				},
+				width: 380,
+				height: 190
 			})
 		},
 
 		renameFolderPrompt(folder) {
-			this.$buefy.dialog.prompt({
-				message: this.$t('Rename folder:'),
-				inputAttrs: { value: folder.name, maxlength: 30 },
-				trapFocus: true,
-				confirmText: this.$t('Save'),
-				cancelText: this.$t('Cancel'),
-				onConfirm: async (name) => {
-					await this.renameFolder(folder.id, name)
-					this.getList()
-				}
+			this.$store.commit('OPEN_WINDOW', {
+				id: 'rename-folder-prompt',
+				title: this.$t('Rename folder'),
+				component: 'PromptDialogWindow',
+				props: {
+					isDialog: true,
+					message: this.$t('Rename folder:'),
+					initialValue: folder.name,
+					maxlength: 30,
+					confirmText: this.$t('Save'),
+					cancelText: this.$t('Cancel'),
+					onConfirm: async (name) => {
+						await this.renameFolder(folder.id, name)
+						this.getList()
+					}
+				},
+				width: 380,
+				height: 190
 			})
 		},
 

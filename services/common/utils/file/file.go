@@ -215,10 +215,10 @@ func CopyFile(src, dst, style string) error {
 	if _, err = io.Copy(dstfd, srcfd); err != nil {
 		return err
 	}
-	if srcinfo, err = os.Stat(src); err != nil {
-		return err
+	if srcinfo, err = os.Stat(src); err == nil {
+		_ = os.Chmod(dst, srcinfo.Mode())
 	}
-	return os.Chmod(dst, srcinfo.Mode())
+	return nil
 }
 
 /**
@@ -256,10 +256,10 @@ func CopySingleFile(src, dst, style string) error {
 	if _, err = io.Copy(dstfd, srcfd); err != nil {
 		return err
 	}
-	if srcinfo, err = os.Stat(src); err != nil {
-		return err
+	if srcinfo, err = os.Stat(src); err == nil {
+		_ = os.Chmod(dst, srcinfo.Mode())
 	}
-	return os.Chmod(dst, srcinfo.Mode())
+	return nil
 }
 
 // Check for duplicate file names
@@ -282,22 +282,20 @@ func CopyDir(src string, dst string, style string) error {
 		return err
 	}
 	if !srcinfo.IsDir() {
-		if err = CopyFile(src, dst, style); err != nil {
-			fmt.Println(err)
-		}
-		return nil
+		return CopyFile(src, dst, style)
 	}
-	// dstPath := dst
+
 	lastPath := src[strings.LastIndex(src, "/")+1:]
 	dst += "/" + lastPath
-	// for i := 0; Exists(dst); i++ {
-	// 	dst = dstPath + "/" + lastPath + strconv.Itoa(i+1)
-	// }
+
 	if Exists(dst) {
 		if style == "skip" {
 			return nil
 		}
-		os.Remove(dst)
+		dinfo, dErr := os.Stat(dst)
+		if dErr == nil && !dinfo.IsDir() {
+			_ = os.Remove(dst)
+		}
 	}
 	if err = os.MkdirAll(dst, srcinfo.Mode()); err != nil {
 		return err
@@ -309,15 +307,15 @@ func CopyDir(src string, dst string, style string) error {
 	}
 	for _, fd := range fds {
 		srcfp := filepath.Join(src, fd.Name())
-		dstfp := dst // filepath.Join(dst, fd.Name())
+		dstfp := dst
 
 		if fd.IsDir() {
 			if err = CopyDir(srcfp, dstfp, style); err != nil {
-				fmt.Println(err)
+				return err
 			}
 		} else {
 			if err = CopyFile(srcfp, dstfp, style); err != nil {
-				fmt.Println(err)
+				return err
 			}
 		}
 	}
@@ -356,18 +354,18 @@ func WriteToFullPath(data []byte, fullPath string, perm fs.FileMode) error {
 func SpliceFiles(dir, path string, length int, startPoint int) error {
 	fullPath := path
 
-	if err := IsNotExistCreateFile(fullPath); err != nil {
-		return err
-	}
-
-	file, _ := os.OpenFile(fullPath,
+	file, err := os.OpenFile(fullPath,
 		os.O_WRONLY|os.O_TRUNC|os.O_CREATE,
 		0o666,
 	)
+	if err != nil {
+		return err
+	}
 	defer file.Close()
+
 	bufferedWriter := bufio.NewWriter(file)
-	for i := 0; i < length+startPoint; i++ {
-		data, err := os.ReadFile(dir + "/" + strconv.Itoa(i+startPoint))
+	for i := 0; i < length; i++ {
+		data, err := os.ReadFile(filepath.Join(dir, strconv.Itoa(i+startPoint)))
 		if err != nil {
 			return err
 		}
@@ -377,9 +375,11 @@ func SpliceFiles(dir, path string, length int, startPoint int) error {
 		}
 	}
 
-	bufferedWriter.Flush()
+	if err := bufferedWriter.Flush(); err != nil {
+		return err
+	}
 
-	return nil
+	return file.Close()
 }
 
 func GetCompressionAlgorithm(t string) (string, archiver.Writer, error) {

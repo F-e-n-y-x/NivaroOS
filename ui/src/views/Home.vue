@@ -137,10 +137,7 @@ export default {
 		getWallpaperConfig() {
 			this.$api.users.getCustomStorage(wallpaperConfig).then(res => {
 				if (res.data.success === 200 && res.data.data != '') {
-					this.$store.commit('SET_WALLPAPER', {
-						path: res.data.data.path,
-						from: res.data.data.from
-					})
+					this.$store.commit('SET_WALLPAPER', res.data.data)
 				}
 			})
 		},

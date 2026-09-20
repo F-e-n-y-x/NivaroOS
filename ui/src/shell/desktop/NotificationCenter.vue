@@ -265,20 +265,19 @@ export default {
 	width: 2.6rem;
 	height: 2.6rem;
 	border: $backDropBorder;
-	color: $white;
+	color: var(--theme-desktop-glass-icon, #ffffff);
 	background-color: $backDropColor;
 	backdrop-filter: $backDropBlur;
 	-webkit-backdrop-filter: $backDropBlur;
 	border-radius: 50%;
-	box-shadow: var(--shadow-lg), $backDropShadow;
+	box-shadow: var(--theme-desktop-glass-shadow);
 	cursor: pointer;
 	transition: all 0.15s ease;
 	padding: 0;
 
 	&:hover,
 	&.is-active {
-		filter: brightness(1.15);
-		box-shadow: var(--shadow-xl), $backDropShadow;
+		box-shadow: var(--theme-desktop-glass-hover-shadow);
 		transform: translateY(-1px);
 	}
 }

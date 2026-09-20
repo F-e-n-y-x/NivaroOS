@@ -167,15 +167,13 @@ export default {
 			});
 
 			this.$EventBus.$on('casaUI:openDiskLearnMore', () => {
-				this.$buefy.modal.open({
-					parent: this,
-					component: DiskLearnMore,
-					hasModalCard: true,
-					customClass: 'storage-modal',
-					trapFocus: true,
-					canCancel: [],
-					scroll: "keep",
-					animation: "zoom-in",
+				this.$store.commit('OPEN_WINDOW', {
+					id: 'disk-learn-more',
+					title: this.$t('Build data station'),
+					component: 'DiskLearnMore',
+					props: { isDialog: true },
+					width: 460,
+					height: 440
 				})
 			});
 

@@ -96,6 +96,7 @@
 			ref="ctxMenu"
 			@reload="reload"
 			@paste="paste"
+			@paste-into="paste"
 			@select-all="selectAll"
 			@rename-request="$emit('rename-request', $event)"
 			@share-request="$emit('share-request', $event)"
@@ -446,7 +447,7 @@ export default {
 		async fetchCompanionDevices() {
 			try {
 				const res = await this.$api.companion.getDevices()
-				this.companionDeviceList = res.data?.data || []
+				this.companionDeviceList = (res.data?.data || []).filter((dev) => dev.is_online)
 				// Same reasoning as fetchMountTypes()'s post-load patch: the
 				// '/DATA/Companion' listing itself can render before this
 				// call resolves, so already-built rows need their `type`
@@ -755,14 +756,17 @@ export default {
 		// backend; the HTTP response only confirms it was queued). Blindly
 		// reloading on a timer after the HTTP response used to show a stale
 		// listing since the actual copy/move hadn't finished yet.
-		paste() {
+		paste(targetPath) {
 			if (this.$store.state.operateObject == null) return
 			const operateObject = this.$store.state.operateObject
+			const dest = typeof targetPath === 'string' && targetPath ? targetPath : this.path
 			this.$api.batch
-				.task({ ...operateObject, to: this.path, style: 'overwrite' })
+				.task({ ...operateObject, to: dest, style: 'overwrite' })
 				.then((res) => {
 					if (res.data.success === 200) {
-						this.$store.commit('SET_OPERATE_OBJECT', null)
+						if (operateObject.type === 'move') {
+							this.$store.commit('SET_OPERATE_OBJECT', null)
+						}
 					} else {
 						this.$buefy.toast.open({
 							message: res.data.message,

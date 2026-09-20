@@ -40,6 +40,17 @@ html.is-dark {
 	--theme-titlebar-bg:         #161618;
 	--theme-titlebar-border:     rgba(255, 255, 255, 0.1);
 
+	// Desktop Frosted Glass Chrome (Dock, Widgets, Status Pills)
+	--theme-desktop-glass-bg:           rgba(18, 18, 22, var(--ui-backdrop-alpha, 0.55));
+	--theme-desktop-glass-border:       rgba(255, 255, 255, 0.12);
+	--theme-desktop-glass-shadow:       0 2px 12px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.15);
+	--theme-desktop-glass-hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.20);
+	--theme-desktop-glass-text:         #f8fafc;
+	--theme-desktop-glass-text-sub:     #94a3b8;
+	--theme-desktop-glass-icon:         #d4d4d8;
+	--theme-desktop-glass-dot:          #ffffff;
+	--theme-desktop-glass-track:        rgba(255, 255, 255, 0.1);
+
 	// Card / panel surfaces
 	--theme-card-bg:             #18181b;
 	--theme-card-subtle:         #202024;
@@ -1127,8 +1138,7 @@ html.is-dark {
 	// File Operation & Container Install Banners
 	.file-op-status,
 	.file-op-card,
-	.container-install-banner,
-	.container-install-status {
+	.container-install-banner {
 		background: #18181b !important;
 		border: 1px solid rgba(255, 255, 255, 0.14) !important;
 		color: #f4f4f5 !important;
