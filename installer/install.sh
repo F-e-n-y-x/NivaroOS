@@ -104,6 +104,20 @@ if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && [ -z "${NO_COLOR:-}" ]; then
 	IS_TTY="true"
 fi
 
+# Whether we can actually run an interactive prompt/menu. This is
+# deliberately NOT "[ -t 0 ]" (is stdin a terminal) - the documented
+# `curl -fsSL ... | sudo bash` install method pipes the script itself into
+# bash, so stdin is always the curl pipe and always fails that check, even
+# though the user is sitting at a real terminal watching stdout and could
+# answer prompts just fine. Every prompt in this script already reads from
+# /dev/tty directly for exactly this reason - so what actually matters is
+# whether /dev/tty is there to read from and stdout is a real terminal to
+# print the menu to, not what stdin happens to be connected to.
+INTERACTIVE_TTY="false"
+if [ "$IS_TTY" = "true" ] && [ -e /dev/tty ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+	INTERACTIVE_TTY="true"
+fi
+
 if [ "$IS_TTY" = "true" ]; then
 	COLOR_RESET='\033[0m'
 	COLOR_BOLD='\033[1m'
@@ -572,7 +586,7 @@ resolve_port_conflict() {
 
 		if [ -n "$CUSTOM_PORT" ]; then
 			warn "Requested port ${CUSTOM_PORT} is already bound by ${conflict_proc}."
-			if [ -n "$YES" ] || [ ! -t 0 ]; then
+			if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
 				DETECTED_PORT="$CUSTOM_PORT"
 				return 0
 			fi
@@ -580,7 +594,7 @@ resolve_port_conflict() {
 			warn "Port 80 is currently in use by ${conflict_proc}."
 		fi
 
-		if [ -n "$YES" ] || [ ! -t 0 ]; then
+		if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
 			info "Non-interactive mode: Automatically assigning free port ${alt_port}."
 			DETECTED_PORT="$alt_port"
 			return 0
@@ -686,7 +700,7 @@ parse_args() {
 # CBM_STATE holds the user's final choices. Space toggles, up/down (or j/k)
 # moves, Enter confirms, Ctrl+C cancels the whole installation cleanly.
 # Only ever call this when already known to be an interactive TTY - callers
-# are responsible for the "$YES"/"[ -t 0 ]" non-interactive fallback.
+# are responsible for the "$YES"/"$INTERACTIVE_TTY" non-interactive fallback.
 # ------------------------------------------------------------------------------
 checkbox_menu() {
 	local title="$1"
@@ -1170,7 +1184,7 @@ resolve_desktop_environment_support() {
 			;;
 	esac
 
-	if [ -n "$YES" ] || [ ! -t 0 ]; then
+	if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
 		# --replace-desktop is the operator explicitly pre-authorizing a
 		# destructive swap for this run - only honor it here (skipping the
 		# interactive typed-name confirmation entirely) when there is
@@ -1289,7 +1303,7 @@ compute_default_selections() {
 select_components() {
 	compute_default_selections
 
-	if [ -n "$YES" ] || [ ! -t 0 ]; then
+	if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
 		: # Respect flags/detected defaults as-is, no menu.
 	else
 		printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Select Optional Components:${COLOR_RESET}"
