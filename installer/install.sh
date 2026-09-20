@@ -1650,8 +1650,27 @@ run_step() {
 			sleep 0.08
 		done
 
+		# `wait` for a specific PID returns that job's own exit status - if
+		# it's nonzero, `wait` itself counts as a failing command under
+		# set -e, which aborts the WHOLE SCRIPT right here, before any of
+		# the code below (which exists specifically to handle a failed
+		# step gracefully - print_error_card, the log tail, etc.) ever
+		# runs. Every failed step has always died silently at this exact
+		# line instead of showing why.
+		#
+		# `set +e` alone is not enough to fix this: the ERR trap fires
+		# based on errtrace (-E), independent of whether errexit is
+		# currently on, so on_fatal_error would still run (and still
+		# unconditionally exit) even with errexit off. Both the trap AND
+		# errexit have to be suspended around this one call, then both
+		# restored, for `wait`'s result to actually be inspectable instead
+		# of immediately fatal.
+		trap '' ERR
+		set +e
 		wait "$cmd_pid"
 		local exit_code=$?
+		set -e
+		trap 'on_fatal_error "$LINENO"' ERR
 		CURRENT_STEP_PID=""
 		local end_ts
 		end_ts=$(date +%s)
