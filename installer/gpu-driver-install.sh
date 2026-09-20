@@ -111,13 +111,30 @@ driver_working_for() {
 	case "$vendor" in
 		nvidia) command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1 ;;
 		amd)
-			# The open-source amdgpu driver is in-kernel on any distro new
-			# enough to ship a supported card - "working" here means the
-			# kernel module is actually bound to the card, not just present
-			# on disk (modinfo would succeed either way).
-			lsmod 2>/dev/null | grep -q '^amdgpu' ;;
+			# NOT just "is the amdgpu kernel module loaded" - it's built
+			# into the kernel and often loads for the card regardless of
+			# whether the userspace firmware/mesa stack this script
+			# installs is actually present, which would make this report
+			# "working" (skip installing anything) on a completely fresh
+			# system that's never had its GPU driver stack installed at
+			# all. gpu_busy_percent existing and being readable is the
+			# same real-device check services/gpu-sidecar's queryAMD()
+			# uses to decide whether the dashboard widget can show
+			# anything - the two are meant to agree.
+			local card f
+			for f in /sys/class/drm/card[0-9]*; do
+				case "$(basename "$f")" in *-*) continue ;; esac
+				if [ "$(cat "$f/device/vendor" 2>/dev/null)" = "0x1002" ] && [ -r "$f/device/gpu_busy_percent" ]; then
+					card="$f"
+					break
+				fi
+			done
+			[ -n "$card" ] ;;
 		intel)
-			# i915 likewise ships in-kernel - same reasoning as amdgpu above.
+			# i915 likewise ships in-kernel, but unlike amdgpu there's no
+			# equivalently simple, stable sysfs stat to check for real
+			# functionality - module-loaded is the best signal available
+			# without requiring intel-gpu-tools.
 			lsmod 2>/dev/null | grep -q '^i915' ;;
 		*) return 1 ;;
 	esac

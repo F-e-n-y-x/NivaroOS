@@ -54,7 +54,26 @@ type gpuProcess struct {
 	UtilizationPercent float64 `json:"utilization_percent"`
 }
 
+// queryGPU tries each vendor in turn and returns the first one that
+// actually has a device present. nvidia-smi returning "command not found"
+// on a non-NVIDIA machine fails near-instantly (it's an exec lookup
+// failure, not a timeout), so trying it unconditionally first costs
+// nothing measurable on AMD/Intel-only systems - see vendor.go for the
+// AMD/Intel implementations.
 func queryGPU() (gpuStats, error) {
+	if stats, err := queryNVIDIA(); err == nil {
+		return stats, nil
+	}
+	if stats, err := queryAMD(); err == nil {
+		return stats, nil
+	}
+	if stats, err := queryIntel(); err == nil {
+		return stats, nil
+	}
+	return gpuStats{}, errNoDevice
+}
+
+func queryNVIDIA() (gpuStats, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "nvidia-smi",
