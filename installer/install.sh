@@ -1558,12 +1558,14 @@ run_step() {
 			# is honored immediately rather than only at the next step.
 			local reserved_lines=3
 			local available_lines=$((TERM_ROWS - reserved_lines))
-			local num_log_lines=10
-			if [ "$TERM_ROWS" -ge 42 ]; then
-				num_log_lines=14
-			fi
-			if [ "$num_log_lines" -gt "$available_lines" ]; then
-				num_log_lines="$available_lines"
+			# Use however much vertical space is actually there instead of
+			# a fixed 10/14-line box that leaves most of a large terminal
+			# blank - capped only so an absurdly tall terminal doesn't turn
+			# this into an unreasonably long scrolling wall of log lines.
+			local max_log_lines=30
+			local num_log_lines="$available_lines"
+			if [ "$num_log_lines" -gt "$max_log_lines" ]; then
+				num_log_lines="$max_log_lines"
 			fi
 
 			printf "\033[H"
