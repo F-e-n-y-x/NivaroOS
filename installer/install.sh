@@ -1951,9 +1951,13 @@ install_core_services() {
 		echo '/usr/bin/nivaroos-local-storage' >> \"$MANIFEST_FILE\"
 
 		# 6. Compile User Service
+		# Binary is named 'nivaroos-user' (no '-service' suffix) to match
+		# what nivaroos-user-service.service's ExecStart actually invokes,
+		# and what uninstall.sh already expects to remove - the '-service'
+		# suffix belongs to the systemd UNIT name, not the binary.
 		cd \"${SRC_DIR}/services/user\"
-		go build -o /usr/bin/nivaroos-user-service .
-		echo '/usr/bin/nivaroos-user-service' >> \"$MANIFEST_FILE\"
+		go build -o /usr/bin/nivaroos-user .
+		echo '/usr/bin/nivaroos-user' >> \"$MANIFEST_FILE\"
 
 		# 7. Compile GPU Sidecar
 		cd \"${SRC_DIR}/services/gpu-sidecar\"

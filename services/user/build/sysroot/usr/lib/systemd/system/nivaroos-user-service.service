@@ -1,11 +1,19 @@
 [Unit]
-After=nivaroos-message-bus.service
+# main.go's startup path calls Gateway().CreateRoute() and panics if it
+# fails - it hard-requires the gateway to already be listening, not just
+# "eventually". Only ordering after message-bus (not gateway too) worked
+# by accident whenever the installer's own sequential, blocking
+# `systemctl enable --now` loop happened to start gateway first - it is
+# not guaranteed on a reboot or a manual `systemctl restart`, where
+# systemd is free to start both in parallel.
+After=nivaroos-message-bus.service nivaroos-gateway.service
+Wants=nivaroos-gateway.service
 Description=NivaroOS User Service
 
 [Service]
 ExecStartPre=/usr/bin/nivaroos-user -v
 ExecStart=/usr/bin/nivaroos-user -c /etc/nivaroos/user-service.conf
-PIDFile=/var/run/nivaroos/user-service.pid
+PIDFile=/run/nivaroos/user-service.pid
 Restart=always
 Type=notify
 # Defense-in-depth hardening that's safe regardless of this service's exact
