@@ -70,8 +70,8 @@
 				<div class="gpu-unavail-desc">
 					{{ $t("Detected a {vendor} GPU with no working driver.", { vendor: driverSuggestionLabel }) }}
 				</div>
-				<button class="widget-icon-btn install-driver-btn" :disabled="installingDriver" @click="installDriver">
-					{{ installingDriver ? $t("Installing...") : $t("Install Driver") }}
+				<button class="widget-icon-btn install-driver-btn" @click="installDriver">
+					{{ $t("Install Driver") }}
 				</button>
 				<div v-if="installError" class="gpu-unavail-desc install-error">{{ installError }}</div>
 			</div>
@@ -108,7 +108,13 @@ import RadialBar from "@/shared/widgets/RadialBar.vue";
 const SIDECAR_HOST = `http://${window.location.hostname}:28640`;
 const SIDECAR_URL = `${SIDECAR_HOST}/gpu-stats`;
 const DRIVER_STATUS_URL = `${SIDECAR_HOST}/driver-status`;
-const DRIVER_INSTALL_URL = `${SIDECAR_HOST}/driver-install`;
+// Run directly in a real terminal (see installDriver()) rather than through
+// gpu-sidecar's own /driver-install HTTP endpoint - that endpoint still
+// exists and works, but a silent background request can't show the admin
+// what's actually happening for a multi-minute package install, or let them
+// answer a prompt (license text, "keep local config file?", etc.) if one
+// comes up.
+const DRIVER_SCRIPT_PATH = "/usr/local/bin/nivaroos-gpu-driver-install.sh";
 // Polling this hits the gpu-sidecar, which shells out to nvidia-smi twice
 // per request - fine at a snappy interval while the process list is open
 // and someone is actually watching it, wasteful kept up at that same rate
@@ -147,7 +153,6 @@ export default {
 			powerDraw: 0,
 			processes: [],
 			driverSuggestion: null,
-			installingDriver: false,
 			installError: "",
 		};
 	},
@@ -226,29 +231,30 @@ export default {
 				});
 		},
 
+		// Opens a real terminal with the install command pre-typed, rather
+		// than running it silently over a background fetch() - a package
+		// install can prompt (license text, "keep local config file?",
+		// etc.), take minutes, or just fail in a way a single success/fail
+		// toast can't usefully explain. The terminal is the same
+		// /v1/sys/wsterm session as the desktop's own Terminal app - it
+		// runs as the machine's regular desktop user, not root, so `sudo`
+		// prompting for a password interactively in there is the correct,
+		// expected, secure flow, not a bug.
 		installDriver() {
-			this.installingDriver = true;
 			this.installError = "";
-			fetch(DRIVER_INSTALL_URL, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ vendor: this.driverSuggestion }),
-			})
-				.then((res) => res.json())
-				.then((data) => {
-					if (data.success) {
-						this.driverSuggestion = null;
-						this.poll();
-					} else {
-						this.installError = this.$t("Install failed - see system logs.");
-					}
-				})
-				.catch(() => {
-					this.installError = this.$t("Install failed - see system logs.");
-				})
-				.finally(() => {
-					this.installingDriver = false;
+			const vendorFlag = this.driverSuggestion ? ` --vendor=${this.driverSuggestion}` : "";
+			try {
+				this.$store.commit("OPEN_WINDOW", {
+					id: "terminal-gpu-driver-" + Date.now(),
+					title: this.$t("Install GPU Driver"),
+					component: "TerminalPanel",
+					props: { initCommand: `sudo bash ${DRIVER_SCRIPT_PATH}${vendorFlag}` },
+					width: 820,
+					height: 480,
 				});
+			} catch (e) {
+				this.installError = this.$t("Could not open a terminal - see system logs.");
+			}
 		},
 
 		showMoreInfo() {
