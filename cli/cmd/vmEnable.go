@@ -23,6 +23,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// resolveGoBinary finds the go toolchain even when PATH can't be trusted to
+// have it. ensureRoot() re-execs this command under `sudo`, and Debian's
+// default sudoers "secure_path" replaces PATH with a fixed list that does
+// not include /usr/local/go/bin - where installer/install.sh always puts
+// the Go toolchain it downloads - regardless of what the original,
+// unprivileged shell's own PATH contained or whether `-E`/--preserve-env
+// was used (secure_path is specifically designed to override both). A bare
+// exec.Command("go", ...) then fails with "executable file not found in
+// $PATH" even though Go is very much installed.
+func resolveGoBinary() (string, error) {
+	if p, err := exec.LookPath("go"); err == nil {
+		return p, nil
+	}
+	for _, candidate := range []string{"/usr/local/go/bin/go", "/usr/lib/go/bin/go", "/usr/bin/go"} {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("go toolchain not found (checked PATH and /usr/local/go/bin) - run the NivaroOS installer first, or install Go manually")
+}
+
 const nivaroosSrcDir = "/opt/nivaroos/src"
 
 const vmSidecarUnitContent = `[Unit]
@@ -71,10 +92,22 @@ var vmEnableCmd = &cobra.Command{
 			return fmt.Errorf("installing libvirt-dev and gcc: %w", err)
 		}
 
-		build := exec.Command("go", "build", "-o", "/usr/bin/nivaroos-vm-sidecar", ".")
+		goBin, err := resolveGoBinary()
+		if err != nil {
+			return err
+		}
+
+		build := exec.Command(goBin, "build", "-o", "/usr/bin/nivaroos-vm-sidecar", ".")
 		build.Dir = nivaroosSrcDir + "/services/vm-sidecar"
 		build.Stdout = os.Stdout
 		build.Stderr = os.Stderr
+		// GOWORK=off: nivaroosSrcDir has a go.work at its root covering every
+		// service - workspace-mode dependency resolution across all of them
+		// can pick different (sometimes incompatible) versions than this
+		// module's own go.mod/go.sum would alone. installer/install.sh's
+		// run_step already sets this for exactly this reason; this command
+		// needs it for the same reason since it builds from the same tree.
+		build.Env = append(os.Environ(), "GOWORK=off", "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:"+os.Getenv("PATH"))
 		if err := build.Run(); err != nil {
 			return fmt.Errorf("building nivaroos-vm-sidecar: %w", err)
 		}
