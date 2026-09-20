@@ -2260,7 +2260,62 @@ install_samba() {
 
 # ------------------------------------------------------------------------------
 # Web Dashboard UI Assets
+#
+# The git repo never commits prebuilt frontend output (ui/dist,
+# build/sysroot/.../www are all build artifacts, not tracked) - so a
+# genuinely fresh `git clone` has nothing to serve unless something builds
+# it. Node.js + pnpm were never installed by this script at all, so on any
+# machine that doesn't already happen to have pnpm from unrelated prior
+# work, this step always failed outright with "no prebuilt www files
+# found" - it never had a real path to succeed on a first-time install.
 # ------------------------------------------------------------------------------
+ensure_node_toolchain() {
+	if command -v pnpm >/dev/null 2>&1; then
+		return 0
+	fi
+
+	echo "No prebuilt web dashboard found - installing Node.js and pnpm to build it from source..."
+
+	local node_major=0
+	if command -v node >/dev/null 2>&1; then
+		node_major="$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/')"
+	fi
+	if [ -z "$node_major" ] || ! [ "$node_major" -ge 18 ] 2>/dev/null; then
+		# Distro-default Node packages are frequently too old (or entirely
+		# absent) for a modern Vite/Vue build - NodeSource's setup script is
+		# the standard way to get a current LTS on apt/dnf/yum systems.
+		if command -v apt-get >/dev/null 2>&1; then
+			curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+			pkg_install nodejs
+		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+			curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 || true
+			pkg_install nodejs
+		elif command -v pacman >/dev/null 2>&1; then
+			pkg_install nodejs npm
+		elif command -v zypper >/dev/null 2>&1; then
+			pkg_install nodejs20 || pkg_install nodejs
+		elif command -v apk >/dev/null 2>&1; then
+			pkg_install nodejs npm
+		fi
+	fi
+
+	# Read the exact pnpm version this UI expects from its own
+	# package.json (via corepack, Node's built-in package-manager
+	# activator) rather than hardcoding a version here that would drift
+	# out of sync with the repo over time.
+	local pnpm_ver
+	pnpm_ver="$(grep -oE '"packageManager":[[:space:]]*"pnpm@[^"]+"' "${SRC_DIR}/ui/package.json" 2>/dev/null | sed -E 's/.*pnpm@([^"]+)"/\1/')"
+	pnpm_ver="${pnpm_ver:-9}"
+
+	if command -v corepack >/dev/null 2>&1; then
+		corepack enable >/dev/null 2>&1 || true
+		corepack prepare "pnpm@${pnpm_ver}" --activate >/dev/null 2>&1 || true
+	fi
+	if ! command -v pnpm >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+		npm install -g "pnpm@${pnpm_ver}" >/dev/null 2>&1 || npm install -g pnpm >/dev/null 2>&1 || true
+	fi
+}
+
 install_ui() {
 	run_step "Deploying Web Dashboard & Frontend Assets" "
 		mkdir -p /var/lib/nivaroos/www
@@ -2276,7 +2331,11 @@ install_ui() {
 			ui_source_dir=\"${SRC_DIR}/build/sysroot/var/lib/casaos/www\"
 		fi
 
-		# If prebuilt output is not found, try building from source if pnpm is available
+		# If prebuilt output is not found, install Node.js/pnpm (if not
+		# already present) and build from source.
+		if [ -z \"\$ui_source_dir\" ]; then
+			ensure_node_toolchain
+		fi
 		if [ -z \"\$ui_source_dir\" ] && command -v pnpm >/dev/null 2>&1; then
 			echo 'Building frontend from source with pnpm...'
 			( cd \"${SRC_DIR}/ui\" && pnpm install --prefer-offline 2>/dev/null || pnpm install ) && \
