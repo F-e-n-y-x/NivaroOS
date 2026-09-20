@@ -1,13 +1,105 @@
 package v1
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
+
+// GetTailscaleInstalled lets the frontend show an "Install Tailscale"
+// prompt instead of just failing when the other tailscale endpoints error
+// out because the binary isn't there at all.
+func GetTailscaleInstalled(ctx echo.Context) error {
+	_, err := exec.LookPath("tailscale")
+	return ok(ctx, map[string]bool{"installed": err == nil})
+}
+
+var tailscaleLoginURLPattern = regexp.MustCompile(`https://login\.tailscale\.com/\S+`)
+
+// startTailscaleUpAndCaptureLoginURL runs `tailscale up` in the background
+// (it blocks until the node is authenticated or the command is killed, so
+// it must never be waited on synchronously from an HTTP handler) and scans
+// its combined output for the login link it prints once, early on. The
+// scanning goroutine keeps draining the pipe for the process's whole
+// lifetime regardless of whether anyone is still waiting for the URL - an
+// io.Pipe's writes block until read, so a scanner that stopped early would
+// eventually stall `tailscale up` itself mid-authentication.
+func startTailscaleUpAndCaptureLoginURL() (string, error) {
+	r, w := io.Pipe()
+	cmd := exec.Command("tailscale", "up")
+	cmd.Stdout = w
+	cmd.Stderr = w
+
+	if err := cmd.Start(); err != nil {
+		w.Close()
+		return "", err
+	}
+
+	urlCh := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			if m := tailscaleLoginURLPattern.FindString(scanner.Text()); m != "" {
+				select {
+				case urlCh <- m:
+				default:
+				}
+			}
+		}
+	}()
+	go func() {
+		_ = cmd.Wait()
+		w.Close()
+	}()
+
+	select {
+	case loginURL := <-urlCh:
+		return loginURL, nil
+	case <-time.After(8 * time.Second):
+		return "", fmt.Errorf("timed out waiting for a login link - this device may already be authenticated, check its status")
+	}
+}
+
+// PostTailscaleInstall installs the tailscale package via the official
+// install script (the standard, distro-detecting way to get it - not worth
+// reimplementing per-distro package names here) if it isn't already
+// present, then starts `tailscale up` and returns the one-time login link
+// it prints, so the frontend can show it immediately instead of the admin
+// needing to open a terminal to find it.
+func PostTailscaleInstall(ctx echo.Context) error {
+	if _, err := exec.LookPath("tailscale"); err == nil {
+		loginURL, upErr := startTailscaleUpAndCaptureLoginURL()
+		return ok(ctx, map[string]string{"login_url": loginURL, "note": errString(upErr)})
+	}
+
+	installCmd := exec.Command("sh", "-c", "curl -fsSL https://tailscale.com/install.sh | sh")
+	out, err := installCmd.CombinedOutput()
+	if err != nil {
+		return serviceError(ctx, fmt.Errorf("installing tailscale: %s", strings.TrimSpace(string(out))))
+	}
+
+	// The install script enables/starts tailscaled itself on systemd
+	// distros, but do it explicitly too in case it didn't (e.g. a distro
+	// the script doesn't recognize as systemd-based).
+	_ = exec.Command("systemctl", "enable", "--now", "tailscaled").Run()
+
+	loginURL, upErr := startTailscaleUpAndCaptureLoginURL()
+	return ok(ctx, map[string]string{"login_url": loginURL, "note": errString(upErr)})
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
 
 // GetTailscaleStatus shells `tailscale status --json` and passes its output
 // straight through as the Data field - Tailscale's own JSON schema is a

@@ -2,6 +2,32 @@
 	<div class="remote-access-panel">
 		<div v-if="loading" class="hint">{{ $t('Checking Tailscale status...') }}</div>
 
+		<div v-else-if="installed === false" class="setting-card">
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="internet-outline" pack="casa" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Tailscale') }}</div>
+					<div class="setting-desc">{{ $t('Not installed - install it to remotely access this device from anywhere.') }}</div>
+				</div>
+				<div class="row-control">
+					<b-button type="is-dark" size="is-small" :loading="installing" @click="installTailscale">
+						{{ $t('Install') }}
+					</b-button>
+				</div>
+			</div>
+			<div v-if="loginUrl" class="setting-row">
+				<b-icon class="row-icon" icon="link-variant" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Installed - connect this device') }}</div>
+					<div class="setting-desc">
+						{{ $t('Open this link to authenticate:') }}
+						<a :href="loginUrl" target="_blank" rel="noopener noreferrer">{{ loginUrl }}</a>
+					</div>
+				</div>
+			</div>
+			<p v-if="installError" class="error-note">{{ installError }}</p>
+		</div>
+
 		<template v-else>
 			<div class="setting-card">
 				<div class="setting-row">
@@ -149,7 +175,11 @@ export default {
 			prefs: {},
 			prefsLoaded: false,
 			savingPref: '',
-			prefError: ''
+			prefError: '',
+			installed: null,
+			installing: false,
+			installError: '',
+			loginUrl: ''
 		}
 	},
 	computed: {
@@ -158,9 +188,44 @@ export default {
 		}
 	},
 	created() {
-		this.refresh()
+		this.checkInstalled()
 	},
 	methods: {
+		checkInstalled() {
+			this.loading = true
+			this.$api.tailscale.getInstalled().then(res => {
+				const isInstalled = !!(res.data.success === 200 && res.data.data && res.data.data.installed)
+				this.installed = isInstalled
+				if (isInstalled) {
+					this.refresh()
+				} else {
+					this.loading = false
+				}
+			}).catch(() => {
+				this.installed = true
+				this.refresh()
+			})
+		},
+		installTailscale() {
+			this.installing = true
+			this.installError = ''
+			this.$api.tailscale.install().then(res => {
+				if (res.data.success === 200) {
+					this.installed = true
+					this.loginUrl = (res.data.data && res.data.data.login_url) || ''
+					if (!this.loginUrl) {
+						this.installError = (res.data.data && res.data.data.note) || this.$t('Installed, but no login link was captured - open a terminal and run "tailscale up".')
+					}
+					this.refresh()
+				} else {
+					this.installError = res.data.message
+				}
+			}).catch(e => {
+				this.installError = e.response && e.response.data ? e.response.data.message : this.$t('Failed to install Tailscale')
+			}).finally(() => {
+				this.installing = false
+			})
+		},
 		refresh() {
 			this.loading = true
 			this.$api.tailscale.getStatus().then(res => {
