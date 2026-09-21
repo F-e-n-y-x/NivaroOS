@@ -2,7 +2,7 @@
   <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="NivaroOS Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
 </p>
 
-<h1 align="center">NivaroOS v1.0</h1>
+<h1 align="center">NivaroOS</h1>
 
 <p align="center">
   <strong>A modern, self-hosted personal cloud OS, container platform, and companion mobile ecosystem.</strong><br>
@@ -153,49 +153,6 @@ docker run -d \
 #### 6. Speed & Link Diagnostics
 - **LAN Link Benchmark**: Measures real-time direct transfer speed between your mobile phone and the NivaroOS server.
 - **Internet Speed Test**: Benchmarks your server's connection to the internet (download, upload, and latency) with smooth animated speedometer gauges.
-
----
-
-## 🏗️ Architecture & Services
-
-NivaroOS is built on a modular microservices architecture communicating over an event-driven message bus and unified gateway:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                          NivaroOS UI                          │
-│         (Vue 2.7 / Vue CLI / Buefy / MDI / Webpack 5)       │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ HTTP / WebSocket (:80)
-┌──────────────────────────────▼──────────────────────────────┐
-│                    NivaroOS Gateway Proxy                     │
-│                  (services/gateway - Go)                    │
-└──────┬──────────┬──────────┬──────────┬──────────┬──────┬───┘
-       │          │          │          │          │      │
-┌──────▼──┐ ┌─────▼───┐ ┌────▼───┐ ┌────▼───┐ ┌────▼──┐ ┌─▼──────┐
-│  Core   │ │  User   │ │  App   │ │ Local  │ │  VM   │ │  GPU   │
-│ Daemon  │ │ Service │ │  Mgmt  │ │Storage │ │Sidecar│ │Sidecar │
-│ (v1/v2) │ │ (Auth)  │ │(Docker)│ │(Disks) │ │(KVM)  │ │(nvidia)│
-└────┬────┘ └─────────┘ └─────────┘ └─────────┘ └──────┘ └────────┘
-     │ (WS Tunnel / LAN Proxy)
-┌────▼────────────────────────┐
-│   Mobile Companion Device   │
-│  (Flutter / HTTP & WS / BG) │
-└─────────────────────────────┘
-```
-
-| Service | Directory | Description |
-| :--- | :--- | :--- |
-| **Gateway** | `services/gateway` | High-performance reverse proxy routing UI static assets, WebSocket tunnels, and API endpoints. |
-| **Core Daemon** | `services/core` | System management daemon, companion device proxying, hardware monitoring, and notifications. |
-| **User Service** | `services/user` | User authentication, JWT sessions, user profiles, and desktop preferences. |
-| **App Management** | `services/app-management` | Docker container and Compose lifecycle orchestrator with 400+ app catalog indexer. |
-| **Local Storage** | `services/local-storage` | Block storage detection, filesystem formatting, storage pool allocation, and mount management. |
-| **Message Bus** | `services/message-bus` | Real-time event broker and WebSocket broadcasting daemon. |
-| **VM Sidecar** | `services/vm-sidecar` | QEMU/KVM virtual machine provisioning and noVNC WebSocket bridge. |
-| **GPU Sidecar** | `services/gpu-sidecar` | NVIDIA GPU metrics (utilization, memory, temperature, processes) for the desktop telemetry widget. |
-| **CLI** | `cli/` | `nivaroos-cli` — standalone admin command-line tool for managing services and add-ons. |
-| **Frontend UI** | `ui/` | Responsive windowed desktop Single Page Application. |
-| **Mobile App** | `mobile/` | Native Flutter companion app for Android and iOS. |
 
 ---
 
