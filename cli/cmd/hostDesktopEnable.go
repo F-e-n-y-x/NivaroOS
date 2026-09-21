@@ -120,10 +120,26 @@ fi
 
 # -noxdamage/-fixscreen X=5/-localhost: see installer/install.sh's
 # install_host_desktop() for why - kept identical here.
+#
+# -repeat (not -norepeat): -norepeat disables the X server's own key
+# autorepeat while a client is connected, on the assumption the VNC
+# viewer re-sends its own down events for a genuinely held key - but that
+# broke holding a key (Backspace, arrow keys, etc) entirely, which is a
+# worse trade than the rarer runaway-duplicate-character bug -repeat can
+# cause under real network delay between a key's down/up events. If that
+# resurfaces, -skip_dups is the next thing to try instead of -norepeat.
+#
+# -capslock: without it, x11vnc's default modtweak logic fakes a Shift
+# press to force an uppercase keysym whenever one arrives - even if the
+# host's CapsLock is already on, where Shift+CapsLock actually produces
+# LOWERCASE, inverting the typed case. -capslock makes x11vnc check the
+# host's real CapsLock state first and skip the fake Shift when it's
+# already set, which is what was showing up as the host desktop typing as
+# if CapsLock were on regardless of the client's real key state.
 if [ -n "$AUTH" ]; then
-    exec /usr/bin/x11vnc -display :0 -auth "$AUTH" -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth "$AUTH" -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 else
-    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 fi
 `
 
@@ -163,7 +179,7 @@ var hostDesktopEnableCmd = &cobra.Command{
 		update.Stderr = os.Stderr
 		_ = update.Run()
 
-		deps := exec.Command("apt-get", "install", "-y", "x11vnc", "websockify")
+		deps := exec.Command("apt-get", "install", "-y", "x11vnc", "websockify", "xdotool")
 		deps.Stdout = os.Stdout
 		deps.Stderr = os.Stderr
 		_ = deps.Run()

@@ -88,6 +88,10 @@
 				<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
 				<span class="vm-name">{{ $t('Host Desktop') }}</span>
 				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
+				<span v-if="status === 'connected' && pingMs !== null" class="ping-pill" :class="pingClass" :title="$t('Round-trip time to this host')">
+					<b-icon icon="wifi" custom-size="mdi-14px"></b-icon>
+					{{ pingMs }} ms
+				</span>
 			</div>
 
 			<div class="toolbar-actions">
@@ -433,6 +437,16 @@
 
 		<!-- Statusbar at the Bottom -->
 		<div class="console-statusbar">
+			<button
+				v-if="capsLockActive"
+				type="button"
+				class="statusbar-item statusbar-capslock"
+				:title="$t('Caps Lock is on - click to turn off')"
+				@click="disableCapsLock"
+			>
+				<b-icon icon="apple-keyboard-caps" size="is-small"></b-icon>
+				{{ $t('Caps Lock') }}
+			</button>
 			<span class="statusbar-item" :class="{ 'is-live': status === 'connected' }">
 				<span class="activity-dot"></span>{{ statusText }}
 			</span>
@@ -488,6 +502,30 @@
 						<span>{{ $t('Paste Clipboard') }}</span>
 					</button>
 				</div>
+			</div>
+		</vm-overlay-panel>
+
+		<!-- Host Clipboard Fallback: shown whenever the browser's Clipboard API
+		     can't write directly (e.g. no HTTPS), so copying from the host
+		     still has a manual path instead of silently doing nothing. -->
+		<vm-overlay-panel
+			:active="showCopyDialog"
+			:title="$t('Copied from Host Desktop')"
+			max-width="30rem"
+			@close="showCopyDialog = false"
+		>
+			<div class="paste-modal-content">
+				<p class="paste-modal-desc">
+					{{ $t('The host copied this text, but this browser tab can\'t write it to your clipboard automatically. It\'s selected below - press Ctrl+C (or Cmd+C) to copy it.') }}
+				</p>
+				<textarea
+					ref="copyOutput"
+					v-model="copyText"
+					class="paste-modal-textarea"
+					rows="4"
+					readonly
+					@focus="$event.target.select()"
+				></textarea>
 			</div>
 		</vm-overlay-panel>
 	</div>
@@ -632,6 +670,8 @@ export default {
 			status: 'connecting',
 			reconnectAttempt: 0,
 			reconnectTimer: null,
+			capsLockPollTimer: null,
+			pingMs: null,
 			intentionalDisconnect: false,
 			resizeSettleResolve: null,
 			keysMenuOpen: false,
@@ -648,6 +688,9 @@ export default {
 			altActive: false,
 			showPasteDialog: false,
 			pasteText: '',
+			showCopyDialog: false,
+			copyText: '',
+			clipboardInsecureWarned: false,
 			currentResolution: '1920x1080',
 			availableResolutions: [],
 			resizingHost: false,
@@ -688,6 +731,12 @@ export default {
 		qualityModeLabel() {
 			const m = this.qualityOptions.find((q) => q.mode === this.qualityMode)
 			return m ? this.$t(m.label) : this.qualityMode
+		},
+		pingClass() {
+			if (this.pingMs === null) return ''
+			if (this.pingMs < 80) return 'is-good'
+			if (this.pingMs < 200) return 'is-ok'
+			return 'is-bad'
 		},
 		keyboardStyle() {
 			if (!this.keyboardPos) return {}
@@ -760,6 +809,7 @@ export default {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		document.removeEventListener('fullscreenchange', this.onFullscreenChange)
 		window.removeEventListener('resize', this.onWindowResize)
+		this.stopCapsLockPoll()
 
 		if (this.panelResizeObserver) {
 			this.panelResizeObserver.disconnect()
@@ -802,10 +852,13 @@ export default {
 					const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
 					this.rfb.qualityLevel = p.qualityLevel
 					this.rfb.compressionLevel = p.compressionLevel
+					this.startCapsLockPoll()
 				})
 
 				this.rfb.addEventListener('disconnect', () => {
 					this.status = 'disconnected'
+					this.stopCapsLockPoll()
+					this.pingMs = null
 					if (!this.intentionalDisconnect) {
 						this.scheduleReconnect()
 					}
@@ -813,9 +866,8 @@ export default {
 
 				this.rfb.addEventListener('clipboard', (e) => {
 					const text = e.detail && e.detail.text
-					if (text && navigator.clipboard && navigator.clipboard.writeText) {
-						navigator.clipboard.writeText(text).catch(() => {})
-					}
+					if (!text) return
+					this.receiveHostClipboard(text)
 				})
 
 				this.rfb.addEventListener('fbsize', (e) => {
@@ -1203,6 +1255,20 @@ export default {
 		pressKey(key) {
 			if (!this.rfb) return
 			if (key.sticky) {
+				// CapsLock toggles on a full press+release, unlike Shift/Ctrl/Alt which
+				// stay "active" only while genuinely held down - sending it as a bare
+				// key-down with no matching key-up left the host's X server thinking
+				// the CapsLock key was being physically held.
+				if (key.special === 'CapsLock') {
+					const keysym = SPECIAL_KEYSYMS.CapsLock
+					this.rfb.sendKey(keysym, key.code, true)
+					this.rfb.sendKey(keysym, key.code, false)
+					// Optimistic - the poll started in connect() confirms (or
+					// corrects) this against the host's real state shortly after.
+					this.capsLockActive = !this.capsLockActive
+					setTimeout(() => this.pollCapsLock(), 400)
+					return
+				}
 				this[key.sticky] = !this[key.sticky]
 				this.rfb.sendKey(SPECIAL_KEYSYMS[key.special], key.code, this[key.sticky])
 				return
@@ -1228,6 +1294,61 @@ export default {
 			this.rfb.sendKey(keysym, code, true)
 			this.rfb.sendKey(keysym, code, false)
 			this.rfb.sendKey(ctrl, 'ControlLeft', false)
+		},
+
+		// The indicator has to reflect the HOST's real CapsLock lock state, not
+		// the accessing device's own keyboard - those are two different
+		// keyboards. There's no VNC-protocol push for host LED state, so this
+		// polls vm-sidecar's /host/desktop/capslock (backed by `xset q` against
+		// the host's X server) while connected.
+		startCapsLockPoll() {
+			this.stopCapsLockPoll()
+			this.pollCapsLock()
+			this.capsLockPollTimer = setInterval(() => this.pollCapsLock(), 1500)
+		},
+
+		stopCapsLockPoll() {
+			if (this.capsLockPollTimer) {
+				clearInterval(this.capsLockPollTimer)
+				this.capsLockPollTimer = null
+			}
+		},
+
+		async pollCapsLock() {
+			// Also doubles as the topbar ping reading - it's already a small,
+			// frequent round trip to vm-sidecar, so timing it avoids a second
+			// polling loop just for latency. It measures RTT to vm-sidecar, not
+			// literal VNC frame latency, but that's the number that actually
+			// reflects whether this connection is currently responsive.
+			const t0 = performance.now()
+			try {
+				let res = null
+				try {
+					res = await axios.get('/api/host/desktop/capslock')
+				} catch (e) {
+					const host = window.location.hostname || '127.0.0.1'
+					res = await axios.get(`//${host}:28641/host/desktop/capslock`, {
+						headers: { Authorization: localStorage.getItem('access_token') || '' },
+					})
+				}
+				this.pingMs = Math.round(performance.now() - t0)
+				if (res && res.data) {
+					this.capsLockActive = !!res.data.caps_lock
+				}
+			} catch (e) {
+				// Transient network/proxy hiccup - leave both readings at their
+				// last known values rather than flicker them, the next poll retries.
+			}
+		},
+
+		disableCapsLock() {
+			if (!this.rfb) return
+			const keysym = SPECIAL_KEYSYMS.CapsLock
+			this.rfb.sendKey(keysym, 'CapsLock', true)
+			this.rfb.sendKey(keysym, 'CapsLock', false)
+			// Optimistic - confirmed (or corrected) by the next poll tick.
+			this.capsLockActive = false
+			setTimeout(() => this.pollCapsLock(), 400)
 		},
 
 		sendCtrlAltDel() {
@@ -1288,6 +1409,50 @@ export default {
 			}, 60)
 		},
 
+		// Pushed here whenever x11vnc detects the host's X selection changed.
+		// The Clipboard API's writeText() requires a secure context (HTTPS, or
+		// localhost) - on plain http:// over a LAN IP, navigator.clipboard is
+		// undefined outright, so this used to silently do nothing. Now it falls
+		// back to a dialog with the text ready to select/Ctrl+C manually, same
+		// pattern as the existing paste fallback below.
+		receiveHostClipboard(text) {
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard
+					.writeText(text)
+					.then(() => {
+						this.$buefy.toast.open({
+							message: this.$t('Copied from Host clipboard'),
+							type: 'is-success',
+							position: 'is-top',
+							duration: 2000,
+						})
+					})
+					.catch(() => this.showHostClipboardFallback(text))
+				return
+			}
+			this.showHostClipboardFallback(text)
+		},
+
+		showHostClipboardFallback(text) {
+			this.copyText = text
+			this.showCopyDialog = true
+			if (!this.clipboardInsecureWarned && !window.isSecureContext) {
+				this.clipboardInsecureWarned = true
+				this.$buefy.toast.open({
+					message: this.$t('Automatic clipboard sync needs HTTPS - open Host Desktop over https:// to enable it. Copy manually below for now.'),
+					type: 'is-warning',
+					position: 'is-top',
+					duration: 6000,
+				})
+			}
+			this.$nextTick(() => {
+				if (this.$refs.copyOutput) {
+					this.$refs.copyOutput.focus()
+					this.$refs.copyOutput.select()
+				}
+			})
+		},
+
 		async pasteClipboard() {
 			if (!this.rfb) return
 			let text = ''
@@ -1317,16 +1482,22 @@ export default {
 		sendPasteText(asKeystrokes = false) {
 			if (!this.rfb || !this.pasteText) return
 			if (asKeystrokes) {
+				// Iterate by Unicode codepoint, not UTF-16 code unit - charCodeAt()
+				// alone splits anything outside the BMP (emoji, etc) into two bogus
+				// keysyms, one per surrogate half. X11 keysyms equal the codepoint
+				// directly only for Latin-1 (<= 0xFF); anything above that needs the
+				// 0x01000000 Unicode-keysym offset (X.org's keysymdef.h convention),
+				// or the host would receive the wrong character or nothing at all.
 				const str = this.pasteText
-				for (let i = 0; i < str.length; i++) {
-					const char = str[i]
+				for (const char of str) {
 					if (char === '\n') {
 						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', true)
 						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', false)
 					} else {
-						const code = str.charCodeAt(i)
-						this.rfb.sendKey(code, null, true)
-						this.rfb.sendKey(code, null, false)
+						const cp = char.codePointAt(0)
+						const keysym = cp <= 0xff ? cp : 0x01000000 + cp
+						this.rfb.sendKey(keysym, null, true)
+						this.rfb.sendKey(keysym, null, false)
 					}
 				}
 				this.$buefy.toast.open({
@@ -1497,6 +1668,34 @@ export default {
 	&.is-disconnected {
 		background: rgba(255, 56, 96, 0.15);
 		color: #ff3860;
+	}
+}
+
+.ping-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--font-2xs);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-pill);
+	background: rgba(255, 255, 255, 0.1);
+	color: rgba(255, 255, 255, 0.7);
+
+	&.is-good {
+		background: rgba(72, 199, 116, 0.2);
+		color: #48c774;
+	}
+	&.is-ok {
+		background: rgba(255, 221, 87, 0.15);
+		color: #ffdd57;
+	}
+	&.is-bad {
+		background: rgba(255, 56, 96, 0.15);
+		color: #ff3860;
+	}
+
+	::v-deep .icon {
+		margin: 0;
 	}
 }
 
@@ -2114,6 +2313,27 @@ export default {
 .statusbar-item.is-live .activity-dot {
 	background: #48c774;
 	box-shadow: 0 0 4px #48c774;
+}
+
+.statusbar-capslock {
+	border: none;
+	background: rgba(255, 221, 87, 0.18);
+	color: #ffdd57;
+	font-weight: 600;
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-pill);
+	cursor: pointer;
+	font-family: inherit;
+	font-size: inherit;
+	transition: background 0.14s ease;
+
+	::v-deep .icon {
+		margin-right: var(--space-1);
+	}
+
+	&:hover {
+		background: rgba(255, 221, 87, 0.3);
+	}
 }
 
 /* Paste Modal */

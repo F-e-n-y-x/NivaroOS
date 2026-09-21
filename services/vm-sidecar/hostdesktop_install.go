@@ -13,9 +13,11 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"time"
 )
 
@@ -125,10 +127,26 @@ fi
 
 # -noxdamage/-fixscreen X=5/-localhost: see installer/install.sh's
 # install_host_desktop() for why - kept identical here.
+#
+# -repeat (not -norepeat): -norepeat disables the X server's own key
+# autorepeat while a client is connected, on the assumption the VNC
+# viewer re-sends its own down events for a genuinely held key - but that
+# broke holding a key (Backspace, arrow keys, etc) entirely, which is a
+# worse trade than the rarer runaway-duplicate-character bug -repeat can
+# cause under real network delay between a key's down/up events. If that
+# resurfaces, -skip_dups is the next thing to try instead of -norepeat.
+#
+# -capslock: without it, x11vnc's default modtweak logic fakes a Shift
+# press to force an uppercase keysym whenever one arrives - even if the
+# host's CapsLock is already on, where Shift+CapsLock actually produces
+# LOWERCASE, inverting the typed case. -capslock makes x11vnc check the
+# host's real CapsLock state first and skip the fake Shift when it's
+# already set, which is what was showing up as the host desktop typing as
+# if CapsLock were on regardless of the client's real key state.
 if [ -n "$AUTH" ]; then
-    exec /usr/bin/x11vnc -display :0 -auth "$AUTH" -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth "$AUTH" -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 else
-    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 fi
 `
 
@@ -168,7 +186,7 @@ func IsHostDesktopInstalled() bool {
 // sudo-elevation check.
 func InstallHostDesktop() error {
 	_ = exec.Command("apt-get", "update").Run()
-	_ = exec.Command("apt-get", "install", "-y", "x11vnc", "websockify").Run()
+	_ = exec.Command("apt-get", "install", "-y", "x11vnc", "websockify", "xdotool").Run()
 
 	if err := os.WriteFile(hostDesktopScriptPath, []byte(hostDesktopScriptContent), 0o755); err != nil {
 		return err
@@ -223,4 +241,109 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(out)
 	})
+
+	// The statusbar CapsLock indicator needs the HOST's real lock state, not
+	// whatever the browser/client device's own keyboard is doing - those are
+	// two different keyboards with two different CapsLock states, and a
+	// client-side-only check (e.g. KeyboardEvent.getModifierState in the
+	// panel's own JS) was answering the wrong one. `xset q`'s XKB indicators
+	// section reports the X server's actual state directly, same
+	// getHostXAuth()/xrandrEnv() auth resolution GetHostDisplay() already
+	// uses for xrandr.
+	mux.HandleFunc("GET /host/desktop/capslock", func(w http.ResponseWriter, r *http.Request) {
+		on, err := GetHostCapsLock()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"caps_lock": on})
+	})
+}
+
+var capsLockLineRe = regexp.MustCompile(`(?i)Caps Lock:\s*(on|off)`)
+
+// GetHostCapsLock reports whether the host X server's CapsLock lock is
+// currently engaged, straight from `xset q`'s "XKB indicators" section -
+// this is the actual host state, independent of (and frequently different
+// from) whatever the accessing browser/device's own keyboard reports.
+func GetHostCapsLock() (bool, error) {
+	cmd := exec.Command("xset", "q")
+	cmd.Env = xrandrEnv(getHostXAuth())
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	m := capsLockLineRe.FindSubmatch(out)
+	if m == nil {
+		return false, nil
+	}
+	return string(m[1]) == "on", nil
+}
+
+// releaseHostCapsLock sends a real CapsLock press+release to the host X
+// server via xdotool - the same effect as someone physically tapping the
+// key - independent of whether anyone's viewing the Host Desktop stream
+// right now, since this watcher runs regardless of client connections.
+func releaseHostCapsLock() error {
+	cmd := exec.Command("xdotool", "key", "--clearmodifiers", "Caps_Lock")
+	cmd.Env = xrandrEnv(getHostXAuth())
+	return cmd.Run()
+}
+
+const (
+	// hostCapsLockPollInterval trades detection latency for how often this
+	// shells out to `xset q` - 15s is frequent enough that the auto-release
+	// below fires close to on time without polling so often it shows up in
+	// process accounting.
+	hostCapsLockPollInterval = 15 * time.Second
+	// hostCapsLockAutoOffAfter: how long CapsLock has to stay continuously
+	// on, host-side, before this releases it on its own. Matches the 5min
+	// default x11vnc itself uses for X11VNC_IDLE_TIMEOUT elsewhere in this
+	// same feature, for the same reason - long enough that a deliberate,
+	// actively-used CapsLock (someone typing a long uppercase string) is
+	// never touched, short enough that a host left stuck in CapsLock after
+	// everyone's disconnected doesn't stay that way indefinitely with
+	// nobody around to notice.
+	hostCapsLockAutoOffAfter = 5 * time.Minute
+)
+
+// StartHostCapsLockWatcher runs for the lifetime of the process. It does
+// not require a Host Desktop viewer to be connected - the host's own
+// physical keyboard, or a session left mid-typing, can leave CapsLock
+// stuck on just as easily as a VNC client can.
+func StartHostCapsLockWatcher() {
+	go func() {
+		var onSince time.Time
+		for {
+			time.Sleep(hostCapsLockPollInterval)
+
+			if !IsHostDesktopInstalled() {
+				onSince = time.Time{}
+				continue
+			}
+
+			on, err := GetHostCapsLock()
+			if err != nil || !on {
+				// Treat "can't tell" the same as "off" rather than letting a
+				// transient X/auth hiccup masquerade as CapsLock having been
+				// on continuously the whole time it couldn't be checked.
+				onSince = time.Time{}
+				continue
+			}
+
+			if onSince.IsZero() {
+				onSince = time.Now()
+				continue
+			}
+
+			if time.Since(onSince) >= hostCapsLockAutoOffAfter {
+				if err := releaseHostCapsLock(); err != nil {
+					log.Printf("host desktop: CapsLock was on for %s but auto-release failed: %v", hostCapsLockAutoOffAfter, err)
+				} else {
+					log.Printf("host desktop: CapsLock was on for %s - auto-released", hostCapsLockAutoOffAfter)
+				}
+				onSince = time.Time{}
+			}
+		}
+	}()
 }

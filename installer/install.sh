@@ -1677,7 +1677,7 @@ install_host_desktop() {
 		# missing package here should not abort the whole installation -
 		# we just warn and the feature stays unavailable until installed
 		# manually.
-		pkg_install x11vnc websockify || true
+		pkg_install x11vnc websockify xdotool || true
 
 		if ! command -v x11vnc >/dev/null 2>&1; then
 			echo 'x11vnc could not be installed automatically on this distro - Host Desktop streaming will be unavailable until it is installed manually.' >&2
@@ -1772,24 +1772,41 @@ if ! ss -tulpn | grep -q \":28642 \"; then
     /usr/bin/websockify -D 28642 127.0.0.1:5900 2>/dev/null || true
 fi
 
-# -noxdamage: some desktop compositors (GL-based effects) make the X11
-# damage extension unreliable, silently missing change events - which is
-# what causes stale/corrupted patches on the stream. Polling instead of
-# trusting damage events costs a little CPU but eliminates that class of
-# artifact entirely.
+# -noxdamage: compositors with GL-based effects (confirmed live on
+# Cinnamon) make the X11 damage extension unreliable - it silently misses a
+# large fraction of change events, which is what causes stale/corrupted
+# patches on the stream (x11vnc's own log flags this explicitly). Polling
+# instead of trusting damage events costs a little CPU but eliminates that
+# class of artifact entirely.
 # -fixscreen X=5: -noxdamage alone doesn't fully fix it - the compositor
 # can still leave x11vnc's own tile-comparison believing certain regions
 # are unchanged when the actually-displayed (composited) content moved on
-# without it. X=5 forces a genuine full re-read of the X11 framebuffer
-# from the X server every 5s, bypassing that comparison entirely, so any
-# such patch self-heals within 5 seconds regardless of what caused it.
+# without it, showing up as static colored/stale rectangles under real
+# usage (confirmed via a live screenshot, not just at resize time). X=5
+# forces a genuine full re-read of the X11 framebuffer from the X server
+# every 5s, bypassing that comparison entirely, so any such patch
+# self-heals within 5 seconds regardless of what caused it.
 # -localhost: this server is reachable only via the vm-sidecar's WebSocket
 # proxy (which always connects over 127.0.0.1) - there is no legitimate
 # reason to expose a raw, unauthenticated VNC port to the network.
+# -repeat (not -norepeat): -norepeat disables the X server's own key
+# autorepeat while a client is connected, on the assumption the VNC viewer
+# re-sends its own down events for a genuinely held key - but that broke
+# holding a key (Backspace, arrow keys, etc) entirely, which is a worse
+# trade than the rarer runaway-duplicate-character bug -repeat can cause
+# under real network delay between a key's down/up events. If that
+# resurfaces, -skip_dups is the next thing to try instead of -norepeat.
+# -capslock: without it, x11vnc's default modtweak logic fakes a Shift
+# press to force an uppercase keysym whenever one arrives - even if the
+# host's CapsLock is already on, where Shift+CapsLock actually produces
+# LOWERCASE, inverting the typed case. -capslock makes x11vnc check the
+# host's real CapsLock state first and skip the fake Shift when it's
+# already set, which is what was showing up as the host desktop typing as
+# if CapsLock were on regardless of the client's real key state.
 if [ -n \"\$AUTH\" ]; then
-    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 else
-    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
+    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
 fi
 HOSTDESKEOF
 		chmod +x /usr/local/bin/nivaroos-host-desktop.sh
