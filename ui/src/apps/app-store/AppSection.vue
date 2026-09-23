@@ -82,6 +82,7 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/assetUrl'
 import AppCard from './AppCard.vue'
 import AppCardSkeleton from './AppCardSkeleton.vue'
 import FolderCard from './FolderCard.vue'
@@ -104,7 +105,7 @@ const builtInApplications = [
 		id: '1',
 		name: 'App Store',
 		title: { en_us: 'App Store' },
-		icon: require(`@/assets/img/app-icons/appstore.png`),
+		icon: assetUrl(require(`@/assets/img/app-icons/appstore.png`)),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -112,7 +113,7 @@ const builtInApplications = [
 		id: '2',
 		name: 'Files',
 		title: { en_us: 'Files' },
-		icon: require(`@/assets/img/app-icons/files.svg`),
+		icon: assetUrl(require(`@/assets/img/app-icons/files.svg`)),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -120,7 +121,7 @@ const builtInApplications = [
 		id: '3',
 		name: 'Settings',
 		title: { en_us: 'Settings' },
-		icon: require(`@/assets/img/app-icons/settings.png`),
+		icon: assetUrl(require(`@/assets/img/app-icons/settings.png`)),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -128,7 +129,7 @@ const builtInApplications = [
 		id: '4',
 		name: 'Terminal',
 		title: { en_us: 'Terminal' },
-		icon: require(`@/assets/img/app-icons/terminal.png`),
+		icon: assetUrl(require(`@/assets/img/app-icons/terminal.png`)),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -136,7 +137,7 @@ const builtInApplications = [
 		id: '5',
 		name: 'VMs',
 		title: { en_us: 'VMs' },
-		icon: require(`@/assets/img/app-icons/vm-manager.png`),
+		icon: assetUrl(require(`@/assets/img/app-icons/vm-manager.png`)),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -144,7 +145,15 @@ const builtInApplications = [
 		id: '6',
 		name: 'Host Desktop',
 		title: { en_us: 'Host Desktop' },
-		icon: require(`@/assets/img/app-icons/desktop.svg`),
+		icon: assetUrl(require(`@/assets/img/app-icons/desktop.svg`)),
+		status: 'running',
+		app_type: 'system'
+	},
+	{
+		id: '7',
+		name: 'Download Station',
+		title: { en_us: 'Download Station' },
+		icon: assetUrl(require(`@/assets/img/app-icons/download-station.svg`)),
 		status: 'running',
 		app_type: 'system'
 	}
@@ -362,7 +371,7 @@ export default {
 
 				orgAppList.forEach(item => {
 					item.hostname = item.hostname || this.$baseIp
-					item.icon = item.icon || require(`@/assets/img/app-icons/default.svg`)
+					item.icon = item.icon || assetUrl(require(`@/assets/img/app-icons/default.svg`))
 					applyOverride(item)
 				})
 
@@ -372,7 +381,7 @@ export default {
 
 				let linkAppList = await this.getLinkAppList()
 				linkAppList.forEach(item => {
-					item.icon = item.icon || require(`@/assets/img/app-icons/default.svg`)
+					item.icon = item.icon || assetUrl(require(`@/assets/img/app-icons/default.svg`))
 					applyOverride(item)
 				})
 

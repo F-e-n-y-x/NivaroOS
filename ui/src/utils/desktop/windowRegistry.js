@@ -8,6 +8,10 @@ import SettingsApp from '@/apps/settings/SettingsApp.vue'
 import AppStoreApp from '@/apps/app-store/AppStoreApp.vue'
 import LegacyAppEditPanel from '@/apps/app-store/LegacyAppEditPanel.vue'
 import VmManagerApp from '@/apps/vm/VmManagerApp.vue'
+import DownloadStationApp from '@/apps/download-station/DownloadStationApp.vue'
+import DsAddDownloadWindow from '@/apps/download-station/DsAddDownloadWindow.vue'
+import DsDownloadDetailWindow from '@/apps/download-station/DsDownloadDetailWindow.vue'
+import DsFolderPickerWindow from '@/apps/download-station/DsFolderPickerWindow.vue'
 import ImageViewer from '@/apps/files/viewers/ImageViewer.vue'
 import VideoPlayer from '@/apps/files/viewers/VideoPlayer.vue'
 import CodeEditor from '@/apps/files/viewers/CodeEditor.vue'
@@ -53,6 +57,10 @@ export const COMPONENT_REGISTRY = {
 	AppStoreApp,
 	LegacyAppEditPanel,
 	VmManagerApp,
+	DownloadStationApp,
+	DsAddDownloadWindow,
+	DsDownloadDetailWindow,
+	DsFolderPickerWindow,
 	ImageViewer,
 	VideoPlayer,
 	CodeEditor,
@@ -94,7 +102,7 @@ export const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerC
 // already uses.
 export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'MarkdownEditor', 'UnsupportedViewer', 'VmConsolePanel', 'HostDesktopPanel', 'ScheduledTaskLogWindow']
 
-export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel']
+export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel', 'DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow']
 
 export function resolveComponent(name) {
 	return COMPONENT_REGISTRY[name]

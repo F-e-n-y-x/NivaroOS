@@ -29,6 +29,7 @@ RUN mkdir -p /build/bin && \
     (cd services/local-storage && GOWORK=off go build -o /build/bin/nivaroos-local-storage .) && \
     (cd services/user && GOWORK=off go build -o /build/bin/nivaroos-user-service .) && \
     (cd services/gpu-sidecar && GOWORK=off go build -o /build/bin/nivaroos-gpu-sidecar .) && \
+    (cd services/download-sidecar && GOWORK=off go build -o /build/bin/nivaroos-download-sidecar .) && \
     (cd cli && GOWORK=off go build -o /build/bin/nivaroos-cli .)
 
 # Stage 3: Final Runtime Image

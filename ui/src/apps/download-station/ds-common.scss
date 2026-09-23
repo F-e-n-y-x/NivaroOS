@@ -1,0 +1,223 @@
+// Shared look for Download Station's panels and its separate windows (Add
+// Download, properties, folder picker) - imported into each component's
+// scoped style, since the separate windows don't live under the app root.
+// Buttons mirror VmList's .create-btn / .vm-action-btn exactly.
+
+.ds-primary-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	border: none;
+	background: #2563eb;
+	color: #fff;
+	font-family: inherit;
+	font-size: var(--font-sm);
+	font-weight: 500;
+	height: 2rem;
+	padding: 0 var(--space-3);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background 0.15s ease, transform 0.1s ease;
+
+	::v-deep .icon {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	&:hover:not(:disabled) {
+		background: #1d4ed8;
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.98);
+	}
+	&:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+}
+
+.ds-secondary-btn {
+	@extend .ds-primary-btn;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-primary, #1e293b);
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
+
+	&:hover:not(:disabled) {
+		background: var(--theme-card-hover, #e2e8f0);
+	}
+}
+
+.ds-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.85rem;
+	height: 1.85rem;
+	border: none;
+	background: var(--theme-card-subtle, #f8fafc);
+	color: var(--theme-text-secondary, #64748b);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	padding: 0;
+	transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+
+	&:hover:not(:disabled) {
+		background: var(--theme-card-hover, #e2e8f0);
+		color: var(--theme-text-primary, #0f172a);
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.95);
+	}
+	&:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	&.is-danger:hover:not(:disabled) {
+		background: var(--color-danger-soft, #fee2e2);
+		color: #dc2626;
+	}
+	&.is-active {
+		background: rgba(37, 99, 235, 0.12);
+		color: #2563eb;
+	}
+	&.is-flat {
+		background: transparent;
+	}
+}
+
+.ds-input {
+	width: 100%;
+	height: 2.1rem;
+	padding: 0 var(--space-3);
+	border: 1px solid var(--theme-card-border, rgb(228 233 237));
+	border-radius: var(--radius-control);
+	background: var(--theme-input-bg, #fff);
+	color: var(--theme-text-primary, #1e293b);
+	font-family: inherit;
+	font-size: var(--font-sm);
+	outline: none;
+	transition: border-color 0.12s ease, box-shadow 0.12s ease;
+
+	&::placeholder {
+		color: var(--theme-text-muted, #94a3b8);
+	}
+	&:hover {
+		border-color: rgba(50, 115, 220, 0.4);
+	}
+	&:focus {
+		border-color: var(--color-primary, #2563eb);
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+	}
+}
+
+textarea.ds-input {
+	height: auto;
+	min-height: 4.5rem;
+	padding: var(--space-2) var(--space-3);
+	resize: vertical;
+	line-height: 1.45;
+	font-family: $family-monospace;
+	font-size: var(--font-xs);
+}
+
+.ds-progress {
+	position: relative;
+	height: 6px;
+	border-radius: var(--radius-pill);
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.07));
+	overflow: hidden;
+
+	.ds-progress-fill {
+		position: absolute;
+		inset: 0 auto 0 0;
+		border-radius: inherit;
+		background: linear-gradient(90deg, #38bdf8, #2563eb);
+		transition: width 0.4s ease;
+	}
+	&.is-paused .ds-progress-fill {
+		background: #94a3b8;
+	}
+	&.is-failed .ds-progress-fill {
+		background: #ef4444;
+	}
+	&.is-completed .ds-progress-fill {
+		background: #10b981;
+	}
+	// Unknown total size: an indeterminate shimmer instead of a fake %.
+	&.is-indeterminate .ds-progress-fill {
+		width: 35% !important;
+		animation: ds-indeterminate 1.2s ease-in-out infinite;
+	}
+}
+
+@keyframes ds-indeterminate {
+	0% {
+		left: -35%;
+	}
+	100% {
+		left: 100%;
+	}
+}
+
+.ds-state-badge {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--font-2xs);
+	font-weight: 500;
+	padding: 0.1rem var(--space-2);
+	border-radius: var(--radius-pill);
+	background: var(--theme-pill-bg, #f1f5f9);
+	color: var(--theme-pill-color, #475569);
+	white-space: nowrap;
+
+	&.is-downloading {
+		background: rgba(37, 99, 235, 0.1);
+		color: #2563eb;
+	}
+	&.is-completed {
+		background: rgba(16, 185, 129, 0.1);
+		color: #059669;
+	}
+	&.is-failed {
+		background: var(--color-danger-soft, #fef2f2);
+		color: #dc2626;
+	}
+	&.is-paused,
+	&.is-queued {
+		background: var(--theme-warning-soft, #fffbeb);
+		color: #d97706;
+	}
+}
+
+.ds-section-title {
+	font-size: var(--font-lg);
+	font-weight: 600;
+	color: var(--theme-text-primary, #0f172a);
+	margin: 0;
+	letter-spacing: -0.01em;
+}
+
+.ds-field-label {
+	display: block;
+	font-size: var(--font-xs);
+	font-weight: 500;
+	color: var(--theme-text-secondary, #475569);
+	margin-bottom: var(--space-1);
+}
+
+.ds-hint {
+	font-size: var(--font-xs);
+	color: var(--theme-text-muted, #64748b);
+	line-height: 1.45;
+}
+
+.ds-error-text {
+	font-size: var(--font-xs);
+	color: #dc2626;
+	line-height: 1.45;
+}

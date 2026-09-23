@@ -2883,3 +2883,86 @@ html.is-dark {
 }
 
 
+
+// Download Station (apps/download-station) reuses Settings' shared
+// .setting-card / .setting-row / .segmented-control classes, whose base
+// colors in _settings.scss are hardcoded light-theme values - and the dark
+// overrides for them above are scoped to Settings' own window. Same
+// treatment here, scoped to every Download Station window root.
+html[data-theme="dark"],
+html.is-dark {
+	.ds-app,
+	.ds-add-window,
+	.ds-detail,
+	.ds-folder-picker {
+		.setting-card-title {
+			color: #d4d4d8 !important;
+		}
+
+		.setting-card {
+			background: #18181b !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+			box-shadow: none !important;
+		}
+
+		.setting-row {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+
+			&:hover {
+				background: rgba(255, 255, 255, 0.02) !important;
+			}
+
+			.row-icon {
+				color: #d4d4d8 !important;
+			}
+
+			.setting-title,
+			.row-label {
+				color: #f4f4f5 !important;
+			}
+
+			.setting-desc,
+			.row-desc {
+				color: #d4d4d8 !important;
+			}
+
+			.slider-hint,
+			.slider-value {
+				background: #27272a !important;
+				color: #f4f4f5 !important;
+			}
+		}
+
+		.slider-hint {
+			color: #a1a1aa !important;
+		}
+
+		.segmented-control {
+			background: #121214 !important;
+			border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+			.segmented-option {
+				color: #d4d4d8 !important;
+
+				&:hover {
+					color: #f4f4f5 !important;
+				}
+
+				&.active {
+					background: #27272a !important;
+					color: #60a5fa !important;
+					box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+				}
+			}
+		}
+
+		code {
+			background: #27272a;
+			color: #e4e4e7;
+		}
+
+		.ds-error-text {
+			color: #f87171 !important;
+		}
+	}
+}
