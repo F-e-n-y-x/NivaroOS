@@ -3,7 +3,12 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/tidwall/gjson"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -324,20 +329,7 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 			buf, err := cmd.CombinedOutput()
 			return string(buf), err
 		case "update":
-			inspectCmd := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Config.Image}}", target)
-			imgBytes, err := inspectCmd.Output()
-			if err != nil {
-				return string(imgBytes), fmt.Errorf("failed to inspect container image: %w", err)
-			}
-			imgName := strings.TrimSpace(string(imgBytes))
-			pullCmd := exec.CommandContext(ctx, "docker", "pull", imgName)
-			pullOut, err := pullCmd.CombinedOutput()
-			if err != nil {
-				return string(pullOut), fmt.Errorf("failed to pull image %s: %w", imgName, err)
-			}
-			restartCmd := exec.CommandContext(ctx, "docker", "restart", target)
-			restartOut, err := restartCmd.CombinedOutput()
-			return fmt.Sprintf("Pulled %s:\n%s\nRestarted %s:\n%s", imgName, string(pullOut), target, string(restartOut)), err
+			return updateContainerViaAppManagement(ctx, target)
 		case "restart", "":
 			cmd := exec.CommandContext(ctx, "docker", "restart", target)
 			buf, err := cmd.CombinedOutput()
@@ -499,20 +491,7 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 		buf, err := cmd.CombinedOutput()
 		return string(buf), err
 	case "container_update":
-		inspectCmd := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Config.Image}}", target)
-		imgBytes, err := inspectCmd.Output()
-		if err != nil {
-			return string(imgBytes), fmt.Errorf("failed to inspect container image: %w", err)
-		}
-		imgName := strings.TrimSpace(string(imgBytes))
-		pullCmd := exec.CommandContext(ctx, "docker", "pull", imgName)
-		pullOut, err := pullCmd.CombinedOutput()
-		if err != nil {
-			return string(pullOut), fmt.Errorf("failed to pull image %s: %w", imgName, err)
-		}
-		restartCmd := exec.CommandContext(ctx, "docker", "restart", target)
-		restartOut, err := restartCmd.CombinedOutput()
-		return fmt.Sprintf("Pulled %s:\n%s\nRestarted %s:\n%s", imgName, string(pullOut), target, string(restartOut)), err
+		return updateContainerViaAppManagement(ctx, target)
 	case "ssd_trim":
 		cmd := exec.CommandContext(ctx, "fstrim", "-av")
 		buf, err := cmd.CombinedOutput()
@@ -607,6 +586,13 @@ func (s *scheduleService) UpdateTask(id string, update ScheduleTask) (*ScheduleT
 	t.TargetID = update.TargetID
 	t.TargetName = update.TargetName
 	t.Command = update.Command
+	// Backup / sync settings (these weren't copied: editing a backup task
+	// silently kept the old paths and mode).
+	t.SourcePath = update.SourcePath
+	t.DestPath = update.DestPath
+	t.Direction = update.Direction
+	t.SyncMode = update.SyncMode
+	t.ExtraArgs = update.ExtraArgs
 	t.ActionType = update.ActionType
 	t.Target = update.Target
 	t.Enabled = update.Enabled
@@ -796,4 +782,35 @@ func (s *scheduleService) GetTargets() (map[string]interface{}, error) {
 		"clouds":      clouds,
 		"local_paths": localPaths,
 	}, nil
+}
+
+// updateContainerViaAppManagement runs the real container update (pull, then
+// recreate with the new image only if there is one - keeping volumes, ports
+// and a stopped container stopped). This action used to `docker pull` then
+// `docker restart`, which keeps running the old image.
+func updateContainerViaAppManagement(ctx context.Context, target string) (string, error) {
+	if target == "" {
+		return "", errors.New("no container selected for this task")
+	}
+	port := "80"
+	if err, raw := MyService.Gateway().GetPort(); err == nil {
+		if p := gjson.Get(raw, "data").String(); p != "" {
+			port = p
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:"+port+"/v1/container/"+url.PathEscape(target)+"/update", nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("container update request failed: %w", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	msg := gjson.GetBytes(body, "message").String()
+	if res.StatusCode != http.StatusOK {
+		return string(body), fmt.Errorf("container update failed: %s", msg)
+	}
+	return target + ": " + msg, nil
 }

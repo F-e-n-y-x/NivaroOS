@@ -148,7 +148,8 @@ const container = {
 
 	// get plain container logs
 	getRawLogs(id, lines = 500, timestamps = true) {
-		return api.get(`${PREFIX}/${id}/logs?lines=${lines}&timestamps=${timestamps}`);
+		// The server reads `tail` (it ignored `lines` and always sent 500).
+		return api.get(`${PREFIX}/${id}/logs?tail=${lines}&timestamps=${timestamps}`);
 	},
 
 	// check single container for registry update

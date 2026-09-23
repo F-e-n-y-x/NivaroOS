@@ -377,7 +377,8 @@ export default {
 			this.portError = ''
 			this.savingPort = true
 			this.$messageBus('dashboardsetting_webuiport', String(port))
-			this.$api.sys.editServerPort({ port }).then(res => {
+			// The gateway's field is a string; a number was always a 400.
+			this.$api.sys.editServerPort({ port: String(port) }).then(res => {
 				if (res.data.success === 200) {
 					this.pollNewPort(port)
 				} else {
@@ -390,14 +391,22 @@ export default {
 			})
 		},
 		pollNewPort(port) {
+			let tries = 0
 			const timer = setInterval(() => {
+				// Give up after ~30 s instead of spinning forever.
+				if (++tries > 30) {
+					clearInterval(timer)
+					this.savingPort = false
+					this.portError = this.$t('The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.', { port })
+					return
+				}
 				const checkUrl = `${this.$protocol}//${this.$baseIp}:${port}`
 				this.$api.sys.checkUiPort(`${checkUrl}/v1/gateway/port`).then(res => {
 					if (res.data.success === 200) {
 						clearInterval(timer)
 						window.open(`${this.$protocol}//${this.$baseIp}:${res.data.data}`, '_self')
 					}
-				})
+				}).catch(() => {})
 			}, 1000)
 		}
 	}

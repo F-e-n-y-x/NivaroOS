@@ -87,3 +87,19 @@ func TestTaskOutputIsCapped(t *testing.T) {
 		t.Fatal("the end of the output (where errors are) was dropped")
 	}
 }
+
+// Editing a backup task dropped source/destination/direction/mode/args and
+// still said "updated".
+func TestEditingABackupTaskKeepsEveryField(t *testing.T) {
+	s := newTestScheduler(t)
+	s.mu.Lock()
+	s.tasks["b"] = &ScheduleTask{ID: "b", Name: "old", Type: "backup", Cron: "0 2 * * *", SourcePath: "/DATA/a", DestPath: "/DATA/b", SyncMode: "copy", Direction: "local_to_local"}
+	s.mu.Unlock()
+	got, err := s.UpdateTask("b", ScheduleTask{Name: "Photos", Type: "backup", Cron: "0 3 * * *", SourcePath: "/DATA/Gallery", DestPath: "gdrive:Backup", SyncMode: "sync", Direction: "local_to_cloud", ExtraArgs: "--bwlimit 5M"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SourcePath != "/DATA/Gallery" || got.DestPath != "gdrive:Backup" || got.SyncMode != "sync" || got.Direction != "local_to_cloud" || got.ExtraArgs != "--bwlimit 5M" {
+		t.Fatalf("fields not saved: %+v", got)
+	}
+}

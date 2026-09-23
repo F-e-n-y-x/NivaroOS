@@ -23,8 +23,10 @@ const schedules = {
 		return api.delete(`${PREFIX}/${id}`);
 	},
 
+	// The route is POST /:id/toggle (this called PUT /:id/enable, which
+	// doesn't exist - the switch could never work).
 	toggleSchedule(id, enabled) {
-		return api.put(`${PREFIX}/${id}/enable`, { enabled });
+		return api.post(`${PREFIX}/${id}/toggle`, { enabled });
 	},
 
 	runScheduleNow(id) {

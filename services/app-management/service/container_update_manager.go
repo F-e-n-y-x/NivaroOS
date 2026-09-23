@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -113,6 +114,58 @@ func (m *ContainerUpdateManager) load() {
 			m.configs = stored.Configs
 		}
 	}
+	before := len(m.configs)
+	m.normalizeKeysLocked()
+	if len(m.configs) != before {
+		_ = m.saveLocked()
+	}
+}
+
+var containerIDRe = regexp.MustCompile(`^[0-9a-f]{12}([0-9a-f]{52})?$`)
+
+// normalizeKeysLocked keeps one entry per container name. Settings used to
+// be saved under container IDs too, which change on every recreate - so
+// the per-container Auto switch was lost after each update and the file
+// filled with orphans.
+func (m *ContainerUpdateManager) normalizeKeysLocked() {
+	for key, cfg := range m.configs {
+		if !containerIDRe.MatchString(key) {
+			continue
+		}
+		delete(m.configs, key)
+		if cfg.Name == "" {
+			continue // orphan of a container that no longer exists
+		}
+		if existing, ok := m.configs[cfg.Name]; ok {
+			// Keep the name entry's data but not lose an opt-in.
+			existing.AutoUpdateEnabled = existing.AutoUpdateEnabled || cfg.AutoUpdateEnabled
+			m.configs[cfg.Name] = existing
+		} else {
+			m.configs[cfg.Name] = cfg
+		}
+	}
+}
+
+// nameOf resolves a container ID (or name) to its name.
+func containerName(ctx context.Context, nameOrID string) string {
+	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	if err != nil {
+		return nameOrID
+	}
+	defer cli.Close()
+	if inspect, err := cli.ContainerInspect(ctx, nameOrID); err == nil {
+		return strings.TrimPrefix(inspect.Name, "/")
+	}
+	return nameOrID
+}
+
+func (m *ContainerUpdateManager) anyOptedInLocked() bool {
+	for _, cfg := range m.configs {
+		if cfg.AutoUpdateEnabled {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *ContainerUpdateManager) saveLocked() error {
@@ -139,7 +192,10 @@ func (m *ContainerUpdateManager) reschedule() {
 		m.cronEntryID = 0
 	}
 
-	if m.global.Enabled && m.global.Schedule != "" {
+	// Run when everything is auto-updated, or when at least one container
+	// opted in on its own (those were never updated without the global
+	// switch).
+	if (m.global.Enabled || m.anyOptedInLocked()) && m.global.Schedule != "" {
 		entryID, err := m.cron.AddFunc(m.global.Schedule, func() {
 			m.RunAutoUpdates()
 		})
@@ -166,19 +222,19 @@ func (m *ContainerUpdateManager) SetGlobalConfig(cfg GlobalAutoUpdateConfig) err
 }
 
 func (m *ContainerUpdateManager) SetContainerAutoUpdate(nameOrID string, enabled bool, schedule string) error {
+	name := containerName(context.Background(), nameOrID)
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	cfg, ok := m.configs[nameOrID]
-	if !ok {
-		cfg = ContainerUpdateInfo{ID: nameOrID}
-	}
+	cfg := m.configs[name]
+	cfg.Name = name
 	cfg.AutoUpdateEnabled = enabled
 	if schedule != "" {
 		cfg.AutoUpdateSchedule = schedule
 	}
-	m.configs[nameOrID] = cfg
-	return m.saveLocked()
+	m.configs[name] = cfg
+	err := m.saveLocked()
+	m.mu.Unlock()
+	m.reschedule() // the timer depends on whether anything opted in
+	return err
 }
 
 func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context) ([]ContainerUpdateInfo, error) {
@@ -200,9 +256,6 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 	for _, c := range containers {
 		name := strings.TrimPrefix(c.Names[0], "/")
 		cfg := m.configs[name]
-		if cfg.ID == "" {
-			cfg = m.configs[c.ID]
-		}
 
 		displayImage := c.Image
 		if strings.HasPrefix(displayImage, "sha256:") || len(displayImage) == 12 {
@@ -362,7 +415,6 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	}
 
 	m.configs[name] = cfg
-	m.configs[inspect.ID] = cfg
 	_ = m.saveLocked()
 
 	return &cfg, nil
@@ -431,9 +483,6 @@ func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID 
 
 	name := strings.TrimPrefix(inspect.Name, "/")
 	cfg := m.configs[name]
-	if cfg.ID == "" {
-		cfg = m.configs[inspect.ID]
-	}
 
 	info := &ContainerUpdateInfo{
 		ID:                 inspect.ID,
@@ -531,13 +580,11 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 	if cfg.LatestDigest != "" {
 		cfg.CurrentDigest = cfg.LatestDigest
 	}
-	delete(m.configs, inspect.ID)
 	if newInspect, err := cli.ContainerInspect(ctx, name); err == nil {
 		cfg.ID = newInspect.ID
 		cfg.ImageID = newInspect.Image
 		cfg.Image = newInspect.Config.Image
 		cfg.State = newInspect.State.Status
-		m.configs[newInspect.ID] = cfg
 	}
 	m.configs[name] = cfg
 	_ = m.saveLocked()
