@@ -1,3 +1,4 @@
+import { assetUrl } from '@/utils/assetUrl'
 import qs from 'qs'
 import has from 'lodash/has'
 import union from 'lodash/union'
@@ -176,7 +177,7 @@ export const mixin = {
 					}
 				})
 			}
-			return require(`@/assets/img/files/${icon}.svg`)
+			return assetUrl(require(`@/assets/img/files/${icon}.svg`))
 		},
 		getPanelType(item) {
 			const ext = this.getFileExt(item);

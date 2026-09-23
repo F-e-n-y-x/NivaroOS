@@ -2,7 +2,11 @@ const webpack = require("webpack");
 const path = require("path");
 const NodePolyfillPlugin = require("node-polyfill-webpack-plugin");
 const dotenv = require("dotenv");
-const isProd = process.env.NODE_ENV === "prod";
+// .env.production used to say NODE_ENV=prod - not "production", so both
+// webpack (no minification, dev module format) and Vue (dev-mode warnings
+// and checks on every render) ran their development builds in production:
+// a ~31 MB unminified bundle and a visibly laggy desktop.
+const isProd = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "prod";
 const TerserPlugin = require("terser-webpack-plugin");
 
 module.exports = {
@@ -49,12 +53,49 @@ module.exports = {
 			})
 		);
 
+		// Only these values reach the browser bundle. This used to inline
+		// the ENTIRE build-machine environment ("process.env":
+		// JSON.stringify(process.env)) into the public app.js - every shell
+		// variable of whoever ran the build (tokens, SSH agent sockets, home
+		// paths) readable by anyone who can load the login page.
+		const publicEnv = { NODE_ENV: process.env.NODE_ENV, BASE_URL: "/" };
+		for (const k of Object.keys(process.env)) {
+			if (k.startsWith("VUE_APP_")) publicEnv[k] = process.env[k];
+		}
 		config.plugin("define").use(require("webpack/lib/DefinePlugin"), [
 			{
-				"process.env": JSON.stringify(process.env),
+				"process.env": JSON.stringify(publicEnv),
 				BUILT_TIME: JSON.stringify(Date()),
 			},
 		]);
+		// Some vendored stylesheets (@mdi/font, iconfonts-casaos) start with a
+		// UTF-8 BOM. Harmless as separate <style> tags (the dev build), but a
+		// production build concatenates them into one CSS file, leaving
+		// U+FEFF right in front of their @font-face rules - browsers then
+		// discard those rules as invalid and every icon in the UI vanishes.
+		config.plugin("strip-css-bom").use({
+			apply(compiler) {
+				compiler.hooks.thisCompilation.tap("StripCssBom", compilation => {
+					compilation.hooks.processAssets.tap(
+						{ name: "StripCssBom", stage: webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE_SIZE + 1 },
+						assets => {
+							for (const name of Object.keys(assets)) {
+								if (!name.endsWith(".css")) continue
+								const src = assets[name].source().toString()
+								if (src.includes("\uFEFF")) {
+									compilation.updateAsset(name, new webpack.sources.RawSource(src.replace(/\uFEFF/g, "")))
+									// The content hash in the filename was computed before this
+									// fix-up - rename so browsers holding a cached broken copy
+									// fetch the fixed file instead.
+									compilation.renameAsset(name, name.replace(/\.css$/, ".nobom.css"))
+								}
+							}
+						}
+					)
+				})
+			}
+		});
+
 		// 添加 NodePolyfillPlugin wbepack5 专用插件
 		config.plugin("node-polyfill").use(NodePolyfillPlugin);
 
