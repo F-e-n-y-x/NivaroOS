@@ -72,6 +72,7 @@ func InitV1Router() http.Handler {
 
 			v1ContainerGroup.GET("/:id/terminal", v1.DockerTerminal)
 			v1ContainerGroup.POST("/:id/update", v1.UpdateContainer)
+			v1ContainerGroup.GET("/:id/update/status", v1.GetContainerUpdateStatus)
 			v1ContainerGroup.POST("/:id/check-update", v1.CheckContainerUpdate)
 			v1ContainerGroup.PUT("/:id/auto-update", v1.SetContainerAutoUpdate)
 			v1ContainerGroup.GET("/auto-update/config", v1.GetAutoUpdateConfig)

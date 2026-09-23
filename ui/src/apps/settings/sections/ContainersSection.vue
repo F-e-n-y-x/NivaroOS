@@ -184,6 +184,7 @@
 							<div class="notification-subtitle text-muted is-size-7 mt-1">
 								{{ activeNotification.message }}
 							</div>
+							<pre v-if="activeNotification.detail" class="update-log-tail mt-2">{{ activeNotification.detail }}</pre>
 						</div>
 					</div>
 					<div class="is-flex is-align-items-center notif-actions">
@@ -293,6 +294,12 @@
 					</div>
 					<div class="setting-desc is-flex is-align-items-center is-flex-wrap-wrap mt-1">
 						<span class="image-text mr-3"><code>{{ c.image }}</code></span>
+						<span v-if="c.source && c.source.kind === 'git'" class="source-badge mr-3" :title="$t('Built by compose from a git checkout at {repo}', { repo: c.source.repo })">
+							<i class="mdi mdi-github mr-1"></i>{{ sourceLabel(c) }}<template v-if="c.source.branch"> · {{ c.source.branch }}</template>
+						</span>
+						<span v-else-if="c.source && c.source.kind === 'local'" class="source-badge mr-3" :title="$t('Built by compose from {dir}', { dir: c.source.context })">
+							<i class="mdi mdi-hammer-wrench mr-1"></i>{{ $t('Local build') }}
+						</span>
 						<span v-if="c.has_update && c.latest_digest" class="digest-text text-info mr-3">
 							<i class="mdi mdi-tag-outline mr-1"></i>{{ $t('New') }}: <code>{{ formatDigest(c.latest_digest) }}</code>
 						</span>
@@ -320,6 +327,19 @@
 					>
 						<i class="mdi mdi-download mr-1"></i>
 						{{ $t('Update Now') }}
+					</b-button>
+					<b-button
+						v-else-if="c.source && c.source.kind === 'local'"
+						rounded
+						size="is-small"
+						class="mr-3"
+						:loading="updatingId === c.id"
+						:disabled="updatingId === c.id || updatingAny"
+						:title="$t('Rebuild the image from the local compose project and recreate the container')"
+						@click="updateContainer(c)"
+					>
+						<i class="mdi mdi-hammer-wrench mr-1"></i>
+						{{ $t('Rebuild') }}
 					</b-button>
 
 					<!-- Auto-update switch per container -->
@@ -482,6 +502,7 @@ export default {
 		}, 20000)
 	},
 	beforeDestroy() {
+		this.isDestroyed = true
 		clearInterval(this.refreshTimer)
 		if (this.updateProgressInterval) {
 			clearInterval(this.updateProgressInterval)
@@ -667,54 +688,80 @@ export default {
 			}
 		},
 		updateContainer(c) {
+			const kind = c.source && c.source.kind
+			let message = this.$t('Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.', { name: c.name })
+			if (kind === 'git') {
+				message = this.$t('Update {name}? The new commits are pulled from {remote}, the image is rebuilt and the container is recreated (volumes and settings are kept). It restarts briefly.', { name: c.name, remote: c.source.remote })
+			} else if (kind === 'local') {
+				message = this.$t('Rebuild {name}? Its image is rebuilt from the local compose project with fresh base images and the container is recreated (volumes and settings are kept). It restarts briefly.', { name: c.name })
+			}
 			this.confirmWindow({
-				title: this.$t('Update container'),
-				message: escapeHtml(this.$t('Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.', { name: c.name })),
-				confirmText: this.$t('Update'),
+				title: kind === 'local' ? this.$t('Rebuild container') : this.$t('Update container'),
+				message: escapeHtml(message),
+				confirmText: kind === 'local' ? this.$t('Rebuild') : this.$t('Update'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => this.doUpdateContainer(c)
 			})
 		},
+		// Starts the server-side update job and waits for it. Builds can take
+		// minutes, so the server runs them in the background and we poll.
+		// Resolves with the finished job; rejects with a readable error.
+		async runUpdateJob(c, onLog) {
+			let job
+			try {
+				const res = await this.$api.container.updateContainer(c.id)
+				job = res.data && res.data.data
+			} catch (err) {
+				// 409: a job is already running for it - follow that one.
+				if (!(err.response && err.response.status === 409)) throw err
+			}
+			while (!job || job.state === 'running') {
+				if (this.isDestroyed) throw new Error(this.$t('Stopped following the update (it keeps running on the server)'))
+				await new Promise(r => setTimeout(r, 1500))
+				const res = await this.$api.container.getUpdateStatus(c.id)
+				job = res.data && res.data.data
+				if (job && job.log && job.log.length && onLog) onLog(job.log[job.log.length - 1])
+			}
+			if (job.state === 'failed') {
+				const tail = (job.log || []).slice(-3).join('\n')
+				const e = new Error(job.error || this.$t('Update failed'))
+				e.detail = tail
+				throw e
+			}
+			return job
+		},
+		sourceLabel(c) {
+			if (!c.source) return ''
+			if (c.source.kind === 'git') return (c.source.remote || '').replace(/^https?:\/\/(www\.)?/, '').replace(/^git@([^:]+):/, '$1/').replace(/\.git$/, '')
+			if (c.source.kind === 'local') return this.$t('Local build')
+			return ''
+		},
 		async doUpdateContainer(c) {
 			this.updatingId = c.id
 			this.updatingAny = true
+			const built = c.source && c.source.kind !== 'registry'
 			this.activeNotification = {
 				type: 'progress',
-				title: this.$t('Updating Container'),
+				title: built ? this.$t('Rebuilding Container') : this.$t('Updating Container'),
 				container: c.name,
-				message: this.$t('Pulling latest image layers and preparing container update...')
+				message: built ? this.$t('Starting the build...') : this.$t('Pulling latest image layers and preparing container update...')
 			}
-
-			// Cycle through helpful phase descriptions during download/recreate
-			let stepIdx = 0
-			const steps = [
-				this.$t('Downloading new image layers from registry...'),
-				this.$t('Stopping existing container and preserving volumes...'),
-				this.$t('Cloning configuration, port bindings, and networking...'),
-				this.$t('Starting updated container and validating health status...')
-			]
-			if (this.updateProgressInterval) {
-				clearInterval(this.updateProgressInterval)
-			}
-			this.updateProgressInterval = setInterval(() => {
-				stepIdx = (stepIdx + 1) % steps.length
+			const onLog = line => {
 				if (this.activeNotification && this.activeNotification.type === 'progress') {
-					this.activeNotification.message = steps[stepIdx]
+					this.activeNotification.message = line.length > 160 ? line.slice(0, 160) + '…' : line
 				}
-			}, 3500)
+			}
 
 			try {
-				const res = await this.$api.container.updateContainer(c.id)
-				clearInterval(this.updateProgressInterval)
-				this.updateProgressInterval = null
+				const job = await this.runUpdateJob(c, onLog)
 
-				// The server only recreates when the pull brought a newer image.
-				if (!(res.data && res.data.data && res.data.data.updated)) {
+				// The server only recreates when there was something newer.
+				if (!job.updated) {
 					this.activeNotification = {
 						type: 'success',
 						title: this.$t('Already up to date'),
 						container: c.name,
-						message: `${escapeHtml(c.name)} ${this.$t('already runs the latest image - nothing was changed.')}`
+						message: `${escapeHtml(c.name)} ${this.$t('already runs the latest version - nothing was changed.')}`
 					}
 					await this.fetchContainers()
 					return
@@ -724,12 +771,14 @@ export default {
 					type: 'success',
 					title: this.$t('Update Completed'),
 					container: c.name,
-					message: `${escapeHtml(c.name)} ${this.$t('has been updated to the latest image! All volumes, ports, and settings preserved.')}`
+					message: built
+						? `${escapeHtml(c.name)} ${this.$t('was rebuilt and recreated. Volumes and settings preserved.')}`
+						: `${escapeHtml(c.name)} ${this.$t('has been updated to the latest image! All volumes, ports, and settings preserved.')}`
 				}
 
 				activityService.add({
 					title: this.$t('Container Updated'),
-					message: `${c.name} (${c.image}) ${this.$t('successfully updated to the latest image')}`,
+					message: `${c.name} (${this.sourceLabel(c) || c.image}) ${this.$t('successfully updated')}`,
 					type: 'app',
 					status: 'success'
 				})
@@ -749,15 +798,13 @@ export default {
 					}
 				}, 7000)
 			} catch (err) {
-				clearInterval(this.updateProgressInterval)
-				this.updateProgressInterval = null
-
 				const errMsg = err.response?.data?.message || apiError(err, this.$t('Update failed'))
 				this.activeNotification = {
 					type: 'danger',
 					title: this.$t('Update Failed'),
 					container: c.name,
 					message: errMsg,
+					detail: err.detail || '',
 					retryContainer: c
 				}
 
@@ -808,15 +855,15 @@ export default {
 				}
 
 				try {
-					const res = await this.$api.container.updateContainer(c.id)
-					if (!(res.data && res.data.data && res.data.data.updated)) {
+					const job = await this.runUpdateJob(c)
+					if (!job.updated) {
 						upToDate++
 						continue
 					}
 					successCount++
 					activityService.add({
 						title: this.$t('Container Updated'),
-						message: `${c.name} (${c.image}) ${this.$t('updated to the latest image')}`,
+						message: `${c.name} (${this.sourceLabel(c) || c.image}) ${this.$t('updated to the latest version')}`,
 						type: 'app',
 						status: 'success'
 					})
@@ -1416,5 +1463,23 @@ export default {
 .fade-leave-to {
 	opacity: 0;
 	transform: translateY(-6px);
+}
+.source-badge {
+	display: inline-flex;
+	align-items: center;
+	font-size: var(--font-xs, 0.75rem);
+	color: var(--theme-text-secondary, #475569);
+}
+.update-log-tail {
+	max-width: 36rem;
+	max-height: 6rem;
+	overflow: auto;
+	padding: var(--space-2, 0.5rem);
+	font-size: 0.7rem;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: var(--theme-input-bg, #f8fafc);
+	color: var(--theme-text-primary, #334155);
+	border-radius: 6px;
 }
 </style>

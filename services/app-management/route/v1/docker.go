@@ -795,25 +795,28 @@ func CheckContainerUpdate(ctx echo.Context) error {
 	})
 }
 
+// UpdateContainer starts an update in the background (registry pull +
+// recreate, or git pull + rebuild for compose-built containers) and returns
+// the job; poll GET /:id/update/status.
 func UpdateContainer(ctx echo.Context) error {
 	id := ctx.Param("id")
-	mgr := service.GetContainerUpdateManager()
-	info, updated, err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id)
+	job, err := service.GetContainerUpdateManager().StartUpdate(id)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: err.Error(),
-		})
+		code := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "already running") {
+			code = http.StatusConflict
+		}
+		return ctx.JSON(code, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 	}
-	msg := "Already up to date"
-	if updated {
-		msg = "Updated to the latest image"
+	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: "update started", Data: job})
+}
+
+func GetContainerUpdateStatus(ctx echo.Context) error {
+	job := service.GetContainerUpdateManager().UpdateStatus(ctx.Request().Context(), ctx.Param("id"))
+	if job == nil {
+		return ctx.JSON(http.StatusNotFound, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: "no update has run for this container"})
 	}
-	return ctx.JSON(http.StatusOK, modelCommon.Result{
-		Success: common_err.SUCCESS,
-		Message: msg,
-		Data:    map[string]any{"container": info, "updated": updated},
-	})
+	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: job.State, Data: job})
 }
 
 type setAutoUpdateReq struct {

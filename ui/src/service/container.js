@@ -167,6 +167,11 @@ const container = {
 		return api.post(`${PREFIX}/${id}/update`);
 	},
 
+	// progress of the background update job started by updateContainer
+	getUpdateStatus(id) {
+		return api.get(`${PREFIX}/${id}/update/status`);
+	},
+
 	// configure per-container auto-update
 	setContainerAutoUpdate(id, data) {
 		return api.put(`${PREFIX}/${id}/auto-update`, data);

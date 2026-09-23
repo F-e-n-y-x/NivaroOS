@@ -37,6 +37,9 @@ type ContainerUpdateInfo struct {
 	LastUpdatedAt      string `json:"last_updated_at"`
 	CreatedAt          string `json:"created_at"`
 	IsAppStoreApp      bool   `json:"is_appstore_app"`
+	// Where the image comes from (registry / git / local build); decides
+	// how it is checked and updated. Filled in when listing.
+	Source *ContainerSource `json:"source,omitempty"`
 }
 
 type GlobalAutoUpdateConfig struct {
@@ -260,6 +263,7 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	toHost := dockerPathMapper(ctx)
 	result := make([]ContainerUpdateInfo, 0, len(containers))
 	for _, c := range containers {
 		name := strings.TrimPrefix(c.Names[0], "/")
@@ -293,6 +297,11 @@ func (m *ContainerUpdateManager) GetAllContainersWithUpdates(ctx context.Context
 			CreatedAt:          time.Unix(c.Created, 0).Format(time.RFC3339),
 			IsAppStoreApp:      c.Labels["casaos.app"] != "" || c.Labels["com.docker.compose.project"] != "",
 		}
+		src := detectSource(c.Labels, toHost)
+		info.Source = &src
+		if src.Kind == "local" {
+			info.HasUpdate = false // nothing upstream to compare with
+		}
 		result = append(result, info)
 	}
 
@@ -309,6 +318,32 @@ func (m *ContainerUpdateManager) CheckContainerUpdate(ctx context.Context, nameO
 	inspect, raw, err := cli.ContainerInspectWithRaw(ctx, nameOrID, false)
 	if err != nil {
 		return nil, err
+	}
+
+	// Built from a compose project: its image is in no registry. A git
+	// checkout (e.g. from GitHub) has an update when upstream has commits
+	// it doesn't; a plain folder has nothing to compare with.
+	if src := detectSource(inspect.Config.Labels, dockerPathMapper(ctx)); src.Kind != "registry" {
+		name := strings.TrimPrefix(inspect.Name, "/")
+		behind := 0
+		if src.Kind == "git" {
+			n, err := gitBehind(ctx, src)
+			if err != nil {
+				return nil, err
+			}
+			behind = n
+		}
+		src.Behind = behind
+		m.mu.Lock()
+		cfg := m.configs[name]
+		cfg.ID, cfg.Name, cfg.Image, cfg.State = inspect.ID, name, inspect.Config.Image, inspect.State.Status
+		cfg.HasUpdate = behind > 0
+		cfg.LastCheckedAt = time.Now().Format(time.RFC3339)
+		m.configs[name] = cfg
+		_ = m.saveLocked()
+		m.mu.Unlock()
+		cfg.Source = &src
+		return &cfg, nil
 	}
 
 	var rawInspect struct {
@@ -619,6 +654,21 @@ func (m *ContainerUpdateManager) RunAutoUpdates() {
 		// an app-store app updates through compose, which would start it.
 		if c.State != "running" {
 			logger.Info("auto-update skipped: container is not running", zap.String("name", c.Name), zap.String("state", c.State))
+			continue
+		}
+		if c.Source != nil && c.Source.Kind != "registry" {
+			// Rebuild only a git checkout that is behind upstream; a plain
+			// local folder has nothing new to build.
+			if c.Source.Kind != "git" {
+				continue
+			}
+			if n, err := gitBehind(ctx, *c.Source); err != nil || n == 0 {
+				continue
+			}
+			job, err := m.StartUpdate(c.Name)
+			if err == nil {
+				logger.Info("auto-update: rebuilding from new commits", zap.String("name", c.Name), zap.String("job", job.State))
+			}
 			continue
 		}
 		_, updated, err := m.UpdateAndRecreateContainer(ctx, c.ID)
