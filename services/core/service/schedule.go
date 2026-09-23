@@ -18,6 +18,17 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 )
 
+// dockerPruneSteps is what the "Docker cleanup" maintenance task runs. It
+// used to be `docker system prune -f`, which also deletes every *stopped
+// container* - including ones the owner stopped on purpose. Only things
+// that are safe to lose: dangling images, build cache, unused networks.
+// Never containers or volumes.
+var dockerPruneSteps = [][]string{
+	{"image", "prune", "-f"},
+	{"builder", "prune", "-f"},
+	{"network", "prune", "-f"},
+}
+
 type ScheduleTask struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -293,9 +304,16 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 			buf, err := cmd.CombinedOutput()
 			return string(buf), err
 		case "docker_prune":
-			cmd := exec.CommandContext(ctx, "docker", "system", "prune", "-f")
-			buf, err := cmd.CombinedOutput()
-			return string(buf), err
+			var out strings.Builder
+			for _, args := range dockerPruneSteps {
+				buf, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+				out.WriteString("$ docker " + strings.Join(args, " ") + "\n")
+				out.Write(buf)
+				if err != nil {
+					return out.String(), err
+				}
+			}
+			return out.String(), nil
 		case "disk_standby_check":
 			cmd := exec.CommandContext(ctx, "bash", "-c", "hdparm -C /dev/sd[b-z] 2>&1 || true")
 			buf, err := cmd.CombinedOutput()

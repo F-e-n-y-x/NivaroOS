@@ -275,7 +275,7 @@
 						<b-select v-model="form.action" size="is-small" expanded @input="onMaintenanceActionChange">
 							<option value="fstrim">{{ $t('SSD / Disk fstrim (TRIM)') }}</option>
 							<option value="drop_caches">{{ $t('Drop Memory Page Caches (sync & drop)') }}</option>
-							<option value="docker_prune">{{ $t('Docker System Prune Unused Objects') }}</option>
+							<option value="docker_prune">{{ $t('Docker cleanup (unused images, build cache, networks)') }}</option>
 							<option value="disk_standby_check">{{ $t('Verify Disk Standby State') }}</option>
 						</b-select>
 					</div>
@@ -559,7 +559,7 @@ export default {
 		onMaintenanceActionChange(action) {
 			if (action === 'fstrim') this.form.target_name = 'SSD / Disk TRIM'
 			else if (action === 'drop_caches') this.form.target_name = 'Drop Memory Page Caches'
-			else if (action === 'docker_prune') this.form.target_name = 'Docker System Prune'
+			else if (action === 'docker_prune') this.form.target_name = 'Docker cleanup'
 			else if (action === 'disk_standby_check') this.form.target_name = 'Disk Standby Check'
 		},
 		onPresetScheduleChange() {

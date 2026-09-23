@@ -664,9 +664,21 @@ export default {
 			}, 3500)
 
 			try {
-				await this.$api.container.updateContainer(c.id)
+				const res = await this.$api.container.updateContainer(c.id)
 				clearInterval(this.updateProgressInterval)
 				this.updateProgressInterval = null
+
+				// The server only recreates when the pull brought a newer image.
+				if (!(res.data && res.data.data && res.data.data.updated)) {
+					this.activeNotification = {
+						type: 'success',
+						title: this.$t('Already up to date'),
+						container: c.name,
+						message: `${escapeHtml(c.name)} ${this.$t('already runs the latest image - nothing was changed.')}`
+					}
+					await this.fetchContainers()
+					return
+				}
 
 				this.activeNotification = {
 					type: 'success',
@@ -734,6 +746,7 @@ export default {
 			this.updatingAny = true
 			let successCount = 0
 			let failCount = 0
+			let upToDate = 0
 
 			for (let i = 0; i < targets.length; i++) {
 				const c = targets[i]
@@ -746,7 +759,11 @@ export default {
 				}
 
 				try {
-					await this.$api.container.updateContainer(c.id)
+					const res = await this.$api.container.updateContainer(c.id)
+					if (!(res.data && res.data.data && res.data.data.updated)) {
+						upToDate++
+						continue
+					}
 					successCount++
 					activityService.add({
 						title: this.$t('Container Updated'),
@@ -758,7 +775,7 @@ export default {
 					failCount++
 					activityService.add({
 						title: this.$t('Container Update Failed'),
-						message: `${c.name}: ${err.message}`,
+						message: `${c.name}: ${(err.response && err.response.data && err.response.data.message) || err.message}`,
 						type: 'app',
 						status: 'error'
 					})
@@ -773,7 +790,7 @@ export default {
 				this.activeNotification = {
 					type: 'success',
 					title: this.$t('All Updates Complete'),
-					message: `${this.$t('Successfully updated')} ${successCount} ${this.$t('container(s) to their latest images!')}`
+					message: `${this.$t('Successfully updated')} ${successCount} ${this.$t('container(s) to their latest images!')}` + (upToDate ? ` ${upToDate} ${this.$t('already up to date.')}` : '')
 				}
 				setTimeout(() => {
 					if (this.activeNotification && this.activeNotification.type === 'success') {

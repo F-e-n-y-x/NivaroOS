@@ -192,7 +192,7 @@ export default {
 			})
 		},
 		loadLogs() {
-			this.$api.sys.getLogs().then(res => {
+			this.$api.sys.getLogs(300).then(res => {
 				if (res.data.success === 200) {
 					const lines = res.data.data || []
 					this.logText = Array.isArray(lines) ? lines.join('\n') : String(lines)

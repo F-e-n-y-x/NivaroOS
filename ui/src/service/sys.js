@@ -65,8 +65,10 @@ const sys = {
 	},
 
 	// get logs
-	getLogs() {
-		return api.get(`${PREFIX}/logs`);
+	// Last `lines` lines of the NivaroOS log (the server caps it; the full
+	// file is many MB and froze the browser).
+	getLogs(lines = 300) {
+		return api.get(`${PREFIX}/logs`, { line: lines });
 	},
 
 	//Get Debug Info

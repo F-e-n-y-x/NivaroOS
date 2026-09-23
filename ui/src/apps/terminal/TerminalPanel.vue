@@ -102,7 +102,7 @@ export default {
 	},
 	methods: {
 		getLogs() {
-			this.$api.sys.getLogs().then(res => {
+			this.$api.sys.getLogs(500).then(res => {
 				let data = res.data.data
 				let replaceData = data.replace(/\n(.{8})/gu, '\n');
 				this.logData = replaceData.substring(8, replaceData.length - 1);

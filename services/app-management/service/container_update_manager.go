@@ -455,16 +455,19 @@ func (m *ContainerUpdateManager) GetContainerInfo(ctx context.Context, nameOrID 
 	return info, nil
 }
 
-func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context, nameOrID string) (*ContainerUpdateInfo, error) {
+// UpdateAndRecreateContainer pulls the container's image and recreates the
+// container only if that brought a newer image. updated reports whether it
+// did; an image that can't be pulled is an error, never a silent success.
+func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context, nameOrID string) (info *ContainerUpdateInfo, updated bool, err error) {
 	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer cli.Close()
 
 	inspect, err := cli.ContainerInspect(ctx, nameOrID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if common.PropertiesFromContext(ctx) == nil {
@@ -499,14 +502,18 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 		}
 	}
 
+	updated = updatedViaCompose
 	if !updatedViaCompose {
-		if err := MyService.Docker().RecreateContainer(ctx, inspect.ID, true, true); err != nil {
+		// pull=true, force=false: recreate only when the pull brought a
+		// newer image (the nightly run used to recreate every container).
+		if err := MyService.Docker().RecreateContainer(ctx, inspect.ID, true, false); err != nil {
 			go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesError, map[string]string{
 				common.PropertyTypeAppName.Name: name,
 				common.PropertyTypeMessage.Name: err.Error(),
 			})
-			return nil, err
+			return nil, false, err
 		}
+		updated = common.PropertiesFromContext(ctx)[common.PropertyTypeImageUpdated.Name] == "true"
 	}
 
 	go PublishEventWrapper(ctx, common.EventTypeAppApplyChangesEnd, map[string]string{
@@ -515,8 +522,12 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 
 	m.mu.Lock()
 	cfg := m.configs[name]
+	// Either way the pull succeeded, so what's running is the latest.
 	cfg.HasUpdate = false
-	cfg.LastUpdatedAt = time.Now().Format(time.RFC3339)
+	cfg.LastCheckedAt = time.Now().Format(time.RFC3339)
+	if updated {
+		cfg.LastUpdatedAt = cfg.LastCheckedAt
+	}
 	if cfg.LatestDigest != "" {
 		cfg.CurrentDigest = cfg.LatestDigest
 	}
@@ -532,7 +543,7 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 	_ = m.saveLocked()
 	m.mu.Unlock()
 
-	return &cfg, nil
+	return &cfg, updated, nil
 }
 
 func (m *ContainerUpdateManager) RunAutoUpdates() {
@@ -546,13 +557,23 @@ func (m *ContainerUpdateManager) RunAutoUpdates() {
 	}
 
 	for _, c := range containers {
-		if m.global.Enabled || c.AutoUpdateEnabled {
-			logger.Info("auto-updating container", zap.String("name", c.Name), zap.String("image", c.Image))
-			if _, err := m.UpdateAndRecreateContainer(ctx, c.ID); err != nil {
-				logger.Error("failed to auto-update container", zap.String("name", c.Name), zap.Error(err))
-			} else {
-				logger.Info("container auto-updated successfully", zap.String("name", c.Name))
-			}
+		if !m.global.Enabled && !c.AutoUpdateEnabled {
+			continue
+		}
+		// Stopped containers are left alone: the owner turned them off, and
+		// an app-store app updates through compose, which would start it.
+		if c.State != "running" {
+			logger.Info("auto-update skipped: container is not running", zap.String("name", c.Name), zap.String("state", c.State))
+			continue
+		}
+		_, updated, err := m.UpdateAndRecreateContainer(ctx, c.ID)
+		switch {
+		case err != nil:
+			logger.Error("auto-update failed", zap.String("name", c.Name), zap.Error(err))
+		case updated:
+			logger.Info("auto-update: container recreated with a newer image", zap.String("name", c.Name), zap.String("image", c.Image))
+		default:
+			logger.Info("auto-update: already up to date", zap.String("name", c.Name))
 		}
 	}
 }

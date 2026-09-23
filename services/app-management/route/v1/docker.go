@@ -798,17 +798,21 @@ func CheckContainerUpdate(ctx echo.Context) error {
 func UpdateContainer(ctx echo.Context) error {
 	id := ctx.Param("id")
 	mgr := service.GetContainerUpdateManager()
-	info, err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id)
+	info, updated, err := mgr.UpdateAndRecreateContainer(ctx.Request().Context(), id)
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{
 			Success: common_err.SERVICE_ERROR,
 			Message: err.Error(),
 		})
 	}
+	msg := "Already up to date"
+	if updated {
+		msg = "Updated to the latest image"
+	}
 	return ctx.JSON(http.StatusOK, modelCommon.Result{
 		Success: common_err.SUCCESS,
-		Message: "Container updated successfully",
-		Data:    info,
+		Message: msg,
+		Data:    map[string]any{"container": info, "updated": updated},
 	})
 }
 

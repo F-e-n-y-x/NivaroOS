@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	net2 "net"
 	"os"
 	"path/filepath"
@@ -528,20 +527,17 @@ func (s *systemService) UpSystemPort(port string) {
 }
 
 func (s *systemService) GetNivaroOSLogs(lineNumber int) string {
-	file, err := os.Open(filepath.Join(config.AppInfo.LogPath, fmt.Sprintf("%s.%s",
+	if lineNumber <= 0 || lineNumber > 5000 {
+		lineNumber = 5000
+	}
+	out, err := tailLines(filepath.Join(config.AppInfo.LogPath, fmt.Sprintf("%s.%s",
 		config.AppInfo.LogSaveName,
 		config.AppInfo.LogFileExt,
-	)))
+	)), lineNumber)
 	if err != nil {
 		return err.Error()
 	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return err.Error()
-	}
-
-	return string(content)
+	return out
 }
 
 func GetDeviceAllIP() []string {

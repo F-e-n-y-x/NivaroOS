@@ -584,6 +584,13 @@ func (ds *dockerService) RecreateContainer(ctx context.Context, id string, pull 
 			_isImageUpdated, err := ds.PullLatestImage(ctx, imageName) // image update result will be included in ctx properties
 			if err != nil {
 				logger.Error("pull new image failed", zap.Error(err), zap.String("image", imageName))
+				// An update that couldn't fetch the image didn't happen - say
+				// so instead of carrying on (this used to be logged and then
+				// reported as "updated successfully"). A forced recreate is
+				// about the container's settings, so it still proceeds.
+				if !force {
+					return fmt.Errorf("pull %s: %w", imageName, err)
+				}
 			}
 			isImageUpdated = _isImageUpdated
 		}
@@ -646,69 +653,74 @@ func (ds *dockerService) RecreateContainer(ctx context.Context, id string, pull 
 		}
 	}
 
-	// start new container
-	if err := func() error {
-		go PublishEventWrapper(ctx, common.EventTypeContainerStartBegin, map[string]string{
-			common.PropertyTypeContainerID.Name: newID,
-		})
-
-		defer PublishEventWrapper(ctx, common.EventTypeContainerStartEnd, map[string]string{
-			common.PropertyTypeContainerID.Name: newID,
-		})
-
-		if err := docker.StartContainer(ctx, newID); err != nil {
-			go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
+	// A container that was stopped stays stopped: recreating it (for a new
+	// image or new settings) must not bring back something the user turned
+	// off on purpose.
+	if containerInfo.State.Running {
+		// start new container
+		if err := func() error {
+			go PublishEventWrapper(ctx, common.EventTypeContainerStartBegin, map[string]string{
 				common.PropertyTypeContainerID.Name: newID,
-				common.PropertyTypeMessage.Name:     err.Error(),
 			})
-			return err
-		}
-		return nil
-	}(); err != nil {
-		// if failed to start new container and old container was running...
-		if containerInfo.State.Running {
-			// start the old container
-			if err := func() error {
-				go PublishEventWrapper(ctx, common.EventTypeContainerStartBegin, map[string]string{
-					common.PropertyTypeContainerID.Name: id,
-				})
 
-				defer PublishEventWrapper(ctx, common.EventTypeContainerStartEnd, map[string]string{
-					common.PropertyTypeContainerID.Name: id,
-				})
+			defer PublishEventWrapper(ctx, common.EventTypeContainerStartEnd, map[string]string{
+				common.PropertyTypeContainerID.Name: newID,
+			})
 
-				if err := docker.StartContainer(ctx, id); err != nil {
-					go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
-						common.PropertyTypeContainerID.Name: id,
-						common.PropertyTypeMessage.Name:     err.Error(),
-					})
-					return err
-				}
-				return nil
-			}(); err != nil {
+			if err := docker.StartContainer(ctx, newID); err != nil {
+				go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
+					common.PropertyTypeContainerID.Name: newID,
+					common.PropertyTypeMessage.Name:     err.Error(),
+				})
 				return err
 			}
-
-			// remove the new container
-			if err := func() error {
-				go PublishEventWrapper(ctx, common.EventTypeContainerRemoveBegin, map[string]string{
-					common.PropertyTypeContainerID.Name: newID,
-				})
-
-				defer PublishEventWrapper(ctx, common.EventTypeContainerRemoveEnd, map[string]string{
-					common.PropertyTypeContainerID.Name: newID,
-				})
-
-				if err := docker.RemoveContainer(ctx, newID); err != nil {
-					go PublishEventWrapper(ctx, common.EventTypeContainerRemoveError, map[string]string{
-						common.PropertyTypeContainerID.Name: newID,
-						common.PropertyTypeMessage.Name:     err.Error(),
+			return nil
+		}(); err != nil {
+			// if failed to start new container and old container was running...
+			if containerInfo.State.Running {
+				// start the old container
+				if err := func() error {
+					go PublishEventWrapper(ctx, common.EventTypeContainerStartBegin, map[string]string{
+						common.PropertyTypeContainerID.Name: id,
 					})
+
+					defer PublishEventWrapper(ctx, common.EventTypeContainerStartEnd, map[string]string{
+						common.PropertyTypeContainerID.Name: id,
+					})
+
+					if err := docker.StartContainer(ctx, id); err != nil {
+						go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
+							common.PropertyTypeContainerID.Name: id,
+							common.PropertyTypeMessage.Name:     err.Error(),
+						})
+						return err
+					}
+					return nil
+				}(); err != nil {
 					return err
 				}
-				return nil
-			}(); err != nil {
-				return err
+
+				// remove the new container
+				if err := func() error {
+					go PublishEventWrapper(ctx, common.EventTypeContainerRemoveBegin, map[string]string{
+						common.PropertyTypeContainerID.Name: newID,
+					})
+
+					defer PublishEventWrapper(ctx, common.EventTypeContainerRemoveEnd, map[string]string{
+						common.PropertyTypeContainerID.Name: newID,
+					})
+
+					if err := docker.RemoveContainer(ctx, newID); err != nil {
+						go PublishEventWrapper(ctx, common.EventTypeContainerRemoveError, map[string]string{
+							common.PropertyTypeContainerID.Name: newID,
+							common.PropertyTypeMessage.Name:     err.Error(),
+						})
+						return err
+					}
+					return nil
+				}(); err != nil {
+					return err
+				}
 			}
 		}
 	}
