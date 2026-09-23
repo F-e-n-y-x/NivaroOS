@@ -25,9 +25,9 @@
 				<div class="_widget-body is-flex mr-0">
 					<div class="image is-24x24 is-flex-shrink-0">
 						<img v-if="!noticeData.content[Object.keys(noticeData.content)[0]].icon"
-							 :src="require(`@/assets/img/logo/casa-white.svg`)" alt=""/>
+							 :src="assetUrl(require(`@/assets/img/logo/casa-white.svg`))" alt=""/>
 						<img v-else
-							 :src="require(`@/assets/img${noticeData.content[Object.keys(noticeData.content)[0]].icon}`)"
+							 :src="assetUrl(require(`@/assets/img${noticeData.content[Object.keys(noticeData.content)[0]].icon}`))"
 							 alt=""/>
 					</div>
 					<div class="body-title is-flex-grow-1 _nowrap ml-2">
@@ -41,9 +41,9 @@
 				<div v-if="Object.keys(noticeData.content).length > 1" class="_widget-body is-flex mr-0">
 					<div class="image is-24x24 is-flex-shrink-0">
 						<img v-if="!noticeData.content[Object.keys(noticeData.content)[1]].icon"
-							 :src="require(`@/assets/img/logo/casa-white.svg`)" alt=""/>
+							 :src="assetUrl(require(`@/assets/img/logo/casa-white.svg`))" alt=""/>
 						<img v-else
-							 :src="require(`@/assets/img${noticeData.content[Object.keys(noticeData.content)[1]].icon}`)"
+							 :src="assetUrl(require(`@/assets/img${noticeData.content[Object.keys(noticeData.content)[1]].icon}`))"
 							 alt=""/>
 					</div>
 					<div class="body-title is-flex-grow-1 _nowrap ml-2">
@@ -93,6 +93,7 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/assetUrl'
 export default {
 	name: "notice-block",
 	props: {
@@ -116,6 +117,7 @@ export default {
 	computed: {},
 
 	methods: {
+		assetUrl,
 		close() {
 			this.$messageBus('youshouldknow_cardclose');
 
