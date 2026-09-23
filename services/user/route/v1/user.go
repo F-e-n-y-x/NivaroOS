@@ -7,8 +7,8 @@ import (
 	json2 "encoding/json"
 	"image"
 	"image/png"
+	"errors"
 	"io"
-	"log"
 	"net/http"
 	url2 "net/url"
 	"os"
@@ -39,6 +39,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Usernames appear in URLs (/v1/users/:username), so they are restricted to
+// a safe charset and can't be one of the fixed route names - a user called
+// "current" made the UI's delete look up (and delete) the caller instead.
+var validUserName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`)
+
+var reservedUserNames = map[string]bool{
+	"current": true, "avatar": true, "name": true, "status": true, "refresh": true,
+	"register": true, "register-key": true, "login": true, "custom": true,
+	"image": true, "all": true, "info": true, "logout": true,
+}
+
+func checkUserName(name string) error {
+	if !validUserName.MatchString(name) {
+		return errors.New("usernames use letters, digits, dot, dash and underscore (up to 32)")
+	}
+	if reservedUserNames[strings.ToLower(name)] {
+		return errors.New("that name is reserved")
+	}
+	return nil
+}
+
 // @Summary register user
 // @Router /user/register/ [post]
 func PostUserRegister(c *gin.Context) {
@@ -62,6 +83,10 @@ func PostUserRegister(c *gin.Context) {
 	if len(pwd) < 6 {
 		c.JSON(common_err.CLIENT_ERROR,
 			model.Result{Success: common_err.PWD_IS_TOO_SIMPLE, Message: common_err.GetMsg(common_err.PWD_IS_TOO_SIMPLE)})
+		return
+	}
+	if err := checkUserName(username); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 		return
 	}
 	oldUser := service.MyService.User().GetUserInfoByUserName(username)
@@ -201,31 +226,49 @@ func PutUserAvatar(c *gin.Context) {
 	c.ShouldBind(&json)
 
 	data := json["file"]
-	imgBase64 := strings.Replace(data, "data:image/png;base64,", "", 1)
-	decodeData, err := base64.StdEncoding.DecodeString(string(imgBase64))
+	if len(data) > 8<<20 {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "image too large (max 6 MB)"})
+		return
+	}
+	// Any data:image/...;base64, prefix (not only PNG).
+	if i := strings.Index(data, ";base64,"); strings.HasPrefix(data, "data:image/") && i > 0 {
+		data = data[i+len(";base64,"):]
+	}
+	decodeData, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "not a valid image"})
+		return
+	}
+	// A picture that doesn't decode is the client's mistake - this used to
+	// call log.Fatal and stop the whole user service.
+	img, _, err := image.Decode(strings.NewReader(string(decodeData)))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "not a supported image (PNG, JPEG or GIF)"})
+		return
+	}
+
+	dir := filepath.Join(config.AppInfo.UserDataPath, strconv.Itoa(user.Id))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		return
+	}
+	avatarPath := filepath.Join(dir, "avatar.png")
+	tmp := avatarPath + ".tmp"
+	outFile, err := os.Create(tmp)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return
 	}
-
-	// 将字节数组转为图片
-	img, _, err := image.Decode(strings.NewReader(string(decodeData)))
-	if err != nil {
-		log.Fatal(err)
+	encErr := png.Encode(outFile, img)
+	closeErr := outFile.Close()
+	if encErr != nil || closeErr != nil {
+		os.Remove(tmp)
+		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: "could not save the image"})
+		return
 	}
-
-	ext := ".png"
-	avatarPath := config.AppInfo.UserDataPath + "/" + id + "/avatar" + ext
-	os.Remove(avatarPath)
-	outFile, err := os.Create(avatarPath)
-	if err != nil {
-		logger.Error("create file error", zap.Error(err))
-	}
-	defer outFile.Close()
-
-	err = png.Encode(outFile, img)
-	if err != nil {
-		logger.Error("encode error", zap.Error(err))
+	if err := os.Rename(tmp, avatarPath); err != nil {
+		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		return
 	}
 	user.Avatar = avatarPath
 	service.MyService.User().UpdateUser(user)
@@ -235,6 +278,18 @@ func PutUserAvatar(c *gin.Context) {
 			Message: common_err.GetMsg(common_err.SUCCESS),
 			Data:    user,
 		})
+}
+
+// ownAvatar reports whether p is a file inside the user's own data folder
+// (the only place PutUserAvatar writes) - anything else stored in the
+// database is never served.
+func ownAvatar(p string, userID int) bool {
+	if p == "" {
+		return false
+	}
+	base := filepath.Join(config.AppInfo.UserDataPath, strconv.Itoa(userID))
+	rel, err := filepath.Rel(base, filepath.Clean(p))
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
 // @Summary get user head
@@ -253,7 +308,7 @@ func GetUserAvatar(c *gin.Context) {
 		return
 	}
 
-	if file.Exists(user.Avatar) {
+	if ownAvatar(user.Avatar, user.Id) && file.Exists(user.Avatar) {
 		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(path.Base(user.Avatar)))
 		c.Header("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate, value")
 		c.File(user.Avatar)
@@ -282,40 +337,49 @@ func GetUserAvatar(c *gin.Context) {
 // @Router /user/name/:id [put]
 func PutUserInfo(c *gin.Context) {
 	id := c.GetHeader("user_id")
-	json := model2.UserDBModel{}
-	c.ShouldBind(&json)
 	user := service.MyService.User().GetUserInfoById(id)
 	if user.Id == 0 {
 		c.JSON(common_err.SERVICE_ERROR,
 			model.Result{Success: common_err.USER_NOT_EXIST_OR_PWD_INVALID, Message: common_err.GetMsg(common_err.USER_NOT_EXIST_OR_PWD_INVALID)})
 		return
 	}
-	if len(json.Username) > 0 {
-		u := service.MyService.User().GetUserInfoByUserName(json.Username)
-		if u.Id > 0 {
+	// Only these fields of the caller's own account. The whole record used
+	// to be bound from the body and saved by the body's id - any session
+	// could rename or re-role another user, or point `avatar` at any file
+	// (which GetUserAvatar then served as root).
+	var req struct {
+		Username    string `json:"username"`
+		Nickname    string `json:"nickname"`
+		Email       string `json:"email"`
+		Description string `json:"description"`
+	}
+	if err := c.ShouldBind(&req); err != nil {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+	if req.Username != "" && req.Username != user.Username {
+		if err := checkUserName(req.Username); err != nil {
+			c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+			return
+		}
+		if u := service.MyService.User().GetUserInfoByUserName(req.Username); u.Id > 0 {
 			c.JSON(common_err.CLIENT_ERROR,
 				model.Result{Success: common_err.USER_EXIST, Message: common_err.GetMsg(common_err.USER_EXIST)})
 			return
 		}
+		user.Username = req.Username
 	}
-
-	if len(json.Email) == 0 {
-		json.Email = user.Email
+	if req.Nickname != "" {
+		user.Nickname = req.Nickname
 	}
-	if len(json.Avatar) == 0 {
-		json.Avatar = user.Avatar
+	if req.Email != "" {
+		user.Email = req.Email
 	}
-	if len(json.Role) == 0 {
-		json.Role = user.Role
+	if req.Description != "" {
+		user.Description = req.Description
 	}
-	if len(json.Description) == 0 {
-		json.Description = user.Description
-	}
-	if len(json.Nickname) == 0 {
-		json.Nickname = user.Nickname
-	}
-	service.MyService.User().UpdateUser(json)
-	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: json})
+	service.MyService.User().UpdateUser(user)
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: user})
 }
 
 // @Summary edit user password

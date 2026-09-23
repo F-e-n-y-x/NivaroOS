@@ -19,9 +19,9 @@ import (
 
 func getDefaultDesktopUser() (*user.User, error) {
 	// Try primary desktop user candidates
-	candidates := []string{"ayush"}
+	var candidates []string
 	if sudoUser := os.Getenv("SUDO_USER"); sudoUser != "" && sudoUser != "root" {
-		candidates = append([]string{sudoUser}, candidates...)
+		candidates = append(candidates, sudoUser)
 	}
 	for _, username := range candidates {
 		if u, err := user.Lookup(username); err == nil {

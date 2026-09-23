@@ -762,5 +762,8 @@
   "{name} uninstalled": "{name} uninstalled",
   "{name} upgraded": "{name} upgraded",
   "{n} packages will be upgraded. This can take a while; you can close this window - it keeps running on the server.": "{n} packages will be upgraded. This can take a while; you can close this window - it keeps running on the server.",
-  "Lost contact with the server - reopen this window to see the latest status.": "Lost contact with the server - reopen this window to see the latest status."
+  "Lost contact with the server - reopen this window to see the latest status.": "Lost contact with the server - reopen this window to see the latest status.",
+  "This permanently removes {user} and its home directory. Continue?": "This permanently removes {user} and its home directory. Continue?",
+  "Password changed for {user}": "Password changed for {user}",
+  "Password must be at least 8 characters": "Password must be at least 8 characters"
 }

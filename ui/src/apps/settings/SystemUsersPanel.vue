@@ -40,7 +40,7 @@
 				</label>
 			</div>
 			<div class="account-actions">
-				<b-button rounded size="is-small" @click="togglePassword(u)">{{ $t('Password') }}</b-button>
+				<b-button v-if="!u.protected" rounded size="is-small" @click="togglePassword(u)">{{ $t('Password') }}</b-button>
 				<b-button v-if="!u.protected" rounded size="is-small" type="is-danger" outlined @click="confirmDelete(u)">
 					{{ $t('Delete') }}
 				</b-button>
@@ -62,6 +62,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
@@ -98,13 +99,23 @@ export default {
 				this.showAddForm = false
 				this.refresh()
 			} catch (e) {
-				this.error = e.response && e.response.data ? e.response.data.data : this.$t('Failed to create user')
+				this.error = this.reason(e, this.$t('Failed to create user'))
 			} finally {
 				this.creating = false
 			}
 		},
+		// Core puts the reason in `data` (badParams/serviceError).
+		reason(e, fallback) {
+			const d = e && e.response && e.response.data
+			return (d && typeof d.data === 'string' && d.data) || (d && d.message) || fallback
+		},
+		fail(e, fallback) {
+			this.$buefy.toast.open({ message: escapeHtml(this.reason(e, fallback)), type: 'is-danger', duration: 5000 })
+		},
 		setGroup(user, group, value) {
-			this.$api.sys.setSystemUserGroups(user.username, { [group]: value }).then(() => this.refresh())
+			this.$api.sys.setSystemUserGroups(user.username, { [group]: value })
+				.catch(e => this.fail(e, this.$t('Could not change the group')))
+				.finally(() => this.refresh()) // also puts a failed checkbox back
 		},
 		confirmDelete(user) {
 			this.confirmWindow({
@@ -114,7 +125,9 @@ export default {
 				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
-					this.$api.sys.deleteSystemUser(user.username).then(() => this.refresh())
+					this.$api.sys.deleteSystemUser(user.username)
+						.catch(e => this.fail(e, this.$t('Could not delete the user')))
+						.finally(() => this.refresh())
 				}
 			})
 		},
@@ -124,10 +137,17 @@ export default {
 		},
 		async savePassword(user) {
 			if (!this.newPassword) return
+			if (this.newPassword.length < 8) {
+				this.$buefy.toast.open({ message: this.$t('Password must be at least 8 characters'), type: 'is-danger' })
+				return
+			}
 			this.savingPassword = true
 			try {
 				await this.$api.sys.setSystemUserPassword(user.username, this.newPassword)
 				this.passwordTarget = null
+				this.$buefy.toast.open({ message: escapeHtml(this.$t('Password changed for {user}', { user: user.username })), type: 'is-success' })
+			} catch (e) {
+				this.fail(e, this.$t('Could not change the password'))
 			} finally {
 				this.savingPassword = false
 			}
