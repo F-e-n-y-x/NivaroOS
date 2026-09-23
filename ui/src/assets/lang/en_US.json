@@ -765,5 +765,7 @@
   "Lost contact with the server - reopen this window to see the latest status.": "Lost contact with the server - reopen this window to see the latest status.",
   "This permanently removes {user} and its home directory. Continue?": "This permanently removes {user} and its home directory. Continue?",
   "Password changed for {user}": "Password changed for {user}",
-  "Password must be at least 8 characters": "Password must be at least 8 characters"
+  "Password must be at least 8 characters": "Password must be at least 8 characters",
+  "Remove \"{name}\"? It will need to pair again to reconnect. Its backups stay in Files - delete that folder there if you no longer need them.": "Remove \"{name}\"? It will need to pair again to reconnect. Its backups stay in Files - delete that folder there if you no longer need them.",
+  "Device removed - its backups were kept": "Device removed - its backups were kept"
 }

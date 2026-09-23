@@ -70,6 +70,7 @@ type ScheduleService interface {
 
 type scheduleService struct {
 	mu       sync.RWMutex
+	running  map[string]bool // tasks executing right now (never twice at once)
 	tasks    map[string]*ScheduleTask
 	cron     *cron.Cron
 	dataFile string
@@ -129,6 +130,11 @@ func (s *scheduleService) load() {
 
 	for i := range list {
 		task := list[i]
+		// The service stopped while this ran - it didn't finish.
+		if task.LastStatus == "running" {
+			task.LastStatus = "interrupted"
+			task.LastOutput = "The run was interrupted (the NivaroOS service restarted before it finished).\n" + task.LastOutput
+		}
 		s.tasks[task.ID] = &task
 		if task.Enabled {
 			s.scheduleLocked(&task)
@@ -185,6 +191,22 @@ func (s *scheduleService) unscheduleLocked(t *ScheduleTask) {
 	t.NextRun = ""
 }
 
+// maxTaskOutput is how much of a run's output is kept (the end of it -
+// that's where errors are). It used to be stored whole and sent with every
+// list request.
+const maxTaskOutput = 64 << 10
+
+func tailOutput(out string) string {
+	if len(out) <= maxTaskOutput {
+		return out
+	}
+	cut := out[len(out)-maxTaskOutput:]
+	if i := strings.IndexByte(cut, '\n'); i >= 0 && i < 512 {
+		cut = cut[i+1:]
+	}
+	return fmt.Sprintf("[... %d earlier bytes of output not kept ...]\n%s", len(out)-len(cut), cut)
+}
+
 func (s *scheduleService) executeTask(taskID string) {
 	s.mu.Lock()
 	t, ok := s.tasks[taskID]
@@ -192,15 +214,29 @@ func (s *scheduleService) executeTask(taskID string) {
 		s.mu.Unlock()
 		return
 	}
+	// The timer and "Run now" can overlap; running the same task twice at
+	// once (two rsync --delete into one place) is never what anyone wants.
+	if s.running == nil {
+		s.running = map[string]bool{}
+	}
+	if s.running[taskID] {
+		s.mu.Unlock()
+		logger.Info("scheduled task skipped: still running from the previous start", zap.String("task", taskID))
+		return
+	}
+	s.running[taskID] = true
 	t.LastRun = time.Now().Format(time.RFC3339)
 	t.LastStatus = "running"
 	_ = s.saveLocked()
+	snapshot := *t // run from a copy: edits to the task mustn't race the run
 	s.mu.Unlock()
 
-	out, err := s.runTaskAction(t)
+	out, err := s.runTaskAction(&snapshot)
+	out = tailOutput(out)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	delete(s.running, taskID)
 
 	t, ok = s.tasks[taskID]
 	if !ok {
@@ -227,8 +263,24 @@ func (s *scheduleService) executeTask(taskID string) {
 	_ = s.saveLocked()
 }
 
+// taskTimeout: copies and syncs take as long as the data takes (they were
+// killed at 10 minutes, leaving a `move` half done); a user command gets an
+// hour; everything else is quick.
+func taskTimeout(t *ScheduleTask) time.Duration {
+	switch t.Type {
+	case "backup", "sync":
+		return 24 * time.Hour
+	case "command":
+		return time.Hour
+	}
+	if t.Command != "" {
+		return time.Hour
+	}
+	return 10 * time.Minute
+}
+
 func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), taskTimeout(t))
 	defer cancel()
 
 	// 1. Structured Type & Action

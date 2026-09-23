@@ -256,6 +256,50 @@ func generateCompanionSecret() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// relocateDeviceFolder gives dev a backup folder named after newName and
+// moves its existing backups there. A folder another device uses (or any
+// existing folder) is never taken - " (2)", " (3)"... is appended. If the
+// move fails, dev keeps its old folder and the error is returned (it used
+// to be ignored, leaving the device on a new empty folder).
+func relocateDeviceFolder(base string, devs map[string]*CompanionDevice, dev *CompanionDevice, newName string) error {
+	stem := sanitizeFilename(newName)
+	if stem == "" {
+		stem = dev.ID
+	}
+	oldPath := filepath.Clean(dev.StoragePath)
+	taken := func(p string) bool {
+		if dev.StoragePath != "" && p == oldPath {
+			return false
+		}
+		for id, other := range devs {
+			if id != dev.ID && other.StoragePath != "" && filepath.Clean(other.StoragePath) == p {
+				return true
+			}
+		}
+		_, err := os.Lstat(p)
+		return err == nil
+	}
+	newPath := filepath.Join(base, stem)
+	for i := 2; taken(newPath); i++ {
+		newPath = filepath.Join(base, fmt.Sprintf("%s (%d)", stem, i))
+	}
+	if dev.StoragePath != "" && newPath == oldPath {
+		return nil
+	}
+	if dev.StoragePath != "" {
+		if _, err := os.Stat(oldPath); err == nil {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return fmt.Errorf("moving the backups to %s: %w", filepath.Base(newPath), err)
+			}
+		}
+	}
+	if err := os.MkdirAll(newPath, 0o755); err != nil {
+		return err
+	}
+	dev.StoragePath = newPath
+	return nil
+}
+
 func sanitizeFilename(name string) string {
 	res := strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == ' ' || r == '.' {
@@ -892,20 +936,12 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		}
 
 		if shouldRename {
-			oldPath := matchedDev.StoragePath
-			newSanitized := sanitizeFilename(input.Name)
-			if newSanitized == "" {
-				newSanitized = matchedDev.ID
+			if err := relocateDeviceFolder(getCompanionStorageBasePath(), companionDevices, matchedDev, input.Name); err != nil {
+				// Keep the old name with its folder rather than split them.
+				logger.Error("companion: renaming backup folder failed", zap.String("device", matchedDev.ID), zap.Error(err))
+			} else {
+				matchedDev.Name = input.Name
 			}
-			newPath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
-			if oldPath != "" && oldPath != newPath {
-				if _, err := os.Stat(oldPath); err == nil {
-					os.Rename(oldPath, newPath)
-				}
-			}
-			os.MkdirAll(newPath, 0755)
-			matchedDev.Name = input.Name
-			matchedDev.StoragePath = newPath
 			if inputIsUserRenamed {
 				if matchedDev.CustomProps == nil {
 					matchedDev.CustomProps = make(map[string]interface{})
@@ -1059,20 +1095,10 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 
 	// Rename storage path if name changed
 	if update.Name != "" && update.Name != dev.Name {
-		oldPath := dev.StoragePath
-		newSanitized := sanitizeFilename(update.Name)
-		if newSanitized == "" {
-			newSanitized = dev.ID
+		if err := relocateDeviceFolder(getCompanionStorageBasePath(), companionDevices, dev, update.Name); err != nil {
+			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		}
-		newPath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
-		if oldPath != "" && oldPath != newPath {
-			if _, err := os.Stat(oldPath); err == nil {
-				os.Rename(oldPath, newPath)
-			}
-		}
-		os.MkdirAll(newPath, 0755)
 		dev.Name = update.Name
-		dev.StoragePath = newPath
 		if dev.CustomProps == nil {
 			dev.CustomProps = make(map[string]interface{})
 		}
@@ -1128,20 +1154,26 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 		})
 	}
 
-	// 1. Remove storage folder on disk if detached or unpaired
-	base := getCompanionStorageBasePath()
-	cleanBase := filepath.Clean(base)
-	if dev.StoragePath != "" {
-		cleanStorage := filepath.Clean(dev.StoragePath)
-		if cleanStorage != cleanBase && strings.HasPrefix(cleanStorage, cleanBase) {
-			os.RemoveAll(cleanStorage)
+	// 1. The device's backups stay unless the user explicitly asked to
+	// delete them (removing a phone used to silently wipe everything it had
+	// backed up - and a second folder guessed from its name, which could
+	// belong to another device).
+	keptData := ""
+	base := filepath.Clean(getCompanionStorageBasePath())
+	storage := filepath.Clean(dev.StoragePath)
+	inBase := dev.StoragePath != "" && storage != base && strings.HasPrefix(storage, base+"/")
+	shared := false
+	for otherID, other := range companionDevices {
+		if otherID != id && other.StoragePath != "" && filepath.Clean(other.StoragePath) == storage {
+			shared = true
 		}
 	}
-	if dev.Name != "" {
-		namePath := filepath.Clean(filepath.Join(base, sanitizeFilename(dev.Name)))
-		if namePath != cleanBase && strings.HasPrefix(namePath, cleanBase) {
-			os.RemoveAll(namePath)
+	if inBase && !shared && ctx.QueryParam("delete_data") == "true" {
+		if err := os.RemoveAll(storage); err != nil {
+			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: "couldn't delete the backups: " + err.Error()})
 		}
+	} else if inBase {
+		keptData = storage
 	}
 
 	// 2. Remove device from map and save
@@ -1159,6 +1191,7 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "companion device removed",
+		Data:    map[string]string{"kept_backups": keptData},
 	})
 }
 

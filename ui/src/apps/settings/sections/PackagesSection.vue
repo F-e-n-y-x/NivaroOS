@@ -759,18 +759,20 @@ export default {
 			const filename = this.getFilename(source.file)
 			this.confirmWindow({
 				title: this.$t('Remove Repository Source'),
-				message: `${this.$t('Remove repository source from')} <strong>${filename}:${source.line}</strong>?<br><span class="is-size-7 text-muted mt-2">${source.raw}</span>`,
+				message: `${this.$t('Remove repository source from')} <strong>${filename}:${source.line}</strong>?<br><span class="is-size-7 text-muted mt-2">${escapeHtml(source.raw || '')}</span>`,
 				type: 'is-danger',
 				icon: 'trash-can-outline',
 				confirmText: this.$t('Remove'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: async () => {
 					try {
-						await this.$api.sys.deleteAptSource(source.file, source.line)
+						await this.$api.sys.deleteAptSource(source.file, source.line, source.raw)
 						this.$buefy.toast.open({ message: this.$t('Source removed'), type: 'is-success' })
+					} catch (err) {
+						const d = err.response && err.response.data
+						this.$buefy.toast.open({ message: escapeHtml((d && typeof d.data === 'string' && d.data) || this.$t('Failed to remove source')), type: 'is-danger', duration: 5000 })
+					} finally {
 						this.fetchSources()
-					} catch {
-						this.$buefy.toast.open({ message: this.$t('Failed to remove source'), type: 'is-danger' })
 					}
 				}
 			})

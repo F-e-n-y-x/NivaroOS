@@ -133,6 +133,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
@@ -240,7 +241,9 @@ export default {
 		confirmDelete(dev) {
 			this.confirmWindow({
 				title: this.$t('Remove Companion Device'),
-				message: this.$t('Are you sure you want to remove "{name}"? It will need to reconnect to pair again.', { name: dev.name || dev.model }),
+				// Its backups are kept (removing used to delete them silently);
+				// deleting that folder in Files goes through the Trash.
+				message: escapeHtml(this.$t('Remove "{name}"? It will need to pair again to reconnect. Its backups stay in Files - delete that folder there if you no longer need them.', { name: dev.name || dev.model })),
 				confirmText: this.$t('Remove'),
 				type: 'is-danger',
 				hasIcon: true,
@@ -248,14 +251,14 @@ export default {
 					try {
 						await this.$api.companion.deleteDevice(dev.id)
 						this.$buefy.toast.open({
-							message: this.$t('Device removed'),
+							message: this.$t('Device removed - its backups were kept'),
 							type: 'is-success'
 						})
 						this.fetchDevices()
 						this.$EventBus?.$emit('reload-file-list')
 					} catch (err) {
 						this.$buefy.toast.open({
-							message: this.$t('Failed to remove device: ') + err.message,
+							message: escapeHtml(this.$t('Failed to remove device: ') + ((err.response && err.response.data && err.response.data.message) || err.message)),
 							type: 'is-danger'
 						})
 					}

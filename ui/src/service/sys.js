@@ -214,8 +214,9 @@ const sys = {
 	addAptSource(source, file = 'custom.list') {
 		return api.post(`${PREFIX}/apt/sources`, { source, file });
 	},
-	deleteAptSource(file, line) {
-		return api.delete(`${PREFIX}/apt/sources`, { data: { file, line } });
+	deleteAptSource(file, line, raw) {
+		// api.delete already wraps its second argument as the request body.
+		return api.delete(`${PREFIX}/apt/sources`, { file, line, raw });
 	},
 }
 export default sys;

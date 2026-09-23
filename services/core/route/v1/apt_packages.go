@@ -128,8 +128,8 @@ func installedPackageSet() map[string]bool {
 type installedPackage struct {
 	// ID identifies the package for apt: the name, or name:arch for a
 	// foreign architecture (multi-arch systems list the same name twice).
-	ID   string `json:"id"`
-	Arch string `json:"arch"`
+	ID          string `json:"id"`
+	Arch        string `json:"arch"`
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Size        int64  `json:"size"` // bytes
@@ -285,6 +285,7 @@ type aptSourceEntry struct {
 	URI        string   `json:"uri"`
 	Suite      string   `json:"suite"`
 	Components []string `json:"components"`
+	Raw        string   `json:"raw"` // the line as written (sent back on delete)
 }
 
 func parseSourceLines(path string) []aptSourceEntry {
@@ -338,6 +339,7 @@ func parseSourceLines(path string) []aptSourceEntry {
 			URI:        uri,
 			Suite:      suite,
 			Components: components,
+			Raw:        line,
 		})
 	}
 	return entries
@@ -359,9 +361,18 @@ func GetAptSources(ctx echo.Context) error {
 // this endpoint is allowed to write to - either the main sources.list, or a
 // plain filename (no path separators) inside sources.list.d, so a request
 // can never escape that directory.
+// resolveSourceFile maps a file name - or the full path the source list
+// returns - to a file APT reads: /etc/apt/sources.list or a file directly
+// inside /etc/apt/sources.list.d. Anything else is refused.
 func resolveSourceFile(file string) (string, error) {
 	if file == "" || file == filepath.Base(aptSourcesFile) || file == aptSourcesFile {
 		return aptSourcesFile, nil
+	}
+	if filepath.IsAbs(file) {
+		if filepath.Clean(file) != file || filepath.Dir(file) != aptSourcesDir {
+			return "", fmt.Errorf("invalid source file name")
+		}
+		file = filepath.Base(file)
 	}
 	base := filepath.Base(file)
 	if base != file || base == "." || base == ".." {
@@ -378,7 +389,9 @@ type aptAddSourceReq struct {
 	File   string `json:"file"`
 }
 
-var validSourceLine = regexp.MustCompile(`^deb(-src)?\s+(\[[^\]]*\]\s+)?\S+\s+\S+(\s+\S+)*$`)
+// One line only: spaces/tabs between fields (`\s` also matched newlines,
+// which let one "source" write arbitrary extra lines into APT's config).
+var validSourceLine = regexp.MustCompile(`^deb(-src)?[ \t]+(\[[^\]\r\n]*\][ \t]+)?[^\s]+[ \t]+[^\s]+([ \t]+[^\s]+)*$`)
 
 // PostAptSources appends a new "deb ..." / "deb-src ..." line to a file under
 // /etc/apt/sources.list.d/ (creating it if needed).
@@ -412,6 +425,9 @@ func PostAptSources(ctx echo.Context) error {
 type aptDeleteSourceReq struct {
 	File string `json:"file"`
 	Line int    `json:"line"`
+	// Raw is the line's text as the user saw it; if the file changed since,
+	// the delete is refused instead of removing a different line.
+	Raw string `json:"raw"`
 }
 
 // DeleteAptSources removes a single line (by 1-based line number) from a
@@ -436,6 +452,9 @@ func DeleteAptSources(ctx echo.Context) error {
 	lines := strings.Split(string(contents), "\n")
 	if req.Line > len(lines) {
 		return badParams(ctx, "line number out of range")
+	}
+	if req.Raw != "" && strings.TrimSpace(lines[req.Line-1]) != strings.TrimSpace(req.Raw) {
+		return badParams(ctx, "the file changed since the list was loaded - reload and try again")
 	}
 	lines = append(lines[:req.Line-1], lines[req.Line:]...)
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {

@@ -10,10 +10,12 @@
 package v1
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -66,20 +68,80 @@ func GetSambaSharesList(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shareList})
 }
 
+// shareRoots: the only places a network share may point into.
+var shareRoots = []string{"/DATA", "/mnt", "/media"}
+
+var validShareName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$`)
+
+// validateShareName: the name becomes an smb.conf section header, so no
+// brackets, newlines or other syntax - a name like "x]\nroot preexec = ..."
+// ran commands as root - and not one of Samba's own sections.
+func validateShareName(name string) error {
+	if !validShareName.MatchString(name) {
+		return errors.New("share names use letters, digits, spaces, dot, dash and underscore")
+	}
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "global", "homes", "printers", "print$", "ipc$":
+		return errors.New("that name is reserved by Samba")
+	}
+	return nil
+}
+
+// validateSharePath: an existing folder inside one of the roots (any path,
+// "/" or "/etc" included, used to be shared - and chmod 0777-ed).
+func validateSharePath(p string, roots []string) error {
+	if !filepath.IsAbs(p) || strings.ContainsAny(p, "\r\n\x00") {
+		return errors.New("invalid folder path")
+	}
+	p = filepath.Clean(p)
+	inside := false
+	for _, r := range roots {
+		if p == r || strings.HasPrefix(p, r+"/") {
+			inside = true
+			break
+		}
+	}
+	if !inside {
+		return fmt.Errorf("only folders under %s can be shared", strings.Join(roots, ", "))
+	}
+	fi, err := os.Stat(p)
+	if err != nil || !fi.IsDir() {
+		return errors.New("that folder doesn't exist")
+	}
+	return nil
+}
+
+func isShareRoot(p string) bool {
+	for _, r := range shareRoots {
+		if filepath.Clean(p) == r {
+			return true
+		}
+	}
+	return false
+}
+
 func PostSambaSharesCreate(ctx echo.Context) error {
 	shares := []model.Shares{}
 	ctx.Bind(&shares)
-	for _, v := range shares {
+	for i, v := range shares {
 		if v.Path == "" {
 			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
 		}
-		if !file.Exists(v.Path) {
-			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.DIR_NOT_EXISTS, Message: common_err.GetMsg(common_err.DIR_NOT_EXISTS)})
+		if err := validateSharePath(v.Path, shareRoots); err != nil {
+			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 		}
-		if len(service.MyService.Shares().GetSharesByPath(v.Path)) > 0 {
+		shares[i].Path = filepath.Clean(v.Path)
+		if shares[i].Name == "" {
+			shares[i].Name = filepath.Base(shares[i].Path)
+		}
+		if err := validateShareName(shares[i].Name); err != nil {
+			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+		}
+		if len(service.MyService.Shares().GetSharesByPath(shares[i].Path)) > 0 {
 			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.SHARE_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.SHARE_ALREADY_EXISTS)})
 		}
-		if len(service.MyService.Shares().GetSharesByPath(filepath.Base(v.Path))) > 0 {
+		// (this looked the name up in the path column, so duplicate names slipped through)
+		if len(service.MyService.Shares().GetSharesByName(shares[i].Name)) > 0 {
 			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.SHARE_NAME_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.SHARE_NAME_ALREADY_EXISTS)})
 		}
 	}
@@ -89,10 +151,11 @@ func PostSambaSharesCreate(ctx echo.Context) error {
 		shareDBModel.ReadOnly = v.ReadOnly
 		shareDBModel.Path = v.Path
 		shareDBModel.Name = v.Name
-		if shareDBModel.Name == "" {
-			shareDBModel.Name = filepath.Base(v.Path)
+		// Opening the folder up for SMB users is kept, but never for the
+		// data roots themselves (and only ever inside them - see above).
+		if !isShareRoot(v.Path) {
+			os.Chmod(v.Path, 0o777)
 		}
-		os.Chmod(v.Path, 0o777)
 		service.MyService.Shares().CreateShare(shareDBModel)
 		shares[i].Name = shareDBModel.Name
 	}
@@ -117,6 +180,12 @@ func PutSambaShare(ctx echo.Context) error {
 	name := req.Name
 	if name == "" {
 		name = filepath.Base(existing.Path)
+	}
+	if err := validateShareName(name); err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+	}
+	if other := service.MyService.Shares().GetSharesByName(name); len(other) > 0 && strconv.Itoa(int(other[0].ID)) != id {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.SHARE_NAME_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.SHARE_NAME_ALREADY_EXISTS)})
 	}
 	if err := service.MyService.Shares().UpdateShare(id, name, req.ReadOnly, req.Anonymous); err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})

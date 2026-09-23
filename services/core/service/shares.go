@@ -14,10 +14,12 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/command"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -97,6 +99,12 @@ func (s *sharesStruct) UpdateConfigFile() {
 		sectionName := share.Name
 		if sectionName == "" {
 			sectionName = filepath.Base(share.Path)
+		}
+		// Never write smb.conf syntax from a stored value (rows created
+		// before names/paths were validated).
+		if strings.ContainsAny(sectionName, "[]\r\n") || strings.ContainsAny(share.Path, "\r\n") {
+			logger.Error("skipping share with an unsafe name or path", zap.Uint("id", share.ID))
+			continue
 		}
 		readOnly := "No"
 		if share.ReadOnly {
