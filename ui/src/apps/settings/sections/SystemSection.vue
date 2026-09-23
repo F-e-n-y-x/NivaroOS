@@ -199,12 +199,20 @@ import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import messages from '@/assets/lang'
 import { formatTime, formatDate, formatStrftime, STRFTIME_TOKEN_LIST, STRFTIME_SHORTCUTS } from '@/utils/dateTimeFormat'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Date & Time' },
-	{ label: 'Language' },
-	{ label: 'WebUI Port' },
-	{ label: 'System Restart / Shutdown' },
-	{ label: 'About NivaraOS' }
+	{ label: 'Language', keywords: 'language locale' },
+	{ label: 'WebUI Port', keywords: 'port http address' },
+	{ label: 'Power Management', keywords: 'restart reboot shutdown power off' },
+	{ label: 'Date & Time', keywords: 'clock time' },
+	{ label: 'Time format', keywords: '12-hour 24-hour clock' },
+	{ label: 'Show seconds', keywords: 'clock seconds' },
+	{ label: 'Date format', keywords: 'date' },
+	{ label: 'System Specifications', keywords: 'hardware cpu ram hostname about' },
+	{ label: 'Storage Usage', keywords: 'disk space' },
+	{ label: 'Authors & Project Info', keywords: 'about version nivaroos' },
+	{ label: 'System Logs', keywords: 'log logs' }
 ]
 
 const TIME_FORMAT_OPTIONS = [

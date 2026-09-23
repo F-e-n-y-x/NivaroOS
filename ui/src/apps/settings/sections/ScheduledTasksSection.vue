@@ -211,13 +211,11 @@
 <script>
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Scheduled Tasks' },
-	{ label: 'Cron Jobs & Automation' },
-	{ label: 'Cloud Storage Backup & Sync' },
-	{ label: 'Automated VM Shutdown' },
-	{ label: 'Container Auto-Restart' },
-	{ label: 'System Maintenance Tasks' }
+	{ label: 'Quick Automation Templates', keywords: 'cron backup sync vm shutdown container restart maintenance trim' },
+	{ label: 'Configured Tasks', keywords: 'cron jobs tasks automation schedule' }
 ]
 
 export default {

@@ -87,11 +87,13 @@ import NivaroosUsersPanel from '@/apps/settings/NivaroOSUsersPanel.vue'
 import SystemUsersPanel from '@/apps/settings/SystemUsersPanel.vue'
 import SmbUsersPanel from '@/apps/settings/SmbUsersPanel.vue'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'My Account' },
-	{ label: 'Other Admin Accounts' },
-	{ label: 'System Users' },
-	{ label: 'SMB Users' }
+	{ label: 'Account', keywords: 'my account password avatar name profile' },
+	{ label: 'Other Admin Accounts', keywords: 'admin users' },
+	{ label: 'System Users', keywords: 'linux users sudo docker' },
+	{ label: 'SMB Users', keywords: 'samba smb password' }
 ]
 
 export default {

@@ -3,7 +3,7 @@
 		<settings-nav :sections="sections" :active-section="activeSection" :compact="compact" @select="activeSection = $event"></settings-nav>
 
 		<div class="settings-main">
-			<settings-search :rows="searchRows" @jump="activeSection = $event"></settings-search>
+			<settings-search :rows="searchRows" @jump="jumpTo"></settings-search>
 
 			<div ref="content" class="settings-content" :class="{ 'is-narrow': narrow }">
 				<system-section v-if="activeSection === 'system'"></system-section>
@@ -52,6 +52,19 @@ const SECTIONS = [
 	{ id: 'updates', label: 'Updates', icon: 'cloud-download-outline', pack: 'mdi', color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)', rows: UPDATES_ROWS }
 ]
 
+const LAST_SECTION_KEY = 'nivaroos_settings_section'
+function readLastSection() {
+	try {
+		return localStorage.getItem(LAST_SECTION_KEY) || ''
+	} catch (e) {
+		return ''
+	}
+}
+// An unknown section (old link, typo) falls back instead of a blank pane.
+function validSection(id) {
+	return id && SECTIONS.some((s) => s.id === id) ? id : ''
+}
+
 export default {
 	name: 'settings-app',
 	components: {
@@ -73,11 +86,15 @@ export default {
 		section: {
 			type: String,
 			default: ''
+		},
+		sectionRequestedAt: {
+			type: Number,
+			default: 0
 		}
 	},
 	data() {
 		return {
-			activeSection: this.section || 'system',
+			activeSection: validSection(this.section) || validSection(readLastSection()) || 'system',
 			sections: SECTIONS,
 			width: 900,
 			resizeObserver: null
@@ -85,7 +102,20 @@ export default {
 	},
 	watch: {
 		section(val) {
-			if (val) this.activeSection = val
+			if (validSection(val)) this.activeSection = val
+		},
+		// Same section asked for again (the value didn't change).
+		sectionRequestedAt() {
+			if (validSection(this.section)) this.activeSection = this.section
+		},
+		activeSection(val) {
+			try {
+				localStorage.setItem(LAST_SECTION_KEY, val)
+			} catch (e) {}
+			// Each section starts at the top (it kept the previous one's scroll).
+			this.$nextTick(() => {
+				if (this.$refs.content) this.$refs.content.scrollTop = 0
+			})
 		}
 	},
 	computed: {
@@ -99,7 +129,33 @@ export default {
 			return this.breakpoints.rowsStacked
 		},
 		searchRows() {
-			return SECTIONS.flatMap(s => s.rows.map(r => ({ sectionId: s.id, sectionLabel: s.label, sectionIcon: s.icon, label: r.label })))
+			return SECTIONS.flatMap(s => s.rows.map(r => ({ sectionId: s.id, sectionLabel: s.label, sectionIcon: s.icon, sectionPack: s.pack, label: r.label, keywords: r.keywords })))
+		}
+	},
+	methods: {
+		// Search result: open its section, then bring the row itself into
+		// view (or open its tab) and flash it - it used to only switch section.
+		jumpTo(result) {
+			this.activeSection = result.sectionId
+			const want = this.$t(result.label).trim().toLowerCase()
+			let tries = 0
+			const find = () => {
+				const root = this.$refs.content
+				if (!root) return
+				const nodes = root.querySelectorAll('h2, h3, h4, .setting-title, .section-title, .segmented-option, .group-title, .settings-group-title, .card-title, .section-subtitle, .row-label')
+				const el = [...nodes].find(n => (n.innerText || '').trim().split('\n')[0].toLowerCase() === want)
+				if (!el) {
+					// The section may still be loading its data.
+					if (++tries < 10) setTimeout(find, 150)
+					return
+				}
+				if (el.classList.contains('segmented-option')) el.click()
+				el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+				const row = el.closest('.setting-row, .setting-card, .settings-group') || el
+				row.classList.add('search-flash')
+				setTimeout(() => row.classList.remove('search-flash'), 1600)
+			}
+			this.$nextTick(find)
 		}
 	},
 	mounted() {
@@ -113,6 +169,17 @@ export default {
 	}
 }
 </script>
+
+<style lang="scss">
+/* Row a search result pointed at (unscoped: it's inside child sections). */
+.settings-app .search-flash {
+	animation: settings-search-flash 1.6s ease-out;
+}
+@keyframes settings-search-flash {
+	0%, 30% { box-shadow: 0 0 0 2px var(--color-primary, #2563eb); }
+	100% { box-shadow: 0 0 0 2px transparent; }
+}
+</style>
 
 <style lang="scss" scoped>
 .settings-app {

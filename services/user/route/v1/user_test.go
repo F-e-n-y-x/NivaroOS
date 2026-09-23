@@ -159,3 +159,22 @@ func TestAValidAvatarIsStoredInTheUsersFolder(t *testing.T) {
 		t.Fatalf("stored avatar not served: %d", got.Code)
 	}
 }
+
+// Deleting accounts had no guard: you could delete yourself or the last
+// admin (which reopens first-time registration to anyone on the network).
+func TestYouCantDeleteYourselfOrTheLastAdmin(t *testing.T) {
+	f := setup(t)
+	f.router.DELETE("/v1/users/:id", func(c *gin.Context) { c.Request.Header.Set("user_id", c.GetHeader("X-Test-As")) }, DeleteUser)
+
+	if w := f.do(t, http.MethodDelete, "/v1/users/"+strconv.Itoa(f.alice.Id), f.alice.Id, nil); w.Code == http.StatusOK {
+		t.Fatal("deleted the account making the request")
+	}
+	if w := f.do(t, http.MethodDelete, "/v1/users/"+strconv.Itoa(f.bob.Id), f.alice.Id, nil); w.Code != http.StatusOK {
+		t.Fatalf("alice couldn't delete bob: %d %s", w.Code, w.Body)
+	}
+	// Alice is now the only admin; nobody can remove her (not even via a
+	// second session of hers).
+	if w := f.do(t, http.MethodDelete, "/v1/users/"+strconv.Itoa(f.alice.Id), f.bob.Id, nil); w.Code == http.StatusOK {
+		t.Fatal("deleted the last admin")
+	}
+}

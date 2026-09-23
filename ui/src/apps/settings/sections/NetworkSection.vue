@@ -34,11 +34,13 @@ import NetworkSharesPanel from '@/apps/settings/NetworkSharesPanel.vue'
 import NetworkConnectionsPanel from '@/apps/settings/NetworkConnectionsPanel.vue'
 import RemoteAccessPanel from '@/apps/settings/RemoteAccessPanel.vue'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'This Device' },
-	{ label: 'Connect to a Network Share' },
-	{ label: 'Share a Folder from This Device' },
-	{ label: 'Remote Access' }
+	{ label: 'This Device', keywords: 'ip address network interface' },
+	{ label: 'Connect to a Network Share', keywords: 'smb cifs nas windows share mount' },
+	{ label: 'Share a Folder from This Device', keywords: 'samba smb share folder' },
+	{ label: 'Remote Access', keywords: 'tailscale vpn remote' }
 ]
 
 export default {

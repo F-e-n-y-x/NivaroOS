@@ -656,6 +656,22 @@ func DeleteUserCustomConf(c *gin.Context) {
  */
 func DeleteUser(c *gin.Context) {
 	id := c.Param("id")
+	// Never your own account, never the last one: with no users left the
+	// unauthenticated status endpoint hands out a registration key, so
+	// anyone on the network could claim the server.
+	if id == c.GetHeader("user_id") {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "you can't delete the account you're signed in with"})
+		return
+	}
+	target := service.MyService.User().GetUserInfoById(id)
+	if target.Id == 0 {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.USER_NOT_EXIST, Message: common_err.GetMsg(common_err.USER_NOT_EXIST)})
+		return
+	}
+	if service.MyService.User().GetUserCount() <= 1 {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "this is the only account - it can't be deleted"})
+		return
+	}
 	service.MyService.User().DeleteUserById(id)
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }

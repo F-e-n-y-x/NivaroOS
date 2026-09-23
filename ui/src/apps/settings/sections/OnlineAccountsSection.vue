@@ -21,7 +21,12 @@
 import CloudAccountsList from '@/apps/settings/CloudAccountsList.vue'
 import CloudAccountsPanel from '@/apps/settings/CloudAccountsPanel.vue'
 
-export const ROWS = [{ label: 'Connected' }, { label: 'Add an account' }]
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
+export const ROWS = [
+	{ label: 'Connected', keywords: 'cloud google drive dropbox onedrive terabox' },
+	{ label: 'Add an account', keywords: 'cloud google drive dropbox onedrive terabox connect' }
+]
 
 export default {
 	name: 'online-accounts-section',

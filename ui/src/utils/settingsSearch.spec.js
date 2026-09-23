@@ -20,4 +20,16 @@ describe('filterRows', () => {
 	test('whitespace-only query returns no results', () => {
 		expect(filterRows(ROWS, '   ')).toEqual([])
 	})
+	test('matches keywords (people search "restart", not "Power Management")', () => {
+		const rows = [{ sectionId: 'system', sectionLabel: 'System', label: 'Power Management', keywords: 'restart reboot shutdown' }]
+		expect(filterRows(rows, 'reboot')).toEqual(rows)
+	})
+	test('matches the translated label', () => {
+		const t = (k) => ({ Language: 'Sprache' }[k] || k)
+		expect(filterRows(ROWS, 'sprache', t)).toEqual([ROWS[1]])
+	})
+	test('every word of the query must match', () => {
+		expect(filterRows(ROWS, 'webui port')).toEqual([ROWS[2]])
+		expect(filterRows(ROWS, 'webui window')).toEqual([])
+	})
 })

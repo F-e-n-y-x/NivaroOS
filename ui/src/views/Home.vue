@@ -25,6 +25,7 @@ import SideBar from '@/shell/SideBar.vue'
 import AppSection from '@/apps/app-store/AppSection.vue'
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
+import { THEME_MODES, getStoredThemeMode, applyTheme } from '@/utils/theme'
 
 const wallpaperConfig = 'wallpaper'
 
@@ -145,7 +146,12 @@ export default {
 		getAppearanceConfig() {
 			this.$api.users.getCustomStorage('appearance').then(res => {
 				if (res.data.success === 200 && res.data.data) {
-					const { alpha, blur } = res.data.data
+					const { alpha, blur, theme } = res.data.data
+					// The theme was saved per user but never read back, so a new
+					// device (or cleared storage) fell back to Auto.
+					if (theme && Object.values(THEME_MODES).includes(theme) && theme !== getStoredThemeMode()) {
+						applyTheme(theme)
+					}
 					if (alpha !== undefined && alpha !== null) {
 						document.documentElement.style.setProperty('--ui-backdrop-alpha', alpha)
 						localStorage.setItem('uiBackdropAlpha', alpha)

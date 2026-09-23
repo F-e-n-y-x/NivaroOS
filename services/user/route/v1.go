@@ -64,7 +64,8 @@ func InitRouter() *gin.Engine {
 
 			v1UsersGroup.DELETE("/:id", v1.DeleteUser)
 			v1UsersGroup.GET("/:username", v1.GetUserInfoByUsername)
-			v1UsersGroup.DELETE("", v1.DeleteUserAll)
+			// (DELETE "" - delete every user - removed: one request reset the
+			// server to "no users", open to registration by anyone.)
 			v1UsersGroup.POST("/register-key", v1.PostGenerateRegisterKey)
 		}
 	}

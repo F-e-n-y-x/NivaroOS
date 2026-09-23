@@ -794,5 +794,6 @@
   "Replace {de} entirely (destructive)": "Replace {de} entirely (destructive)",
   "This removes {de} and installs the desktop you pick next. Type its name to confirm:": "This removes {de} and installs the desktop you pick next. Type its name to confirm:",
   "Detected a {vendor} GPU with no working driver.": "Detected a {vendor} GPU with no working driver.",
-  "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.": "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port."
+  "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.": "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.",
+  "{user} deleted": "{user} deleted"
 }

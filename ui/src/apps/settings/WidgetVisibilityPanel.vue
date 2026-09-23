@@ -71,7 +71,23 @@ export default {
 	methods: {
 		toggle(w) {
 			w.hidden = !w.hidden
-			this.$EventBus.$emit(events.SET_WIDGET_HIDDEN, w.name, w.hidden)
+			const bus = this.$EventBus
+			const listening = bus._events && bus._events[events.SET_WIDGET_HIDDEN] && bus._events[events.SET_WIDGET_HIDDEN].length
+			if (listening) {
+				// The desktop sidebar is mounted: it owns widgets_config.
+				bus.$emit(events.SET_WIDGET_HIDDEN, w.name, w.hidden)
+				return
+			}
+			// No sidebar (mobile shell, or it hasn't loaded): the change used to
+			// be lost. Save it here.
+			this.$api.users.getCustomStorage(widgetsConfig).then(res => {
+				const saved = res.data && Array.isArray(res.data.data) ? res.data.data : []
+				const next = saved.some(p => p.name === w.name) ? saved.map(p => (p.name === w.name ? { ...p, hidden: w.hidden } : p)) : saved.concat([{ name: w.name, hidden: w.hidden }])
+				return this.$api.users.setCustomStorage(widgetsConfig, next)
+			}).catch(() => {
+				w.hidden = !w.hidden
+				this.$buefy.toast.open({ message: this.$t("Couldn't save the widget setting"), type: 'is-danger' })
+			})
 		},
 		toggleDiskConfig() {
 			this.showDiskConfig = !this.showDiskConfig

@@ -34,6 +34,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
@@ -94,10 +95,17 @@ export default {
 				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: async () => {
-					const infoRes = await this.$api.users.getUserInfoByName(username)
-					const id = infoRes.data.data && infoRes.data.data.id
-					if (id) {
+					try {
+						const infoRes = await this.$api.users.getUserInfoByName(username)
+						const id = infoRes.data.data && infoRes.data.data.id
+						if (!id) throw new Error(this.$t('That account no longer exists'))
 						await this.$api.users.deleteUser(id)
+						this.$buefy.toast.open({ message: escapeHtml(this.$t('{user} deleted', { user: username })), type: 'is-success' })
+					} catch (e) {
+						// e.g. "you can't delete the account you're signed in with"
+						const msg = (e.response && e.response.data && e.response.data.message) || e.message
+						this.$buefy.toast.open({ message: escapeHtml(msg || this.$t('Could not delete the account')), type: 'is-danger', duration: 6000 })
+					} finally {
 						this.refresh()
 					}
 				}

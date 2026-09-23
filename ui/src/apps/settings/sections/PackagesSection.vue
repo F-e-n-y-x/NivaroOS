@@ -419,11 +419,13 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Search & Install Packages' },
-	{ label: 'Installed Packages' },
-	{ label: 'Upgradable Packages' },
-	{ label: 'Repository Sources' }
+	{ label: 'Search & Install', keywords: 'apt install package' },
+	{ label: 'Installed', keywords: 'apt installed packages uninstall remove' },
+	{ label: 'Upgrades', keywords: 'apt upgrade update packages' },
+	{ label: 'Repositories', keywords: 'apt sources repository repo deb' }
 ]
 
 export default {

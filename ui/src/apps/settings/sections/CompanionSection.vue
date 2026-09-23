@@ -141,7 +141,13 @@ import { mixin } from '@/mixins/mixin'
 
 dayjs.extend(relativeTime)
 
-export const ROWS = [{ label: 'Overview' }, { label: 'Connected Devices' }]
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
+export const ROWS = [
+	{ label: 'Overview', keywords: 'phone companion' },
+	{ label: 'Companion Device Gateway', keywords: 'phone pairing' },
+	{ label: 'Connected Devices', keywords: 'phone tablet backup' }
+]
 
 export default {
 	name: 'companion-section',

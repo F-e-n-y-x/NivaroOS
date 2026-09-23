@@ -7,10 +7,13 @@
 				type="text"
 				class="search-input"
 				:placeholder="$t('Search settings')"
+				:aria-label="$t('Search settings')"
 				@focus="focused = true"
 				@blur="focused = false"
+				@keydown.enter.prevent="results.length && jump(results[0])"
+				@keydown.esc="query = ''"
 			/>
-			<button v-if="query" class="search-clear" type="button" @mousedown.prevent="query = ''">
+			<button v-if="query" class="search-clear" type="button" :aria-label="$t('Clear search')" @mousedown.prevent="query = ''">
 				<b-icon icon="close-outline" pack="casa" size="is-16"></b-icon>
 			</button>
 		</div>
@@ -37,12 +40,12 @@ export default {
 	},
 	computed: {
 		results() {
-			return filterRows(this.rows, this.query).slice(0, 8)
+			return filterRows(this.rows, this.query, (k) => this.$t(k)).slice(0, 8)
 		}
 	},
 	methods: {
 		jump(result) {
-			this.$emit('jump', result.sectionId)
+			this.$emit('jump', result)
 			this.query = ''
 		}
 	}

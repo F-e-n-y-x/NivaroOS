@@ -100,15 +100,14 @@ import lightIcon from '@/assets/img/theme/light.svg'
 import darkIcon from '@/assets/img/theme/dark.svg'
 import autoIcon from '@/assets/img/theme/auto.svg'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Color Theme' },
-	{ label: 'Dark mode' },
-	{ label: 'Light mode' },
-	{ label: 'Auto theme' },
-	{ label: 'Wallpaper' },
-	{ label: 'Window transparency' },
-	{ label: 'Window blur' },
-	{ label: 'Widgets' }
+	{ label: 'Color Theme', keywords: 'dark light auto mode theme' },
+	{ label: 'Wallpaper', keywords: 'background image' },
+	{ label: 'Window transparency', keywords: 'opacity glass' },
+	{ label: 'Window blur', keywords: 'blur glass' },
+	{ label: 'Widgets', keywords: 'sidebar cpu ram gpu' }
 ]
 
 export default {

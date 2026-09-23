@@ -223,7 +223,10 @@ const mutations = {
 		if (existing) {
 			existing.minimized = false
 			existing.zIndex = state.nextWindowZIndex++
-			if (props) existing.props = { ...existing.props, ...props }
+			// A deep link to the same section again (e.g. "Change wallpaper"
+			// twice) must still take effect: stamp the request so the window
+			// can react even when the value itself didn't change.
+			if (props) existing.props = { ...existing.props, ...props, ...(props.section ? { sectionRequestedAt: Date.now() } : {}) }
 			persistWindows(state)
 			return
 		}

@@ -84,7 +84,7 @@ const users = {
 
 	// get user info by user name  [NOT USE]
 	getUserInfoByName(username) {
-		return api.get(`${PREFIX}/${username}`);
+		return api.get(`${PREFIX}/${encodeURIComponent(username)}`);
 	},
 
 

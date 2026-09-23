@@ -204,9 +204,11 @@ function compareVersions(a, b) {
 }
 import axios from 'axios'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'NivaroOS System Update' },
-	{ label: 'Linux System Packages (APT)' }
+	{ label: 'NivaroOS System Update', keywords: 'nivaroos version update' },
+	{ label: 'Linux System Packages (APT)', keywords: 'apt upgrade packages security' }
 ]
 
 export default {

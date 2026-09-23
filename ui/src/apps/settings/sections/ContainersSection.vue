@@ -377,10 +377,13 @@
 import { escapeHtml } from '@/utils/escapeHtml'
 import activityService from '@/service/activity'
 
+// Search index: labels are the titles this section renders (the search
+// jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Container Updates' },
-	{ label: 'Docker Container Auto-Update' },
-	{ label: 'Container Registry Check' }
+	{ label: 'Automated Container Updates', keywords: 'docker auto update' },
+	{ label: 'Global Auto-Update Worker', keywords: 'docker auto update nightly' },
+	{ label: 'Update Schedule', keywords: 'cron docker update time' },
+	{ label: 'All Host Containers', keywords: 'docker containers logs restart' }
 ]
 
 export default {
