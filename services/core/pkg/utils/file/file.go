@@ -205,86 +205,93 @@ func ReadFullFile(path string) []byte {
 	return content
 }
 
-// File copies a single file from src to dst
+// File copies a single file from src into the folder dst (dst/<name>).
 func CopyFile(src, dst, style string) error {
-	var err error
-	var srcfd *os.File
-	var dstfd *os.File
-	var srcinfo os.FileInfo
-
 	lastPath := src[strings.LastIndex(src, "/")+1:]
-
 	if !strings.HasSuffix(dst, "/") {
 		dst += "/"
 	}
-	dst += lastPath
-	if Exists(dst) {
-		if style == "skip" {
-			return nil
-		} else {
-			os.Remove(dst)
-		}
-	}
+	return CopySingleFile(src, dst+lastPath, style)
+}
 
-	if srcfd, err = os.Open(src); err != nil {
+// CopySingleFile copies src to exactly dst. The data goes to a temporary
+// name first, is fsynced, size-checked and only then renamed over dst - a
+// failure (disk full, a network/FUSE mount erroring on close) never leaves
+// a truncated file under the real name, and is always returned.
+func CopySingleFile(src, dst, style string) error {
+	if Exists(dst) && style == "skip" {
+		return nil
+	}
+	srcfd, err := os.Open(src)
+	if err != nil {
 		return err
 	}
 	defer srcfd.Close()
-
-	if dstfd, err = os.Create(dst); err != nil {
+	srcinfo, err := srcfd.Stat()
+	if err != nil {
 		return err
 	}
-	defer dstfd.Close()
-
-	if _, err = io.Copy(dstfd, srcfd); err != nil {
+	tmp := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".nvtmp-"+strconv.FormatInt(time.Now().UnixNano(), 36))
+	dstfd, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
 		return err
 	}
-	if srcinfo, err = os.Stat(src); err == nil {
-		_ = os.Chmod(dst, srcinfo.Mode())
+	fail := func(e error) error {
+		dstfd.Close()
+		_ = os.Remove(tmp)
+		return e
+	}
+	n, err := io.Copy(dstfd, srcfd)
+	if err != nil {
+		return fail(err)
+	}
+	if n != srcinfo.Size() {
+		return fail(fmt.Errorf("%s: copied %d of %d bytes", src, n, srcinfo.Size()))
+	}
+	if err := dstfd.Sync(); err != nil {
+		return fail(err)
+	}
+	if err := dstfd.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	_ = os.Chmod(tmp, srcinfo.Mode())
+	_ = os.Chtimes(tmp, time.Now(), srcinfo.ModTime())
+	if fi, err := os.Lstat(dst); err == nil && fi.IsDir() {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%s: a folder with this name already exists", dst)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return err
 	}
 	return nil
 }
 
-/**
- * @description:
- * @param {*} src
- * @param {*} dst
- * @param {string} style
- * @return {*}
- * @method:
- * @router:
- */
-func CopySingleFile(src, dst, style string) error {
-	var err error
-	var srcfd *os.File
-	var dstfd *os.File
-	var srcinfo os.FileInfo
-
-	if Exists(dst) {
-		if style == "skip" {
-			return nil
-		} else {
-			os.Remove(dst)
+// CopyTree copies the file or folder src to exactly dst (unlike CopyDir,
+// which copies into dst/<name>). Every failure is collected and returned.
+func CopyTree(src, dst string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return CopySingleFile(src, dst, "overwrite")
+	}
+	if err := os.MkdirAll(dst, info.Mode().Perm()|0o700); err != nil {
+		return err
+	}
+	fds, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, fd := range fds {
+		if err := CopyTree(filepath.Join(src, fd.Name()), filepath.Join(dst, fd.Name())); err != nil {
+			errs = append(errs, err)
 		}
 	}
-
-	if srcfd, err = os.Open(src); err != nil {
-		return err
-	}
-	defer srcfd.Close()
-
-	if dstfd, err = os.Create(dst); err != nil {
-		return err
-	}
-	defer dstfd.Close()
-
-	if _, err = io.Copy(dstfd, srcfd); err != nil {
-		return err
-	}
-	if srcinfo, err = os.Stat(src); err == nil {
-		_ = os.Chmod(dst, srcinfo.Mode())
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Check for duplicate file names
@@ -326,21 +333,24 @@ func CopyDir(src string, dst string, style string) error {
 	if fds, err = ioutil.ReadDir(src); err != nil {
 		return err
 	}
+	var errs []error
 	for _, fd := range fds {
 		srcfp := path.Join(src, fd.Name())
 		dstfp := dst
 
 		if fd.IsDir() {
 			if err = CopyDir(srcfp, dstfp, style); err != nil {
-				fmt.Println(err)
+				errs = append(errs, err)
 			}
 		} else {
 			if err = CopyFile(srcfp, dstfp, style); err != nil {
-				fmt.Println(err)
+				errs = append(errs, err)
 			}
 		}
 	}
-	return nil
+	// Every per-file failure is returned - these used to be printed and
+	// dropped, so a folder copy with missing files reported success.
+	return errors.Join(errs...)
 }
 
 // CopyDirCtx is CopyDir with a cancellation check before every file/
@@ -385,6 +395,7 @@ func CopyDirCtx(ctx context.Context, src string, dst string, style string) error
 	if fds, err = ioutil.ReadDir(src); err != nil {
 		return err
 	}
+	var errs []error
 	for _, fd := range fds {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -397,18 +408,20 @@ func CopyDirCtx(ctx context.Context, src string, dst string, style string) error
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
 				}
-				fmt.Println(err)
+				errs = append(errs, err)
 			}
 		} else {
 			if err = CopyFile(srcfp, dstfp, style); err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return err
 				}
-				fmt.Println(err)
+				errs = append(errs, err)
 			}
 		}
 	}
-	return nil
+	// Every per-file failure is returned - these used to be printed and
+	// dropped, so a folder copy with missing files reported success.
+	return errors.Join(errs...)
 }
 
 func WriteToPath(data []byte, path, name string) error {

@@ -76,6 +76,7 @@ func init() {
 	// gredis.GetRedisConn(config.RedisInfo),
 
 	service.MyService = service.NewService(sqliteDB, config.CommonInfo.RuntimePath)
+	service.InitTransfers(config.AppInfo.DBPath)
 
 	service.Cache = cache.Init()
 

@@ -35,6 +35,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/transfer"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 
 	"github.com/google/uuid"
@@ -813,27 +814,16 @@ func DirPath(ctx echo.Context) error {
 			info[i].Extensions = ex
 		}
 	}
-	// Hide the files or folders in operation
-	fileQueue := make(map[string]string)
-	opStrArrSnapshot := service.OpStrArrSnapshot()
-	if len(opStrArrSnapshot) > 0 {
-		for _, v := range opStrArrSnapshot {
-			v, ok := service.FileQueue.Load(v)
-			if !ok {
-				continue
-			}
-			vt := v.(model.FileOperate)
-			for _, i := range vt.Item {
-				lastPath := i.From[strings.LastIndex(i.From, "/")+1:]
-				fileQueue[vt.To+"/"+lastPath] = i.From
-			}
-		}
-	}
-
+	// In-progress copies are written under hidden ".name.nvtmp-*" names and
+	// renamed into place only once complete, so nothing needs hiding here.
+	fileQueue := map[string]string{}
 	pathList := []ObjResp{}
 	for i := (req.Index - 1) * req.Size; i < forEnd; i++ {
 		if info[i].Name == ".temp" && info[i].IsDir {
 			continue
+		}
+		if strings.Contains(info[i].Name, ".nvtmp-") {
+			continue // a copy still in flight (see service/transfer)
 		}
 		if _, ok := fileQueue[info[i].Path]; !ok {
 			t := ObjResp{}
@@ -1364,34 +1354,40 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SOURCE_DES_SAME, Message: common_err.GetMsg(common_err.SOURCE_DES_SAME)})
 	}
 
+	sources := make([]string, 0, len(list.Item))
 	for i := 0; i < len(list.Item); i++ {
 		if list.Type == "move" {
-			mounted := service.IsMounted(list.Item[i].From)
-			if mounted {
+			if service.IsMounted(list.Item[i].From) {
 				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES), Data: common_err.GetMsg(common_err.MOUNTED_DIRECTIORIES)})
 			}
 			if dev, phonePath := GetCompanionDeviceByStoragePath(list.Item[i].From); dev != nil && (phonePath == "" || phonePath == dev.RootPath || phonePath == "/storage/emulated/0") {
 				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: "Cannot move companion device root folder"})
 			}
 		}
-		list.Item[i].Size = -1
+		sources = append(sources, list.Item[i].From)
 	}
+	return submitTransfer(ctx, transfer.Spec{
+		Kind:     transfer.Kind(list.Type),
+		Sources:  sources,
+		Dest:     list.To,
+		Conflict: transfer.Conflict(list.Style),
+	})
+}
 
-	list.TotalSize = -1
-	list.ProcessedSize = 0
-
-	uid := uuid.NewString()
-	service.FileQueue.Store(uid, list)
-	if service.OpStrArrPush(uid) {
-		go service.ExecOpFile()
-		go service.CheckFileStatus()
-
-		go service.MyService.Notify().SendFileOperateNotify(false)
-
+// submitTransfer queues a job and answers with its first snapshot (the
+// client tracks it by id from then on). The response used to carry
+// nothing, so a client couldn't tell its own job apart from others.
+func submitTransfer(ctx echo.Context, spec transfer.Spec) error {
+	switch spec.Conflict {
+	case transfer.ConflictOverwrite, transfer.ConflictSkip, transfer.ConflictRename:
+	default:
+		spec.Conflict = transfer.ConflictOverwrite
 	}
-	go service.ComputeOperateSizes(uid)
-
-	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	j, err := service.Transfers.Submit(spec)
+	if err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: service.ToTransferEvent(j)})
 }
 
 func PostFileCopy(ctx echo.Context) error {
@@ -1414,32 +1410,48 @@ func handleDirectCopyOrMove(ctx echo.Context, opType string) error {
 			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
 		})
 	}
-
 	destDir := req.To
 	if strings.HasSuffix(filepath.Clean(destDir), "/"+filepath.Base(req.From)) {
 		destDir = filepath.Dir(destDir)
 	}
+	return submitTransfer(ctx, transfer.Spec{Kind: transfer.Kind(opType), Sources: []string{req.From}, Dest: destDir})
+}
 
-	batchReq := model.FileOperate{
-		Type:  opType,
-		Item:  []model.FileItem{{From: req.From, Size: -1}},
-		To:    destDir,
-		Style: "overwrite",
+// GetTransferTasks returns every recent copy/move/delete job (active and
+// finished, with failures) so a client that missed live events - a new
+// tab, another device, a reconnect - can resync.
+func GetTransferTasks(ctx echo.Context) error {
+	jobs := service.Transfers.List()
+	out := make([]service.TransferEvent, 0, len(jobs))
+	for _, j := range jobs {
+		out = append(out, service.ToTransferEvent(j))
 	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: out})
+}
 
-	uid := uuid.NewString()
-	service.FileQueue.Store(uid, batchReq)
-	if service.OpStrArrPush(uid) {
-		go service.ExecOpFile()
-		go service.CheckFileStatus()
-		go service.MyService.Notify().SendFileOperateNotify(false)
+// PostRetryTask re-runs what didn't complete in a finished job.
+func PostRetryTask(ctx echo.Context) error {
+	j, err := service.Transfers.Retry(ctx.Param("id"))
+	if err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 	}
-	go service.ComputeOperateSizes(uid)
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: service.ToTransferEvent(j)})
+}
 
-	return ctx.JSON(common_err.SUCCESS, model.Result{
-		Success: common_err.SUCCESS,
-		Message: common_err.GetMsg(common_err.SUCCESS),
-	})
+// DeleteTransferHistory removes a finished job from the list ("0" = all
+// finished jobs).
+func DeleteTransferHistory(ctx echo.Context) error {
+	id := ctx.Param("id")
+	if id == "0" {
+		for _, j := range service.Transfers.List() {
+			if j.State.Terminal() {
+				_ = service.Transfers.Dismiss(j.ID)
+			}
+		}
+	} else if err := service.Transfers.Dismiss(id); err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
+	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
 // @Summary delete file
@@ -1527,6 +1539,7 @@ func DeleteFile(ctx echo.Context) error {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: "Cannot delete a mounted drive, connected location, or system storage directory. Eject or disconnect it instead.", Data: protected})
 	}
 
+	var local []string
 	for _, v := range deletable {
 		cleanV := filepath.Clean(v)
 		if dev, phonePath := GetCompanionDeviceByStoragePath(cleanV); dev != nil {
@@ -1537,7 +1550,9 @@ func DeleteFile(ctx echo.Context) error {
 			}
 			// Only proxy delete if NOT the phone root! NEVER wipe the whole phone storage!
 			if cleanPhone != "" && cleanPhone != "/" && cleanPhone != "." && cleanPhone != root {
-				ProxyCompanionFileDelete(dev, phonePath)
+				if err := ProxyCompanionFileDelete(dev, phonePath); err != nil {
+					return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: "Couldn't delete on the device: " + err.Error(), Data: []string{v}})
+				}
 			}
 		}
 		// Do not run os.RemoveAll if cleanV is a companion device root folder
@@ -1554,12 +1569,34 @@ func DeleteFile(ctx echo.Context) error {
 			_ = os.Remove(cleanV)
 			continue
 		}
+		if _, err := os.Lstat(cleanV); err == nil {
+			local = append(local, cleanV)
+		}
+	}
 
-		err := os.RemoveAll(v)
-		if err != nil && !os.IsNotExist(err) {
-			if dev, _ := GetCompanionDeviceByStoragePath(v); dev == nil {
-				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: common_err.GetMsg(common_err.FILE_DELETE_ERROR), Data: err})
+	// Local deletes run as a transfer-engine job: per-file results instead
+	// of one opaque RemoveAll, and progress for huge folders. Small deletes
+	// finish within the wait below and answer synchronously as before.
+	if len(local) > 0 {
+		j, err := service.Transfers.Submit(transfer.Spec{Kind: transfer.KindDelete, Sources: local})
+		if err != nil {
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: err.Error()})
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if cur, ok := service.Transfers.Get(j.ID); ok {
+				j = cur
+				if j.State.Terminal() {
+					break
+				}
 			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		switch {
+		case !j.State.Terminal():
+			return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: "Deleting in the background", Data: service.ToTransferEvent(j)})
+		case j.FilesFailed > 0 || j.State == transfer.StateFailed:
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: fmt.Sprintf("%d item(s) couldn't be deleted", j.FilesFailed), Data: service.ToTransferEvent(j)})
 		}
 	}
 
@@ -1662,12 +1699,14 @@ func GetFileImage(ctx echo.Context) error {
 func DeleteOperateFileOrDir(ctx echo.Context) error {
 	id := ctx.Param("id")
 	if id == "0" {
-		service.CancelAllOperateTasks()
-	} else {
-		service.CancelOperateTask(id)
+		for _, j := range service.Transfers.List() {
+			if !j.State.Terminal() {
+				_ = service.Transfers.Cancel(j.ID)
+			}
+		}
+	} else if err := service.Transfers.Cancel(id); err != nil {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 	}
-
-	go service.MyService.Notify().SendFileOperateNotify(true)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 

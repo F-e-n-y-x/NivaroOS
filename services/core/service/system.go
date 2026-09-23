@@ -19,6 +19,7 @@ import (
 	exec2 "github.com/F-e-n-y-x/NivaroOS/services/common/utils/exec"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
+	corefile "github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
@@ -222,21 +223,16 @@ func (c *systemService) RenameFile(oldF, newF string) (int, error) {
 			var linkErr *os.LinkError
 			if (errors.As(err, &linkErr) && (errors.Is(linkErr.Err, syscall.EXDEV) || strings.Contains(strings.ToLower(linkErr.Error()), "cross-device"))) ||
 				errors.Is(err, syscall.EXDEV) || strings.Contains(strings.ToLower(err.Error()), "cross-device") {
-				st, statErr := os.Stat(oldF)
-				if statErr != nil {
-					return common_err.SERVICE_ERROR, statErr
-				}
-				if st.IsDir() {
-					if cpErr := file.CopyDir(oldF, newF, "overwrite"); cpErr != nil {
-						return common_err.SERVICE_ERROR, cpErr
-					}
-					_ = os.RemoveAll(oldF)
-					return common_err.SUCCESS, nil
-				}
-				if cpErr := file.CopyFile(oldF, newF, "overwrite"); cpErr != nil {
+				// Cross-filesystem rename (e.g. some FUSE mounts): copy to
+				// exactly newF, and only remove the original once every file
+				// arrived. The old fallback used CopyDir, which copies into
+				// newF/<oldname>, and then deleted the original regardless.
+				if cpErr := corefile.CopyTree(oldF, newF); cpErr != nil {
 					return common_err.SERVICE_ERROR, cpErr
 				}
-				_ = os.Remove(oldF)
+				if rmErr := os.RemoveAll(oldF); rmErr != nil {
+					return common_err.SERVICE_ERROR, rmErr
+				}
 				return common_err.SUCCESS, nil
 			}
 			return common_err.SERVICE_ERROR, err

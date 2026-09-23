@@ -10,8 +10,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
-	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/model"
-	"github.com/F-e-n-y-x/NivaroOS/services/core/model/notify"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
 	"go.uber.org/zap"
@@ -33,7 +31,6 @@ type NotifyServer interface {
 	//	SendText(m model.AppNotify)
 	//	SendUninstallAppBySocket(app notifyCommon.Application)
 
-	SendFileOperateNotify(nowSend bool)
 	//SendInstallAppBySocket(app notifyCommon.Application)
 	SendNotify(name string, message map[string]interface{})
 	SettingSystemTempData(message map[string]interface{})
@@ -67,183 +64,6 @@ func (i *notifyServer) SendNotify(name string, message map[string]interface{}) {
 		logger.Error("failed to publish event to message bus", zap.String("status", response.Status()), zap.Any("response", response))
 	}
 	// SocketServer.BroadcastToRoom("/", "public", path, message)
-}
-
-// Send periodic broadcast messages
-func (i *notifyServer) SendFileOperateNotify(nowSend bool) {
-	if nowSend {
-		len := 0
-		FileQueue.Range(func(k, v interface{}) bool {
-			len++
-			return true
-		})
-
-		model := notify.NotifyModel{}
-		listMsg := make(map[string]interface{})
-		if len == 0 {
-			model.Data = []string{}
-			listMsg["file_operate"] = model
-			msg := make(map[string]string)
-			for k, v := range listMsg {
-				bt, _ := json.Marshal(v)
-				msg[k] = string(bt)
-			}
-			response, err := MyService.MessageBus().PublishEventWithResponse(context.Background(), common.SERVICENAME, "nivaroos:file:operate", msg)
-			if err != nil {
-				logger.Error("failed to publish event to message bus", zap.Error(err), zap.Any("event", msg))
-			}
-			if response.StatusCode() != http.StatusOK {
-				logger.Error("failed to publish event to message bus", zap.String("status", response.Status()), zap.Any("response", response))
-			}
-			return
-		}
-
-		model.State = "NORMAL"
-		list := []notify.File{}
-		OpStrArrbak := OpStrArrSnapshot()
-
-		for _, v := range OpStrArrbak {
-			tempItem, ok := FileQueue.Load(v)
-			temp := tempItem.(model2.FileOperate)
-			if !ok {
-				continue
-			}
-			task := notify.File{}
-			task.Id = v
-			task.ProcessedSize = temp.ProcessedSize
-			task.TotalSize = temp.TotalSize
-			task.To = temp.To
-			task.Type = temp.Type
-			task.Speed = temp.Speed
-			if task.TotalSize < 0 {
-				// Sizes not computed yet (see ComputeOperateSizes) - the
-				// task is queued/copying already, just not able to report a
-				// percentage yet.
-				task.Status = "CALCULATING"
-			} else if task.ProcessedSize == 0 {
-				task.Status = "STARTING"
-			} else {
-				task.Status = "PROCESSING"
-			}
-
-			if temp.Finished {
-
-				task.Finished = true
-				task.Cancelled = temp.Cancelled
-				if temp.Cancelled {
-					task.Status = "CANCELLED"
-				} else {
-					task.Status = "FINISHED"
-				}
-				FileQueue.Delete(v)
-				OpStrArrPopFront()
-				go ExecOpFile()
-				list = append(list, task)
-				continue
-			}
-			for _, v := range temp.Item {
-				if v.Size != v.ProcessedSize {
-					task.ProcessingPath = v.From
-					break
-				}
-			}
-
-			list = append(list, task)
-		}
-		model.Data = list
-
-		listMsg["file_operate"] = model
-		msg := make(map[string]string)
-		for k, v := range listMsg {
-			bt, _ := json.Marshal(v)
-			msg[k] = string(bt)
-		}
-		response, err := MyService.MessageBus().PublishEventWithResponse(context.Background(), common.SERVICENAME, "nivaroos:file:operate", msg)
-		if err != nil {
-			logger.Error("failed to publish event to message bus", zap.Error(err), zap.Any("event", msg))
-		}
-		if response.StatusCode() != http.StatusOK {
-			logger.Error("failed to publish event to message bus", zap.String("status", response.Status()), zap.Any("response", response))
-		}
-
-	} else {
-		for {
-
-			len := 0
-			FileQueue.Range(func(k, v interface{}) bool {
-				len++
-				return true
-			})
-			if len == 0 {
-				return
-			}
-			listMsg := make(map[string]interface{})
-			model := notify.NotifyModel{}
-			model.State = "NORMAL"
-			list := []notify.File{}
-			OpStrArrbak := OpStrArrSnapshot()
-
-			for _, v := range OpStrArrbak {
-				tempItem, ok := FileQueue.Load(v)
-				temp := tempItem.(model2.FileOperate)
-				if !ok {
-					continue
-				}
-				task := notify.File{}
-				task.Id = v
-				task.ProcessedSize = temp.ProcessedSize
-				task.TotalSize = temp.TotalSize
-				task.To = temp.To
-				task.Type = temp.Type
-				if task.TotalSize < 0 {
-					task.Status = "CALCULATING"
-				} else if task.ProcessedSize == 0 {
-					task.Status = "STARTING"
-				} else {
-					task.Status = "PROCESSING"
-				}
-				if temp.Finished || (temp.TotalSize >= 0 && temp.ProcessedSize >= temp.TotalSize) {
-
-					task.Finished = true
-					task.Cancelled = temp.Cancelled
-					if temp.Cancelled {
-						task.Status = "CANCELLED"
-					} else {
-						task.Status = "FINISHED"
-					}
-					FileQueue.Delete(v)
-					OpStrArrPopFront()
-					go ExecOpFile()
-					list = append(list, task)
-					continue
-				}
-				for _, v := range temp.Item {
-					if v.Size != v.ProcessedSize {
-						task.ProcessingPath = v.From
-						break
-					}
-				}
-
-				list = append(list, task)
-			}
-			model.Data = list
-
-			listMsg["file_operate"] = model
-			msg := make(map[string]string)
-			for k, v := range listMsg {
-				bt, _ := json.Marshal(v)
-				msg[k] = string(bt)
-			}
-			response, err := MyService.MessageBus().PublishEventWithResponse(context.Background(), common.SERVICENAME, "nivaroos:file:operate", msg)
-			if err != nil {
-				logger.Error("failed to publish event to message bus", zap.Error(err), zap.Any("event", msg))
-			}
-			if response.StatusCode() != http.StatusOK {
-				logger.Error("failed to publish event to message bus", zap.String("status", response.Status()), zap.Any("response", response))
-			}
-			time.Sleep(time.Second * 3)
-		}
-	}
 }
 
 // func (i *notifyServer) SendInstallAppBySocket(app notifyCommon.Application) {

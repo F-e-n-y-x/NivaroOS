@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -649,6 +650,18 @@ func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader i
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
+	}
+	// The phone answers {"success": true} only after the file is fully
+	// written on its side.
+	var ack struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+	}
+	if body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10)); len(body) > 0 && json.Unmarshal(body, &ack) == nil && ack.Success != nil && !*ack.Success {
+		if ack.Error == "" {
+			ack.Error = "the device rejected the upload"
+		}
+		return errors.New(ack.Error)
 	}
 	dev.LastSeen = time.Now()
 	dev.IsOnline = true
@@ -1574,6 +1587,10 @@ func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companio
 		if err := os.MkdirAll(targetDir, 0755); err != nil {
 			return err
 		}
+		// Every child's failure is returned (they used to be logged and
+		// dropped, so a folder copy from a phone reported success with
+		// files missing - and a move then deleted them on the phone).
+		var errs []error
 		for _, it := range files {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -1581,16 +1598,16 @@ func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companio
 			childSrc := filepath.Join(companionSrc, it.Name)
 			if it.IsDir {
 				if err := h.CopyFromCompanion(ctx, childSrc, targetDir, style, onProgress); err != nil {
-					logger.Error("CopyFromCompanion recursive error", zap.Error(err))
+					errs = append(errs, err)
 				}
 			} else {
 				childDst := filepath.Join(targetDir, it.Name)
 				if err := h.downloadFileFromCompanion(ctx, dev, it.Path, childDst, style, onProgress); err != nil {
-					logger.Error("CopyFromCompanion file download error", zap.Error(err))
+					errs = append(errs, fmt.Errorf("%s: %w", it.Name, err))
 				}
 			}
 		}
-		return nil
+		return errors.Join(errs...)
 	}
 
 	// 3. Fallback: attempt single file download
@@ -1633,11 +1650,20 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 		return fmt.Errorf("companion download failed with status %d", resp.StatusCode)
 	}
 
-	out, err := os.OpenFile(targetFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	// Temp name + fsync + size check + rename: a dropped Wi-Fi connection
+	// mid-download never leaves a truncated file under the real name.
+	tmp := filepath.Join(filepath.Dir(targetFile), "."+filepath.Base(targetFile)+".nvtmp-"+strconv.FormatInt(time.Now().UnixNano(), 36))
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	done := false
+	defer func() {
+		if !done {
+			out.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
 
 	var written int64
 	buf := make([]byte, 64*1024)
@@ -1661,6 +1687,20 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 			}
 			return readErr
 		}
+	}
+	if resp.ContentLength >= 0 && written != resp.ContentLength {
+		return fmt.Errorf("download incomplete: got %d of %d bytes", written, resp.ContentLength)
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	done = true
+	if err := os.Rename(tmp, targetFile); err != nil {
+		_ = os.Remove(tmp)
+		return err
 	}
 	dev.LastSeen = time.Now()
 	dev.IsOnline = true
@@ -1734,6 +1774,11 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 				}
 			}
 			if rErr != nil {
+				// A read error must abort the upload, not look like a
+				// clean end of file to the phone.
+				if rErr != io.EOF {
+					pw.CloseWithError(rErr)
+				}
 				return
 			}
 		}
@@ -1755,6 +1800,16 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
+	}
+	var ack struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+	}
+	if body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10)); len(body) > 0 && json.Unmarshal(body, &ack) == nil && ack.Success != nil && !*ack.Success {
+		if ack.Error == "" {
+			ack.Error = "the device rejected the upload"
+		}
+		return errors.New(ack.Error)
 	}
 	dev.LastSeen = time.Now()
 	dev.IsOnline = true
