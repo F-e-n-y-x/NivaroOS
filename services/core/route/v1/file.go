@@ -160,9 +160,13 @@ func GetLocalFile(ctx echo.Context) error {
 		})
 	}
 	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
-		if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+		err := ProxyCompanionFileDownload(dev, phonePath, ctx)
+		if err == nil {
 			return nil
 		}
+		// Don't quietly hand out this server's backup copy as if it were
+		// the file on the phone - it can be old or missing.
+		return companionUnreachable(ctx, dev, err)
 	}
 	if !file.Exists(path) {
 		return ctx.JSON(http.StatusOK, model.Result{
@@ -182,6 +186,19 @@ func GetLocalFile(ctx echo.Context) error {
 // @Param files query string true "file list eg: filename1,filename2,filename3 "
 // @Success 200 {string} string "ok"
 // @Router /file/download [get]
+// companionUnreachable answers a download from a phone that couldn't be
+// reached (headers are still unsent at this point).
+func companionUnreachable(ctx echo.Context, dev *CompanionDevice, err error) error {
+	if ctx.Response().Committed {
+		return nil
+	}
+	return ctx.JSON(http.StatusServiceUnavailable, model.Result{
+		Success: common_err.SERVICE_ERROR,
+		Message: dev.Name + " can't be reached right now - make sure the NivaroOS app is open on it and it's on the same network",
+		Data:    err.Error(),
+	})
+}
+
 // Download tickets: the client POSTs the list of paths and downloads with
 // ?ticket= - putting every path in the URL (?files=a,b,c) split any name
 // containing a comma and broke on long selections.
@@ -244,9 +261,11 @@ func GetDownloadFile(ctx echo.Context) error {
 	if len(list) == 1 {
 		filePath := list[0]
 		if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
-			if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+			err := ProxyCompanionFileDownload(dev, phonePath, ctx)
+			if err == nil {
 				return nil
 			}
+			return companionUnreachable(ctx, dev, err)
 		} else {
 			info, err := os.Stat(filePath)
 			if err != nil {
@@ -387,9 +406,11 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 	fileName := path.Base(filePath)
 
 	if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
-		if err := ProxyCompanionFileDownload(dev, phonePath, ctx); err == nil {
+		err := ProxyCompanionFileDownload(dev, phonePath, ctx)
+		if err == nil {
 			return nil
 		}
+		return companionUnreachable(ctx, dev, err)
 	}
 
 	// node.ModTime()/.Size() below used to run on whatever os.Stat returned

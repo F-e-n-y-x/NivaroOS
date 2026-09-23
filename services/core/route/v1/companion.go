@@ -1308,11 +1308,15 @@ func GetCompanionDeviceDownload(ctx echo.Context) error {
 		})
 	}
 
-	isOnline := time.Since(dev.LastSeen) <= 3*time.Minute
-	if isOnline && (strings.HasPrefix(filePath, "/storage/") || strings.HasPrefix(filePath, "/sdcard")) {
-		if err := ProxyCompanionFileDownload(dev, filePath, ctx); err == nil {
-			return nil
+	if strings.HasPrefix(filePath, "/storage/") || strings.HasPrefix(filePath, "/sdcard") {
+		// A path on the phone itself: only the phone can serve it.
+		var err error = errors.New("device offline")
+		if time.Since(dev.LastSeen) <= 3*time.Minute {
+			if err = ProxyCompanionFileDownload(dev, filePath, ctx); err == nil {
+				return nil
+			}
 		}
+		return companionUnreachable(ctx, dev, err)
 	}
 
 	// Fallback to server local companion storage
