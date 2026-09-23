@@ -38,7 +38,9 @@
 						<button class="icon-button mr-2" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
 							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
 						</button>
-						<b-button rounded size="is-small" type="is-danger" outlined :loading="busyPath === d.path" @click="confirmRemove(d)">
+						<!-- The disk the system runs from is never offered for removal. -->
+						<span v-if="d.model === 'System'" class="setting-chip">{{ $t('System disk') }}</span>
+						<b-button v-else rounded size="is-small" type="is-danger" outlined :loading="busyPath === d.path" @click="confirmRemove(d)">
 							{{ $t('Remove') }}
 						</b-button>
 					</div>
@@ -81,6 +83,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import DriveDetailsPanel from '@/apps/settings/DriveDetailsPanel.vue'
 import { formatSize } from '@/utils/formatSize'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
@@ -167,6 +170,10 @@ export default {
 				}
 			})
 		},
+		fail(e, fallback) {
+			const d = e && e.response && e.response.data
+			this.$buefy.toast.open({ message: escapeHtml((d && d.message) || fallback), type: 'is-danger', duration: 6000 })
+		},
 		confirmRemove(disk) {
 			this.confirmWindow({
 				title: this.$t('Remove disk'),
@@ -176,9 +183,12 @@ export default {
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
 					this.busyPath = disk.path
-					this.$api.disks.umount({ path: disk.path }).then(() => this.refresh()).finally(() => {
-						this.busyPath = ''
-					})
+					this.$api.disks.umount({ path: disk.path })
+						.catch(e => this.fail(e, this.$t('Could not remove the disk')))
+						.finally(() => {
+							this.busyPath = ''
+							this.refresh()
+						})
 				}
 			})
 		},
@@ -190,7 +200,10 @@ export default {
 				confirmText: this.$t('Eject'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
-					this.$api.disks.umountUsb({ mount_point: child.mount_point }).then(() => this.refreshUsb())
+					this.$api.disks.umountUsb({ mount_point: child.mount_point })
+						.then(() => this.$buefy.toast.open({ message: this.$t('Ejected - you can unplug the drive'), type: 'is-success' }))
+						.catch(e => this.fail(e, this.$t('Could not eject the drive')))
+						.finally(() => this.refreshUsb())
 				}
 			})
 		}

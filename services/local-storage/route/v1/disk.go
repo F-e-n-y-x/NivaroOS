@@ -162,6 +162,16 @@ func DeleteDisksUmount(c *gin.Context) {
 	}
 
 	diskInfo := service.MyService.Disk().GetDiskInfo(path)
+	// Never the disk the system runs from; drives set up in Persistent
+	// Mounts are unmounted there (this would leave their fstab entry live).
+	if service.DiskHoldsSystem(diskInfo) {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "this is the system disk - it can't be removed"})
+		return
+	}
+	if mp := service.MyService.Disk().FstabManagedMountPoint(diskInfo); mp != "" {
+		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "this drive is managed in Persistent Mounts (" + mp + ") - unmount it there"})
+		return
+	}
 	if len(diskInfo.Children) == 0 && service.IsDiskSupported(diskInfo) {
 		t := diskInfo
 		t.Children = nil

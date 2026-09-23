@@ -39,6 +39,9 @@ import (
 )
 
 type DiskService interface {
+	// FstabManagedMountPoint returns a mount point of d that has an fstab
+	// entry (managed in Persistent Mounts), or "".
+	FstabManagedMountPoint(d model.LSBLKModel) string
 	EnsureDefaultMergePoint() bool
 	AddPartition(path string) error
 	DeletePartition(path string) error
@@ -150,10 +153,91 @@ func (d *diskService) ClassifyUSBTransport(path string) string {
 	return classifyUSBTransport(path)
 }
 
-func (d *diskService) UmountUSB(path string) error {
-	_, err := command.ExecResultStr("source " + config.AppInfo.ShellPath + "/local-storage-helper.sh ;UDEVILUmount " + path)
+// isCurrentMountPoint: path is exactly a mount point right now (read from
+// the kernel's mount table, not trusted from the request).
+func isCurrentMountPoint(path string) bool {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return false
+	}
+	raw, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
-		return err
+		return false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(line)
+		if len(f) > 4 && strings.NewReplacer(`\040`, " ", `\011`, "\t", `\134`, `\\`).Replace(f[4]) == path {
+			return true
+		}
+	}
+	return false
+}
+
+// diskHoldsSystem: the disk carries /, /boot, /boot/efi or swap - removing
+// (unmounting) it from the UI would break the running system.
+func diskHoldsSystem(d model.LSBLKModel) bool {
+	check := func(mp string) bool {
+		return mp == "/" || mp == "/boot" || mp == "/boot/efi" || mp == "[SWAP]" || mp == "/usr" || mp == "/var"
+	}
+	if check(d.MountPoint) {
+		return true
+	}
+	for _, c := range d.Children {
+		if diskHoldsSystem(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// DiskHoldsSystem is diskHoldsSystem for the routes.
+func DiskHoldsSystem(d model.LSBLKModel) bool { return diskHoldsSystem(d) }
+
+func (d *diskService) FstabManagedMountPoint(disk model.LSBLKModel) string {
+	entries, err := fstab.Get().GetAllEntries()
+	if err != nil {
+		return ""
+	}
+	var mps []string
+	var walk func(m model.LSBLKModel)
+	walk = func(m model.LSBLKModel) {
+		if m.MountPoint != "" {
+			mps = append(mps, m.MountPoint)
+		}
+		for _, c := range m.Children {
+			walk(c)
+		}
+	}
+	walk(disk)
+	for _, e := range entries {
+		for _, mp := range mps {
+			if e != nil && e.MountPoint == mp {
+				return mp
+			}
+		}
+	}
+	return ""
+}
+
+// removeEmptyMountDir removes a mount folder after unmounting - only if it
+// is empty. (RemoveAll deleted whatever was still there if the unmount
+// hadn't really happened.)
+func removeEmptyMountDir(dir string) {
+	if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+		logger.Info("mount folder kept (not empty)", zap.String("dir", dir))
+	}
+}
+
+func (d *diskService) UmountUSB(path string) error {
+	// A real mount point only, and the path goes to udevil as one argument
+	// (it was pasted into a bash command line: `;cmd` ran as root, and a
+	// label with a space couldn't be ejected).
+	if !isCurrentMountPoint(path) {
+		return fmt.Errorf("%s is not a mounted drive", path)
+	}
+	if out, err := exec.Command("udevil", "umount", "-f", path).CombinedOutput(); err != nil {
+		if out2, err2 := exec.Command("umount", path).CombinedOutput(); err2 != nil {
+			return fmt.Errorf("couldn't eject: %s", strings.TrimSpace(string(out)+" "+string(out2)))
+		}
 	}
 
 	return nil
@@ -283,10 +367,7 @@ func (d *diskService) UmountPointAndRemoveDir(m model.LSBLKModel) error {
 			logger.Error("error when umounting partition", zap.Error(err), zap.String("path", m.Path), zap.String("mount point", m.MountPoint))
 			return err
 		}
-		if err := file.RMDir(m.MountPoint); err != nil {
-			logger.Error("error when removing mount point directory", zap.Error(err), zap.String("path", m.Path), zap.String("mount point", m.MountPoint))
-			return err
-		}
+		removeEmptyMountDir(m.MountPoint)
 	}
 	for _, p := range m.Children {
 		if len(p.MountPoint) > 0 {
@@ -295,10 +376,7 @@ func (d *diskService) UmountPointAndRemoveDir(m model.LSBLKModel) error {
 				logger.Error("error when umounting partition", zap.Error(err), zap.String("path", p.Path), zap.String("mount point", p.MountPoint))
 				return err
 			}
-			if err := file.RMDir(p.MountPoint); err != nil {
-				logger.Error("error when removing mount point directory", zap.Error(err), zap.String("path", p.Path), zap.String("mount point", p.MountPoint))
-				return err
-			}
+			removeEmptyMountDir(p.MountPoint)
 		}
 	}
 

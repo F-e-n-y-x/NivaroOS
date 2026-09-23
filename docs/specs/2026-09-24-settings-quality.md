@@ -1,6 +1,6 @@
 # Settings app quality rebuild
 
-Status: planned (2026-09-24)
+Status: phase 1 done (2026-09-24) - see section 5
 Owner ask: check the Settings app fully, from every angle — function, UI/UX,
 contrast — quality work, not quick fixes.
 
@@ -148,3 +148,14 @@ stopped containers within hours; both were paused with the owner's OK:
 6. **Verification** — full runtime audit re-run (all sections, both themes,
    three widths) with 0 contrast/axe criticals, 0 console errors; live
    end-to-end of each fixed action.
+
+## 5. Progress
+
+| Phase | Commits | Verified |
+|---|---|---|
+| 1 Safety (A1-A15) | 2019c0f, df6bb28, 69c51c5, 5aaff79, this | Real-Docker recreate tests; apt jobs incl. restart recovery + real systemd-run + UI e2e; handler tests on SQLite for profile/avatar; live: root/service/owner password change and newline injection rejected; fstab 40 concurrent toggles intact; tail of a 26 MB log in ms |
+
+Also fixed while there: the 2.7 s UI freeze on opening Settings (10 MB log
+rendered) and the Terminal re-fetching it every 5 s; Package Manager's
+duplicate-key freeze (B1) and delete-source (B8); 22 raw {placeholder}
+strings across the UI.

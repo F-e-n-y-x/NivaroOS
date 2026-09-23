@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -79,73 +81,175 @@ func (e *Entry) String() string {
 	return e.Source + "\t" + e.MountPoint + "\t" + e.FSType + "\t" + e.Options + "\t" + strconv.Itoa(e.Dump) + "\t" + strconv.Itoa(e.Pass)
 }
 
+// mu serialises every change to fstab: read-modify-write sequences used to
+// run concurrently through one shared temp file, so two quick changes could
+// lose or garble lines (the root filesystem's included).
+var mu sync.Mutex
+
+// rewrite replaces fstab with edit(current lines) atomically: a fresh temp
+// file in the same directory, fsynced, then renamed over it, with the
+// previous version kept as .nivaroos.bak. Callers hold mu.
+func (f *FStab) rewrite(edit func(lines []string) ([]string, error)) error {
+	var lines []string
+	if err := foreachLine(f.path, func(line string) error {
+		lines = append(lines, line)
+		return nil
+	}); err != nil {
+		return err
+	}
+	out, err := edit(lines)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(f.path), ".fstab-nivaroos-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	var b strings.Builder
+	for _, l := range out {
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	if _, err := tmp.WriteString(b.String()); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), f.path)
+}
+
 func (f *FStab) Add(e Entry, replace bool) error {
+	mu.Lock()
+	defer mu.Unlock()
 	entry, err := f.GetEntryByMountPoint(e.MountPoint)
 	if err != nil {
 		return err
 	}
-
-	if entry != nil {
-		if !replace &&
-			(entry.Source != e.Source ||
-				entry.FSType != e.FSType ||
-				entry.Options != e.Options ||
-				entry.Dump != e.Dump ||
-				entry.Pass != e.Pass) {
-			return ErrDifferentFSTabEntryWithSameMountPoint
+	if entry != nil && !replace &&
+		(entry.Source != e.Source ||
+			entry.FSType != e.FSType ||
+			entry.Options != e.Options ||
+			entry.Dump != e.Dump ||
+			entry.Pass != e.Pass) {
+		return ErrDifferentFSTabEntryWithSameMountPoint
+	}
+	return f.rewrite(func(lines []string) ([]string, error) {
+		out := make([]string, 0, len(lines)+1)
+		for _, line := range lines {
+			if en, _ := parseEntry(line); en != nil && en.MountPoint == e.MountPoint {
+				continue // replaced below
+			}
+			out = append(out, line)
 		}
-
-		if err := f.RemoveByMountPoint(e.MountPoint, false); err != nil {
-			return err
-		}
-	}
-
-	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
-		return err
-	}
-
-	fstabFile, err := os.OpenFile(f.path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer fstabFile.Close()
-
-	_, err = fstabFile.WriteString(e.String() + "\t# Added by the NivaroOS\n")
-	if err != nil {
-		return err
-	}
-
-	return err
+		return append(out, e.String()+"\t# Added by the NivaroOS"), nil
+	})
 }
 
+// RemoveByMountPoint removes the active entry for mountpoint, or comments
+// it out (disables it) when comment is true.
 func (f *FStab) RemoveByMountPoint(mountpoint string, comment bool) error {
-	FStabPathNew := f.path + ".nivaroos.new"
-	FStabFileNew, err := os.OpenFile(FStabPathNew, os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	if err := foreachLine(f.path, func(line string) error {
-		entry, _ := parseEntry(line)
-		if entry != nil && entry.MountPoint == mountpoint {
-			if comment {
-				_, err := FStabFileNew.WriteString("#" + line + "\n")
-				return err
+	mu.Lock()
+	defer mu.Unlock()
+	return f.rewrite(func(lines []string) ([]string, error) {
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if en, _ := parseEntry(line); en != nil && en.MountPoint == mountpoint {
+				if comment {
+					out = append(out, "#"+line)
+				}
+				continue
 			}
-			return nil
+			out = append(out, line)
 		}
+		return out, nil
+	})
+}
 
-		_, err := FStabFileNew.WriteString(line + "\n")
-		return err
-	}); err != nil {
-		return err
-	}
+// RemoveAnyByMountPoint removes the entry for mountpoint whether it is
+// active or disabled (a managed, commented-out line). Editing a disabled
+// drive used to leave the commented line and append a second entry.
+func (f *FStab) RemoveAnyByMountPoint(mountpoint string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return f.rewrite(func(lines []string) ([]string, error) {
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if en, _ := parseEntry(line); en != nil && en.MountPoint == mountpoint {
+				continue
+			}
+			if t := strings.TrimSpace(line); strings.HasPrefix(t, "#") {
+				if en := parseManagedCommentLine(t); en != nil && en.MountPoint == mountpoint {
+					continue
+				}
+			}
+			out = append(out, line)
+		}
+		return out, nil
+	})
+}
 
-	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
-		return err
-	}
+// Enable un-comments a previously disabled managed entry so it becomes active again at
+// next boot. It is the inverse of RemoveByMountPoint(mountpoint, true), and - like every
+// other mutating method on FStab - it refuses to touch anything that isn't a managed
+// entry, since only managed (commented-with-ManagedComment) lines are ever recognized.
+func (f *FStab) Enable(mountpoint string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return f.rewrite(func(lines []string) ([]string, error) {
+		found := false
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			t := strings.TrimSpace(line)
+			if !found && strings.HasPrefix(t, "#") {
+				if en := parseManagedCommentLine(t); en != nil && en.MountPoint == mountpoint {
+					found = true
+					out = append(out, strings.TrimSpace(strings.TrimPrefix(t, "#")))
+					continue
+				}
+			}
+			out = append(out, line)
+		}
+		if !found {
+			return nil, ErrEntryNotFound
+		}
+		return out, nil
+	})
+}
 
-	return os.Rename(FStabPathNew, f.path)
+// Adopt appends ManagedComment to an existing system fstab line to bring it under NivaroOS management.
+func (f *FStab) Adopt(mountpoint string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return f.rewrite(func(lines []string) ([]string, error) {
+		found := false
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if en, _ := parseEntry(line); en != nil && en.MountPoint == mountpoint && !en.Managed {
+				found = true
+				out = append(out, strings.TrimRight(line, "\r\n\t ")+"\t# "+ManagedComment)
+				continue
+			}
+			out = append(out, line)
+		}
+		if !found {
+			return nil, ErrEntryNotFound
+		}
+		return out, nil
+	})
 }
 
 func (f *FStab) GetEntries() ([]*Entry, error) {
@@ -252,87 +356,8 @@ func (f *FStab) GetEntryByUUID(uuid string) (*Entry, error) {
 // next boot. It is the inverse of RemoveByMountPoint(mountpoint, true), and - like every
 // other mutating method on FStab - it refuses to touch anything that isn't a managed
 // entry, since only managed (commented-with-ManagedComment) lines are ever recognized.
-func (f *FStab) Enable(mountpoint string) error {
-	FStabPathNew := f.path + ".nivaroos.new"
-	FStabFileNew, err := os.OpenFile(FStabPathNew, os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	found := false
-
-	if err := foreachLine(f.path, func(line string) error {
-		trimmed := strings.TrimSpace(line)
-
-		if !found && strings.HasPrefix(trimmed, "#") {
-			if entry := parseManagedCommentLine(trimmed); entry != nil && entry.MountPoint == mountpoint {
-				found = true
-				rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
-				_, err := FStabFileNew.WriteString(rest + "\n")
-				return err
-			}
-		}
-
-		_, err := FStabFileNew.WriteString(line + "\n")
-		return err
-	}); err != nil {
-		FStabFileNew.Close()
-		return err
-	}
-
-	if err := FStabFileNew.Close(); err != nil {
-		return err
-	}
-
-	if !found {
-		return ErrEntryNotFound
-	}
-
-	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
-		return err
-	}
-
-	return os.Rename(FStabPathNew, f.path)
-}
 
 // Adopt appends ManagedComment to an existing system fstab line to bring it under NivaroOS management.
-func (f *FStab) Adopt(mountpoint string) error {
-	FStabPathNew := f.path + ".nivaroos.new"
-	FStabFileNew, err := os.OpenFile(FStabPathNew, os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-
-	found := false
-	if err := foreachLine(f.path, func(line string) error {
-		entry, _ := parseEntry(line)
-		if entry != nil && entry.MountPoint == mountpoint && !entry.Managed {
-			found = true
-			_, err := FStabFileNew.WriteString(strings.TrimRight(line, "\r\n\t ") + "\t# " + ManagedComment + "\n")
-			return err
-		}
-
-		_, err := FStabFileNew.WriteString(line + "\n")
-		return err
-	}); err != nil {
-		FStabFileNew.Close()
-		return err
-	}
-
-	if err := FStabFileNew.Close(); err != nil {
-		return err
-	}
-
-	if !found {
-		return ErrEntryNotFound
-	}
-
-	if err := copy(f.path, f.path+".nivaroos.bak"); err != nil {
-		return err
-	}
-
-	return os.Rename(FStabPathNew, f.path)
-}
 
 func Get() *FStab {
 	if _fstab == nil {

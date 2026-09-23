@@ -511,17 +511,10 @@ func (d *diskService) UpdateFstabMount(req model.UpdateFstabMountRequest) (*mode
 		pass = 2
 	}
 
-	mounted, err := currentMountPoints()
-	if err != nil {
-		logger.Error("error checking active mounts before updating fstab entry", zap.Error(err))
-		mounted = map[string]bool{}
-	}
-	if mounted[req.MountPoint] {
-		if err := mount.UmountByMountPoint(req.MountPoint); err != nil {
-			return nil, fmt.Errorf("could not unmount %s to apply changes: %w", req.MountPoint, err)
-		}
-	}
-
+	// Everything that can be checked is checked before the drive is
+	// unmounted (this used to unmount first, so a bad edit left the drive
+	// unmounted - with shares and containers writing into the empty folder
+	// on the system disk).
 	if err := file.IsNotExistMkDir(newMountPoint); err != nil {
 		return nil, fmt.Errorf("could not create mount point directory: %w", err)
 	}
@@ -533,15 +526,40 @@ func (d *diskService) UpdateFstabMount(req model.UpdateFstabMountRequest) (*mode
 		}
 	}
 
-	fstypeArg, optionsArg := fstype, options
-	if err := mount.Mount(existing.Source, newMountPoint, &fstypeArg, &optionsArg); err != nil {
-		return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+	mounted, err := currentMountPoints()
+	if err != nil {
+		logger.Error("error checking active mounts before updating fstab entry", zap.Error(err))
+		mounted = map[string]bool{}
 	}
-	if err := verifyMounted(newMountPoint); err != nil {
-		return nil, newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, err.Error())
+	wasMounted := mounted[req.MountPoint]
+	if wasMounted {
+		if err := mount.UmountByMountPoint(req.MountPoint); err != nil {
+			return nil, fmt.Errorf("could not unmount %s to apply changes: %w", req.MountPoint, err)
+		}
+	}
+	// If the new settings don't mount, put the drive back as it was.
+	restore := func(cause error) error {
+		if wasMounted {
+			oldType, oldOpts := existing.FSType, existing.Options
+			if err := mount.Mount(existing.Source, req.MountPoint, &oldType, &oldOpts); err != nil {
+				return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, cause.Error()+" - and remounting the previous settings failed too: "+err.Error())
+			}
+		}
+		return newFstabError(common_err.FSTAB_TEST_MOUNT_FAILED, cause.Error()+" (the previous settings are still in use)")
 	}
 
-	if err := fstab.Get().RemoveByMountPoint(req.MountPoint, false); err != nil {
+	fstypeArg, optionsArg := fstype, options
+	if err := mount.Mount(existing.Source, newMountPoint, &fstypeArg, &optionsArg); err != nil {
+		return nil, restore(err)
+	}
+	if err := verifyMounted(newMountPoint); err != nil {
+		_ = mount.UmountByMountPoint(newMountPoint)
+		return nil, restore(err)
+	}
+
+	// Active or disabled: editing a disabled entry used to leave its
+	// commented line and append a second one.
+	if err := fstab.Get().RemoveAnyByMountPoint(req.MountPoint); err != nil {
 		return nil, err
 	}
 
@@ -555,6 +573,12 @@ func (d *diskService) UpdateFstabMount(req model.UpdateFstabMountRequest) (*mode
 	}
 	if err := fstab.Get().Add(newEntry, false); err != nil {
 		return nil, err
+	}
+	if !existing.Enabled {
+		// It stays disabled at boot, as it was.
+		if err := fstab.Get().RemoveByMountPoint(newMountPoint, true); err != nil {
+			return nil, err
+		}
 	}
 
 	return d.getFstabMountByMountPoint(newMountPoint)
@@ -582,15 +606,7 @@ func (d *diskService) RemoveFstabMount(mountPoint string) error {
 		}
 	}
 
-	if !existing.Enabled {
-		// A disabled entry is commented out, so RemoveByMountPoint's normal (active-line-
-		// only) matching would silently no-op on it - uncomment it first so it can be found.
-		if err := fstab.Get().Enable(mountPoint); err != nil {
-			return err
-		}
-	}
-
-	return fstab.Get().RemoveByMountPoint(mountPoint, false)
+	return fstab.Get().RemoveAnyByMountPoint(mountPoint)
 }
 
 // SetFstabMountEnabled toggles whether a managed entry is active at next boot, without
