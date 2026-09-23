@@ -24,7 +24,7 @@
 					<div class="setting-desc">{{ $t('Display unmanaged containers on the home grid') }}</div>
 				</div>
 				<div class="row-control">
-					<b-switch v-model="barData.existing_apps_switch" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="saveBarData"></b-switch>
+					<b-switch v-model="barData.existing_apps_switch" class="is-flex-direction-row-reverse mr-0" type="is-primary" @input="saveBarData"></b-switch>
 				</div>
 			</div>
 
@@ -43,7 +43,7 @@
 						<b-input v-model="portInput" type="number" size="is-small" class="port-input"
 							@keyup.enter.native="savePort"></b-input>
 						<b-button class="ml-2" rounded size="is-small" @click="editingPort = false">{{ $t('Cancel') }}</b-button>
-						<b-button class="ml-2" rounded size="is-small" type="is-dark" :loading="savingPort" @click="savePort">
+						<b-button class="ml-2" rounded size="is-small" type="is-primary" :loading="savingPort" @click="savePort">
 							{{ $t('Save') }}
 						</b-button>
 					</template>
@@ -108,7 +108,7 @@
 				</div>
 				<div class="row-control">
 					<b-switch :value="showSeconds" :disabled="!!customDateTimeFormat" class="is-flex-direction-row-reverse mr-0"
-						type="is-dark" @input="setShowSeconds"></b-switch>
+						type="is-primary" @input="setShowSeconds"></b-switch>
 				</div>
 			</div>
 
@@ -459,7 +459,7 @@ export default {
 
 	&.is-confirm {
 		background: rgba(16, 185, 129, 0.15);
-		color: #059669;
+		color: var(--color-success-fg);
 
 		&:hover {
 			background: rgba(16, 185, 129, 0.25);

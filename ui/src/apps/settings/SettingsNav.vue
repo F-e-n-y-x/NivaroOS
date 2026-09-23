@@ -6,6 +6,8 @@
 				:key="s.id"
 				class="nav-item hover-effect _is-radius"
 				:class="{ active: activeSection === s.id }"
+				:aria-current="activeSection === s.id ? 'page' : null"
+				:aria-label="compact ? $t(s.label) : null"
 				:title="compact ? $t(s.label) : null"
 				@click="$emit('select', s.id)"
 			>
@@ -111,10 +113,12 @@ export default {
 
 	&.active {
 		background: var(--theme-card-bg, #f1f5f9); color: var(--theme-text-primary, #1e293b);
-		font-weight: 500;
+		font-weight: 600;
+		// Not colour alone: an accent bar marks the current section.
+		box-shadow: inset 3px 0 0 var(--color-primary-fg, #1d4ed8);
 
 		.icon {
-			color: var(--color-primary, #2563eb);
+			color: var(--color-primary-fg, #1d4ed8);
 		}
 	}
 }

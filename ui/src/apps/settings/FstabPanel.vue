@@ -187,7 +187,7 @@
 								v-if="!isSystemProtected(e.mount_point)"
 								rounded
 								size="is-small"
-								type="is-dark"
+								type="is-primary"
 								outlined
 								icon-left="shield-plus-outline"
 								:loading="adopting === e.mount_point"
@@ -997,12 +997,12 @@ export default {
 
 	&.is-windows {
 		background: rgba(0, 120, 215, 0.1);
-		color: #0078d7;
+		color: var(--color-primary-fg);
 	}
 
 	&.is-linux {
 		background: rgba(234, 179, 8, 0.12);
-		color: #d97706;
+		color: var(--color-warning-fg);
 	}
 
 	&.is-default {
@@ -1545,12 +1545,12 @@ export default {
 
 	&.is-windows {
 		background: rgba(0, 120, 215, 0.1);
-		color: #0078d7;
+		color: var(--color-primary-fg);
 	}
 
 	&.is-linux {
 		background: rgba(234, 179, 8, 0.12);
-		color: #d97706;
+		color: var(--color-warning-fg);
 	}
 
 	&.is-default {

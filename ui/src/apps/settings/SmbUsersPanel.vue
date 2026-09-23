@@ -12,7 +12,7 @@
 				<option v-for="name in availableSystemUsers" :key="name" :value="name">{{ name }}</option>
 			</b-select>
 			<b-input v-model="newUser.password" :placeholder="$t('Password')" type="password" size="is-small" class="add-input"></b-input>
-			<b-button rounded size="is-small" type="is-dark" native-type="submit" :loading="creating">
+			<b-button rounded size="is-small" type="is-primary" native-type="submit" :loading="creating">
 				{{ $t('Add') }}
 			</b-button>
 		</form>
@@ -32,7 +32,7 @@
 				<b-input v-model="newPassword" :placeholder="$t('New password')" type="password" size="is-small" expanded
 					@keyup.enter.native="savePassword(u)"></b-input>
 				<b-button rounded size="is-small" @click="passwordTarget = null">{{ $t('Cancel') }}</b-button>
-				<b-button rounded size="is-small" type="is-dark" :loading="savingPassword" @click="savePassword(u)">
+				<b-button rounded size="is-small" type="is-primary" :loading="savingPassword" @click="savePassword(u)">
 					{{ $t('Save') }}
 				</b-button>
 			</div>

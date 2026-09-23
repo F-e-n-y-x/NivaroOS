@@ -184,7 +184,9 @@ $gray-font:rgba(144, 149, 153, 1);
 // Colors
 $casablue: hsl(216, 90%, 54%) !default;
 
-$primary: $casablue;
+// The design token primary (--color-primary). casablue gave white button
+// text 4.29:1 (below AA) and a second, slightly different blue on screen.
+$primary: #2563eb;
 $primary-light: findLightColor($primary);
 $primary-dark: findDarkColor($primary);
 $primary-invert: findColorInvert($primary);

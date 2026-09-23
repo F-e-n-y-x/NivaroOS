@@ -10,7 +10,7 @@
 		<form v-if="showAddForm" class="account-inline-form" @submit.prevent="createUser">
 			<b-input v-model="newUser.username" :placeholder="$t('Username')" size="is-small" class="add-input"></b-input>
 			<b-input v-model="newUser.password" :placeholder="$t('Password')" type="password" size="is-small" class="add-input"></b-input>
-			<b-button rounded size="is-small" type="is-dark" native-type="submit" :loading="creating">
+			<b-button rounded size="is-small" type="is-primary" native-type="submit" :loading="creating">
 				{{ $t('Add') }}
 			</b-button>
 		</form>

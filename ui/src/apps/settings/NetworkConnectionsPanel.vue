@@ -23,7 +23,7 @@
 		</div>
 
 		<div class="add-row">
-			<b-button rounded size="is-small" type="is-dark" @click="openAdd">
+			<b-button rounded size="is-small" type="is-primary" @click="openAdd">
 				<i class="mdi mdi-plus mr-1"></i>{{ $t('Connect to a Network Share') }}
 			</b-button>
 		</div>

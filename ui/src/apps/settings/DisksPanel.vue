@@ -14,7 +14,7 @@
 						<button class="icon-button mr-2" type="button" :title="$t('Drive info')" @click="toggleDetails(d)">
 							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
 						</button>
-						<b-button rounded size="is-small" type="is-dark" :loading="busyPath === d.path" @click="confirmAdd(d)">
+						<b-button rounded size="is-small" type="is-primary" :loading="busyPath === d.path" @click="confirmAdd(d)">
 							{{ $t('Use for storage') }}
 						</b-button>
 					</div>
@@ -60,7 +60,7 @@
 					<div class="setting-desc">{{ $t('Automatically mount external USB drives when connected') }}</div>
 				</div>
 				<div class="row-control">
-					<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-dark" @input="toggleAutoMount"></b-switch>
+					<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-primary" @input="toggleAutoMount"></b-switch>
 				</div>
 			</div>
 			<div v-for="u in usb" :key="u.name" class="setting-row">
@@ -233,7 +233,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.09);

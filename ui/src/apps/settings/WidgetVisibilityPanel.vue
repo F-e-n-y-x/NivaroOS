@@ -9,7 +9,7 @@
 						@click="toggleDiskConfig">
 						<b-icon :icon="showDiskConfig ? 'expand-up2' : 'expand-down2'" pack="casa" size="is-16"></b-icon>
 					</button>
-					<b-switch :value="!w.hidden" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+					<b-switch :value="!w.hidden" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 						@input="toggle(w)"></b-switch>
 				</div>
 			</div>
@@ -143,7 +143,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 	margin-right: var(--space-2);
 
 	&:hover {

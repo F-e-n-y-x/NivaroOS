@@ -130,7 +130,7 @@
 			</div>
 
 			<!-- Upgradable Package List Rows -->
-			<div v-if="filteredPackages.length > 0" class="package-list-wrapper">
+			<div v-if="filteredPackages.length > 0" class="package-list-wrapper" tabindex="0" role="region" :aria-label="$t('Linux System Packages (APT)')">
 				<div v-for="pkg in filteredPackages" :key="pkg.name" class="setting-row">
 					<b-icon class="row-icon" :icon="pkg.is_security ? 'shield-alert-outline' : 'package-up'" pack="mdi" size="is-20" :class="{ 'has-text-danger': pkg.is_security }"></b-icon>
 					<div class="row-label">
@@ -429,7 +429,7 @@ export default {
 
 	&.is-up-to-date {
 		background: rgba(16, 185, 129, 0.12);
-		color: #10b981;
+		color: var(--color-success-fg);
 	}
 
 	&.is-update-available {
@@ -559,7 +559,7 @@ export default {
 	}
 
 	.ver-new {
-		color: #10b981;
+		color: var(--color-success-fg);
 		font-weight: 500;
 	}
 }

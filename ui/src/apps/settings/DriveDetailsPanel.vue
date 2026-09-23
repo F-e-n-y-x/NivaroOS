@@ -86,7 +86,7 @@
 				<div v-if="customMode" class="custom-standby">
 					<b-input v-model.number="customMinutesInput" type="number" min="0" size="is-small" class="custom-standby-input"
 						:placeholder="$t('Minutes')"></b-input>
-					<b-button rounded size="is-small" type="is-dark" :loading="savingStandby" @click="applyCustom">{{ $t('Apply') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="savingStandby" @click="applyCustom">{{ $t('Apply') }}</b-button>
 					<b-button rounded size="is-small" @click="customMode = false">{{ $t('Cancel') }}</b-button>
 				</div>
 				<p v-if="standbyError" class="error-note">{{ standbyError }}</p>
@@ -307,7 +307,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);

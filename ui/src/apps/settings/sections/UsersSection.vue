@@ -47,7 +47,7 @@
 					@keyup.enter.native="savePassword"></b-input>
 				<div class="password-form-actions">
 					<b-button rounded size="is-small" @click="cancelPassword">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-dark" :loading="savingPassword" @click="savePassword">{{ $t('Save') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="savingPassword" @click="savePassword">{{ $t('Save') }}</b-button>
 				</div>
 				<p v-if="passwordError" class="error-note">{{ passwordError }}</p>
 			</div>
@@ -58,7 +58,7 @@
 				</div>
 				<div class="avatar-crop-actions">
 					<b-button rounded size="is-small" @click="cancelCrop">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-dark" :loading="savingAvatar" @click="saveAvatar">{{ $t('Save') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="savingAvatar" @click="saveAvatar">{{ $t('Save') }}</b-button>
 				</div>
 			</div>
 		</div>
@@ -308,7 +308,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.1);

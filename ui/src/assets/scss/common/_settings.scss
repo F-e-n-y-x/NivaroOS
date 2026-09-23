@@ -38,7 +38,7 @@
 	font-family: $family-sans-serif;
 	font-size: 1.25rem;
 	font-weight: 500;
-	color: #1e293b;
+	color: var(--theme-text-primary);
 	letter-spacing: -0.01em;
 	line-height: 1.2;
 	margin-bottom: 1.25rem;
@@ -86,7 +86,7 @@
 .setting-card {
 	background: var(--theme-card-bg, #ffffff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: 14px;
-	border: 1px solid rgba(0, 0, 0, 0.07);
+	border: 1px solid var(--theme-card-border);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
 	margin-bottom: 1.25rem;
 	overflow: hidden;
@@ -101,7 +101,7 @@
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	color: #64748b;
+	color: var(--theme-text-muted);
 	padding: 0.75rem 0.25rem 0.45rem;
 }
 
@@ -118,7 +118,7 @@
 .row-label-heading {
 	font-size: 0.825rem;
 	font-weight: 400;
-	color: #1e293b;
+	color: var(--theme-text-primary);
 	margin-bottom: 0.45rem;
 }
 
@@ -127,11 +127,11 @@
 	align-items: center;
 	padding: 0.95rem 1.25rem;
 	min-height: 2.75rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	border-bottom: 1px solid var(--theme-card-border);
 	transition: background 0.12s ease;
 
 	&:hover {
-		background: rgba(0, 0, 0, 0.015);
+		background: var(--theme-card-hover);
 	}
 
 	&:last-child {
@@ -143,7 +143,7 @@
 		width: 1.25rem;
 		height: 1.25rem;
 		margin-right: 0.95rem;
-		color: #64748b;
+		color: var(--theme-text-muted);
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -178,20 +178,20 @@
 		flex: 1;
 		font-size: 0.875rem;
 		font-weight: 400;
-		color: #1e293b;
+		color: var(--theme-text-primary);
 	}
 
 	.setting-title {
 		font-size: 0.875rem;
 		font-weight: 400;
-		color: #1e293b;
+		color: var(--theme-text-primary);
 		line-height: 1.35;
 	}
 
 	.setting-desc {
 		font-size: 0.775rem;
 		font-weight: 400;
-		color: #64748b;
+		color: var(--theme-text-muted);
 		margin-top: 0.12rem;
 		line-height: 1.35;
 	}
@@ -205,7 +205,7 @@
 
 .icon-button {
 	border: none;
-	background: rgba(0, 0, 0, 0.05);
+	background: var(--theme-pill-bg);
 	width: 1.6rem;
 	height: 1.6rem;
 	border-radius: 50%;
@@ -213,7 +213,7 @@
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: #64748b;
+	color: var(--theme-text-muted);
 	transition: background 0.12s ease, color 0.12s ease;
 
 	.icon {
@@ -245,12 +245,12 @@
 
 	&:hover {
 		background: rgba(0, 0, 0, 0.09);
-		color: #1e293b;
+		color: var(--theme-text-primary);
 	}
 
 	&.is-confirm {
 		background: rgba(16, 185, 129, 0.15);
-		color: #059669;
+		color: var(--color-success-fg);
 
 		&:hover {
 			background: rgba(16, 185, 129, 0.25);
@@ -274,8 +274,8 @@
 	display: inline-flex;
 	align-items: center;
 	padding: 0.2rem 0.6rem;
-	background: rgba(0, 0, 0, 0.05);
-	color: #1e293b;
+	background: var(--theme-pill-bg);
+	color: var(--theme-text-primary);
 	border-radius: 6px;
 	font-family: $family-monospace;
 	font-size: 0.825rem;
@@ -310,7 +310,7 @@
 	align-items: center;
 	padding: 0.18rem 0.6rem;
 	border-radius: 999px;
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--theme-card-border);
 	background: var(--theme-pill-bg, #f8fafc); border: 1px solid var(--theme-card-border, #e2e8f0); font-size: 0.725rem; color: var(--theme-pill-color, #475569);
 	white-space: nowrap;
 
@@ -318,7 +318,7 @@
 	&.is-online {
 		border-color: rgba(16, 185, 129, 0.3);
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 	}
 
 	&.is-feature {
@@ -359,7 +359,7 @@
 	align-items: center;
 	gap: 0.85rem;
 	padding: 0.9rem 1.25rem;
-	border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	border-bottom: 1px solid var(--theme-card-border);
 	flex-wrap: wrap;
 
 	&:last-child {
@@ -399,7 +399,7 @@
 .account-name {
 	font-weight: 500;
 	font-size: 0.875rem;
-	color: #1e293b;
+	color: var(--theme-text-primary);
 	display: flex;
 	align-items: center;
 	gap: 0.45rem;
@@ -408,7 +408,7 @@
 .account-sub {
 	font-size: 0.75rem;
 	font-weight: 400;
-	color: #64748b;
+	color: var(--theme-text-muted);
 }
 
 .account-meta {
@@ -434,7 +434,7 @@
 	font-weight: 500;
 	padding: 0.25rem 0.55rem;
 	border-radius: 999px;
-	background: rgba(0, 0, 0, 0.05);
+	background: var(--theme-pill-bg);
 	cursor: pointer;
 	user-select: none;
 
@@ -460,7 +460,7 @@
 	padding: 1rem 1.25rem;
 	font-size: 0.8125rem;
 	font-weight: 400;
-	color: #64748b;
+	color: var(--theme-text-muted);
 }
 
 // Custom segmented control (replaces a Buefy is-toggle b-tabs bar, which
@@ -484,17 +484,17 @@
 	font-weight: 500;
 	border-radius: 7px;
 	cursor: pointer;
-	color: #64748b;
+	color: var(--theme-text-muted);
 	white-space: nowrap;
 	transition: background 0.15s ease, color 0.15s ease;
 
 	&:hover {
-		color: #1e293b;
+		color: var(--theme-text-primary);
 	}
 
 	&.active {
 		background: var(--theme-card-bg, #ffffff); color: var(--theme-text-primary, #1e293b);
-		color: #1e293b;
+		color: var(--theme-text-primary);
 		font-weight: 500;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 	}
@@ -512,7 +512,7 @@
 .slider-hint {
 	font-size: 0.75rem;
 	font-weight: 500;
-	color: #94a3b8;
+	color: var(--theme-text-muted);
 	white-space: nowrap;
 }
 
@@ -521,7 +521,7 @@
 	padding: 0.15rem 0.5rem;
 	border-radius: 999px;
 	background: var(--theme-card-subtle, #f1f5f9); color: var(--theme-text-primary, #1e293b);
-	color: #1e293b;
+	color: var(--theme-text-primary);
 	font-size: 0.75rem;
 	font-weight: 500;
 	text-align: center;
@@ -554,7 +554,7 @@ input[type='range'].pretty-range {
 		height: 20px;
 		border-radius: 50%;
 		background: #fff;
-		border: 1px solid rgba(0, 0, 0, 0.08);
+		border: 1px solid var(--theme-card-border);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 		transition: transform 0.1s ease;
 	}
@@ -580,7 +580,7 @@ input[type='range'].pretty-range {
 		height: 18px;
 		border-radius: 50%;
 		background: #fff;
-		border: 1px solid rgba(0, 0, 0, 0.08);
+		border: 1px solid var(--theme-card-border);
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 	}
 
@@ -610,4 +610,57 @@ input[type='range'].pretty-range {
 	padding: 0 0.6rem;
 	margin-top: -0.5rem;
 	margin-bottom: 0.5rem;
+}
+
+// Bulma's helper colours (has-text-success = #48c78e, 2.1:1 on white) and
+// muted literals used across the Settings templates, mapped to readable
+// tokens for both themes.
+.settings-app,
+.settings-overlay-card,
+.settings-overlay-body {
+	.has-text-success { color: var(--color-success-fg) !important; }
+	.has-text-danger { color: var(--color-danger-fg) !important; }
+	.has-text-warning { color: var(--color-warning-fg) !important; }
+	.has-text-info,
+	.has-text-primary,
+	.has-text-link { color: var(--color-primary-fg) !important; }
+	.has-text-grey,
+	.has-text-grey-light,
+	.text-muted { color: var(--theme-text-muted) !important; }
+
+	.tag.is-success.is-light { color: var(--color-success-fg); }
+	.tag.is-danger.is-light { color: var(--color-danger-fg); }
+	.tag.is-warning.is-light { color: var(--color-warning-fg); }
+	.tag.is-info.is-light,
+	.tag.is-primary.is-light { color: var(--color-primary-fg); }
+
+	// Keyboard focus is always visible (several controls removed the
+	// outline without a replacement).
+	:focus-visible {
+		outline: 2px solid var(--color-primary-fg) !important;
+		outline-offset: 2px;
+	}
+}
+
+// Narrow windows (phone/tablet): nothing may push the section wider than
+// the window - tabs wrap, long names/versions/image refs break.
+.settings-app {
+	.segmented-control {
+		flex-wrap: wrap;
+		max-width: 100%;
+	}
+	code,
+	.ver-new,
+	.ver-curr,
+	.setting-desc,
+	.setting-title {
+		overflow-wrap: anywhere;
+	}
+	.setting-row,
+	.row-label {
+		min-width: 0;
+	}
+	.settings-content {
+		overflow-x: hidden;
+	}
 }

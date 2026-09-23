@@ -221,7 +221,7 @@
 		<div v-else-if="activeTab === 'sources'">
 			<div class="is-flex is-align-items-center is-justify-content-between mb-3">
 				<span class="text-muted is-size-7">{{ $t('Manage where this server downloads software updates from') }}</span>
-				<b-button rounded size="is-small" type="is-dark" @click="showAddSourceModal = true">
+				<b-button rounded size="is-small" type="is-primary" @click="showAddSourceModal = true">
 					<i class="mdi mdi-plus mr-1"></i>{{ $t('Add Source') }}
 				</b-button>
 			</div>

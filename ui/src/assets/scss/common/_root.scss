@@ -19,6 +19,13 @@
     --color-primary-hover:  #1d4ed8;
     --color-primary-soft:   rgba(37, 99, 235, 0.1);
     --color-primary-text:   #ffffff;
+    // Text/icon colours on the page background. The fill colours above are
+    // for buttons (white text on them); as *text* they don't all reach
+    // 4.5:1, so text uses these.
+    --color-primary-fg:     #1d4ed8;
+    --color-success-fg:     #047857;
+    --color-danger-fg:      #b91c1c;
+    --color-warning-fg:     #b45309;
 
     --color-danger:         #ef4444;
     --color-danger-hover:   #dc2626;
@@ -143,16 +150,16 @@
 
     // ── Theme Tokens: Form Inputs ───────────────────────────
     --theme-input-bg:         #f8fafc;
-    --theme-input-border:     rgba(0, 0, 0, 0.15);
+    --theme-input-border:     #8391a2;    // 3:1 on the input and page (was 1.3:1)
     --theme-input-focus:      #2563eb;
     --theme-input-text:       #0f172a;
-    --theme-input-placeholder: #94a3b8;
+    --theme-input-placeholder: #64748b;  // 4.5:1 (was 2.45)
 
     // ── Theme Tokens: Text ──────────────────────────────────
     // Use these for all non-semantic text so dark mode works automatically
     --theme-text-primary:   #0f172a;    // headings, labels, values
     --theme-text-secondary: #475569;    // descriptions, subtitles
-    --theme-text-muted:     #94a3b8;    // timestamps, meta, hints
+    --theme-text-muted:     #5b6779;    // timestamps, meta, hints - 5:1 on every card (was #94a3b8, 2.56)
 
     // ── Theme Tokens: Pills / Badges ───────────────────────
     --theme-pill-bg:         #f1f5f9;

@@ -97,9 +97,9 @@
       <!-- Modal-Card Footer Start-->
       <footer class="modal-card-foot is-flex is-align-items-center" :class="buttonAlign" v-if="state !== 1">
         <b-button v-if="state != 1" :label="$t('Back')" rounded @click.stop="goto(1)" />
-        <b-button v-else-if="state == 2" :label="$t('Submit')" expaned rounded type="is-dark" @click="handleSubmit(saveUser)" />
-        <b-button v-else-if="state == 3" :label="$t('Submit')" expaned rounded type="is-dark" @click="handleSubmit(savePassword)" />
-        <b-button v-else-if="state == 4" :label="$t('Submit')" expaned rounded type="is-dark" @click="handleSubmit(saveAvatar)" />
+        <b-button v-else-if="state == 2" :label="$t('Submit')" expaned rounded type="is-primary" @click="handleSubmit(saveUser)" />
+        <b-button v-else-if="state == 3" :label="$t('Submit')" expaned rounded type="is-primary" @click="handleSubmit(savePassword)" />
+        <b-button v-else-if="state == 4" :label="$t('Submit')" expaned rounded type="is-primary" @click="handleSubmit(saveAvatar)" />
 
       </footer>
       <!-- Modal-Card Footer End -->

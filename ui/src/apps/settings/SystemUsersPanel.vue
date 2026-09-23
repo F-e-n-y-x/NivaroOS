@@ -14,7 +14,7 @@
 				<input type="checkbox" v-model="newUser.sudo" />
 				{{ $t('Sudo') }}
 			</label>
-			<b-button rounded size="is-small" type="is-dark" native-type="submit" :loading="creating">
+			<b-button rounded size="is-small" type="is-primary" native-type="submit" :loading="creating">
 				{{ $t('Add') }}
 			</b-button>
 		</form>
@@ -31,11 +31,11 @@
 			</div>
 			<div class="account-meta">
 				<label class="account-toggle-chip" :class="{ on: u.sudo }">
-					<input type="checkbox" :checked="u.sudo" :disabled="u.protected" @change="setGroup(u, 'sudo', $event.target.checked)" />
+					<input type="checkbox" :checked="u.sudo" :disabled="u.protected" :aria-label="$t('Administrator (sudo) for {user}', { user: u.username })" @change="setGroup(u, 'sudo', $event.target.checked)" />
 					{{ $t('Sudo') }}
 				</label>
 				<label class="account-toggle-chip" :class="{ on: u.docker }">
-					<input type="checkbox" :checked="u.docker" :disabled="u.protected" @change="setGroup(u, 'docker', $event.target.checked)" />
+					<input type="checkbox" :checked="u.docker" :disabled="u.protected" :aria-label="$t('Docker access for {user}', { user: u.username })" @change="setGroup(u, 'docker', $event.target.checked)" />
 					{{ $t('Docker') }}
 				</label>
 			</div>
@@ -50,7 +50,7 @@
 				<b-input v-model="newPassword" :placeholder="$t('New password')" type="password" size="is-small" expanded
 					@keyup.enter.native="savePassword(u)"></b-input>
 				<b-button rounded size="is-small" @click="passwordTarget = null">{{ $t('Cancel') }}</b-button>
-				<b-button rounded size="is-small" type="is-dark" :loading="savingPassword" @click="savePassword(u)">
+				<b-button rounded size="is-small" type="is-primary" :loading="savingPassword" @click="savePassword(u)">
 					{{ $t('Save') }}
 				</b-button>
 			</div>

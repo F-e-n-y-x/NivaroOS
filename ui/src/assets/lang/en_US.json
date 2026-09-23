@@ -801,5 +801,7 @@
   "Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.": "Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.",
   "Update {n} containers? Each one is recreated with its newest image and restarts briefly.": "Update {n} containers? Each one is recreated with its newest image and restarts briefly.",
   "Unmount {path}? Network shares, containers and apps using it lose access until it is mounted again.": "Unmount {path}? Network shares, containers and apps using it lose access until it is mounted again.",
-  "This also removes {n} other package(s):": "This also removes {n} other package(s):"
+  "This also removes {n} other package(s):": "This also removes {n} other package(s):",
+  "Administrator (sudo) for {user}": "Administrator (sudo) for {user}",
+  "Docker access for {user}": "Docker access for {user}"
 }

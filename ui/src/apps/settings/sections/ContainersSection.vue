@@ -958,7 +958,7 @@ export default {
 	align-items: center;
 	padding: var(--space-3) var(--space-4);
 	background: rgba(255, 255, 255, 0.6);
-	border: 1px solid rgba(0, 0, 0, 0.06);
+	border: 1px solid var(--theme-card-border);
 	border-radius: var(--radius-card);
 
 	.stat-icon {
@@ -977,7 +977,7 @@ export default {
 		}
 		&.bg-green {
 			background: rgba(16, 185, 129, 0.12);
-			color: #10b981;
+			color: var(--color-success-fg);
 		}
 		&.bg-amber {
 			background: rgba(245, 158, 11, 0.12);
@@ -1111,7 +1111,7 @@ export default {
 
 .container-item-row {
 	padding: var(--space-3) var(--space-4);
-	border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+	border-bottom: 1px solid var(--theme-card-border);
 
 	&:last-child {
 		border-bottom: none;
@@ -1163,7 +1163,7 @@ export default {
 
 	&.is-running {
 		background: rgba(16, 185, 129, 0.12);
-		color: #059669;
+		color: var(--color-success-fg);
 		.dot {
 			background: #10b981;
 		}
@@ -1380,14 +1380,14 @@ export default {
 .digest-text {
 	font-size: var(--font-2xs);
 	font-weight: 500;
-	color: #0284c7;
+	color: var(--color-primary-fg);
 	display: inline-flex;
 	align-items: center;
 
 	code {
 		font-size: var(--font-2xs);
 		background: rgba(2, 132, 199, 0.08);
-		color: #0284c7;
+		color: var(--color-primary-fg);
 		padding: 1px 4px;
 		border-radius: var(--radius-xs);
 		margin-left: 2px;

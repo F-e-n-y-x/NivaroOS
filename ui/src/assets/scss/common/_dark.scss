@@ -79,10 +79,14 @@ html.is-dark {
 
 	// ── Theme Tokens: Form Inputs ───────────────────────────
 	--theme-input-bg:            #18181b;
-	--theme-input-border:        rgba(255, 255, 255, 0.18);
+	--theme-input-border:        #6b6b75; // 3:1 on the input (was ~1.5:1)
+	--color-primary-fg:          #60a5fa; // blue as text: 7:1 (the #2563eb fill is 3.4:1 as text)
+	--color-success-fg:          #4ade80;
+	--color-danger-fg:           #f87171;
+	--color-warning-fg:          #fbbf24;
 	--theme-input-focus:         #3b82f6;
 	--theme-input-text:          #f4f4f5;
-	--theme-input-placeholder:   #71717a;
+	--theme-input-placeholder:   #8e8e96; // 4.5:1 (was 3.67)
 
 	// ── Theme Tokens: Text ──────────────────────────────────
 	--theme-text-primary:        #f4f4f5;
@@ -493,7 +497,24 @@ html.is-dark {
 	// ==========================================
 	// 4. Modals, Dialogs, Toasts & Snackbars
 	// ==========================================
-	.modal-card {
+	// The wallpaper picker embedded in Appearance reuses the modal-card
+	// classes; it is part of the page there, not a floating dialog.
+	.modal-card.is-embedded {
+		background: transparent !important;
+		border: 0 !important;
+		box-shadow: none !important;
+
+		.modal-card-body {
+			background: transparent !important;
+		}
+	}
+
+	// Buefy's loading veil is white; on dark cards it flashed a light panel.
+	.loading-overlay .loading-background {
+		background: rgba(9, 9, 11, 0.6) !important;
+	}
+
+	.modal-card:not(.is-embedded) {
 		background: #18181b !important;
 		border: 1px solid rgba(255, 255, 255, 0.14) !important;
 		color: #f4f4f5 !important;
@@ -1179,9 +1200,18 @@ html.is-dark {
 					color: #f4f4f5 !important;
 				}
 
-				&.is-active {
+				// The nav marks the current section with .active (this only
+				// matched .is-active, so dark mode had no visible selection).
+				&.is-active,
+				&.active {
 					background: rgba(59, 130, 246, 0.2) !important;
 					color: #60a5fa !important;
+					box-shadow: inset 3px 0 0 #60a5fa;
+
+					.icon,
+					.icon i {
+						color: #60a5fa !important;
+					}
 
 					.nav-label {
 						color: #60a5fa !important;
@@ -2375,11 +2405,10 @@ html.is-dark {
 
 	// Universal text color overrides for scoped styles
 	// These use high-specificity selectors to beat scoped Vue styles
-	.settings-app *,
-	.settings-overlay-card *,
-	.settings-overlay-body * {
-		border-color: transparent; // reset, let explicit rules apply
-	}
+	// (A `.settings-app * { border-color: transparent }` reset used to sit
+	// here: it erased every card, input and search-box edge in dark mode.
+	// Borders now come from the --theme-card-border / --theme-input-border
+	// tokens.)
 
 	// AboutPanel — hardcoded #1e293b, #64748b, #334155 text
 	.settings-app .about-version-label,

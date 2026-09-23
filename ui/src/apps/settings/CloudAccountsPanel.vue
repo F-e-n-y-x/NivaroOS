@@ -48,7 +48,7 @@
 				{{ showAdvanced ? $t('Hide advanced options') : $t('Show {n} advanced options', { n: hiddenFormOptionCount }) }}
 			</a>
 			<div class="form-actions">
-				<b-button rounded size="is-small" type="is-dark" :loading="submitting" @click="submitForm">{{ $t('Connect') }}</b-button>
+				<b-button rounded size="is-small" type="is-primary" :loading="submitting" @click="submitForm">{{ $t('Connect') }}</b-button>
 				<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 			</div>
 			<p v-if="error" class="error-note">{{ error }}</p>
@@ -79,7 +79,7 @@
 			</div>
 
 			<div class="form-actions">
-				<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!form.token.trim()" @click="submitToken">{{ $t('Connect') }}</b-button>
+				<b-button rounded size="is-small" type="is-primary" :loading="submitting" :disabled="!form.token.trim()" @click="submitToken">{{ $t('Connect') }}</b-button>
 				<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 			</div>
 			<p v-if="error" class="error-note">{{ error }}</p>
@@ -104,7 +104,7 @@
 					</div>
 				</div>
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!icloud.appleId || !icloud.password" @click="startIcloud">{{ $t('Continue') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="submitting" :disabled="!icloud.appleId || !icloud.password" @click="startIcloud">{{ $t('Continue') }}</b-button>
 					<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 				</div>
 			</template>
@@ -121,7 +121,7 @@
 					</div>
 				</div>
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-dark" :loading="submitting" :disabled="!icloud.answer" @click="verifyIcloud">{{ $t('Verify') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="submitting" :disabled="!icloud.answer" @click="verifyIcloud">{{ $t('Verify') }}</b-button>
 					<b-button rounded size="is-small" @click="cancelAdd">{{ $t('Cancel') }}</b-button>
 				</div>
 			</template>

@@ -630,7 +630,7 @@ export default {
 		}
 		&.bg-green {
 			background: rgba(16, 185, 129, 0.12);
-			color: #10b981;
+			color: var(--color-success-fg);
 		}
 	}
 
@@ -778,7 +778,7 @@ export default {
 	}
 	&.type-maintenance {
 		background: rgba(245, 158, 11, 0.12);
-		color: #d97706;
+		color: var(--color-warning-fg);
 	}
 	&.type-command {
 		background: rgba(139, 92, 246, 0.12);

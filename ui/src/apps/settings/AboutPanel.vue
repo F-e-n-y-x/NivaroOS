@@ -84,7 +84,7 @@
 					<b-button rounded size="is-small" @click="loadLogs">{{ $t('Refresh') }}</b-button>
 				</div>
 			</div>
-			<pre class="log-view">{{ logText }}</pre>
+			<pre class="log-view" tabindex="0" role="region" :aria-label="$t('System Logs')">{{ logText }}</pre>
 		</div>
 	</div>
 </template>
@@ -233,7 +233,7 @@ export default {
 
 	&.is-confirm {
 		background: rgba(16, 185, 129, 0.15);
-		color: #059669;
+		color: var(--color-success-fg);
 
 		&:hover {
 			background: rgba(16, 185, 129, 0.25);

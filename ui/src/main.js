@@ -7,6 +7,7 @@ import i18n from '@/plugins/i18n'
 import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
 import Buefy from 'buefy'
+import A11yLabels from '@/plugins/a11yLabels'
 import VueFullscreen from 'vue-fullscreen'
 import Vue2TouchEvents from 'vue2-touch-events'
 import VueSocialSharing from 'vue-social-sharing'
@@ -65,6 +66,7 @@ const socket = io( {
 });
 
 Vue.use(Buefy)
+Vue.use(A11yLabels)
 Vue.component('ConfirmWindow', ConfirmWindow)
 Vue.use(VueFullscreen)
 Vue.use(VAnimateCss, { animateCSSPath: '/css/animate.min.css' });

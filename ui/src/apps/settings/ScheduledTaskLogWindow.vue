@@ -9,7 +9,7 @@
 				<span v-if="task.last_run" class="task-timestamp">
 					<i class="mdi mdi-clock-outline mr-1"></i>{{ task.last_run }}
 				</span>
-				<b-button rounded size="is-small" type="is-dark" icon-left="content-copy" @click="copyOutput">
+				<b-button rounded size="is-small" type="is-primary" icon-left="content-copy" @click="copyOutput">
 					{{ $t('Copy Output') }}
 				</b-button>
 			</div>

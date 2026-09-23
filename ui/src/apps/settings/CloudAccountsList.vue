@@ -21,7 +21,7 @@
 				</div>
 				<div class="row-control">
 					<template v-if="editingKey === a.mount_point">
-						<b-button rounded size="is-small" type="is-dark" :loading="renaming" @click="submitRename(a)">{{ $t('Save') }}</b-button>
+						<b-button rounded size="is-small" type="is-primary" :loading="renaming" @click="submitRename(a)">{{ $t('Save') }}</b-button>
 						<b-button rounded size="is-small" @click="editingKey = null">{{ $t('Cancel') }}</b-button>
 					</template>
 					<template v-else>
@@ -48,7 +48,7 @@
 				<a class="advanced-toggle" @click="openTerminal(a)">{{ $t('Run it in Terminal') }}</a>
 				<b-input v-model="reconnectToken" type="textarea" size="is-small" rows="3" :placeholder="$t('Paste it here')"></b-input>
 				<div class="form-actions">
-					<b-button rounded size="is-small" type="is-dark" :loading="reconnecting" :disabled="!reconnectToken.trim()" @click="submitReconnectToken(a)">{{ $t('Reconnect') }}</b-button>
+					<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!reconnectToken.trim()" @click="submitReconnectToken(a)">{{ $t('Reconnect') }}</b-button>
 					<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>
 				</div>
 				<p v-if="reconnectError" class="error-note">{{ reconnectError }}</p>
@@ -64,7 +64,7 @@
 						<b-input v-model="icloud.password" size="is-small" type="password" password-reveal></b-input>
 					</b-field>
 					<div class="form-actions">
-						<b-button rounded size="is-small" type="is-dark" :loading="reconnecting" :disabled="!icloud.appleId || !icloud.password" @click="submitReconnectIcloud(a)">{{ $t('Continue') }}</b-button>
+						<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!icloud.appleId || !icloud.password" @click="submitReconnectIcloud(a)">{{ $t('Continue') }}</b-button>
 						<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>
 					</div>
 				</template>
@@ -73,7 +73,7 @@
 						<b-input v-model="icloud.answer" size="is-small" :type="icloud.question && icloud.question.IsPassword ? 'password' : 'text'"></b-input>
 					</b-field>
 					<div class="form-actions">
-						<b-button rounded size="is-small" type="is-dark" :loading="reconnecting" :disabled="!icloud.answer" @click="verifyReconnectIcloud(a)">{{ $t('Verify') }}</b-button>
+						<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!icloud.answer" @click="verifyReconnectIcloud(a)">{{ $t('Verify') }}</b-button>
 						<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>
 					</div>
 				</template>
@@ -292,7 +292,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 	margin-right: var(--space-2);
 
 	&:hover:not(:disabled) {

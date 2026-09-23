@@ -4,14 +4,15 @@
 
 		<h3 class="setting-card-title">{{ $t('Color Theme') }}</h3>
 		<div class="setting-card">
-			<div class="theme-picker-grid">
+			<div class="theme-picker-grid" role="radiogroup" :aria-label="$t('Color Theme')">
 				<div
 					v-for="opt in themeOptions"
 					:key="opt.value"
 					class="theme-card-option"
 					:class="{ 'is-selected': currentThemeMode === opt.value }"
 					@click="selectTheme(opt.value)"
-					role="button"
+					role="radio"
+					:aria-checked="currentThemeMode === opt.value ? 'true' : 'false'"
 					tabindex="0"
 					@keydown.enter="selectTheme(opt.value)"
 					@keydown.space.prevent="selectTheme(opt.value)"

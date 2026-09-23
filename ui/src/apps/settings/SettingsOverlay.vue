@@ -2,10 +2,10 @@
 	<transition name="fade">
 		<div v-if="active" class="settings-overlay" @click.self="$emit('close')">
 			<div class="settings-overlay-backdrop" @click="$emit('close')"></div>
-			<div class="settings-overlay-card" :style="cardStyle">
+			<div ref="card" class="settings-overlay-card" :style="cardStyle" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @keydown.esc.stop="$emit('close')" @keydown.tab="trapTab">
 				<header class="settings-overlay-head" @pointerdown="startDrag">
-					<span class="settings-overlay-title">{{ title }}</span>
-					<button type="button" class="settings-overlay-close" @pointerdown.stop @click.stop="$emit('close')">
+					<span :id="titleId" class="settings-overlay-title">{{ title }}</span>
+					<button type="button" class="settings-overlay-close" :aria-label="$t('Close')" @pointerdown.stop @click.stop="$emit('close')">
 						<b-icon icon="close" size="is-small" pack="mdi"></b-icon>
 					</button>
 				</header>
@@ -31,13 +31,27 @@ export default {
 	},
 	data() {
 		return {
-			dragOffset: { x: 0, y: 0 }
+			dragOffset: { x: 0, y: 0 },
+			titleId: 'settings-overlay-title-' + Math.random().toString(36).slice(2, 8),
+			returnFocus: null
 		}
 	},
 	watch: {
+		// Keyboard users land inside the dialog and get back to where they
+		// were when it closes (focus used to stay behind the overlay).
 		active(val) {
 			if (val) {
 				this.dragOffset = { x: 0, y: 0 }
+				this.returnFocus = document.activeElement
+				this.$nextTick(() => {
+					const card = this.$refs.card
+					if (!card) return
+					const first = card.querySelector('.settings-overlay-body input, .settings-overlay-body select, .settings-overlay-body textarea, .settings-overlay-body button')
+					;(first || card).focus()
+				})
+			} else if (this.returnFocus && this.returnFocus.focus) {
+				this.returnFocus.focus()
+				this.returnFocus = null
 			}
 		}
 	},
@@ -57,6 +71,22 @@ export default {
 		}
 	},
 	methods: {
+		// Tab cycles within the dialog.
+		trapTab(e) {
+			const card = this.$refs.card
+			if (!card) return
+			const items = [...card.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled && el.offsetParent !== null)
+			if (!items.length) return
+			const first = items[0]
+			const last = items[items.length - 1]
+			if (e.shiftKey && document.activeElement === first) {
+				e.preventDefault()
+				last.focus()
+			} else if (!e.shiftKey && document.activeElement === last) {
+				e.preventDefault()
+				first.focus()
+			}
+		},
 		startDrag(e) {
 			if (e.target.closest('button, input, select, textarea, a, .settings-overlay-close')) return
 			const startX = e.clientX

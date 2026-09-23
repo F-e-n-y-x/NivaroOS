@@ -326,7 +326,7 @@ export default {
 
 	&.is-online {
 		background: rgba(16, 185, 129, 0.12);
-		color: #059669;
+		color: var(--color-success-fg);
 		.status-dot {
 			background: #10b981;
 		}

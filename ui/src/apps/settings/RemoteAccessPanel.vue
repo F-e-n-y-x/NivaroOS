@@ -10,7 +10,7 @@
 					<div class="setting-desc">{{ $t('Not installed - install it to remotely access this device from anywhere.') }}</div>
 				</div>
 				<div class="row-control">
-					<b-button type="is-dark" size="is-small" :loading="installing" @click="installTailscale">
+					<b-button type="is-primary" size="is-small" :loading="installing" @click="installTailscale">
 						{{ $t('Install') }}
 					</b-button>
 				</div>
@@ -98,7 +98,7 @@
 							<div class="setting-desc">{{ $t('Allow routing traffic through other tailnet nodes') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.accept_routes" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+							<b-switch :value="prefs.accept_routes" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 								:disabled="savingPref === 'accept_routes'" @input="setPref('accept_routes', $event)"></b-switch>
 						</div>
 					</div>
@@ -109,7 +109,7 @@
 							<div class="setting-desc">{{ $t('Use MagicDNS and custom tailnet nameservers') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.accept_dns" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+							<b-switch :value="prefs.accept_dns" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 								:disabled="savingPref === 'accept_dns'" @input="setPref('accept_dns', $event)"></b-switch>
 						</div>
 					</div>
@@ -120,7 +120,7 @@
 							<div class="setting-desc">{{ $t('Secure SSH access authenticated via Tailscale') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.run_ssh" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+							<b-switch :value="prefs.run_ssh" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 								:disabled="savingPref === 'run_ssh'" @input="setPref('run_ssh', $event)"></b-switch>
 						</div>
 					</div>
@@ -131,7 +131,7 @@
 							<div class="setting-desc">{{ $t('Prevent other tailnet devices from initiating connections') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.shields_up" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+							<b-switch :value="prefs.shields_up" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 								:disabled="savingPref === 'shields_up'" @input="setPref('shields_up', $event)"></b-switch>
 						</div>
 					</div>
@@ -142,7 +142,7 @@
 							<div class="setting-desc">{{ $t('Maintain local network access while tunneling traffic') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.exit_node_allow_lan_access" class="is-flex-direction-row-reverse mr-0" type="is-dark"
+							<b-switch :value="prefs.exit_node_allow_lan_access" class="is-flex-direction-row-reverse mr-0" type="is-primary"
 								:disabled="savingPref === 'exit_node_allow_lan_access'" @input="setPref('exit_node_allow_lan_access', $event)"></b-switch>
 						</div>
 					</div>
@@ -372,13 +372,13 @@ export default {
 	padding: 0;
 	border: none;
 	background: transparent;
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 	font-size: var(--font-xs);
 	font-weight: 500;
 	cursor: pointer;
 
 	&:hover {
-		color: rgba(44, 62, 80, 0.9);
+		color: var(--theme-text-muted);
 	}
 }
 
