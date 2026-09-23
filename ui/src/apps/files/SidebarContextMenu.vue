@@ -58,6 +58,7 @@
 </template>
 
 <script>
+import { pasteClipboard } from '@/utils/files/paste'
 import events from '@/events/events'
 
 const MENU_WIDTH = 210
@@ -139,24 +140,7 @@ export default {
 			}
 			switch (action) {
 				case 'paste-into':
-					if (this.item && this.item.path && this.$store.state.operateObject) {
-						const opObj = this.$store.state.operateObject
-						this.$api.batch
-							.task({ ...opObj, to: this.item.path, style: 'overwrite' })
-							.then((res) => {
-								if (res.data.success === 200) {
-									if (opObj.type === 'move') {
-										this.$store.commit('SET_OPERATE_OBJECT', null)
-									}
-									this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-								} else {
-									this.$buefy.toast.open({
-										message: res.data.message,
-										type: 'is-danger',
-									})
-								}
-							})
-					}
+					if (this.item && this.item.path) pasteClipboard(this, this.item.path)
 					break
 				case 'open':
 					if (this.filesController && this.filesController.navigate) {

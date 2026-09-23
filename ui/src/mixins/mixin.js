@@ -1,5 +1,7 @@
 import { assetUrl } from '@/utils/assetUrl'
 import qs from 'qs'
+import { escapeHtml } from '@/utils/escapeHtml'
+import { track as trackTransfer, networkMessage as transferNetworkMessage } from '@/service/transfers'
 import has from 'lodash/has'
 import union from 'lodash/union'
 import copy from 'clipboard-copy'
@@ -392,35 +394,44 @@ export const mixin = {
 				}
 			};
 
+			// Resolves to true only when the server confirmed the delete.
+			// Failures used to be logged to the console only, so a delete
+			// that didn't happen looked exactly like one that did.
 			const deleteItems = async (paths) => {
+				let res
 				try {
-					const res = await this.$api.batch.delete(JSON.stringify(paths));
-					if (res.data.success === 200) {
-						const shotcutData = this.$store.state['shortcutData'];
-						const updatedShotcutData = shotcutData.filter((item) => {
-							if (paths.includes(item.path)) {
-								deleteShortcut(item);
-								return false;
-							}
-							return true;
-						});
-						await this.$store.dispatch('SET_SHORTCUT_DATA', updatedShotcutData);
-						if (this.$refs.dropDown !== undefined) {
-							this.$refs.dropDown.toggle();
-							this.$emit("reload");
-						}
-						if (typeof this.reload === "function") {
-							this.reload();
-						}
-					} else {
-						this.$buefy.toast.open({
-							message: res.data.message,
-							type: 'is-danger'
-						});
-					}
+					res = await this.$api.batch.delete(JSON.stringify(paths));
 				} catch (e) {
-					console.log(`${e} in deleteItem`);
+					this.$buefy.toast.open({ message: escapeHtml(transferNetworkMessage(e)), type: 'is-danger', duration: 5000 });
+					return false;
 				}
+				const job = res.data && res.data.data && res.data.data.id ? res.data.data : null;
+				if (job) trackTransfer(job); // shows in Transfers (big deletes continue in the background)
+				if (res.data.success === 200) {
+					const shotcutData = this.$store.state['shortcutData'];
+					const updatedShotcutData = shotcutData.filter((item) => {
+						if (paths.includes(item.path)) {
+							deleteShortcut(item);
+							return false;
+						}
+						return true;
+					});
+					await this.$store.dispatch('SET_SHORTCUT_DATA', updatedShotcutData);
+					if (this.$refs.dropDown !== undefined) {
+						this.$refs.dropDown.toggle();
+						this.$emit("reload");
+					}
+					if (typeof this.reload === "function") {
+						this.reload();
+					}
+					return true;
+				}
+				this.$buefy.toast.open({
+					message: escapeHtml(res.data.message || this.$t('Delete failed')),
+					type: 'is-danger',
+					duration: 6000,
+				});
+				return false;
 			};
 
 			let paths = [];
@@ -430,7 +441,7 @@ export const mixin = {
 				paths = items.map((o) => o.path);
 			}
 
-			deleteItems(paths);
+			return deleteItems(paths);
 		},
 		/**
 		 * @description: Set an image as wallpaper

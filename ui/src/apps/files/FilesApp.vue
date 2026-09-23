@@ -18,6 +18,7 @@
 			@new-file="onNewFile"
 			@upload="onUpload"
 			@set-view="onSetView"
+			:pasting="pasting"
 			@paste="onPaste"
 			@clear-selection="onClearSelection"
 			@copy-selection="onCopySelection"
@@ -62,7 +63,6 @@
 				@extract-request="onExtractRequest"
 			></files-content-view>
 			<files-shared-view ref="sharedView" v-show="controller.activeSection === 'shared'" @add-share="activeDialog = 'share-select'"></files-shared-view>
-			<operation-tray :offset-bottom="uploadTrayOffset"></operation-tray>
 			<slot></slot>
 		</div>
 		<new-folder-dialog v-if="activeDialog === 'new-folder'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-folder-dialog>
@@ -95,7 +95,6 @@ import FolderTree from './FolderTree.vue'
 import MountList from './MountList.vue'
 import FilesContentView from './ContentView.vue'
 import FilesSharedView from './SharedView.vue'
-import OperationTray from './OperationTray.vue'
 import NewFolderDialog from './dialogs/NewFolderDialog.vue'
 import NewFileDialog from './dialogs/NewFileDialog.vue'
 import RenameDialog from './dialogs/RenameDialog.vue'
@@ -138,7 +137,6 @@ export default {
 		MountList,
 		FilesContentView,
 		FilesSharedView,
-		OperationTray,
 		NewFolderDialog,
 		NewFileDialog,
 		RenameDialog,
@@ -173,17 +171,9 @@ export default {
 				openTerminal: this.openTerminal,
 			},
 			resizeObserver: null,
-			// UploadTray (nested per-tab inside ContentView) and OperationTray
-			// (rendered once, below) are both pinned to the same bottom-right
-			// corner - fine when only one is ever up at a time, but a paste
-			// running while a file is uploading showed them stacked directly
-			// on top of each other. Tracks the active tab's upload tray's own
-			// rendered height (0 when it isn't showing) so OperationTray can
-			// shift up out of its way - see uploadTrayResizeObserver below.
-			uploadTrayOffset: 0,
-			uploadTrayResizeObserver: null,
 			activeDialog: null,
 			dialogItem: null,
+			pasting: false,
 			// One entry per open tab, each independently tracking its own
 			// folder. controller.currentPath always mirrors whichever tab is
 			// active (see navigate()/switchTab()) - Toolbar/Sidebar/FolderTree
@@ -209,24 +199,13 @@ export default {
 			this.controller.breakpoints = classifyWidth(width)
 		})
 		this.resizeObserver.observe(this.$refs.root)
-		if (typeof ResizeObserver !== 'undefined') {
-			this.uploadTrayResizeObserver = new ResizeObserver((entries) => {
-				const box = entries[0].contentRect
-				// v-show="false" (no upload in progress, or a background tab)
-				// reports a zero-size contentRect - exactly "out of
-				// OperationTray's way" already, no visibility check needed.
-				this.uploadTrayOffset = box.height > 0 ? box.height + 12 : 0
-			})
-		}
 		if (!this.$store.state.currentPath) {
 			this.navigate('/DATA')
 		}
 		this.refsReady++
-		this.$nextTick(this.retargetUploadTrayObserver)
 	},
 	beforeDestroy() {
 		this.resizeObserver && this.resizeObserver.disconnect()
-		this.uploadTrayResizeObserver && this.uploadTrayResizeObserver.disconnect()
 	},
 	computed: {
 		// Resolves the ContentView instance for whichever tab is currently
@@ -244,26 +223,8 @@ export default {
 			return Array.isArray(refs) ? refs[index] : refs
 		},
 	},
-	watch: {
-		// Only the active tab's own UploadTray can ever actually be visible
-		// (every other tab's whole ContentView, upload tray included, is
-		// v-show="false") - re-point the observer at it, rather than one per
-		// tab, whenever which tab is active changes.
-		activeContentView() {
-			this.retargetUploadTrayObserver()
-		},
-	},
 	methods: {
-		retargetUploadTrayObserver() {
-			if (!this.uploadTrayResizeObserver) return
-			this.uploadTrayResizeObserver.disconnect()
-			const uploadTray = this.activeContentView && this.activeContentView.$refs && this.activeContentView.$refs.uploadTray
-			if (uploadTray && uploadTray.$el) {
-				this.uploadTrayResizeObserver.observe(uploadTray.$el)
-			} else {
-				this.uploadTrayOffset = 0
-			}
-		},
+
 		navigate(path) {
 			this.controller.currentPath = path
 			this.$store.commit('SET_CURRENT_PATH', path)
@@ -390,8 +351,14 @@ export default {
 		onSetView(mode) {
 			this.$store.commit('SET_VIEW_MODE', mode)
 		},
-		onPaste() {
-			this.activeContentView && this.activeContentView.paste()
+		async onPaste() {
+			if (this.pasting || !this.activeContentView) return
+			this.pasting = true
+			try {
+				await this.activeContentView.paste()
+			} finally {
+				this.pasting = false
+			}
 		},
 		// Viewers open as their own desktop window (registered in
 		// DesktopWindow.vue's COMPONENT_REGISTRY), matching how
@@ -542,16 +509,21 @@ export default {
 			this.dialogItem = deletable.length === 1 ? deletable[0] : deletable
 			this.activeDialog = 'confirm-delete'
 		},
-		performDelete() {
-			this.deleteItem(this.dialogItem)
-			this.activeContentView && this.activeContentView.reload()
-			this.activeContentView && this.activeContentView.clearSelection()
-			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 400)
-			setTimeout(() => this.activeContentView && this.activeContentView.reload(), 1200)
+		async performDelete() {
+			const items = this.dialogItem
 			this.activeDialog = null
 			this.dialogItem = null
+			this.activeContentView && this.activeContentView.clearSelection()
+			// Wait for the server's answer, then refresh once. (This used to
+			// fire the request without waiting and reload at 0/400/1200 ms,
+			// hoping one of those landed after the delete finished.) Deletes
+			// that continue in the background refresh when their job
+			// finishes - see ContentView.onTransferFinished.
+			await this.deleteItem(items)
+			this.activeContentView && this.activeContentView.reload()
+			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 		},
+
 	},
 }
 </script>

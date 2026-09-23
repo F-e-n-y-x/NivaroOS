@@ -122,6 +122,7 @@
 </template>
 
 <script>
+import { openFolderWindow } from '@/utils/files/openFolder'
 import { downloadSidecar, formatBytes, formatSpeed, formatEta, categoryOf, fileIcon } from '@/api/downloadSidecar'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import { escapeHtml } from '@/utils/escapeHtml'
@@ -229,8 +230,7 @@ export default {
 			} catch (e) {}
 		},
 		openFolder() {
-			this.$store.commit('SET_CURRENT_PATH', this.d.dir)
-			this.$store.commit('OPEN_WINDOW', { id: 'files', title: this.$t('Files'), component: 'FilesApp', width: 960, height: 620 })
+			openFolderWindow(this.$store, this.d.dir, this.$t('Files'))
 		},
 		confirmRestart() {
 			this.confirmWindow({

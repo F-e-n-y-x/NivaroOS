@@ -25,7 +25,7 @@
 		</div>
 
 		<drag-drop-menu></drag-drop-menu>
-		<file-operation-status></file-operation-status>
+		<transfers-panel></transfers-panel>
 		<container-install-status></container-install-status>
 	</div>
 </template>
@@ -38,7 +38,7 @@ import MobileTabBar from './MobileTabBar.vue'
 import NotificationCenter from './NotificationCenter.vue'
 import DateTimePill from './DateTimePill.vue'
 import DragDropMenu from './DragDropMenu.vue'
-import FileOperationStatus from './FileOperationStatus.vue'
+import TransfersPanel from './TransfersPanel.vue'
 import ContainerInstallStatus from './ContainerInstallStatus.vue'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 
@@ -58,7 +58,7 @@ export default {
 		NotificationCenter,
 		DateTimePill,
 		DragDropMenu,
-		FileOperationStatus,
+		TransfersPanel,
 		ContainerInstallStatus
 	},
 	computed: {

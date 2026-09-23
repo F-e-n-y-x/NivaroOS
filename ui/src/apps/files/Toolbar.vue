@@ -118,10 +118,18 @@
 					<span>{{ $t('Delete') }}</span>
 				</button>
 				<div class="action-group">
-					<button v-if="hasClipboard" class="action-btn paste-btn" @click="$emit('paste')">
-						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Paste') }}</span>
-					</button>
+					<!-- What's on the clipboard is always visible (count + copy/cut),
+					     can be cleared, and Paste can't be double-submitted. -->
+					<div v-if="hasClipboard" class="paste-group" :title="clipboardTooltip">
+						<button class="action-btn paste-btn" :disabled="pasting" @click="$emit('paste')">
+							<b-icon :icon="pasting ? 'loading' : clipboardIsCut ? 'content-cut' : 'content-paste'" :custom-class="pasting ? 'mdi-spin' : ''" custom-size="mdi-16px"></b-icon>
+							<span>{{ clipboardIsCut ? $t('Move here') : $t('Paste') }}</span>
+							<span class="clip-count">{{ clipboardCount }}</span>
+						</button>
+						<button class="action-btn clip-clear" :title="$t('Clear clipboard')" @click="$store.commit('SET_OPERATE_OBJECT', null)">
+							<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+						</button>
+					</div>
 					<!-- Hidden during a selection - showing both action groups at once
 					     overflowed/clipped the toolbar. -->
 					<template v-if="!hasSelection">
@@ -162,6 +170,7 @@ export default {
 	name: 'files-toolbar',
 	inject: ['filesController'],
 	props: {
+		pasting: { type: Boolean, default: false },
 		selectionSummary: {
 			type: Object,
 			default: null,
@@ -179,7 +188,20 @@ export default {
 			return !!(this.selectionSummary && this.selectionSummary.count > 0)
 		},
 		hasClipboard() {
-			return this.$store.state.operateObject != null
+			const c = this.$store.state.operateObject
+			return !!(c && c.item && c.item.length)
+		},
+		clipboardCount() {
+			return this.hasClipboard ? this.$store.state.operateObject.item.length : 0
+		},
+		clipboardIsCut() {
+			return this.hasClipboard && this.$store.state.operateObject.type === 'move'
+		},
+		clipboardTooltip() {
+			if (!this.hasClipboard) return ''
+			const names = this.$store.state.operateObject.item.map((i) => i.from.split('/').pop())
+			const head = this.clipboardIsCut ? this.$t('Cut - will be moved:') : this.$t('Copied - will be copied:')
+			return [head, ...names.slice(0, 12), names.length > 12 ? `… +${names.length - 12}` : ''].filter(Boolean).join('\n')
 		},
 		viewMode() {
 			return this.$store.state.viewMode
@@ -370,6 +392,39 @@ export default {
 		background: rgba(50, 115, 220, 0.2);
 		box-shadow: none;
 	}
+}
+.paste-group {
+	display: inline-flex;
+	align-items: stretch;
+
+	.paste-btn {
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
+	}
+	.clip-clear {
+		padding: var(--space-1);
+		border-left: none;
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
+		background: rgba(50, 115, 220, 0.06);
+		border-color: rgba(50, 115, 220, 0.3);
+		color: var(--color-primary, #3273dc);
+	}
+}
+.clip-count {
+	min-width: 1.1rem;
+	padding: 0 0.3rem;
+	border-radius: 99px;
+	background: var(--color-primary, #3273dc);
+	color: #fff;
+	font-size: var(--font-2xs);
+	line-height: 1.1rem;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+.paste-btn:disabled {
+	opacity: 0.7;
+	cursor: progress;
 }
 .delete-btn {
 	color: #f2534a;

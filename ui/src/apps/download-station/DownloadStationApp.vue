@@ -49,6 +49,7 @@ import DsDownloadList from './DsDownloadList.vue'
 import DsBrowser from './DsBrowser.vue'
 import DsAdblockPanel from './DsAdblockPanel.vue'
 import DsSettingsPanel from './DsSettingsPanel.vue'
+import { openFolderWindow } from '@/utils/files/openFolder'
 import { downloadSidecar, formatSpeed } from '@/api/downloadSidecar'
 import { activityService } from '@/service/activity'
 import { escapeHtml } from '@/utils/escapeHtml'
@@ -209,8 +210,7 @@ export default {
 			})
 		},
 		openFolder(dir) {
-			this.$store.commit('SET_CURRENT_PATH', dir)
-			this.$store.commit('OPEN_WINDOW', { id: 'files', title: this.$t('Files'), component: 'FilesApp', width: 960, height: 620 })
+			openFolderWindow(this.$store, dir, this.$t('Files'))
 		}
 	}
 }

@@ -10,7 +10,8 @@ const isProd = process.env.NODE_ENV === "production" || process.env.NODE_ENV ===
 const TerserPlugin = require("terser-webpack-plugin");
 
 module.exports = {
-	publicPath: "/",
+	// Overridable only for test builds served from a sub-path.
+	publicPath: process.env.NVOS_PUBLIC_PATH || "/",
 	runtimeCompiler: true,
 	lintOnSave: false,
 	productionSourceMap: false,

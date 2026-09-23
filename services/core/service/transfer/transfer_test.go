@@ -372,6 +372,9 @@ func TestRetryFinishesWhatFailed(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "album (2)")); !os.IsNotExist(err) {
 		t.Error("retry created a duplicate folder instead of finishing the first")
 	}
+	if _, ok := m.Get(j.ID); ok {
+		t.Error("the retried job should be replaced by its retry")
+	}
 }
 
 func TestChangesArePublishedWithFinalState(t *testing.T) {

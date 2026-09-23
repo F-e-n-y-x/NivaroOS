@@ -135,6 +135,8 @@
 </template>
 
 <script>
+import { pasteClipboard } from '@/utils/files/paste'
+import { bus as transferBus } from '@/service/transfers'
 import orderBy from 'lodash/orderBy'
 import EmptyFolder from './EmptyFolder.vue'
 import ErrorHolder from './ErrorHolder.vue'
@@ -301,40 +303,15 @@ export default {
 		this.fetchMountTypes()
 		this.fetchCompanionDevices()
 		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.reload)
+		transferBus.$on('finished', this.onTransferFinished)
 	},
 	beforeDestroy() {
 		this.$EventBus.$off(events.RELOAD_FILE_LIST, this.reload)
+		transferBus.$off('finished', this.onTransferFinished)
 		window.removeEventListener('mousemove', this.onDragSelectionMove)
 		window.removeEventListener('mouseup', this.onDragSelectionEnd)
 	},
-	// PostOperateFileOrDir (the /v1/batch/task backend handler a copy/move/
-	// paste/drag-drop ultimately calls) only enqueues the job and returns
-	// success immediately - the actual file operation runs in a background
-	// goroutine. This is the real completion signal (the same message-bus
-	// event the legacy OperationStatusBar.vue already listens to), and
-	// every open ContentView showing the destination folder reacts to it
-	// independently - reloading right after the initial HTTP response (as
-	// paste() used to) meant the listing didn't yet reflect what had
-	// actually landed on disk.
 	sockets: {
-		'nivaroos:file:operate'(res) {
-			let fileOperate
-			try {
-				fileOperate = JSON.parse(res.Properties.file_operate)
-			} catch (e) {
-				return
-			}
-			// The finished-task payload only ever carries `to` (the
-			// destination), never the source item paths - fine for a copy,
-			// but a move also empties out the SOURCE folder, which this
-			// ContentView could be showing with no way to know that from
-			// `to` alone. Reloading on any finished task, regardless of
-			// path, is the only way to reliably catch that case too - file
-			// operations aren't frequent enough for the extra refreshes
-			// elsewhere to matter.
-			const anyFinished = (fileOperate.data || []).some((task) => task.finished)
-			if (anyFinished) this.reload()
-		},
 		// Live updates for changes made outside this tab entirely - another
 		// device over Samba, a scheduled task, a companion sync, a second
 		// browser tab - see service/file_watch.go on the backend. Path-scoped
@@ -745,35 +722,22 @@ export default {
 		triggerUpload() {
 			this.$refs.uploadTray && this.$refs.uploadTray.browse()
 		},
-		// Ported from src/components/filebrowser/FilePanel.vue:694-712 (`paste`).
-		// Unlike the legacy version - which binds `document.onpaste` globally
-		// for the lifetime of the whole file panel - this is a native `paste`
-		// DOM event scoped to ContentView's own root element (see the `tabindex`
-		// + `@paste` wiring on the template's root `<section>`), so it only
-		// fires while focus is within this Files window's content area.
-		// No reload() here on success - the `sockets` block above is the
-		// real completion signal (this is an async, queued operation on the
-		// backend; the HTTP response only confirms it was queued). Blindly
-		// reloading on a timer after the HTTP response used to show a stale
-		// listing since the actual copy/move hadn't finished yet.
+		// Every paste route (toolbar, Ctrl+V, context menu, paste-into)
+		// goes through utils/files/paste.js; the listing refreshes when the
+		// job finishes (see onTransferFinished), not on a guess.
 		paste(targetPath) {
-			if (this.$store.state.operateObject == null) return
-			const operateObject = this.$store.state.operateObject
 			const dest = typeof targetPath === 'string' && targetPath ? targetPath : this.path
-			this.$api.batch
-				.task({ ...operateObject, to: dest, style: 'overwrite' })
-				.then((res) => {
-					if (res.data.success === 200) {
-						if (operateObject.type === 'move') {
-							this.$store.commit('SET_OPERATE_OBJECT', null)
-						}
-					} else {
-						this.$buefy.toast.open({
-							message: res.data.message,
-							type: 'is-danger',
-						})
-					}
-				})
+			return pasteClipboard(this, dest)
+		},
+		// Reload exactly when a finished copy/move/delete touched the folder
+		// this view shows (source or destination).
+		onTransferFinished(job) {
+			const norm = (p) => (p || '').replace(/\/+$/, '') || '/'
+			const here = norm(this.path)
+			// The folders the job changed, plus anything inside the
+			// destination (a copied folder's contents land below it).
+			const hit = (job.affected_dirs || []).some((d) => norm(d) === here) || (job.dest && here.startsWith(norm(job.dest) + '/'))
+			if (hit) this.reload()
 		},
 	},
 }

@@ -15,7 +15,7 @@
 </template>
 
 <script>
-import events from '@/events/events'
+import { startTransfer } from '@/utils/files/paste'
 
 const MENU_WIDTH = 140
 const MENU_HEIGHT = 80
@@ -54,22 +54,9 @@ export default {
 			const { payload, targetPath } = this.menu
 			this.close()
 			if (!payload || !payload.items || !payload.items.length || !targetPath) return
-			this.$api.batch
-				.task({
-					type,
-					item: payload.items.map((from) => ({ from })),
-					to: targetPath,
-					style: 'overwrite',
-				})
-				.then((res) => {
-					if (res.data.success === 200) {
-						this.$EventBus.$emit(events.RELOAD_FILE_LIST)
-						setTimeout(() => this.$EventBus.$emit(events.RELOAD_FILE_LIST), 400)
-						setTimeout(() => this.$EventBus.$emit(events.RELOAD_FILE_LIST), 1200)
-					} else {
-						this.$buefy.toast.open({ message: res.data.message, type: 'is-danger' })
-					}
-				})
+			// Same path as every other paste; listings refresh when the job
+			// finishes (the old 0/400/1200 ms reload timers were guesses).
+			startTransfer(this, { type, from: payload.items, to: targetPath })
 		},
 	},
 }

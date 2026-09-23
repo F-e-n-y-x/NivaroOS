@@ -318,7 +318,18 @@ func (m *Manager) Retry(id string) (Job, error) {
 	if spec.Kind == KindDelete {
 		spec.Conflict = ""
 	}
-	return m.Submit(spec)
+	nj, err := m.Submit(spec)
+	if err != nil {
+		return nj, err
+	}
+	// The retry supersedes the original: every client should now see one
+	// job (the retry's outcome), not the old failure next to it.
+	m.mu.Lock()
+	delete(m.jobs, id)
+	m.removeFromOrderLocked(id)
+	m.mu.Unlock()
+	m.notify(true)
+	return nj, nil
 }
 
 // Dismiss drops a finished job from the history.
