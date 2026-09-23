@@ -64,6 +64,16 @@ const sys = {
 		return api.get(`${PREFIX}/speedtest`);
 	},
 
+	// start the internet speedtest in the background (nearest speedtest.net
+	// server); poll getSpeedtestStatus for live numbers
+	startSpeedtest() {
+		return api.post(`${PREFIX}/speedtest`);
+	},
+
+	getSpeedtestStatus() {
+		return api.get(`${PREFIX}/speedtest/status`);
+	},
+
 	// get logs
 	// Last `lines` lines of the NivaroOS log (the server caps it; the full
 	// file is many MB and froze the browser).

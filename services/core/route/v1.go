@@ -137,6 +137,8 @@ func InitV1Router() http.Handler {
 			v1SysGroup.PUT("/state/:state", v1.PutSystemState)
 			v1SysGroup.GET("/entry", v1.GetSystemEntry)
 			v1SysGroup.GET("/speedtest", v1.GetSystemSpeedTest)
+			v1SysGroup.POST("/speedtest", v1.PostSystemSpeedTest)
+			v1SysGroup.GET("/speedtest/status", v1.GetSystemSpeedTestStatus)
 		}
 		v1PortGroup := v1Group.Group("/port")
 		v1PortGroup.Use()

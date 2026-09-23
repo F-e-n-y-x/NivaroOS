@@ -109,13 +109,27 @@
 							<i class="mdi mdi-access-point ping-icon"></i>
 							<span class="ping-lbl">{{ $t('Ping') }}:</span>
 							<span class="ping-val">{{ testResults.ping !== null ? testResults.ping + ' ms' : '--' }}</span>
+							<span v-if="testResults.jitter !== null" class="ping-lbl ml-1" :title="$t('Jitter')">±{{ testResults.jitter }}</span>
 						</div>
-						<div
-							class="speedtest-mode-badge"
-							:title="testMode === 'device' ? $t('Device ↔ NivaroOS WebUI (LAN)') : $t('Server ↔ Internet (WAN)')"
-						>
-							<i class="mdi" :class="testMode === 'device' ? 'mdi-cellphone-link' : 'mdi-web'"></i>
-							<span>{{ testMode === 'device' ? 'LAN' : 'WAN' }}</span>
+						<div class="speedtest-mode-toggle" role="group" :aria-label="$t('Speedtest type')">
+							<button
+								type="button"
+								:class="{ 'is-on': testMode === 'server' }"
+								:disabled="isTesting"
+								:title="$t('Server ↔ Internet (nearest speedtest.net server)')"
+								@click.stop="setTestMode('server')"
+							>
+								<i class="mdi mdi-web"></i> {{ $t('Internet') }}
+							</button>
+							<button
+								type="button"
+								:class="{ 'is-on': testMode === 'device' }"
+								:disabled="isTesting"
+								:title="$t('This device ↔ NivaroOS (LAN)')"
+								@click.stop="setTestMode('device')"
+							>
+								<i class="mdi mdi-lan"></i> LAN
+							</button>
 						</div>
 					</div>
 
@@ -128,6 +142,7 @@
 							<span class="status-msg">{{ phaseStatusText }}</span>
 						</div>
 
+						<div v-if="testServer" class="speedtest-server" :title="testServer">{{ testServer }}</div>
 						<div class="speedtest-actions">
 							<button
 								v-if="!isTesting"
@@ -172,6 +187,80 @@
 <script>
 import { mixin } from '@/mixins/mixin';
 
+const LAN_STREAMS = 6;
+const LAN_DURATION = 10000;
+const LAN_RAMP = 0.3; // ignore the first 30% (TCP ramp-up)
+const LAN_OVERHEAD = 1.04; // OpenSpeedTest's header-overhead compensation
+const LAN_UP_CHUNK = 16 * 1024 * 1024;
+
+const round1 = v => Math.round(v * 10) / 10;
+
+function readTestMode() {
+	try {
+		return localStorage.getItem('speedtestMode') === 'device' ? 'device' : 'server';
+	} catch (e) {
+		return 'server';
+	}
+}
+
+// Ping = fastest sample (others include queueing), jitter = mean change
+// between consecutive samples - the OpenSpeedTest / Ookla definitions.
+function pingStats(samples) {
+	if (!samples.length) return { ping: null, jitter: null };
+	let diff = 0;
+	for (let i = 1; i < samples.length; i++) diff += Math.abs(samples[i] - samples[i - 1]);
+	return { ping: round1(Math.min(...samples)), jitter: samples.length > 1 ? round1(diff / (samples.length - 1)) : 0 };
+}
+
+function lanResult(slices) {
+	if (!slices.length) return 0;
+	const end = slices[slices.length - 1].at;
+	const steady = slices.filter(s => s.at >= end * LAN_RAMP);
+	const use = steady.length ? steady : slices;
+	return (use.reduce((a, s) => a + s.mbps, 0) / use.length) * LAN_OVERHEAD;
+}
+
+async function lanDownloadStream(origin, signal, count, stop) {
+	while (!stop()) {
+		const res = await fetch(`${origin}/speedtest/download?_t=${Date.now()}_${Math.random()}`, { cache: 'no-store', signal });
+		if (!res.ok || !res.body) throw new Error('download ' + res.status);
+		const reader = res.body.getReader();
+		for (;;) {
+			if (stop()) {
+				reader.cancel();
+				return;
+			}
+			const { done, value } = await reader.read();
+			if (done) break;
+			count.bytes += value.length;
+		}
+	}
+}
+
+// XHR, not fetch: only XHR reports upload progress, so the count follows
+// the bytes actually sent rather than jumping per finished request.
+function lanUploadStream(origin, blob, signal, count, stop) {
+	return new Promise((resolve, reject) => {
+		const next = () => {
+			if (stop() || signal.aborted) return resolve();
+			const xhr = new XMLHttpRequest();
+			let sent = 0;
+			xhr.open('POST', `${origin}/speedtest/upload?_t=${Date.now()}_${Math.random()}`);
+			xhr.upload.onprogress = e => {
+				count.bytes += e.loaded - sent;
+				sent = e.loaded;
+				if (stop()) xhr.abort();
+			};
+			xhr.onload = next;
+			xhr.onabort = resolve;
+			xhr.onerror = () => reject(new Error('upload failed'));
+			signal.addEventListener('abort', () => xhr.abort(), { once: true });
+			xhr.send(blob);
+		};
+		next();
+	});
+}
+
 export default {
 	mixins: [mixin],
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -189,12 +278,14 @@ export default {
 			isTesting: false,
 			showingResults: false,
 			testPhase: 'idle', // 'idle' | 'ping' | 'download' | 'upload' | 'server_running' | 'done' | 'error'
-			testMode: 'device', // 'device' | 'server'
+			testMode: readTestMode(), // 'device' (LAN) | 'server' (Internet)
 			testResults: {
 				ping: null,
+				jitter: null,
 				download: null,
 				upload: null
 			},
+			testServer: '',
 			liveSpeedMbps: 0,
 			testError: null,
 			abortController: null,
@@ -320,7 +411,7 @@ export default {
 				case 'ping': return 20;
 				case 'download': return 60;
 				case 'upload': return 88;
-				case 'server_running': return 65;
+				case 'server_running': return 10;
 				case 'done': return 100;
 				default: return 0;
 			}
@@ -330,7 +421,7 @@ export default {
 				case 'ping': return this.$t('Measuring Latency...');
 				case 'download': return this.$t('Testing Download...');
 				case 'upload': return this.$t('Testing Upload...');
-				case 'server_running': return this.$t('Running Server WAN Test...');
+				case 'server_running': return this.$t('Finding nearest server...');
 				case 'done': return this.$t('Speedtest Complete');
 				case 'error': return this.testError || this.$t('Test Failed');
 				default: return this.$t('Ready');
@@ -467,147 +558,138 @@ export default {
 			});
 		},
 
-		async startInlineSpeedtest() {
+		setTestMode(mode) {
+			if (this.isTesting) return;
+			this.testMode = mode;
+			try { localStorage.setItem('speedtestMode', mode); } catch (e) { /* private mode */ }
+			this.testResults = { ping: null, jitter: null, download: null, upload: null };
+			this.testServer = '';
+			this.testPhase = 'idle';
+		},
+
+		startInlineSpeedtest() {
 			if (this.isTesting) return;
 			this.isTesting = true;
 			this.showingResults = true;
-			this.testPhase = 'ping';
-			this.testMode = 'device';
 			this.testError = null;
 			this.liveSpeedMbps = 0;
-			this.testResults = { ping: null, download: null, upload: null };
+			this.testResults = { ping: null, jitter: null, download: null, upload: null };
+			this.testServer = '';
 			this.abortController = new AbortController();
-
-			const gatewayOrigin = `${window.location.protocol}//${window.location.host}`;
-
-			// 1. Latency Measurement (Device <-> WebUI Gateway)
-			const pings = [];
-			for (let i = 0; i < 4; i++) {
+			const run = this.testMode === 'server' ? this.runServerSpeedtest() : this.runLanSpeedtest();
+			run.catch(err => {
+				if (err && err.name === 'AbortError') return;
 				if (!this.isTesting) return;
-				const t0 = performance.now();
-				try {
-					const res = await fetch(`${gatewayOrigin}/speedtest/ping?_t=${Date.now()}_${i}`, {
-						cache: 'no-store',
-						signal: this.abortController.signal
-					});
-					if (!res.ok) throw new Error('status ' + res.status);
-					pings.push(performance.now() - t0);
-				} catch (err) {
-					if (err.name === 'AbortError') return;
-				}
-			}
-
-			if (!this.isTesting) return;
-
-			// If device LAN ping failed, seamlessly fallback to server internet speedtest!
-			if (pings.length === 0) {
-				await this.runServerSpeedtest();
-				return;
-			}
-
-			const avgPing = pings.reduce((a, b) => a + b, 0) / pings.length;
-			this.testResults.ping = Math.round(avgPing * 10) / 10;
-
-			// 2. Download Test (Device <- WebUI Gateway)
-			this.testPhase = 'download';
-			this.liveSpeedMbps = 0;
-			const dlStart = performance.now();
-			let dlBytes = 0;
-			try {
-				const resp = await fetch(`${gatewayOrigin}/speedtest/download?_t=${Date.now()}`, {
-					cache: 'no-store',
-					signal: this.abortController.signal
-				});
-				if (!resp.ok || !resp.body) throw new Error('download error');
-				const reader = resp.body.getReader();
-				const maxDurationMs = 3500;
-
-				while (true) {
-					if (!this.isTesting) {
-						reader.cancel();
-						return;
-					}
-					const { done, value } = await reader.read();
-					if (done) break;
-					dlBytes += value.length;
-					const elapsedSec = (performance.now() - dlStart) / 1000;
-					if (elapsedSec > 0 && this.isTesting) {
-						this.liveSpeedMbps = Math.round(((dlBytes * 8) / (elapsedSec * 1000000)) * 10) / 10;
-					}
-					if (performance.now() - dlStart >= maxDurationMs) {
-						reader.cancel();
-						break;
-					}
-				}
-				const finalDlSec = (performance.now() - dlStart) / 1000;
-				this.testResults.download = Math.round(((dlBytes * 8) / (finalDlSec * 1000000)) * 10) / 10;
-			} catch (err) {
-				if (err.name === 'AbortError' || !this.isTesting) return;
-				// Fallback to server internet speedtest
-				await this.runServerSpeedtest();
-				return;
-			}
-
-			if (!this.isTesting) return;
-
-			// 3. Upload Test (Device -> WebUI Gateway)
-			this.testPhase = 'upload';
-			this.liveSpeedMbps = 0;
-			const upStart = performance.now();
-			let upBytes = 0;
-			try {
-				const chunkSize = 512 * 1024;
-				const chunk = new Uint8Array(chunkSize);
-				for (let i = 0; i < chunkSize; i++) chunk[i] = i & 0xff;
-				const maxDurationMs = 3000;
-
-				while (performance.now() - upStart < maxDurationMs) {
-					if (!this.isTesting) return;
-					await fetch(`${gatewayOrigin}/speedtest/upload?_t=${Date.now()}`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/octet-stream' },
-						body: chunk,
-						signal: this.abortController.signal
-					});
-					upBytes += chunkSize;
-					const elapsedSec = (performance.now() - upStart) / 1000;
-					if (elapsedSec > 0 && this.isTesting) {
-						this.liveSpeedMbps = Math.round(((upBytes * 8) / (elapsedSec * 1000000)) * 10) / 10;
-					}
-				}
-				const finalUpSec = (performance.now() - upStart) / 1000;
-				this.testResults.upload = Math.round(((upBytes * 8) / (finalUpSec * 1000000)) * 10) / 10;
-			} catch (err) {
-				if (err.name === 'AbortError' || !this.isTesting) return;
-			}
-
-			if (!this.isTesting) return;
-			this.testPhase = 'done';
-			this.isTesting = false;
+				this.testError = (err && err.message) || this.$t('Test Failed');
+				this.testPhase = 'error';
+			}).finally(() => {
+				this.isTesting = false;
+			});
 		},
 
-		async runServerSpeedtest() {
-			this.testMode = 'server';
-			this.testPhase = 'server_running';
+		// LAN test (this device <-> NivaroOS), measured like OpenSpeedTest:
+		// several parallel streams for a fixed time, throughput sampled in
+		// slices, ramp-up slices ignored, +4% for TCP/HTTP header overhead.
+		// No size or speed cap: streams re-request until the time is up.
+		async runLanSpeedtest() {
+			const origin = `${window.location.protocol}//${window.location.host}`;
+			const signal = this.abortController.signal;
+
+			this.testPhase = 'ping';
+			this.testServer = 'NivaroOS · ' + window.location.hostname;
+			const pings = [];
+			for (let i = 0; i < 21; i++) {
+				if (!this.isTesting) return;
+				const t0 = performance.now();
+				const res = await fetch(`${origin}/speedtest/ping?_t=${Date.now()}_${i}`, { cache: 'no-store', signal });
+				await res.text();
+				if (i > 0) pings.push(performance.now() - t0); // first one opens the connection
+			}
+			const { ping, jitter } = pingStats(pings);
+			this.testResults.ping = ping;
+			this.testResults.jitter = jitter;
+
+			this.testPhase = 'download';
+			this.testResults.download = await this.measureStreams(signal, (count, stop) => lanDownloadStream(origin, signal, count, stop));
+			if (!this.isTesting) return;
+
+			this.testPhase = 'upload';
+			const payload = new Uint8Array(LAN_UP_CHUNK);
+			// crypto.getRandomValues is limited to 64 KiB per call.
+			for (let o = 0; o < payload.length; o += 65536) crypto.getRandomValues(payload.subarray(o, o + 65536));
+			const blob = new Blob([payload]);
+			this.testResults.upload = await this.measureStreams(signal, (count, stop) => lanUploadStream(origin, blob, signal, count, stop));
+			if (!this.isTesting) return;
+			this.testPhase = 'done';
+		},
+
+		// Runs LAN_STREAMS streams for LAN_DURATION ms, updating the live
+		// number; resolves with the result in Mbps.
+		async measureStreams(signal, startStream) {
 			this.liveSpeedMbps = 0;
+			const count = { bytes: 0 };
+			let stopped = false;
+			const stop = () => stopped;
+			const streams = [];
+			for (let i = 0; i < LAN_STREAMS; i++) streams.push(startStream(count, stop).catch(() => {}));
+			const slices = [];
+			const t0 = performance.now();
+			let lastBytes = 0;
+			let lastT = t0;
+			await new Promise(resolve => {
+				const timer = setInterval(() => {
+					const now = performance.now();
+					const dt = (now - lastT) / 1000;
+					if (dt > 0) slices.push({ at: now - t0, mbps: ((count.bytes - lastBytes) * 8) / dt / 1e6 });
+					lastBytes = count.bytes;
+					lastT = now;
+					this.liveSpeedMbps = round1(lanResult(slices));
+					if (!this.isTesting || now - t0 >= LAN_DURATION) {
+						clearInterval(timer);
+						resolve();
+					}
+				}, 200);
+			});
+			stopped = true;
+			await Promise.race([Promise.all(streams), new Promise(r => setTimeout(r, 1500))]);
+			if (!count.bytes) throw new Error(this.$t('No data could be transferred'));
+			return round1(lanResult(slices));
+		},
+
+		// Internet test runs on the server against the nearest speedtest.net
+		// server (picked automatically per run); we poll its progress.
+		async runServerSpeedtest() {
+			this.testPhase = 'server_running';
 			try {
-				const res = await this.$api.sys.getSpeedtest();
-				if (!this.isTesting) return;
-				if (res.data && res.data.success === 200 && res.data.data) {
-					const d = res.data.data;
-					this.testResults.ping = d.ping_ms;
-					this.testResults.download = d.download_mbps;
-					this.testResults.upload = d.upload_mbps;
-					this.testPhase = 'done';
-				} else {
-					throw new Error('invalid server speedtest data');
-				}
+				await this.$api.sys.startSpeedtest();
 			} catch (err) {
+				// 409: one is already running (another tab) - follow it.
+				if (!(err.response && err.response.status === 409)) throw new Error(err.response?.data?.message || err.message);
+			}
+			for (;;) {
 				if (!this.isTesting) return;
-				this.testError = err.message || 'Speedtest failed';
-				this.testPhase = 'error';
-			} finally {
-				this.isTesting = false;
+				await new Promise(r => setTimeout(r, 400));
+				const res = await this.$api.sys.getSpeedtestStatus();
+				const st = res.data && res.data.data;
+				if (!st || !this.isTesting) continue;
+				const r = st.result || {};
+				if (r.server) this.testServer = r.server;
+				if (r.ping_ms) {
+					this.testResults.ping = r.ping_ms;
+					this.testResults.jitter = r.jitter_ms;
+				}
+				if (r.download_mbps) this.testResults.download = r.download_mbps;
+				if (st.phase === 'ping') this.testPhase = 'ping';
+				else if (st.phase === 'download' || st.phase === 'upload') {
+					this.testPhase = st.phase;
+					this.liveSpeedMbps = st.live_mbps || 0;
+				} else if (st.phase === 'done') {
+					this.testResults.upload = r.upload_mbps;
+					this.testPhase = 'done';
+					return;
+				} else if (st.phase === 'error') {
+					throw new Error(st.error || this.$t('Speedtest failed'));
+				}
 			}
 		}
 	},
@@ -782,6 +864,40 @@ export default {
 		}
 	}
 
+	.speedtest-mode-toggle {
+		display: inline-flex;
+		border-radius: 6px;
+		overflow: hidden;
+		background: rgba(37, 99, 235, 0.08);
+
+		button {
+			display: inline-flex;
+			align-items: center;
+			gap: 3px;
+			padding: 2px 7px;
+			border: 0;
+			background: transparent;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+			font-size: 0.62rem;
+			font-weight: 700;
+			cursor: pointer;
+
+			&.is-on {
+				background: #2563eb;
+				color: #fff;
+			}
+
+			&:disabled {
+				cursor: default;
+			}
+
+			&:focus-visible {
+				outline: 2px solid #2563eb;
+				outline-offset: -2px;
+			}
+		}
+	}
+
 	.speedtest-mode-badge {
 		display: inline-flex;
 		align-items: center;
@@ -798,6 +914,17 @@ export default {
 }
 
 .net-speedtest-ctrl-row {
+	.speedtest-server {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		text-align: right;
+		font-size: 0.6rem;
+		color: var(--theme-desktop-glass-text-sub, #64748b);
+	}
+
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
