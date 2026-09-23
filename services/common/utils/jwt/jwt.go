@@ -65,7 +65,9 @@ func Validate(token string, publicKeyFunc func() (*ecdsa.PublicKey, error)) (boo
 		return false, nil, err
 	}
 
-	if claims != nil {
+	// Only access tokens: the refresh token (7 days, issuer "refresh") was
+	// accepted here too.
+	if claims != nil && claims.Issuer == "nivaroos" {
 		return true, claims, nil
 	}
 

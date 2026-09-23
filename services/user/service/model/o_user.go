@@ -20,6 +20,9 @@ type UserDBModel struct {
 	Nickname    string    `json:"nickname"`
 	Avatar      string    `json:"avatar"`
 	Description string    `json:"description"`
+	// Sessions (tokens) issued before this unix time are no longer valid:
+	// set when the password changes.
+	TokensValidAfter int64 `gorm:"column:tokens_valid_after" json:"-"`
 	CreatedAt   time.Time `gorm:"<-:create;autoCreateTime" json:"created_at,omitempty"`
 	UpdatedAt   time.Time `gorm:"<-:create;<-:update;autoUpdateTime" json:"updated_at,omitempty"`
 }

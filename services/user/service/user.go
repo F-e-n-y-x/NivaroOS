@@ -31,6 +31,7 @@ type UserService interface {
 	GetUserCount() (userCount int64)
 	UpdateUser(m model.UserDBModel)
 	UpdateUserPassword(m model.UserDBModel)
+	SetTokensValidAfter(id int, unix int64)
 	GetUserInfoById(id string) (m model.UserDBModel)
 	GetUserAllInfoById(id string) (m model.UserDBModel)
 	GetUserAllInfoByName(userName string) (m model.UserDBModel)
@@ -76,6 +77,10 @@ func (u *userService) GetUserCount() (userCount int64) {
 
 func (u *userService) UpdateUser(m model.UserDBModel) {
 	u.db.Model(&m).Omit("password").Updates(&m)
+}
+
+func (u *userService) SetTokensValidAfter(id int, unix int64) {
+	u.db.Model(&model.UserDBModel{}).Where("id = ?", id).Update("tokens_valid_after", unix)
 }
 
 func (u *userService) UpdateUserPassword(m model.UserDBModel) {

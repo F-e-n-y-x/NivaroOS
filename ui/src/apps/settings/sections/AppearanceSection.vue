@@ -103,6 +103,8 @@ import lightIcon from '@/assets/img/theme/light.svg'
 import darkIcon from '@/assets/img/theme/dark.svg'
 import autoIcon from '@/assets/img/theme/auto.svg'
 
+const assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
+
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
 export const ROWS = [
@@ -142,9 +144,11 @@ export default {
 			backdropAlphaPct: 90,
 			backdropBlurPx: 10,
 			themeIcons: {
-				[THEME_MODES.LIGHT]: lightIcon,
-				[THEME_MODES.DARK]: darkIcon,
-				[THEME_MODES.AUTO]: autoIcon
+				// The SVG imports resolve to module objects in this build - the
+				// previews rendered as broken images (src="[object Module]").
+				[THEME_MODES.LIGHT]: assetUrl(lightIcon),
+				[THEME_MODES.DARK]: assetUrl(darkIcon),
+				[THEME_MODES.AUTO]: assetUrl(autoIcon)
 			}
 		}
 	},

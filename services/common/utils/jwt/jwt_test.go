@@ -59,12 +59,16 @@ func TestJwtFlow(t *testing.T) {
 	assert.Equal(t, username, claims.Username)
 	assert.Equal(t, id, claims.ID)
 
-	// Validate the refresh token
-	valid, claims, err = jwt.Validate(refreshToken, func() (*ecdsa.PublicKey, error) { return consumedPublicKey, nil })
+	// A refresh token is not an access token (Validate guards every API),
+	// but it is a valid token with issuer "refresh" for the refresh endpoint.
+	valid, _, err = jwt.Validate(refreshToken, func() (*ecdsa.PublicKey, error) { return consumedPublicKey, nil })
+	assert.Error(t, err)
+	assert.False(t, valid)
+	refreshClaims, err := jwt.ParseToken(refreshToken, func() (*ecdsa.PublicKey, error) { return consumedPublicKey, nil })
 	require.NoError(t, err)
-	assert.True(t, valid)
-	assert.Equal(t, username, claims.Username)
-	assert.Equal(t, id, claims.ID)
+	assert.Equal(t, "refresh", refreshClaims.Issuer)
+	assert.Equal(t, username, refreshClaims.Username)
+	assert.Equal(t, id, refreshClaims.ID)
 }
 
 func TestInvalidToken(t *testing.T) {

@@ -87,7 +87,9 @@ func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 			return
 		}
 
-		c.Request.Header.Add("user_id", strconv.Itoa(claims.ID))
+		// Set, not Add: with Add, a user_id header sent by the client came
+		// first and handlers (GetHeader) read that one.
+		c.Request.Header.Set("user_id", strconv.Itoa(claims.ID))
 		c.Next()
 	}
 }

@@ -5,9 +5,9 @@ import (
 	"crypto/ecdsa"
 	"encoding/base64"
 	json2 "encoding/json"
+	"errors"
 	"image"
 	"image/png"
-	"errors"
 	"io"
 	"net/http"
 	url2 "net/url"
@@ -27,7 +27,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/user/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/model/system_model"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
-	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/encryption"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/file"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
 	uuid "github.com/satori/go.uuid"
@@ -98,7 +97,7 @@ func PostUserRegister(c *gin.Context) {
 
 	user := model2.UserDBModel{}
 	user.Username = username
-	user.Password = encryption.GetMD5ByStr(pwd)
+	user.Password = hashPassword(pwd)
 	user.Role = "admin"
 
 	user = service.MyService.User().CreateUser(user)
@@ -134,8 +133,12 @@ var limiter = rate.NewLimiter(rate.Every(time.Minute), 5)
 // @Success 200 {string} string "ok"
 // @Router /user/login [post]
 func PostUserLogin(c *gin.Context) {
+	json := make(map[string]string)
+	c.ShouldBind(&json)
 
-	if !limiter.Allow() {
+	username := json["username"]
+	limitKeys := []string{"ip:" + c.ClientIP(), "user:" + strings.ToLower(username)}
+	if !loginLimiter.allow(limitKeys...) {
 		c.JSON(common_err.TOO_MANY_REQUEST,
 			model.Result{
 				Success: common_err.TOO_MANY_LOGIN_REQUESTS,
@@ -143,11 +146,6 @@ func PostUserLogin(c *gin.Context) {
 			})
 		return
 	}
-
-	json := make(map[string]string)
-	c.ShouldBind(&json)
-
-	username := json["username"]
 
 	password := json["password"]
 	// check params is empty
@@ -165,14 +163,12 @@ func PostUserLogin(c *gin.Context) {
 			model.Result{Success: common_err.USER_NOT_EXIST_OR_PWD_INVALID, Message: common_err.GetMsg(common_err.USER_NOT_EXIST_OR_PWD_INVALID)})
 		return
 	}
-	if user.Password != encryption.GetMD5ByStr(password) {
+	if !verifyPassword(&user, password) {
 		c.JSON(common_err.CLIENT_ERROR,
 			model.Result{Success: common_err.USER_NOT_EXIST_OR_PWD_INVALID, Message: common_err.GetMsg(common_err.USER_NOT_EXIST_OR_PWD_INVALID)})
 		return
 	}
-
-	// clean limit
-	limiter = rate.NewLimiter(rate.Every(time.Minute), 5)
+	loginLimiter.reset("ip:" + c.ClientIP())
 
 	privateKey, _ := service.MyService.User().GetKeyPair()
 
@@ -405,14 +401,28 @@ func PutUserPassword(c *gin.Context) {
 			model.Result{Success: common_err.USER_NOT_EXIST, Message: common_err.GetMsg(common_err.USER_NOT_EXIST)})
 		return
 	}
-	if user.Password != encryption.GetMD5ByStr(oldPwd) {
+	if len(pwd) < 6 {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.PWD_IS_TOO_SIMPLE, Message: common_err.GetMsg(common_err.PWD_IS_TOO_SIMPLE)})
+		return
+	}
+	if !verifyPassword(&user, oldPwd) {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.PWD_INVALID_OLD, Message: common_err.GetMsg(common_err.PWD_INVALID_OLD)})
 		return
 	}
-	user.Password = encryption.GetMD5ByStr(pwd)
+	user.Password = hashPassword(pwd)
 	service.MyService.User().UpdateUserPassword(user)
+	// Every session from before the change ends (they used to keep
+	// working); tokens issued from now on are valid.
+	service.MyService.User().SetTokensValidAfter(user.Id, time.Now().Unix())
 	user.Password = ""
-	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: user})
+	// The session making the change continues with fresh tokens.
+	privateKey, _ := service.MyService.User().GetKeyPair()
+	access, _ := jwt.GetAccessToken(user.Username, privateKey, user.Id)
+	refresh, _ := jwt.GetRefreshToken(user.Username, privateKey, user.Id)
+	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: map[string]interface{}{
+		"user":  user,
+		"token": system_model.VerifyInformation{AccessToken: access, RefreshToken: refresh, ExpiresAt: time.Now().Add(3 * time.Hour).Unix()},
+	}})
 }
 
 // @Summary edit user nick
@@ -866,6 +876,13 @@ func PostUserRefreshToken(c *gin.Context) {
 	}
 	if !claims.VerifyExpiresAt(time.Now(), true) || !claims.VerifyIssuer("refresh", true) {
 		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE)})
+		return
+	}
+	// The account must still exist, and the session must be newer than the
+	// last password change (deleted users and old sessions refreshed forever).
+	owner := service.MyService.User().GetUserAllInfoById(strconv.Itoa(claims.ID))
+	if owner.Id == 0 || claims.IssuedAt == nil || claims.IssuedAt.Unix() < owner.TokensValidAfter {
+		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: "this session has ended - sign in again"})
 		return
 	}
 

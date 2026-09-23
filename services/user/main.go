@@ -23,7 +23,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/user/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/sqlite"
-	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/encryption"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/user/route/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/random"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/route"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
@@ -89,7 +89,7 @@ func init() {
 		}
 
 		password := random.RandomString(6, false)
-		userData.Password = encryption.GetMD5ByStr(password)
+		userData.Password = v1.HashPassword(password)
 		service.MyService.User().UpdateUserPassword(userData)
 		fmt.Println("User reset successful")
 		fmt.Println("UserName:" + userData.Username)

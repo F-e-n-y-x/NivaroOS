@@ -18,6 +18,7 @@ package route
 
 import (
 	"crypto/ecdsa"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"net/http"
 	"strconv"
 
@@ -68,7 +69,17 @@ func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 			return
 		}
 
-		c.Request.Header.Add("user_id", strconv.Itoa(claims.ID))
+		// A deleted account, or a session older than the last password
+		// change, is over here right away (other services see the same
+		// through the 3 h access-token lifetime and the refresh check).
+		if owner := service.MyService.User().GetUserAllInfoById(strconv.Itoa(claims.ID)); owner.Id == 0 || claims.IssuedAt == nil || claims.IssuedAt.Unix() < owner.TokensValidAfter {
+			c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: "this session has ended - sign in again"})
+			c.Abort()
+			return
+		}
+		// Set, not Add: with Add, a user_id header sent by the client came
+		// first and handlers (GetHeader) read that one.
+		c.Request.Header.Set("user_id", strconv.Itoa(claims.ID))
 		c.Next()
 	}
 }

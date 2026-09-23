@@ -161,8 +161,19 @@ export default {
 				return
 			}
 			this.savingPassword = true
-			this.$api.users.changePassword({ old_password: this.oriPassword, password: this.newPassword1 }).then(() => {
+			this.$api.users.changePassword({ old_password: this.oriPassword, password: this.newPassword1 }).then(res => {
+				// Other sessions end on a password change; this one continues
+				// with the fresh tokens the server returns.
+				const t = res.data && res.data.data && res.data.data.token
+				if (t && t.access_token) {
+					localStorage.setItem('access_token', t.access_token)
+					localStorage.setItem('refresh_token', t.refresh_token)
+					localStorage.setItem('expires_at', t.expires_at)
+					this.$store.commit('SET_ACCESS_TOKEN', t.access_token)
+					this.$store.commit('SET_REFRESH_TOKEN', t.refresh_token)
+				}
 				this.cancelPassword()
+				this.$buefy.toast.open({ message: this.$t('Password changed - other devices have to sign in again'), type: 'is-success', duration: 4000 })
 			}).catch(e => {
 				this.passwordError = e.response && e.response.data ? e.response.data.message : this.$t('Failed to change password')
 			}).finally(() => {

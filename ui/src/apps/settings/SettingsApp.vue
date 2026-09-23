@@ -176,8 +176,8 @@ export default {
 	animation: settings-search-flash 1.6s ease-out;
 }
 @keyframes settings-search-flash {
-	0%, 30% { box-shadow: 0 0 0 2px var(--color-primary, #2563eb); }
-	100% { box-shadow: 0 0 0 2px transparent; }
+	0%, 30% { background-color: var(--theme-card-selected, rgba(37, 99, 235, 0.1)); }
+	100% { background-color: transparent; }
 }
 </style>
 
