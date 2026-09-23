@@ -1,6 +1,15 @@
 import { expect, test, describe, vi, beforeEach, afterEach } from 'vitest'
 import { vmSidecar } from './vmSidecar'
 
+// The client reads the auth token from localStorage, which Node doesn't
+// have (every test here failed with "localStorage is not defined").
+const store = {}
+vi.stubGlobal('localStorage', {
+	getItem: (k) => (k in store ? store[k] : null),
+	setItem: (k, v) => { store[k] = String(v) },
+	removeItem: (k) => { delete store[k] }
+})
+
 function jsonResponse(body, status = 200) {
 	return Promise.resolve({
 		ok: status >= 200 && status < 300,
@@ -20,7 +29,7 @@ describe('vmSidecar', () => {
 	test('listVMs GETs /vms and returns the parsed body', async () => {
 		global.fetch.mockReturnValue(jsonResponse([{ name: 'vm1' }]))
 		const vms = await vmSidecar.listVMs()
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms`, {})
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms`, { headers: {} })
 		expect(vms).toEqual([{ name: 'vm1' }])
 	})
 
@@ -44,10 +53,10 @@ describe('vmSidecar', () => {
 	test('deleteVM appends wipe_disk=true only when requested', async () => {
 		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
 		await vmSidecar.deleteVM('vm1', true)
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/vm1?wipe_disk=true`, { method: 'DELETE' })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/vm1?wipe_disk=true`, { method: 'DELETE', headers: {} })
 
 		await vmSidecar.deleteVM('vm1', false)
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/vm1`, { method: 'DELETE' })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/vm1`, { method: 'DELETE', headers: {} })
 	})
 
 	test('createVM POSTs JSON with the right headers', async () => {
@@ -69,20 +78,20 @@ describe('vmSidecar', () => {
 	test('listHostInterfaces GETs /networks/interfaces', async () => {
 		global.fetch.mockReturnValue(jsonResponse(['enp7s0']))
 		const names = await vmSidecar.listHostInterfaces()
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/networks/interfaces`, {})
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/networks/interfaces`, { headers: {} })
 		expect(names).toEqual(['enp7s0'])
 	})
 
 	test('consoleUrl builds a ws:// URL scoped to the VM name', () => {
 		// window is undefined under vitest's node environment, so the
 		// client falls back to "localhost" - see vmSidecar.js.
-		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost:28641/vms/my-vm/console')
+		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost:28641/vms/my-vm/console?token=')
 	})
 
 	test('sharedFolder endpoints call correct URLs and verbs', async () => {
 		global.fetch.mockReturnValue(jsonResponse([{ source_dir: '/DATA/Share', target_tag: 'nivaroshare' }]))
 		const shares = await vmSidecar.listSharedFolders('my-vm')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, {})
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, { headers: {} })
 		expect(shares).toEqual([{ source_dir: '/DATA/Share', target_tag: 'nivaroshare' }])
 
 		global.fetch.mockReturnValue(jsonResponse({}, 201))
@@ -95,10 +104,10 @@ describe('vmSidecar', () => {
 
 		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
 		await vmSidecar.detachSharedFolder('my-vm', 'nivaroshare')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders/nivaroshare`, { method: 'DELETE' })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders/nivaroshare`, { method: 'DELETE', headers: {} })
 
 		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
 		await vmSidecar.insertVirtioWin('my-vm')
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/insert-virtio-win`, { method: 'POST' })
+		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/insert-virtio-win`, { method: 'POST', headers: {} })
 	})
 })
