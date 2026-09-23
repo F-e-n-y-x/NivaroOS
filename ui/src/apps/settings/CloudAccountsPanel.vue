@@ -393,10 +393,10 @@ export default {
 	&.active {
 		border-color: var(--color-primary, #3273dc);
 		background: var(--color-primary-soft, rgba(50, 115, 220, 0.08));
-		color: var(--color-primary, #3273dc);
+		color: var(--color-primary-fg);
 
 		i {
-			color: var(--color-primary, #3273dc);
+			color: var(--color-primary-fg);
 		}
 	}
 }
@@ -425,7 +425,7 @@ export default {
 	height: 1.35rem;
 	border-radius: 50%;
 	background: var(--color-primary-soft, rgba(50, 115, 220, 0.1));
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 	font-size: var(--font-xs);
 	font-weight: 600;
 }
@@ -459,7 +459,7 @@ export default {
 .advanced-toggle {
 	display: inline-block;
 	font-size: var(--font-xs);
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 	cursor: pointer;
 	margin-bottom: var(--space-2);
 }
@@ -471,7 +471,7 @@ export default {
 }
 
 .error-note {
-	color: var(--color-danger, #ef4444);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin-top: var(--space-2);
 }

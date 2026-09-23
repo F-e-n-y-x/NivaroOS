@@ -360,7 +360,7 @@ export default {
 .setting-chip.is-online {
 	border-color: rgba(35, 168, 90, 0.3);
 	background: rgba(35, 168, 90, 0.08);
-	color: var(--color-success, #1f8a4c);
+	color: var(--color-success-fg);
 }
 
 .advanced-toggle {

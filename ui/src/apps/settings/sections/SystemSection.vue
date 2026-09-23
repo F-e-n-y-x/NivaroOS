@@ -491,7 +491,7 @@ export default {
 
 	code {
 		background: transparent;
-		color: var(--color-primary, #2563eb);
+		color: var(--color-primary-fg);
 		font-weight: 600;
 		padding: 0;
 	}

@@ -365,13 +365,13 @@ export default {
 
 .companion-progress-fill {
 	height: 100%;
-	background: #3b82f6;
+	background: var(--color-primary);
 	border-radius: var(--radius-xs);
 	transition: width 0.3s ease;
 }
 
 .icon-button.is-danger:hover {
 	background: rgba(239, 68, 68, 0.1);
-	color: #ef4444;
+	color: var(--color-danger-fg);
 }
 </style>

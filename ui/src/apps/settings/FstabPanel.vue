@@ -877,12 +877,12 @@ export default {
 
 	&.is-primary {
 		background: var(--color-primary-soft, rgba(50, 115, 220, 0.12));
-		color: var(--color-primary);
+		color: var(--color-primary-fg);
 	}
 
 	&.is-info {
 		background: var(--theme-success-soft, rgba(35, 209, 96, 0.12));
-		color: var(--color-success, #23d160);
+		color: var(--color-success-fg);
 	}
 }
 
@@ -1061,7 +1061,7 @@ export default {
 
 	&.is-mounted {
 		background: var(--theme-success-soft, rgba(35, 209, 96, 0.1));
-		color: var(--color-success, #23d160);
+		color: var(--color-success-fg);
 	}
 
 	&.is-unmounted {
@@ -1071,7 +1071,7 @@ export default {
 
 	&.is-missing {
 		background: var(--theme-danger-soft, rgba(239, 68, 68, 0.1));
-		color: var(--color-danger, #ef4444);
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -1119,7 +1119,7 @@ export default {
 
 	.target-icon {
 		font-size: var(--font-md);
-		color: var(--color-primary, #3b82f6);
+		color: var(--color-primary-fg);
 		flex-shrink: 0;
 	}
 
@@ -1158,12 +1158,12 @@ export default {
 	align-items: center;
 
 	&.is-warning {
-		color: var(--color-warning, #f59e0b);
+		color: var(--color-warning-fg);
 		font-weight: 500;
 	}
 
 	&.is-success {
-		color: var(--color-success, #10b981);
+		color: var(--color-success-fg);
 	}
 
 	&.is-muted {
@@ -1240,7 +1240,7 @@ export default {
 	&.is-success-light {
 		background: var(--theme-success-soft, rgba(35, 209, 96, 0.08));
 		border-color: var(--color-success, rgba(35, 209, 96, 0.25));
-		color: var(--color-success, #16a34a);
+		color: var(--color-success-fg);
 
 		&:hover:not(:disabled) {
 			background: var(--theme-success-soft, rgba(35, 209, 96, 0.16));
@@ -1250,7 +1250,7 @@ export default {
 	&.is-warning-light {
 		background: var(--theme-warning-soft, rgba(245, 158, 11, 0.08));
 		border-color: var(--color-warning, rgba(245, 158, 11, 0.25));
-		color: var(--color-warning, #d97706);
+		color: var(--color-warning-fg);
 
 		&:hover:not(:disabled) {
 			background: var(--theme-warning-soft, rgba(245, 158, 11, 0.16));
@@ -1260,7 +1260,7 @@ export default {
 	&.is-danger-light {
 		background: var(--theme-danger-soft, rgba(239, 68, 68, 0.06));
 		border-color: var(--color-danger, rgba(239, 68, 68, 0.2));
-		color: var(--color-danger, #dc2626);
+		color: var(--color-danger-fg);
 
 		&:hover:not(:disabled) {
 			background: var(--theme-danger-soft, rgba(239, 68, 68, 0.14));
@@ -1285,7 +1285,7 @@ export default {
 	height: 3.5rem;
 	border-radius: 50%;
 	background: var(--color-primary-soft, rgba(50, 115, 220, 0.08));
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1607,7 +1607,7 @@ export default {
 	align-items: center;
 	gap: var(--space-1);
 	font-size: var(--font-xs);
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	cursor: pointer;
 	font-weight: 500;
 }
@@ -1652,7 +1652,7 @@ export default {
 
 .preset-icon-wrap {
 	font-size: var(--font-lg);
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	flex-shrink: 0;
 	margin-top: var(--space-1);
 }
@@ -1716,7 +1716,7 @@ export default {
 
 	&:hover {
 		border-color: var(--color-primary);
-		color: var(--color-primary);
+		color: var(--color-primary-fg);
 		background: var(--color-primary-soft, rgba(50, 115, 220, 0.06));
 	}
 }
@@ -1767,7 +1767,7 @@ export default {
 	align-items: center;
 	background: var(--theme-danger-soft, rgba(239, 68, 68, 0.1));
 	border: 1px solid var(--color-danger, rgba(239, 68, 68, 0.25));
-	color: var(--color-danger, #dc2626);
+	color: var(--color-danger-fg);
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-control);
 	font-size: var(--font-xs);
@@ -1785,7 +1785,7 @@ export default {
 
 .error-note {
 	padding: var(--space-2) 0;
-	color: var(--color-danger, #ef4444);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 }
 </style>

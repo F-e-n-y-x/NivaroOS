@@ -973,7 +973,7 @@ export default {
 
 		&.bg-blue {
 			background: rgba(37, 99, 235, 0.12);
-			color: var(--color-primary);
+			color: var(--color-primary-fg);
 		}
 		&.bg-green {
 			background: rgba(16, 185, 129, 0.12);
@@ -981,11 +981,11 @@ export default {
 		}
 		&.bg-amber {
 			background: rgba(245, 158, 11, 0.12);
-			color: #f59e0b;
+			color: var(--color-warning-fg);
 		}
 		&.bg-purple {
 			background: rgba(139, 92, 246, 0.12);
-			color: #8b5cf6;
+			color: var(--color-accent-fg);
 		}
 	}
 
@@ -1067,6 +1067,7 @@ export default {
 
 .filter-pills {
 	display: flex;
+	flex-wrap: wrap; // phones: the pills overflowed the section
 	gap: var(--space-1);
 
 	.filter-pill {
@@ -1093,7 +1094,8 @@ export default {
 			color: #ffffff;
 
 			.pill-count {
-				background: rgba(255, 255, 255, 0.25);
+				// darker, not lighter: white on the lightened blue was 3.3:1
+				background: rgba(0, 0, 0, 0.22);
 				color: #ffffff;
 			}
 		}
@@ -1101,6 +1103,7 @@ export default {
 		.pill-count {
 			margin-left: var(--space-1);
 			background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
+			color: var(--theme-text-secondary);
 			font-size: var(--font-2xs);
 			padding: var(--space-1) var(--space-1);
 			border-radius: var(--radius-pill);
@@ -1171,9 +1174,9 @@ export default {
 
 	&.is-stopped {
 		background: rgba(239, 68, 68, 0.12);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 		.dot {
-			background: #ef4444;
+			background: #dc2626; /* white text 4.8:1 */
 		}
 	}
 }
@@ -1275,7 +1278,7 @@ export default {
 		border-left: 4px solid var(--color-primary);
 		background: rgba(37, 99, 235, 0.04);
 		.notification-status-icon {
-			color: var(--color-primary);
+			color: var(--color-primary-fg);
 		}
 	}
 

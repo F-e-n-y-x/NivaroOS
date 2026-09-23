@@ -434,7 +434,7 @@ export default {
 
 	&.is-update-available {
 		background: rgba(59, 130, 246, 0.12);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -505,7 +505,7 @@ export default {
 .github-link {
 	font-size: var(--font-xs);
 	font-weight: 500;
-	color: var(--color-primary, #2563eb);
+	color: var(--color-primary-fg);
 
 	&:hover {
 		text-decoration: underline;

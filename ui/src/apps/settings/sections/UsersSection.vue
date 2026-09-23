@@ -241,7 +241,7 @@ export default {
 	border-radius: 50%;
 	overflow: hidden;
 	background: hsla(208, 100%, 50%, 0.1);
-	color: hsla(208, 100%, 45%, 1);
+	color: var(--color-primary-fg);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -355,7 +355,7 @@ export default {
 }
 
 .error-note {
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 }
 </style>

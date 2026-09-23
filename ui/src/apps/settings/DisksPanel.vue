@@ -218,7 +218,7 @@ export default {
 
 .error-note {
 	padding: 0 var(--space-5) var(--space-3);
-	color: var(--color-danger, #ef4444);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 }
 

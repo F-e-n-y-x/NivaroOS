@@ -216,7 +216,7 @@ export default {
 
 .error-note {
 	padding: 0 var(--space-2);
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin-top: calc(-1 * var(--space-1));
 	margin-bottom: var(--space-2);

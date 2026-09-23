@@ -738,7 +738,7 @@ export default {
 
 		&.type-backup {
 			background: rgba(37, 99, 235, 0.12);
-			color: #2563eb;
+			color: var(--color-primary-fg);
 		}
 		&.type-vm {
 			background: rgba(244, 63, 94, 0.12);
@@ -746,15 +746,15 @@ export default {
 		}
 		&.type-container {
 			background: rgba(14, 165, 233, 0.12);
-			color: #0ea5e9;
+			color: var(--color-info-fg);
 		}
 		&.type-maintenance {
 			background: rgba(245, 158, 11, 0.12);
-			color: #f59e0b;
+			color: var(--color-warning-fg);
 		}
 		&.type-command {
 			background: rgba(139, 92, 246, 0.12);
-			color: #8b5cf6;
+			color: var(--color-accent-fg);
 		}
 	}
 
@@ -849,7 +849,7 @@ export default {
 		transition: all 0.15s ease;
 
 		&.active {
-			background: var(--theme-card-bg, #ffffff); color: var(--color-primary, #2563eb);
+			background: var(--theme-card-bg, #ffffff); color: var(--color-primary-fg);
 			box-shadow: var(--shadow-sm);
 			font-weight: 600;
 		}
@@ -881,7 +881,7 @@ export default {
 		&:hover {
 			background: rgba(37, 99, 235, 0.08);
 			border-color: rgba(37, 99, 235, 0.3);
-			color: #2563eb;
+			color: var(--color-primary-fg);
 		}
 	}
 }

@@ -292,7 +292,7 @@ export default {
 }
 
 .error-note {
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin: var(--space-2) var(--space-5) 0;
 }

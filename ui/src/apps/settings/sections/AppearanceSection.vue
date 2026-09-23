@@ -346,7 +346,7 @@ export default {
 	}
 
 	.check-icon {
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		flex-shrink: 0;
 		margin-left: var(--space-2);
 	}

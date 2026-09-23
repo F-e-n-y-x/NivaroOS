@@ -312,7 +312,7 @@ export default {
 
 	&.is-running {
 		background: rgba(51, 136, 255, 0.15);
-		color: var(--color-primary, #3388ff);
+		color: var(--color-primary-fg);
 	}
 
 	&.is-success {
@@ -413,7 +413,7 @@ export default {
 	height: 1.25rem;
 	padding: 0 var(--space-2);
 	background: rgba(51, 136, 255, 0.2);
-	color: var(--color-primary, #3388ff);
+	color: var(--color-primary-fg);
 }
 
 .terminal-action-btn {
@@ -433,7 +433,7 @@ export default {
 	}
 
 	&.active {
-		color: var(--color-primary, #3388ff);
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -464,7 +464,7 @@ export default {
 		color: #34d399;
 	}
 	&.is-info {
-		color: var(--color-primary, #3388ff);
+		color: var(--color-primary-fg);
 	}
 }
 

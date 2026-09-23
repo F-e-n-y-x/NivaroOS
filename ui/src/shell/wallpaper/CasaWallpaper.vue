@@ -6,11 +6,13 @@
 </template>
 
 <script>
+// require() of an image can give { default: url }; callers need the URL.
+const __assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
 import ContextMenu from './ContextMenu.vue'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
 
-const DEFAULT_LIGHT_WALLPAPER = require('@/assets/background/wallpaper01.jpg')
-const DEFAULT_DARK_WALLPAPER = require('@/assets/background/wallpaper02.jpg')
+const DEFAULT_LIGHT_WALLPAPER = __assetUrl(require('@/assets/background/wallpaper01.jpg'))
+const DEFAULT_DARK_WALLPAPER = __assetUrl(require('@/assets/background/wallpaper02.jpg'))
 
 export default {
 	name: "casa-background",

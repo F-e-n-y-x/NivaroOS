@@ -868,7 +868,7 @@ export default {
 
 	&.selected {
 		background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
-		color: var(--color-primary, #2563eb);
+		color: var(--color-primary-fg);
 		border-color: var(--color-primary, #2563eb);
 		font-weight: 500;
 	}
@@ -912,7 +912,7 @@ export default {
 	margin-left: var(--space-1);
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-pill);
-	background: var(--color-danger, #ef4444);
+	background: #dc2626; // white text 4.8:1
 	color: #ffffff;
 	font-size: var(--font-2xs);
 	font-weight: 500;
@@ -1053,7 +1053,7 @@ export default {
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-pill);
 	background: var(--theme-success-soft, rgba(16, 185, 129, 0.12));
-	color: var(--color-success, #059669);
+	color: var(--color-success-fg);
 	font-size: var(--font-xs);
 	font-weight: 500;
 }
@@ -1083,7 +1083,7 @@ export default {
 	}
 
 	.new-ver {
-		color: var(--color-success, #10b981);
+		color: var(--color-success-fg);
 		font-weight: 500;
 	}
 }
@@ -1134,13 +1134,13 @@ export default {
 
 	&.deb-src {
 		background: var(--theme-warning-soft, rgba(245, 158, 11, 0.12));
-		color: var(--color-warning, #d97706);
+		color: var(--color-warning-fg, #b45309);
 	}
 }
 
 .source-uri {
 	font-weight: 500;
-	color: var(--color-primary, #2563eb);
+	color: var(--color-primary-fg);
 }
 
 .source-suite {

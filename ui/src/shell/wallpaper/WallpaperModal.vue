@@ -78,8 +78,11 @@ import Uploader from 'simple-uploader.js'
 import { mixin } from '@/mixins/mixin'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
 
-const DEFAULT_LIGHT = require('@/assets/background/wallpaper01.jpg')
-const DEFAULT_DARK = require('@/assets/background/wallpaper02.jpg')
+// require() of an image can give a module object ({ default: url }); an
+// <img src> or a saved wallpaper path needs the URL string.
+const assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
+const DEFAULT_LIGHT = assetUrl(require('@/assets/background/wallpaper01.jpg'))
+const DEFAULT_DARK = assetUrl(require('@/assets/background/wallpaper02.jpg'))
 
 export default {
 	mixins: [mixin],
@@ -108,15 +111,15 @@ export default {
 			wallpaperItems: [
 				{
 					name: "Daylight Peak (Light)",
-					path: require('@/assets/background/wallpaper01.jpg')
+					path: assetUrl(require('@/assets/background/wallpaper01.jpg'))
 				},
 				{
 					name: "Starry Night (Dark)",
-					path: require('@/assets/background/wallpaper02.jpg')
+					path: assetUrl(require('@/assets/background/wallpaper02.jpg'))
 				},
 				{
 					name: "Nivaro Landscape",
-					path: require('@/assets/background/default_wallpaper.jpg')
+					path: assetUrl(require('@/assets/background/default_wallpaper.jpg'))
 				}
 			],
 			path: currentObj.path || localStorage.getItem('wallpaper') || DEFAULT_DARK,
@@ -384,7 +387,7 @@ export default {
 
 		&.active {
 			background: var(--theme-card-bg, #ffffff);
-			color: var(--color-primary, #2563eb);
+			color: var(--color-primary-fg);
 			border-color: var(--color-primary, #2563eb);
 			box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
 		}
@@ -464,7 +467,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	gap: var(--space-1);
-	color: rgba(44, 62, 80, 0.6);
+	color: var(--theme-text-muted);
 	font-size: var(--font-xs);
 }
 </style>

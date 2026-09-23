@@ -191,14 +191,14 @@ export default {
 .advanced-toggle {
 	display: inline-block;
 	font-size: var(--font-xs);
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	cursor: pointer;
 	margin: var(--space-1) 0 var(--space-2);
 }
 
 .error-note {
 	padding: 0 var(--space-2);
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin-top: var(--space-1);
 	margin-bottom: var(--space-2);

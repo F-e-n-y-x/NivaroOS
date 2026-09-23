@@ -1,3 +1,5 @@
+// require() of an image can give { default: url }; callers need the URL.
+const __assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
 const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
 
 // Only system-app windows persist across sessions - edit-app windows
@@ -103,7 +105,7 @@ const mutations = {
 
 	SET_DEFAULT_WALLPAPER(state) {
 		state.wallpaperObject = {
-			path: require('@/assets/background/default_wallpaper.jpg'),
+			path: __assetUrl(require('@/assets/background/default_wallpaper.jpg')),
 			from: "Built-in" //Built-in, Upload, Files
 		}
 	},

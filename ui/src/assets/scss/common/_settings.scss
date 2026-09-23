@@ -263,7 +263,7 @@
 	align-items: center;
 	padding: 0.3rem 0.85rem;
 	background: rgba(37, 99, 235, 0.08);
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	border-radius: 9999px;
 	font-size: 0.825rem;
 	font-weight: 400;
@@ -324,19 +324,19 @@
 	&.is-feature {
 		border-color: rgba(37, 99, 235, 0.3);
 		background: rgba(37, 99, 235, 0.08);
-		color: var(--color-primary);
+		color: var(--color-primary-fg);
 	}
 
 	&.deb {
 		border-color: rgba(37, 99, 235, 0.3);
 		background: rgba(37, 99, 235, 0.08);
-		color: var(--color-primary);
+		color: var(--color-primary-fg);
 	}
 
 	&.deb-src {
 		border-color: rgba(245, 158, 11, 0.3);
 		background: rgba(245, 158, 11, 0.1);
-		color: var(--color-warning);
+		color: var(--color-warning-fg);
 	}
 }
 
@@ -373,7 +373,7 @@
 	height: 2.4rem;
 	border-radius: 50%;
 	background: rgba(37, 99, 235, 0.1);
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -440,7 +440,7 @@
 
 	&.on {
 		background: rgba(37, 99, 235, 0.12);
-		color: var(--color-primary);
+		color: var(--color-primary-fg);
 	}
 
 	input {
@@ -604,7 +604,7 @@ input[type='range'].pretty-range {
 }
 
 .error-note {
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: 0.775rem;
 	font-weight: 500;
 	padding: 0 0.6rem;
@@ -663,4 +663,42 @@ input[type='range'].pretty-range {
 	.settings-content {
 		overflow-x: hidden;
 	}
+}
+
+// Badges and tags with white text need a fill that reaches 4.5:1; light
+// "is-light" tags get dark tints in dark mode (they kept light tints with
+// light text, ~2.3:1).
+.settings-app,
+.settings-overlay-card {
+	.tag.is-info:not(.is-light),
+	.tag.is-primary:not(.is-light) { background: var(--color-primary); color: #fff; }
+	.tag.is-danger:not(.is-light) { background: #dc2626; color: #fff; }
+	.button.is-danger.is-outlined { color: var(--color-danger-fg); border-color: currentColor; }
+	.button.is-danger.is-outlined:hover { color: #fff; background: #dc2626; }
+	.error-note { color: var(--color-danger-fg) !important; }
+	.filter-pill.active .pill-count,
+	.filter-pill.is-active .pill-count { background: rgba(0, 0, 0, 0.22) !important; color: #fff !important; }
+}
+[data-theme='dark'] .settings-app,
+[data-theme='dark'] .settings-overlay-card {
+	.tag.is-light,
+	.count-pill,
+	.datetime-preview-pill,
+	.account-toggle-chip.on,
+	.account-avatar {
+		background: rgba(96, 165, 250, 0.14) !important;
+	}
+	.tag.is-success.is-light { background: rgba(74, 222, 128, 0.14) !important; }
+	.tag.is-danger.is-light { background: rgba(248, 113, 113, 0.14) !important; }
+	.tag.is-warning.is-light { background: rgba(251, 191, 36, 0.14) !important; }
+}
+
+// Buefy's danger/outlined-primary buttons: #f14668 behind white text is
+// 3.6:1; outlined primary text in dark mode was the #2563eb fill (3.4:1).
+.settings-app,
+.settings-overlay-card {
+	.button.is-danger:not(.is-outlined):not(.is-light) { background-color: #dc2626; border-color: #dc2626; color: #fff; }
+	.button.is-danger:not(.is-outlined):not(.is-light):hover { background-color: #b91c1c; }
+	.button.is-primary.is-outlined { color: var(--color-primary-fg); border-color: var(--color-primary-fg); }
+	.button.is-primary.is-outlined:hover { color: #fff; background: var(--color-primary); }
 }

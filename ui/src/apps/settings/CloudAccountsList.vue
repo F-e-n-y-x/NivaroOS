@@ -321,7 +321,7 @@ export default {
 .speedtest-pulse {
 	display: inline-block;
 	animation: speedtest-pulse 0.9s ease-in-out infinite;
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 }
 
 @keyframes speedtest-pulse {
@@ -330,10 +330,10 @@ export default {
 }
 
 .speed-result {
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 
 	&.is-error {
-		color: var(--color-danger, #ef4444);
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -360,7 +360,7 @@ export default {
 .advanced-toggle {
 	display: inline-block;
 	font-size: var(--font-xs);
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 	cursor: pointer;
 	margin-bottom: var(--space-2);
 }
@@ -372,7 +372,7 @@ export default {
 }
 
 .error-note {
-	color: var(--color-danger, #ef4444);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin-top: var(--space-2);
 }

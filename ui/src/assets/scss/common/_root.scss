@@ -26,6 +26,8 @@
     --color-success-fg:     #047857;
     --color-danger-fg:      #b91c1c;
     --color-warning-fg:     #b45309;
+    --color-accent-fg:      #6d28d9;   // purple labels
+    --color-info-fg:        #0369a1;   // cyan/sky labels
 
     --color-danger:         #ef4444;
     --color-danger-hover:   #dc2626;
@@ -52,7 +54,7 @@
     --color-border-strong:  rgba(0, 0, 0, 0.14);
 
     // ── Legacy text muted aliases ───────────────────────────
-    --color-text-muted:       #64748b;
+    --color-text-muted:       #5b6779;   // 4.5:1 on tinted pills too
     --color-text-muted-light: #94a3b8;
 
     // ── Border Radius Scale ─────────────────────────────────

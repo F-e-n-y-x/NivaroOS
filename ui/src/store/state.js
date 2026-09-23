@@ -1,3 +1,5 @@
+// require() of an image can give { default: url }; callers need the URL.
+const __assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
 const state = {
 	// User
 	access_token: "",
@@ -60,7 +62,7 @@ const state = {
 	// happen) show the same background as the desktop, instead of
 	// always falling back to the hardcoded default.
 	wallpaperObject: {
-		path: localStorage.getItem('wallpaper') || require('@/assets/background/default_wallpaper.jpg'),
+		path: localStorage.getItem('wallpaper') || __assetUrl(require('@/assets/background/default_wallpaper.jpg')),
 		from: "Built-in" //Built-in, Upload, Files
 	},
 

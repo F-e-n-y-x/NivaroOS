@@ -174,7 +174,7 @@ export default {
 }
 
 .error-note {
-	color: var(--color-danger);
+	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	padding: 0 var(--space-5) var(--space-3);
 }
