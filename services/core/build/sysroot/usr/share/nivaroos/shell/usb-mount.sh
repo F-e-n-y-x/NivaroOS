@@ -29,6 +29,21 @@ else
   MOUNT_POINT=$(lsblk -l -p -o name,mountpoint | grep "${DEVICE}" | awk '{print $2}')
 fi
 
+
+# NTFS: the kernel ntfs3 driver is several times faster than FUSE ntfs-3g
+# (same switch the internal drives got). ntfs3 refuses a volume marked
+# dirty (unplugged without ejecting, Windows Fast Startup/hibernation), so
+# those still mount through ntfs-3g, which handles them.
+mount_ntfs() {
+  if grep -qw ntfs3 /proc/filesystems 2>/dev/null || modprobe ntfs3 2>/dev/null; then
+    if mount -t ntfs3 -o rw,noatime,iocharset=utf8,prealloc,umask=000 "$1" "$2" 2>/dev/null; then
+      return 0
+    fi
+    echo "ntfs3 could not mount $1 (dirty or hibernated volume?) - using ntfs-3g" | logger -t usb-mount.sh 2>/dev/null
+  fi
+  ntfs-3g "$1" "$2"
+}
+
 do_mount() {
 
   if [ -n "${MOUNT_POINT}" ]; then
@@ -121,7 +136,7 @@ do_mount() {
     mount_status=$?
     ;;
   ntfs)
-    ntfs-3g ${DEVICE} "${MOUNT_POINT}"
+    mount_ntfs "${DEVICE}" "${MOUNT_POINT}"
     mount_status=$?
     ;;
   iso9660)
