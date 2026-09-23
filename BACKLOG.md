@@ -4,6 +4,14 @@ Queued after Milestone 1 (fork building + swapped in, matching current
 install — see docs/superpowers/specs/2026-08-19-casaos-fork-milestone1-design.md).
 Each item gets its own brainstorm/design pass before implementation.
 
+## 17. Files reliability rebuild — DONE (2026-09-23)
+Copies reported "complete" while files were missing, cross-drive moves
+deleted sources that never copied, pastes were silently dropped by a racy
+queue, uploads could corrupt or crash the core service, cloud copies said
+"Done" before uploading. Rebuilt end to end - engine, UI, uploads,
+downloads, cloud/companion - with every result verified. Design, root
+causes and evidence: docs/specs/2026-09-23-files-reliability.md.
+
 ## 16. Download Station — DONE (2026-09-23)
 New Dock/grid system app (`src/apps/download-station/`) backed by a new
 `nivaroos-download-sidecar` (pure Go, port 28642, see its README):

@@ -1,6 +1,6 @@
 # Files reliability rebuild
 
-Status: in progress (2026-09-23)
+Status: done (2026-09-23) - phases 1-5 shipped, see section 4
 Owner complaint: copies report "complete" while files are missing; pastes
 sometimes never start; top bar actions unreliable across browsers/devices;
 companion and cloud transfers untrustworthy.
@@ -138,3 +138,25 @@ Events + API
 4. Companion streaming + offline errors, cloud sync phase, CIFS options.
 5. Toolbar/UX polish; end-to-end runs (large files, 10k small files,
    cross-drive move with failures, two browsers at once).
+
+## 4. Outcome
+
+| Phase | Commit | Verified |
+|---|---|---|
+| 1 Engine | cdc0cf9 | 3,001 files / 594 MB copy checksum-identical; cross-drive move with a blocked file kept it at the source; retry completed it |
+| 2 Frontend | 1f3a34f | blocked file reported with reason; triple paste = one job; fresh tab resyncs from history; cut/move/delete refresh listings |
+| 3 Uploads/downloads | 6c29747 | 50 MB upload as 7 parallel reversed chunks + duplicate byte-identical; resume checks; folders kept; zip names + in-zip error report |
+| 4 Cloud/companion | 12c1fa5 | 30 MB copy to Google Drive held in "syncing" for the real 29 s upload; object size verified on Google |
+| 5 UX | (this commit) | Replace / Keep both / Skip dialog before overwriting; copy/cut confirmations |
+
+Also found and fixed along the way: every v2 GET without Content-Type
+panicked (router validator); the old upload service could panic the core
+service; cross-drive rename copied into newname/oldname then deleted the
+original; zip downloads were always named "batch".
+
+Known limits / follow-ups
+- A companion single-file download still falls back to the server backup
+  copy when the phone is unreachable (listings are now explicit about it).
+- Deleting still removes permanently; a Trash would add a safety net.
+- The mobile app's own copy/paste screen doesn't show engine job progress
+  yet (it can now: POST /v1/batch/task returns the job id).

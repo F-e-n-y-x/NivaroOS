@@ -5,6 +5,43 @@
 // starting two overwrite jobs. They all go through here now.
 import transfers from '@/service/transfers'
 import { escapeHtml } from '@/utils/escapeHtml'
+import folderApi from '@/service/folder'
+
+const baseName = (p) => p.replace(/\/+$/, '').split('/').pop()
+const parentOf = (p) => p.replace(/\/+$/, '').split('/').slice(0, -1).join('/') || '/'
+
+// Names in `from` that already exist in `to` (pasting into an item's own
+// folder isn't a conflict - the engine keeps both automatically).
+async function findConflicts(from, to) {
+	const dest = to.replace(/\/+$/, '') || '/'
+	const candidates = from.filter((p) => parentOf(p) !== dest)
+	if (!candidates.length) return []
+	let res
+	try {
+		res = await folderApi.getList(dest)
+	} catch (e) {
+		return [] // can't tell - the engine's default still applies
+	}
+	const content = (res.data && res.data.data && res.data.data.content) || []
+	const existing = new Set(content.map((i) => i.name))
+	return candidates.map(baseName).filter((n) => existing.has(n))
+}
+
+// Ask Replace / Keep both / Skip in a desktop window. Resolves to a
+// conflict style, or null for Cancel.
+function askConflict(vm, names, to) {
+	return new Promise((resolve) => {
+		const id = 'transfer-conflict-' + Date.now()
+		vm.$store.commit('OPEN_WINDOW', {
+			id,
+			title: vm.$t('Replace or keep both?'),
+			component: 'TransferConflictWindow',
+			props: { winId: id, isDialog: true, names, destName: baseName(to) || to, onChoose: resolve },
+			width: 480,
+			height: names.length > 1 ? 330 : 220,
+		})
+	})
+}
 
 /**
  * @param vm      any component (for $store / $buefy / $t)
@@ -14,6 +51,14 @@ import { escapeHtml } from '@/utils/escapeHtml'
  */
 export async function startTransfer(vm, op, opts = {}) {
 	try {
+		if (!op.style) {
+			const conflicts = await findConflicts(op.from, op.to)
+			if (conflicts.length) {
+				const style = await askConflict(vm, conflicts, op.to)
+				if (!style) return null
+				op = { ...op, style }
+			}
+		}
 		const job = await transfers.submit(op)
 		if (op.type === 'move' && opts.clearClipboardOnMove) vm.$store.commit('SET_OPERATE_OBJECT', null)
 		return job

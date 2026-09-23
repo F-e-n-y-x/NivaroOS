@@ -731,5 +731,9 @@
   "{n} transfers in progress · {p}%": "{n} transfers in progress · {p}%",
   "{n} transfers need attention": "{n} transfers need attention",
   "{n}s left": "{n}s left",
-  "…and {n} more": "…and {n} more"
+  "…and {n} more": "…and {n} more",
+  "“{name}” already exists in {dest}": "“{name}” already exists in {dest}",
+  "{n} items already exist in {dest}": "{n} items already exist in {dest}",
+  "{what} cut - paste to move": "{what} cut - paste to move",
+  "{what} copied - paste in any folder, tab or device": "{what} copied - paste in any folder, tab or device"
 }

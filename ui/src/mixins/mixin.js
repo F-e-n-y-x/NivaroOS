@@ -264,7 +264,8 @@ export const mixin = {
 				a.remove()
 				this.$buefy.toast.open({
 					message: list.length === 1 && !list[0].is_dir ? this.$t('Download started') : this.$t('Preparing a zip - it will appear in your browser downloads'),
-					type: 'is-white',
+					type: 'is-dark',
+					position: 'is-bottom',
 				})
 			} catch (e) {
 				this.$buefy.toast.open({ message: escapeHtml(e.message || this.$t('Download failed')), type: 'is-danger', duration: 5000 })
@@ -396,6 +397,17 @@ export const mixin = {
 				})
 			}
 			this.$store.commit('SET_OPERATE_OBJECT', operateObject)
+			// Copy/Cut used to give no feedback at all.
+			const n = (operateObject.item || []).length
+			if (n && this.$buefy) {
+				const what = n === 1 ? `“${operateObject.item[0].from.split('/').pop()}”` : this.$t('{n} items', { n })
+				this.$buefy.toast.open({
+					message: escapeHtml(type === 'move' ? this.$t('{what} cut - paste to move', { what }) : this.$t('{what} copied - paste in any folder, tab or device', { what })),
+					type: 'is-dark',
+					position: 'is-bottom',
+					duration: 2500,
+				})
+			}
 			if (this.$refs.dropDown !== undefined) {
 				this.$refs.dropDown.toggle()
 			}

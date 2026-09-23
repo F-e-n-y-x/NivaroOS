@@ -44,6 +44,7 @@ import FeedbackPanel from '@/shared/feedback/FeedbackPanel.vue'
 import ShareModal from '@/apps/files/share/ShareModal.vue'
 import DiskLearnMore from '@/apps/storage/DiskLearnMore.vue'
 import FilePanel from '@/apps/files/fileList/FilePanel.vue'
+import TransferConflictWindow from '@/apps/files/dialogs/TransferConflictWindow.vue'
 
 export const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -87,7 +88,8 @@ export const COMPONENT_REGISTRY = {
 	FeedbackPanel,
 	ShareModal,
 	DiskLearnMore,
-	FilePanel
+	FilePanel,
+	TransferConflictWindow
 }
 
 // These components' own top row IS the window's titlebar (draggable, with
