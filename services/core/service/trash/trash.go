@@ -39,7 +39,10 @@ type Item struct {
 	Size         int64     `json:"size"`
 	IsDir        bool      `json:"is_dir"`
 	Items        int       `json:"items,omitempty"` // entries inside a folder
-	Root         string    `json:"root"`
+	// Measuring is set while a trashed folder's size is still being
+	// counted (that walk happens after the move, not before it).
+	Measuring bool   `json:"measuring,omitempty"`
+	Root      string `json:"root"`
 }
 
 type Options struct {
@@ -55,6 +58,8 @@ type Bin struct {
 	mu    sync.Mutex
 	opts  Options
 	roots map[string]bool
+
+	beforeMeasure func() // test hook
 }
 
 var (
@@ -73,6 +78,12 @@ func New(opts Options) *Bin {
 			for _, r := range list {
 				b.roots[r] = true
 			}
+		}
+	}
+	// Folders whose measuring was cut short by a restart.
+	for _, it := range b.listLocked() {
+		if it.Measuring {
+			go b.measureLater(it)
 		}
 	}
 	return b
@@ -122,16 +133,45 @@ func (b *Bin) rememberRoot(root string) {
 // with the error, so the caller can tell the user exactly what happened.
 func (b *Bin) Trash(paths []string) ([]Item, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	var out []Item
+	var err error
 	for _, p := range paths {
-		it, err := b.trashOne(filepath.Clean(p))
-		if err != nil {
-			return out, fmt.Errorf("%s: %w", filepath.Base(p), err)
+		it, e := b.trashOne(filepath.Clean(p))
+		if e != nil {
+			err = fmt.Errorf("%s: %w", filepath.Base(p), e)
+			break
 		}
 		out = append(out, it)
 	}
-	return out, nil
+	b.mu.Unlock()
+	for _, it := range out {
+		if it.Measuring {
+			go b.measureLater(it)
+		}
+	}
+	return out, err
+}
+
+// measureLater counts a trashed folder's size and records it.
+func (b *Bin) measureLater(it Item) {
+	if b.beforeMeasure != nil {
+		b.beforeMeasure()
+	}
+	p := b.pathOf(it)
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return // restored or deleted meanwhile
+	}
+	size, items := measure(p, fi)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cur, ok := b.find(it.ID)
+	if !ok {
+		return
+	}
+	cur.Size, cur.Items, cur.Measuring = size, items, false
+	raw, _ := json.Marshal(cur)
+	_ = os.WriteFile(b.infoPath(cur.Root, cur.ID), raw, 0o600)
 }
 
 func (b *Bin) trashOne(p string) (Item, error) {
@@ -153,7 +193,11 @@ func (b *Bin) trashOne(p string) (Item, error) {
 		return Item{}, ErrNoTrashHere
 	}
 	it := Item{ID: newID(), Name: fi.Name(), OriginalPath: p, DeletedAt: time.Now(), IsDir: fi.IsDir(), Root: root}
-	it.Size, it.Items = measure(p, fi)
+	if fi.IsDir() {
+		it.Measuring = true // counted after the move (see measureLater)
+	} else {
+		it.Size = fi.Size()
+	}
 
 	holder := filepath.Join(trashDir(root), "files", it.ID)
 	if err := os.MkdirAll(holder, 0o700); err != nil {

@@ -1,6 +1,7 @@
 package trash
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -178,4 +179,44 @@ func TestListSurvivesRestart(t *testing.T) {
 	if l := New(opts).List(); len(l) != 1 || l[0].Name != "keep.txt" {
 		t.Fatalf("after restart: %+v", l)
 	}
+}
+
+// Deleting a big folder (a node_modules backup: 100k+ files) used to walk
+// it for its size inside the request, holding the lock - the web UI gave
+// up after 60 s and every other Trash call waited. Trashing must be just
+// the rename; the size is filled in afterwards.
+func TestTrashingAFolderDoesNotWaitForItsSize(t *testing.T) {
+	b, dir := newTestBin(t)
+	d := filepath.Join(dir, "Backup")
+	for i := 0; i < 50; i++ {
+		write(t, filepath.Join(d, "sub", fmt.Sprintf("f%d", i)), "xx")
+	}
+	measureStarted := make(chan struct{})
+	release := make(chan struct{})
+	b.beforeMeasure = func() { close(measureStarted); <-release }
+
+	items, err := b.Trash([]string{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(d); !os.IsNotExist(err) {
+		t.Fatal("folder not moved to the Trash")
+	}
+	<-measureStarted
+	// While it's still being measured, the Trash stays usable.
+	if got := b.List(); len(got) != 1 || got[0].ID != items[0].ID || !got[0].Measuring {
+		t.Fatalf("list during measure = %+v", got)
+	}
+	close(release)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := b.List(); len(got) == 1 && !got[0].Measuring {
+			if got[0].Size != 100 || got[0].Items != 51 {
+				t.Fatalf("size = %d items = %d, want 100 / 51", got[0].Size, got[0].Items)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("size never filled in")
 }

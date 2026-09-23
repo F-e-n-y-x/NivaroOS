@@ -751,5 +751,6 @@
   "{n} renamed because the name was taken": "{n} renamed because the name was taken",
   "“{name}” moved to Trash": "“{name}” moved to Trash",
   "“{name}” will be deleted permanently.": "“{name}” will be deleted permanently.",
-  "“{name}” will be moved to the Trash.": "“{name}” will be moved to the Trash."
+  "“{name}” will be moved to the Trash.": "“{name}” will be moved to the Trash.",
+  "counting…": "counting…"
 }

@@ -52,7 +52,10 @@
 				</span>
 				<span class="col-from one-line" :title="it.original_path">{{ parentOf(it.original_path) }}</span>
 				<span class="col-when" :title="new Date(it.deleted_at).toLocaleString()">{{ ago(it.deleted_at) }}</span>
-				<span class="col-size">{{ it.is_dir ? $t('{n} items', { n: it.items || 0 }) + ' · ' : '' }}{{ renderSize(it.size) }}</span>
+				<span class="col-size">
+					<template v-if="it.measuring">{{ $t('counting…') }}</template>
+					<template v-else>{{ it.is_dir ? $t('{n} items', { n: it.items || 0 }) + ' · ' : '' }}{{ renderSize(it.size) }}</template>
+				</span>
 			</label>
 		</div>
 
@@ -96,6 +99,9 @@ export default {
 			},
 		},
 	},
+	beforeDestroy() {
+		clearTimeout(this.recount)
+	},
 	methods: {
 		renderSize,
 		parentOf(p) {
@@ -108,8 +114,11 @@ export default {
 			if (s < 86400) return this.$t('{n} h ago', { n: Math.round(s / 3600) })
 			return this.$t('{n} days ago', { n: Math.round(s / 86400) })
 		},
-		async load() {
-			this.loading = true
+		// quiet: a background refresh while folders are still being counted
+		// (no spinner, no error toast).
+		async load(quiet = false) {
+			clearTimeout(this.recount)
+			if (!quiet) this.loading = true
 			try {
 				const res = await this.$api.trash.list()
 				const d = (res.data && res.data.data) || {}
@@ -117,8 +126,9 @@ export default {
 				this.totalBytes = d.bytes || 0
 				this.retentionDays = d.retention_days || 30
 				this.selected = this.selected.filter((id) => this.items.some((i) => i.id === id))
+				if (this.active && this.items.some((i) => i.measuring)) this.recount = setTimeout(() => this.load(true), 3000)
 			} catch (e) {
-				this.$buefy.toast.open({ message: this.$t("Couldn't load the Trash"), type: 'is-danger' })
+				if (!quiet) this.$buefy.toast.open({ message: this.$t("Couldn't load the Trash"), type: 'is-danger' })
 			} finally {
 				this.loading = false
 			}

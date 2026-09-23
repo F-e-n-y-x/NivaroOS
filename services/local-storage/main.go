@@ -22,6 +22,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/cache"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/ntfsperm"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/oauthproxy"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/merge"
@@ -147,6 +148,8 @@ func main() {
 	defer cancel()
 
 	go monitorUEvent(ctx)
+	// ntfs3 drives: keep files owned the way ntfs-3g showed them.
+	go ntfsperm.Run(ctx, "/var/lib/nivaroos/ntfsperm-repaired.json", func(f string, a ...any) { logger.Info(fmt.Sprintf(f, a...)) })
 	service.StartVFSStatusWriter(ctx)
 
 	sendStorageStats()
