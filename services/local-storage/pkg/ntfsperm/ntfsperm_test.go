@@ -129,6 +129,7 @@ func TestChmodAndRenameAreKeptInLine(t *testing.T) {
 
 func TestRepairFixesWhatWasCreatedBeforeWatching(t *testing.T) {
 	mnt := mountNTFS3(t)
+	os.Chown(mnt, 0, 0) // the drive's top folder too
 	os.MkdirAll(filepath.Join(mnt, "a", "b"), 0o700)
 	os.WriteFile(filepath.Join(mnt, "a", "b", "c.txt"), []byte("c"), 0o600)
 	os.WriteFile(filepath.Join(mnt, "untouched.txt"), []byte("u"), 0o644)
@@ -139,10 +140,10 @@ func TestRepairFixesWhatWasCreatedBeforeWatching(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fixed != 3 { // a, a/b, a/b/c.txt
-		t.Fatalf("fixed = %d, want 3", fixed)
+	if fixed != 4 { // top folder, a, a/b, a/b/c.txt
+		t.Fatalf("fixed = %d, want 4", fixed)
 	}
-	for _, p := range []string{"a", "a/b", "a/b/c.txt", "untouched.txt"} {
+	for _, p := range []string{".", "a", "a/b", "a/b/c.txt", "untouched.txt"} {
 		if !looksLikeNtfs3g(t, filepath.Join(mnt, p), 0o777)() {
 			t.Errorf("%s not fixed", p)
 		}

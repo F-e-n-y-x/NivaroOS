@@ -77,7 +77,7 @@ func Repair(ctx context.Context, root string, p Policy) (int, error) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err != nil || path == root {
+		if err != nil {
 			return nil // unreadable or vanished: nothing to fix
 		}
 		if d.IsDir() && (d.Name() == "System Volume Information" || d.Name() == "$RECYCLE.BIN") {
