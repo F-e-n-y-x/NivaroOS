@@ -752,5 +752,15 @@
   "“{name}” moved to Trash": "“{name}” moved to Trash",
   "“{name}” will be deleted permanently.": "“{name}” will be deleted permanently.",
   "“{name}” will be moved to the Trash.": "“{name}” will be moved to the Trash.",
-  "counting…": "counting…"
+  "counting…": "counting…",
+  "Installing {what}...": "Installing {what}...",
+  "Uninstalling {what}...": "Uninstalling {what}...",
+  "Upgrading {what}...": "Upgrading {what}...",
+  "exit code {code}": "exit code {code}",
+  "{name} reinstalled": "{name} reinstalled",
+  "{name} installed": "{name} installed",
+  "{name} uninstalled": "{name} uninstalled",
+  "{name} upgraded": "{name} upgraded",
+  "{n} packages will be upgraded. This can take a while; you can close this window - it keeps running on the server.": "{n} packages will be upgraded. This can take a while; you can close this window - it keeps running on the server.",
+  "Lost contact with the server - reopen this window to see the latest status.": "Lost contact with the server - reopen this window to see the latest status."
 }

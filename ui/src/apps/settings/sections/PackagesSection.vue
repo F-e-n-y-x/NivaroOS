@@ -3,10 +3,18 @@
 		<div class="section-header">
 			<h2 class="section-title">{{ $t('Package Manager (APT)') }}</h2>
 			<div class="header-actions">
-				<b-button rounded size="is-small" :loading="updatingRepos" @click="updateRepositories">
+				<b-button rounded size="is-small" :loading="updatingRepos" :disabled="aptBusy" @click="updateRepositories">
 					<i class="mdi mdi-refresh mr-1"></i>{{ $t('Update Repositories') }}
 				</b-button>
 			</div>
+		</div>
+
+		<!-- The package operation in progress (it runs on the server as a job,
+		     one at a time, and survives reloads). -->
+		<div v-if="aptJob && aptJob.state === 'running'" class="apt-job-banner mb-3" role="status">
+			<b-icon icon="loading" pack="mdi" custom-class="mdi-spin" size="is-20"></b-icon>
+			<span class="ml-2">{{ jobLabel(aptJob) }}</span>
+			<a class="ml-auto" href="#" @click.prevent="showLogModal = true">{{ $t('Show log') }}</a>
 		</div>
 
 		<!-- Navigation Tabs -->
@@ -71,6 +79,7 @@
 								type="is-danger"
 								outlined
 								:loading="processingPkg === pkg.name"
+								:disabled="aptBusy"
 								@click="confirmUninstall(pkg.name)"
 							>
 								<i class="mdi mdi-trash-can-outline mr-1"></i>{{ $t('Uninstall') }}
@@ -80,6 +89,7 @@
 								size="is-small"
 								class="ml-2"
 								:loading="processingPkg === pkg.name"
+								:disabled="aptBusy"
 								@click="installPackage(pkg.name, true)"
 							>
 								<i class="mdi mdi-refresh mr-1"></i>{{ $t('Reinstall') }}
@@ -91,6 +101,7 @@
 								size="is-small"
 								type="is-primary"
 								:loading="processingPkg === pkg.name"
+								:disabled="aptBusy"
 								@click="installPackage(pkg.name)"
 							>
 								<i class="mdi mdi-download mr-1"></i>{{ $t('Install') }}
@@ -130,10 +141,10 @@
 					{{ $t('No installed packages found.') }}
 				</div>
 				<div v-else>
-					<div v-for="pkg in installedList" :key="pkg.name" class="setting-row">
+					<div v-for="pkg in installedList" :key="pkg.id || pkg.name" class="setting-row">
 						<b-icon class="row-icon" icon="cube-outline" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
-							<div class="setting-title">{{ pkg.name }}</div>
+							<div class="setting-title">{{ pkg.name }}<span v-if="(pkg.id || '').includes(':')" class="arch-tag ml-2">{{ pkg.arch }}</span></div>
 							<div class="setting-desc">{{ pkg.version }} &middot; {{ formatBytes(pkg.size) }} &middot; {{ pkg.description }}</div>
 						</div>
 						<div class="row-control">
@@ -142,8 +153,9 @@
 								size="is-small"
 								type="is-danger"
 								outlined
-								:loading="processingPkg === pkg.name"
-								@click="confirmUninstall(pkg.name)"
+								:loading="processingPkg === (pkg.id || pkg.name)"
+								:disabled="aptBusy"
+								@click="confirmUninstall(pkg.id || pkg.name)"
 							>
 								<i class="mdi mdi-trash-can-outline mr-1"></i>{{ $t('Uninstall') }}
 							</b-button>
@@ -165,6 +177,7 @@
 					size="is-small"
 					type="is-primary"
 					:loading="upgradingAll"
+					:disabled="aptBusy"
 					@click="upgradeAllPackages"
 				>
 					<i class="mdi mdi-arrow-up-bold-circle-outline mr-1"></i>{{ $t('Upgrade All') }}
@@ -179,10 +192,10 @@
 					{{ $t('All APT system packages are up to date.') }}
 				</div>
 				<div v-else>
-					<div v-for="pkg in upgradable" :key="pkg.name" class="setting-row">
+					<div v-for="pkg in upgradable" :key="pkg.id || pkg.name" class="setting-row">
 						<b-icon class="row-icon" icon="package-up" pack="mdi" size="is-20"></b-icon>
 						<div class="row-label">
-							<div class="setting-title">{{ pkg.name }}</div>
+							<div class="setting-title">{{ pkg.name }}<span v-if="(pkg.id || '').includes(':')" class="arch-tag ml-2">{{ pkg.arch }}</span></div>
 							<div class="setting-desc">{{ pkg.current_version }} &rarr; <span class="has-text-success">{{ pkg.candidate_version }}</span> ({{ pkg.arch }})</div>
 						</div>
 						<div class="row-control">
@@ -191,8 +204,9 @@
 								size="is-small"
 								type="is-primary"
 								outlined
-								:loading="processingPkg === pkg.name"
-								@click="upgradeSingle(pkg.name)"
+								:loading="processingPkg === (pkg.id || pkg.name)"
+								:disabled="aptBusy"
+								@click="upgradeSingle(pkg.id || pkg.name)"
 							>
 								{{ $t('Upgrade') }}
 							</b-button>
@@ -399,6 +413,7 @@
 
 <script>
 import debounce from 'lodash/debounce'
+import { escapeHtml } from '@/utils/escapeHtml'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
@@ -454,10 +469,17 @@ export default {
 
 			showLogModal: false,
 			logTitle: '',
-			logContent: ''
+			logContent: '',
+
+			aptJob: null, // latest server-side package job
+			aptPoll: null
 		}
 	},
 	computed: {
+		// One package operation at a time (dpkg has one lock).
+		aptBusy() {
+			return !!(this.aptJob && this.aptJob.state === 'running')
+		},
 		finalSourceLine() {
 			if (this.sourceInputMode === 'raw') {
 				return this.newSourceLine.trim()
@@ -474,6 +496,15 @@ export default {
 		this.fetchUpgrades()
 		this.fetchSources()
 		this.fetchInstalled()
+		// A job started earlier (another tab, before a reload) keeps running
+		// on the server - pick it up.
+		this.$api.sys.getAptJob().then(res => {
+			const j = res.data && res.data.data
+			if (j && j.state === 'running') this.followAptJob(j, { title: this.jobLabel(j) })
+		}).catch(() => {})
+	},
+	beforeDestroy() {
+		clearTimeout(this.aptPoll)
 	},
 	methods: {
 		formatBytes(bytes) {
@@ -553,130 +584,143 @@ export default {
 				})
 		},
 
-		updateRepositories() {
-			this.updatingRepos = true
-			this.$api.sys.updateAptRepositories()
-				.then(res => {
+		jobLabel(j) {
+			const what = (j.packages || []).join(', ')
+			switch (j.kind) {
+				case 'install': return this.$t('Installing {what}...', { what })
+				case 'remove':
+				case 'purge': return this.$t('Uninstalling {what}...', { what })
+				case 'upgrade': return this.$t('Upgrading {what}...', { what })
+				case 'upgrade-all': return this.$t('Upgrading all packages...')
+				case 'update': return this.$t('Updating repositories...')
+				default: return this.$t('Package operation in progress...')
+			}
+		},
+		serverMessage(err, fallback) {
+			return (err && err.response && err.response.data && err.response.data.message) || (err && err.message) || fallback
+		},
+		// Start a package job and follow it to the end. apt runs on the server
+		// as a job (it used to run inside the request and "fail" after 60 s
+		// while apt kept going); the log window shows its live output.
+		async runAptJob(start, { title, pkg = null, done, failed, after }) {
+			if (this.aptBusy) return
+			this.processingPkg = pkg
+			try {
+				const res = await start()
+				this.followAptJob(res.data.data, { title, done, failed, after })
+			} catch (err) {
+				this.processingPkg = null
+				const busy = err.response && err.response.status === 409
+				if (busy && err.response.data && err.response.data.data && err.response.data.data.id) {
+					this.$buefy.toast.open({ message: this.$t('Another package operation is still running - showing it.'), type: 'is-warning' })
+					this.followAptJob(err.response.data.data, { title: this.jobLabel(err.response.data.data) })
+					return
+				}
+				this.$buefy.toast.open({ message: escapeHtml(this.serverMessage(err, failed || this.$t('The operation could not be started'))), type: 'is-danger', duration: 6000 })
+			}
+		},
+		followAptJob(job, { title, done, failed, after } = {}) {
+			this.aptJob = job
+			this.logTitle = title || this.jobLabel(job)
+			this.logContent = (job.logs || []).join('\n')
+			clearTimeout(this.aptPoll)
+			let misses = 0
+			const tick = () => {
+				this.$api.sys.getAptJob().then(res => {
+					misses = 0
+					const j = res.data && res.data.data
+					if (!j || j.id !== job.id) return
+					this.aptJob = j
+					this.logContent = (j.logs || []).join('\n')
+					if (j.state === 'running') {
+						this.aptPoll = setTimeout(tick, 1000)
+						return
+					}
+					this.processingPkg = null
+					this.upgradingAll = false
 					this.updatingRepos = false
-					this.$buefy.toast.open({ message: this.$t('Repositories updated successfully'), type: 'is-success' })
-					this.fetchUpgrades()
-					if (res.data.data && res.data.data.output) {
-						this.logTitle = this.$t('Repository Update Log')
-						this.logContent = res.data.data.output
+					if (j.state === 'done') {
+						this.$buefy.toast.open({ message: escapeHtml(done || this.$t('Done')), type: 'is-success' })
+					} else {
+						// Failed or interrupted: open the log so the reason is visible.
+						this.logTitle = `${failed || this.$t('Failed')} (${j.state === 'interrupted' ? this.$t('interrupted') : this.$t('exit code {code}', { code: j.exit_code })})`
 						this.showLogModal = true
 					}
+					this.fetchInstalled()
+					this.fetchUpgrades()
+					if (this.searchQuery) this.onSearchInput()
+					if (after) after(j)
+				}).catch(() => {
+					if (++misses < 30) this.aptPoll = setTimeout(tick, 2000)
 				})
-				.catch(err => {
-					this.updatingRepos = false
-					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Failed to update repositories')
-					this.logTitle = this.$t('Update Error')
-					this.logContent = msg
-					this.showLogModal = true
-				})
+			}
+			this.aptPoll = setTimeout(tick, 700)
+		},
+
+		updateRepositories() {
+			this.updatingRepos = true
+			this.runAptJob(() => this.$api.sys.updateAptRepositories(), {
+				title: this.$t('Updating repositories...'),
+				done: this.$t('Repositories updated'),
+				failed: this.$t('Repository update failed')
+			}).then(() => { if (!this.aptBusy) this.updatingRepos = false })
 		},
 
 		installPackage(name, reinstall = false) {
 			const pkgName = (name || '').trim()
 			if (!pkgName) return
-			this.processingPkg = pkgName
-			this.$api.sys.installAptPackages([pkgName], reinstall)
-				.then(res => {
-					this.processingPkg = null
-					this.$buefy.toast.open({ message: this.$t('Package installed successfully'), type: 'is-success' })
-					this.onSearchInput()
-					this.fetchInstalled()
-					this.fetchUpgrades()
-					if (res.data.data && res.data.data.output) {
-						this.logTitle = `${this.$t('Install')}: ${pkgName}`
-						this.logContent = res.data.data.output
-						this.showLogModal = true
-					}
-				})
-				.catch(err => {
-					this.processingPkg = null
-					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Installation failed')
-					this.logTitle = `${this.$t('Install Failed')}: ${pkgName}`
-					this.logContent = msg
-					this.showLogModal = true
-				})
+			this.runAptJob(() => this.$api.sys.installAptPackages([pkgName], reinstall), {
+				pkg: pkgName,
+				title: `${reinstall ? this.$t('Reinstall') : this.$t('Install')}: ${pkgName}`,
+				done: reinstall ? this.$t('{name} reinstalled', { name: pkgName }) : this.$t('{name} installed', { name: pkgName }),
+				failed: this.$t('Install failed')
+			})
 		},
 
 		confirmUninstall(name) {
 			this.confirmWindow({
 				title: this.$t('Uninstall Package'),
-				message: `${this.$t('Are you sure you want to uninstall')} <strong>"${name}"</strong>?`,
+				message: `${this.$t('Are you sure you want to uninstall')} <strong>"${escapeHtml(name)}"</strong>?`,
 				type: 'is-danger',
 				icon: 'trash-can-outline',
 				confirmText: this.$t('Uninstall'),
 				cancelText: this.$t('Cancel'),
-				onConfirm: async () => {
-					this.processingPkg = name
-					try {
-						const res = await this.$api.sys.uninstallAptPackages([name])
-						this.$buefy.toast.open({ message: this.$t('Package uninstalled successfully'), type: 'is-success' })
-						this.onSearchInput()
-						this.fetchInstalled()
-						if (res.data.data && res.data.data.output) {
-							this.logTitle = `${this.$t('Uninstall')}: ${name}`
-							this.logContent = res.data.data.output
-							this.showLogModal = true
-						}
-					} catch (err) {
-						const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Uninstall failed')
-						this.logTitle = `${this.$t('Uninstall Failed')}: ${name}`
-						this.logContent = msg
-						this.showLogModal = true
-					} finally {
-						this.processingPkg = null
-					}
+				onConfirm: () => {
+					this.runAptJob(() => this.$api.sys.uninstallAptPackages([name]), {
+						pkg: name,
+						title: `${this.$t('Uninstall')}: ${name}`,
+						done: this.$t('{name} uninstalled', { name }),
+						failed: this.$t('Uninstall failed')
+					})
 				}
 			})
 		},
 
 		upgradeSingle(name) {
-			this.processingPkg = name
-			this.$api.sys.upgradeAptPackages([name])
-				.then(res => {
-					this.processingPkg = null
-					this.$buefy.toast.open({ message: this.$t('Package upgraded successfully'), type: 'is-success' })
-					this.fetchUpgrades()
-					this.fetchInstalled()
-					if (res.data.data && res.data.data.output) {
-						this.logTitle = `${this.$t('Upgrade')}: ${name}`
-						this.logContent = res.data.data.output
-						this.showLogModal = true
-					}
-				})
-				.catch(err => {
-					this.processingPkg = null
-					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Upgrade failed')
-					this.logTitle = `${this.$t('Upgrade Failed')}: ${name}`
-					this.logContent = msg
-					this.showLogModal = true
-				})
+			this.runAptJob(() => this.$api.sys.upgradeAptPackages([name]), {
+				pkg: name,
+				title: `${this.$t('Upgrade')}: ${name}`,
+				done: this.$t('{name} upgraded', { name }),
+				failed: this.$t('Upgrade failed')
+			})
 		},
 
 		upgradeAllPackages() {
-			this.upgradingAll = true
-			this.$api.sys.upgradeAptPackages([])
-				.then(res => {
-					this.upgradingAll = false
-					this.$buefy.toast.open({ message: this.$t('All packages upgraded successfully'), type: 'is-success' })
-					this.fetchUpgrades()
-					this.fetchInstalled()
-					if (res.data.data && res.data.data.output) {
-						this.logTitle = this.$t('System Upgrade Log')
-						this.logContent = res.data.data.output
-						this.showLogModal = true
-					}
-				})
-				.catch(err => {
-					this.upgradingAll = false
-					const msg = err.response && err.response.data && err.response.data.data ? err.response.data.data : this.$t('Upgrade failed')
-					this.logTitle = this.$t('Upgrade Failed')
-					this.logContent = msg
-					this.showLogModal = true
-				})
+			this.confirmWindow({
+				title: this.$t('Upgrade all packages?'),
+				message: this.$t('{n} packages will be upgraded. This can take a while; you can close this window - it keeps running on the server.', { n: this.upgradable.length }),
+				type: 'is-primary',
+				confirmText: this.$t('Upgrade All'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => {
+					this.upgradingAll = true
+					this.runAptJob(() => this.$api.sys.upgradeAptPackages([]), {
+						title: this.$t('Upgrading all packages...'),
+						done: this.$t('All packages upgraded'),
+						failed: this.$t('Upgrade failed')
+					}).then(() => { if (!this.aptBusy) this.upgradingAll = false })
+				}
+			})
 		},
 
 		toggleComponent(comp) {
@@ -736,6 +780,23 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.apt-job-banner {
+	display: flex;
+	align-items: center;
+	padding: 0.6rem 0.9rem;
+	border-radius: var(--radius-md, 10px);
+	background: var(--theme-card-bg);
+	border: 1px solid var(--theme-card-border);
+	color: var(--theme-text-primary);
+	font-size: var(--font-sm);
+}
+.arch-tag {
+	font-size: 0.7rem;
+	padding: 0.05rem 0.4rem;
+	border-radius: 999px;
+	background: var(--theme-pill-bg);
+	color: var(--theme-pill-color);
+}
 .add-source-body {
 	display: flex;
 	flex-direction: column;

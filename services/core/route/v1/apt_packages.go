@@ -3,7 +3,9 @@ package v1
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/aptjob"
 	"github.com/labstack/echo/v4"
 )
 
@@ -121,6 +126,10 @@ func installedPackageSet() map[string]bool {
 }
 
 type installedPackage struct {
+	// ID identifies the package for apt: the name, or name:arch for a
+	// foreign architecture (multi-arch systems list the same name twice).
+	ID   string `json:"id"`
+	Arch string `json:"arch"`
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Size        int64  `json:"size"` // bytes
@@ -133,7 +142,7 @@ func GetAptInstalled(ctx echo.Context) error {
 	q := strings.ToLower(strings.TrimSpace(ctx.QueryParam("q")))
 
 	out, err := runAptCommand(15*time.Second, "dpkg-query", "-W",
-		"-f=${Package}\t${Version}\t${Installed-Size}\t${binary:Summary}\n")
+		"-f=${Package}\t${Version}\t${Installed-Size}\t${binary:Package}\t${Architecture}\t${binary:Summary}\n")
 	if err != nil && out == "" {
 		return serviceError(ctx, fmt.Errorf("dpkg-query failed: %w", err))
 	}
@@ -141,8 +150,8 @@ func GetAptInstalled(ctx echo.Context) error {
 	list := make([]installedPackage, 0)
 	scanner := bufio.NewScanner(strings.NewReader(out))
 	for scanner.Scan() {
-		fields := strings.SplitN(scanner.Text(), "\t", 4)
-		if len(fields) != 4 {
+		fields := strings.SplitN(scanner.Text(), "\t", 6)
+		if len(fields) != 6 {
 			continue
 		}
 		name := fields[0]
@@ -151,17 +160,20 @@ func GetAptInstalled(ctx echo.Context) error {
 		}
 		sizeKiB, _ := strconv.ParseInt(fields[2], 10, 64)
 		list = append(list, installedPackage{
+			ID:          fields[3],
+			Arch:        fields[4],
 			Name:        name,
 			Version:     fields[1],
 			Size:        sizeKiB * 1024,
-			Description: fields[3],
+			Description: fields[5],
 		})
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	return ok(ctx, list)
 }
 
 type aptUpgradablePackage struct {
+	ID               string `json:"id"` // name, or name:arch for a foreign architecture
 	Name             string `json:"name"`
 	CurrentVersion   string `json:"current_version"`
 	CandidateVersion string `json:"candidate_version"`
@@ -176,9 +188,15 @@ func GetAptUpgradable(ctx echo.Context) error {
 	if err != nil {
 		return serviceError(ctx, fmt.Errorf("failed to list upgradable packages: %w", err))
 	}
+	native := nativeArch()
 	list := make([]aptUpgradablePackage, 0, len(pkgs))
 	for _, p := range pkgs {
+		id := p.Name
+		if p.Arch != "" && p.Arch != "all" && p.Arch != native {
+			id = p.Name + ":" + p.Arch
+		}
 		list = append(list, aptUpgradablePackage{
+			ID:               id,
 			Name:             p.Name,
 			CurrentVersion:   p.CurrentVersion,
 			CandidateVersion: p.NewVersion,
@@ -193,26 +211,26 @@ type aptInstallReq struct {
 	Reinstall bool     `json:"reinstall"`
 }
 
-// PostAptInstall installs (or reinstalls) one or more packages.
+// aptJobStarted answers a job start: the job (poll GET /sys/apt/job), or
+// 409 when another package operation is still running.
+func aptJobStarted(ctx echo.Context, j aptjob.Job, err error) error {
+	if errors.Is(err, aptjob.ErrBusy) {
+		return ctx.JSON(http.StatusConflict, modelCommon.Result{Success: http.StatusConflict, Message: err.Error(), Data: j})
+	}
+	if err != nil {
+		return badParams(ctx, err.Error())
+	}
+	return ok(ctx, j)
+}
+
+// PostAptInstall installs (or reinstalls) packages as a background job.
 func PostAptInstall(ctx echo.Context) error {
 	req := new(aptInstallReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
 	}
-	if err := validatePackageNames(req.Packages); err != nil {
-		return badParams(ctx, err.Error())
-	}
-	args := []string{"install", "-y"}
-	if req.Reinstall {
-		args = append(args, "--reinstall")
-	}
-	args = append(args, "--")
-	args = append(args, req.Packages...)
-	out, err := runAptCommand(5*time.Minute, "apt-get", args...)
-	if err != nil {
-		return serviceError(ctx, fmt.Errorf("apt-get install failed: %s", lastLines(out, 20)))
-	}
-	return ok(ctx, map[string]string{"output": lastLines(out, 50)})
+	j, err := service.AptJobs.Install(req.Packages, req.Reinstall)
+	return aptJobStarted(ctx, j, err)
 }
 
 type aptUninstallReq struct {
@@ -220,62 +238,44 @@ type aptUninstallReq struct {
 	Purge    bool     `json:"purge"`
 }
 
-// PostAptUninstall removes (or purges) one or more packages.
+// PostAptUninstall removes (or purges) packages as a background job.
 func PostAptUninstall(ctx echo.Context) error {
 	req := new(aptUninstallReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
 	}
-	if err := validatePackageNames(req.Packages); err != nil {
-		return badParams(ctx, err.Error())
-	}
-	verb := "remove"
-	if req.Purge {
-		verb = "purge"
-	}
-	args := append([]string{verb, "-y", "--"}, req.Packages...)
-	out, err := runAptCommand(5*time.Minute, "apt-get", args...)
-	if err != nil {
-		return serviceError(ctx, fmt.Errorf("apt-get %s failed: %s", verb, lastLines(out, 20)))
-	}
-	return ok(ctx, map[string]string{"output": lastLines(out, 50)})
+	j, err := service.AptJobs.Remove(req.Packages, req.Purge)
+	return aptJobStarted(ctx, j, err)
 }
 
 type aptUpgradeReq struct {
 	Packages []string `json:"packages"`
 }
 
-// PostAptUpgrade upgrades either specific packages, or (if none given) every
-// upgradable package.
+// PostAptUpgrade upgrades the given packages, or everything (dist-upgrade -
+// the same job the Updates section runs) when none are given.
 func PostAptUpgrade(ctx echo.Context) error {
 	req := new(aptUpgradeReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
 	}
-	var out string
-	var err error
 	if len(req.Packages) == 0 {
-		out, err = runAptCommand(10*time.Minute, "apt-get", "upgrade", "-y")
-	} else {
-		if verr := validatePackageNames(req.Packages); verr != nil {
-			return badParams(ctx, verr.Error())
-		}
-		args := append([]string{"install", "-y", "--only-upgrade", "--"}, req.Packages...)
-		out, err = runAptCommand(5*time.Minute, "apt-get", args...)
+		j, err := service.AptJobs.UpgradeAll()
+		return aptJobStarted(ctx, j, err)
 	}
-	if err != nil {
-		return serviceError(ctx, fmt.Errorf("apt-get upgrade failed: %s", lastLines(out, 20)))
-	}
-	return ok(ctx, map[string]string{"output": lastLines(out, 50)})
+	j, err := service.AptJobs.Upgrade(req.Packages)
+	return aptJobStarted(ctx, j, err)
 }
 
-// PostAptUpdate refreshes the package repository indexes.
+// PostAptUpdate refreshes the repository indexes as a background job.
 func PostAptUpdate(ctx echo.Context) error {
-	out, err := runAptCommand(2*time.Minute, "apt-get", "update")
-	if err != nil {
-		return serviceError(ctx, fmt.Errorf("apt-get update failed: %s", lastLines(out, 20)))
-	}
-	return ok(ctx, map[string]string{"output": lastLines(out, 50)})
+	j, err := service.AptJobs.Update()
+	return aptJobStarted(ctx, j, err)
+}
+
+// GetAptJob is the latest package operation with its log tail.
+func GetAptJob(ctx echo.Context) error {
+	return ok(ctx, service.AptJobs.Status())
 }
 
 type aptSourceEntry struct {
@@ -450,4 +450,13 @@ func lastLines(s string, n int) string {
 		return strings.Join(lines, "\n")
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
+// nativeArch is dpkg's own architecture (e.g. amd64).
+func nativeArch() string {
+	out, err := exec.Command("dpkg", "--print-architecture").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

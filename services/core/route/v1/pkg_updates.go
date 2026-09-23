@@ -2,8 +2,10 @@ package v1
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
-	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
@@ -11,6 +13,9 @@ import (
 	"sync"
 	"time"
 
+	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/aptjob"
 	"github.com/labstack/echo/v4"
 )
 
@@ -33,11 +38,6 @@ type PkgCheckResult struct {
 var (
 	aptLineRegex   = regexp.MustCompile(`^([^/\s]+)/([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+\[upgradable from:\s+([^\]]+)\]`)
 	pkgMu          sync.Mutex
-	pkgIsRunning   bool
-	pkgLogs        []string
-	pkgExitCode    int
-	pkgStartedAt   string
-	pkgFinishedAt  string
 	pkgLastChecked string
 )
 
@@ -85,24 +85,44 @@ func GetSystemPackageUpdates(ctx echo.Context) error {
 			secCount++
 		}
 	}
+	pkgMu.Lock()
 	if pkgLastChecked == "" {
 		pkgLastChecked = time.Now().Format(time.RFC3339)
 	}
+	checked := pkgLastChecked
+	pkgMu.Unlock()
 	return ok(ctx, PkgCheckResult{
 		Count:         len(pkgs),
 		SecurityCount: secCount,
 		Packages:      pkgs,
-		LastChecked:   pkgLastChecked,
+		LastChecked:   checked,
 	})
 }
 
-// PostRefreshPackageUpdates runs `apt-get update` then returns fresh package list
+// PostRefreshPackageUpdates runs `apt-get update` then returns the fresh
+// list. A failed update (offline, broken repo) is reported, not turned into
+// "everything is up to date". Bounded so the request answers before the
+// UI's 60 s limit; an interrupted `apt-get update` is harmless.
 func PostRefreshPackageUpdates(ctx echo.Context) error {
-	cmd := exec.Command("apt-get", "update")
+	if j := service.AptJobs.Status(); j.State == aptjob.StateRunning {
+		return ctx.JSON(http.StatusConflict, modelCommon.Result{Success: http.StatusConflict, Message: aptjob.ErrBusy.Error()})
+	}
+	c, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(c, "apt-get", "update")
 	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C")
-	_ = cmd.Run() // run even if some third-party repo warns
+	out, err := cmd.CombinedOutput()
+	if c.Err() == context.DeadlineExceeded {
+		return serviceError(ctx, fmt.Errorf("checking the repositories took too long - is the server online?"))
+	}
+	if err != nil {
+		return serviceError(ctx, fmt.Errorf("apt-get update failed: %s", lastLines(string(out), 8)))
+	}
 
+	pkgMu.Lock()
 	pkgLastChecked = time.Now().Format(time.RFC3339)
+	checked := pkgLastChecked
+	pkgMu.Unlock()
 
 	pkgs, err := getUpgradablePackages()
 	if err != nil {
@@ -118,113 +138,40 @@ func PostRefreshPackageUpdates(ctx echo.Context) error {
 		Count:         len(pkgs),
 		SecurityCount: secCount,
 		Packages:      pkgs,
-		LastChecked:   pkgLastChecked,
+		LastChecked:   checked,
 	})
 }
 
-// PostSystemPackageUpgrade executes apt-get dist-upgrade in the background and tracks logs
+// PostSystemPackageUpgrade starts the dist-upgrade job (the same job
+// Package Manager's "Upgrade all" runs).
 func PostSystemPackageUpgrade(ctx echo.Context) error {
-	pkgMu.Lock()
-	if pkgIsRunning {
-		pkgMu.Unlock()
-		return badParams(ctx, "package upgrade is already running")
+	j, err := service.AptJobs.UpgradeAll()
+	if errors.Is(err, aptjob.ErrBusy) {
+		return badParams(ctx, "a package operation is already running")
 	}
-	pkgIsRunning = true
-	pkgLogs = []string{fmt.Sprintf("[%s] Starting Debian / Linux system package upgrade...", time.Now().Format("15:04:05"))}
-	pkgExitCode = 0
-	pkgStartedAt = time.Now().Format(time.RFC3339)
-	pkgFinishedAt = ""
-	pkgMu.Unlock()
-
-	go func() {
-		logFile, err := os.OpenFile("/var/log/nivaroos-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			logFile, _ = os.OpenFile("/tmp/nivaroos-apt-upgrade.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		}
-		if logFile != nil {
-			defer logFile.Close()
-		}
-
-		cmd := exec.Command("apt-get", "dist-upgrade", "-y", "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold")
-		cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C", "NEEDRESTART_MODE=a")
-
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			pkgMu.Lock()
-			pkgIsRunning = false
-			pkgExitCode = 1
-			pkgLogs = append(pkgLogs, fmt.Sprintf("Error creating stdout pipe: %v", err))
-			pkgFinishedAt = time.Now().Format(time.RFC3339)
-			pkgMu.Unlock()
-			return
-		}
-		cmd.Stderr = cmd.Stdout
-
-		if err := cmd.Start(); err != nil {
-			pkgMu.Lock()
-			pkgIsRunning = false
-			pkgExitCode = 1
-			pkgLogs = append(pkgLogs, fmt.Sprintf("Failed to start apt-get: %v", err))
-			pkgFinishedAt = time.Now().Format(time.RFC3339)
-			pkgMu.Unlock()
-			return
-		}
-
-		reader := bufio.NewReader(stdout)
-		for {
-			line, err := reader.ReadString('\n')
-			if len(line) > 0 {
-				cleanLine := strings.TrimRight(line, "\r\n")
-				pkgMu.Lock()
-				pkgLogs = append(pkgLogs, cleanLine)
-				if len(pkgLogs) > 3000 {
-					pkgLogs = pkgLogs[len(pkgLogs)-3000:]
-				}
-				pkgMu.Unlock()
-				if logFile != nil {
-					logFile.WriteString(line)
-				}
-			}
-			if err != nil {
-				if err != io.EOF {
-					pkgMu.Lock()
-					pkgLogs = append(pkgLogs, fmt.Sprintf("Read error: %v", err))
-					pkgMu.Unlock()
-				}
-				break
-			}
-		}
-
-		cmdErr := cmd.Wait()
-		pkgMu.Lock()
-		pkgIsRunning = false
-		if cmdErr != nil {
-			pkgExitCode = 1
-			pkgLogs = append(pkgLogs, fmt.Sprintf("[%s] System upgrade finished with error: %v", time.Now().Format("15:04:05"), cmdErr))
-		} else {
-			pkgExitCode = 0
-			pkgLogs = append(pkgLogs, fmt.Sprintf("[%s] System upgrade completed successfully!", time.Now().Format("15:04:05")))
-		}
-		pkgFinishedAt = time.Now().Format(time.RFC3339)
-		pkgMu.Unlock()
-	}()
-
-	return ok(ctx, map[string]interface{}{
-		"status":     "started",
-		"started_at": pkgStartedAt,
-	})
+	if err != nil {
+		return serviceError(ctx, err)
+	}
+	return ok(ctx, map[string]interface{}{"status": "started", "started_at": j.StartedAt.Format(time.RFC3339), "job": j})
 }
 
-// GetSystemPackageUpgradeStatus returns the current status and latest logs of package upgrade
+// GetSystemPackageUpgradeStatus reports the latest package job in the shape
+// the updater window reads.
 func GetSystemPackageUpgradeStatus(ctx echo.Context) error {
-	pkgMu.Lock()
-	defer pkgMu.Unlock()
-
-	return ok(ctx, map[string]interface{}{
-		"running":     pkgIsRunning,
-		"exit_code":   pkgExitCode,
-		"logs":        pkgLogs,
-		"started_at":  pkgStartedAt,
-		"finished_at": pkgFinishedAt,
-	})
+	j := service.AptJobs.Status()
+	res := map[string]interface{}{
+		"running":     j.State == aptjob.StateRunning,
+		"exit_code":   j.ExitCode,
+		"logs":        j.Logs,
+		"started_at":  "",
+		"finished_at": "",
+		"job":         j,
+	}
+	if j.ID != "" {
+		res["started_at"] = j.StartedAt.Format(time.RFC3339)
+	}
+	if j.FinishedAt != nil {
+		res["finished_at"] = j.FinishedAt.Format(time.RFC3339)
+	}
+	return ok(ctx, res)
 }

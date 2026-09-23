@@ -201,6 +201,10 @@ const sys = {
 	upgradeAptPackages(packages = []) {
 		return api.post(`${PREFIX}/apt/upgrade`, { packages });
 	},
+	// The latest package operation (running or finished) with its log.
+	getAptJob() {
+		return api.get(`${PREFIX}/apt/job`);
+	},
 	updateAptRepositories() {
 		return api.post(`${PREFIX}/apt/update`);
 	},

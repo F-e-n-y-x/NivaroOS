@@ -143,13 +143,10 @@ export default {
 		}
 	},
 	created() {
+		// Only look: an upgrade starts when the user clicks Start Upgrade.
+		// (It used to start on open - viewing the last run's log began a
+		// dist-upgrade on the host.)
 		this.checkExistingStatus()
-	},
-	mounted() {
-		// Auto-start if opened with intent
-		if (!this.isRunning && !this.hasRun) {
-			this.startUpgrade()
-		}
 	},
 	beforeDestroy() {
 		if (this.pollTimer) clearInterval(this.pollTimer)
@@ -193,16 +190,24 @@ export default {
 						this.logLines.push(`[Error] ${res.data.message}`)
 					}
 				}).catch(err => {
+					// Already running (started from another tab/device): show
+					// that run instead of calling it a failure.
+					if (err.response && err.response.status === 400 && /already running/i.test((err.response.data && err.response.data.message) || '')) {
+						this.checkExistingStatus()
+						return
+					}
 					this.isRunning = false
 					this.exitCode = 1
-					this.logLines.push(`[Network Error] ${err.message}`)
+					this.logLines.push(`[Error] ${(err.response && err.response.data && err.response.data.message) || err.message}`)
 				})
 			}
 		},
 		startPolling() {
 			if (this.pollTimer) clearInterval(this.pollTimer)
+			let misses = 0
 			this.pollTimer = setInterval(() => {
 				this.$api.sys.getPackageUpgradeStatus().then(res => {
+					misses = 0
 					if (res.data.success === 200) {
 						const data = res.data.data
 						this.isRunning = data.running
@@ -216,7 +221,12 @@ export default {
 						}
 					}
 				}).catch(() => {
-					clearInterval(this.pollTimer)
+					// One dropped request mustn't leave "Running..." frozen
+					// forever; give up only after ~30 s without an answer.
+					if (++misses >= 30) {
+						clearInterval(this.pollTimer)
+						this.logLines.push(`[${new Date().toLocaleTimeString()}] ${this.$t('Lost contact with the server - reopen this window to see the latest status.')}`)
+					}
 				})
 			}, 1000)
 		},

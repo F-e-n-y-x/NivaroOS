@@ -90,6 +90,7 @@ func InitV1Router() http.Handler {
 			v1SysGroup.POST("/apt/uninstall", v1.PostAptUninstall)
 			v1SysGroup.POST("/apt/upgrade", v1.PostAptUpgrade)
 			v1SysGroup.POST("/apt/update", v1.PostAptUpdate)
+			v1SysGroup.GET("/apt/job", v1.GetAptJob)
 			v1SysGroup.GET("/apt/sources", v1.GetAptSources)
 			v1SysGroup.POST("/apt/sources", v1.PostAptSources)
 			v1SysGroup.DELETE("/apt/sources", v1.DeleteAptSources)
