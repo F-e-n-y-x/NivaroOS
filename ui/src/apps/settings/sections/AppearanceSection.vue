@@ -93,6 +93,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+import { apiError } from '@/utils/apiError'
 import WallpaperModal from '@/shell/wallpaper/WallpaperModal.vue'
 import WidgetVisibilityPanel from '@/apps/settings/WidgetVisibilityPanel.vue'
 import { THEME_MODES, getStoredThemeMode, applyTheme } from '@/utils/theme'
@@ -166,6 +168,14 @@ export default {
 		}
 	},
 	methods: {
+		// Appearance is applied here immediately; saving it to the account
+		// (for other devices) failing used to be silent. One notice per 10 s -
+		// sliders save on every change.
+		saveFailed(e) {
+			if (Date.now() - (this.lastSaveWarn || 0) < 10000) return
+			this.lastSaveWarn = Date.now()
+			this.$buefy.toast.open({ message: escapeHtml(this.$t("Couldn't save to your account - applied on this device only") + ': ' + apiError(e)), type: 'is-warning', duration: 5000 })
+		},
 		selectTheme(mode) {
 			this.currentThemeMode = mode
 			applyTheme(mode)
@@ -175,7 +185,7 @@ export default {
 			}
 			const alpha = this.backdropAlphaPct / 100
 			const blur = this.backdropBlurPx
-			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: mode }).catch(() => {})
+			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: mode }).catch(e => this.saveFailed(e))
 		},
 		restoreBackdropSettings() {
 			this.currentThemeMode = getStoredThemeMode()
@@ -198,7 +208,7 @@ export default {
 						localStorage.setItem('uiBackdropBlur', blur)
 					}
 				}
-			}).catch(() => {})
+			}).catch(() => {}) // loading: the local values stay
 		},
 		saveAppearanceSettings() {
 			clearTimeout(this._saveTimer)
@@ -206,7 +216,7 @@ export default {
 				const alpha = this.backdropAlphaPct / 100
 				const blur = this.backdropBlurPx
 				const theme = this.currentThemeMode
-				this.$api.users.setCustomStorage('appearance', { alpha, blur, theme }).catch(() => {})
+				this.$api.users.setCustomStorage('appearance', { alpha, blur, theme }).catch(e => this.saveFailed(e))
 			}, 300)
 		},
 		applyBackdropAlpha() {
@@ -235,7 +245,7 @@ export default {
 				clearTimeout(this._saveTimer)
 				this._saveTimer = null
 			}
-			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: THEME_MODES.AUTO }).catch(() => {})
+			this.$api.users.setCustomStorage('appearance', { alpha, blur, theme: THEME_MODES.AUTO }).catch(e => this.saveFailed(e))
 			this.$buefy.toast.open({ message: this.$t('Appearance reset to defaults'), type: 'is-success' })
 		},
 		rangeStyle(value, min, max) {

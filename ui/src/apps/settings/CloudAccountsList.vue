@@ -89,6 +89,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+import { apiError } from '@/utils/apiError'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
@@ -150,7 +152,7 @@ export default {
 					this.editingKey = null
 					this.refresh()
 				}
-			}).finally(() => {
+			}).catch(e => this.$buefy.toast.open({ message: escapeHtml(apiError(e, this.$t('Could not rename the account'))), type: 'is-danger', duration: 6000 })).finally(() => {
 				this.renaming = false
 			})
 		},
@@ -261,9 +263,11 @@ export default {
 					this.removingKey = account.mount_point
 					this.$api.cloud
 						.umount({ mount_point: account.mount_point })
-						.then(() => this.refresh())
+						.then(() => this.$buefy.toast.open({ message: this.$t('Account removed'), type: 'is-success' }))
+						.catch(e => this.$buefy.toast.open({ message: escapeHtml(apiError(e, this.$t('Could not remove the account'))), type: 'is-danger', duration: 6000 }))
 						.finally(() => {
 							this.removingKey = null
+							this.refresh()
 						})
 				}
 			})

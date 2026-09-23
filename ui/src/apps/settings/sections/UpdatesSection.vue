@@ -191,6 +191,7 @@
 </template>
 
 <script>
+import { apiError } from '@/utils/apiError'
 // "v1.2.1" vs "1.10.0": numeric, part by part; a leading v is ignored.
 function compareVersions(a, b) {
 	const parts = (v) => String(v).trim().replace(/^v/i, '').split(/[.+-]/).map((x) => parseInt(x, 10) || 0)
@@ -342,7 +343,7 @@ export default {
 				}
 			}).catch(err => {
 				this.$buefy.toast.open({
-					message: this.$t('Failed to refresh package updates: ') + (err.message || ''),
+					message: this.$t('Failed to refresh package updates: ') + apiError(err),
 					type: 'is-danger',
 					duration: 3000
 				})

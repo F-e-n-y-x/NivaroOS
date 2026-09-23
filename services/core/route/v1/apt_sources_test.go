@@ -76,3 +76,14 @@ func TestDeb822SourcesAreListed(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// Uninstall named one package, but apt-get remove can take dependents with
+// it (removing containerd removes docker-ce). The preview parses apt's
+// simulation.
+func TestRemovalPreviewListsEveryPackageThatGoes(t *testing.T) {
+	sim := "NOTE: This is only a simulation!\nReading package lists...\nThe following packages will be REMOVED:\n  containerd.io docker-ce\nRemv docker-ce [5:29.8.1-1~debian.13~trixie]\nRemv containerd.io [2.3.5-1~debian.13~trixie]\n"
+	got := parseRemovalSimulation(sim)
+	if len(got) != 2 || got[0] != "docker-ce" || got[1] != "containerd.io" {
+		t.Fatalf("got %v", got)
+	}
+}

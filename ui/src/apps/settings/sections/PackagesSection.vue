@@ -681,10 +681,21 @@ export default {
 			})
 		},
 
-		confirmUninstall(name) {
+		async confirmUninstall(name) {
+			// apt can remove dependents too (containerd takes docker-ce with
+			// it) - show everything that goes, not just the one package.
+			let others = []
+			try {
+				const res = await this.$api.sys.getAptRemovePreview([name])
+				const all = (res.data && res.data.data && res.data.data.remove) || []
+				others = all.filter(p => p !== name && p !== name.split(':')[0])
+			} catch (e) {}
+			const extra = others.length
+				? `<br><br><strong>${escapeHtml(this.$t('This also removes {n} other package(s):', { n: others.length }))}</strong><br><span class="is-size-7">${escapeHtml(others.slice(0, 20).join(', '))}${others.length > 20 ? ' …' : ''}</span>`
+				: ''
 			this.confirmWindow({
 				title: this.$t('Uninstall Package'),
-				message: `${this.$t('Are you sure you want to uninstall')} <strong>"${escapeHtml(name)}"</strong>?`,
+				message: `${this.$t('Are you sure you want to uninstall')} <strong>"${escapeHtml(name)}"</strong>?${extra}`,
 				type: 'is-danger',
 				icon: 'trash-can-outline',
 				confirmText: this.$t('Uninstall'),

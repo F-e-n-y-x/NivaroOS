@@ -137,7 +137,7 @@
 							{{ $t('Next') }}: {{ formatNextRun(t.next_run) }}
 						</span>
 						<span v-if="t.last_run" class="is-size-7 is-flex is-align-items-center mr-3">
-							<span class="status-dot mr-1" :class="t.last_status === 'success' ? 'bg-success' : 'bg-danger'"></span>
+							<span class="status-dot mr-1" :class="statusClass(t.last_status)" :title="t.last_status"></span>
 							<span class="text-muted">{{ $t('Last run') }}: {{ formatTimeAgo(t.last_run) }} ({{ t.last_status || 'done' }})</span>
 						</span>
 					</div>
@@ -209,6 +209,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+import { apiError } from '@/utils/apiError'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 // Search index: labels are the titles this section renders (the search
@@ -344,6 +346,7 @@ export default {
 	},
 	beforeDestroy() {
 		this.$EventBus.$off('scheduled-tasks-changed', this.fetchTasks)
+		clearTimeout(this.followTimer)
 	},
 	methods: {
 		async fetchTasks() {
@@ -374,22 +377,26 @@ export default {
 		},
 		openCreateModal(tpl = null) {
 			// Opens a movable desktop window instead of blocking the entire screen
+			// One window per editor: a shared id reused the open form, so
+			// "Edit B" while A was open kept A's fields and saved over A.
+			const id = `scheduled-task-editor-new-${Date.now()}`
 			this.$store.commit('OPEN_WINDOW', {
-				id: 'scheduled-task-editor',
+				id,
 				title: tpl ? tpl.name : this.$t('New Automation Task'),
 				component: 'ScheduledTaskWindow',
-				props: { initialTemplate: tpl },
+				props: { initialTemplate: tpl, windowId: id },
 				width: 580,
 				height: 640
 			})
 		},
 		openEditModal(task) {
 			// Opens a movable desktop window instead of blocking the entire screen
+			const id = `scheduled-task-editor-${task.id}`
 			this.$store.commit('OPEN_WINDOW', {
-				id: 'scheduled-task-editor',
+				id,
 				title: this.$t('Edit Scheduled Task'),
 				component: 'ScheduledTaskWindow',
-				props: { task },
+				props: { task, windowId: id },
 				width: 580,
 				height: 640
 			})
@@ -413,27 +420,35 @@ export default {
 			} catch (err) {
 				t.enabled = !t.enabled
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to update task status'),
+					message: apiError(err, this.$t('Failed to update task status')),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 3000
 				})
 			}
 		},
+		// "running" used to show as a red (failed) dot.
+		statusClass(status) {
+			switch (status) {
+				case 'success': return 'bg-success'
+				case 'running': return 'bg-running'
+				case 'interrupted': return 'bg-warning'
+				case '': case undefined: return 'bg-idle'
+				default: return 'bg-danger'
+			}
+		},
 		async runNow(t) {
 			this.runningId = t.id
 			try {
-				const res = await this.$api.schedules.runScheduleNow(t.id)
-				this.$buefy.toast.open({
-					message: res.data.message || `${t.name}: ${this.$t('Execution finished')}`,
-					type: 'is-success',
-					position: 'is-top',
-					duration: 3000
-				})
+				await this.$api.schedules.runScheduleNow(t.id)
+				this.$buefy.toast.open({ message: escapeHtml(`${t.name}: ${this.$t('started')}`), type: 'is-dark', position: 'is-bottom', duration: 2500 })
+				// The run is asynchronous: follow it to the end (the list used
+				// to be fetched once, right away, and never again).
 				await this.fetchTasks()
+				this.followRun(t.id)
 			} catch (err) {
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Execution failed'),
+					message: apiError(err, this.$t('Execution failed')),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 4000
@@ -441,6 +456,21 @@ export default {
 			} finally {
 				this.runningId = null
 			}
+		},
+		followRun(id, tries = 0) {
+			clearTimeout(this.followTimer)
+			const task = this.tasks.find(x => x.id === id)
+			if (!task || task.last_status !== 'running' || tries > 900) {
+				if (task && tries > 0) {
+					const ok = task.last_status === 'success'
+					this.$buefy.toast.open({ message: escapeHtml(`${task.name}: ${ok ? this.$t('finished') : this.$t('failed - see the log')}`), type: ok ? 'is-success' : 'is-danger', position: 'is-bottom', duration: 4000 })
+				}
+				return
+			}
+			this.followTimer = setTimeout(async () => {
+				await this.fetchTasks()
+				this.followRun(id, tries + 1)
+			}, 2000)
 		},
 		viewTaskLog(t) {
 			this.$store.commit('OPEN_WINDOW', {
@@ -455,7 +485,7 @@ export default {
 		confirmDelete(t) {
 			this.confirmWindow({
 				title: this.$t('Delete Scheduled Task'),
-				message: `${this.$t('Are you sure you want to delete scheduled task')} <strong>"${t.name}"</strong>?<br><span class="is-size-7 text-muted">${this.$t('This operation cannot be undone.')}</span>`,
+				message: `${this.$t('Are you sure you want to delete scheduled task')} <strong>"${escapeHtml(t.name)}"</strong>?<br><span class="is-size-7 text-muted">${this.$t('This operation cannot be undone.')}</span>`,
 				type: 'is-danger',
 				icon: 'trash-can-outline',
 				confirmText: this.$t('Delete'),
@@ -472,7 +502,7 @@ export default {
 						await this.fetchTasks()
 					} catch (err) {
 						this.$buefy.toast.open({
-							message: err.message || this.$t('Failed to delete task'),
+							message: apiError(err, this.$t('Failed to delete task')),
 							type: 'is-danger',
 							position: 'is-top',
 							duration: 3000
@@ -566,6 +596,9 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+@keyframes task-running-pulse {
+	50% { opacity: 0.35; }
+}
 .stat-card {
 	display: flex;
 	align-items: center;
@@ -782,6 +815,16 @@ export default {
 	}
 	&.bg-danger {
 		background: #ef4444;
+	}
+	&.bg-running {
+		background: var(--color-primary, #2563eb);
+		animation: task-running-pulse 1.2s ease-in-out infinite;
+	}
+	&.bg-warning {
+		background: #f59e0b;
+	}
+	&.bg-idle {
+		background: var(--theme-text-muted, #94a3b8);
 	}
 }
 

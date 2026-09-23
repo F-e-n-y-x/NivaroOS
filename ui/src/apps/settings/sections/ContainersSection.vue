@@ -94,7 +94,7 @@
 				</div>
 				<div class="row-control is-flex is-align-items-center">
 					<div class="select is-small mr-2">
-						<select v-model="presetSchedule" @change="onPresetScheduleChange">
+						<select v-model="presetSchedule" :aria-label="$t('Update Schedule')" @change="onPresetScheduleChange">
 							<option value="0 3 * * *">{{ $t('Every night at 3:00 AM') }}</option>
 							<option value="0 4 * * *">{{ $t('Every night at 4:00 AM') }}</option>
 							<option value="0 3 * * 0">{{ $t('Weekly (Every Sunday at 3:00 AM)') }}</option>
@@ -108,9 +108,13 @@
 						type="text"
 						class="input is-small custom-cron-input mr-2"
 						placeholder="0 3 * * *"
-						@blur="saveGlobalConfig"
+						:aria-label="$t('Custom Cron Expression')"
+						@keyup.enter="saveGlobalConfig"
 					/>
-					<b-button rounded size="is-small" :loading="savingGlobal" @click="saveGlobalConfig">
+					<!-- Presets save as soon as they're picked; a custom expression
+					     is saved here (it also saved on blur and via the switch,
+					     so one edit could save twice). -->
+					<b-button v-if="presetSchedule === 'custom'" rounded size="is-small" :loading="savingGlobal" @click="saveGlobalConfig">
 						{{ $t('Save') }}
 					</b-button>
 				</div>
@@ -246,10 +250,17 @@
 			<div class="mt-2 is-size-7">{{ $t('Discovering containers and checking registry tags...') }}</div>
 		</div>
 
+		<div v-else-if="loadError && !containers.length" class="empty-card has-text-centered p-6" role="alert">
+			<i class="mdi mdi-alert-circle-outline is-size-1 text-muted mb-2"></i>
+			<div class="is-size-6 font-medium">{{ $t("Couldn't load the containers") }}</div>
+			<div class="is-size-7 text-muted mt-1">{{ loadError }}</div>
+			<b-button rounded size="is-small" class="mt-3" @click="fetchContainers()">{{ $t('Retry') }}</b-button>
+		</div>
+
 		<div v-else-if="!filteredContainers.length" class="empty-card has-text-centered p-6">
 			<i class="mdi mdi-docker is-size-1 text-muted mb-2"></i>
 			<div class="is-size-6 font-medium text-muted">{{ $t('No containers found') }}</div>
-			<div class="is-size-7 text-muted mt-1">{{ searchQuery ? $t('No containers matching search filter.') : $t('No Docker containers running on host.') }}</div>
+			<div class="is-size-7 text-muted mt-1">{{ searchQuery ? $t('No containers matching search filter.') : $t('There are no Docker containers on this server.') }}</div>
 		</div>
 
 		<div v-else class="setting-card p-0">
@@ -361,10 +372,11 @@
 							rounded
 							size="is-small"
 							:loading="restartingId === c.id"
+							:title="c.state === 'running' ? $t('Restart container') : $t('Start container')"
+							:aria-label="c.state === 'running' ? $t('Restart container') : $t('Start container')"
 							@click="restartContainer(c)"
-							:title="$t('Restart container')"
 						>
-							<i class="mdi mdi-restart"></i>
+							<i :class="c.state === 'running' ? 'mdi mdi-restart' : 'mdi mdi-play'"></i>
 						</b-button>
 					</div>
 				</div>
@@ -374,6 +386,8 @@
 </template>
 
 <script>
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { apiError } from '@/utils/apiError'
 import { escapeHtml } from '@/utils/escapeHtml'
 import activityService from '@/service/activity'
 
@@ -388,8 +402,10 @@ export const ROWS = [
 
 export default {
 	name: 'containers-section',
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
+			loadError: '',
 			containers: [],
 			loadingContainers: false,
 			checkingAll: false,
@@ -458,23 +474,32 @@ export default {
 	mounted() {
 		this.fetchContainers()
 		this.fetchGlobalConfig()
+		// Keep states current while the section is open (the list was loaded
+		// once and never again).
+		this.refreshTimer = setInterval(() => {
+			if (document.visibilityState === 'visible' && !this.updatingAny && !this.restartingId) this.fetchContainers(true)
+		}, 20000)
 	},
 	beforeDestroy() {
+		clearInterval(this.refreshTimer)
 		if (this.updateProgressInterval) {
 			clearInterval(this.updateProgressInterval)
 			this.updateProgressInterval = null
 		}
 	},
 	methods: {
-		async fetchContainers() {
-			this.loadingContainers = true
+		// quiet: background refresh (no spinner; keep the list on failure).
+		async fetchContainers(quiet = false) {
+			if (!quiet) this.loadingContainers = true
 			try {
 				const res = await this.$api.container.getAllContainersWithUpdates()
 				if (res && res.data && res.data.data) {
 					this.containers = res.data.data || []
 				}
+				this.loadError = ''
 			} catch (err) {
-				console.error('Failed to load containers:', err)
+				// A failed load used to look exactly like "no containers".
+				if (!quiet) this.loadError = apiError(err, this.$t('The container service did not answer'))
 			} finally {
 				this.loadingContainers = false
 			}
@@ -512,11 +537,13 @@ export default {
 				})
 			} catch (err) {
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to save settings'),
+					message: escapeHtml(apiError(err, this.$t('Failed to save settings'))),
 					type: 'is-danger',
 					position: 'is-top',
-					duration: 3000
+					duration: 5000
 				})
+				// Show what's actually in effect.
+				this.fetchGlobalConfig()
 			} finally {
 				this.savingGlobal = false
 			}
@@ -572,7 +599,7 @@ export default {
 					}, 5000)
 				}
 			} catch (err) {
-				const errMsg = err.response?.data?.message || err.message || this.$t('Failed to check updates')
+				const errMsg = err.response?.data?.message || apiError(err, this.$t('Failed to check updates'))
 				this.activeNotification = {
 					type: 'danger',
 					title: this.$t('Registry Check Failed'),
@@ -627,7 +654,7 @@ export default {
 					}
 				}
 			} catch (err) {
-				const errMsg = err.response?.data?.message || err.message || this.$t('Check failed')
+				const errMsg = err.response?.data?.message || apiError(err, this.$t('Check failed'))
 				this.$buefy.toast.open({
 					message: errMsg,
 					type: 'is-danger',
@@ -638,7 +665,16 @@ export default {
 				this.checkingId = null
 			}
 		},
-		async updateContainer(c) {
+		updateContainer(c) {
+			this.confirmWindow({
+				title: this.$t('Update container'),
+				message: escapeHtml(this.$t('Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.', { name: c.name })),
+				confirmText: this.$t('Update'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.doUpdateContainer(c)
+			})
+		},
+		async doUpdateContainer(c) {
 			this.updatingId = c.id
 			this.updatingAny = true
 			this.activeNotification = {
@@ -715,7 +751,7 @@ export default {
 				clearInterval(this.updateProgressInterval)
 				this.updateProgressInterval = null
 
-				const errMsg = err.response?.data?.message || err.message || this.$t('Update failed')
+				const errMsg = err.response?.data?.message || apiError(err, this.$t('Update failed'))
 				this.activeNotification = {
 					type: 'danger',
 					title: this.$t('Update Failed'),
@@ -742,9 +778,18 @@ export default {
 				this.updatingAny = false
 			}
 		},
-		async updateAllAvailable() {
+		updateAllAvailable() {
 			const targets = this.containers.filter(c => c.has_update)
 			if (!targets.length) return
+			this.confirmWindow({
+				title: this.$t('Update all'),
+				message: escapeHtml(this.$t('Update {n} containers? Each one is recreated with its newest image and restarts briefly.', { n: targets.length })),
+				confirmText: this.$t('Update all'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.doUpdateAll(targets)
+			})
+		},
+		async doUpdateAll(targets) {
 
 			this.updatingAny = true
 			let successCount = 0
@@ -817,7 +862,7 @@ export default {
 			} catch (err) {
 				c.auto_update_enabled = !c.auto_update_enabled
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to toggle auto-update'),
+					message: apiError(err, this.$t('Failed to toggle auto-update')),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 3000
@@ -840,20 +885,32 @@ export default {
 				}
 			})
 		},
-		async restartContainer(c) {
+		restartContainer(c) {
+			if (c.state !== 'running') return this.doRestart(c) // Start: nothing is interrupted
+			this.confirmWindow({
+				title: this.$t('Restart container'),
+				message: escapeHtml(this.$t('Restart {name}? It will be unavailable for a moment.', { name: c.name })),
+				confirmText: this.$t('Restart'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.doRestart(c)
+			})
+		},
+		async doRestart(c) {
+			const wasRunning = c.state === 'running'
 			this.restartingId = c.id
 			try {
 				await this.$api.container.updateState(c.id, 'restart')
 				this.$buefy.toast.open({
-					message: `${escapeHtml(c.name)} ${this.$t('restarted')}`,
+					message: `${escapeHtml(c.name)} ${wasRunning ? this.$t('restarted') : this.$t('started')}`,
 					type: 'is-success',
 					position: 'is-top',
 					duration: 2000
 				})
-				c.state = 'running'
+				// The real state, not an assumed "running".
+				await this.fetchContainers(true)
 			} catch (err) {
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Restart failed'),
+					message: apiError(err, this.$t('Restart failed')),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 3000

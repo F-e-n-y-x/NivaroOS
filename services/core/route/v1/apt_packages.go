@@ -26,7 +26,7 @@ import (
 // checker in pkg_updates.go, which only tracks upgradable packages for the
 // Updates section.
 
-var validAptPackageName = regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]*$`)
+var validAptPackageName = regexp.MustCompile(`^[a-z0-9][a-z0-9+.-]*(:[a-z0-9]+)?$`)
 
 const aptSourcesDir = "/etc/apt/sources.list.d"
 const aptSourcesFile = "/etc/apt/sources.list"
@@ -544,4 +544,32 @@ func nativeArch() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// parseRemovalSimulation lists the packages `apt-get -s remove` would
+// remove ("Remv <name> [<version>]" lines).
+func parseRemovalSimulation(out string) []string {
+	var pkgs []string
+	for _, line := range strings.Split(out, "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "Remv" {
+			pkgs = append(pkgs, f[1])
+		}
+	}
+	return pkgs
+}
+
+// GetAptRemovePreview: what uninstalling the given packages would remove
+// in total (a simulation - nothing changes), so the confirmation can say
+// "this also removes docker-ce" instead of naming only one package.
+func GetAptRemovePreview(ctx echo.Context) error {
+	pkgs := strings.Split(ctx.QueryParam("packages"), ",")
+	if err := validatePackageNames(pkgs); err != nil {
+		return badParams(ctx, err.Error())
+	}
+	args := append([]string{"-s", "remove", "--"}, pkgs...)
+	out, err := runAptCommand(30*time.Second, "apt-get", args...)
+	if err != nil {
+		return serviceError(ctx, fmt.Errorf("%s", lastLines(out, 5)))
+	}
+	return ok(ctx, map[string]interface{}{"remove": parseRemovalSimulation(out)})
 }

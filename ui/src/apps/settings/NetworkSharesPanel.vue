@@ -90,6 +90,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+import { apiError } from '@/utils/apiError'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
@@ -187,7 +189,9 @@ export default {
 				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
-					this.$api.samba.deleteShare(share.id).then(() => this.refresh())
+					this.$api.samba.deleteShare(share.id)
+						.catch(e => this.$buefy.toast.open({ message: escapeHtml(apiError(e, this.$t('Could not remove the share'))), type: 'is-danger', duration: 6000 }))
+						.finally(() => this.refresh())
 				}
 			})
 		}

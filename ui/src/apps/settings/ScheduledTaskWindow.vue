@@ -370,9 +370,14 @@
 </template>
 
 <script>
+import { apiError } from '@/utils/apiError'
 export default {
 	name: 'ScheduledTaskWindow',
 	props: {
+		windowId: {
+			type: String,
+			default: 'scheduled-task-editor'
+		},
 		task: {
 			type: Object,
 			default: null
@@ -622,7 +627,7 @@ export default {
 		},
 		close() {
 			if (this.$store) {
-				this.$store.commit('CLOSE_WINDOW', 'scheduled-task-editor')
+				this.$store.commit('CLOSE_WINDOW', this.windowId)
 			}
 			this.$emit('close')
 		},
@@ -633,6 +638,17 @@ export default {
 					type: 'is-warning',
 					position: 'is-top',
 					duration: 2000
+				})
+				return
+			}
+			// A VM/container task without a target saved fine and then failed
+			// every run (`docker restart ""`).
+			if ((this.form.type === 'vm' || this.form.type === 'container') && !this.form.target_id) {
+				this.$buefy.toast.open({
+					message: this.form.type === 'vm' ? this.$t('Choose the virtual machine this task controls') : this.$t('Choose the container this task controls'),
+					type: 'is-warning',
+					position: 'is-top',
+					duration: 3000
 				})
 				return
 			}
@@ -672,7 +688,7 @@ export default {
 				this.close()
 			} catch (err) {
 				this.$buefy.toast.open({
-					message: err.message || this.$t('Failed to save task'),
+					message: apiError(err, this.$t('Failed to save task')),
 					type: 'is-danger',
 					position: 'is-top',
 					duration: 3000

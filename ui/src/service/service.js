@@ -1,6 +1,7 @@
 import axios from 'axios'
 import router from '@/router'
 import store from '@/store'
+import { makeUnauthorizedHandler } from './authRefresh'
 // import { ToastProgrammatic as Toast } from 'buefy'
 
 
@@ -48,67 +49,43 @@ instance.interceptors.request.use(
 
 // Response interception
 
-let isRefreshing = false
-let requests = []
-
 function logout() {
 	store.commit("SET_ACCESS_TOKEN", "");
 	store.commit("SET_REFRESH_TOKEN", "");
 	router.replace({ //Jump to the logout page
 		path: '/logout'
-	})
+	}).catch(() => {})
 }
 
+// One token refresh for however many requests got a 401, then retry them;
+// if it fails, they are all rejected and the user is logged out (see
+// authRefresh.js for what the old queue got wrong).
+const handleUnauthorized = makeUnauthorizedHandler({
+	refresh: () => instance.post("/v1/users/refresh", {
+		refresh_token: localStorage.getItem("refresh_token"),
+	}).then(tokenRes => {
+		if (!(tokenRes.data && tokenRes.data.success == 200)) throw new Error("refresh refused")
+		const d = tokenRes.data.data
+		localStorage.setItem("access_token", d.access_token);
+		localStorage.setItem("refresh_token", d.refresh_token);
+		localStorage.setItem("expires_at", d.expires_at);
+		store.commit("SET_ACCESS_TOKEN", d.access_token);
+		store.commit("SET_REFRESH_TOKEN", d.refresh_token);
+		instance.defaults.headers.Authorization = d.access_token
+		return d.access_token
+	}),
+	retry: (config) => instance(config),
+	logout,
+})
+
 instance.interceptors.response.use(
-	(response) => {
-		return response;
-	},
-	async (error) => {
-		const originalConfig = error?.config;
-		const refresh_token = localStorage.getItem("refresh_token")
-		if (originalConfig.url !== "/users/register" && error?.response?.status === 401) {
-			// Access Token was expired
-			if (!isRefreshing) {
-				isRefreshing = true
-
-				instance.post("/v1/users/refresh", {
-					refresh_token: refresh_token,
-				}).then(tokenRes => {
-					if (tokenRes.data.success == 200) {
-						localStorage.setItem("access_token", tokenRes.data.data.access_token);
-						localStorage.setItem("refresh_token", tokenRes.data.data.refresh_token);
-						localStorage.setItem("expires_at", tokenRes.data.data.expires_at);
-
-						store.commit("SET_ACCESS_TOKEN", tokenRes.data.data.access_token);
-						store.commit("SET_REFRESH_TOKEN", tokenRes.data.data.refresh_token);
-						originalConfig.headers.Authorization = tokenRes.data.data.access_token
-						instance.defaults.headers.Authorization = tokenRes.data.data.access_token
-						isRefreshing = false
-						return tokenRes.data.data.access_token
-					} else {
-						logout()
-					}
-				}).then(token => {
-					requests.forEach(cb => cb(token))
-					requests = []
-				}).catch(error => {
-					logout()
-					console.log(error);
-				})
-
-			} else if (originalConfig.url === "/v1/users/refresh" && error?.response?.status === 401) {
-				logout()
-			}
-			return new Promise(resolve => {
-				requests.push((token) => {
-					originalConfig.headers = {}
-					originalConfig.headers.Authorization = token
-					resolve(instance(originalConfig))
-				})
-			})
+	(response) => response,
+	(error) => {
+		const config = error && error.config
+		if (config && config.url !== "/users/register" && error.response && error.response.status === 401) {
+			return handleUnauthorized(error)
 		}
 		return Promise.reject(error)
-
 	}
 )
 

@@ -795,5 +795,11 @@
   "This removes {de} and installs the desktop you pick next. Type its name to confirm:": "This removes {de} and installs the desktop you pick next. Type its name to confirm:",
   "Detected a {vendor} GPU with no working driver.": "Detected a {vendor} GPU with no working driver.",
   "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.": "The web UI did not come up on port {port} - it may be in use. Reload this page to keep using the current port.",
-  "{user} deleted": "{user} deleted"
+  "{user} deleted": "{user} deleted",
+  "SMB password changed for {user}": "SMB password changed for {user}",
+  "Restart {name}? It will be unavailable for a moment.": "Restart {name}? It will be unavailable for a moment.",
+  "Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.": "Update {name}? It is recreated with the newest image (volumes, ports and settings are kept) and restarts briefly. Nothing changes if it already runs the newest image.",
+  "Update {n} containers? Each one is recreated with its newest image and restarts briefly.": "Update {n} containers? Each one is recreated with its newest image and restarts briefly.",
+  "Unmount {path}? Network shares, containers and apps using it lose access until it is mounted again.": "Unmount {path}? Network shares, containers and apps using it lose access until it is mounted again.",
+  "This also removes {n} other package(s):": "This also removes {n} other package(s):"
 }

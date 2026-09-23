@@ -489,6 +489,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import { formatSize } from '@/utils/formatSize'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
@@ -766,7 +767,20 @@ export default {
 				this.error = this.$t('Failed to update startup configuration')
 			})
 		},
-		toggleMountState(m, shouldMount) {
+		toggleMountState(m, shouldMount, confirmed = false) {
+			// Unmounting cuts off everything using the drive (shares,
+			// containers, apps) - it used to happen on a single click.
+			if (!shouldMount && !confirmed) {
+				this.confirmWindow({
+					title: this.$t('Unmount drive'),
+					message: escapeHtml(this.$t('Unmount {path}? Network shares, containers and apps using it lose access until it is mounted again.', { path: m.mount_point })),
+					type: 'is-warning',
+					confirmText: this.$t('Unmount'),
+					cancelText: this.$t('Cancel'),
+					onConfirm: () => this.toggleMountState(m, false, true)
+				})
+				return
+			}
 			this.actionBusy = m.mount_point
 			const promise = shouldMount ? this.$api.fstab.mount(m.mount_point) : this.$api.fstab.umount(m.mount_point)
 			promise.then(() => {

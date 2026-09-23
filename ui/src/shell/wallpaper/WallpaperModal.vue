@@ -50,7 +50,7 @@
 					</span>
 				</button>
 
-				<button class="wallpaper-tile upload-tile" :class="{ active: checkActiveFrom('Upload') }">
+				<button ref="uploadTile" type="button" class="wallpaper-tile upload-tile" :class="{ active: checkActiveFrom('Upload') }" :aria-label="$t('Upload')">
 					<div id="upload-wallpaper" class="upload-tile-inner">
 						<b-icon icon="picture-upload-outline" pack="casa" size="is-large"></b-icon>
 						<span>{{ $t('Upload') }}</span>
@@ -136,8 +136,24 @@ export default {
 			query: (file) => ({ path: galleryPath, name: file.name })
 		});
 	},
+	beforeDestroy() {
+		// Drop the uploader's handlers and its hidden input with the component.
+		if (this.uploader) {
+			this.uploader.cancel()
+			this.uploader.off()
+			if (this.uploader.support && this.$refs.uploadTile) {
+				this.$refs.uploadTile.querySelectorAll('input[type=file]').forEach(i => i.remove())
+			}
+			this.uploader = null
+		}
+	},
 	mounted() {
-		this.uploader.assignBrowse(document.getElementById('upload-wallpaper'), false, true, this.attributes)
+		// The focusable button itself (Enter/Space open the picker - it was
+		// wired to an inner div), via a ref (getElementById could run before
+		// the tile existed: "Cannot read properties of null").
+		this.$nextTick(() => {
+			if (this.$refs.uploadTile) this.uploader.assignBrowse(this.$refs.uploadTile, false, true, this.attributes)
+		})
 		this.uploader.on('filesSubmitted', () => {
 			this.isUpLoading = true
 			this.$api.sys.getVersion().then(() => {
@@ -268,6 +284,10 @@ export default {
 		},
 		cleanUrlPath(p) {
 			if (!p) return ''
+			// Sometimes a wallpaper object, not a string ("e.includes is not a
+			// function" on every load).
+			if (typeof p === 'object') p = p.path || ''
+			p = String(p)
 			if (p.includes('path=')) {
 				try {
 					const u = new URL(p, 'http://localhost')

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -524,6 +525,14 @@ func (s *scheduleService) GetTasks() []ScheduleTask {
 		}
 		res = append(res, taskCopy)
 	}
+	// Stable order (map iteration made rows jump around on every refresh):
+	// oldest first, then by name.
+	sort.Slice(res, func(a, b int) bool {
+		if !res[a].CreatedAt.Equal(res[b].CreatedAt) {
+			return res[a].CreatedAt.Before(res[b].CreatedAt)
+		}
+		return res[a].Name < res[b].Name
+	})
 	return res
 }
 

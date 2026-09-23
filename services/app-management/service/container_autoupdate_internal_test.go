@@ -94,3 +94,13 @@ func TestTheTimerRunsWhenOnlySomeContainersOptIn(t *testing.T) {
 		t.Fatal("timer still set with nothing to update")
 	}
 }
+
+func TestAnInvalidScheduleIsRejectedNotSilentlySaved(t *testing.T) {
+	m := testUpdateManager(t)
+	if err := m.SetGlobalConfig(GlobalAutoUpdateConfig{Enabled: true, Schedule: "every night"}); err == nil {
+		t.Fatal("invalid schedule accepted")
+	}
+	if m.global.Schedule == "every night" {
+		t.Fatal("invalid schedule stored")
+	}
+}

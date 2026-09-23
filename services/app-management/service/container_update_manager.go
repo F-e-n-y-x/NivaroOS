@@ -212,6 +212,14 @@ func (m *ContainerUpdateManager) GetGlobalConfig() GlobalAutoUpdateConfig {
 }
 
 func (m *ContainerUpdateManager) SetGlobalConfig(cfg GlobalAutoUpdateConfig) error {
+	// An invalid schedule used to be saved (and reported as saved) while
+	// the timer silently stopped running.
+	if cfg.Schedule == "" {
+		cfg.Schedule = "0 3 * * *"
+	}
+	if _, err := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor).Parse(cfg.Schedule); err != nil {
+		return fmt.Errorf("invalid schedule %q: %w", cfg.Schedule, err)
+	}
 	m.mu.Lock()
 	m.global = cfg
 	err := m.saveLocked()

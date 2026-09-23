@@ -44,6 +44,8 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
+import { apiError } from '@/utils/apiError'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
@@ -103,7 +105,9 @@ export default {
 				confirmText: this.$t('Delete'),
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
-					this.$api.sys.deleteSmbUser(user.username).then(() => this.refresh())
+					this.$api.sys.deleteSmbUser(user.username)
+						.catch(e => this.$buefy.toast.open({ message: escapeHtml(apiError(e, this.$t('Could not remove SMB access'))), type: 'is-danger', duration: 6000 }))
+						.finally(() => this.refresh())
 				}
 			})
 		},
@@ -117,6 +121,9 @@ export default {
 			try {
 				await this.$api.sys.setSmbUserPassword(user.username, this.newPassword)
 				this.passwordTarget = null
+				this.$buefy.toast.open({ message: escapeHtml(this.$t('SMB password changed for {user}', { user: user.username })), type: 'is-success' })
+			} catch (e) {
+				this.$buefy.toast.open({ message: escapeHtml(apiError(e, this.$t('Could not change the SMB password'))), type: 'is-danger', duration: 6000 })
 			} finally {
 				this.savingPassword = false
 			}
