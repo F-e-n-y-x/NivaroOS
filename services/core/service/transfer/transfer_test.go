@@ -425,3 +425,77 @@ func TestAfterWriteFailureIsReported(t *testing.T) {
 		t.Error("job never showed the syncing state")
 	}
 }
+
+// Small files skip the per-file fsync (it made a 10,000-file copy to a
+// spinning NTFS disk take 20 minutes); the destination is flushed once at
+// the end instead. If that flush fails, nothing may count as moved.
+func TestMoveKeepsSourcesWhenTheFinalFlushFails(t *testing.T) {
+	m := newTestManager(t)
+	m.flushFS = func(dir string) error { return errors.New("I/O error") }
+	src := makeAlbum(t, t.TempDir())
+	dest := shmDir(t)
+
+	j, _ := m.Submit(Spec{Kind: KindMove, Sources: []string{src}, Dest: dest})
+	j = waitDone(t, m, j.ID)
+
+	if j.State == StateDone || len(j.Failures) == 0 || !strings.Contains(j.Failures[0].Error, "I/O error") {
+		t.Fatalf("flush failure not reported: %s %+v", j.State, j.Failures)
+	}
+	for _, n := range []string{"a.jpg", "b.jpg", "c.jpg", "sub/d.jpg"} {
+		if got := readFile(t, filepath.Join(src, n)); got != "data-"+n {
+			t.Errorf("source %s deleted although it was never flushed: %q", n, got)
+		}
+	}
+}
+
+func TestCopyFlushesTheDestinationBeforeDone(t *testing.T) {
+	m := newTestManager(t)
+	var flushed []string
+	m.flushFS = func(dir string) error { flushed = append(flushed, dir); return nil }
+	src := makeAlbum(t, t.TempDir())
+	dest := t.TempDir()
+
+	j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: dest})
+	j = waitDone(t, m, j.ID)
+
+	if j.State != StateDone {
+		t.Fatalf("state = %s %+v", j.State, j.Failures)
+	}
+	if len(flushed) != 1 || flushed[0] != dest {
+		t.Fatalf("flushed = %v, want exactly [%s]", flushed, dest)
+	}
+}
+
+// A crash (power cut, kill -9) mid-copy leaves a hidden temp file behind;
+// Retry of that job must not leave it lying around forever.
+func TestRetryRemovesTempFilesLeftByACrash(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "jobs.json")
+	m := NewManager(Options{StatePath: statePath})
+	src := makeAlbum(t, t.TempDir())
+	dest := t.TempDir()
+	j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: dest})
+	waitDone(t, m, j.ID)
+	m.Close()
+	// Pretend the service died while writing b.jpg: the job was running
+	// and a partial temp file is still there.
+	raw, _ := os.ReadFile(statePath)
+	os.WriteFile(statePath, bytes.Replace(raw, []byte(`"state":"done"`), []byte(`"state":"running"`), 1), 0o644)
+	orphan := filepath.Join(dest, "album", ".b.jpg.nvtmp-0123456789abcdef")
+	writeFile(t, orphan, "partial")
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(orphan, old, old)
+
+	m2 := NewManager(Options{StatePath: statePath})
+	defer m2.Close()
+	if got, _ := m2.Get(j.ID); got.State != StateInterrupted {
+		t.Fatalf("state after restart = %s", got.State)
+	}
+	r, err := m2.Retry(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r = waitDone(t, m2, r.ID); r.State != StateDone {
+		t.Fatalf("retry: %s %+v", r.State, r.Failures)
+	}
+	assertNoTempFiles(t, dest)
+}

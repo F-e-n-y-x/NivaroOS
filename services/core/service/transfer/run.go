@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // entry is one thing to create at the destination (or delete).
@@ -180,12 +182,18 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 	}
 
 	verified := map[string]bool{} // source files safe to remove (move)
+	var unflushed []string        // small files copied without their own fsync
+	swept := map[string]bool{}
 	for _, e := range plan {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if movedTops[e.top] {
 			continue
+		}
+		if d := filepath.Dir(e.dst); j.Conflict == ConflictResume && !swept[d] {
+			swept[d] = true
+			m.sweepTemps(d)
 		}
 		if e.isDir {
 			if err := os.MkdirAll(e.dst, dirMode(e.mode)); err != nil {
@@ -213,7 +221,8 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 			}
 		}
 		var copied int64
-		err = copyEntry(ctx, e, func(n int64) {
+		syncNow := e.size >= syncEachFrom
+		err = copyEntry(ctx, e, syncNow, func(n int64) {
 			copied += n
 			m.update(j, func(j *job) { j.BytesDone += n })
 		})
@@ -229,7 +238,22 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 			continue
 		}
 		verified[e.src] = true
+		if !syncNow {
+			unflushed = append(unflushed, e.src)
+		}
 		m.update(j, func(j *job) { j.FilesDone++ })
+	}
+
+	// One flush for all the small files, before anything counts as done -
+	// and before a move deletes a single source file.
+	if len(unflushed) > 0 {
+		m.update(j, func(j *job) { j.Current = dest })
+		if err := m.flushFS(dest); err != nil {
+			for _, src := range unflushed {
+				delete(verified, src)
+			}
+			m.addFailure(j, dest, fmt.Errorf("flushing to disk: %w", err))
+		}
 	}
 
 	for _, t := range tops {
@@ -428,9 +452,56 @@ func hasFailureUnder(j *job, dir string) bool {
 
 const copyBuf = 1 << 20
 
+// Files at least this big are fsynced one by one; smaller ones are flushed
+// together at the end of the job (see flushFS). A per-file fsync costs a
+// disk seek or more, which dominated copies of many small files.
+const syncEachFrom = 8 << 20
+
+// sweepTemps removes temp files in dir that an earlier run of the service
+// left behind when it died mid-copy. Ones created since this process
+// started may belong to a live job and are left alone.
+func (m *Manager) sweepTemps(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, de := range entries {
+		n := de.Name()
+		i := strings.LastIndex(n, ".nvtmp-")
+		if !strings.HasPrefix(n, ".") || i < 0 || !isHexID(n[i+len(".nvtmp-"):]) {
+			continue
+		}
+		if info, err := de.Info(); err == nil && info.ModTime().Before(m.started) {
+			_ = os.Remove(filepath.Join(dir, n))
+		}
+	}
+}
+
+func isHexID(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// syncFS flushes the whole filesystem that dir is on.
+func syncFS(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return unix.Syncfs(int(f.Fd()))
+}
+
 // copyEntry copies one file or symlink to e.dst through a temporary name,
-// fsyncs, verifies the size and only then renames it into place.
-func copyEntry(ctx context.Context, e entry, progress func(int64)) error {
+// optionally fsyncs, verifies the size and only then renames it into place.
+func copyEntry(ctx context.Context, e entry, syncNow bool, progress func(int64)) error {
 	dir := filepath.Dir(e.dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -454,7 +525,7 @@ func copyEntry(ctx context.Context, e entry, progress func(int64)) error {
 			}
 			e.link = false
 			e.size = info.Size()
-			return copyEntry(ctx, e, progress)
+			return copyEntry(ctx, e, syncNow, progress)
 		}
 		if err := os.Rename(tmp, e.dst); err != nil {
 			_ = os.Remove(tmp)
@@ -501,8 +572,10 @@ func copyEntry(ctx context.Context, e entry, progress func(int64)) error {
 			return rerr
 		}
 	}
-	if err := out.Sync(); err != nil {
-		return fmt.Errorf("flushing to disk: %w", err)
+	if syncNow {
+		if err := out.Sync(); err != nil {
+			return fmt.Errorf("flushing to disk: %w", err)
+		}
 	}
 	if err := out.Close(); err != nil {
 		return fmt.Errorf("finishing write: %w", err)

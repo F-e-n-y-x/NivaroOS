@@ -152,6 +152,8 @@ type Manager struct {
 	running int
 
 	changed chan bool // true = publish now (state change)
+	flushFS func(dir string) error
+	started time.Time
 	closed  chan struct{}
 	wg      sync.WaitGroup
 }
@@ -171,6 +173,8 @@ func NewManager(opts Options) *Manager {
 		jobs:    map[string]*job{},
 		changed: make(chan bool, 1),
 		closed:  make(chan struct{}),
+		flushFS: syncFS,
+		started: time.Now(),
 	}
 	m.load()
 	m.wg.Add(1)

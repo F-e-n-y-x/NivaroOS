@@ -152,6 +152,17 @@ Events + API
 | 4 Cloud/companion | 12c1fa5 | 30 MB copy to Google Drive held in "syncing" for the real 29 s upload; object size verified on Google |
 | 5 UX | (this commit) | Replace / Keep both / Skip dialog before overwriting; copy/cut confirmations |
 
+Stress runs (after phase 5, 2026-09-23): 10,000 small files (117 MB,
+unicode/`#` names, nested) copied same-drive, copied to the NTFS HDD and
+moved to it, all at once - 30,000 files checksum-identical, move source
+emptied. Killing the service mid-run left both jobs `interrupted`; Retry
+finished them with no loss. Found: to the NTFS HDD (ntfs-3g) the engine
+ran at ~8 files/s because of a per-file fsync, so a 10k copy took ~20 min.
+Now files under 8 MiB are flushed once per job (syncfs) - before the job
+says done and before a move deletes anything; the same copy takes 39 s.
+Retry also sweeps temp files a crash left behind. 4 overlapping jobs and a
+cancel mid-copy verified clean.
+
 Also found and fixed along the way: every v2 GET without Content-Type
 panicked (router validator); the old upload service could panic the core
 service; cross-drive rename copied into newname/oldname then deleted the
