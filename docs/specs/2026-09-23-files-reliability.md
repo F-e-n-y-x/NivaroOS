@@ -51,7 +51,8 @@ Companion / cloud / shares
   (HTTP 200) when the phone is offline.
 - Cloud (rclone VFS cache "full"): the copy "finishes" when data reaches the
   local cache; the real upload happens later and its failures are never seen.
-- CIFS mounts are hard mounts (hang forever when the server drops).
+- ~~CIFS mounts are hard mounts~~ - audit claim checked and wrong:
+  `mount.cifs` defaults to `soft`, so no change was needed.
 
 ## 2. Design
 
@@ -82,9 +83,12 @@ Execution
    the job instead of vanishing.
 6. **Concurrency**: jobs run in parallel up to a small limit (2) instead of a
    single global FIFO; within a job files are sequential (disk-friendly).
-7. **Storage backends** behind one small interface (stat/list/open/create/
-   mkdir/remove/rename): local + companion. Companion copies stream through
-   it (no staging) and report real errors.
+7. **Companion devices** go through a small `Remote` adapter over the
+   existing companion handler, which was fixed to report every per-file
+   error, verify download sizes and check the device's upload reply.
+   (A full streaming storage backend was considered and deferred - the
+   adapter gives correct results; streaming would only save the staging
+   copy for phone-to-phone transfers.)
 
 Events + API
 - One publisher goroutine: publishes on every state change and at most every
@@ -128,8 +132,7 @@ Events + API
 ### 2.4 Companion / cloud / shares
 - Offline companion → explicit "device offline" error (UI banner), backups
   only when the user asks for them.
-- CIFS mounts get `soft` + timeouts so a vanished share errors instead of
-  hanging.
+- CIFS: no change (already soft-mounted by default).
 
 ## 3. Delivery phases (each tested, committed, deployed)
 1. Transfer engine + API + legacy compatibility + tests (unit + real disk).
