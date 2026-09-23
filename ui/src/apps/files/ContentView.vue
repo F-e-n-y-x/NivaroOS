@@ -136,6 +136,7 @@
 
 <script>
 import { pasteClipboard } from '@/utils/files/paste'
+import { takeDroppedEntries, resolveEntries } from '@/utils/files/droppedFiles'
 import { bus as transferBus } from '@/service/transfers'
 import orderBy from 'lodash/orderBy'
 import EmptyFolder from './EmptyFolder.vue'
@@ -698,10 +699,16 @@ export default {
 				}
 				return
 			}
-			const files = event.dataTransfer && event.dataTransfer.files
-			if (files && files.length && this.$refs.uploadTray) {
-				this.$refs.uploadTray.addFiles(files)
-			}
+			// Files and whole folders from the desktop: take the entries now
+			// (the browser clears them after this handler), walk folders after.
+			const entries = takeDroppedEntries(event.dataTransfer)
+			if (!entries.length || !this.$refs.uploadTray) return
+			resolveEntries(entries)
+				.then((files) => files.length && this.$refs.uploadTray.addFiles(files))
+				.catch(() => this.$buefy.toast.open({ message: this.$t("Couldn't read the dropped folder"), type: 'is-danger' }))
+		},
+		triggerUploadFolder() {
+			this.$refs.uploadTray && this.$refs.uploadTray.browseFolder()
 		},
 		// Dragging a row: the whole current selection if the dragged item is
 		// part of it (matches Explorer/Finder - dragging any selected item

@@ -3,10 +3,10 @@ package transfer
 import (
 	"bytes"
 	"fmt"
-	"sync"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"

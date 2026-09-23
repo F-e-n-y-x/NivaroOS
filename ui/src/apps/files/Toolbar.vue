@@ -74,6 +74,9 @@
 					<b-dropdown-item aria-role="menuitem" @click="$emit('upload')">
 						<i class="mdi mdi-upload-outline mr-2"></i>{{ $t('Upload') }}
 					</b-dropdown-item>
+					<b-dropdown-item aria-role="menuitem" @click="$emit('upload-folder')">
+						<i class="mdi mdi-folder-upload-outline mr-2"></i>{{ $t('Upload folder') }}
+					</b-dropdown-item>
 					<b-dropdown-item aria-role="menuitem" @click="toggleHidden">
 						<i class="mdi mr-2" :class="showHidden ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></i>{{ showHidden ? $t('Hide Hidden Files') : $t('Show Hidden Files') }}
 					</b-dropdown-item>
@@ -144,6 +147,10 @@
 						<button class="action-btn" @click="$emit('upload')">
 							<b-icon icon="upload-outline" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Upload') }}</span>
+						</button>
+						<button class="action-btn" :title="$t('Upload a whole folder, keeping its structure')" @click="$emit('upload-folder')">
+							<b-icon icon="folder-upload-outline" custom-size="mdi-16px"></b-icon>
+							<span>{{ $t('Upload folder') }}</span>
 						</button>
 					</template>
 				</div>

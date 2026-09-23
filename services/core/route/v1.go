@@ -198,6 +198,7 @@ func InitV1Router() http.Handler {
 			v1BatchGroup.POST("/:id/retry", v1.PostRetryTask)
 			v1BatchGroup.DELETE("/:id/history", v1.DeleteTransferHistory)
 			v1BatchGroup.GET("", v1.GetDownloadFile)
+			v1BatchGroup.POST("/download", v1.PostDownloadTicket)
 		}
 		v1ImageGroup := v1Group.Group("/image")
 		v1ImageGroup.Use()

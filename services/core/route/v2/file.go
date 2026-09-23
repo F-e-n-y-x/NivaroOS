@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,68 +20,75 @@ func (s *NivaroOS) GetFileTest(ctx echo.Context) error {
 }
 
 func (c *NivaroOS) CheckUploadChunk(ctx echo.Context, params codegen.CheckUploadChunkParams) error {
-	identifier := ctx.QueryParam("identifier")
 	chunkNumber, err := strconv.ParseInt(ctx.QueryParam("chunkNumber"), 10, 64)
 	if err != nil {
 		return ctx.NoContent(http.StatusBadRequest)
 	}
-
-	err = c.fileUploadService.TestChunk(ctx, identifier, chunkNumber)
-	if err != nil {
-		return ctx.NoContent(http.StatusNoContent)
+	totalSize, _ := strconv.ParseInt(ctx.QueryParam("totalSize"), 10, 64)
+	// 200 = the chunk is already here (the uploader skips it: resume);
+	// 204 = send it.
+	if c.fileUploadService.HasChunk(service.UploadChunk{
+		Path:         ctx.QueryParam("path"),
+		RelativePath: uploadRelativePath(ctx.QueryParam("relativePath"), ctx.QueryParam("filename")),
+		Identifier:   ctx.QueryParam("identifier"),
+		ChunkNumber:  chunkNumber,
+		TotalSize:    totalSize,
+	}) {
+		return ctx.NoContent(http.StatusOK)
 	}
-	return ctx.NoContent(http.StatusOK)
+	return ctx.NoContent(http.StatusNoContent)
+}
+
+func uploadRelativePath(rel, name string) string {
+	if rel == "" {
+		return name
+	}
+	return rel
+}
+
+type uploadError struct {
+	Success int    `json:"success"`
+	Message string `json:"message"`
 }
 
 func (c *NivaroOS) PostUploadFile(ctx echo.Context) error {
-	path := ctx.FormValue("path")
-
-	// handle the request
-	chunkNumber, err := strconv.ParseInt(ctx.FormValue("chunkNumber"), 10, 64)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
+	num := func(k string) (int64, bool) {
+		v, err := strconv.ParseInt(ctx.FormValue(k), 10, 64)
+		return v, err == nil
 	}
-	chunkSize, err := strconv.ParseInt(ctx.FormValue("chunkSize"), 10, 64)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
+	chunkNumber, ok1 := num("chunkNumber")
+	chunkSize, ok2 := num("chunkSize")
+	currentChunkSize, ok3 := num("currentChunkSize")
+	totalChunks, ok4 := num("totalChunks")
+	totalSize, ok5 := num("totalSize")
+	if !(ok1 && ok2 && ok3 && ok4 && ok5) {
+		return ctx.JSON(http.StatusBadRequest, uploadError{http.StatusBadRequest, "missing or invalid chunk fields"})
 	}
-	currentChunkSize, err := strconv.ParseInt(ctx.FormValue("currentChunkSize"), 10, 64)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
-	}
-	totalChunks, err := strconv.ParseInt(ctx.FormValue("totalChunks"), 10, 64)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
-	}
-	totalSize, err := strconv.ParseInt(ctx.FormValue("totalSize"), 10, 64)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
-	}
-
-	identifier := ctx.FormValue("identifier")
-	fileName := ctx.FormValue("filename")
-	relativePath := ctx.FormValue("relativePath")
 	bin, err := ctx.FormFile("file")
-
 	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
+		return ctx.JSON(http.StatusBadRequest, uploadError{http.StatusBadRequest, "missing file data"})
 	}
-
-	err = c.fileUploadService.UploadFile(
-		ctx,
-		path,
-		chunkNumber,
-		chunkSize,
-		currentChunkSize,
-		totalChunks,
-		totalSize,
-		identifier,
-		relativePath,
-		fileName,
-		bin,
-	)
+	src, err := bin.Open()
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, err)
+		return ctx.JSON(http.StatusInternalServerError, uploadError{http.StatusInternalServerError, err.Error()})
 	}
-	return ctx.NoContent(http.StatusOK)
+	defer src.Close()
+
+	res, err := c.fileUploadService.Upload(service.UploadChunk{
+		Path:             ctx.FormValue("path"),
+		RelativePath:     uploadRelativePath(ctx.FormValue("relativePath"), ctx.FormValue("filename")),
+		Identifier:       ctx.FormValue("identifier"),
+		ChunkNumber:      chunkNumber,
+		ChunkSize:        chunkSize,
+		CurrentChunkSize: currentChunkSize,
+		TotalChunks:      totalChunks,
+		TotalSize:        totalSize,
+		Data:             src,
+	})
+	if err != nil {
+		// A real message (the old handler returned `{}`), so the upload
+		// tray can say why.
+		return ctx.JSON(http.StatusInternalServerError, uploadError{http.StatusInternalServerError, err.Error()})
+	}
+	return ctx.JSON(http.StatusOK, map[string]interface{}{"success": 200, "complete": res.Complete})
 }

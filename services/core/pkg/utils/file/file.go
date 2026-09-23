@@ -505,13 +505,25 @@ func GetCompressionAlgorithm(t string) (string, archiver.Writer, error) {
 	}
 }
 
+// AddFile adds path (recursively) to the archive. Failures inside folders
+// are logged and skipped - use AddFileReport to learn about them.
 func AddFile(ar archiver.Writer, path, commonPath string) error {
+	return AddFileReport(ar, path, commonPath, func(p string, err error) {
+		log.Printf("Failed to archive %s: %v", p, err)
+	})
+}
+
+// AddFileReport is AddFile with every skipped entry reported to onErr, so a
+// download can tell the user what's missing instead of silently shipping a
+// partial archive.
+func AddFileReport(ar archiver.Writer, path, commonPath string, onErr func(path string, err error)) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
 
 	if !info.IsDir() && !info.Mode().IsRegular() {
+		onErr(path, fmt.Errorf("special file skipped"))
 		return nil
 	}
 
@@ -544,9 +556,9 @@ func AddFile(ar archiver.Writer, path, commonPath string) error {
 		}
 
 		for _, name := range names {
-			err = AddFile(ar, filepath.Join(path, name), commonPath)
-			if err != nil {
-				log.Printf("Failed to archive %v", err)
+			child := filepath.Join(path, name)
+			if err := AddFileReport(ar, child, commonPath, onErr); err != nil {
+				onErr(child, err)
 			}
 		}
 	}

@@ -93,7 +93,6 @@ export const mixin = {
 	data() {
 		return {
 			baseUrl: `${this.$protocol}//${this.$baseURL}/v1/`,
-			downloadIframe: null,
 		}
 	},
 	mounted() {
@@ -225,19 +224,51 @@ export const mixin = {
 		 * @param {Object,Array} items
 		 * @return {void}
 		 */
-		downloadFile(items) {
-			this.$buefy.toast.open({
-				message: this.$t('Download in preparation...'),
-				type: 'is-white'
-			})
-			let url = this.getFileUrl(items)
-			if (!this.downloadIframe) {
-				this.downloadIframe = document.createElement('iframe');
-				this.downloadIframe.style.display = 'none';
-				document.body.appendChild(this.downloadIframe);
+		// Downloads go through the browser's own download manager (a real
+		// <a download>, with its progress and errors in the browser's
+		// downloads list) - this used to be a hidden iframe that could never
+		// report failure, behind a toast that always said "in preparation".
+		async downloadFile(items) {
+			const list = Array.isArray(items) ? items : [items]
+			if (!list.length) return
+			try {
+				let url
+				if (list.length === 1 && !list[0].is_dir) {
+					url = this.getFileUrl(list[0])
+					// Cheap 1-byte check so a missing/unreadable file shows a
+					// real error here instead of a broken download.
+					const probe = await fetch(url, { headers: { Range: 'bytes=0-0' } })
+					if (!probe.ok) {
+						let msg = this.$t('Download failed')
+						try {
+							msg = (await probe.json()).message || msg
+						} catch (e) {}
+						throw new Error(msg)
+					}
+					try {
+						probe.body && probe.body.cancel()
+					} catch (e) {}
+				} else {
+					// Folders / several items: register the list server-side
+					// and download by ticket (no giant ?files=a,b,c URL).
+					const res = await this.$api.batch.downloadTicket(list.map((o) => o.path))
+					if (!res.data || res.data.success !== 200) throw new Error((res.data && res.data.message) || this.$t('Download failed'))
+					url = `${this.baseUrl}batch?${qs.stringify({ ticket: res.data.data, token: this.$store.state.access_token })}`
+				}
+				const a = document.createElement('a')
+				a.href = url
+				a.download = ''
+				a.rel = 'noopener'
+				document.body.appendChild(a)
+				a.click()
+				a.remove()
+				this.$buefy.toast.open({
+					message: list.length === 1 && !list[0].is_dir ? this.$t('Download started') : this.$t('Preparing a zip - it will appear in your browser downloads'),
+					type: 'is-white',
+				})
+			} catch (e) {
+				this.$buefy.toast.open({ message: escapeHtml(e.message || this.$t('Download failed')), type: 'is-danger', duration: 5000 })
 			}
-			this.downloadIframe.src = url;
-			// window.open(url, '_blank');
 		},
 		// Download Button Action
 		download() {

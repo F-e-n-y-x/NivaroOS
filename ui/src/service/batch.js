@@ -11,6 +11,11 @@ const batch = {
 		});
 	},
 
+	// register a multi-file / folder download; returns a ticket id
+	downloadTicket(files, format = 'zip') {
+		return api.post(`${PREFIX}/download`, { files, format });
+	},
+
 	// File operate task TODO:wait for the api
 	task(data) {
 		return api.post(`${PREFIX}/task`, data);

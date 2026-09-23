@@ -9,6 +9,7 @@
 			.click() on a file input, even though display:none on the input
 			itself is fine. -->
 		<input ref="fileInput" type="file" multiple style="display: none" @change="onFileInputChange" />
+		<input ref="folderInput" type="file" webkitdirectory directory multiple style="display: none" @change="onFileInputChange" />
 		<transition name="tray-pop">
 			<div v-show="visible" class="upload-tray" role="status" aria-live="polite" :aria-label="$t('Upload progress')">
 				<div class="upload-tray-header">
@@ -126,11 +127,24 @@ export default {
 		this.rawFileMap = {}
 		this.uploaderInstance = new Uploader({
 			target: `${this.$protocol}//${this.$baseURL}/v2/casaos/file/upload`,
-			testChunks: false,
+			// Resume: before sending a chunk, ask whether the server already
+			// has it (a network drop or retry doesn't restart the whole file).
+			testChunks: true,
+			// 8 MB chunks: far fewer requests than the 1 MB default for big
+			// files, still small enough to retry cheaply.
+			chunkSize: 8 * 1024 * 1024,
+			forceChunkSize: true,
+			simultaneousUploads: 3,
+			// A transient failure (Wi-Fi blip, server busy) retries the chunk
+			// instead of failing the file; 400s (bad path) fail right away.
+			maxChunkRetries: 4,
+			chunkRetryInterval: 1500,
 			uploadMethod: 'POST',
-			successStatuses: [200, 201, 202, 2002],
-			permanentErrors: [404, 409, 415, 500, 501],
-			allowDuplicateUploads: true,
+			successStatuses: [200, 201, 202],
+			permanentErrors: [400, 404, 409, 415, 501],
+			// Re-adding a file that's already queued is ignored instead of
+			// uploading it twice.
+			allowDuplicateUploads: false,
 			headers: {
 				Authorization: this.$store.state.access_token || localStorage.getItem('access_token'),
 			},
@@ -241,6 +255,9 @@ export default {
 		},
 		browse() {
 			this.$refs.fileInput.click()
+		},
+		browseFolder() {
+			this.$refs.folderInput.click()
 		},
 		onFileInputChange(event) {
 			if (event.target.files && event.target.files.length) {

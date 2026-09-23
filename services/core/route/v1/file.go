@@ -182,18 +182,65 @@ func GetLocalFile(ctx echo.Context) error {
 // @Param files query string true "file list eg: filename1,filename2,filename3 "
 // @Success 200 {string} string "ok"
 // @Router /file/download [get]
+// Download tickets: the client POSTs the list of paths and downloads with
+// ?ticket= - putting every path in the URL (?files=a,b,c) split any name
+// containing a comma and broke on long selections.
+var (
+	downloadTicketsMu sync.Mutex
+	downloadTickets   = map[string]downloadTicket{}
+)
+
+type downloadTicket struct {
+	files   []string
+	format  string
+	expires time.Time
+}
+
+// PostDownloadTicket registers a multi-file/folder download.
+func PostDownloadTicket(ctx echo.Context) error {
+	var req struct {
+		Files  []string `json:"files"`
+		Format string   `json:"format"`
+	}
+	if err := ctx.Bind(&req); err != nil || len(req.Files) == 0 {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+	}
+	id := uuid.NewString()
+	downloadTicketsMu.Lock()
+	now := time.Now()
+	for k, t := range downloadTickets {
+		if now.After(t.expires) {
+			delete(downloadTickets, k)
+		}
+	}
+	downloadTickets[id] = downloadTicket{files: req.Files, format: req.Format, expires: now.Add(10 * time.Minute)}
+	downloadTicketsMu.Unlock()
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
+}
+
 func GetDownloadFile(ctx echo.Context) error {
 	t := ctx.QueryParam("format")
-
-	files := ctx.QueryParam("files")
-
-	if len(files) == 0 {
+	var list []string
+	if ticket := ctx.QueryParam("ticket"); ticket != "" {
+		downloadTicketsMu.Lock()
+		tk, ok := downloadTickets[ticket]
+		downloadTicketsMu.Unlock()
+		if !ok || time.Now().After(tk.expires) {
+			return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "This download link has expired - start the download again"})
+		}
+		list = tk.files
+		if t == "" {
+			t = tk.format
+		}
+	} else if files := ctx.QueryParam("files"); files != "" {
+		list = strings.Split(files, ",")
+	}
+	if len(list) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
 			Success: common_err.INVALID_PARAMS,
 			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
 		})
 	}
-	list := strings.Split(files, ",")
 	if len(list) == 1 {
 		filePath := list[0]
 		if dev, phonePath := GetCompanionDeviceByStoragePath(filePath); dev != nil {
@@ -201,25 +248,16 @@ func GetDownloadFile(ctx echo.Context) error {
 				return nil
 			}
 		} else {
-			if !file.Exists(filePath) {
+			info, err := os.Stat(filePath)
+			if err != nil {
 				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
 					Success: common_err.FILE_DOES_NOT_EXIST,
 					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
 				})
 			}
-			info, err := os.Stat(filePath)
-			if err != nil {
-				return ctx.JSON(http.StatusOK, model.Result{
-					Success: common_err.FILE_DOES_NOT_EXIST,
-					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
-				})
-			}
 			if !info.IsDir() {
-				ctx.Request().Header.Add("Content-Type", "application/octet-stream")
-				ctx.Request().Header.Add("Content-Transfer-Encoding", "binary")
-				ctx.Request().Header.Add("Cache-Control", "no-cache")
-				fileName := path.Base(filePath)
-				ctx.Response().Header().Add("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
+				ctx.Response().Header().Set("Cache-Control", "no-cache")
+				ctx.Response().Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(path.Base(filePath)))
 				return ctx.File(filePath)
 			}
 		}
@@ -232,34 +270,30 @@ func GetDownloadFile(ctx echo.Context) error {
 		}
 	}()
 
-	stagedList := make([]string, len(list))
-	for i, v := range list {
+	stagedList := make([]string, 0, len(list))
+	var failures []string
+	for _, v := range list {
 		if dev, _ := GetCompanionDeviceByStoragePath(v); dev != nil {
 			if tempStageDir == "" {
-				tempStageDir, _ = os.MkdirTemp("", "comp-batch-dl-*")
+				tempStageDir, _ = os.MkdirTemp(service.UploadStagingDir, "comp-batch-dl-*")
 			}
 			stagedPath := filepath.Join(tempStageDir, filepath.Base(v))
 			if err := DownloadCompanionItemToLocal(ctx.Request().Context(), v, stagedPath); err != nil {
-				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
-					Success: common_err.FILE_DOES_NOT_EXIST,
-					Message: err.Error(),
-				})
+				failures = append(failures, fmt.Sprintf("%s: %v", v, err))
+				continue
 			}
-			stagedList[i] = stagedPath
+			stagedList = append(stagedList, stagedPath)
 		} else {
 			if !file.Exists(v) {
-				return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
-					Success: common_err.FILE_DOES_NOT_EXIST,
-					Message: common_err.GetMsg(common_err.FILE_DOES_NOT_EXIST),
-				})
+				failures = append(failures, v+": no longer exists")
+				continue
 			}
-			stagedList[i] = v
+			stagedList = append(stagedList, v)
 		}
 	}
-
-	ctx.Request().Header.Add("Content-Type", "application/octet-stream")
-	ctx.Request().Header.Add("Content-Transfer-Encoding", "binary")
-	ctx.Request().Header.Add("Cache-Control", "no-cache")
+	if len(stagedList) == 0 {
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DOES_NOT_EXIST, Message: strings.Join(failures, "; ")})
+	}
 
 	extension, ar, err := file.GetCompressionAlgorithm(t)
 	if err != nil {
@@ -268,28 +302,51 @@ func GetDownloadFile(ctx echo.Context) error {
 			Message: common_err.GetMsg(common_err.INVALID_PARAMS),
 		})
 	}
+	commonDir := file.CommonPrefix(filepath.Separator, stagedList...)
+	name := filepath.Base(commonDir)
+	if len(stagedList) > 1 || name == "" || name == "/" || name == "." {
+		if name == "" || name == "/" || name == "." {
+			name = "download"
+		}
+		name = fmt.Sprintf("%s (%d items)", name, len(stagedList))
+	}
+	// Response headers, before the body starts (these used to be set on the
+	// request by mistake, so every archive downloaded as "batch").
+	h := ctx.Response().Header()
+	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(name+extension))
 
-	err = ar.Create(ctx.Response().Writer)
-	if err != nil {
-		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: common_err.GetMsg(common_err.SERVICE_ERROR),
-			Data:    err.Error(),
-		})
+	if err := ar.Create(ctx.Response().Writer); err != nil {
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 	}
 	defer ar.Close()
-	commonDir := file.CommonPrefix(filepath.Separator, stagedList...)
-
-	currentPath := filepath.Base(commonDir)
-
-	name := "_" + currentPath
-	name += extension
-	ctx.Request().Header.Add("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(name))
 	for _, fname := range stagedList {
-		err = file.AddFile(ar, fname, commonDir)
-		if err != nil {
-			log.Printf("Failed to archive %s: %v", fname, err)
+		if err := file.AddFileReport(ar, fname, commonDir, func(p string, err error) {
+			failures = append(failures, fmt.Sprintf("%s: %v", p, err))
+		}); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", fname, err))
 		}
+	}
+	// The archive is already streaming (headers sent), so an error can't
+	// change the response any more - but it must not be silent: list what's
+	// missing inside the archive itself.
+	if len(failures) > 0 {
+		report := "These items could not be included in this download:\n\n" + strings.Join(failures, "\n") + "\n"
+		if tmp, err := os.CreateTemp("", "nv-dl-report-*"); err == nil {
+			tmp.WriteString(report)
+			tmp.Close()
+			dir := filepath.Dir(tmp.Name())
+			named := filepath.Join(dir, "DOWNLOAD-ERRORS.txt-"+filepath.Base(tmp.Name()))
+			_ = os.Rename(tmp.Name(), named)
+			if fi, err := os.Stat(named); err == nil {
+				f, _ := os.Open(named)
+				_ = ar.Write(archiver.File{FileInfo: archiver.FileInfo{FileInfo: fi, CustomName: "DOWNLOAD-ERRORS.txt"}, ReadCloser: f})
+				f.Close()
+			}
+			_ = os.Remove(named)
+		}
+		logger.Error("download archive incomplete", zap.Strings("failures", failures))
 	}
 	return nil
 }
@@ -822,7 +879,7 @@ func DirPath(ctx echo.Context) error {
 		if info[i].Name == ".temp" && info[i].IsDir {
 			continue
 		}
-		if strings.Contains(info[i].Name, ".nvtmp-") {
+		if strings.Contains(info[i].Name, ".nvtmp-") || strings.Contains(info[i].Name, ".nvupload-") {
 			continue // a copy still in flight (see service/transfer)
 		}
 		if _, ok := fileQueue[info[i].Path]; !ok {
@@ -1070,210 +1127,45 @@ func PostFileUpload(ctx echo.Context) error {
 	}
 	defer f.Close()
 
-	relative := ctx.FormValue("relativePath")
 	fileName := ctx.FormValue("filename")
 	if fileName == "" && h != nil {
 		fileName = h.Filename
 	}
+	relative := ctx.FormValue("relativePath")
 	if relative == "" {
 		relative = fileName
 	}
 	totalChunks, _ := strconv.Atoi(utils.DefaultPostForm(ctx, "totalChunks", "0"))
-	chunkNumber := ctx.FormValue("chunkNumber")
-	dirPath := ""
 	path := ctx.FormValue("path")
-
 	if len(path) == 0 {
-		logger.Error("path should not be empty")
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
-
-	hash := file.GetHashByContent([]byte(fileName))
-
-	// 1. Target is a companion device
-	if dev, phoneDir := GetCompanionDeviceByStoragePath(path); dev != nil {
-		destPhonePath := filepath.Join(phoneDir, relative)
-		stagingBase := filepath.Join("/tmp/nivaroos_uploads", dev.ID, hash+strconv.Itoa(totalChunks))
-		tempDir := stagingBase + "/"
-		if fileName != relative {
-			dirPath = strings.TrimSuffix(relative, fileName)
-			tempDir += dirPath
-		}
-
-		if totalChunks > 1 {
-			if err := file.IsNotExistMkDir(tempDir); err != nil {
-				logger.Error("error creating staging dir for companion", zap.Error(err))
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			chunkPath := filepath.Join(tempDir, chunkNumber)
-			out, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-			if err != nil {
-				logger.Error("error opening staging chunk for companion", zap.Error(err))
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			if _, err := io.Copy(out, f); err != nil {
-				out.Close()
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			out.Close()
-
-			fileNum, err := ioutil.ReadDir(tempDir)
-			if err != nil {
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-
-			if totalChunks == len(fileNum) {
-				assembledPath := filepath.Join(stagingBase, fileName)
-				if err := file.SpliceFiles(tempDir, assembledPath, totalChunks, 1); err != nil {
-					_ = os.RemoveAll(stagingBase)
-					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-				}
-				err = ProxyCompanionUploadFile(dev, assembledPath, destPhonePath)
-				_ = os.RemoveAll(stagingBase)
-				if err != nil {
-					logger.Error("companion upload failed", zap.Error(err))
-					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-				}
-			}
-		} else {
-			// Single chunk/file upload directly to companion
-			tmpF, err := os.CreateTemp("", "comp-upload-*")
-			if err != nil {
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			tmpName := tmpF.Name()
-			defer os.Remove(tmpName)
-			if _, err := io.Copy(tmpF, f); err != nil {
-				tmpF.Close()
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-			tmpF.Close()
-
-			if err := ProxyCompanionUploadFile(dev, tmpName, destPhonePath); err != nil {
-				logger.Error("companion upload failed", zap.Error(err))
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-		}
-		return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	// Multi-chunk uploads live on /v2/casaos/file/upload (resumable, size
+	// verified). This endpoint's own chunk assembly counted a chunk that
+	// was still being written as finished and could splice a truncated
+	// file; no client of this project uses it anymore.
+	if totalChunks > 1 {
+		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "chunked uploads use /v2/casaos/file/upload"})
 	}
 
-	// 2. Target is cloud mount or local filesystem
-	isCloud := strings.HasPrefix(path, "/mnt/") || service.IsMounted(path)
-	var tempDir string
-	var stagingBase string
-	if isCloud && totalChunks > 1 {
-		stagingBase = filepath.Join("/tmp/nivaroos_chunks", hash+strconv.Itoa(totalChunks))
-		tempDir = stagingBase + "/"
-		if fileName != relative {
-			dirPath = strings.TrimSuffix(relative, fileName)
-			tempDir += dirPath
-		}
-	} else {
-		tempDir = filepath.Join(path, ".temp", hash+strconv.Itoa(totalChunks)) + "/"
-		if fileName != relative {
-			dirPath = strings.TrimSuffix(relative, fileName)
-			tempDir += dirPath
-			if err := file.MkDir(path + "/" + dirPath); err != nil {
-				logger.Error("error when trying to create `"+path+"/"+dirPath+"`", zap.Error(err))
-				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-			}
-		}
-	}
-
-	fullDstPath := filepath.Join(path, relative)
-	if fileName == relative && !strings.HasSuffix(path, "/") {
-		fullDstPath = path + "/" + relative
-	}
-
-	// The single-chunk branch below already did this right before opening
-	// fullDstPath - but the chunked branch (totalChunks > 1, the common
-	// case for a several-MB image like a wallpaper) only creates a
-	// dirPath subfolder when the upload's relative path actually has one,
-	// and never the destination directory itself. A target path whose
-	// directory doesn't exist yet (e.g. a fresh install where nothing has
-	// ever been uploaded to it before) silently failed for exactly that
-	// reason. Doing it once here, before either branch, covers both.
-	if err := os.MkdirAll(filepath.Dir(fullDstPath), 0o755); err != nil {
-		logger.Error("error creating destination directory for `"+fullDstPath+"`", zap.Error(err))
+	// Single-request upload (the mobile app): same service, same
+	// guarantees as the web UI - temp file, fsync, size check, then rename
+	// into place (or hand-off to a companion device).
+	res, err := service.Uploads.Upload(service.UploadChunk{
+		Path:             path,
+		RelativePath:     relative,
+		Identifier:       "v1-" + strconv.FormatInt(time.Now().UnixNano(), 36),
+		ChunkNumber:      1,
+		TotalChunks:      1,
+		TotalSize:        h.Size,
+		CurrentChunkSize: h.Size,
+		Data:             f,
+	})
+	if err != nil {
+		logger.Error("upload failed", zap.String("path", path), zap.String("file", relative), zap.Error(err))
 		return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 	}
-
-	if !file.CheckNotExist(tempDir + chunkNumber) {
-		if err := file.RMDir(tempDir + chunkNumber); err != nil {
-			logger.Error("error when trying to remove existing `"+tempDir+chunkNumber+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-	}
-
-	if totalChunks > 1 {
-		if err := file.IsNotExistMkDir(tempDir); err != nil {
-			logger.Error("error when trying to create `"+tempDir+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-
-		out, err := os.OpenFile(tempDir+chunkNumber, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if err != nil {
-			logger.Error("error when trying to open `"+tempDir+chunkNumber+"` for creation", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-		if _, err := io.Copy(out, f); err != nil {
-			out.Close()
-			logger.Error("error when trying to write to `"+tempDir+chunkNumber+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-		out.Close()
-
-		fileNum, err := ioutil.ReadDir(tempDir)
-		if err != nil {
-			logger.Error("error when trying to read number of files under `"+tempDir+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-
-		if totalChunks == len(fileNum) {
-			if isCloud {
-				assembledPath := filepath.Join(stagingBase, fileName)
-				if err := file.SpliceFiles(tempDir, assembledPath, totalChunks, 1); err != nil {
-					_ = os.RemoveAll(stagingBase)
-					logger.Error("error splicing local chunk files for cloud", zap.Error(err))
-					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-				}
-				if err := file.CopySingleFile(assembledPath, fullDstPath, "overwrite"); err != nil {
-					_ = os.RemoveAll(stagingBase)
-					logger.Error("error copying assembled file to cloud destination", zap.Error(err))
-					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-				}
-				_ = os.RemoveAll(stagingBase)
-			} else {
-				if err := file.SpliceFiles(tempDir, fullDstPath, totalChunks, 1); err != nil {
-					logger.Error("error when trying to splice files under `"+tempDir+"`", zap.Error(err))
-					return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-				}
-				go func() {
-					time.Sleep(5 * time.Second)
-					if err := file.RMDir(tempDir); err != nil {
-						logger.Error("error when trying to remove `"+tempDir+"`", zap.Error(err))
-					}
-				}()
-			}
-		}
-	} else {
-		out, err := os.OpenFile(fullDstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-		if err != nil {
-			logger.Error("error when trying to open `"+fullDstPath+"` for creation", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-
-		if _, err := io.Copy(out, f); err != nil {
-			out.Close()
-			logger.Error("error when trying to write to `"+fullDstPath+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		}
-		if err := out.Close(); err != nil {
-			logger.Error("error closing `"+fullDstPath+"`", zap.Error(err))
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		}
-	}
-	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: res.Path})
 }
 
 func PostFileOctet(ctx echo.Context) error {

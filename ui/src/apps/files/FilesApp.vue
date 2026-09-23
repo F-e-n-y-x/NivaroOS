@@ -20,6 +20,7 @@
 			@set-view="onSetView"
 			:pasting="pasting"
 			@paste="onPaste"
+			@upload-folder="onUploadFolder"
 			@clear-selection="onClearSelection"
 			@copy-selection="onCopySelection"
 			@move-selection="onMoveSelection"
@@ -347,6 +348,9 @@ export default {
 		},
 		onUpload() {
 			this.activeContentView && this.activeContentView.triggerUpload()
+		},
+		onUploadFolder() {
+			this.activeContentView && this.activeContentView.triggerUploadFolder()
 		},
 		onSetView(mode) {
 			this.$store.commit('SET_VIEW_MODE', mode)

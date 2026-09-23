@@ -95,13 +95,13 @@ type Job struct {
 	State    State    `json:"state"`
 	Error    string   `json:"error,omitempty"`
 
-	FilesTotal   int   `json:"files_total"`
-	FilesDone    int   `json:"files_done"`
-	FilesFailed  int   `json:"files_failed"`
-	FilesSkipped int   `json:"files_skipped"`
-	BytesTotal   int64 `json:"bytes_total"`
-	BytesDone    int64 `json:"bytes_done"`
-	Speed        int64 `json:"speed"`
+	FilesTotal   int    `json:"files_total"`
+	FilesDone    int    `json:"files_done"`
+	FilesFailed  int    `json:"files_failed"`
+	FilesSkipped int    `json:"files_skipped"`
+	BytesTotal   int64  `json:"bytes_total"`
+	BytesDone    int64  `json:"bytes_done"`
+	Speed        int64  `json:"speed"`
 	Current      string `json:"current,omitempty"`
 
 	Failures []Failure `json:"failures"`
@@ -145,10 +145,10 @@ type job struct {
 type Manager struct {
 	opts Options
 
-	mu    sync.Mutex
-	jobs  map[string]*job
-	order []string // creation order
-	queue []string // queued ids, FIFO
+	mu      sync.Mutex
+	jobs    map[string]*job
+	order   []string // creation order
+	queue   []string // queued ids, FIFO
 	running int
 
 	changed chan bool // true = publish now (state change)

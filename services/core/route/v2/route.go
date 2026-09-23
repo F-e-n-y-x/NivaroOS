@@ -11,6 +11,6 @@ type NivaroOS struct {
 
 func NewNivaroOS() codegen.ServerInterface {
 	return &NivaroOS{
-		fileUploadService: service.NewFileUploadService(),
+		fileUploadService: service.Uploads,
 	}
 }
