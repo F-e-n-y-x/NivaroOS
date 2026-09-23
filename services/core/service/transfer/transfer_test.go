@@ -2,6 +2,8 @@ package transfer
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -397,4 +399,29 @@ func TestChangesArePublishedWithFinalState(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("final state was never published")
+}
+
+func TestAfterWriteFailureIsReported(t *testing.T) {
+	var sawSyncing bool
+	var m *Manager
+	m = NewManager(Options{AfterWrite: func(ctx context.Context, dest string, progress func(string)) error {
+		progress("Uploading 1 file(s) to gdrive")
+		for _, j := range m.List() {
+			if j.State == StateSyncing {
+				sawSyncing = true
+			}
+		}
+		return errors.New("1 file(s) failed to upload to gdrive")
+	}})
+	defer m.Close()
+	src := filepath.Join(t.TempDir(), "x.txt")
+	writeFile(t, src, "x")
+	j, _ := m.Submit(Spec{Kind: KindCopy, Sources: []string{src}, Dest: t.TempDir()})
+	j = waitDone(t, m, j.ID)
+	if j.State != StateDoneWithErrors || !strings.Contains(j.Failures[0].Error, "failed to upload") {
+		t.Fatalf("cloud upload failure not reported: %s %+v", j.State, j.Failures)
+	}
+	if !sawSyncing {
+		t.Error("job never showed the syncing state")
+	}
 }

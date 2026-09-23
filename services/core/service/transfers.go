@@ -22,9 +22,10 @@ var Transfers *transfer.Manager
 // InitTransfers starts the engine; call once at startup after MyService.
 func InitTransfers(dataDir string) {
 	Transfers = transfer.NewManager(transfer.Options{
-		StatePath: filepath.Join(dataDir, "transfer-jobs.json"),
-		OnChange:  publishTransferJobs,
-		Remote:    companionRemote{},
+		StatePath:  filepath.Join(dataDir, "transfer-jobs.json"),
+		OnChange:   publishTransferJobs,
+		Remote:     companionRemote{},
+		AfterWrite: waitCloudSync,
 	})
 }
 

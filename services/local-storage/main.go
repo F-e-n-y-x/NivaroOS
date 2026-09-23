@@ -147,6 +147,7 @@ func main() {
 	defer cancel()
 
 	go monitorUEvent(ctx)
+	service.StartVFSStatusWriter(ctx)
 
 	sendStorageStats()
 

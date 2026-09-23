@@ -256,9 +256,11 @@ func (m *Manager) runTransfer(ctx context.Context, j *job) error {
 	}
 
 	if m.opts.AfterWrite != nil && !m.isRemote(dest) {
-		m.setState(j, StateSyncing)
+		// The job only shows as "syncing" once the hook reports activity
+		// (a copy to a plain local folder never flashes that state).
 		if err := m.opts.AfterWrite(ctx, dest, func(cur string) {
-			m.update(j, func(j *job) { j.Current = cur })
+			m.update(j, func(j *job) { j.Current = cur; j.State = StateSyncing })
+			m.notify(true)
 		}); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

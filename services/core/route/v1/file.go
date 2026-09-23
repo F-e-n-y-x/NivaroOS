@@ -803,6 +803,13 @@ func DirPath(ctx echo.Context) error {
 				Data:    flist,
 			})
 		}
+		// The device is online but couldn't list this folder. Falling
+		// through here used to show this server's backup folder as if it
+		// were the phone's live contents (often empty, or out of date).
+		return ctx.JSON(http.StatusBadGateway, model.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: "Couldn't read this folder on " + dev.Name + ": " + err.Error(),
+		})
 	}
 
 	if dev, _ := GetCompanionDeviceByStoragePath(req.Path); dev != nil {

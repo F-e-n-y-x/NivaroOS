@@ -65,23 +65,25 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		AllowOther:    true,
 	}
 	vfsOpt := vfscommon.Options{
-		NoModTime:          false,
-		NoChecksum:         false,
-		NoSeek:             false,
-		DirCacheTime:       fs.Duration(30 * time.Minute),
-		PollInterval:       fs.Duration(time.Minute),
-		ReadOnly:           false,
-		Umask:              18,
-		UID:                0,
-		GID:                0,
-		DirPerms:           vfscommon.FileMode(0777),
-		FilePerms:          vfscommon.FileMode(0666),
-		CacheMode:          3,
-		CacheMaxAge:        fs.Duration(3600 * time.Second),
-		CachePollInterval:  fs.Duration(60 * time.Second),
-		ChunkSize:          32 * fs.Mebi,
-		ChunkSizeLimit:     -1,
-		CacheMaxSize:       -1,
+		NoModTime:         false,
+		NoChecksum:        false,
+		NoSeek:            false,
+		DirCacheTime:      fs.Duration(30 * time.Minute),
+		PollInterval:      fs.Duration(time.Minute),
+		ReadOnly:          false,
+		Umask:             18,
+		UID:               0,
+		GID:               0,
+		DirPerms:          vfscommon.FileMode(0777),
+		FilePerms:         vfscommon.FileMode(0666),
+		CacheMode:         3,
+		CacheMaxAge:       fs.Duration(3600 * time.Second),
+		CachePollInterval: fs.Duration(60 * time.Second),
+		ChunkSize:         32 * fs.Mebi,
+		ChunkSizeLimit:    -1,
+		// Capped so the read cache can't fill the disk (files still waiting
+		// to upload are never evicted).
+		CacheMaxSize:       20 * fs.Gibi,
 		CaseInsensitive:    runtime.GOOS == "windows" || runtime.GOOS == "darwin", // default to true on Windows and Mac, false otherwise
 		WriteWait:          fs.Duration(1000 * time.Millisecond),
 		ReadWait:           fs.Duration(20 * time.Millisecond),
@@ -139,6 +141,7 @@ func (s *storageStruct) GetStorages() (httper.MountList, error) {
 	return ls, nil
 	// return httper.GetMountList()
 }
+
 // CreateConfig writes a fully-formed remote config section directly
 // (LoadedData().SetValue per key, then SaveConfig) rather than going
 // through rclone's interactive Config state machine - that machinery is

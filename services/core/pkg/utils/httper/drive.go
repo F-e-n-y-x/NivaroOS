@@ -82,7 +82,13 @@ func Mount(mountPoint string, fs string) error {
 		"mountPoint": mountPoint,
 		"fs":         fs,
 		"mountOpt":   `{"AllowOther": true}`,
-		"vfsOpt":     `{"CacheMode": 3}`,
+		// Full cache (random-access writes work), capped at 20 GiB so it
+		// can't fill the disk; WriteBack 5s is rclone's default, spelled out
+		// because service/cloudsync.go waits on it. The cache directory
+		// itself is set on the rclone daemon (--cache-dir, see
+		// rclone.service) - it used to default to /tmp, which is RAM on
+		// many systems.
+		"vfsOpt":     `{"CacheMode": 3, "CacheMaxSize": 21474836480, "WriteBack": 5000000000}`,
 	}).Post("/mount/mount")
 	if err != nil {
 		return err

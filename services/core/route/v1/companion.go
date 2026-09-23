@@ -325,7 +325,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 		req, err := http.NewRequest("GET", urlStr, nil)
 		if err == nil {
 			req.Header.Set("X-Companion-Secret", dev.Secret)
-			client := &http.Client{Timeout: 3 * time.Second}
+			client := &http.Client{Timeout: 15 * time.Second} // a large folder (DCIM) can take seconds to list on the phone
 			resp, err := client.Do(req)
 			if err == nil && resp.StatusCode == http.StatusOK {
 				defer resp.Body.Close()
@@ -377,7 +377,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 					dev.IsOnline = true
 					return items, nil
 				}
-			case <-time.After(5 * time.Second):
+			case <-time.After(15 * time.Second):
 				logger.Info("WS list request timed out", zap.String("dev_id", dev.ID))
 			}
 		}
@@ -1270,13 +1270,17 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 		})
 	}
 
+	// Explicitly labelled: this is the backup copy kept on this server,
+	// not what's on the device right now.
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
-		Message: "success",
+		Message: "device unreachable - showing the backup copy on this server",
 		Data: echo.Map{
-			"device": dev,
-			"path":   targetDir,
-			"files":  items,
+			"device":  dev,
+			"path":    targetDir,
+			"files":   items,
+			"offline": true,
+			"source":  "server_backup",
 		},
 	})
 }

@@ -4,7 +4,10 @@ Description=rclone
 [Service]
 ExecStartPre=/usr/bin/mkdir -p /var/run/rclone 
 ExecStartPre=/usr/bin/rm -f /var/run/rclone/rclone.sock
-ExecStart=/usr/bin/rclone rcd --rc-addr unix:///var/run/rclone/rclone.sock --rc-no-auth --rc-allow-origin "*"
+# The VFS write cache holds everything copied to a cloud drive until it
+# has uploaded - on disk, not /tmp (RAM on many installs).
+ExecStartPre=/usr/bin/mkdir -p /var/cache/nivaroos/rclone
+ExecStart=/usr/bin/rclone rcd --rc-addr unix:///var/run/rclone/rclone.sock --rc-no-auth --rc-allow-origin "*" --cache-dir /var/cache/nivaroos/rclone
 Restart=always
 RestartSec=10
 
