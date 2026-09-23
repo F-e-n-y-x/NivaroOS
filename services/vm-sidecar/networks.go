@@ -19,16 +19,21 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
+
+	libvirt "libvirt.org/go/libvirt"
 )
 
 const (
@@ -146,7 +151,7 @@ var bridgeSnippet = template.Must(template.New("bridge").Parse(bridgeSnippetTemp
 // Proxmox both default their host management bridge to a fixed IP
 // rather than DHCP.
 type bridgeSnippetData struct {
-	Name, HostNIC          string
+	Name, HostNIC              string
 	StaticIP, Netmask, Gateway string
 }
 
@@ -392,14 +397,86 @@ func ConfirmBridge(name string) {
 	}
 }
 
-func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeRequest) (BridgeNetwork, error) {
-	if !vmNameRe.MatchString(req.Name) {
-		return BridgeNetwork{}, fmt.Errorf("invalid bridge name %q: only letters, digits, - and _ are allowed", req.Name)
+// ifaceNameRe matches a Linux network interface name (IFNAMSIZ-1 = 15
+// characters max). Every one of these fields is written verbatim into an
+// /etc/network/interfaces.d snippet that ifup - running as root - parses,
+// so anything outside this set (a newline, above all, which would let a
+// caller add its own "up <command>" line) must never get that far.
+var ifaceNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,15}$`)
+
+func validateIfaceName(field, name string) error {
+	if !ifaceNameRe.MatchString(name) || strings.Trim(name, ".") == "" {
+		return badRequestf("invalid %s %q: use 1-15 letters, digits, '.', '-' or '_'", field, name)
+	}
+	return nil
+}
+
+// parseIPv4 accepts only a plain dotted-quad IPv4 address.
+func parseIPv4(field, value string) (net.IP, error) {
+	ip := net.ParseIP(value)
+	if ip == nil || ip.To4() == nil || strings.Contains(value, ":") {
+		return nil, badRequestf("invalid %s %q: expected an IPv4 address like 192.168.1.10", field, value)
+	}
+	return ip.To4(), nil
+}
+
+// normalizeNetmask accepts a dotted-quad netmask ("255.255.255.0") or a
+// prefix length ("24" or "/24") and returns the dotted-quad form ifupdown
+// expects. Non-contiguous masks are rejected.
+func normalizeNetmask(value string) (string, error) {
+	prefix := strings.TrimPrefix(value, "/")
+	if n, err := strconv.Atoi(prefix); err == nil && prefix != "" && len(prefix) <= 2 {
+		if n < 1 || n > 32 {
+			return "", badRequestf("invalid netmask %q: prefix length must be 1-32", value)
+		}
+		return net.IP(net.CIDRMask(n, 32)).String(), nil
+	}
+	ip, err := parseIPv4("netmask", value)
+	if err != nil {
+		return "", err
+	}
+	if ones, bits := net.IPMask(ip).Size(); bits == 0 || ones == 0 {
+		return "", badRequestf("invalid netmask %q: not a contiguous subnet mask", value)
+	}
+	return ip.String(), nil
+}
+
+// validateBridgeRequest checks (and normalizes) every user-supplied field
+// of req before any of it is written to disk.
+func validateBridgeRequest(req *CreateBridgeRequest) error {
+	if err := validateIfaceName("bridge name", req.Name); err != nil {
+		return err
+	}
+	if err := validateIfaceName("host interface", req.HostNIC); err != nil {
+		return err
 	}
 	staticFieldsGiven := req.StaticIP != "" || req.Netmask != "" || req.Gateway != ""
 	staticFieldsComplete := req.StaticIP != "" && req.Netmask != "" && req.Gateway != ""
 	if staticFieldsGiven && !staticFieldsComplete {
-		return BridgeNetwork{}, fmt.Errorf("static_ip, netmask and gateway must all be given together, or none at all")
+		return badRequestf("static_ip, netmask and gateway must all be given together, or none at all")
+	}
+	if !staticFieldsGiven {
+		return nil
+	}
+	ip, err := parseIPv4("static_ip", req.StaticIP)
+	if err != nil {
+		return err
+	}
+	gw, err := parseIPv4("gateway", req.Gateway)
+	if err != nil {
+		return err
+	}
+	mask, err := normalizeNetmask(req.Netmask)
+	if err != nil {
+		return err
+	}
+	req.StaticIP, req.Gateway, req.Netmask = ip.String(), gw.String(), mask
+	return nil
+}
+
+func CreateBridgeNetwork(registryPath, interfacesDir string, req CreateBridgeRequest) (BridgeNetwork, error) {
+	if err := validateBridgeRequest(&req); err != nil {
+		return BridgeNetwork{}, err
 	}
 	if err := validateHostNIC(req.HostNIC, defaultRouteInterface); err != nil {
 		if !req.ForceDefaultRoute {
@@ -558,19 +635,28 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 		}
 		bridge, err := CreateBridgeNetwork(registryPath, interfacesDir, req)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			writeStoreError(w, http.StatusBadRequest, err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, bridge)
 	})
 
 	mux.HandleFunc("POST /networks/bridge/{name}/confirm", func(w http.ResponseWriter, r *http.Request) {
-		ConfirmBridge(r.PathValue("name"))
+		name := r.PathValue("name")
+		if err := validateIfaceName("bridge name", name); err != nil {
+			writeStoreError(w, http.StatusBadRequest, err)
+			return
+		}
+		ConfirmBridge(name)
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	mux.HandleFunc("DELETE /networks/bridge/{name}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
+		if err := validateIfaceName("bridge name", name); err != nil {
+			writeStoreError(w, http.StatusBadRequest, err)
+			return
+		}
 		bridges, err := loadBridgeRegistry(registryPath)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -589,6 +675,18 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 			writeError(w, http.StatusNotFound, fmt.Errorf("no such bridge network %q", name))
 			return
 		}
+		// Tearing down a bridge a VM still points at leaves that VM unable
+		// to start ("Cannot get interface MTU on 'br0'") - make the user
+		// move those VMs to another network first.
+		users, err := store.DomainsUsingBridge(name)
+		if err != nil {
+			writeStoreError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if len(users) > 0 {
+			writeError(w, http.StatusConflict, fmt.Errorf("bridge %q is still used by VM(s): %s - switch their network adapters to another network first", name, strings.Join(users, ", ")))
+			return
+		}
 		ConfirmBridge(name) // cancel any still-pending auto-revert first, so it can't fire mid-delete
 		if err := DeleteBridgeNetwork(registryPath, interfacesDir, name, hostNIC); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -596,4 +694,45 @@ func RegisterNetworkRoutes(mux *http.ServeMux, store *LibvirtStore, registryPath
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// DomainsUsingBridge lists the defined VMs with a network adapter attached
+// to bridge (in their persistent config or, while running, live).
+func (s *LibvirtStore) DomainsUsingBridge(bridge string) ([]string, error) {
+	conn, err := s.getConn()
+	if err != nil {
+		return nil, err
+	}
+	doms, err := conn.ListAllDomains(0)
+	if err != nil {
+		return nil, err
+	}
+	var users []string
+	for i := range doms {
+		dom := &doms[i]
+		if name, err := dom.GetName(); err == nil && domainUsesBridge(dom, bridge) {
+			users = append(users, name)
+		}
+		dom.Free()
+	}
+	return users, nil
+}
+
+func domainUsesBridge(dom *libvirt.Domain, bridge string) bool {
+	for _, flags := range []libvirt.DomainXMLFlags{libvirt.DOMAIN_XML_INACTIVE, 0} {
+		xmlDesc, err := dom.GetXMLDesc(flags)
+		if err != nil {
+			continue
+		}
+		var parsed domainXML
+		if err := xml.Unmarshal([]byte(xmlDesc), &parsed); err != nil {
+			continue
+		}
+		for _, iface := range parsed.Devices.Interfaces {
+			if iface.Type == "bridge" && iface.Source.Bridge == bridge {
+				return true
+			}
+		}
+	}
+	return false
 }

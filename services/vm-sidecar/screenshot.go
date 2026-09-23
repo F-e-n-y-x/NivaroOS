@@ -158,7 +158,10 @@ func readPPMIntToken(r *bufio.Reader) (int, error) {
 
 func RegisterScreenshotRoutes(mux *http.ServeMux, store *LibvirtStore) {
 	mux.HandleFunc("GET /vms/{name}/screenshot", func(w http.ResponseWriter, r *http.Request) {
-		name := r.PathValue("name")
+		name, ok := vmNameFromPath(w, r)
+		if !ok {
+			return
+		}
 		png, err := store.Screenshot(name)
 		if err != nil {
 			if isNotFound(err) {

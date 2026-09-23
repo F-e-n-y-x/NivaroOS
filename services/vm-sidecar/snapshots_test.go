@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,25 @@ func TestSnapshots_Lifecycle(t *testing.T) {
 	}
 	if len(snaps) != 0 {
 		t.Fatalf("Expected 0 snapshots, got %d", len(snaps))
+	}
+}
+
+func TestCheckSnapshotNVRAM(t *testing.T) {
+	raw := `<domain><os><loader readonly='yes' type='pflash' format='raw'>/usr/share/OVMF/OVMF_CODE_4M.fd</loader>
+		<nvram template='/usr/share/OVMF/OVMF_VARS_4M.fd' templateFormat='raw' format='raw'>/DATA/VMs/x_VARS.fd</nvram></os></domain>`
+	err := checkSnapshotNVRAM(raw)
+	if errorStatus(err, 0) != 409 || !strings.HasPrefix(err.Error(), "Snapshots need the VM's UEFI variables stored as qcow2; this VM uses raw NVRAM.") {
+		t.Fatalf("raw NVRAM: expected the 409, got %v", err)
+	}
+	legacy := `<domain><os><loader type='pflash'>/c.fd</loader><nvram>/x_VARS.fd</nvram></os></domain>`
+	if errorStatus(checkSnapshotNVRAM(legacy), 0) != 409 {
+		t.Fatal("NVRAM without a format attribute is raw: expected 409")
+	}
+	qcow := `<domain><os><loader type='pflash'>/c.fd</loader><nvram format='qcow2'>/x_VARS.qcow2</nvram></os></domain>`
+	if err := checkSnapshotNVRAM(qcow); err != nil {
+		t.Fatalf("qcow2 NVRAM: %v", err)
+	}
+	if err := checkSnapshotNVRAM(`<domain><os><type>hvm</type></os></domain>`); err != nil {
+		t.Fatalf("BIOS VM: %v", err)
 	}
 }

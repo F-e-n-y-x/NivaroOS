@@ -19,7 +19,10 @@ import (
 // temp dir instead of the real /DATA/VMs path.
 var defaultStorageDir = "/DATA/VMs"
 
-const defaultISODir = "/DATA/VMs/isos"
+// defaultISODir is the one ISO library directory (a var for the same
+// reason) - listing, uploads, virtio-win insertion and ISO path validation
+// all use it.
+var defaultISODir = "/DATA/VMs/ISOs"
 
 // requiredPackages are the exact Debian 13 (trixie) package names for
 // the virtualization stack - "qemu-kvm" does not exist as a package on
@@ -30,6 +33,13 @@ var requiredPackages = []string{
 	"libvirt-daemon-system",
 	"libvirt-clients",
 	"ovmf",
+	// virtiofsd backs every VM's shared folder (<filesystem> with a
+	// virtiofs driver) - trixie ships it as its own package, no longer
+	// bundled in qemu-system-x86, and a VM with the share device can't
+	// start at all without it.
+	"virtiofsd",
+	// xorriso builds the NivaroOS Guest Tools disc (guesttools.go).
+	"xorriso",
 }
 
 const defaultNetworkXML = `<network>

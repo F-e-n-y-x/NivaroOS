@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
@@ -21,11 +22,21 @@ const (
 )
 
 var (
+	// publicKeyMu guards cachedPublicKey/lastUpdate - GetPublicKey is
+	// called from every concurrent request's auth check.
+	publicKeyMu     sync.Mutex
 	cachedPublicKey *ecdsa.PublicKey
 	lastUpdate      time.Time
+
+	// jwksClient bounds the JWKS fetch so a hung user-service can't stall
+	// every authenticated request (and pile up goroutines) indefinitely.
+	jwksClient = &http.Client{Timeout: 5 * time.Second}
 )
 
 func GetPublicKey(runtimePath string) (*ecdsa.PublicKey, error) {
+	publicKeyMu.Lock()
+	defer publicKeyMu.Unlock()
+
 	if cachedPublicKey != nil && time.Since(lastUpdate) < 10*time.Second {
 		return cachedPublicKey, nil
 	}
@@ -40,7 +51,7 @@ func GetPublicKey(runtimePath string) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 
-	resp, err := http.Get(jwksURL)
+	resp, err := jwksClient.Get(jwksURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch JWKS: %w", err)
 	}

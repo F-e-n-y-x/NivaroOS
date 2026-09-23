@@ -7,6 +7,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -26,7 +27,8 @@ func main() {
 	mux := http.NewServeMux()
 	RegisterVMRoutes(mux, store)
 	RegisterSetupRoutes(mux, store, defaultStorageDir, defaultISODir)
-	RegisterISORoutes(mux, defaultISODir)
+	RegisterISORoutes(mux, store, defaultISODir)
+	RegisterGuestToolsRoutes(mux, store)
 	RegisterNetworkRoutes(mux, store, defaultBridgeRegistryPath, interfacesDotDDir)
 	RegisterConsoleRoutes(mux, store)
 	RegisterScreenshotRoutes(mux, store)
@@ -34,13 +36,32 @@ func main() {
 	RegisterHostDesktopInstallRoutes(mux)
 	StartHostCapsLockWatcher()
 
+	srv := &http.Server{
+		Addr:    *addr,
+		Handler: withCORS(requireAuth(mux, *runtimePath)),
+		// No overall Read/WriteTimeout: ISO uploads and the console
+		// WebSocket are legitimately long-lived. ReadHeaderTimeout alone
+		// stops a client from holding a connection open by trickling
+		// headers forever.
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	log.Printf("nivaroos-vm-sidecar listening on %s (libvirt: %s)", *addr, *uri)
-	log.Fatal(http.ListenAndServe(*addr, withCORS(requireAuth(mux, *runtimePath))))
+	log.Fatal(srv.ListenAndServe())
 }
 
+// withCORS allows cross-origin calls only from a page served by this same
+// host (the NivaroOS web UI, on its own port) - it echoes that exact
+// Origin back rather than "*", so any other site a user happens to have
+// open can't read responses from (or, with a stolen token, drive) this API.
+// Non-browser clients (the mobile app, curl) send no Origin and don't need
+// CORS at all.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Add("Vary", "Origin")
+		allowed := sameHostOrigin(r)
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+		}
 		// A cross-origin POST/PUT/DELETE with a JSON body (every write in
 		// this API) isn't a CORS "simple request", so the browser sends an
 		// OPTIONS preflight first and needs a successful response with
@@ -49,8 +70,10 @@ func withCORS(next http.Handler) http.Handler {
 		// which has no handler for it and returned 405, silently blocking
 		// every write (e.g. VM creation) as a "Failed to fetch" in the browser.
 		if r.Method == http.MethodOptions {
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

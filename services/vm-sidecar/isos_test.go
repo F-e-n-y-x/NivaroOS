@@ -131,18 +131,67 @@ func TestDeleteISO_StripsDirectoryComponentsFromName(t *testing.T) {
 	}
 }
 
-func TestUploadISO_StripsDirectoryComponentsFromFilename(t *testing.T) {
+func TestUploadISO_RejectsDirectoryComponentsInFilename(t *testing.T) {
 	dir := t.TempDir()
 	req := newUploadRequest(t, "../../etc/evil.iso", []byte("hello"))
 
-	iso, err := uploadISO(dir, req)
-	if err != nil {
-		t.Fatalf("uploadISO: %v", err)
+	if _, err := uploadISO(dir, req); errorStatus(err, 0) != http.StatusBadRequest {
+		t.Fatalf("expected a 400 for a filename with directory components, got %v", err)
 	}
-	if iso.Name != "evil.iso" {
-		t.Fatalf("expected filename to be reduced to evil.iso, got %q", iso.Name)
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Fatalf("expected nothing written to isoDir, found %d entries", len(entries))
 	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.iso")); err != nil {
-		t.Fatalf("expected file written inside isoDir: %v", err)
+}
+
+func TestValidateISOFilename(t *testing.T) {
+	for _, name := range []string{"debian-13.iso", "WIN11.PRO.25H2.U10.X64.(WPE).ISO", "Fedora 41 (x86+64).iso"} {
+		if err := validateISOFilename(name); err != nil {
+			t.Errorf("%q: unexpected rejection: %v", name, err)
+		}
+	}
+	for _, name := range []string{"..iso", "a..b.iso", "../x.iso", "x/y.iso", `x\y.iso`, "x.iso\n", "x.img", ".iso", "x;rm.iso", "x'.iso"} {
+		if err := validateISOFilename(name); err == nil {
+			t.Errorf("%q: expected rejection", name)
+		}
+	}
+}
+
+func TestUploadISO_RefusesToOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "debian.iso"), []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := uploadISO(dir, newUploadRequest(t, "debian.iso", []byte("replacement")))
+	if errorStatus(err, 0) != http.StatusConflict {
+		t.Fatalf("expected 409, got %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "debian.iso")); string(data) != "original" {
+		t.Fatalf("existing ISO was overwritten: %q", data)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("expected no temp files left behind, found %d entries", len(entries))
+	}
+}
+
+func TestISORoutes_DeleteRefusesISOInUse(t *testing.T) {
+	store := newTestStore(t)
+	dir := t.TempDir()
+	iso := filepath.Join(dir, "inuse.iso")
+	if err := os.WriteFile(iso, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	createStoppedVM(t, store, CreateVMRequest{Name: "iso-user", VCPUs: 1, MemoryMiB: 256, ISOPath: iso})
+
+	mux := http.NewServeMux()
+	RegisterISORoutes(mux, store, dir)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/isos/inuse.iso", nil))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(iso); err != nil {
+		t.Fatalf("ISO in use must not be deleted: %v", err)
 	}
 }

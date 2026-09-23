@@ -10,16 +10,36 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 var consoleUpgrader = websocket.Upgrader{
-	// The VmManagerApp is served from the NivaroOS UI's own origin, not this
-	// sidecar's port, so the console connection is always cross-origin -
-	// same trust model as the "*" CORS header used for the REST routes.
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// The VmManagerApp is served from the NivaroOS UI's own origin (same
+	// host, different port), so a browser console connection is always
+	// cross-origin - accept exactly that, plus no Origin at all (the mobile
+	// app's Dart WebSocket and other non-browser clients never send one).
+	// Anything else is some other site trying to open a VNC session with a
+	// token it got hold of.
+	CheckOrigin: func(r *http.Request) bool {
+		return r.Header.Get("Origin") == "" || sameHostOrigin(r)
+	},
 }
+
+// Console keepalive: the browser/Dart side answers pings automatically, so
+// a peer that's silently gone (laptop lid closed, mobile network dropped)
+// is detected within consolePongWait instead of pinning the VNC socket and
+// both goroutines open forever.
+const (
+	consolePongWait     = 60 * time.Second
+	consolePingInterval = 25 * time.Second
+	consoleWriteWait    = 10 * time.Second
+	// A VNC client->server message is tiny (key/pointer events, clipboard
+	// text) - this only exists to stop a peer from making ReadMessage
+	// buffer an arbitrarily large frame in memory.
+	consoleReadLimit = 4 << 20
+)
 
 // consoleGraphicsXML mirrors only the <graphics> element read out of a
 // running domain's live XML - a separate, minimal type from domain.go's
@@ -77,7 +97,10 @@ func vncAddress(store *LibvirtStore, name string) (string, error) {
 
 func handleConsole(store *LibvirtStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name := r.PathValue("name")
+		name, ok := vmNameFromPath(w, r)
+		if !ok {
+			return
+		}
 		addr, err := vncAddress(store, name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -98,37 +121,7 @@ func handleConsole(store *LibvirtStore) http.HandlerFunc {
 		}
 		defer wsConn.Close()
 
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := tcpConn.Read(buf)
-				if n > 0 {
-					if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
-						return
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
-		}()
-
-		for {
-			msgType, data, err := wsConn.ReadMessage()
-			if err != nil {
-				break
-			}
-			if msgType != websocket.BinaryMessage {
-				continue
-			}
-			if _, err := tcpConn.Write(data); err != nil {
-				break
-			}
-		}
-		_ = tcpConn.Close()
-		<-done
+		proxyConsole(wsConn, tcpConn)
 	}
 }
 
@@ -149,42 +142,80 @@ func handleHostConsole() http.HandlerFunc {
 		}
 		defer wsConn.Close()
 
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := tcpConn.Read(buf)
-				if n > 0 {
-					if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
-						return
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
-		}()
+		proxyConsole(wsConn, tcpConn)
+	}
+}
 
+// proxyConsole pumps bytes both ways between a console WebSocket and a VNC
+// TCP socket until either side ends, then tears down both - closing
+// wsConn when VNC goes away (VM shut down) is what lets the client notice
+// and show "disconnected" instead of a frozen last frame.
+func proxyConsole(wsConn *websocket.Conn, tcpConn net.Conn) {
+	wsConn.SetReadLimit(consoleReadLimit)
+	extendDeadline := func() error { return wsConn.SetReadDeadline(time.Now().Add(consolePongWait)) }
+	_ = extendDeadline()
+	wsConn.SetPongHandler(func(string) error { return extendDeadline() })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 32*1024)
 		for {
-			msgType, data, err := wsConn.ReadMessage()
+			n, err := tcpConn.Read(buf)
+			if n > 0 {
+				_ = wsConn.SetWriteDeadline(time.Now().Add(consoleWriteWait))
+				if writeErr := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+					break
+				}
+			}
 			if err != nil {
-				break
-			}
-			if msgType != websocket.BinaryMessage {
-				continue
-			}
-			if _, err := tcpConn.Write(data); err != nil {
+				_ = wsConn.WriteControl(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "VNC server closed the connection"),
+					time.Now().Add(consoleWriteWait))
 				break
 			}
 		}
-		_ = tcpConn.Close()
-		<-done
+		// Unblocks the ReadMessage loop below if it's still waiting.
+		_ = wsConn.Close()
+	}()
+
+	// WriteControl is safe to call concurrently with the WriteMessage
+	// goroutine above (gorilla/websocket's documented exception).
+	stopPing := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(consolePingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := wsConn.WriteControl(websocket.PingMessage, nil, time.Now().Add(consoleWriteWait)); err != nil {
+					return
+				}
+			case <-stopPing:
+				return
+			}
+		}
+	}()
+
+	for {
+		msgType, data, err := wsConn.ReadMessage()
+		if err != nil {
+			break
+		}
+		_ = extendDeadline()
+		if msgType != websocket.BinaryMessage {
+			continue
+		}
+		if _, err := tcpConn.Write(data); err != nil {
+			break
+		}
 	}
+	close(stopPing)
+	_ = tcpConn.Close()
+	<-done
 }
 
 func RegisterConsoleRoutes(mux *http.ServeMux, store *LibvirtStore) {
 	mux.HandleFunc("GET /vms/{name}/console", handleConsole(store))
 	mux.HandleFunc("GET /host/console", handleHostConsole())
 }
-

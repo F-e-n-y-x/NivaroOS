@@ -399,7 +399,7 @@ func TestCreateVM_AutoGeneratesDiskPathWhenEmpty(t *testing.T) {
 		t.Fatalf("CreateVM: %v", err)
 	}
 	t.Cleanup(func() { _ = store.DeleteVM("auto-path-vm", true) })
-	want := tmp + "/auto-path-vm.qcow2"
+	want := tmp + "/auto-path-vm/auto-path-vm.qcow2"
 	if len(vm.Disks) != 1 || vm.Disks[0].Path != want {
 		t.Errorf("expected auto-generated disk path %q, got %+v", want, vm.Disks)
 	}
@@ -830,7 +830,7 @@ func TestCreateVM_UEFISetsFirmwareAndNVRAM(t *testing.T) {
 	if vm.Firmware != "uefi" {
 		t.Errorf(`expected firmware "uefi", got %q`, vm.Firmware)
 	}
-	if _, err := os.Stat(nvramPathFor(dir, "uefi-vm")); err != nil {
+	if _, err := os.Stat(nvramPathFor(vmDirFor("uefi-vm"), "uefi-vm")); err != nil {
 		t.Errorf("expected a per-VM NVRAM file to be created: %v", err)
 	}
 }

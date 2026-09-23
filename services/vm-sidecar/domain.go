@@ -9,10 +9,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"text/template"
@@ -99,16 +102,16 @@ type VM struct {
 	// (the VM card summary, the disk-grow field) so they don't all need
 	// rewriting for multi-disk/multi-NIC support. The full picture is in
 	// Disks/Networks below.
-	DiskPath    string     `json:"disk_path,omitempty"`
-	DiskGiB     uint64     `json:"disk_gib,omitempty"`
-	NetworkMode string     `json:"network_mode,omitempty"`
-	Disks       []DiskInfo `json:"disks"`
-	Networks    []NICInfo  `json:"networks"`
-	ISOPath     string     `json:"iso_path,omitempty"`
-	USBDevices  []USBDeviceSpec `json:"usb_devices,omitempty"`
-	PCIDevices  []PCIDeviceSpec `json:"pci_devices,omitempty"`
+	DiskPath      string             `json:"disk_path,omitempty"`
+	DiskGiB       uint64             `json:"disk_gib,omitempty"`
+	NetworkMode   string             `json:"network_mode,omitempty"`
+	Disks         []DiskInfo         `json:"disks"`
+	Networks      []NICInfo          `json:"networks"`
+	ISOPath       string             `json:"iso_path,omitempty"`
+	USBDevices    []USBDeviceSpec    `json:"usb_devices,omitempty"`
+	PCIDevices    []PCIDeviceSpec    `json:"pci_devices,omitempty"`
 	SharedFolders []SharedFolderSpec `json:"shared_folders,omitempty"`
-	BootOrder   []string        `json:"boot_order,omitempty"`
+	BootOrder     []string           `json:"boot_order,omitempty"`
 	// "bios" (SeaBIOS, the default) or "uefi" (OVMF) - detected from
 	// whether the domain's XML has a <loader> element, since that's the
 	// one thing distinguishing the two at the libvirt level.
@@ -117,6 +120,9 @@ type VM struct {
 	// default display mode.
 	DisplayWidth  uint `json:"display_width,omitempty"`
 	DisplayHeight uint `json:"display_height,omitempty"`
+	// Warning is only ever set on POST /vms's response: the VM was created
+	// (and stays defined) but something after that - starting it - failed.
+	Warning string `json:"warning,omitempty"`
 }
 
 // DiskSpec is a data disk as given in a create/update request. Path is
@@ -137,6 +143,11 @@ type DiskSpec struct {
 	// rather than a spinning disk - the same distinction Unraid/VirtualBox
 	// draw between a disk's declared type and its raw size.
 	SSD bool `json:"ssd,omitempty"`
+	// Existing marks Path as an already-existing image to attach as-is.
+	// Without it, a Path that already exists is refused (409) rather than
+	// silently reusing whatever file happens to be there - a typo'd or
+	// auto-generated path must never hand one VM another VM's disk.
+	Existing bool `json:"existing,omitempty"`
 }
 
 // DiskInfo is a data disk as reported back by GET /vms - Target is the
@@ -218,12 +229,26 @@ func domainStateString(state libvirt.DomainState) string {
 // XML description (disks, ISO, networks, hostdevs, firmware) - not a full
 // libvirt schema.
 type domainXML struct {
-	OS struct {
-		Loader string `xml:"loader"`
+	UUID string `xml:"uuid"`
+	OS   struct {
+		Firmware string `xml:"firmware,attr"`
+		Loader   struct {
+			Path   string `xml:",chardata"`
+			Format string `xml:"format,attr"`
+		} `xml:"loader"`
+		NVRAM struct {
+			Path           string `xml:",chardata"`
+			Format         string `xml:"format,attr"`
+			Template       string `xml:"template,attr"`
+			TemplateFormat string `xml:"templateFormat,attr"`
+		} `xml:"nvram"`
 	} `xml:"os"`
 	Devices struct {
 		Disks []struct {
 			Device string `xml:"device,attr"`
+			Boot   struct {
+				Order int `xml:"order,attr"`
+			} `xml:"boot"`
 			Driver struct {
 				Discard string `xml:"discard,attr"`
 			} `xml:"driver"`
@@ -250,6 +275,9 @@ type domainXML struct {
 			Link struct {
 				State string `xml:"state,attr"`
 			} `xml:"link"`
+			Boot struct {
+				Order int `xml:"order,attr"`
+			} `xml:"boot"`
 		} `xml:"interface"`
 		Hostdevs []struct {
 			Type   string `xml:"type,attr"`
@@ -318,9 +346,10 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 		MemoryMiB: info.Memory / 1024,
 		Firmware:  "bios",
 	}
-	if parsed.OS.Loader != "" {
+	if strings.TrimSpace(parsed.OS.Loader.Path) != "" || parsed.OS.Firmware == "efi" {
 		vm.Firmware = "uefi"
 	}
+	vm.BootOrder = parseBootOrder(parsed)
 	for _, v := range parsed.Devices.Videos {
 		if v.Model.Resolution.X != 0 && v.Model.Resolution.Y != 0 {
 			vm.DisplayWidth = v.Model.Resolution.X
@@ -386,20 +415,46 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 			})
 		}
 	}
-	if metaShares, err := readVMSharesMetadata(name); err == nil && len(metaShares) > 0 {
-		vm.SharedFolders = metaShares
-	} else {
-		for _, fs := range parsed.Devices.Filesystems {
-			if fs.Source.Dir != "" && fs.Target.Dir != "" {
-				vm.SharedFolders = append(vm.SharedFolders, SharedFolderSpec{
-					SourceDir: fs.Source.Dir,
-					TargetTag: fs.Target.Dir,
-					ReadOnly:  fs.ReadOnly != nil,
-				})
-			}
+	vm.SharedFolders = sharesFromXML(parsed)
+	return vm, nil
+}
+
+// parseBootOrder turns per-device <boot order='N'/> elements back into
+// the symbolic BootOrder list buildDeviceRender accepts (disk target dev,
+// "cdrom", "network"), so a VM's boot order round-trips through GET and a
+// later PUT instead of being silently reset. Nil for a domain using the
+// plain <os><boot dev=.../> form.
+func parseBootOrder(parsed domainXML) []string {
+	type entry struct {
+		order int
+		sym   string
+	}
+	var entries []entry
+	for _, d := range parsed.Devices.Disks {
+		if d.Boot.Order == 0 {
+			continue
+		}
+		switch d.Device {
+		case "cdrom":
+			entries = append(entries, entry{d.Boot.Order, "cdrom"})
+		case "disk":
+			entries = append(entries, entry{d.Boot.Order, d.Target.Dev})
 		}
 	}
-	return vm, nil
+	for _, i := range parsed.Devices.Interfaces {
+		if i.Boot.Order != 0 {
+			entries = append(entries, entry{i.Boot.Order, "network"})
+		}
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	sort.Slice(entries, func(a, b int) bool { return entries[a].order < entries[b].order })
+	order := make([]string, len(entries))
+	for i, e := range entries {
+		order[i] = e.sym
+	}
+	return order
 }
 
 // qemuImgVirtualSizeGiB reads a qcow2 disk's provisioned (virtual) size -
@@ -433,11 +488,14 @@ func (s *LibvirtStore) ListVMs() ([]VM, error) {
 		return nil, err
 	}
 	vms := make([]VM, 0, len(doms))
-	for _, dom := range doms {
-		vm, err := toVM(&dom)
-		dom.Free()
+	for i := range doms {
+		vm, err := toVM(&doms[i])
+		doms[i].Free()
 		if err != nil {
-			return nil, err
+			// One unreadable domain (e.g. undefined mid-listing) mustn't
+			// blank out the whole VM list.
+			log.Printf("list VMs: skipping a domain: %v", err)
+			continue
 		}
 		vms = append(vms, vm)
 	}
@@ -470,9 +528,9 @@ type CreateVMRequest struct {
 	// boot, or storage attached later via PUT), matching Unraid's "no
 	// primary vdisk" checkbox and VirtualBox's "Do not add a virtual hard
 	// disk" wizard option.
-	Disks      []DiskSpec      `json:"disks,omitempty"`
-	ISOPath    string          `json:"iso_path,omitempty"`
-	Networks   []NICSpec       `json:"networks,omitempty"`
+	Disks         []DiskSpec         `json:"disks,omitempty"`
+	ISOPath       string             `json:"iso_path,omitempty"`
+	Networks      []NICSpec          `json:"networks,omitempty"`
 	USBDevices    []USBDeviceSpec    `json:"usb_devices,omitempty"`
 	PCIDevices    []PCIDeviceSpec    `json:"pci_devices,omitempty"`
 	SharedFolders []SharedFolderSpec `json:"shared_folders,omitempty"`
@@ -676,8 +734,9 @@ func buildHostdevRender(usbDevices []USBDeviceSpec, pciDevices []PCIDeviceSpec) 
 // UseOSBoot picks exactly one for the whole document based on whether an
 // explicit BootOrder was given at all.
 const domainXMLTemplate = `<domain type='kvm'>
-  <name>{{.Name}}</name>
-  <memory unit='MiB'>{{.MemoryMiB}}</memory>
+  <name>{{x .Name}}</name>
+  {{if .UUID}}<uuid>{{x .UUID}}</uuid>
+  {{end}}<memory unit='MiB'>{{.MemoryMiB}}</memory>
   <vcpu>{{.VCPUs}}</vcpu>
   <memoryBacking>
     <source type='memfd'/>
@@ -685,8 +744,8 @@ const domainXMLTemplate = `<domain type='kvm'>
   </memoryBacking>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
-    {{if eq .Firmware "uefi"}}<loader readonly='yes' type='pflash'>{{.OVMFCodePath}}</loader>
-    <nvram>{{.NVRAMPath}}</nvram>{{end}}
+    {{if eq .Firmware "uefi"}}<loader readonly='yes' type='pflash'{{if .LoaderFormat}} format='{{x .LoaderFormat}}'{{end}}>{{x .OVMFCodePath}}</loader>
+    <nvram{{if .NVRAMTemplate}} template='{{x .NVRAMTemplate}}'{{end}}{{if .NVRAMTemplateFormat}} templateFormat='{{x .NVRAMTemplateFormat}}'{{end}}{{if .NVRAMFormat}} format='{{x .NVRAMFormat}}'{{end}}>{{x .NVRAMPath}}</nvram>{{end}}
     {{if .UseOSBoot}}<boot dev='cdrom'/><boot dev='hd'/>{{end}}
   </os>
   <features><acpi/><apic/></features>
@@ -718,39 +777,30 @@ const domainXMLTemplate = `<domain type='kvm'>
     <controller type='pci' model='pcie-root-port' index='14'/>
     <controller type='pci' model='pcie-root-port' index='15'/>
     <controller type='pci' model='pcie-root-port' index='16'/>
-    {{if .SharedFolders}}<filesystem type='mount' accessmode='passthrough'>
-      <driver type='virtiofs'/>
-      <source dir='/DATA/VM-Shares/{{.Name}}'/>
-      <target dir='nivaroshare'/>
-    </filesystem>{{end}}{{range .Disks}}<disk type='file' device='disk'>
+    {{if .Share}}{{template "share" .Share}}
+    {{end}}{{range .Disks}}<disk type='file' device='disk'>
       <driver name='qemu' type='qcow2'{{if .SSD}} discard='unmap'{{end}}/>
-      <source file='{{.Path}}'/>
-      <target dev='{{.Target}}' bus='{{.Bus}}'/>
+      <source file='{{x .Path}}'/>
+      <target dev='{{x .Target}}' bus='{{x .Bus}}'/>
       {{if .BootOrder}}<boot order='{{.BootOrder}}'/>{{end}}
     </disk>
     {{end}}<disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
-      {{if .ISO.Path}}<source file='{{.ISO.Path}}'/>
+      {{if .ISO.Path}}<source file='{{x .ISO.Path}}'/>
       {{end}}<target dev='sda' bus='sata'/>
       <readonly/>
       {{if .ISO.BootOrder}}<boot order='{{.ISO.BootOrder}}'/>{{end}}
     </disk>
-    {{range .Networks}}<interface type='{{if eq .Mode "bridge"}}bridge{{else}}network{{end}}'>
-      {{if eq .Mode "bridge"}}<source bridge='{{.BridgeName}}'/>{{else}}<source network='default'/>{{end}}
-      <model type='{{.Model}}'/>
-      {{if .MAC}}<mac address='{{.MAC}}'/>{{end}}
-      {{if .LinkState}}<link state='{{.LinkState}}'/>{{end}}
-      {{if .BootOrder}}<boot order='{{.BootOrder}}'/>{{end}}
-    </interface>
+    {{range .Networks}}{{template "nic" .}}
     {{end}}{{range .USBDevices}}<hostdev mode='subsystem' type='usb' managed='yes'>
       <source>
-        <vendor id='{{.VendorID}}'/>
-        <product id='{{.ProductID}}'/>
+        <vendor id='{{x .VendorID}}'/>
+        <product id='{{x .ProductID}}'/>
       </source>
     </hostdev>
     {{end}}{{range .PCIDevices}}<hostdev mode='subsystem' type='pci' managed='yes'>
       <source>
-        <address domain='0x{{.Domain}}' bus='0x{{.Bus}}' slot='0x{{.Slot}}' function='0x{{.Function}}'/>
+        <address domain='0x{{x .Domain}}' bus='0x{{x .Bus}}' slot='0x{{x .Slot}}' function='0x{{x .Function}}'/>
       </source>
     </hostdev>
     {{end}}<input type='tablet' bus='usb'/>
@@ -772,51 +822,68 @@ const domainXMLTemplate = `<domain type='kvm'>
   </devices>
 </domain>`
 
-var domainTemplate = template.Must(template.New("domain").Parse(domainXMLTemplate))
+// nicDeviceXMLTemplate is one <interface> element - shared by the full
+// domain template (as the "nic" sub-template) and live NIC hot-plug.
+const nicDeviceXMLTemplate = `<interface type='{{if eq .Mode "bridge"}}bridge{{else}}network{{end}}'>
+      {{if eq .Mode "bridge"}}<source bridge='{{x .BridgeName}}'/>{{else}}<source network='default'/>{{end}}
+      <model type='{{x .Model}}'/>
+      {{if .MAC}}<mac address='{{x .MAC}}'/>{{end}}
+      {{if .LinkState}}<link state='{{x .LinkState}}'/>{{end}}
+      {{if .BootOrder}}<boot order='{{.BootOrder}}'/>{{end}}
+    </interface>`
 
-func deduplicateSharedFolders(shares []SharedFolderSpec) []SharedFolderSpec {
-	used := make(map[string]bool)
-	res := make([]SharedFolderSpec, len(shares))
-	for i, sf := range shares {
-		tag := strings.TrimSpace(sf.TargetTag)
-		if tag == "" {
-			tag = "nivaroshare"
-		}
-		tag = strings.ToLower(tag)
-		if used[tag] {
-			base := tag
-			for c := 2; ; c++ {
-				cand := fmt.Sprintf("%s%d", base, c)
-				if !used[cand] {
-					tag = cand
-					break
-				}
-			}
-		}
-		used[tag] = true
-		res[i] = SharedFolderSpec{
-			SourceDir: sf.SourceDir,
-			TargetTag: tag,
-			ReadOnly:  sf.ReadOnly,
-		}
+// xmlEscape makes s safe to interpolate into both XML text and a quoted
+// attribute value. Every string reaching a domain/device XML template goes
+// through it (as the "x" template func): text/template does no escaping
+// of its own, so a single quote or "<" in a path, bridge name or MAC once
+// let a caller inject arbitrary elements - another disk pointing at
+// /dev/sda, a host PCI device - into a VM's definition.
+func xmlEscape(s string) string {
+	var b strings.Builder
+	_ = xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
+var xmlFuncs = template.FuncMap{"x": xmlEscape}
+
+var (
+	nicDeviceTemplate = template.Must(template.New("nic").Funcs(xmlFuncs).Parse(nicDeviceXMLTemplate))
+	domainTemplate    = template.Must(template.Must(template.Must(nicDeviceTemplate.Clone()).AddParseTree("share", shareDeviceTemplate.Tree)).New("domain").Parse(domainXMLTemplate))
+)
+
+// shareDevice is the template data for shares' device - the default
+// share (normalizeRequestedShares guarantees that's all shares holds).
+func shareDevice(shares []SharedFolderSpec) *shareDeviceData {
+	if len(shares) == 0 {
+		return nil
 	}
-	return res
+	d := newShareDeviceData(shares[0].ReadOnly)
+	return &d
 }
 
 type domainXMLData struct {
-	Name          string
-	VCPUs         uint
-	MemoryMiB     uint64
-	Disks         []renderedDisk
-	ISO           *renderedISO
-	Networks      []renderedNIC
-	USBDevices    []renderedUSBDevice
-	PCIDevices    []renderedPCIDevice
-	SharedFolders []SharedFolderSpec
-	UseOSBoot     bool
-	Firmware      string
-	OVMFCodePath  string
-	NVRAMPath     string
+	Name       string
+	UUID       string
+	VCPUs      uint
+	MemoryMiB  uint64
+	Disks      []renderedDisk
+	ISO        *renderedISO
+	Networks   []renderedNIC
+	USBDevices []renderedUSBDevice
+	PCIDevices []renderedPCIDevice
+	// Share is the default shared folder's virtiofs device (nil: none).
+	Share        *shareDeviceData
+	UseOSBoot    bool
+	Firmware     string
+	OVMFCodePath string
+	LoaderFormat string
+	NVRAMPath    string
+	// NVRAMFormat/NVRAMTemplate/NVRAMTemplateFormat are carried over from
+	// an existing domain verbatim on update, so a UEFI VM's NVRAM file is
+	// never relocated, reformatted or swapped for a blank template.
+	NVRAMFormat         string
+	NVRAMTemplate       string
+	NVRAMTemplateFormat string
 	// DisplayWidth/Height set a preferred resolution hint on the video
 	// device (libvirt's <resolution x= y=/>) - the guest OS reads this
 	// similarly to a monitor's EDID and picks it as its default display
@@ -829,103 +896,327 @@ type domainXMLData struct {
 }
 
 // ovmfCodePath is the read-only UEFI firmware image itself (the same for
-// every VM). ovmfVarsTemplate is the writable NVRAM template copied
-// per-VM (see nvramPathFor) - libvirt requires this to be its own file
+// every VM). ovmfVarsTemplate is the blank NVRAM template each VM gets its
+// own copy of (see createNVRAM) - libvirt requires this to be its own file
 // per domain since each VM's UEFI settings/boot entries live in it.
 const (
 	ovmfCodePath     = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 	ovmfVarsTemplate = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 )
 
+// nvramPathFor names a new VM's NVRAM file. New VMs get qcow2 NVRAM, not a
+// raw copy of the template: QEMU can only take internal snapshots of a VM
+// with pflash firmware when its NVRAM is qcow2 ("internal snapshots of a
+// VM with pflash based firmware require QCOW2 nvram format" otherwise).
 func nvramPathFor(storageDir, name string) string {
-	return filepath.Join(storageDir, name+"_VARS.fd")
+	return filepath.Join(storageDir, name+"_VARS.qcow2")
 }
 
-// nvramDirFor anchors a UEFI VM's NVRAM file next to its first disk (the
-// pre-multi-disk convention, and what lets tests relocate everything into
-// a single t.TempDir() by just setting a disk path) - only a genuinely
-// diskless VM falls back to the real default storage directory.
-func nvramDirFor(disks []DiskSpec) string {
-	if len(disks) > 0 && disks[0].Path != "" {
-		return filepath.Dir(disks[0].Path)
-	}
-	return defaultStorageDir
+// vmDirFor is a new VM's own folder, holding all of its files: disks
+// (<name>.qcow2, <name>-disk2.qcow2, ...) and NVRAM (<name>_VARS.qcow2).
+// VMs from before this layout keep their flat /DATA/VMs/<file> paths -
+// those come from their domain XML and are still inside the storage dir.
+func vmDirFor(name string) string {
+	return filepath.Join(defaultStorageDir, name)
 }
 
-// ensureNVRAM copies the blank OVMF_VARS template to this VM's own NVRAM
-// file, if it doesn't already exist - each VM needs its own writable copy
-// (its UEFI boot entries/settings live there), but the template itself
-// must never be written to directly.
-func ensureNVRAM(path string) error {
+// createNVRAM converts the blank raw OVMF_VARS template into this VM's own
+// qcow2 NVRAM file, if it doesn't already exist - each VM needs its own
+// writable copy (its UEFI boot entries/settings live there), but the
+// template itself must never be written to directly. created reports
+// whether this call made the file (so a failed create can clean it up).
+func createNVRAM(path string) (created bool, err error) {
 	if _, err := os.Stat(path); err == nil {
-		return nil
+		return false, nil
 	}
-	data, err := os.ReadFile(ovmfVarsTemplate)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return false, fmt.Errorf("create NVRAM directory: %w", err)
+	}
+	out, err := exec.Command("qemu-img", "convert", "-f", "raw", "-O", "qcow2", ovmfVarsTemplate, path).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("read OVMF VARS template: %w", err)
+		_ = os.Remove(path)
+		return false, fmt.Errorf("create NVRAM %s from %s: %v: %s", path, ovmfVarsTemplate, err, strings.TrimSpace(string(out)))
 	}
-	return os.WriteFile(path, data, 0644)
+	return true, nil
 }
 
-// resolveDiskPaths fills in an auto-generated path (in defaultStorageDir)
-// for any disk spec that didn't provide one - the first disk gets
-// "<name>.qcow2" (matching this app's pre-multi-disk convention, so
-// existing single-disk VMs' paths don't change shape), later ones get
-// "<name>-disk<N>.qcow2".
-// autoDiskPath names an auto-generated disk by its position in the VM's
+// setNewNVRAM fills data's firmware fields for a VM getting fresh UEFI
+// NVRAM (a new VM, or one switched from BIOS).
+func setNewNVRAM(data *domainXMLData, nvramPath string) {
+	data.OVMFCodePath = ovmfCodePath
+	data.LoaderFormat = "raw"
+	data.NVRAMPath = nvramPath
+	data.NVRAMFormat = "qcow2"
+	data.NVRAMTemplate = ovmfVarsTemplate
+	data.NVRAMTemplateFormat = "raw"
+}
+
+// resolvePathForCheck returns p cleaned, with symlinks resolved as far as
+// the path exists - a file that doesn't exist yet (a disk about to be
+// created) gets its nearest existing ancestor's real path plus the
+// remaining components. A dangling symlink anywhere along the way is
+// refused outright: qemu-img would follow it and create the file wherever
+// it points.
+func resolvePathForCheck(p string) (string, error) {
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("path %q must be absolute", p)
+	}
+	cur := filepath.Clean(p)
+	rest := ""
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			return filepath.Join(resolved, rest), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if _, lerr := os.Lstat(cur); lerr == nil {
+			return "", fmt.Errorf("path %q contains a broken symlink", p)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return filepath.Clean(p), nil
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
+}
+
+// pathWithinRoot resolves p (see resolvePathForCheck) and requires it to
+// be strictly inside root, returning the resolved path.
+func pathWithinRoot(p, root, what string) (string, error) {
+	resolved, err := resolvePathForCheck(p)
+	if err != nil {
+		return "", badRequestf("%s %q: %v", what, p, err)
+	}
+	rootResolved, err := resolvePathForCheck(root)
+	if err != nil {
+		return "", err
+	}
+	if !isStrictlyWithin(resolved, rootResolved) {
+		return "", badRequestf("%s %q must be inside %s", what, p, root)
+	}
+	return resolved, nil
+}
+
+// validateDiskPath confines a disk image to the VM storage directory - an
+// unchecked path let a caller attach any host file or block device
+// (/dev/sda, another service's data) to a VM, or have DeleteVM's wipe_disk
+// delete it. The ISO library and the guest-writable shared folder are
+// excluded even though they're inside it: an image a guest planted in the
+// share (with a qcow2 backing file pointing anywhere) must never be
+// attachable as a disk.
+func validateDiskPath(p string) (string, error) {
+	resolved, err := pathWithinRoot(p, defaultStorageDir, "disk path")
+	if err != nil {
+		return "", err
+	}
+	storage, err := resolvePathForCheck(defaultStorageDir)
+	if err != nil {
+		return "", err
+	}
+	for _, excluded := range []string{defaultISODir, defaultAutoShareDir} {
+		ex, err := resolvePathForCheck(excluded)
+		if err == nil && isStrictlyWithin(ex, storage) && (resolved == ex || isStrictlyWithin(resolved, ex)) {
+			return "", badRequestf("disk path %q can't be inside %s", p, excluded)
+		}
+	}
+	return resolved, nil
+}
+
+// validateISOPath confines an inserted ISO to the ISO library directory.
+func validateISOPath(p string) (string, error) {
+	return pathWithinRoot(p, defaultISODir, "ISO path")
+}
+
+// autoDiskPath names an auto-generated disk (inside the VM's own folder,
+// see vmDirFor) by its position in the VM's
 // full disk list - index must be the disk's real position there, never
 // recomputed from an isolated single-item slice, or two different disks
 // added one at a time (as UpdateVM appending a new disk does) would both
 // land on "index 0" and collide on the exact same generated path (found
 // this the hard way against real libvirtd: a second appended disk
-// silently resolved to disk #1's own path instead of a new one).
-func autoDiskPath(name string, index int) string {
-	if index == 0 {
-		return filepath.Join(defaultStorageDir, name+".qcow2")
+// silently resolved to disk #1's own path instead of a new one). The
+// first disk gets "<name>.qcow2" (this app's pre-multi-disk convention),
+// later ones "<name>-disk<N>.qcow2" - and if that file already exists
+// (left behind by a deleted VM of the same name, say), N keeps counting up
+// until it names a file that doesn't, so a new disk never silently reuses
+// an old image. taken holds paths already chosen in the same request.
+func autoDiskPath(name string, index int, taken map[string]bool) string {
+	dir := vmDirFor(name)
+	candidate := filepath.Join(dir, name+".qcow2")
+	n := index + 1
+	if index > 0 {
+		candidate = filepath.Join(dir, fmt.Sprintf("%s-disk%d.qcow2", name, n))
 	}
-	return filepath.Join(defaultStorageDir, fmt.Sprintf("%s-disk%d.qcow2", name, index+1))
-}
-
-func resolveDiskPaths(name string, disks []DiskSpec) []DiskSpec {
-	resolved := make([]DiskSpec, len(disks))
-	copy(resolved, disks)
-	for i := range resolved {
-		if resolved[i].Path == "" {
-			resolved[i].Path = autoDiskPath(name, i)
+	for {
+		if _, err := os.Lstat(candidate); errors.Is(err, fs.ErrNotExist) && !taken[candidate] {
+			return candidate
 		}
+		n++
+		candidate = filepath.Join(dir, fmt.Sprintf("%s-disk%d.qcow2", name, n))
 	}
-	return resolved
 }
 
-// provisionDisks creates a fresh qcow2 file for each disk spec that
-// doesn't already have one on disk - used by CreateVM (every disk is
-// new) and by UpdateVM when new disks are appended to an existing VM
-// (existing ones are left untouched here; growing them is handled
-// separately via qemu-img resize).
-func provisionDisks(disks []DiskSpec) error {
+// plannedDisk is a disk after path resolution: Create marks one that must
+// be provisioned as a fresh qcow2 (vs an existing image being attached or
+// kept).
+type plannedDisk struct {
+	DiskSpec
+	Create bool
+}
+
+// planNewDisks resolves each requested disk that isn't one of keep (the
+// VM's current disks, by path): an empty path gets a fresh auto-generated
+// one; a given path must be inside the storage directory, and must not
+// exist yet unless the caller explicitly marked it Existing (409 otherwise)
+// - or must exist if it was.
+func planNewDisks(name string, disks []DiskSpec, keep map[string]bool) ([]plannedDisk, error) {
+	taken := map[string]bool{}
+	for p := range keep {
+		taken[p] = true
+	}
+	planned := make([]plannedDisk, len(disks))
+	for i, d := range disks {
+		if d.Path != "" && keep[d.Path] {
+			planned[i] = plannedDisk{DiskSpec: d}
+			continue
+		}
+		if d.Path == "" {
+			if d.Existing {
+				return nil, badRequestf("disk %d: path is required to attach an existing image", i)
+			}
+			d.Path = autoDiskPath(name, i, taken)
+			taken[d.Path] = true
+			planned[i] = plannedDisk{DiskSpec: d, Create: true}
+			continue
+		}
+		resolved, err := validateDiskPath(d.Path)
+		if err != nil {
+			return nil, err
+		}
+		d.Path = resolved
+		if taken[d.Path] {
+			return nil, badRequestf("disk %d: %q is listed more than once", i, d.Path)
+		}
+		taken[d.Path] = true
+		_, statErr := os.Stat(d.Path)
+		exists := statErr == nil
+		switch {
+		case exists && !d.Existing:
+			return nil, conflictf("disk %d: %q already exists - pick another path, or set \"existing\": true to attach that image as-is", i, d.Path)
+		case !exists && d.Existing:
+			return nil, badRequestf("disk %d: existing image %q not found", i, d.Path)
+		}
+		planned[i] = plannedDisk{DiskSpec: d, Create: !exists}
+	}
+	return planned, nil
+}
+
+// provisionDisks creates a fresh qcow2 file for each planned disk marked
+// Create, returning the paths it created so a later failure can remove
+// exactly those (and nothing that was there before).
+func provisionDisks(disks []plannedDisk) (created []string, err error) {
 	for _, d := range disks {
-		if _, err := os.Stat(d.Path); err == nil {
-			continue // already exists - an existing disk being kept, not created
+		if !d.Create {
+			continue
 		}
 		if d.GiB == 0 {
-			return fmt.Errorf("disk %q: size (gib) must be greater than 0", d.Path)
+			return created, badRequestf("disk %q: size (gib) must be greater than 0", d.Path)
 		}
 		if err := os.MkdirAll(filepath.Dir(d.Path), 0755); err != nil {
-			return fmt.Errorf("create disk directory: %w", err)
+			return created, fmt.Errorf("create disk directory: %w", err)
 		}
 		out, err := exec.Command("qemu-img", "create", "-f", "qcow2", d.Path, fmt.Sprintf("%dG", d.GiB)).CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("qemu-img create %s: %v: %s", d.Path, err, strings.TrimSpace(string(out)))
+			return created, fmt.Errorf("qemu-img create %s: %v: %s", d.Path, err, strings.TrimSpace(string(out)))
 		}
+		created = append(created, d.Path)
+	}
+	return created, nil
+}
+
+func removeFiles(paths []string) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			log.Printf("cleanup: remove %s: %v", p, err)
+		}
+	}
+}
+
+func diskSpecs(planned []plannedDisk) []DiskSpec {
+	specs := make([]DiskSpec, len(planned))
+	for i, p := range planned {
+		specs[i] = p.DiskSpec
+	}
+	return specs
+}
+
+var (
+	macRe = regexp.MustCompile(`^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$`)
+	// nicModels are the NIC models this app offers - QEMU accepts many
+	// more, but nothing outside this list gets anywhere near the domain XML.
+	nicModels = map[string]bool{"virtio": true, "e1000e": true, "e1000": true, "rtl8139": true}
+)
+
+// validateNIC checks every field of one network adapter spec - all of
+// them end up in domain XML.
+func validateNIC(i int, n NICSpec) error {
+	switch n.Mode {
+	case "", "nat":
+	case "bridge":
+		if n.BridgeName == "" {
+			return badRequestf("network %d: bridge_name is required when mode is \"bridge\"", i)
+		}
+		if err := validateIfaceName("bridge name", n.BridgeName); err != nil {
+			return badRequestf("network %d: %v", i, err)
+		}
+	default:
+		return badRequestf("network %d: unsupported mode %q (use nat or bridge)", i, n.Mode)
+	}
+	if n.Model != "" && !nicModels[n.Model] {
+		return badRequestf("network %d: unsupported model %q (use virtio, e1000e, e1000 or rtl8139)", i, n.Model)
+	}
+	if n.MAC != "" && !macRe.MatchString(n.MAC) {
+		return badRequestf("network %d: invalid MAC address %q", i, n.MAC)
+	}
+	if n.LinkState != "" && n.LinkState != "up" && n.LinkState != "down" {
+		return badRequestf("network %d: link_state must be \"up\" or \"down\"", i)
 	}
 	return nil
 }
 
 func validateNetworks(networks []NICSpec) error {
 	for i, n := range networks {
-		if n.Mode == "bridge" && n.BridgeName == "" {
-			return fmt.Errorf("network %d: bridge_name is required when mode is \"bridge\"", i)
+		if err := validateNIC(i, n); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateResources rejects CPU/RAM values no VM could boot with.
+func validateResources(vcpus uint, memoryMiB uint64) error {
+	if vcpus < 1 {
+		return badRequestf("vcpus must be at least 1")
+	}
+	if memoryMiB < 128 {
+		return badRequestf("memory_mib must be at least 128")
+	}
+	return nil
+}
+
+func validateDisplay(width, height uint) error {
+	if (width == 0) != (height == 0) {
+		return badRequestf("display_width and display_height must be given together")
+	}
+	return nil
+}
+
+func validateFirmware(fw string) error {
+	if fw != "" && fw != "bios" && fw != "uefi" {
+		return badRequestf("firmware must be \"bios\" or \"uefi\"")
 	}
 	return nil
 }
@@ -934,38 +1225,78 @@ func validateNetworks(networks []NICSpec) error {
 // be empty - a VM with no data disk at all is a valid configuration, e.g.
 // PXE boot or storage attached later), defines the domain, and starts it
 // immediately - "create" and "run" are one step from the UI's point of view.
+//
+// Everything is validated before anything touches disk, and any disk or
+// NVRAM file this call created is removed again if it fails before the
+// domain is defined. Once it IS defined, a failure to start doesn't undo
+// that: the VM is returned with Warning set instead, so a client retrying
+// "create" doesn't just run into "already exists".
 func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 	if !vmNameRe.MatchString(req.Name) {
-		return VM{}, fmt.Errorf("invalid VM name %q: only letters, digits, - and _ are allowed", req.Name)
+		return VM{}, badRequestf("invalid VM name %q: only letters, digits, - and _ are allowed", req.Name)
+	}
+	if err := validateResources(req.VCPUs, req.MemoryMiB); err != nil {
+		return VM{}, err
+	}
+	if err := validateFirmware(req.Firmware); err != nil {
+		return VM{}, err
+	}
+	if err := validateDisplay(req.DisplayWidth, req.DisplayHeight); err != nil {
+		return VM{}, err
 	}
 	if err := validateNetworks(req.Networks); err != nil {
 		return VM{}, err
 	}
-
-	disks := resolveDiskPaths(req.Name, req.Disks)
-	if err := provisionDisks(disks); err != nil {
+	isoPath := ""
+	if req.ISOPath != "" {
+		p, err := validateISOPath(req.ISOPath)
+		if err != nil {
+			return VM{}, err
+		}
+		isoPath = p
+	}
+	shares, err := normalizeRequestedShares(req.SharedFolders, nil)
+	if err != nil {
 		return VM{}, err
 	}
-
-	renderedDisks, iso, renderedNets, err := buildDeviceRender(disks, req.ISOPath, req.Networks, req.BootOrder)
-	if err != nil {
+	if _, err := defaultShareSource(); err != nil {
 		return VM{}, err
 	}
 	renderedUSB, renderedPCI, err := buildHostdevRender(req.USBDevices, req.PCIDevices)
 	if err != nil {
-		return VM{}, err
+		return VM{}, badRequestf("%v", err)
 	}
 
-	if len(req.SharedFolders) == 0 {
-		req.SharedFolders = []SharedFolderSpec{
-			{
-				SourceDir: EnsureAutoShareDir(),
-				TargetTag: "share",
-				ReadOnly:  false,
-			},
-		}
+	conn, err := s.getConn()
+	if err != nil {
+		return VM{}, err
 	}
-	_ = SyncVMShareDir(req.Name, req.SharedFolders)
+	if existing, err := conn.LookupDomainByName(req.Name); err == nil {
+		existing.Free()
+		return VM{}, conflictf("a VM named %q already exists", req.Name)
+	}
+
+	planned, err := planNewDisks(req.Name, req.Disks, nil)
+	if err != nil {
+		return VM{}, err
+	}
+	disks := diskSpecs(planned)
+	renderedDisks, iso, renderedNets, err := buildDeviceRender(disks, isoPath, req.Networks, req.BootOrder)
+	if err != nil {
+		return VM{}, badRequestf("%v", err)
+	}
+
+	created, err := provisionDisks(planned)
+	// abort undoes everything this call created on disk: the new files,
+	// then the VM's folder if that leaves it empty.
+	abort := func() {
+		removeFiles(created)
+		_ = os.Remove(vmDirFor(req.Name))
+	}
+	if err != nil {
+		abort()
+		return VM{}, err
+	}
 
 	data := domainXMLData{
 		Name:          req.Name,
@@ -976,44 +1307,55 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
-		SharedFolders: deduplicateSharedFolders(req.SharedFolders),
+		Share:         shareDevice(shares),
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,
 		DisplayHeight: req.DisplayHeight,
 	}
 	if req.Firmware == "uefi" {
-		nvramPath := nvramPathFor(nvramDirFor(disks), req.Name)
-		if err := ensureNVRAM(nvramPath); err != nil {
+		nvramPath := nvramPathFor(vmDirFor(req.Name), req.Name)
+		nvramCreated, err := createNVRAM(nvramPath)
+		if nvramCreated {
+			created = append(created, nvramPath)
+		}
+		if err != nil {
+			abort()
 			return VM{}, err
 		}
-		data.OVMFCodePath = ovmfCodePath
-		data.NVRAMPath = nvramPath
+		setNewNVRAM(&data, nvramPath)
 	}
 	var xmlBuf strings.Builder
 	if err := domainTemplate.Execute(&xmlBuf, data); err != nil {
+		abort()
 		return VM{}, fmt.Errorf("render domain XML: %w", err)
 	}
 
-	conn, err := s.getConn()
-	if err != nil {
-		return VM{}, err
-	}
 	dom, err := conn.DomainDefineXML(xmlBuf.String())
 	if err != nil {
+		abort()
 		return VM{}, fmt.Errorf("define domain: %w", err)
 	}
 	defer dom.Free()
-	if err := dom.Create(); err != nil {
-		return VM{}, fmt.Errorf("start domain: %w", err)
+
+	startErr := dom.Create()
+	vm, err := toVM(dom)
+	if err != nil {
+		return VM{}, err
 	}
-	return toVM(dom)
+	if startErr != nil {
+		vm.Warning = fmt.Sprintf("The VM was created but failed to start: %s", errorMessage(startErr))
+	}
+	return vm, nil
 }
 
 // UpdateVMRequest is the JSON body accepted by PUT /vms/{name}. All
 // fields are required (the frontend always sends the full current+edited
 // form) rather than a partial patch - simpler to reason about than
-// merging partial updates into a redefined domain.
+// merging partial updates into a redefined domain. The exceptions, for
+// older/partial callers: vcpus/memory_mib of 0 and an empty firmware keep
+// the current value, and an omitted (null) shared_folders or boot_order
+// keeps the current ones.
 //
 // Disks is matched against the VM's current disks by position: an entry
 // whose Path matches an existing disk can only grow (never shrink) that
@@ -1040,13 +1382,22 @@ type UpdateVMRequest struct {
 	DisplayHeight uint `json:"display_height,omitempty"`
 }
 
-// UpdateVM redefines an existing (stopped) domain with new settings.
-// Changing vcpus/memory/firmware on a live domain is either unsupported
-// or guest-fragile depending on the field, so this refuses to touch a
-// running VM at all rather than picking and choosing which fields would
-// be "safe" - shut it down first, same as virt-manager requires for the
-// same class of change.
+// UpdateVM applies new settings to an existing domain. On a stopped VM it
+// redefines the whole domain in place - same name and UUID, so libvirt
+// updates the existing definition rather than replacing it, and a failed
+// define leaves the old one untouched (the domain used to be undefined
+// first, so any define error deleted the VM outright). On a running VM
+// only what can safely change live (network adapters, the inserted ISO,
+// the shared folder's read-only flag) is applied; anything else that
+// differs is refused with a 409 naming those fields, rather than being
+// silently dropped.
 func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
+	if err := validateFirmware(req.Firmware); err != nil {
+		return VM{}, err
+	}
+	if err := validateDisplay(req.DisplayWidth, req.DisplayHeight); err != nil {
+		return VM{}, err
+	}
 	if err := validateNetworks(req.Networks); err != nil {
 		return VM{}, err
 	}
@@ -1061,31 +1412,41 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 	if err != nil {
 		return VM{}, err
 	}
+	if req.VCPUs == 0 {
+		req.VCPUs = current.VCPUs
+	}
+	if req.MemoryMiB == 0 {
+		req.MemoryMiB = current.MemoryMiB
+	}
+	if req.Firmware == "" {
+		req.Firmware = current.Firmware
+	}
+	if req.BootOrder == nil {
+		req.BootOrder = current.BootOrder
+	}
+	if err := validateResources(req.VCPUs, req.MemoryMiB); err != nil {
+		return VM{}, err
+	}
+	shares, err := normalizeRequestedShares(req.SharedFolders, current.SharedFolders)
+	if err != nil {
+		return VM{}, err
+	}
+	if _, err := defaultShareSource(); err != nil {
+		return VM{}, err
+	}
+	isoPath := req.ISOPath
+	if isoPath != "" && isoPath != current.ISOPath {
+		if isoPath, err = validateISOPath(isoPath); err != nil {
+			return VM{}, err
+		}
+	}
 
 	active, err := dom.IsActive()
 	if err != nil {
 		return VM{}, err
 	}
 	if active {
-		if (req.VCPUs > 0 && req.VCPUs != current.VCPUs) || (req.MemoryMiB > 0 && req.MemoryMiB != current.MemoryMiB) || (req.Firmware != "" && req.Firmware != current.Firmware) {
-			return VM{}, fmt.Errorf("stop %q before changing its CPU cores, RAM, or firmware", name)
-		}
-		// Hot-update networks
-		for _, net := range req.Networks {
-			oldMAC := net.MAC
-			if err := s.UpdateNetworkAdapter(name, oldMAC, net); err != nil {
-				return VM{}, err
-			}
-		}
-		// Hot-update ISO
-		if req.ISOPath != current.ISOPath {
-			if req.ISOPath != "" {
-				_ = s.InsertCDROM(name, req.ISOPath)
-			} else {
-				_ = s.EjectCDROM(name)
-			}
-		}
-		return s.GetVM(name)
+		return s.updateRunningVM(dom, name, current, req, isoPath, shares)
 	}
 
 	// Match requested disks against current ones by path: a path that
@@ -1095,53 +1456,46 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 	// domain XML's reference to the missing ones - explicitly refuse that
 	// rather than let it read as an accidental detach.
 	if len(req.Disks) < len(current.Disks) {
-		return VM{}, fmt.Errorf("cannot remove a disk this way (currently %d, requested %d) - detaching disks isn't supported yet", len(current.Disks), len(req.Disks))
+		return VM{}, badRequestf("cannot remove a disk this way (currently %d, requested %d) - detaching disks isn't supported yet", len(current.Disks), len(req.Disks))
 	}
 	currentByPath := make(map[string]DiskInfo, len(current.Disks))
+	keep := make(map[string]bool, len(current.Disks))
 	for _, d := range current.Disks {
 		currentByPath[d.Path] = d
+		keep[d.Path] = true
 	}
-	for i, d := range req.Disks {
-		if existing, ok := currentByPath[d.Path]; ok {
-			if d.GiB > 0 && d.GiB < existing.GiB {
-				return VM{}, fmt.Errorf("cannot shrink disk %q (currently %d GiB, requested %d GiB) - only growing it is supported", d.Path, existing.GiB, d.GiB)
-			}
-			if d.GiB > existing.GiB {
-				out, err := exec.Command("qemu-img", "resize", d.Path, fmt.Sprintf("%dG", d.GiB)).CombinedOutput()
-				if err != nil {
-					return VM{}, fmt.Errorf("resize disk %s: %v: %s", d.Path, err, strings.TrimSpace(string(out)))
-				}
-			}
-		} else if d.Path == "" {
-			req.Disks[i].Path = autoDiskPath(name, i)
+	for _, d := range req.Disks {
+		if existing, ok := currentByPath[d.Path]; ok && d.GiB > 0 && d.GiB < existing.GiB {
+			return VM{}, badRequestf("cannot shrink disk %q (currently %d GiB, requested %d GiB) - only growing it is supported", d.Path, existing.GiB, d.GiB)
 		}
 	}
-	if err := provisionDisks(req.Disks); err != nil {
-		return VM{}, err
-	}
-
-	renderedDisks, iso, renderedNets, err := buildDeviceRender(req.Disks, req.ISOPath, req.Networks, req.BootOrder)
+	planned, err := planNewDisks(name, req.Disks, keep)
 	if err != nil {
 		return VM{}, err
+	}
+	disks := diskSpecs(planned)
+
+	renderedDisks, iso, renderedNets, err := buildDeviceRender(disks, isoPath, req.Networks, req.BootOrder)
+	if err != nil {
+		return VM{}, badRequestf("%v", err)
 	}
 	renderedUSB, renderedPCI, err := buildHostdevRender(req.USBDevices, req.PCIDevices)
 	if err != nil {
+		return VM{}, badRequestf("%v", err)
+	}
+
+	inactiveXML, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE)
+	if err != nil {
+		return VM{}, err
+	}
+	var parsed domainXML
+	if err := xml.Unmarshal([]byte(inactiveXML), &parsed); err != nil {
 		return VM{}, err
 	}
 
-	if len(req.SharedFolders) == 0 {
-		req.SharedFolders = []SharedFolderSpec{
-			{
-				SourceDir: EnsureAutoShareDir(),
-				TargetTag: "share",
-				ReadOnly:  false,
-			},
-		}
-	}
-	_ = SyncVMShareDir(name, req.SharedFolders)
-
 	data := domainXMLData{
 		Name:          name,
+		UUID:          strings.TrimSpace(parsed.UUID),
 		VCPUs:         req.VCPUs,
 		MemoryMiB:     req.MemoryMiB,
 		Disks:         renderedDisks,
@@ -1149,55 +1503,355 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 		Networks:      renderedNets,
 		USBDevices:    renderedUSB,
 		PCIDevices:    renderedPCI,
-		SharedFolders: deduplicateSharedFolders(req.SharedFolders),
+		Share:         shareDevice(shares),
 		UseOSBoot:     len(req.BootOrder) == 0,
 		Firmware:      req.Firmware,
 		DisplayWidth:  req.DisplayWidth,
 		DisplayHeight: req.DisplayHeight,
 	}
+
+	var created []string
 	if req.Firmware == "uefi" {
-		nvramPath := nvramPathFor(nvramDirFor(req.Disks), name)
-		if err := ensureNVRAM(nvramPath); err != nil {
-			return VM{}, err
+		if loader := strings.TrimSpace(parsed.OS.Loader.Path); loader != "" {
+			// Already UEFI: keep its firmware and NVRAM exactly as they are.
+			data.OVMFCodePath = loader
+			data.LoaderFormat = parsed.OS.Loader.Format
+			data.NVRAMPath = strings.TrimSpace(parsed.OS.NVRAM.Path)
+			data.NVRAMFormat = parsed.OS.NVRAM.Format
+			data.NVRAMTemplate = parsed.OS.NVRAM.Template
+			data.NVRAMTemplateFormat = parsed.OS.NVRAM.TemplateFormat
+			if data.NVRAMPath == "" {
+				return VM{}, fmt.Errorf("VM %q uses UEFI firmware but has no NVRAM path in its definition", name)
+			}
+		} else {
+			nvramPath := nvramPathFor(vmDirFor(name), name)
+			nvramCreated, err := createNVRAM(nvramPath)
+			if nvramCreated {
+				created = append(created, nvramPath)
+			}
+			if err != nil {
+				return VM{}, err
+			}
+			setNewNVRAM(&data, nvramPath)
 		}
-		data.OVMFCodePath = ovmfCodePath
-		data.NVRAMPath = nvramPath
 	}
+
 	var xmlBuf strings.Builder
 	if err := domainTemplate.Execute(&xmlBuf, data); err != nil {
+		removeFiles(created)
 		return VM{}, fmt.Errorf("render domain XML: %w", err)
+	}
+
+	// Grow existing disks only once everything else has been validated -
+	// a resize can't be undone.
+	for _, d := range req.Disks {
+		if existing, ok := currentByPath[d.Path]; ok && d.GiB > existing.GiB {
+			out, err := exec.Command("qemu-img", "resize", d.Path, fmt.Sprintf("%dG", d.GiB)).CombinedOutput()
+			if err != nil {
+				removeFiles(created)
+				return VM{}, fmt.Errorf("resize disk %s: %v: %s", d.Path, err, strings.TrimSpace(string(out)))
+			}
+		}
+	}
+	newDisks, err := provisionDisks(planned)
+	created = append(created, newDisks...)
+	if err != nil {
+		removeFiles(created)
+		return VM{}, err
 	}
 
 	conn, err := s.getConn()
 	if err != nil {
+		removeFiles(created)
 		return VM{}, err
 	}
-	// Verified against real libvirtd (not just the test:///default fake
-	// driver, which also caught this): DomainDefineXML refuses a name
-	// that already exists unless the new XML's UUID matches exactly -
-	// since this template never specifies one (letting libvirt generate
-	// it fresh each time), it has to be undefined first, not just
-	// redefined in place. KEEP_NVRAM preserves the existing NVRAM file
-	// (the VM's UEFI boot entries/settings) across the redefinition
-	// instead of deleting it out from under the ensureNVRAM check just
-	// below, which would otherwise silently reset it to a blank template.
-	if err := undefineDomain(dom, libvirt.DOMAIN_UNDEFINE_KEEP_NVRAM); err != nil {
-		return VM{}, fmt.Errorf("undefine domain for redefinition: %w", err)
-	}
+	// Same name + same UUID: DomainDefineXML updates the existing
+	// persistent definition in place (NVRAM, snapshots metadata and
+	// autostart untouched) - no undefine, so there's no window in which a
+	// failed define can lose the VM.
 	newDom, err := conn.DomainDefineXML(xmlBuf.String())
 	if err != nil {
+		removeFiles(created)
 		return VM{}, fmt.Errorf("redefine domain: %w", err)
 	}
 	defer newDom.Free()
 	return toVM(newDom)
 }
 
+// stoppedOnlyChanges lists the fields of req that differ from current but
+// can only be changed while the VM is shut down.
+func stoppedOnlyChanges(current VM, req UpdateVMRequest) []string {
+	var changed []string
+	if req.VCPUs != current.VCPUs {
+		changed = append(changed, "CPU cores")
+	}
+	if req.MemoryMiB != current.MemoryMiB {
+		changed = append(changed, "memory")
+	}
+	if req.Firmware != current.Firmware {
+		changed = append(changed, "firmware")
+	}
+	if req.Disks != nil && !disksMatch(current.Disks, req.Disks) {
+		changed = append(changed, "disks")
+	}
+	if req.USBDevices != nil && !sameStringSet(usbKeys(current.USBDevices), usbKeys(req.USBDevices)) {
+		changed = append(changed, "USB devices")
+	}
+	if req.PCIDevices != nil && !sameStringSet(pciKeys(current.PCIDevices), pciKeys(req.PCIDevices)) {
+		changed = append(changed, "PCI devices")
+	}
+	if !sameStrings(current.BootOrder, req.BootOrder) {
+		changed = append(changed, "boot order")
+	}
+	if req.DisplayWidth != current.DisplayWidth || req.DisplayHeight != current.DisplayHeight {
+		changed = append(changed, "display resolution")
+	}
+	return changed
+}
+
+func disksMatch(current []DiskInfo, req []DiskSpec) bool {
+	if len(current) != len(req) {
+		return false
+	}
+	for i, d := range req {
+		c := current[i]
+		bus := d.Bus
+		if bus == "" {
+			bus = "virtio"
+		}
+		if d.Path != c.Path || (d.GiB != 0 && d.GiB != c.GiB) || bus != c.Bus || d.SSD != c.SSD {
+			return false
+		}
+	}
+	return true
+}
+
+func usbKeys(devs []USBDeviceSpec) []string {
+	keys := make([]string, 0, len(devs))
+	for _, d := range devs {
+		v, _ := normalizeHexID(d.VendorID)
+		p, _ := normalizeHexID(d.ProductID)
+		keys = append(keys, v+":"+p)
+	}
+	return keys
+}
+
+func pciKeys(devs []PCIDeviceSpec) []string {
+	keys := make([]string, 0, len(devs))
+	for _, d := range devs {
+		keys = append(keys, strings.ToLower(d.Address))
+	}
+	return keys
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStringSet(a, b []string) bool {
+	a = append([]string(nil), a...)
+	b = append([]string(nil), b...)
+	sort.Strings(a)
+	sort.Strings(b)
+	return sameStrings(a, b)
+}
+
+// updateRunningVM is UpdateVM's live path - see UpdateVM.
+func (s *LibvirtStore) updateRunningVM(dom *libvirt.Domain, name string, current VM, req UpdateVMRequest, isoPath string, shares []SharedFolderSpec) (VM, error) {
+	changed := stoppedOnlyChanges(current, req)
+	for _, sf := range current.SharedFolders {
+		if isDefaultShare(sf) && sf.ReadOnly != shares[0].ReadOnly {
+			changed = append(changed, "shared folder read-only setting")
+		}
+	}
+	if len(changed) > 0 {
+		return VM{}, conflictf("%q is running - shut it down first to change: %s", name, strings.Join(changed, ", "))
+	}
+
+	if req.Networks != nil {
+		if err := s.applyLiveNetworks(dom, name, current.Networks, req.Networks); err != nil {
+			return VM{}, err
+		}
+	}
+
+	if isoPath != current.ISOPath {
+		if isoPath != "" {
+			if err := s.InsertCDROM(name, isoPath); err != nil {
+				return VM{}, fmt.Errorf("insert ISO: %w", err)
+			}
+		} else if err := s.EjectCDROM(name); err != nil {
+			return VM{}, fmt.Errorf("eject ISO: %w", err)
+		}
+	}
+
+	// A VM without the default share yet gets it in its config (never
+	// hot-plugged), taking effect at its next start.
+	conn, err := s.getConn()
+	if err != nil {
+		return VM{}, err
+	}
+	if _, err := applyDefaultShare(conn, dom, shares[0].ReadOnly, true); err != nil {
+		return VM{}, err
+	}
+	return s.GetVM(name)
+}
+
+// applyLiveNetworks reconciles a running VM's adapters with want, by MAC:
+// an unchanged adapter is left alone (no needless unplug/replug), a link
+// state-only change just toggles the link, any other change replaces that
+// one adapter, an entry with no MAC is a new adapter to add, and a current
+// adapter missing from want is removed.
+func (s *LibvirtStore) applyLiveNetworks(dom *libvirt.Domain, name string, have []NICInfo, want []NICSpec) error {
+	wanted := map[string]bool{}
+	for _, n := range want {
+		if n.MAC != "" {
+			wanted[strings.ToLower(n.MAC)] = true
+		}
+	}
+	for _, h := range have {
+		if h.MAC != "" && !wanted[strings.ToLower(h.MAC)] {
+			if err := attachOrDetachDevice(dom, nicXMLFromInfo(h), false); err != nil {
+				return fmt.Errorf("remove network adapter %s: %w", h.MAC, err)
+			}
+		}
+	}
+	for _, n := range want {
+		var old *NICInfo
+		for i := range have {
+			if n.MAC != "" && strings.EqualFold(have[i].MAC, n.MAC) {
+				old = &have[i]
+				break
+			}
+		}
+		if old == nil {
+			if err := attachNIC(dom, n); err != nil {
+				return fmt.Errorf("add network adapter: %w", err)
+			}
+			continue
+		}
+		if nicMatches(*old, n) {
+			continue
+		}
+		if nicMatches(*old, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, Model: n.Model, MAC: n.MAC, LinkState: old.LinkState}) {
+			if err := s.SetNetworkLinkState(name, old.MAC, linkStateOrUp(n.LinkState)); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := replaceNIC(dom, *old, n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func linkStateOrUp(state string) string {
+	if state == "" {
+		return "up"
+	}
+	return state
+}
+
+// nicMatches reports whether spec describes exactly the adapter info is.
+func nicMatches(info NICInfo, spec NICSpec) bool {
+	model := spec.Model
+	if model == "" {
+		model = "virtio"
+	}
+	mode := spec.Mode
+	if mode == "" {
+		mode = "nat"
+	}
+	bridge := ""
+	if mode == "bridge" {
+		bridge = spec.BridgeName
+	}
+	return info.Mode == mode && info.BridgeName == bridge && info.Model == model &&
+		strings.EqualFold(info.MAC, spec.MAC) && linkStateOrUp(info.LinkState) == linkStateOrUp(spec.LinkState)
+}
+
+func renderNICXML(n NICSpec) (string, error) {
+	model := n.Model
+	if model == "" {
+		model = "virtio"
+	}
+	var buf strings.Builder
+	err := nicDeviceTemplate.Execute(&buf, renderedNIC{Mode: n.Mode, BridgeName: n.BridgeName, Model: model, MAC: n.MAC, LinkState: n.LinkState})
+	return buf.String(), err
+}
+
+func nicXMLFromInfo(info NICInfo) string {
+	x, _ := renderNICXML(NICSpec{Mode: info.Mode, BridgeName: info.BridgeName, Model: info.Model, MAC: info.MAC, LinkState: info.LinkState})
+	return x
+}
+
+func attachNIC(dom *libvirt.Domain, n NICSpec) error {
+	deviceXML, err := renderNICXML(n)
+	if err != nil {
+		return err
+	}
+	return attachOrDetachDevice(dom, deviceXML, true)
+}
+
+// replaceNIC swaps old for n. With a different MAC the new adapter is
+// attached before the old one is removed; with the same MAC that order
+// would briefly give the guest two adapters with one address, so the old
+// one goes first - and if attaching the replacement then fails, the
+// original is plugged back in so the VM doesn't end up without a network.
+func replaceNIC(dom *libvirt.Domain, old NICInfo, n NICSpec) error {
+	oldXML := nicXMLFromInfo(old)
+	if !strings.EqualFold(old.MAC, n.MAC) && n.MAC != "" {
+		// Different MAC: add the new adapter before removing the old one.
+		if err := attachNIC(dom, n); err != nil {
+			return fmt.Errorf("add replacement network adapter: %w", err)
+		}
+		if err := attachOrDetachDevice(dom, oldXML, false); err != nil {
+			return fmt.Errorf("remove old network adapter %s: %w", old.MAC, err)
+		}
+		return nil
+	}
+	if err := attachOrDetachDevice(dom, oldXML, false); err != nil {
+		return fmt.Errorf("remove old network adapter %s: %w", old.MAC, err)
+	}
+	if err := attachNIC(dom, n); err != nil {
+		if rbErr := attachOrDetachDevice(dom, oldXML, true); rbErr != nil {
+			return fmt.Errorf("attach replacement network adapter: %w (and re-attaching the original failed too: %v)", err, rbErr)
+		}
+		return fmt.Errorf("attach replacement network adapter (original restored): %w", err)
+	}
+	return nil
+}
+
+// StartVM first gives a VM that lacks it the default shared folder (see
+// ensureDefaultShareDevice) - so every VM, however old, gets it on its
+// next boot - and makes sure any legacy share export directory it still
+// references exists, since virtiofsd would otherwise fail the start.
 func (s *LibvirtStore) StartVM(name string) error {
+	conn, err := s.getConn()
+	if err != nil {
+		return err
+	}
 	dom, err := s.lookup(name)
 	if err != nil {
 		return err
 	}
 	defer dom.Free()
+	if active, err := dom.IsActive(); err == nil && !active {
+		if err := ensureDefaultShareDevice(conn, dom); err != nil {
+			return fmt.Errorf("prepare shared folder: %w", err)
+		}
+	}
+	if xmlDesc, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE); err == nil {
+		ensureLegacyExportDirs(xmlDesc)
+	}
 	return dom.Create()
 }
 
@@ -1232,14 +1886,47 @@ func (s *LibvirtStore) ResetVM(name string) error {
 	return dom.Reset(0)
 }
 
-// DeleteVM undefines the domain, force-stopping it first if still
-// running. wipeDisk also removes the backing qcow2 file.
+// PauseVM freezes a running VM's vCPUs in place (it keeps its memory and
+// resumes exactly where it was) - libvirt's "suspend".
+func (s *LibvirtStore) PauseVM(name string) error {
+	dom, err := s.lookup(name)
+	if err != nil {
+		return err
+	}
+	defer dom.Free()
+	return dom.Suspend()
+}
+
+// ResumeVM continues a VM paused by PauseVM.
+func (s *LibvirtStore) ResumeVM(name string) error {
+	dom, err := s.lookup(name)
+	if err != nil {
+		return err
+	}
+	defer dom.Free()
+	return dom.Resume()
+}
+
+// DeleteVM undefines a stopped domain. It refuses (409) a VM that's still
+// running or paused, rather than force-stopping it first: a destroy that
+// then hits an undefine error left a VM killed but not deleted. wipeDisk
+// also removes its disk images - only those inside the VM storage
+// directory, never an image attached from anywhere else - and its NVRAM;
+// otherwise the NVRAM file is kept too.
 func (s *LibvirtStore) DeleteVM(name string, wipeDisk bool) error {
 	dom, err := s.lookup(name)
 	if err != nil {
 		return err
 	}
 	defer dom.Free()
+
+	active, err := dom.IsActive()
+	if err != nil {
+		return err
+	}
+	if active {
+		return conflictf("%q is still running - stop the VM first", name)
+	}
 
 	var diskPaths []string
 	if wipeDisk {
@@ -1248,48 +1935,55 @@ func (s *LibvirtStore) DeleteVM(name string, wipeDisk bool) error {
 			return err
 		}
 		for _, d := range vm.Disks {
-			diskPaths = append(diskPaths, d.Path)
+			resolved, err := validateDiskPath(d.Path)
+			if err != nil {
+				log.Printf("delete VM %q: keeping disk %s: %v", name, d.Path, err)
+				continue
+			}
+			diskPaths = append(diskPaths, resolved)
+		}
+		// UNDEFINE_NVRAM below has real libvirtd delete the NVRAM file
+		// itself; removing it here too covers drivers that don't.
+		if xmlDesc, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE); err == nil {
+			var parsed domainXML
+			if xml.Unmarshal([]byte(xmlDesc), &parsed) == nil {
+				if nv := strings.TrimSpace(parsed.OS.NVRAM.Path); nv != "" {
+					if resolved, err := validateDiskPath(nv); err == nil {
+						diskPaths = append(diskPaths, resolved)
+					}
+				}
+			}
 		}
 	}
 
-	active, err := dom.IsActive()
-	if err != nil {
-		return err
-	}
-	if active {
-		if err := dom.Destroy(); err != nil {
-			return err
-		}
-	}
 	// Plain Undefine() refuses to remove a domain that still has an NVRAM
 	// file (every UEFI VM created here has one) with "cannot undefine
 	// domain with nvram" - confirmed against real libvirtd, not just
-	// assumed. UNDEFINE_NVRAM is a no-op for a domain with no NVRAM (BIOS
-	// VMs), so it's always safe to pass.
-	if err := undefineDomain(dom, libvirt.DOMAIN_UNDEFINE_NVRAM); err != nil {
+	// assumed - and one with snapshots unless their metadata goes too.
+	// Both NVRAM flags are no-ops for a domain with no NVRAM (BIOS VMs).
+	flags := libvirt.DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.DOMAIN_UNDEFINE_KEEP_NVRAM
+	if wipeDisk {
+		flags = libvirt.DOMAIN_UNDEFINE_SNAPSHOTS_METADATA | libvirt.DOMAIN_UNDEFINE_NVRAM
+	}
+	if err := undefineDomain(dom, flags); err != nil {
 		return err
 	}
 
-	// Deleting a VM previously left every folder it had shared still
-	// bind-mounted under vmSharesBaseDir/<name> indefinitely - unmount them
-	// and remove the now-orphaned unified share directory along with it.
-	_ = SyncVMShareDir(name, nil)
-	vmShareDir := getVMShareDir(name)
-	if entries, err := os.ReadDir(vmShareDir); err == nil {
-		for _, entry := range entries {
-			tp := filepath.Join(vmShareDir, entry.Name())
-			if isMounted(tp) {
-				_ = exec.Command("umount", "-l", tp).Run()
-			}
-			_ = os.Remove(tp)
-		}
-	}
-	_ = os.Remove(filepath.Join(vmShareDir, ".shares.json"))
-	_ = os.Remove(vmShareDir)
+	// A VM from the bind-mount era may have left its export directory
+	// (and bind mounts) under legacyVMSharesBaseDir.
+	removeLegacyVMShareDir(name)
 
 	for _, path := range diskPaths {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove disk %s: %w", path, err)
+		}
+	}
+	if wipeDisk {
+		// The VM's own folder goes too - but only if that left it empty
+		// (os.Remove refuses a non-empty directory): anything else in it
+		// isn't this VM's to delete.
+		if err := os.Remove(vmDirFor(name)); err != nil && !os.IsNotExist(err) {
+			log.Printf("delete VM %q: keeping %s: %v", name, vmDirFor(name), err)
 		}
 	}
 	return nil
@@ -1302,27 +1996,27 @@ func (s *LibvirtStore) DeleteVM(name string, wipeDisk bool) error {
 // XML rather than a whole domain document.
 const usbHostdevXMLTemplate = `<hostdev mode='subsystem' type='usb' managed='yes'>
   <source>
-    <vendor id='{{.VendorID}}'/>
-    <product id='{{.ProductID}}'/>
+    <vendor id='{{x .VendorID}}'/>
+    <product id='{{x .ProductID}}'/>
   </source>
 </hostdev>`
 
 const pciHostdevXMLTemplate = `<hostdev mode='subsystem' type='pci' managed='yes'>
   <source>
-    <address domain='0x{{.Domain}}' bus='0x{{.Bus}}' slot='0x{{.Slot}}' function='0x{{.Function}}'/>
+    <address domain='0x{{x .Domain}}' bus='0x{{x .Bus}}' slot='0x{{x .Slot}}' function='0x{{x .Function}}'/>
   </source>
 </hostdev>`
 
 const diskDeviceXMLTemplate = `<disk type='file' device='disk'>
   <driver name='qemu' type='qcow2'{{if .SSD}} discard='unmap'{{end}}/>
-  <source file='{{.Path}}'/>
-  <target dev='{{.Target}}' bus='{{.Bus}}'/>
+  <source file='{{x .Path}}'/>
+  <target dev='{{x .Target}}' bus='{{x .Bus}}'/>
 </disk>`
 
 var (
-	usbHostdevTemplate = template.Must(template.New("usbHostdev").Parse(usbHostdevXMLTemplate))
-	pciHostdevTemplate = template.Must(template.New("pciHostdev").Parse(pciHostdevXMLTemplate))
-	diskDeviceTemplate = template.Must(template.New("diskDevice").Parse(diskDeviceXMLTemplate))
+	usbHostdevTemplate = template.Must(template.New("usbHostdev").Funcs(xmlFuncs).Parse(usbHostdevXMLTemplate))
+	pciHostdevTemplate = template.Must(template.New("pciHostdev").Funcs(xmlFuncs).Parse(pciHostdevXMLTemplate))
+	diskDeviceTemplate = template.Must(template.New("diskDevice").Funcs(xmlFuncs).Parse(diskDeviceXMLTemplate))
 )
 
 // attachOrDetachDevice modifies both the live running domain and its
@@ -1470,7 +2164,7 @@ func nextTargetForBus(existing []DiskInfo, bus string) (string, error) {
 }
 
 // AttachDisk provisions a new qcow2 disk (or attaches an existing image,
-// if spec.Path already exists on disk) and hot-plugs it into name.
+// if spec.Existing is set) and hot-plugs it into name.
 func (s *LibvirtStore) AttachDisk(name string, spec DiskSpec) (DiskInfo, error) {
 	dom, err := s.lookup(name)
 	if err != nil {
@@ -1502,25 +2196,49 @@ func (s *LibvirtStore) AttachDisk(name string, spec DiskSpec) (DiskInfo, error) 
 			return DiskInfo{}, fmt.Errorf("a %s disk can't be hot-plugged into a running VM - use VirtIO for live attach, or stop the VM and use Edit instead", strings.ToUpper(bus))
 		}
 	}
-	if spec.Path == "" {
-		spec.Path = autoDiskPath(name, len(current.Disks))
-	}
-	if err := provisionDisks([]DiskSpec{spec}); err != nil {
-		return DiskInfo{}, err
-	}
 	target, err := nextTargetForBus(current.Disks, bus)
 	if err != nil {
+		return DiskInfo{}, badRequestf("%v", err)
+	}
+	keep := make(map[string]bool, len(current.Disks))
+	for _, d := range current.Disks {
+		keep[d.Path] = true
+	}
+	if spec.Path != "" && keep[spec.Path] {
+		return DiskInfo{}, conflictf("%q is already attached to %q", spec.Path, name)
+	}
+	// Planned as the next disk after the VM's current ones, so an
+	// auto-generated path numbers after them (see autoDiskPath).
+	planned, err := planNewDisks(name, append(currentDiskSpecs(current.Disks), spec), keep)
+	if err != nil {
+		return DiskInfo{}, err
+	}
+	newDisk := planned[len(planned)-1]
+	spec = newDisk.DiskSpec
+	created, err := provisionDisks([]plannedDisk{newDisk})
+	if err != nil {
+		removeFiles(created)
 		return DiskInfo{}, err
 	}
 	rendered := renderedDisk{Path: spec.Path, Target: target, Bus: bus, SSD: spec.SSD}
 	var buf strings.Builder
 	if err := diskDeviceTemplate.Execute(&buf, rendered); err != nil {
+		removeFiles(created)
 		return DiskInfo{}, err
 	}
 	if err := attachOrDetachDevice(dom, buf.String(), true); err != nil {
+		removeFiles(created)
 		return DiskInfo{}, err
 	}
 	return DiskInfo{Path: spec.Path, GiB: spec.GiB, Bus: bus, Target: target, SSD: spec.SSD}, nil
+}
+
+func currentDiskSpecs(disks []DiskInfo) []DiskSpec {
+	specs := make([]DiskSpec, len(disks))
+	for i, d := range disks {
+		specs[i] = DiskSpec{Path: d.Path, GiB: d.GiB, Bus: d.Bus, SSD: d.SSD}
+	}
+	return specs
 }
 
 // DetachDisk hot-unplugs the disk currently at target (e.g. "vdb") from
@@ -1564,12 +2282,12 @@ const cdromTarget = "sda"
 
 const cdromDeviceXMLTemplate = `<disk type='file' device='cdrom'>
   <driver name='qemu' type='raw'/>
-  {{if .Path}}<source file='{{.Path}}'/>
-  {{end}}<target dev='{{.Target}}' bus='sata'/>
+  {{if .Path}}<source file='{{x .Path}}'/>
+  {{end}}<target dev='{{x .Target}}' bus='sata'/>
   <readonly/>
 </disk>`
 
-var cdromDeviceTemplate = template.Must(template.New("cdromDevice").Parse(cdromDeviceXMLTemplate))
+var cdromDeviceTemplate = template.Must(template.New("cdromDevice").Funcs(xmlFuncs).Parse(cdromDeviceXMLTemplate))
 
 // updateDeviceXML changes an existing device in place (e.g. swapping a
 // cdrom's inserted media) - unlike attach/detach, the device itself stays
@@ -1617,6 +2335,9 @@ func (s *LibvirtStore) InsertCDROM(name, isoPath string) error {
 		return err
 	}
 	defer dom.Free()
+	if isoPath, err = validateISOPath(isoPath); err != nil {
+		return err
+	}
 	var buf strings.Builder
 	if err := cdromDeviceTemplate.Execute(&buf, struct{ Path, Target string }{Path: isoPath, Target: cdromTarget}); err != nil {
 		return err
@@ -1640,19 +2361,21 @@ func (s *LibvirtStore) ensureCDROMBoot(dom *libvirt.Domain) error {
 		return err
 	}
 
+	var newXML string
 	if strings.Contains(xmlStr, "<boot dev='hd'/>") {
-		newXML := strings.Replace(xmlStr, "<boot dev='hd'/>", "<boot dev='cdrom'/>\n    <boot dev='hd'/>", 1)
-		_, err = conn.DomainDefineXML(newXML)
-		return err
+		newXML = strings.Replace(xmlStr, "<boot dev='hd'/>", "<boot dev='cdrom'/>\n    <boot dev='hd'/>", 1)
 	} else if strings.Contains(xmlStr, `<boot dev="hd"/>`) {
-		newXML := strings.Replace(xmlStr, `<boot dev="hd"/>`, `<boot dev="cdrom"/>`+"\n    "+`<boot dev="hd"/>`, 1)
-		_, err = conn.DomainDefineXML(newXML)
-		return err
+		newXML = strings.Replace(xmlStr, `<boot dev="hd"/>`, `<boot dev="cdrom"/>`+"\n    "+`<boot dev="hd"/>`, 1)
 	} else if idx := strings.Index(xmlStr, "</os>"); idx != -1 {
-		newXML := xmlStr[:idx] + "  <boot dev='cdrom'/>\n    <boot dev='hd'/>\n  " + xmlStr[idx:]
-		_, err = conn.DomainDefineXML(newXML)
+		newXML = xmlStr[:idx] + "  <boot dev='cdrom'/>\n    <boot dev='hd'/>\n  " + xmlStr[idx:]
+	} else {
+		return nil
+	}
+	newDom, err := conn.DomainDefineXML(newXML)
+	if err != nil {
 		return err
 	}
+	newDom.Free()
 	return nil
 }
 
@@ -1660,7 +2383,10 @@ func (s *LibvirtStore) ensureCDROMBoot(dom *libvirt.Domain) error {
 // by its MAC address (or interface name) without deleting the device.
 func (s *LibvirtStore) SetNetworkLinkState(name, mac, state string) error {
 	if state != "up" && state != "down" {
-		return fmt.Errorf("state must be 'up' or 'down'")
+		return badRequestf("state must be 'up' or 'down'")
+	}
+	if !macRe.MatchString(mac) {
+		return badRequestf("invalid MAC address %q", mac)
 	}
 	// Run live update if running
 	_ = exec.Command("virsh", "domif-setlink", name, mac, state).Run()
@@ -1672,9 +2398,21 @@ func (s *LibvirtStore) SetNetworkLinkState(name, mac, state string) error {
 	return nil
 }
 
-// UpdateNetworkAdapter updates or replaces an interface (mode, model, bridge, mac)
-// live if running and persists the changes to domain config.
+// UpdateNetworkAdapter updates or replaces one interface (mode, model,
+// bridge, mac) - identified by oldMAC, or the first adapter when oldMAC is
+// empty (adding one if the VM has none) - live if running (see
+// replaceNIC) and in the persistent config either way.
 func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) error {
+	if nic.Mode == "bridge" && nic.BridgeName == "" {
+		nic.BridgeName = "br0"
+	}
+	if err := validateNIC(0, nic); err != nil {
+		return err
+	}
+	if oldMAC != "" && !macRe.MatchString(oldMAC) {
+		return badRequestf("invalid old_mac %q", oldMAC)
+	}
+
 	dom, err := s.lookup(name)
 	if err != nil {
 		return err
@@ -1685,91 +2423,63 @@ func (s *LibvirtStore) UpdateNetworkAdapter(name, oldMAC string, nic NICSpec) er
 	if err != nil {
 		return err
 	}
-
-	model := nic.Model
-	if model == "" {
-		model = "virtio"
-	}
-
-	nicType := "network"
-	source := "default"
-	if nic.Mode == "bridge" {
-		nicType = "bridge"
-		if nic.BridgeName != "" {
-			source = nic.BridgeName
-		} else {
-			source = "br0"
-			nic.BridgeName = "br0"
-		}
-	}
-
 	current, err := toVM(dom)
 	if err != nil {
 		return err
 	}
 
-	if oldMAC == "" && len(current.Networks) > 0 {
-		oldMAC = current.Networks[0].MAC
+	idx := -1
+	for i, n := range current.Networks {
+		if (oldMAC == "" && i == 0) || (oldMAC != "" && strings.EqualFold(n.MAC, oldMAC)) {
+			idx = i
+			break
+		}
 	}
-	mac := nic.MAC
-	if mac == "" {
-		mac = oldMAC
+	if oldMAC != "" && idx < 0 {
+		return badRequestf("no network adapter with MAC %s on %q", oldMAC, name)
+	}
+	if idx >= 0 && nic.MAC == "" {
+		nic.MAC = current.Networks[idx].MAC
 	}
 
 	if active {
-		// 1. Detach old interface if oldMAC is present
-		if oldMAC != "" {
-			_ = exec.Command("virsh", "detach-interface", name, "--type", "bridge", "--mac", oldMAC, "--live", "--config").Run()
-			_ = exec.Command("virsh", "detach-interface", name, "--type", "network", "--mac", oldMAC, "--live", "--config").Run()
+		if idx < 0 {
+			return attachNIC(dom, nic)
 		}
-		// 2. Attach new interface
-		args := []string{"attach-interface", name, nicType, source, "--model", model, "--live", "--config"}
-		if mac != "" {
-			args = append(args, "--mac", mac)
+		if nicMatches(current.Networks[idx], nic) {
+			return nil
 		}
-		out, err := exec.Command("virsh", args...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("attach interface: %s (%v)", strings.TrimSpace(string(out)), err)
-		}
-	} else {
-		replaced := false
-		newNetworks := make([]NICSpec, 0, len(current.Networks))
-		for _, n := range current.Networks {
-			if (oldMAC != "" && n.MAC == oldMAC) || (!replaced && oldMAC == "") {
-				newNetworks = append(newNetworks, nic)
-				replaced = true
-			} else {
-				newNetworks = append(newNetworks, NICSpec{
-					Mode:       n.Mode,
-					BridgeName: n.BridgeName,
-					Model:      n.Model,
-					MAC:        n.MAC,
-					LinkState:  n.LinkState,
-				})
-			}
-		}
-		if !replaced {
-			newNetworks = append(newNetworks, nic)
-		}
-		reqDisks := make([]DiskSpec, len(current.Disks))
-		for i, d := range current.Disks {
-			reqDisks[i] = DiskSpec{Path: d.Path, GiB: d.GiB, Bus: d.Bus, SSD: d.SSD}
-		}
-		_, err = s.UpdateVM(name, UpdateVMRequest{
-			VCPUs:      current.VCPUs,
-			MemoryMiB:  current.MemoryMiB,
-			Firmware:   current.Firmware,
-			ISOPath:    current.ISOPath,
-			Disks:      reqDisks,
-			Networks:   newNetworks,
-			USBDevices: current.USBDevices,
-			PCIDevices: current.PCIDevices,
-			BootOrder:  current.BootOrder,
-		})
-		if err != nil {
-			return err
-		}
+		return replaceNIC(dom, current.Networks[idx], nic)
 	}
 
-	return nil
+	// Stopped: redefine with every current setting passed through
+	// unchanged except this one adapter - shared folders, display, boot
+	// order and all.
+	newNetworks := make([]NICSpec, 0, len(current.Networks)+1)
+	for i, n := range current.Networks {
+		if i == idx {
+			newNetworks = append(newNetworks, nic)
+			continue
+		}
+		newNetworks = append(newNetworks, NICSpec{Mode: n.Mode, BridgeName: n.BridgeName, Model: n.Model, MAC: n.MAC, LinkState: n.LinkState})
+	}
+	if idx < 0 {
+		newNetworks = append(newNetworks, nic)
+	}
+	_, err = s.UpdateVM(name, UpdateVMRequest{
+		VCPUs:      current.VCPUs,
+		MemoryMiB:  current.MemoryMiB,
+		Firmware:   current.Firmware,
+		ISOPath:    current.ISOPath,
+		Disks:      currentDiskSpecs(current.Disks),
+		Networks:   newNetworks,
+		USBDevices: current.USBDevices,
+		PCIDevices: current.PCIDevices,
+		// nil keeps the VM's current shared folder setting as-is.
+		SharedFolders: nil,
+		BootOrder:     current.BootOrder,
+		DisplayWidth:  current.DisplayWidth,
+		DisplayHeight: current.DisplayHeight,
+	})
+	return err
 }

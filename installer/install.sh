@@ -1637,34 +1637,25 @@ WantedBy=multi-user.target
 VMEOF
 		echo '/usr/lib/systemd/system/nivaroos-vm-sidecar.service' >> \"$MANIFEST_FILE\"
 
-		# Lowercase 'isos' specifically - every place that actually reads
-		# this directory (vm-sidecar's defaultISODir/insert-virtio-win, and
-		# the Create/Edit VM file pickers in the UI) hardcodes the
-		# lowercase path. This used to create 'ISOs' (capital) instead - a
-		# completely different, never-read directory on a case-sensitive
-		# filesystem - so the real .../isos the app expects was never
-		# created on a fresh install, breaking ISO selection and the
-		# virtio-win driver disk feature both.
-		mkdir -p /DATA/VMs/Images /DATA/VMs/isos /DATA/VMs/Disks
+		# One layout, matching vm-sidecar: ISOs in /DATA/VMs/ISOs, the one
+		# shared folder VMs can reach in /DATA/VMs/share, and each VM's own
+		# disks + UEFI vars in /DATA/VMs/<vm name>/ (created per VM). The
+		# old lowercase 'isos' and the unused Images/Disks dirs are gone.
+		mkdir -p /DATA/VMs/ISOs /DATA/VMs/share
 
-		# virtio-win.iso: the network/storage/balloon/etc. drivers a
-		# Windows guest needs to even see its virtio devices (Linux guests
-		# don't need this - virtio drivers are already built into the
-		# kernel). insert-virtio-win only mounts this file into a VM's CD
-		# drive on request - nothing ever provided the file itself, so
-		# that feature 404'd on every install. Downloaded from the
-		# upstream Fedora virtio-win project's stable build - the same
-		# source Proxmox/oVirt/RHV documentation points admins to. Several
-		# hundred MB, so best-effort with a timeout rather than blocking
-		# (or failing) VM Manager setup over one optional Windows-only
-		# feature on a slow or offline connection.
-		if [ ! -f /DATA/VMs/isos/virtio-win.iso ]; then
+		# virtio-win.iso: the Windows VirtIO drivers + guest agent. The
+		# sidecar builds the NivaroOS Guest Tools disc from it (adding
+		# WinFsp and the setup scripts) and would download it itself on
+		# first use; fetching it here makes that first use instant.
+		# Best-effort: several hundred MB, so a slow or offline install
+		# just skips it.
+		if [ ! -f /DATA/VMs/ISOs/virtio-win.iso ]; then
 			echo 'Downloading virtio-win.iso (Windows guest drivers) - this can take a while...'
 			curl -fL --connect-timeout 15 --max-time 900 \
-				-o /DATA/VMs/isos/virtio-win.iso.part \
+				-o /DATA/VMs/ISOs/.virtio-win.iso.part \
 				https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso \
-				&& mv /DATA/VMs/isos/virtio-win.iso.part /DATA/VMs/isos/virtio-win.iso \
-				|| { echo 'Could not download virtio-win.iso (offline, or the download timed out) - Windows VMs will not have network/storage drivers available until you place virtio-win.iso in /DATA/VMs/isos yourself.' >&2; rm -f /DATA/VMs/isos/virtio-win.iso.part; }
+				&& mv /DATA/VMs/ISOs/.virtio-win.iso.part /DATA/VMs/ISOs/virtio-win.iso \
+				|| { echo 'Could not download virtio-win.iso now - NivaroOS downloads it the first time you set up Guest Tools in a VM.' >&2; rm -f /DATA/VMs/ISOs/.virtio-win.iso.part; }
 		fi
 
 		systemctl daemon-reload >/dev/null 2>&1 || true
