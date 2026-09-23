@@ -99,15 +99,17 @@ func GetDiskList(c *gin.Context) {
 			temp.SmartStatus.Passed = true
 		}
 
-		isAvail := true
-		if len(currentDisk.MountPoint) != 0 {
-			isAvail = false
-		} else {
-			for _, v := range currentDisk.Children {
-				if v.MountPoint != "" {
-					isAvail = false
-				}
+		// "Available" = offered for formatting, so only a disk with nothing
+		// on it. An unmounted data drive (say after Unmount in Persistent
+		// Mounts) used to be listed here with a Format button.
+		isAvail := currentDisk.MountPoint == "" && currentDisk.FsType == ""
+		for _, v := range currentDisk.Children {
+			if v.MountPoint != "" || v.FsType != "" {
+				isAvail = false
 			}
+		}
+		if isAvail && service.MyService.Disk().FstabManagedMountPoint(currentDisk) != "" {
+			isAvail = false
 		}
 
 		if isAvail {

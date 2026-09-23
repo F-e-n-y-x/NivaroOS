@@ -13,11 +13,13 @@
 						{{ hasNivaroUpdate ? $t('New NivaroOS update available') : $t('NivaroOS is up to date') }}
 					</div>
 					<div class="setting-desc">
-						<span>{{ $t('Installed') }}: {{ currentVersion || 'v0.4.5' }}</span>
+						<span>{{ $t('Installed') }}: {{ currentVersion || '—' }}</span>
 						<span class="mx-2">&middot;</span>
-						<span>{{ $t('Latest') }}: {{ latestGithubVersion || latestVersion || currentVersion || 'v0.4.5' }}</span>
-						<span class="mx-2">&middot;</span>
-						<span>{{ $t('Checked') }}: {{ lastNivaroCheckTime || $t('Just now') }}</span>
+						<span>{{ $t('Latest') }}: {{ latestGithubVersion || latestVersion || '—' }}</span>
+						<template v-if="lastNivaroCheckTime">
+							<span class="mx-2">&middot;</span>
+							<span>{{ $t('Checked') }}: {{ lastNivaroCheckTime }}</span>
+						</template>
 					</div>
 				</div>
 				<div class="row-control">
@@ -26,9 +28,15 @@
 							<i class="mdi mdi-refresh mr-1"></i>
 							{{ $t('Check for updates') }}
 						</b-button>
-						<b-button v-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
+						<!-- Only when this server can install it itself; a newer
+						     GitHub release is updated through the installer. -->
+						<b-button v-if="needUpdate" rounded size="is-small" type="is-primary" :loading="nivaroUpdating" @click="startNivaroUpdate">
 							<i class="mdi mdi-download mr-1"></i>
 							{{ $t('Update NivaroOS') }}
+						</b-button>
+						<b-button v-else-if="hasNivaroUpdate" rounded size="is-small" type="is-primary" tag="a" href="https://github.com/F-e-n-y-x/NivaroOS/releases/latest" target="_blank" rel="noopener noreferrer">
+							<i class="mdi mdi-github mr-1"></i>
+							{{ $t('View release') }}
 						</b-button>
 						<span v-else class="tag is-success is-light is-rounded">
 							<i class="mdi mdi-check mr-1"></i>
@@ -183,6 +191,17 @@
 </template>
 
 <script>
+// "v1.2.1" vs "1.10.0": numeric, part by part; a leading v is ignored.
+function compareVersions(a, b) {
+	const parts = (v) => String(v).trim().replace(/^v/i, '').split(/[.+-]/).map((x) => parseInt(x, 10) || 0)
+	const pa = parts(a)
+	const pb = parts(b)
+	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+		const d = (pa[i] || 0) - (pb[i] || 0)
+		if (d) return d > 0 ? 1 : -1
+	}
+	return 0
+}
 import axios from 'axios'
 
 export const ROWS = [
@@ -194,7 +213,7 @@ export default {
 	name: 'updates-section',
 	data() {
 		return {
-			currentVersion: 'v0.4.5',
+			currentVersion: '',
 			needUpdate: false,
 			latestVersion: '',
 			latestGithubVersion: '',
@@ -219,12 +238,11 @@ export default {
 		}
 	},
 	computed: {
+		// Newer = numerically greater (it compared strings: "v1.2.1" !==
+		// "1.0.0" and even "v1.0.0" !== "1.0.0" meant "update available").
 		hasNivaroUpdate() {
 			if (this.needUpdate) return true
-			if (this.latestGithubVersion && this.currentVersion && this.latestGithubVersion !== this.currentVersion) {
-				return true
-			}
-			return false
+			return !!(this.latestGithubVersion && this.currentVersion && compareVersions(this.latestGithubVersion, this.currentVersion) > 0)
 		},
 		filteredPackages() {
 			if (!this.pkgSearch.trim()) return this.packages
@@ -254,7 +272,7 @@ export default {
 			this.$api.sys.getVersion().then(res => {
 				if (res.data.success === 200) {
 					const data = res.data.data
-					this.currentVersion = data.current_version || 'v1.0.0'
+					this.currentVersion = data.current_version || ''
 					this.needUpdate = !!data.need_update
 					this.latestVersion = data.version && data.version.version ? data.version.version : ''
 				}

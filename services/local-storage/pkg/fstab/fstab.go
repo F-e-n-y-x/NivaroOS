@@ -258,7 +258,9 @@ func (f *FStab) GetEntries() ([]*Entry, error) {
 	if err := foreachLine(f.path, func(line string) error {
 		entry, err := parseEntry(line)
 		if err != nil {
-			return err
+			// One malformed line mustn't hide every other entry (the whole
+			// panel used to fail to load).
+			return nil
 		}
 		if entry != nil {
 			entries = append(entries, entry)
@@ -290,7 +292,9 @@ func (f *FStab) GetAllEntries() ([]*Entry, error) {
 
 		entry, err := parseEntry(line)
 		if err != nil {
-			return err
+			// One malformed line mustn't hide every other entry (the whole
+			// panel used to fail to load).
+			return nil
 		}
 		if entry != nil {
 			entries = append(entries, entry)

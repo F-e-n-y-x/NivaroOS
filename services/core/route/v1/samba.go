@@ -273,7 +273,14 @@ func PostSambaConnectionsCreate(ctx echo.Context) error {
 	// 	return
 	// }
 
+	connection.Host = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(connection.Host), "\\\\"), "//")
 	connection.Host = strings.Split(connection.Host, "/")[0]
+	if connection.Host == "" || strings.ContainsAny(connection.Host, " ,;\\\r\n") {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "enter the server's name or IP address"})
+	}
+	if p, err := strconv.Atoi(connection.Port); err != nil || p < 1 || p > 65535 {
+		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: "the port must be a number from 1 to 65535"})
+	}
 	// check is exists
 	connections := service.MyService.Connections().GetConnectionByHost(connection.Host)
 	if len(connections) > 0 {
@@ -295,17 +302,41 @@ func PostSambaConnectionsCreate(ctx echo.Context) error {
 	connectionDBModel.MountPoint = baseHostPath
 	connection.MountPoint = baseHostPath
 	file.IsNotExistMkDir(baseHostPath)
+	// Every mount is checked (they were ignored, so a connection whose
+	// shares all failed to mount still said "Connected").
+	var mountedDirs, failed []string
 	for _, v := range directories {
+		if strings.HasSuffix(v, "$") {
+			continue // IPC$, ADMIN$, C$: not browsable shares
+		}
 		mountPoint := baseHostPath + "/" + v
 		file.IsNotExistMkDir(mountPoint)
-		service.MyService.Connections().MountSmaba(connectionDBModel.Username, connectionDBModel.Host, v, connectionDBModel.Port, mountPoint, connectionDBModel.Password)
+		if err := service.MyService.Connections().MountSmaba(connectionDBModel.Username, connectionDBModel.Host, v, connectionDBModel.Port, mountPoint, connectionDBModel.Password); err != nil {
+			os.Remove(mountPoint)
+			failed = append(failed, v+": "+err.Error())
+			continue
+		}
+		mountedDirs = append(mountedDirs, v)
 	}
+	if len(mountedDirs) == 0 {
+		os.Remove(baseHostPath)
+		msg := "no shares could be mounted"
+		if len(failed) > 0 {
+			msg += " (" + strings.Join(failed, "; ") + ")"
+		}
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: msg, Data: msg})
+	}
+	connectionDBModel.Directories = strings.Join(mountedDirs, ",")
 
 	service.MyService.Connections().CreateConnection(&connectionDBModel)
 
 	connection.ID = connectionDBModel.ID
 	connection.Directories = connectionDBModel.Directories
-	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: connection})
+	msg := common_err.GetMsg(common_err.SUCCESS)
+	if len(failed) > 0 {
+		msg = "connected, but some shares could not be mounted: " + strings.Join(failed, "; ")
+	}
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: msg, Data: connection})
 }
 
 func DeleteSambaConnections(ctx echo.Context) error {

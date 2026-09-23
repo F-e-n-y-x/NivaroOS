@@ -2,7 +2,9 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -48,7 +50,9 @@ var reservedMountPoints = []string{
 // to them (both are argv/field-based, never shell strings), but as basic input hygiene
 // for a field that ends up persisted to a system config file.
 var (
-	validFSTypeRe  = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	// Dashes and dots are real fstype characters (ntfs-3g, fuse.sshfs) - the
+	// old pattern made such entries impossible to add or edit.
+	validFSTypeRe  = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$`)
 	validOptionsRe = regexp.MustCompile(`^[a-zA-Z0-9_,=./:-]*$`)
 )
 
@@ -95,6 +99,17 @@ func composeOptions(extra string, readOnly, mountAtBoot bool) string {
 		}
 	}
 
+	// A drive that isn't there at boot must never hang the boot.
+	hasNofail := false
+	for _, t := range tokens {
+		if t == "nofail" {
+			hasNofail = true
+		}
+	}
+	if !hasNofail {
+		tokens = append(tokens, "nofail")
+	}
+
 	if readOnly {
 		tokens = append(tokens, "ro")
 	} else {
@@ -129,6 +144,34 @@ func extractUUID(source string) string {
 		return strings.TrimPrefix(source, "UUID=")
 	}
 	return ""
+}
+
+// preferredFSType: lsblk reports NTFS as "ntfs", which mounts through the
+// slow FUSE ntfs-3g; the kernel's ntfs3 driver is used when available.
+func preferredFSType(t string, haveNTFS3 func() bool) string {
+	if t == "ntfs" && haveNTFS3() {
+		return "ntfs3"
+	}
+	return t
+}
+
+func kernelHasNTFS3() bool {
+	if raw, err := os.ReadFile("/proc/filesystems"); err == nil && strings.Contains(string(raw), "ntfs3") {
+		return true
+	}
+	matches, _ := filepath.Glob("/lib/modules/*/kernel/fs/ntfs3/ntfs3.ko*")
+	return len(matches) > 0
+}
+
+// findBlockDeviceByPath finds a partition by its /dev path (the add form
+// accepts "/dev/sdb1", which used to become "UUID=/dev/sdb1" and never match).
+func findBlockDeviceByPath(blkList []model.LSBLKModel, path string) *model.LSBLKModel {
+	for i := range blkList {
+		if blk := WalkDisk(blkList[i], 5, func(b model.LSBLKModel) bool { return b.Path == path }); blk != nil {
+			return blk
+		}
+	}
+	return nil
 }
 
 func findBlockDeviceByUUID(blkList []model.LSBLKModel, uuid string) *model.LSBLKModel {
@@ -394,14 +437,25 @@ func (d *diskService) AddFstabMount(req model.AddFstabMountRequest) (*model.Fsta
 		}
 	}
 
-	blk := findBlockDeviceByUUID(d.LSBLK(false), req.UUID)
+	var blk *model.LSBLKModel
+	if strings.HasPrefix(req.UUID, "/dev/") {
+		blk = findBlockDeviceByPath(d.LSBLK(false), req.UUID)
+		if blk != nil && blk.UUID == "" {
+			return nil, newFstabError(common_err.FSTAB_INVALID_FIELD, "that partition has no filesystem UUID - format it first")
+		}
+		if blk != nil {
+			req.UUID = blk.UUID
+		}
+	} else {
+		blk = findBlockDeviceByUUID(d.LSBLK(false), req.UUID)
+	}
 	if blk == nil {
 		return nil, newFstabError(common_err.FSTAB_DEVICE_NOT_FOUND, "drive not found")
 	}
 
 	fstype := req.FSType
 	if fstype == "" {
-		fstype = blk.FsType
+		fstype = preferredFSType(blk.FsType, kernelHasNTFS3)
 	}
 	if fstype == "" {
 		return nil, newFstabError(common_err.FSTAB_INVALID_FIELD, "could not detect a filesystem type for this drive - please specify one")
@@ -702,4 +756,3 @@ func (d *diskService) AdoptFstabEntry(mountPoint string) (*model.FstabMount, err
 
 	return d.getFstabMountByMountPoint(mountPoint)
 }
-

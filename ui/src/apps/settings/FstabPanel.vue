@@ -257,7 +257,7 @@
 						</a>
 						<div v-if="showManualDevice" class="manual-device-box mt-2">
 							<b-field :label="$t('Drive UUID or Device Path')">
-								<b-input v-model="addDraft.uuid" placeholder="e.g. B000FE9A00FE66AE or /dev/sdb1" size="is-small"></b-input>
+								<b-input v-model="addDraft.uuid" placeholder="e.g. 1234ABCD5678EF90 or /dev/sdb1" size="is-small"></b-input>
 							</b-field>
 						</div>
 					</div>
@@ -343,7 +343,7 @@
 						</a>
 						<div v-if="showAddAdvanced" class="advanced-box mt-2">
 							<b-field :label="$t('Filesystem Type Override')">
-								<b-input v-model="addDraft.fstype" placeholder="e.g. ntfs-3g, ext4, btrfs, exfat" size="is-small"></b-input>
+								<b-input v-model="addDraft.fstype" placeholder="e.g. ext4, ntfs3, btrfs, exfat (empty = detect)" size="is-small"></b-input>
 							</b-field>
 							<div class="switch-card-row p-0 mb-3">
 								<div class="switch-card-text">
@@ -693,7 +693,10 @@ export default {
 		},
 		selectCandidate(c) {
 			this.addDraft.uuid = c.uuid || c.path
-			this.addDraft.fstype = c.fstype
+			// lsblk says "ntfs" for NTFS drives, which mounts via the slow
+			// FUSE ntfs-3g; leave it empty so the server picks the kernel
+			// ntfs3 driver when it has one.
+			this.addDraft.fstype = c.fstype === 'ntfs' ? '' : c.fstype
 			const safeName = (c.label || c.path.split('/').pop() || c.uuid.slice(0, 8)).replace(/[^a-zA-Z0-9_-]/g, '_')
 			this.addDraft.mount_point = c.mount_point || `/DATA/${safeName}`
 			const presets = this.visiblePresetsFor(c.fstype)

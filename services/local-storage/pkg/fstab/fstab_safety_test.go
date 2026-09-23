@@ -88,3 +88,17 @@ func TestRemovingAMountPointAlsoRemovesItsDisabledLine(t *testing.T) {
 		t.Fatalf("/DATA/d01 appears %d times:\n%s", n, raw)
 	}
 }
+
+// One malformed line made the whole Persistent Mounts panel fail to load.
+func TestAMalformedLineDoesNotHideTheOthers(t *testing.T) {
+	f := managedFstab(t, 2)
+	raw, _ := os.ReadFile(f.path)
+	os.WriteFile(f.path, append(raw, []byte("UUID=bad\t/DATA/bad\text4\tdefaults\tX\tY\n")...), 0o644)
+	all, err := f.GetAllEntries()
+	if err != nil {
+		t.Fatalf("one bad line broke the list: %v", err)
+	}
+	if len(all) < 3 { // root + 2 managed
+		t.Fatalf("got %d entries", len(all))
+	}
+}

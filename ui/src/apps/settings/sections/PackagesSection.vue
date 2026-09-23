@@ -60,6 +60,7 @@
 			</div>
 
 			<div v-else-if="searchResults.length" class="setting-card">
+				<p v-if="searchResults.length >= 100" class="search-cap-note">{{ $t('Showing the 100 best matches - type more of the name to narrow it down.') }}</p>
 				<div v-for="pkg in searchResults" :key="pkg.name" class="setting-row">
 					<b-icon class="row-icon" icon="cube-outline" pack="mdi" size="is-20"></b-icon>
 					<div class="row-label">
@@ -243,7 +244,8 @@
 							<div class="setting-desc">{{ s.suite }} &middot; {{ (s.components || []).join(', ') }} &middot; {{ getFilename(s.file) }}:{{ s.line }}</div>
 						</div>
 						<div class="row-control">
-							<button class="icon-button" type="button" :title="$t('Delete source')" @click="deleteSource(s)">
+							<span v-if="s.read_only" class="setting-chip" :title="$t('A deb822 .sources file - edit it on the server')">deb822</span>
+							<button v-else class="icon-button" type="button" :title="$t('Delete source')" :aria-label="$t('Delete source')" @click="deleteSource(s)">
 								<b-icon icon="trash-can-outline" pack="mdi" size="is-16"></b-icon>
 							</button>
 						</div>
@@ -782,6 +784,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.search-cap-note {
+	padding: 0.5rem 0.9rem;
+	font-size: var(--font-xs);
+	color: var(--theme-text-secondary);
+}
 .apt-job-banner {
 	display: flex;
 	align-items: center;

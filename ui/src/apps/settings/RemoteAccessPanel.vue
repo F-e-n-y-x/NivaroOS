@@ -34,7 +34,20 @@
 					<b-icon class="row-icon" icon="internet-outline" pack="casa" size="is-20"></b-icon>
 					<div class="row-label">{{ $t('Tailscale') }}</div>
 					<div class="row-control">
-						<b-switch :value="isRunning" class="is-flex-direction-row-reverse mr-0" type="is-dark" :loading="toggling" @input="toggle"></b-switch>
+						<b-switch :key="switchKey" :value="isRunning" class="is-flex-direction-row-reverse mr-0" type="is-primary" :loading="toggling" :aria-label="$t('Tailscale')" @input="toggle"></b-switch>
+					</div>
+				</div>
+				<div v-if="backendState === 'NoDaemon' && !toggling" class="setting-row">
+					<div class="row-label setting-desc">{{ $t('The Tailscale service is stopped - switching it on starts it.') }}</div>
+				</div>
+				<div v-if="backendState === 'NeedsLogin' || connectLoginUrl" class="setting-row">
+					<b-icon class="row-icon" icon="link-variant" pack="mdi" size="is-20"></b-icon>
+					<div class="row-label">
+						<div class="setting-title">{{ $t('Sign in to connect this device') }}</div>
+						<div v-if="connectLoginUrl" class="setting-desc">
+							<a :href="connectLoginUrl" target="_blank" rel="noopener noreferrer">{{ connectLoginUrl }}</a>
+						</div>
+						<div v-else class="setting-desc">{{ $t('Switch Tailscale on to get a sign-in link.') }}</div>
 					</div>
 				</div>
 
@@ -179,7 +192,9 @@ export default {
 			installed: null,
 			installing: false,
 			installError: '',
-			loginUrl: ''
+			loginUrl: '',
+			connectLoginUrl: '',
+			switchKey: 0
 		}
 	},
 	computed: {
@@ -252,10 +267,16 @@ export default {
 		toggle(value) {
 			this.toggling = true
 			this.error = ''
-			this.$api.tailscale.setState(value ? 'up' : 'down').then(() => {
+			this.connectLoginUrl = ''
+			this.$api.tailscale.setState(value ? 'up' : 'down').then(res => {
+				const d = (res.data && res.data.data) || {}
+				if (d.login_url) this.connectLoginUrl = d.login_url
 				this.refresh()
 			}).catch(e => {
-				this.error = e.response && e.response.data ? e.response.data.message : this.$t('Failed to change Tailscale state')
+				// Core puts the command's own message in `data`.
+				const d = e.response && e.response.data
+				this.error = (d && typeof d.data === 'string' && d.data) || (d && d.message) || this.$t('Failed to change Tailscale state')
+				this.switchKey++ // put the switch back to the real state
 			}).finally(() => {
 				this.toggling = false
 			})

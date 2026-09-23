@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"log"
 	"runtime"
 	"sync"
@@ -112,9 +113,21 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	return nil
 }
 func (s *storageStruct) UnmountStorage(mountPoint string) error {
-
-	err := MountLists[mountPoint].Unmount()
-	if err != nil {
+	mountMu.Lock()
+	mnt := MountLists[mountPoint]
+	mountMu.Unlock()
+	if mnt == nil {
+		// Never mounted in this process (expired token, failed mount, or a
+		// restart): this was a nil-pointer panic, so such an account could
+		// never be removed. Detach a stale kernel mount if there is one.
+		if isCurrentMountPoint(mountPoint) {
+			if err := unix.Unmount(mountPoint, unix.MNT_DETACH); err != nil {
+				return fmt.Errorf("unmounting %s: %w", mountPoint, err)
+			}
+		}
+		return nil
+	}
+	if err := mnt.Unmount(); err != nil {
 		logger.Error("when umount then", zap.Error(err))
 		return err
 	}

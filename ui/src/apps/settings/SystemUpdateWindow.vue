@@ -175,10 +175,17 @@ export default {
 			this.logLines = [`[${new Date().toLocaleTimeString()}] Initializing package upgrade sequence...`]
 
 			if (this.mode === 'nivaroos') {
+				// It either starts the platform updater (the service restarts
+				// when done) or says why it can't - it never "finishes" here,
+				// so don't leave the window spinning.
 				this.$api.sys.updateNivaroOS().then(() => {
-					this.logLines.push(`[${new Date().toLocaleTimeString()}] NivaroOS self-updater script spawned.`)
+					this.isRunning = false
+					this.exitCode = 0
+					this.logLines.push(`[${new Date().toLocaleTimeString()}] ${this.$t('The NivaroOS update was started. The web UI reconnects when the service restarts.')}`)
 				}).catch(err => {
-					this.logLines.push(`[${new Date().toLocaleTimeString()}] Error triggering NivaroOS update: ${err.message}`)
+					this.isRunning = false
+					this.exitCode = 1
+					this.logLines.push(`[${new Date().toLocaleTimeString()}] ${(err.response && err.response.data && err.response.data.message) || err.message}`)
 				})
 			} else {
 				this.$api.sys.upgradePackages().then(res => {

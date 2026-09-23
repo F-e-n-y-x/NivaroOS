@@ -3,6 +3,7 @@ package v1
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -106,11 +107,56 @@ func errString(err error) string {
 // stable, documented external contract, not something worth re-modeling
 // into Go structs just to re-serialize it back to JSON for the frontend.
 func GetTailscaleStatus(ctx echo.Context) error {
+	// The daemon not running is a state, not an error (the panel used to
+	// say "Failed to reach Tailscale" and the switch could never work).
+	if !tailscaledActive() {
+		return ok(ctx, map[string]string{"BackendState": "NoDaemon"})
+	}
 	out, err := exec.Command("tailscale", "status", "--json").Output()
 	if err != nil {
-		return serviceError(ctx, err)
+		// Status exits non-zero when stopped/logged out but still prints JSON.
+		if json.Valid(out) && len(out) > 0 {
+			return ok(ctx, json.RawMessage(out))
+		}
+		return serviceError(ctx, commandError(err, out))
 	}
 	return ok(ctx, json.RawMessage(out))
+}
+
+func tailscaledActive() bool {
+	return exec.Command("systemctl", "is-active", "--quiet", "tailscaled").Run() == nil
+}
+
+// ensureTailscaled starts the daemon (and enables it at boot) if needed,
+// then waits briefly until the CLI can talk to it.
+func ensureTailscaled() error {
+	if !tailscaledActive() {
+		if out, err := exec.Command("systemctl", "enable", "--now", "tailscaled").CombinedOutput(); err != nil {
+			return fmt.Errorf("starting the Tailscale service: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	// Up to ~5 s for the CLI to reach the daemon (status prints JSON even
+	// when logged out, so valid JSON means reachable).
+	for i := 0; i < 20; i++ {
+		if out, _ := exec.Command("tailscale", "status", "--json").CombinedOutput(); json.Valid(out) && len(out) > 0 {
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return errors.New("the Tailscale service started but isn't answering yet - try again in a moment")
+}
+
+// commandError keeps the command's own message (Output() dropped stderr,
+// so the UI only ever showed "Fail").
+func commandError(err error, out []byte) error {
+	msg := strings.TrimSpace(string(out))
+	if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+		msg = strings.TrimSpace(string(ee.Stderr))
+	}
+	if msg == "" {
+		return err
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // PutTailscaleState runs `tailscale up` or `tailscale down` depending on
@@ -121,10 +167,25 @@ func PutTailscaleState(ctx echo.Context) error {
 	if state != "up" && state != "down" {
 		return badParams(ctx, "state must be 'up' or 'down'")
 	}
-	if err := exec.Command("tailscale", state).Run(); err != nil {
+	if state == "down" {
+		if out, err := exec.Command("tailscale", "down").CombinedOutput(); err != nil {
+			return serviceError(ctx, commandError(err, out))
+		}
+		return ok(ctx, map[string]string{"state": "down"})
+	}
+	if err := ensureTailscaled(); err != nil {
 		return serviceError(ctx, err)
 	}
-	return ok(ctx, state)
+	// `tailscale up` blocks until the node is authenticated; it used to be
+	// run synchronously here and hang past the UI's 60 s limit whenever a
+	// login was needed. Run it in the background and hand back the login
+	// link if one is printed; otherwise it's already signed in.
+	loginURL, err := startTailscaleUpAndCaptureLoginURL()
+	if loginURL != "" {
+		return ok(ctx, map[string]string{"state": "needs_login", "login_url": loginURL})
+	}
+	_ = err // no link within 8 s: already authenticated (or still connecting)
+	return ok(ctx, map[string]string{"state": "up"})
 }
 
 // rawTailscalePrefs mirrors only the fields of `tailscale debug prefs`

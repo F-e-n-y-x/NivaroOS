@@ -1,6 +1,11 @@
 package v1
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // `\s` in the old pattern matched newlines, so one "source" could write
 // several lines (any APT option, or a [trusted=yes] repo) into sources.
@@ -45,5 +50,29 @@ func TestSourceFileAcceptsTheListedPathsOnly(t *testing.T) {
 		if got, err := resolveSourceFile(in); err == nil {
 			t.Errorf("%q accepted as %q", in, got)
 		}
+	}
+}
+
+// Search kept the first 100 hits in apt-cache's order and sorted after:
+// "python3" returned 100 of 5,403 results without python3 itself.
+func TestSearchRanksExactAndPrefixMatchesFirst(t *testing.T) {
+	var hits []aptPackageInfo
+	for i := 0; i < 300; i++ {
+		hits = append(hits, aptPackageInfo{Name: fmt.Sprintf("lib-python3-thing%03d", i)})
+	}
+	hits = append(hits, aptPackageInfo{Name: "python3-pip"}, aptPackageInfo{Name: "python3"})
+	got := rankSearch(hits, "python3", 100)
+	if len(got) != 100 || got[0].Name != "python3" || got[1].Name != "python3-pip" {
+		t.Fatalf("got %d results, first %q %q", len(got), got[0].Name, got[1].Name)
+	}
+}
+
+// deb822 ".sources" files (Debian 13's default) weren't listed at all.
+func TestDeb822SourcesAreListed(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "google-chrome.sources")
+	os.WriteFile(p, []byte("Types: deb\nURIs: https://dl.google.com/linux/chrome/deb/\nSuites: stable\nComponents: main\nSigned-By: /x.gpg\n\nTypes: deb deb-src\nURIs: http://a http://b\nSuites: trixie\nComponents: main contrib\nEnabled: no\n"), 0o644)
+	got := parseDeb822Sources(p)
+	if len(got) != 1 || got[0].URI != "https://dl.google.com/linux/chrome/deb/" || got[0].Suite != "stable" || !got[0].ReadOnly {
+		t.Fatalf("got %+v", got)
 	}
 }

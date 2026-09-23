@@ -69,6 +69,7 @@
 </template>
 
 <script>
+import { escapeHtml } from '@/utils/escapeHtml'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
@@ -128,12 +129,15 @@ export default {
 				if (res.data.success === 200) {
 					this.showModal = false
 					this.refresh()
-					this.$buefy.toast.open({ message: this.$t('Connected'), type: 'is-success' })
+					const partial = res.data.message && res.data.message !== 'ok'
+					this.$buefy.toast.open({ message: escapeHtml(partial ? res.data.message : this.$t('Connected')), type: partial ? 'is-warning' : 'is-success', duration: partial ? 8000 : 3000 })
 				} else {
 					this.error = res.data.message
 				}
 			}).catch(e => {
-				this.error = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to connect')
+				// The specific reason (wrong password, host unreachable) is in `data`.
+				const d = e.response && e.response.data
+				this.error = (d && typeof d.data === 'string' && d.data) || (d && d.message) || this.$t('Failed to connect')
 			}).finally(() => {
 				this.connecting = false
 			})
@@ -147,9 +151,15 @@ export default {
 				cancelText: this.$t('Cancel'),
 				onConfirm: () => {
 					this.disconnecting = c.id
-					this.$api.samba.deleteConnection(c.id).then(() => this.refresh()).finally(() => {
-						this.disconnecting = null
-					})
+					this.$api.samba.deleteConnection(c.id)
+						.catch(e => {
+							const d = e.response && e.response.data
+							this.$buefy.toast.open({ message: escapeHtml((d && (typeof d.data === 'string' ? d.data : d.message)) || this.$t('Could not disconnect')), type: 'is-danger' })
+						})
+						.finally(() => {
+							this.disconnecting = null
+							this.refresh()
+						})
 				}
 			})
 		}

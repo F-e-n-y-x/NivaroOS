@@ -97,12 +97,41 @@ func GetAptSearch(ctx echo.Context) error {
 			Description: strings.TrimSpace(parts[1]),
 			Installed:   installed[name],
 		})
-		if len(results) >= 100 {
-			break
-		}
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].Name < results[j].Name })
-	return ok(ctx, results)
+	total := len(results)
+	ctx.Response().Header().Set("X-Total-Count", strconv.Itoa(total))
+	return ok(ctx, rankSearch(results, q, 100))
+}
+
+// rankSearch orders hits by relevance - exact name, then names starting
+// with the query, then the rest, each alphabetically - and keeps the first
+// max. (It kept apt-cache's first 100 and sorted afterwards, so the exact
+// package could be missing from the results.)
+func rankSearch(hits []aptPackageInfo, q string, max int) []aptPackageInfo {
+	q = strings.ToLower(q)
+	rank := func(n string) int {
+		n = strings.ToLower(n)
+		switch {
+		case n == q:
+			return 0
+		case strings.HasPrefix(n, q):
+			return 1
+		case strings.Contains(n, q):
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		ri, rj := rank(hits[i].Name), rank(hits[j].Name)
+		if ri != rj {
+			return ri < rj
+		}
+		return hits[i].Name < hits[j].Name
+	})
+	if len(hits) > max {
+		hits = hits[:max]
+	}
+	return hits
 }
 
 // installedPackageSet returns the set of currently-installed package names.
@@ -286,6 +315,38 @@ type aptSourceEntry struct {
 	Suite      string   `json:"suite"`
 	Components []string `json:"components"`
 	Raw        string   `json:"raw"` // the line as written (sent back on delete)
+	// ReadOnly: a deb822 .sources entry - listed, but edited on the server
+	// (line-based delete doesn't apply to it).
+	ReadOnly bool `json:"read_only,omitempty"`
+}
+
+// parseDeb822Sources lists the enabled stanzas of a deb822 .sources file
+// (Debian 13's default format), one entry per URI/suite.
+func parseDeb822Sources(path string) []aptSourceEntry {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var out []aptSourceEntry
+	for _, stanza := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n\n") {
+		fields := map[string]string{}
+		for _, line := range strings.Split(stanza, "\n") {
+			if k, v, ok := strings.Cut(line, ":"); ok && !strings.HasPrefix(strings.TrimSpace(line), "#") && !strings.HasPrefix(line, " ") {
+				fields[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
+			}
+		}
+		if fields["types"] == "" || strings.EqualFold(fields["enabled"], "no") {
+			continue
+		}
+		for _, typ := range strings.Fields(fields["types"]) {
+			for _, uri := range strings.Fields(fields["uris"]) {
+				for _, suite := range strings.Fields(fields["suites"]) {
+					out = append(out, aptSourceEntry{File: path, Type: typ, URI: uri, Suite: suite, Components: strings.Fields(fields["components"]), ReadOnly: true})
+				}
+			}
+		}
+	}
+	return out
 }
 
 func parseSourceLines(path string) []aptSourceEntry {
@@ -353,6 +414,11 @@ func GetAptSources(ctx echo.Context) error {
 	sort.Strings(matches)
 	for _, m := range matches {
 		entries = append(entries, parseSourceLines(m)...)
+	}
+	deb822, _ := filepath.Glob(filepath.Join(aptSourcesDir, "*.sources"))
+	sort.Strings(deb822)
+	for _, m := range deb822 {
+		entries = append(entries, parseDeb822Sources(m)...)
 	}
 	return ok(ctx, entries)
 }

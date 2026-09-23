@@ -11,6 +11,8 @@ package service
 
 import (
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
@@ -66,17 +68,38 @@ func (s *connectionsStruct) DeleteConnection(id string) {
 	s.db.Where("id= ?", id).Delete(&model.ConnectionsDBModel{})
 }
 
+// cifsOptions builds the kernel CIFS mount options. The kernel can't
+// resolve names (ip= is required for a hostname), the port was ignored,
+// and a comma in the user name or password ended the field - CIFS escapes
+// a literal comma by doubling it.
+func cifsOptions(username, password, port, ip string) string {
+	esc := func(v string) string { return strings.ReplaceAll(v, ",", ",,") }
+	opts := []string{"username=" + esc(username), "password=" + esc(password)}
+	if port != "" {
+		opts = append(opts, "port="+port)
+	}
+	if ip != "" {
+		opts = append(opts, "ip="+ip)
+	}
+	return strings.Join(opts, ",")
+}
+
 func (s *connectionsStruct) MountSmaba(username, host, directory, port, mountPoint, password string) error {
-	err := unix.Mount(
+	ip := host
+	if net.ParseIP(host) == nil {
+		addrs, err := net.LookupHost(host)
+		if err != nil || len(addrs) == 0 {
+			return fmt.Errorf("can't resolve %s", host)
+		}
+		ip = addrs[0]
+	}
+	return unix.Mount(
 		fmt.Sprintf("//%s/%s", host, directory),
 		mountPoint,
 		"cifs",
 		unix.MS_NOATIME|unix.MS_NODEV|unix.MS_NOSUID,
-		fmt.Sprintf("username=%s,password=%s", username, password),
+		cifsOptions(username, password, port, ip),
 	)
-	return err
-	// str := command2.ExecResultStr("source " + config.AppInfo.ShellPath + "/helper.sh ;MountCIFS " + username + " " + host + " " + directory + " " + port + " " + mountPoint + " " + password)
-	// return str
 }
 
 func (s *connectionsStruct) UnmountSmaba(mountPoint string) error {

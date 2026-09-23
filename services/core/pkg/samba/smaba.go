@@ -12,16 +12,19 @@ package samba
 import (
 	"errors"
 	"net"
+	"time"
 
 	"github.com/hirochachacha/go-smb2"
 )
 
 func ConnectSambaService(host, port, username, password, directory string) error {
-	conn, err := net.Dial("tcp", host+":"+port)
+	// Bounded: an offline host used to hang the request past the UI's limit.
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 10*time.Second)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
 			User:     username,
@@ -47,13 +50,15 @@ func ConnectSambaService(host, port, username, password, directory string) error
 	return errors.New("directory not found")
 }
 
-//get share name list
+// get share name list
 func GetSambaSharesList(host, port, username, password string) ([]string, error) {
-	conn, err := net.Dial("tcp", host+":"+port)
+	// Bounded: an offline host used to hang the request past the UI's limit.
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
 			User:     username,

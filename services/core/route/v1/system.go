@@ -67,9 +67,12 @@ func GetSystemCheckVersion(ctx echo.Context) error {
 // @Router /sys/update [post]
 func SystemUpdate(ctx echo.Context) error {
 	need, version := version.IsNeedUpdate(service.MyService.Casa().GetNivaroOSVersion())
-	if need {
-		service.MyService.System().UpdateSystemVersion(version.Version)
+	if !need {
+		// Nothing to install (or no update source configured) - this used
+		// to answer "success", and the UI showed a finished update.
+		return ctx.JSON(http.StatusConflict, model.Result{Success: http.StatusConflict, Message: "no update is available to install from here - run the NivaroOS installer to update"})
 	}
+	service.MyService.System().UpdateSystemVersion(version.Version)
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 

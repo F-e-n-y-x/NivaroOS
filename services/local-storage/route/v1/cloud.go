@@ -2,6 +2,7 @@ package v1
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -88,6 +89,11 @@ func UmountStorage(c *gin.Context) {
 	mountPoint := json["mount_point"]
 	if mountPoint == "" {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "mount_point is empty"})
+		return
+	}
+	// Cloud drives live directly under /mnt; anything else isn't one.
+	if clean := filepath.Clean(mountPoint); clean != mountPoint || filepath.Dir(clean) != "/mnt" {
+		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: "not a cloud drive mount point"})
 		return
 	}
 	err := service.MyService.Storage().UnmountStorage(mountPoint)
