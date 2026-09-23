@@ -4,6 +4,21 @@ Queued after Milestone 1 (fork building + swapped in, matching current
 install — see docs/superpowers/specs/2026-08-19-casaos-fork-milestone1-design.md).
 Each item gets its own brainstorm/design pass before implementation.
 
+## 16. Download Station — DONE (2026-09-23)
+New Dock/grid system app (`src/apps/download-station/`) backed by a new
+`nivaroos-download-sidecar` (pure Go, port 28642, see its README):
+IDM-style multi-connection downloader with dynamic segmentation, a lite
+browser (rewriting proxy - download links clicked in it are captured with
+the page's cookies), and a built-in ad blocker using uBlock Origin's
+filter lists/syntax, switchable on/off. Every secondary surface (Add
+Download, properties, folder picker, confirms) is its own movable desktop
+window. Installer option "Download Station" (default on).
+
+Also fixed while here: the UI build ran webpack/Vue in development mode
+(`.env.production` said `NODE_ENV=prod`) - ~31 MB unminified bundle and a
+laggy desktop - and `vue.config.js` inlined the whole build environment
+into the public bundle; it now only exposes NODE_ENV/BASE_URL/VUE_APP_*.
+
 ## 15. VM Manager — DONE (2026-08-20)
 New Dock-pinned windowed app for creating/running/managing QEMU/KVM VMs,
 backed by a new `casaos-vm-sidecar` (libvirt-go, port 28641, see

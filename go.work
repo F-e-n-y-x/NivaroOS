@@ -18,4 +18,6 @@ use ./services/vm-sidecar
 
 use ./services/gpu-sidecar
 
+use ./services/download-sidecar
+
 use ./cli

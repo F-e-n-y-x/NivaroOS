@@ -14,6 +14,8 @@ export const SYSTEM_NAME_MAP = {
 	vms: 'VMs',
 	settings: 'Settings',
 	'host-desktop': 'Host Desktop',
+	'download-station': 'Download Station',
+	'Download Station': 'Download Station',
 	'Host Desktop': 'Host Desktop',
 	'Files': 'Files',
 	'App Store': 'App Store',

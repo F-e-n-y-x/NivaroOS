@@ -56,6 +56,9 @@ start_service "app-management" "/usr/bin/nivaroos-app-management"
 # 5. Start GPU Sidecar (Telemetry)
 start_service "gpu-sidecar" "/usr/bin/nivaroos-gpu-sidecar"
 
+# 5b. Start Download Station Sidecar (downloads, lite browser, ad blocker)
+start_service "download-sidecar" "/usr/bin/nivaroos-download-sidecar"
+
 # 6. Start Core Daemon (System management & legacy API)
 start_service "core" "/usr/bin/nivaroos"
 

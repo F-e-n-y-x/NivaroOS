@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+	<rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="url(#ds_tile)" stroke="#E4E7EC"/>
+	<rect x="17" y="40" width="34" height="12" rx="5" fill="#9CCBFF" fill-opacity="0.55"/>
+	<rect x="13" y="12" width="38" height="38" rx="19" fill="url(#ds_disc)"/>
+	<path d="M32 20.5V36.5M32 36.5L25.5 30M32 36.5L38.5 30" stroke="white" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+	<path d="M24 42H40" stroke="white" stroke-width="3.6" stroke-linecap="round"/>
+	<defs>
+		<linearGradient id="ds_tile" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse">
+			<stop stop-color="#FFFFFF"/>
+			<stop offset="1" stop-color="#F1F3F6"/>
+		</linearGradient>
+		<linearGradient id="ds_disc" x1="15" y1="13" x2="49" y2="49" gradientUnits="userSpaceOnUse">
+			<stop stop-color="#38C3FF"/>
+			<stop offset="1" stop-color="#2563EB"/>
+		</linearGradient>
+	</defs>
+</svg>

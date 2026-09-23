@@ -54,6 +54,7 @@ DETECTED_PORT="80"
 IS_UPGRADE="false"
 WITH_VM=""
 WITH_HOST_DESKTOP=""
+WITH_DOWNLOAD_STATION=""
 YES=""
 DEBUG=""
 CLI_WIDTH=""
@@ -631,6 +632,8 @@ parse_args() {
 			--without-vm) WITH_VM=no ;;
 			--with-host-desktop) WITH_HOST_DESKTOP=yes ;;
 			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
+			--with-download-station) WITH_DOWNLOAD_STATION=yes ;;
+			--without-download-station) WITH_DOWNLOAD_STATION=no ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
 				shift
@@ -658,6 +661,8 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--without-vm${COLOR_RESET}                 Skip VM Manager installation (can be enabled later via CLI)"
 				printf '%b\n' "  ${COLOR_CYAN}--with-host-desktop${COLOR_RESET}          Stream this machine's own desktop over VNC (requires VM Manager)"
 				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
+				printf '%b\n' "  ${COLOR_CYAN}--with-download-station${COLOR_RESET}      Install Download Station (multi-connection downloads, lite browser, ad blocker) [default]"
+				printf '%b\n' "  ${COLOR_CYAN}--without-download-station${COLOR_RESET}   Skip Download Station installation"
 				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}                Custom HTTP dashboard port (default: 80 or next free port)"
 				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}               Force specific terminal box width (default: auto-detect)"
 				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}            Git branch or tag to install (default: master)"
@@ -792,6 +797,11 @@ compute_default_selections() {
 	if [ -z "$WITH_HOST_DESKTOP" ]; then
 		WITH_HOST_DESKTOP=no
 	fi
+	# On by default: it's a single pure-Go service with no system packages
+	# to pull in, unlike VM Manager (QEMU/libvirt) or Host Desktop (x11vnc).
+	if [ -z "$WITH_DOWNLOAD_STATION" ]; then
+		WITH_DOWNLOAD_STATION=yes
+	fi
 }
 
 # Samba and mDNS are core parts of NivaroOS (Network Shares and mobile-app
@@ -823,31 +833,36 @@ select_components() {
 		printf '%b\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager, Samba File${COLOR_RESET}"
 		printf '%b\n\n' "  ${COLOR_MUTED}Sharing, mDNS Discovery) always installs.${COLOR_RESET}"
 
-		local vm_desc hd_desc
+		local vm_desc hd_desc ds_desc
 		if [ "$KVM_AVAILABLE" = "yes" ]; then
 			vm_desc="KVM hardware acceleration detected on this CPU."
 		else
 			vm_desc="No KVM acceleration detected - VMs would use slower software emulation."
 		fi
 		hd_desc="Requires VM Manager (shares its vm-sidecar). Streams this machine's own physical desktop."
+		ds_desc="IDM-style downloader with a built-in lite browser and uBlock Origin filter lists. No extra packages."
 
 		CBM_LABELS=(
 			"VM Manager - QEMU/KVM, Libvirt, Web Console, VirtIO-FS"
 			"Host Desktop Streaming - stream this machine's own desktop over VNC"
+			"Download Station - multi-connection downloads, lite browser, ad blocker"
 		)
 		CBM_DESCS=(
 			"$vm_desc"
 			"$hd_desc"
+			"$ds_desc"
 		)
 		CBM_STATE=(
 			"$([ "$WITH_VM" = "yes" ] && echo 1 || echo 0)"
 			"$([ "$WITH_HOST_DESKTOP" = "yes" ] && echo 1 || echo 0)"
+			"$([ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo 1 || echo 0)"
 		)
 
 		checkbox_menu "Select Optional Components"
 
 		WITH_VM="$([ "${CBM_STATE[0]}" = "1" ] && echo yes || echo no)"
 		WITH_HOST_DESKTOP="$([ "${CBM_STATE[1]}" = "1" ] && echo yes || echo no)"
+		WITH_DOWNLOAD_STATION="$([ "${CBM_STATE[2]}" = "1" ] && echo yes || echo no)"
 	fi
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
@@ -858,14 +873,18 @@ select_components() {
 	TOTAL_STEPS=$BASE_STEPS
 	[ "$WITH_VM" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 
 	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Selected Components:${COLOR_RESET}"
 	local mark_vm="${COLOR_MUTED}○ VM Manager (off)${COLOR_RESET}"
 	local mark_hd="${COLOR_MUTED}○ Host Desktop (off)${COLOR_RESET}"
+	local mark_ds="${COLOR_MUTED}○ Download Station (off)${COLOR_RESET}"
 	[ "$WITH_VM" = "yes" ] && mark_vm="${COLOR_GREEN}✔ VM Manager${COLOR_RESET}"
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && mark_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
+	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && mark_ds="${COLOR_GREEN}✔ Download Station${COLOR_RESET}"
 	printf '%b\n' "  ${mark_vm}"
-	printf '%b\n\n' "  ${mark_hd}"
+	printf '%b\n' "  ${mark_hd}"
+	printf '%b\n\n' "  ${mark_ds}"
 }
 
 # ------------------------------------------------------------------------------
@@ -1664,6 +1683,50 @@ VMEOF
 }
 
 # ------------------------------------------------------------------------------
+# Download Station Installation (Optional Add-on, on by default). One pure-Go
+# service (no cgo, no system packages): the multi-connection download engine,
+# the lite browser's rewriting proxy, and its uBlock Origin filter-list ad
+# blocker. Filter lists are fetched by the service itself on first start.
+# ------------------------------------------------------------------------------
+install_download_station() {
+	run_step "Installing Download Station (Downloader, Lite Browser & Ad Blocker)" "
+		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
+		systemctl stop nivaroos-download-sidecar.service >/dev/null 2>&1 || true
+
+		cd \"${SRC_DIR}/services/download-sidecar\"
+		export GOWORK=off
+		go build -o /usr/bin/nivaroos-download-sidecar .
+		echo '/usr/bin/nivaroos-download-sidecar' >> \"$MANIFEST_FILE\"
+
+		mkdir -p /DATA/Downloads /var/lib/nivaroos/download-station
+		chmod 700 /var/lib/nivaroos/download-station
+
+		cat > /usr/lib/systemd/system/nivaroos-download-sidecar.service <<'DSEOF'
+[Unit]
+Description=NivaroOS Download Station Sidecar
+After=network-online.target nivaroos-user-service.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/nivaroos-download-sidecar
+Restart=always
+# Downloads may be saved anywhere the user picks (/DATA, mounted drives
+# under /media or /mnt), so the filesystem stays writable - same
+# conservative hardening as the other sidecars.
+NoNewPrivileges=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+DSEOF
+		echo '/usr/lib/systemd/system/nivaroos-download-sidecar.service' >> \"$MANIFEST_FILE\"
+
+		systemctl daemon-reload >/dev/null 2>&1 || true
+		systemctl enable --now nivaroos-download-sidecar >/dev/null 2>&1 || true
+	"
+}
+
+# ------------------------------------------------------------------------------
 # Host Desktop Streaming Installation (Optional Add-on, requires VM Manager -
 # it streams over the same vm-sidecar the VM Manager installs). Installs the
 # VNC bridge itself only - whether there's a working X11 session for it to
@@ -2240,6 +2303,14 @@ print_summary() {
 		render_sum_line "${COLOR_MUTED}○ Host Desktop (Off)${COLOR_RESET}"
 	fi
 
+	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then
+		local s_ds="${COLOR_GREEN}✔ Download Station${COLOR_RESET}"
+		if ! systemctl is-active --quiet nivaroos-download-sidecar.service 2>/dev/null; then s_ds="${COLOR_RED}✖ Download Station${COLOR_RESET}"; fi
+		render_sum_line "${s_ds}"
+	else
+		render_sum_line "${COLOR_MUTED}○ Download Station (Off)${COLOR_RESET}"
+	fi
+
 	local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
 	if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
 		s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
@@ -2296,6 +2367,10 @@ main() {
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ]; then
 		install_host_desktop
+	fi
+
+	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then
+		install_download_station
 	fi
 
 	install_ui

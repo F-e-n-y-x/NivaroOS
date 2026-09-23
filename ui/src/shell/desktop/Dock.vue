@@ -50,6 +50,7 @@
 				<img v-else-if="win.component === 'AppStoreApp'" :src="getBuiltinIcon('App Store')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'HostDesktopPanel'" :src="getBuiltinIcon('Host Desktop')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="isDownloadStationWindow(win)" :src="getBuiltinIcon('Download Station')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app-icons/default.svg')" class="dock-icon" :alt="win.title" />
@@ -196,6 +197,7 @@ import settingsIcon from '@/assets/img/app-icons/settings.png'
 import terminalIcon from '@/assets/img/app-icons/terminal.png'
 import vmManagerIcon from '@/assets/img/app-icons/vm-manager.png'
 import desktopIcon from '@/assets/img/app-icons/desktop.svg'
+import downloadStationIcon from '@/assets/img/app-icons/download-station.svg'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_LinkApp from '@/mixins/app/Business_LinkApp'
@@ -212,6 +214,7 @@ const BUILTIN_DEFS = {
 	'App Store': { id: 'appstore', name: 'App Store', label: 'App Store', defaultIcon: appStoreIcon, component: 'AppStoreApp', width: 1040, height: 720 },
 	Terminal: { id: 'terminal', name: 'Terminal', label: 'Terminal', defaultIcon: terminalIcon, component: 'TerminalPanel', width: 720, height: 480 },
 	'Host Desktop': { id: 'host-desktop', name: 'Host Desktop', label: 'Host Desktop', defaultIcon: desktopIcon, component: 'HostDesktopPanel', width: 1024, height: 680 },
+	'Download Station': { id: 'download-station', name: 'Download Station', label: 'Download Station', defaultIcon: downloadStationIcon, component: 'DownloadStationApp', width: 980, height: 640 },
 	VMs: { id: 'vms', name: 'VMs', label: 'VMs', defaultIcon: vmManagerIcon, component: 'VmManagerApp', width: 880, height: 560 },
 	Settings: { id: 'settings', name: 'Settings', label: 'Settings', defaultIcon: settingsIcon, component: 'SettingsApp', width: 760, height: 540 }
 }
@@ -219,6 +222,8 @@ const BUILTIN_DEFS = {
 
 const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer']
 const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
+const DS_COMPONENTS = ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow']
+const isDsComponent = c => DS_COMPONENTS.includes(c)
 
 export default {
 	name: 'dock',
@@ -291,6 +296,9 @@ export default {
 			}
 		},
 
+		isDownloadStationWindow(win) {
+			return isDsComponent(win.component)
+		},
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
 			if (override && override.icon) return override.icon
@@ -334,6 +342,8 @@ export default {
 					icon = this.getBuiltinIcon('App Store')
 				} else if (win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel') {
 					icon = this.getBuiltinIcon('Terminal')
+				} else if (isDsComponent(win.component)) {
+					icon = this.getBuiltinIcon('Download Station')
 				} else if (win.component === 'SettingsApp') {
 					icon = this.getBuiltinIcon('Settings')
 				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
