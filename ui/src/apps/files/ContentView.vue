@@ -600,7 +600,8 @@ export default {
 				this.$emit('move-selection')
 			} else if (event.key === 'Delete' || event.key === 'Backspace') {
 				event.preventDefault()
-				this.$emit('delete-selection')
+				// Shift+Delete skips the Trash, as on every desktop.
+				this.$emit('delete-selection', { permanent: event.shiftKey })
 			}
 		},
 		clearSelection() {

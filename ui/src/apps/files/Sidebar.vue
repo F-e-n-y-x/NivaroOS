@@ -25,8 +25,17 @@
 				:title="$t('FilesShare')"
 				@click="toggleSection('shared')"
 			>
-				<b-icon icon="share-outline" pack="casa" class="casa-color-blue" custom-size="casa-22px"></b-icon>
+				<b-icon icon="share-variant-outline" pack="mdi" custom-size="mdi-22px" class="share-glyph"></b-icon>
 				<span v-if="!isCollapsed">{{ $t('FilesShare') }}</span>
+			</button>
+			<button
+				class="nav-entry"
+				:class="{ active: filesController.activeSection === 'trash', rail: isCollapsed }"
+				:title="$t('Trash')"
+				@click="toggleSection('trash')"
+			>
+				<b-icon icon="delete-outline" pack="mdi" custom-size="mdi-22px" class="trash-glyph"></b-icon>
+				<span v-if="!isCollapsed">{{ $t('Trash') }}</span>
 			</button>
 		</div>
 		<div v-if="!isCollapsed" class="resize-handle" @mousedown="startResize"></div>
@@ -192,5 +201,11 @@ export default {
 		padding: 0;
 		margin: 0 auto;
 	}
+}
+.share-glyph {
+	color: #3b82f6;
+}
+.trash-glyph {
+	color: var(--theme-text-muted, #64748b);
 }
 </style>

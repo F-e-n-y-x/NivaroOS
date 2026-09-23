@@ -14,6 +14,7 @@ import samba from './samba.js';
 import quickshare from './quickshare.js';
 import tailscale from './tailscale.js';
 import users from "./users.js";
+import trash from "./trash.js";
 import local_storage from "./local_storage.js";
 import driver from './driver.js';
 import cloud from './cloud.js';
@@ -21,6 +22,7 @@ import schedules from './schedules.js';
 import companion from './companion.js';
 
 export default {
+	trash,
 	// Apps
 	appCategories,
 	apps,

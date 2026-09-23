@@ -77,6 +77,7 @@ func init() {
 
 	service.MyService = service.NewService(sqliteDB, config.CommonInfo.RuntimePath)
 	service.InitTransfers(config.AppInfo.DBPath)
+	service.InitTrash(config.AppInfo.DBPath)
 
 	service.Cache = cache.Init()
 
@@ -137,6 +138,7 @@ func main() {
 		"/v1/file",
 		"/v1/folder",
 		"/v1/batch",
+		"/v1/trash",
 		"/v1/image",
 		"/v1/samba",
 		"/v1/quickshare",

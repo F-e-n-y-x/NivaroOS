@@ -55,11 +55,25 @@ function legacyState(raw) {
 	return raw.status === 'CALCULATING' ? 'scanning' : 'running'
 }
 
+const PROBLEM = ['done_with_errors', 'failed', 'interrupted']
+const RECENT_MS = 60 * 1000
+const PROBLEM_MS = 24 * 60 * 60 * 1000
+
 function upsert(raw) {
 	const job = normalize(raw)
 	if (!job) return
 	const prev = state.jobs[job.id]
-	if (!prev) state.order.push(job.id)
+	if (!prev) {
+		state.order.push(job.id)
+		// First time this page sees a job that already finished (history
+		// from the server on page load): don't resurface old transfers -
+		// only problems from the last day stay visible until dismissed.
+		if (isTerminal(job)) {
+			const age = Date.now() - (job.finished_at ? Date.parse(job.finished_at) : Date.now())
+			const keep = age < RECENT_MS || (PROBLEM.includes(job.state) && age < PROBLEM_MS)
+			if (!keep) Vue.set(state.hidden, job.id, true)
+		}
+	}
 	Vue.set(state.jobs, job.id, job)
 	if (isTerminal(job) && !announced.has(job.id)) {
 		announced.add(job.id)

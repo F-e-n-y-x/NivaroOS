@@ -41,9 +41,10 @@ const batch = {
 		return api.delete(`${PREFIX}/${id}/history`);
 	},
 
-	// delete file or folder
-	delete(files) {
-		return api.delete(`${PREFIX}`, files);
+	// delete files/folders - into the Trash unless permanent (locations
+	// without a Trash are always permanent, see /v1/trash/support)
+	delete(files, permanent = false) {
+		return api.delete(`${PREFIX}${permanent ? '?permanent=true' : ''}`, files);
 	},
 
 

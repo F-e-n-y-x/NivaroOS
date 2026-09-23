@@ -1,5 +1,6 @@
 import { assetUrl } from '@/utils/assetUrl'
 import qs from 'qs'
+import events from '@/events/events'
 import { escapeHtml } from '@/utils/escapeHtml'
 import { track as trackTransfer, networkMessage as transferNetworkMessage } from '@/service/transfers'
 import has from 'lodash/has'
@@ -419,7 +420,7 @@ export const mixin = {
 		 * @param {Object,Array} items
 		 * @return {void}
 		 */
-		deleteItem(items) {
+		deleteItem(items, opts = {}) {
 			const deleteShare = async (shareId) => {
 				try {
 					await this.$api.samba.deleteShare(shareId);
@@ -443,7 +444,7 @@ export const mixin = {
 			const deleteItems = async (paths) => {
 				let res
 				try {
-					res = await this.$api.batch.delete(JSON.stringify(paths));
+					res = await this.$api.batch.delete(JSON.stringify(paths), !!opts.permanent);
 				} catch (e) {
 					this.$buefy.toast.open({ message: escapeHtml(transferNetworkMessage(e)), type: 'is-danger', duration: 5000 });
 					return false;
@@ -451,6 +452,25 @@ export const mixin = {
 				const job = res.data && res.data.data && res.data.data.id ? res.data.data : null;
 				if (job) trackTransfer(job); // shows in Transfers (big deletes continue in the background)
 				if (res.data.success === 200) {
+					const trashed = (res.data.data && res.data.data.trashed) || [];
+					if (trashed.length) {
+						// Undo right where the delete happened.
+						this.$buefy.snackbar.open({
+							message: escapeHtml(trashed.length === 1 ? this.$t('“{name}” moved to Trash', { name: trashed[0].name }) : this.$t('{n} items moved to Trash', { n: trashed.length })),
+							actionText: this.$t('Undo'),
+							type: 'is-primary',
+							position: 'is-bottom',
+							duration: 7000,
+							queue: false,
+							onAction: async () => {
+								try {
+									await this.$api.trash.restore(trashed.map((t) => t.id));
+								} catch (e) {}
+								this.$EventBus.$emit(events.RELOAD_FILE_LIST);
+								if (typeof this.reload === "function") this.reload();
+							},
+						});
+					}
 					const shotcutData = this.$store.state['shortcutData'];
 					const updatedShotcutData = shotcutData.filter((item) => {
 						if (paths.includes(item.path)) {

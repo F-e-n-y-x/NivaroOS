@@ -187,6 +187,15 @@ func InitV1Router() http.Handler {
 			v1FolderGroup.GET("/size", v1.GetSize)
 			v1FolderGroup.GET("/count", v1.GetFileCount)
 		}
+		v1TrashGroup := v1Group.Group("/trash")
+		v1TrashGroup.Use()
+		{
+			v1TrashGroup.GET("", v1.GetTrash)
+			v1TrashGroup.GET("/support", v1.GetTrashSupport)
+			v1TrashGroup.POST("/restore", v1.PostTrashRestore)
+			v1TrashGroup.DELETE("", v1.DeleteTrashItems)
+			v1TrashGroup.DELETE("/all", v1.DeleteTrashAll)
+		}
 		v1BatchGroup := v1Group.Group("/batch")
 		v1BatchGroup.Use()
 		{

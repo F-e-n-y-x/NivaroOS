@@ -158,8 +158,13 @@ service; cross-drive rename copied into newname/oldname then deleted the
 original; zip downloads were always named "batch".
 
 Known limits / follow-ups
-- A companion single-file download still falls back to the server backup
-  copy when the phone is unreachable (listings are now explicit about it).
-- Deleting still removes permanently; a Trash would add a safety net.
+- ~~Companion download falls back to the backup copy~~ - fixed (1feac89):
+  an unreachable phone now returns 503 naming the device.
+- ~~Deleting removes permanently~~ - Trash added: delete on a local drive is
+  a same-filesystem rename into `<drive>/.nivaroos-trash` (instant, can't
+  half-fail), Undo in the toast, sidebar Trash view (restore never
+  overwrites, delete forever, empty), 30-day auto purge. Cloud drives,
+  network shares and companion devices have no Trash - the dialog says
+  "Delete permanently" there. Shift+Delete skips the Trash.
 - The mobile app's own copy/paste screen doesn't show engine job progress
   yet (it can now: POST /v1/batch/task returns the job id).

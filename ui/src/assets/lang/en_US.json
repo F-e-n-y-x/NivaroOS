@@ -735,5 +735,21 @@
   "“{name}” already exists in {dest}": "“{name}” already exists in {dest}",
   "{n} items already exist in {dest}": "{n} items already exist in {dest}",
   "{what} cut - paste to move": "{what} cut - paste to move",
-  "{what} copied - paste in any folder, tab or device": "{what} copied - paste in any folder, tab or device"
+  "{what} copied - paste in any folder, tab or device": "{what} copied - paste in any folder, tab or device",
+  "All {n} items will be <b>deleted permanently</b>. This can't be undone.": "All {n} items will be <b>deleted permanently</b>. This can't be undone.",
+  "Deleted files and folders stay here for {n} days, so you can restore them.": "Deleted files and folders stay here for {n} days, so you can restore them.",
+  "Restored to {path}": "Restored to {path}",
+  "deleted forever after {n} days": "deleted forever after {n} days",
+  "{n} days ago": "{n} days ago",
+  "{n} h ago": "{n} h ago",
+  "{n} items moved to Trash": "{n} items moved to Trash",
+  "{n} items restored": "{n} items restored",
+  "{n} items will be <b>deleted permanently</b>. This can't be undone.": "{n} items will be <b>deleted permanently</b>. This can't be undone.",
+  "{n} items will be deleted permanently.": "{n} items will be deleted permanently.",
+  "{n} items will be moved to the Trash.": "{n} items will be moved to the Trash.",
+  "{n} min ago": "{n} min ago",
+  "{n} renamed because the name was taken": "{n} renamed because the name was taken",
+  "“{name}” moved to Trash": "“{name}” moved to Trash",
+  "“{name}” will be deleted permanently.": "“{name}” will be deleted permanently.",
+  "“{name}” will be moved to the Trash.": "“{name}” will be moved to the Trash."
 }

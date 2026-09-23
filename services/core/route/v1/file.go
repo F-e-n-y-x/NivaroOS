@@ -36,6 +36,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/transfer"
+	"github.com/F-e-n-y-x/NivaroOS/services/core/service/trash"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 
 	"github.com/google/uuid"
@@ -907,7 +908,7 @@ func DirPath(ctx echo.Context) error {
 		if info[i].Name == ".temp" && info[i].IsDir {
 			continue
 		}
-		if strings.Contains(info[i].Name, ".nvtmp-") || strings.Contains(info[i].Name, ".nvupload-") {
+		if strings.Contains(info[i].Name, ".nvtmp-") || strings.Contains(info[i].Name, ".nvupload-") || info[i].Name == ".nivaroos-trash" {
 			continue // a copy still in flight (see service/transfer)
 		}
 		if _, ok := fileQueue[info[i].Path]; !ok {
@@ -1494,6 +1495,33 @@ func DeleteFile(ctx echo.Context) error {
 		}
 	}
 
+	// Default: into the Trash (an instant rename on the same drive), so a
+	// delete can be undone. Locations that can't keep a Trash (cloud
+	// drives, network shares) and explicit ?permanent=true requests are
+	// deleted for good below.
+	var trashed []trash.Item
+	if permanent, _ := strconv.ParseBool(ctx.QueryParam("permanent")); !permanent {
+		var rest []string
+		var toTrash []string
+		for _, p := range local {
+			if !trash.IsTrashPath(p) && trash.SupportsTrash(p) {
+				toTrash = append(toTrash, p)
+			} else {
+				rest = append(rest, p)
+			}
+		}
+		items, err := service.Trash.Trash(toTrash)
+		trashed = items
+		if err != nil {
+			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
+				Success: common_err.FILE_DELETE_ERROR,
+				Message: fmt.Sprintf("Moved %d item(s) to the Trash, then stopped - %v", len(items), err),
+				Data:    map[string]interface{}{"trashed": items},
+			})
+		}
+		local = rest
+	}
+
 	// Local deletes run as a transfer-engine job: per-file results instead
 	// of one opaque RemoveAll, and progress for huge folders. Small deletes
 	// finish within the wait below and answer synchronously as before.
@@ -1521,9 +1549,9 @@ func DeleteFile(ctx echo.Context) error {
 	}
 
 	if len(protected) > 0 {
-		return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: "Deleted, except for a mounted drive, connected location, or system storage directory - eject or disconnect it instead.", Data: protected})
+		return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: "Deleted, except for a mounted drive, connected location, or system storage directory - eject or disconnect it instead.", Data: map[string]interface{}{"protected": protected, "trashed": trashed}})
 	}
-	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: map[string]interface{}{"trashed": trashed}})
 }
 
 // @Summary update file

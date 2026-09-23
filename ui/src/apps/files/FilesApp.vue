@@ -64,6 +64,7 @@
 				@extract-request="onExtractRequest"
 			></files-content-view>
 			<files-shared-view ref="sharedView" v-show="controller.activeSection === 'shared'" @add-share="activeDialog = 'share-select'"></files-shared-view>
+			<files-trash-view v-if="controller.activeSection === 'trash'" :active="controller.activeSection === 'trash'"></files-trash-view>
 			<slot></slot>
 		</div>
 		<new-folder-dialog v-if="activeDialog === 'new-folder'" :current-path="controller.currentPath" @created="onDialogCreated" @close="activeDialog = null"></new-folder-dialog>
@@ -73,14 +74,13 @@
 		<compress-dialog v-if="activeDialog === 'compress'" :current-path="controller.currentPath" :items="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></compress-dialog>
 		<extract-dialog v-if="activeDialog === 'extract'" :current-path="controller.currentPath" :item="dialogItem" @created="onDialogCreated" @close="activeDialog = null"></extract-dialog>
 		<share-select-dialog v-if="activeDialog === 'share-select'" @created="onShareCreated" @close="activeDialog = null"></share-select-dialog>
-		<confirm-dialog
+		<delete-dialog
 			v-if="activeDialog === 'confirm-delete'"
-			:title="$t('Deleting files')"
-			:message="$t('Are you sure you want to <b>delete</b> these files? This action cannot be undone.')"
-			:confirm-text="$t('Delete')"
+			:items="deleteItems"
+			:force-permanent="deletePermanent"
 			@confirm="performDelete"
 			@cancel="activeDialog = null"
-		></confirm-dialog>
+		></delete-dialog>
 	</div>
 </template>
 
@@ -96,6 +96,8 @@ import FolderTree from './FolderTree.vue'
 import MountList from './MountList.vue'
 import FilesContentView from './ContentView.vue'
 import FilesSharedView from './SharedView.vue'
+import FilesTrashView from './TrashView.vue'
+import DeleteDialog from './dialogs/DeleteDialog.vue'
 import NewFolderDialog from './dialogs/NewFolderDialog.vue'
 import NewFileDialog from './dialogs/NewFileDialog.vue'
 import RenameDialog from './dialogs/RenameDialog.vue'
@@ -138,6 +140,8 @@ export default {
 		MountList,
 		FilesContentView,
 		FilesSharedView,
+		FilesTrashView,
+		DeleteDialog,
 		NewFolderDialog,
 		NewFileDialog,
 		RenameDialog,
@@ -175,6 +179,7 @@ export default {
 			activeDialog: null,
 			dialogItem: null,
 			pasting: false,
+			deletePermanent: false,
 			// One entry per open tab, each independently tracking its own
 			// folder. controller.currentPath always mirrors whichever tab is
 			// active (see navigate()/switchTab()) - Toolbar/Sidebar/FolderTree
@@ -209,6 +214,10 @@ export default {
 		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 	computed: {
+		deleteItems() {
+			const d = this.dialogItem
+			return !d ? [] : Array.isArray(d) ? d : [d]
+		},
 		// Resolves the ContentView instance for whichever tab is currently
 		// active. `ref="contentView"` is repeated across the v-for in the
 		// template, so Vue collects all instances into one array in source
@@ -429,10 +438,10 @@ export default {
 			const items = this.selectedItems()
 			this.downloadFile(items.length === 1 ? items[0] : items)
 		},
-		onDeleteSelection() {
+		onDeleteSelection(opts) {
 			const items = this.selectedItems()
 			if (!items.length) return
-			this.startDelete(items)
+			this.startDelete(items, opts)
 		},
 		// Both only ever shown by Toolbar.vue when exactly one item is
 		// selected (its own singleItem computed), so selectedItems()[0] is
@@ -495,7 +504,7 @@ export default {
 		// with no explanation. This tells the user which item(s) it's
 		// protecting and why, then still deletes whatever's left over, if
 		// anything.
-		startDelete(items) {
+		startDelete(items, opts) {
 			const protectedItems = items.filter((item) => this.isProtectedMountFolder(item))
 			const deletable = items.filter((item) => !this.isProtectedMountFolder(item))
 			if (protectedItems.length) {
@@ -511,22 +520,22 @@ export default {
 			}
 			if (!deletable.length) return
 			this.dialogItem = deletable.length === 1 ? deletable[0] : deletable
+			this.deletePermanent = !!(opts && opts.permanent)
 			this.activeDialog = 'confirm-delete'
 		},
-		async performDelete() {
+		async performDelete(choice) {
 			const items = this.dialogItem
 			this.activeDialog = null
 			this.dialogItem = null
 			this.activeContentView && this.activeContentView.clearSelection()
-			// Wait for the server's answer, then refresh once. (This used to
-			// fire the request without waiting and reload at 0/400/1200 ms,
-			// hoping one of those landed after the delete finished.) Deletes
-			// that continue in the background refresh when their job
-			// finishes - see ContentView.onTransferFinished.
-			await this.deleteItem(items)
+			// Wait for the server's answer, then refresh once. Deletes that
+			// continue in the background refresh when their job finishes
+			// (ContentView.onTransferFinished).
+			await this.deleteItem(items, { permanent: !!(choice && choice.permanent) })
 			this.activeContentView && this.activeContentView.reload()
 			this.$EventBus.$emit(events.RELOAD_FILE_LIST)
 		},
+
 
 	},
 }
