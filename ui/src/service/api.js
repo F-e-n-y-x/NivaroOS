@@ -21,32 +21,37 @@ import cloud from './cloud.js';
 import schedules from './schedules.js';
 import companion from './companion.js';
 
+// Getters, not values: service.js imports the router, whose views import
+// this file - so while a service module (e.g. batch.js) is still loading,
+// this object can be built. A plain value would capture `undefined`
+// forever ($api.batch.delete -> "Cannot read properties of undefined");
+// a getter reads the module once it has finished loading.
 export default {
-	trash,
+	get trash() { return trash },
 	// Apps
-	appCategories,
-	apps,
-	container,
+	get appCategories() { return appCategories },
+	get apps() { return apps },
+	get container() { return container },
 	// Files
-	file,
-	folder,
-	image,
-	batch,
+	get file() { return file },
+	get folder() { return folder },
+	get image() { return image },
+	get batch() { return batch },
 	// Devices
-	disks,
-	fstab,
-	storage,
-	samba,
-	quickshare,
-	tailscale,
-	companion,
-	driver,
-	cloud,
+	get disks() { return disks },
+	get fstab() { return fstab },
+	get storage() { return storage },
+	get samba() { return samba },
+	get quickshare() { return quickshare },
+	get tailscale() { return tailscale },
+	get companion() { return companion },
+	get driver() { return driver },
+	get cloud() { return cloud },
 	// System
-	sys,
-	port,
-	schedules,
+	get sys() { return sys },
+	get port() { return port },
+	get schedules() { return schedules },
 	// User
-	users,
-	local_storage,
+	get users() { return users },
+	get local_storage() { return local_storage },
 }
