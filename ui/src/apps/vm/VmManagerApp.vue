@@ -1,8 +1,10 @@
 <template>
 	<div class="vm-app" ref="root" :class="{ 'nav-collapsed': navCollapsed }">
-		<aside class="vm-nav">
+		<aside class="vm-nav" :aria-label="$t('Virtual machine sections')">
 			<button v-for="s in sections" :key="s.id" class="nav-item hover-effect _is-radius"
-				:class="{ active: activeSection === s.id }" :title="navCollapsed ? $t(s.label) : ''" @click="activeSection = s.id">
+				:class="{ active: activeSection === s.id }" :title="navCollapsed ? $t(s.label) : ''"
+				:aria-label="navCollapsed ? $t(s.label) : null" :aria-current="activeSection === s.id ? 'page' : null"
+				@click="activeSection = s.id">
 				<b-icon :icon="s.icon" :pack="s.pack || 'casa'" size="is-20"></b-icon>
 				<span>{{ $t(s.label) }}</span>
 			</button>
@@ -103,8 +105,10 @@ export default {
 	flex-shrink: 0;
 	width: 13.5rem;
 	padding: var(--space-5) var(--space-3);
-	background: var(--theme-card-bg, #ffffff);
-	border-right: 1px solid rgba(0, 0, 0, 0.06);
+	// Same surfaces as the Settings sidebar, so hover/selected are visible
+	// in both themes (they were #fff on #fff in light).
+	background: var(--theme-card-subtle, #ffffff);
+	border-right: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.06));
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
@@ -159,7 +163,7 @@ export default {
 	}
 
 	&:hover {
-		background: var(--theme-bg-window, #f8fafc);
+		background: var(--theme-card-hover, #f8fafc);
 		color: var(--theme-text-primary, #1e293b);
 
 		.icon {
@@ -168,13 +172,18 @@ export default {
 	}
 
 	&.active {
-		background: var(--theme-card-subtle, #f1f5f9);
+		background: var(--theme-card-bg, #f1f5f9);
 		color: var(--theme-text-primary, #1e293b);
-		font-weight: 500;
+		font-weight: 600;
 
 		.icon {
-			color: #2563eb;
+			color: var(--color-primary-fg);
 		}
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: -2px;
 	}
 }
 
@@ -187,5 +196,50 @@ export default {
 
 .vm-section {
 	height: 100%;
+}
+</style>
+
+<style lang="scss">
+// Keyboard focus ring for every VM window (the manager, Create/Edit VM and
+// the VM dialogs), matching Settings' `.settings-app :focus-visible`.
+// Several controls here set outline:none with nothing in its place.
+.vm-app,
+.create-vm-window,
+.edit-vm-window,
+.vm-dialog,
+.vm-dialog-foot {
+	:focus-visible {
+		outline: 2px solid var(--color-primary-fg) !important;
+		outline-offset: 2px;
+	}
+}
+</style>
+
+<style lang="scss">
+// Inline notice used across the VM windows (replaces Buefy's b-message,
+// whose light yellow/red boxes glared in the dark theme and used their
+// own big type). Themed tint + a coloured edge; text stays readable.
+.vm-notice {
+	margin: var(--space-3) 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-sm);
+	border-left: 3px solid var(--theme-text-muted, #94a3b8);
+	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.04));
+	color: var(--theme-text-primary, #1e293b);
+	font-size: var(--font-sm);
+	line-height: 1.45;
+
+	&.is-warning {
+		border-left-color: var(--color-warning-fg);
+		background: var(--color-warning-soft, rgba(217, 119, 6, 0.1));
+	}
+	&.is-danger {
+		border-left-color: var(--color-danger-fg);
+		background: var(--color-danger-soft, rgba(239, 68, 68, 0.1));
+	}
+	&.is-info {
+		border-left-color: var(--color-primary-fg);
+		background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	}
 }
 </style>

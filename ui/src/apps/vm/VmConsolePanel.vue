@@ -13,7 +13,7 @@
 	uses reliably elsewhere in Files), closed on outside click.
 -->
 <template>
-	<div class="vm-console-panel">
+	<div class="vm-console-panel" :class="{ 'is-compact': panelWidth && panelWidth < 1120, 'is-narrow': panelWidth && panelWidth < 640 }">
 		<div class="console-toolbar">
 			<!-- Standalone window header / VM identity -->
 			<div v-if="showClose" class="vm-identity">
@@ -203,70 +203,56 @@
 											<template v-else>&middot; {{ $t('Read / Write') }}</template>
 										</span>
 									</div>
-									<button class="share-remove-btn" :disabled="shareBusy" :title="$t('Unmount shared folder')" @click="detachShare(sf.target_tag)">
+									<!-- Only a leftover custom folder (from before custom folders
+									     were removed) can be unmounted; the default share stays. -->
+									<button v-if="sf.target_tag !== 'share'" class="share-remove-btn" :disabled="shareBusy" :title="$t('Unmount shared folder')" :aria-label="$t('Unmount shared folder')" @click="detachShare(sf.target_tag)">
 										<b-icon icon="close" size="is-small"></b-icon>
 									</button>
 								</div>
 							</div>
 
-							<!-- Add Share Section -->
-							<div class="share-add-box">
-								<label class="share-label">{{ $t('Add Host Folder') }}</label>
-								<div class="share-folder-picker-row">
-									<span class="share-folder-path" :class="{ 'is-empty': !selectedShareFolder }">
-										{{ selectedShareFolder || $t('Select host directory...') }}
-									</span>
-									<button type="button" class="share-browse-btn" @click="showShareFolderPicker = true">
-										<b-icon icon="folder-open" size="is-small"></b-icon>
-										<span>{{ $t('Browse') }}</span>
-									</button>
-								</div>
-								<div v-if="selectedShareFolder" class="share-tag-row">
-									<input
-										v-model="shareTag"
-										class="share-tag-input"
-										:placeholder="$t('Folder name (letters, numbers, - and _ only)')"
-										pattern="[a-zA-Z0-9_-]+"
-									/>
-									<button class="share-action-btn is-primary" :disabled="shareBusy || !isValidShareTag" @click="attachShare">
-										<b-icon v-if="shareBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-										<b-icon v-else icon="plus" size="is-small"></b-icon>
-										<span>{{ $t('Mount Live') }}</span>
-									</button>
-								</div>
-								<p v-if="selectedShareFolder && shareTag && !isValidShareTag" class="share-tag-error">
-									{{ $t('Only letters, numbers, - and _ are allowed here.') }}
-								</p>
-							</div>
-
-							<!-- Guest Instructions -->
+							<!-- Guest Tools: one button does as much as the guest allows -->
 							<div class="share-instructions-card">
 								<div class="instructions-header">
-									<span class="instructions-title">{{ $t('How to access in VM:') }}</span>
-									<div class="os-tab-buttons">
-										<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'linux' }" @click="instructionsTab = 'linux'">Linux</button>
-										<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'windows' }" @click="instructionsTab = 'windows'">Windows</button>
-									</div>
+									<span class="instructions-title">{{ $t('Drivers & shared folder inside the VM') }}</span>
 								</div>
-								<div v-if="instructionsTab === 'linux'" class="instructions-body">
-									<!-- Every shared folder lives under one single virtiofs export,
-									     always tagged "nivaroshare" on the guest side regardless of
-									     each folder's own name - that name only picks its
-									     subdirectory once mounted (see /mnt/<folder name> below). -->
-									<div class="code-snippet-box">
-										<code>sudo mount -t virtiofs nivaroshare /mnt</code>
-										<button type="button" class="code-copy-btn" :title="$t('Copy Command')" @click="copyCommand('sudo mount -t virtiofs nivaroshare /mnt')">
-											<b-icon icon="content-copy" size="is-small"></b-icon>
-										</button>
+								<div class="instructions-body">
+									<p v-if="gt.phase === 'idle'" class="win-instruct-text">{{ $t('Installs the VirtIO drivers and guest agent, and makes the shared folder appear inside the VM.') }}</p>
+									<p v-else-if="gt.phase === 'building'" class="win-instruct-text" role="status">
+										<b-icon icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										{{ $t('Preparing the Guest Tools disc (one time only, it downloads the drivers)...') }}
+									</p>
+									<p v-else-if="gt.phase === 'running'" class="win-instruct-text" role="status">
+										<b-icon icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										{{ $t('Setting up inside the VM - this can take a few minutes...') }}
+									</p>
+									<p v-else-if="gt.phase === 'done'" class="win-instruct-text gt-ok" role="status">
+										<b-icon icon="check-circle" size="is-small"></b-icon>
+										{{ gt.os === 'windows' ? $t('Done. The shared folder is a drive under "This PC" in the VM.') : $t('Done. The shared folder is at /mnt/nivaroos-share (and ~/NivaroOS-Share) in the VM.') }}
+									</p>
+									<p v-else-if="gt.phase === 'inserted'" class="win-instruct-text" role="status">{{ $t('The Guest Tools disc is in the VM\'s CD drive. Start the VM, then click the button again to finish.') }}</p>
+									<div v-else-if="gt.phase === 'manual'" class="gt-manual">
+										<p class="win-instruct-text">{{ $t('The disc is inserted. One step inside the VM, only this first time:') }}</p>
+										<div class="os-tab-buttons">
+											<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'windows' }" :aria-pressed="instructionsTab === 'windows' ? 'true' : 'false'" @click="instructionsTab = 'windows'">Windows</button>
+											<button type="button" class="os-tab-btn" :class="{ active: instructionsTab === 'linux' }" :aria-pressed="instructionsTab === 'linux' ? 'true' : 'false'" @click="instructionsTab = 'linux'">Linux</button>
+										</div>
+										<p v-if="instructionsTab === 'windows'" class="instructions-note">{{ $t('In File Explorer, double-click the "NivaroOS Guest Tools" CD drive and allow the administrator prompt.') }}</p>
+										<template v-else>
+											<p class="instructions-note">{{ $t('Paste this into a terminal:') }}</p>
+											<div class="code-snippet-box">
+												<code>{{ linuxSetupCommand }}</code>
+												<button type="button" class="code-copy-btn" :title="$t('Copy Command')" :aria-label="$t('Copy Command')" @click="copyCommand(linuxSetupCommand)">
+													<b-icon icon="content-copy" size="is-small"></b-icon>
+												</button>
+											</div>
+										</template>
+										<p class="instructions-note">{{ $t('After that, this button does everything for you.') }}</p>
 									</div>
-									<p class="instructions-note">{{ $t('Your shared folder is mounted directly at /mnt (or /mnt/{example}).', { example: (vm && vm.shared_folders && vm.shared_folders[0] && vm.shared_folders[0].target_tag) || 'share' }) }}</p>
-								</div>
-								<div v-else class="instructions-body">
-									<p class="win-instruct-text">{{ $t('Insert Guest Tools CD and run NivaroOS-Guest-Tools-Setup.bat inside Windows to auto-install all drivers & mount shared folder (Drive Z:).') }}</p>
-									<button type="button" class="insert-virtio-btn" :disabled="virtioWinBusy" @click="insertVirtioWinCD">
-										<b-icon v-if="virtioWinBusy" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-										<b-icon v-else icon="disc" size="is-small"></b-icon>
-										<span>{{ $t('Insert NivaroOS Guest Tools') }}</span>
+									<p v-if="gt.error" class="share-tag-error" role="alert">{{ gt.error }}</p>
+									<button type="button" class="insert-virtio-btn" :disabled="gt.phase === 'building' || gt.phase === 'running'" @click="setupGuestTools">
+										<b-icon icon="auto-fix" size="is-small"></b-icon>
+										<span>{{ gt.phase === 'manual' ? $t('I ran it - check again') : gt.phase === 'done' ? $t('Run setup again') : $t('Set up automatically') }}</span>
 									</button>
 								</div>
 							</div>
@@ -389,13 +375,16 @@
 				<!-- Segment 4: Power Controls -->
 				<div class="toolbar-group">
 					<div ref="powerMenuWrapper" class="menu-wrapper">
-						<button type="button" class="toolbar-btn power-btn" :class="{ 'is-running': vmState === 'running' }" @click="powerMenuOpen = !powerMenuOpen">
+						<button type="button" class="toolbar-btn power-btn" :class="{ 'is-running': vmState === 'running' }" :title="$t('Power')" :aria-label="$t('Power')" aria-haspopup="menu" :aria-expanded="powerMenuOpen ? 'true' : 'false'" :disabled="vmBusy" @click="powerMenuOpen = !powerMenuOpen">
 							<b-icon icon="power" custom-size="mdi-16px"></b-icon>
 							<span>{{ $t('Power') }}</span>
 							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 						</button>
 						<div v-if="powerMenuOpen" class="power-menu power-menu-right">
-							<button type="button" v-if="vmState !== 'running'" class="power-menu-item is-start" @click="runAction('startVM')">
+							<button type="button" v-if="vmState === 'paused'" class="power-menu-item is-start" @click="runAction('resumeVM')">
+								<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Resume') }}</span>
+							</button>
+							<button type="button" v-else-if="vmState !== 'running'" class="power-menu-item is-start" @click="runAction('startVM')">
 								<b-icon icon="play" custom-size="mdi-16px"></b-icon><span>{{ $t('Start') }}</span>
 							</button>
 							<template v-else>
@@ -423,10 +412,12 @@
 			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
 			<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
 			<span>{{ statusText }}</span>
-			<button v-if="status === 'disconnected'" class="reconnect-btn" @click="connect">{{ $t('Reconnect') }}</button>
+			<button v-if="status === 'disconnected' && vmState === 'shutoff'" class="reconnect-btn" :disabled="vmBusy" @click="runAction('startVM')">{{ $t('Start VM') }}</button>
+			<button v-else-if="status === 'disconnected' && vmState === 'paused'" class="reconnect-btn" :disabled="vmBusy" @click="runAction('resumeVM')">{{ $t('Resume') }}</button>
+			<button v-else-if="status === 'disconnected'" class="reconnect-btn" @click="connect">{{ $t('Reconnect') }}</button>
 		</div>
 
-		<div v-show="keyboardOpen" ref="keyboard" class="on-screen-keyboard" :style="keyboardStyle">
+		<div v-show="keyboardOpen && !minimized" ref="keyboard" class="on-screen-keyboard" :style="keyboardStyle">
 			<div class="osk-header" @pointerdown="startKeyboardDrag">
 				<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
 				<span class="osk-title">{{ $t('Keyboard') }}</span>
@@ -499,22 +490,14 @@
 			<span v-if="vm && vm.iso_path" class="statusbar-item"><b-icon icon="disc" size="is-small"></b-icon>{{ isoFileName }}</span>
 			<span v-if="vm && vm.usb_devices && vm.usb_devices.length" class="statusbar-item"><b-icon icon="usb" size="is-small"></b-icon>{{ vm.usb_devices.length }}</span>
 			<span v-if="sharedFolder && sharedFolder.attached" class="statusbar-item is-shared-live">
-				<b-icon icon="folder-sync" size="is-small"></b-icon>{{ $t('USB Share') }} ({{ sharedFolder.size_mb >= 1024 ? (sharedFolder.size_mb / 1024) + ' GB' : sharedFolder.size_mb + ' MB' }})
+				<b-icon icon="folder-sync" size="is-small"></b-icon>{{ $t('Shared folder') }} ({{ sharedFolder.size_mb >= 1024 ? (sharedFolder.size_mb / 1024) + ' GB' : sharedFolder.size_mb + ' MB' }})
 			</span>
 		</div>
 
-		<vm-file-picker-dialog
-			:active="showShareFolderPicker"
-			:title="$t('Select Host Folder to Share')"
-			start-path="/DATA"
-			confine-to-root="/DATA"
-			directory-mode
-			@selected="onShareFolderSelected"
-			@close="showShareFolderPicker = false"
-		></vm-file-picker-dialog>
+
 
 		<!-- Quick Paste & Type Modal -->
-		<vm-overlay-panel :active="showPasteDialog" :title="$t('Paste Text to VM')" max-width="30rem" @close="showPasteDialog = false">
+		<vm-overlay-panel :active="showPasteDialog" :title="$t('Paste Text to VM')" width="30rem" @close="showPasteDialog = false">
 			<div class="paste-modal-content">
 				<p class="paste-modal-desc">
 					{{ $t('Type or paste text (Ctrl+V) to send to the virtual machine.') }}
@@ -756,11 +739,9 @@ export default {
 			diskMenuOpen: false,
 			shareMenuOpen: false,
 			sharedFolder: null,
-			selectedShareFolder: '',
 			shareSizeMB: 1024,
 			shareBusy: false,
 			shareAction: '',
-			showShareFolderPicker: false,
 			loadingHostCaps: false,
 			hostUsbDevices: [],
 			usbBusy: false,
@@ -777,6 +758,15 @@ export default {
 			ctrlActive: false,
 			altActive: false,
 			superActive: false,
+			// Declared here so they're reactive (they used to be created on
+			// first use, so "Mount Live" validation and the VirtIO spinner
+			// never updated).
+			vmBusy: false,
+			pausedByMinimize: false,
+			panelWidth: 0,
+			// Guest Tools setup: idle | building | inserted | running | manual | done
+			gt: { phase: 'idle', os: '', error: '' },
+			instructionsTab: 'windows',
 		}
 	},
 	computed: {
@@ -785,10 +775,10 @@ export default {
 		// charset would be rejected server-side anyway; validating it here
 		// too means the button just stays disabled instead of the user
 		// waiting on a round-trip to find out.
-		isValidShareTag() {
-			return /^[a-zA-Z0-9_-]+$/.test(this.shareTag || '')
-		},
 		statusText() {
+			if (this.status === 'disconnected' && this.vmState && this.vmState !== 'running') {
+				return this.vmState === 'paused' ? this.$t('The VM is paused') : this.$t('The VM is turned off')
+			}
 			return (
 				{
 					connecting: this.$t('Connecting...'),
@@ -796,6 +786,19 @@ export default {
 					disconnected: this.$t('Disconnected'),
 				}[this.status] || this.status
 			)
+		},
+		linuxSetupCommand() {
+			return "sudo sh -c 'm=$(findmnt -rn -S LABEL=NIVAROOS_TOOLS -o TARGET | head -n1); [ -n \"$m\" ] || { m=/run/nivaroos-tools; mkdir -p $m; mount -o ro -L NIVAROOS_TOOLS $m; }; sh $m/linux/nivaroos-guest-setup.sh'"
+		},
+		titleStatus() {
+			if (this.status === 'disconnected' && this.vmState === 'shutoff') return 'off'
+			if (this.status === 'disconnected' && this.vmState === 'paused') return 'paused'
+			return this.status
+		},
+		// The desktop window this console lives in (none in the standalone tab).
+		minimized() {
+			const win = this.$store && this.$store.state.windows.find((w) => w.id === 'vm-console-' + this.vmName)
+			return !!(win && win.minimized)
 		},
 		networkIcon() {
 			return this.vm && this.vm.network_mode && this.vm.network_mode.startsWith('bridge:') ? 'lan-connect' : 'lan'
@@ -871,14 +874,6 @@ export default {
 			]
 		},
 	},
-	watch: {
-		netMenuOpen(open) {
-			if (open) {
-				this.editingNet = false
-				this.loadAvailableNetworks()
-			}
-		},
-	},
 	mounted() {
 		this.connect()
 		this.pollState()
@@ -887,11 +882,20 @@ export default {
 		document.addEventListener('mousedown', this.onOutsideClick)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
 		window.addEventListener('resize', this.clampKeyboardPos)
-		this.panelResizeObserver = new ResizeObserver(() => this.clampKeyboardPos())
+		// Sized from the panel itself, not the viewport: the console is a
+		// resizable window, so viewport media queries never fired and the
+		// toolbar was cut off (Power unreachable) at the default 960px.
+		this.panelResizeObserver = new ResizeObserver(() => {
+			this.panelWidth = this.$el.clientWidth
+			this.clampKeyboardPos()
+		})
 		this.panelResizeObserver.observe(this.$el)
 	},
 	beforeDestroy() {
-		if (this.rfb) this.rfb.disconnect()
+		this.destroyed = true
+		clearTimeout(this.connectTimer)
+		this.releaseModifiers()
+		if (this.rfb) this.disconnectRfb()
 		clearInterval(this.statePollTimer)
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		document.removeEventListener('fullscreenchange', this.onFullscreenChange)
@@ -902,37 +906,69 @@ export default {
 		}
 	},
 	methods: {
-		connect() {
-			if (this.rfb) {
-				this.rfb.disconnect()
-				this.rfb = null
+		disconnectRfb() {
+			const old = this.rfb
+			this.rfb = null
+			if (old) {
+				try {
+					old.disconnect()
+				} catch (e) {
+					// already closed
+				}
 			}
+			this.status = 'disconnected'
+		},
+		scheduleConnect(ms) {
+			clearTimeout(this.connectTimer)
+			this.connectTimer = setTimeout(() => {
+				if (!this.destroyed) this.connect()
+			}, ms)
+		},
+		connect() {
+			clearTimeout(this.connectTimer)
+			if (this.destroyed || !this.$refs.screen) return
+			if (this.rfb) this.disconnectRfb()
 			this.status = 'connecting'
-			this.rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
-			this.rfb.scaleViewport = this.scaleToFit
+			const rfb = new RFB(this.$refs.screen, vmSidecar.consoleUrl(this.vmName))
+			this.rfb = rfb
+			rfb.scaleViewport = this.scaleToFit
 			const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
-			this.rfb.qualityLevel = preset.qualityLevel
-			this.rfb.compressionLevel = preset.compressionLevel
-			this.rfb.addEventListener('connect', () => {
+			rfb.qualityLevel = preset.qualityLevel
+			rfb.compressionLevel = preset.compressionLevel
+			// Every handler checks it still belongs to the current session: an
+			// old session's late 'disconnect' used to flip a fresh, working
+			// connection back to "Disconnected".
+			rfb.addEventListener('connect', () => {
+				if (rfb !== this.rfb) return
 				this.status = 'connected'
 				const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.balanced
-				this.rfb.qualityLevel = p.qualityLevel
-				this.rfb.compressionLevel = p.compressionLevel
+				rfb.qualityLevel = p.qualityLevel
+				rfb.compressionLevel = p.compressionLevel
 			})
-			this.rfb.addEventListener('disconnect', () => {
+			rfb.addEventListener('disconnect', () => {
+				if (rfb !== this.rfb) return
 				this.status = 'disconnected'
 			})
-			this.rfb.addEventListener('clipboard', (e) => {
+			rfb.addEventListener('clipboard', (e) => {
+				if (rfb !== this.rfb) return
 				const text = e.detail && e.detail.text
 				if (text && navigator.clipboard && navigator.clipboard.writeText) {
 					navigator.clipboard.writeText(text).catch(() => {})
 				}
 			})
 		},
-		async pollState() {
+		async pollState(force) {
+			if (force !== true && (document.hidden || this.minimized)) return
 			try {
-				this.vm = await vmSidecar.getVM(this.vmName)
-				this.vmState = this.vm ? this.vm.state : null
+				const vm = await vmSidecar.getVM(this.vmName)
+				if (this.destroyed) return
+				// Assigning a fresh object every 3 s re-rendered the whole
+				// console (keyboard included) even when nothing changed.
+				if (JSON.stringify(vm) !== this.lastVmJson) {
+					this.lastVmJson = JSON.stringify(vm)
+					this.vm = vm
+				}
+				this.vmState = vm ? vm.state : null
 			} catch (e) {
 				// VM may have just been deleted, or the sidecar is briefly
 				// unreachable - keep showing the last known state rather than
@@ -941,41 +977,6 @@ export default {
 		},
 		toggleShareMenu() {
 			this.shareMenuOpen = !this.shareMenuOpen
-		},
-		onShareFolderSelected(path) {
-			this.selectedShareFolder = path
-			const base = path.split('/').filter(Boolean).pop() || 'shared'
-			this.shareTag = base
-		},
-		async attachShare() {
-			if (!this.selectedShareFolder || this.shareBusy) return
-			this.shareBusy = true
-			try {
-				const tag = this.shareTag || this.selectedShareFolder.split('/').filter(Boolean).pop() || 'shared'
-				await vmSidecar.attachSharedFolder(this.vmName, {
-					source_dir: this.selectedShareFolder,
-					target_tag: tag,
-					read_only: this.shareReadOnly,
-				})
-				this.selectedShareFolder = ''
-				this.shareTag = ''
-				this.$buefy.toast.open({
-					message: this.$t('Live shared folder mounted!'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 3500,
-				})
-				await this.pollState()
-			} catch (e) {
-				this.$buefy.toast.open({
-					message: e.message || this.$t('Failed to mount shared folder'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 4000,
-				})
-			} finally {
-				this.shareBusy = false
-			}
 		},
 		async detachShare(tag) {
 			if (this.shareBusy) return
@@ -988,7 +989,7 @@ export default {
 					position: 'is-top',
 					duration: 3500,
 				})
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({
 					message: e.message || this.$t('Failed to unmount shared folder'),
@@ -1000,27 +1001,54 @@ export default {
 				this.shareBusy = false
 			}
 		},
-		async insertVirtioWinCD() {
-			this.virtioWinBusy = true
+		// One button, as automatic as the guest allows:
+		//  1. make sure the Guest Tools disc exists (the server builds it once),
+		//  2. insert it,
+		//  3. if the VM runs the QEMU guest agent, run the setup inside it;
+		//     otherwise show the single manual step (first time only - the
+		//     tools install the agent, so the next run is fully automatic).
+		async setupGuestTools() {
+			this.gt = { phase: 'building', os: '', error: '' }
 			try {
-				await vmSidecar.insertVirtioWin(this.vmName)
-				this.$buefy.toast.open({
-					message: this.$t('VirtIO Drivers ISO inserted into CD drive! Open "This PC" in Windows to install the VirtIO-FS service.'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 5000,
-				})
-				await this.pollState()
+				for (let i = 0; ; i++) {
+					try {
+						await vmSidecar.insertGuestTools(this.vmName)
+						break
+					} catch (e) {
+						if (e.status !== 409) throw e
+						const st = await vmSidecar.getGuestTools().catch(() => null)
+						if (st && st.error && !st.building) throw new Error(st.error)
+						if (this.destroyed || i > 900) return
+						await new Promise((r) => setTimeout(r, 2000))
+					}
+				}
+				await this.pollState(true)
+				if (this.vmState !== 'running') {
+					this.gt = { phase: 'inserted', os: '', error: '' }
+					return
+				}
+				this.gt = { phase: 'running', os: '', error: '' }
+				try {
+					const res = await vmSidecar.autoSetupGuestTools(this.vmName)
+					if (res && res.ok) {
+						this.gt = { phase: 'done', os: res.os, error: '' }
+						this.lastVmJson = ''
+						await this.pollState(true)
+					} else {
+						this.gt = { phase: 'manual', os: (res && res.os) || '', error: this.$t('The setup reported a problem: {reason}', { reason: ((res && res.output) || '').split('\n').filter((l) => l.includes('[!]')).join(' ') || this.$t('see the log in the VM') }) }
+					}
+				} catch (e) {
+					if (e.status !== 409) throw e
+					this.instructionsTab = this.guessGuestOs()
+					this.gt = { phase: 'manual', os: '', error: '' }
+				}
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: e.message || this.$t('Failed to insert VirtIO Drivers CD'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 4000,
-				})
-			} finally {
-				this.virtioWinBusy = false
+				this.gt = { phase: 'idle', os: '', error: e.message }
 			}
+		},
+		guessGuestOs() {
+			const n = (this.vmName || '').toLowerCase()
+			return /win/.test(n) || ((this.vm && this.vm.networks && this.vm.networks[0] && this.vm.networks[0].model) === 'e1000e') ? 'windows' : 'linux'
 		},
 		copyCommand(cmd) {
 			if (navigator.clipboard) {
@@ -1188,6 +1216,8 @@ export default {
 			if (typeof event.target.closest === 'function') {
 				if (
 					event.target.closest('.vm-overlay') ||
+					event.target.closest('.portal-window') ||
+					event.target.closest('.settings-overlay-home') ||
 					event.target.closest('.modal') ||
 					event.target.closest('.dialog') ||
 					event.target.closest('.vm-dropdown') ||
@@ -1220,7 +1250,46 @@ export default {
 			}
 		},
 		closeKeyboard() {
+			this.releaseModifiers()
 			this.keyboardOpen = false
+		},
+		// Sticky Ctrl/Alt/Shift/Super were left held down in the guest when
+		// the keyboard closed or the console went away.
+		// Toolbar menus open from their button's edge; near a window edge
+		// (or with the toolbar wrapped) that put part of a menu outside the
+		// window, cut off. Nudge any open menu back inside.
+		keepMenusInside() {
+			this.$nextTick(() => {
+				if (!this.$el || !this.$el.getBoundingClientRect) return
+				const box = this.$el.getBoundingClientRect()
+				for (const menu of this.$el.querySelectorAll('.device-menu, .power-menu')) {
+					menu.style.transform = ''
+					const r = menu.getBoundingClientRect()
+					if (!r.width) continue
+					let dx = 0
+					if (r.left < box.left + 8) dx = box.left + 8 - r.left
+					else if (r.right > box.right - 8) dx = box.right - 8 - r.right
+					if (dx) menu.style.transform = `translateX(${Math.round(dx)}px)`
+				}
+			})
+		},
+		releaseModifiers() {
+			const held = [
+				['ctrlActive', 0xffe3, 'ControlLeft'],
+				['altActive', 0xffe9, 'AltLeft'],
+				['shiftActive', 0xffe1, 'ShiftLeft'],
+				['superActive', 0xffeb, 'MetaLeft'],
+			]
+			for (const [flag, keysym, code] of held) {
+				if (this[flag] && this.rfb) {
+					try {
+						this.rfb.sendKey(keysym, code, false)
+					} catch (e) {
+						// not connected
+					}
+				}
+				this[flag] = false
+			}
 		},
 		async toggleNetworkLink(net) {
 			if (!net.mac) return
@@ -1234,7 +1303,7 @@ export default {
 					type: targetState === 'up' ? 'is-success' : 'is-warning',
 					duration: 2000,
 				})
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message || this.$t('Failed to change network state'), type: 'is-danger' })
 			} finally {
@@ -1266,7 +1335,7 @@ export default {
 					duration: 2500,
 				})
 				this.editingNet = false
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message || this.$t('Failed to update network adapter'), type: 'is-danger' })
 			} finally {
@@ -1279,19 +1348,39 @@ export default {
 				this.availableBridges = (nets || []).filter((n) => n.mode === 'bridge')
 			} catch (e) {}
 		},
-		async runAction(method) {
+		runAction(method) {
 			this.powerMenuOpen = false
+			// Reset and Force off are like pulling the plug: unsaved work in
+			// the guest is lost, so they get a confirmation.
+			const risky = {
+				resetVM: { title: this.$t('Reset VM'), message: this.$t('Restart {name} immediately? Like pressing a reset button: unsaved work inside the VM is lost.', { name: this.vmName }), confirmText: this.$t('Reset') },
+				forceOffVM: { title: this.$t('Force off VM'), message: this.$t('Turn off {name} immediately? Like pulling the power plug: unsaved work inside the VM is lost. Use Shutdown for a clean power-off.', { name: this.vmName }), confirmText: this.$t('Force off') },
+			}[method]
+			if (risky) {
+				this.confirmWindow({ ...risky, cancelText: this.$t('Cancel'), type: 'is-danger', onConfirm: () => this.doAction(method) })
+				return
+			}
+			return this.doAction(method)
+		},
+		async doAction(method) {
+			if (this.vmBusy) return
+			this.vmBusy = true
 			try {
 				await vmSidecar[method](this.vmName)
-				await this.pollState()
+				if (method === 'shutdownVM') {
+					this.$buefy.toast.open({ message: this.$t('Sent shutdown signal - the guest OS decides when to actually power off.'), type: 'is-info' })
+				}
+				await this.pollState(true)
 				// A fresh start (or a reboot cycling the VNC server) has no
 				// listening console yet the instant the API call returns -
 				// give it a moment, then reconnect if we're not already.
-				if (method === 'startVM' && this.status !== 'connected') {
-					setTimeout(() => this.connect(), 2000)
+				if ((method === 'startVM' || method === 'resumeVM') && this.status !== 'connected') {
+					this.scheduleConnect(2000)
 				}
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+			} finally {
+				this.vmBusy = false
 			}
 		},
 		isUsbAttached(dev) {
@@ -1316,7 +1405,7 @@ export default {
 				} else {
 					await vmSidecar.detachUSBDevice(this.vmName, dev.vendor_id, dev.product_id)
 				}
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
 			} finally {
@@ -1333,7 +1422,7 @@ export default {
 					this.diskBusy = true
 					try {
 						await vmSidecar.detachDisk(this.vmName, disk.target)
-						await this.pollState()
+						await this.pollState(true)
 					} catch (e) {
 						this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
 					} finally {
@@ -1351,7 +1440,7 @@ export default {
 					type: 'is-info',
 					duration: 2000,
 				})
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
 			} finally {
@@ -1372,14 +1461,14 @@ export default {
 				// The sidecar always serves ISOs from this one fixed
 				// directory (defaultISODir) - same convention the create-VM
 				// wizard's file picker uses as its start-path.
-				await vmSidecar.insertCDROM(this.vmName, `/DATA/VMs/isos/${this.selectedISO}`)
+				await vmSidecar.insertCDROM(this.vmName, `/DATA/VMs/ISOs/${this.selectedISO}`)
 				this.selectedISO = ''
 				this.$buefy.toast.open({
 					message: this.$t('ISO inserted successfully!'),
 					type: 'is-success',
 					duration: 2000,
 				})
-				await this.pollState()
+				await this.pollState(true)
 			} catch (e) {
 				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
 			} finally {
@@ -1487,7 +1576,8 @@ export default {
 		// (see DesktopWindow.vue) - it has no other way to know this
 		// state, since it mounts this panel generically like any window
 		// content.
-		status: {
+		// A VM that is simply off isn't "Disconnected" (a red error pill).
+		titleStatus: {
 			immediate: true,
 			handler(val) {
 				this.$emit('status-change', val)
@@ -1513,9 +1603,51 @@ export default {
 		},
 		usbMenuOpen(open) {
 			if (open) this.loadHostUsbDevices()
+			this.keepMenusInside()
+		},
+		shareMenuOpen() {
+			this.keepMenusInside()
+		},
+		powerMenuOpen() {
+			this.keepMenusInside()
+		},
+		keysMenuOpen() {
+			this.keepMenusInside()
+		},
+		qualityMenuOpen() {
+			this.keepMenusInside()
+		},
+		// (This used to sit in a second `watch:` block earlier in the
+		// component - a duplicate key, so JS silently dropped it and the
+		// Network menu never loaded the bridge list.)
+		netMenuOpen(open) {
+			if (open) {
+				this.editingNet = false
+				this.loadAvailableNetworks()
+			}
+			this.keepMenusInside()
+		},
+		// VM started from somewhere else (VM list, another tab): connect
+		// instead of sitting on "Disconnected" until Reconnect is clicked.
+		vmState(state, prev) {
+			if (state === 'running' && prev && prev !== 'running' && this.status !== 'connected') {
+				this.scheduleConnect(1500)
+			}
+		},
+		minimized(min) {
+			// Nothing to show while minimised: drop the VNC stream (it keeps
+			// decoding frames otherwise) and reconnect on restore.
+			if (min) {
+				this.pausedByMinimize = this.status !== 'disconnected'
+				if (this.rfb) this.disconnectRfb()
+			} else if (this.pausedByMinimize) {
+				this.pausedByMinimize = false
+				this.connect()
+			}
 		},
 		diskMenuOpen(open) {
 			if (open) this.loadAvailableISOs()
+			this.keepMenusInside()
 		},
 	},
 }
@@ -1641,13 +1773,40 @@ export default {
 
 	&.close-btn:hover {
 		background: rgba(239, 68, 68, 0.25);
-		color: #ef4444;
+		color: #f87171;
 	}
 }
 
-@media (max-width: 680px) {
-	.toolbar-btn span {
+// Compact: labels become icon-only, but stay in the accessibility tree
+// (visually hidden, not display:none) so every button keeps its name.
+.vm-console-panel.is-compact .toolbar-btn > span:not(.icon):not(.share-badge-dot) {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+.vm-console-panel.is-narrow {
+	.console-toolbar {
+		flex-wrap: wrap;
+	}
+	.toolbar-actions {
+		flex-wrap: wrap;
+		row-gap: var(--space-1);
+	}
+	.toolbar-divider {
 		display: none;
+	}
+}
+@media (max-width: 680px) {
+	.toolbar-btn > span:not(.icon):not(.share-badge-dot) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
 	}
 	.toolbar-btn {
 		padding: var(--space-1) var(--space-2);
@@ -2026,7 +2185,7 @@ export default {
 }
 .device-menu-hint {
 	font-size: var(--font-xs);
-	color: rgba(255, 255, 255, 0.45);
+	color: rgba(255, 255, 255, 0.62);
 	margin: var(--space-1) 0;
 }
 .device-menu-row {
@@ -2404,7 +2563,7 @@ export default {
 	font-family: monospace;
 
 	&.is-empty {
-		color: rgba(255, 255, 255, 0.35);
+		color: rgba(255, 255, 255, 0.62);
 		font-family: inherit;
 		font-style: italic;
 	}
@@ -2642,7 +2801,7 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		color: #ef4444;
+		color: #f87171;
 		background: rgba(239, 68, 68, 0.15);
 	}
 }
@@ -2867,5 +3026,11 @@ export default {
 		opacity: 0.4;
 		cursor: default;
 	}
+}
+.gt-ok {
+	color: #4ade80;
+}
+.gt-manual .os-tab-buttons {
+	margin: var(--space-2) 0;
 }
 </style>

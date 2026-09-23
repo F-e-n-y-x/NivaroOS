@@ -25,7 +25,7 @@
 
 		<div class="vm-hw-section">
 			<h3 class="setting-card-title">{{ $t('PCI Devices') }}</h3>
-			<p v-if="!iommuEnabled" class="vm-hw-warning">
+			<p v-if="!iommuEnabled" class="vm-notice is-warning" role="note">
 				{{ $t("This server doesn't have hardware device passthrough turned on yet, so PCI devices can't be assigned to a VM. It usually needs to be enabled in the BIOS/UEFI settings (often listed as Intel VT-d or AMD-Vi) and the server restarted.") }}
 			</p>
 			<template v-else>
@@ -128,13 +128,7 @@ export default {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.45));
 }
-.vm-hw-warning {
-	font-size: var(--font-xs);
-	color: var(--color-warning);
-	background: var(--color-warning-soft);
-	border-radius: var(--radius-control);
-	padding: var(--space-2) var(--space-3);
-}
+
 // Same icon-badge row treatment as VmDiskList's .vm-disk-row / VmNetworkList's
 // .vm-net-row - a passthrough device is a selectable row, not an editable
 // one, so the trailing control is a checkbox instead of remove/options.
@@ -150,11 +144,11 @@ export default {
 	cursor: pointer;
 
 	&:hover {
-		border-color: rgba(50, 115, 220, 0.4);
+		border-color: rgba(37, 99, 235, 0.4);
 	}
 	&.active {
-		border-color: rgba(50, 115, 220, 0.35);
-		background: rgba(50, 115, 220, 0.04);
+		border-color: rgba(37, 99, 235, 0.35);
+		background: rgba(37, 99, 235, 0.04);
 	}
 }
 .vm-hw-icon {
@@ -169,8 +163,8 @@ export default {
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.4));
 
 	&.active {
-		background: rgba(50, 115, 220, 0.1);
-		color: var(--color-primary, #3273dc);
+		background: rgba(37, 99, 235, 0.1);
+		color: var(--color-primary-fg);
 	}
 }
 .vm-hw-main {

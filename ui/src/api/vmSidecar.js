@@ -29,7 +29,10 @@ async function request(path, options = {}) {
 			if (res.json) body = await res.json()
 			else if (res.text) body = JSON.parse(await res.text())
 		} catch (e) {}
-		throw new Error(body.error || `${options.method || 'GET'} ${path} failed: ${res.status}`)
+		// Sidecar errors are {error}; the auth layer's 401 is {message}.
+		const err = new Error(body.error || body.message || (res.status === 401 ? 'Your session expired - sign in again' : `${options.method || 'GET'} ${path} failed: ${res.status}`))
+		err.status = res.status
+		throw err
 	}
 	if (res.status === 204) return null
 	if (res.text) {
@@ -71,11 +74,45 @@ export const vmSidecar = {
 	shutdownVM: name => request(`/vms/${encodeURIComponent(name)}/shutdown`, { method: 'POST' }),
 	forceOffVM: name => request(`/vms/${encodeURIComponent(name)}/force-off`, { method: 'POST' }),
 	resetVM: name => request(`/vms/${encodeURIComponent(name)}/reset`, { method: 'POST' }),
+	pauseVM: name => request(`/vms/${encodeURIComponent(name)}/pause`, { method: 'POST' }),
+	resumeVM: name => request(`/vms/${encodeURIComponent(name)}/resume`, { method: 'POST' }),
 	deleteVM: (name, wipeDisk) =>
 		request(`/vms/${encodeURIComponent(name)}${wipeDisk ? '?wipe_disk=true' : ''}`, { method: 'DELETE' }),
 
 	listISOs: () => request('/isos'),
 	uploadISO: formData => request('/isos', { method: 'POST', body: formData }),
+	// ISOs are often several GB: XHR (unlike fetch) reports upload
+	// progress, and the returned abort() lets the user cancel.
+	uploadISOWithProgress(file, onProgress) {
+		const xhr = new XMLHttpRequest()
+		const promise = new Promise((resolve, reject) => {
+			xhr.open('POST', `${BASE_URL}/isos`)
+			const token = authToken()
+			if (token) xhr.setRequestHeader('Authorization', token)
+			xhr.upload.onprogress = e => {
+				if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total)
+			}
+			xhr.onload = () => {
+				if (xhr.status >= 200 && xhr.status < 300) return resolve()
+				let msg = `Upload failed: ${xhr.status}`
+				try {
+					const body = JSON.parse(xhr.responseText)
+					msg = body.error || body.message || msg
+				} catch (e) {}
+				reject(new Error(msg))
+			}
+			xhr.onerror = () => reject(new Error('Upload failed: network error'))
+			xhr.onabort = () => {
+				const e = new Error('Upload cancelled')
+				e.cancelled = true
+				reject(e)
+			}
+			const form = new FormData()
+			form.append('iso', file)
+			xhr.send(form)
+		})
+		return { promise, abort: () => xhr.abort() }
+	},
 	deleteISO: name => request(`/isos/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
 	listNetworks: () => request('/networks'),
@@ -105,9 +142,17 @@ export const vmSidecar = {
 		request(`/vms/${encodeURIComponent(name)}/network/adapter`, jsonBody({ old_mac: oldMac, nic })),
 
 	listSharedFolders: name => request(`/vms/${encodeURIComponent(name)}/shared-folders`),
-	attachSharedFolder: (name, payload) => request(`/vms/${encodeURIComponent(name)}/shared-folders`, jsonBody(payload)),
 	detachSharedFolder: (name, tag) => request(`/vms/${encodeURIComponent(name)}/shared-folders/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
 	insertVirtioWin: name => request(`/vms/${encodeURIComponent(name)}/insert-virtio-win`, { method: 'POST' }),
+
+	// NivaroOS Guest Tools (drivers + guest agent + shared folder setup).
+	// insert answers 409 while the disc is still being built on the server
+	// (poll getGuestTools); autoSetup answers 409 when the VM has no guest
+	// agent yet (the one manual step is then shown instead).
+	getGuestTools: () => request('/guest-tools'),
+	buildGuestTools: () => request('/guest-tools/build', { method: 'POST' }),
+	insertGuestTools: name => request(`/vms/${encodeURIComponent(name)}/guest-tools/insert`, { method: 'POST' }),
+	autoSetupGuestTools: name => request(`/vms/${encodeURIComponent(name)}/guest-tools/auto-setup`, { method: 'POST' }),
 
 	// VM Snapshots
 	listSnapshots: name => request(`/vms/${encodeURIComponent(name)}/snapshots`),

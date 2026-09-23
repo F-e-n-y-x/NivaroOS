@@ -260,6 +260,14 @@ const mutations = {
 				height: h
 			}
 		}
+		// Any viewport (e.g. a narrow desktop browser that isn't flagged as
+		// mobile): never open a window bigger than the screen or off it.
+		if (typeof window !== 'undefined' && window.innerWidth) {
+			rect.width = Math.min(rect.width, Math.max(280, window.innerWidth - 16))
+			rect.height = Math.min(rect.height, Math.max(200, window.innerHeight - 60))
+			rect.x = Math.max(0, Math.min(rect.x, window.innerWidth - rect.width))
+			rect.y = Math.max(0, Math.min(rect.y, window.innerHeight - rect.height - 40))
+		}
 		state.windows.push({
 			id,
 			title,

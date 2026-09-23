@@ -7,8 +7,12 @@
 			<h2 class="section-title">{{ $t('Set up virtual machines') }}</h2>
 			<p class="mb-4">{{ $t('A few one-time components need to be installed on this server before you can create VMs.') }}</p>
 
-			<div v-if="unreachable" class="has-text-centered mb-4">
-				<p class="has-text-danger mb-3">{{ $t("VM support isn't installed on this server yet.") }}</p>
+			<div v-if="loadError" class="has-text-centered mb-4" role="alert">
+				<p class="setup-error mb-3">{{ $t('The VM service answered with an error: {reason}', { reason: loadError }) }}</p>
+				<b-button type="is-primary" class="install-btn" @click="refresh">{{ $t('Try again') }}</b-button>
+			</div>
+			<div v-else-if="unreachable" class="has-text-centered mb-4">
+				<p class="setup-error mb-3">{{ $t("VM support isn't installed on this server yet.") }}</p>
 				<b-button type="is-primary" outlined class="install-btn" @click="openInstallTerminal">
 					{{ $t('Open terminal to install') }}
 				</b-button>
@@ -21,17 +25,17 @@
 						<li v-for="pkg in status.missing_packages" :key="pkg">{{ pkg }}</li>
 					</ul>
 				</div>
-				<p v-if="!status.libvirt_reachable" class="has-text-danger mb-4">
+				<p v-if="!status.libvirt_reachable" class="setup-error mb-4">
 					{{ $t("The virtualization service isn't responding yet - try installing again, or restart the server if this persists.") }}
 				</p>
 			</template>
 
-			<b-message v-if="installResult && !installResult.success" type="is-danger" :closable="false">
+			<div class="vm-notice is-danger" v-if="installResult && !installResult.success" role="alert">
 				<strong>{{ installResult.step }}</strong>
 				<pre class="vm-setup-output">{{ installResult.output }}</pre>
-			</b-message>
+			</div>
 
-			<b-button v-if="!unreachable" type="is-primary" class="install-btn" :loading="installing" @click="install">
+			<b-button v-if="!unreachable && !loadError" type="is-primary" class="install-btn" :loading="installing" @click="install">
 				{{ $t('Install now') }}
 			</b-button>
 		</div>
@@ -49,6 +53,7 @@ export default {
 			installing: false,
 			status: { missing_packages: [], libvirt_reachable: false, ready: false },
 			unreachable: false,
+			loadError: '',
 			installResult: null
 		}
 	},
@@ -62,8 +67,17 @@ export default {
 				this.status = await vmSidecar.getSetupStatus()
 				this.unreachable = false
 				if (this.status.ready) this.$emit('ready')
+				this.loadError = ''
 			} catch (e) {
-				this.unreachable = true
+				// No answer at all = the VM service isn't installed/running.
+				// An HTTP error (expired login, server error) is something
+				// else and mustn't offer to "install" anything.
+				if (e.status) {
+					this.loadError = e.message
+					this.unreachable = false
+				} else {
+					this.unreachable = true
+				}
 			} finally {
 				this.checking = false
 			}
@@ -74,7 +88,7 @@ export default {
 			try {
 				this.installResult = await vmSidecar.runSetupInstall()
 			} catch (e) {
-				this.installResult = { step: 'request failed', output: e.message, success: false }
+				this.installResult = { step: this.$t('The install request failed'), output: e.message, success: false }
 			} finally {
 				this.installing = false
 				await this.refresh()
@@ -141,7 +155,7 @@ export default {
 // different tool, not the primary action, so it shouldn't compete with it.
 ::v-deep .b-button.install-btn.is-outlined {
 	background: transparent;
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	border: 1px solid var(--color-primary);
 
 	&:hover {
@@ -165,5 +179,8 @@ export default {
 	white-space: pre-wrap;
 	font-size: var(--font-sm);
 	margin-top: var(--space-2);
+}
+.setup-error {
+	color: var(--color-danger-fg);
 }
 </style>

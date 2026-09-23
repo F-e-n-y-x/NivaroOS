@@ -10,35 +10,35 @@
 		<template v-if="vm">
 			<div class="setting-card">
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
-						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" :max="maxVcpus" step="1"
+						<input class="pretty-range" v-model.number="form.vcpus" :aria-label="$t('vCPUs')" type="range" min="1" :max="maxVcpus" step="1"
 							:style="rangeStyle(form.vcpus, 1, maxVcpus)" />
 						<span class="slider-hint">{{ maxVcpus }}</span>
-						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" :max="maxVcpus" @change="clampVcpus" />
+						<input type="number" class="slider-value-input" v-model.number="form.vcpus" :aria-label="$t('vCPUs')" min="1" :max="maxVcpus" @change="clampVcpus" />
 					</div>
 				</div>
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
-						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" :max="maxMemoryMiB" step="512"
+						<input class="pretty-range" v-model.number="form.memory_mib" :aria-label="$t('Memory (MB)')" type="range" min="512" :max="maxMemoryMiB" step="512"
 							:style="rangeStyle(form.memory_mib, 512, maxMemoryMiB)" />
 						<span class="slider-hint">{{ maxMemoryGiB }} GB</span>
-						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" :max="maxMemoryGiB" step="0.5" />
+						<input type="number" class="slider-value-input" v-model.number="memoryGiB" :aria-label="$t('Memory (GB)')" min="0.5" :max="maxMemoryGiB" step="0.5" />
 						<span class="slider-value-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="cog-outline" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Firmware') }}</div>
 					<div class="row-control">
 						<div class="segmented-control">
-							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'bios' }" @click="form.firmware = 'bios'">{{ $t('BIOS') }}</button>
-							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'uefi' }" @click="form.firmware = 'uefi'">{{ $t('UEFI') }}</button>
+							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'bios' }" :aria-pressed="(form.firmware === 'bios') ? 'true' : 'false'" @click="form.firmware = 'bios'">{{ $t('BIOS') }}</button>
+							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'uefi' }" :aria-pressed="(form.firmware === 'uefi') ? 'true' : 'false'" @click="form.firmware = 'uefi'">{{ $t('UEFI') }}</button>
 						</div>
 					</div>
 				</div>
@@ -74,7 +74,7 @@
 			<vm-file-picker-dialog
 				:active="showIsoPicker"
 				:title="$t('ISO')"
-				start-path="/DATA/VMs/isos"
+				start-path="/DATA/VMs/ISOs"
 				:extensions="['iso', 'img']"
 				@selected="form.iso_path = $event"
 				@close="showIsoPicker = false"
@@ -88,61 +88,46 @@
 				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
 			</div>
 			<div class="edit-section">
-				<h3 class="setting-card-title">{{ $t('Shared Folders') }}</h3>
+				<h3 class="setting-card-title">{{ $t('Shared Folder') }}</h3>
+				<!-- Only the default share: custom host folders were removed
+				     after one of them cost the owner data. -->
 				<div class="vm-share-list">
-					<div v-for="(sf, idx) in form.shared_folders || []" :key="idx" class="vm-share-row">
+					<div class="vm-share-row">
 						<div class="vm-share-icon">
 							<b-icon icon="folder-sync-outline" custom-size="mdi-22px"></b-icon>
 						</div>
 						<div class="vm-share-main">
 							<div class="vm-share-path-row">
-								<span class="vm-share-path" :title="sf.source_dir">{{ sf.source_dir }}</span>
-								<span class="vm-share-tag-badge">{{ sf.target_tag }}</span>
+								<span class="vm-share-path">{{ DEFAULT_SHARE.source_dir }}</span>
+								<span class="vm-share-tag-badge">{{ DEFAULT_SHARE.target_tag }}</span>
 							</div>
 							<div class="vm-share-options">
 								<label class="vm-share-ro">
-									<input type="checkbox" :checked="sf.read_only" @change="sf.read_only = $event.target.checked" />
-									{{ $t('Read-Only') }}
+									<input v-model="shareReadOnly" type="checkbox" />
+									{{ $t('Read-Only (the VM can read files but not change or delete them)') }}
 								</label>
 							</div>
 						</div>
-						<button type="button" class="vm-share-remove" :title="$t('Remove')" @click="form.shared_folders.splice(idx, 1)">
-							<b-icon icon="trash-can-outline" custom-size="mdi-18px"></b-icon>
-						</button>
 					</div>
-
-					<button type="button" class="vm-share-add" @click="showSharePicker = true">
-						<b-icon icon="plus" custom-size="mdi-16px"></b-icon>
-						<span>{{ $t('Add Shared Folder') }}</span>
-					</button>
-
-					<p v-if="!form.shared_folders || !form.shared_folders.length" class="vm-share-hint">
-						{{ $t('Direct host directory pass-through via VirtIO-FS. Instant file access with no size limits.') }}
+					<p class="vm-share-hint">
+						{{ $t('Files you put in this folder appear inside the VM (VirtIO-FS). It is the only folder a VM can reach, so the rest of your data stays out of its hands.') }}
 					</p>
 				</div>
 			</div>
-			<vm-file-picker-dialog
-				:active="showSharePicker"
-				:title="$t('Select Host Folder to Share')"
-				start-path="/DATA"
-				confine-to-root="/DATA"
-				directory-mode
-				@selected="addSharedFolder"
-				@close="showSharePicker = false"
-			></vm-file-picker-dialog>
 			<vm-hardware-picker
 				:usb-value="form.usb_devices"
 				:pci-value="form.pci_devices"
 				@update:usbValue="form.usb_devices = $event"
 				@update:pciValue="form.pci_devices = $event"
 			></vm-hardware-picker>
-			<b-message v-if="error" type="is-danger" :closable="false">{{ error }}</b-message>
+			<div class="vm-notice is-danger" v-if="error" ref="errorBox" role="alert">{{ error }}</div>
 		</template>
 		</div>
 
 		<footer class="window-foot">
 			<b-button @click="close">{{ $t('Cancel') }}</b-button>
-			<b-button type="is-primary" :loading="saving" @click="submit">{{ $t('Save') }}</b-button>
+			<span v-if="!loaded && !loadError" class="edit-loading">{{ $t('Loading current settings...') }}</span>
+			<b-button type="is-primary" :loading="saving" :disabled="!loaded" @click="submit">{{ $t('Save') }}</b-button>
 		</footer>
 	</div>
 </template>
@@ -154,6 +139,8 @@ import VmDiskList from './VmDiskList.vue'
 import VmNetworkList from './VmNetworkList.vue'
 import VmHardwarePicker from './VmHardwarePicker.vue'
 import VmDropdown from './VmDropdown.vue'
+
+const DEFAULT_SHARE = { source_dir: '/DATA/VMs/share', target_tag: 'share' }
 
 const RESOLUTION_OPTIONS = [
 	{ value: '', label: 'Default (let the guest decide)', icon: 'monitor' },
@@ -174,7 +161,10 @@ export default {
 	},
 	data() {
 		return {
-			resolutionOptions: RESOLUTION_OPTIONS,
+			loaded: false,
+			shareReadOnly: false,
+			DEFAULT_SHARE,
+			loadError: '',
 			form: { vcpus: 1, memory_mib: 512, iso_path: '', firmware: 'bios', display_width: 0, display_height: 0, disks: [], networks: [], usb_devices: [], pci_devices: [], shared_folders: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }] },
 			// The VM's disks as they were when loaded - VmDiskList uses this
 			// to floor each existing disk's size at its current GiB (grow
@@ -184,13 +174,15 @@ export default {
 			existingDisks: [],
 			networks: [],
 			showIsoPicker: false,
-			showSharePicker: false,
 			saving: false,
 			error: null,
 			isNarrow: false,
 		}
 	},
 	computed: {
+		resolutionOptions() {
+			return RESOLUTION_OPTIONS.map((o) => ({ ...o, label: this.$t(o.label), meta: o.meta && this.$t(o.meta) }))
+		},
 		maxVcpus() {
 			if (this.hostCaps && this.hostCaps.cpu_cores) {
 				return Math.max(1, this.hostCaps.cpu_cores)
@@ -273,26 +265,23 @@ export default {
 		isoFileName(path) {
 			return path ? path.slice(path.lastIndexOf('/') + 1) : ''
 		},
-		addSharedFolder(dir) {
-			if (!dir) return
-			if (!this.form.shared_folders) this.form.shared_folders = []
-			const tagBase = dir.split('/').filter(Boolean).pop() || 'shared'
-			let tag = tagBase
-			const used = new Set(this.form.shared_folders.map((s) => s.target_tag))
-			if (used.has(tag)) {
-				let i = 2
-				while (used.has(`${tag}_${i}`)) i++
-				tag = `${tag}_${i}`
-			}
-			this.form.shared_folders.push({ source_dir: dir, target_tag: tag, read_only: false })
-		},
 		async load() {
 			this.error = null
-			const [nets, caps, fresh] = await Promise.all([
-				vmSidecar.listNetworks().catch(() => []),
-				vmSidecar.getHostCapabilities().catch(() => null),
-				vmSidecar.getVM(this.vm.name).catch(() => this.vm),
-			])
+			this.loaded = false
+			let nets, caps, fresh
+			try {
+				;[nets, caps, fresh] = await Promise.all([
+					vmSidecar.listNetworks().catch(() => []),
+					vmSidecar.getHostCapabilities().catch(() => null),
+					vmSidecar.getVM(this.vm.name),
+				])
+			} catch (e) {
+				// Don't fall back to the list's possibly stale copy: saving
+				// that could undo changes made elsewhere.
+				this.loadError = e.message
+				this.error = this.$t('Could not load the current settings of {name}: {reason}', { name: this.vm.name, reason: e.message })
+				return
+			}
 			this.networks = nets || []
 			if (caps) {
 				this.hostCaps = caps
@@ -308,19 +297,26 @@ export default {
 				networks: (fresh.networks || []).map((n) => ({ mode: n.mode, bridge_name: n.bridge_name, model: n.model || 'virtio', mac: n.mac || '', link_state: n.link_state || 'up' })),
 				usb_devices: fresh.usb_devices || [],
 				pci_devices: fresh.pci_devices || [],
-				shared_folders: (fresh.shared_folders && fresh.shared_folders.length)
-					? fresh.shared_folders.map((sf) => ({ source_dir: sf.source_dir, target_tag: sf.target_tag, read_only: !!sf.read_only }))
-					: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 			}
+			const def = (fresh.shared_folders || []).find((sf) => sf.target_tag === DEFAULT_SHARE.target_tag)
+			this.shareReadOnly = !!(def && def.read_only)
 			this.existingDisks = (fresh.disks || []).map((d) => ({ path: d.path, gib: d.gib }))
+			this.loaded = true
 		},
 		close() {
 			this.$emit('close')
 		},
 		async submit() {
+			if (!this.loaded || this.saving) return
 			this.error = null
 			this.saving = true
 			try {
+				// Started from the console or the list while this window was
+				// open: hardware can only change while it's off.
+				const now = await vmSidecar.getVM(this.vm.name)
+				if (now && now.state !== 'shutoff') {
+					throw new Error(this.$t('{name} is running now. Shut it down, then save again.', { name: this.vm.name }))
+				}
 				const payload = {
 					vcpus: Number(this.form.vcpus),
 					memory_mib: Number(this.form.memory_mib),
@@ -329,9 +325,7 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
-					shared_folders: (this.form.shared_folders && this.form.shared_folders.length)
-						? this.form.shared_folders
-						: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
+					shared_folders: [{ ...DEFAULT_SHARE, read_only: !!this.shareReadOnly }],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {
@@ -341,9 +335,15 @@ export default {
 				// VmList polls every 2s on its own, so the change shows up
 				// there shortly after this window closes - no event to wire up.
 				await vmSidecar.updateVM(this.vm.name, payload)
+				this.$buefy.toast.open({ message: this.$t('{name} was saved.', { name: this.vm.name }), type: 'is-success' })
 				this.close()
 			} catch (e) {
 				this.error = e.message
+				// The message sits under a long form: bring it into view.
+				this.$nextTick(() => {
+					const el = this.$refs.errorBox
+					if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+				})
 			} finally {
 				this.saving = false
 			}
@@ -480,7 +480,7 @@ export default {
 	cursor: pointer;
 
 	&:hover {
-		border-color: rgba(50, 115, 220, 0.4);
+		border-color: rgba(37, 99, 235, 0.4);
 	}
 }
 .iso-picker-name {
@@ -503,7 +503,7 @@ export default {
 	border-radius: var(--radius-xs);
 
 	&:hover {
-		color: #f2534a;
+		color: var(--color-danger-fg);
 	}
 }
 .iso-picker-chevron {
@@ -526,7 +526,7 @@ export default {
 		box-shadow: none;
 
 		&:hover {
-			border-color: rgba(50, 115, 220, 0.4);
+			border-color: rgba(37, 99, 235, 0.4);
 		}
 		&:focus {
 			border-color: var(--color-primary);
@@ -669,7 +669,7 @@ export default {
 	border-radius: var(--radius-sm);
 
 	&:hover {
-		color: #f2534a;
+		color: var(--color-danger-fg);
 		background: rgba(242, 83, 74, 0.08);
 	}
 }
@@ -682,7 +682,7 @@ export default {
 	border: 1px dashed rgb(200 207 214);
 	border-radius: var(--radius-control);
 	background: transparent;
-	color: var(--color-primary);
+	color: var(--color-primary-fg);
 	font-family: inherit;
 	font-size: var(--font-sm);
 	font-weight: 600;
@@ -691,12 +691,17 @@ export default {
 	transition: background 0.12s ease;
 
 	&:hover {
-		background: rgba(50, 115, 220, 0.06);
+		background: rgba(37, 99, 235, 0.06);
 	}
 }
 
 .vm-share-hint {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.45));
+}
+.edit-loading {
+	margin-right: auto;
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary, #475569);
 }
 </style>

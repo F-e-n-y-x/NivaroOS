@@ -94,13 +94,8 @@ describe('vmSidecar', () => {
 		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, { headers: {} })
 		expect(shares).toEqual([{ source_dir: '/DATA/Share', target_tag: 'nivaroshare' }])
 
-		global.fetch.mockReturnValue(jsonResponse({}, 201))
-		await vmSidecar.attachSharedFolder('my-vm', { source_dir: '/DATA/Share', target_tag: 'nivaroshare' })
-		expect(global.fetch).toHaveBeenCalledWith(`${vmSidecar.baseUrl}/vms/my-vm/shared-folders`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ source_dir: '/DATA/Share', target_tag: 'nivaroshare' })
-		})
+		// Custom shared folders were removed: the client can't attach one.
+		expect(vmSidecar.attachSharedFolder).toBeUndefined()
 
 		global.fetch.mockReturnValue(Promise.resolve({ ok: true, status: 204 }))
 		await vmSidecar.detachSharedFolder('my-vm', 'nivaroshare')

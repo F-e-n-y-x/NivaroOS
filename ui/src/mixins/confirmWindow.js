@@ -47,7 +47,10 @@ export const confirmWindowMixin = {
 			const x = options.x !== undefined ? options.x : Math.max(16, Math.round((window.innerWidth - width) / 2))
 			const y = options.y !== undefined ? options.y : Math.max(40, Math.round((window.innerHeight - height) / 2))
 
-			if (this.$store && this.$store.commit) {
+			// Windows need the desktop's window manager; pages without it
+			// (the standalone VM console tab) use the inline fallback.
+			const hasWindowManager = !this.$route || !!(this.$route.meta && this.$route.meta.showWindows)
+			if (this.$store && this.$store.commit && hasWindowManager) {
 				this.$store.commit('OPEN_WINDOW', {
 					id: dialogId,
 					title: options.title || (this.$t ? this.$t('Confirmation') : 'Confirmation'),

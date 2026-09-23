@@ -2,7 +2,7 @@
 	A general filesystem browser for picking a single file (an ISO/IMG
 	install disc, or any other path) - unlike the old fixed dropdown this
 	replaces (populated only from the vm-sidecar's own dedicated
-	/DATA/VMs/isos folder via vmSidecar.listISOs()), this uses the same
+	/DATA/VMs/ISOs folder via vmSidecar.listISOs()), this uses the same
 	general-purpose $api.folder.getList() the main Files app uses, so it
 	can browse anywhere the filesystem actually has, not just one
 	sidecar-managed directory. VmStorage.vue's own "Upload ISO" flow
@@ -18,8 +18,9 @@
 				<span v-if="i < crumbs.length - 1" :key="crumb.path + '-sep'" class="crumb-sep">/</span>
 			</template>
 		</div>
-		<div class="picker-list">
+		<div class="picker-list" role="listbox" :aria-label="title || (directoryMode ? $t('Select Folder') : $t('Select File'))" @keydown.down.prevent="moveFocus(1, $event)" @keydown.up.prevent="moveFocus(-1, $event)">
 			<div v-if="loading" class="picker-status">{{ $t('Loading...') }}</div>
+			<div v-else-if="listError" class="picker-status is-error" role="alert">{{ listError }}</div>
 			<div v-else-if="!sortedItems.length" class="picker-status">{{ $t('This folder is empty') }}</div>
 			<template v-else>
 				<div
@@ -27,8 +28,14 @@
 					:key="item.path"
 					class="picker-row"
 					:class="{ selected: item.path === effectiveSelection, dimmed: !item.is_dir && !matchesExtension(item) }"
+					role="option"
+					tabindex="0"
+					:aria-selected="item.path === effectiveSelection ? 'true' : 'false'"
+					:title="item.name"
 					@click="onRowClick(item)"
 					@dblclick="onRowDblClick(item)"
+					@keydown.enter.prevent="onRowDblClick(item)"
+					@keydown.space.prevent="onRowClick(item)"
 				>
 					<b-icon :icon="item.is_dir ? 'folder' : 'file-outline'" :class="item.is_dir ? 'folder-glyph' : 'file-glyph'" size="is-small"></b-icon>
 					<span class="one-line item-name">{{ item.name }}</span>
@@ -82,7 +89,8 @@ export default {
 			currentPath: this.startPath,
 			items: [],
 			loading: false,
-			selectedPath: null
+			selectedPath: null,
+			listError: ''
 		}
 	},
 	computed: {
@@ -135,11 +143,14 @@ export default {
 		async load() {
 			this.loading = true
 			this.selectedPath = null
+			this.listError = ''
 			try {
 				const res = await this.$api.folder.getList(this.currentPath)
 				this.items = (res.data.data.content || []).filter(item => !item.name.startsWith('.'))
 			} catch (e) {
 				this.items = []
+				// Not "This folder is empty" - it may well not be.
+				this.listError = this.$t('Could not open this folder: {reason}', { reason: (e.response && e.response.data && e.response.data.message) || e.message })
 			} finally {
 				this.loading = false
 			}
@@ -151,6 +162,14 @@ export default {
 			this.currentPath = path
 			this.selectedPath = null
 			this.load()
+		},
+		// Up/Down move between rows; Enter opens a folder / picks a file,
+		// Space selects (the rows used to be mouse-only).
+		moveFocus(delta, e) {
+			const rows = [...e.currentTarget.querySelectorAll('.picker-row')]
+			const i = rows.indexOf(document.activeElement)
+			const next = rows[Math.max(0, Math.min(rows.length - 1, i + delta))]
+			if (next) next.focus()
 		},
 		onRowClick(item) {
 			this.selectedPath = item.path
@@ -192,7 +211,7 @@ export default {
 .crumb {
 	border: none;
 	background: none;
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 	font-family: inherit;
 	font-size: inherit;
 	font-weight: 500;
@@ -202,7 +221,7 @@ export default {
 	transition: background 0.12s ease;
 
 	&:hover {
-		background: rgba(50, 115, 220, 0.15);
+		background: rgba(37, 99, 235, 0.15);
 	}
 
 	&:last-child {
@@ -262,22 +281,23 @@ export default {
 	}
 
 	&.selected {
-		background: rgba(50, 115, 220, 0.12);
-		color: #1d4ed8;
+		background: rgba(37, 99, 235, 0.12);
+		color: var(--color-primary-fg);
 		font-weight: 600;
 
 		.folder-glyph {
-			color: #1d4ed8;
+			color: var(--color-primary-fg);
 		}
 	}
 
 	&.dimmed {
-		opacity: 0.45;
+		// Dimmed by colour, not opacity: opacity 0.45 took the text below 4.5:1.
+		color: var(--theme-text-muted, #5b6779);
 	}
 }
 
 .folder-glyph {
-	color: #ca8a04;
+	color: var(--color-warning-fg);
 }
 
 .file-glyph {
@@ -301,8 +321,8 @@ export default {
 	transition: all 0.12s ease;
 
 	&:hover {
-		background: rgba(50, 115, 220, 0.2);
-		color: var(--color-primary, #3273dc);
+		background: rgba(37, 99, 235, 0.2);
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -313,7 +333,7 @@ export default {
 	gap: var(--space-1);
 	margin-top: var(--space-2);
 	padding: var(--space-1) var(--space-2);
-	background: rgba(50, 115, 220, 0.06);
+	background: rgba(37, 99, 235, 0.06);
 	border-radius: var(--radius-sm);
 	font-size: var(--font-xs);
 }
@@ -325,7 +345,7 @@ export default {
 
 .selected-path-text {
 	font-family: monospace;
-	color: #1d4ed8;
+	color: var(--color-primary-fg);
 	font-weight: 600;
 	white-space: nowrap;
 	overflow: hidden;
@@ -336,5 +356,12 @@ export default {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+.picker-status.is-error {
+	color: var(--color-danger-fg);
+}
+.picker-row:focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: -2px;
 }
 </style>

@@ -13,6 +13,16 @@
 			<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
 		</div>
 
+		<div v-else-if="loadError && !vms.length" class="vm-empty" role="alert">
+			<b-icon icon="alert-circle-outline" custom-size="mdi-48px"></b-icon>
+			<p class="vm-empty-title">{{ $t('Could not load your VMs') }}</p>
+			<p class="vm-empty-hint">{{ loadError }}</p>
+			<button class="create-btn-large" @click="poll(true)">
+				<b-icon icon="refresh" custom-size="mdi-18px"></b-icon>
+				<span>{{ $t('Try again') }}</span>
+			</button>
+		</div>
+
 		<div v-else-if="!vms.length" class="vm-empty">
 			<b-icon icon="monitor-off" custom-size="mdi-48px"></b-icon>
 			<p class="vm-empty-title">{{ $t('No VMs yet') }}</p>
@@ -25,8 +35,16 @@
 
 		<div v-else class="vm-grid">
 			<div v-for="vm in vms" :key="vm.name" class="vm-card">
-				<div class="vm-preview" :class="{ 'is-off': vm.state !== 'running' }" @dblclick="openConsole(vm.name)">
-					<img v-if="vm.state === 'running'" :src="previewUrl(vm)" class="vm-preview-img" alt="" @error="onPreviewError(vm)" />
+				<div
+					class="vm-preview"
+					:class="{ 'is-off': vm.state !== 'running' }"
+					:role="vm.state === 'running' ? 'button' : null"
+					:tabindex="vm.state === 'running' ? 0 : null"
+					:aria-label="vm.state === 'running' ? $t('Open console of {name}', { name: vm.name }) : null"
+					@dblclick="vm.state === 'running' && openConsole(vm.name)"
+					@keydown.enter.prevent="vm.state === 'running' && openConsole(vm.name)"
+				>
+					<img v-if="vm.state === 'running' && !previewErrors[vm.name]" :src="previewUrl(vm)" class="vm-preview-img" alt="" @error="onPreviewError(vm)" />
 					<div v-else class="vm-preview-placeholder">
 						<b-icon :icon="osIcon(vm)" custom-size="mdi-40px"></b-icon>
 					</div>
@@ -43,31 +61,35 @@
 						</span>
 					</div>
 					<div class="vm-specs">
-						<span class="vm-spec"><b-icon icon="memory" custom-size="mdi-14px"></b-icon>{{ vm.vcpus }} {{ $t('vCPU') }}</span>
-						<span class="vm-spec"><b-icon icon="chip" custom-size="mdi-14px"></b-icon>{{ formatMib(vm.memory_mib) }}</span>
+						<span class="vm-spec" :title="$t('Virtual CPU cores')"><b-icon icon="chip" custom-size="mdi-14px"></b-icon>{{ vm.vcpus }} {{ $t('vCPU') }}</span>
+						<span class="vm-spec" :title="$t('Memory (RAM)')"><b-icon icon="memory" custom-size="mdi-14px"></b-icon>{{ formatMib(vm.memory_mib) }}</span>
 						<span class="vm-spec"><b-icon icon="lan" custom-size="mdi-14px"></b-icon>{{ networkLabel(vm) }}</span>
 					</div>
 				</div>
 
 				<div class="vm-card-actions">
 					<div class="vm-action-group">
-						<button v-if="vm.state !== 'running'" class="vm-action-btn vm-play-btn" :title="$t('Start')" @click="start(vm.name)">
+						<button v-if="vm.state === 'paused'" class="vm-action-btn vm-play-btn" :title="$t('Resume')" :aria-label="$t('Resume')" :disabled="!!busy[vm.name]" @click="resume(vm.name)">
 							<b-icon icon="play" custom-size="mdi-18px"></b-icon>
 						</button>
+						<button v-else-if="vm.state !== 'running'" class="vm-action-btn vm-play-btn" :title="$t('Start')" :aria-label="$t('Start')" :disabled="!!busy[vm.name]" @click="start(vm.name)">
+							<b-icon v-if="busy[vm.name] === 'start'" icon="loading" custom-class="mdi-spin" custom-size="mdi-18px"></b-icon>
+							<b-icon v-else icon="play" custom-size="mdi-18px"></b-icon>
+						</button>
 						<template v-else>
-							<button class="vm-action-btn" :title="$t('Console')" @click="openConsole(vm.name)">
+							<button class="vm-action-btn" :title="$t('Console')" :aria-label="$t('Console')" @click="openConsole(vm.name)">
 								<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
 							</button>
-							<button class="vm-action-btn" :title="$t('Open in New Tab')" @click="openConsoleTab(vm.name)">
+							<button class="vm-action-btn" :title="$t('Open in New Tab')" :aria-label="$t('Open in New Tab')" @click="openConsoleTab(vm.name)">
 								<b-icon icon="open-in-new" custom-size="mdi-18px"></b-icon>
 							</button>
-							<button class="vm-action-btn" :title="$t('Reset')" @click="reset(vm.name)">
-								<b-icon icon="restart" custom-size="mdi-18px"></b-icon>
-							</button>
-							<button class="vm-action-btn" :title="$t('Shutdown')" @click="shutdown(vm.name)">
+							<button class="vm-action-btn" :title="$t('Shutdown')" :aria-label="$t('Shutdown')" :disabled="!!busy[vm.name]" @click="shutdown(vm.name)">
 								<b-icon icon="power" custom-size="mdi-18px"></b-icon>
 							</button>
-							<button class="vm-action-btn" :title="$t('Force off')" @click="forceOff(vm.name)">
+							<button class="vm-action-btn" :title="$t('Reset')" :aria-label="$t('Reset')" :disabled="!!busy[vm.name]" @click="reset(vm.name)">
+								<b-icon icon="restart" custom-size="mdi-18px"></b-icon>
+							</button>
+							<button class="vm-action-btn is-danger" :title="$t('Force off')" :aria-label="$t('Force off')" :disabled="!!busy[vm.name]" @click="forceOff(vm.name)">
 								<b-icon icon="power-plug-off-outline" custom-size="mdi-18px"></b-icon>
 							</button>
 						</template>
@@ -76,19 +98,23 @@
 						<button
 							class="vm-action-btn"
 							:title="$t('Snapshots')"
+							:aria-label="$t('Snapshots')"
 							@click="openSnapshots(vm.name)"
 						>
 							<b-icon icon="camera-outline" custom-size="mdi-18px"></b-icon>
 						</button>
+						<!-- Not disabled when running: a disabled button hides its
+						     tooltip, so the click explains why instead. -->
 						<button
-						class="vm-action-btn"
-						:title="vm.state === 'running' ? $t('Stop the VM to edit it') : $t('Edit')"
-						:disabled="vm.state === 'running'"
-						@click="openEdit(vm)"
-					>
+							class="vm-action-btn"
+							:class="{ 'is-unavailable': vm.state !== 'shutoff' }"
+							:title="vm.state !== 'shutoff' ? $t('Shut the VM down to edit it') : $t('Edit')"
+							:aria-label="$t('Edit')"
+							@click="openEdit(vm)"
+						>
 							<b-icon icon="pencil-outline" custom-size="mdi-18px"></b-icon>
 						</button>
-						<button class="vm-action-btn is-danger" :title="$t('Delete')" @click="confirmDelete(vm.name)">
+						<button class="vm-action-btn is-danger" :class="{ 'is-unavailable': vm.state !== 'shutoff' }" :title="vm.state !== 'shutoff' ? $t('Shut the VM down to delete it') : $t('Delete')" :aria-label="$t('Delete')" :disabled="!!busy[vm.name]" @click="confirmDelete(vm)">
 							<b-icon icon="trash-can-outline" custom-size="mdi-18px"></b-icon>
 						</button>
 					</div>
@@ -96,11 +122,13 @@
 			</div>
 		</div>
 
-		<vm-overlay-panel :active="!!deletingVmName" :title="$t('Delete VM')" width="24rem" @close="deletingVmName = null">
-			<p>{{ $t('Delete') }} "{{ deletingVmName }}" {{ $t('and its disk? This cannot be undone.') }}</p>
+		<vm-overlay-panel :active="!!deletingVmName" :title="$t('Delete VM')" width="26rem" @close="deletingVmName = null">
+			<p>{{ $t('Delete the VM "{name}"? This cannot be undone.', { name: deletingVmName }) }}</p>
+			<b-checkbox v-model="deleteDisks" class="mt-3">{{ $t('Also delete its virtual disks') }}</b-checkbox>
+			<p class="vm-delete-hint">{{ deleteDisks ? $t('The disks and everything installed on them are erased.') : $t('The disk files stay in /DATA/VMs, so the VM can be recreated from them later.') }}</p>
 			<template #footer>
 				<b-button @click="deletingVmName = null">{{ $t('Cancel') }}</b-button>
-				<b-button type="is-danger" @click="performDelete">{{ $t('Delete') }}</b-button>
+				<b-button type="is-danger" @click="performDelete">{{ deleteDisks ? $t('Delete VM and disks') : $t('Delete VM') }}</b-button>
 			</template>
 		</vm-overlay-panel>
 	</div>
@@ -108,6 +136,7 @@
 
 <script>
 import { vmSidecar } from '@/api/vmSidecar'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import VmOverlayPanel from './VmOverlayPanel.vue'
 
 const POLL_INTERVAL_MS = 2000
@@ -118,13 +147,17 @@ const PREVIEW_INTERVAL_MS = 3000
 export default {
 	name: 'vm-list',
 	components: { VmOverlayPanel },
+	mixins: [confirmWindowMixin],
 	data() {
 		return {
 			vms: [],
 			loading: true,
+			loadError: '',
 			deletingVmName: null,
-			timer: null,
-			previewTimer: null,
+			deleteDisks: false,
+			// name -> action in flight; disables that VM's buttons so a
+			// double click doesn't send the action twice.
+			busy: {},
 			previewTick: 0,
 			previewErrors: {},
 		}
@@ -136,40 +169,62 @@ export default {
 		},
 	},
 	created() {
-		this.poll()
-		this.timer = setInterval(this.poll, POLL_INTERVAL_MS)
+		this.pollSeq = 0
+		this.previewErrorTimers = {}
+		this.poll(true)
+		this.schedulePoll()
 		this.previewTimer = setInterval(() => {
-			if (!this.isMinimized) this.previewTick++
+			if (!this.isMinimized && !document.hidden) this.previewTick++
 		}, PREVIEW_INTERVAL_MS)
 	},
 	beforeDestroy() {
-		clearInterval(this.timer)
+		this.destroyed = true
+		clearTimeout(this.pollTimer)
 		clearInterval(this.previewTimer)
+		Object.values(this.previewErrorTimers).forEach(clearTimeout)
 	},
 	methods: {
-		async poll() {
-			if (this.isMinimized) return
+		// A setTimeout chain rather than setInterval, so a slow response
+		// can never overlap the next request.
+		schedulePoll() {
+			clearTimeout(this.pollTimer)
+			this.pollTimer = setTimeout(async () => {
+				await this.poll()
+				if (!this.destroyed) this.schedulePoll()
+			}, POLL_INTERVAL_MS)
+		},
+		async poll(force) {
+			if (force !== true && (this.isMinimized || document.hidden)) return
+			// A response to a request made before a later one (e.g. the poll
+			// that was in flight when an action ran) is dropped, so it can't
+			// put back a state the action already changed.
+			const seq = ++this.pollSeq
 			try {
-				this.vms = await vmSidecar.listVMs()
+				const vms = await vmSidecar.listVMs()
+				if (seq !== this.pollSeq || this.destroyed) return
+				this.vms = vms || []
+				this.loadError = ''
 			} catch (e) {
-				// Leave the last known list showing rather than clearing it on
-				// a transient sidecar error - the next poll tick retries.
+				if (seq !== this.pollSeq) return
+				// Keep the last known list on a transient error; with nothing
+				// to show, say what went wrong instead of "No VMs yet".
+				this.loadError = e.message || this.$t('The VM service is not responding.')
 			} finally {
-				this.loading = false
+				if (seq === this.pollSeq) this.loading = false
 			}
 		},
 		previewUrl(vm) {
 			// previewTick busts the <img> cache on each interval tick - a
 			// screenshot endpoint has no reason to be cached, and the URL
 			// must actually change for the browser to re-fetch it at all.
-			return `${vmSidecar.screenshotUrl(vm.name)}&t=${this.previewErrors[vm.name] ? 'err' : this.previewTick}`
+			return `${vmSidecar.screenshotUrl(vm.name)}&t=${this.previewTick}`
 		},
 		onPreviewError(vm) {
-			// A freshly-started VM has no framebuffer yet - fall back to the
-			// placeholder icon instead of a broken-image glyph until the
-			// next tick's request succeeds.
+			// A freshly-started VM has no framebuffer yet - show the
+			// placeholder until the retry one interval later.
 			this.$set(this.previewErrors, vm.name, true)
-			setTimeout(() => this.$set(this.previewErrors, vm.name, false), PREVIEW_INTERVAL_MS)
+			clearTimeout(this.previewErrorTimers[vm.name])
+			this.previewErrorTimers[vm.name] = setTimeout(() => this.$set(this.previewErrors, vm.name, false), PREVIEW_INTERVAL_MS)
 		},
 		osIcon(vm) {
 			return vm.state === 'running' ? 'monitor' : 'monitor-off'
@@ -185,21 +240,29 @@ export default {
 			if (!vm) return this.$t('None')
 			if (vm.networks && vm.networks.length > 0) {
 				const n = vm.networks[0]
-				return n.mode === 'bridge' ? (n.bridge_name || 'Bridge') : this.$t('NAT')
+				return n.mode === 'bridge' ? n.bridge_name || this.$t('Bridge') : this.$t('NAT')
 			}
 			if (!vm.network_mode) return this.$t('None')
 			return vm.network_mode.startsWith('bridge:') ? vm.network_mode.replace('bridge:', '') : this.$t('NAT')
 		},
-		async runAction(name, actionFn) {
+		async runAction(name, kind, actionFn, done) {
+			if (this.busy[name]) return
+			this.$set(this.busy, name, kind)
 			try {
 				await actionFn(name)
-				await this.poll()
+				if (done) done()
 			} catch (e) {
-				this.$buefy.toast.open({ message: e.message, type: 'is-danger' })
+				this.$buefy.toast.open({ message: `${name}: ${e.message}`, type: 'is-danger', duration: 5000 })
+			} finally {
+				this.$delete(this.busy, name)
+				await this.poll(true)
 			}
 		},
 		start(name) {
-			return this.runAction(name, vmSidecar.startVM)
+			return this.runAction(name, 'start', vmSidecar.startVM)
+		},
+		resume(name) {
+			return this.runAction(name, 'resume', vmSidecar.resumeVM)
 		},
 		shutdown(name) {
 			// A graceful ACPI power-off request - it only does anything if the
@@ -208,14 +271,31 @@ export default {
 			// OS installed, or one that's still booting, has nothing to
 			// receive it and will just keep running - Force off is the only
 			// way to stop those.
-			this.$buefy.toast.open({ message: this.$t('Sent shutdown signal - the guest OS decides when to actually power off.'), type: 'is-info' })
-			return this.runAction(name, vmSidecar.shutdownVM)
+			return this.runAction(name, 'shutdown', vmSidecar.shutdownVM, () =>
+				this.$buefy.toast.open({ message: this.$t('Sent shutdown signal - the guest OS decides when to actually power off.'), type: 'is-info' })
+			)
 		},
+		// Reset and Force off are like pulling the plug: unsaved work in the
+		// guest is lost, so they get a confirmation.
 		reset(name) {
-			return this.runAction(name, vmSidecar.resetVM)
+			this.confirmWindow({
+				title: this.$t('Reset VM'),
+				message: this.$t('Restart {name} immediately? Like pressing a reset button: unsaved work inside the VM is lost.', { name }),
+				confirmText: this.$t('Reset'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: () => this.runAction(name, 'reset', vmSidecar.resetVM),
+			})
 		},
 		forceOff(name) {
-			return this.runAction(name, vmSidecar.forceOffVM)
+			this.confirmWindow({
+				title: this.$t('Force off VM'),
+				message: this.$t('Turn off {name} immediately? Like pulling the power plug: unsaved work inside the VM is lost. Use Shutdown for a clean power-off.', { name }),
+				confirmText: this.$t('Force off'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: () => this.runAction(name, 'force-off', vmSidecar.forceOffVM),
+			})
 		},
 		openCreate() {
 			this.$store.commit('OPEN_WINDOW', {
@@ -227,6 +307,14 @@ export default {
 			})
 		},
 		openEdit(vm) {
+			if (vm.state !== 'shutoff') {
+				this.$buefy.toast.open({
+					message: this.$t('Shut {name} down first - its hardware can only be changed while it is off. Network, USB, disks and shared folders can be changed live from the console.', { name: vm.name }),
+					type: 'is-info',
+					duration: 6000,
+				})
+				return
+			}
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'edit-vm-' + vm.name,
 				title: this.$t('Edit') + ' ' + vm.name,
@@ -253,25 +341,26 @@ export default {
 		},
 		openSnapshots(name) {
 			this.$emit('open-snapshots', name)
-			if (this.$parent && this.$parent.activeSection !== undefined) {
-				this.$parent.activeSection = 'snapshots'
-			}
 		},
 		openConsoleTab(name) {
 			const url = this.$router.resolve({ name: 'VmConsoleStandalone', params: { name } }).href
 			window.open(url, '_blank')
 		},
-		confirmDelete(name) {
-			// Buefy's $buefy.dialog.confirm() renders a viewport-wide overlay
-			// over the whole desktop, not confined to this window - the same
-			// "confined to the window" problem every dialog in Files already
-			// solved via its own overlay instead of that global API.
-			this.deletingVmName = name
+		confirmDelete(vm) {
+			if (vm.state !== 'shutoff') {
+				this.$buefy.toast.open({ message: this.$t('Shut {name} down first, then delete it.', { name: vm.name }), type: 'is-info' })
+				return
+			}
+			this.deleteDisks = false
+			this.deletingVmName = vm.name
 		},
 		async performDelete() {
 			const name = this.deletingVmName
+			const wipe = this.deleteDisks
 			this.deletingVmName = null
-			await this.runAction(name, (n) => vmSidecar.deleteVM(n, true))
+			await this.runAction(name, 'delete', (n) => vmSidecar.deleteVM(n, wipe), () =>
+				this.$buefy.toast.open({ message: this.$t('{name} was deleted.', { name }), type: 'is-success' })
+			)
 		},
 	},
 }
@@ -281,11 +370,24 @@ export default {
 .vm-list {
 	padding: var(--space-6);
 }
+// Phone-width window: less padding, so cards and titles get the room.
+@media (max-width: 480px) {
+	.vm-list {
+		padding: var(--space-4);
+	}
+}
 .vm-list-toolbar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-2);
 	margin-bottom: var(--space-5);
+}
+.create-btn,
+.create-btn-large {
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 .vm-list-title {
 	font-size: var(--font-lg);
@@ -300,7 +402,7 @@ export default {
 	justify-content: center;
 	gap: var(--space-2);
 	border: none;
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #fff;
 	font-family: inherit;
 	font-size: var(--font-sm);
@@ -312,7 +414,7 @@ export default {
 	transition: background 0.15s ease, transform 0.1s ease;
 
 	&:hover {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 	}
 	&:active {
 		transform: scale(0.98);
@@ -362,7 +464,7 @@ export default {
 	justify-content: center;
 	gap: var(--space-2);
 	border: none;
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #fff;
 	font-family: inherit;
 	font-size: var(--font-sm);
@@ -379,8 +481,7 @@ export default {
 	}
 
 	&:hover {
-		background: #1d4ed8;
-		transform: translateY(-1px);
+		background: var(--color-primary-hover);
 	}
 	&:active {
 		transform: translateY(0);
@@ -398,13 +499,10 @@ export default {
 	border: 1px solid rgba(0, 0, 0, 0.08);
 	overflow: hidden;
 	background: var(--theme-card-bg, #fff); border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
-	box-shadow: var(--shadow-sm);
 	transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 
 	&:hover {
-		box-shadow: var(--shadow-lg);
 		border-color: rgba(37, 99, 235, 0.25);
-		transform: translateY(-2px);
 	}
 }
 .vm-preview {
@@ -489,7 +587,7 @@ export default {
 }
 .vm-state-badge.is-running {
 	background: rgba(16, 185, 129, 0.1);
-	color: #059669;
+	color: var(--color-success-fg);
 
 	.vm-state-dot {
 		background: #10b981;
@@ -498,7 +596,7 @@ export default {
 }
 .vm-state-badge.is-crashed {
 	background: var(--color-danger-soft, #fef2f2);
-	color: #dc2626;
+	color: var(--color-danger-fg);
 
 	.vm-state-dot {
 		background: #ef4444;
@@ -506,7 +604,7 @@ export default {
 }
 .vm-state-badge.is-paused {
 	background: var(--theme-warning-soft, #fffbeb);
-	color: #d97706;
+	color: var(--color-warning-fg);
 
 	.vm-state-dot {
 		background: #f59e0b;
@@ -572,7 +670,29 @@ export default {
 	}
 	&.is-danger:hover:not(:disabled) {
 		background: var(--color-danger-soft, #fee2e2);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 	}
+}
+.vm-action-btn.is-unavailable {
+	opacity: 0.45;
+}
+.vm-action-group {
+	flex-wrap: wrap;
+}
+.vm-card-actions {
+	flex-wrap: wrap;
+	gap: var(--space-1);
+}
+.vm-preview:focus-visible,
+.vm-action-btn:focus-visible,
+.create-btn:focus-visible,
+.create-btn-large:focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+}
+.vm-delete-hint {
+	margin-top: var(--space-2);
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary, #475569);
 }
 </style>

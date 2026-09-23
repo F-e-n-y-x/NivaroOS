@@ -1,90 +1,55 @@
 <!--
-	A dialog confined to the app's own window bounds, instead of Buefy's
-	<b-modal>. b-modal renders as position:fixed against the viewport,
-	but DesktopWindow.vue's window chrome sets backdrop-filter (for the
-	glass effect other apps use) - a backdrop-filter on an ancestor makes
-	it the containing block for any position:fixed descendant, which
-	clipped the modal to the small window instead of covering the
-	viewport. This overlay is position:absolute against VmManagerApp's
-	own bounds instead, so it always renders correctly contained within
-	the window - the same approach VmConsole.vue already uses.
+	A VM app dialog shown as a real desktop window.
+
+	It used to be an overlay with a dark backdrop covering the whole VM app
+	window, so nothing else in the app could be used until it was closed.
+	Now it is a thin wrapper around the same windowed dialog Settings uses
+	(SettingsOverlay: opens a PortalWindow and moves this content into it),
+	so every VM dialog can be moved, stacked and used side by side with the
+	VM list, a console or any other window. Same API as before: `active`,
+	`title`, `width`, `height`, `@close`, default + `footer` slots.
 -->
 <template>
-	<div v-if="active" class="vm-overlay">
-		<div class="vm-overlay-backdrop" @click="$emit('close')"></div>
-		<div class="vm-overlay-card" :style="{ width, height }">
-			<header class="vm-overlay-head">
-				<span class="vm-overlay-title">{{ title }}</span>
-				<button class="vm-overlay-close" @click="$emit('close')">
-					<b-icon icon="close" size="is-small"></b-icon>
-				</button>
-			</header>
-			<div class="vm-overlay-body">
-				<slot></slot>
-			</div>
-			<footer class="vm-overlay-foot">
-				<slot name="footer"></slot>
-			</footer>
+	<settings-overlay :active="active" :title="title" :width="width" body-class="vm-dialog-body" @close="$emit('close')">
+		<div class="vm-dialog" :style="height !== 'auto' ? { height } : null">
+			<slot></slot>
 		</div>
-	</div>
+		<template v-if="$slots.footer" #footer>
+			<div class="vm-dialog-foot">
+				<slot name="footer"></slot>
+			</div>
+		</template>
+	</settings-overlay>
 </template>
 
 <script>
+import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
+
 export default {
 	name: 'vm-overlay-panel',
+	components: { SettingsOverlay },
 	props: {
 		active: { type: Boolean, default: false },
 		title: { type: String, default: '' },
 		width: { type: String, default: '24rem' },
-		// 'auto' (default) lets the card size to its content, as every
-		// existing dialog wants. A fixed height is only needed when a
-		// child needs real space to flex-fill into (e.g. the file picker's
-		// scrolling list) - without it, flex: 1 1 auto on that child has
-		// no leftover space to grow into at all, since the card itself is
-		// just wrapping its content's natural size.
+		// 'auto' (default) sizes the window to its content. A fixed height
+		// is only for a child that flex-fills (the file picker's list).
 		height: { type: String, default: 'auto' }
 	}
 }
 </script>
 
 <style lang="scss" scoped>
-.vm-overlay {
-	position: absolute;
-	inset: 0;
-	z-index: 2000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
-}
-
-.vm-overlay-backdrop {
-	position: absolute;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.45);
-	backdrop-filter: blur(2px);
-}
-
-.vm-overlay-card {
-	position: relative;
-	background: var(--theme-card-bg, #fff);
-	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-xl);
-	max-height: calc(100% - 1.5rem);
-	max-width: calc(100% - 1.5rem);
+.vm-dialog {
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
+	min-height: 0;
+}
 
-	// Every dialog (Create VM, Create bridged network, the file picker)
-	// uses plain <b-button> both in its body (Browse/Clear next to an ISO
-	// field) and its footer, which renders Bulma's stock bordered/white
-	// button - flat, borderless, colored buttons everywhere else in this
-	// app made those look like an unstyled default sitting next to
-	// custom-designed ones. Scoped to the whole card (not just the
-	// footer) so body buttons get it too. Overriding Buefy's own classes
-	// here instead of touching every dialog individually keeps every
-	// current and future dialog consistent for free.
+.vm-dialog,
+.vm-dialog-foot {
+	// Flat app-style buttons instead of Bulma's stock bordered white ones,
+	// for body buttons (Browse/Clear) and footer buttons alike.
 	::v-deep .button {
 		border: none;
 		border-radius: var(--radius-sm);
@@ -104,19 +69,21 @@ export default {
 			background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 		}
 		&.is-primary {
-			background: #2563eb;
+			background: var(--color-primary);
 			color: #fff;
 			&:hover { background: #1d4ed8; }
 		}
+		// Darker shades than the usual amber/red so white text passes
+		// WCAG AA (4.5:1); #f59e0b / #ef4444 were 2.1:1 / 3.8:1.
 		&.is-warning {
-			background: #f59e0b;
+			background: #b45309;
 			color: #fff;
-			&:hover { background: #d97706; }
+			&:hover { background: #92400e; }
 		}
 		&.is-danger {
-			background: #ef4444;
+			background: #dc2626;
 			color: #fff;
-			&:hover { background: #dc2626; }
+			&:hover { background: #b91c1c; }
 		}
 		&[disabled] {
 			opacity: 0.5;
@@ -124,41 +91,9 @@ export default {
 	}
 }
 
-.vm-overlay-head {
-	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: var(--space-3) var(--space-4);
-	border-bottom: 1px solid var(--theme-card-border, rgb(228 233 237));
-	font-weight: 600;
-	color: var(--theme-text-primary, #2c3e50);
-}
-
-.vm-overlay-close {
-	border: none;
-	background: transparent;
-	cursor: pointer;
-	color: var(--theme-text-muted, #7a7a7a);
-	display: flex;
-	align-items: center;
-}
-
-.vm-overlay-body {
-	flex: 1 1 auto;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	min-height: 0;
-	padding: var(--space-3) var(--space-4);
-}
-
-.vm-overlay-foot {
-	flex-shrink: 0;
+.vm-dialog-foot {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--space-2);
-	padding: var(--space-3) var(--space-4);
-	border-top: 1px solid var(--theme-card-border, rgb(228 233 237));
 }
 </style>

@@ -116,13 +116,13 @@ export default {
 }
 .vm-net-row {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-3) var(--space-4);
 	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	border-radius: var(--radius-card);
 	background: var(--theme-card-bg, #fff);
-	box-shadow: var(--shadow-sm);
 }
 .vm-net-controls {
 	flex: 1 1 auto;
@@ -145,7 +145,7 @@ export default {
 
 	&.is-bridge {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 .vm-net-remove {
@@ -163,7 +163,7 @@ export default {
 	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
-		color: #dc2626;
+		color: var(--color-danger-fg);
 		background: rgba(239, 68, 68, 0.1);
 	}
 }
@@ -179,7 +179,7 @@ export default {
 	border: 1px dashed rgba(37, 99, 235, 0.4);
 	border-radius: var(--radius-control);
 	background: transparent;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	font-family: inherit;
 	font-size: var(--font-sm);
 	font-weight: 500;
@@ -194,5 +194,10 @@ export default {
 .vm-net-hint {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, #64748b);
+}
+// Narrow windows: the mode and model pickers wrap instead of overflowing.
+.vm-net-row .segmented-control {
+	flex-wrap: wrap;
+	max-width: 100%;
 }
 </style>

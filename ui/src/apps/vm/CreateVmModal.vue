@@ -20,7 +20,7 @@
 					<template v-else>{{ i + 1 }}</template>
 				</button>
 			</div>
-			<div class="wizard-current-label">{{ $t('Step') }} {{ step + 1 }} {{ $t('of') }} {{ steps.length }} &middot; {{ steps[step].label }}</div>
+			<div class="wizard-current-label">{{ $t('Step {n} of {total}', { n: step + 1, total: steps.length }) }} &middot; {{ steps[step].label }}</div>
 		</div>
 
 		<div class="wizard-body scrollbars-light">
@@ -29,11 +29,12 @@
 			<div class="setting-card">
 				<div class="setting-row">
 					<b-icon class="row-icon" icon="tag-outline" custom-size="mdi-20px"></b-icon>
-					<div class="row-label">{{ $t('Name') }}</div>
+					<label class="row-label" for="create-vm-name">{{ $t('Name') }}</label>
 					<div class="row-control">
-						<b-input v-model="form.name" placeholder="my-vm" ref="nameInput" size="is-small"></b-input>
+						<b-input id="create-vm-name" v-model="form.name" placeholder="my-vm" ref="nameInput" size="is-small" maxlength="64" :aria-invalid="nameError ? 'true' : 'false'" aria-describedby="create-vm-name-error"></b-input>
 					</div>
 				</div>
+				<p v-if="nameError" id="create-vm-name-error" class="field-error" role="alert">{{ nameError }}</p>
 			</div>
 			<div class="wizard-section">
 				<h3 class="setting-card-title">{{ $t('Operating System') }}</h3>
@@ -57,25 +58,25 @@
 		<div v-if="currentStepId === 'resources'" class="wizard-pane">
 			<div class="setting-card">
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('vCPUs') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">1</span>
-						<input class="pretty-range" v-model.number="form.vcpus" type="range" min="1" :max="maxVcpus" step="1"
+						<input class="pretty-range" v-model.number="form.vcpus" :aria-label="$t('vCPUs')" type="range" min="1" :max="maxVcpus" step="1"
 							:style="rangeStyle(form.vcpus, 1, maxVcpus)" />
 						<span class="slider-hint">{{ maxVcpus }}</span>
-						<input type="number" class="slider-value-input" v-model.number="form.vcpus" min="1" :max="maxVcpus" @change="clampVcpus" />
+						<input type="number" class="slider-value-input" v-model.number="form.vcpus" :aria-label="$t('vCPUs')" min="1" :max="maxVcpus" @change="clampVcpus" />
 					</div>
 				</div>
 				<div class="setting-row">
-					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
+					<b-icon class="row-icon" icon="memory" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Memory') }}</div>
 					<div class="row-control slider-control">
 						<span class="slider-hint">512 MB</span>
-						<input class="pretty-range" v-model.number="form.memory_mib" type="range" min="512" :max="maxMemoryMiB" step="512"
+						<input class="pretty-range" v-model.number="form.memory_mib" :aria-label="$t('Memory (MB)')" type="range" min="512" :max="maxMemoryMiB" step="512"
 							:style="rangeStyle(form.memory_mib, 512, maxMemoryMiB)" />
 						<span class="slider-hint">{{ maxMemoryGiB }} GB</span>
-						<input type="number" class="slider-value-input" v-model.number="memoryGiB" min="0.5" :max="maxMemoryGiB" step="0.5" />
+						<input type="number" class="slider-value-input" v-model.number="memoryGiB" :aria-label="$t('Memory (GB)')" min="0.5" :max="maxMemoryGiB" step="0.5" />
 						<span class="slider-value-unit">{{ $t('GB') }}</span>
 					</div>
 				</div>
@@ -94,13 +95,13 @@
 						></vm-dropdown>
 					</div>
 				</div>
-				<div class="setting-row" v-if="mode === 'advanced'">
-					<b-icon class="row-icon" icon="chip" custom-size="mdi-20px"></b-icon>
+				<div class="setting-row">
+					<b-icon class="row-icon" icon="cog-outline" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Firmware') }}</div>
 					<div class="row-control">
 						<div class="segmented-control">
-							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'bios' }" @click="form.firmware = 'bios'">{{ $t('BIOS') }}</button>
-							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'uefi' }" @click="form.firmware = 'uefi'">{{ $t('UEFI') }}</button>
+							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'bios' }" :aria-pressed="(form.firmware === 'bios') ? 'true' : 'false'" @click="form.firmware = 'bios'">{{ $t('BIOS') }}</button>
+							<button type="button" class="segmented-option" :class="{ active: form.firmware === 'uefi' }" :aria-pressed="(form.firmware === 'uefi') ? 'true' : 'false'" @click="form.firmware = 'uefi'">{{ $t('UEFI') }}</button>
 						</div>
 					</div>
 				</div>
@@ -124,25 +125,17 @@
 						</button>
 					</div>
 				</div>
-				<div class="setting-row" v-if="mode === 'basic'">
-					<b-icon class="row-icon" icon="harddisk" custom-size="mdi-20px"></b-icon>
-					<div class="row-label">{{ $t('Disk size') }}</div>
-					<div class="row-control">
-						<b-numberinput :value="form.disks[0].gib" @input="form.disks[0].gib = $event" :min="1" :max="2000" size="is-small" type="is-light" controls-position="compact" class="basic-disk-size"></b-numberinput>
-						<span class="basic-disk-unit">{{ $t('GB') }}</span>
-					</div>
-				</div>
 			</div>
 			<p class="wizard-hint">{{ $t('Pick an installer ISO to install an OS from scratch, or skip this if the disk already has one.') }}</p>
 			<vm-file-picker-dialog
 				:active="showIsoPicker"
 				:title="$t('ISO')"
-				start-path="/DATA/VMs/isos"
+				start-path="/DATA/VMs/ISOs"
 				:extensions="['iso', 'img']"
 				@selected="form.iso_path = $event"
 				@close="showIsoPicker = false"
 			></vm-file-picker-dialog>
-			<div class="wizard-section" v-if="mode === 'advanced'">
+			<div class="wizard-section">
 				<h3 class="setting-card-title">{{ $t('Disks') }}</h3>
 				<vm-disk-list v-model="form.disks"></vm-disk-list>
 			</div>
@@ -150,29 +143,7 @@
 
 		<!-- Step: network -->
 		<div v-if="currentStepId === 'network'" class="wizard-pane">
-			<template v-if="mode === 'basic'">
-				<div class="setting-card">
-					<div class="setting-row">
-						<b-icon class="row-icon" :icon="form.networks[0].mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="form.networks[0].mode === 'bridge' ? 'mdi-16px' : 'mdi-20px'"></b-icon>
-						<div class="row-label">{{ $t('Network') }}</div>
-						<div class="row-control">
-							<div class="segmented-control">
-								<button type="button" class="segmented-option" :class="{ active: form.networks[0].mode === 'nat' }" @click="form.networks[0] = { mode: 'nat' }">{{ $t('NAT') }}</button>
-								<button
-									v-for="bridge in bridgeNetworks"
-									:key="bridge.name"
-									type="button"
-									class="segmented-option"
-									:class="{ active: form.networks[0].mode === 'bridge' && form.networks[0].bridge_name === bridge.name }"
-									@click="form.networks[0] = { mode: 'bridge', bridge_name: bridge.name }"
-								>{{ bridge.name }}</button>
-							</div>
-						</div>
-					</div>
-				</div>
-				<p class="wizard-hint">{{ $t('Recommended - the VM shares this machine\'s internet connection.') }}</p>
-			</template>
-			<div class="wizard-section" v-else>
+			<div class="wizard-section">
 				<h3 class="setting-card-title">{{ $t('Network Adapters') }}</h3>
 				<vm-network-list v-model="form.networks" :bridge-networks="bridgeNetworks"></vm-network-list>
 			</div>
@@ -210,14 +181,10 @@
 			</div>
 		</div>
 
-		<b-message v-if="error" type="is-danger" :closable="false">{{ error }}</b-message>
+		<div class="vm-notice is-danger" v-if="error" role="alert">{{ error }}</div>
 		</div>
 
 		<footer class="window-foot">
-			<div class="segmented-control wizard-mode-toggle" :title="mode === 'basic' ? $t('One disk, one network, sensible defaults.') : $t('Multiple disks/adapters, USB & PCI passthrough.')">
-				<button type="button" class="segmented-option" :class="{ active: mode === 'basic' }" @click="setMode('basic')">{{ $t('Basic') }}</button>
-				<button type="button" class="segmented-option" :class="{ active: mode === 'advanced' }" @click="setMode('advanced')">{{ $t('Advanced') }}</button>
-			</div>
 			<div class="window-foot-actions">
 				<b-button v-if="step > 0" @click="step--">{{ $t('Back') }}</b-button>
 				<b-button @click="close">{{ $t('Cancel') }}</b-button>
@@ -263,10 +230,8 @@ export default {
 	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker, VmDropdown },
 	data() {
 		return {
-			mode: 'basic',
 			step: 0,
 			osTemplates: OS_TEMPLATES,
-			resolutionOptions: RESOLUTION_OPTIONS,
 			selectedTemplate: 'linux',
 			form: {
 				name: '',
@@ -288,9 +253,13 @@ export default {
 			creating: false,
 			error: null,
 			isNarrow: false,
+			existingNames: [],
 		}
 	},
 	computed: {
+		resolutionOptions() {
+			return RESOLUTION_OPTIONS.map((o) => ({ ...o, label: this.$t(o.label), meta: o.meta && this.$t(o.meta) }))
+		},
 		maxVcpus() {
 			if (this.hostCaps && this.hostCaps.cpu_cores) {
 				return Math.max(1, this.hostCaps.cpu_cores)
@@ -321,7 +290,7 @@ export default {
 				{ id: 'storage', label: this.$t('Storage') },
 				{ id: 'network', label: this.$t('Network') },
 			]
-			if (this.mode === 'advanced') list.push({ id: 'hardware', label: this.$t('Hardware') })
+			list.push({ id: 'hardware', label: this.$t('Hardware') })
 			list.push({ id: 'review', label: this.$t('Review') })
 			return list
 		},
@@ -329,8 +298,17 @@ export default {
 			return this.steps[this.step] && this.steps[this.step].id
 		},
 		canAdvance() {
-			if (this.currentStepId === 'os') return !!this.form.name
+			if (this.currentStepId === 'os') return !!this.form.name && !this.nameError
 			return true
+		},
+		// Checked while typing - the server only accepts these characters,
+		// and used to reject a bad name only after all five steps.
+		nameError() {
+			const name = (this.form.name || '').trim()
+			if (!name) return ''
+			if (!/^[a-zA-Z0-9_-]+$/.test(name)) return this.$t('Use only letters, numbers, - and _ (no spaces).')
+			if (this.existingNames.includes(name.toLowerCase())) return this.$t('A VM with this name already exists.')
+			return ''
 		},
 		// The slider steps in raw MiB (matching form.memory_mib directly),
 		// but typing an exact value is far more natural in GB - this
@@ -374,6 +352,9 @@ export default {
 	},
 	created() {
 		this.refresh()
+		vmSidecar.listVMs().then((vms) => {
+			this.existingNames = (vms || []).map((v) => v.name.toLowerCase())
+		}).catch(() => {})
 	},
 	mounted() {
 		this.$nextTick(() => this.$refs.nameInput && this.$refs.nameInput.focus())
@@ -392,22 +373,6 @@ export default {
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
-		setMode(mode) {
-			if (this.mode === mode) return
-			this.mode = mode
-			this.step = 0
-			// Switching to Basic collapses down to exactly what its simpler
-			// UI actually edits (disks[0]/networks[0]) - anything beyond
-			// that would otherwise keep being submitted invisibly. Nothing
-			// to reconcile going the other way: Advanced's UI can only ever
-			// add to what Basic already has.
-			if (mode === 'basic') {
-				this.form.disks = this.form.disks.slice(0, 1)
-				this.form.networks = this.form.networks.slice(0, 1)
-				this.form.usb_devices = []
-				this.form.pci_devices = []
-			}
-		},
 		applyTemplate(tpl) {
 			this.selectedTemplate = tpl.id
 			this.form.vcpus = Math.min(this.maxVcpus, tpl.vcpus)
@@ -460,7 +425,7 @@ export default {
 			this.creating = true
 			try {
 				const payload = {
-					name: this.form.name,
+					name: this.form.name.trim(),
 					vcpus: Number(this.form.vcpus),
 					memory_mib: Number(this.form.memory_mib),
 					firmware: this.form.firmware,
@@ -468,9 +433,8 @@ export default {
 					networks: this.form.networks,
 					usb_devices: this.form.usb_devices,
 					pci_devices: this.form.pci_devices,
-					shared_folders: (this.form.shared_folders && this.form.shared_folders.length)
-						? this.form.shared_folders
-						: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
+					// Always and only the default share (custom folders removed).
+					shared_folders: [{ source_dir: '/DATA/VMs/share', target_tag: 'share', read_only: false }],
 				}
 				if (this.form.iso_path) payload.iso_path = this.form.iso_path
 				if (this.form.display_width && this.form.display_height) {
@@ -479,13 +443,20 @@ export default {
 				}
 				// VmList polls every 2s on its own, so the new VM shows up there
 				// shortly after this window closes - no event to wire up.
-				await vmSidecar.createVM(payload)
+				const res = await vmSidecar.createVM(payload)
+				// Created but couldn't start (e.g. not enough free RAM, a
+				// passthrough device busy): the VM exists, so say so rather
+				// than an error that invites a retry into "already exists".
+				if (res && res.warning) {
+					this.$buefy.toast.open({ message: this.$t('{name} was created but did not start: {reason}', { name: payload.name, reason: res.warning }), type: 'is-warning', duration: 8000 })
+				} else {
+					this.$buefy.toast.open({ message: this.$t('{name} was created and is starting.', { name: payload.name }), type: 'is-success' })
+				}
 				this.close()
 			} catch (e) {
+				// Stay on the review step: it shows the error next to every
+				// value that was sent.
 				this.error = e.message
-				// A failure belongs on the step whose fields caused it - back
-				// to Resources covers disk/name/network errors the sidecar
-				// reports, keeping the review step from silently swallowing them.
 				this.step = this.steps.length - 1
 			} finally {
 				this.creating = false
@@ -605,7 +576,7 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-end;
 	gap: var(--space-2);
 	padding-top: var(--space-3);
 	margin-top: var(--space-3);
@@ -614,36 +585,6 @@ export default {
 .window-foot-actions {
 	display: flex;
 	gap: var(--space-2);
-}
-.wizard-mode-toggle {
-	margin-bottom: 0;
-}
-.basic-disk-size {
-	width: 8rem;
-
-	::v-deep input,
-	::v-deep .button {
-		height: 2.25rem !important;
-	}
-	::v-deep input {
-		text-align: center;
-		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
-	}
-	::v-deep .button {
-		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
-		background: var(--theme-card-hover, rgba(0, 0, 0, 0.04)) !important;
-		color: var(--theme-text-secondary, rgba(0, 0, 0, 0.55)) !important;
-		box-shadow: none !important;
-
-		&:hover {
-			background: var(--theme-card-border, rgba(0, 0, 0, 0.08)) !important;
-		}
-	}
-}
-.basic-disk-unit {
-	font-size: var(--font-xs);
-	color: var(--theme-text-muted, rgba(0, 0, 0, 0.45));
-	margin-left: var(--space-2);
 }
 // Same pill look as the base .slider-value (see common/_settings.scss),
 // but editable - the plain read-only span didn't make clear (or allow)
@@ -720,13 +661,13 @@ export default {
 		// Decorative focus-style ring tied to the active step's accent color,
 		// not a neutral elevation shadow - left as a custom value rather than
 		// forced onto --shadow-*.
-		box-shadow: 0 0 0 3px rgba(50, 115, 220, 0.2);
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 	}
 	&.done {
-		background: rgba(50, 115, 220, 0.15);
-		color: var(--color-primary);
+		background: rgba(37, 99, 235, 0.15);
+		color: var(--color-primary-fg);
 		&:hover {
-			background: rgba(50, 115, 220, 0.25);
+			background: rgba(37, 99, 235, 0.25);
 		}
 	}
 	&:disabled {
@@ -779,12 +720,12 @@ export default {
 	}
 
 	&:hover {
-		border-color: rgba(50, 115, 220, 0.4);
+		border-color: rgba(37, 99, 235, 0.4);
 	}
 	&.active {
 		border-color: var(--color-primary);
-		background: rgba(50, 115, 220, 0.06);
-		color: var(--color-primary);
+		background: rgba(37, 99, 235, 0.06);
+		color: var(--color-primary-fg);
 	}
 }
 .iso-picker {
@@ -803,7 +744,7 @@ export default {
 	cursor: pointer;
 
 	&:hover {
-		border-color: rgba(50, 115, 220, 0.4);
+		border-color: rgba(37, 99, 235, 0.4);
 	}
 }
 .iso-picker-name {
@@ -826,7 +767,7 @@ export default {
 	border-radius: var(--radius-xs);
 
 	&:hover {
-		color: #f2534a;
+		color: var(--color-danger-fg);
 	}
 }
 .iso-picker-chevron {
@@ -851,7 +792,7 @@ export default {
 		box-shadow: none;
 
 		&:hover {
-			border-color: rgba(50, 115, 220, 0.4);
+			border-color: rgba(37, 99, 235, 0.4);
 		}
 		&:focus {
 			border-color: var(--color-primary);
@@ -875,5 +816,10 @@ export default {
 	font-size: var(--font-base);
 	text-align: right;
 	overflow-wrap: anywhere;
+}
+.field-error {
+	margin: var(--space-2) var(--space-4) 0;
+	font-size: var(--font-sm);
+	color: var(--color-danger-fg);
 }
 </style>

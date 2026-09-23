@@ -12,19 +12,33 @@
 			<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
 		</div>
 
+		<div v-else-if="loadError && !networks.length" class="vm-empty" role="alert">
+			<b-icon icon="alert-circle-outline" custom-size="mdi-48px"></b-icon>
+			<p class="vm-empty-title">{{ $t('Could not load networks') }}</p>
+			<p class="vm-empty-hint">{{ loadError }}</p>
+			<button class="create-btn" @click="refresh">
+				<b-icon icon="refresh" custom-size="mdi-18px"></b-icon>
+				<span>{{ $t('Try again') }}</span>
+			</button>
+		</div>
+
 		<div v-else class="network-list">
+			<p class="network-intro">
+				{{ $t('NAT: VMs share this server\'s connection and are hidden behind it (simplest). Bridge: VMs join your LAN like a separate device, with their own IP from your router.') }}
+			</p>
 			<div v-for="net in networks" :key="net.name" class="network-row">
 				<div class="network-icon" :class="{ 'is-active': net.active }">
 					<b-icon :icon="net.mode === 'bridge' ? 'lan-connect' : 'lan'" :custom-size="net.mode === 'bridge' ? 'mdi-18px' : 'mdi-22px'"></b-icon>
 				</div>
 				<div class="network-info">
-					<span class="network-name">{{ net.name }}</span>
+					<span class="network-name" :title="net.name">{{ net.name }}</span>
 					<span class="network-meta">{{ net.mode === 'bridge' ? $t('Bridge') : $t('NAT') }}<template v-if="net.host_nic"> &middot; {{ net.host_nic }}</template></span>
+					<span v-if="usedBy(net).length" class="network-meta">{{ $t('Used by: {vms}', { vms: usedBy(net).join(', ') }) }}</span>
 				</div>
 				<span class="network-status" :class="{ 'is-active': net.active }">
 					<span class="status-dot"></span>{{ net.active ? $t('Active') : $t('Inactive') }}
 				</span>
-				<button v-if="net.mode === 'bridge'" class="network-remove" :title="$t('Remove')" @click="deletingNetName = net.name">
+				<button v-if="net.mode === 'bridge'" class="network-remove" :title="$t('Remove')" :aria-label="$t('Remove {name}', { name: net.name })" @click="askDelete(net)">
 					<b-icon icon="trash-can-outline" custom-size="mdi-18px"></b-icon>
 				</button>
 			</div>
@@ -35,10 +49,10 @@
 		</div>
 
 		<vm-overlay-panel :active="showCreate" :title="$t('Create bridged network')" width="26rem" @close="showCreate = false">
-			<b-message type="is-warning" :closable="false">
+			<div class="vm-notice is-warning" role="note">
 				{{ $t('Bridging the wrong network interface can disconnect this machine from your LAN. ' +
 					'The interface currently carrying the default route is refused automatically, but double-check your choice.') }}
-			</b-message>
+			</div>
 			<b-field :label="$t('Bridge name')">
 				<b-input v-model="form.name" size="is-small" placeholder="br-vm0"></b-input>
 			</b-field>
@@ -51,9 +65,9 @@
 					size="small"
 				></vm-dropdown>
 			</b-field>
-			<b-message v-if="!interfaces.length && !loadingInterfaces" type="is-info" :closable="false">
+			<div class="vm-notice is-info" v-if="!interfaces.length && !loadingInterfaces" role="note">
 				{{ $t('No spare physical network interfaces were found on this machine.') }}
-			</b-message>
+			</div>
 			<b-field>
 				<label class="static-ip-toggle">
 					<input type="checkbox" v-model="form.useStaticIP" />
@@ -62,7 +76,7 @@
 			</b-field>
 			<template v-if="form.useStaticIP">
 				<b-field :label="$t('Static IP')">
-					<b-input v-model="form.static_ip" size="is-small" placeholder="192.168.1.50"></b-input>
+					<b-input v-model="form.static_ip" size="is-small" placeholder="192.168.1.50" :aria-invalid="form.static_ip && !isIPv4(form.static_ip) ? 'true' : 'false'"></b-input>
 				</b-field>
 				<b-field :label="$t('Netmask')">
 					<b-input v-model="form.netmask" size="is-small" placeholder="255.255.255.0"></b-input>
@@ -70,11 +84,12 @@
 				<b-field :label="$t('Gateway')">
 					<b-input v-model="form.gateway" size="is-small" placeholder="192.168.1.1"></b-input>
 				</b-field>
+				<p v-if="staticIpError" class="field-error" role="alert">{{ staticIpError }}</p>
 				<p class="static-ip-hint">
 					{{ $t('Recommended when bridging the interface carrying this host\'s own connection - a DHCP-assigned bridge can get a different address than the host had before.') }}
 				</p>
 			</template>
-			<b-message v-if="error" type="is-danger" :closable="false">{{ error }}</b-message>
+			<div class="vm-notice is-danger" v-if="error" role="alert">{{ error }}</div>
 
 			<template #footer>
 				<b-button @click="showCreate = false">{{ $t('Cancel') }}</b-button>
@@ -85,7 +100,9 @@
 		</vm-overlay-panel>
 
 		<vm-overlay-panel :active="!!deletingNetName" :title="$t('Remove Network')" width="24rem" @close="deletingNetName = null">
-			<p>{{ $t('Remove bridged network') }} "{{ deletingNetName }}"? {{ $t('Any VM attached to it will lose network connectivity until reconfigured.') }}</p>
+			<p>{{ $t('Remove the bridged network "{name}"?', { name: deletingNetName }) }}</p>
+			<p v-if="deletingUsers.length" class="field-error mt-2">{{ $t('These VMs use it and would not start until you pick another network for them: {vms}', { vms: deletingUsers.join(', ') }) }}</p>
+			<div v-if="deleteError" class="vm-notice is-danger mt-3" role="alert">{{ deleteError }}</div>
 			<template #footer>
 				<b-button @click="deletingNetName = null">{{ $t('Cancel') }}</b-button>
 				<b-button type="is-danger" :loading="deletingNet" @click="performDeleteNetwork">{{ $t('Remove') }}</b-button>
@@ -113,14 +130,27 @@ export default {
 			deletingNetName: null,
 			deletingNet: false,
 			error: null,
+			loadError: '',
+			deleteError: '',
+			deletingUsers: [],
+			vms: [],
 			form: { name: '', host_nic: '', useStaticIP: false, static_ip: '', netmask: '', gateway: '' }
 		}
 	},
 	computed: {
 		canCreate() {
 			if (!this.form.name || !this.form.host_nic) return false
-			if (this.form.useStaticIP && (!this.form.static_ip || !this.form.netmask || !this.form.gateway)) return false
+			if (this.form.useStaticIP && (!this.form.static_ip || !this.form.netmask || !this.form.gateway || this.staticIpError)) return false
 			return true
+		},
+		staticIpError() {
+			if (!this.form.useStaticIP) return ''
+			const bad = [
+				[this.form.static_ip, this.$t('Static IP')],
+				[this.form.netmask, this.$t('Netmask')],
+				[this.form.gateway, this.$t('Gateway')],
+			].filter(([v]) => v && !this.isIPv4(v)).map(([, label]) => label)
+			return bad.length ? this.$t('Not a valid IPv4 address: {fields}', { fields: bad.join(', ') }) : ''
 		},
 		nicOptions() {
 			return (this.interfaces || []).map((nic) => ({
@@ -132,7 +162,10 @@ export default {
 	},
 	watch: {
 		showCreate(isOpen) {
-			if (isOpen) this.loadInterfaces()
+			if (isOpen) {
+				this.error = null
+				this.loadInterfaces()
+			}
 		}
 	},
 	created() {
@@ -141,8 +174,13 @@ export default {
 	methods: {
 		async refresh() {
 			this.loading = true
+			this.loadError = ''
 			try {
-				this.networks = await vmSidecar.listNetworks()
+				const [nets, vms] = await Promise.all([vmSidecar.listNetworks(), vmSidecar.listVMs().catch(() => [])])
+				this.networks = nets || []
+				this.vms = vms || []
+			} catch (e) {
+				this.loadError = e.message || this.$t('The VM service is not responding.')
 			} finally {
 				this.loading = false
 			}
@@ -151,9 +189,27 @@ export default {
 			this.loadingInterfaces = true
 			try {
 				this.interfaces = await vmSidecar.listHostInterfaces()
+			} catch (e) {
+				this.interfaces = []
+				this.error = this.$t('Could not list the network interfaces: {reason}', { reason: e.message })
 			} finally {
 				this.loadingInterfaces = false
 			}
+		},
+		// Which VMs are attached to a network (so removing it can warn).
+		usedBy(net) {
+			return this.vms
+				.filter((vm) => (vm.networks || []).some((n) => (net.mode === 'bridge' ? n.mode === 'bridge' && n.bridge_name === net.name : n.mode !== 'bridge')))
+				.map((vm) => vm.name)
+		},
+		isIPv4(v) {
+			const parts = String(v || '').trim().split('.')
+			return parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p) && +p <= 255)
+		},
+		askDelete(net) {
+			this.deleteError = ''
+			this.deletingUsers = this.usedBy(net)
+			this.deletingNetName = net.name
 		},
 		async create() {
 			this.error = null
@@ -182,8 +238,9 @@ export default {
 				this.deletingNetName = null
 				await this.refresh()
 			} catch (e) {
-				this.error = e.message
-				this.deletingNetName = null
+				// Shown in the still-open dialog (it used to land in the Create
+				// dialog's error slot, invisible until that was opened).
+				this.deleteError = e.message
 			} finally {
 				this.deletingNet = false
 			}
@@ -217,7 +274,7 @@ export default {
 	justify-content: center;
 	gap: var(--space-2);
 	border: none;
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #fff;
 	font-family: inherit;
 	font-size: var(--font-sm);
@@ -229,7 +286,7 @@ export default {
 	transition: background 0.15s ease;
 
 	&:hover {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 	}
 }
 .vm-loading {
@@ -256,12 +313,10 @@ export default {
 	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: var(--radius-card);
 	background: var(--theme-card-bg, #fff);
-	box-shadow: var(--shadow-sm);
 	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
 	&:hover {
 		border-color: rgba(37, 99, 235, 0.25);
-		box-shadow: var(--shadow-lg);
 	}
 }
 .network-icon {
@@ -277,7 +332,7 @@ export default {
 
 	&.is-active {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 .network-info {
@@ -310,7 +365,7 @@ export default {
 
 	&.is-active {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 
 		.status-dot {
 			background: #10b981;
@@ -339,7 +394,7 @@ export default {
 	transition: background 0.12s ease, color 0.12s ease;
 
 	&:hover {
-		color: #dc2626;
+		color: var(--color-danger-fg);
 		background: var(--color-danger-soft, #fee2e2);
 	}
 }
@@ -378,5 +433,24 @@ export default {
 		color: var(--theme-text-secondary, #475569);
 		margin: var(--space-1) 0 0;
 	}
+}
+.network-intro {
+	margin: 0 0 var(--space-4);
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary, #475569);
+	max-width: 48rem;
+}
+.field-error {
+	font-size: var(--font-sm);
+	color: var(--color-danger-fg);
+}
+.network-remove:focus-visible,
+.create-btn:focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+}
+.create-btn {
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 </style>

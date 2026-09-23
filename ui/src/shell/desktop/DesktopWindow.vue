@@ -118,6 +118,8 @@ export default {
 					connecting: this.$t('Connecting...'),
 					connected: this.$t('Connected'),
 					disconnected: this.$t('Disconnected'),
+					off: this.$t('Off'),
+					paused: this.$t('Paused'),
 				}[this.consoleStatus] || this.consoleStatus
 			)
 		},
@@ -424,7 +426,11 @@ export default {
 	}
 	&.is-disconnected {
 		background: rgba(255, 56, 96, 0.15);
-		color: #ff3860;
+		color: #ff6b8b;
+	}
+	&.is-paused {
+		background: rgba(255, 221, 87, 0.15);
+		color: #ffdd57;
 	}
 }
 

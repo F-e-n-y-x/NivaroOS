@@ -23,10 +23,16 @@
 			:title="selectedLabel"
 			aria-haspopup="listbox"
 			:aria-expanded="isOpen ? 'true' : 'false'"
+			:aria-activedescendant="isOpen && highlightedIndex >= 0 ? uid + '-opt-' + highlightedIndex : null"
+			:aria-label="ariaLabel || null"
 			@click.stop="toggleMenu"
 			@keydown.esc.stop="closeMenu"
 			@keydown.down.prevent="onTriggerDown"
 			@keydown.up.prevent="onTriggerUp"
+			@keydown.enter.prevent="onTriggerPick"
+			@keydown.space.prevent="onTriggerPick"
+			@keydown.home.prevent="isOpen && (highlightedIndex = 0)"
+			@keydown.end.prevent="isOpen && (highlightedIndex = normalizedOptions.length - 1)"
 		>
 			<div class="trigger-content">
 				<b-icon
@@ -81,7 +87,9 @@
 					:disabled="opt.disabled"
 					:title="opt.label + (opt.specs ? ' · ' + opt.specs : '')"
 					role="option"
-					:aria-selected="isSelected(opt.value)"
+					:id="uid + '-opt-' + idx"
+					tabindex="-1"
+					:aria-selected="isSelected(opt.value) ? 'true' : 'false'"
 					@click.stop="selectOption(opt)"
 					@mouseenter="highlightedIndex = idx"
 				>
@@ -127,6 +135,8 @@ export default {
 		options: { type: Array, default: () => [] },
 		placeholder: { type: String, default: '' },
 		emptyText: { type: String, default: '' },
+		// Accessible name when there's no visible <label> for the trigger.
+		ariaLabel: { type: String, default: '' },
 		disabled: { type: Boolean, default: false },
 		dark: { type: Boolean, default: false },
 		icon: { type: String, default: '' },
@@ -139,6 +149,7 @@ export default {
 		return {
 			isOpen: false,
 			highlightedIndex: -1,
+			uid: 'vmdd-' + Math.random().toString(36).slice(2, 8),
 			autoDirection: 'down',
 			autoAlign: 'left',
 		}
@@ -259,6 +270,17 @@ export default {
 				this.navigateHighlight(1)
 			}
 		},
+		// Enter/Space: open, or pick the highlighted option. (Arrow keys used
+		// to move a highlight that nothing could ever select.)
+		onTriggerPick() {
+			if (!this.isOpen) {
+				this.toggleMenu()
+				return
+			}
+			const opt = this.normalizedOptions[this.highlightedIndex]
+			if (opt) this.selectOption(opt)
+			else this.closeMenu()
+		},
 		onTriggerUp() {
 			if (!this.isOpen) {
 				this.isOpen = true
@@ -273,6 +295,10 @@ export default {
 			if (next < 0) next = len - 1
 			if (next >= len) next = 0
 			this.highlightedIndex = next
+			this.$nextTick(() => {
+				const el = this.$refs.menuRef && this.$refs.menuRef.querySelectorAll('.vm-dropdown-item')[next]
+				if (el) el.scrollIntoView({ block: 'nearest' })
+			})
 		},
 		setInitialHighlight() {
 			const idx = this.normalizedOptions.findIndex((opt) => opt.value === this.value)
@@ -489,7 +515,7 @@ export default {
 
 	&.is-selected {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		font-weight: 600;
 	}
 
@@ -524,7 +550,7 @@ export default {
 
 	&.is-running {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 	}
 
 	&.is-paused {
@@ -533,12 +559,12 @@ export default {
 
 	&.is-crashed {
 		background: var(--color-danger-soft, #fef2f2);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 	}
 
 	.is-selected & {
 		background: var(--color-primary-soft, #dbeafe);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -566,7 +592,7 @@ export default {
 	white-space: nowrap;
 
 	.is-selected & {
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -596,13 +622,13 @@ export default {
 	text-transform: capitalize;
 
 	&.is-running {
-		color: #059669;
+		color: var(--color-success-fg);
 	}
 	&.is-paused {
-		color: #d97706;
+		color: var(--color-warning-fg);
 	}
 	&.is-crashed {
-		color: #dc2626;
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -623,7 +649,7 @@ export default {
 }
 
 .item-check {
-	color: #2563eb;
+	color: var(--color-primary-fg);
 }
 
 .item-left {
@@ -640,7 +666,7 @@ export default {
 	flex-shrink: 0;
 
 	.is-selected & {
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -697,7 +723,7 @@ export default {
 }
 
 .vm-dropdown.is-dark .trigger-label.is-placeholder {
-	color: rgba(255, 255, 255, 0.4);
+	color: rgba(255, 255, 255, 0.66);
 }
 
 .vm-dropdown-menu.is-dark {

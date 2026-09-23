@@ -8,15 +8,17 @@
 				<vm-dropdown
 					v-if="vms.length"
 					v-model="selectedVmName"
+					:aria-label="$t('Virtual machine')"
 					:options="vmDropdownOptions"
 					:placeholder="$t('Select VM...')"
 					size="small"
-					class="vm-selector-dropdown ml-3"
+					class="vm-selector-dropdown"
 					@input="onVmChange"
 				></vm-dropdown>
 				<button
-					class="refresh-icon-btn ml-2"
+					class="refresh-icon-btn"
 					:title="$t('Refresh')"
+					:aria-label="$t('Refresh')"
 					:disabled="loadingSnapshots"
 					@click="loadSnapshots"
 				>
@@ -25,10 +27,7 @@
 			</div>
 
 			<div class="toolbar-right">
-				<div v-if="selectedVm" class="safety-net-badge" :class="snapshots.length ? 'is-active' : 'is-empty'">
-					<b-icon :icon="snapshots.length ? 'shield-check' : 'shield-alert-outline'" custom-size="mdi-16px"></b-icon>
-					<span>{{ snapshots.length ? `${snapshots.length} ${snapshots.length === 1 ? $t('Snapshot') : $t('Snapshots')}` : $t('No Safety Net') }}</span>
-				</div>
+
 
 				<button
 					v-if="selectedVm"
@@ -57,12 +56,12 @@
 					</div>
 					<div class="spec-banner-specs">
 						<span class="spec-item">
-							<b-icon icon="memory" custom-size="mdi-13px"></b-icon>
+							<b-icon icon="chip" custom-size="mdi-13px"></b-icon>
 							<span>{{ selectedVm.vcpus }} {{ $t('vCPU') }}</span>
 						</span>
 						<span class="spec-sep">&middot;</span>
 						<span class="spec-item">
-							<b-icon icon="chip" custom-size="mdi-13px"></b-icon>
+							<b-icon icon="memory" custom-size="mdi-13px"></b-icon>
 							<span>{{ formatMib(selectedVm.memory_mib) }}</span>
 						</span>
 						<template v-if="getDiskTotal(selectedVm)">
@@ -83,7 +82,7 @@
 			<div class="spec-banner-right">
 				<div class="spec-banner-count">
 					<span class="count-num">{{ snapshots.length }}</span>
-					<span class="count-text">{{ snapshots.length === 1 ? $t('Restore Point') : $t('Restore Points') }}</span>
+					<span class="count-text">{{ snapshots.length === 1 ? $t('Snapshot') : $t('Snapshots') }}</span>
 				</div>
 			</div>
 		</div>
@@ -91,6 +90,16 @@
 		<!-- Loading State -->
 		<div v-if="loadingSnapshots || loadingVms" class="vm-loading">
 			<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+		</div>
+
+		<div v-else-if="loadError" class="vm-empty" role="alert">
+			<b-icon icon="alert-circle-outline" custom-size="mdi-48px"></b-icon>
+			<p class="vm-empty-title">{{ $t('Could not load snapshots') }}</p>
+			<p class="vm-empty-hint">{{ loadError }}</p>
+			<button class="create-btn-large" @click="vms.length ? loadSnapshots() : loadVMs()">
+				<b-icon icon="refresh" custom-size="mdi-18px"></b-icon>
+				<span>{{ $t('Try again') }}</span>
+			</button>
 		</div>
 
 		<!-- No VMs at all -->
@@ -103,13 +112,13 @@
 		<!-- No Snapshots for Current Selected VM -->
 		<div v-else-if="!snapshots.length" class="vm-empty">
 			<b-icon icon="camera-outline" custom-size="mdi-48px"></b-icon>
-			<p class="vm-empty-title">{{ $t('No snapshots yet for') }} {{ selectedVmName }}</p>
+			<p class="vm-empty-title">{{ $t('No snapshots yet for {name}', { name: selectedVmName }) }}</p>
 			<p class="vm-empty-hint">
 				{{ $t('Snapshots capture the exact virtual disk and machine state at a point in time, allowing you to instantly revert any unwanted changes.') }}
 			</p>
 			<button class="create-btn-large" @click="openTakeSnapshotModal">
 				<b-icon icon="camera-plus-outline" custom-size="mdi-18px"></b-icon>
-				<span>{{ $t('Take Safety Snapshot') }}</span>
+				<span>{{ $t('Take Snapshot') }}</span>
 			</button>
 		</div>
 
@@ -130,10 +139,10 @@
 						<span class="snapshot-name" :title="snap.name">{{ snap.name }}</span>
 						<span v-if="snap.current" class="current-badge">
 							<b-icon icon="check-circle" custom-size="mdi-13px"></b-icon>
-							<span>{{ $t('Current Point') }}</span>
+							<span>{{ $t('Current') }}</span>
 						</span>
-						<span class="state-pill" :class="'is-' + (snap.state || 'running')">
-							{{ snap.state }}
+						<span class="state-pill" :class="'is-' + (snap.state || 'running')" :title="$t('The VM was in this state when the snapshot was taken')">
+							{{ stateLabel(snap.state || 'running') }}
 						</span>
 					</div>
 					<p v-if="snap.description" class="snapshot-desc">{{ snap.description }}</p>
@@ -179,7 +188,7 @@
 		<!-- Take Snapshot Dialog -->
 		<vm-overlay-panel
 			:active="showTakeModal"
-			:title="$t('Take Safety Snapshot')"
+			:title="$t('Take Snapshot')"
 			width="28rem"
 			@close="showTakeModal = false"
 		>
@@ -234,9 +243,7 @@
 					<b-icon icon="alert-outline" custom-size="mdi-20px" class="mr-2"></b-icon>
 					<span>{{ $t('Warning: Any unsaved disk modifications made after this snapshot was taken will be permanently overwritten.') }}</span>
 				</div>
-				<p>
-					{{ $t('Revert') }} <strong>{{ selectedVmName }}</strong> {{ $t('to snapshot') }} <strong>"{{ targetRevertSnap.name }}"</strong>?
-				</p>
+				<p>{{ $t('Revert {vm} to the snapshot "{snap}"?', { vm: selectedVmName, snap: targetRevertSnap.name }) }}</p>
 			</div>
 			<template #footer>
 				<b-button @click="targetRevertSnap = null">{{ $t('Cancel') }}</b-button>
@@ -259,9 +266,8 @@
 			@close="targetDeleteSnap = null"
 		>
 			<div v-if="targetDeleteSnap" class="dialog-body">
-				<p>
-					{{ $t('Delete snapshot') }} <strong>"{{ targetDeleteSnap.name }}"</strong> {{ $t('from') }} <strong>{{ selectedVmName }}</strong>?
-				</p>
+				<p>{{ $t('Delete the snapshot "{snap}" of {vm}?', { vm: selectedVmName, snap: targetDeleteSnap.name }) }}</p>
+				<p class="dialog-hint mt-2">{{ $t('Only this restore point is removed. The VM itself and any newer snapshots are kept.') }}</p>
 			</div>
 			<template #footer>
 				<b-button @click="targetDeleteSnap = null">{{ $t('Cancel') }}</b-button>
@@ -301,6 +307,7 @@ export default {
 			vms: [],
 			loadingVms: false,
 			selectedVmName: '',
+			loadError: '',
 			snapshots: [],
 			loadingSnapshots: false,
 			showTakeModal: false,
@@ -368,22 +375,29 @@ export default {
 					await this.loadSnapshots()
 				}
 			} catch (err) {
-				console.error('Failed to load VMs:', err)
+				this.loadError = err.message || this.$t('The VM service is not responding.')
 			} finally {
 				this.loadingVms = false
 			}
 		},
 		async loadSnapshots() {
 			if (!this.selectedVmName) return
+			// Switching VMs quickly: only the latest request may fill the list,
+			// or VM A's snapshots could appear under VM B.
+			const vm = this.selectedVmName
+			const seq = (this.snapSeq = (this.snapSeq || 0) + 1)
 			this.loadingSnapshots = true
+			this.loadError = ''
 			try {
-				const res = await vmSidecar.listSnapshots(this.selectedVmName)
+				const res = await vmSidecar.listSnapshots(vm)
+				if (seq !== this.snapSeq) return
 				this.snapshots = Array.isArray(res) ? res : []
 			} catch (err) {
-				console.error('Failed to load snapshots:', err)
+				if (seq !== this.snapSeq) return
 				this.snapshots = []
+				this.loadError = err.message || this.$t('Could not load snapshots')
 			} finally {
-				this.loadingSnapshots = false
+				if (seq === this.snapSeq) this.loadingSnapshots = false
 			}
 		},
 		onVmChange() {
@@ -449,7 +463,8 @@ export default {
 			const snap = this.targetDeleteSnap
 			this.deletingName = snap.name
 			try {
-				await vmSidecar.deleteSnapshot(this.selectedVmName, snap.name, true)
+				// Not children=true: that silently deleted every newer snapshot too.
+				await vmSidecar.deleteSnapshot(this.selectedVmName, snap.name, false)
 				this.$buefy.toast.open({
 					message: this.$t('Snapshot deleted'),
 					type: 'is-success'
@@ -500,15 +515,20 @@ export default {
 			if (!vm) return this.$t('None')
 			if (vm.networks && vm.networks.length > 0) {
 				const n = vm.networks[0]
-				return n.mode === 'bridge' ? (n.bridge_name || 'Bridge') : this.$t('NAT')
+				return n.mode === 'bridge' ? (n.bridge_name || this.$t('Bridge')) : this.$t('NAT')
 			}
 			if (!vm.network_mode) return this.$t('None')
 			return vm.network_mode.startsWith('bridge:') ? vm.network_mode.replace('bridge:', '') : this.$t('NAT')
 		},
-		formatCreationTime(isoStr) {
-			if (!isoStr) return ''
-			const d = new Date(isoStr)
-			if (isNaN(d.getTime())) return isoStr
+		// creation_time is Unix seconds (libvirt's creationTime), not ms.
+		toDate(ts) {
+			if (!ts) return null
+			const d = typeof ts === 'number' ? new Date(ts * 1000) : new Date(ts)
+			return isNaN(d.getTime()) ? null : d
+		},
+		formatCreationTime(ts) {
+			const d = this.toDate(ts)
+			if (!d) return ''
 			return d.toLocaleString([], {
 				month: 'short',
 				day: 'numeric',
@@ -517,18 +537,14 @@ export default {
 				minute: '2-digit'
 			})
 		},
-		formatTimeAgo(isoStr) {
-			if (!isoStr) return ''
-			const d = new Date(isoStr)
-			if (isNaN(d.getTime())) return ''
-			const now = new Date()
-			const diffSec = Math.floor((now - d) / 1000)
-			if (diffSec < 30) return this.$t('Just now')
-			if (diffSec < 60) return `${diffSec}s ago`
-			if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
-			if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
-			const diffDays = Math.floor(diffSec / 86400)
-			return `${diffDays}d ago`
+		formatTimeAgo(ts) {
+			const d = this.toDate(ts)
+			if (!d) return ''
+			const diffSec = Math.floor((Date.now() - d.getTime()) / 1000)
+			if (diffSec < 60) return this.$t('Just now')
+			if (diffSec < 3600) return this.$t('{n} min ago', { n: Math.floor(diffSec / 60) })
+			if (diffSec < 86400) return this.$t('{n} h ago', { n: Math.floor(diffSec / 3600) })
+			return this.$t('{n} days ago', { n: Math.floor(diffSec / 86400) })
 		}
 	}
 }
@@ -565,8 +581,13 @@ export default {
 	letter-spacing: -0.01em;
 }
 
+// Fixed width so the picker sits on the title's row instead of taking
+// the whole line and pushing Refresh onto a row of its own.
 .vm-selector-dropdown {
-	min-width: min(14rem, 100%);
+	flex: 0 1 16rem;
+	width: 16rem;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .refresh-icon-btn {
@@ -600,13 +621,13 @@ export default {
 
 	&.is-active {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 		border: 1px solid #a7f3d0;
 	}
 
 	&.is-empty {
 		background: var(--theme-warning-soft, #fffbeb);
-		color: #d97706;
+		color: var(--color-warning-fg);
 		border: 1px solid #fde68a;
 	}
 }
@@ -623,7 +644,6 @@ export default {
 	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: var(--radius-card);
 	margin-bottom: var(--space-5);
-	box-shadow: var(--shadow-sm);
 }
 
 .spec-banner-left {
@@ -646,15 +666,15 @@ export default {
 
 	&.is-running {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 	}
 	&.is-paused {
 		background: var(--theme-warning-soft, #fffbeb);
-		color: #d97706;
+		color: var(--color-warning-fg);
 	}
 	&.is-crashed {
 		background: var(--color-danger-soft, #fef2f2);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -697,7 +717,7 @@ export default {
 
 	&.is-running {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 		.state-dot {
 			background: #10b981;
 			box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
@@ -705,12 +725,12 @@ export default {
 	}
 	&.is-paused {
 		background: var(--theme-warning-soft, #fffbeb);
-		color: #d97706;
+		color: var(--color-warning-fg);
 		.state-dot { background: #f59e0b; }
 	}
 	&.is-crashed {
 		background: var(--color-danger-soft, #fef2f2);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 		.state-dot { background: #ef4444; }
 	}
 }
@@ -766,7 +786,7 @@ export default {
 	justify-content: center;
 	gap: var(--space-2);
 	border: none;
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #fff;
 	font-family: inherit;
 	font-size: var(--font-sm);
@@ -778,7 +798,7 @@ export default {
 	transition: background 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 		color: #fff;
 	}
 
@@ -794,7 +814,7 @@ export default {
 	justify-content: center;
 	gap: var(--space-2);
 	border: none;
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #fff;
 	font-family: inherit;
 	font-size: var(--font-sm);
@@ -807,7 +827,7 @@ export default {
 	transition: background 0.15s ease;
 
 	&:hover {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 		color: #fff;
 	}
 }
@@ -866,12 +886,10 @@ export default {
 	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
 	border-radius: var(--radius-card);
 	background: var(--theme-card-bg, #ffffff);
-	box-shadow: var(--shadow-sm);
 	transition: all 0.15s ease;
 
 	&:hover {
 		border-color: rgba(37, 99, 235, 0.25);
-		box-shadow: var(--shadow-lg);
 	}
 
 	&.is-current {
@@ -893,7 +911,7 @@ export default {
 
 	&.is-current {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -924,7 +942,7 @@ export default {
 	gap: var(--space-1);
 	font-size: var(--font-2xs);
 	font-weight: 700;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	background: rgba(59, 130, 246, 0.1);
 	border: 1px solid #bfdbfe;
 	padding: var(--space-1) var(--space-2);
@@ -944,7 +962,7 @@ export default {
 
 	&.is-running {
 		background: rgba(16, 185, 129, 0.1);
-		color: #059669;
+		color: var(--color-success-fg);
 	}
 
 	&.is-shutoff {
@@ -998,7 +1016,7 @@ export default {
 
 	&:hover:not(:disabled) {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border-color: #93c5fd;
 	}
 
@@ -1022,7 +1040,7 @@ export default {
 	transition: all 0.15s ease;
 
 	&:hover:not(:disabled) {
-		color: #ef4444;
+		color: var(--color-danger-fg);
 		background: var(--color-danger-soft, #fee2e2);
 	}
 
@@ -1054,5 +1072,13 @@ export default {
 	border-radius: var(--radius-control);
 	font-size: var(--font-sm);
 	line-height: 1.4;
+}
+.dialog-hint {
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary, #475569);
+}
+.create-btn {
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 </style>

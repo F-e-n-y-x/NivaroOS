@@ -10,8 +10,15 @@
 	`@close`, default + `footer` slots.
 -->
 <template>
-	<div class="settings-overlay-home" hidden>
-		<div v-if="active" ref="content" class="settings-overlay-content" @keydown.esc.stop="$emit('close')">
+	<div class="settings-overlay-home" :hidden="windowed" :class="{ 'is-inline': !windowed && active }">
+		<div v-if="!windowed && active" class="settings-overlay-inline-backdrop" @click="$emit('close')"></div>
+		<div v-if="active" ref="content" class="settings-overlay-content" :style="windowed ? null : { width: widthPx + 'px' }" role="dialog" :aria-label="title" @keydown.esc.stop="$emit('close')">
+			<header v-if="!windowed" class="settings-overlay-inline-head">
+				<span>{{ title }}</span>
+				<button type="button" class="settings-overlay-inline-close" :aria-label="$t('Close')" :title="$t('Close')" @click="$emit('close')">
+					<b-icon icon="close" pack="mdi" size="is-small"></b-icon>
+				</button>
+			</header>
 			<div class="settings-overlay-body" :class="bodyClass">
 				<slot></slot>
 			</div>
@@ -38,6 +45,11 @@ export default {
 		}
 	},
 	computed: {
+		// Pages without the desktop window manager (the standalone VM
+		// console tab) can't open windows: show the dialog inline there.
+		windowed() {
+			return !this.$route || !!(this.$route.meta && this.$route.meta.showWindows)
+		},
 		widthPx() {
 			if (typeof this.width === 'number') return this.width
 			const m = String(this.width).match(/^([\d.]+)(rem|px)?$/)
@@ -53,6 +65,7 @@ export default {
 		active: {
 			immediate: true,
 			handler(val) {
+				if (!this.windowed) return
 				if (val) this.openWindow()
 				else this.closeWindow()
 			}
@@ -101,13 +114,42 @@ export default {
 				target.appendChild(content)
 				const first = content.querySelector('input, select, textarea, button')
 				if (first) first.focus()
-				// Grow to the content (up to most of the screen).
-				const want = Math.min(content.scrollHeight + 52, window.innerHeight - 96)
-				const win = this.$store.state.windows.find(w => w.id === this.windowId)
-				if (win && want > 120) this.$store.commit('UPDATE_WINDOW_RECT', { id: this.windowId, x: win.x, y: win.y, width: win.width, height: want })
+				this.fitHeight()
+				// Refit when the content changes size later (a field appears,
+				// an error message shows up).
+				const inner = content.querySelector('.settings-overlay-body')
+				if (inner && window.ResizeObserver) {
+					this.contentObserver = new ResizeObserver(() => this.fitHeight())
+					for (const el of inner.children) this.contentObserver.observe(el)
+				}
 			})
 		},
+		// Size the window to its content (grow or shrink, up to most of the
+		// screen). The content box has min-height:100%, so measuring it
+		// as-is never came out smaller than the window and short dialogs
+		// kept a big empty gap.
+		fitHeight() {
+			const content = this.$refs.content
+			const win = this.$store.state.windows.find(w => w.id === this.windowId)
+			if (!content || !win) return
+			// Measure unstretched: drop the min-height and the body's flex
+			// grow for one synchronous read, then put them back.
+			const body = content.querySelector('.settings-overlay-body')
+			content.style.minHeight = '0'
+			if (body) body.style.flex = '0 0 auto'
+			const natural = content.scrollHeight
+			content.style.minHeight = ''
+			if (body) body.style.flex = ''
+			const want = Math.min(natural + 46, window.innerHeight - 96)
+			if (want > 120 && Math.abs(want - win.height) > 4) {
+				this.$store.commit('UPDATE_WINDOW_RECT', { id: this.windowId, x: win.x, y: win.y, width: win.width, height: want })
+			}
+		},
 		closeWindow() {
+			if (this.contentObserver) {
+				this.contentObserver.disconnect()
+				this.contentObserver = null
+			}
 			if (!this.open) return
 			this.open = false
 			if (this.windowStillOpen) this.$store.commit('CLOSE_WINDOW', this.windowId)
@@ -117,6 +159,50 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.settings-overlay-home.is-inline {
+	position: fixed;
+	inset: 0;
+	z-index: 3000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+
+	.settings-overlay-content {
+		position: relative;
+		max-width: 100%;
+		max-height: 100%;
+		overflow: auto;
+		min-height: 0;
+		border-radius: var(--radius-card);
+		background: var(--theme-card-bg, #fff);
+	}
+}
+
+.settings-overlay-inline-backdrop {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.settings-overlay-inline-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--space-3) var(--space-5);
+	border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
+	font-weight: 600;
+	color: var(--theme-text-primary, #1e293b);
+}
+
+.settings-overlay-inline-close {
+	border: 0;
+	background: transparent;
+	color: var(--theme-text-secondary, #475569);
+	cursor: pointer;
+	display: inline-flex;
+}
+
 .settings-overlay-content {
 	display: flex;
 	flex-direction: column;

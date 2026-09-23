@@ -17,7 +17,7 @@
 			</div>
 			<div class="vm-disk-main">
 				<div class="vm-disk-size-row">
-					<b-numberinput
+					<b-numberinput :aria-minus-label="$t('Decrease')" :aria-plus-label="$t('Increase')"
 						class="vm-disk-size"
 						:value="disk.gib"
 						@input="setField(i, 'gib', $event)"
@@ -140,8 +140,8 @@ export default {
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.4));
 
 	&.is-ssd {
-		background: rgba(50, 115, 220, 0.1);
-		color: var(--color-primary, #3273dc);
+		background: rgba(37, 99, 235, 0.1);
+		color: var(--color-primary-fg);
 	}
 }
 .vm-disk-main {
@@ -243,7 +243,7 @@ export default {
 	border-radius: var(--radius-sm);
 
 	&:hover {
-		color: #f2534a;
+		color: var(--color-danger-fg);
 		background: rgba(242, 83, 74, 0.08);
 	}
 }
@@ -255,7 +255,7 @@ export default {
 	border: 1px dashed rgb(200 207 214);
 	border-radius: var(--radius-control);
 	background: transparent;
-	color: var(--color-primary, #3273dc);
+	color: var(--color-primary-fg);
 	font-family: inherit;
 	font-size: var(--font-sm);
 	font-weight: 600;
@@ -263,7 +263,7 @@ export default {
 	cursor: pointer;
 
 	&:hover {
-		background: rgba(50, 115, 220, 0.06);
+		background: rgba(37, 99, 235, 0.06);
 	}
 }
 .vm-disk-hint {
