@@ -1,23 +1,25 @@
+<!--
+	A Settings dialog shown as a real desktop window.
+
+	It used to be a full-screen overlay: a blurred backdrop over the whole
+	desktop that blocked every other window until it was closed. Now opening
+	it creates an ordinary window (PortalWindow) and moves this dialog's
+	content into it - it can be moved, stacked, minimised and used side by
+	side with anything else. The content stays this component's own (slots,
+	bindings, events), so callers didn't change: `active`, `title`, `width`,
+	`@close`, default + `footer` slots.
+-->
 <template>
-	<transition name="fade">
-		<div v-if="active" class="settings-overlay" @click.self="$emit('close')">
-			<div class="settings-overlay-backdrop" @click="$emit('close')"></div>
-			<div ref="card" class="settings-overlay-card" :style="cardStyle" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @keydown.esc.stop="$emit('close')" @keydown.tab="trapTab">
-				<header class="settings-overlay-head" @pointerdown="startDrag">
-					<span :id="titleId" class="settings-overlay-title">{{ title }}</span>
-					<button type="button" class="settings-overlay-close" :aria-label="$t('Close')" @pointerdown.stop @click.stop="$emit('close')">
-						<b-icon icon="close" size="is-small" pack="mdi"></b-icon>
-					</button>
-				</header>
-				<div class="settings-overlay-body" :class="bodyClass">
-					<slot></slot>
-				</div>
-				<footer v-if="$slots.footer" class="settings-overlay-foot">
-					<slot name="footer"></slot>
-				</footer>
+	<div class="settings-overlay-home" hidden>
+		<div v-if="active" ref="content" class="settings-overlay-content" @keydown.esc.stop="$emit('close')">
+			<div class="settings-overlay-body" :class="bodyClass">
+				<slot></slot>
 			</div>
+			<footer v-if="$slots.footer" class="settings-overlay-foot">
+				<slot name="footer"></slot>
+			</footer>
 		</div>
-	</transition>
+	</div>
 </template>
 
 <script>
@@ -31,183 +33,107 @@ export default {
 	},
 	data() {
 		return {
-			dragOffset: { x: 0, y: 0 },
-			titleId: 'settings-overlay-title-' + Math.random().toString(36).slice(2, 8),
-			returnFocus: null
-		}
-	},
-	watch: {
-		// Keyboard users land inside the dialog and get back to where they
-		// were when it closes (focus used to stay behind the overlay).
-		active(val) {
-			if (val) {
-				this.dragOffset = { x: 0, y: 0 }
-				this.returnFocus = document.activeElement
-				this.$nextTick(() => {
-					const card = this.$refs.card
-					if (!card) return
-					const first = card.querySelector('.settings-overlay-body input, .settings-overlay-body select, .settings-overlay-body textarea, .settings-overlay-body button')
-					;(first || card).focus()
-				})
-			} else if (this.returnFocus && this.returnFocus.focus) {
-				this.returnFocus.focus()
-				this.returnFocus = null
-			}
+			windowId: 'settings-dialog-' + Math.random().toString(36).slice(2, 9),
+			open: false
 		}
 	},
 	computed: {
-		cardWidth() {
-			return typeof this.width === 'number' ? `${this.width}px` : this.width
+		widthPx() {
+			if (typeof this.width === 'number') return this.width
+			const m = String(this.width).match(/^([\d.]+)(rem|px)?$/)
+			if (!m) return 520
+			return m[2] === 'px' ? +m[1] : Math.round(+m[1] * 16)
 		},
-		cardStyle() {
-			const style = {
-				width: this.cardWidth,
-				maxWidth: 'calc(100% - 2rem)'
-			}
-			if (this.dragOffset.x || this.dragOffset.y) {
-				style.transform = `translate(${this.dragOffset.x}px, ${this.dragOffset.y}px)`
-			}
-			return style
+		// Used to notice the window being closed from its own title bar.
+		windowStillOpen() {
+			return this.$store.state.windows.some(w => w.id === this.windowId)
 		}
 	},
-	methods: {
-		// Tab cycles within the dialog.
-		trapTab(e) {
-			const card = this.$refs.card
-			if (!card) return
-			const items = [...card.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled && el.offsetParent !== null)
-			if (!items.length) return
-			const first = items[0]
-			const last = items[items.length - 1]
-			if (e.shiftKey && document.activeElement === first) {
-				e.preventDefault()
-				last.focus()
-			} else if (!e.shiftKey && document.activeElement === last) {
-				e.preventDefault()
-				first.focus()
+	watch: {
+		active: {
+			immediate: true,
+			handler(val) {
+				if (val) this.openWindow()
+				else this.closeWindow()
 			}
 		},
-		startDrag(e) {
-			if (e.target.closest('button, input, select, textarea, a, .settings-overlay-close')) return
-			const startX = e.clientX
-			const startY = e.clientY
-			const originX = this.dragOffset.x
-			const originY = this.dragOffset.y
-			document.body.style.userSelect = 'none'
-
-			const onMove = moveEvent => {
-				this.dragOffset = {
-					x: originX + (moveEvent.clientX - startX),
-					y: originY + (moveEvent.clientY - startY)
+		windowStillOpen(open) {
+			if (!open && this.open) {
+				this.open = false
+				this.$emit('close')
+			}
+		},
+		title(t) {
+			const win = this.$store.state.windows.find(w => w.id === this.windowId)
+			if (win) win.title = t
+		}
+	},
+	beforeDestroy() {
+		this.closeWindow()
+	},
+	methods: {
+		openWindow() {
+			const width = Math.min(this.widthPx, window.innerWidth - 32)
+			const height = Math.min(480, window.innerHeight - 96)
+			this.$store.commit('OPEN_WINDOW', {
+				id: this.windowId,
+				title: this.title,
+				component: 'PortalWindow',
+				props: { portalId: this.windowId },
+				width,
+				height,
+				x: Math.max(16, Math.round((window.innerWidth - width) / 2)),
+				y: Math.max(40, Math.round((window.innerHeight - height) / 3))
+			})
+			this.open = true
+			this.moveIn(0)
+		},
+		// Wait for the window (and our v-if content) to exist, then move the
+		// content into it and fit the window to it.
+		moveIn(tries) {
+			this.$nextTick(() => {
+				const target = document.getElementById('portal-' + this.windowId)
+				const content = this.$refs.content
+				if (!target || !content) {
+					if (tries < 20 && this.open) setTimeout(() => this.moveIn(tries + 1), 25)
+					return
 				}
-			}
-			const onUp = () => {
-				window.removeEventListener('pointermove', onMove)
-				window.removeEventListener('pointerup', onUp)
-				document.body.style.userSelect = ''
-			}
-			window.addEventListener('pointermove', onMove)
-			window.addEventListener('pointerup', onUp)
+				target.appendChild(content)
+				const first = content.querySelector('input, select, textarea, button')
+				if (first) first.focus()
+				// Grow to the content (up to most of the screen).
+				const want = Math.min(content.scrollHeight + 52, window.innerHeight - 96)
+				const win = this.$store.state.windows.find(w => w.id === this.windowId)
+				if (win && want > 120) this.$store.commit('UPDATE_WINDOW_RECT', { id: this.windowId, x: win.x, y: win.y, width: win.width, height: want })
+			})
+		},
+		closeWindow() {
+			if (!this.open) return
+			this.open = false
+			if (this.windowStillOpen) this.$store.commit('CLOSE_WINDOW', this.windowId)
 		}
 	}
 }
 </script>
 
 <style lang="scss" scoped>
-.settings-overlay {
-	position: fixed;
-	inset: 0;
-	z-index: 2000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.settings-overlay-backdrop {
-	position: absolute;
-	inset: 0;
-	background: rgba(15, 23, 42, 0.45);
-	backdrop-filter: blur(3px);
-}
-
-.settings-overlay-card {
-	position: relative;
-	z-index: 1;
-	background: var(--theme-card-bg, #ffffff);
-	border-color: var(--theme-card-border, #e2e8f0);
-	color: var(--theme-text-primary, #334155);
-	border-radius: var(--radius-modal);
-	border: 1px solid var(--theme-card-border, #e2e8f0);
-	box-shadow: var(--shadow-lg);
+.settings-overlay-content {
 	display: flex;
 	flex-direction: column;
-	max-height: calc(100% - 2.5rem);
-	overflow: hidden;
-	animation: popIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes popIn {
-	from {
-		opacity: 0;
-		transform: scale(0.96) translateY(6px);
-	}
-	to {
-		opacity: 1;
-		transform: scale(1) translateY(0);
-	}
-}
-
-.settings-overlay-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: var(--space-3) var(--space-5);
-	border-bottom: 1px solid var(--theme-card-border, #f1f5f9);
-	background: var(--theme-card-bg, #ffffff);
-	border-color: var(--theme-card-border, #f1f5f9);
-	color: var(--theme-text-primary, #1e293b);
-	cursor: grab;
-	user-select: none;
-	touch-action: none;
-
-	&:active {
-		cursor: grabbing;
-	}
-}
-
-.settings-overlay-title {
-	font-size: var(--font-md);
-	font-weight: 600;
-	color: var(--theme-text-primary, #1e293b);
-}
-
-.settings-overlay-close {
-	border: none;
-	background: var(--theme-card-hover, rgba(0, 0, 0, 0.04));
-	color: var(--theme-text-muted, #64748b);
-	cursor: pointer;
-	border-radius: 50%;
-	width: 1.6rem;
-	height: 1.6rem;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	transition: background 0.15s ease, color 0.15s ease;
-
-	&:hover {
-		background: var(--theme-card-border, rgba(0, 0, 0, 0.09));
-		color: var(--theme-text-primary, #1e293b);
-	}
+	min-height: 100%;
+	color: var(--theme-text-primary, #334155);
 }
 
 .settings-overlay-body {
+	flex: 1 1 auto;
 	padding: var(--space-5);
-	overflow-y: auto;
 	color: var(--theme-text-secondary, #334155);
 	font-size: var(--font-base);
 }
 
 .settings-overlay-foot {
+	position: sticky;
+	bottom: 0;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
@@ -215,6 +141,5 @@ export default {
 	padding: var(--space-3) var(--space-5);
 	border-top: 1px solid var(--theme-card-border, #f1f5f9);
 	background: var(--theme-input-bg, #f8fafc);
-	border-color: var(--theme-card-border, #f1f5f9);
 }
 </style>

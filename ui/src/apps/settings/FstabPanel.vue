@@ -203,285 +203,263 @@
 		</div>
 
 		<!-- In-Window Overlay Modal: Mount Drive Wizard -->
-		<div v-if="showAddModal" class="in-window-modal-backdrop" @click.self="showAddModal = false">
-			<div class="in-window-modal-card">
-				<div class="modal-card-header">
-					<div class="modal-header-text">
-						<h4 class="modal-card-title">{{ $t('Mount Existing Drive') }}</h4>
-						<p class="modal-subtitle">{{ $t('Mount a drive preserving all files and data. No formatting required.') }}</p>
-					</div>
-					<button class="modal-close-btn" type="button" @click="showAddModal = false">
-						<i class="mdi mdi-close"></i>
-					</button>
-				</div>
+		<!-- A real window (this was an overlay that blocked the Settings window) -->
+		<settings-overlay :active="showAddModal" :title="$t('Mount Existing Drive')" width="40rem" @close="showAddModal = false">
+			<p class="modal-subtitle">{{ $t('Mount a drive preserving all files and data. No formatting required.') }}</p>
+			<div class="fstab-dialog-body">
+				<!-- Step 1: Pick Drive / Partition -->
+				<div class="wizard-section">
+					<label class="wizard-label">
+						<span class="step-num">1</span>
+						<span>{{ $t('Select a Drive or Partition') }}</span>
+					</label>
 
-				<div class="modal-card-body">
-					<!-- Step 1: Pick Drive / Partition -->
-					<div class="wizard-section">
-						<label class="wizard-label">
-							<span class="step-num">1</span>
-							<span>{{ $t('Select a Drive or Partition') }}</span>
-						</label>
-
-						<div v-if="candidates.length" class="candidate-grid">
-							<div
-								v-for="c in candidates"
-								:key="c.uuid"
-								class="candidate-card"
-								:class="{ active: addDraft.uuid === c.uuid }"
-								@click="selectCandidate(c)"
-							>
-								<div class="candidate-icon" :class="getDriveIconClass(c.fstype)">
-									<i class="mdi" :class="driveIcon(c.fstype)"></i>
-								</div>
-								<div class="candidate-details">
-									<div class="candidate-name one-line">{{ c.label || c.path }}</div>
-									<div class="candidate-meta">
-										<span>{{ formatSize(c.size) }}</span> &middot;
-										<span class="fs-text">{{ c.fstype }}</span>
-										<span v-if="c.parent_model" class="model-text"> &middot; {{ c.parent_model }}</span>
-									</div>
-								</div>
-								<div v-if="addDraft.uuid === c.uuid" class="check-mark">
-									<i class="mdi mdi-check"></i>
+					<div v-if="candidates.length" class="candidate-grid">
+						<div
+							v-for="c in candidates"
+							:key="c.uuid"
+							class="candidate-card"
+							:class="{ active: addDraft.uuid === c.uuid }"
+							@click="selectCandidate(c)"
+						>
+							<div class="candidate-icon" :class="getDriveIconClass(c.fstype)">
+								<i class="mdi" :class="driveIcon(c.fstype)"></i>
+							</div>
+							<div class="candidate-details">
+								<div class="candidate-name one-line">{{ c.label || c.path }}</div>
+								<div class="candidate-meta">
+									<span>{{ formatSize(c.size) }}</span> &middot;
+									<span class="fs-text">{{ c.fstype }}</span>
+									<span v-if="c.parent_model" class="model-text"> &middot; {{ c.parent_model }}</span>
 								</div>
 							</div>
-						</div>
-						<div v-else-if="!loadingCandidates" class="empty-candidate-box">
-							<p class="hint">{{ $t('No unmounted formatted partitions detected automatically. You can enter device path or UUID manually below.') }}</p>
-						</div>
-
-						<a class="manual-uuid-toggle mt-2" @click="showManualDevice = !showManualDevice">
-							<i class="mdi" :class="showManualDevice ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
-							{{ $t('Or enter custom Device Path / UUID') }}
-						</a>
-						<div v-if="showManualDevice" class="manual-device-box mt-2">
-							<b-field :label="$t('Drive UUID or Device Path')">
-								<b-input v-model="addDraft.uuid" placeholder="e.g. 1234ABCD5678EF90 or /dev/sdb1" size="is-small"></b-input>
-							</b-field>
-						</div>
-					</div>
-
-					<!-- Step 2: Choose Purpose Preset -->
-					<div v-if="addDraft.uuid" class="wizard-section mt-4">
-						<label class="wizard-label">
-							<span class="step-num">2</span>
-							<span>{{ $t('Choose Drive Purpose & Preset') }}</span>
-						</label>
-						<p class="wizard-subhint">{{ $t('Presets automatically optimize filesystem permissions, performance, and boot flags.') }}</p>
-
-						<div class="preset-cards-grid">
-							<div
-								v-for="p in visiblePresets"
-								:key="p.id"
-								class="preset-card"
-								:class="{ active: presetMatches(addDraft, p) }"
-								@click="applyPreset(addDraft, p)"
-							>
-								<div class="preset-icon-wrap">
-									<i class="mdi" :class="`mdi-${p.icon}`"></i>
-								</div>
-								<div class="preset-info">
-									<span class="preset-title">{{ $t(p.label) }}</span>
-									<span class="preset-desc">{{ $t(p.desc) }}</span>
-								</div>
-								<div v-if="presetMatches(addDraft, p)" class="preset-selected-dot">
-									<i class="mdi mdi-check"></i>
-								</div>
+							<div v-if="addDraft.uuid === c.uuid" class="check-mark">
+								<i class="mdi mdi-check"></i>
 							</div>
 						</div>
 					</div>
-
-					<!-- Step 3: Mount Target Location -->
-					<div v-if="addDraft.uuid" class="wizard-section mt-4">
-						<label class="wizard-label">
-							<span class="step-num">3</span>
-							<span>{{ $t('Mount Target Directory') }}</span>
-						</label>
-						<b-field :message="$t('Where this drive will be accessible in Files (e.g. /DATA/Movies, /DATA/Storage)')">
-							<b-input v-model="addDraft.mount_point" placeholder="/DATA/..." size="is-small" expanded></b-input>
-						</b-field>
-
-						<!-- Quick Target Shortcuts -->
-						<div class="quick-path-pills">
-							<span class="quick-title">{{ $t('Quick suggestions:') }}</span>
-							<button v-for="tag in getQuickPaths(addDraft)" :key="tag" type="button" class="path-pill" @click="addDraft.mount_point = tag">
-								{{ tag }}
-							</button>
-						</div>
+					<div v-else-if="!loadingCandidates" class="empty-candidate-box">
+						<p class="hint">{{ $t('No unmounted formatted partitions detected automatically. You can enter device path or UUID manually below.') }}</p>
 					</div>
 
-					<!-- Step 4: Boot & Safety Options -->
-					<div v-if="addDraft.uuid" class="wizard-section mt-4">
-						<label class="wizard-label">
-							<span class="step-num">4</span>
-							<span>{{ $t('Startup & Safety Settings') }}</span>
-						</label>
-
-						<div class="switch-card">
-							<div class="switch-card-row">
-								<div class="switch-card-text">
-									<span class="title-text">{{ $t('Mount automatically on server startup') }}</span>
-									<span class="sub-text">{{ $t('Ensures drive is ready every time system reboots') }}</span>
-								</div>
-								<b-switch v-model="addDraft.mount_at_boot" size="is-small" type="is-primary"></b-switch>
-							</div>
-
-							<div class="switch-card-row">
-								<div class="switch-card-text">
-									<span class="title-text">{{ $t('Read-only mode') }}</span>
-									<span class="sub-text">{{ $t('Protects all data from being modified or deleted') }}</span>
-								</div>
-								<b-switch v-model="addDraft.read_only" size="is-small" type="is-primary"></b-switch>
-							</div>
-						</div>
-
-						<!-- Advanced Options Expander -->
-						<a class="manual-uuid-toggle mt-3" @click="showAddAdvanced = !showAddAdvanced">
-							<i class="mdi" :class="showAddAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
-							{{ $t('Advanced Mount Flags') }}
-						</a>
-						<div v-if="showAddAdvanced" class="advanced-box mt-2">
-							<b-field :label="$t('Filesystem Type Override')">
-								<b-input v-model="addDraft.fstype" placeholder="e.g. ext4, ntfs3, btrfs, exfat (empty = detect)" size="is-small"></b-input>
-							</b-field>
-							<div class="switch-card-row p-0 mb-3">
-								<div class="switch-card-text">
-									<span class="title-text">{{ $t('Check filesystem at boot (fsck)') }}</span>
-									<span class="sub-text">{{ $t('Scans filesystem for integrity during system startup') }}</span>
-								</div>
-								<b-switch v-model="addDraft.check_at_boot" size="is-small" type="is-primary"></b-switch>
-							</div>
-							<b-field :label="$t('Extra mount options')">
-								<b-input v-model="addDraft.options" :placeholder="$t('e.g. noatime,uid=1000,gid=1000')" size="is-small"></b-input>
-							</b-field>
-						</div>
-					</div>
-
-					<div v-if="formError" class="modal-error-alert mt-3">
-						<i class="mdi mdi-alert-circle-outline mr-2"></i>
-						<span>{{ formError }}</span>
-					</div>
-				</div>
-
-				<div class="modal-card-footer">
-					<b-button rounded size="is-small" @click="showAddModal = false">{{ $t('Cancel') }}</b-button>
-					<b-button
-						rounded
-						size="is-small"
-						type="is-primary"
-						icon-left="check"
-						:loading="submitting"
-						:disabled="!addDraft.uuid || !addDraft.mount_point"
-						@click="submitAdd"
-					>
-						{{ $t('Mount & Save to fstab') }}
-					</b-button>
-				</div>
-			</div>
-		</div>
-
-		<!-- In-Window Overlay Modal: Edit Mount Settings -->
-		<div v-if="showEditModal" class="in-window-modal-backdrop" @click.self="showEditModal = false">
-			<div class="in-window-modal-card">
-				<div class="modal-card-header">
-					<div class="modal-header-text">
-						<h4 class="modal-card-title">{{ $t('Edit Mount Settings') }}</h4>
-						<p class="modal-subtitle">{{ editDraft.drive_label || editDraft.mount_point }} &middot; {{ editDraft.source }}</p>
-					</div>
-					<button class="modal-close-btn" type="button" @click="showEditModal = false">
-						<i class="mdi mdi-close"></i>
-					</button>
-				</div>
-
-				<div class="modal-card-body">
-					<!-- Presets Selection -->
-					<div class="wizard-section">
-						<label class="wizard-label">
-							<span>{{ $t('Purpose Preset') }}</span>
-						</label>
-						<div class="preset-cards-grid">
-							<div
-								v-for="p in visiblePresetsFor(editDraft.fstype)"
-								:key="p.id"
-								class="preset-card"
-								:class="{ active: presetMatches(editDraft, p) }"
-								@click="applyPreset(editDraft, p)"
-							>
-								<div class="preset-icon-wrap">
-									<i class="mdi" :class="`mdi-${p.icon}`"></i>
-								</div>
-								<div class="preset-info">
-									<span class="preset-title">{{ $t(p.label) }}</span>
-									<span class="preset-desc">{{ $t(p.desc) }}</span>
-								</div>
-								<div v-if="presetMatches(editDraft, p)" class="preset-selected-dot">
-									<i class="mdi mdi-check"></i>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Mount Target -->
-					<div class="wizard-section mt-4">
-						<b-field :label="$t('Mount Point Directory')" :message="$t('Target path in Files')">
-							<b-input v-model="editDraft.new_mount_point" size="is-small" expanded></b-input>
+					<a class="manual-uuid-toggle mt-2" @click="showManualDevice = !showManualDevice">
+						<i class="mdi" :class="showManualDevice ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+						{{ $t('Or enter custom Device Path / UUID') }}
+					</a>
+					<div v-if="showManualDevice" class="manual-device-box mt-2">
+						<b-field :label="$t('Drive UUID or Device Path')">
+							<b-input v-model="addDraft.uuid" placeholder="e.g. 1234ABCD5678EF90 or /dev/sdb1" size="is-small"></b-input>
 						</b-field>
 					</div>
+				</div>
 
-					<!-- Switches -->
-					<div class="switch-card mt-3">
+				<!-- Step 2: Choose Purpose Preset -->
+				<div v-if="addDraft.uuid" class="wizard-section mt-4">
+					<label class="wizard-label">
+						<span class="step-num">2</span>
+						<span>{{ $t('Choose Drive Purpose & Preset') }}</span>
+					</label>
+					<p class="wizard-subhint">{{ $t('Presets automatically optimize filesystem permissions, performance, and boot flags.') }}</p>
+
+					<div class="preset-cards-grid">
+						<div
+							v-for="p in visiblePresets"
+							:key="p.id"
+							class="preset-card"
+							:class="{ active: presetMatches(addDraft, p) }"
+							@click="applyPreset(addDraft, p)"
+						>
+							<div class="preset-icon-wrap">
+								<i class="mdi" :class="`mdi-${p.icon}`"></i>
+							</div>
+							<div class="preset-info">
+								<span class="preset-title">{{ $t(p.label) }}</span>
+								<span class="preset-desc">{{ $t(p.desc) }}</span>
+							</div>
+							<div v-if="presetMatches(addDraft, p)" class="preset-selected-dot">
+								<i class="mdi mdi-check"></i>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Step 3: Mount Target Location -->
+				<div v-if="addDraft.uuid" class="wizard-section mt-4">
+					<label class="wizard-label">
+						<span class="step-num">3</span>
+						<span>{{ $t('Mount Target Directory') }}</span>
+					</label>
+					<b-field :message="$t('Where this drive will be accessible in Files (e.g. /DATA/Movies, /DATA/Storage)')">
+						<b-input v-model="addDraft.mount_point" placeholder="/DATA/..." size="is-small" expanded></b-input>
+					</b-field>
+
+					<!-- Quick Target Shortcuts -->
+					<div class="quick-path-pills">
+						<span class="quick-title">{{ $t('Quick suggestions:') }}</span>
+						<button v-for="tag in getQuickPaths(addDraft)" :key="tag" type="button" class="path-pill" @click="addDraft.mount_point = tag">
+							{{ tag }}
+						</button>
+					</div>
+				</div>
+
+				<!-- Step 4: Boot & Safety Options -->
+				<div v-if="addDraft.uuid" class="wizard-section mt-4">
+					<label class="wizard-label">
+						<span class="step-num">4</span>
+						<span>{{ $t('Startup & Safety Settings') }}</span>
+					</label>
+
+					<div class="switch-card">
 						<div class="switch-card-row">
 							<div class="switch-card-text">
 								<span class="title-text">{{ $t('Mount automatically on server startup') }}</span>
-								<span class="sub-text">{{ $t('Drive will be available every boot') }}</span>
+								<span class="sub-text">{{ $t('Ensures drive is ready every time system reboots') }}</span>
 							</div>
-							<b-switch v-model="editDraft.mount_at_boot" size="is-small" type="is-primary"></b-switch>
+							<b-switch v-model="addDraft.mount_at_boot" size="is-small" type="is-primary"></b-switch>
 						</div>
 
 						<div class="switch-card-row">
 							<div class="switch-card-text">
 								<span class="title-text">{{ $t('Read-only mode') }}</span>
-								<span class="sub-text">{{ $t('Protects all data from being modified') }}</span>
+								<span class="sub-text">{{ $t('Protects all data from being modified or deleted') }}</span>
 							</div>
-							<b-switch v-model="editDraft.read_only" size="is-small" type="is-primary"></b-switch>
+							<b-switch v-model="addDraft.read_only" size="is-small" type="is-primary"></b-switch>
 						</div>
 					</div>
 
-					<!-- Advanced -->
-					<a class="manual-uuid-toggle mt-3" @click="showEditAdvanced = !showEditAdvanced">
-						<i class="mdi" :class="showEditAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+					<!-- Advanced Options Expander -->
+					<a class="manual-uuid-toggle mt-3" @click="showAddAdvanced = !showAddAdvanced">
+						<i class="mdi" :class="showAddAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
 						{{ $t('Advanced Mount Flags') }}
 					</a>
-					<div v-if="showEditAdvanced" class="advanced-box mt-2">
+					<div v-if="showAddAdvanced" class="advanced-box mt-2">
 						<b-field :label="$t('Filesystem Type Override')">
-							<b-input v-model="editDraft.fstype" size="is-small"></b-input>
+							<b-input v-model="addDraft.fstype" placeholder="e.g. ext4, ntfs3, btrfs, exfat (empty = detect)" size="is-small"></b-input>
 						</b-field>
 						<div class="switch-card-row p-0 mb-3">
 							<div class="switch-card-text">
 								<span class="title-text">{{ $t('Check filesystem at boot (fsck)') }}</span>
+								<span class="sub-text">{{ $t('Scans filesystem for integrity during system startup') }}</span>
 							</div>
-							<b-switch v-model="editDraft.check_at_boot" size="is-small" type="is-primary"></b-switch>
+							<b-switch v-model="addDraft.check_at_boot" size="is-small" type="is-primary"></b-switch>
 						</div>
 						<b-field :label="$t('Extra mount options')">
-							<b-input v-model="editDraft.options" size="is-small"></b-input>
+							<b-input v-model="addDraft.options" :placeholder="$t('e.g. noatime,uid=1000,gid=1000')" size="is-small"></b-input>
 						</b-field>
 					</div>
+				</div>
 
-					<div v-if="formError" class="modal-error-alert mt-3">
-						<i class="mdi mdi-alert-circle-outline mr-2"></i>
-						<span>{{ formError }}</span>
+				<div v-if="formError" class="modal-error-alert mt-3">
+					<i class="mdi mdi-alert-circle-outline mr-2"></i>
+					<span>{{ formError }}</span>
+				</div>
+			</div>
+			<template #footer>
+				<b-button rounded size="is-small" @click="showAddModal = false">{{ $t('Cancel') }}</b-button>
+				<b-button
+					rounded
+					size="is-small"
+					type="is-primary"
+					icon-left="check"
+					:loading="submitting"
+					:disabled="!addDraft.uuid || !addDraft.mount_point"
+					@click="submitAdd"
+				>
+					{{ $t('Mount & Save to fstab') }}
+				</b-button>
+			</template>
+		</settings-overlay>
+
+		<!-- In-Window Overlay Modal: Edit Mount Settings -->
+		<!-- A real window (this was an overlay that blocked the Settings window) -->
+		<settings-overlay :active="showEditModal" :title="$t('Edit Mount Settings')" width="40rem" @close="showEditModal = false">
+			<p class="modal-subtitle">{{ editDraft.drive_label || editDraft.mount_point }} &middot; {{ editDraft.source }}</p>
+			<div class="fstab-dialog-body">
+				<!-- Presets Selection -->
+				<div class="wizard-section">
+					<label class="wizard-label">
+						<span>{{ $t('Purpose Preset') }}</span>
+					</label>
+					<div class="preset-cards-grid">
+						<div
+							v-for="p in visiblePresetsFor(editDraft.fstype)"
+							:key="p.id"
+							class="preset-card"
+							:class="{ active: presetMatches(editDraft, p) }"
+							@click="applyPreset(editDraft, p)"
+						>
+							<div class="preset-icon-wrap">
+								<i class="mdi" :class="`mdi-${p.icon}`"></i>
+							</div>
+							<div class="preset-info">
+								<span class="preset-title">{{ $t(p.label) }}</span>
+								<span class="preset-desc">{{ $t(p.desc) }}</span>
+							</div>
+							<div v-if="presetMatches(editDraft, p)" class="preset-selected-dot">
+								<i class="mdi mdi-check"></i>
+							</div>
+						</div>
 					</div>
 				</div>
 
-				<div class="modal-card-footer">
-					<b-button rounded size="is-small" @click="showEditModal = false">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-primary" icon-left="check" :loading="submitting" @click="submitEdit">
-						{{ $t('Save Changes') }}
-					</b-button>
+				<!-- Mount Target -->
+				<div class="wizard-section mt-4">
+					<b-field :label="$t('Mount Point Directory')" :message="$t('Target path in Files')">
+						<b-input v-model="editDraft.new_mount_point" size="is-small" expanded></b-input>
+					</b-field>
+				</div>
+
+				<!-- Switches -->
+				<div class="switch-card mt-3">
+					<div class="switch-card-row">
+						<div class="switch-card-text">
+							<span class="title-text">{{ $t('Mount automatically on server startup') }}</span>
+							<span class="sub-text">{{ $t('Drive will be available every boot') }}</span>
+						</div>
+						<b-switch v-model="editDraft.mount_at_boot" size="is-small" type="is-primary"></b-switch>
+					</div>
+
+					<div class="switch-card-row">
+						<div class="switch-card-text">
+							<span class="title-text">{{ $t('Read-only mode') }}</span>
+							<span class="sub-text">{{ $t('Protects all data from being modified') }}</span>
+						</div>
+						<b-switch v-model="editDraft.read_only" size="is-small" type="is-primary"></b-switch>
+					</div>
+				</div>
+
+				<!-- Advanced -->
+				<a class="manual-uuid-toggle mt-3" @click="showEditAdvanced = !showEditAdvanced">
+					<i class="mdi" :class="showEditAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+					{{ $t('Advanced Mount Flags') }}
+				</a>
+				<div v-if="showEditAdvanced" class="advanced-box mt-2">
+					<b-field :label="$t('Filesystem Type Override')">
+						<b-input v-model="editDraft.fstype" size="is-small"></b-input>
+					</b-field>
+					<div class="switch-card-row p-0 mb-3">
+						<div class="switch-card-text">
+							<span class="title-text">{{ $t('Check filesystem at boot (fsck)') }}</span>
+						</div>
+						<b-switch v-model="editDraft.check_at_boot" size="is-small" type="is-primary"></b-switch>
+					</div>
+					<b-field :label="$t('Extra mount options')">
+						<b-input v-model="editDraft.options" size="is-small"></b-input>
+					</b-field>
+				</div>
+
+				<div v-if="formError" class="modal-error-alert mt-3">
+					<i class="mdi mdi-alert-circle-outline mr-2"></i>
+					<span>{{ formError }}</span>
 				</div>
 			</div>
-		</div>
+			<template #footer>
+				<b-button rounded size="is-small" @click="showEditModal = false">{{ $t('Cancel') }}</b-button>
+				<b-button rounded size="is-small" type="is-primary" icon-left="check" :loading="submitting" @click="submitEdit">
+					{{ $t('Save Changes') }}
+				</b-button>
+			</template>
+		</settings-overlay>
 
 		<p v-if="error" class="error-note">{{ error }}</p>
 		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
@@ -493,6 +471,7 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import { formatSize } from '@/utils/formatSize'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 
 const emptyDraft = () => ({
 	uuid: '',
@@ -562,6 +541,7 @@ const WINDOWS_PRESET = {
 export default {
 	name: 'fstab-panel',
 	mixins: [confirmWindowMixin],
+	components: { SettingsOverlay },
 	data() {
 		return {
 			mounts: [],

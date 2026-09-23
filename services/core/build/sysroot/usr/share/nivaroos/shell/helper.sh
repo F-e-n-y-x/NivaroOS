@@ -337,7 +337,14 @@ GetDeviceTree(){
 
 # restart samba service
 RestartSMBD(){
-  $sudo_cmd systemctl restart smbd
+  # Reload, don't restart: a restart drops every connected Windows client
+  # (open Explorer windows / copies fail with "network name no longer
+  # available"). New and changed shares apply on reload.
+  if $sudo_cmd systemctl is-active --quiet smbd; then
+    $sudo_cmd smbcontrol smbd reload-config || $sudo_cmd systemctl restart smbd
+  else
+    $sudo_cmd systemctl restart smbd
+  fi
 }
 
 # edit user password $1:username

@@ -110,24 +110,16 @@
 			</div>
 		</div>
 
-		<!-- Rename Modal -->
-		<b-modal v-model="renameModalActive" has-modal-card trap-focus :destroy-on-hide="false" aria-role="dialog" aria-modal>
-			<div class="modal-card" style="max-width: 440px;">
-				<header class="modal-card-head">
-					<p class="modal-card-title is-size-6">{{ $t('Rename Companion Device') }}</p>
-					<button type="button" class="delete" @click="renameModalActive = false" />
-				</header>
-				<section class="modal-card-body">
-					<b-field :label="$t('Device Name')">
-						<b-input v-model="newDeviceName" :placeholder="$t('e.g. My Phone')" required></b-input>
-					</b-field>
-				</section>
-				<footer class="modal-card-foot is-flex is-justify-content-flex-end">
-					<b-button @click="renameModalActive = false">{{ $t('Cancel') }}</b-button>
-					<b-button type="is-primary" :loading="saving" @click="saveDeviceName">{{ $t('Save') }}</b-button>
-				</footer>
-			</div>
-		</b-modal>
+		<!-- Rename: a real window (a Buefy modal blocked the whole desktop) -->
+		<settings-overlay :active="renameModalActive" :title="$t('Rename Companion Device')" width="440px" @close="renameModalActive = false">
+			<b-field :label="$t('Device Name')">
+				<b-input v-model="newDeviceName" :placeholder="$t('e.g. My Phone')" required @keyup.native.enter="saveDeviceName"></b-input>
+			</b-field>
+			<template #footer>
+				<b-button rounded @click="renameModalActive = false">{{ $t('Cancel') }}</b-button>
+				<b-button rounded type="is-primary" :loading="saving" @click="saveDeviceName">{{ $t('Save') }}</b-button>
+			</template>
+		</settings-overlay>
 		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</section>
 </template>
@@ -137,6 +129,7 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
 
 dayjs.extend(relativeTime)
@@ -151,6 +144,7 @@ export const ROWS = [
 
 export default {
 	name: 'companion-section',
+	components: { SettingsOverlay },
 	mixins: [mixin, confirmWindowMixin],
 	data() {
 		return {

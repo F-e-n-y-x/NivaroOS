@@ -127,6 +127,10 @@ force user = root`
 		if !share.Anonymous {
 			access = `guest ok = No`
 		}
+		// nt acl support = No: Windows permission edits (Security tab,
+		// "copy security" in copy tools) would otherwise be stored as POSIX
+		// ACLs on the drive and can lock local users and apps out; shares
+		// are managed here, not from Windows.
 		configStr += `
 [` + sectionName + `]
 comment = NivaroOS share ` + sectionName + `
@@ -134,6 +138,7 @@ public = ` + map[bool]string{true: "Yes", false: "No"}[share.Anonymous] + `
 path = ` + share.Path + `
 browseable = Yes
 read only = ` + readOnly + `
+nt acl support = No
 ` + access + `
 
 `

@@ -30,6 +30,7 @@ import ContainerConsolePanel from '@/shell/desktop/ContainerConsolePanel.vue'
 import ScheduledTaskWindow from '@/apps/settings/ScheduledTaskWindow.vue'
 import ScheduledTaskLogWindow from '@/apps/settings/ScheduledTaskLogWindow.vue'
 import ConfirmDialogWindow from '@/shared/basicComponents/ConfirmDialogWindow.vue'
+import PortalWindow from '@/shell/desktop/PortalWindow.vue'
 import PromptDialogWindow from '@/shared/basicComponents/PromptDialogWindow.vue'
 import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
 import AddToFolderPanel from '@/apps/app-store/AddToFolderPanel.vue'
@@ -76,6 +77,7 @@ export const COMPONENT_REGISTRY = {
 	ScheduledTaskWindow,
 	ScheduledTaskLogWindow,
 	ConfirmDialogWindow,
+	PortalWindow,
 	PromptDialogWindow,
 	AddToFolderPanel,
 	IconEditorModal,

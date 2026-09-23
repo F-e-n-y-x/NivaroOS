@@ -307,6 +307,21 @@
 
 				<!-- Controls -->
 				<div class="row-control is-flex is-align-items-center">
+					<!-- Update Now first (left of the Auto switch) when an update is available -->
+					<b-button
+						v-if="c.has_update"
+						rounded
+						size="is-small"
+						type="is-primary"
+						class="update-now-btn pulse-glow mr-3"
+						:loading="updatingId === c.id"
+						:disabled="updatingId === c.id || updatingAny"
+						@click="updateContainer(c)"
+					>
+						<i class="mdi mdi-download mr-1"></i>
+						{{ $t('Update Now') }}
+					</b-button>
+
 					<!-- Auto-update switch per container -->
 					<div class="auto-update-toggle is-flex is-align-items-center mr-4" :title="$t('Auto-update this container')">
 						<span class="is-size-7 text-muted mr-2">{{ $t('Auto') }}</span>
@@ -320,20 +335,6 @@
 
 					<!-- Action Buttons -->
 					<div class="buttons are-small mb-0">
-						<!-- Update Now Button (highlighted if update available) -->
-						<b-button
-							v-if="c.has_update"
-							rounded
-							size="is-small"
-							type="is-primary"
-							class="update-now-btn pulse-glow"
-							:loading="updatingId === c.id"
-							:disabled="updatingId === c.id || updatingAny"
-							@click="updateContainer(c)"
-						>
-							<i class="mdi mdi-download mr-1"></i>
-							{{ $t('Update Now') }}
-						</b-button>
 
 						<!-- Check single update -->
 						<b-button
