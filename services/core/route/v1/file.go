@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,9 +36,9 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
+	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/transfer"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/trash"
-	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -77,9 +78,7 @@ var (
 	// 升级成 WebSocket 协议
 	upgraderFile = websocket.Upgrader{
 		// 允许CORS跨域请求
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+		CheckOrigin: nivaroos_middleware.CheckWebSocketOrigin,
 	}
 	conn *websocket.Conn
 	err  error

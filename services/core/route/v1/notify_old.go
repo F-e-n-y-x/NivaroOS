@@ -2,7 +2,7 @@ package v1
 
 import (
 	"fmt"
-	"net/http"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
@@ -11,9 +11,7 @@ import (
 )
 
 var upGrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin: nivaroos_middleware.CheckWebSocketOrigin,
 }
 
 // @Summary websocket 接口,连接成功后发送一个"notify"字符串

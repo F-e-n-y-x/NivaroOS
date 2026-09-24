@@ -3,12 +3,88 @@ package route
 import (
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
 	"go.uber.org/zap"
 )
+
+// gpuPathPrefix is where the UI reaches nivaroos-gpu-sidecar same-origin:
+// /v1/gpu/<endpoint> is proxied to http://127.0.0.1:28640/<endpoint>
+// (prefix stripped). The sidecar only listens on loopback and validates the
+// user's JWT itself (the gateway does not authenticate proxied requests).
+const (
+	gpuPathPrefix  = "/v1/gpu"
+	gpuSidecarAddr = "127.0.0.1:28640"
+)
+
+func isGPUPath(p string) bool {
+	return p == gpuPathPrefix || strings.HasPrefix(p, gpuPathPrefix+"/")
+}
+
+func stripGPUPrefix(p string) string {
+	p = strings.TrimPrefix(p, gpuPathPrefix)
+	if p == "" {
+		return "/"
+	}
+	return p
+}
+
+var gpuProxy = &httputil.ReverseProxy{
+	Director: func(r *http.Request) {
+		r.URL.Scheme = "http"
+		r.URL.Host = gpuSidecarAddr
+		r.URL.Path = stripGPUPrefix(r.URL.Path)
+		if r.URL.RawPath != "" {
+			r.URL.RawPath = stripGPUPrefix(r.URL.RawPath)
+		}
+		if _, ok := r.Header["User-Agent"]; !ok {
+			r.Header.Set("User-Agent", "")
+		}
+	},
+	ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"gpu sidecar unavailable"}`))
+	},
+}
+
+// Download Station's sidecar, same-origin at /v1/download-station/* (needed
+// when the UI is served over https: the sidecar itself speaks plain http on
+// :28642). The sidecar validates the JWT itself and accepts the prefixed
+// paths. Its built-in browser proxy (/b/...) is never served from here: on
+// the UI's origin, proxied web pages could read the user's token.
+const (
+	dsPathPrefix  = "/v1/download-station"
+	dsSidecarAddr = "127.0.0.1:28642"
+)
+
+func isDownloadStationPath(p string) bool {
+	return p == dsPathPrefix || strings.HasPrefix(p, dsPathPrefix+"/")
+}
+
+func isDownloadStationBrowserPath(p string) bool {
+	rest := strings.TrimPrefix(p, dsPathPrefix)
+	return rest == "/b" || strings.HasPrefix(rest, "/b/")
+}
+
+var dsProxy = &httputil.ReverseProxy{
+	Director: func(r *http.Request) {
+		r.URL.Scheme = "http"
+		r.URL.Host = dsSidecarAddr
+		if _, ok := r.Header["User-Agent"]; !ok {
+			r.Header.Set("User-Agent", "")
+		}
+	},
+	ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"download station unavailable"}`))
+	},
+}
 
 type GatewayRoute struct {
 	management *service.Management
@@ -112,6 +188,23 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			return
 		}
 
+		if isGPUPath(r.URL.Path) {
+			nivaroos_middleware.MarkLocalAutomation(r)
+			rewriteRequestSourceIP(r)
+			gpuProxy.ServeHTTP(w, r)
+			return
+		}
+
+		if isDownloadStationPath(r.URL.Path) {
+			if isDownloadStationBrowserPath(r.URL.Path) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			rewriteRequestSourceIP(r)
+			dsProxy.ServeHTTP(w, r)
+			return
+		}
+
 		proxy := g.management.GetProxy(r.URL.Path)
 
 		if proxy == nil {
@@ -121,6 +214,11 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 
 		// to fix https://github.com/IceWhaleTech/CasaOS/security/advisories/GHSA-32h8-rgcj-2g3c#event-102885
 		// API V1 and V2 both read ip from request header. So the fix is effective for v1 and v2.
+		// Must run before rewriteRequestSourceIP drops the client's
+		// X-Forwarded-For: vouches (to loopback backends) only for
+		// same-host non-browser callers such as nivaroos-cli, and strips
+		// any client-supplied copy of the header.
+		nivaroos_middleware.MarkLocalAutomation(r)
 		rewriteRequestSourceIP(r)
 
 		proxy.ServeHTTP(w, r)

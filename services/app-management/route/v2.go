@@ -12,6 +12,7 @@ import (
 
 	v2Route "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v2"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -64,12 +65,14 @@ func InitV2Router() http.Handler {
 	// instead of killing the whole service
 	e.Use(echo_middleware.Recover())
 
-	e.Use(echo_middleware.Logger())
+	// path-only request log: WebSocket URLs carry ?token=
+	e.Use(nivaroos_middleware.RequestLogger())
 
 	e.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
-		Skipper: func(c echo.Context) bool {
-			return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
-		},
+		// Same-host automation only (direct loopback socket peer, no
+		// proxy/browser headers - common/middleware.IsLocalAutomation);
+		// c.RealIP() trusted spoofable X-Forwarded-For/X-Real-IP.
+		Skipper: nivaroos_middleware.LocalAutomationSkipper(),
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {

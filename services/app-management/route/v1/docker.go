@@ -14,6 +14,7 @@ import (
 	v2 "github.com/F-e-n-y-x/NivaroOS/services/app-management/route/v2"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/service/v1"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
@@ -21,6 +22,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/ssh"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/errdefs"
@@ -40,38 +42,57 @@ const (
 var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:   1024,
-	WriteBufferSize:  1024,
-	CheckOrigin:      func(r *http.Request) bool { return true },
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	// Non-browser clients (no Origin) or pages served from this same host
+	// only - `return true` let any website open a root-capable container
+	// shell with a logged-in admin's token (CSWSH).
+	CheckOrigin:      nivaroos_middleware.CheckWebSocketOrigin,
 	HandshakeTimeout: time.Duration(time.Second * 5),
 }
 
-// 打开docker的terminal
+// DockerTerminal opens an interactive shell (bash, else sh) in a container
+// over the wsterm protocol (services/common/utils/wsterm):
+//   - initial size: ?cols=N&rows=N
+//   - client BINARY frames = raw input; client TEXT frames starting with
+//     0x00 = JSON control, e.g. "\x00{\"type\":\"resize\",\"cols\":120,\"rows\":40}"
+//   - server BINARY frames = output; server TEXT frames = status/error text,
+//     followed by a CLOSE frame (1011) when the session could not start.
 func DockerTerminal(ctx echo.Context) error {
-	col := v2.DefaultQuery(ctx, "cols", "100")
-	row := v2.DefaultQuery(ctx, "rows", "30")
+	cols, rows := wsterm.ParseSize(ctx.QueryParam("cols"), ctx.QueryParam("rows"), 100, 30)
 	conn, err := upgrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		// Upgrade already wrote the HTTP error; the connection may be hijacked.
+		logger.Error("container terminal upgrade failed", zap.Error(err))
+		return nil
 	}
 	defer conn.Close()
-	container := ctx.Param("id")
-	hr, err := service.MyService.Docker().CreateContainerShellSession(container, row, col)
+
+	sess, err := service.MyService.Docker().CreateContainerShellSession(ctx.Param("id"), cols, rows)
 	if err != nil {
-		return ctx.JSON(http.StatusInternalServerError, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		// ctx.JSON would be lost on the hijacked connection.
+		wsterm.SendError(conn, "failed to open container shell: "+err.Error())
+		return nil
 	}
-	// 关闭I/O流
-	defer hr.Close()
-	// 退出进程
-	defer func() {
-		if _, err := hr.Conn.Write([]byte("exit\r")); err != nil {
-			logger.Error("error when trying `exit` to container", zap.Error(err))
-		}
-	}()
+	// Ends the exec cleanly (closes stdin/stream, then signals it only if
+	// it is still running) and closes the docker client.
+	defer sess.Close()
+
+	outputDone := make(chan struct{})
 	go func() {
-		ssh.WsWriterCopy(hr.Conn, conn)
+		ssh.WsWriterCopy(sess.Conn.Reader, conn)
+		// Shell exited (or stream broke): tell the client, which also
+		// unblocks the read loop below.
+		wsterm.Close(conn, websocket.CloseNormalClosure, "")
+		close(outputDone)
 	}()
-	ssh.WsReaderCopy(conn, hr.Conn)
+	ssh.WsReaderCopy(conn, sess.Conn.Conn, func(c, r uint16) {
+		if err := sess.Resize(c, r); err != nil {
+			logger.Error("container terminal resize failed", zap.Error(err))
+		}
+	})
+	sess.Close()
+	<-outputDone
 	return nil
 }
 

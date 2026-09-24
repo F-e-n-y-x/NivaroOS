@@ -81,7 +81,7 @@ func TestQueryAMD(t *testing.T) {
 	if stats.TemperatureC != 55 {
 		t.Errorf("TemperatureC = %v, want 55", stats.TemperatureC)
 	}
-	if stats.PowerDrawW != 45 {
+	if stats.PowerDrawW == nil || *stats.PowerDrawW != 45 {
 		t.Errorf("PowerDrawW = %v, want 45", stats.PowerDrawW)
 	}
 }

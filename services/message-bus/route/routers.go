@@ -2,6 +2,7 @@ package route
 
 import (
 	"crypto/ecdsa"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -35,11 +36,14 @@ func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler
 
 	e.Use(echo_middleware.Gzip())
 
-	e.Use(echo_middleware.Logger())
+	// Logs the path only: tokens can ride in query strings.
+	e.Use(nivaroos_middleware.RequestLogger())
 
 	e.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
 		Skipper: func(c echo.Context) bool {
-			if c.RealIP() == "::1" || c.RealIP() == "127.0.0.1" {
+			// Same-host automation only (c.RealIP() trusted spoofable
+			// X-Forwarded-For headers).
+			if nivaroos_middleware.IsLocalAutomation(c.Request()) {
 				return true
 			}
 

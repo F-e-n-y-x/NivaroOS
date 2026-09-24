@@ -5,10 +5,10 @@ import (
 	json2 "encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"sync"
 	"time"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -359,44 +359,16 @@ type wsMsg struct {
 	Rows int    `json:"rows"`
 }
 
-// 将终端的输出转发到前端
+// WsWriterCopy forwards terminal output to the browser as BINARY frames
+// (see package wsterm for the protocol).
 func WsWriterCopy(reader io.Reader, writer *websocket.Conn) {
-	buf := make([]byte, 8192)
-	reg1 := regexp.MustCompile(`stty rows \d+ && stty cols \d+ `)
-	for {
-		nr, err := reader.Read(buf)
-		if nr > 0 {
-			result1 := reg1.FindIndex(buf[0:nr])
-			if len(result1) > 0 {
-				fmt.Println(result1)
-			} else {
-				err := writer.WriteMessage(websocket.BinaryMessage, buf[0:nr])
-				if err != nil {
-					return
-				}
-			}
-
-		}
-		if err != nil {
-			return
-		}
-	}
+	_ = wsterm.CopyOutput(reader, writer)
 }
 
-// 将前端的输入转发到终端
-func WsReaderCopy(reader *websocket.Conn, writer io.Writer) {
-	for {
-		messageType, p, err := reader.ReadMessage()
-		if err != nil {
-			return
-		}
-		if messageType == websocket.TextMessage {
-			msgObj := wsMsg{}
-			if err = json2.Unmarshal(p, &msgObj); err != nil {
-				writer.Write(p)
-			} else if msgObj.Type == wsMsgResize {
-				// writer.Write([]byte("stty rows " + strconv.Itoa(msgObj.Rows) + " && stty cols " + strconv.Itoa(msgObj.Cols) + " \r"))
-			}
-		}
-	}
+// WsReaderCopy forwards browser input to the terminal: BINARY frames (and
+// non-control TEXT frames) are written verbatim, NUL-prefixed TEXT control
+// frames are parsed and resize requests passed to onResize (may be nil).
+// See package wsterm for the exact protocol.
+func WsReaderCopy(reader *websocket.Conn, writer io.Writer, onResize func(cols, rows uint16)) {
+	_ = wsterm.Pump(reader, writer, onResize)
 }

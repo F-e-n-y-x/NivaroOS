@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -55,7 +57,7 @@ type DockerService interface {
 	// container
 	CheckContainerHealth(id string) (bool, error)
 	CreateContainer(m model.CustomizationPostData, id string) (containerID string, err error)
-	CreateContainerShellSession(container, row, col string) (hr types.HijackedResponse, err error)
+	CreateContainerShellSession(containerID string, cols, rows uint16) (*ContainerShellSession, error)
 	DescribeContainer(ctx context.Context, name string) (*types.ContainerJSON, error)
 	GetContainer(id string) (types.Container, error)
 	GetContainerAppList(name, image, state *string) (*[]model.MyAppList, *[]model.MyAppList)
@@ -353,26 +355,132 @@ func (ds *dockerService) GetContainerAppList(name, image, state *string) (*[]mod
 	return &nivaroosApps, &localApps
 }
 
-func (ds *dockerService) CreateContainerShellSession(container, row, col string) (types.HijackedResponse, error) {
+// ContainerShellSession is an interactive TTY exec inside a container.
+// Conn is the hijacked stdio stream (write = stdin, read = tty output).
+type ContainerShellSession struct {
+	Conn   types.HijackedResponse
+	Shell  string
+	cli    *client2.Client
+	execID string
+	once   sync.Once
+}
+
+// Resize changes the exec's TTY size.
+func (s *ContainerShellSession) Resize(cols, rows uint16) error {
+	if cols == 0 || rows == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.cli.ContainerExecResize(ctx, s.execID, types.ResizeOptions{Height: uint(rows), Width: uint(cols)})
+}
+
+// Close ends the session without typing anything into it: it closes the
+// exec's stdin and the hijacked connection (a shell exits on EOF / hangup),
+// and if the exec process is somehow still alive shortly after, signals it
+// directly (SIGHUP, then SIGKILL) using the host pid docker reports for it.
+// Finally closes the docker client. Safe to call more than once.
+func (s *ContainerShellSession) Close() {
+	s.once.Do(func() {
+		_ = s.Conn.CloseWrite()
+		s.Conn.Close()
+
+		defer s.cli.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, sig := range []syscall.Signal{syscall.SIGHUP, syscall.SIGKILL} {
+			pid, containerID, running := s.waitExit(ctx, time.Second)
+			if !running {
+				return
+			}
+			// Only signal a pid that verifiably belongs to this container
+			// (its cgroup names the container id) - never risk hitting an
+			// unrelated host process (pid namespaces, pid reuse).
+			if pid > 0 && pidInContainer(pid, containerID) {
+				_ = syscall.Kill(pid, sig)
+			}
+		}
+		s.waitExit(ctx, time.Second)
+	})
+}
+
+// waitExit polls the exec until it stops running or d elapses; it returns
+// the exec's host pid and whether it is still running.
+func (s *ContainerShellSession) waitExit(ctx context.Context, d time.Duration) (int, string, bool) {
+	deadline := time.Now().Add(d)
+	for {
+		info, err := s.cli.ContainerExecInspect(ctx, s.execID)
+		if err != nil || !info.Running {
+			return 0, "", false
+		}
+		if time.Now().After(deadline) {
+			return info.Pid, info.ContainerID, true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// pidInContainer reports whether host pid's cgroup path mentions the full
+// container id (true for both the cgroupfs ".../docker/<id>" and systemd
+// "docker-<id>.scope" layouts, cgroup v1 and v2).
+func pidInContainer(pid int, containerID string) bool {
+	if len(containerID) < 12 {
+		return false
+	}
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cgroup")
+	return err == nil && strings.Contains(string(b), containerID)
+}
+
+// pickContainerShell prefers bash and falls back to sh, checked with a
+// stat on the container filesystem (no extra exec, works for any image).
+func pickContainerShell(ctx context.Context, cli *client2.Client, containerID string) string {
+	for _, sh := range []string{"/bin/bash", "/usr/bin/bash"} {
+		if st, err := cli.ContainerStatPath(ctx, containerID, sh); err == nil && (st.Mode.IsRegular() || st.Mode&os.ModeSymlink != 0) {
+			return sh
+		}
+	}
+	return "/bin/sh"
+}
+
+// CreateContainerShellSession starts an interactive TTY shell (bash if the
+// image has it, else sh) in containerID at the given size.
+func (ds *dockerService) CreateContainerShellSession(containerID string, cols, rows uint16) (*ContainerShellSession, error) {
 	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
 	if err != nil {
-		return types.HijackedResponse{}, err
+		return nil, err
 	}
 
-	ctx := context.Background()
-	ir, err := cli.ContainerExecCreate(ctx, container, types.ExecConfig{
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	shell := pickContainerShell(ctx, cli, containerID)
+	size := &[2]uint{uint(rows), uint(cols)}
+	ir, err := cli.ContainerExecCreate(ctx, containerID, types.ExecConfig{
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Env:          []string{"COLUMNS=" + col, "LINES=" + row},
-		Cmd:          []string{"/bin/sh"},
+		Env:          []string{"TERM=xterm-256color", "COLUMNS=" + strconv.Itoa(int(cols)), "LINES=" + strconv.Itoa(int(rows))},
+		Cmd:          []string{shell},
 		Tty:          true,
+		ConsoleSize:  size,
 	})
 	if err != nil {
-		return types.HijackedResponse{}, err
+		cli.Close()
+		return nil, err
 	}
 
-	return cli.ContainerExecAttach(ctx, ir.ID, types.ExecStartCheck{Detach: false, Tty: true})
+	// The attach must outlive this function's timeout context.
+	hr, err := cli.ContainerExecAttach(context.Background(), ir.ID, types.ExecStartCheck{Detach: false, Tty: true, ConsoleSize: size})
+	if err != nil {
+		cli.Close()
+		return nil, err
+	}
+
+	s := &ContainerShellSession{Conn: hr, Shell: shell, cli: cli, execID: ir.ID}
+	// Daemons older than API 1.42 ignore ConsoleSize.
+	_ = s.Resize(cols, rows)
+	return s, nil
 }
 
 // 正式内容

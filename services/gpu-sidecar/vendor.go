@@ -150,7 +150,8 @@ func queryAMD() (gpuStats, error) {
 	}
 	if powerPath, ok := hwmonPath(dir, "power1_average"); ok {
 		if microW, ok := readSysfsInt(powerPath); ok {
-			stats.PowerDrawW = microW / 1_000_000
+			w := microW / 1_000_000
+			stats.PowerDrawW = &w
 		}
 	}
 

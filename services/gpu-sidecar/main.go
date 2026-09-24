@@ -1,26 +1,27 @@
-// nivaroos-gpu-sidecar exposes NVIDIA GPU stats as JSON for the NivaroOS GPU
-// dashboard widget, since NivaroOS itself has no GPU support. It shells out to
-// nvidia-smi on every request rather than polling on a timer, since
-// nvidia-smi is fast and this keeps the service stateless.
+// nivaroos-gpu-sidecar exposes GPU stats and GPU driver status/install as
+// JSON for the NivaroOS GPU dashboard widget.
+//
+// It listens on 127.0.0.1:28640 only. The UI reaches it same-origin through
+// the gateway at /v1/gpu/<endpoint> (prefix stripped, see
+// services/gateway/route/gateway_route.go), and every request must carry
+// the user's JWT (Authorization header or ?token=) - the gateway does not
+// authenticate proxied requests itself. Same-host automation (a script on
+// this box calling 127.0.0.1:28640 directly) may skip the token, see
+// requireAuth.
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
 	"os/exec"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
-)
 
-// nvidiaSMITimeout bounds each nvidia-smi invocation so a hung/slow driver
-// can't block an HTTP request (and the goroutine serving it) indefinitely.
-const nvidiaSMITimeout = 3 * time.Second
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+)
 
 // cacheTTL reuses the last successful reading for a short window so that
 // several near-simultaneous polls (multiple open dashboard tabs, or the
@@ -35,20 +36,28 @@ var (
 	cacheGood bool
 )
 
+// gpuStats is the response of GET /gpu-stats. The top-level fields describe
+// the first GPU (the shape the widget has always consumed); GPUCount and
+// GPUs describe every GPU found. PowerDrawW/PowerLimitW are null when the
+// driver reports them as unavailable ("[N/A]").
 type gpuStats struct {
+	Index              int          `json:"index"`
 	Name               string       `json:"name"`
 	DriverVersion      string       `json:"driver_version"`
 	UtilizationPercent float64      `json:"utilization_percent"`
 	MemoryUsedMiB      float64      `json:"memory_used_mib"`
 	MemoryTotalMiB     float64      `json:"memory_total_mib"`
 	TemperatureC       float64      `json:"temperature_c"`
-	PowerDrawW         float64      `json:"power_draw_w"`
-	PowerLimitW        float64      `json:"power_limit_w"`
+	PowerDrawW         *float64     `json:"power_draw_w"`
+	PowerLimitW        *float64     `json:"power_limit_w"`
 	Processes          []gpuProcess `json:"processes"`
+	GPUCount           int          `json:"gpu_count,omitempty"`
+	GPUs               []gpuStats   `json:"gpus,omitempty"`
 	Error              string       `json:"error,omitempty"`
 }
 
 type gpuProcess struct {
+	GPU                int     `json:"gpu"`
 	PID                int     `json:"pid"`
 	Command            string  `json:"command"`
 	UtilizationPercent float64 `json:"utilization_percent"`
@@ -61,115 +70,50 @@ type gpuProcess struct {
 // nothing measurable on AMD/Intel-only systems - see vendor.go for the
 // AMD/Intel implementations.
 func queryGPU() (gpuStats, error) {
-	if stats, err := queryNVIDIA(); err == nil {
-		return stats, nil
+	nvStats, nvErr := queryNVIDIA()
+	if nvErr == nil {
+		return nvStats, nil
 	}
 	if stats, err := queryAMD(); err == nil {
 		return stats, nil
 	}
 	if stats, err := queryIntel(); err == nil {
 		return stats, nil
+	} else if err != errNoDevice {
+		return gpuStats{}, err
+	}
+	// nvidia-smi exists but failed (driver mismatch, parse error, ...):
+	// report that rather than a generic "no device".
+	if _, lookErr := exec.LookPath("nvidia-smi"); lookErr == nil {
+		return gpuStats{}, nvErr
 	}
 	return gpuStats{}, errNoDevice
 }
 
-func queryNVIDIA() (gpuStats, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
-		"--format=csv,noheader,nounits").Output()
-	if err != nil {
-		return gpuStats{}, err
-	}
-	fields := strings.Split(strings.TrimSpace(string(out)), ",")
-	if len(fields) != 8 {
-		return gpuStats{}, err
-	}
-	parse := func(s string) float64 {
-		v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-		return v
-	}
-	stats := gpuStats{
-		Name:               strings.TrimSpace(fields[0]),
-		DriverVersion:      strings.TrimSpace(fields[1]),
-		UtilizationPercent: parse(fields[2]),
-		MemoryUsedMiB:      parse(fields[3]),
-		MemoryTotalMiB:     parse(fields[4]),
-		TemperatureC:       parse(fields[5]),
-		PowerDrawW:         parse(fields[6]),
-		PowerLimitW:        parse(fields[7]),
-	}
-	stats.Processes = queryProcesses()
-	return stats, nil
-}
-
-// queryProcesses uses `nvidia-smi pmon` (per-process monitoring) rather than
-// query-compute-apps, since pmon reports per-process utilization % directly
-// (query-compute-apps only reports memory, not utilization).
-func queryProcesses() []gpuProcess {
-	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "nvidia-smi", "pmon", "-c", "1", "-s", "u").Output()
-	if err != nil {
-		return nil
-	}
-	var procs []gpuProcess
-	scanner := bufio.NewScanner(strings.NewReader(string(out)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		// gpu pid type sm mem enc dec jpg ofa command
-		if len(fields) < 10 || fields[1] == "-" {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[1])
-		if err != nil {
-			continue
-		}
-		util, _ := strconv.ParseFloat(fields[3], 64)
-		procs = append(procs, gpuProcess{
-			PID:                pid,
-			Command:            fields[9],
-			UtilizationPercent: util,
-		})
-	}
-	return procs
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func handleGPUStats(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
-
 	cacheMu.Lock()
+	defer cacheMu.Unlock() // also serializes refreshes: one nvidia-smi at a time
+
 	if cacheGood && time.Since(cachedAt) < cacheTTL {
-		stats := cached
-		cacheMu.Unlock()
-		json.NewEncoder(w).Encode(stats)
+		writeJSON(w, http.StatusOK, cached)
 		return
 	}
-	cacheMu.Unlock()
 
 	stats, err := queryGPU()
 	if err != nil {
-		cacheMu.Lock()
 		cacheGood = false
-		cacheMu.Unlock()
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(gpuStats{Error: err.Error()})
+		writeJSON(w, http.StatusServiceUnavailable, gpuStats{Error: err.Error()})
 		return
 	}
-
-	cacheMu.Lock()
-	cached = stats
-	cachedAt = time.Now()
-	cacheGood = true
-	cacheMu.Unlock()
-
-	json.NewEncoder(w).Encode(stats)
+	cached, cachedAt, cacheGood = stats, time.Now(), true
+	writeJSON(w, http.StatusOK, stats)
 }
 
 // driverScriptPath is where installer/install.sh copies
@@ -180,49 +124,80 @@ func handleGPUStats(w http.ResponseWriter, r *http.Request) {
 const driverScriptPath = "/usr/local/bin/nivaroos-gpu-driver-install.sh"
 
 // driverStatusTimeout only needs to cover an lspci call and a couple of
-// lsmod/nvidia-smi checks - all fast, local, no network - so this stays
-// short deliberately, unlike driverInstallTimeout.
+// lsmod/nvidia-smi checks - all fast, local, no network.
 const driverStatusTimeout = 10 * time.Second
 
-// driverInstallTimeout has to cover a real package manager install (apt
-// update + install a driver package, possibly pulling in a fair amount of
-// data) - this is the one gpu-sidecar request that's expected to take a
-// while, not something to make snappy.
+// driverStatusTTL: the driver status only changes when a driver is
+// installed (which invalidates the cache) or the machine is reconfigured,
+// so the widget's polling doesn't need to spawn bash+lspci+nvidia-smi each
+// time.
+const driverStatusTTL = 5 * time.Minute
+
+// driverInstallTimeout has to cover a real package manager install.
 const driverInstallTimeout = 5 * time.Minute
 
-func handleDriverStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
+var (
+	driverMu       sync.Mutex // guards the fields below and serializes refreshes
+	driverStatus   []byte
+	driverStatusAt time.Time
 
-	ctx, cancel := context.WithTimeout(context.Background(), driverStatusTimeout)
-	defer cancel()
+	installMu sync.Mutex // one driver install at a time
+)
 
-	out, err := exec.CommandContext(ctx, "bash", driverScriptPath, "--status").Output()
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-	// The script already prints a well-formed {"gpus":[...]} JSON object -
-	// pass it straight through rather than re-modeling it into a Go struct
-	// just to re-serialize the same shape back out.
-	w.Write(out)
+func invalidateDriverStatus() {
+	driverMu.Lock()
+	driverStatus = nil
+	driverMu.Unlock()
 }
 
-func handleDriverInstall(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
+func handleDriverStatus(w http.ResponseWriter, r *http.Request) {
+	driverMu.Lock()
+	defer driverMu.Unlock()
 
+	if driverStatus == nil || time.Since(driverStatusAt) >= driverStatusTTL || r.URL.Query().Get("refresh") == "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), driverStatusTimeout)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "bash", driverScriptPath, "--status").Output()
+		if err != nil || !json.Valid(out) {
+			msg := "invalid status output"
+			if err != nil {
+				msg = err.Error()
+			}
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": msg})
+			return
+		}
+		driverStatus, driverStatusAt = out, time.Now()
+	}
+	// The script already prints a well-formed {"gpus":[...]} JSON object -
+	// pass it straight through.
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(driverStatus)
+}
+
+var allowedVendors = map[string]bool{"": true, "nvidia": true, "amd": true, "intel": true}
+
+func handleDriverInstall(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "POST required"})
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST required"})
 		return
 	}
 
 	var body struct {
 		Vendor string `json:"vendor"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body) // vendor is optional - empty means auto-detect
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body) // vendor is optional - empty means auto-detect
+	if !allowedVendors[body.Vendor] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "vendor must be one of nvidia, amd, intel (or empty)"})
+		return
+	}
+
+	if !installMu.TryLock() {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "a driver install is already running"})
+		return
+	}
+	defer installMu.Unlock()
+	defer invalidateDriverStatus()
 
 	ctx, cancel := context.WithTimeout(context.Background(), driverInstallTimeout)
 	defer cancel()
@@ -233,21 +208,29 @@ func handleDriverInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := exec.CommandContext(ctx, "bash", args...).CombinedOutput()
 
-	success := err == nil
-	w.WriteHeader(http.StatusOK) // the install attempt itself always completed - failure is reported in the body, not the transport
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": success,
+	// the install attempt itself always completed - failure is reported in
+	// the body, not the transport
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": err == nil,
 		"output":  string(out),
 	})
 }
 
 func main() {
-	addr := flag.String("addr", ":28640", "address to listen on")
+	addr := flag.String("addr", "127.0.0.1:28640", "address to listen on (keep it loopback: the UI reaches this through the gateway at /v1/gpu/)")
+	runtimePath := flag.String("runtime-path", constants.DefaultRuntimePath, "NivaroOS runtime directory (for locating user-service's JWKS endpoint)")
 	flag.Parse()
 
-	http.HandleFunc("/gpu-stats", handleGPUStats)
-	http.HandleFunc("/driver-status", handleDriverStatus)
-	http.HandleFunc("/driver-install", handleDriverInstall)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/gpu-stats", handleGPUStats)
+	mux.HandleFunc("/driver-status", handleDriverStatus)
+	mux.HandleFunc("/driver-install", handleDriverInstall)
+
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           requireAuth(mux, *runtimePath),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	log.Printf("nivaroos-gpu-sidecar listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	log.Fatal(srv.ListenAndServe())
 }

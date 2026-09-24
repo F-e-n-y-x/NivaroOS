@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
@@ -27,7 +28,8 @@ func InitV1Router() http.Handler {
 	})))
 	e.Use(echo_middleware.Gzip())
 	e.Use(echo_middleware.Recover())
-	e.Use(echo_middleware.Logger())
+	// path-only request log: WebSocket URLs carry ?token=
+	e.Use(nivaroos_middleware.RequestLogger())
 
 	e.GET("/v1/sys/debug", v1.GetSystemConfigDebug) // //debug
 
@@ -47,9 +49,10 @@ func InitV1Router() http.Handler {
 	v1Group := e.Group("/v1")
 	//	e.Any("/v1/test", v1.CheckNetwork)
 	v1Group.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
-		Skipper: func(c echo.Context) bool {
-			return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
-		},
+		// Same-host automation (direct loopback socket peer, no proxy or
+		// browser headers - see common/middleware.IsLocalAutomation) may
+		// skip the token; the interactive terminal never may.
+		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm"),
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
@@ -99,7 +102,6 @@ func InitV1Router() http.Handler {
 			v1SysGroup.GET("/hardware", v1.GetSystemHardwareInfo) // hardware/info
 			v1SysGroup.PUT("/hostname", v1.PutSystemHostname)
 
-			v1SysGroup.GET("/wsssh", v1.WsSsh)
 			v1SysGroup.POST("/ssh-login", v1.PostSshLogin)
 			v1SysGroup.GET("/wsterm", v1.WsLocalTerm)
 

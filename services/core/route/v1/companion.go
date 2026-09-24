@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"io"
 	"net/http"
 	"net/url"
@@ -104,9 +105,7 @@ var (
 	wsUpgrader           = websocket.Upgrader{
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+		CheckOrigin:     nivaroos_middleware.CheckWebSocketOrigin,
 	}
 )
 
@@ -794,7 +793,6 @@ func IsCompanionFolderVisible(folderPath string) bool {
 	}
 	return false
 }
-
 
 // GET /v1/companion/devices
 func GetCompanionDevices(ctx echo.Context) error {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
@@ -88,10 +89,9 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 				return ctx.NoContent(http.StatusCreated)
 			},
 			echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
-				Skipper: func(c echo.Context) bool {
-					return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
-					// return true
-				},
+				// socket-peer loopback check; c.RealIP() trusted spoofable
+				// X-Forwarded-For/X-Real-IP headers
+				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
 				ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {
@@ -143,10 +143,9 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 				})
 			},
 			echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
-				Skipper: func(c echo.Context) bool {
-					return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
-					// return true
-				},
+				// socket-peer loopback check; c.RealIP() trusted spoofable
+				// X-Forwarded-For/X-Real-IP headers
+				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
 				ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {

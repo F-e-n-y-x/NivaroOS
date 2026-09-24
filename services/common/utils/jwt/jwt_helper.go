@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	echojwt "github.com/labstack/echo-jwt/v4"
@@ -34,9 +35,9 @@ const JWKSPath = ".well-known/jwks.json"
 func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 	return echojwt.WithConfig(
 		echojwt.Config{
-			Skipper: func(c echo.Context) bool {
-				return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
-			},
+			// socket-peer based, not c.RealIP() (which trusts
+			// X-Forwarded-For/X-Real-IP headers anyone can send)
+			Skipper: middleware.LocalAutomationSkipper(),
 			ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
 				valid, claims, err := Validate(token, publicKeyFunc)
 				if err != nil || !valid {
