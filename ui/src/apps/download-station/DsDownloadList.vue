@@ -4,13 +4,13 @@
 		<div class="ds-list-toolbar">
 			<h2 class="ds-section-title">{{ $t('Downloads') }}</h2>
 			<div class="toolbar-actions">
-				<button class="ds-icon-btn" :title="$t('Resume all')" :disabled="!hasResumable" @click="resumeAll">
+				<button class="ds-icon-btn" :title="$t('Resume all')" :aria-label="$t('Resume all')" :disabled="!hasResumable" @click="resumeAll">
 					<b-icon icon="play" custom-size="mdi-18px"></b-icon>
 				</button>
-				<button class="ds-icon-btn" :title="$t('Pause all')" :disabled="!hasActive" @click="pauseAll">
+				<button class="ds-icon-btn" :title="$t('Pause all')" :aria-label="$t('Pause all')" :disabled="!hasActive" @click="pauseAll">
 					<b-icon icon="pause" custom-size="mdi-18px"></b-icon>
 				</button>
-				<button class="ds-icon-btn" :title="$t('Clear completed from list')" :disabled="!hasCompleted" @click="clearCompleted">
+				<button class="ds-icon-btn" :title="$t('Clear completed from list')" :aria-label="$t('Clear completed from list')" :disabled="!hasCompleted" @click="clearCompleted">
 					<b-icon icon="playlist-remove" custom-size="mdi-18px"></b-icon>
 				</button>
 				<button class="ds-primary-btn" @click="ds.openAddDownload()">
@@ -22,18 +22,18 @@
 
 		<div class="ds-filters">
 			<div class="segmented-control">
-				<button v-for="f in filters" :key="f.id" class="segmented-option" :class="{ active: filter === f.id }" @click="filter = f.id">
+				<button v-for="f in filters" :key="f.id" class="segmented-option" :class="{ active: filter === f.id }" :aria-pressed="filter === f.id ? 'true' : 'false'" @click="filter = f.id">
 					{{ $t(f.label) }}<span v-if="counts[f.id]" class="seg-count">{{ counts[f.id] }}</span>
 				</button>
 			</div>
 			<div class="ds-search">
 				<b-icon icon="magnify" custom-size="mdi-16px"></b-icon>
-				<input v-model="query" class="ds-input" :placeholder="$t('Search downloads')" />
+				<input v-model="query" class="ds-input" :aria-label="$t('Search downloads')" :placeholder="$t('Search downloads')" />
 			</div>
 		</div>
 		<div v-if="presentCategories.length > 1" class="ds-categories">
 			<button class="cat-chip" :class="{ active: category === '' }" @click="category = ''">{{ $t('All types') }}</button>
-			<button v-for="c in presentCategories" :key="c.id" class="cat-chip" :class="{ active: category === c.id }" @click="category = category === c.id ? '' : c.id">
+			<button v-for="c in presentCategories" :key="c.id" class="cat-chip" :class="{ active: category === c.id }" :aria-pressed="category === c.id ? 'true' : 'false'" @click="category = category === c.id ? '' : c.id">
 				<b-icon :icon="c.icon" custom-size="mdi-14px"></b-icon>{{ $t(c.label) }}
 			</button>
 		</div>
@@ -77,7 +77,7 @@
 							<template v-else>
 								<span>{{ sizeText(d) }}</span>
 								<span v-if="d.state === 'downloading' && d.speed" class="meta-speed">{{ formatSpeed(d.speed) }}</span>
-								<span v-if="d.state === 'downloading' && d.eta >= 0">{{ formatEta(d.eta) }} {{ $t('left') }}</span>
+								<span v-if="d.state === 'downloading' && d.eta >= 0">{{ $t('{time} left', { time: formatEta(d.eta) }) }}</span>
 								<span v-if="d.state === 'downloading'" class="meta-conns" :title="$t('Active connections')">
 									<b-icon icon="lan-connect" custom-size="mdi-12px"></b-icon>{{ d.active_connections }}/{{ d.resumable ? d.connections : 1 }}
 								</span>
@@ -87,19 +87,20 @@
 						</div>
 					</div>
 					<div class="row-actions">
-						<button v-if="d.state === 'downloading' || d.state === 'queued'" class="ds-icon-btn" :title="$t('Pause')" @click="act('pause', d)">
+						<button v-if="d.state === 'downloading' || d.state === 'queued'" class="ds-icon-btn" :title="$t('Pause')" :aria-label="$t('Pause {name}', { name: d.filename })" @click="act('pause', d)">
 							<b-icon icon="pause" custom-size="mdi-18px"></b-icon>
 						</button>
-						<button v-else-if="d.state === 'paused' || d.state === 'failed'" class="ds-icon-btn" :title="d.state === 'failed' ? $t('Retry') : $t('Resume')" @click="act('resume', d)">
+						<button v-else-if="d.state === 'paused' || d.state === 'failed'" class="ds-icon-btn" :title="d.state === 'failed' ? $t('Retry') : $t('Resume')"
+							:aria-label="d.state === 'failed' ? $t('Retry {name}', { name: d.filename }) : $t('Resume {name}', { name: d.filename })" @click="act('resume', d)">
 							<b-icon :icon="d.state === 'failed' ? 'restart' : 'play'" custom-size="mdi-18px"></b-icon>
 						</button>
-						<button v-else class="ds-icon-btn" :title="$t('Show in Files')" @click="ds.openFolder(d.dir)">
+						<button v-else class="ds-icon-btn" :title="$t('Show in Files')" :aria-label="$t('Show {name} in Files', { name: d.filename })" @click="ds.openFolder(d.dir)">
 							<b-icon icon="folder-open-outline" custom-size="mdi-18px"></b-icon>
 						</button>
-						<button class="ds-icon-btn" :title="$t('Properties')" @click="ds.openDetails(d)">
+						<button class="ds-icon-btn" :title="$t('Properties')" :aria-label="$t('Properties of {name}', { name: d.filename })" @click="ds.openDetails(d)">
 							<b-icon icon="dots-vertical" custom-size="mdi-18px"></b-icon>
 						</button>
-						<button class="ds-icon-btn is-danger" :title="$t('Remove')" @click="confirmRemove(d)">
+						<button class="ds-icon-btn is-danger" :title="$t('Remove')" :aria-label="$t('Remove {name}', { name: d.filename })" @click="confirmRemove(d)">
 							<b-icon icon="close" custom-size="mdi-18px"></b-icon>
 						</button>
 					</div>
@@ -217,24 +218,39 @@ export default {
 				return u
 			}
 		},
+		toastError(text) {
+			this.$buefy.toast.open({ message: escapeHtml(text), type: 'is-danger' })
+		},
 		async act(kind, d) {
 			try {
 				await downloadSidecar[kind](d.id)
 			} catch (e) {
-				this.$buefy.toast.open({ message: escapeHtml(e.message), type: 'is-danger' })
+				this.toastError(e.message)
 			}
 			this.$emit('refresh')
 		},
 		async pauseAll() {
-			await downloadSidecar.pauseAll().catch(() => {})
+			try {
+				await downloadSidecar.pauseAll()
+			} catch (e) {
+				this.toastError(this.$t('Could not pause the downloads: {error}', { error: e.message }))
+			}
 			this.$emit('refresh')
 		},
 		async resumeAll() {
-			await downloadSidecar.resumeAll().catch(() => {})
+			try {
+				await downloadSidecar.resumeAll()
+			} catch (e) {
+				this.toastError(this.$t('Could not resume the downloads: {error}', { error: e.message }))
+			}
 			this.$emit('refresh')
 		},
 		async clearCompleted() {
-			await downloadSidecar.clearCompleted().catch(() => {})
+			try {
+				await downloadSidecar.clearCompleted()
+			} catch (e) {
+				this.toastError(this.$t('Could not clear the completed downloads: {error}', { error: e.message }))
+			}
 			this.$emit('refresh')
 		},
 		onRowDblClick(d) {
@@ -243,16 +259,32 @@ export default {
 		},
 		confirmRemove(d) {
 			const done = d.state === 'completed'
+			const name = `<b>${escapeHtml(d.filename)}</b>`
 			this.confirmWindow({
 				title: this.$t('Remove download'),
+				// Whole sentences with the (escaped) name as a placeholder, so
+				// translations can put it wherever their grammar needs.
 				message: done
-					? `${this.$t('Remove')} <b>${escapeHtml(d.filename)}</b> ${this.$t('from the list? The downloaded file is kept.')}`
-					: `${this.$t('Cancel and remove')} <b>${escapeHtml(d.filename)}</b>? ${this.$t('The partially downloaded data is deleted.')}`,
+					? this.$t('Remove {name} from the list?', { name })
+					: this.$t('Cancel and remove {name}? The partially downloaded data is deleted.', { name }),
 				confirmText: this.$t('Remove'),
 				type: 'is-danger',
 				icon: 'close-circle',
-				onConfirm: async () => {
-					await downloadSidecar.deleteDownload(d.id, false).catch(() => {})
+				checkbox: done
+					? {
+							label: this.$t('Also delete the downloaded file'),
+							checked: false,
+							checkedHint: this.$t('The file is permanently deleted from disk.'),
+							uncheckedHint: this.$t('The downloaded file is kept.'),
+							checkedIsDanger: true
+					  }
+					: null,
+				onConfirm: async checked => {
+					try {
+						await downloadSidecar.deleteDownload(d.id, done && checked === true)
+					} catch (e) {
+						this.toastError(this.$t('Could not remove {name}: {error}', { name: d.filename, error: e.message }))
+					}
 					this.$emit('refresh')
 				}
 			})
@@ -375,9 +407,9 @@ function extractUrls(text) {
 		color: var(--theme-text-primary, #1e293b);
 	}
 	&.active {
-		border-color: rgba(37, 99, 235, 0.35);
-		background: rgba(37, 99, 235, 0.08);
-		color: #2563eb;
+		border-color: var(--color-primary-fg, #1d4ed8);
+		background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+		color: var(--color-primary-fg, #1d4ed8);
 	}
 }
 
@@ -407,7 +439,7 @@ function extractUrls(text) {
 	transition: box-shadow 0.18s ease, border-color 0.18s ease;
 
 	&:hover {
-		border-color: rgba(37, 99, 235, 0.25);
+		border-color: var(--color-border-strong, rgba(0, 0, 0, 0.14));
 		box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.06));
 	}
 }
@@ -422,31 +454,6 @@ function extractUrls(text) {
 	justify-content: center;
 	background: rgba(100, 116, 139, 0.1);
 	color: var(--theme-text-muted, #64748b);
-
-	&.cat-compressed {
-		background: rgba(245, 158, 11, 0.12);
-		color: #d97706;
-	}
-	&.cat-programs {
-		background: rgba(99, 102, 241, 0.12);
-		color: #4f46e5;
-	}
-	&.cat-video {
-		background: rgba(236, 72, 153, 0.12);
-		color: #db2777;
-	}
-	&.cat-music {
-		background: rgba(168, 85, 247, 0.12);
-		color: #9333ea;
-	}
-	&.cat-documents {
-		background: rgba(37, 99, 235, 0.12);
-		color: #2563eb;
-	}
-	&.cat-images {
-		background: rgba(16, 185, 129, 0.12);
-		color: #059669;
-	}
 }
 
 .row-main {
@@ -494,7 +501,7 @@ function extractUrls(text) {
 		min-width: 0;
 	}
 	.meta-speed {
-		color: #2563eb;
+		color: var(--color-primary-fg, #1d4ed8);
 		font-weight: 500;
 	}
 	.meta-conns {

@@ -19,11 +19,12 @@
 			<div class="hero-text">
 				<div class="hero-title">{{ enabled ? $t('Blocking ads and trackers') : $t('Ad blocker is off') }}</div>
 				<div class="hero-sub" v-if="stats">
-					{{ stats.network_rules.toLocaleString() }} {{ $t('network filters') }} &middot; {{ stats.cosmetic_rules.toLocaleString() }} {{ $t('element-hiding filters') }}
-					&middot; {{ stats.blocked_total.toLocaleString() }} {{ $t('blocked since start') }}
+					{{ $t('{network} network filters · {cosmetic} element-hiding filters · {blocked} blocked since start', {
+						network: stats.network_rules.toLocaleString(), cosmetic: stats.cosmetic_rules.toLocaleString(), blocked: stats.blocked_total.toLocaleString()
+					}) }}
 				</div>
 			</div>
-			<b-switch :value="enabled" @input="setEnabled"></b-switch>
+			<b-switch :value="enabled" :aria-label="$t('Ad blocker')" @input="setEnabled"></b-switch>
 		</div>
 
 		<h3 class="setting-card-title">{{ $t('Filter lists') }}</h3>
@@ -35,14 +36,14 @@
 						{{ l.description }}
 						<template v-if="l.enabled">
 							&middot;
-							<span v-if="l.error" class="ds-error-text">{{ $t('update failed') }}: {{ l.error }}</span>
-							<span v-else-if="l.updated_at">{{ formatBytes(l.size) }}, {{ $t('updated') }} {{ ago(l.updated_at) }}</span>
+							<span v-if="l.error" class="ds-error-text">{{ $t('Update failed: {error}', { error: l.error }) }}</span>
+							<span v-else-if="l.updated_at">{{ $t('{size}, updated {when}', { size: formatBytes(l.size), when: ago(l.updated_at) }) }}</span>
 							<span v-else>{{ $t('downloading...') }}</span>
 						</template>
 					</div>
 				</div>
 				<div class="row-control">
-					<b-switch size="is-small" :value="l.enabled" :disabled="!enabled" @input="v => toggleList(l.id, v)"></b-switch>
+					<b-switch size="is-small" :value="l.enabled" :disabled="!enabled" :aria-label="l.name" @input="v => toggleList(l.id, v)"></b-switch>
 				</div>
 			</div>
 		</div>
@@ -55,12 +56,12 @@
 					<div class="chips">
 						<span v-for="s in allowedSites" :key="s" class="site-chip">
 							{{ s }}
-							<button :title="$t('Remove')" @click="removeSite(s)"><b-icon icon="close" custom-size="mdi-12px"></b-icon></button>
+							<button :title="$t('Remove')" :aria-label="$t('Remove {name}', { name: s })" @click="removeSite(s)"><b-icon icon="close" custom-size="mdi-12px"></b-icon></button>
 						</span>
 						<span v-if="!allowedSites.length" class="ds-hint">{{ $t('None') }}</span>
 					</div>
 					<form class="inline-form" @submit.prevent="addSite">
-						<input v-model="newSite" class="ds-input" placeholder="example.com" spellcheck="false" />
+						<input v-model="newSite" class="ds-input" placeholder="example.com" spellcheck="false" :aria-label="$t('Trusted site to add')" />
 						<button class="ds-secondary-btn" type="submit" :disabled="!newSite.trim()">{{ $t('Add') }}</button>
 					</form>
 				</div>
@@ -71,8 +72,11 @@
 		<div class="setting-card">
 			<div class="setting-row filters-row">
 				<div class="row-label">
-					<div class="setting-desc">{{ $t('Your own rules, in uBlock Origin syntax - e.g.') }} <code>||ads.example.com^</code> {{ $t('or') }} <code>example.com##.banner</code></div>
-					<textarea v-model="customFilters" class="ds-input" rows="6" spellcheck="false"></textarea>
+					<i18n path="Your own rules, in uBlock Origin syntax - for example {network} or {cosmetic}" tag="div" class="setting-desc">
+						<template #network><code>||ads.example.com^</code></template>
+						<template #cosmetic><code>example.com##.banner</code></template>
+					</i18n>
+					<textarea v-model="customFilters" class="ds-input" rows="6" spellcheck="false" :aria-label="$t('My filters')"></textarea>
 					<div class="filters-actions">
 						<button class="ds-primary-btn" :disabled="customFilters === savedCustom" @click="saveCustom">{{ $t('Apply changes') }}</button>
 					</div>
@@ -88,6 +92,7 @@
 
 <script>
 import { downloadSidecar, formatBytes } from '@/api/downloadSidecar'
+import { escapeHtml } from '@/utils/escapeHtml'
 
 export default {
 	name: 'ds-adblock-panel',
@@ -118,9 +123,9 @@ export default {
 		ago(t) {
 			const s = Math.round((Date.now() - new Date(t).getTime()) / 1000)
 			if (s < 90) return this.$t('just now')
-			if (s < 5400) return Math.round(s / 60) + ' ' + this.$t('min ago')
-			if (s < 129600) return Math.round(s / 3600) + ' ' + this.$t('h ago')
-			return Math.round(s / 86400) + ' ' + this.$t('days ago')
+			if (s < 5400) return this.$t('{n} min ago', { n: Math.round(s / 60) })
+			if (s < 129600) return this.$t('{n} h ago', { n: Math.round(s / 3600) })
+			return this.$t('{n} days ago', { n: Math.round(s / 86400) })
 		},
 		async load() {
 			try {
@@ -139,7 +144,7 @@ export default {
 				// The engine rebuilds in the background; refresh counts shortly.
 				setTimeout(this.loadStats, 800)
 			} catch (e) {
-				this.$buefy.toast.open({ message: this.$t('Could not save'), type: 'is-danger' })
+				this.$buefy.toast.open({ message: escapeHtml(this.$t('Could not save: {error}', { error: e.message })), type: 'is-danger' })
 			}
 		},
 		setEnabled(v) {
@@ -150,12 +155,17 @@ export default {
 			on ? cur.add(id) : cur.delete(id)
 			await this.patch({ enabled_lists: [...cur] })
 			// A newly enabled list needs downloading.
-			if (on) downloadSidecar.updateFilterLists().then(s => (this.stats = s)).catch(() => {})
+			if (on) downloadSidecar.updateFilterLists().then(s => (this.stats = s)).catch(e => this.updateFailed(e))
 		},
 		async updateLists() {
 			try {
 				this.stats = await downloadSidecar.updateFilterLists()
-			} catch (e) {}
+			} catch (e) {
+				this.updateFailed(e)
+			}
+		},
+		updateFailed(e) {
+			this.$buefy.toast.open({ message: escapeHtml(this.$t('Could not update the filter lists: {error}', { error: e.message })), type: 'is-danger' })
 		},
 		addSite() {
 			let s = this.newSite.trim().toLowerCase()
@@ -203,8 +213,8 @@ export default {
 	padding: var(--space-4) var(--space-5);
 	margin-bottom: var(--space-2);
 	border-radius: 14px;
-	background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(56, 189, 248, 0.08));
-	border: 1px solid rgba(37, 99, 235, 0.18);
+	background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 
 	&.off {
 		background: var(--theme-card-bg, #fff);
@@ -225,8 +235,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #2563eb;
-	color: #fff;
+	background: var(--color-primary, #2563eb);
+	color: var(--color-primary-text, #fff);
 
 	::v-deep .icon {
 		width: 2rem;
@@ -285,7 +295,7 @@ export default {
 		padding: 0;
 
 		&:hover {
-			color: #dc2626;
+			color: var(--color-danger-fg, #b91c1c);
 		}
 	}
 }

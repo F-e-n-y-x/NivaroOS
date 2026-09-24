@@ -883,11 +883,27 @@ func (e *FilterEngine) SelectorsForPage(pageURL, host string, keys []string, inc
 // CosmeticCSS renders selectors as one rule each: a single selector a
 // browser doesn't understand only drops its own rule, instead of silently
 // invalidating one huge comma-joined rule and everything in it.
+//
+// Selectors come from third-party filter lists (and "My filters") and are
+// written into a <style> element in the proxied page, so anything that could
+// end that element or the CSS rule - "<" (as in </style><script>), braces,
+// semicolons, comments, newlines - drops the selector instead of being
+// written out.
 func CosmeticCSS(selectors []string) string {
 	var b strings.Builder
 	for _, s := range selectors {
+		if !safeSelector(s) {
+			continue
+		}
 		b.WriteString(s)
 		b.WriteString("{display:none!important}\n")
 	}
 	return b.String()
+}
+
+func safeSelector(s string) bool {
+	if s == "" || strings.ContainsAny(s, "<{};\r\n\x00") || strings.Contains(s, "/*") {
+		return false
+	}
+	return !strings.Contains(strings.ToLower(s), "</style")
 }

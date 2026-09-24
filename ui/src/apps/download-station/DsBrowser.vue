@@ -11,47 +11,48 @@
 				<b-icon v-if="t.loading" icon="loading" custom-class="mdi-spin" custom-size="mdi-14px"></b-icon>
 				<b-icon v-else :icon="t.kind === 'history' ? 'history' : 'web'" custom-size="mdi-14px"></b-icon>
 				<span class="tab-title">{{ t.kind === 'history' ? $t('History') : t.title || hostOf(t.url) || $t('New Tab') }}</span>
-				<button class="tab-close" :title="$t('Close tab')" @click.stop="closeTab(t.id)">
+				<button class="tab-close" :title="$t('Close tab')" :aria-label="$t('Close tab')" @click.stop="closeTab(t.id)">
 					<b-icon icon="close" custom-size="mdi-14px"></b-icon>
 				</button>
 			</div>
-			<button class="tab-new" :title="$t('New tab')" @click="newTab()">
+			<button class="tab-new" :title="$t('New tab')" :aria-label="$t('New tab')" @click="newTab()">
 				<b-icon icon="plus" custom-size="mdi-16px"></b-icon>
 			</button>
 		</div>
 
 		<div class="address-bar">
-			<button class="ds-icon-btn is-flat" :title="$t('Back')" :disabled="!active || !active.url" @click="command('back')">
+			<button class="ds-icon-btn is-flat" :title="$t('Back')" :aria-label="$t('Back')" :disabled="!active || !active.url" @click="command('back')">
 				<b-icon icon="arrow-left" custom-size="mdi-18px"></b-icon>
 			</button>
-			<button class="ds-icon-btn is-flat" :title="$t('Forward')" :disabled="!active || !active.url" @click="command('forward')">
+			<button class="ds-icon-btn is-flat" :title="$t('Forward')" :aria-label="$t('Forward')" :disabled="!active || !active.url" @click="command('forward')">
 				<b-icon icon="arrow-right" custom-size="mdi-18px"></b-icon>
 			</button>
-			<button class="ds-icon-btn is-flat" :title="$t('Reload')" :disabled="!active || !active.url" @click="reload">
+			<button class="ds-icon-btn is-flat" :title="$t('Reload')" :aria-label="$t('Reload')" :disabled="!active || !active.url" @click="reload">
 				<b-icon icon="refresh" custom-size="mdi-18px"></b-icon>
 			</button>
-			<button class="ds-icon-btn is-flat" :title="$t('Home')" @click="goHome">
+			<button class="ds-icon-btn is-flat" :title="$t('Home')" :aria-label="$t('Home')" @click="goHome">
 				<b-icon icon="home-outline" custom-size="mdi-18px"></b-icon>
 			</button>
-			<button class="ds-icon-btn is-flat" :class="{ 'is-active': active && active.kind === 'history' }" :title="$t('History')" @click="openHistory">
+			<button class="ds-icon-btn is-flat" :class="{ 'is-active': active && active.kind === 'history' }" :title="$t('History')" :aria-label="$t('History')" @click="openHistory">
 				<b-icon icon="history" custom-size="mdi-18px"></b-icon>
 			</button>
 			<form class="url-form" @submit.prevent="submitAddress">
 				<b-icon :icon="isHttps ? 'lock-outline' : 'web'" custom-size="mdi-16px" class="url-icon" :class="{ secure: isHttps }"></b-icon>
 				<input ref="address" v-model="addressText" class="url-input" spellcheck="false" autocomplete="off"
-					:placeholder="$t('Search or enter address')" @focus="$event.target.select()" />
+					:aria-label="$t('Address bar')" :placeholder="$t('Search or enter address')" @focus="$event.target.select()" />
 			</form>
-			<button class="ds-icon-btn shield-btn" :class="{ 'is-active': adblockActive }"
-				:title="adblockActive ? $t('Ad blocker is on - click to turn off') : $t('Ad blocker is off - click to turn on')" @click="$emit('toggle-adblock')">
+			<button class="ds-icon-btn shield-btn" :class="{ 'is-active': adblockActive }" :aria-pressed="adblockActive ? 'true' : 'false'"
+				:title="adblockActive ? $t('Ad blocker is on - click to turn off') : $t('Ad blocker is off - click to turn on')"
+				:aria-label="adblockActive ? $t('Ad blocker is on - click to turn off') : $t('Ad blocker is off - click to turn on')" @click="$emit('toggle-adblock')">
 				<b-icon :icon="adblockActive ? 'shield-check-outline' : 'shield-off-outline'" custom-size="mdi-18px"></b-icon>
 				<span v-if="adblockActive && blockedHere" class="shield-count">{{ blockedHere > 99 ? '99+' : blockedHere }}</span>
 			</button>
-			<button class="ds-icon-btn" :title="$t('Download this address with Download Station')" :disabled="!active || !active.url" @click="downloadCurrent">
+			<button class="ds-icon-btn" :title="$t('Download this address with Download Station')" :aria-label="$t('Download this address with Download Station')" :disabled="!active || !active.url" @click="downloadCurrent">
 				<b-icon icon="download" custom-size="mdi-18px"></b-icon>
 			</button>
 			<b-dropdown position="is-bottom-left" append-to-body aria-role="menu" class="browser-menu">
 				<template #trigger>
-					<button class="ds-icon-btn" :title="$t('More')">
+					<button class="ds-icon-btn" :title="$t('More')" :aria-label="$t('More')">
 						<b-icon icon="dots-vertical" custom-size="mdi-18px"></b-icon>
 					</button>
 				</template>
@@ -71,7 +72,12 @@
 		</div>
 
 		<div class="frame-area">
-			<div v-if="error" class="frame-error">
+			<div v-if="!available" class="frame-error" role="status">
+				<b-icon icon="lock-alert-outline" custom-size="mdi-36px"></b-icon>
+				<p class="start-title">{{ $t('The built-in browser isn\'t available over HTTPS') }}</p>
+				<p>{{ $t('Its pages are served from Download Station\'s own port, which browsers block inside an HTTPS page. Open NivaroOS over http:// on your local network to use the browser - downloads still work here.') }}</p>
+			</div>
+			<div v-else-if="error" class="frame-error" role="alert">
 				<b-icon icon="alert-circle-outline" custom-size="mdi-36px"></b-icon>
 				<p>{{ error }}</p>
 				<button class="ds-primary-btn" @click="startSession">{{ $t('Retry') }}</button>
@@ -81,6 +87,7 @@
 					<ds-browser-history v-if="t.kind === 'history'" v-show="t.id === activeId" :key="t.id + '-history'"
 						@open="(url, newTab) => openFromHistory(t, url, newTab)"></ds-browser-history>
 					<iframe v-else-if="t.src" v-show="t.id === activeId" :key="t.id + '-' + t.gen" :ref="'frame-' + t.id" class="page-frame" :src="t.src"
+						:title="t.title || hostOf(t.url) || $t('Web page')"
 						sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-pointer-lock allow-presentation"
 						referrerpolicy="same-origin" allow="fullscreen; clipboard-write; autoplay" @load="onFrameLoad(t)"></iframe>
 					<div v-else-if="t.id === activeId" :key="t.id + '-start'" class="start-page">
@@ -88,7 +95,7 @@
 						<p class="start-title">{{ $t('Lite Browser') }}</p>
 						<p class="start-hint">{{ $t('Open a download page and click its download link - the file goes straight to Download Station, with the page\'s cookies, using multiple connections.') }}</p>
 						<form class="start-form" @submit.prevent="submitStart">
-							<input v-model="startText" class="ds-input" :placeholder="$t('Search or enter address')" />
+							<input v-model="startText" class="ds-input" :aria-label="$t('Search or enter address')" :placeholder="$t('Search or enter address')" />
 							<button class="ds-primary-btn" type="submit">{{ $t('Go') }}</button>
 						</form>
 					</div>
@@ -100,6 +107,7 @@
 
 <script>
 import { downloadSidecar } from '@/api/downloadSidecar'
+import { escapeHtml } from '@/utils/escapeHtml'
 import DsBrowserHistory from './DsBrowserHistory.vue'
 
 let tabSeq = 0
@@ -123,7 +131,9 @@ export default {
 			error: '',
 			stats: null,
 			homePage: 'https://duckduckgo.com/',
-			statsTimer: null
+			statsTimer: null,
+			available: downloadSidecar.browserAvailable(),
+			destroyed: false
 		}
 	},
 	computed: {
@@ -149,15 +159,22 @@ export default {
 	},
 	async created() {
 		this.newTab('', false)
+		if (!this.available) return
 		window.addEventListener('message', this.onMessage)
 		await this.startSession()
+		if (this.destroyed) return
 		try {
 			const s = await downloadSidecar.getSettings()
 			if (s && s.home_page) this.homePage = s.home_page
 		} catch (e) {}
+		if (this.destroyed) return
 		this.statsTimer = setInterval(this.pollStats, STATS_POLL_MS)
 	},
 	beforeDestroy() {
+		// created() is async: anything it's still awaiting checks this flag,
+		// so a window closed mid-start leaks neither the stats timer nor a
+		// browser session on the sidecar.
+		this.destroyed = true
 		window.removeEventListener('message', this.onMessage)
 		clearInterval(this.statsTimer)
 		if (this.session) downloadSidecar.deleteBrowserSession(this.session.id).catch(() => {})
@@ -171,28 +188,35 @@ export default {
 			}
 		},
 		async startSession() {
+			if (!this.available) return
 			this.error = ''
 			try {
-				this.session = await downloadSidecar.createBrowserSession()
-				// Re-point any open tabs at the new session.
-				for (const t of this.tabs) if (t.url) this.load(t, t.url)
+				const session = await downloadSidecar.createBrowserSession()
+				if (this.destroyed) {
+					downloadSidecar.deleteBrowserSession(session.id).catch(() => {})
+					return
+				}
+				this.session = session
+				// Re-point any open tabs at the new session (their addresses
+				// were ones the user already chose).
+				for (const t of this.tabs) if (t.url) this.load(t, t.url, true)
 			} catch (e) {
-				this.error = this.$t('Could not start the browser: ') + e.message
+				if (!this.destroyed) this.error = this.$t('Could not start the browser: {error}', { error: e.message })
 			}
 		},
 		async pollStats() {
-			if (!this.visible || !this.session) return
+			if (!this.visible || !this.session || this.destroyed) return
 			try {
 				this.stats = await downloadSidecar.getBrowserSession(this.session.id)
 			} catch (e) {
-				if (/expired|404/.test(e.message)) this.startSession()
+				if (!this.destroyed && e.status === 404) this.startSession()
 			}
 		},
 		newTab(url = '', focus = true) {
-			const t = { id: ++tabSeq, kind: '', url: '', title: '', src: '', loading: false, gen: 0, recorded: '' }
+			const t = { id: ++tabSeq, kind: '', url: '', title: '', src: '', loading: false, gen: 0, recorded: '', navSeq: 0, navCache: {} }
 			this.tabs.push(t)
 			this.activeId = t.id
-			if (url) this.load(t, url)
+			if (url) this.load(t, url, true)
 			else if (focus) this.$nextTick(() => this.$refs.address && this.$refs.address.focus())
 			return t
 		},
@@ -210,7 +234,7 @@ export default {
 				return
 			}
 			const t = inNewTab && this.active && this.active.url ? this.newTab() : this.active || this.newTab()
-			this.load(t, url)
+			this.load(t, url, true)
 		},
 		normalize(text) {
 			const s = (text || '').trim()
@@ -220,7 +244,11 @@ export default {
 			if (!/\s/.test(s) && (/^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(s) || /^localhost(:\d+)?/.test(s))) return 'https://' + s
 			return 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(s)
 		},
-		load(tab, rawUrl) {
+		// typed: the user chose this address (address bar, start page,
+		// history, home, "Open Browser") - the sidecar then lets the proxy
+		// reach its host even if it's on the local network. Addresses a page
+		// navigates to by itself never get that.
+		async load(tab, rawUrl, typed = false) {
 			const url = this.normalize(rawUrl)
 			if (!url || !this.session) {
 				tab.url = url
@@ -230,23 +258,27 @@ export default {
 			tab.url = url
 			tab.title = ''
 			tab.loading = true
+			tab.navSeq++
+			if (tab.id === this.activeId) this.addressText = url
+			const session = this.session
+			if (typed) await downloadSidecar.markTyped(session.id, url).catch(() => {})
+			if (this.destroyed || session !== this.session || tab.url !== url) return
 			try {
-				tab.src = downloadSidecar.proxyUrl(this.session.prefix, url)
+				tab.src = downloadSidecar.proxyUrl(session.prefix, url)
 			} catch (e) {
 				tab.loading = false
 				return
 			}
 			// A fresh key forces a new iframe even when src is unchanged.
 			tab.gen++
-			if (tab.id === this.activeId) this.addressText = url
 		},
 		submitAddress() {
 			if (!this.active) this.newTab()
-			this.load(this.active, this.addressText)
+			this.load(this.active, this.addressText, true)
 			if (this.$refs.address) this.$refs.address.blur()
 		},
 		submitStart() {
-			this.load(this.active, this.startText)
+			this.load(this.active, this.startText, true)
 			this.startText = ''
 		},
 		// Opens History in its own tab (reusing one already open).
@@ -266,9 +298,9 @@ export default {
 		openFromHistory(tab, url, inNewTab) {
 			if (inNewTab) {
 				const t = this.newTab()
-				this.load(t, url)
+				this.load(t, url, true)
 			} else {
-				this.load(tab, url)
+				this.load(tab, url, true)
 			}
 		},
 		// One history entry per page visit; a later title update for the
@@ -280,7 +312,7 @@ export default {
 			downloadSidecar.addHistory(tab.url, tab.title).catch(() => {})
 		},
 		goHome() {
-			this.load(this.active || this.newTab(), this.homePage)
+			this.load(this.active || this.newTab(), this.homePage, true)
 		},
 		frameOf(tab) {
 			const ref = this.$refs['frame-' + tab.id]
@@ -293,7 +325,7 @@ export default {
 		reload() {
 			// Re-load through the address we know, so a page that failed to
 			// load (no shim to receive a 'reload' message) still recovers.
-			if (this.active && this.active.url) this.load(this.active, this.active.url)
+			if (this.active && this.active.url) this.load(this.active, this.active.url, true)
 		},
 		onFrameLoad(tab) {
 			tab.loading = false
@@ -301,18 +333,50 @@ export default {
 		onMessage(e) {
 			if (e.origin !== downloadSidecar.origin || !e.data || e.data.nvds !== 1) return
 			if (e.data.type === 'nav') {
+				// Only the tab's own top proxied frame may report, and even
+				// then its URL isn't taken on trust (the page's scripts can
+				// post anything) - see verifiedNavUrl.
 				const tab = this.tabs.find(t => {
 					const f = this.frameOf(t)
 					return f && f.contentWindow === e.source
 				})
-				if (!tab) return
-				tab.url = e.data.url
-				tab.title = e.data.title || ''
-				this.recordHistory(tab)
-				if (tab.id === this.activeId && document.activeElement !== this.$refs.address) this.addressText = tab.url
+				if (tab) this.onNav(tab, e.data)
 			} else if (e.data.type === 'download' && this.session && e.data.session === this.session.id) {
 				this.ds.openAddDownload({ captureSession: e.data.session, captureId: e.data.capture })
 			}
+		},
+		async onNav(tab, data) {
+			if (!this.session || typeof data.nav !== 'string') return
+			const seq = ++tab.navSeq
+			const shown = await this.verifiedNavUrl(tab, data.nav, data.url)
+			if (!shown || this.destroyed || seq !== tab.navSeq) return
+			tab.url = shown
+			tab.title = typeof data.title === 'string' ? data.title.slice(0, 300) : ''
+			this.recordHistory(tab)
+			if (tab.id === this.activeId && document.activeElement !== this.$refs.address) this.addressText = tab.url
+		},
+		// The address bar shows the document the proxy really served for
+		// this nav ID. A same-origin URL from the page is accepted on top of
+		// that (pushState/hash changes - which a real browser also lets a
+		// page make); anything pointing at another site is ignored.
+		async verifiedNavUrl(tab, nav, claimed) {
+			let served = tab.navCache[nav]
+			if (!served) {
+				try {
+					const res = await downloadSidecar.getNav(this.session.id, nav)
+					served = res && res.url
+				} catch (e) {
+					return ''
+				}
+				if (!served) return ''
+				tab.navCache = { [nav]: served }
+			}
+			try {
+				const a = new URL(claimed)
+				const b = new URL(served)
+				if (a.origin === b.origin) return a.href
+			} catch (e) {}
+			return served
 		},
 		// Sends the page's own address to Download Station, with this
 		// session's cookies for it (e.g. a direct media URL you navigated to).
@@ -333,13 +397,19 @@ export default {
 			try {
 				await navigator.clipboard.writeText(this.active.url)
 				this.$buefy.toast.open({ message: this.$t('Address copied'), type: 'is-success' })
-			} catch (e) {}
+			} catch (e) {
+				this.$buefy.toast.open({ message: this.$t('Could not copy to the clipboard'), type: 'is-danger' })
+			}
 		},
 		async clearCookies() {
 			if (!this.session) return
-			await downloadSidecar.clearBrowserCookies(this.session.id).catch(() => {})
-			this.$buefy.toast.open({ message: this.$t('Cookies cleared'), type: 'is-success' })
-			this.reload()
+			try {
+				await downloadSidecar.clearBrowserCookies(this.session.id)
+				this.$buefy.toast.open({ message: this.$t('Cookies cleared'), type: 'is-success' })
+				this.reload()
+			} catch (e) {
+				this.$buefy.toast.open({ message: escapeHtml(this.$t('Could not clear cookies: {error}', { error: e.message })), type: 'is-danger' })
+			}
 		}
 	}
 }
@@ -473,7 +543,7 @@ export default {
 	pointer-events: none;
 
 	&.secure {
-		color: #059669;
+		color: var(--color-success-fg, #047857);
 	}
 }
 
@@ -491,8 +561,8 @@ export default {
 
 	&:focus {
 		background: var(--theme-input-bg, #fff);
-		border-color: var(--color-primary, #2563eb);
-		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+		border-color: var(--theme-input-focus, #2563eb);
+		box-shadow: 0 0 0 3px var(--theme-focus-ring, rgba(37, 99, 235, 0.4));
 	}
 }
 
@@ -514,16 +584,20 @@ export default {
 	position: relative;
 	flex: 1 1 auto;
 	min-height: 0;
-	background: #fff;
+	background: var(--theme-card-bg, #fff);
 }
 
+// No fixed white: a page that doesn't paint its own background shows the
+// theme surface, and the proxy's own pages (captured, blocked, errors) pick
+// up the NivaroOS theme through color-scheme (see the unscoped block below).
 .page-frame {
 	position: absolute;
 	inset: 0;
 	width: 100%;
 	height: 100%;
 	border: none;
-	background: #fff;
+	background: transparent;
+	color-scheme: light;
 }
 
 .start-page,
@@ -576,5 +650,15 @@ export default {
 	align-items: center;
 	gap: var(--space-2);
 	font-size: var(--font-sm);
+}
+</style>
+
+<style lang="scss">
+// Unscoped: the iframe's used color-scheme is what prefers-color-scheme
+// reports inside the proxied document, so the sidecar's own pages follow the
+// NivaroOS theme rather than the OS setting.
+html[data-theme='dark'] .ds-browser .page-frame,
+html.is-dark .ds-browser .page-frame {
+	color-scheme: dark;
 }
 </style>

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -90,6 +92,20 @@ type Download struct {
 	// Whether the user explicitly chose Filename (a probe then never
 	// overrides it with the server's Content-Disposition name).
 	FilenameFixed bool `json:"filename_fixed,omitempty"`
+	// What the server said about the file when the transfer started - a
+	// resumed/refreshed transfer whose server now reports a different size
+	// or validator is fetching a different file, and must start over rather
+	// than splice two files' bytes together.
+	ETag          string `json:"etag,omitempty"`
+	LastModified  string `json:"last_modified,omitempty"`
+	ValidatorHost string `json:"validator_host,omitempty"`
+	// Optional expected SHA-256 (lowercase hex), verified before the file
+	// is moved into place.
+	Checksum string `json:"checksum,omitempty"`
+	// Set by Redownload: the finished file already at finalPath is ours and
+	// is replaced (atomically, by rename) instead of the new copy being
+	// saved as "name (1)".
+	Replace bool `json:"replace,omitempty"`
 
 	cancel      context.CancelFunc
 	running     bool
@@ -99,10 +115,18 @@ type Download struct {
 	// Set once the server rejected a connection as too many (429/503);
 	// no more segments get split off for the rest of this run.
 	throttled bool
-	// Set by Pause/Delete right before cancelling, so the run loop knows the
-	// cancellation was deliberate and which state to land in.
+	// Set by Pause/Delete/Redownload right before cancelling, so the run
+	// loop knows the cancellation was deliberate and what to do next.
 	stopReason State
+	// Delete while running: the run loop removes the files once its file
+	// handle is closed.
+	deleteFinal bool
 }
+
+const (
+	stopDeleted State = "deleted"
+	stopRestart State = "restart"
+)
 
 func (d *Download) downloaded() int64 {
 	var n int64
@@ -136,6 +160,7 @@ type DownloadView struct {
 	ETA               int64      `json:"eta"`
 	Segments          []Segment  `json:"segments"`
 	Source            string     `json:"source,omitempty"`
+	Checksum          string     `json:"checksum,omitempty"`
 	HasCookies        bool       `json:"has_cookies"`
 	CreatedAt         time.Time  `json:"created_at"`
 	CompletedAt       *time.Time `json:"completed_at,omitempty"`
@@ -150,6 +175,26 @@ type AddRequest struct {
 	// false = add to the list paused ("Download later").
 	Start  *bool  `json:"start"`
 	Source string `json:"source"`
+	// Optional "sha256:<hex>" or bare 64-char hex.
+	Checksum string `json:"checksum"`
+}
+
+// normalizeChecksum accepts "sha256:<hex>", "SHA256 <hex>" or bare hex.
+func normalizeChecksum(v string) (string, error) {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" {
+		return "", nil
+	}
+	for _, p := range []string{"sha256:", "sha256=", "sha256 ", "sha-256:"} {
+		v = strings.TrimSpace(strings.TrimPrefix(v, p))
+	}
+	if len(v) != 64 {
+		return "", errors.New("checksum must be a SHA-256 hash (64 hex characters)")
+	}
+	if _, err := hex.DecodeString(v); err != nil {
+		return "", errors.New("checksum must be a SHA-256 hash (64 hex characters)")
+	}
+	return v, nil
 }
 
 type Manager struct {
@@ -309,8 +354,15 @@ func (m *Manager) Add(req AddRequest) (DownloadView, error) {
 		return DownloadView{}, errors.New("save folder must be an absolute path")
 	}
 	dir = filepath.Clean(dir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if _, err := pathPolicy.MkdirAll(dir); err != nil {
+		if errors.Is(err, errPathNotAllowed) {
+			return DownloadView{}, err
+		}
 		return DownloadView{}, fmt.Errorf("cannot create save folder: %w", err)
+	}
+	sum, err := normalizeChecksum(req.Checksum)
+	if err != nil {
+		return DownloadView{}, err
 	}
 	conns := req.Connections
 	if conns == 0 {
@@ -325,6 +377,7 @@ func (m *Manager) Add(req AddRequest) (DownloadView, error) {
 		Connections: clampInt(conns, minConnections, maxConnections),
 		Headers:     cleanHeaders(req.Headers),
 		Source:      req.Source,
+		Checksum:    sum,
 		CreatedAt:   time.Now(),
 	}
 	if name := sanitizeFilename(req.Filename); name != "" {
@@ -393,7 +446,7 @@ func (m *Manager) viewLocked(d *Download) DownloadView {
 		ID: d.ID, URL: d.URL, FinalURL: d.FinalURL, Filename: d.Filename, Dir: d.Dir,
 		Size: d.Size, Downloaded: d.downloaded(), Resumable: d.Resumable, ContentType: d.ContentType,
 		State: d.State, Error: d.Error, Connections: d.Connections, ActiveConnections: d.activeConns,
-		Speed: d.speed, ETA: -1, Segments: segs, Source: d.Source, HasCookies: d.Headers["Cookie"] != "",
+		Speed: d.speed, ETA: -1, Segments: segs, Source: d.Source, Checksum: d.Checksum, HasCookies: d.Headers["Cookie"] != "",
 		CreatedAt: d.CreatedAt, CompletedAt: d.CompletedAt,
 	}
 	if d.State == StateCompleted {
@@ -412,6 +465,13 @@ func (m *Manager) viewLocked(d *Download) DownloadView {
 
 var errNotFound = errors.New("download not found")
 
+// Pause / Resume / Redownload / Delete form the state machine together
+// with run(): a running download is only ever stopped by setting
+// stopReason and cancelling its context; run() - once the transfer has
+// actually wound down - decides the final state from stopReason *and* the
+// current State. So a Resume that lands while a Pause is still winding down
+// (State back to queued, run still going) is honoured instead of being
+// overwritten with "paused" a moment later.
 func (m *Manager) Pause(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -419,14 +479,16 @@ func (m *Manager) Pause(id string) error {
 	if !ok {
 		return errNotFound
 	}
-	switch d.State {
-	case StateDownloading:
-		d.stopReason = StatePaused
+	switch {
+	case d.running:
+		if d.stopReason != stopDeleted && d.stopReason != stopRestart {
+			d.stopReason = StatePaused
+		}
 		d.State = StatePaused
 		if d.cancel != nil {
 			d.cancel()
 		}
-	case StateQueued:
+	case d.State == StateQueued:
 		d.State = StatePaused
 	}
 	m.dirty = true
@@ -441,6 +503,8 @@ func (m *Manager) Resume(id string) error {
 		return errNotFound
 	}
 	if d.State == StatePaused || d.State == StateFailed {
+		// If the previous run is still winding down, run() sees State
+		// queued and leaves it that way; schedule() then starts it again.
 		d.State = StateQueued
 		d.Error = ""
 		m.dirty = true
@@ -450,7 +514,20 @@ func (m *Manager) Resume(id string) error {
 	return nil
 }
 
-// Redownload starts a completed (or any) download over from byte zero.
+// resetForRestartLocked throws away all progress so the next run starts
+// from byte zero.
+func resetForRestartLocked(d *Download) {
+	d.Segments = nil
+	d.Size = -1
+	d.CompletedAt = nil
+	d.Error = ""
+	d.ETag, d.LastModified, d.ValidatorHost = "", "", ""
+}
+
+// Redownload starts a download over from byte zero - pausing it first if
+// it's running. For a completed download the finished file is kept until
+// the new copy is complete, then replaced by an atomic rename (no
+// "name (1)" copy, no window where neither exists).
 func (m *Manager) Redownload(id string) error {
 	m.mu.Lock()
 	d, ok := m.downloads[id]
@@ -458,14 +535,20 @@ func (m *Manager) Redownload(id string) error {
 		m.mu.Unlock()
 		return errNotFound
 	}
-	if d.running {
-		m.mu.Unlock()
-		return errors.New("pause the download first")
+	if d.State == StateCompleted {
+		d.Replace = true
 	}
-	d.Segments = nil
-	d.Size = -1
-	d.CompletedAt = nil
-	d.Error = ""
+	if d.running {
+		d.stopReason = stopRestart
+		d.State = StateQueued
+		if d.cancel != nil {
+			d.cancel()
+		}
+		m.dirty = true
+		m.mu.Unlock()
+		return nil
+	}
+	resetForRestartLocked(d)
 	d.State = StateQueued
 	m.dirty = true
 	m.mu.Unlock()
@@ -473,6 +556,9 @@ func (m *Manager) Redownload(id string) error {
 	return nil
 }
 
+// Delete removes a download from the list. The incomplete .part is always
+// removed (it's useless without its entry); the finished file only when
+// deleteFile is set, and only inside a storage root.
 func (m *Manager) Delete(id string, deleteFile bool) error {
 	m.mu.Lock()
 	d, ok := m.downloads[id]
@@ -481,26 +567,33 @@ func (m *Manager) Delete(id string, deleteFile bool) error {
 		return errNotFound
 	}
 	delete(m.downloads, id)
-	d.stopReason = "deleted"
-	if d.cancel != nil {
-		d.cancel()
-	}
 	part, final, completed := d.partPath(), d.finalPath(), d.State == StateCompleted
+	running := d.running
+	if running {
+		// run() removes the files once the transfer has closed them.
+		d.stopReason = stopDeleted
+		d.deleteFinal = deleteFile && completed
+		if d.cancel != nil {
+			d.cancel()
+		}
+	}
 	m.dirty = true
 	m.mu.Unlock()
-	// Always drop the incomplete .part - it's useless without its entry.
-	// The finished file is only removed when explicitly asked.
-	go func() {
-		// Give a cancelled run loop a moment to close its file handle.
-		time.Sleep(300 * time.Millisecond)
-		_ = os.Remove(part)
-		if deleteFile && completed {
-			_ = os.Remove(final)
-		}
-	}()
+	if !running {
+		removeDownloadFiles(part, final, deleteFile && completed)
+	}
 	m.save()
 	m.schedule()
 	return nil
+}
+
+func removeDownloadFiles(part, final string, withFinal bool) {
+	if pathPolicy.Allowed(part) {
+		_ = os.Remove(part)
+	}
+	if withFinal && pathPolicy.Allowed(final) {
+		_ = os.Remove(final)
+	}
 }
 
 // ClearCompleted removes finished entries from the list (files are kept).
@@ -612,15 +705,29 @@ func (m *Manager) run(ctx context.Context, d *Download) {
 	d.speed = 0
 	d.cancel = nil
 	var ev *Event
+	reason := d.stopReason
+	d.stopReason = ""
+	var cleanup func()
 	switch {
-	case d.stopReason == "deleted":
-	case d.stopReason == StatePaused:
-		d.State = StatePaused
+	case reason == stopDeleted:
+		part, final, withFinal := d.partPath(), d.finalPath(), d.deleteFinal
+		cleanup = func() { removeDownloadFiles(part, final, withFinal) }
+	case reason == stopRestart:
+		resetForRestartLocked(d)
+		if d.State != StatePaused {
+			d.State = StateQueued
+		}
+	case reason == StatePaused:
+		// Resumed while winding down: stay queued so schedule() restarts it.
+		if d.State != StateQueued {
+			d.State = StatePaused
+		}
 	case err == nil:
 		now := time.Now()
 		d.State = StateCompleted
 		d.CompletedAt = &now
 		d.Error = ""
+		d.Replace = false
 		ev = &Event{Kind: "completed", ID: d.ID, Filename: d.Filename, Path: d.finalPath()}
 	default:
 		d.State = StateFailed
@@ -629,6 +736,9 @@ func (m *Manager) run(ctx context.Context, d *Download) {
 	}
 	m.dirty = true
 	m.mu.Unlock()
+	if cleanup != nil {
+		cleanup()
+	}
 	if ev != nil {
 		m.events.Push(*ev)
 	}
@@ -637,6 +747,12 @@ func (m *Manager) run(ctx context.Context, d *Download) {
 }
 
 func (m *Manager) newRequest(ctx context.Context, d *Download, rawURL string) (*http.Request, error) {
+	// The host the user pasted may be on the LAN (a NAS, a router's file
+	// share) - that's their explicit choice. A redirect to some *other*
+	// private host is still refused (see netguard.go).
+	if u, err := url.Parse(d.URL); err == nil {
+		ctx = withPrivateHosts(ctx, u.Hostname())
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
@@ -793,7 +909,64 @@ func parseContentRange(h string) (start, end, total int64, ok bool) {
 	return start, end, total, true
 }
 
+// errRemoteChanged: the server now reports a different size/validator for
+// the file than when this download started (the file was replaced, or
+// "Refresh link" pointed at a different file). The bytes already on disk
+// belong to the old file, so the transfer restarts from zero.
+var errRemoteChanged = errors.New("the file on the server changed since the download started")
+
 func (m *Manager) transfer(ctx context.Context, d *Download) error {
+	for attempt := 0; ; attempt++ {
+		err := m.transferOnce(ctx, d)
+		if errors.Is(err, errRemoteChanged) && attempt == 0 && ctx.Err() == nil {
+			log.Printf("download %s: %v - restarting from the beginning", d.ID, err)
+			m.mu.Lock()
+			resetForRestartLocked(d)
+			m.dirty = true
+			m.mu.Unlock()
+			continue
+		}
+		return err
+	}
+}
+
+// recordValidatorsLocked remembers what identifies this exact file.
+func recordValidatorsLocked(d *Download, resp *http.Response) {
+	d.ETag = resp.Header.Get("ETag")
+	d.LastModified = resp.Header.Get("Last-Modified")
+	d.ValidatorHost = strings.ToLower(resp.Request.URL.Hostname())
+}
+
+func normETag(e string) string { return strings.TrimPrefix(strings.TrimSpace(e), "W/") }
+
+// checkValidators compares a resumed range response against what the
+// download started with. Size is authoritative from any server; ETag and
+// Last-Modified only mean something coming from the same host (two mirrors
+// of the same file rarely agree on them).
+func (m *Manager) checkValidators(d *Download, resp *http.Response) error {
+	_, _, total, ok := parseContentRange(resp.Header.Get("Content-Range"))
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ok && total > 0 && d.Size > 0 && total != d.Size {
+		return errRemoteChanged
+	}
+	if d.ValidatorHost != "" && strings.EqualFold(resp.Request.URL.Hostname(), d.ValidatorHost) {
+		if e := resp.Header.Get("ETag"); e != "" && d.ETag != "" && normETag(e) != normETag(d.ETag) {
+			return errRemoteChanged
+		}
+		if lm := resp.Header.Get("Last-Modified"); lm != "" && d.LastModified != "" && lm != d.LastModified {
+			return errRemoteChanged
+		}
+	} else if d.ValidatorHost == "" {
+		// Downloads started before validators were recorded: adopt these.
+		d.ETag = resp.Header.Get("ETag")
+		d.LastModified = resp.Header.Get("Last-Modified")
+		d.ValidatorHost = strings.ToLower(resp.Request.URL.Hostname())
+	}
+	return nil
+}
+
+func (m *Manager) transferOnce(ctx context.Context, d *Download) error {
 	var first *http.Response
 	m.mu.Lock()
 	fresh := len(d.Segments) == 0
@@ -802,7 +975,14 @@ func (m *Manager) transfer(ctx context.Context, d *Download) error {
 		d.Segments = nil
 		fresh = true
 	}
+	dir := d.Dir
 	m.mu.Unlock()
+
+	// Re-checked on every run: the folder may have been swapped for a
+	// symlink out of the storage roots since the download was added.
+	if _, err := pathPolicy.MkdirAll(dir); err != nil {
+		return permanentError{fmt.Errorf("cannot use save folder %s: %w", dir, err)}
+	}
 
 	if fresh {
 		resp, err := m.retryProbe(ctx, d)
@@ -816,18 +996,26 @@ func (m *Manager) transfer(ctx context.Context, d *Download) error {
 		d.Resumable = resumable
 		d.FinalURL = resp.Request.URL.String()
 		d.ContentType = resp.Header.Get("Content-Type")
-		if !d.FilenameFixed {
+		recordValidatorsLocked(d, resp)
+		// A redownload keeps its name: it replaces the file it already has.
+		if !d.FilenameFixed && !d.Replace {
 			if name := filenameFromResponse(resp); name != "" && name != d.Filename {
 				d.Filename = m.uniqueFilenameLocked(d.Dir, name, d.ID)
 			}
 		}
 		d.Segments = planSegments(size, resumable, d.Connections)
 		m.dirty = true
+		part := d.partPath()
 		m.mu.Unlock()
-		_ = os.Remove(d.partPath())
+		_ = os.Remove(part)
 	}
 
-	f, err := os.OpenFile(d.partPath(), os.O_RDWR|os.O_CREATE, 0o644)
+	m.mu.Lock()
+	part := d.partPath()
+	m.mu.Unlock()
+	// O_NOFOLLOW: a symlink planted at the .part name (by anyone with write
+	// access to the share) must not redirect a root-owned write elsewhere.
+	f, err := os.OpenFile(part, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o644)
 	if err != nil {
 		if first != nil {
 			first.Body.Close()
@@ -857,18 +1045,47 @@ func (m *Manager) transfer(ctx context.Context, d *Download) error {
 		d.Size = size
 	}
 	part, final := d.partPath(), d.finalPath()
+	replace, sum := d.Replace, d.Checksum
 	m.mu.Unlock()
 	if fi, err := os.Stat(part); err == nil && fi.Size() > size {
 		_ = os.Truncate(part, size)
 	}
-	if _, err := os.Stat(final); err == nil {
+	if sum != "" {
+		got, err := sha256File(part)
+		if err != nil {
+			return fmt.Errorf("verifying checksum: %w", err)
+		}
+		if got != sum {
+			m.mu.Lock()
+			resetForRestartLocked(d)
+			m.mu.Unlock()
+			_ = os.Remove(part)
+			return permanentError{fmt.Errorf("checksum mismatch: expected SHA-256 %s, got %s - the downloaded file was discarded", sum, got)}
+		}
+	}
+	if _, err := os.Lstat(final); err == nil && !replace {
 		// Someone created a file with this name while we were downloading.
 		m.mu.Lock()
 		d.Filename = m.uniqueFilenameLocked(d.Dir, d.Filename, d.ID)
 		final = d.finalPath()
 		m.mu.Unlock()
 	}
+	// rename(2) replaces an existing file atomically - a redownload never
+	// leaves a moment with neither the old nor the new copy in place.
 	return os.Rename(part, final)
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (m *Manager) retryProbe(ctx context.Context, d *Download) (*http.Response, error) {
@@ -1078,6 +1295,9 @@ func (m *Manager) fetchSegment(ctx context.Context, d *Download, f *os.File, seg
 		if errors.As(err, &se) && se.permanent() {
 			return err
 		}
+		if errors.Is(err, errRemoteChanged) {
+			return err
+		}
 		if errors.As(err, &se) && se.throttle() {
 			m.mu.Lock()
 			others := d.activeConns > 1
@@ -1165,6 +1385,10 @@ func (m *Manager) streamSegment(ctx context.Context, d *Download, f *os.File, se
 			if s, _, _, ok := parseContentRange(resp.Header.Get("Content-Range")); !ok || s != pos {
 				resp.Body.Close()
 				return false, errors.New("server returned the wrong byte range")
+			}
+			if err := m.checkValidators(d, resp); err != nil {
+				resp.Body.Close()
+				return false, err
 			}
 		} else if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()

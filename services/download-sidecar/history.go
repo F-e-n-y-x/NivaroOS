@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // History is the lite browser's visit history, kept server-side (like the
@@ -61,9 +62,7 @@ func (h *History) Add(rawURL, title string) (HistoryEntry, bool) {
 	if err != nil {
 		return HistoryEntry{}, false
 	}
-	if len(title) > 300 {
-		title = title[:300]
-	}
+	title = truncateRunes(strings.ToValidUTF8(title, ""), 300)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := time.Now()
@@ -119,4 +118,21 @@ func (h *History) Clear() {
 	h.dirty = true
 	h.mu.Unlock()
 	h.flush()
+}
+
+// truncateRunes cuts s to at most n characters without splitting a
+// multi-byte UTF-8 sequence (a byte slice would leave a broken rune at the
+// end of, say, a CJK or emoji title).
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	i := 0
+	for pos := range s {
+		if i == n {
+			return s[:pos]
+		}
+		i++
+	}
+	return s
 }

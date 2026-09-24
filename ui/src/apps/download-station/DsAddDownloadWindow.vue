@@ -9,7 +9,12 @@
 		<div class="add-body scrollbars-light">
 			<label class="ds-field-label">{{ isBatch ? $t('Links (one per line)') : $t('Link') }}</label>
 			<textarea v-if="isBatch || !captureId" ref="urlInput" v-model="urlText" class="ds-input url-area" :rows="isBatch ? 5 : 2"
-				spellcheck="false" :placeholder="'https://example.com/file.zip'" @input="onUrlInput"></textarea>
+				spellcheck="false" :aria-label="isBatch ? $t('Links (one per line)') : $t('Link')" :placeholder="'https://example.com/file.zip'" @input="onUrlInput"></textarea>
+			<ul v-if="batchErrors.length" class="batch-errors" role="alert">
+				<li v-for="(b, i) in batchErrors" :key="i" class="ds-error-text">
+					<span class="one-line mono" :title="b.url">{{ b.url }}</span> {{ b.error }}
+				</li>
+			</ul>
 			<div v-else class="captured-link">
 				<b-icon icon="web" custom-size="mdi-16px"></b-icon>
 				<span class="one-line" :title="urlText">{{ urlText }}</span>
@@ -41,13 +46,13 @@
 
 			<div v-if="!isBatch" class="field">
 				<label class="ds-field-label">{{ $t('Save as') }}</label>
-				<input v-model="filename" class="ds-input" spellcheck="false" @input="filenameTouched = true" />
+				<input v-model="filename" class="ds-input" spellcheck="false" :aria-label="$t('Save as')" @input="filenameTouched = true" />
 			</div>
 
 			<div class="field">
 				<label class="ds-field-label">{{ $t('Save to') }}</label>
 				<div class="folder-row">
-					<input v-model="dir" class="ds-input" spellcheck="false" />
+					<input v-model="dir" class="ds-input" spellcheck="false" :aria-label="$t('Save to')" />
 					<button class="ds-secondary-btn" @click="browseFolder">
 						<b-icon icon="folder-outline" custom-size="mdi-18px"></b-icon><span>{{ $t('Browse') }}</span>
 					</button>
@@ -60,10 +65,17 @@
 				</label>
 				<div class="slider-row">
 					<span class="slider-hint">1</span>
-					<input v-model.number="connections" class="pretty-range" type="range" min="1" max="32" step="1" :style="rangeStyle" />
+					<input v-model.number="connections" class="pretty-range" type="range" min="1" max="32" step="1" :style="rangeStyle" :aria-label="$t('Connections')" />
 					<span class="slider-hint">32</span>
 				</div>
 				<p class="ds-hint">{{ $t('More connections usually means faster downloads; some servers limit how many they allow.') }}</p>
+			</div>
+
+			<div v-if="!isBatch" class="field">
+				<label class="ds-field-label">{{ $t('SHA-256 checksum (optional)') }}</label>
+				<input v-model="checksum" class="ds-input mono" spellcheck="false" autocomplete="off" :aria-label="$t('SHA-256 checksum (optional)')"
+					:placeholder="$t('Paste the checksum the site publishes to verify the file')" />
+				<p v-if="checksum && !checksumValid" class="ds-error-text">{{ $t('A SHA-256 checksum is 64 hexadecimal characters.') }}</p>
 			</div>
 
 			<p v-if="error" class="ds-error-text">{{ error }}</p>
@@ -75,7 +87,7 @@
 				<button class="ds-secondary-btn" :disabled="!canSubmit || submitting" @click="submit(false)">{{ $t('Download later') }}</button>
 				<button class="ds-primary-btn" :disabled="!canSubmit || submitting" @click="submit(true)">
 					<b-icon :icon="submitting ? 'loading' : 'download'" :custom-class="submitting ? 'mdi-spin' : ''" custom-size="mdi-18px"></b-icon>
-					<span>{{ isBatch ? $t('Download') + ' ' + urls.length : $t('Start Download') }}</span>
+					<span>{{ isBatch ? $t('Download {count} files', { count: urls.length }) : $t('Start Download') }}</span>
 				</button>
 			</div>
 		</div>
@@ -106,7 +118,12 @@ export default {
 			capture: null,
 			error: '',
 			submitting: false,
-			probeTimer: null
+			probeTimer: null,
+			checksum: '',
+			// Links of a batch that failed to add, with why (the ones that
+			// succeeded are removed from the text box so a retry never adds
+			// them twice).
+			batchErrors: []
 		}
 	},
 	computed: {
@@ -119,8 +136,12 @@ export default {
 		isBatch() {
 			return this.urls.length > 1
 		},
+		checksumValid() {
+			const v = this.checksum.trim().replace(/^sha-?256[:= ]\s*/i, '')
+			return !v || /^[0-9a-f]{64}$/i.test(v)
+		},
 		canSubmit() {
-			return this.urls.length > 0 && this.dir.trim().startsWith('/')
+			return this.urls.length > 0 && this.dir.trim().startsWith('/') && (this.isBatch || this.checksumValid)
 		},
 		category() {
 			return categoryOf(this.filename)
@@ -202,11 +223,29 @@ export default {
 		},
 		async submit(start) {
 			this.error = ''
+			this.batchErrors = []
 			this.submitting = true
 			try {
 				if (this.isBatch) {
-					for (const u of this.urls) {
-						await downloadSidecar.addDownload({ url: u, dir: this.dir, connections: this.connections, start })
+					// Each link on its own: one bad link doesn't stop the rest,
+					// and only the failed ones stay behind for a retry.
+					const failed = []
+					const links = this.urls.slice()
+					for (const u of links) {
+						try {
+							await downloadSidecar.addDownload({ url: u, dir: this.dir, connections: this.connections, start })
+						} catch (e) {
+							failed.push({ url: u, error: e.message })
+						}
+					}
+					if (failed.length) {
+						this.urlText = failed.map(f => f.url).join('\n')
+						this.batchErrors = failed
+						this.error = this.$t('{failed} of {total} links could not be added. The others were added; fix or remove these and try again.', {
+							failed: failed.length,
+							total: links.length
+						})
+						return
 					}
 				} else {
 					await downloadSidecar.addDownload({
@@ -215,6 +254,7 @@ export default {
 						dir: this.dir,
 						connections: this.connections,
 						start,
+						checksum: this.checksum.trim(),
 						capture_session: this.captureSession,
 						capture_id: this.captureId
 					})
@@ -297,8 +337,8 @@ function guessName(u) {
 	font-size: var(--font-2xs);
 	padding: 0.1rem 0.45rem;
 	border-radius: var(--radius-pill);
-	background: rgba(16, 185, 129, 0.12);
-	color: #059669;
+	background: var(--color-success-soft, rgba(22, 163, 74, 0.1));
+	color: var(--color-success-fg, #047857);
 }
 
 .probe-card {
@@ -311,7 +351,7 @@ function guessName(u) {
 	background: var(--theme-card-bg, #fff);
 
 	&.is-error {
-		border-color: rgba(220, 38, 38, 0.25);
+		border-color: var(--color-danger-fg, #b91c1c);
 	}
 }
 
@@ -323,8 +363,8 @@ function guessName(u) {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(37, 99, 235, 0.1);
-	color: #2563eb;
+	background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	color: var(--color-primary-fg, #1d4ed8);
 }
 
 .probe-info {
@@ -353,10 +393,10 @@ function guessName(u) {
 	align-items: center;
 	gap: 0.3rem;
 	font-size: var(--font-xs);
-	color: #d97706;
+	color: var(--color-warning-fg, #b45309);
 
 	&.ok {
-		color: #059669;
+		color: var(--color-success-fg, #047857);
 	}
 }
 
@@ -374,8 +414,8 @@ function guessName(u) {
 	margin-left: var(--space-1);
 	padding: 0 0.45rem;
 	border-radius: var(--radius-pill);
-	background: rgba(37, 99, 235, 0.1);
-	color: #2563eb;
+	background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	color: var(--color-primary-fg, #1d4ed8);
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 }
@@ -392,7 +432,31 @@ function guessName(u) {
 
 .slider-hint {
 	font-size: var(--font-2xs);
-	color: var(--theme-text-muted, #94a3b8);
+	color: var(--theme-text-muted, #5b6779);
+}
+
+.mono {
+	font-family: $family-monospace;
+}
+
+.batch-errors {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+
+	li {
+		display: flex;
+		gap: var(--space-2);
+		min-width: 0;
+
+		.one-line {
+			flex: 0 1 50%;
+			min-width: 0;
+		}
+	}
 }
 
 .add-foot {

@@ -1,0 +1,44 @@
+[Unit]
+Description=NivaroOS Download Station Sidecar
+After=network-online.target nivaroos-user-service.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/nivaroos-download-sidecar
+Restart=always
+# This service runs as root and writes whatever a web server sends it, so
+# the whole filesystem is read-only to it except its own state folder and
+# the storage roots downloads may be saved under (the same list the
+# service itself enforces: -storage-roots, default /DATA,/media,/mnt).
+# The leading "-" keeps the unit starting on an install where one of them
+# doesn't exist. A data drive mounted somewhere else (e.g. /srv/disk1)
+# needs a drop-in:  systemctl edit nivaroos-download-sidecar
+#   [Service]
+#   ReadWritePaths=/srv/disk1
+ProtectSystem=strict
+ReadWritePaths=-/DATA -/media -/mnt /var/lib/nivaroos/download-station
+StateDirectory=nivaroos/download-station
+StateDirectoryMode=0700
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# Root only for writing into users' folders on the shares.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

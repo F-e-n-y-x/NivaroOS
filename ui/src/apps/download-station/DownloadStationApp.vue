@@ -8,7 +8,8 @@
 	<div class="ds-app" ref="root" :class="{ 'nav-collapsed': navCollapsed }">
 		<aside class="ds-nav">
 			<button v-for="s in sections" :key="s.id" class="nav-item hover-effect _is-radius"
-				:class="{ active: activeSection === s.id }" :title="navCollapsed ? $t(s.label) : ''" @click="activeSection = s.id">
+				:class="{ active: activeSection === s.id }" :title="navCollapsed ? $t(s.label) : ''"
+				:aria-label="$t(s.label)" :aria-current="activeSection === s.id ? 'page' : null" @click="activeSection = s.id">
 				<b-icon :icon="s.icon" pack="mdi" size="is-20"></b-icon>
 				<span>{{ $t(s.label) }}</span>
 				<span v-if="s.id === 'downloads' && activeCount" class="nav-badge">{{ activeCount }}</span>
@@ -21,10 +22,24 @@
 		</aside>
 
 		<div class="ds-content">
-			<div v-if="offline" class="ds-offline">
-				<b-icon icon="lan-disconnect" custom-size="mdi-48px"></b-icon>
-				<p class="ds-offline-title">{{ $t('Download Station service is not running') }}</p>
-				<p class="ds-offline-hint">{{ $t('Start it with') }} <code>sudo systemctl start nivaroos-download-sidecar</code></p>
+			<div v-if="offline" class="ds-offline" role="alert">
+				<b-icon :icon="offlineReason === 'https-unavailable' ? 'lock-alert-outline' : offlineReason === 'auth' ? 'account-lock-outline' : 'lan-disconnect'" custom-size="mdi-48px"></b-icon>
+				<template v-if="offlineReason === 'https-unavailable'">
+					<p class="ds-offline-title">{{ $t('Download Station can\'t be reached over HTTPS') }}</p>
+					<p class="ds-offline-hint">{{ $t('NivaroOS is open over HTTPS, and Download Station could not be reached through its secure route. If the service is running, open NivaroOS over http:// on your local network instead.') }}</p>
+				</template>
+				<template v-else-if="offlineReason === 'auth'">
+					<p class="ds-offline-title">{{ $t('Your session has expired') }}</p>
+					<p class="ds-offline-hint">{{ $t('Sign in to NivaroOS again, then retry.') }}</p>
+				</template>
+				<template v-else-if="offlineReason === 'forbidden'">
+					<p class="ds-offline-title">{{ $t('Download Station needs an administrator account') }}</p>
+					<p class="ds-offline-hint">{{ offlineMessage }}</p>
+				</template>
+				<template v-else>
+					<p class="ds-offline-title">{{ $t('Download Station service is not running') }}</p>
+					<p class="ds-offline-hint">{{ $t('Start it with this command:') }} <code>sudo systemctl start nivaroos-download-sidecar</code></p>
+				</template>
 				<button class="ds-primary-btn" @click="refresh">
 					<b-icon icon="refresh" custom-size="mdi-18px"></b-icon><span>{{ $t('Retry') }}</span>
 				</button>
@@ -86,7 +101,12 @@ export default {
 			navCollapsed: false,
 			browserStarted: false,
 			timer: null,
-			lastEventSeq: null
+			lastEventSeq: null,
+			// The sidecar's event-log identity; changes when it restarts.
+			eventEpoch: null,
+			offlineReason: '',
+			offlineMessage: '',
+			destroyed: false
 		}
 	},
 	computed: {
@@ -125,6 +145,10 @@ export default {
 		if (this.initialUrl) this.$nextTick(() => this.openBrowserAt(this.initialUrl))
 	},
 	beforeDestroy() {
+		// A poll that's in flight right now would otherwise re-arm the timer
+		// after this, keeping a zombie loop (and duplicate "Download
+		// complete" notifications) alive after the window closed.
+		this.destroyed = true
 		clearTimeout(this.timer)
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
@@ -132,22 +156,31 @@ export default {
 		formatSpeed,
 		schedulePoll() {
 			clearTimeout(this.timer)
+			if (this.destroyed) return
 			// Fast while something is moving and the window is visible;
 			// relaxed otherwise, but never stopped - completion notifications
 			// still need to fire while minimized.
 			const busy = this.activeCount > 0 && !this.isMinimized
 			this.timer = setTimeout(async () => {
+				if (this.destroyed) return
 				await this.refresh()
+				if (this.destroyed) return
 				await this.pollEvents()
 				this.schedulePoll()
 			}, busy ? POLL_MS : IDLE_POLL_MS)
 		},
 		async refresh() {
 			try {
-				this.downloads = (await downloadSidecar.listDownloads()) || []
+				const list = (await downloadSidecar.listDownloads()) || []
+				if (this.destroyed) return
+				this.downloads = list
 				this.offline = false
+				this.offlineReason = ''
 			} catch (e) {
+				if (this.destroyed) return
 				this.offline = true
+				this.offlineReason = e.code || 'unreachable'
+				this.offlineMessage = e.message
 			} finally {
 				this.loading = false
 			}
@@ -160,26 +193,47 @@ export default {
 		async pollEvents() {
 			if (this.offline) return
 			try {
-				const res = await downloadSidecar.events(this.lastEventSeq || 0)
+				let res = await downloadSidecar.events(this.lastEventSeq || 0)
+				if (this.destroyed || !res) return
+				if (this.lastEventSeq !== null && this.eventEpoch && res.epoch && res.epoch !== this.eventEpoch) {
+					// The sidecar restarted: its sequence numbers started over,
+					// so everything in the new log is new to us.
+					res = await downloadSidecar.events(0)
+					if (this.destroyed || !res) return
+				}
 				// First poll only establishes "now" - don't replay history
 				// from before this window opened.
 				if (this.lastEventSeq !== null) {
 					for (const ev of res.events || []) this.notify(ev)
 				}
 				this.lastEventSeq = res.last
+				this.eventEpoch = res.epoch || null
 			} catch (e) {}
 		},
 		notify(ev) {
 			if (ev.kind === 'completed') {
 				activityService.add({ title: this.$t('Download complete'), message: ev.filename, type: 'system', status: 'success' })
-				this.$buefy.toast.open({ message: `${this.$t('Downloaded')} ${escapeHtml(ev.filename)}`, type: 'is-success', position: 'is-bottom-right' })
+				this.$buefy.toast.open({ message: this.$t('Downloaded {name}', { name: escapeHtml(ev.filename) }), type: 'is-success', position: 'is-bottom-right' })
 			} else if (ev.kind === 'failed') {
-				activityService.add({ title: this.$t('Download failed'), message: `${ev.filename}: ${ev.message}`, type: 'system', status: 'error' })
+				activityService.add({
+					title: this.$t('Download failed'),
+					message: this.$t('{name}: {error}', { name: ev.filename, error: ev.message }),
+					type: 'system',
+					status: 'error'
+				})
 			}
 		},
 		async toggleAdblock() {
 			if (!this.settings) return
-			this.settings = await downloadSidecar.updateSettings({ adblock_enabled: !this.settings.adblock_enabled })
+			try {
+				this.settings = await downloadSidecar.updateSettings({ adblock_enabled: !this.settings.adblock_enabled })
+			} catch (e) {
+				this.toastError(this.$t('Could not change the ad blocker: {error}', { error: e.message }))
+			}
+		},
+		// Toast messages are HTML - always escape what goes in.
+		toastError(text) {
+			this.$buefy.toast.open({ message: escapeHtml(text), type: 'is-danger' })
 		},
 		openBrowserAt(url) {
 			this.activeSection = 'browser'
@@ -311,7 +365,7 @@ export default {
 		font-weight: 500;
 
 		.icon {
-			color: #2563eb;
+			color: var(--color-primary-fg, #1d4ed8);
 		}
 	}
 }
@@ -321,8 +375,8 @@ export default {
 	min-width: 1.25rem;
 	padding: 0 0.35rem;
 	border-radius: var(--radius-pill);
-	background: #2563eb;
-	color: #fff;
+	background: var(--color-primary, #2563eb);
+	color: var(--color-primary-text, #fff);
 	font-size: var(--font-2xs);
 	font-weight: 600;
 	line-height: 1.25rem;
@@ -345,7 +399,7 @@ export default {
 	background: var(--theme-card-subtle, #f1f5f9);
 
 	.icon {
-		color: #2563eb;
+		color: var(--color-primary-fg, #1d4ed8);
 	}
 }
 
@@ -370,7 +424,7 @@ export default {
 	justify-content: center;
 	padding: var(--space-8) var(--space-4);
 	text-align: center;
-	color: var(--theme-text-muted, #94a3b8);
+	color: var(--theme-text-muted, #5b6779);
 
 	> ::v-deep .icon {
 		width: 3rem;

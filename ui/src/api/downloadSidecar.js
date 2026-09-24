@@ -1,28 +1,85 @@
 // Thin REST client for nivaroos-download-sidecar (port 28642), used by the
-// Download Station windowed app. Same shape and auth convention as
-// vmSidecar.js - the sidecar is reached on its own port, not through the
-// gateway, with the JWT read straight from localStorage.
-const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
-const protocol = isHttps ? 'https:' : 'http:'
-const PORT = 28642
-const BASE_URL = `${protocol}//${hostname}:${PORT}`
+// Download Station windowed app. Same auth convention as vmSidecar.js - the
+// JWT is read straight from localStorage and sent as Authorization.
+//
+// Where the API is reached:
+//  - page served over http: directly on the sidecar's own port
+//    (http://<host>:28642), like the other sidecars.
+//  - page served over https: the sidecar only speaks plain HTTP, which an
+//    https page may not call (mixed content), so the API goes through the
+//    NivaroOS gateway's same-origin route /v1/download-station/* instead.
+//    If that route isn't there, requests fail with code 'https-unavailable'
+//    so the app can say so instead of "service not running".
+//
+// The lite browser is different: its proxied pages must run on the
+// sidecar's own origin (never the UI's, where page scripts could read the
+// user's token), so it is only available when that origin is loadable -
+// i.e. not from an https page. See browserAvailable().
+export const SIDECAR_PORT = 28642
+export const GATEWAY_PREFIX = '/v1/download-station'
+
+function loc() {
+	return typeof window !== 'undefined' && window.location ? window.location : { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost' }
+}
+
+function isHttpsPage() {
+	return loc().protocol === 'https:'
+}
+
+function hostForUrl() {
+	const h = loc().hostname || 'localhost'
+	// A bare IPv6 literal needs brackets in a URL.
+	return h.includes(':') && !h.startsWith('[') ? `[${h}]` : h
+}
+
+// The sidecar's own origin (lite browser pages run here).
+export function sidecarOrigin() {
+	return `http://${hostForUrl()}:${SIDECAR_PORT}`
+}
+
+export function apiBase() {
+	return isHttpsPage() ? `${loc().origin}${GATEWAY_PREFIX}` : sidecarOrigin()
+}
 
 function authToken() {
-	return localStorage.getItem('access_token') || ''
+	try {
+		return localStorage.getItem('access_token') || ''
+	} catch (e) {
+		return ''
+	}
+}
+
+function makeError(message, code, status) {
+	const err = new Error(message)
+	err.code = code
+	if (status) err.status = status
+	return err
 }
 
 async function request(path, options = {}) {
 	const headers = { ...(options.headers || {}) }
 	const token = authToken()
 	if (token) headers.Authorization = token
-	const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+	let res
+	try {
+		res = await fetch(`${apiBase()}${path}`, { ...options, headers })
+	} catch (e) {
+		throw makeError(e.message || 'network error', isHttpsPage() ? 'https-unavailable' : 'unreachable')
+	}
 	if (!res.ok) {
+		let text = ''
 		let body = {}
 		try {
-			body = JSON.parse(await res.text())
+			text = await res.text()
+			body = JSON.parse(text)
 		} catch (e) {}
-		throw new Error(body.error || body.message || `${options.method || 'GET'} ${path} failed: ${res.status}`)
+		// Through the gateway, a missing route (or a stopped sidecar) comes
+		// back as the gateway's own 404/502, not as our JSON.
+		if (isHttpsPage() && [404, 502, 503, 504].includes(res.status) && !body.error && !body.message) {
+			throw makeError(`${options.method || 'GET'} ${path} failed: ${res.status}`, 'https-unavailable', res.status)
+		}
+		const code = res.status === 401 ? 'auth' : res.status === 403 ? 'forbidden' : 'http'
+		throw makeError(body.error || body.message || `${options.method || 'GET'} ${path} failed: ${res.status}`, code, res.status)
 	}
 	if (res.status === 204) return null
 	const text = await res.text()
@@ -43,11 +100,21 @@ const jsonBody = (payload, method = 'POST') => ({
 const enc = encodeURIComponent
 
 export const downloadSidecar = {
-	baseUrl: BASE_URL,
+	get baseUrl() {
+		return apiBase()
+	},
 	// The origin proxied lite-browser pages run on - postMessage events from
 	// the browser iframe are only trusted when they come from here.
-	origin: BASE_URL,
+	get origin() {
+		return sidecarOrigin()
+	},
+	// Whether the lite browser can be shown in this page at all.
+	browserAvailable() {
+		return !isHttpsPage()
+	},
+	isHttpsPage,
 
+	health: () => request('/health'),
 	status: () => request('/status'),
 	getSettings: () => request('/settings'),
 	updateSettings: patch => request('/settings', jsonBody(patch, 'PUT')),
@@ -59,12 +126,17 @@ export const downloadSidecar = {
 	deleteDownload: (id, deleteFile) => request(`/downloads/${enc(id)}${deleteFile ? '?delete_file=true' : ''}`, { method: 'DELETE' }),
 	pause: id => request(`/downloads/${enc(id)}/pause`, { method: 'POST' }),
 	resume: id => request(`/downloads/${enc(id)}/resume`, { method: 'POST' }),
+	// Starts over from byte zero (pausing first if needed); a completed
+	// file is replaced atomically once the new copy is complete.
 	redownload: id => request(`/downloads/${enc(id)}/redownload`, { method: 'POST' }),
 	pauseAll: () => request('/downloads/pause-all', { method: 'POST' }),
 	resumeAll: () => request('/downloads/resume-all', { method: 'POST' }),
 	clearCompleted: () => request('/downloads/clear-completed', { method: 'POST' }),
 	probe: payload => request('/probe', jsonBody(payload)),
 	events: after => request(`/events?after=${after || 0}`),
+
+	storageRoots: () => request('/storage/roots'),
+	createFolder: (parent, name) => request('/storage/folders', jsonBody({ parent, name })),
 
 	adblockStats: () => request('/adblock'),
 	updateFilterLists: () => request('/adblock/update', { method: 'POST' }),
@@ -78,6 +150,11 @@ export const downloadSidecar = {
 	getBrowserSession: sid => request(`/browser/sessions/${enc(sid)}`),
 	deleteBrowserSession: sid => request(`/browser/sessions/${enc(sid)}`, { method: 'DELETE' }),
 	clearBrowserCookies: sid => request(`/browser/sessions/${enc(sid)}/clear-cookies`, { method: 'POST' }),
+	// The user typed/picked this address: lets the proxy reach its host
+	// even when it's on the local network.
+	markTyped: (sid, url) => request(`/browser/sessions/${enc(sid)}/typed`, jsonBody({ url })),
+	// The URL the proxy really served for a page's nav ID.
+	getNav: (sid, nav) => request(`/browser/sessions/${enc(sid)}/navs/${enc(nav)}`),
 	captureUrl: (sid, url, referer) => request(`/browser/sessions/${enc(sid)}/captures`, jsonBody({ url, referer })),
 	getCapture: (sid, cid) => request(`/browser/sessions/${enc(sid)}/captures/${enc(cid)}`),
 
@@ -85,15 +162,19 @@ export const downloadSidecar = {
 	// in sync with BrowserSession.proxyPath on the Go side.
 	proxyUrl(prefix, rawUrl) {
 		const u = new URL(rawUrl)
-		return `${BASE_URL}${prefix}${u.protocol.slice(0, -1)}/${u.host}${u.pathname}${u.search}${u.hash}`
+		return `${sidecarOrigin()}${prefix}${u.protocol.slice(0, -1)}/${u.host}${u.pathname}${u.search}${u.hash}`
 	}
 }
 
-// Shared formatting helpers for the app's components.
+// Shared formatting helpers for the app's components. Binary (1024-based)
+// units, labelled as such (KiB, MiB...) - the speed limit setting uses the
+// same MiB so the numbers you type and the numbers you see agree.
+export const MIB = 1024 * 1024
+
 export function formatBytes(n) {
 	if (n == null || n < 0) return '—'
 	if (n < 1024) return `${n} B`
-	const units = ['KB', 'MB', 'GB', 'TB']
+	const units = ['KiB', 'MiB', 'GiB', 'TiB']
 	let v = n / 1024
 	let i = 0
 	while (v >= 1024 && i < units.length - 1) {
@@ -139,4 +220,17 @@ export function fileIcon(filename) {
 	const id = categoryOf(filename)
 	const cat = CATEGORIES.find(c => c.id === id)
 	return cat ? cat.icon : 'file-outline'
+}
+
+// Where a path sits relative to the storage roots: the root it's under,
+// or null. Used by the folder picker to keep navigation inside them.
+export function rootOf(path, roots) {
+	const p = (path || '').replace(/\/+$/, '') || '/'
+	let best = null
+	for (const r of roots || []) {
+		if (p === r || p.startsWith(r + '/')) {
+			if (!best || r.length > best.length) best = r
+		}
+	}
+	return best
 }

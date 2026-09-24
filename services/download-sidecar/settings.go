@@ -83,6 +83,11 @@ func NewSettingsStore(dataDir, defaultDir string) *SettingsStore {
 		}
 	}
 	st.s.normalize(defaultDir)
+	// A default folder saved before storage roots were enforced (or on a
+	// drive that's gone) falls back to the built-in default.
+	if _, err := pathPolicy.Check(st.s.DefaultDir); err != nil {
+		st.s.DefaultDir = defaultDir
+	}
 	return st
 }
 

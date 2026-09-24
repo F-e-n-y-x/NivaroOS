@@ -3,8 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -18,7 +22,17 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
 
+var errNeedJSON = errors.New("request body must be sent as application/json")
+
+// readJSON only accepts an application/json body. That content type can't
+// be sent cross-origin without a CORS preflight, so a form or a
+// text/plain fetch() from some other web page (a "simple request", which
+// skips the preflight) can never reach a JSON endpoint.
 func readJSON(r *http.Request, v interface{}) error {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "application/json" {
+		return errNeedJSON
+	}
 	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
 	if err := dec.Decode(v); err != nil {
 		return errors.New("invalid JSON body: " + err.Error())
@@ -71,6 +85,13 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 			writeErr(w, 400, err)
 			return
 		}
+		if _, changed := patch["default_dir"]; changed {
+			next.DefaultDir = filepath.Clean(strings.TrimSpace(next.DefaultDir))
+			if _, err := pathPolicy.MkdirAll(next.DefaultDir); err != nil {
+				writeErr(w, 400, err)
+				return
+			}
+		}
 		s, err := st.Update(func(s *Settings) { *s = next })
 		if err != nil {
 			writeErr(w, 500, err)
@@ -95,7 +116,7 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 					if req.Headers == nil {
 						req.Headers = map[string]string{}
 					}
-					for k, v := range c.headers {
+					for k, v := range s.HeadersFor(c, req.URL) {
 						req.Headers[k] = v
 					}
 					if req.Source == "" {
@@ -195,7 +216,7 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 		if body.CaptureSession != "" {
 			if s := br.Session(body.CaptureSession); s != nil {
 				if c, ok := s.Capture(body.CaptureID); ok {
-					body.Headers = c.headers
+					body.Headers = s.HeadersFor(c, body.URL)
 				}
 			}
 		}
@@ -210,7 +231,47 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
 		events, last := m.events.Since(after)
-		writeJSON(w, 200, map[string]interface{}{"events": events, "last": last})
+		writeJSON(w, 200, map[string]interface{}{"events": events, "last": last, "epoch": m.events.Epoch()})
+	})
+
+	// Storage roots: where downloads may go (the folder picker's top level)
+	// and "New folder" inside them.
+	mux.HandleFunc("GET /storage/roots", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]interface{}{"roots": pathPolicy.DisplayRoots()})
+	})
+	mux.HandleFunc("POST /storage/folders", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Parent string `json:"parent"`
+			Name   string `json:"name"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		name := sanitizeFilename(body.Name)
+		if name == "" || name != strings.TrimSpace(body.Name) {
+			writeErr(w, 400, errors.New("invalid folder name"))
+			return
+		}
+		parent, err := pathPolicy.Check(body.Parent)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		if fi, err := os.Stat(parent); err != nil || !fi.IsDir() {
+			writeErr(w, 400, errors.New("parent folder does not exist"))
+			return
+		}
+		target := filepath.Join(filepath.Clean(body.Parent), name)
+		if _, err := os.Lstat(target); err == nil {
+			writeErr(w, 409, errors.New("a file or folder with that name already exists"))
+			return
+		}
+		if _, err := pathPolicy.MkdirAll(target); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 201, map[string]string{"path": target})
 	})
 
 	mux.HandleFunc("GET /adblock", func(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +359,45 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 			return
 		}
 		writeJSON(w, 201, c)
+	})
+	// The user typed (or picked from history/home) this address: its host
+	// may be on the LAN. Pages can never call this - it needs the JWT.
+	mux.HandleFunc("POST /browser/sessions/{sid}/typed", func(w http.ResponseWriter, r *http.Request) {
+		s := br.Session(r.PathValue("sid"))
+		if s == nil {
+			writeErr(w, 404, errors.New("session expired"))
+			return
+		}
+		var body struct {
+			URL string `json:"url"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		u, err := validateDownloadURL(body.URL)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		s.AllowTypedHost(u.Hostname())
+		w.WriteHeader(204)
+	})
+	// What the proxy actually served for a document the address bar is
+	// asked to show (see Browser.recordNav) - the UI trusts this, not the
+	// URL a page's own script posts to it.
+	mux.HandleFunc("GET /browser/sessions/{sid}/navs/{nid}", func(w http.ResponseWriter, r *http.Request) {
+		s := br.Session(r.PathValue("sid"))
+		if s == nil {
+			writeErr(w, 404, errors.New("session expired"))
+			return
+		}
+		u, ok := s.Nav(r.PathValue("nid"))
+		if !ok {
+			writeErr(w, 404, errors.New("unknown page"))
+			return
+		}
+		writeJSON(w, 200, map[string]string{"url": u})
 	})
 	mux.HandleFunc("GET /browser/sessions/{sid}/captures/{cid}", func(w http.ResponseWriter, r *http.Request) {
 		s := br.Session(r.PathValue("sid"))

@@ -20,7 +20,7 @@
 							<span class="ds-state-badge" :class="'is-' + d.state">{{ stateText }}</span>
 							<span class="head-size">{{ sizeText }}</span>
 							<span v-if="d.state === 'downloading' && d.speed" class="head-speed">{{ formatSpeed(d.speed) }}</span>
-							<span v-if="d.state === 'downloading' && d.eta >= 0">{{ formatEta(d.eta) }} {{ $t('left') }}</span>
+							<span v-if="d.state === 'downloading' && d.eta >= 0">{{ $t('{time} left', { time: formatEta(d.eta) }) }}</span>
 						</div>
 					</div>
 				</div>
@@ -32,8 +32,8 @@
 				</div>
 				<div class="segment-legend">
 					<span>{{ percentText }}</span>
-					<span v-if="d.state === 'downloading'">{{ d.active_connections }} {{ $t('active connections') }} &middot; {{ d.segments.length }} {{ $t('segments') }}</span>
-					<span v-else>{{ d.segments.length }} {{ $t('segments') }}</span>
+					<span v-if="d.state === 'downloading'">{{ $t('{active} active connections · {segments} segments', { active: d.active_connections, segments: d.segments.length }) }}</span>
+					<span v-else>{{ $t('{segments} segments', { segments: d.segments.length }) }}</span>
 				</div>
 
 				<p v-if="d.error" class="ds-error-text detail-error">{{ d.error }}</p>
@@ -46,16 +46,16 @@
 							<div class="setting-desc mono" :title="d.url">{{ d.url }}</div>
 						</div>
 						<div class="row-control">
-							<button class="ds-icon-btn" :title="$t('Copy')" @click="copy(d.url)"><b-icon icon="content-copy" custom-size="mdi-16px"></b-icon></button>
+							<button class="ds-icon-btn" :title="$t('Copy')" :aria-label="$t('Copy address')" @click="copy(d.url)"><b-icon icon="content-copy" custom-size="mdi-16px"></b-icon></button>
 						</div>
 					</div>
 					<div v-if="canRefresh" class="setting-row refresh-row">
 						<b-icon class="row-icon" icon="link-variant-plus" custom-size="mdi-20px"></b-icon>
 						<div class="row-label">
 							<div class="setting-title">{{ $t('Refresh link') }}</div>
-							<div class="setting-desc">{{ $t('Link expired? Paste a fresh one for the same file - downloaded data is kept.') }}</div>
+							<div class="setting-desc">{{ $t('Link expired? Paste a fresh one for the same file. Downloaded data is kept - unless the server reports a different file, then the download starts over.') }}</div>
 							<div class="refresh-form">
-								<input v-model="newUrl" class="ds-input" spellcheck="false" placeholder="https://..." />
+								<input v-model="newUrl" class="ds-input" spellcheck="false" placeholder="https://..." :aria-label="$t('New link')" />
 								<button class="ds-primary-btn" :disabled="!/^https?:\/\//.test(newUrl)" @click="refreshLink">{{ $t('Update') }}</button>
 							</div>
 						</div>
@@ -67,7 +67,7 @@
 							<div class="setting-desc mono" :title="d.path">{{ d.path }}</div>
 						</div>
 						<div class="row-control">
-							<button class="ds-icon-btn" :title="$t('Show in Files')" @click="openFolder"><b-icon icon="folder-open-outline" custom-size="mdi-16px"></b-icon></button>
+							<button class="ds-icon-btn" :title="$t('Show in Files')" :aria-label="$t('Show in Files')" @click="openFolder"><b-icon icon="folder-open-outline" custom-size="mdi-16px"></b-icon></button>
 						</div>
 					</div>
 					<div class="setting-row">
@@ -77,7 +77,7 @@
 							<div class="setting-desc">{{ d.resumable ? $t('Used from the next start or resume.') : $t('This server doesn\'t support multiple connections.') }}</div>
 						</div>
 						<div class="row-control slider-control">
-							<input v-model.number="connections" class="pretty-range" type="range" min="1" max="32" :disabled="!d.resumable || d.state === 'completed'"
+							<input v-model.number="connections" class="pretty-range" type="range" min="1" max="32" :disabled="!d.resumable || d.state === 'completed'" :aria-label="$t('Connections')"
 								:style="{ '--pct': ((connections - 1) / 31) * 100 + '%' }" @change="saveConnections" />
 							<span class="slider-value">{{ connections }}</span>
 						</div>
@@ -90,8 +90,9 @@
 								{{ d.resumable ? $t('Resumable') : $t('Not resumable') }}
 								<template v-if="d.content_type"> &middot; {{ d.content_type.split(';')[0] }}</template>
 								<template v-if="d.has_cookies"> &middot; {{ $t('with browser cookies') }}</template>
-								&middot; {{ $t('added') }} {{ formatDate(d.created_at) }}
-								<template v-if="d.completed_at"> &middot; {{ $t('finished') }} {{ formatDate(d.completed_at) }}</template>
+								&middot; {{ $t('added {date}', { date: formatDate(d.created_at) }) }}
+								<template v-if="d.completed_at"> &middot; {{ $t('finished {date}', { date: formatDate(d.completed_at) }) }}</template>
+								<template v-if="d.checksum"><br />{{ $t('Verified against SHA-256 {hash}', { hash: d.checksum }) }}</template>
 							</div>
 						</div>
 					</div>
@@ -99,12 +100,14 @@
 			</div>
 
 			<div class="detail-foot">
-				<button v-if="d.state === 'completed'" class="ds-secondary-btn is-danger-text" @click="confirmDeleteFile">
-					<b-icon icon="delete-outline" custom-size="mdi-18px"></b-icon><span>{{ $t('Delete file') }}</span>
-				</button>
-				<button v-else class="ds-secondary-btn" @click="confirmRestart">
-					<b-icon icon="restart" custom-size="mdi-18px"></b-icon><span>{{ $t('Restart') }}</span>
-				</button>
+				<div class="foot-left">
+					<button v-if="d.state === 'completed'" class="ds-secondary-btn is-danger-text" @click="confirmDeleteFile">
+						<b-icon icon="delete-outline" custom-size="mdi-18px"></b-icon><span>{{ $t('Delete file') }}</span>
+					</button>
+					<button class="ds-secondary-btn" @click="confirmRestart">
+						<b-icon icon="restart" custom-size="mdi-18px"></b-icon><span>{{ d.state === 'completed' ? $t('Download again') : $t('Restart') }}</span>
+					</button>
+				</div>
 				<div class="foot-right">
 					<button v-if="d.state === 'downloading' || d.state === 'queued'" class="ds-secondary-btn" @click="act('pause')">
 						<b-icon icon="pause" custom-size="mdi-18px"></b-icon><span>{{ $t('Pause') }}</span>
@@ -203,14 +206,16 @@ export default {
 			try {
 				this.d = await downloadSidecar[kind](this.downloadId)
 			} catch (e) {
-				this.$buefy.toast.open({ message: escapeHtml(e.message), type: 'is-danger' })
+				this.toastError(e.message)
 			}
 		},
 		async saveConnections() {
 			this.connectionsTouched = true
 			try {
 				this.d = await downloadSidecar.updateDownload(this.downloadId, { connections: this.connections })
-			} catch (e) {}
+			} catch (e) {
+				this.toastError(this.$t('Could not change the connections: {error}', { error: e.message }))
+			}
 			this.connectionsTouched = false
 		},
 		async refreshLink() {
@@ -220,41 +225,58 @@ export default {
 				await downloadSidecar.resume(this.downloadId)
 				this.$buefy.toast.open({ message: this.$t('Link updated - resuming'), type: 'is-success' })
 			} catch (e) {
-				this.$buefy.toast.open({ message: escapeHtml(e.message), type: 'is-danger' })
+				this.toastError(e.message)
 			}
 		},
 		async copy(text) {
 			try {
 				await navigator.clipboard.writeText(text)
 				this.$buefy.toast.open({ message: this.$t('Copied'), type: 'is-success' })
-			} catch (e) {}
+			} catch (e) {
+				this.toastError(this.$t('Could not copy to the clipboard'))
+			}
+		},
+		toastError(text) {
+			this.$buefy.toast.open({ message: escapeHtml(text), type: 'is-danger' })
 		},
 		openFolder() {
 			openFolderWindow(this.$store, this.d.dir, this.$t('Files'))
 		},
 		confirmRestart() {
+			const name = `<b>${escapeHtml(this.d.filename)}</b>`
+			const completed = this.d.state === 'completed'
 			this.confirmWindow({
-				title: this.$t('Restart download'),
-				message: `${this.$t('Throw away what has been downloaded of')} <b>${escapeHtml(this.d.filename)}</b> ${this.$t('and start again from the beginning?')}`,
-				confirmText: this.$t('Restart'),
+				title: completed ? this.$t('Download again') : this.$t('Restart download'),
+				message: completed
+					? this.$t('Download {name} again from the beginning? The current file is replaced once the new copy is complete.', { name })
+					: this.$t('Throw away what has been downloaded of {name} and start again from the beginning?', { name }),
+				confirmText: completed ? this.$t('Download again') : this.$t('Restart'),
 				type: 'is-warning',
 				icon: 'restart',
+				// One server call: the sidecar stops a running transfer itself
+				// and replaces a finished file atomically - no pause-and-wait.
 				onConfirm: async () => {
-					if (this.d.state === 'downloading' || this.d.state === 'queued') await downloadSidecar.pause(this.downloadId).catch(() => {})
-					await new Promise(r => setTimeout(r, 400))
-					await downloadSidecar.redownload(this.downloadId).catch(e => this.$buefy.toast.open({ message: escapeHtml(e.message), type: 'is-danger' }))
+					try {
+						this.d = await downloadSidecar.redownload(this.downloadId)
+					} catch (e) {
+						this.toastError(e.message)
+					}
 				}
 			})
 		},
 		confirmDeleteFile() {
 			this.confirmWindow({
 				title: this.$t('Delete file'),
-				message: `${this.$t('Permanently delete')} <b>${escapeHtml(this.d.path)}</b> ${this.$t('from disk?')}`,
+				message: this.$t('Permanently delete {path} from disk?', { path: `<b>${escapeHtml(this.d.path)}</b>` }),
 				confirmText: this.$t('Delete'),
 				type: 'is-danger',
 				icon: 'delete-outline',
 				onConfirm: async () => {
-					await downloadSidecar.deleteDownload(this.downloadId, true).catch(() => {})
+					try {
+						await downloadSidecar.deleteDownload(this.downloadId, true)
+					} catch (e) {
+						this.toastError(this.$t('Could not delete the file: {error}', { error: e.message }))
+					}
 				}
 			})
 		}
@@ -304,8 +326,8 @@ export default {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(37, 99, 235, 0.1);
-	color: #2563eb;
+	background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+	color: var(--color-primary-fg, #1d4ed8);
 }
 
 .head-text {
@@ -333,7 +355,7 @@ export default {
 }
 
 .head-speed {
-	color: #2563eb;
+	color: var(--color-primary-fg, #1d4ed8);
 	font-weight: 500;
 }
 
@@ -353,12 +375,12 @@ export default {
 
 	.seg-fill {
 		height: 100%;
-		background: #3b82f6;
+		background: var(--color-primary, #2563eb);
 		transition: width 0.5s ease;
 	}
 
 	&.active .seg-fill {
-		background: linear-gradient(90deg, #3b82f6, #60a5fa);
+		background: var(--theme-input-focus, #3b82f6);
 	}
 }
 
@@ -423,6 +445,11 @@ export default {
 }
 
 .is-danger-text {
-	color: #dc2626;
+	color: var(--color-danger-fg, #b91c1c);
+}
+
+.foot-left {
+	display: flex;
+	gap: var(--space-2);
 }
 </style>

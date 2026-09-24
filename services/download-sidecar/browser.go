@@ -79,7 +79,23 @@ type BrowserSession struct {
 	blockedByHost map[string]int
 	blockedTotal  int
 	allowHosts    map[string]bool
+	// Hosts the user typed into the address bar (or opened from history /
+	// the home page) - the only ones the proxy may reach on a private
+	// address (see netguard.go).
+	typedHosts map[string]bool
+	// Documents this proxy served into the browser, by the nav ID injected
+	// into each one, so the address bar shows what was really loaded
+	// rather than whatever URL a page's script claims.
+	navs map[string]navRecord
 }
+
+type navRecord struct {
+	url  string
+	host string
+	at   time.Time
+}
+
+const maxNavs = 500
 
 type Browser struct {
 	mu        sync.Mutex
@@ -119,6 +135,8 @@ func (b *Browser) NewSession() *BrowserSession {
 		captures:      map[string]*Capture{},
 		blockedByHost: map[string]int{},
 		allowHosts:    map[string]bool{},
+		typedHosts:    map[string]bool{},
+		navs:          map[string]navRecord{},
 	}
 	s.client = &http.Client{
 		Transport: b.transport,
@@ -182,6 +200,89 @@ func (s *BrowserSession) Capture(id string) (*Capture, bool) {
 	defer s.mu.Unlock()
 	c, ok := s.captures[id]
 	return c, ok
+}
+
+// AllowTypedHost records that the user explicitly asked for host.
+func (s *BrowserSession) AllowTypedHost(host string) {
+	host = normalizeHost(host)
+	if host == "" {
+		return
+	}
+	s.mu.Lock()
+	if len(s.typedHosts) < 1000 {
+		s.typedHosts[host] = true
+	}
+	s.mu.Unlock()
+}
+
+func (s *BrowserSession) typedHostList() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.typedHosts))
+	for h := range s.typedHosts {
+		out = append(out, h)
+	}
+	return out
+}
+
+func (s *BrowserSession) recordNav(u *url.URL) string {
+	id := newID()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.navs) >= maxNavs {
+		var oldestID string
+		var oldest time.Time
+		for k, v := range s.navs {
+			if oldestID == "" || v.at.Before(oldest) {
+				oldestID, oldest = k, v.at
+			}
+		}
+		delete(s.navs, oldestID)
+	}
+	s.navs[id] = navRecord{url: u.String(), host: strings.ToLower(u.Host), at: time.Now()}
+	return id
+}
+
+// Nav returns the URL of a document the proxy served under this nav ID.
+func (s *BrowserSession) Nav(id string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, ok := s.navs[id]
+	return n.url, ok
+}
+
+// HeadersFor returns the request headers a download of rawURL may reuse
+// from capture c. The capture's recorded cookies are only replayed to the
+// host they were captured for; for any other URL (the user edited the
+// link in the Add window) only the session jar's own cookies for that URL
+// - which the jar domain-matches itself - are sent.
+func (s *BrowserSession) HeadersFor(c *Capture, rawURL string) map[string]string {
+	out := map[string]string{}
+	cu, err1 := url.Parse(c.URL)
+	u, err2 := url.Parse(strings.TrimSpace(rawURL))
+	if err1 == nil && err2 == nil && strings.EqualFold(cu.Host, u.Host) && cu.Scheme == u.Scheme {
+		for k, v := range c.headers {
+			out[k] = v
+		}
+		return out
+	}
+	if c.Referer != "" {
+		out["Referer"] = c.Referer
+	}
+	if err2 != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return out
+	}
+	s.mu.Lock()
+	jar := s.jar
+	s.mu.Unlock()
+	var parts []string
+	for _, ck := range jar.Cookies(u) {
+		parts = append(parts, ck.Name+"="+ck.Value)
+	}
+	if len(parts) > 0 {
+		out["Cookie"] = strings.Join(parts, "; ")
+	}
+	return out
 }
 
 func (s *BrowserSession) countBlocked(pageHost string) {
@@ -423,11 +524,22 @@ func (b *Browser) proxy(w http.ResponseWriter, r *http.Request, s *BrowserSessio
 		}
 	}
 
+	// WebSocket upgrades aren't proxied (Upgrade is a hop-by-hop header the
+	// rewriting proxy drops, and a raw tunnel couldn't be ad-filtered or
+	// kept inside the address guard as simply). Say so plainly instead of
+	// passing on a half-handshake the page would retry forever. Sites that
+	// need live sockets (chat, some players) should be opened in a real tab.
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		http.Error(w, "WebSocket connections are not supported by the Download Station browser", http.StatusNotImplemented)
+		return
+	}
+
 	var body io.Reader
 	if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
 		body = io.LimitReader(r.Body, 256<<20)
 	}
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), body)
+	ctx := withPrivateHosts(r.Context(), s.typedHostList()...)
+	req, err := http.NewRequestWithContext(ctx, r.Method, target.String(), body)
 	if err != nil {
 		writeSimplePage(w, http.StatusBadRequest, "Invalid address", err.Error(), "")
 		return
@@ -465,7 +577,10 @@ func (b *Browser) proxy(w http.ResponseWriter, r *http.Request, s *BrowserSessio
 			return
 		}
 		msg := err.Error()
-		if errors.Is(err, errForbiddenDestination) {
+		var fe forbiddenError
+		if errors.As(err, &fe) && fe.private {
+			msg = "This address is on your local network. For your safety, pages can't open local-network addresses on their own - type " + target.Host + " into the address bar to open it."
+		} else if errors.Is(err, errForbiddenDestination) {
 			msg = "This address points at the NivaroOS server itself (localhost), which the browser isn't allowed to open."
 		}
 		if isNavigation(dest) {
@@ -667,11 +782,19 @@ func writeCaptured(w http.ResponseWriter, s *BrowserSession, c *Capture) {
 // large for Google to scan...").
 var driveNameRe = regexp.MustCompile(`class="uc-name-size"><a[^>]*>([^<]+)</a>`)
 
-var capturedTmpl = template.Must(template.New("c").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Download captured</title>
-<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b}
+// The sidecar's own pages follow the viewer's light/dark preference (the
+// Download Station iframe passes the NivaroOS theme down as color-scheme).
+// Colours match the NivaroOS tokens; every text colour is >= 4.5:1 on its
+// background in both schemes.
+const pageThemeCSS = `:root{color-scheme:light dark;--bg:#f8fafc;--fg:#0f172a;--muted:#475569;--chip:#e2e8f0;--accent:#1d4ed8;--accent-soft:#dbeafe;--btn:#2563eb;--btn-fg:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0a0a0a;--fg:#f4f4f5;--muted:#a1a1aa;--chip:#27272a;--accent:#93c5fd;--accent-soft:#1e3a8a;--btn:#2563eb;--btn-fg:#fff}}`
+
+var capturedTmpl = template.Must(template.New("c").Parse(`<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>Download captured</title>
+<style>` + pageThemeCSS + `
+html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 .w{height:100%;display:flex;align-items:center;justify-content:center}.c{text-align:center;max-width:28rem;padding:2rem}
-.i{width:3rem;height:3rem;border-radius:50%;background:#dbeafe;color:#2563eb;display:inline-flex;align-items:center;justify-content:center;font-size:1.5rem}
-h1{font-size:1rem;margin:1rem 0 .25rem}p{margin:0;color:#64748b;font-size:.85rem;word-break:break-all}</style></head>
+.i{width:3rem;height:3rem;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:1.5rem}
+h1{font-size:1rem;margin:1rem 0 .25rem}p{margin:0;color:var(--muted);font-size:.85rem;word-break:break-all}</style></head>
 <body><div class="w"><div class="c"><div class="i">&#8595;</div><h1>Sent to Download Station</h1><p>{{.Filename}}{{if .Size}} &middot; {{.Size}}{{end}}</p></div></div>
 <script>(function(){var m={{.Msg}};try{window.top.postMessage(m,'*')}catch(e){}
 // Stay on the page the link was on, like a real browser does for a download.
@@ -690,7 +813,7 @@ func humanSize(n int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 var refreshURLRe = regexp.MustCompile(`(?i)(url\s*=\s*['"]?)([^'"]+)(['"]?)`)
@@ -928,7 +1051,10 @@ func (b *Browser) rewriteHTML(s *BrowserSession, pageURL *url.URL, raw []byte, i
 		"prefix":  browserPrefix + s.ID + "/",
 		"url":     pageURL.String(),
 		"adblock": adblockOn,
+		"nav":     s.recordNav(pageURL),
 	}
+	// json.Marshal escapes <, > and & (\u003c...), so a page URL can't
+	// close the <script> this is written into.
 	cfgJSON, _ := json.Marshal(cfg)
 	var head strings.Builder
 	head.WriteString("<script data-nvds>")
@@ -954,13 +1080,15 @@ func (b *Browser) rewriteHTML(s *BrowserSession, pageURL *url.URL, raw []byte, i
 	return final
 }
 
-var simpleTmpl = template.Must(template.New("s").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>{{.Title}}</title>
-<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b}
+var simpleTmpl = template.Must(template.New("s").Parse(`<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>{{.Title}}</title>
+<style>` + pageThemeCSS + `
+html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 .w{min-height:100%;display:flex;align-items:center;justify-content:center}.c{max-width:34rem;padding:2rem}
-h1{font-size:1.15rem;margin:0 0 .5rem}p{margin:0 0 .75rem;color:#64748b;font-size:.875rem;line-height:1.5;word-break:break-word}
-code{font-size:.8rem;background:#e2e8f0;padding:.1rem .35rem;border-radius:4px;word-break:break-all}
-.b{display:flex;gap:.5rem;margin-top:1.25rem}a.btn{font-size:.85rem;text-decoration:none;padding:.45rem .9rem;border-radius:8px;background:#e2e8f0;color:#1e293b}
-a.btn.p{background:#2563eb;color:#fff}.hide{display:none}</style></head>
+h1{font-size:1.15rem;margin:0 0 .5rem}p{margin:0 0 .75rem;color:var(--muted);font-size:.875rem;line-height:1.5;word-break:break-word}
+code{font-size:.8rem;background:var(--chip);color:var(--fg);padding:.1rem .35rem;border-radius:4px;word-break:break-all}
+.b{display:flex;gap:.5rem;margin-top:1.25rem}a.btn{font-size:.85rem;text-decoration:none;padding:.45rem .9rem;border-radius:8px;background:var(--chip);color:var(--fg)}
+a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a.btn.p{background:var(--btn);color:var(--btn-fg)}.hide{display:none}</style></head>
 <body{{if .Nested}} class="hide"{{end}}><div class="w"><div class="c"><h1>{{.Title}}</h1><p>{{.Message}}</p>
 {{if .Detail}}<p><code>{{.Detail}}</code></p>{{end}}
 <div class="b">{{if .Proceed}}<a class="btn" href="javascript:history.back()">Go back</a><a class="btn p" href="{{.Proceed}}">Proceed anyway</a>{{end}}</div></div></div>

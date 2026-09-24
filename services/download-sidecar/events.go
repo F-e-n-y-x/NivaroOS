@@ -19,13 +19,21 @@ type Event struct {
 }
 
 type eventLog struct {
+	// Epoch identifies this process's event sequence. Seq restarts at 1
+	// whenever the service restarts, so a client that still remembers a
+	// seq from before would otherwise see "nothing new" until the counter
+	// caught up again - silently losing every notification in between. A
+	// changed epoch tells it to resync from 0.
+	epoch  string
 	mu     sync.Mutex
 	seq    int64
 	events []Event
 	max    int
 }
 
-func newEventLog(max int) *eventLog { return &eventLog{max: max} }
+func newEventLog(max int) *eventLog { return &eventLog{max: max, epoch: newID()} }
+
+func (l *eventLog) Epoch() string { return l.epoch }
 
 func (l *eventLog) Push(e Event) {
 	l.mu.Lock()

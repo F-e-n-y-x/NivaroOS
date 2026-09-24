@@ -9,7 +9,7 @@
 				<div class="history-tools">
 					<div class="ds-search">
 						<b-icon icon="magnify" custom-size="mdi-16px"></b-icon>
-						<input v-model="query" class="ds-input" :placeholder="$t('Search history')" @input="onSearch" />
+						<input v-model="query" class="ds-input" :aria-label="$t('Search history')" :placeholder="$t('Search history')" @input="onSearch" />
 					</div>
 					<button class="ds-secondary-btn" :disabled="!entries.length" @click="confirmClear">
 						<b-icon icon="delete-outline" custom-size="mdi-18px"></b-icon><span>{{ $t('Clear history') }}</span>
@@ -35,7 +35,7 @@
 							<b-icon icon="web" custom-size="mdi-16px" class="h-icon"></b-icon>
 							<span class="h-title one-line">{{ e.title || e.url }}</span>
 							<span class="h-host one-line">{{ hostOf(e.url) }}</span>
-							<button class="ds-icon-btn is-flat h-del" :title="$t('Remove from history')" @click.stop="remove(e)">
+							<button class="ds-icon-btn is-flat h-del" :title="$t('Remove from history')" :aria-label="$t('Remove from history')" @click.stop="remove(e)">
 								<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 							</button>
 						</div>
@@ -49,6 +49,7 @@
 <script>
 import { downloadSidecar } from '@/api/downloadSidecar'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { escapeHtml } from '@/utils/escapeHtml'
 
 export default {
 	name: 'ds-browser-history',
@@ -114,8 +115,17 @@ export default {
 			this.$emit('open', e.url, !!(ev && (ev.ctrlKey || ev.metaKey)))
 		},
 		async remove(e) {
+			const before = this.entries
 			this.entries = this.entries.filter(x => x.id !== e.id)
-			await downloadSidecar.deleteHistory(e.id).catch(() => {})
+			try {
+				await downloadSidecar.deleteHistory(e.id)
+			} catch (err) {
+				this.entries = before
+				this.toastError(this.$t('Could not remove it from history: {error}', { error: err.message }))
+			}
+		},
+		toastError(text) {
+			this.$buefy.toast.open({ message: escapeHtml(text), type: 'is-danger' })
 		},
 		confirmClear() {
 			this.confirmWindow({
@@ -125,8 +135,12 @@ export default {
 				type: 'is-danger',
 				icon: 'delete-outline',
 				onConfirm: async () => {
-					await downloadSidecar.clearHistory().catch(() => {})
-					this.entries = []
+					try {
+						await downloadSidecar.clearHistory()
+						this.entries = []
+					} catch (err) {
+						this.toastError(this.$t('Could not clear the history: {error}', { error: err.message }))
+					}
 				}
 			})
 		}

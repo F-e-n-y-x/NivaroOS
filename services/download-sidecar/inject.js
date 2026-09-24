@@ -198,7 +198,10 @@
 	)
 
 	// Navigation reporting to the Download Station window (address bar,
-	// title, back/forward state). Only the top browsing frame reports.
+	// title, back/forward state). Only the top browsing frame reports. The
+	// app doesn't take the URL on trust (page scripts can post anything):
+	// it looks the nav ID up on the sidecar and only accepts same-origin
+	// history changes of the document that was really served.
 	var isMain = false
 	try {
 		isMain = window.parent === window.top && window.parent !== window
@@ -206,7 +209,7 @@
 	function report() {
 		if (!isMain) return
 		try {
-			window.parent.postMessage({ nvds: 1, type: 'nav', sid: C.sid, url: realURL(), title: document.title || '' }, '*')
+			window.parent.postMessage({ nvds: 1, type: 'nav', sid: C.sid, nav: C.nav, url: realURL(), title: document.title || '' }, '*')
 		} catch (e) {}
 	}
 	if (isMain) {
