@@ -8,12 +8,12 @@ require (
 	github.com/deepmap/oapi-codegen v1.12.4
 	github.com/docker/compose/v2 v2.16.0
 	github.com/go-ini/ini v1.67.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/samber/lo v1.38.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/cobra v1.6.1
-	golang.org/x/net v0.25.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -30,7 +30,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.5.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/go-version v1.6.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -41,6 +40,7 @@ require (
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	golang.org/x/exp v0.0.0-20221229233502-02c3fc3b3eb4 // indirect
 	golang.org/x/mod v0.8.0 // indirect
+	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect

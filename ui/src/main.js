@@ -8,6 +8,8 @@ import store from '@/store'
 import i18n from '@/plugins/i18n'
 import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
+import { refreshAccessToken } from '@/service/service.js'
+import { createMessageBusSocket } from '@/service/messageBusSocket'
 import Buefy from 'buefy'
 import A11yLabels from '@/plugins/a11yLabels'
 import VueFullscreen from 'vue-fullscreen'
@@ -61,9 +63,33 @@ const baseIp = isDev ? `${devIp}` : `${localhostName}`
 const baseURL = isDev ? `${devIp}:${devPort}` : `${localhost}`
 const wsURL = `${wsProtocol}//${baseURL}`
 
-const socket = io( {
-	transports: ['websocket', 'polling'],
-	path: '/v2/message_bus/socket.io/',
+// The message bus requires the access token on every subscription:
+// messageBusSocket.js sends it, reconnects with the new one after a
+// refresh, and stays disconnected while logged out.
+const readAccessToken = () => {
+	try {
+		return localStorage.getItem('access_token') || store.state.access_token || ''
+	} catch (e) {
+		return store.state.access_token || ''
+	}
+}
+const socket = createMessageBusSocket({
+	io,
+	getToken: readAccessToken,
+	refreshToken: refreshAccessToken,
+	watchToken: (cb) => {
+		store.watch((state) => state.access_token, (token) => cb(token || ''))
+		// /logout clears localStorage only (the store keeps the old token).
+		router.afterEach(() => {
+			let stored = ''
+			try {
+				stored = localStorage.getItem('access_token') || ''
+			} catch (e) {
+				return
+			}
+			if (!stored) cb('')
+		})
+	},
 });
 
 Vue.use(Buefy)

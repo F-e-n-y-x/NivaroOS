@@ -21,11 +21,47 @@ import (
 )
 
 func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler, error) {
+	return newAPIRouter(swagger, services, func() (*ecdsa.PublicKey, error) {
+		return external.GetPublicKey(config.CommonInfo.RuntimePath)
+	})
+}
+
+// isSubscription reports whether r opens (or continues) an event stream:
+// a WebSocket upgrade on /event/{source_id} or /action/{source_id}, or any
+// socket.io request (its websocket transport and its HTTP long-polling
+// transport alike).
+func isSubscription(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get(echo.HeaderUpgrade), "websocket") {
+		return true
+	}
+	return strings.Contains(r.URL.Path, "/socket.io")
+}
+
+// tokenFromRequest finds the caller's access token: the Authorization
+// header (raw or "Bearer <token>"), else a `token` query parameter. Browsers
+// can't set headers on a WebSocket, so the web UI's socket.io client
+// sends ?token= (engine.io repeats the query on every polling and
+// websocket request of the session).
+func tokenFromRequest(c echo.Context) ([]string, error) {
+	if h := c.Request().Header.Get(echo.HeaderAuthorization); h != "" {
+		return []string{strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))}, nil
+	}
+	return []string{c.QueryParam("token")}, nil
+}
+
+func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc func() (*ecdsa.PublicKey, error)) (http.Handler, error) {
 	apiRoute := NewAPIRoute(services)
 
 	e := echo.New()
 
+	// CORS only for pages served from this same host (the web UI reaches
+	// the bus same-origin through the gateway; apps on other ports of this
+	// host still qualify). A cross-site page gets no CORS headers, so its
+	// browser won't let it read anything.
 	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
+		Skipper: func(c echo.Context) bool {
+			return !nivaroos_middleware.SameHostOrigin(c.Request())
+		},
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
 		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
@@ -34,27 +70,38 @@ func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler
 		AllowCredentials: true,
 	})))
 
+	// Cross-site WebSocket hijacking guard for subscriptions that carry no
+	// token (see service.SubscriptionOriginAllowed): those must come from
+	// a non-browser client or a page on this same host. The /event and
+	// /action upgrades (gobwas/ws) do no origin check of their own.
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if isSubscription(c.Request()) && !service.SubscriptionOriginAllowed(c.Request()) {
+				return echo.NewHTTPError(http.StatusForbidden, "cross-origin subscription refused")
+			}
+			return next(c)
+		}
+	})
+
 	e.Use(echo_middleware.Gzip())
 
 	// Logs the path only: tokens can ride in query strings.
 	e.Use(nivaroos_middleware.RequestLogger())
 
+	// Every request - including every event/action/socket.io subscription -
+	// needs a valid access token, except same-host automation (other
+	// NivaroOS services, nivaroos-cli) as decided by IsLocalAutomation.
 	e.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
+		// Same-host automation only (c.RealIP() trusted spoofable
+		// X-Forwarded-For headers).
 		Skipper: func(c echo.Context) bool {
-			// Same-host automation only (c.RealIP() trusted spoofable
-			// X-Forwarded-For headers).
-			if nivaroos_middleware.IsLocalAutomation(c.Request()) {
-				return true
-			}
-
-			if c.Request().Method == echo.GET && c.Request().Header.Get(echo.HeaderUpgrade) == "websocket" {
-				return true
-			}
-
-			return false
+			return nivaroos_middleware.IsLocalAutomation(c.Request())
 		},
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
-			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
+			if token == "" {
+				return nil, echo.ErrUnauthorized
+			}
+			valid, claims, err := jwt.Validate(token, publicKeyFunc)
 			if err != nil || !valid {
 				return nil, echo.ErrUnauthorized
 			}
@@ -63,11 +110,7 @@ func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler
 
 			return claims, nil
 		},
-		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-			func(c echo.Context) ([]string, error) {
-				return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
-			},
-		},
+		TokenLookupFuncs: []echo_middleware.ValuesExtractor{tokenFromRequest},
 	}))
 
 	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}))

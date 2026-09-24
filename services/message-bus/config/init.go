@@ -20,6 +20,10 @@ var (
 		LogPath:     constants.DefaultLogPath,
 		LogSaveName: common.MessageBusServiceName,
 		LogFileExt:  "log",
+		// Persistent data (the notification feed). Not in RuntimePath:
+		// that is /var/run, a tmpfs emptied on every boot. Installs whose
+		// message-bus.conf predates this key get this default.
+		DBPath: constants.DefaultDataPath + "/db",
 	}
 
 	Cfg            *ini.File

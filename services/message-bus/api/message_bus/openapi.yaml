@@ -28,6 +28,22 @@ tags:
     description: |-
       Endpoint paths for subscribing to events and actions via SocketIO
 
+  - name: Notification methods
+    description: |-
+      The persisted notification feed: outcomes worth telling someone about
+      (a backup failed, an app was installed, a format finished) are kept for
+      30 days (at most 1000 entries), so a device that wasn't connected when
+      they happened still sees them. Entries are shared by all users; read and
+      dismissed state is per user. Which events become entries is documented in
+      `services/message-bus/service/notification_classify.go`: any event named
+      `*:notify` with a `title` property, plus a fixed list of app-management and
+      local-storage outcomes.
+
+      Live updates: the bus publishes `message-bus:notification:created` (the
+      new entry as properties) and `message-bus:notification:state` (a user's
+      read/dismissed state changed) under source `message-bus`, on socket.io and
+      on `/event/message-bus`.
+
   - name: EventType
     description: |-
       <SchemaDefinition schemaRef="#/components/schemas/EventType" />
@@ -55,6 +71,7 @@ x-tagGroups:
       - Event methods
       - ActionType methods
       - Action methods
+      - Notification methods
 
   - name: Endpoints
     tags:
@@ -332,12 +349,104 @@ paths:
           description: |
             Polling continued from SocketIO
 
+  /notifications:
+    get:
+      summary: List the caller's notification feed
+      description: |
+        The caller's feed, newest first, without the entries they dismissed.
+
+        - Poll for news with `after` = the highest `id` seen so far (ids only ever grow).
+        - Page back with `before` = the lowest `id` of the previous page; `has_more` says whether there is more.
+      operationId: getNotifications
+      tags:
+        - Notification methods
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: only entries with an id greater than this
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: before
+          in: query
+          required: false
+          description: only entries with an id smaller than this
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: limit
+          in: query
+          required: false
+          description: page size (default 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: unread
+          in: query
+          required: false
+          description: only unread entries
+          schema:
+            type: boolean
+      responses:
+        "200":
+          $ref: "#/components/responses/GetNotificationsOK"
+        "400":
+          $ref: "#/components/responses/ResponseBadRequest"
+        "503":
+          $ref: "#/components/responses/ResponseServiceUnavailable"
+
+  /notifications/read:
+    post:
+      summary: Mark notifications read
+      description: |
+        Marks `ids` read for the caller, or with `all: true` every entry up to `up_to`
+        (default: every entry that exists now - a later entry still arrives unread).
+      operationId: markNotificationsRead
+      tags:
+        - Notification methods
+      requestBody:
+        $ref: "#/components/requestBodies/NotificationSelectionBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/NotificationCountOK"
+        "400":
+          $ref: "#/components/responses/ResponseBadRequest"
+        "503":
+          $ref: "#/components/responses/ResponseServiceUnavailable"
+
+  /notifications/dismiss:
+    post:
+      summary: Dismiss notifications
+      description: |
+        Hides `ids` from the caller's feed, or with `all: true` every entry up to `up_to`
+        (default: every entry that exists now). Other users still see them.
+      operationId: dismissNotifications
+      tags:
+        - Notification methods
+      requestBody:
+        $ref: "#/components/requestBodies/NotificationSelectionBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/NotificationCountOK"
+        "400":
+          $ref: "#/components/responses/ResponseBadRequest"
+        "503":
+          $ref: "#/components/responses/ResponseServiceUnavailable"
+
 components:
   securitySchemes:
     access_token:
       type: apiKey
       in: header
       name: Authorization
+      description: |
+        An access token, raw or as `Bearer <token>`. WebSocket and socket.io
+        subscriptions may pass it as `?token=` instead (browsers can't set
+        headers on a WebSocket).
 
   parameters:
     SourceID:
@@ -435,7 +544,35 @@ components:
             example:
               local-storage:uuid: 442e0e5b-9d3e-4fe8-b46f-9c4141fdecd7
 
+    NotificationSelectionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NotificationSelection"
+
   responses:
+    ResponseServiceUnavailable:
+      description: Service Unavailable (the notification feed isn't available)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BaseResponse"
+
+    GetNotificationsOK:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NotificationList"
+
+    NotificationCountOK:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NotificationCount"
+
     ResponseOK:
       description: OK
       content:
@@ -662,3 +799,121 @@ components:
           type: string
           description: timestamp this action took place
           format: date-time
+
+    Notification:
+      type: object
+      required:
+        - id
+        - time
+        - source_id
+        - event_name
+        - category
+        - level
+        - title
+        - message
+        - key
+        - args
+        - icon
+        - read
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: feed id; ids only ever grow
+          example: 42
+        time:
+          type: string
+          format: date-time
+        source_id:
+          type: string
+          description: source of the event it came from
+          example: "nivaroos-backup"
+        event_name:
+          type: string
+          description: name of the event it came from
+          example: "nivaroos:backup:notify"
+        category:
+          type: string
+          enum: [backup, app, storage, system]
+        level:
+          type: string
+          enum: [info, success, warning, error]
+        title:
+          type: string
+          description: English title
+          example: "Backup & Sync"
+        message:
+          type: string
+          description: English text
+          example: "Documents → Google Drive failed: sign-in expired."
+        key:
+          type: string
+          description: i18n key a client can render (with `args`) instead of `message` ("" when none)
+          example: "backup.notify.failed"
+        args:
+          type: object
+          additionalProperties: true
+          description: arguments for `key`
+        action:
+          type: object
+          additionalProperties: true
+          description: |
+            What opening it does (absent when nothing). `target` names the place (`backup`: `window` is a
+            Backup & Sync window `{kind, props}`; `settings`: `props.section`).
+        icon:
+          type: string
+          description: icon URL ("" when none)
+        read:
+          type: boolean
+          description: whether the caller has read it
+
+    NotificationList:
+      type: object
+      required:
+        - data
+        - unread_count
+        - latest_id
+        - has_more
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        unread_count:
+          type: integer
+          format: int64
+          description: the caller's unread entries in the whole feed
+        latest_id:
+          type: integer
+          format: int64
+          description: the newest entry the caller can see (0 when none)
+        has_more:
+          type: boolean
+          description: more matching entries exist, older than the last one returned
+
+    NotificationCount:
+      type: object
+      required:
+        - unread_count
+      properties:
+        unread_count:
+          type: integer
+          format: int64
+
+    NotificationSelection:
+      type: object
+      properties:
+        ids:
+          type: array
+          maxItems: 1000
+          items:
+            type: integer
+            format: int64
+        all:
+          type: boolean
+          description: every entry up to `up_to` instead of `ids`
+        up_to:
+          type: integer
+          format: int64
+          minimum: 0
+          description: with `all`, the newest id it applies to (default and maximum - the newest that exists)

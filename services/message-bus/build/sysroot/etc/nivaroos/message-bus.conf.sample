@@ -5,3 +5,4 @@ RuntimePath=/var/run/nivaroos
 LogPath=/var/log/nivaroos
 LogSaveName=message-bus
 LogFileExt=log
+DBPath=/var/lib/nivaroos/db

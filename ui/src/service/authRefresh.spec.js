@@ -43,4 +43,22 @@ describe('401 handling', () => {
 		const handle = makeUnauthorizedHandler({ refresh: vi.fn(), retry: vi.fn(), logout })
 		await expect(handle(err401('/v1/users/refresh'))).rejects.toBeTruthy()
 	})
+
+	test('refreshNow shares the in-flight refresh with 401 handling and never logs out', async () => {
+		let resolve
+		const refresh = vi.fn(() => new Promise((r) => (resolve = r)))
+		const logout = vi.fn()
+		const handle = makeUnauthorizedHandler({ refresh, retry: (c) => Promise.resolve(c.headers.Authorization), logout })
+		const a = handle(err401())
+		const b = handle.refreshNow()
+		await new Promise((r) => setTimeout(r, 0)) // refresh() starts on a microtask
+		resolve('t3')
+		expect(await a).toBe('t3')
+		expect(await b).toBe('t3')
+		expect(refresh).toHaveBeenCalledTimes(1)
+
+		const failing = makeUnauthorizedHandler({ refresh: () => Promise.reject(new Error('x')), retry: vi.fn(), logout })
+		await expect(failing.refreshNow()).rejects.toThrow('x')
+		expect(logout).not.toHaveBeenCalled()
+	})
 })

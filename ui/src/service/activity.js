@@ -9,6 +9,15 @@
 //
 // Several tabs of the same account stay in sync through the `storage`
 // event: a write in one tab reloads the list in every other tab.
+//
+// Two kinds of entries share the list:
+//   - local ones (add()): feedback on what this browser did, kept in
+//     localStorage as above;
+//   - server ones (setRemote()/upsertRemote()): the message bus's persisted
+//     notification feed (notificationFeed.js), which every device of every
+//     user sees. They carry `feedId`; reading or dismissing one goes to the
+//     server through the backend given to attachRemote(), so the phone and
+//     other browsers agree. They are never written to localStorage.
 const KEY_PREFIX = 'nivaroos_activity_history'
 // Pre-per-user history: nobody can tell which account it belonged to, so
 // it is dropped rather than shown to whoever signs in next.
@@ -35,6 +44,8 @@ class ActivityService {
 		this.listeners = new Set()
 		this._key = undefined
 		this._activities = []
+		this._remote = []
+		this._remoteBackend = null
 		if (typeof window !== 'undefined') {
 			try { localStorage.removeItem(LEGACY_KEY) } catch (e) { /* storage blocked */ }
 			window.addEventListener('storage', (e) => {
@@ -56,6 +67,8 @@ class ActivityService {
 		if (key === this._key) return false
 		this._key = key
 		this._activities = this.load()
+		// Another account's feed must not show; the feed reloads on sign-in.
+		this._remote = []
 		return true
 	}
 
@@ -99,12 +112,63 @@ class ActivityService {
 
 	getAll() {
 		if (this._sync()) this.notify()
-		return [...this._activities]
+		return this._merged()
 	}
 
 	getUnreadCount() {
 		this._sync()
-		return this._activities.filter(a => !a.read).length
+		return this._activities.filter(a => !a.read).length + this._remote.filter(a => !a.read).length
+	}
+
+	// Newest first across both kinds.
+	_merged() {
+		if (!this._remote.length) return [...this._activities]
+		const time = a => {
+			const t = new Date(a.timestamp).getTime()
+			return isNaN(t) ? 0 : t
+		}
+		return [...this._remote, ...this._activities].sort((a, b) => time(b) - time(a))
+	}
+
+	_findRemote(id) {
+		return this._remote.find(a => a.id === id)
+	}
+
+	_maxFeedId() {
+		return this._remote.reduce((m, a) => Math.max(m, Number(a.feedId) || 0), 0)
+	}
+
+	_callRemote(method, ...args) {
+		const backend = this._remoteBackend
+		if (!backend || typeof backend[method] !== 'function') return
+		try {
+			const p = backend[method](...args)
+			if (p && typeof p.catch === 'function') p.catch(e => console.error('Notification feed:', e))
+		} catch (e) {
+			console.error('Notification feed:', e)
+		}
+	}
+
+	// backend: { markRead(feedIds), markAllRead(upToFeedId), dismiss(feedIds), dismissAll(upToFeedId) }
+	attachRemote(backend) {
+		this._remoteBackend = backend || null
+	}
+
+	// Replaces the server entries (a fresh page of the feed).
+	setRemote(items) {
+		this._sync()
+		this._remote = Array.isArray(items) ? items.filter(a => a && a.id) : []
+		this.notify()
+	}
+
+	// Adds (or updates) one server entry, e.g. from the live socket event.
+	upsertRemote(item) {
+		if (!item || !item.id) return
+		this._sync()
+		const i = this._remote.findIndex(a => a.id === item.id)
+		if (i >= 0) this._remote.splice(i, 1, item)
+		else this._remote.unshift(item)
+		this.notify()
 	}
 
 	add({ title, message = '', type = 'system', status = 'info', action = null, icon = '' }) {
@@ -140,6 +204,15 @@ class ActivityService {
 
 	markAsRead(id) {
 		this._sync()
+		const remote = this._findRemote(id)
+		if (remote) {
+			if (!remote.read) {
+				remote.read = true
+				this.notify()
+				this._callRemote('markRead', [remote.feedId])
+			}
+			return
+		}
 		const act = this._activities.find(a => a.id === id)
 		if (act && !act.read) {
 			act.read = true
@@ -157,10 +230,22 @@ class ActivityService {
 			}
 		})
 		if (changed) this.save()
+		if (this._remote.some(a => !a.read)) {
+			this._remote.forEach(a => { a.read = true })
+			if (!changed) this.notify()
+			this._callRemote('markAllRead', this._maxFeedId())
+		}
 	}
 
 	remove(id) {
 		this._sync()
+		const remote = this._findRemote(id)
+		if (remote) {
+			this._remote = this._remote.filter(a => a.id !== id)
+			this.notify()
+			this._callRemote('dismiss', [remote.feedId])
+			return
+		}
 		const prevLen = this._activities.length
 		this._activities = this._activities.filter(a => a.id !== id)
 		if (this._activities.length !== prevLen) {
@@ -171,6 +256,11 @@ class ActivityService {
 	clear() {
 		this._sync()
 		this._activities = []
+		if (this._remote.length) {
+			const upTo = this._maxFeedId()
+			this._remote = []
+			this._callRemote('dismissAll', upTo)
+		}
 		this.save()
 	}
 }

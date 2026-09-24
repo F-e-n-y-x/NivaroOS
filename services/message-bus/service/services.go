@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
 )
 
@@ -15,6 +16,10 @@ type Services struct {
 	ActionServiceWS   *ActionServiceWS
 
 	SocketIOService *SocketIOService
+
+	// NotificationService is the persisted notification feed; nil when
+	// the process runs without one (the feed endpoints then answer 503).
+	NotificationService *NotificationService
 }
 
 var (
@@ -28,6 +33,17 @@ func (s *Services) Start(ctx *context.Context) {
 	go s.ActionServiceWS.Start(ctx)
 
 	go s.SocketIOService.Start(ctx)
+
+	if s.NotificationService != nil {
+		go s.NotificationService.Start(ctx)
+	}
+}
+
+// PublishEvent delivers an event to every live subscriber (socket.io and
+// the /event WebSockets).
+func (s *Services) PublishEvent(event model.Event) {
+	go s.SocketIOService.Publish(event)
+	go s.EventServiceWS.Publish(event)
 }
 
 func NewServices(repository *repository.Repository) Services {

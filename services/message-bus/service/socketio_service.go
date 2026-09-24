@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"net/http"
+	"strings"
 
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
 	socketio "github.com/googollee/go-socket.io"
@@ -48,16 +50,42 @@ func NewSocketIOService() *SocketIOService {
 	}
 }
 
-func buildServer() *socketio.Server {
-	websocketTransport := websocket.Default
-	websocketTransport.CheckOrigin = func(r *http.Request) bool {
-		return true // TODO remove this debug setting
+// SubscriptionOriginAllowed is the Origin rule for event subscriptions
+// (socket.io on both transports, /event and /action WebSockets):
+//
+//   - a subscription that carries an access token (Authorization header or
+//     ?token=) passes: the router's JWT check decides. Auth is an explicit
+//     token, never a cookie, so a cross-site page can't have one, and one
+//     that does could use it from anywhere anyway - comparing Origin with
+//     Host adds nothing, and it broke every browser behind an outer
+//     reverse proxy that rewrites Host (nginx's default proxy_pass sends
+//     Host: 127.0.0.1 and no X-Forwarded-Host);
+//   - one without a token (only same-host automation gets past the JWT
+//     check that way) must come from a non-browser client or a page on
+//     this same host (CheckWebSocketOrigin), as before.
+func SubscriptionOriginAllowed(r *http.Request) bool {
+	if requestCarriesToken(r) {
+		return true
 	}
+	return nivaroos_middleware.CheckWebSocketOrigin(r)
+}
+
+func requestCarriesToken(r *http.Request) bool {
+	h := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.TrimSpace(strings.TrimPrefix(h, "Bearer ")) != "" {
+		return true
+	}
+	return strings.TrimSpace(r.URL.Query().Get("token")) != ""
+}
+
+func buildServer() *socketio.Server {
+	// Same rule as the router's guard, which runs (and requires a valid
+	// token) before a request ever gets here.
+	websocketTransport := websocket.Default
+	websocketTransport.CheckOrigin = SubscriptionOriginAllowed
 
 	pollingTransport := polling.Default
-	pollingTransport.CheckOrigin = func(r *http.Request) bool {
-		return true // TODO remove this debug setting
-	}
+	pollingTransport.CheckOrigin = SubscriptionOriginAllowed
 
 	server := socketio.NewServer(&engineio.Options{
 		Transports: []transport.Transport{

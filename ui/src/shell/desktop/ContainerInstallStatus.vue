@@ -56,6 +56,7 @@ import defaultAppIcon from '@/assets/img/app-icons/default.svg'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import events from '@/events/events'
 import activityService from '@/service/activity'
+import { notificationFeed } from '@/service/notifications'
 
 const FINISHED_LINGER_MS = 3200
 
@@ -146,6 +147,9 @@ export default {
 			}
 		},
 		log(res, title, status, message) {
+			// Outcomes the server keeps in its notification feed arrive from
+			// there (on every device); logging them here too would show them twice.
+			if (notificationFeed.persists(res)) return
 			const info = this.appInfo(res)
 			activityService.add({
 				title,

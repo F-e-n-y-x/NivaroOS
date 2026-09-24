@@ -73,14 +73,28 @@ func main() {
 
 	databaseFilePath := filepath.Join(config.CommonInfo.RuntimePath, "message-bus.db")
 
-	repository, err := repository.NewDatabaseRepository(databaseFilePath)
+	repo, err := repository.NewDatabaseRepository(databaseFilePath)
 	if err != nil {
 		panic(err)
 	}
-	defer repository.Close()
+	defer repo.Close()
 
 	// service
-	services := service.NewServices(&repository)
+	services := service.NewServices(&repo)
+
+	// The persisted notification feed. A broken feed database must not
+	// take the whole bus down (every live update goes through it): the
+	// feed endpoints then answer 503 and events still flow.
+	notificationDBPath := filepath.Join(config.AppInfo.DBPath, repository.NotificationStoreFileName)
+	if notificationStore, err := repository.NewNotificationStore(notificationDBPath); err != nil {
+		logger.Error("notification feed unavailable", zap.Error(err), zap.String("path", notificationDBPath))
+	} else {
+		defer notificationStore.Close()
+		services.NotificationService = service.NewNotificationService(notificationStore, services.PublishEvent)
+		if err := services.NotificationService.RegisterEventTypes(services.EventTypeService); err != nil {
+			logger.Error("failed to register the notification feed's event types", zap.Error(err))
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

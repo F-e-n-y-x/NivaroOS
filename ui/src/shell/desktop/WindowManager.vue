@@ -25,6 +25,8 @@
 		</div>
 
 		<drag-drop-menu></drag-drop-menu>
+		<!-- Server notification feed -> Notification Center (renders nothing). -->
+		<notification-feed-sync></notification-feed-sync>
 		<!-- One bottom-right column for the transient progress cards, so
 		     file transfers and app installs stack instead of overlapping
 		     in the same corner. -->
@@ -45,6 +47,7 @@ import DateTimePill from './DateTimePill.vue'
 import DragDropMenu from './DragDropMenu.vue'
 import TransfersPanel from './TransfersPanel.vue'
 import ContainerInstallStatus from './ContainerInstallStatus.vue'
+import NotificationFeedSync from './NotificationFeedSync.vue'
 import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 
 const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
@@ -64,7 +67,8 @@ export default {
 		DateTimePill,
 		DragDropMenu,
 		TransfersPanel,
-		ContainerInstallStatus
+		ContainerInstallStatus,
+		NotificationFeedSync
 	},
 	computed: {
 		windows() {

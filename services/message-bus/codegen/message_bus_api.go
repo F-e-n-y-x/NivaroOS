@@ -23,6 +23,22 @@ const (
 	Access_tokenScopes = "access_token.Scopes"
 )
 
+// Defines values for NotificationCategory.
+const (
+	App     NotificationCategory = "app"
+	Backup  NotificationCategory = "backup"
+	Storage NotificationCategory = "storage"
+	System  NotificationCategory = "system"
+)
+
+// Defines values for NotificationLevel.
+const (
+	Error   NotificationLevel = "error"
+	Info    NotificationLevel = "info"
+	Success NotificationLevel = "success"
+	Warning NotificationLevel = "warning"
+)
+
 // Action defines model for Action.
 type Action struct {
 	// Name action name
@@ -86,6 +102,78 @@ type EventType struct {
 	SourceID string `json:"sourceID"`
 }
 
+// Notification defines model for Notification.
+type Notification struct {
+	// Action What opening it does (absent when nothing). `target` names the place (`backup`: `window` is a
+	// Backup & Sync window `{kind, props}`; `settings`: `props.section`).
+	Action *map[string]interface{} `json:"action,omitempty"`
+
+	// Args arguments for `key`
+	Args     map[string]interface{} `json:"args"`
+	Category NotificationCategory   `json:"category"`
+
+	// EventName name of the event it came from
+	EventName string `json:"event_name"`
+
+	// Icon icon URL ("" when none)
+	Icon string `json:"icon"`
+
+	// Id feed id; ids only ever grow
+	Id int64 `json:"id"`
+
+	// Key i18n key a client can render (with `args`) instead of `message` ("" when none)
+	Key   string            `json:"key"`
+	Level NotificationLevel `json:"level"`
+
+	// Message English text
+	Message string `json:"message"`
+
+	// Read whether the caller has read it
+	Read bool `json:"read"`
+
+	// SourceId source of the event it came from
+	SourceId string    `json:"source_id"`
+	Time     time.Time `json:"time"`
+
+	// Title English title
+	Title string `json:"title"`
+}
+
+// NotificationCategory defines model for Notification.Category.
+type NotificationCategory string
+
+// NotificationLevel defines model for Notification.Level.
+type NotificationLevel string
+
+// NotificationCount defines model for NotificationCount.
+type NotificationCount struct {
+	UnreadCount int64 `json:"unread_count"`
+}
+
+// NotificationList defines model for NotificationList.
+type NotificationList struct {
+	Data []Notification `json:"data"`
+
+	// HasMore more matching entries exist, older than the last one returned
+	HasMore bool `json:"has_more"`
+
+	// LatestId the newest entry the caller can see (0 when none)
+	LatestId int64 `json:"latest_id"`
+
+	// UnreadCount the caller's unread entries in the whole feed
+	UnreadCount int64 `json:"unread_count"`
+}
+
+// NotificationSelection defines model for NotificationSelection.
+type NotificationSelection struct {
+	// All every entry up to `up_to` instead of `ids`
+	All *bool    `json:"all,omitempty"`
+	Ids *[]int64 `json:"ids,omitempty"`
+
+	// UpTo with `all`, the newest id it applies to (default and maximum - the newest that exists)
+	UpTo *int64 `json:"up_to,omitempty"`
+}
+
 // PropertyType defines model for PropertyType.
 type PropertyType struct {
 	Description *string `json:"description,omitempty"`
@@ -128,6 +216,12 @@ type GetEventTypeOK = EventType
 // GetEventTypesOK defines model for GetEventTypesOK.
 type GetEventTypesOK = []EventType
 
+// GetNotificationsOK defines model for GetNotificationsOK.
+type GetNotificationsOK = NotificationList
+
+// NotificationCountOK defines model for NotificationCountOK.
+type NotificationCountOK = NotificationCount
+
 // PublishEventOK defines model for PublishEventOK.
 type PublishEventOK = Event
 
@@ -146,8 +240,14 @@ type ResponseNotFound = BaseResponse
 // ResponseOK defines model for ResponseOK.
 type ResponseOK = BaseResponse
 
+// ResponseServiceUnavailable defines model for ResponseServiceUnavailable.
+type ResponseServiceUnavailable = BaseResponse
+
 // TriggerActionOK defines model for TriggerActionOK.
 type TriggerActionOK = Action
+
+// NotificationSelectionBody defines model for NotificationSelectionBody.
+type NotificationSelectionBody = NotificationSelection
 
 // PublishEvent event properties
 type PublishEvent map[string]string
@@ -183,6 +283,21 @@ type PublishEventJSONBody map[string]string
 // RegisterEventTypesJSONBody defines parameters for RegisterEventTypes.
 type RegisterEventTypesJSONBody = []EventType
 
+// GetNotificationsParams defines parameters for GetNotifications.
+type GetNotificationsParams struct {
+	// After only entries with an id greater than this
+	After *int64 `form:"after,omitempty" json:"after,omitempty"`
+
+	// Before only entries with an id smaller than this
+	Before *int64 `form:"before,omitempty" json:"before,omitempty"`
+
+	// Limit page size (default 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Unread only unread entries
+	Unread *bool `form:"unread,omitempty" json:"unread,omitempty"`
+}
+
 // TriggerActionJSONRequestBody defines body for TriggerAction for application/json ContentType.
 type TriggerActionJSONRequestBody TriggerActionJSONBody
 
@@ -194,6 +309,12 @@ type PublishEventJSONRequestBody PublishEventJSONBody
 
 // RegisterEventTypesJSONRequestBody defines body for RegisterEventTypes for application/json ContentType.
 type RegisterEventTypesJSONRequestBody = RegisterEventTypesJSONBody
+
+// DismissNotificationsJSONRequestBody defines body for DismissNotifications for application/json ContentType.
+type DismissNotificationsJSONRequestBody = NotificationSelection
+
+// MarkNotificationsReadJSONRequestBody defines body for MarkNotificationsRead for application/json ContentType.
+type MarkNotificationsReadJSONRequestBody = NotificationSelection
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -233,6 +354,15 @@ type ServerInterface interface {
 	// Get an event type by source ID and name
 	// (GET /event_type/{source_id}/{name})
 	GetEventType(ctx echo.Context, sourceId SourceID, name EventName) error
+	// List the caller's notification feed
+	// (GET /notifications)
+	GetNotifications(ctx echo.Context, params GetNotificationsParams) error
+	// Dismiss notifications
+	// (POST /notifications/dismiss)
+	DismissNotifications(ctx echo.Context) error
+	// Mark notifications read
+	// (POST /notifications/read)
+	MarkNotificationsRead(ctx echo.Context) error
 	// Subscribe to events and actions (SocketIO)
 	// (GET /socket.io)
 	SubscribeSIO(ctx echo.Context) error
@@ -490,6 +620,69 @@ func (w *ServerInterfaceWrapper) GetEventType(ctx echo.Context) error {
 	return err
 }
 
+// GetNotifications converts echo context to params.
+func (w *ServerInterfaceWrapper) GetNotifications(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(Access_tokenScopes, []string{""})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetNotificationsParams
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "after", ctx.QueryParams(), &params.After)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter after: %s", err))
+	}
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "before", ctx.QueryParams(), &params.Before)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter before: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "unread" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "unread", ctx.QueryParams(), &params.Unread)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter unread: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.GetNotifications(ctx, params)
+	return err
+}
+
+// DismissNotifications converts echo context to params.
+func (w *ServerInterfaceWrapper) DismissNotifications(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(Access_tokenScopes, []string{""})
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.DismissNotifications(ctx)
+	return err
+}
+
+// MarkNotificationsRead converts echo context to params.
+func (w *ServerInterfaceWrapper) MarkNotificationsRead(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(Access_tokenScopes, []string{""})
+
+	// Invoke the callback with all the unmarshalled arguments
+	err = w.Handler.MarkNotificationsRead(ctx)
+	return err
+}
+
 // SubscribeSIO converts echo context to params.
 func (w *ServerInterfaceWrapper) SubscribeSIO(ctx echo.Context) error {
 	var err error
@@ -574,6 +767,9 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/event_type", wrapper.RegisterEventTypes)
 	router.GET(baseURL+"/event_type/:source_id", wrapper.GetEventTypesBySourceID)
 	router.GET(baseURL+"/event_type/:source_id/:name", wrapper.GetEventType)
+	router.GET(baseURL+"/notifications", wrapper.GetNotifications)
+	router.POST(baseURL+"/notifications/dismiss", wrapper.DismissNotifications)
+	router.POST(baseURL+"/notifications/read", wrapper.MarkNotificationsRead)
 	router.GET(baseURL+"/socket.io", wrapper.SubscribeSIO)
 	router.POST(baseURL+"/socket.io", wrapper.PollSIO)
 	router.GET(baseURL+"/socket.io/", wrapper.SubscribeSIO2)
@@ -584,53 +780,79 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"fbz7vwAAAP//dGNMHVhVAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

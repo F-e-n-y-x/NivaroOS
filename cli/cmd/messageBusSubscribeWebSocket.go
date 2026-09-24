@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/cli/codegen/message_bus"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
-	"golang.org/x/net/websocket"
 )
 
 // messageBusSubscribeWebSocketCmd represents the messageBusSubscribeWebSocket command
@@ -51,7 +51,11 @@ func subscribeWS(rootURL, messageType, sourceID, names string, bufferSize uint) 
 		wsURL = fmt.Sprintf("ws://%s/%s/%s/%s?names=%s", strings.TrimRight(rootURL, "/"), BasePathMessageBus, messageType, sourceID, names)
 	}
 
-	ws, err := websocket.Dial(wsURL, "", "http://localhost")
+	// No Origin header: the gateway only treats a same-host caller as
+	// local automation (no token needed) when it doesn't look like a
+	// browser, and golang.org/x/net/websocket always sent one.
+	dialer := websocket.Dialer{ReadBufferSize: int(bufferSize)}
+	ws, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
@@ -60,15 +64,14 @@ func subscribeWS(rootURL, messageType, sourceID, names string, bufferSize uint) 
 	log.Printf("subscribed to %s via websocket", wsURL)
 
 	for {
-		msg := make([]byte, bufferSize)
-		n, err := ws.Read(msg)
+		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			log.Fatalln(err.Error())
 		}
 
 		var event message_bus.Event
 
-		if err := json.Unmarshal(msg[:n], &event); err != nil {
+		if err := json.Unmarshal(msg, &event); err != nil {
 			log.Println(err.Error())
 		}
 

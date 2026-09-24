@@ -116,7 +116,7 @@
 import { activityService } from '@/service/activity'
 import systemPower from '@/mixins/systemPower'
 
-const SYSTEM_TYPES = ['schedule', 'vm', 'system', 'maintenance']
+const SYSTEM_TYPES = ['schedule', 'vm', 'system', 'maintenance', 'backup']
 
 export default {
 	name: 'notification-list',
@@ -236,6 +236,7 @@ export default {
 				case 'vm': return 'monitor'
 				case 'schedule': return 'clock-outline'
 				case 'maintenance': return 'wrench-outline'
+				case 'backup': return 'backup-restore'
 				default:
 					if (item.status === 'error') return 'alert-circle-outline'
 					if (item.status === 'warning') return 'alert-outline'

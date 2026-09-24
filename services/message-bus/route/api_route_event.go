@@ -112,8 +112,13 @@ func (r *APIRoute) PublishEvent(ctx echo.Context, sourceID codegen.SourceID, nam
 		Uuid:       &uuidStr,
 	})
 
-	go r.services.SocketIOService.Publish(event)
-	go r.services.EventServiceWS.Publish(event)
+	r.services.PublishEvent(event)
+
+	// Outcomes worth telling someone who isn't watching right now are
+	// also kept in the notification feed (see ClassifyNotification).
+	if r.services.NotificationService != nil {
+		r.services.NotificationService.Ingest(event)
+	}
 
 	return ctx.JSON(http.StatusOK, out.EventAdapter(event))
 }
