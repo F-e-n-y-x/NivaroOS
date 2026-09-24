@@ -309,6 +309,33 @@ func sanitizeFilename(name string) string {
 	return strings.TrimSpace(res)
 }
 
+// companionSubdir resolves a client-supplied sub path ("", "/", "Photos",
+// "/Photos/2026") inside root. filepath.Clean keeps a leading "..", so a
+// plain Join let "?path=../../etc" escape the device's folder - with core
+// running as root, that was a write (upload) or listing anywhere on the
+// box. Anything that would leave root is refused.
+func companionSubdir(root, sub string) (string, error) {
+	if sub == "" || sub == "/" {
+		return root, nil
+	}
+	p := filepath.Join(root, filepath.Clean("/"+sub))
+	if !withinDir(root, p) {
+		return "", errors.New("path outside companion device storage")
+	}
+	return p, nil
+}
+
+// withinDir reports whether p is root or inside it, by path components
+// (so "/data/companion-evil" is not inside "/data/companion"). An empty
+// root contains nothing.
+func withinDir(root, p string) bool {
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(p))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 // folderSize returns the total size in bytes of all files under dir
 func folderSize(dir string) int64 {
 	var total int64
@@ -1268,12 +1295,15 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 	}
 	os.MkdirAll(targetDir, 0755)
 
-	if subPath != "" && subPath != "/" && !strings.HasPrefix(subPath, "/storage/") {
-		cleaned := filepath.Clean(subPath)
-		if strings.HasPrefix(cleaned, "/") {
-			cleaned = cleaned[1:]
+	if !strings.HasPrefix(subPath, "/storage/") {
+		dir, err := companionSubdir(targetDir, subPath)
+		if err != nil {
+			return ctx.JSON(http.StatusForbidden, model.Result{
+				Success: common_err.CLIENT_ERROR,
+				Message: err.Error(),
+			})
 		}
-		targetDir = filepath.Join(targetDir, cleaned)
+		targetDir = dir
 	}
 
 	entries, err := os.ReadDir(targetDir)
@@ -1353,7 +1383,7 @@ func GetCompanionDeviceDownload(ctx echo.Context) error {
 	// Fallback to server local companion storage
 	cleanPath := filepath.Clean(filePath)
 	base := getCompanionStorageBasePath()
-	if !strings.HasPrefix(cleanPath, dev.StoragePath) && !strings.HasPrefix(cleanPath, base) {
+	if !withinDir(dev.StoragePath, cleanPath) && !withinDir(base, cleanPath) {
 		return ctx.JSON(http.StatusForbidden, model.Result{
 			Success: common_err.CLIENT_ERROR,
 			Message: "access outside companion device storage is denied",
@@ -1385,14 +1415,15 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 	}
 	os.MkdirAll(targetDir, 0755)
 
-	if destSubPath != "" && destSubPath != "/" {
-		cleaned := filepath.Clean(destSubPath)
-		if strings.HasPrefix(cleaned, "/") {
-			cleaned = cleaned[1:]
-		}
-		targetDir = filepath.Join(targetDir, cleaned)
-		os.MkdirAll(targetDir, 0755)
+	dir, err := companionSubdir(targetDir, destSubPath)
+	if err != nil {
+		return ctx.JSON(http.StatusForbidden, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: err.Error(),
+		})
 	}
+	targetDir = dir
+	os.MkdirAll(targetDir, 0755)
 
 	file, err := ctx.FormFile("file")
 	if err != nil {
@@ -1411,7 +1442,15 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 	}
 	defer src.Close()
 
-	destPath := filepath.Join(targetDir, file.Filename)
+	// The multipart name is the client's too: only its last element.
+	name := filepath.Base(filepath.Clean("/" + file.Filename))
+	if name == "/" || name == "." || name == ".." {
+		return ctx.JSON(http.StatusBadRequest, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: "invalid file name",
+		})
+	}
+	destPath := filepath.Join(targetDir, name)
 	dst, err := os.Create(destPath)
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{
