@@ -59,9 +59,30 @@ type ScheduleTask struct {
 	NextRun     string    `json:"next_run"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// MigratedTo marks a task another NivaroOS module took over ("backup":
+	// Backup & Sync imported it as a job). A marked task is never run
+	// here - not on its timer, not by "Run now" - until the module hands
+	// it back by clearing the marker (nivaroos-backup
+	// release-scheduled-tasks). Always sent, even empty: the module reads
+	// its presence as "this core keeps the marker".
+	MigratedTo string `json:"migrated_to"`
 
 	entryID cron.EntryID `json:"-"`
+	// migratedToSet: the update carried migrated_to (see SetMigratedTo).
+	migratedToSet bool
 }
+
+// SetMigratedTo sets the marker on an update. An update that doesn't call
+// it (the Scheduled Tasks editor, which doesn't know the field) keeps the
+// stored marker, so editing a moved task can't make it run twice.
+func (t *ScheduleTask) SetMigratedTo(v string) {
+	t.MigratedTo = strings.TrimSpace(v)
+	t.migratedToSet = true
+}
+
+// ErrTaskMigrated is returned by RunTaskNow for a task another module
+// took over.
+var ErrTaskMigrated = errors.New("this task moved to Backup & Sync; run it there")
 
 type ScheduleService interface {
 	GetTasks() []ScheduleTask
@@ -81,6 +102,10 @@ type scheduleService struct {
 	cron     *cron.Cron
 	dataFile string
 	parser   cron.Parser
+	// loadErr is set when schedules.json existed but couldn't be read or
+	// parsed. Saving is then refused: writing the (empty) in-memory list
+	// would replace the user's tasks with nothing.
+	loadErr error
 }
 
 func getScheduleDataPath() string {
@@ -124,13 +149,21 @@ func (s *scheduleService) load() {
 	if err != nil {
 		if !os.IsNotExist(err) {
 			logger.Error("failed to read schedules data", zap.Error(err), zap.String("file", s.dataFile))
+			s.loadErr = fmt.Errorf("%s can't be read (%v); Scheduled Tasks won't save until it is fixed and NivaroOS restarted", s.dataFile, err)
 		}
 		return
 	}
 
 	var list []ScheduleTask
 	if err := json.Unmarshal(data, &list); err != nil {
-		logger.Error("failed to unmarshal schedules", zap.Error(err))
+		// Keep the file for the operator instead of starting empty and
+		// overwriting it with the next save.
+		kept := fmt.Sprintf("%s.corrupt-%s", s.dataFile, time.Now().Format("20060102-150405"))
+		if rerr := os.Rename(s.dataFile, kept); rerr != nil {
+			kept = s.dataFile
+		}
+		logger.Error("schedules data is corrupt; kept it and refusing to save", zap.Error(err), zap.String("kept_as", kept))
+		s.loadErr = fmt.Errorf("the Scheduled Tasks file was damaged and was kept as %s; nothing is saved until NivaroOS restarts", kept)
 		return
 	}
 
@@ -151,25 +184,85 @@ func (s *scheduleService) load() {
 }
 
 func (s *scheduleService) saveLocked() error {
-	dir := filepath.Dir(s.dataFile)
-	_ = os.MkdirAll(dir, 0755)
-
+	if s.loadErr != nil {
+		return s.loadErr
+	}
 	list := make([]ScheduleTask, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		list = append(list, *t)
 	}
+	sort.Slice(list, func(a, b int) bool { return list[a].ID < list[b].ID })
 
 	data, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.dataFile, data, 0644)
+	return writeFileAtomic(s.dataFile, data, 0o600)
+}
+
+// writeFileAtomic replaces path with data so that a crash or power cut at
+// any moment leaves either the old file or the new one, never a truncated
+// mix: temp file in the same folder, fsync, rename over, fsync the folder.
+// (os.WriteFile truncates first; a crash there left schedules.json empty
+// and every task gone.)
+// beforeAtomicRename lets tests stop a write between the fsync and the
+// rename (a crash there must leave the old file).
+var beforeAtomicRename = func(tmp string) error { return nil }
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := beforeAtomicRename(tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	ok = true
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
+	return nil
 }
 
 func (s *scheduleService) scheduleLocked(t *ScheduleTask) {
 	if t.entryID != 0 {
 		s.cron.Remove(t.entryID)
 		t.entryID = 0
+	}
+	if t.MigratedTo != "" {
+		// Another module runs it now; no timer here.
+		t.NextRun = ""
+		return
 	}
 
 	taskID := t.ID
@@ -228,6 +321,15 @@ func (s *scheduleService) executeTask(taskID string) {
 	if s.running[taskID] {
 		s.mu.Unlock()
 		logger.Info("scheduled task skipped: still running from the previous start", zap.String("task", taskID))
+		return
+	}
+	// Taken over by another module (Backup & Sync): running it here too
+	// would copy the same data twice, or mirror into a destination the
+	// new job guards. Checked at run time as well as when scheduling, so
+	// a timer or "Run now" racing the marking can't slip through.
+	if t.MigratedTo != "" {
+		s.mu.Unlock()
+		logger.Info("scheduled task skipped: moved to another module", zap.String("task", taskID), zap.String("migrated_to", t.MigratedTo))
 		return
 	}
 	s.running[taskID] = true
@@ -384,6 +486,12 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 			return "", fmt.Errorf("source and destination are required for backup/sync task")
 		}
 
+		// A path starting with "-" would be read as an option by rclone,
+		// rsync or tar.
+		if strings.HasPrefix(src, "-") || strings.HasPrefix(dest, "-") {
+			return "", fmt.Errorf("source and destination must not start with '-'")
+		}
+
 		action := t.Action
 		if action == "" {
 			action = t.SyncMode
@@ -436,11 +544,7 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 			return string(buf), err
 
 		case "archive", "tar_archive":
-			tarCmd := fmt.Sprintf(`mkdir -p "%s" && tar -czf "%s/backup_$(date +%%Y%%m%%d_%%H%%M%%S).tar.gz" -C "%s" "%s"`,
-				dest, dest, filepath.Dir(src), filepath.Base(src))
-			cmd := exec.CommandContext(ctx, "bash", "-c", tarCmd)
-			buf, err := cmd.CombinedOutput()
-			return string(buf), err
+			return runArchive(ctx, src, dest, time.Now())
 
 		default:
 			args := []string{"copy", src, dest, "--stats-one-line", "-v"}
@@ -510,6 +614,29 @@ func (s *scheduleService) runTaskAction(t *ScheduleTask) (string, error) {
 	}
 }
 
+// runArchive writes src as dest/backup_<time>.tar.gz. No shell: the paths
+// used to be pasted into a bash -c string inside double quotes, so a
+// folder named `x"; rm -rf /DATA; "` (or one containing $(...)) ran as a
+// command. The member name is "./<base>" so a folder called "-x" can't
+// become a tar option.
+func runArchive(ctx context.Context, src, dest string, now time.Time) (string, error) {
+	if !filepath.IsAbs(src) || !filepath.IsAbs(dest) {
+		return "", fmt.Errorf("archive needs absolute local folders (got %q -> %q)", src, dest)
+	}
+	src, dest = filepath.Clean(src), filepath.Clean(dest)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return "", fmt.Errorf("creating %s: %w", dest, err)
+	}
+	out := filepath.Join(dest, "backup_"+now.Format("20060102_150405")+".tar.gz")
+	cmd := exec.CommandContext(ctx, "tar", "-czf", out, "-C", filepath.Dir(src), "./"+filepath.Base(src))
+	buf, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.Remove(out) // don't leave a half archive that looks like a backup
+		return string(buf), err
+	}
+	return string(buf) + "Archive written to " + out, nil
+}
+
 func (s *scheduleService) GetTasks() []ScheduleTask {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -555,8 +682,12 @@ func (s *scheduleService) CreateTask(task ScheduleTask) (*ScheduleTask, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
 
 	task.ID = "task_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
+	task.MigratedTo = "" // only a module's update marks a task
 	task.CreatedAt = time.Now()
 	task.UpdatedAt = time.Now()
 
@@ -581,6 +712,9 @@ func (s *scheduleService) UpdateTask(id string, update ScheduleTask) (*ScheduleT
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
 
 	t, ok := s.tasks[id]
 	if !ok {
@@ -605,6 +739,9 @@ func (s *scheduleService) UpdateTask(id string, update ScheduleTask) (*ScheduleT
 	t.ActionType = update.ActionType
 	t.Target = update.Target
 	t.Enabled = update.Enabled
+	if update.migratedToSet {
+		t.MigratedTo = update.MigratedTo
+	}
 	t.UpdatedAt = time.Now()
 
 	if t.Enabled {
@@ -623,6 +760,9 @@ func (s *scheduleService) UpdateTask(id string, update ScheduleTask) (*ScheduleT
 func (s *scheduleService) DeleteTask(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.loadErr != nil {
+		return s.loadErr
+	}
 
 	t, ok := s.tasks[id]
 	if !ok {
@@ -637,6 +777,9 @@ func (s *scheduleService) DeleteTask(id string) error {
 func (s *scheduleService) ToggleTask(id string, enabled bool) (*ScheduleTask, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
 
 	t, ok := s.tasks[id]
 	if !ok {
@@ -661,11 +804,15 @@ func (s *scheduleService) ToggleTask(id string, enabled bool) (*ScheduleTask, er
 
 func (s *scheduleService) RunTaskNow(id string) (string, error) {
 	s.mu.RLock()
-	_, ok := s.tasks[id]
+	t, ok := s.tasks[id]
+	migrated := ok && t.MigratedTo != ""
 	s.mu.RUnlock()
 
 	if !ok {
 		return "", fmt.Errorf("task '%s' not found", id)
+	}
+	if migrated {
+		return "", ErrTaskMigrated
 	}
 
 	go s.executeTask(id)

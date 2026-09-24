@@ -1,9 +1,13 @@
 package v1
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/tidwall/gjson"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
@@ -61,8 +65,15 @@ func CreateSchedule(ctx echo.Context) error {
 
 func UpdateSchedule(ctx echo.Context) error {
 	id := ctx.Param("id")
-	var task service.ScheduleTask
-	if err := ctx.Bind(&task); err != nil {
+	body, err := io.ReadAll(io.LimitReader(ctx.Request().Body, 1<<20))
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, model.Result{
+			Success: common_err.INVALID_PARAMS,
+			Message: err.Error(),
+		})
+	}
+	task, err := decodeScheduleUpdate(body)
+	if err != nil {
 		return ctx.JSON(http.StatusBadRequest, model.Result{
 			Success: common_err.INVALID_PARAMS,
 			Message: err.Error(),
@@ -82,6 +93,21 @@ func UpdateSchedule(ctx echo.Context) error {
 		Message: common_err.GetMsg(common_err.SUCCESS),
 		Data:    updated,
 	})
+}
+
+// decodeScheduleUpdate reads a PUT body. Only an update that names
+// migrated_to changes it (Backup & Sync marking or releasing a task); the
+// Scheduled Tasks editor doesn't send it, and its edits must keep a moved
+// task moved.
+func decodeScheduleUpdate(body []byte) (service.ScheduleTask, error) {
+	var task service.ScheduleTask
+	if err := json.Unmarshal(body, &task); err != nil {
+		return service.ScheduleTask{}, err
+	}
+	if v := gjson.GetBytes(body, "migrated_to"); v.Exists() {
+		task.SetMigratedTo(v.String())
+	}
+	return task, nil
 }
 
 func DeleteSchedule(ctx echo.Context) error {
@@ -130,6 +156,12 @@ func ToggleSchedule(ctx echo.Context) error {
 func RunScheduleNow(ctx echo.Context) error {
 	id := ctx.Param("id")
 	msg, err := service.MyService.Schedule().RunTaskNow(id)
+	if errors.Is(err, service.ErrTaskMigrated) {
+		return ctx.JSON(http.StatusConflict, model.Result{
+			Success: common_err.SERVICE_ERROR,
+			Message: err.Error(),
+		})
+	}
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{
 			Success: common_err.SERVICE_ERROR,

@@ -86,6 +86,36 @@ var dsProxy = &httputil.ReverseProxy{
 	},
 }
 
+// Backup & Sync (nivaroos-backup, an optional module), same-origin at
+// /v1/backup/*. The service listens on loopback only, accepts the
+// prefixed paths, validates the JWT itself and answers /v1/backup/health
+// without one (the UI's "is it installed?" check). It honours the local
+// automation header, so the gateway sets or strips it here exactly as for
+// its own backends; the installer's update check relies on that.
+const (
+	backupPathPrefix  = "/v1/backup"
+	backupServiceAddr = "127.0.0.1:28643"
+)
+
+func isBackupPath(p string) bool {
+	return p == backupPathPrefix || strings.HasPrefix(p, backupPathPrefix+"/")
+}
+
+var backupProxy = &httputil.ReverseProxy{
+	Director: func(r *http.Request) {
+		r.URL.Scheme = "http"
+		r.URL.Host = backupServiceAddr
+		if _, ok := r.Header["User-Agent"]; !ok {
+			r.Header.Set("User-Agent", "")
+		}
+	},
+	ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"backup service unavailable"}`))
+	},
+}
+
 type GatewayRoute struct {
 	management *service.Management
 }
@@ -202,6 +232,13 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			}
 			rewriteRequestSourceIP(r)
 			dsProxy.ServeHTTP(w, r)
+			return
+		}
+
+		if isBackupPath(r.URL.Path) {
+			nivaroos_middleware.MarkLocalAutomation(r)
+			rewriteRequestSourceIP(r)
+			backupProxy.ServeHTTP(w, r)
 			return
 		}
 
