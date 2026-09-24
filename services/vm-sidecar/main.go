@@ -23,6 +23,10 @@ func main() {
 	defer store.Close()
 
 	EnsureAutoShareDir()
+	// VMs from older versions move onto the current /DATA/VMs layout
+	// (stopped ones now, others on their next start). In the background:
+	// libvirtd may not even be installed yet.
+	go store.MigrateLegacyLayout()
 
 	mux := http.NewServeMux()
 	RegisterVMRoutes(mux, store)

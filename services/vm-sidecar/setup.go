@@ -38,7 +38,12 @@ var requiredPackages = []string{
 	// bundled in qemu-system-x86, and a VM with the share device can't
 	// start at all without it.
 	"virtiofsd",
-	// xorriso builds the NivaroOS Guest Tools disc (guesttools.go).
+}
+
+// optionalPackages are installed by setup too, but don't block "ready":
+// VMs work without them. xorriso builds the NivaroOS Guest Tools disc
+// (guesttools.go, which also installs it on demand).
+var optionalPackages = []string{
 	"xorriso",
 }
 
@@ -102,6 +107,11 @@ func RunSetupInstall(store *LibvirtStore, storageDir, isoDir string) InstallResu
 		out, err := exec.Command("apt-get", "install", "-y", pkg).CombinedOutput()
 		if err != nil {
 			return InstallResult{Step: step, Output: strings.TrimSpace(string(out)), Success: false}
+		}
+	}
+	for _, pkg := range optionalPackages {
+		if !packageInstalled(pkg) {
+			_ = exec.Command("apt-get", "install", "-y", pkg).Run()
 		}
 	}
 

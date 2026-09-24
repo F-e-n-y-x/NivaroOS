@@ -1845,6 +1845,16 @@ func (s *LibvirtStore) StartVM(name string) error {
 	}
 	defer dom.Free()
 	if active, err := dom.IsActive(); err == nil && !active {
+		// A VM that was running when the service started gets its layout
+		// migration now; its definition may change, so look it up again.
+		if changed, err := s.migrateVMLayout(conn, dom); err != nil {
+			log.Printf("vm %s: layout migration: %v", name, err)
+		} else if changed {
+			dom.Free()
+			if dom, err = s.lookup(name); err != nil {
+				return err
+			}
+		}
 		if err := ensureDefaultShareDevice(conn, dom); err != nil {
 			return fmt.Errorf("prepare shared folder: %w", err)
 		}

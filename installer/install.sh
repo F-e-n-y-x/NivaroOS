@@ -1595,16 +1595,19 @@ install_vm_manager() {
 		# with pkg-config present but no dev headers, a '.pc file not
 		# found' error instead). Runtime-only libvirt packages
 		# (libvirt-daemon-system/libvirt-clients etc.) never pull these in.
+		# virtiofsd: every VM's shared folder (/DATA/VMs/share) needs it -
+		# without it a VM can't start. xorriso (libisoburn on Arch) builds
+		# the NivaroOS Guest Tools disc.
 		if command -v apt-get >/dev/null 2>&1; then
-			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils pkg-config libvirt-dev
+			pkg_install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients virtinst bridge-utils ovmf cloud-image-utils virtiofsd xorriso pkg-config libvirt-dev
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf pkgconf-pkg-config libvirt-devel
+			pkg_install qemu-kvm qemu-img libvirt libvirt-client virt-install bridge-utils edk2-ovmf virtiofsd xorriso pkgconf-pkg-config libvirt-devel
 		elif command -v pacman >/dev/null 2>&1; then
-			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf pkgconf
+			pkg_install qemu-base libvirt virt-install bridge-utils edk2-ovmf virtiofsd libisoburn pkgconf
 		elif command -v zypper >/dev/null 2>&1; then
-			pkg_install qemu-kvm qemu-tools libvirt libvirt-client virt-install bridge-utils qemu-ovmf-x86_64 pkg-config libvirt-devel
+			pkg_install qemu-kvm qemu-tools libvirt libvirt-client virt-install bridge-utils qemu-ovmf-x86_64 virtiofsd xorriso pkg-config libvirt-devel
 		elif command -v apk >/dev/null 2>&1; then
-			pkg_install qemu-system-x86_64 qemu-img libvirt libvirt-daemon virt-install bridge dnsmasq ovmf pkgconf libvirt-dev
+			pkg_install qemu-system-x86_64 qemu-img libvirt libvirt-daemon virt-install bridge dnsmasq ovmf virtiofsd xorriso pkgconf libvirt-dev
 		else
 			echo 'No known package manager found (apt/dnf/yum/pacman/zypper/apk) - cannot install QEMU/libvirt automatically. Skipping VM Manager; install those packages yourself and re-run with --with-vm.' >&2
 			exit 1

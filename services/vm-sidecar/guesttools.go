@@ -126,7 +126,12 @@ func isVirtioWinISO(ctx context.Context, path string) bool {
 
 func buildGuestToolsISO(ctx context.Context) error {
 	if _, err := exec.LookPath("xorriso"); err != nil {
-		return errors.New("xorriso is not installed on the server (apt install xorriso)")
+		// Installs from before xorriso was part of setup: install it now
+		// rather than asking the user to.
+		setGTStep("installing xorriso")
+		if installErr := installPackage(ctx, "xorriso"); installErr != nil {
+			return fmt.Errorf("xorriso is needed to build the Guest Tools disc and could not be installed: %v", installErr)
+		}
 	}
 	cache := filepath.Join(defaultISODir, ".cache")
 	if err := os.MkdirAll(cache, 0755); err != nil {
@@ -230,6 +235,31 @@ func buildGuestToolsISO(ctx context.Context) error {
 		return err
 	}
 	return os.WriteFile(final+".version", []byte(guestToolsVersion+"\n"), 0644)
+}
+
+// installPackage installs one package with whichever package manager the
+// server has.
+func installPackage(ctx context.Context, pkg string) error {
+	managers := [][]string{
+		{"apt-get", "install", "-y", pkg},
+		{"dnf", "install", "-y", pkg},
+		{"zypper", "--non-interactive", "install", pkg},
+		{"apk", "add", pkg},
+	}
+	if pkg == "xorriso" {
+		managers = append(managers, []string{"pacman", "-S", "--noconfirm", "libisoburn"})
+	}
+	for _, m := range managers {
+		if _, err := exec.LookPath(m[0]); err != nil {
+			continue
+		}
+		out, err := exec.CommandContext(ctx, m[0], m[1:]...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s: %v: %s", strings.Join(m, " "), err, lastLines(string(out), 3))
+		}
+		return nil
+	}
+	return errors.New("no supported package manager found")
 }
 
 // downloadFile fetches url to dst via a .part file; wantSize > 0 is checked.
