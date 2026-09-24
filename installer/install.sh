@@ -1561,13 +1561,18 @@ GPUEOF
 			fi
 		done
 
-		# 11. Install USB mount helper script
+		# 11. Install the services' shell helpers. Only usb-mount.sh used to
+		# be installed, but core sources helper.sh (device tree, network
+		# cards, time zone, Samba reload) and local-storage sources
+		# local-storage-helper.sh (disk and USB mounting) - on a fresh
+		# install those calls all failed.
 		mkdir -p /usr/share/nivaroos/shell
-		if [ -f \"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh\" ]; then
-			cp -f \"${SRC_DIR}/services/core/build/sysroot/usr/share/nivaroos/shell/usb-mount.sh\" /usr/share/nivaroos/shell/usb-mount.sh
-			chmod 755 /usr/share/nivaroos/shell/usb-mount.sh
-			echo '/usr/share/nivaroos/shell/usb-mount.sh' >> \"$MANIFEST_FILE\"
-		fi
+		for sh in \"${SRC_DIR}\"/services/core/build/sysroot/usr/share/nivaroos/shell/*.sh \"${SRC_DIR}\"/services/local-storage/build/sysroot/usr/share/nivaroos/shell/*.sh; do
+			[ -f \"\$sh\" ] || continue
+			cp -f \"\$sh\" /usr/share/nivaroos/shell/
+			chmod 755 \"/usr/share/nivaroos/shell/\$(basename \"\$sh\")\"
+			echo \"/usr/share/nivaroos/shell/\$(basename \"\$sh\")\" >> \"$MANIFEST_FILE\"
+		done
 
 		# Save custom port configuration if specified
 		if [ -n \"$DETECTED_PORT\" ] && [ \"$DETECTED_PORT\" != \"80\" ]; then
