@@ -194,7 +194,7 @@ func companionUnreachable(ctx echo.Context, dev *CompanionDevice, err error) err
 	}
 	return ctx.JSON(http.StatusServiceUnavailable, model.Result{
 		Success: common_err.SERVICE_ERROR,
-		Message: dev.Name + " can't be reached right now - make sure the NivaroOS app is open on it and it's on the same network",
+		Message: companionUnreachableMessage(dev, err),
 		Data:    err.Error(),
 	})
 }

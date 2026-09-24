@@ -78,12 +78,24 @@
 							<b-icon :icon="getBatteryIconClass(dev.battery_level)" pack="mdi" size="is-small" class="mr-1" :style="{ color: getBatteryColor(dev.battery_level) }"></b-icon>
 							{{ dev.battery_level }}%
 						</span>
+						<span
+							v-if="dev.connection === 'lan' || dev.connection === 'remote'"
+							class="companion-meta-pill ml-2"
+							:class="{ 'is-remote': dev.connection === 'remote' }"
+							:title="dev.connection === 'remote' ? $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') : ''"
+						>
+							<b-icon :icon="dev.connection === 'remote' ? 'web' : 'lan-connect'" pack="mdi" size="is-small" class="mr-1"></b-icon>
+							{{ dev.connection === 'remote' ? $t('Other network') : $t('Same network') }}
+						</span>
 						<span class="companion-meta-pill ml-2" v-if="dev.ip">
 							IP: {{ dev.ip }}
 						</span>
 					</div>
 					<div class="setting-desc">
 						{{ dev.model }} &middot; {{ dev.platform }}<template v-if="dev.os_version"> &middot; {{ dev.os_version }}</template> &middot; {{ dev.app_version || 'v1.0' }} &middot; {{ dev.is_online ? $t('Active now') : ($t('Last seen ') + formatTime(dev.last_seen)) }}
+					</div>
+					<div v-if="dev.connection === 'remote'" class="setting-desc companion-remote-hint">
+						{{ $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') }}
 					</div>
 					<div v-if="dev.storage_total > 0" class="companion-storage-strip mt-2">
 						<div class="is-flex is-align-items-center is-size-7 text-muted mb-1">
@@ -343,6 +355,15 @@ export default {
 	background: var(--theme-pill-bg, rgba(0, 0, 0, 0.04));
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-sm);
+}
+
+.companion-meta-pill.is-remote {
+	color: var(--color-warning-fg, #b45309);
+	background: rgba(245, 158, 11, 0.12);
+}
+
+.companion-remote-hint {
+	color: var(--color-warning-fg, #b45309);
 }
 
 .companion-storage-strip {

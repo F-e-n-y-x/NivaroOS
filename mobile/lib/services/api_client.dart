@@ -120,8 +120,8 @@ class ApiClient {
     return _send(() => http.get(_uri(path, query), headers: _headers()));
   }
 
-  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
-    return _send(() => http.post(_uri(path), headers: _headers(), body: jsonEncode(body ?? {})));
+  Future<Map<String, dynamic>> post(String path, {Object? body, Map<String, String>? headers}) async {
+    return _send(() => http.post(_uri(path), headers: {..._headers(), ...?headers}, body: jsonEncode(body ?? {})));
   }
 
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {

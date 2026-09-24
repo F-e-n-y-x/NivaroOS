@@ -358,7 +358,15 @@ class DeviceSyncService {
         CompanionFileServer.instance.connectWebSocketTunnel();
       }
       final device = await getLocalDeviceInfo();
-      final res = await ApiClient.instance.post('/companion/register', body: device.toJson());
+      // The secret the server gave this phone at an earlier registration
+      // proves it is this phone: a device paired before accounts were
+      // tracked is only linked to the signed-in account with it.
+      final heldSecret = await StorageService.instance.getCompanionSecret();
+      final res = await ApiClient.instance.post(
+        '/companion/register',
+        body: device.toJson(),
+        headers: (heldSecret != null && heldSecret.isNotEmpty) ? {'X-Companion-Secret': heldSecret} : null,
+      );
       // The server hands back a shared secret (see PostRegisterCompanionDevice)
       // that CompanionFileServer then requires on every /download, /upload,
       // /delete, /files request - store it so this device's embedded file
@@ -401,58 +409,20 @@ class DeviceSyncService {
       debugPrint('[DeviceSyncService] Error fetching devices: $e');
     }
 
-    // Deduplicate server list by ID, IP, and model+name
+    // Devices are identified by their id only: two phones can share a
+    // private LAN address (different home networks, a reused DHCP lease)
+    // or a model and default name, and matching those used to make this
+    // phone take over another phone's id.
     final list = <CompanionDevice>[];
     final seenIds = <String>{};
-    final seenIps = <String>{};
-    final seenModels = <String>{};
-
     for (final dev in rawList) {
-      if (seenIds.contains(dev.id)) continue;
-
-      final ip = dev.ipAddress.trim();
-      final isRealIp = ip.isNotEmpty && ip != 'Local' && ip != 'Local Device' && !ip.startsWith('127.');
-      if (isRealIp && seenIps.contains(ip)) continue;
-
-      final modelName = '${dev.model.trim().toLowerCase()}_${dev.name.trim().toLowerCase()}';
-      if (modelName != '_' && seenModels.contains(modelName)) continue;
-
-      seenIds.add(dev.id);
-      if (isRealIp) seenIps.add(ip);
-      if (modelName != '_') seenModels.add(modelName);
-      list.add(dev);
+      if (seenIds.add(dev.id)) list.add(dev);
     }
 
-    // Match current device against the deduplicated list
-    int matchIndex = -1;
-    for (int i = 0; i < list.length; i++) {
-      final d = list[i];
-      if (d.id == currentDev.id) {
-        matchIndex = i;
-        break;
-      }
-      final dIp = d.ipAddress.trim();
-      final cIp = currentDev.ipAddress.trim();
-      final isRealIp = cIp.isNotEmpty && cIp != 'Local' && cIp != 'Local Device' && !cIp.startsWith('127.');
-      if (isRealIp && dIp == cIp) {
-        matchIndex = i;
-        break;
-      }
-      if (d.model.isNotEmpty && currentDev.model.isNotEmpty &&
-          d.model.toLowerCase() == currentDev.model.toLowerCase() &&
-          d.name.toLowerCase() == currentDev.name.toLowerCase()) {
-        matchIndex = i;
-        break;
-      }
-    }
+    final matchIndex = list.indexWhere((d) => d.id == currentDev.id);
 
     if (matchIndex >= 0) {
       final matched = list[matchIndex];
-      // If server device ID was different from local, adopt it so future calls match
-      if (_cachedDeviceId != matched.id) {
-        _cachedDeviceId = matched.id;
-        unawaited(StorageService.instance.setCompanionDeviceId(matched.id));
-      }
 
       list[matchIndex] = CompanionDevice(
         id: matched.id,

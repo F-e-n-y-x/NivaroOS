@@ -30,6 +30,9 @@
 					</span>
 					<span class="banner-subtext">{{ companionDeviceInfo.model }} · {{ companionDeviceInfo.platform }} · {{ $t('Companion Sync Folder') }}</span>
 				</div>
+				<div v-if="companionDeviceInfo.isRemote" class="banner-subtext banner-remote-hint">
+					{{ $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') }}
+				</div>
 				<div v-if="companionDeviceInfo.storageTotal > 0" class="banner-storage-row">
 					<span class="banner-storage-label">{{ $t('Device Internal Storage') }}:</span>
 					<span class="banner-storage-text">{{ companionDeviceInfo.storageText }}</span>
@@ -237,6 +240,8 @@ export default {
 						platform: dev.platform || '',
 						icon,
 						isOnline: !!dev.is_online,
+						// Online but not directly reachable (S-04): listing works, opening doesn't.
+						isRemote: dev.connection === 'remote',
 						batteryLevel: dev.battery_level || 0,
 						storageUsed,
 						storageTotal,

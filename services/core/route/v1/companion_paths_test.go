@@ -53,6 +53,7 @@ func TestWithinDir(t *testing.T) {
 // ?path=../.. on the upload endpoint wrote anywhere as root.
 func TestCompanionUploadCannotLeaveTheDeviceFolder(t *testing.T) {
 	logger.LogInitConsoleOnly()
+	useTempCompanionState(t)
 	base := t.TempDir()
 	devDir := filepath.Join(base, "Pixel")
 	companionMu.Lock()

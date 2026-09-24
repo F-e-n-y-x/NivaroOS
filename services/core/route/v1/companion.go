@@ -3,12 +3,14 @@ package v1
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
@@ -48,6 +51,18 @@ type CompanionDevice struct {
 	StoragePath       string                 `json:"storage_path"`
 	ServerStorageUsed int64                  `json:"server_storage_used"` // actual size of backed-up files on server
 	CustomProps       map[string]interface{} `json:"custom_props,omitempty"`
+	// OwnerUserID is the NivaroOS user (JWT "id" claim) that registered the
+	// device. List/rename/browse/delete/upload/download are limited to that
+	// user. Devices saved before this field existed have none until their
+	// phone's next authenticated heartbeat (every 30 s) claims them - see
+	// PostRegisterCompanionDevice; until then they stay visible to everyone,
+	// as before, so an old phone that never comes back can still be removed.
+	OwnerUserID string `json:"owner_user_id,omitempty"`
+	// Connection is how the server can reach the phone right now, filled
+	// by GetCompanionDevices: "lan" (direct - files open and copy), "remote"
+	// (online through the tunnel/heartbeat only - files can be listed, not
+	// opened) or "offline". Not meaningful once persisted; reset on load.
+	Connection string `json:"connection,omitempty"`
 	// Secret authenticates every direct server->phone HTTP call this device's
 	// embedded CompanionFileServer receives (download/upload/delete/files) -
 	// that server has no other way to verify a LAN caller. Generated once at
@@ -99,7 +114,7 @@ var (
 	companionDevices     = make(map[string]*CompanionDevice)
 	companionLoaded      = false
 	companionWSMu        sync.RWMutex
-	companionWSConns     = make(map[string]*websocket.Conn)
+	companionWSConns     = make(map[string]*companionTunnel)
 	companionPendingMu   sync.Mutex
 	companionPendingReqs = make(map[string]chan map[string]interface{})
 	wsUpgrader           = websocket.Upgrader{
@@ -109,25 +124,176 @@ var (
 	}
 )
 
+// companionTunnel is a phone's reverse WebSocket. gorilla/websocket allows
+// one concurrent writer only, and several web UI tabs can list the same
+// phone at once, so every write goes through send.
+type companionTunnel struct {
+	conn *websocket.Conn
+	wmu  sync.Mutex
+}
+
+func (t *companionTunnel) send(v interface{}) error {
+	t.wmu.Lock()
+	defer t.wmu.Unlock()
+	_ = t.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	return t.conn.WriteJSON(v)
+}
+
+func companionPendingKey(deviceID, reqID string) string {
+	return deviceID + "\x00" + reqID
+}
+
+func companionTunnelFor(id string) *companionTunnel {
+	companionWSMu.RLock()
+	defer companionWSMu.RUnlock()
+	return companionWSConns[id]
+}
+
+func closeCompanionTunnel(id string) {
+	companionWSMu.Lock()
+	if t, ok := companionWSConns[id]; ok {
+		t.conn.Close()
+		delete(companionWSConns, id)
+	}
+	companionWSMu.Unlock()
+}
+
+// companionHasLANIP reports whether ip is an address the server could dial
+// the phone's file server on (the heartbeat sends the phone's own Wi-Fi
+// address).
+func companionHasLANIP(ip string) bool {
+	ip = strings.TrimSpace(ip)
+	return ip != "" && ip != "Local Device" && ip != "Local" && !strings.HasPrefix(ip, "127.")
+}
+
+// Direct server->phone calls go to a private LAN address the server may not
+// be able to route to at all (phone on mobile data or another Wi-Fi). The
+// default dialer waits for the kernel's TCP connect timeout (~2 minutes);
+// a few seconds is plenty on a LAN.
+var companionTransport = &http.Transport{
+	DialContext:         (&net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	TLSHandshakeTimeout: 10 * time.Second,
+	MaxIdleConnsPerHost: 4,
+	IdleConnTimeout:     90 * time.Second,
+}
+
+func companionClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout, Transport: companionTransport}
+}
+
+// errCompanionNotOnLAN: the phone is online (tunnel up or heartbeat within
+// the last 75 s) but the server can't open a connection to it - it isn't on
+// the same network. The reverse tunnel only carries directory listings (the
+// app implements "list" and "ping" only), so opening, downloading or
+// uploading a file needs the direct connection.
+type errCompanionNotOnLAN struct {
+	name  string
+	cause error
+}
+
+func (e *errCompanionNotOnLAN) Error() string {
+	return companionNotOnLANMessage(e.name)
+}
+
+func (e *errCompanionNotOnLAN) Unwrap() error { return e.cause }
+
+func companionNotOnLANMessage(name string) string {
+	if strings.TrimSpace(name) == "" {
+		name = "The phone"
+	}
+	return name + " isn't on the same network as the server - open it from the phone, or when both are on the same network"
+}
+
+// companionOnlineRemotely: the phone is talking to the server (reverse
+// tunnel connected, or a heartbeat in the last two sync intervals).
+func companionOnlineRemotely(dev *CompanionDevice) bool {
+	return companionTunnelFor(dev.ID) != nil || time.Since(dev.LastSeen) <= 75*time.Second
+}
+
+// companionDirectErr turns a failed direct connection to the phone into
+// errCompanionNotOnLAN when the phone is otherwise online, so every caller
+// can tell the user why instead of a raw "dial tcp ... i/o timeout".
+// Errors the phone itself answered with (HTTP status) are not passed here.
+func companionDirectErr(dev *CompanionDevice, err error) error {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return err
+	}
+	var nl *errCompanionNotOnLAN
+	if errors.As(err, &nl) {
+		return err
+	}
+	if companionOnlineRemotely(dev) {
+		return &errCompanionNotOnLAN{name: dev.Name, cause: err}
+	}
+	return err
+}
+
+// companionNoLANIPErr is returned when the device never reported a LAN
+// address at all.
+func companionNoLANIPErr(dev *CompanionDevice) error {
+	return companionDirectErr(dev, errors.New("companion device has no direct LAN IP"))
+}
+
+// companionUnreachableMessage is what a failed phone download shows the user.
+func companionUnreachableMessage(dev *CompanionDevice, err error) string {
+	var nl *errCompanionNotOnLAN
+	if errors.As(err, &nl) {
+		return nl.Error()
+	}
+	return dev.Name + " can't be reached right now - make sure the NivaroOS app is open on it and it's on the same network"
+}
+
+// Where companion state lives. Variables only so tests can point them at a
+// temporary directory; nothing else changes them.
+var (
+	companionStateDir   = "/var/lib/nivaroos"
+	companionBaseDir    = "/DATA/Companion"
+	companionBaseNoDATA = "/var/lib/nivaroos/companion"
+)
+
 func getCompanionStorageBasePath() string {
-	base := "/DATA/Companion"
-	if _, err := os.Stat("/DATA"); os.IsNotExist(err) {
-		base = "/var/lib/nivaroos/companion"
+	base := companionBaseDir
+	if _, err := os.Stat(filepath.Dir(base)); os.IsNotExist(err) {
+		base = companionBaseNoDATA
 	}
 	os.MkdirAll(base, 0755)
 	return base
 }
 
 func getCompanionConfigPath() string {
-	path := "/var/lib/nivaroos/companion_devices.json"
-	os.MkdirAll("/var/lib/nivaroos", 0755)
-	return path
+	os.MkdirAll(companionStateDir, 0755)
+	return filepath.Join(companionStateDir, "companion_devices.json")
+}
+
+// companionKeptFolder records whose backups a folder holds after its
+// device was removed with "keep backups" (companion_kept_folders.json,
+// keyed by the folder's clean path). Only assignCompanionFolder reads it.
+type companionKeptFolder struct {
+	DeviceID    string    `json:"device_id"`
+	OwnerUserID string    `json:"owner_user_id,omitempty"`
+	KeptAt      time.Time `json:"kept_at"`
+}
+
+var companionKeptFolders = map[string]companionKeptFolder{}
+
+func getCompanionKeptFoldersPath() string {
+	os.MkdirAll(companionStateDir, 0755)
+	return filepath.Join(companionStateDir, "companion_kept_folders.json")
+}
+
+func saveCompanionKeptFoldersLocked() {
+	data, err := json.MarshalIndent(companionKeptFolders, "", "  ")
+	if err == nil {
+		err = os.WriteFile(getCompanionKeptFoldersPath(), data, 0600)
+	}
+	if err != nil {
+		logger.Error("companion: saving kept backup folders failed", zap.Error(err))
+	}
 }
 
 func getCompanionSecretsPath() string {
-	path := "/var/lib/nivaroos/companion_secrets.json"
-	os.MkdirAll("/var/lib/nivaroos", 0755)
-	return path
+	os.MkdirAll(companionStateDir, 0755)
+	return filepath.Join(companionStateDir, "companion_secrets.json")
 }
 
 func loadCompanionDevicesLocked() {
@@ -135,6 +301,15 @@ func loadCompanionDevicesLocked() {
 		return
 	}
 	companionLoaded = true
+	companionKeptFolders = map[string]companionKeptFolder{}
+	if data, err := os.ReadFile(getCompanionKeptFoldersPath()); err == nil {
+		var kept map[string]companionKeptFolder
+		if json.Unmarshal(data, &kept) == nil {
+			for p, rec := range kept {
+				companionKeptFolders[filepath.Clean(p)] = rec
+			}
+		}
+	}
 	filePath := getCompanionConfigPath()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -142,7 +317,7 @@ func loadCompanionDevicesLocked() {
 	}
 	var list []*CompanionDevice
 	if err := json.Unmarshal(data, &list); err == nil {
-		for _, dev := range list {
+		for _, dev := range mergeDuplicateCompanionDevices(list) {
 			if dev.Port <= 0 {
 				dev.Port = 8765
 			}
@@ -150,6 +325,7 @@ func loadCompanionDevicesLocked() {
 				dev.RootPath = "/storage/emulated/0"
 			}
 			dev.SharesStorage = true
+			dev.Connection = ""
 			companionDevices[dev.ID] = dev
 		}
 	}
@@ -167,61 +343,61 @@ func loadCompanionDevicesLocked() {
 	}
 }
 
-func deduplicateCompanionDevicesLocked() {
-	toDelete := make([]string, 0)
-	seenIP := make(map[string]*CompanionDevice)
-	seenModelName := make(map[string]*CompanionDevice)
-
-	for id, dev := range companionDevices {
-		ip := strings.TrimSpace(dev.IP)
-		isRealIP := ip != "" && ip != "Local Device" && ip != "Local" && !strings.HasPrefix(ip, "127.")
-		modelNameKey := strings.ToLower(strings.TrimSpace(dev.Model + "_" + dev.Name))
-
-		if isRealIP {
-			if existing, found := seenIP[ip]; found {
-				if dev.LastSeen.After(existing.LastSeen) {
-					toDelete = append(toDelete, existing.ID)
-					seenIP[ip] = dev
-					if exKey := strings.ToLower(strings.TrimSpace(existing.Model + "_" + existing.Name)); exKey != "" && exKey != "_" {
-						seenModelName[exKey] = dev
-					}
-				} else {
-					toDelete = append(toDelete, id)
-					continue
+// mergeDuplicateCompanionDevices folds entries of companion_devices.json
+// that carry the SAME device id (older builds could write one twice) into
+// one: the most recently seen entry wins, and fields only the other entry
+// has (backup folder, owner, created time, user rename) are kept. Devices are
+// never merged by IP address or by model + name any more: the IP is the
+// phone's private LAN address, so two phones on different home networks (or
+// one phone given another's old DHCP lease), or two identical phones with
+// default names, used to delete each other and their folder mapping.
+// Entries without an id are dropped. Order of first appearance is kept.
+func mergeDuplicateCompanionDevices(list []*CompanionDevice) []*CompanionDevice {
+	out := make([]*CompanionDevice, 0, len(list))
+	byID := make(map[string]int, len(list))
+	for _, dev := range list {
+		if dev == nil {
+			continue
+		}
+		dev.ID = strings.TrimSpace(dev.ID)
+		if dev.ID == "" {
+			continue
+		}
+		i, dup := byID[dev.ID]
+		if !dup {
+			byID[dev.ID] = len(out)
+			out = append(out, dev)
+			continue
+		}
+		keep, other := out[i], dev
+		if dev.LastSeen.After(keep.LastSeen) {
+			keep, other = dev, out[i]
+		}
+		if keep.StoragePath == "" {
+			keep.StoragePath = other.StoragePath
+		}
+		if keep.OwnerUserID == "" {
+			keep.OwnerUserID = other.OwnerUserID
+		}
+		if keep.CreatedAt.IsZero() || (!other.CreatedAt.IsZero() && other.CreatedAt.Before(keep.CreatedAt)) {
+			keep.CreatedAt = other.CreatedAt
+		}
+		if ur, _ := other.CustomProps["user_renamed"].(bool); ur {
+			if kr, _ := keep.CustomProps["user_renamed"].(bool); !kr {
+				// The user's chosen name (and its folder) beats a default one.
+				keep.Name, keep.StoragePath = other.Name, other.StoragePath
+				if keep.CustomProps == nil {
+					keep.CustomProps = map[string]interface{}{}
 				}
-			} else {
-				seenIP[ip] = dev
+				keep.CustomProps["user_renamed"] = true
 			}
 		}
-
-		if modelNameKey != "_" && modelNameKey != "" {
-			if existing, found := seenModelName[modelNameKey]; found && existing.ID != dev.ID {
-				if dev.LastSeen.After(existing.LastSeen) {
-					toDelete = append(toDelete, existing.ID)
-					seenModelName[modelNameKey] = dev
-				} else {
-					toDelete = append(toDelete, id)
-					continue
-				}
-			} else {
-				seenModelName[modelNameKey] = dev
-			}
-		}
+		out[i] = keep
 	}
-
-	for _, delID := range toDelete {
-		delete(companionDevices, delID)
-		companionWSMu.Lock()
-		if ws, ok := companionWSConns[delID]; ok {
-			ws.Close()
-			delete(companionWSConns, delID)
-		}
-		companionWSMu.Unlock()
-	}
+	return out
 }
 
 func saveCompanionDevicesLocked() error {
-	deduplicateCompanionDevicesLocked()
 	filePath := getCompanionConfigPath()
 	list := make([]*CompanionDevice, 0, len(companionDevices))
 	secrets := make(map[string]string)
@@ -241,6 +417,78 @@ func saveCompanionDevicesLocked() error {
 		}
 	}
 	return os.WriteFile(filePath, data, 0644)
+}
+
+// companionCaller returns the id of the NivaroOS user making the request,
+// from the JWT claims the /v1 group's middleware verified and stored in the
+// echo context (never from a header a client could send). "" means the
+// request was same-host automation that skipped the token
+// (nivaroos_middleware.LocalAutomationSkipper) - it is not scoped to a user.
+func companionCaller(ctx echo.Context) string {
+	if claims, ok := ctx.Get("user").(*jwt.Claims); ok && claims != nil {
+		return strconv.Itoa(claims.ID)
+	}
+	return ""
+}
+
+// companionVisibleTo: a user sees the devices they registered, plus legacy
+// devices no one has claimed yet. Unscoped callers (local automation) see all.
+func companionVisibleTo(dev *CompanionDevice, uid string) bool {
+	return uid == "" || dev.OwnerUserID == "" || dev.OwnerUserID == uid
+}
+
+// lookupCompanionDevice returns a snapshot of device id if the caller may
+// use it. A device that belongs to someone else is reported exactly like a
+// missing one.
+func lookupCompanionDevice(ctx echo.Context, id string) (*CompanionDevice, bool) {
+	uid := companionCaller(ctx)
+	companionMu.Lock()
+	defer companionMu.Unlock()
+	loadCompanionDevicesLocked()
+	dev, ok := companionDevices[id]
+	if !ok || !companionVisibleTo(dev, uid) {
+		return nil, false
+	}
+	return dev.snapshot(), true
+}
+
+// snapshot copies a device out of companionDevices. Everything that works
+// on a device after companionMu is released (proxying to the phone, JSON
+// encoding it) must use a snapshot: the live entry - its CustomProps map
+// included - is rewritten under the lock by every 30 s heartbeat, and an
+// unlocked map read during that write is a fatal runtime error that kills
+// core, not a recoverable panic. Must be called with companionMu held.
+func (d *CompanionDevice) snapshot() *CompanionDevice {
+	c := *d
+	if d.CustomProps != nil {
+		// Values are only ever replaced whole (never mutated in place), so
+		// copying the top level is enough.
+		c.CustomProps = make(map[string]interface{}, len(d.CustomProps))
+		for k, v := range d.CustomProps {
+			c.CustomProps[k] = v
+		}
+	}
+	return &c
+}
+
+// markCompanionSeen records that the phone just answered: on dev (a
+// snapshot the caller holds) and on the live entry, under companionMu.
+// Never call it with companionMu held.
+func markCompanionSeen(dev *CompanionDevice) {
+	now := time.Now()
+	dev.LastSeen, dev.IsOnline = now, true
+	companionMu.Lock()
+	if live, ok := companionDevices[dev.ID]; ok && live != dev && now.After(live.LastSeen) {
+		live.LastSeen, live.IsOnline = now, true
+	}
+	companionMu.Unlock()
+}
+
+func companionNotFound(ctx echo.Context) error {
+	return ctx.JSON(http.StatusNotFound, model.Result{
+		Success: common_err.SERVICE_ERROR,
+		Message: "companion device not found",
+	})
 }
 
 // generateCompanionSecret returns a random 32-byte hex string for a new
@@ -348,7 +596,8 @@ func folderSize(dir string) int64 {
 	return total
 }
 
-// GetCompanionDeviceByStoragePath maps a filesystem path to the owning CompanionDevice and target phone path
+// GetCompanionDeviceByStoragePath maps a filesystem path to (a snapshot of)
+// the owning CompanionDevice and the target phone path.
 func GetCompanionDeviceByStoragePath(p string) (*CompanionDevice, string) {
 	companionMu.RLock()
 	defer companionMu.RUnlock()
@@ -366,13 +615,13 @@ func GetCompanionDeviceByStoragePath(p string) (*CompanionDevice, string) {
 		}
 
 		if cleanP == cleanDevPath {
-			return dev, root
+			return dev.snapshot(), root
 		}
 		if strings.HasPrefix(cleanP, cleanDevPath+"/") {
 			rel := strings.TrimPrefix(cleanP, cleanDevPath)
 			// Map relative path onto device root
 			target := filepath.Join(root, rel)
-			return dev, target
+			return dev.snapshot(), target
 		}
 	}
 	return nil, ""
@@ -386,7 +635,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 
 	// 1. Try direct HTTP if device has a reachable LAN IP
 	devIP := dev.IP
-	if devIP != "" && devIP != "Local Device" && devIP != "Local" && !strings.HasPrefix(devIP, "127.") {
+	if companionHasLANIP(devIP) {
 		port := dev.Port
 		if port <= 0 {
 			port = 8765
@@ -395,7 +644,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 		req, err := http.NewRequest("GET", urlStr, nil)
 		if err == nil {
 			req.Header.Set("X-Companion-Secret", dev.Secret)
-			client := &http.Client{Timeout: 15 * time.Second} // a large folder (DCIM) can take seconds to list on the phone
+			client := companionClient(15 * time.Second) // a large folder (DCIM) can take seconds to list on the phone
 			resp, err := client.Do(req)
 			if err == nil && resp.StatusCode == http.StatusOK {
 				defer resp.Body.Close()
@@ -404,8 +653,7 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 					Files   []CompanionFileItem `json:"files"`
 				}
 				if err := json.NewDecoder(resp.Body).Decode(&body); err == nil && body.Success {
-					dev.LastSeen = time.Now()
-					dev.IsOnline = true
+					markCompanionSeen(dev)
 					return body.Files, nil
 				}
 			}
@@ -413,21 +661,19 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 	}
 
 	// 2. Try WebSocket reverse tunnel
-	companionWSMu.RLock()
-	ws, hasWS := companionWSConns[dev.ID]
-	companionWSMu.RUnlock()
-
-	if hasWS && ws != nil {
+	if ws := companionTunnelFor(dev.ID); ws != nil {
 		reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
 		ch := make(chan map[string]interface{}, 1)
+		// Keyed by device too: only this phone's tunnel can answer it.
+		pendingKey := companionPendingKey(dev.ID, reqID)
 
 		companionPendingMu.Lock()
-		companionPendingReqs[reqID] = ch
+		companionPendingReqs[pendingKey] = ch
 		companionPendingMu.Unlock()
 
 		defer func() {
 			companionPendingMu.Lock()
-			delete(companionPendingReqs, reqID)
+			delete(companionPendingReqs, pendingKey)
 			companionPendingMu.Unlock()
 		}()
 
@@ -436,15 +682,24 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 			"action": "list",
 			"path":   phonePath,
 		}
-		if err := ws.WriteJSON(msg); err == nil {
+		if err := ws.send(msg); err == nil {
 			select {
 			case res := <-ch:
+				// The phone answers success:false for a file or a missing
+				// folder - that is not an empty folder (a copy of a file
+				// through the tunnel used to "succeed" with nothing copied).
+				if ok, isBool := res["success"].(bool); isBool && !ok {
+					m, _ := res["message"].(string)
+					if m == "" {
+						m = "the device couldn't list " + phonePath
+					}
+					return nil, errors.New(m)
+				}
 				if filesRaw, ok := res["files"].([]interface{}); ok {
 					var items []CompanionFileItem
 					data, _ := json.Marshal(filesRaw)
 					json.Unmarshal(data, &items)
-					dev.LastSeen = time.Now()
-					dev.IsOnline = true
+					markCompanionSeen(dev)
 					return items, nil
 				}
 			case <-time.After(15 * time.Second):
@@ -459,8 +714,8 @@ func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]Co
 // ProxyCompanionStream streams a file from the companion device to http.ResponseWriter with Range and inline preview support
 func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.ResponseWriter, r *http.Request) error {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
-		return fmt.Errorf("companion device has no direct LAN IP")
+	if !companionHasLANIP(devIP) {
+		return companionNoLANIPErr(dev)
 	}
 
 	port := dev.Port
@@ -491,10 +746,9 @@ func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.Respons
 		}
 	}
 
-	client := &http.Client{Timeout: 60 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := companionClient(60 * time.Minute).Do(req)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 
@@ -502,8 +756,7 @@ func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.Respons
 		return fmt.Errorf("companion device returned status %d", resp.StatusCode)
 	}
 
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 
 	// Forward critical media/streaming headers
 	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
@@ -532,7 +785,7 @@ func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo
 // ProxyCompanionFileDelete sends a delete request to the companion device
 func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+	if !companionHasLANIP(devIP) {
 		return nil
 	}
 
@@ -547,8 +800,7 @@ func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 	}
 	req.Header.Set("X-Companion-Secret", dev.Secret)
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := companionClient(5 * time.Second).Do(req)
 	if err == nil {
 		resp.Body.Close()
 	}
@@ -558,8 +810,8 @@ func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
 // ProxyCompanionFileRename sends a rename request to the companion device with fallback to streaming
 func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) error {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
-		return fmt.Errorf("companion device has no direct LAN IP")
+	if !companionHasLANIP(devIP) {
+		return companionNoLANIPErr(dev)
 	}
 	port := dev.Port
 	if port <= 0 {
@@ -570,15 +822,15 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 	req, err := http.NewRequest("POST", urlStr, nil)
 	if err == nil {
 		req.Header.Set("X-Companion-Secret", dev.Secret)
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				dev.LastSeen = time.Now()
-				dev.IsOnline = true
-				return nil
-			}
+		resp, err := companionClient(5 * time.Second).Do(req)
+		if err != nil {
+			// Not reachable at all: the fallback below would fail the same way.
+			return companionDirectErr(dev, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			markCompanionSeen(dev)
+			return nil
 		}
 	}
 
@@ -597,11 +849,11 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 		return err
 	}
 	dlReq.Header.Set("X-Companion-Secret", dev.Secret)
-	client := &http.Client{Timeout: 60 * time.Minute}
+	client := companionClient(60 * time.Minute)
 	dlResp, err := client.Do(dlReq)
 	if err != nil {
 		tmpFile.Close()
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer dlResp.Body.Close()
 	if dlResp.StatusCode != http.StatusOK {
@@ -631,7 +883,7 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 	ulReq.Header.Set("Content-Type", "application/octet-stream")
 	ulResp, err := client.Do(ulReq)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer ulResp.Body.Close()
 	if ulResp.StatusCode != http.StatusOK {
@@ -639,16 +891,15 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 	}
 
 	_ = ProxyCompanionFileDelete(dev, oldPath)
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 	return nil
 }
 
 // ProxyCompanionMkdir creates a directory on the companion device
 func ProxyCompanionMkdir(dev *CompanionDevice, phonePath string) error {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
-		return fmt.Errorf("companion device has no direct LAN IP")
+	if !companionHasLANIP(devIP) {
+		return companionNoLANIPErr(dev)
 	}
 	port := dev.Port
 	if port <= 0 {
@@ -659,15 +910,14 @@ func ProxyCompanionMkdir(dev *CompanionDevice, phonePath string) error {
 	req, err := http.NewRequest("POST", urlStr, nil)
 	if err == nil {
 		req.Header.Set("X-Companion-Secret", dev.Secret)
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				dev.LastSeen = time.Now()
-				dev.IsOnline = true
-				return nil
-			}
+		resp, err := companionClient(5 * time.Second).Do(req)
+		if err != nil {
+			return companionDirectErr(dev, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			markCompanionSeen(dev)
+			return nil
 		}
 	}
 
@@ -679,23 +929,21 @@ func ProxyCompanionMkdir(dev *CompanionDevice, phonePath string) error {
 		return err
 	}
 	ulReq.Header.Set("X-Companion-Secret", dev.Secret)
-	client := &http.Client{Timeout: 5 * time.Second}
-	ulResp, err := client.Do(ulReq)
+	ulResp, err := companionClient(5 * time.Second).Do(ulReq)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer ulResp.Body.Close()
 	_ = ProxyCompanionFileDelete(dev, dummyPath)
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 	return nil
 }
 
 // ProxyCompanionUploadStream streams content to the companion device at phonePath
 func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader io.Reader, size int64) error {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
-		return fmt.Errorf("companion device has no direct LAN IP")
+	if !companionHasLANIP(devIP) {
+		return companionNoLANIPErr(dev)
 	}
 	port := dev.Port
 	if port <= 0 {
@@ -712,10 +960,9 @@ func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader i
 	req.Header.Set("X-Companion-Secret", dev.Secret)
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	client := &http.Client{Timeout: 60 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := companionClient(60 * time.Minute).Do(req)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -733,8 +980,7 @@ func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader i
 		}
 		return errors.New(ack.Error)
 	}
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 	return nil
 }
 
@@ -760,30 +1006,17 @@ func DownloadCompanionItemToLocal(ctx context.Context, companionSrc, localDst st
 
 func probeCompanionOnline(dev *CompanionDevice) {
 	// 1. Check WebSocket connection
-	companionWSMu.RLock()
-	ws, hasWS := companionWSConns[dev.ID]
-	companionWSMu.RUnlock()
-	if hasWS && ws != nil {
+	if companionTunnelFor(dev.ID) != nil {
 		dev.LastSeen = time.Now()
 		dev.IsOnline = true
 		return
 	}
 
 	// 2. Proactive LAN check on port 8765
-	devIP := dev.IP
-	if devIP != "" && devIP != "Local Device" && devIP != "Local" && !strings.HasPrefix(devIP, "127.") {
-		port := dev.Port
-		if port <= 0 {
-			port = 8765
-		}
-		client := &http.Client{Timeout: 800 * time.Millisecond}
-		resp, err := client.Get(fmt.Sprintf("http://%s:%d/status", devIP, port))
-		if err == nil && resp.StatusCode == http.StatusOK {
-			_ = resp.Body.Close()
-			dev.LastSeen = time.Now()
-			dev.IsOnline = true
-			return
-		}
+	if probeCompanionLAN(dev) {
+		dev.LastSeen = time.Now()
+		dev.IsOnline = true
+		return
 	}
 
 	// 3. If seen recently (under 75 seconds - two sync intervals), consider online
@@ -792,6 +1025,43 @@ func probeCompanionOnline(dev *CompanionDevice) {
 		return
 	}
 
+	dev.IsOnline = false
+}
+
+// probeCompanionLAN reports whether the phone's file server answers directly.
+func probeCompanionLAN(dev *CompanionDevice) bool {
+	if !companionHasLANIP(dev.IP) {
+		return false
+	}
+	port := dev.Port
+	if port <= 0 {
+		port = 8765
+	}
+	client := &http.Client{Timeout: 800 * time.Millisecond, Transport: companionTransport}
+	resp, err := client.Get(fmt.Sprintf("http://%s:%d/status", dev.IP, port))
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// probeCompanionConnection fills dev.Connection (and IsOnline) for the device
+// list: "lan" when the server can open files on the phone, "remote" when the
+// phone is online but only through the tunnel/heartbeat, else "offline".
+func probeCompanionConnection(dev *CompanionDevice) {
+	if probeCompanionLAN(dev) {
+		dev.Connection = "lan"
+		dev.LastSeen = time.Now()
+		dev.IsOnline = true
+		return
+	}
+	if companionOnlineRemotely(dev) {
+		dev.Connection = "remote"
+		dev.IsOnline = true
+		return
+	}
+	dev.Connection = "offline"
 	dev.IsOnline = false
 }
 
@@ -823,15 +1093,18 @@ func IsCompanionFolderVisible(folderPath string) bool {
 
 // GET /v1/companion/devices
 func GetCompanionDevices(ctx echo.Context) error {
+	uid := companionCaller(ctx)
 	companionMu.Lock()
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
-	deduplicateCompanionDevicesLocked()
 
 	list := make([]*CompanionDevice, 0, len(companionDevices))
 
 	var wg sync.WaitGroup
 	for _, dev := range companionDevices {
+		if !companionVisibleTo(dev, uid) {
+			continue
+		}
 		if dev.Port <= 0 {
 			dev.Port = 8765
 		}
@@ -847,7 +1120,7 @@ func GetCompanionDevices(ctx echo.Context) error {
 		wg.Add(1)
 		go func(d *CompanionDevice) {
 			defer wg.Done()
-			probeCompanionOnline(d)
+			probeCompanionConnection(d)
 		}(dev)
 
 		list = append(list, dev)
@@ -863,7 +1136,56 @@ func GetCompanionDevices(ctx echo.Context) error {
 	})
 }
 
+// assignCompanionFolder gives a device without a backup folder
+// <base>/<name>. A folder another device uses is never shared, and an
+// existing folder is reused only when companionKeptFolders says it holds
+// the kept backups of this same device, or of another phone of the same
+// user - so a phone removed and paired again finds its backups, but a new
+// "Pixel 8" of another user never gets (reads, overwrites) the kept backups
+// of a removed "Pixel 8". Any other existing folder - including one kept
+// before these records existed, whose owner is unknown - counts as taken:
+// "<name> (2)" etc. instead.
+func assignCompanionFolder(base string, devs map[string]*CompanionDevice, dev *CompanionDevice, name string) {
+	stem := sanitizeFilename(name)
+	if stem == "" {
+		stem = sanitizeFilename(dev.ID)
+	}
+	candidate := filepath.Join(base, stem)
+	reuse := true
+	for id, other := range devs {
+		if id != dev.ID && other.StoragePath != "" && filepath.Clean(other.StoragePath) == candidate {
+			reuse = false
+		}
+	}
+	if reuse {
+		if _, err := os.Lstat(candidate); err == nil {
+			rec, ok := companionKeptFolders[candidate]
+			reuse = ok && (rec.DeviceID == dev.ID || (rec.OwnerUserID != "" && rec.OwnerUserID == dev.OwnerUserID))
+		}
+	}
+	if !reuse {
+		if err := relocateDeviceFolder(base, devs, dev, name); err != nil {
+			logger.Error("companion: creating backup folder failed", zap.String("device", dev.ID), zap.Error(err))
+		}
+		return
+	}
+	if _, ok := companionKeptFolders[candidate]; ok {
+		delete(companionKeptFolders, candidate)
+		saveCompanionKeptFoldersLocked()
+	}
+	dev.StoragePath = candidate
+	if err := os.MkdirAll(candidate, 0o755); err != nil {
+		logger.Error("companion: creating backup folder failed", zap.String("device", dev.ID), zap.Error(err))
+	}
+}
+
 // POST /v1/companion/register
+//
+// Devices are identified by their id only (S-02). The caller becomes the
+// device's owner (S-03); a device saved before owners existed is claimed by
+// the first authenticated register call carrying its id - the phone's own
+// heartbeat, every 30 s - which is the whole (idempotent) migration: it only
+// ever fills an empty owner. A device owned by another user is refused.
 func PostRegisterCompanionDevice(ctx echo.Context) error {
 	var input CompanionRegistrationDTO
 	if err := ctx.Bind(&input); err != nil {
@@ -873,10 +1195,22 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		})
 	}
 
-	realIP := ctx.RealIP()
+	input.ID = strings.TrimSpace(input.ID)
 	if input.ID == "" {
-		input.ID = "dev_" + sanitizeFilename(realIP)
+		// Used to become "dev_<caller IP>": every phone behind one NAT (or
+		// on one mobile carrier gateway) then shared - and overwrote - one
+		// device. The app always sends its persistent id.
+		return ctx.JSON(http.StatusBadRequest, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: "device id required",
+		})
 	}
+	// The pairing secret travels in the response only; never keep it in
+	// custom_props, which every device list returns.
+	delete(input.CustomProps, "secret")
+
+	uid := companionCaller(ctx)
+	realIP := ctx.RealIP()
 
 	companionMu.Lock()
 	defer companionMu.Unlock()
@@ -890,7 +1224,7 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	}
 
 	resolvedIP := input.IP
-	if resolvedIP == "" || resolvedIP == "Local Device" || resolvedIP == "Local" || strings.HasPrefix(resolvedIP, "127.") {
+	if !companionHasLANIP(resolvedIP) {
 		resolvedIP = realIP
 	}
 
@@ -904,37 +1238,53 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		rootPath = "/storage/emulated/0"
 	}
 
-	var matchedDev *CompanionDevice
-	var oldKey string
 	now := time.Now()
+	matchedDev := companionDevices[input.ID]
 
-	if existing, exists := companionDevices[input.ID]; exists {
-		matchedDev = existing
-	} else {
-		// Look for existing device with matching IP or matching Model + Name
-		isRealIP := resolvedIP != "" && resolvedIP != "Local Device" && resolvedIP != "Local" && !strings.HasPrefix(resolvedIP, "127.")
-		for id, dev := range companionDevices {
-			if isRealIP && strings.TrimSpace(dev.IP) == strings.TrimSpace(resolvedIP) {
-				matchedDev = dev
-				oldKey = id
-				break
+	if matchedDev != nil && uid != "" && matchedDev.OwnerUserID != "" && matchedDev.OwnerUserID != uid {
+		return ctx.JSON(http.StatusForbidden, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: "this device is paired with another NivaroOS account - remove it there first, or sign in to the app with that account",
+		})
+	}
+
+	if matchedDev != nil && matchedDev.OwnerUserID == "" && uid != "" {
+		// A device saved before owners existed. Its id is visible to every
+		// user, so knowing it proves nothing: the phone proves itself with
+		// the file-server secret it was given at its last registration
+		// (the app sends it as X-Companion-Secret). Only a device the
+		// server holds no secret for - there is nothing to prove against,
+		// and nothing to leak - is claimed by the first user register.
+		proof := ctx.Request().Header.Get("X-Companion-Secret")
+		if matchedDev.Secret != "" && (proof == "" || subtle.ConstantTimeCompare([]byte(proof), []byte(matchedDev.Secret)) != 1) {
+			// Unproven: an app too old to send the secret, or someone else.
+			// Keep the phone listed as online, but change nothing an
+			// attacker could use (address, port, name, props) and hand out
+			// no secret; the owner's phone claims it once its app is updated.
+			matchedDev.IsOnline, matchedDev.LastSeen = true, now
+			if input.BatteryLevel > 0 {
+				matchedDev.BatteryLevel = input.BatteryLevel
 			}
-			if input.Model != "" && input.Name != "" &&
-				strings.EqualFold(strings.TrimSpace(dev.Model), strings.TrimSpace(input.Model)) &&
-				strings.EqualFold(strings.TrimSpace(dev.Name), strings.TrimSpace(input.Name)) {
-				matchedDev = dev
-				oldKey = id
-				break
+			if input.StorageUsed > 0 {
+				matchedDev.StorageUsed = input.StorageUsed
 			}
+			if input.StorageTotal > 0 {
+				matchedDev.StorageTotal = input.StorageTotal
+			}
+			saveCompanionDevicesLocked()
+			return ctx.JSON(http.StatusOK, model.Result{
+				Success: common_err.SUCCESS,
+				Message: "companion device seen - update the NivaroOS app on this phone to link it to your account",
+				Data:    map[string]interface{}{"device": matchedDev.snapshot(), "secret": ""},
+			})
 		}
+		// Proven, or no secret yet - then one is minted below (never taken
+		// from the request).
+		matchedDev.OwnerUserID = uid
+		logger.Info("companion: legacy device claimed by its owner", zap.String("device", matchedDev.ID), zap.String("user_id", uid), zap.Bool("proved_with_secret", matchedDev.Secret != ""))
 	}
 
 	if matchedDev != nil {
-		if oldKey != "" && oldKey != input.ID {
-			delete(companionDevices, oldKey)
-			matchedDev.ID = input.ID
-			companionDevices[input.ID] = matchedDev
-		}
 
 		inputIsUserRenamed := false
 		if input.CustomProps != nil {
@@ -976,11 +1326,7 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		} else {
 			// Device name is preserved! Ensure its existing storage path exists.
 			if matchedDev.StoragePath == "" {
-				sanitized := sanitizeFilename(matchedDev.Name)
-				if sanitized == "" {
-					sanitized = matchedDev.ID
-				}
-				matchedDev.StoragePath = filepath.Join(getCompanionStorageBasePath(), sanitized)
+				assignCompanionFolder(getCompanionStorageBasePath(), companionDevices, matchedDev, matchedDev.Name)
 			}
 			os.MkdirAll(matchedDev.StoragePath, 0755)
 		}
@@ -1023,13 +1369,6 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 			}
 		}
 	} else {
-		newSanitized := sanitizeFilename(input.Name)
-		if newSanitized == "" {
-			newSanitized = input.ID
-		}
-		devStoragePath := filepath.Join(getCompanionStorageBasePath(), newSanitized)
-		os.MkdirAll(devStoragePath, 0755)
-
 		newDev := &CompanionDevice{
 			ID:            input.ID,
 			Name:          input.Name,
@@ -1047,28 +1386,25 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 			IsOnline:      true,
 			LastSeen:      now,
 			CreatedAt:     now,
-			StoragePath:   devStoragePath,
 			CustomProps:   input.CustomProps,
+			OwnerUserID:   uid,
 		}
+		// Its own folder: a second phone with the same default name gets
+		// "Pixel 8 (2)", never the first one's backups.
+		assignCompanionFolder(getCompanionStorageBasePath(), companionDevices, newDev, input.Name)
 		companionDevices[input.ID] = newDev
 	}
 
 	registered := companionDevices[input.ID]
 	if registered.Secret == "" {
-		if headerSecret := ctx.Request().Header.Get("X-Companion-Secret"); headerSecret != "" {
-			registered.Secret = headerSecret
-		} else if input.CustomProps != nil {
-			if propSecret, ok := input.CustomProps["secret"].(string); ok && propSecret != "" {
-				registered.Secret = propSecret
-			}
-		}
-		if registered.Secret == "" {
-			secret, err := generateCompanionSecret()
-			if err != nil {
-				logger.Error("failed to generate companion device secret", zap.Error(err))
-			} else {
-				registered.Secret = secret
-			}
+		// Always minted here, never taken from the request's
+		// X-Companion-Secret: a caller must not choose the credential the
+		// server sends to the phone's file server.
+		secret, err := generateCompanionSecret()
+		if err != nil {
+			logger.Error("failed to generate companion device secret", zap.Error(err))
+		} else {
+			registered.Secret = secret
 		}
 	}
 
@@ -1082,7 +1418,7 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		Success: common_err.SUCCESS,
 		Message: "companion device registered",
 		Data: map[string]interface{}{
-			"device": registered,
+			"device": registered.snapshot(),
 			"secret": registered.Secret,
 		},
 	})
@@ -1105,17 +1441,16 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 			Message: "invalid update payload",
 		})
 	}
+	delete(update.CustomProps, "secret")
 
+	uid := companionCaller(ctx)
 	companionMu.Lock()
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
 
 	dev, exists := companionDevices[id]
-	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "companion device not found",
-		})
+	if !exists || !companionVisibleTo(dev, uid) {
+		return companionNotFound(ctx)
 	}
 
 	// Rename storage path if name changed
@@ -1167,16 +1502,14 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 		})
 	}
 
+	uid := companionCaller(ctx)
 	companionMu.Lock()
 	defer companionMu.Unlock()
 	loadCompanionDevicesLocked()
 
 	dev, exists := companionDevices[id]
-	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "companion device not found",
-		})
+	if !exists || !companionVisibleTo(dev, uid) {
+		return companionNotFound(ctx)
 	}
 
 	// 1. The device's backups stay unless the user explicitly asked to
@@ -1193,12 +1526,30 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 			shared = true
 		}
 	}
+	if ctx.QueryParam("delete_data") == "true" && dev.OwnerUserID == "" && uid != "" {
+		// Not linked to an account yet, so this caller's claim to it is only
+		// that they can see it - every user can.
+		return ctx.JSON(http.StatusForbidden, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: "this phone isn't linked to an account yet, so its backups can't be deleted from here - remove it and keep its backups, then delete the folder in Files",
+		})
+	}
 	if inBase && !shared && ctx.QueryParam("delete_data") == "true" {
 		if err := os.RemoveAll(storage); err != nil {
 			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: "couldn't delete the backups: " + err.Error()})
 		}
+		if _, ok := companionKeptFolders[storage]; ok {
+			delete(companionKeptFolders, storage)
+			saveCompanionKeptFoldersLocked()
+		}
 	} else if inBase {
 		keptData = storage
+		if !shared {
+			// Whose backups these are, so only this phone (or another phone
+			// of the same user) is ever given the folder again.
+			companionKeptFolders[storage] = companionKeptFolder{DeviceID: dev.ID, OwnerUserID: dev.OwnerUserID, KeptAt: time.Now()}
+			saveCompanionKeptFoldersLocked()
+		}
 	}
 
 	// 2. Remove device from map and save
@@ -1206,12 +1557,7 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 	saveCompanionDevicesLocked()
 
 	// 3. Close any active WS connection
-	companionWSMu.Lock()
-	if ws, ok := companionWSConns[id]; ok {
-		ws.Close()
-		delete(companionWSConns, id)
-	}
-	companionWSMu.Unlock()
+	closeCompanionTunnel(id)
 
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
@@ -1222,16 +1568,9 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 
 // GET /v1/companion/devices/:id/storage
 func GetCompanionDeviceStorage(ctx echo.Context) error {
-	id := ctx.Param("id")
-	companionMu.RLock()
-	dev, exists := companionDevices[id]
-	companionMu.RUnlock()
-
+	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
 	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "device not found",
-		})
+		return companionNotFound(ctx)
 	}
 
 	probeCompanionOnline(dev)
@@ -1253,18 +1592,11 @@ func GetCompanionDeviceStorage(ctx echo.Context) error {
 
 // GET /v1/companion/devices/:id/files
 func GetCompanionDeviceFiles(ctx echo.Context) error {
-	id := ctx.Param("id")
 	subPath := ctx.QueryParam("path")
 
-	companionMu.RLock()
-	dev, exists := companionDevices[id]
-	companionMu.RUnlock()
-
+	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
 	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "companion device not found",
-		})
+		return companionNotFound(ctx)
 	}
 
 	phonePath := subPath
@@ -1348,18 +1680,11 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 
 // GET /v1/companion/devices/:id/file
 func GetCompanionDeviceDownload(ctx echo.Context) error {
-	id := ctx.Param("id")
 	filePath := ctx.QueryParam("path")
 
-	companionMu.RLock()
-	dev, exists := companionDevices[id]
-	companionMu.RUnlock()
-
+	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
 	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "companion device not found",
-		})
+		return companionNotFound(ctx)
 	}
 
 	if filePath == "" {
@@ -1380,10 +1705,15 @@ func GetCompanionDeviceDownload(ctx echo.Context) error {
 		return companionUnreachable(ctx, dev, err)
 	}
 
-	// Fallback to server local companion storage
+	// Fallback to server local companion storage - this device's backup
+	// folder only (any folder under the companion base used to pass, i.e.
+	// every other phone's backups).
 	cleanPath := filepath.Clean(filePath)
-	base := getCompanionStorageBasePath()
-	if !withinDir(dev.StoragePath, cleanPath) && !withinDir(base, cleanPath) {
+	devDir := dev.StoragePath
+	if devDir == "" {
+		devDir = filepath.Join(getCompanionStorageBasePath(), sanitizeFilename(dev.Name))
+	}
+	if !withinDir(devDir, cleanPath) {
 		return ctx.JSON(http.StatusForbidden, model.Result{
 			Success: common_err.CLIENT_ERROR,
 			Message: "access outside companion device storage is denied",
@@ -1398,15 +1728,9 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 	id := ctx.Param("id")
 	destSubPath := ctx.QueryParam("path")
 
-	companionMu.RLock()
-	dev, exists := companionDevices[id]
-	companionMu.RUnlock()
-
+	dev, exists := lookupCompanionDevice(ctx, id)
 	if !exists {
-		return ctx.JSON(http.StatusNotFound, model.Result{
-			Success: common_err.SERVICE_ERROR,
-			Message: "companion device not found",
-		})
+		return companionNotFound(ctx)
 	}
 
 	targetDir := dev.StoragePath
@@ -1481,26 +1805,50 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 }
 
 // GET /v1/companion/devices/:id/ws
+//
+// The phone's reverse tunnel. Only the device's owner may open it (another
+// user holding the id could otherwise replace the tunnel and answer the
+// owner's listings), and only for a registered device - the phone registers
+// before (and retries this every 15 s after) so that costs nothing.
 func GetCompanionDeviceWS(ctx echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
 		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "id required"})
 	}
+	dev, ok := lookupCompanionDevice(ctx, id)
+	if !ok {
+		return companionNotFound(ctx)
+	}
+	// Not for a legacy device no one has claimed yet either: whoever holds
+	// the tunnel answers the owner's listings and can repoint the device
+	// (its "register" message). The phone claims it with its next
+	// heartbeat (PostRegisterCompanionDevice) and reconnects in 15 s.
+	if uid := companionCaller(ctx); uid != "" && dev.OwnerUserID != uid {
+		return companionNotFound(ctx)
+	}
 
-	ws, err := wsUpgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
+	conn, err := wsUpgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		logger.Error("WS upgrade failed", zap.Error(err))
 		return err
 	}
-	defer ws.Close()
+	defer conn.Close()
+	tunnel := &companionTunnel{conn: conn}
 
 	companionWSMu.Lock()
-	companionWSConns[id] = ws
+	if prev, ok := companionWSConns[id]; ok {
+		prev.conn.Close() // a reconnect replaces a half-dead tunnel
+	}
+	companionWSConns[id] = tunnel
 	companionWSMu.Unlock()
 
 	defer func() {
 		companionWSMu.Lock()
-		delete(companionWSConns, id)
+		// Only our own entry: the replaced tunnel's exit must not remove
+		// the reconnect that replaced it.
+		if companionWSConns[id] == tunnel {
+			delete(companionWSConns, id)
+		}
 		companionWSMu.Unlock()
 	}()
 
@@ -1509,8 +1857,9 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 	if dev, ok := companionDevices[id]; ok {
 		dev.IsOnline = true
 		dev.LastSeen = time.Now()
-		realIP := ctx.RealIP()
-		if realIP != "" && !strings.HasPrefix(realIP, "127.") {
+		// ctx.RealIP() is the phone's public side when it isn't on the LAN;
+		// keep the LAN address the heartbeat reported.
+		if realIP := ctx.RealIP(); dev.IP == "" && companionHasLANIP(realIP) {
 			dev.IP = realIP
 		}
 	}
@@ -1519,7 +1868,7 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 	logger.Info("Companion WebSocket tunnel connected", zap.String("id", id))
 
 	for {
-		_, message, err := ws.ReadMessage()
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}
@@ -1534,7 +1883,7 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 					if port, ok := msg["port"].(float64); ok && port > 0 {
 						dev.Port = int(port)
 					}
-					if ip, ok := msg["ip"].(string); ok && ip != "" && ip != "Local Device" {
+					if ip, ok := msg["ip"].(string); ok && companionHasLANIP(ip) {
 						dev.IP = ip
 					}
 					dev.SharesStorage = true
@@ -1544,7 +1893,7 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 				companionMu.Unlock()
 			} else if reqID != "" {
 				companionPendingMu.Lock()
-				if ch, ok := companionPendingReqs[reqID]; ok {
+				if ch, ok := companionPendingReqs[companionPendingKey(id, reqID)]; ok {
 					select {
 					case ch <- msg:
 					default:
@@ -1594,10 +1943,9 @@ func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, 
 	}
 	req.Header.Set("X-Companion-Secret", dev.Secret)
 	req.Header.Set("Range", "bytes=0-0")
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := companionClient(5 * time.Second).Do(req)
 	if err != nil {
-		return 0, err
+		return 0, companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 	if cr := resp.Header.Get("Content-Range"); cr != "" {
@@ -1615,7 +1963,7 @@ func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, 
 
 func isCompanionFile(dev *CompanionDevice, phonePath string) bool {
 	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
+	if !companionHasLANIP(devIP) {
 		return false
 	}
 	port := dev.Port
@@ -1629,8 +1977,7 @@ func isCompanionFile(dev *CompanionDevice, phonePath string) bool {
 	}
 	req.Header.Set("X-Companion-Secret", dev.Secret)
 	req.Header.Set("Range", "bytes=0-0")
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := companionClient(3 * time.Second).Do(req)
 	if err != nil {
 		return false
 	}
@@ -1681,6 +2028,12 @@ func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companio
 			} else {
 				childDst := filepath.Join(targetDir, it.Name)
 				if err := h.downloadFileFromCompanion(ctx, dev, it.Path, childDst, style, onProgress); err != nil {
+					// Listing works through the tunnel, file transfer doesn't:
+					// say so once instead of once per file.
+					var nl *errCompanionNotOnLAN
+					if errors.As(err, &nl) {
+						return err
+					}
 					errs = append(errs, fmt.Errorf("%s: %w", it.Name, err))
 				}
 			}
@@ -1718,10 +2071,9 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 		return err
 	}
 	req.Header.Set("X-Companion-Secret", dev.Secret)
-	client := &http.Client{Timeout: 60 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := companionClient(60 * time.Minute).Do(req)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -1780,8 +2132,7 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 		_ = os.Remove(tmp)
 		return err
 	}
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 	return nil
 }
 
@@ -1870,10 +2221,9 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 	req.Header.Set("X-Companion-Secret", dev.Secret)
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	client := &http.Client{Timeout: 60 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := companionClient(60 * time.Minute).Do(req)
 	if err != nil {
-		return err
+		return companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -1889,8 +2239,7 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 		}
 		return errors.New(ack.Error)
 	}
-	dev.LastSeen = time.Now()
-	dev.IsOnline = true
+	markCompanionSeen(dev)
 	return nil
 }
 
