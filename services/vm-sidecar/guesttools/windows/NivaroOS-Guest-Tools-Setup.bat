@@ -5,8 +5,9 @@ cd /d "%~dp0"
 
 rem NivaroOS Guest Tools for Windows 10/11 (and Server 2016+).
 rem Installs every VirtIO driver + the QEMU guest agent (virtio-win),
-rem WinFsp, and starts the VirtIO-FS service so the NivaroOS shared
-rem folder (/DATA/VMs/share on the server) shows up as a drive.
+rem the SPICE agent (copy/paste with the NivaroOS console), WinFsp, and
+rem starts the VirtIO-FS service so the NivaroOS shared folder
+rem (/DATA/VMs/share on the server) shows up as a drive.
 rem Safe to run again: every step is skipped/repaired when already done.
 rem Unattended: NivaroOS-Guest-Tools-Setup.bat /quiet
 
@@ -28,7 +29,7 @@ if errorlevel 1 (
 
 echo NivaroOS Guest Tools setup - %DATE% %TIME% > "%LOG%"
 echo ==================================================================
-echo   NivaroOS Guest Tools - drivers and shared folder
+echo   NivaroOS Guest Tools - drivers, clipboard and shared folder
 echo ==================================================================
 echo.
 
@@ -42,7 +43,7 @@ if defined BUILD if !BUILD! GEQ 22000 set "WINDIR_TAG=w11"
 echo Windows build !BUILD!, !ARCH! >> "%LOG%"
 
 rem --- 1. VirtIO drivers + QEMU guest agent (+ VirtIO-FS service binary)
-echo [1/4] Installing VirtIO drivers and the QEMU guest agent...
+echo [1/5] Installing VirtIO drivers and the QEMU guest agent...
 if exist "%~dp0virtio-win-guest-tools.exe" (
     start /wait "" "%~dp0virtio-win-guest-tools.exe" /install /passive /norestart
     set "RC=!errorlevel!"
@@ -57,8 +58,33 @@ if exist "%~dp0virtio-win-guest-tools.exe" (
     set "FAILED=1"
 )
 
-rem --- 2. WinFsp (the file system layer VirtIO-FS needs)
-echo [2/4] Installing WinFsp...
+rem --- 2. SPICE agent: carries the clipboard between the NivaroOS console
+rem     and Windows (over the VM's com.redhat.spice.0 port, whose VirtIO
+rem     serial driver step 1 installed). Only built for x64; a disc built
+rem     while the server couldn't download it just lacks it.
+echo [2/5] Installing the SPICE agent (console copy/paste)...
+sc query spice-agent >nul 2>&1
+if not errorlevel 1 (
+    echo       already installed
+) else if not "!ARCH!"=="amd64" (
+    echo       skipped - only available for 64-bit Intel/AMD Windows
+    echo spice-vdagent skipped: !ARCH! >> "%LOG%"
+) else if exist "%~dp0spice-vdagent-x64.msi" (
+    msiexec /i "%~dp0spice-vdagent-x64.msi" /qn /norestart /l*v "%TEMP%\nivaroos-spice-vdagent.log"
+    set "RC=!errorlevel!"
+    echo spice-vdagent msiexec exit !RC! >> "%LOG%"
+    if not "!RC!"=="0" if not "!RC!"=="3010" if not "!RC!"=="1638" (
+        echo       [!] The SPICE agent did not install - see %TEMP%\nivaroos-spice-vdagent.log
+        set "FAILED=1"
+    )
+) else (
+    echo       skipped - spice-vdagent-x64.msi isn't on this disc, so copy/paste
+    echo       with the console won't work. Rebuild the Guest Tools in NivaroOS.
+    echo spice-vdagent.msi missing from the disc >> "%LOG%"
+)
+
+rem --- 3. WinFsp (the file system layer VirtIO-FS needs)
+echo [3/5] Installing WinFsp...
 if exist "%ProgramFiles(x86)%\WinFsp\bin\winfsp-x64.dll" (
     echo       already installed
 ) else if exist "%~dp0winfsp.msi" (
@@ -73,16 +99,16 @@ if exist "%ProgramFiles(x86)%\WinFsp\bin\winfsp-x64.dll" (
     set "FAILED=1"
 )
 
-rem --- 3. VirtIO-FS driver (normally already added by step 1)
-echo [3/4] Installing the VirtIO-FS driver...
+rem --- 4. VirtIO-FS driver (normally already added by step 1)
+echo [4/5] Installing the VirtIO-FS driver...
 if exist "%~dp0viofs\%WINDIR_TAG%\%ARCH%\viofs.inf" (
     pnputil /add-driver "%~dp0viofs\%WINDIR_TAG%\%ARCH%\viofs.inf" /install >> "%LOG%" 2>&1
 ) else if exist "%~dp0viofs\w10\%ARCH%\viofs.inf" (
     pnputil /add-driver "%~dp0viofs\w10\%ARCH%\viofs.inf" /install >> "%LOG%" 2>&1
 )
 
-rem --- 4. VirtIO-FS service: create if the driver package didn't, then start
-echo [4/4] Starting the shared folder service...
+rem --- 5. VirtIO-FS service: create if the driver package didn't, then start
+echo [5/5] Starting the shared folder service...
 set "VIOFS_EXE=%ProgramFiles%\Virtio-Win\VioFS\virtiofs.exe"
 if not exist "%VIOFS_EXE%" if exist "%~dp0viofs\%WINDIR_TAG%\%ARCH%\virtiofs.exe" (
     mkdir "%ProgramFiles%\Virtio-Win\VioFS" >nul 2>&1
@@ -117,7 +143,8 @@ if defined FAILED (
 )
 echo ==================================================================
 echo   Done. Drivers are installed and the shared folder is available
-echo   in File Explorer ("This PC"). A restart finishes driver updates.
+echo   in File Explorer ("This PC"). A restart finishes driver updates
+echo   (and turns on copy/paste with the NivaroOS console).
 echo ==================================================================
 if not defined QUIET timeout /t 8
 exit /b 0

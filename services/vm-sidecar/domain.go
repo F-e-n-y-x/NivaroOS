@@ -120,6 +120,11 @@ type VM struct {
 	// default display mode.
 	DisplayWidth  uint `json:"display_width,omitempty"`
 	DisplayHeight uint `json:"display_height,omitempty"`
+	// ClipboardChannel: the VM has the qemu-vdagent channel that lets the
+	// console's copy/paste reach the guest (read from the live XML for a
+	// running VM, so it's only true once the running instance has it).
+	// The guest still needs spice-vdagent, from the guest tools.
+	ClipboardChannel bool `json:"clipboard_channel"`
 	// Warning is only ever set on POST /vms's response: the VM was created
 	// (and stays defined) but something after that - starting it - failed.
 	Warning string `json:"warning,omitempty"`
@@ -416,6 +421,7 @@ func toVM(dom *libvirt.Domain) (VM, error) {
 		}
 	}
 	vm.SharedFolders = sharesFromXML(parsed)
+	vm.ClipboardChannel = hasClipboardChannel(xmlDesc)
 	return vm, nil
 }
 
@@ -819,7 +825,8 @@ const domainXMLTemplate = `<domain type='kvm'>
     <channel type='unix'>
       <target type='virtio' name='org.qemu.guest_agent.0'/>
     </channel>
-  </devices>
+    {{if .ClipboardChannel}}{{template "clipboard"}}
+    {{end}}</devices>
 </domain>`
 
 // nicDeviceXMLTemplate is one <interface> element - shared by the full
@@ -848,7 +855,8 @@ var xmlFuncs = template.FuncMap{"x": xmlEscape}
 
 var (
 	nicDeviceTemplate = template.Must(template.New("nic").Funcs(xmlFuncs).Parse(nicDeviceXMLTemplate))
-	domainTemplate    = template.Must(template.Must(template.Must(nicDeviceTemplate.Clone()).AddParseTree("share", shareDeviceTemplate.Tree)).New("domain").Parse(domainXMLTemplate))
+	clipboardTemplate = template.Must(template.New("clipboard").Parse(clipboardChannelXML))
+	domainTemplate    = template.Must(template.Must(template.Must(template.Must(nicDeviceTemplate.Clone()).AddParseTree("share", shareDeviceTemplate.Tree)).AddParseTree("clipboard", clipboardTemplate.Tree)).New("domain").Parse(domainXMLTemplate))
 )
 
 // shareDevice is the template data for shares' device - the default
@@ -893,6 +901,10 @@ type domainXMLData struct {
 	// default, same as before this existed.
 	DisplayWidth  uint
 	DisplayHeight uint
+	// ClipboardChannel adds the qemu-vdagent channel that carries the VNC
+	// console's clipboard (see clipboard.go) - only when the host's
+	// libvirt/QEMU support it.
+	ClipboardChannel bool
 }
 
 // ovmfCodePath is the read-only UEFI firmware image itself (the same for
@@ -1299,19 +1311,20 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 	}
 
 	data := domainXMLData{
-		Name:          req.Name,
-		VCPUs:         req.VCPUs,
-		MemoryMiB:     req.MemoryMiB,
-		Disks:         renderedDisks,
-		ISO:           iso,
-		Networks:      renderedNets,
-		USBDevices:    renderedUSB,
-		PCIDevices:    renderedPCI,
-		Share:         shareDevice(shares),
-		UseOSBoot:     len(req.BootOrder) == 0,
-		Firmware:      req.Firmware,
-		DisplayWidth:  req.DisplayWidth,
-		DisplayHeight: req.DisplayHeight,
+		Name:             req.Name,
+		VCPUs:            req.VCPUs,
+		MemoryMiB:        req.MemoryMiB,
+		Disks:            renderedDisks,
+		ISO:              iso,
+		Networks:         renderedNets,
+		USBDevices:       renderedUSB,
+		PCIDevices:       renderedPCI,
+		Share:            shareDevice(shares),
+		UseOSBoot:        len(req.BootOrder) == 0,
+		Firmware:         req.Firmware,
+		DisplayWidth:     req.DisplayWidth,
+		DisplayHeight:    req.DisplayHeight,
+		ClipboardChannel: hostSupportsClipboardChannel(conn),
 	}
 	if req.Firmware == "uefi" {
 		nvramPath := nvramPathFor(vmDirFor(req.Name), req.Name)
@@ -1331,7 +1344,7 @@ func (s *LibvirtStore) CreateVM(req CreateVMRequest) (VM, error) {
 		return VM{}, fmt.Errorf("render domain XML: %w", err)
 	}
 
-	dom, err := conn.DomainDefineXML(xmlBuf.String())
+	dom, err := defineDomainXML(conn, data, xmlBuf.String())
 	if err != nil {
 		abort()
 		return VM{}, fmt.Errorf("define domain: %w", err)
@@ -1494,20 +1507,21 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 	}
 
 	data := domainXMLData{
-		Name:          name,
-		UUID:          strings.TrimSpace(parsed.UUID),
-		VCPUs:         req.VCPUs,
-		MemoryMiB:     req.MemoryMiB,
-		Disks:         renderedDisks,
-		ISO:           iso,
-		Networks:      renderedNets,
-		USBDevices:    renderedUSB,
-		PCIDevices:    renderedPCI,
-		Share:         shareDevice(shares),
-		UseOSBoot:     len(req.BootOrder) == 0,
-		Firmware:      req.Firmware,
-		DisplayWidth:  req.DisplayWidth,
-		DisplayHeight: req.DisplayHeight,
+		Name:             name,
+		UUID:             strings.TrimSpace(parsed.UUID),
+		VCPUs:            req.VCPUs,
+		MemoryMiB:        req.MemoryMiB,
+		Disks:            renderedDisks,
+		ISO:              iso,
+		Networks:         renderedNets,
+		USBDevices:       renderedUSB,
+		PCIDevices:       renderedPCI,
+		Share:            shareDevice(shares),
+		UseOSBoot:        len(req.BootOrder) == 0,
+		Firmware:         req.Firmware,
+		DisplayWidth:     req.DisplayWidth,
+		DisplayHeight:    req.DisplayHeight,
+		ClipboardChannel: s.clipboardSupported(),
 	}
 
 	var created []string
@@ -1569,7 +1583,7 @@ func (s *LibvirtStore) UpdateVM(name string, req UpdateVMRequest) (VM, error) {
 	// persistent definition in place (NVRAM, snapshots metadata and
 	// autostart untouched) - no undefine, so there's no window in which a
 	// failed define can lose the VM.
-	newDom, err := conn.DomainDefineXML(xmlBuf.String())
+	newDom, err := defineDomainXML(conn, data, xmlBuf.String())
 	if err != nil {
 		removeFiles(created)
 		return VM{}, fmt.Errorf("redefine domain: %w", err)
@@ -1830,8 +1844,9 @@ func replaceNIC(dom *libvirt.Domain, old NICInfo, n NICSpec) error {
 	return nil
 }
 
-// StartVM first gives a VM that lacks it the default shared folder (see
-// ensureDefaultShareDevice) - so every VM, however old, gets it on its
+// StartVM first gives a VM that lacks them the default shared folder (see
+// ensureDefaultShareDevice) and the clipboard channel (see
+// ensureClipboardChannel) - so every VM, however old, gets both on its
 // next boot - and makes sure any legacy share export directory it still
 // references exists, since virtiofsd would otherwise fail the start.
 func (s *LibvirtStore) StartVM(name string) error {
@@ -1857,6 +1872,11 @@ func (s *LibvirtStore) StartVM(name string) error {
 		}
 		if err := ensureDefaultShareDevice(conn, dom); err != nil {
 			return fmt.Errorf("prepare shared folder: %w", err)
+		}
+		// Same for the clipboard channel. Not fatal: the VM still boots,
+		// just without console copy/paste.
+		if _, err := ensureClipboardChannel(conn, dom, hostSupportsClipboardChannel(conn)); err != nil {
+			log.Printf("vm %s: %v", name, err)
 		}
 	}
 	if xmlDesc, err := dom.GetXMLDesc(libvirt.DOMAIN_XML_INACTIVE); err == nil {

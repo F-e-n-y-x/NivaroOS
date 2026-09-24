@@ -5,9 +5,12 @@
 # virtiofs file system are in every mainstream kernel), so this only:
 #   1. installs the QEMU guest agent (clean shutdown, IP reporting, and it
 #      lets NivaroOS run future setups for you automatically),
-#   2. mounts the NivaroOS shared folder (/DATA/VMs/share on the server,
+#   2. installs the SPICE agent (spice-vdagent), which carries copy/paste
+#      between the NivaroOS console and the desktop (X11 sessions; it
+#      talks over the VM's com.redhat.spice.0 port),
+#   3. mounts the NivaroOS shared folder (/DATA/VMs/share on the server,
 #      tag "share") at /mnt/nivaroos-share, now and on every boot,
-#   3. links it into the desktop user's home as ~/NivaroOS-Share.
+#   4. links it into the desktop user's home as ~/NivaroOS-Share.
 # Safe to run again. Run as root (it re-runs itself with sudo if needed).
 set -u
 
@@ -25,11 +28,11 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 say "=================================================================="
-say "  NivaroOS Guest Tools - shared folder and guest agent"
+say "  NivaroOS Guest Tools - shared folder, clipboard and guest agent"
 say "=================================================================="
 
 # --- 1. QEMU guest agent (best effort: needs the distro's repositories)
-say "[1/3] Installing the QEMU guest agent..."
+say "[1/4] Installing the QEMU guest agent..."
 if command -v qemu-ga >/dev/null 2>&1 || [ -x /usr/bin/qemu-ga ] || [ -x /usr/sbin/qemu-ga ]; then
 	say "      already installed"
 elif command -v apt-get >/dev/null 2>&1; then
@@ -51,8 +54,47 @@ if command -v systemctl >/dev/null 2>&1; then
 	systemctl enable --now qemu-guest-agent >/dev/null 2>&1 || true
 fi
 
-# --- 2. shared folder
-say "[2/3] Mounting the NivaroOS shared folder at $MNT..."
+# --- 2. SPICE agent (best effort, like the guest agent: without it only
+# console copy/paste is missing). spice-vdagentd is the system daemon; the
+# per-user spice-vdagent starts with the next desktop login.
+say "[2/4] Installing the SPICE agent (console copy/paste)..."
+VDA_WARN="could not install spice-vdagent (no internet in the VM?) - copy/paste with the console won't work"
+if command -v spice-vdagentd >/dev/null 2>&1 || [ -x /usr/sbin/spice-vdagentd ] || [ -x /usr/bin/spice-vdagentd ]; then
+	say "      already installed"
+elif command -v apt-get >/dev/null 2>&1; then
+	DEBIAN_FRONTEND=noninteractive apt-get install -y spice-vdagent >/dev/null 2>&1 ||
+		{ apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y spice-vdagent >/dev/null 2>&1; } ||
+		warn "$VDA_WARN"
+elif command -v dnf >/dev/null 2>&1; then
+	dnf install -y spice-vdagent >/dev/null 2>&1 || warn "$VDA_WARN"
+elif command -v zypper >/dev/null 2>&1; then
+	zypper --non-interactive install spice-vdagent >/dev/null 2>&1 || warn "$VDA_WARN"
+elif command -v pacman >/dev/null 2>&1; then
+	pacman -S --noconfirm spice-vdagent >/dev/null 2>&1 || warn "$VDA_WARN"
+elif command -v apk >/dev/null 2>&1; then
+	apk add spice-vdagent >/dev/null 2>&1 || warn "$VDA_WARN"
+	apk add spice-vdagent-openrc >/dev/null 2>&1 || true
+else
+	say "      no known package manager - skipped"
+fi
+# The daemon only runs once the VM has the clipboard port (from its next
+# start in NivaroOS); enabling it now means it comes up on its own then.
+if command -v systemctl >/dev/null 2>&1; then
+	systemctl enable spice-vdagentd.socket spice-vdagentd.service >/dev/null 2>&1 ||
+		systemctl enable spice-vdagentd >/dev/null 2>&1 || true
+	[ -e /dev/virtio-ports/com.redhat.spice.0 ] && systemctl start spice-vdagentd >/dev/null 2>&1 || true
+elif command -v rc-update >/dev/null 2>&1; then
+	rc-update add spice-vdagentd default >/dev/null 2>&1 || true
+	[ -e /dev/virtio-ports/com.redhat.spice.0 ] && rc-service spice-vdagentd start >/dev/null 2>&1 || true
+fi
+if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ]; then
+	say "      copy/paste starts working after the VM is shut down and started again from NivaroOS"
+else
+	say "      copy/paste works after you log out of the desktop and back in (or reboot)"
+fi
+
+# --- 3. shared folder
+say "[3/4] Mounting the NivaroOS shared folder at $MNT..."
 grep -qw virtiofs /proc/filesystems 2>/dev/null || modprobe virtiofs 2>/dev/null || true
 if ! grep -qw virtiofs /proc/filesystems 2>/dev/null; then
 	warn "this kernel has no virtiofs support (needs Linux 5.4 or newer)"
@@ -77,8 +119,8 @@ else
 	fi
 fi
 
-# --- 3. shortcut in the desktop user's home
-say "[3/3] Adding a ~/NivaroOS-Share shortcut..."
+# --- 4. shortcut in the desktop user's home
+say "[4/4] Adding a ~/NivaroOS-Share shortcut..."
 U="${SUDO_USER:-}"
 [ -z "$U" ] && U=$(awk -F: '$3>=1000 && $3<60000 {print $1; exit}' /etc/passwd)
 if [ -n "$U" ]; then

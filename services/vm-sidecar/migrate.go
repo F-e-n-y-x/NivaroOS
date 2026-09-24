@@ -215,19 +215,24 @@ func (s *LibvirtStore) migrateVMLayout(conn *libvirt.Connect, dom *libvirt.Domai
 	return true, nil
 }
 
-// MigrateLegacyLayout runs at startup: every stopped VM, then the old
-// shared folders (loose ISOs from isos/ into ISOs/, empty legacy dirs
-// removed). Best-effort: problems are logged, never fatal.
+// MigrateLegacyLayout runs at startup: every stopped VM (layout, plus the
+// clipboard channel VMs made before it existed lack), then the old shared
+// folders (loose ISOs from isos/ into ISOs/, empty legacy dirs removed).
+// Best-effort: problems are logged, never fatal.
 func (s *LibvirtStore) MigrateLegacyLayout() {
 	conn, err := s.getConn()
 	if err != nil {
 		return
 	}
+	clipboard := hostSupportsClipboardChannel(conn)
 	doms, err := conn.ListAllDomains(0)
 	if err == nil {
 		for i := range doms {
 			if _, err := s.migrateVMLayout(conn, &doms[i]); err != nil {
 				log.Printf("vm layout migration: %v", err)
+			}
+			if _, err := ensureClipboardChannel(conn, &doms[i], clipboard); err != nil {
+				log.Printf("vm clipboard migration: %v", err)
 			}
 			doms[i].Free()
 		}

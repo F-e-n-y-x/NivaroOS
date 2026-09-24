@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,8 +24,10 @@ import (
 
 // NivaroOS Guest Tools: one CD for every guest OS, built on this server
 // from the upstream virtio-win ISO (all Windows VirtIO drivers + the QEMU
-// guest agent), the WinFsp MSI (needed by VirtIO-FS on Windows) and the
-// setup scripts in guesttools/ that ship with this service.
+// guest agent), the WinFsp MSI (needed by VirtIO-FS on Windows), the SPICE
+// agent MSI (console copy/paste on Windows, over the VM's qemu-vdagent
+// channel) and the setup scripts in guesttools/ that ship with this
+// service.
 //
 // The ISO used to be a hand-remastered virtio-win.iso that lived only on
 // one box: its Windows script installed a winfsp.msi that wasn't on the
@@ -41,7 +45,7 @@ import (
 var guestToolsFS embed.FS
 
 // Bump when anything in guesttools/ changes, so existing ISOs get rebuilt.
-const guestToolsVersion = "4"
+const guestToolsVersion = "5"
 
 const (
 	guestToolsISOName = "nivaroos-guest-tools.iso"
@@ -49,6 +53,12 @@ const (
 	virtioWinURL      = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 	winfspURL         = "https://github.com/winfsp/winfsp/releases/download/v2.1/winfsp-2.1.25156.msi"
 	winfspSize        = 2191360
+	// The SPICE Windows guest agent (vdagent + vdservice) - the current
+	// stable release, pinned by the sha256 spice-space.org publishes
+	// alongside it (vdagent-win-0.10.0/sha256sum).
+	spiceVdagentURL    = "https://www.spice-space.org/download/windows/vdagent/vdagent-win-0.10.0/spice-vdagent-x64-0.10.0.msi"
+	spiceVdagentSize   = 1988608
+	spiceVdagentSHA256 = "77629435705bc27dd7d2525e9d2084f72dbab5fdbf310e812f91332fe18d00eb"
 )
 
 type guestToolsState struct {
@@ -166,7 +176,16 @@ func buildGuestToolsISO(ctx context.Context) error {
 		}
 	}
 
-	// 3. Scripts from guesttools/ (Windows gets CRLF line endings).
+	// 3. SPICE agent MSI. Optional: without it the disc still builds (and
+	// the setup skips that step) - only Windows copy/paste is missing.
+	setGTStep("spice-vdagent")
+	vdagent := filepath.Join(cache, "spice-vdagent-x64.msi")
+	if err := ensureVerifiedDownload(ctx, spiceVdagentURL, vdagent, spiceVdagentSize, spiceVdagentSHA256); err != nil {
+		log.Printf("guest tools: SPICE agent unavailable, building the disc without it: %v", err)
+		vdagent = ""
+	}
+
+	// 4. Scripts from guesttools/ (Windows gets CRLF line endings).
 	setGTStep("scripts")
 	stage, err := os.MkdirTemp(cache, "stage-")
 	if err != nil {
@@ -209,7 +228,7 @@ func buildGuestToolsISO(ctx context.Context) error {
 		return err
 	}
 
-	// 4. New ISO = virtio-win + our files, written next to the final path
+	// 5. New ISO = virtio-win + our files, written next to the final path
 	// and renamed into place, so a VM never sees a half-written disc.
 	setGTStep("iso")
 	final := guestToolsPath()
@@ -226,6 +245,9 @@ func buildGuestToolsISO(ctx context.Context) error {
 		"-map", filepath.Join(stage, "README-NivaroOS.txt"), "/README-NivaroOS.txt",
 		"-map", filepath.Join(stage, "NivaroOS-Guest-Tools-Setup.bat"), "/NivaroOS-Guest-Tools-Setup.bat",
 		"-map", filepath.Join(stage, "linux"), "/linux",
+	}
+	if vdagent != "" {
+		args = append(args, "-map", vdagent, "/spice-vdagent-x64.msi")
 	}
 	if out, err := exec.CommandContext(ctx, "xorriso", args...).CombinedOutput(); err != nil {
 		_ = os.Remove(tmp)
@@ -293,6 +315,37 @@ func downloadFile(ctx context.Context, url, dst string, wantSize int64) error {
 		return err
 	}
 	return os.Rename(part, dst)
+}
+
+// ensureVerifiedDownload makes dst a copy of url with exactly wantSize
+// bytes and the given sha256 - reusing a cached copy that already
+// matches, otherwise downloading it again.
+func ensureVerifiedDownload(ctx context.Context, url, dst string, wantSize int64, wantSHA256 string) error {
+	if fileSHA256(dst) == wantSHA256 {
+		return nil
+	}
+	if err := downloadFile(ctx, url, dst, wantSize); err != nil {
+		return err
+	}
+	if got := fileSHA256(dst); got != wantSHA256 {
+		_ = os.Remove(dst)
+		return fmt.Errorf("%s: sha256 %s, expected %s", url, got, wantSHA256)
+	}
+	return nil
+}
+
+// fileSHA256 is path's hex sha256, or "" if it can't be read.
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func lastLines(s string, n int) string {
