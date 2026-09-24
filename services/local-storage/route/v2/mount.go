@@ -60,6 +60,9 @@ func (s *LocalStorage) Umount(ctx echo.Context, params codegen.UmountParams) err
 		if errors.Is(err, v2.ErrNotMounted) {
 			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 		}
+		if errors.Is(err, v2.ErrUmountRefused) {
+			return ctx.JSON(http.StatusConflict, codegen.ResponseConflict{Message: &message})
+		}
 
 		return ctx.JSON(http.StatusInternalServerError, codegen.BaseResponse{Message: &message})
 	}
@@ -77,6 +80,9 @@ func (s *LocalStorage) UpdateMount(ctx echo.Context, params codegen.UpdateMountP
 	if err := service.MyService.LocalStorage().Umount(params.MountPoint); err != nil {
 		message := err.Error()
 
+		if errors.Is(err, v2.ErrUmountRefused) {
+			return ctx.JSON(http.StatusConflict, codegen.ResponseConflict{Message: &message})
+		}
 		if !errors.Is(err, v2.ErrNotMounted) {
 			return ctx.JSON(http.StatusInternalServerError, codegen.BaseResponse{Message: &message})
 		}

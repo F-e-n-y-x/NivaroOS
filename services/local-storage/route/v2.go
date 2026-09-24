@@ -63,7 +63,9 @@ func InitV2Router() http.Handler {
 
 	e.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
 		Skipper: func(c echo.Context) bool {
-			return c.RealIP() == "::1" || c.RealIP() == "127.0.0.1"
+			// was c.RealIP() == loopback - RealIP trusts X-Forwarded-For /
+			// X-Real-IP, so any client could skip auth with one header.
+			return IsTrustedLocalRequest(c.Request())
 		},
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			// claims, code := jwt.Validate(token)

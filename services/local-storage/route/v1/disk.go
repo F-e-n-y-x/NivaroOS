@@ -2,8 +2,6 @@ package v1
 
 import (
 	"net/http"
-	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
@@ -16,8 +14,6 @@ import (
 )
 
 const messagePathStorageStatus = "storage_status"
-
-var diskMap = make(map[string]string)
 
 type StorageMessage struct {
 	Type   string `json:"type"`   // sata,usb
@@ -52,6 +48,8 @@ func GetDiskList(c *gin.Context) {
 	disks := []model1.Drive{}
 	avail := []model1.Drive{}
 
+	// found once: the old code declared a second systemDisk inside the loop
+	// (:=), so the outer one stayed nil and every disk was walked again.
 	var systemDisk *model1.LSBLKModel
 
 	for _, currentDisk := range blkList {
@@ -72,16 +70,16 @@ func GetDiskList(c *gin.Context) {
 
 		temp := service.MyService.Disk().SmartCTL(currentDisk.Path)
 		disk.Temperature = temp.Temperature.Current
+		disk.Sleeping = temp.Sleeping
 
 		if systemDisk == nil {
 			// go 5 level deep to look for system block device by mount point being "/"
-			systemDisk := service.WalkDisk(currentDisk, 5, func(blk model1.LSBLKModel) bool { return blk.MountPoint == "/" })
-
-			if systemDisk != nil {
+			if found := service.WalkDisk(currentDisk, 5, func(blk model1.LSBLKModel) bool { return blk.MountPoint == "/" }); found != nil {
+				systemDisk = found
 				disk.Model = "System"
-				if strings.Contains(systemDisk.SubSystems, "mmc") {
+				if strings.Contains(found.SubSystems, "mmc") {
 					disk.DiskType = "MMC"
-				} else if strings.Contains(systemDisk.SubSystems, "usb") {
+				} else if strings.Contains(found.SubSystems, "usb") {
 					disk.DiskType = "USB"
 				}
 				disk.Health = "true"
@@ -95,29 +93,15 @@ func GetDiskList(c *gin.Context) {
 			continue
 		}
 
-		if reflect.DeepEqual(temp, model1.SmartctlA{}) {
-			temp.SmartStatus.Passed = true
-		}
-
 		// "Available" = offered for formatting, so only a disk with nothing
-		// on it. An unmounted data drive (say after Unmount in Persistent
-		// Mounts) used to be listed here with a Format button.
-		isAvail := currentDisk.MountPoint == "" && currentDisk.FsType == ""
-		for _, v := range currentDisk.Children {
-			if v.MountPoint != "" || v.FsType != "" {
-				isAvail = false
-			}
-		}
-		if isAvail && service.MyService.Disk().FstabManagedMountPoint(currentDisk) != "" {
-			isAvail = false
-		}
-
-		if isAvail {
+		// on it (same rule POST /v1/storage enforces).
+		if service.IsAvailableDisk(currentDisk, service.MyService.Disk().FstabManagedMountPoint(currentDisk) != "") {
 			disk.NeedFormat = false
 			avail = append(avail, disk)
 		}
 
-		disk.Health = strconv.FormatBool(temp.SmartStatus.Passed)
+		// asleep: last known health, or "unknown" - not "unhealthy"
+		disk.Health = service.SmartHealth(temp)
 
 		disks = append(disks, disk)
 	}
@@ -138,42 +122,41 @@ func GetDiskList(c *gin.Context) {
 // @Success 200 {string} string "ok"
 // @Router /disk/list [get]
 
+type umountDiskRequest struct {
+	Path string `json:"path" form:"path"`
+}
+
 func DeleteDisksUmount(c *gin.Context) {
-	js := make(map[string]string)
-	if err := c.ShouldBind(&js); err != nil {
+	var req umountDiskRequest
+	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS), Data: err.Error()})
 		return
 	}
 
-	// requires password from user to confirm the action
-	// if claims, err := jwt.ParseToken(c.GetHeader("Authorization"), false); err != nil || encryption.GetMD5ByStr(js["password"]) != claims.Password {
-	// 	c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.PWD_INVALID, Message: common_err.GetMsg(common_err.PWD_INVALID)})
-	// 	return
-	// }
-
-	path := js["path"]
+	path := req.Path
 
 	if len(path) == 0 {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 		return
 	}
 
-	if _, ok := diskMap[path]; ok {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.DISK_BUSYING, Message: common_err.GetMsg(common_err.DISK_BUSYING)})
+	// shared guard: system disk, Persistent Mounts/fstab, /DATA, pool
+	// members, LVM/RAID/LUKS/ZFS, VM passthrough -> 409
+	disk, _, err := service.MyService.Disk().GuardDiskOperation(path, service.DiskOpUmount)
+	if respondGuardError(c, err) {
 		return
 	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		return
+	}
+	if !service.DiskBusy.TryAcquire(disk.Path, "umount") {
+		respondBusy(c, disk.Path)
+		return
+	}
+	defer service.DiskBusy.Release(disk.Path)
 
 	diskInfo := service.MyService.Disk().GetDiskInfo(path)
-	// Never the disk the system runs from; drives set up in Persistent
-	// Mounts are unmounted there (this would leave their fstab entry live).
-	if service.DiskHoldsSystem(diskInfo) {
-		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "this is the system disk - it can't be removed"})
-		return
-	}
-	if mp := service.MyService.Disk().FstabManagedMountPoint(diskInfo); mp != "" {
-		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "this drive is managed in Persistent Mounts (" + mp + ") - unmount it there"})
-		return
-	}
 	if len(diskInfo.Children) == 0 && service.IsDiskSupported(diskInfo) {
 		t := diskInfo
 		t.Children = nil
@@ -231,6 +214,11 @@ func GetDiskSmartInfo(c *gin.Context) {
 		return
 	}
 
+	if _, _, err := service.MyService.Disk().ResolveListedBlockDevice(path); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+
 	info := service.MyService.Disk().SmartCTLFull(path)
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: info})
 }
@@ -242,20 +230,30 @@ func GetDiskSmartInfo(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /disks/smart-test [post]
+type smartTestRequest struct {
+	Path string `json:"path" form:"path"`
+	Type string `json:"type" form:"type"`
+}
+
 func PostDiskSmartTest(c *gin.Context) {
-	js := make(map[string]string)
-	if err := c.ShouldBind(&js); err != nil {
+	var req smartTestRequest
+	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS), Data: err.Error()})
 		return
 	}
 
-	path := js["path"]
-	testType := js["type"]
+	path := req.Path
+	testType := req.Type
 	if testType == "" {
 		testType = "short"
 	}
 	if len(path) == 0 || (testType != "short" && testType != "long") {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+
+	if _, _, err := service.MyService.Disk().ResolveListedBlockDevice(path); err != nil {
+		badRequest(c, err.Error())
 		return
 	}
 
@@ -278,6 +276,11 @@ func GetDiskStandby(c *gin.Context) {
 	path := c.Query("path")
 	if len(path) == 0 {
 		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
+		return
+	}
+
+	if _, _, err := service.MyService.Disk().ResolveListedBlockDevice(path); err != nil {
+		badRequest(c, err.Error())
 		return
 	}
 
@@ -312,6 +315,10 @@ func PutDiskStandby(c *gin.Context) {
 	}
 
 	if err := service.MyService.Disk().SetStandby(path, minutes); err != nil {
+		if service.IsInvalidDeviceError(err) {
+			badRequest(c, err.Error())
+			return
+		}
 		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return
 	}

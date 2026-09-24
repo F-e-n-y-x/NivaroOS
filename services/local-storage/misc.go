@@ -46,10 +46,9 @@ func sendDiskBySocket() {
 			continue
 		}
 		temp := service.MyService.Disk().SmartCTL(currentDisk.Path)
-		if reflect.DeepEqual(temp, model.SmartctlA{}) {
-			healthy = true
-		} else {
-			healthy = temp.SmartStatus.Passed
+		// a sleeping drive isn't reported unhealthy (last known health or unknown)
+		if service.SmartHealth(temp) == "false" {
+			healthy = false
 		}
 		if len(currentDisk.Children) > 0 {
 			for _, v := range currentDisk.Children {

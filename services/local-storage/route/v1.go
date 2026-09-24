@@ -59,6 +59,7 @@ func InitV1Router() *gin.Engine {
 
 			v1StorageGroup.DELETE("", v1.DeleteStorage)
 			v1StorageGroup.GET("", v1.GetStorageList)
+			v1StorageGroup.GET("/jobs/:id", v1.GetStorageJob)
 
 			v1FstabGroup := v1StorageGroup.Group("/fstab")
 			v1FstabGroup.Use()

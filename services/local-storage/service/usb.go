@@ -5,7 +5,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
-	command2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/command"
 	"github.com/shirou/gopsutil/host"
 	"go.uber.org/zap"
 )
@@ -30,11 +29,11 @@ func (s *usbService) UpdateUSBAutoMount(state string) {
 
 func (s *usbService) ExecUSBAutoMountShell(state string) {
 	if state == "False" {
-		if _, err := command2.OnlyExec("source " + config.AppInfo.ShellPath + "/local-storage-helper.sh ;USB_Stop_Auto"); err != nil {
+		if _, err := RunHelper("USB_Stop_Auto"); err != nil {
 			logger.Error("error when executing shell script to stop USB automount", zap.Error(err))
 		}
 	} else {
-		if _, err := command2.OnlyExec("source " + config.AppInfo.ShellPath + "/local-storage-helper.sh ;USB_Start_Auto"); err != nil {
+		if _, err := RunHelper("USB_Start_Auto"); err != nil {
 			logger.Error("error when executing shell script to start USB automount", zap.Error(err))
 		}
 	}

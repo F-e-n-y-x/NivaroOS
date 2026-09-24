@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"log"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -13,8 +15,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	_ "github.com/F-e-n-y-x/NivaroOS/services/local-storage/backend/terabox"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/mount"
-	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/command"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/httper"
 	_ "github.com/rclone/rclone/backend/all"
 	"github.com/rclone/rclone/cmd/mountlib"
@@ -224,7 +226,7 @@ func (s *storageStruct) CheckAndMountAll() error {
 	logger.Info("when CheckAndMountAll section", zap.Any("section", section))
 	var failedRemotes []string
 	for _, v := range section {
-		command.OnlyExec("umount -l /mnt/" + v)
+		lazyUmountStaleRemote(v)
 		mountPoint, found := rconfig.LoadedData().GetValue(v, "mount_point")
 
 		if !found || len(mountPoint) == 0 {
@@ -275,7 +277,7 @@ func (s *storageStruct) retryMountFailedRemotes(remotes []string) {
 			}
 
 			logger.Info("retrying background mount for remote", zap.String("remote", v), zap.String("mountPoint", mountPoint))
-			command.OnlyExec("umount -l /mnt/" + v)
+			lazyUmountStaleRemote(v)
 			err := MyService.Storage().MountStorage(mountPoint, v)
 			if err == nil {
 				logger.Info("successfully mounted remote on retry", zap.String("remote", v), zap.String("mountPoint", mountPoint))
@@ -331,4 +333,19 @@ func (s *storageStruct) GetConfig() (httper.RemotesResult, error) {
 }
 func NewStorageService() StorageService {
 	return &storageStruct{}
+}
+
+// lazyUmountStaleRemote clears a stale /mnt/<remote> mount left by a previous
+// run. The remote (rclone section) name comes from the config the user
+// created; it used to be concatenated into a `bash -c "umount -l /mnt/"+name`
+// string. Now it must be a single safe path element and goes to umount as
+// its own argument.
+func lazyUmountStaleRemote(name string) {
+	if !model.IsSafeMountName(name) {
+		logger.Info("skipping stale-mount cleanup for remote with unusual name", zap.String("remote", name))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = exec.CommandContext(ctx, "umount", "-l", filepath.Join("/mnt", name)).Run()
 }

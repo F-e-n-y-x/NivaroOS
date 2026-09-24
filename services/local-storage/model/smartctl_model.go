@@ -69,4 +69,10 @@ type SmartctlA struct {
 	Temperature     struct {
 		Current int `json:"current"`
 	} `json:"temperature"`
+
+	// Set by local-storage, not smartctl: the drive was asleep (smartctl -n
+	// standby skipped it). When StaleHealth is true the SMART fields are the
+	// last reading taken while it was awake.
+	Sleeping    bool `json:"sleeping,omitempty"`
+	StaleHealth bool `json:"-"`
 }

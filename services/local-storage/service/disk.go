@@ -43,6 +43,11 @@ type DiskService interface {
 	// entry (managed in Persistent Mounts), or "".
 	FstabManagedMountPoint(d model.LSBLKModel) string
 	EnsureDefaultMergePoint() bool
+	// GuardDiskOperation: the one safety check for create/mount/format/umount
+	// (see disk_guard.go). Errors are *InvalidDeviceError (400) or *GuardError (409).
+	GuardDiskOperation(path string, op DiskOp) (disk model.LSBLKModel, node model.LSBLKModel, err error)
+	// ResolveListedBlockDevice: path is a valid, lsblk-listed block device.
+	ResolveListedBlockDevice(path string) (disk model.LSBLKModel, node model.LSBLKModel, err error)
 	AddPartition(path string) error
 	DeletePartition(path string) error
 	CheckSerialDiskMount()
@@ -172,14 +177,41 @@ func isCurrentMountPoint(path string) bool {
 	return false
 }
 
+// isSystemMountPoint: a mount the running system can't lose.
+func isSystemMountPoint(mp string) bool {
+	switch mp {
+	case "/", "/boot", "/boot/efi", "/efi", "[SWAP]", "/usr", "/var", "/home", "/opt", "/srv":
+		return true
+	}
+	return false
+}
+
+// NodeMountPoints: every mount point lsblk reports for this node.
+func NodeMountPoints(m model.LSBLKModel) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	add(m.MountPoint)
+	for _, p := range m.MountPoints {
+		if p != nil {
+			add(*p)
+		}
+	}
+	return out
+}
+
 // diskHoldsSystem: the disk carries /, /boot, /boot/efi or swap - removing
 // (unmounting) it from the UI would break the running system.
 func diskHoldsSystem(d model.LSBLKModel) bool {
-	check := func(mp string) bool {
-		return mp == "/" || mp == "/boot" || mp == "/boot/efi" || mp == "[SWAP]" || mp == "/usr" || mp == "/var"
-	}
-	if check(d.MountPoint) {
-		return true
+	for _, mp := range NodeMountPoints(d) {
+		if isSystemMountPoint(mp) {
+			return true
+		}
 	}
 	for _, c := range d.Children {
 		if diskHoldsSystem(c) {
@@ -243,33 +275,84 @@ func (d *diskService) UmountUSB(path string) error {
 	return nil
 }
 
-func (d *diskService) SmartCTL(path string) model.SmartctlA {
-	key := "system_smart_" + path
-	if result, ok := Cache.Get(key); ok {
+const (
+	smartCacheTTL        = 10 * time.Minute // was 24h: a failing drive stayed "healthy" for a day
+	smartSleepingTTL     = 2 * time.Minute  // re-check soon; -n standby doesn't wake the drive
+	smartLastKnownTTL    = 7 * 24 * time.Hour
+	smartCacheKeyPrefix  = "system_smart_"
+	smartLastKnownPrefix = "system_smart_last_"
+)
 
-		res, ok := result.(model.SmartctlA)
-		if ok {
+// IsSmartStandby: smartctl -n standby skipped the drive because it is asleep.
+func IsSmartStandby(m model.SmartctlA) bool {
+	for _, v := range m.Smartctl.Messages {
+		s := strings.ToUpper(v.String)
+		if strings.Contains(s, "STANDBY") || strings.Contains(s, "SLEEP") {
+			return true
+		}
+	}
+	return false
+}
+
+// SmartForSleepingDrive: a sleeping drive keeps its last awake reading
+// (marked Sleeping+StaleHealth), or, never read awake, is "unknown" -
+// never "unhealthy".
+func SmartForSleepingDrive(cur, prev model.SmartctlA, havePrev bool) model.SmartctlA {
+	if havePrev {
+		prev.Sleeping = true
+		prev.StaleHealth = true
+		return prev
+	}
+	cur.Sleeping = true
+	cur.StaleHealth = false
+	return cur
+}
+
+// SmartHealth: "true", "false" or "unknown" (asleep, never read awake).
+// An empty result (smartctl missing/unsupported) stays "true", as before.
+func SmartHealth(m model.SmartctlA) string {
+	if m.Sleeping && !m.StaleHealth {
+		return "unknown"
+	}
+	if reflect.DeepEqual(m, model.SmartctlA{}) {
+		return "true"
+	}
+	return strconv.FormatBool(m.SmartStatus.Passed)
+}
+
+func (d *diskService) SmartCTL(path string) model.SmartctlA {
+	key := smartCacheKeyPrefix + path
+	if result, ok := Cache.Get(key); ok {
+		if res, ok := result.(model.SmartctlA); ok {
 			return res
 		}
 	}
 	var m model.SmartctlA
 	buf := command.ExecSmartCTLByPath(path)
 	if buf == nil {
-		logger.Error("failed to exec shell - smartctl exec error")
-		if err := Cache.Add(key, m, time.Minute*10); err != nil {
-			logger.Error("failed to add cache", zap.Error(err), zap.String("key", key))
-		}
+		logger.Error("failed to exec shell - smartctl exec error", zap.String("path", path))
+		Cache.Set(key, m, smartCacheTTL)
 		return m
 	}
 
-	err := json2.Unmarshal(buf, &m)
-	if err != nil {
+	if err := json2.Unmarshal(buf, &m); err != nil {
 		logger.Error("failed to unmarshal json", zap.Error(err), zap.String("json", string(buf)))
 	}
-	if !reflect.DeepEqual(m, model.SmartctlA{}) {
-		if err := Cache.Add(key, m, time.Hour*24); err != nil {
-			logger.Error("failed to add cache", zap.Error(err), zap.String("key", key))
+
+	if IsSmartStandby(m) {
+		var prev model.SmartctlA
+		havePrev := false
+		if v, ok := Cache.Get(smartLastKnownPrefix + path); ok {
+			prev, havePrev = v.(model.SmartctlA)
 		}
+		m = SmartForSleepingDrive(m, prev, havePrev)
+		Cache.Set(key, m, smartSleepingTTL)
+		return m
+	}
+
+	if !reflect.DeepEqual(m, model.SmartctlA{}) {
+		Cache.Set(key, m, smartCacheTTL)
+		Cache.Set(smartLastKnownPrefix+path, m, smartLastKnownTTL)
 	}
 	return m
 }
@@ -307,29 +390,100 @@ func (d *diskService) SmartTest(path, testType string) error {
 	return nil
 }
 
+// standbyDisk: path must be a whole disk listed by lsblk (it is written into
+// a udev rule / passed to hdparm - the old code put the raw request string
+// into /etc/hdparm.conf, so a newline injected config).
+func (d *diskService) standbyDisk(path string) error {
+	disk, node, err := d.ResolveListedBlockDevice(path)
+	if err != nil {
+		return err
+	}
+	if node.Path != disk.Path || (node.Type != "" && node.Type != "disk") {
+		return &InvalidDeviceError{Msg: path + " is not a whole disk"}
+	}
+	return nil
+}
+
+func udevPropertiesOf(path string) map[string]string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "udevadm", "info", "--query=property", "--name="+path).Output()
+	if err != nil {
+		return map[string]string{}
+	}
+	return ParseUdevProperties(string(out))
+}
+
 // GetStandby returns the currently configured spindown timer for path, in
 // minutes (0 = disabled/never configured).
 func (d *diskService) GetStandby(path string) int {
-	id := resolveStableDiskID(path)
-	code, ok := readHdparmSpindownCode(id)
+	if err := d.standbyDisk(path); err != nil {
+		return 0
+	}
+	if key, value, err := StandbyRuleKey(udevPropertiesOf(path)); err == nil {
+		if raw, err := os.ReadFile(standbyRulesPath); err == nil {
+			if code, ok := ReadStandbyRuleCode(string(raw), key, value); ok {
+				return spindownCodeToMinutes(code)
+			}
+		}
+	}
+	// legacy (Debian hdparm.conf, written by older versions)
+	code, ok := readHdparmSpindownCode(resolveStableDiskID(path))
 	if !ok {
 		return 0
 	}
 	return spindownCodeToMinutes(code)
 }
 
-// SetStandby persists a spindown timer for path to /etc/hdparm.conf (keyed
-// by a stable /dev/disk/by-id path, so it survives a /dev/sdX rename) and
-// also applies it immediately via hdparm -S, rather than waiting for the
-// next udev "add" event to pick up the config file.
+// SetStandby persists a spindown timer for path as a udev rule keyed by the
+// disk's serial (see standbyRulesPath - works on any udev distro, not just
+// Debian's hdparm.conf) and applies it immediately via hdparm -S.
 func (d *diskService) SetStandby(path string, minutes int) error {
-	id := resolveStableDiskID(path)
-	code := minutesToSpindownCode(minutes)
-	if err := writeHdparmSpindownCode(id, code); err != nil {
+	if err := d.standbyDisk(path); err != nil {
 		return err
 	}
+	if minutes < 0 || minutes > 330 {
+		return &InvalidDeviceError{Msg: "minutes must be between 0 and 330"}
+	}
+	hdparm, err := exec.LookPath("hdparm")
+	if err != nil {
+		return errors.New("hdparm is not installed")
+	}
+	if abs, err := filepath.Abs(hdparm); err == nil {
+		hdparm = abs
+	}
+	key, value, err := StandbyRuleKey(udevPropertiesOf(path))
+	if err != nil {
+		return err
+	}
+	code := minutesToSpindownCode(minutes)
+
+	raw, err := os.ReadFile(standbyRulesPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	content, err := UpsertStandbyRule(string(raw), key, value, hdparm, code)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(standbyRulesPath), 0o755); err != nil {
+		return err
+	}
+	tmp := standbyRulesPath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, standbyRulesPath); err != nil {
+		return err
+	}
+	_ = exec.Command("udevadm", "control", "--reload").Run()
+
+	if err := removeHdparmConfSpindown(hdparmConfPath, resolveStableDiskID(path), path); err != nil {
+		logger.Error("couldn't clear the old hdparm.conf standby entry", zap.Error(err), zap.String("path", path))
+	}
+
 	if _, err := command.ExecHdparmSetStandby(path, code); err != nil {
-		logger.Error("failed to apply hdparm standby immediately - persisted config will still apply on next boot/hotplug", zap.Error(err), zap.String("path", path))
+		logger.Error("failed to apply hdparm standby immediately - persisted rule will still apply on next boot/hotplug", zap.Error(err), zap.String("path", path))
 	}
 	return nil
 }
@@ -505,15 +659,8 @@ func (d *diskService) LSBLK(isUseCache bool) []model.LSBLKModel {
 			}
 			blkChildren = append(blkChildren, child)
 		}
-		if smart.SmartStatus.Passed {
+		if smart.SmartStatus.Passed || (smart.Sleeping && !smart.StaleHealth) {
 			blk.Health = "OK"
-		} else {
-			for _, v := range smart.Smartctl.Messages {
-				if strings.Contains(v.String, "STANDBY") {
-					blk.Health = "OK"
-					break
-				}
-			}
 		}
 
 		blk.FSUsed = json.Number(fmt.Sprintf("%d", fsused))
@@ -555,8 +702,36 @@ func (d *diskService) GetDiskInfo(path string) model.LSBLKModel {
 	return blk
 }
 
+// ValidateMountRequest is the input check MountDisk applies: path must be a
+// real block device listed by lsblk, mountPoint a clean /mnt|/media|/DATA/<name>.
+func ValidateMountRequest(listed []model.LSBLKModel, path, mountPoint string) error {
+	if err := ValidateBlockDevicePath(path); err != nil {
+		return err
+	}
+	if _, _, ok := FindBlockDevice(listed, path); !ok {
+		return &InvalidDeviceError{Msg: path + " is not a block device listed by lsblk"}
+	}
+	return model.ValidateMountPoint(mountPoint)
+}
+
 func (d *diskService) MountDisk(path, mountPoint string) (string, error) {
 	logger.Info("trying to mount...", zap.String("path", path), zap.String("mountPoint", mountPoint))
+
+	// Both values used to be pasted into `bash -c "source helper.sh ;do_mount
+	// <path> <mountPoint>"` - a mount point or label containing `;cmd` ran
+	// as root. Now they are validated and passed as separate argv entries.
+	listed := d.LSBLK(true)
+	if _, _, ok := FindBlockDevice(listed, path); !ok {
+		listed = d.LSBLK(false)
+	}
+	if err := ValidateMountRequest(listed, path, mountPoint); err != nil {
+		logger.Error("refusing to mount", zap.Error(err), zap.String("path", path), zap.String("mount point", mountPoint))
+		return err.Error(), err
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode()&os.ModeDevice == 0 {
+		err := &InvalidDeviceError{Msg: path + " is not a block device"}
+		return err.Error(), err
+	}
 
 	// check if path is already mounted at mountPoint
 	if mountInfoList, err := mountinfo.GetMounts(func(i *mountinfo.Info) (skip bool, stop bool) {
@@ -577,7 +752,7 @@ func (d *diskService) MountDisk(path, mountPoint string) (string, error) {
 		return "", err
 	}
 
-	if out, err := command.OnlyExec("source " + config.AppInfo.ShellPath + "/local-storage-helper.sh ;do_mount " + path + " " + mountPoint); err != nil {
+	if out, err := RunHelper("do_mount", path, mountPoint); err != nil {
 		logger.Error("error when mounting", zap.Error(err), zap.String("path", path), zap.String("mount point", mountPoint), zap.String("output", string(out)))
 		return out, err
 	}

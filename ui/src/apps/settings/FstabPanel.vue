@@ -572,6 +572,10 @@ export default {
 	},
 	created() {
 		this.refresh()
+		this.$EventBus.$on(events.STORAGE_CHANGED, this.refresh)
+	},
+	beforeDestroy() {
+		this.$EventBus.$off(events.STORAGE_CHANGED, this.refresh)
 	},
 	methods: {
 		formatSize,
@@ -771,7 +775,7 @@ export default {
 				})
 			}).catch(e => {
 				const msg = (e.response && e.response.data && e.response.data.message) || (shouldMount ? this.$t('Failed to mount drive') : this.$t('Failed to unmount drive'))
-				this.$buefy.toast.open({ message: msg, type: 'is-danger' })
+				this.$buefy.toast.open({ message: escapeHtml(msg), type: 'is-danger' })
 			}).finally(() => {
 				this.actionBusy = null
 			})
@@ -783,7 +787,7 @@ export default {
 				this.$buefy.toast.open({ message: this.$t('Drive is now managed by NivaroOS WebUI'), type: 'is-success' })
 			}).catch(err => {
 				const msg = (err.response && err.response.data && err.response.data.message) || this.$t('Failed to adopt drive')
-				this.$buefy.toast.open({ message: msg, type: 'is-danger' })
+				this.$buefy.toast.open({ message: escapeHtml(msg), type: 'is-danger' })
 			}).finally(() => {
 				this.adopting = null
 			})
@@ -793,7 +797,7 @@ export default {
 				title: this.$t('Remove from /etc/fstab?'),
 				message: this.$t(
 					'<b>{name}</b> ({mount}) will be removed from startup mounts.<br><br><b>Note:</b> Your drive and all its contents stay 100% safe and are NOT erased. You can mount it again anytime.',
-					{ name: m.drive_label || m.drive_path || m.mount_point, mount: m.mount_point }
+					{ name: escapeHtml(m.drive_label || m.drive_path || m.mount_point), mount: escapeHtml(m.mount_point) }
 				),
 				type: 'is-danger',
 				confirmText: this.$t('Remove Mount'),

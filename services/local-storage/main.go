@@ -217,6 +217,12 @@ func main() {
 		}
 	}
 
+	if response, err := service.MyService.MessageBus().RegisterEventTypesWithResponse(ctx, common.StorageJobEventTypes()); err != nil {
+		logger.Error("error when trying to register storage job event types", zap.Error(err))
+	} else if response.StatusCode() != http.StatusOK {
+		logger.Error("error when trying to register storage job event types", zap.String("status", response.Status()))
+	}
+
 	service.MyService.Disk().InitCheck()
 	v1Router := route.InitV1Router()
 	v2Router := route.InitV2Router()

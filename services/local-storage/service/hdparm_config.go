@@ -11,6 +11,16 @@ import (
 
 const hdparmConfPath = "/etc/hdparm.conf"
 
+// Standby persistence: /etc/hdparm.conf is only read by Debian/Ubuntu's
+// hdparm package (its 85-hdparm.rules). To work on every distro, the timer
+// is persisted as a udev rule keyed by the disk's ID_SERIAL (stable across
+// /dev/sdX renames and ports), which runs `hdparm -S <code>` whenever the
+// disk appears - at boot (coldplug) and on hotplug. hdparm.conf is still
+// read as a fallback for timers set by older versions, and this device's
+// block there is removed on the next change so Debian's rule (which runs
+// after ours, 85 > 69) can't re-apply a stale value.
+const standbyRulesPath = "/etc/udev/rules.d/69-nivaroos-hdparm.rules"
+
 var (
 	hdparmBlockHeaderRe = regexp.MustCompile(`^\s*(\S+)\s*\{\s*$`)
 	hdparmSpindownRe    = regexp.MustCompile(`^\s*spindown_time\s*=\s*(\d+)\s*$`)
@@ -116,14 +126,9 @@ func readHdparmSpindownCodeFrom(confPath, id string) (int, bool) {
 	return 0, false
 }
 
-// writeHdparmSpindownCode replaces (or removes, for code == 0) this device's
-// block in /etc/hdparm.conf. Only ever touches the single block matching id -
-// any other content in the file (comments, other devices' blocks) is left
-// exactly as it was.
-func writeHdparmSpindownCode(id string, code int) error {
-	return writeHdparmSpindownCodeTo(hdparmConfPath, id, code)
-}
-
+// writeHdparmSpindownCodeTo replaces (or removes, for code == 0) this
+// device's block in an hdparm.conf. Only ever touches the single block
+// matching id. (Legacy format - new timers go to the udev rule.)
 func writeHdparmSpindownCodeTo(confPath, id string, code int) error {
 	data, err := os.ReadFile(confPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -160,5 +165,138 @@ func writeHdparmSpindownCodeTo(confPath, id string, code int) error {
 	}
 	out = append(out, "")
 
+	return os.WriteFile(confPath, []byte(strings.Join(out, "\n")), 0o644)
+}
+
+// udevSerialRe: characters udev itself allows in ID_SERIAL (it replaces
+// everything else), minus anything with meaning in a rule match string.
+var udevSerialRe = regexp.MustCompile(`^[A-Za-z0-9#+\-.:=@_]{1,200}$`)
+
+// ParseUdevProperties parses `udevadm info --query=property` output.
+func ParseUdevProperties(out string) map[string]string {
+	props := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if i := strings.IndexByte(line, '='); i > 0 {
+			props[line[:i]] = strings.TrimSpace(line[i+1:])
+		}
+	}
+	return props
+}
+
+// StandbyRuleKey picks the udev property to key the rule on: ID_SERIAL,
+// else ID_SERIAL_SHORT, else ID_WWN. The value must be rule-safe.
+func StandbyRuleKey(props map[string]string) (string, string, error) {
+	for _, k := range []string{"ID_SERIAL", "ID_SERIAL_SHORT", "ID_WWN"} {
+		if v := props[k]; v != "" {
+			if !udevSerialRe.MatchString(v) {
+				return "", "", fmt.Errorf("the disk's %s %q can't be used in a udev rule", k, v)
+			}
+			return k, v, nil
+		}
+	}
+	return "", "", fmt.Errorf("the disk has no serial number udev knows - its standby timer can't be persisted")
+}
+
+var standbyRuleRe = regexp.MustCompile(`ENV\{(ID_SERIAL|ID_SERIAL_SHORT|ID_WWN)\}=="([^"]*)".*\s-S\s+(\d+)\s`)
+
+func standbyRuleLine(key, value, hdparm string, code int) string {
+	return fmt.Sprintf(`ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ENV{%s}=="%s", RUN+="%s -S %d $devnode"`, key, value, hdparm, code)
+}
+
+// UpsertStandbyRule returns rules-file content with this disk's line
+// replaced (code > 0) or removed (code == 0). Other lines are kept as-is.
+func UpsertStandbyRule(content, key, value, hdparm string, code int) (string, error) {
+	if !udevSerialRe.MatchString(value) {
+		return "", fmt.Errorf("invalid udev match value %q", value)
+	}
+	if !filepath.IsAbs(hdparm) || strings.ContainsAny(hdparm, "\"\n $`") {
+		return "", fmt.Errorf("invalid hdparm path %q", hdparm)
+	}
+	if code < 0 || code > 255 {
+		return "", fmt.Errorf("invalid spindown code %d", code)
+	}
+	var out []string
+	for _, line := range strings.Split(content, "\n") {
+		if m := standbyRuleRe.FindStringSubmatch(line + " "); m != nil && m[1] == key && m[2] == value {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		out = append(out, line)
+	}
+	if len(out) == 0 || !strings.HasPrefix(out[0], "#") {
+		out = append([]string{"# Managed by NivaroOS local-storage (Settings > Disks > standby). One line per disk."}, out...)
+	}
+	if code > 0 {
+		out = append(out, standbyRuleLine(key, value, hdparm, code))
+	}
+	return strings.Join(out, "\n") + "\n", nil
+}
+
+// ReadStandbyRuleCode finds this disk's code in the rules content.
+func ReadStandbyRuleCode(content, key, value string) (int, bool) {
+	for _, line := range strings.Split(content, "\n") {
+		if m := standbyRuleRe.FindStringSubmatch(line + " "); m != nil && m[1] == key && m[2] == value {
+			code, err := strconv.Atoi(m[3])
+			return code, err == nil
+		}
+	}
+	return 0, false
+}
+
+// removeHdparmConfSpindown drops spindown_time from this device's legacy
+// hdparm.conf block (the block itself only if nothing else is left in it).
+// Never creates the file; other settings (apm, write cache…) are kept.
+func removeHdparmConfSpindown(confPath string, ids ...string) error {
+	data, err := os.ReadFile(confPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	lines := strings.Split(string(data), "\n")
+	out := make([]string, 0, len(lines))
+	changed := false
+	for i := 0; i < len(lines); i++ {
+		m := hdparmBlockHeaderRe.FindStringSubmatch(lines[i])
+		if m == nil || !want[m[1]] {
+			out = append(out, lines[i])
+			continue
+		}
+		var body []string
+		j := i + 1
+		for ; j < len(lines) && strings.TrimSpace(lines[j]) != "}"; j++ {
+			if hdparmSpindownRe.MatchString(lines[j]) {
+				changed = true
+				continue
+			}
+			body = append(body, lines[j])
+		}
+		kept := false
+		for _, b := range body {
+			if t := strings.TrimSpace(b); t != "" && !strings.HasPrefix(t, "#") {
+				kept = true
+			}
+		}
+		if kept {
+			out = append(out, lines[i])
+			out = append(out, body...)
+			if j < len(lines) {
+				out = append(out, lines[j])
+			}
+		} else {
+			changed = true
+		}
+		i = j
+	}
+	if !changed {
+		return nil
+	}
 	return os.WriteFile(confPath, []byte(strings.Join(out, "\n")), 0o644)
 }

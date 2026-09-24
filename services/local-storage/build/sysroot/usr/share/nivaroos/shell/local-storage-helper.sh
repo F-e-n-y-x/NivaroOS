@@ -77,64 +77,76 @@ mount_ntfs() {
   ntfs-3g "$1" "$2"
 }
 
+# Usage (from local-storage, args passed separately - never via bash -c):
+#   bash local-storage-helper.sh do_mount <block device> <mount point>
+# The Go side validates both (lsblk-listed device, /mnt|/media|/DATA/<name>);
+# they are still treated strictly as data here: always quoted, never eval'd.
 do_mount() {
   set -e
 
-  DEVBASE=$1
-  DEVICE="${DEVBASE}"
-  # See if this drive is already mounted, and if so where
-  MOUNT_POINT=$(lsblk -o mountpoint -nr "${DEVICE}" | head -n 1)
+  DEVICE="$1"
+  MOUNT_POINT="$2"
 
-  if [ -n "${MOUNT_POINT}" ]; then
-    echo "${DEVICE} is already mounted at ${MOUNT_POINT}"
+  if [ -z "${DEVICE}" ] || [ -z "${MOUNT_POINT}" ]; then
+    echo "usage: do_mount <device> <mount point>"
+    exit 1
+  fi
+  if [ ! -b "${DEVICE}" ]; then
+    echo "${DEVICE} is not a block device"
+    exit 1
+  fi
+  case "${MOUNT_POINT}" in
+  /mnt/*|/media/*|/DATA/*) ;;
+  *)
+    echo "refusing mount point outside /mnt, /media, /DATA: ${MOUNT_POINT}"
+    exit 1
+    ;;
+  esac
+
+  # See if this drive is already mounted, and if so where
+  CURRENT=$(lsblk -o mountpoint -nr -- "${DEVICE}" | head -n 1)
+  if [ -n "${CURRENT}" ]; then
+    echo "${DEVICE} is already mounted at ${CURRENT}"
     exit 1
   fi
 
-  # Get info for this drive: $ID_FS_LABEL and $ID_FS_TYPE
-  DRIVE_INFO=$(blkid -o udev "${DEVICE}" | grep -i -e "ID_FS_LABEL" -e "ID_FS_TYPE") || {
+  # Filesystem type straight from blkid - no eval of device-controlled text
+  # (the old code eval'd `blkid -o udev`, which carries the volume label).
+  ID_FS_TYPE=$(blkid -o value -s TYPE -- "${DEVICE}") || true
+  if [ -z "${ID_FS_TYPE}" ]; then
     echo "${DEVICE} does not have a filesystem or it might be corrupted. Please consider format it."
     exit 1
-  }
-
-  eval "${DRIVE_INFO}"
-
-  LABEL=$2
-  if grep -q " ${LABEL} " /etc/mtab; then
-    # Already in use, make a unique one
-    LABEL+="-${DEVBASE}"
-  fi
-  DEV_LABEL="${LABEL}"
-
-  # Use the device name in case the drive doesn't have label
-  if [ -z "${DEV_LABEL}" ]; then
-    DEV_LABEL="${DEVBASE}"
   fi
 
-  MOUNT_POINT="${DEV_LABEL}"
+  # Mount point already in use by something else: make a unique one next to
+  # it (same parent, device basename appended - stays inside the root).
+  if awk -v mp="${MOUNT_POINT}" '$2 == mp { found = 1 } END { exit !found }' /proc/self/mounts; then
+    MOUNT_POINT="${MOUNT_POINT}-$(basename -- "${DEVICE}")"
+  fi
 
   echo "Mount point: ${MOUNT_POINT}"
 
-  mkdir -p "${MOUNT_POINT}"
+  mkdir -p -- "${MOUNT_POINT}"
 
-  case ${ID_FS_TYPE} in
+  case "${ID_FS_TYPE}" in
   vfat)
-    mount -t vfat -o rw,relatime,users,gid=100,umask=000,shortname=mixed,utf8=1,flush "${DEVICE}" "${MOUNT_POINT}"
+    mount -t vfat -o rw,relatime,users,gid=100,umask=000,shortname=mixed,utf8=1,flush -- "${DEVICE}" "${MOUNT_POINT}"
     ;;
   ext[2-4])
-    mount -o noatime "${DEVICE}" "${MOUNT_POINT}"
+    mount -o noatime -- "${DEVICE}" "${MOUNT_POINT}"
     ;;
   exfat)
-    mount -t exfat "${DEVICE}" "${MOUNT_POINT}"
+    mount -t exfat -- "${DEVICE}" "${MOUNT_POINT}"
     ;;
   ntfs)
     mount_ntfs "${DEVICE}" "${MOUNT_POINT}"
     ;;
   iso9660)
-    mount -t iso9660 "${DEVICE}" "${MOUNT_POINT}"
+    mount -t iso9660 -- "${DEVICE}" "${MOUNT_POINT}"
     ;;
   *)
     echo "Unsupported filesystem type: ${ID_FS_TYPE}"
-    /bin/rmdir "${MOUNT_POINT}"
+    /bin/rmdir -- "${MOUNT_POINT}"
     exit 1
     ;;
   esac
@@ -177,3 +189,21 @@ USB_Stop_Auto() {
 GetDeviceTree(){  
   cat /proc/device-tree/model
 }
+
+# Direct invocation: `bash local-storage-helper.sh <function> [args...]`.
+# Only the functions local-storage calls are dispatchable; arguments are
+# passed through as separate, quoted words. Sourcing the file (the old
+# `source ...; func` style) still just defines the functions.
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [ $# -gt 0 ]; then
+  case "$1" in
+  do_mount|USB_Start_Auto|USB_Stop_Auto)
+    fn="$1"
+    shift
+    "$fn" "$@"
+    ;;
+  *)
+    echo "unknown command: $1" >&2
+    exit 2
+    ;;
+  esac
+fi

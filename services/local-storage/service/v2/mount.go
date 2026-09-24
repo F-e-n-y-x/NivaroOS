@@ -2,11 +2,16 @@ package v2
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/fstab"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/mount"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/fs"
 	"github.com/moby/sys/mountinfo"
@@ -17,7 +22,53 @@ var (
 	ErrNotMounted           = errors.New("not mounted")
 	ErrAlreadyMounted       = errors.New("volume is already mounted")
 	ErrMountPointIsNotEmpty = errors.New("mountpoint is not empty")
+	ErrUmountRefused        = errors.New("refusing to unmount")
 )
+
+// mounts the running system (or the apps' /DATA pool root) can't lose
+var protectedMountPoints = map[string]bool{
+	"/": true, "/boot": true, "/boot/efi": true, "/efi": true, "/usr": true, "/var": true,
+	"/home": true, "/etc": true, "/opt": true, "/srv": true, "/tmp": true, "/root": true, "/DATA": true,
+}
+
+// UmountRefusal: nil if mountpoint may be unmounted through the v2 API.
+// Refused: system mounts, /DATA (the storage pool root), kernel pseudo
+// filesystems, and anything with an /etc/fstab entry (system entries, or
+// Persistent Mounts - which has its own unmount).
+func UmountRefusal(mountpoint string, fstabMountPoints map[string]bool) error {
+	if mountpoint == "" || !filepath.IsAbs(mountpoint) || filepath.Clean(mountpoint) != mountpoint {
+		return fmt.Errorf("%w: %q is not a clean absolute path", ErrUmountRefused, mountpoint)
+	}
+	if protectedMountPoints[mountpoint] {
+		return fmt.Errorf("%w: %s is a system mount", ErrUmountRefused, mountpoint)
+	}
+	for _, p := range []string{"/proc", "/sys", "/dev", "/run", "/boot"} {
+		if mountpoint == p || strings.HasPrefix(mountpoint, p+"/") {
+			return fmt.Errorf("%w: %s is a system mount", ErrUmountRefused, mountpoint)
+		}
+	}
+	if fstabMountPoints[mountpoint] {
+		return fmt.Errorf("%w: %s is configured in /etc/fstab - unmount it in Persistent Mounts", ErrUmountRefused, mountpoint)
+	}
+	return nil
+}
+
+func fstabMountPointSet() (map[string]bool, error) {
+	set := map[string]bool{}
+	entries, err := fstab.Get().GetAllEntries()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return set, nil
+		}
+		return nil, err
+	}
+	for _, e := range entries {
+		if e != nil {
+			set[e.MountPoint] = true
+		}
+	}
+	return set, nil
+}
 
 func (s *LocalStorageService) GetMounts(params codegen.GetMountsParams) ([]codegen.Mount, error) {
 	mounts, err := s._mountinfo.GetMounts(func(i *mountinfo.Info) (skip bool, stop bool) {
@@ -112,6 +163,15 @@ func (s *LocalStorageService) Mount(m codegen.Mount) (*codegen.Mount, error) {
 }
 
 func (s *LocalStorageService) Umount(mountpoint string) error {
+	fstabSet, err := fstabMountPointSet()
+	if err != nil {
+		return fmt.Errorf("%w: couldn't read /etc/fstab: %v", ErrUmountRefused, err)
+	}
+	if err := UmountRefusal(mountpoint, fstabSet); err != nil {
+		logger.Error("refusing to umount", zap.Error(err))
+		return err
+	}
+
 	// check if mountpoint is already mounted
 	results, err := s.GetMounts(codegen.GetMountsParams{
 		MountPoint: &mountpoint,

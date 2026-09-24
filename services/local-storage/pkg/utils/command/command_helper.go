@@ -3,40 +3,15 @@ package command
 import (
 	"context"
 	"fmt"
-	"io"
 	"os/exec"
 	"strconv"
 	"time"
 )
 
-func OnlyExec(cmdStr string) (string, error) {
-	cmd := exec.Command("/bin/bash", "-c", cmdStr)
-	println(cmd.String())
-	buf, err := cmd.CombinedOutput()
-	println(string(buf))
-	return string(buf), err
-}
-
-func ExecResultStr(cmdStr string) (string, error) {
-	cmd := exec.Command("/bin/bash", "-c", cmdStr)
-	println(cmd.String())
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-
-	defer stdout.Close()
-	if err := cmd.Start(); err != nil {
-		return "", err
-	}
-
-	buf, err := io.ReadAll(stdout)
-	if err != nil {
-		return "", err
-	}
-
-	return string(buf), cmd.Wait()
-}
+// (OnlyExec / ExecResultStr - `bash -c <string>` helpers - were removed:
+// every caller pasted request or device data into the string. Run commands
+// with exec.Command and separate arguments; for local-storage-helper.sh use
+// service.RunHelper.)
 
 // exec smart
 func ExecSmartCTLByPath(path string) []byte {
@@ -49,8 +24,12 @@ func ExecSmartCTLByPath(path string) []byte {
 
 	output, err := cmd.Output()
 	if err != nil {
-		fmt.Println(string(output))
-		return nil
+		// smartctl's exit status is a bitmask: a sleeping drive with
+		// "-n standby" exits 2 but still prints JSON saying "STANDBY" -
+		// the caller needs that to tell "asleep" from "failed".
+		if len(output) == 0 || ctx.Err() != nil {
+			return nil
+		}
 	}
 	return output
 }

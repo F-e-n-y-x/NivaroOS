@@ -11,22 +11,25 @@ package model
 import "encoding/json"
 
 type LSBLKModel struct {
-	Name        string       `json:"name"`
-	FsType      string       `json:"fstype"`
-	Size        uint64       `json:"size"`
-	FSSize      json.Number  `json:"fssize"`
-	Path        string       `json:"path"`
-	Model       string       `json:"model"` // 设备标识符
-	RM          bool         `json:"rm"`    // 是否为可移动设备
-	RO          bool         `json:"ro"`    // 是否为只读设备
-	State       string       `json:"state"`
-	PhySec      int          `json:"phy-sec"` // 物理扇区大小
-	Type        string       `json:"type"`
-	Vendor      string       `json:"vendor"`  // 供应商
-	Rev         string       `json:"rev"`     // 修订版本
-	FSAvail     json.Number  `json:"fsavail"` // 可用空间
-	FSUse       string       `json:"fsuse%"`  // 已用百分比
-	MountPoint  string       `json:"mountpoint"`
+	Name       string      `json:"name"`
+	FsType     string      `json:"fstype"`
+	Size       uint64      `json:"size"`
+	FSSize     json.Number `json:"fssize"`
+	Path       string      `json:"path"`
+	Model      string      `json:"model"` // 设备标识符
+	RM         bool        `json:"rm"`    // 是否为可移动设备
+	RO         bool        `json:"ro"`    // 是否为只读设备
+	State      string      `json:"state"`
+	PhySec     int         `json:"phy-sec"` // 物理扇区大小
+	Type       string      `json:"type"`
+	Vendor     string      `json:"vendor"`  // 供应商
+	Rev        string      `json:"rev"`     // 修订版本
+	FSAvail    json.Number `json:"fsavail"` // 可用空间
+	FSUse      string      `json:"fsuse%"`  // 已用百分比
+	MountPoint string      `json:"mountpoint"`
+	// MountPoints: every mount of this device (lsblk >= 2.37; null entries
+	// for unmounted devices). MountPoint only carries the first.
+	MountPoints []*string    `json:"mountpoints,omitempty"`
 	Format      string       `json:"format"`
 	Health      string       `json:"health"`
 	HotPlug     bool         `json:"hotplug"`
@@ -60,6 +63,9 @@ type Drive struct {
 	Serial         string `json:"serial"`
 	Path           string `json:"path"`
 	ChildrenNumber int    `json:"children_number"`
+	// Sleeping: the drive was in standby at the last SMART poll (health
+	// is then the last awake reading, or "unknown").
+	Sleeping bool `json:"sleeping,omitempty"`
 }
 
 type USBDriveStatus struct {
