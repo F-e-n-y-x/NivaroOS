@@ -43,7 +43,13 @@ if [ -n "$SCRIPT_DIR" ] && [ -f "${SCRIPT_DIR}/../services/core/main.go" ]; then
 	LOCAL_REPO="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
-GO_VERSION="1.23.4"
+# Go toolchain installed to /usr/local/go when the one on PATH is missing or
+# older than the highest `go` directive in services/*/go.mod + cli/go.mod
+# (computed after cloning - see ensure_go_toolchain in clone_or_update_repo;
+# GO_MIN_VERSION is only the floor used if that can't be read). Bump
+# GO_VERSION whenever a go.mod needs a newer release.
+GO_VERSION="1.26.8"
+GO_MIN_VERSION="1.26.0"
 MIN_RECOMMENDED_MEMORY_MB="1024"
 MIN_REQUIRED_MEMORY_MB="384"
 MIN_RECOMMENDED_DISK_GB="5"
@@ -78,7 +84,7 @@ MANIFEST_FILE="/var/lib/nivaroos/manifest"
 # streaming happens during install at all - it doesn't. That check (and
 # the desktop-install prompt if it's needed) now happens reactively, the
 # first time Host Desktop is opened in the dashboard, via
-# installer/host-desktop-de-install.sh - see select_components()'s comment
+# services/vm-sidecar/hostdesktop/host-desktop-de-install.sh - see select_components()'s comment
 # for why. KVM_AVAILABLE is unrelated to any of that (VM Manager's own
 # hardware-acceleration detection) but lives here for the same reason it
 # always has: it's install-time system state, decided once up front.
@@ -92,6 +98,9 @@ CBM_DESCS=()
 CBM_STATE=()
 
 export PATH="/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+# Builds must use the toolchain this script installed - never silently
+# download a different one from the network mid-build.
+export GOTOOLCHAIN=local
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 
@@ -809,7 +818,7 @@ compute_default_selections() {
 # install, with no flag to skip them, the same as Docker or the web
 # dashboard itself. Only VM Manager and Host Desktop are optional enough to
 # warrant a selection screen: VM Manager pulls in QEMU/KVM/libvirt, and Host
-# Desktop pulls in x11vnc/websockify. Samba/mDNS are neither.
+# Desktop pulls in x11vnc. Samba/mDNS are neither.
 #
 # Host Desktop here only ever installs the streaming service itself -
 # whether there's a compatible (X11) desktop for it to actually stream is a
@@ -820,7 +829,7 @@ compute_default_selections() {
 # before the rest of setup could even continue - for a machine that might
 # not even have anyone sitting at its physical console yet. That check now
 # happens reactively instead: opening Host Desktop in the dashboard runs
-# installer/host-desktop-de-install.sh --status itself and prompts for a
+# the desktop provisioner (services/vm-sidecar/hostdesktop/host-desktop-de-install.sh) --status itself and prompts for a
 # desktop choice right there, with the exact same options, only when and
 # if it's actually needed.
 select_components() {
@@ -996,6 +1005,7 @@ run_step() {
 			export DEBIAN_FRONTEND=noninteractive
 			export NEEDRESTART_MODE=a
 			export GOWORK=off
+			export GOTOOLCHAIN=local
 			eval "$*"
 		) 2>&1 | tee -a "$INSTALL_LOG"; then
 			local exit_code=$?
@@ -1018,6 +1028,7 @@ run_step() {
 			export DEBIAN_FRONTEND=noninteractive
 			export NEEDRESTART_MODE=a
 			export GOWORK=off
+			export GOTOOLCHAIN=local
 			eval "$*"
 		) > "$log_file" 2>&1 </dev/null &
 		local cmd_pid=$!
@@ -1225,6 +1236,7 @@ run_step() {
 			export DEBIAN_FRONTEND=noninteractive
 			export NEEDRESTART_MODE=a
 			export GOWORK=off
+			export GOTOOLCHAIN=local
 			eval "$*"
 		) > "$log_file" 2>&1 </dev/null; then
 			local end_ts
@@ -1281,19 +1293,55 @@ pkg_install() {
 	fi
 }
 
+# pkg_install_each <pkg|alt>... - install packages one at a time, never
+# failing: for tools that aren't packaged on every distro (or not under the
+# same name). "a|b" tries a, then b. Reports what couldn't be installed.
+pkg_install_each() {
+	local spec alt ok alts missing=()
+	for spec in "$@"; do
+		ok=no
+		IFS='|' read -r -a alts <<< "$spec"
+		for alt in "${alts[@]}"; do
+			if pkg_install "$alt"; then ok=yes; break; fi
+		done
+		[ "$ok" = yes ] || missing+=("${spec}")
+	done
+	if [ "${#missing[@]}" -gt 0 ]; then
+		echo "Note: not available from this distro's repositories, skipped: ${missing[*]}" >&2
+	fi
+	return 0
+}
+
 install_core_dependencies() {
+	# Second list per distro = storage/system tools the dashboard shells out
+	# to, installed one at a time (pkg_install_each) because not every
+	# distro packages all of them:
+	#   dmidecode   RAM DIMM info            hdparm      disk standby/APM
+	#   sudo        helper scripts           udevil      USB auto-mount (helper.sh/usb-mount.sh)
+	#   ntfs-3g, exfatprogs, dosfstools, e2fsprogs  format/mount NTFS, exFAT, FAT, ext4
+	#   fdisk       sfdisk (own package on Debian/Ubuntu; part of util-linux elsewhere)
+	#   mergerfs    optional storage pooling
+	# Known gaps: udevil is not in Fedora/RHEL, Arch (AUR only) or openSUSE
+	# repos; mergerfs is not in Fedora/RHEL repos (upstream RPMs/COPR);
+	# dmidecode doesn't exist on 32-bit ARM. Those features degrade
+	# gracefully when the tool is missing.
 	run_step "Installing Core System Dependencies" "
 		pkg_update
 		if command -v apt-get >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc rsync
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools e2fsprogs mergerfs
 		elif command -v pacman >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd util-linux pciutils smartmontools parted base-devel rsync
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs
 		elif command -v zypper >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted make gcc rsync
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs
 		elif command -v apk >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-base rsync
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g ntfs-3g-progs exfatprogs dosfstools sfdisk e2fsprogs mergerfs
 		fi
 	"
 }
@@ -1396,8 +1444,29 @@ clone_or_update_repo() {
 			git clone --branch \"$BRANCH\" --depth 1 \"$REPO_URL\" \"$SRC_DIR\"
 		fi
 
-		# Ensure Go toolchain is installed
-		if ! command -v go >/dev/null 2>&1; then
+		# Ensure a new-enough Go toolchain: the highest go directive across
+		# every module this installer builds. A distro Go (e.g. Debian 12's
+		# 1.19) on PATH is not enough - it can't build a go 1.26 module, and
+		# with GOTOOLCHAIN=local it won't fetch one either.
+		go_need=\"${GO_MIN_VERSION}\"
+		for mod in \"${SRC_DIR}\"/services/*/go.mod \"${SRC_DIR}\"/cli/go.mod; do
+			[ -f \"\$mod\" ] || continue
+			v=\"\$(awk '/^go [0-9]/ {print \$2; exit}' \"\$mod\")\"
+			[ -n \"\$v\" ] || continue
+			go_need=\"\$(printf '%s\\n%s\\n' \"\$go_need\" \"\$v\" | sort -V | tail -n1)\"
+		done
+		go_have=\"\"
+		if [ -x /usr/local/go/bin/go ]; then
+			go_have=\"\$(GOTOOLCHAIN=local /usr/local/go/bin/go env GOVERSION 2>/dev/null | sed 's/^go//')\"
+		elif command -v go >/dev/null 2>&1; then
+			go_have=\"\$(GOTOOLCHAIN=local go env GOVERSION 2>/dev/null | sed 's/^go//')\"
+		fi
+		go_ok=no
+		if [ -n \"\$go_have\" ] && [ \"\$(printf '%s\\n%s\\n' \"\$go_need\" \"\$go_have\" | sort -V | head -n1)\" = \"\$go_need\" ]; then
+			go_ok=yes
+		fi
+		if [ \"\$go_ok\" != yes ]; then
+			echo \"Installing Go ${GO_VERSION} (found: \${go_have:-none}, need >= \$go_need)\"
 			go_arch=\"amd64\"
 			case \"\$(uname -m)\" in
 				x86_64) go_arch=\"amd64\" ;;
@@ -1408,8 +1477,14 @@ clone_or_update_repo() {
 			rm -rf /usr/local/go
 			tar -C /usr/local -xzf /tmp/go.tar.gz
 			rm -f /tmp/go.tar.gz
-			export PATH=\"/usr/local/go/bin:\$PATH\"
+			go_have=\"\$(GOTOOLCHAIN=local /usr/local/go/bin/go env GOVERSION 2>/dev/null | sed 's/^go//')\"
+			if [ \"\$(printf '%s\\n%s\\n' \"\$go_need\" \"\${go_have:-0}\" | sort -V | head -n1)\" != \"\$go_need\" ]; then
+				echo \"Go ${GO_VERSION} is older than the go \$go_need a go.mod requires - bump GO_VERSION in install.sh.\" >&2
+				exit 1
+			fi
 		fi
+		export PATH=\"/usr/local/go/bin:\$PATH\"
+		go version
 	"
 }
 
@@ -1533,7 +1608,10 @@ Restart=always
 # both are still free hardening for the far more common nvidia-smi-only
 # code path.
 NoNewPrivileges=true
-ProtectHome=true
+# read-only, not true: Host Desktop's xrandr/xset calls need to read the
+# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
+# which ProtectHome=true hides entirely.
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target
@@ -1560,6 +1638,11 @@ GPUEOF
 				fi
 			fi
 		done
+
+		# Leftovers from CasaOS's UI analytics (removed): nothing runs
+		# start.d any more, so upgraded installs just lose the dead files.
+		rm -f /etc/nivaroos/start.d/register-ui-events.sh /var/lib/nivaroos/ui-message-bus.json
+		rmdir /etc/nivaroos/start.d 2>/dev/null || true
 
 		# 11. Install the services' shell helpers. Only usb-mount.sh used to
 		# be installed, but core sources helper.sh (device tree, network
@@ -1638,7 +1721,10 @@ Restart=always
 # (/DATA, libvirt's own state dirs, etc.) this installer can't fully
 # enumerate ahead of time.
 NoNewPrivileges=true
-ProtectHome=true
+# read-only, not true: Host Desktop's xrandr/xset calls need to read the
+# desktop session's X cookie (/run/user/<uid>/gdm/Xauthority, ~/.Xauthority),
+# which ProtectHome=true hides entirely.
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target
@@ -1700,24 +1786,9 @@ install_download_station() {
 		mkdir -p /DATA/Downloads /var/lib/nivaroos/download-station
 		chmod 700 /var/lib/nivaroos/download-station
 
-		cat > /usr/lib/systemd/system/nivaroos-download-sidecar.service <<'DSEOF'
-[Unit]
-Description=NivaroOS Download Station Sidecar
-After=network-online.target nivaroos-user-service.service
-Wants=network-online.target
-
-[Service]
-ExecStart=/usr/bin/nivaroos-download-sidecar
-Restart=always
-# Downloads may be saved anywhere the user picks (/DATA, mounted drives
-# under /media or /mnt), so the filesystem stays writable - same
-# conservative hardening as the other sidecars.
-NoNewPrivileges=true
-ProtectHome=true
-
-[Install]
-WantedBy=multi-user.target
-DSEOF
+		# The unit lives in the project (hardened: read-only system, writable
+		# storage roots only) - one copy, updated with every install.
+		cp -f \"${SRC_DIR}/services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-download-sidecar.service\" /usr/lib/systemd/system/nivaroos-download-sidecar.service
 		echo '/usr/lib/systemd/system/nivaroos-download-sidecar.service' >> \"$MANIFEST_FILE\"
 
 		systemctl daemon-reload >/dev/null 2>&1 || true
@@ -1727,187 +1798,30 @@ DSEOF
 
 # ------------------------------------------------------------------------------
 # Host Desktop Streaming Installation (Optional Add-on, requires VM Manager -
-# it streams over the same vm-sidecar the VM Manager installs). Installs the
-# VNC bridge itself only - whether there's a working X11 session for it to
-# actually stream is checked and fixed later, reactively, from the
-# dashboard (installer/host-desktop-de-install.sh), not here.
+# it streams over the vm-sidecar the VM Manager installs). The sidecar binary
+# owns this entirely: the x11vnc wrapper, its unit and the desktop provisioner
+# are embedded in it (services/vm-sidecar/hostdesktop/, the single source of
+# truth), and `nivaroos-vm-sidecar install-host-desktop` is exactly what the
+# dashboard's Install button and `nivaroos host-desktop enable` run -
+# per-distro packages (x11vnc, xdotool, xrandr/xset/xrefresh, xdpyinfo) and
+# all. Whether there's an X11 session to stream is checked later, from the
+# dashboard.
 # ------------------------------------------------------------------------------
 install_host_desktop() {
-	run_step "Installing Host Desktop Streaming (x11vnc & websockify)" "
-		# Best-effort: x11vnc/websockify aren't in every distro's official
-		# repos (notably Arch/Alpine). This is an optional add-on, so a
-		# missing package here should not abort the whole installation -
-		# we just warn and the feature stays unavailable until installed
-		# manually.
-		pkg_install x11vnc websockify xdotool || true
-
-		if ! command -v x11vnc >/dev/null 2>&1; then
-			echo 'x11vnc could not be installed automatically on this distro - Host Desktop streaming will be unavailable until it is installed manually.' >&2
+	run_step "Installing Host Desktop Streaming (x11vnc)" "
+		if [ ! -x /usr/bin/nivaroos-vm-sidecar ]; then
+			echo 'nivaroos-vm-sidecar is missing (VM Manager step failed?) - skipping Host Desktop. Enable it later with: nivaroos host-desktop enable' >&2
+			exit 0
 		fi
-
-		cat > /usr/local/bin/nivaroos-host-desktop.sh <<'HOSTDESKEOF'
-#!/bin/bash
-set -e
-
-# Find X authority file
-find_auth() {
-    for f in /var/run/lightdm/root/:0 /run/lightdm/root/:0 /root/.Xauthority /home/*/.Xauthority; do
-        if [ -f \"\$f\" ]; then
-            echo \"\$f\"
-            return 0
-        fi
-    done
-    echo \"\"
-}
-
-x_is_up() {
-    [ -S /tmp/.X11-unix/X0 ] || xdpyinfo -display :0 >/dev/null 2>&1
-}
-
-# No physical monitor connected on any output? Every mainstream KMS driver
-# (modesetting/amdgpu/intel/nouveau/nvidia) refuses to bring up a display at
-# all in that case unless told otherwise - this, not x11vnc or websockify,
-# is what actually breaks Host Desktop on a headless/rack server: lightdm's
-# own Xorg never starts, so :0 never appears no matter how long the wait
-# loop below runs.
-no_monitor_connected() {
-    local f
-    for f in /sys/class/drm/*/status; do
-        [ -f \"\$f\" ] || continue
-        if [ \"\$(cat \"\$f\" 2>/dev/null)\" = \"connected\" ]; then
-            return 1
-        fi
-    done
-    return 0
-}
-
-XORG_HEADLESS_CONF=/etc/X11/xorg.conf.d/10-nivaroos-headless.conf
-
-# AllowEmptyInitialConfiguration is a no-op when a monitor genuinely is
-# connected, and only takes effect for whichever driver actually binds the
-# card - so writing one Device section per common driver name is safe
-# rather than needing to guess which one this machine uses.
-write_headless_xorg_conf() {
-    [ -f \"\$XORG_HEADLESS_CONF\" ] && return 0
-    mkdir -p /etc/X11/xorg.conf.d
-    : > \"\$XORG_HEADLESS_CONF\"
-    for drv in modesetting amdgpu intel nouveau nvidia; do
-        cat >> \"\$XORG_HEADLESS_CONF\" <<CONFEOF
-Section \"Device\"
-    Identifier \"NivaroOSHeadless-\${drv}\"
-    Driver \"\${drv}\"
-    Option \"AllowEmptyInitialConfiguration\" \"true\"
-EndSection
-
-CONFEOF
-    done
-}
-
-# Wait for X server on :0 if not yet ready. If it still isn't up halfway
-# through and no monitor is plugged in, apply the headless fix and restart
-# the display manager once - only when X genuinely isn't up yet, so a
-# working headed session is never disrupted just because this check ran.
-HEADLESS_FIX_APPLIED=false
-for i in {1..30}; do
-    if x_is_up; then
-        break
-    fi
-    if [ \"\$i\" -eq 10 ] && [ \"\$HEADLESS_FIX_APPLIED\" = false ] && no_monitor_connected; then
-        write_headless_xorg_conf
-        systemctl restart display-manager.service 2>/dev/null || systemctl restart lightdm.service 2>/dev/null || systemctl restart sddm.service 2>/dev/null || true
-        HEADLESS_FIX_APPLIED=true
-    fi
-    sleep 1
-done
-
-AUTH=\$(find_auth)
-
-# Set initial default framebuffer resolution to 1920x1080 if currently lower (e.g. 640x480 headless default)
-if [ -n \"\$AUTH\" ]; then
-    DISPLAY=:0 XAUTHORITY=\"\$AUTH\" xrandr --fb 1920x1080 2>/dev/null || true
-else
-    xrandr -display :0 --fb 1920x1080 2>/dev/null || true
-fi
-
-# Start websockify proxy on port 28642 if not already running
-if ! ss -tulpn | grep -q \":28642 \"; then
-    /usr/bin/websockify -D 28642 127.0.0.1:5900 2>/dev/null || true
-fi
-
-# -noxdamage: compositors with GL-based effects (confirmed live on
-# Cinnamon) make the X11 damage extension unreliable - it silently misses a
-# large fraction of change events, which is what causes stale/corrupted
-# patches on the stream (x11vnc's own log flags this explicitly). Polling
-# instead of trusting damage events costs a little CPU but eliminates that
-# class of artifact entirely.
-# -fixscreen X=5: -noxdamage alone doesn't fully fix it - the compositor
-# can still leave x11vnc's own tile-comparison believing certain regions
-# are unchanged when the actually-displayed (composited) content moved on
-# without it, showing up as static colored/stale rectangles under real
-# usage (confirmed via a live screenshot, not just at resize time). X=5
-# forces a genuine full re-read of the X11 framebuffer from the X server
-# every 5s, bypassing that comparison entirely, so any such patch
-# self-heals within 5 seconds regardless of what caused it.
-# -localhost: this server is reachable only via the vm-sidecar's WebSocket
-# proxy (which always connects over 127.0.0.1) - there is no legitimate
-# reason to expose a raw, unauthenticated VNC port to the network.
-# -repeat (not -norepeat): -norepeat disables the X server's own key
-# autorepeat while a client is connected, on the assumption the VNC viewer
-# re-sends its own down events for a genuinely held key - but that broke
-# holding a key (Backspace, arrow keys, etc) entirely, which is a worse
-# trade than the rarer runaway-duplicate-character bug -repeat can cause
-# under real network delay between a key's down/up events. If that
-# resurfaces, -skip_dups is the next thing to try instead of -norepeat.
-# -capslock: without it, x11vnc's default modtweak logic fakes a Shift
-# press to force an uppercase keysym whenever one arrives - even if the
-# host's CapsLock is already on, where Shift+CapsLock actually produces
-# LOWERCASE, inverting the typed case. -capslock makes x11vnc check the
-# host's real CapsLock state first and skip the fake Shift when it's
-# already set, which is what was showing up as the host desktop typing as
-# if CapsLock were on regardless of the client's real key state.
-if [ -n \"\$AUTH\" ]; then
-    exec /usr/bin/x11vnc -display :0 -auth \"\$AUTH\" -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
-else
-    exec /usr/bin/x11vnc -display :0 -auth guess -xrandr resize -forever -shared -repeat -capslock -noxdamage -fixscreen X=5 -localhost -rfbport 5900 -nopw
-fi
-HOSTDESKEOF
-		chmod +x /usr/local/bin/nivaroos-host-desktop.sh
-		echo '/usr/local/bin/nivaroos-host-desktop.sh' >> \"$MANIFEST_FILE\"
-
-		cat > /usr/lib/systemd/system/nivaroos-host-desktop.service <<'HOSTDESKSVCEOF'
-[Unit]
-Description=NivaroOS Host Desktop Remote VNC Server
-After=network.target lightdm.service display-manager.service
-Wants=lightdm.service
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/nivaroos-host-desktop.sh
-Restart=always
-RestartSec=3
-KillMode=mixed
-
-[Install]
-WantedBy=multi-user.target
-HOSTDESKSVCEOF
-		echo '/usr/lib/systemd/system/nivaroos-host-desktop.service' >> \"$MANIFEST_FILE\"
-
-		# Not run here - copied into place so the dashboard's Host Desktop
-		# panel (via vm-sidecar) can run its --status/provisioning itself
-		# the first time it's actually opened. See select_components()'s
-		# comment for why this moved out of the install pipeline.
-		if [ -f \"${SRC_DIR}/installer/host-desktop-de-install.sh\" ]; then
-			cp -f \"${SRC_DIR}/installer/host-desktop-de-install.sh\" /usr/local/bin/nivaroos-host-desktop-de-install.sh
-			chmod 755 /usr/local/bin/nivaroos-host-desktop-de-install.sh
-			echo '/usr/local/bin/nivaroos-host-desktop-de-install.sh' >> \"$MANIFEST_FILE\"
+		# Optional add-on: a distro without x11vnc (e.g. RHEL without EPEL)
+		# must not abort the whole installation.
+		if ! /usr/bin/nivaroos-vm-sidecar install-host-desktop; then
+			echo 'Host Desktop streaming could not be installed (see above) - the rest of NivaroOS is unaffected. Retry later with: nivaroos host-desktop enable' >&2
 		fi
-
+		for f in /usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh /usr/lib/systemd/system/nivaroos-host-desktop.service; do
+			[ -e \"\$f\" ] && echo \"\$f\" >> \"$MANIFEST_FILE\"
+		done
 		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
-
-		systemctl daemon-reload >/dev/null 2>&1 || true
-		if command -v x11vnc >/dev/null 2>&1; then
-			systemctl enable --now nivaroos-host-desktop >/dev/null 2>&1 || true
-		fi
 	"
 }
 

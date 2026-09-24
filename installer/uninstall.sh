@@ -534,8 +534,11 @@ remove_binaries() {
 			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos-host-desktop.sh \
+			/usr/local/bin/nivaroos-host-desktop-de-install.sh \
 			/etc/lightdm/lightdm.conf.d/60-nivaroos-host-desktop.conf \
 			/etc/sddm.conf.d/60-nivaroos-host-desktop.conf \
+			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf \
+			/run/nivaroos/hostvnc.sock /run/nivaroos/host-desktop.env /run/nivaroos/host-desktop.xauth \
 			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
 			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
 		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos /usr/share/nivaroos
@@ -567,26 +570,80 @@ remove_provisioned_desktop_if_requested() {
 	if [ -z "$PROVISIONED_DESKTOP_INFO" ]; then
 		return
 	fi
+	# Only desktops NivaroOS itself installed ("alongside:<de>" /
+	# "replaced:<de>") - anything else (e.g. an X11 companion session added
+	# to the user's own GNOME/Plasma) is never removed.
+	case "$PROVISIONED_DESKTOP_INFO" in
+		alongside:*|replaced:*) ;;
+		*) return ;;
+	esac
 	local de="${PROVISIONED_DESKTOP_INFO#*:}"
+	case "$de" in
+		xfce|cinnamon|mate) ;;
+		*) return ;;
+	esac
 	if [ "$REMOVE_PROVISIONED_DESKTOP" != "yes" ]; then
 		info "A desktop environment (${de}) was installed by NivaroOS for Host Desktop streaming and is being left in place."
 		info "Remove it too with: nivaroos-uninstall --remove-provisioned-desktop"
 		return
 	fi
+	if [ "${PROVISIONED_DESKTOP_INFO%%:*}" = "replaced" ]; then
+		warn "${de} replaced your previous desktop - removing it leaves this machine without a graphical desktop."
+	fi
 	run_step "Removing Desktop Environment Provisioned for Host Desktop (${de})" "
 		if command -v apt-get >/dev/null 2>&1; then
 			case '${de}' in
-				xfce) apt-get purge -y xfce4 >/dev/null 2>&1 || true ;;
-				cinnamon) apt-get purge -y cinnamon-core cinnamon >/dev/null 2>&1 || true ;;
-				mate) apt-get purge -y mate-desktop-environment-core mate-desktop-environment >/dev/null 2>&1 || true ;;
+				xfce) DEBIAN_FRONTEND=noninteractive apt-get purge -y xfce4 xfce4-terminal >/dev/null 2>&1 || true ;;
+				cinnamon) DEBIAN_FRONTEND=noninteractive apt-get purge -y cinnamon-core cinnamon >/dev/null 2>&1 || true ;;
+				mate) DEBIAN_FRONTEND=noninteractive apt-get purge -y mate-desktop-environment-core mate-desktop-environment >/dev/null 2>&1 || true ;;
 			esac
-			apt-get autoremove -y >/dev/null 2>&1 || true
+			DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >/dev/null 2>&1 || true
 		elif command -v pacman >/dev/null 2>&1; then
-			pacman -Rns --noconfirm '${de}' >/dev/null 2>&1 || true
+			case '${de}' in
+				xfce) pacman -Rns --noconfirm xfce4 xfce4-goodies >/dev/null 2>&1 || pacman -Rns --noconfirm xfce4 >/dev/null 2>&1 || true ;;
+				cinnamon) pacman -Rns --noconfirm cinnamon >/dev/null 2>&1 || true ;;
+				mate) pacman -Rns --noconfirm mate mate-extra >/dev/null 2>&1 || pacman -Rns --noconfirm mate >/dev/null 2>&1 || true ;;
+			esac
 		elif command -v dnf >/dev/null 2>&1; then
-			dnf remove -y '@${de}-desktop-environment' >/dev/null 2>&1 || true
+			dnf remove -y '@${de}-desktop-environment' >/dev/null 2>&1 || dnf group remove -y '${de}-desktop' >/dev/null 2>&1 || true
+		elif command -v zypper >/dev/null 2>&1; then
+			case '${de}' in
+				xfce) zypper --non-interactive remove --clean-deps xfce4-session >/dev/null 2>&1 || true ;;
+				cinnamon) zypper --non-interactive remove --clean-deps cinnamon >/dev/null 2>&1 || true ;;
+				mate) zypper --non-interactive remove --clean-deps mate-session-manager >/dev/null 2>&1 || true ;;
+			esac
 		fi
 	"
+}
+
+# The desktop provisioner records the GDM custom.conf it edited (line 1) and
+# the WaylandEnable= line that was there before (line 2, or "absent").
+# Captured before remove_binaries deletes /var/lib/nivaroos.
+GDM_WAYLAND_MARKER="/var/lib/nivaroos/host-desktop-gdm-wayland"
+GDM_WAYLAND_INFO=""
+capture_host_desktop_markers() {
+	if [ -f "$GDM_WAYLAND_MARKER" ]; then
+		GDM_WAYLAND_INFO="$(cat "$GDM_WAYLAND_MARKER" 2>/dev/null || echo "")"
+	fi
+}
+
+# revert_host_desktop_changes undoes system-wide display tweaks Host Desktop
+# made: GDM's WaylandEnable=false, and the legacy websockify proxy older
+# versions left running on port 28642. (The headless Xorg config and the
+# LightDM/SDDM drop-ins are plain files removed in remove_binaries.)
+revert_host_desktop_changes() {
+	pkill -f 'websockify.*28642.*5900' >/dev/null 2>&1 || true
+	[ -n "$GDM_WAYLAND_INFO" ] || return 0
+	local conf orig
+	conf="$(printf '%s\n' "$GDM_WAYLAND_INFO" | sed -n 1p)"
+	orig="$(printf '%s\n' "$GDM_WAYLAND_INFO" | sed -n 2p)"
+	[ -f "$conf" ] || return 0
+	if [ "$orig" = "absent" ] || [ -z "$orig" ]; then
+		sed -i '/^WaylandEnable=false$/d' "$conf" 2>/dev/null || true
+	else
+		sed -i "s|^WaylandEnable=false\$|${orig}|" "$conf" 2>/dev/null || true
+	fi
+	info "Restored GDM's Wayland setting in ${conf} (takes effect at the next login screen)."
 }
 
 LEFTOVER_ITEMS=""
@@ -613,7 +670,8 @@ verify_teardown() {
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
 			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
 			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-cli \
-			/usr/local/bin/nivaroos-host-desktop.sh; do
+			/usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
+			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf; do
 			if [ -e \"\$b\" ]; then
 				echo \"binary still present: \$b\" >> \"$LEFTOVER_FILE\"
 			fi
@@ -706,6 +764,7 @@ main() {
 	confirm_uninstall
 
 	capture_provisioned_desktop_marker
+	capture_host_desktop_markers
 	if [ -n "$PROVISIONED_DESKTOP_INFO" ] && [ "$REMOVE_PROVISIONED_DESKTOP" = "yes" ]; then
 		TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	fi
@@ -716,6 +775,7 @@ main() {
 
 	stop_services
 	remove_unit_files
+	revert_host_desktop_changes
 	remove_binaries
 	purge_data_if_requested
 	remove_provisioned_desktop_if_requested
