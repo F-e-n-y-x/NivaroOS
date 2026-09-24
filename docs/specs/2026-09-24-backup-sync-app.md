@@ -1,6 +1,6 @@
 # Backup & Sync app (v1)
 
-Status: spec, not yet built (2026-09-24)
+Status: spec, not yet built (2026-09-24). Packaging: optional module, see §0.
 Owner ask: "make an app so users can add scheduled backups, sync and other types
 of backup periodically to any type of storage in Nivaro, and condition based
 also ... better UI and UX ... not only work on this PC but all ... quality work."
@@ -15,6 +15,74 @@ Side answer, for the record: the **Syncthing** and **Smart Home** blocks
 have nothing to do with scheduled tasks. They are leftover CasaOS promo cards.
 Their only host is `ui/src/shell/CoreService.vue`, which nothing imports. They
 are deleted in WP-UI-SHELL (§17).
+
+---
+
+## 0. Packaging: an optional module (owner decision, 2026-09-24; supersedes §3, §15 and §17 where they conflict)
+
+Backup & Sync ships as an **optional add-on**, installed by `installer/install.sh`
+exactly like Download Station, VM Manager and Host Desktop. This replaces the
+"engine in local-storage, jobs in core, no new binaries" plan of §3 and goal 4.
+
+- **One new service**, `services/backup/` (Go module
+  `github.com/F-e-n-y-x/NivaroOS/services/backup`), binary `/usr/bin/nivaroos-backup`,
+  unit `nivaroos-backup.service` shipped in
+  `services/backup/build/sysroot/usr/lib/systemd/system/`. It contains **both** the
+  job side (store, triggers, queue, hooks, notify, migration, REST API — what §3
+  gave to core `service/backup/`) and the engine (resolve, prechecks, guards,
+  copy/sync/archive/restore, mountwatch — what §3 gave to local-storage
+  `service/engine/`), as separate Go packages: `jobs/` and `engine/`, joined by
+  the §11.1 engine interface as an in-process Go interface (keep `FakeEngine` for
+  jobs tests). rclone is linked as a library (same version as local-storage,
+  v1.75.1) and loads the **same rclone config file** local-storage uses (rclone's
+  `configfile.Install()` default path), so every cloud account set up in NivaroOS
+  is a backup target without extra setup. It must tolerate local-storage
+  rewriting that file (re-read on change or before each run).
+- **Listens on 127.0.0.1:28643 only.** The gateway routes `/v1/backup/*` to it
+  (same pattern as `/v1/download-station` → 28642 and `/v1/gpu` → 28640 in
+  `services/gateway/route/gateway_route.go`, with a routing test). It validates the
+  same ES256 JWT itself (copy Download Station's `auth.go` approach, incl. the
+  strict loopback-automation rule from `services/common/middleware/localauth.go`)
+  and enforces the admin role for writes.
+- **`GET /v1/backup/health`** is unauthenticated and returns
+  `{installed:true, running:true, version}`. The UI shows the app (launcher, dock,
+  app grid, Settings links, Scheduled Tasks hints) **only when this answers**, via
+  `ui/src/utils/backupInstalled.js` modelled on `downloadStationInstalled.js`
+  (always through the gateway route; no direct port). When not installed, nothing
+  about Backup appears and Scheduled Tasks keeps working exactly as today.
+- **Hardened unit** like `nivaroos-download-sidecar.service`, but it must be able
+  to read every source and write every destination: ReadWritePaths for
+  `-/DATA -/media -/mnt /var/lib/nivaroos/backup` (+ documented drop-in for other
+  mount points), read access to the rclone config, network for cloud targets,
+  `StateDirectory=nivaroos/backup`. `After=`/`Wants=` the gateway, user-service,
+  message-bus. Nice/IOSchedulingClass idle-ish per §3.5, MemoryHigh/MemoryMax
+  so a big job can't take the box down.
+- **Installer:** `--with-backup` / `--without-backup` (default **yes**), an entry
+  in the interactive component checklist, step count, a build/install step
+  (`install_backup`, mirroring `install_download_station`), the summary line,
+  and on upgrade the same rebuild. `installer/uninstall.sh` stops/disables and
+  removes the binary and unit (state in `/var/lib/nivaroos/backup` follows
+  whatever uninstall does for Download Station's state), and before removal runs
+  `nivaroos-backup release-scheduled-tasks` (below).
+- **Scheduled Tasks migration (§4.2) without coupling core to the module:** on
+  first start the backup service imports `schedules.json` backup/sync tasks into
+  jobs through core's existing schedules API over loopback (local automation),
+  then marks each imported task disabled with a `migrated_to: "backup"` marker.
+  Core's executor skips tasks carrying that marker (the only core change, plus
+  the §1 goal-6 bug fixes to `schedule.go`: atomic writes, archive command
+  injection, custom-cron overwrite). `nivaroos-backup release-scheduled-tasks`
+  re-enables tasks it migrated, so uninstalling Backup never silently stops a
+  user's old backups. Idempotent both ways.
+- **Hooks** (stop/start apps, VM shutdown/start) call app-management and
+  vm-sidecar over loopback as local automation; **notifications and progress
+  events** go through the message bus (`nivaroos:backup:*`, §10.1), registered by
+  the service at start like other services register their event types.
+- **Mount/volume events** come from the service's own mountinfo watcher
+  (`engine/mountwatch.go`); it must not depend on local-storage internals.
+- The **UI stays in the main bundle** (`ui/src/apps/backup/`, like
+  `ui/src/apps/download-station/`); shared pieces (`shared/scheduling/ScheduleBuilder`,
+  `shared/storage/*` pickers) may also be used by Scheduled Tasks regardless of
+  whether Backup is installed.
 
 ---
 

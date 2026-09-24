@@ -1,0 +1,22 @@
+[
+  {
+    "mount_id": 87,
+    "uuid": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+    "serial": "WD-WX12A3456789",
+    "size": 3960000000000,
+    "fstype": "ntfs3",
+    "mount_point": "/DATA/tower",
+    "label": "tower",
+    "tran": "sata"
+  },
+  {
+    "mount_id": 203,
+    "uuid": "3A4F-1C22",
+    "serial": "4C530001230914117281",
+    "size": 128035676160,
+    "fstype": "exfat",
+    "mount_point": "/media/sdc1",
+    "label": "SANDISK",
+    "tran": "usb"
+  }
+]

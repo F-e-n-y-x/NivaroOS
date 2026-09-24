@@ -1,0 +1,44 @@
+{
+  "op": "archive",
+  "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V5",
+  "job_id": "bk_9f8e7d6c5b4a",
+  "sources": [
+    {
+      "kind": "volume",
+      "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+      "sub_path": "DATA/AppData/immich",
+      "label": "System disk",
+      "preset": "appdata:immich"
+    }
+  ],
+  "dest": {
+    "kind": "cloud",
+    "ref_id": "gdrive",
+    "sub_path": "NivaroOS Backups/AppData",
+    "label": "Google Drive"
+  },
+  "filters": {
+    "exclude_presets": [
+      "caches"
+    ],
+    "exclude": []
+  },
+  "options": {
+    "verify": true,
+    "preview_first": false,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": true
+  },
+  "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+  },
+  "retention": {
+    "keep_last": 8
+  },
+  "dest_folder_id": "0d9a1c3e-7b2f-4e6a-8c5d-1f3b5a7c9e02",
+  "first_run": false
+}

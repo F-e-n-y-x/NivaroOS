@@ -1,0 +1,51 @@
+{
+  "engine_job_id": 17,
+  "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+  "op": "sync",
+  "state": "done",
+  "stats": {
+    "bytes": 11900000000,
+    "total_bytes": 11900000000,
+    "files": 4700,
+    "total_files": 4700,
+    "speed_bps": 0,
+    "eta_sec": 0,
+    "errors": 0,
+    "current_file": "",
+    "step": "transfer"
+  },
+  "result": {
+    "counts": {
+      "added": 4120,
+      "changed": 12,
+      "deleted": 318,
+      "skipped": 250,
+      "errored": 1,
+      "bytes_transferred": 11200000000,
+      "bytes_total": 11900000000,
+      "source_files": 48210,
+      "dest_files": 48012
+    },
+    "error_code": "",
+    "error_detail": "",
+    "guard": null,
+    "file_errors": [
+      {
+        "path": "photos/locked.db",
+        "code": "io_error",
+        "detail": "permission denied"
+      }
+    ],
+    "checks": [
+      {
+        "id": "dest_marker",
+        "status": "pass",
+        "msg_key": "backup.check.dest_marker"
+      }
+    ],
+    "mount_id": 203,
+    "marker_written": false
+  },
+  "started_at": "2026-09-24T03:00:00+02:00",
+  "ended_at": "2026-09-24T03:12:40+02:00"
+}

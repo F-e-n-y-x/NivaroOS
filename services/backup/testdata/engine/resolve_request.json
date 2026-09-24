@@ -1,0 +1,14 @@
+{
+  "endpoint": {
+    "kind": "smb",
+    "ref_id": "3",
+    "sub_path": "backup/photos",
+    "label": "\\\\192.168.1.20\\backup"
+  },
+  "smb_creds": {
+    "host": "192.168.1.20",
+    "share": "backup",
+    "user": "nas",
+    "password": "secret"
+  }
+}

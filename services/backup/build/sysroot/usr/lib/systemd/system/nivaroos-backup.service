@@ -1,0 +1,72 @@
+[Unit]
+Description=NivaroOS Backup & Sync
+# After app-management and vm-sidecar: at shutdown systemd stops units in
+# reverse order, so running backups restart the apps and VMs they stopped
+# while those two still answer, and at boot the crash replay finds them
+# up. vm-sidecar is only ordered, not pulled in (VM Manager is optional);
+# a restart that still fails is retried by the service until it works.
+After=network-online.target nivaroos-gateway.service nivaroos-user-service.service nivaroos-message-bus.service nivaroos-app-management.service nivaroos-vm-sidecar.service
+Wants=network-online.target nivaroos-gateway.service nivaroos-user-service.service nivaroos-message-bus.service nivaroos-app-management.service
+
+[Service]
+ExecStart=/usr/bin/nivaroos-backup
+Restart=always
+RestartSec=5
+# Running runs stop their engine jobs and run their post hooks (restart
+# the apps and VMs they stopped) before the process exits; give that
+# time. Anything cut off is replayed at the next start.
+TimeoutStopSec=120
+# Backups run in the background: lower CPU and I/O priority than the
+# apps they protect, and a memory ceiling so a job over millions of
+# files can't take the box down (the engine also caps Go's heap at 25 %
+# of RAM, 512 MiB to 2 GiB).
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryHigh=40%
+MemoryMax=60%
+# The service runs as root and reads every source and writes every
+# destination, so the whole filesystem is read-only to it except the
+# storage roots backups may use (the same list the engine enforces:
+# /DATA, /media, /mnt), its own state folder, and rclone's config folder
+# (cloud backends save refreshed OAuth tokens there; it is the file
+# local-storage maintains). The leading "-" keeps the unit starting on an
+# install where one of them doesn't exist. A data drive mounted somewhere
+# else (e.g. /srv/disk1) needs a drop-in:  systemctl edit nivaroos-backup
+#   [Service]
+#   ReadWritePaths=/srv/disk1
+# Reads it needs and ProtectSystem=strict keeps: /etc/nivaroos/casaos.conf
+# and core's database (saved network-share credentials), /var/run/nivaroos
+# (the other services' addresses), /sys/class/block, /run/udev/data and
+# /dev/disk (drive identities). That last one is why PrivateDevices is not
+# set: without the real /dev no drive can be identified and every job
+# would see its destination as offline.
+ProtectSystem=strict
+ReadWritePaths=-/DATA -/media -/mnt /var/lib/nivaroos/backup -/root/.config/rclone
+StateDirectory=nivaroos/backup
+StateDirectoryMode=0700
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+# Network for cloud and SMB targets and the loopback APIs (gateway, core,
+# app-management, vm-sidecar, message bus); netlink for interface lookups.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# Root only for reading every file, and for restoring owners, modes and
+# times.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

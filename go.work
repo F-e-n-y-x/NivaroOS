@@ -20,4 +20,6 @@ use ./services/gpu-sidecar
 
 use ./services/download-sidecar
 
+use ./services/backup
+
 use ./cli

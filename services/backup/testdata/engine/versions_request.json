@@ -1,0 +1,14 @@
+{
+  "job_id": "bk_1a2b3c4d5e6f",
+  "job_type": "mirror",
+  "dest": {
+    "kind": "usb",
+    "ref_id": "3A4F-1C22",
+    "match": {
+      "serial": "4C530001230914117281",
+      "size_bytes": 128035676160
+    },
+    "sub_path": "NivaroOS Backups/Photos",
+    "label": "Sandisk 128G"
+  }
+}

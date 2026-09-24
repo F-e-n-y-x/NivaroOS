@@ -1,0 +1,51 @@
+{
+  "op": "copy",
+  "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V6",
+  "job_id": "bk_aa11bb22cc33",
+  "sources": [
+    {
+      "kind": "volume",
+      "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+      "sub_path": "DATA/Documents",
+      "label": "System disk",
+      "preset": "data:Documents"
+    }
+  ],
+  "dest": {
+    "kind": "smb",
+    "ref_id": "3",
+    "sub_path": "backup/Documents",
+    "label": "\\\\192.168.1.20\\backup"
+  },
+  "smb_creds": {
+    "3": {
+      "host": "192.168.1.20",
+      "share": "backup",
+      "user": "nas",
+      "password": "secret"
+    }
+  },
+  "filters": {
+    "exclude_presets": [],
+    "exclude": []
+  },
+  "options": {
+    "verify": false,
+    "preview_first": true,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": false
+  },
+  "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+  },
+  "guard_override": [
+    "change"
+  ],
+  "retention": {},
+  "dest_folder_id": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918",
+  "first_run": false
+}

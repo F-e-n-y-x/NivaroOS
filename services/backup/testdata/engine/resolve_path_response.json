@@ -1,0 +1,9 @@
+{
+  "endpoint": {
+    "kind": "volume",
+    "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+    "sub_path": "photos",
+    "label": "tower"
+  },
+  "ok": true
+}

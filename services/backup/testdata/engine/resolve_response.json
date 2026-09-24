@@ -1,0 +1,19 @@
+{
+  "root": "/media/sdc1/NivaroOS Backups/Photos",
+  "mount_id": 203,
+  "online": true,
+  "quirks": [
+    "mtime_2s",
+    "case_insensitive",
+    "ntfs_chars"
+  ],
+  "free": 101000000000,
+  "marker": {
+    "v": 1,
+    "job_id": "bk_1a2b3c4d5e6f",
+    "dest_folder_id": "5f0c7a52-3d1e-4b8f-9a6c-2e4d8b1f7c30",
+    "fs_uuid": "3A4F-1C22",
+    "created": "2026-09-24T03:00:00+02:00",
+    "host": "9f86d081884c7d65"
+  }
+}

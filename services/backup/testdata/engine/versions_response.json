@@ -1,0 +1,16 @@
+[
+  {
+    "id": "current",
+    "kind": "current",
+    "time": null,
+    "label_key": "backup.ver.current"
+  },
+  {
+    "id": "v_20260923T010000Z",
+    "kind": "recycle",
+    "time": "2026-09-23T01:00:00Z",
+    "label_key": "backup.ver.recycle",
+    "files": 14,
+    "bytes": 80000000
+  }
+]

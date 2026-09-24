@@ -1,0 +1,20 @@
+{
+  "engine_job_id": 17,
+  "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+  "op": "sync",
+  "state": "running",
+  "stats": {
+    "bytes": 8100000000,
+    "total_bytes": 11900000000,
+    "files": 3210,
+    "total_files": 4700,
+    "speed_bps": 12300000,
+    "eta_sec": 360,
+    "errors": 0,
+    "current_file": "immich/library/2024/IMG_2231.HEIC",
+    "step": "transfer"
+  },
+  "result": null,
+  "started_at": "2026-09-24T03:00:00+02:00",
+  "ended_at": null
+}

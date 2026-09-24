@@ -1,0 +1,124 @@
+[
+  {
+    "kind": "volume",
+    "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+    "label": "tower",
+    "fstype": "ntfs3",
+    "mount_point": "/DATA/tower",
+    "online": true,
+    "free": 1980000000000,
+    "total": 3960000000000,
+    "removable": false,
+    "system_disk": false,
+    "physical_disk": "sdb",
+    "quirks": [
+      "case_insensitive",
+      "ntfs_chars"
+    ],
+    "warnings": []
+  },
+  {
+    "kind": "volume",
+    "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+    "label": "System disk",
+    "fstype": "ext4",
+    "mount_point": "/",
+    "online": true,
+    "free": 40000000000,
+    "total": 250000000000,
+    "removable": false,
+    "system_disk": true,
+    "physical_disk": "nvme0n1",
+    "quirks": [],
+    "warnings": [
+      "system_disk"
+    ],
+    "presets": [
+      {
+        "id": "data:Documents",
+        "sub_path": "DATA/Documents",
+        "label": "Documents"
+      },
+      {
+        "id": "appdata:immich",
+        "sub_path": "DATA/AppData/immich",
+        "label": "immich"
+      }
+    ]
+  },
+  {
+    "kind": "usb",
+    "ref_id": "3A4F-1C22",
+    "match": {
+      "serial": "4C530001230914117281",
+      "size_bytes": 128035676160
+    },
+    "label": "Sandisk 128G",
+    "fstype": "exfat",
+    "mount_point": "/media/sdc1",
+    "online": true,
+    "free": 101000000000,
+    "total": 128035676160,
+    "removable": true,
+    "system_disk": false,
+    "physical_disk": "sdc",
+    "quirks": [
+      "mtime_2s",
+      "case_insensitive",
+      "ntfs_chars"
+    ],
+    "warnings": [
+      "world_writable"
+    ]
+  },
+  {
+    "kind": "merge",
+    "ref_id": "/DATA/pool",
+    "label": "pool",
+    "fstype": "fuse.mergerfs",
+    "mount_point": "/DATA/pool",
+    "online": true,
+    "free": 820000000000,
+    "total": 1000000000000,
+    "removable": false,
+    "system_disk": false,
+    "quirks": [
+      "per_branch_free"
+    ],
+    "warnings": []
+  },
+  {
+    "kind": "cloud",
+    "ref_id": "terabox_terabox_1789494942",
+    "label": "TeraBox",
+    "provider": "terabox",
+    "online": true,
+    "free": null,
+    "removable": false,
+    "system_disk": false,
+    "quirks": [
+      "no_modtime",
+      "no_hash",
+      "no_metadata"
+    ],
+    "warnings": [
+      "limited_change_detection"
+    ]
+  },
+  {
+    "kind": "cloud",
+    "ref_id": "gdrive",
+    "label": "Google Drive",
+    "provider": "drive",
+    "online": true,
+    "free": 1200000000000,
+    "total": 2000000000000,
+    "removable": false,
+    "system_disk": false,
+    "quirks": [
+      "no_metadata",
+      "daily_quota"
+    ],
+    "warnings": []
+  }
+]

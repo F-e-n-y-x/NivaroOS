@@ -1,0 +1,28 @@
+[
+  {
+    "t": "2026-09-24T03:00:00+02:00",
+    "lvl": "info",
+    "code": "copied",
+    "msg_key": "backup.log.copied",
+    "args": {
+      "path": "photos/2024/IMG_2231.HEIC"
+    }
+  },
+  {
+    "t": "2026-09-24T03:00:00+02:00",
+    "lvl": "error",
+    "code": "file_error",
+    "msg_key": "backup.log.file_error",
+    "args": {
+      "path": "photos/locked.db",
+      "reason_key": "backup.err.io_error.title"
+    },
+    "raw": "ERROR : photos/locked.db: Failed to copy: permission denied"
+  },
+  {
+    "t": "2026-09-24T03:00:00+02:00",
+    "lvl": "info",
+    "code": "raw",
+    "raw": "INFO  : Transferred: 8.1 GiB / 11.9 GiB, 68%"
+  }
+]

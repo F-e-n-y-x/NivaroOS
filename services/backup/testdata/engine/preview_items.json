@@ -1,0 +1,17 @@
+[
+  {
+    "op": "add",
+    "path": "photos/2024/IMG_3001.HEIC",
+    "size": 2400000
+  },
+  {
+    "op": "update",
+    "path": "photos/notes.txt",
+    "size": 2048
+  },
+  {
+    "op": "delete",
+    "path": "old-phone/DCIM/IMG_0001.JPG",
+    "size": 1800000
+  }
+]

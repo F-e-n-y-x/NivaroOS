@@ -1,0 +1,61 @@
+{
+  "ok": false,
+  "checks": [
+    {
+      "id": "source_resolves",
+      "status": "pass",
+      "msg_key": "backup.check.source_resolves"
+    },
+    {
+      "id": "dest_resolves",
+      "status": "pass",
+      "msg_key": "backup.check.dest_resolves"
+    },
+    {
+      "id": "not_inside",
+      "status": "pass",
+      "msg_key": "backup.check.not_inside"
+    },
+    {
+      "id": "allowed_roots",
+      "status": "pass",
+      "msg_key": "backup.check.allowed_roots"
+    },
+    {
+      "id": "free_space",
+      "status": "fail",
+      "code": "no_space",
+      "msg_key": "backup.check.free_space",
+      "args": {
+        "need_bytes": 212000000000,
+        "free_bytes": 101000000000
+      }
+    },
+    {
+      "id": "fs_quirks",
+      "status": "warn",
+      "code": "case_collision",
+      "msg_key": "backup.check.fs_quirks",
+      "args": {
+        "count": 2
+      }
+    },
+    {
+      "id": "metadata",
+      "status": "skip",
+      "msg_key": "backup.check.metadata"
+    },
+    {
+      "id": "source_sentinel",
+      "status": "pass",
+      "msg_key": "backup.check.source_sentinel"
+    }
+  ],
+  "estimate": {
+    "source_bytes": 210000000000,
+    "source_files": 48210,
+    "dest_free": 101000000000,
+    "need_bytes": 212000000000,
+    "partial": false
+  }
+}

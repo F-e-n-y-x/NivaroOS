@@ -1,0 +1,2525 @@
+{
+  "title": "Backup & Sync REST API (frozen contract, WP-0)",
+  "spec": "docs/specs/2026-09-24-backup-sync-app.md §0, §11",
+  "version": 1,
+  "base": "/v1/backup",
+  "service": {
+    "binary": "/usr/bin/nivaroos-backup",
+    "listen": "127.0.0.1:28643",
+    "unit": "nivaroos-backup.service",
+    "gateway_route": "/v1/backup/* -> 127.0.0.1:28643 (path kept; the service accepts it with or without the prefix)"
+  },
+  "auth": {
+    "none": "no credentials",
+    "jwt": "ES256 JWT in Authorization: Bearer or ?token=; every non-GET route also needs the admin role (403 forbidden). Loopback automation (no Origin, no Sec-Fetch-Site, not via the gateway, no X-Forwarded-For) skips the JWT.",
+    "token": "single-use download token in the path"
+  },
+  "envelope": {
+    "shape": {
+      "success": "HTTP status (int)",
+      "message": "'ok' or the error code",
+      "data": "response_type below, or ErrorBody when success >= 400"
+    },
+    "examples": {
+      "ok": {
+        "success": 200,
+        "message": "ok",
+        "data": {
+          "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3"
+        }
+      },
+      "validation": {
+        "success": 400,
+        "message": "validation",
+        "data": {
+          "error_code": "validation",
+          "field_errors": {
+            "dest.sub_path": "path_not_allowed",
+            "triggers[1].cron": "invalid_cron"
+          }
+        }
+      },
+      "revision_conflict": {
+        "success": 409,
+        "message": "revision_conflict",
+        "data": {
+          "error_code": "revision_conflict",
+          "current": {
+            "id": "bk_1a2b3c4d5e6f",
+            "name": "Photos → Sandisk",
+            "type": "mirror",
+            "enabled": true,
+            "revision": 4,
+            "sources": [
+              {
+                "kind": "volume",
+                "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+                "sub_path": "photos",
+                "label": "tower"
+              }
+            ],
+            "dest": {
+              "kind": "usb",
+              "ref_id": "3A4F-1C22",
+              "match": {
+                "serial": "4C530001230914117281",
+                "size_bytes": 128035676160
+              },
+              "sub_path": "NivaroOS Backups/Photos",
+              "label": "Sandisk 128G"
+            },
+            "triggers": [
+              {
+                "kind": "volume_mounted",
+                "min_gap_hours": 24,
+                "catch_up": true
+              },
+              {
+                "kind": "schedule",
+                "cron": "0 3 * * 0",
+                "catch_up": true
+              }
+            ],
+            "conditions": {
+              "dest_available": true,
+              "when_unmet": "skip"
+            },
+            "filters": {
+              "exclude_presets": [
+                "caches",
+                "trash"
+              ],
+              "exclude": []
+            },
+            "options": {
+              "verify": false,
+              "preview_first": true,
+              "low_priority": true,
+              "max_duration_sec": 86400,
+              "copy_empty_dirs": false
+            },
+            "guards": {
+              "empty_source_pct": 50,
+              "delete_pct": 10,
+              "change_pct": 30,
+              "allow_empty_source": false
+            },
+            "retention": {
+              "versions_days": 30
+            },
+            "hooks": [],
+            "retry": {
+              "max": 3,
+              "backoff_sec": [
+                60,
+                600,
+                3600
+              ]
+            },
+            "notify": {
+              "on_success": false,
+              "on_failure": true,
+              "stale_after_hours": 336
+            },
+            "needs_attention": "",
+            "migrated_from": null,
+            "created_at": "2026-09-01T10:00:00+02:00",
+            "updated_at": "2026-09-20T18:30:00+02:00"
+          }
+        }
+      },
+      "not_found": {
+        "success": 404,
+        "message": "not_found",
+        "data": {
+          "error_code": "not_found",
+          "detail": "job bk_000000000000"
+        }
+      }
+    }
+  },
+  "types": "Go types in services/backup/jobs/apitypes.go and model.go (engine types via aliases). request/response below are the `data` payloads, checked by TestAPIFixtures (strict decode + exact re-encode). 'Empty' is {}.",
+  "events": {
+    "transport": "message bus, socket.io path /v2/message_bus/socket.io/, payload {Properties:{...}} (all strings)",
+    "source_id": "nivaroos-backup",
+    "names": {
+      "nivaroos:backup:run-begin": [
+        "run_id",
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "error_code"
+      ],
+      "nivaroos:backup:run-progress": [
+        "run_id",
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "bytes",
+        "total_bytes",
+        "files",
+        "total_files",
+        "speed_bps",
+        "eta_sec",
+        "errors",
+        "current_file"
+      ],
+      "nivaroos:backup:run-end": [
+        "run_id",
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "bytes",
+        "total_bytes",
+        "files",
+        "total_files",
+        "speed_bps",
+        "eta_sec",
+        "errors",
+        "current_file",
+        "error_code",
+        "summary"
+      ],
+      "nivaroos:backup:run-waiting": [
+        "run_id",
+        "job_id",
+        "kind",
+        "status",
+        "phase",
+        "error_code"
+      ],
+      "nivaroos:backup:job-changed": [
+        "job_id",
+        "change",
+        "revision"
+      ],
+      "nivaroos:backup:notify": [
+        "key",
+        "args",
+        "title",
+        "message",
+        "level",
+        "job_id",
+        "run_id",
+        "window"
+      ]
+    }
+  },
+  "endpoints": [
+    {
+      "id": "health",
+      "method": "GET",
+      "path": "/health",
+      "auth": "none",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "ServiceHealth",
+      "response": {
+        "installed": true,
+        "running": true,
+        "service": "backup",
+        "version": "1.0.0"
+      },
+      "notes": "Install probe for the UI (ui/src/utils/backupInstalled.js, always via the gateway route). Not enveloped, like Download Station's. HEAD is accepted too."
+    },
+    {
+      "id": "capabilities",
+      "method": "GET",
+      "path": "/capabilities",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "Capabilities",
+      "response": {
+        "version": "1.0.0",
+        "engine": {
+          "available": true,
+          "api": 1,
+          "rclone": "v1.75.1"
+        },
+        "restic": {
+          "available": false,
+          "version": "",
+          "path": "/usr/lib/nivaroos/bin/restic",
+          "min": "0.14.0",
+          "installable": false
+        },
+        "timezone": "Europe/Berlin",
+        "utc_offset": "+02:00",
+        "clock_synced": true,
+        "clock_armed": true,
+        "ram_bytes": 8254390272,
+        "max_concurrent": 2,
+        "installed": {
+          "app_management": true,
+          "vm_manager": false
+        }
+      }
+    },
+    {
+      "id": "locations",
+      "method": "GET",
+      "path": "/locations",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "role": "source|dest (optional; dest hides read-only and preset-only entries)"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "[]Location",
+      "response": [
+        {
+          "kind": "volume",
+          "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+          "label": "tower",
+          "fstype": "ntfs3",
+          "mount_point": "/DATA/tower",
+          "online": true,
+          "free": 1980000000000,
+          "total": 3960000000000,
+          "removable": false,
+          "system_disk": false,
+          "physical_disk": "sdb",
+          "quirks": [
+            "case_insensitive",
+            "ntfs_chars"
+          ],
+          "warnings": []
+        },
+        {
+          "kind": "volume",
+          "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+          "label": "System disk",
+          "fstype": "ext4",
+          "mount_point": "/",
+          "online": true,
+          "free": 40000000000,
+          "total": 250000000000,
+          "removable": false,
+          "system_disk": true,
+          "physical_disk": "nvme0n1",
+          "quirks": [],
+          "warnings": [
+            "system_disk"
+          ],
+          "presets": [
+            {
+              "id": "data:Documents",
+              "sub_path": "DATA/Documents",
+              "label": "Documents"
+            },
+            {
+              "id": "appdata:immich",
+              "sub_path": "DATA/AppData/immich",
+              "label": "immich"
+            }
+          ]
+        },
+        {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "label": "Sandisk 128G",
+          "fstype": "exfat",
+          "mount_point": "/media/sdc1",
+          "online": true,
+          "free": 101000000000,
+          "total": 128035676160,
+          "removable": true,
+          "system_disk": false,
+          "physical_disk": "sdc",
+          "quirks": [
+            "mtime_2s",
+            "case_insensitive",
+            "ntfs_chars"
+          ],
+          "warnings": [
+            "world_writable"
+          ]
+        },
+        {
+          "kind": "merge",
+          "ref_id": "/DATA/pool",
+          "label": "pool",
+          "fstype": "fuse.mergerfs",
+          "mount_point": "/DATA/pool",
+          "online": true,
+          "free": 820000000000,
+          "total": 1000000000000,
+          "removable": false,
+          "system_disk": false,
+          "quirks": [
+            "per_branch_free"
+          ],
+          "warnings": []
+        },
+        {
+          "kind": "cloud",
+          "ref_id": "terabox_terabox_1789494942",
+          "label": "TeraBox",
+          "provider": "terabox",
+          "online": true,
+          "free": null,
+          "removable": false,
+          "system_disk": false,
+          "quirks": [
+            "no_modtime",
+            "no_hash",
+            "no_metadata"
+          ],
+          "warnings": [
+            "limited_change_detection"
+          ]
+        },
+        {
+          "kind": "cloud",
+          "ref_id": "gdrive",
+          "label": "Google Drive",
+          "provider": "drive",
+          "online": true,
+          "free": 1200000000000,
+          "total": 2000000000000,
+          "removable": false,
+          "system_disk": false,
+          "quirks": [
+            "no_metadata",
+            "daily_quota"
+          ],
+          "warnings": []
+        }
+      ],
+      "notes": "Engine locations plus SMB connections (kind smb), remembered absent USB drives (online:false, last_seen) and app/VM folder presets."
+    },
+    {
+      "id": "locations_browse",
+      "method": "GET",
+      "path": "/locations/browse",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "kind": "endpoint kind",
+        "ref_id": "endpoint ref_id",
+        "sub_path": "endpoint sub_path (optional)",
+        "path": "folder relative to sub_path",
+        "dirs_only": "1 to list folders only"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "BrowseResult",
+      "response": {
+        "path": "old-phone",
+        "entries": [
+          {
+            "name": "DCIM",
+            "dir": true,
+            "size": 0,
+            "mtime": "2026-09-24T03:00:00+02:00"
+          },
+          {
+            "name": "notes.txt",
+            "dir": false,
+            "size": 2048,
+            "mtime": "2026-09-24T03:00:00+02:00"
+          }
+        ],
+        "truncated": false
+      },
+      "errors": [
+        "path_not_allowed",
+        "endpoint_unknown",
+        "dest_offline",
+        "not_found"
+      ],
+      "notes": "At most 2000 entries (truncated:true beyond)."
+    },
+    {
+      "id": "locations_resolve_path",
+      "method": "POST",
+      "path": "/locations/resolve-path",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "ResolvePathRequest",
+      "request": {
+        "path": "/DATA/tower/photos"
+      },
+      "response_type": "ResolvePathResult",
+      "response": {
+        "endpoint": {
+          "kind": "volume",
+          "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+          "sub_path": "photos",
+          "label": "tower"
+        },
+        "ok": true
+      },
+      "notes": "Used by Files' 'Back up this folder…' and by the migration. ok:false with reason (an error code) when the path can't be an endpoint."
+    },
+    {
+      "id": "jobs_list",
+      "method": "GET",
+      "path": "/jobs",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]JobListItem",
+      "response": [
+        {
+          "id": "bk_1a2b3c4d5e6f",
+          "name": "Photos → Sandisk",
+          "type": "mirror",
+          "enabled": true,
+          "revision": 3,
+          "sources": [
+            {
+              "kind": "volume",
+              "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+              "sub_path": "photos",
+              "label": "tower"
+            }
+          ],
+          "dest": {
+            "kind": "usb",
+            "ref_id": "3A4F-1C22",
+            "match": {
+              "serial": "4C530001230914117281",
+              "size_bytes": 128035676160
+            },
+            "sub_path": "NivaroOS Backups/Photos",
+            "label": "Sandisk 128G"
+          },
+          "triggers": [
+            {
+              "kind": "volume_mounted",
+              "min_gap_hours": 24,
+              "catch_up": true
+            },
+            {
+              "kind": "schedule",
+              "cron": "0 3 * * 0",
+              "catch_up": true
+            }
+          ],
+          "conditions": {
+            "dest_available": true,
+            "when_unmet": "skip"
+          },
+          "filters": {
+            "exclude_presets": [
+              "caches",
+              "trash"
+            ],
+            "exclude": []
+          },
+          "options": {
+            "verify": false,
+            "preview_first": true,
+            "low_priority": true,
+            "max_duration_sec": 86400,
+            "copy_empty_dirs": false
+          },
+          "guards": {
+            "empty_source_pct": 50,
+            "delete_pct": 10,
+            "change_pct": 30,
+            "allow_empty_source": false
+          },
+          "retention": {
+            "versions_days": 30
+          },
+          "hooks": [],
+          "retry": {
+            "max": 3,
+            "backoff_sec": [
+              60,
+              600,
+              3600
+            ]
+          },
+          "notify": {
+            "on_success": false,
+            "on_failure": true,
+            "stale_after_hours": 336
+          },
+          "needs_attention": "",
+          "migrated_from": null,
+          "created_at": "2026-09-01T10:00:00+02:00",
+          "updated_at": "2026-09-20T18:30:00+02:00",
+          "health": "ok",
+          "last_run": {
+            "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+            "kind": "backup",
+            "status": "success",
+            "ended_at": "2026-09-24T03:12:40+02:00",
+            "summary": {
+              "key": "backup.run.summary.ok",
+              "args": {
+                "added": 4120,
+                "changed": 12,
+                "deleted": 318,
+                "bytes": 11200000000
+              }
+            }
+          },
+          "active_run": null,
+          "next_run": "2026-09-28T03:00:00+02:00",
+          "dest_online": true
+        },
+        {
+          "id": "bk_9f8e7d6c5b4a",
+          "name": "Immich → Google Drive",
+          "type": "archive",
+          "enabled": true,
+          "revision": 1,
+          "sources": [
+            {
+              "kind": "volume",
+              "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+              "sub_path": "DATA/AppData/immich",
+              "label": "System disk",
+              "preset": "appdata:immich"
+            }
+          ],
+          "dest": {
+            "kind": "cloud",
+            "ref_id": "gdrive",
+            "sub_path": "NivaroOS Backups/AppData",
+            "label": "Google Drive"
+          },
+          "triggers": [
+            {
+              "kind": "schedule",
+              "cron": "0 3 * * *",
+              "catch_up": true
+            }
+          ],
+          "conditions": {
+            "dest_available": true,
+            "window": {
+              "start": "22:00",
+              "end": "07:00"
+            },
+            "when_unmet": "wait",
+            "wait_max_min": 360
+          },
+          "filters": {
+            "exclude_presets": [
+              "caches"
+            ],
+            "exclude": []
+          },
+          "options": {
+            "verify": true,
+            "preview_first": false,
+            "low_priority": true,
+            "max_duration_sec": 86400,
+            "copy_empty_dirs": true
+          },
+          "guards": {
+            "empty_source_pct": 50,
+            "delete_pct": 10,
+            "change_pct": 30,
+            "allow_empty_source": false
+          },
+          "retention": {
+            "keep_last": 8
+          },
+          "hooks": [
+            {
+              "phase": "pre",
+              "action": "stop_apps",
+              "apps": [
+                "immich"
+              ],
+              "app_mode": "together",
+              "timeout_sec": 300,
+              "fail_policy": "abort"
+            },
+            {
+              "phase": "post",
+              "action": "start_apps",
+              "apps": [
+                "immich"
+              ],
+              "app_mode": "together",
+              "timeout_sec": 300,
+              "fail_policy": "continue"
+            }
+          ],
+          "retry": {
+            "max": 3,
+            "backoff_sec": [
+              60,
+              600,
+              3600
+            ]
+          },
+          "notify": {
+            "on_success": false,
+            "on_failure": true,
+            "stale_after_hours": 48
+          },
+          "needs_attention": "imported",
+          "migrated_from": "4b1f0c9e-2d3a-4e5f-8a7b-6c5d4e3f2a10",
+          "created_at": "2026-09-24T09:00:00+02:00",
+          "updated_at": "2026-09-24T09:00:00+02:00",
+          "health": "problem",
+          "last_run": {
+            "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V5",
+            "kind": "backup",
+            "status": "failed",
+            "ended_at": "2026-09-24T03:01:00+02:00",
+            "summary": {
+              "key": "backup.run.summary.failed",
+              "args": {
+                "reason_key": "backup.err.cloud_auth.title"
+              }
+            }
+          },
+          "active_run": null,
+          "next_run": "2026-09-25T03:00:00+02:00",
+          "dest_online": true
+        }
+      ],
+      "notes": "Never carries logs. health is one of problem|offline|warning|ok|disabled."
+    },
+    {
+      "id": "jobs_create",
+      "method": "POST",
+      "path": "/jobs",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 201,
+      "request_type": "Job",
+      "request": {
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null
+      },
+      "response_type": "JobDetail",
+      "response": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "revision": 1,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00",
+        "health": "ok",
+        "last_run": {
+          "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+          "kind": "backup",
+          "status": "success",
+          "ended_at": "2026-09-24T03:12:40+02:00",
+          "summary": {
+            "key": "backup.run.summary.ok",
+            "args": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "bytes": 11200000000
+            }
+          }
+        },
+        "active_run": null,
+        "next_run": "2026-09-28T03:00:00+02:00",
+        "dest_online": true,
+        "stats": {
+          "size_bytes": 210000000000,
+          "versions_count": 6,
+          "last_success": "2026-09-24T03:12:40+02:00"
+        }
+      },
+      "errors": [
+        "validation (400, field_errors)",
+        "rate_limited (429)"
+      ],
+      "notes": "id, revision, needs_attention, migrated_from, created_at and updated_at are server-owned and ignored."
+    },
+    {
+      "id": "jobs_get",
+      "method": "GET",
+      "path": "/jobs/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "JobDetail",
+      "response": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "revision": 3,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00",
+        "health": "ok",
+        "last_run": {
+          "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+          "kind": "backup",
+          "status": "success",
+          "ended_at": "2026-09-24T03:12:40+02:00",
+          "summary": {
+            "key": "backup.run.summary.ok",
+            "args": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "bytes": 11200000000
+            }
+          }
+        },
+        "active_run": null,
+        "next_run": "2026-09-28T03:00:00+02:00",
+        "dest_online": true,
+        "stats": {
+          "size_bytes": 210000000000,
+          "versions_count": 6,
+          "last_success": "2026-09-24T03:12:40+02:00"
+        }
+      },
+      "errors": [
+        "not_found"
+      ]
+    },
+    {
+      "id": "jobs_update",
+      "method": "PUT",
+      "path": "/jobs/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "Job",
+      "request": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "revision": 3,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00"
+      },
+      "response_type": "JobDetail",
+      "response": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "revision": 4,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00",
+        "health": "ok",
+        "last_run": {
+          "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+          "kind": "backup",
+          "status": "success",
+          "ended_at": "2026-09-24T03:12:40+02:00",
+          "summary": {
+            "key": "backup.run.summary.ok",
+            "args": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "bytes": 11200000000
+            }
+          }
+        },
+        "active_run": null,
+        "next_run": "2026-09-28T03:00:00+02:00",
+        "dest_online": true,
+        "stats": {
+          "size_bytes": 210000000000,
+          "versions_count": 6,
+          "last_success": "2026-09-24T03:12:40+02:00"
+        }
+      },
+      "errors": [
+        "validation (400)",
+        "revision_conflict (409, data.current = stored job)",
+        "not_found"
+      ],
+      "notes": "Must send the current revision; the response carries revision+1. A job with needs_attention 'imported' loses the badge on its first update."
+    },
+    {
+      "id": "jobs_delete",
+      "method": "DELETE",
+      "path": "/jobs/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "purge_data": "true to also delete the job's folder at the destination, versions included (audited)"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "DeleteJobResult",
+      "response": {
+        "purge_run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2W0"
+      },
+      "errors": [
+        "not_found",
+        "invalid_state (a run is active; cancel it first)"
+      ],
+      "notes": "Without purge_data the response is {}."
+    },
+    {
+      "id": "jobs_toggle",
+      "method": "POST",
+      "path": "/jobs/:id/toggle",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "ToggleRequest",
+      "request": {
+        "enabled": false
+      },
+      "response_type": "JobDetail",
+      "response": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": false,
+        "revision": 4,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00",
+        "health": "disabled",
+        "last_run": {
+          "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+          "kind": "backup",
+          "status": "success",
+          "ended_at": "2026-09-24T03:12:40+02:00",
+          "summary": {
+            "key": "backup.run.summary.ok",
+            "args": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "bytes": 11200000000
+            }
+          }
+        },
+        "active_run": null,
+        "next_run": "2026-09-28T03:00:00+02:00",
+        "dest_online": true,
+        "stats": {
+          "size_bytes": 210000000000,
+          "versions_count": 6,
+          "last_success": "2026-09-24T03:12:40+02:00"
+        }
+      }
+    },
+    {
+      "id": "jobs_run",
+      "method": "POST",
+      "path": "/jobs/:id/run",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 202,
+      "request_type": "RunRequest",
+      "request": {
+        "preview": false
+      },
+      "response_type": "RunStarted",
+      "response": {
+        "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3"
+      },
+      "notes": "Coalesces: when the job already has a queued/running run, that run's id is returned and its coalesced count grows. preview:true queues a kind=preview run."
+    },
+    {
+      "id": "jobs_reconnect_dest",
+      "method": "POST",
+      "path": "/jobs/:id/reconnect-dest",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "ReconnectRequest",
+      "request": {
+        "adopt_other_job": false
+      },
+      "response_type": "JobDetail",
+      "response": {
+        "id": "bk_1a2b3c4d5e6f",
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "revision": 4,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null,
+        "created_at": "2026-09-01T10:00:00+02:00",
+        "updated_at": "2026-09-20T18:30:00+02:00",
+        "health": "ok",
+        "last_run": {
+          "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+          "kind": "backup",
+          "status": "success",
+          "ended_at": "2026-09-24T03:12:40+02:00",
+          "summary": {
+            "key": "backup.run.summary.ok",
+            "args": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "bytes": 11200000000
+            }
+          }
+        },
+        "active_run": null,
+        "next_run": "2026-09-28T03:00:00+02:00",
+        "dest_online": true,
+        "stats": {
+          "size_bytes": 210000000000,
+          "versions_count": 6,
+          "last_success": "2026-09-24T03:12:40+02:00"
+        }
+      },
+      "notes": "Re-adopts the folder at the destination: rewrites its marker with this job's dest_folder_id and clears needs_attention dest_changed. The UI confirms first."
+    },
+    {
+      "id": "validate",
+      "method": "POST",
+      "path": "/validate",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "Job",
+      "request": {
+        "name": "Photos → Sandisk",
+        "type": "mirror",
+        "enabled": true,
+        "sources": [
+          {
+            "kind": "volume",
+            "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+            "sub_path": "photos",
+            "label": "tower"
+          }
+        ],
+        "dest": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "triggers": [
+          {
+            "kind": "volume_mounted",
+            "min_gap_hours": 24,
+            "catch_up": true
+          },
+          {
+            "kind": "schedule",
+            "cron": "0 3 * * 0",
+            "catch_up": true
+          }
+        ],
+        "conditions": {
+          "dest_available": true,
+          "when_unmet": "skip"
+        },
+        "filters": {
+          "exclude_presets": [
+            "caches",
+            "trash"
+          ],
+          "exclude": []
+        },
+        "options": {
+          "verify": false,
+          "preview_first": true,
+          "low_priority": true,
+          "max_duration_sec": 86400,
+          "copy_empty_dirs": false
+        },
+        "guards": {
+          "empty_source_pct": 50,
+          "delete_pct": 10,
+          "change_pct": 30,
+          "allow_empty_source": false
+        },
+        "retention": {
+          "versions_days": 30
+        },
+        "hooks": [],
+        "retry": {
+          "max": 3,
+          "backoff_sec": [
+            60,
+            600,
+            3600
+          ]
+        },
+        "notify": {
+          "on_success": false,
+          "on_failure": true,
+          "stale_after_hours": 336
+        },
+        "needs_attention": "",
+        "migrated_from": null
+      },
+      "response_type": "ValidateResult",
+      "response": {
+        "ok": false,
+        "checks": [
+          {
+            "id": "source_resolves",
+            "status": "pass",
+            "msg_key": "backup.check.source_resolves"
+          },
+          {
+            "id": "dest_resolves",
+            "status": "pass",
+            "msg_key": "backup.check.dest_resolves"
+          },
+          {
+            "id": "not_inside",
+            "status": "pass",
+            "msg_key": "backup.check.not_inside"
+          },
+          {
+            "id": "allowed_roots",
+            "status": "pass",
+            "msg_key": "backup.check.allowed_roots"
+          },
+          {
+            "id": "free_space",
+            "status": "fail",
+            "code": "no_space",
+            "msg_key": "backup.check.free_space",
+            "args": {
+              "need_bytes": 212000000000,
+              "free_bytes": 101000000000
+            }
+          },
+          {
+            "id": "fs_quirks",
+            "status": "warn",
+            "code": "case_collision",
+            "msg_key": "backup.check.fs_quirks",
+            "args": {
+              "count": 2
+            }
+          },
+          {
+            "id": "metadata",
+            "status": "skip",
+            "msg_key": "backup.check.metadata"
+          },
+          {
+            "id": "source_sentinel",
+            "status": "pass",
+            "msg_key": "backup.check.source_sentinel"
+          },
+          {
+            "id": "cron",
+            "status": "pass",
+            "msg_key": "backup.check.cron"
+          }
+        ],
+        "estimate": {
+          "source_bytes": 210000000000,
+          "source_files": 48210,
+          "dest_free": 101000000000,
+          "need_bytes": 212000000000,
+          "partial": false
+        },
+        "field_errors": {
+          "dest.sub_path": "path_not_allowed"
+        }
+      },
+      "notes": "Never saves. The wizard calls it debounced."
+    },
+    {
+      "id": "cron_preview",
+      "method": "POST",
+      "path": "/cron/preview",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "CronPreviewRequest",
+      "request": {
+        "cron": "0 3 * * *"
+      },
+      "response_type": "CronPreview",
+      "response": {
+        "valid": true,
+        "human_key": "backup.cron.daily_at",
+        "args": {
+          "time": "03:00"
+        },
+        "next": [
+          "2026-09-25T03:00:00+02:00",
+          "2026-09-26T03:00:00+02:00",
+          "2026-09-27T03:00:00+02:00",
+          "2026-09-28T03:00:00+02:00",
+          "2026-09-29T03:00:00+02:00"
+        ],
+        "timezone": "Europe/Berlin",
+        "utc_offset": "+02:00",
+        "error": ""
+      },
+      "notes": "Invalid: valid:false, human_key '', next [], error = the parser message. Server time zone."
+    },
+    {
+      "id": "runs_list",
+      "method": "GET",
+      "path": "/runs",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "job_id": "optional",
+        "status": "optional, comma-separated RunStatus values",
+        "kind": "optional RunKind",
+        "limit": "default 50, max 200",
+        "before": "run id to page from (exclusive)"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "RunList",
+      "response": {
+        "runs": [
+          {
+            "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+            "job_id": "bk_1a2b3c4d5e6f",
+            "job_name": "Photos → Sandisk",
+            "kind": "backup",
+            "trigger": "schedule",
+            "status": "success",
+            "phase": "post_hooks",
+            "attempt": 1,
+            "error_code": "",
+            "summary": {
+              "key": "backup.run.summary.ok",
+              "args": {
+                "added": 4120,
+                "changed": 12,
+                "deleted": 318,
+                "bytes": 11200000000
+              }
+            },
+            "queued_at": "2026-09-24T02:59:58+02:00",
+            "started_at": "2026-09-24T03:00:00+02:00",
+            "ended_at": "2026-09-24T03:12:40+02:00",
+            "counts": {
+              "added": 4120,
+              "changed": 12,
+              "deleted": 318,
+              "skipped": 250,
+              "errored": 1,
+              "bytes_transferred": 11200000000,
+              "bytes_total": 11900000000
+            },
+            "coalesced": 0,
+            "guard": null,
+            "steps": [
+              {
+                "phase": "precheck",
+                "key": "backup.run.step.precheck",
+                "args": {
+                  "dest": "Sandisk 128G"
+                },
+                "state": "done"
+              },
+              {
+                "phase": "transfer",
+                "key": "backup.run.step.transfer",
+                "state": "done"
+              },
+              {
+                "phase": "prune",
+                "key": "backup.run.step.prune",
+                "args": {
+                  "days": 30
+                },
+                "state": "done"
+              }
+            ],
+            "restore": null,
+            "file_errors": [
+              {
+                "path": "photos/locked.db",
+                "code": "io_error",
+                "detail": "permission denied"
+              }
+            ],
+            "has_log": true
+          },
+          {
+            "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V9",
+            "job_id": "bk_1a2b3c4d5e6f",
+            "job_name": "Photos → Sandisk",
+            "kind": "backup",
+            "trigger": "schedule",
+            "status": "waiting_user",
+            "phase": "transfer",
+            "attempt": 1,
+            "error_code": "delete_guard",
+            "summary": {
+              "key": "backup.run.summary.waiting",
+              "args": {
+                "guard_key": "backup.guard.delete",
+                "pct": 50
+              }
+            },
+            "queued_at": "2026-09-24T02:59:58+02:00",
+            "started_at": "2026-09-24T03:00:00+02:00",
+            "ended_at": null,
+            "counts": {
+              "added": 0,
+              "changed": 0,
+              "deleted": 0,
+              "skipped": 0,
+              "errored": 0,
+              "bytes_transferred": 0,
+              "bytes_total": 0
+            },
+            "coalesced": 0,
+            "guard": {
+              "guard": "delete",
+              "pct": 50,
+              "limit": 10,
+              "count": 24090,
+              "total": 48190,
+              "sample": [
+                "photos/2019/IMG_0001.JPG",
+                "photos/2019/IMG_0002.JPG"
+              ]
+            },
+            "steps": [
+              {
+                "phase": "precheck",
+                "key": "backup.run.step.precheck",
+                "args": {
+                  "dest": "Sandisk 128G"
+                },
+                "state": "done"
+              }
+            ],
+            "restore": null,
+            "file_errors": [],
+            "has_log": true
+          }
+        ],
+        "next_before": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V1"
+      },
+      "notes": "Newest first. The installer's update deferral calls GET /runs?status=running,queued on 127.0.0.1:28643 directly (loopback automation, no token)."
+    },
+    {
+      "id": "runs_get",
+      "method": "GET",
+      "path": "/runs/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "RunDetail",
+      "response": {
+        "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+        "job_id": "bk_1a2b3c4d5e6f",
+        "job_name": "Photos → Sandisk",
+        "kind": "backup",
+        "trigger": "schedule",
+        "status": "running",
+        "phase": "transfer",
+        "attempt": 1,
+        "error_code": "",
+        "summary": null,
+        "queued_at": "2026-09-24T02:59:58+02:00",
+        "started_at": "2026-09-24T03:00:00+02:00",
+        "ended_at": null,
+        "counts": {
+          "added": 0,
+          "changed": 0,
+          "deleted": 0,
+          "skipped": 0,
+          "errored": 0,
+          "bytes_transferred": 0,
+          "bytes_total": 0
+        },
+        "coalesced": 0,
+        "guard": null,
+        "steps": [
+          {
+            "phase": "precheck",
+            "key": "backup.run.step.precheck",
+            "args": {
+              "dest": "Sandisk 128G"
+            },
+            "state": "done"
+          },
+          {
+            "phase": "transfer",
+            "key": "backup.run.step.transfer",
+            "state": "active"
+          },
+          {
+            "phase": "prune",
+            "key": "backup.run.step.prune",
+            "args": {
+              "days": 30
+            },
+            "state": "pending"
+          }
+        ],
+        "restore": null,
+        "file_errors": [],
+        "has_log": true,
+        "live": {
+          "bytes": 8100000000,
+          "total_bytes": 11900000000,
+          "files": 3210,
+          "total_files": 4700,
+          "speed_bps": 12300000,
+          "eta_sec": 360,
+          "errors": 0,
+          "current_file": "photos/2024/IMG_2231.HEIC"
+        }
+      },
+      "errors": [
+        "not_found"
+      ],
+      "notes": "live is null unless status is running."
+    },
+    {
+      "id": "runs_log",
+      "method": "GET",
+      "path": "/runs/:id/log",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "after": "byte offset (default 0)",
+        "limit": "default 500, max 2000"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "LogPage",
+      "response": {
+        "lines": [
+          {
+            "t": "2026-09-24T03:00:00+02:00",
+            "lvl": "info",
+            "code": "copied",
+            "msg_key": "backup.log.copied",
+            "args": {
+              "path": "photos/2024/IMG_2231.HEIC"
+            }
+          },
+          {
+            "t": "2026-09-24T03:00:00+02:00",
+            "lvl": "error",
+            "code": "file_error",
+            "msg_key": "backup.log.file_error",
+            "args": {
+              "path": "photos/locked.db",
+              "reason_key": "backup.err.io_error.title"
+            },
+            "raw": "ERROR : photos/locked.db: Failed to copy: permission denied"
+          },
+          {
+            "t": "2026-09-24T03:00:00+02:00",
+            "lvl": "info",
+            "code": "raw",
+            "raw": "INFO  : Transferred: 8.1 GiB / 11.9 GiB, 68%"
+          }
+        ],
+        "next_offset": 4096,
+        "done": false
+      }
+    },
+    {
+      "id": "runs_cancel",
+      "method": "POST",
+      "path": "/runs/:id/cancel",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "Empty",
+      "request": {},
+      "response_type": "RunDetail",
+      "response": {
+        "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3",
+        "job_id": "bk_1a2b3c4d5e6f",
+        "job_name": "Photos → Sandisk",
+        "kind": "backup",
+        "trigger": "schedule",
+        "status": "cancelled",
+        "phase": "post_hooks",
+        "attempt": 1,
+        "error_code": "cancelled_by_user",
+        "summary": {
+          "key": "backup.run.summary.cancelled",
+          "args": {
+            "reason_key": "backup.err.cancelled_by_user.title"
+          }
+        },
+        "queued_at": "2026-09-24T02:59:58+02:00",
+        "started_at": "2026-09-24T03:00:00+02:00",
+        "ended_at": "2026-09-24T03:05:00+02:00",
+        "counts": {
+          "added": 0,
+          "changed": 0,
+          "deleted": 0,
+          "skipped": 0,
+          "errored": 0,
+          "bytes_transferred": 0,
+          "bytes_total": 0
+        },
+        "coalesced": 0,
+        "guard": null,
+        "steps": [
+          {
+            "phase": "precheck",
+            "key": "backup.run.step.precheck",
+            "args": {
+              "dest": "Sandisk 128G"
+            },
+            "state": "done"
+          },
+          {
+            "phase": "transfer",
+            "key": "backup.run.step.transfer",
+            "state": "failed"
+          },
+          {
+            "phase": "prune",
+            "key": "backup.run.step.prune",
+            "args": {
+              "days": 30
+            },
+            "state": "skipped"
+          }
+        ],
+        "restore": null,
+        "file_errors": [],
+        "has_log": true,
+        "live": null
+      },
+      "errors": [
+        "invalid_state (already final)"
+      ],
+      "notes": "Post hooks still run; the run ends cancelled with error_code cancelled_by_user."
+    },
+    {
+      "id": "runs_decide",
+      "method": "POST",
+      "path": "/runs/:id/decide",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DecideRequest",
+      "request": {
+        "proceed": true,
+        "mode": "as_shown"
+      },
+      "response_type": "RunDetail",
+      "response": {
+        "id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V9",
+        "job_id": "bk_1a2b3c4d5e6f",
+        "job_name": "Photos → Sandisk",
+        "kind": "backup",
+        "trigger": "schedule",
+        "status": "queued",
+        "phase": "transfer",
+        "attempt": 1,
+        "error_code": "",
+        "summary": {
+          "key": "backup.run.summary.waiting",
+          "args": {
+            "guard_key": "backup.guard.delete",
+            "pct": 50
+          }
+        },
+        "queued_at": "2026-09-24T02:59:58+02:00",
+        "started_at": "2026-09-24T03:00:00+02:00",
+        "ended_at": null,
+        "counts": {
+          "added": 0,
+          "changed": 0,
+          "deleted": 0,
+          "skipped": 0,
+          "errored": 0,
+          "bytes_transferred": 0,
+          "bytes_total": 0
+        },
+        "coalesced": 0,
+        "guard": {
+          "guard": "delete",
+          "pct": 50,
+          "limit": 10,
+          "count": 24090,
+          "total": 48190,
+          "sample": [
+            "photos/2019/IMG_0001.JPG",
+            "photos/2019/IMG_0002.JPG"
+          ]
+        },
+        "steps": [
+          {
+            "phase": "precheck",
+            "key": "backup.run.step.precheck",
+            "args": {
+              "dest": "Sandisk 128G"
+            },
+            "state": "done"
+          }
+        ],
+        "restore": null,
+        "file_errors": [],
+        "has_log": true,
+        "live": null
+      },
+      "errors": [
+        "invalid_state (not waiting_user)"
+      ],
+      "notes": "proceed:false cancels the run. mode copy_once runs it once as Copy (no deletes). Audited."
+    },
+    {
+      "id": "runs_preview",
+      "method": "GET",
+      "path": "/runs/:id/preview",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "op": "add|update|delete (optional)",
+        "q": "substring filter (optional)",
+        "offset": "default 0",
+        "limit": "default 200, max 1000"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "PreviewPage",
+      "response": {
+        "counts": {
+          "add": 4120,
+          "update": 12,
+          "delete": 318,
+          "bytes_add": 11200000000
+        },
+        "items": [
+          {
+            "op": "add",
+            "path": "photos/2024/IMG_3001.HEIC",
+            "size": 2400000
+          },
+          {
+            "op": "update",
+            "path": "photos/notes.txt",
+            "size": 2048
+          },
+          {
+            "op": "delete",
+            "path": "old-phone/DCIM/IMG_0001.JPG",
+            "size": 1800000
+          }
+        ],
+        "total": 4450,
+        "next_offset": 200
+      },
+      "errors": [
+        "not_found (no plan for this run)"
+      ]
+    },
+    {
+      "id": "jobs_versions",
+      "method": "GET",
+      "path": "/jobs/:id/versions",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]Version",
+      "response": [
+        {
+          "id": "current",
+          "kind": "current",
+          "time": null,
+          "label_key": "backup.ver.current"
+        },
+        {
+          "id": "v_20260923T010000Z",
+          "kind": "recycle",
+          "time": "2026-09-23T01:00:00Z",
+          "label_key": "backup.ver.recycle",
+          "files": 14,
+          "bytes": 80000000
+        }
+      ],
+      "notes": "Mirror: current then recycle folders newest first. Archive: kind archive entries. Copy: only current."
+    },
+    {
+      "id": "jobs_versions_browse",
+      "method": "GET",
+      "path": "/jobs/:id/versions/:vid/browse",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "path": "folder inside the version"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "BrowseResult",
+      "response": {
+        "path": "old-phone",
+        "entries": [
+          {
+            "name": "DCIM",
+            "dir": true,
+            "size": 0,
+            "mtime": "2026-09-24T03:00:00+02:00"
+          },
+          {
+            "name": "notes.txt",
+            "dir": false,
+            "size": 2048,
+            "mtime": "2026-09-24T03:00:00+02:00"
+          }
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "id": "jobs_restore",
+      "method": "POST",
+      "path": "/jobs/:id/restore",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 202,
+      "request_type": "RestoreRequest",
+      "request": {
+        "version_id": "v_20260923T010000Z",
+        "paths": [
+          "old-phone/notes.txt"
+        ],
+        "target": {
+          "mode": "original"
+        },
+        "conflict": "keep_both",
+        "dry_run": false
+      },
+      "response_type": "RunStarted",
+      "response": {
+        "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V8"
+      },
+      "errors": [
+        "validation",
+        "path_not_allowed",
+        "rate_limited (429)"
+      ],
+      "notes": "Runs as a kind=restore run (same run window, locks and notification). target {mode:'other', endpoint:{…}} restores elsewhere. Audited."
+    },
+    {
+      "id": "downloads_create",
+      "method": "POST",
+      "path": "/downloads",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DownloadRequest",
+      "request": {
+        "job_id": "bk_1a2b3c4d5e6f",
+        "version_id": "current",
+        "paths": [
+          "2024/IMG_2231.HEIC"
+        ]
+      },
+      "response_type": "DownloadToken",
+      "response": {
+        "token": "dl_4f3c2b1a0e9d8c7b6a5f4e3d2c1b0a99",
+        "expires_in": 60
+      }
+    },
+    {
+      "id": "downloads_get",
+      "method": "GET",
+      "path": "/downloads/:token",
+      "auth": "token",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "binary",
+      "response": null,
+      "notes": "No JWT: the single-use token (60 s, bound to the requester IP) is the credential. One file streams raw with Content-Disposition; several paths stream as a zip. 404 when the token is unknown, used or expired (token_invalid)."
+    },
+    {
+      "id": "settings_get",
+      "method": "GET",
+      "path": "/settings",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "AppSettings",
+      "response": {
+        "max_concurrent": 2,
+        "catch_up_default": true,
+        "log_retention_days": 180,
+        "default_delete_pct": 10,
+        "default_change_pct": 30,
+        "default_versions_days": 30
+      }
+    },
+    {
+      "id": "settings_put",
+      "method": "PUT",
+      "path": "/settings",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "AppSettings",
+      "request": {
+        "max_concurrent": 2,
+        "catch_up_default": true,
+        "log_retention_days": 180,
+        "default_delete_pct": 10,
+        "default_change_pct": 30,
+        "default_versions_days": 30
+      },
+      "response_type": "AppSettings",
+      "response": {
+        "max_concurrent": 2,
+        "catch_up_default": true,
+        "log_retention_days": 180,
+        "default_delete_pct": 10,
+        "default_change_pct": 30,
+        "default_versions_days": 30
+      },
+      "errors": [
+        "validation (max_concurrent 1..4, percentages 1..100)"
+      ],
+      "notes": "Audited."
+    },
+    {
+      "id": "migration_get",
+      "method": "GET",
+      "path": "/migration",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "MigrationReport",
+      "response": {
+        "state": "done",
+        "ran_at": "2026-09-24T09:00:00+02:00",
+        "imported": 2,
+        "items": [
+          {
+            "task_id": "4b1f0c9e-2d3a-4e5f-8a7b-6c5d4e3f2a10",
+            "task_name": "Nightly AppData",
+            "result": "imported",
+            "job_id": "bk_9f8e7d6c5b4a",
+            "notes": [],
+            "dropped_args": []
+          },
+          {
+            "task_id": "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f",
+            "task_name": "Move to USB",
+            "result": "imported_unresolved",
+            "job_id": "bk_aa11bb22cc33",
+            "notes": [
+              {
+                "key": "backup.migrate.note.move_to_copy"
+              },
+              {
+                "key": "backup.migrate.note.unresolved_dest",
+                "args": {
+                  "path": "/media/usb1/backup"
+                }
+              },
+              {
+                "key": "backup.migrate.note.dropped_args",
+                "args": {
+                  "args": "--bwlimit 10M"
+                }
+              }
+            ],
+            "dropped_args": [
+              "--bwlimit 10M"
+            ]
+          }
+        ]
+      },
+      "notes": "state pending until core's schedules API was reachable."
+    },
+    {
+      "id": "migration_rerun",
+      "method": "POST",
+      "path": "/migration/rerun",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "Empty",
+      "request": {},
+      "response_type": "MigrationReport",
+      "response": {
+        "state": "done",
+        "ran_at": "2026-09-24T09:00:00+02:00",
+        "imported": 2,
+        "items": [
+          {
+            "task_id": "4b1f0c9e-2d3a-4e5f-8a7b-6c5d4e3f2a10",
+            "task_name": "Nightly AppData",
+            "result": "imported",
+            "job_id": "bk_9f8e7d6c5b4a",
+            "notes": [],
+            "dropped_args": []
+          },
+          {
+            "task_id": "8c7d6e5f-4a3b-4c2d-9e1f-0a9b8c7d6e5f",
+            "task_name": "Move to USB",
+            "result": "imported_unresolved",
+            "job_id": "bk_aa11bb22cc33",
+            "notes": [
+              {
+                "key": "backup.migrate.note.move_to_copy"
+              },
+              {
+                "key": "backup.migrate.note.unresolved_dest",
+                "args": {
+                  "path": "/media/usb1/backup"
+                }
+              },
+              {
+                "key": "backup.migrate.note.dropped_args",
+                "args": {
+                  "args": "--bwlimit 10M"
+                }
+              }
+            ],
+            "dropped_args": [
+              "--bwlimit 10M"
+            ]
+          }
+        ]
+      },
+      "notes": "Idempotent: already imported tasks are skipped_exists."
+    },
+    {
+      "id": "drives_list",
+      "method": "GET",
+      "path": "/drives",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]RememberedDrive",
+      "response": [
+        {
+          "endpoint": {
+            "kind": "usb",
+            "ref_id": "3A4F-1C22",
+            "match": {
+              "serial": "4C530001230914117281",
+              "size_bytes": 128035676160
+            },
+            "sub_path": "NivaroOS Backups/Photos",
+            "label": "Sandisk 128G"
+          },
+          "label": "Photo stick",
+          "last_seen": "2026-09-21T18:02:11+02:00"
+        }
+      ],
+      "notes": "USB drives any job uses, for Settings > Remembered drives."
+    },
+    {
+      "id": "drives_update",
+      "method": "PUT",
+      "path": "/drives/:uuid",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "RememberedDriveUpdate",
+      "request": {
+        "label": "Photo stick"
+      },
+      "response_type": "RememberedDrive",
+      "response": {
+        "endpoint": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001230914117281",
+            "size_bytes": 128035676160
+          },
+          "sub_path": "NivaroOS Backups/Photos",
+          "label": "Sandisk 128G"
+        },
+        "label": "Photo stick",
+        "last_seen": "2026-09-21T18:02:11+02:00"
+      },
+      "notes": "Rename (display only)."
+    },
+    {
+      "id": "drives_forget",
+      "method": "DELETE",
+      "path": "/drives/:uuid",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "Empty",
+      "response": {},
+      "errors": [
+        "invalid_state (a job still uses it)"
+      ]
+    },
+    {
+      "id": "busy",
+      "method": "GET",
+      "path": "/busy",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "query": {
+        "kind": "app|vm",
+        "target": "app or VM name"
+      },
+      "request_type": null,
+      "request": null,
+      "response_type": "BusyResult",
+      "response": {
+        "busy": true,
+        "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V5"
+      },
+      "notes": "Backup's side of the IsBusy lock contract, for Scheduled Tasks (spec §8.1)."
+    }
+  ]
+}
