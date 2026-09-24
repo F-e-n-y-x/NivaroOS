@@ -127,9 +127,20 @@ export default {
 				if (versionRes.data.success == 200) {
 					localStorage.setItem("version", versionRes.data.data.current_version);
 				}
-				this.$router.push("/");
+				await this.$router.push("/");
+				// The desktop is loaded on demand. A tab opened before an update
+				// asks for files the server no longer has, and the router drops
+				// that error - the login screen just stayed up until a manual
+				// refresh. A full load gets the current build, already signed in.
+				if (this.$route.path === "/login") {
+					window.location.hash = "#/";
+					window.location.reload();
+				}
 			} catch (err) {
-				this.message = this.$t(err.response.data.message)
+				// No response at all (server restarting, network down) has no
+				// message to show; reading one threw and the click did nothing.
+				const msg = err && err.response && err.response.data && err.response.data.message
+				this.message = msg ? this.$t(msg) : this.$t("Couldn't reach NivaroOS. Check the connection and try again.")
 				this.notificationShow = true
 			}
 		}
