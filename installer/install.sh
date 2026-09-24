@@ -287,7 +287,7 @@ get_term_size() {
 	if [ -z "$cols" ] || [ "$cols" -le 0 ] 2>/dev/null; then
 		if [ -e /dev/tty ]; then
 			local stty_out
-			stty_out="$(stty size </dev/tty 2>/dev/null || true)"
+			stty_out="$( { stty size </dev/tty; } 2>/dev/null || true)"
 			if [ -n "$stty_out" ]; then
 				rows="$(echo "$stty_out" | awk '{print $1}')"
 				cols="$(echo "$stty_out" | awk '{print $2}')"
@@ -326,7 +326,7 @@ get_term_size() {
 
 	# Sync kernel tty driver if CPR found a larger width
 	if [ "$cols" -gt 0 ] && [ "$rows" -gt 0 ] && [ -e /dev/tty ]; then
-		stty rows "$rows" cols "$cols" </dev/tty 2>/dev/null || true
+		{ stty rows "$rows" cols "$cols" </dev/tty; } 2>/dev/null || true
 	fi
 
 	TERM_COLS="$cols"
