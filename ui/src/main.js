@@ -1,5 +1,6 @@
 import 'intersection-observer'
 import Vue from 'vue'
+import { assetUrl } from '@/utils/assetUrl'
 import App from '@/App.vue'
 import router from '@/router'
 import store from '@/store'
@@ -89,6 +90,11 @@ Vue.prototype.$wsProtocol = wsProtocol;
 
 // Create an EventBus
 Vue.prototype.$EventBus = new Vue();
+// Images require()'d in templates come back from the build as a module
+// namespace ({ default: url }), not the URL - setting that as an <img> src
+// throws and breaks the whole component's update (see utils/assetUrl.js).
+// Templates wrap every asset require() in $assetUrl().
+Vue.prototype.$assetUrl = assetUrl;
 
 new Vue({
 	router,

@@ -21,7 +21,7 @@
                 <b-icon icon="edit-outline" pack="casa" />
                 <input type="file" class="file-input" accept="image/*" @change="loadImage($event)" />
               </div>
-              <b-image :src="avatarUrl" :src-fallback="require('@/assets/img/account/default-avatar.svg')" class="is-80x80" rounded></b-image>
+              <b-image :src="avatarUrl" :src-fallback="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" class="is-80x80" rounded></b-image>
             </div>
 
           </div>

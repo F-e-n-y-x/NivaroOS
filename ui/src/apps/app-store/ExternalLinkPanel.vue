@@ -3,7 +3,7 @@
 		<!-- Top Hero: Link Identity & Live Icon Preview -->
 		<div class="editor-hero-section">
 			<div class="hero-icon-preview">
-				<b-image :key="icon" :src="icon" :src-fallback="require('@/assets/img/app-icons/default.svg')"
+				<b-image :key="icon" :src="icon" :src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))"
 					:alt="$t('Icon preview')" class="hero-img" ratio="1by1"></b-image>
 			</div>
 

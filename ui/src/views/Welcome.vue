@@ -19,7 +19,7 @@
 				<h2 class="title is-3  has-text-centered">{{ $t('Create Account') }}</h2>
 				<div class="is-flex is-justify-content-center ">
 					<div class="has-text-centered">
-						<b-image :src="require('@/assets/img/account/default-avatar.svg')" class="is-128x128"
+						<b-image :src="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" class="is-128x128"
 								 rounded></b-image>
 					</div>
 				</div>
@@ -57,7 +57,7 @@
 			<div v-if="step == 3" class="has-text-centered ">
 				<h2 class="title is-3  has-text-centered">{{ $t('All things done!') }}</h2>
 				<div class="is-flex is-align-items-center is-justify-content-center">
-					<lottie-animation :animationData="require('@/assets/ani/done.json')" :autoPlay="true" :loop="false"
+					<lottie-animation :animationData="$assetUrl(require('@/assets/ani/done.json'))" :autoPlay="true" :loop="false"
 									  class="animation" @complete="complete"></lottie-animation>
 				</div>
 			</div>

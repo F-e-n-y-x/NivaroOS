@@ -491,6 +491,7 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/assetUrl'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
@@ -606,7 +607,7 @@ export default {
 				{ label: 'Amber', value: '#d97706' },
 				{ label: 'Red', value: '#dc2626' }
 			],
-			fallbackIcon: require('@/assets/img/app-icons/default.svg')
+			fallbackIcon: assetUrl(require('@/assets/img/app-icons/default.svg'))
 		}
 	},
 	computed: {

@@ -61,7 +61,7 @@
 				<img v-else-if="isDownloadStationWindow(win)" :src="getBuiltinIcon('Download Station')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app-icons/default.svg')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || $assetUrl(require('@/assets/img/app-icons/default.svg'))" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
 				</div>
@@ -201,6 +201,7 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/assetUrl'
 import { checkDownloadStationInstalled } from '@/utils/downloadStationInstalled'
 import events from '@/events/events'
 import filesIcon from '@/assets/img/app-icons/files.svg'
@@ -319,7 +320,7 @@ export default {
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
 			if (override && override.icon) return override.icon
-			return (BUILTIN_DEFS[name] && BUILTIN_DEFS[name].defaultIcon) || require('@/assets/img/app-icons/default.svg')
+			return (BUILTIN_DEFS[name] && BUILTIN_DEFS[name].defaultIcon) || assetUrl(require('@/assets/img/app-icons/default.svg'))
 		},
 		onOutsideClick(e) {
 			if (this.ctxMenu.visible && this.$refs.dockCtxMenu && !this.$refs.dockCtxMenu.contains(e.target)) {
@@ -428,7 +429,7 @@ export default {
 				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
 					icon = this.vmConsoleIconUrl
 				} else if (win.component === 'LegacyAppEditPanel' && win.props && win.props.item) {
-					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || require('@/assets/img/app-icons/default.svg')
+					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || assetUrl(require('@/assets/img/app-icons/default.svg'))
 				}
 			}
 
@@ -485,7 +486,7 @@ export default {
 					const app = allApps.find(a => a.name === pinName)
 					if (app) {
 						const override = overrides[app.name]
-						const icon = (override && override.icon) || app.icon || require('@/assets/img/app-icons/default.svg')
+						const icon = (override && override.icon) || app.icon || assetUrl(require('@/assets/img/app-icons/default.svg'))
 						const iconRadius = (override && override.iconRadius) || 0
 						const title = override && override.title ? { ...app.title, custom: override.title } : app.title
 						const overrideUrl = override && override.url

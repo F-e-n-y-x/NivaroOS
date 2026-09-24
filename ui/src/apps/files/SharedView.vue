@@ -9,7 +9,7 @@
 		</header>
 
 		<div v-if="!isLoading && quickList.length === 0 && smbList.length === 0" class="shared-empty">
-			<b-image :src="require('@/assets/img/share/share-empty.svg')" class="is-160x160"></b-image>
+			<b-image :src="$assetUrl(require('@/assets/img/share/share-empty.svg'))" class="is-160x160"></b-image>
 			<p>{{ $t('Right-click any file to Quick Share it, or share a whole folder over your local network.') }}</p>
 			<b-button rounded type="is-primary" @click="$emit('add-share')">{{ $t('Start') }}</b-button>
 		</div>

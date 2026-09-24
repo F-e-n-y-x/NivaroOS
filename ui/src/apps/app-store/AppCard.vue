@@ -137,7 +137,7 @@
 						<div class="is-relative">
 							<b-image :class="dotClass(item.status, isLoading)" :alt="i18n(item.title) || item.name || ''"
 								:style="item.iconRadius ? { borderRadius: item.iconRadius + '%', overflow: 'hidden' } : null"
-								:src="item.icon || require('@/assets/img/app-icons/default.svg')" :src-fallback="require('@/assets/img/app-icons/default.svg')" class="is-52x52"
+								:src="item.icon || $assetUrl(require('@/assets/img/app-icons/default.svg'))" :src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))" class="is-52x52"
 								webp-fallback=".jpg"></b-image>
 							<!-- Unstable-->
 							<cTooltip v-if="newAppIds.includes(item.name)" class="__position" content="NEW"></cTooltip>
@@ -147,7 +147,7 @@
 						<b-loading :active="isLoading" :can-cancel="false" :is-full-page="false"
 							class="has-background-gray-800 op80 is-52x52"
 							style="top: auto;bottom: auto; right: auto; left: auto; border-radius: 10px">
-							<img :src="require('@/assets/img/loading/waiting-white.svg')" :alt="$t('Loading')" class="is-20x20" />
+							<img :src="$assetUrl(require('@/assets/img/loading/waiting-white.svg'))" :alt="$t('Loading')" class="is-20x20" />
 						</b-loading>
 						<!-- Loading Bar End -->
 					</div>

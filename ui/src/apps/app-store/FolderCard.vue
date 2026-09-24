@@ -44,7 +44,7 @@
 					<div v-else class="folder-icon-grid is-52x52">
 						<div v-for="i in 4" :key="i" class="folder-icon-cell">
 							<b-image v-if="previewApps[i - 1]" :src="previewApps[i - 1].icon" alt=""
-								:src-fallback="require('@/assets/img/app-icons/default.svg')" webp-fallback=".jpg"></b-image>
+								:src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))" webp-fallback=".jpg"></b-image>
 						</div>
 					</div>
 				</div>
