@@ -222,13 +222,46 @@
 		})
 		window.addEventListener('load', report)
 		report()
-		// Back/forward/reload from the Download Station toolbar - the app
-		// can't reach into this frame's history itself (different origin).
+		// Reload from the Download Station toolbar - the app can't reach into
+		// this frame itself (different origin). Back/forward are not done
+		// here: history.back() in a frame walks the whole browser tab's
+		// history, so on a tab's first page it took NivaroOS itself back.
+		// The app keeps each tab's history and loads the page instead.
 		window.addEventListener('message', function (e) {
 			if (e.source !== window.parent || !e.data || e.data.nvds !== 1) return
-			if (e.data.cmd === 'back') history.back()
-			else if (e.data.cmd === 'forward') history.forward()
-			else if (e.data.cmd === 'reload') location.reload()
+			if (e.data.cmd === 'reload') location.reload()
+		})
+		// The same goes for the mouse's back/forward buttons and Alt+Left /
+		// Alt+Right pressed inside the page: hand them to the app.
+		function histKey(dir, ev) {
+			ev.preventDefault()
+			ev.stopPropagation()
+			try {
+				window.parent.postMessage({ nvds: 1, type: 'history', dir: dir }, '*')
+			} catch (e) {}
+		}
+		window.addEventListener(
+			'keydown',
+			function (e) {
+				if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+				if (e.key === 'ArrowLeft') histKey('back', e)
+				else if (e.key === 'ArrowRight') histKey('forward', e)
+			},
+			true
+		)
+		;['mousedown', 'mouseup', 'auxclick'].forEach(function (type) {
+			window.addEventListener(
+				type,
+				function (e) {
+					if (e.button !== 3 && e.button !== 4) return
+					if (type !== 'mouseup') {
+						e.preventDefault()
+						return
+					}
+					histKey(e.button === 3 ? 'back' : 'forward', e)
+				},
+				true
+			)
 		})
 	}
 

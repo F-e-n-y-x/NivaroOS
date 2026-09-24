@@ -21,10 +21,10 @@
 		</div>
 
 		<div class="address-bar">
-			<button class="ds-icon-btn is-flat" :title="$t('Back')" :aria-label="$t('Back')" :disabled="!active || !active.url" @click="command('back')">
+			<button class="ds-icon-btn is-flat" :title="$t('Back')" :aria-label="$t('Back')" :disabled="!canBack" @click="historyGo(active, 'back')">
 				<b-icon icon="arrow-left" custom-size="mdi-18px"></b-icon>
 			</button>
-			<button class="ds-icon-btn is-flat" :title="$t('Forward')" :aria-label="$t('Forward')" :disabled="!active || !active.url" @click="command('forward')">
+			<button class="ds-icon-btn is-flat" :title="$t('Forward')" :aria-label="$t('Forward')" :disabled="!canForward" @click="historyGo(active, 'forward')">
 				<b-icon icon="arrow-right" custom-size="mdi-18px"></b-icon>
 			</button>
 			<button class="ds-icon-btn is-flat" :title="$t('Reload')" :aria-label="$t('Reload')" :disabled="!active || !active.url" @click="reload">
@@ -109,6 +109,7 @@
 import { downloadSidecar } from '@/api/downloadSidecar'
 import { escapeHtml } from '@/utils/escapeHtml'
 import DsBrowserHistory from './DsBrowserHistory.vue'
+import { createHistory, recordVisit, canGo, go } from './tabHistory'
 
 let tabSeq = 0
 const STATS_POLL_MS = 2500
@@ -137,6 +138,12 @@ export default {
 		}
 	},
 	computed: {
+		canBack() {
+			return !!(this.active && this.active.kind !== 'history' && canGo(this.active.hist, 'back'))
+		},
+		canForward() {
+			return !!(this.active && this.active.kind !== 'history' && canGo(this.active.hist, 'forward'))
+		},
 		active() {
 			return this.tabs.find(t => t.id === this.activeId) || null
 		},
@@ -213,7 +220,7 @@ export default {
 			}
 		},
 		newTab(url = '', focus = true) {
-			const t = { id: ++tabSeq, kind: '', url: '', title: '', src: '', loading: false, gen: 0, recorded: '', navSeq: 0, navCache: {} }
+			const t = { id: ++tabSeq, kind: '', url: '', title: '', src: '', loading: false, gen: 0, recorded: '', navSeq: 0, navCache: {}, hist: createHistory() }
 			this.tabs.push(t)
 			this.activeId = t.id
 			if (url) this.load(t, url, true)
@@ -318,9 +325,15 @@ export default {
 			const ref = this.$refs['frame-' + tab.id]
 			return Array.isArray(ref) ? ref[0] : ref
 		},
-		command(cmd) {
-			const f = this.active && this.frameOf(this.active)
-			if (f && f.contentWindow) f.contentWindow.postMessage({ nvds: 1, cmd }, downloadSidecar.origin)
+		// Back/Forward use the tab's own history (see tabHistory.js) and load
+		// the page, never the frame's history.back() - that walked the whole
+		// browser tab's history and took NivaroOS itself back.
+		historyGo(tab, dir) {
+			if (!tab || tab.kind === 'history') return
+			const url = go(tab.hist, dir)
+			// Every page in the list was really served to this tab, so it may
+			// be reached again the way it was the first time.
+			if (url) this.load(tab, url, true)
 		},
 		reload() {
 			// Re-load through the address we know, so a page that failed to
@@ -341,6 +354,13 @@ export default {
 					return f && f.contentWindow === e.source
 				})
 				if (tab) this.onNav(tab, e.data)
+			} else if (e.data.type === 'history' && (e.data.dir === 'back' || e.data.dir === 'forward')) {
+				// Mouse back/forward buttons or Alt+Left/Right inside the page.
+				const tab = this.tabs.find(t => {
+					const f = this.frameOf(t)
+					return f && f.contentWindow === e.source
+				})
+				if (tab) this.historyGo(tab, e.data.dir)
 			} else if (e.data.type === 'download' && this.session && e.data.session === this.session.id) {
 				this.ds.openAddDownload({ captureSession: e.data.session, captureId: e.data.capture })
 			}
@@ -351,6 +371,7 @@ export default {
 			const shown = await this.verifiedNavUrl(tab, data.nav, data.url)
 			if (!shown || this.destroyed || seq !== tab.navSeq) return
 			tab.url = shown
+			recordVisit(tab.hist, shown)
 			tab.title = typeof data.title === 'string' ? data.title.slice(0, 300) : ''
 			this.recordHistory(tab)
 			if (tab.id === this.activeId && document.activeElement !== this.$refs.address) this.addressText = tab.url
