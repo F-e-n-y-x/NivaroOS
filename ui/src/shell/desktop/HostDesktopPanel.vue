@@ -1489,15 +1489,22 @@ export default {
 			this.resizingHost = true
 			try {
 				const res = await this.sidecarPost('/host/display', { width, height })
+				const requested = `${width}x${height}`
+				let applied = requested
 				if (res && res.data) {
-					this.currentResolution = res.data.current || `${width}x${height}`
+					applied = res.data.current || requested
+					this.currentResolution = applied
 					if (Array.isArray(res.data.resolutions)) this.availableResolutions = res.data.resolutions
 				}
 				this.displayMenuOpen = false
+				const shown = applied.replace('x', '×')
 				this.$buefy.toast.open({
-					message: `${this.$t('Host Display Resolution')}: ${width}×${height}`,
-					type: 'is-success',
-					duration: 2500,
+					message:
+						applied === requested
+							? `${this.$t('Host Display Resolution')}: ${shown}`
+							: this.$t("This display can't show {requested}, so it's set to {applied}", { requested: requested.replace('x', '×'), applied: shown }),
+					type: applied === requested ? 'is-success' : 'is-info',
+					duration: applied === requested ? 2500 : 5000,
 				})
 				// Changing the host's X server mode produces a few garbled
 				// frames while x11vnc (via -xrandr resize) catches up. Wait for
@@ -1535,35 +1542,20 @@ export default {
 			return { w, h }
 		},
 
-		// For a real monitor, custom sizes usually aren't valid modes - pick
-		// the largest reported mode that fits, else the closest one.
-		nearestMode(w, h) {
-			const modes = this.availableResolutions.filter((r) => r && r.width && r.height)
-			if (this.displayHeadless || !modes.length) return { w, h }
-			const fitting = modes.filter((r) => r.width <= w && r.height <= h)
-			if (fitting.length) {
-				const best = fitting.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a))
-				return { w: best.width, h: best.height }
-			}
-			const best = modes.reduce((a, b) =>
-				Math.abs(b.width - w) + Math.abs(b.height - h) < Math.abs(a.width - w) + Math.abs(a.height - h) ? b : a
-			)
-			return { w: best.width, h: best.height }
-		},
-
 		updateWindowEstimate() {
 			const t = this.windowTargetSize()
 			if (!t) return
-			const m = this.nearestMode(t.w, t.h)
-			this.currentWindowEstimate = `${m.w} × ${m.h}`
+			this.currentWindowEstimate = `${t.w} × ${t.h}`
 		},
 
 		async matchWindowResolution() {
 			if (this.resizingHost) return
+			// The exact size: the sidecar sets it (NVIDIA viewport, or a new
+			// CVT mode) and only falls back to the monitor's nearest real
+			// mode when the driver can't; the reply says what it got.
 			const t = this.windowTargetSize()
 			if (!t) return
-			const m = this.nearestMode(t.w, t.h)
-			await this.changeResolution(m.w, m.h)
+			await this.changeResolution(t.w, t.h)
 		},
 
 		async applyCustomResolution() {

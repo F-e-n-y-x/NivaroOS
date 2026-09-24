@@ -205,3 +205,20 @@ func TestDetectHostPkgManagerUnsupported(t *testing.T) {
 		t.Fatalf("Alpine/OpenRC must be reported unsupported, got %v", err)
 	}
 }
+
+func TestNearestDisplayMode(t *testing.T) {
+	modes := []DisplayResolution{{Width: 1920, Height: 1080}, {Width: 1680, Height: 1050}, {Width: 1280, Height: 800}}
+	for _, c := range []struct{ w, h, ww, wh int }{
+		{1734, 912, 1280, 800},   // largest that fits inside the window
+		{1700, 1060, 1680, 1050}, // exact-ish fit
+		{800, 600, 1280, 800},    // nothing fits: the closest one
+	} {
+		m, ok := nearestDisplayMode(modes, c.w, c.h)
+		if !ok || m.Width != c.ww || m.Height != c.wh {
+			t.Errorf("%dx%d: got %dx%d", c.w, c.h, m.Width, m.Height)
+		}
+	}
+	if _, ok := nearestDisplayMode(nil, 1000, 800); ok {
+		t.Error("no modes should report none")
+	}
+}

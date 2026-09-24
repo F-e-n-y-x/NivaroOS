@@ -596,8 +596,10 @@ func getNvidiaDisplayName(t hostXTarget) (string, error) {
 // setHostDisplayXrandr: a headless X server (no connected output) can only
 // change its framebuffer size, so that goes straight to --fb. With an
 // output: an existing mode is selected directly; otherwise a CVT mode is
-// created and added (works on modesetting/amdgpu/intel); only if that
-// fails too does it fall back to a framebuffer-only resize.
+// created and added (works on modesetting/amdgpu/intel). If the driver
+// refuses that too, the output's nearest real mode is used - a
+// framebuffer-only resize on a real monitor leaves the monitor in its old
+// mode, with part of the desktop cut off or black.
 func setHostDisplayXrandr(w, h int, t hostXTarget) error {
 	resStr := fmt.Sprintf("%dx%d", w, h)
 	st, err := queryXrandr(t)
@@ -627,7 +629,46 @@ func setHostDisplayXrandr(w, h int, t hostXTarget) error {
 			return nil
 		}
 	}
-	return fb()
+	m, ok := nearestDisplayMode(st.Modes, w, h)
+	if !ok {
+		return fb()
+	}
+	near := fmt.Sprintf("%dx%d", m.Width, m.Height)
+	if out, err := xCommand(t, "xrandr", "--output", st.Output, "--mode", near).CombinedOutput(); err != nil {
+		return fmt.Errorf("xrandr --mode %s: %s (%w)", near, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// nearestDisplayMode picks the largest mode that fits inside w x h, else
+// the one closest to it.
+func nearestDisplayMode(modes []DisplayResolution, w, h int) (DisplayResolution, bool) {
+	var best DisplayResolution
+	found := false
+	for _, m := range modes {
+		if m.Width <= w && m.Height <= h && (!found || m.Width*m.Height > best.Width*best.Height) {
+			best, found = m, true
+		}
+	}
+	if found {
+		return best, true
+	}
+	dist := func(m DisplayResolution) int {
+		dw, dh := m.Width-w, m.Height-h
+		if dw < 0 {
+			dw = -dw
+		}
+		if dh < 0 {
+			dh = -dh
+		}
+		return dw + dh
+	}
+	for _, m := range modes {
+		if !found || dist(m) < dist(best) {
+			best, found = m, true
+		}
+	}
+	return best, found
 }
 
 var cvtModelineRe = regexp.MustCompile(`(?m)^Modeline\s+"([^"]+)"\s+(.+)$`)

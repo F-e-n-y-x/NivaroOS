@@ -1764,5 +1764,6 @@
   "ISO ejected!": "ISO ejected!",
   "ISO inserted successfully!": "ISO inserted successfully!",
   "Over http:// this browser won't share its clipboard automatically: use the box below, and Copy in the history.": "Over http:// this browser won't share its clipboard automatically: use the box below, and Copy in the history.",
-  "now": "now"
+  "now": "now",
+  "This display can't show {requested}, so it's set to {applied}": "This display can't show {requested}, so it's set to {applied}"
 }
