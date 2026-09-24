@@ -11,6 +11,10 @@
 			:style="{ top: menuY + 'px', left: menuX + 'px' }"
 			@contextmenu.prevent.stop
 		>
+			<button class="ctx-item" @click="closeMenuThen('open', folder)">
+				<i class="mdi mdi-folder-open-outline ctx-icon"></i>
+				<span class="ctx-label">{{ $t('Open') }}</span>
+			</button>
 			<button class="ctx-item" @click="closeMenuThen('rename', folder)">
 				<i class="mdi mdi-pencil-outline ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Rename') }}</span>
@@ -27,7 +31,11 @@
 		</div>
 
 		<div class="blur-background"></div>
-		<div class="cards-content" @click="handleFolderClick" @dblclick="handleFolderDblClick">
+		<div class="cards-content" role="button" tabindex="0" aria-haspopup="menu"
+			:aria-label="$t('Folder {name}, {count} apps', { name: folder.name, count: (folder.apps || []).length })"
+			@click="handleFolderClick" @dblclick="handleFolderDblClick"
+			@keydown.enter.self.prevent="$emit('open', folder)" @keydown.space.self.prevent="$emit('open', folder)"
+			@keydown.self="handleFolderKeydown">
 			<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 				<div class="is-flex is-justify-content-center">
 					<div v-if="folder.icon" class="folder-custom-icon is-52x52" :style="{ borderRadius: (folder.iconRadius || 0) + '%' }">
@@ -35,7 +43,7 @@
 					</div>
 					<div v-else class="folder-icon-grid is-52x52">
 						<div v-for="i in 4" :key="i" class="folder-icon-cell">
-							<b-image v-if="previewApps[i - 1]" :src="previewApps[i - 1].icon"
+							<b-image v-if="previewApps[i - 1]" :src="previewApps[i - 1].icon" alt=""
 								:src-fallback="require('@/assets/img/app-icons/default.svg')" webp-fallback=".jpg"></b-image>
 						</div>
 					</div>
@@ -99,11 +107,27 @@ export default {
 		handleFolderDblClick() {
 			this.$emit('open', this.folder)
 		},
+		handleFolderKeydown(event) {
+			// Shift+F10 / the ContextMenu key open the menu from the keyboard.
+			if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+				event.preventDefault()
+				event.stopPropagation()
+				const rect = event.currentTarget.getBoundingClientRect()
+				this.handleCardContextMenu({
+					clientX: rect.left + rect.width / 2,
+					clientY: rect.top + rect.height / 2,
+					fromKeyboard: true,
+					preventDefault() {},
+					stopPropagation() {}
+				})
+			}
+		},
 		handleCardContextMenu(event) {
 			if (event) {
 				event.preventDefault()
 				event.stopPropagation()
 			}
+			this.menuOpenedByKeyboard = !!(event && event.fromKeyboard)
 
 			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
 
@@ -135,12 +159,21 @@ export default {
 				if (rect.right > window.innerWidth - 12) {
 					this.menuX = Math.max(12, window.innerWidth - rect.width - 12)
 				}
+				if (this.menuOpenedByKeyboard) {
+					const first = this.$refs.menu.querySelector('.ctx-item:not([disabled])')
+					if (first) first.focus()
+				}
 			})
 		},
 		closeMenu() {
 			if (!this.menuVisible) return
 			this.menuVisible = false
 			this.removeEventListeners()
+			if (this.menuOpenedByKeyboard) {
+				this.menuOpenedByKeyboard = false
+				const card = this.$el && this.$el.querySelector && this.$el.querySelector('.cards-content')
+				if (card) card.focus()
+			}
 		},
 		closeMenuThen(eventName, ...args) {
 			this.closeMenu()
@@ -154,6 +187,17 @@ export default {
 		onKeyDown(event) {
 			if (event.key === 'Escape' && this.menuVisible) {
 				this.closeMenu()
+				return
+			}
+			if (this.menuVisible && this.$refs.menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+				const items = Array.from(this.$refs.menu.querySelectorAll('.ctx-item:not([disabled])'))
+				if (!items.length) return
+				event.preventDefault()
+				const idx = items.indexOf(document.activeElement)
+				const next = event.key === 'ArrowDown'
+					? items[(idx + 1) % items.length]
+					: items[(idx - 1 + items.length) % items.length]
+				next.focus()
 			}
 		},
 		addEventListeners() {
@@ -196,6 +240,16 @@ export default {
 	50% {
 		box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.15);
 	}
+}
+
+.cards-content:focus {
+	outline: none;
+}
+
+.cards-content:focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+	border-radius: var(--radius-card);
 }
 
 .folder-custom-icon {

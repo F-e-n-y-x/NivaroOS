@@ -59,16 +59,16 @@
 			</button>
 
 			<!-- 5. Advanced Container Management (update check, compose export, rebuild) -->
-			<button v-if="isV2App && !item.is_uncontrolled" class="ctx-item" :disabled="isCheckThenUpdate || isUpdating" @click="checkAppVersion(item.name)">
+			<button v-if="isV2App && !item.is_uncontrolled" class="ctx-item" :disabled="isCheckThenUpdate || isUpdating" @click="updateAppConfirm">
 				<i class="mdi mdi-update ctx-icon"></i>
-				<span class="ctx-label">{{ $t('Check then update') }}</span>
+				<span class="ctx-label">{{ $t('Update') }}</span>
 				<i v-if="isCheckThenUpdate || isUpdating" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
 			</button>
 			<button v-if="isV1App" class="ctx-item" @click="exportYAML(item)">
 				<i class="mdi mdi-file-export-outline ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Export as Compose') }}</span>
 			</button>
-			<button v-if="isV1App" class="ctx-item" :disabled="isRebuilding" @click="rebuild(item)">
+			<button v-if="isV1App" class="ctx-item" :disabled="isRebuilding" @click="rebuildConfirm(item)">
 				<i class="mdi mdi-hammer-wrench ctx-icon"></i>
 				<span class="ctx-label">{{ $t('Rebuild') }}</span>
 				<i v-if="isRebuilding" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
@@ -108,7 +108,7 @@
 			<!-- 8. Deletion & Uninstall (Destructive actions at bottom) -->
 			<template v-if="isLinkApp">
 				<div class="ctx-divider"></div>
-				<button class="ctx-item is-danger" :disabled="isUninstalling" @click="uninstallApp(true)">
+				<button class="ctx-item is-danger" :disabled="isUninstalling" @click="deleteLinkConfirm">
 					<i class="mdi mdi-delete-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Delete') }}</span>
 					<i v-if="isUninstalling" class="mdi mdi-loading mdi-spin ctx-spinner"></i>
@@ -124,7 +124,10 @@
 			</template>
 		</div>
 		<div class="blur-background"></div>
-		<div class="cards-content" @click="handleCardClick(item, $event)" @dblclick="handleCardDblClick(item, $event)">
+		<div class="cards-content" role="button" tabindex="0" :aria-label="cardAriaLabel" aria-haspopup="menu"
+			@click="handleCardClick(item, $event)" @dblclick="handleCardDblClick(item, $event)"
+			@keydown.enter.self.prevent="openApp(item)" @keydown.space.self.prevent="openApp(item)"
+			@keydown.self="handleCardKeydown">
 			<!-- Card Content Start -->
 			<b-tooltip :always="isActiveTooltip" :animated="true" :label="tooltipLabel" :triggers="tooltipTriger"
 				animation="fade1" class="in-card" type="is-white">
@@ -132,7 +135,7 @@
 				<div class="has-text-centered is-flex is-justify-content-center is-flex-direction-column icon-cell">
 					<div class="is-flex is-justify-content-center">
 						<div class="is-relative">
-							<b-image :class="dotClass(item.status, isLoading)"
+							<b-image :class="dotClass(item.status, isLoading)" :alt="i18n(item.title) || item.name || ''"
 								:style="item.iconRadius ? { borderRadius: item.iconRadius + '%', overflow: 'hidden' } : null"
 								:src="item.icon" :src-fallback="require('@/assets/img/app-icons/default.svg')" class="is-52x52"
 								webp-fallback=".jpg"></b-image>
@@ -144,7 +147,7 @@
 						<b-loading :active="isLoading" :can-cancel="false" :is-full-page="false"
 							class="has-background-gray-800 op80 is-52x52"
 							style="top: auto;bottom: auto; right: auto; left: auto; border-radius: 10px">
-							<img :src="require('@/assets/img/loading/waiting-white.svg')" alt="loading" class="is-20x20" />
+							<img :src="require('@/assets/img/loading/waiting-white.svg')" :alt="$t('Loading')" class="is-20x20" />
 						</b-loading>
 						<!-- Loading Bar End -->
 					</div>
@@ -177,6 +180,95 @@ import YAML from "yaml";
 import commonI18n, { ice_i18n } from "@/mixins/base/common-i18n";
 import FileSaver from 'file-saver';
 import { confirmWindowMixin } from '@/mixins/confirmWindow';
+import { apiErrorHtml, apiErrorText } from '@/mixins/app/apiError';
+
+const REBUILD_DONE_EVENT = 'APP_CARD_REBUILD_DONE'
+const REBUILD_WATCH_TIMEOUT = 30 * 60 * 1000
+
+function saveYamlFile(yaml, baseName) {
+	const blob = new Blob([yaml], { type: 'application/yaml' })
+	const base = String(baseName || 'app').replace(/[^A-Za-z0-9._-]+/g, '_')
+	const fileName = `${base}.yaml`
+	FileSaver.saveAs(blob, fileName)
+	return fileName
+}
+
+// A rebuild archives the legacy container, so its AppCard is usually
+// destroyed (the app drops off the grid) before the reinstall's
+// app:install-end/-error arrives. The outcome is therefore tracked here,
+// on the raw socket, independently of any component instance.
+const pendingRebuilds = {}
+
+function watchRebuild(vm, name, yaml) {
+	const client = vm.$socket && vm.$socket.client
+	const i18n = vm.$i18n
+	const t = (key, values) => (i18n ? i18n.t(key, values) : key)
+	const buefy = vm.$buefy
+	const bus = vm.$EventBus
+	const title = vm.displayTitle
+	const entry = { failed: false, timers: [] }
+	pendingRebuilds[name] = entry
+
+	const matches = res => {
+		const props = (res && res.Properties) || {}
+		return (props['app:name'] || props['dry_run.name'] || props['name']) === name
+	}
+	const cleanup = () => {
+		if (client) {
+			client.off('app:install-end', onEnd)
+			client.off('app:install-error', onError)
+		}
+		entry.timers.forEach(clearTimeout)
+		if (pendingRebuilds[name] === entry) delete pendingRebuilds[name]
+	}
+	const fail = reason => {
+		if (entry.failed) return
+		entry.failed = true
+		cleanup()
+		let fileName = ''
+		try {
+			fileName = saveYamlFile(yaml, name)
+		} catch (e) {
+			console.error('rebuild: saving the exported compose failed', e)
+		}
+		buefy.toast.open({
+			message: escapeHtml(fileName
+				? t('Rebuild of {name} failed: {reason}. The exported compose file was saved as {file} - install it from App Store > Custom Install.', { name: title, reason, file: fileName })
+				: t('Rebuild of {name} failed: {reason}', { name: title, reason })),
+			type: 'is-danger',
+			position: 'is-top',
+			duration: 12000,
+			queue: false
+		})
+		if (bus) bus.$emit(REBUILD_DONE_EVENT, { name, ok: false })
+	}
+	const onError = res => {
+		if (!matches(res)) return
+		fail((res.Properties && res.Properties['message']) || t('Rebuild error'))
+	}
+	// install-error is published from a goroutine and install-end from a
+	// defer, so the error can arrive just after the end: wait a moment
+	// before calling it a success.
+	const onEnd = res => {
+		if (!matches(res)) return
+		entry.timers.push(setTimeout(() => {
+			if (entry.failed) return
+			cleanup()
+			buefy.toast.open({
+				message: t(`{title} rebuild completed`, { title: escapeHtml(title) }),
+				type: 'is-success'
+			})
+			if (bus) bus.$emit(REBUILD_DONE_EVENT, { name, ok: true })
+		}, 800))
+	}
+	if (client) {
+		client.on('app:install-end', onEnd)
+		client.on('app:install-error', onError)
+	}
+	entry.timers.push(setTimeout(cleanup, REBUILD_WATCH_TIMEOUT))
+	entry.fail = fail
+	return entry
+}
 
 export default {
 	name: "app-card",
@@ -205,6 +297,11 @@ export default {
 			isActiveTooltip: false,
 			dropdownPosition: "is-bottom-right",
 			isPinned: false,
+			// Set by a socket *-error for this app so the matching *-end (the
+			// backend publishes it from a defer, racing the error) doesn't
+			// also claim success.
+			updateFailed: false,
+			imageWasUpdated: false,
 		}
 	},
 	props: {
@@ -237,11 +334,11 @@ export default {
 			} else if (this.isRestarting) {
 				return this.$t('Restarting');
 			} else if (this.isStarting) {
-				return this.$t('updateState');
+				return this.item.status === 'running' ? this.$t('Stopping...') : this.$t('Starting...');
 			} else if (this.isRebuilding) {
 				return this.$t('Rebuilding');
 			} else if (this.isCheckThenUpdate) {
-				return this.$t('CheckThenUpdate');
+				return this.$t('Checking for updates...');
 			} else if (this.item.status === 'running') {
 				return '';
 			} else {
@@ -273,12 +370,20 @@ export default {
 		shutDownClass() {
 			return this.item.status !== 'running'? "shutdown-rounded": ""
 		},
+		displayTitle() {
+			return ice_i18n(this.item.title) || this.item.name || ''
+		},
+		cardAriaLabel() {
+			return this.tooltipLabel ? `${this.displayTitle} - ${this.tooltipLabel}` : this.displayTitle
+		},
 
 	},
 
 	created() {
 		this.checkPinStatus()
 		this.$EventBus.$on(events.RELOAD_APP_LIST, this.checkPinStatus)
+		this.$EventBus.$on(REBUILD_DONE_EVENT, this.onRebuildDone)
+		if (pendingRebuilds[this.item.name]) this.isRebuilding = true
 	},
 
 	mounted() {
@@ -293,7 +398,9 @@ export default {
 	beforeDestroy() {
 		this.closeMenu()
 		this.$EventBus.$off(events.RELOAD_APP_LIST, this.checkPinStatus)
+		this.$EventBus.$off(REBUILD_DONE_EVENT, this.onRebuildDone)
 		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
+		clearTimeout(this.updateEndTimer)
 		if (this.$refs.menu && this.$refs.menu.parentNode) {
 			this.$refs.menu.parentNode.removeChild(this.$refs.menu)
 		}
@@ -319,7 +426,7 @@ export default {
 
 	methods: {
 		checkPinStatus() {
-			this.getDockPins().then(pins => {
+			this.getDockPinsCached().then(pins => {
 				const name = this.item.name || this.item.label || this.item.id
 				this.isPinned = pins.includes(name) || pins.includes(this.item.name)
 			})
@@ -335,12 +442,29 @@ export default {
 			})
 		},
 
+		handleCardKeydown(event) {
+			// Shift+F10 / the ContextMenu key open the menu from the keyboard.
+			if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+				event.preventDefault()
+				event.stopPropagation()
+				const rect = event.currentTarget.getBoundingClientRect()
+				this.handleCardContextMenu({
+					clientX: rect.left + rect.width / 2,
+					clientY: rect.top + rect.height / 2,
+					fromKeyboard: true,
+					preventDefault() {},
+					stopPropagation() {}
+				})
+			}
+		},
+
 		handleCardContextMenu(event) {
 			if (event) {
 				event.preventDefault()
 				event.stopPropagation()
 			}
 			if (this.isUninstalling) return
+			this.menuOpenedByKeyboard = !!(event && event.fromKeyboard)
 
 			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
 			this.checkPinStatus()
@@ -374,6 +498,10 @@ export default {
 				if (rect.right > window.innerWidth - 12) {
 					this.menuX = Math.max(12, window.innerWidth - rect.width - 12)
 				}
+				if (this.menuOpenedByKeyboard) {
+					const first = this.$refs.menu.querySelector('.ctx-item:not([disabled])')
+					if (first) first.focus()
+				}
 			})
 		},
 
@@ -381,6 +509,20 @@ export default {
 			if (!this.menuVisible) return
 			this.menuVisible = false
 			this.removeEventListeners()
+			if (this.menuOpenedByKeyboard) {
+				this.menuOpenedByKeyboard = false
+				const card = this.$el && this.$el.querySelector && this.$el.querySelector('.cards-content')
+				if (card) card.focus()
+			}
+		},
+
+		toastError(err, fallback) {
+			this.$buefy.toast.open({
+				message: apiErrorHtml(err, fallback || this.$t('Something went wrong')),
+				type: 'is-danger',
+				position: 'is-top',
+				duration: 5000
+			})
 		},
 
 		closeMenuThen(eventName, ...args) {
@@ -397,6 +539,18 @@ export default {
 		onKeyDown(event) {
 			if (event.key === 'Escape' && this.menuVisible) {
 				this.closeMenu()
+				return
+			}
+			// Arrow-key navigation between menu items.
+			if (this.menuVisible && this.$refs.menu && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+				const items = Array.from(this.$refs.menu.querySelectorAll('.ctx-item:not([disabled])'))
+				if (!items.length) return
+				event.preventDefault()
+				const idx = items.indexOf(document.activeElement)
+				const next = event.key === 'ArrowDown'
+					? items[(idx + 1) % items.length]
+					: items[(idx - 1 + items.length) % items.length]
+				next.focus()
 			}
 		},
 
@@ -420,7 +574,11 @@ export default {
 			const next = !this.isPinned
 			this.isPinned = next
 			const name = this.item.name || this.item.label || this.item.id
-			this.setDockPinned(name, next).then(() => {
+			this.setDockPinned(name, next).catch(err => {
+				this.isPinned = !next
+				this.toastError(err)
+				return Promise.reject(err)
+			}).then(() => {
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
 				this.$buefy.toast.open({
 					message: next
@@ -431,7 +589,7 @@ export default {
 					duration: 2000,
 					queue: false
 				})
-			})
+			}).catch(() => {})
 			this.closeMenu()
 		},
 
@@ -582,12 +740,7 @@ export default {
 					this.updateState()
 				}
 			}).catch((err) => {
-				this.$buefy.toast.open({
-					message: err.response.data.data || err.response.data.message,
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 5000
-				})
+				this.toastError(err)
 			}).finally(() => {
 				this.isRestarting = false;
 			})
@@ -597,12 +750,9 @@ export default {
 			this.$openAPI.appManagement.compose.setComposeAppStatus(this.item.name, "restart").then((res) => {
 				this.updateState()
 			}).catch((err) => {
-				this.$buefy.toast.open({
-					message: err.response.data.data || err.response.data.message,
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 5000
-				})
+				this.toastError(err)
+			}).finally(() => {
+				this.isRestarting = false;
 			})
 		},
 
@@ -613,19 +763,35 @@ export default {
 		uninstallConfirm() {
 			this.$messageBus('apps_uninstall', this.item.name);
 			this.closeMenu();
+			const dataPath = `/DATA/AppData/${this.item.name}`
 			this.confirmWindow({
-				title: this.$t('Attention'),
-				message: this.$t(`Data cannot be recovered after deletion! <br/>Continue on to uninstall this application?<br/>{divS}Delete userdata ( config folder ){divE}`, {
-					divS: `<div class="is-flex is-align-items-center mt-4"><input type="checkbox"  id="checkDelConfig">`,
-					divE: `</input></div>`
-				}),
-				type: 'is-dark',
+				title: this.$t('Uninstall app'),
+				message: this.$t('Uninstall {name}?', { name: `<b>${escapeHtml(this.displayTitle)}</b>` }),
+				type: 'is-danger',
 				confirmText: this.$t('Uninstall'),
 				cancelText: this.$t('Cancel'),
-				onConfirm: () => {
-					let checkDelConfig = document.getElementById("checkDelConfig") ? document.getElementById("checkDelConfig").checked : false;
-					this.uninstallApp(checkDelConfig)
+				checkbox: {
+					label: this.$t('Also delete app data'),
+					checked: false,
+					checkedIsDanger: true,
+					uncheckedHint: this.$t('Data is kept in {path}.', { path: dataPath }),
+					checkedHint: this.$t('Data in {path} will be deleted and cannot be recovered.', { path: dataPath })
+				},
+				onConfirm: (deleteData) => {
+					this.uninstallApp(!!deleteData)
 				}
+			})
+		},
+
+		deleteLinkConfirm() {
+			this.closeMenu();
+			this.confirmWindow({
+				title: this.$t('Delete web link'),
+				message: this.$t('Delete the web link {name}? The website itself is not affected.', { name: `<b>${escapeHtml(this.displayTitle)}</b>` }),
+				type: 'is-danger',
+				confirmText: this.$t('Delete'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.uninstallApp(true)
 			})
 		},
 
@@ -638,10 +804,14 @@ export default {
 			this.isUninstalling = true
 			this.removeIdFromSessionStorage(this.item.name);
 			if (this.isLinkApp) {
-				this.deleteLinkAppByName(this.item.name).then(res => {
+				return this.deleteLinkAppByName(this.item.name).then(res => {
 					if (res.data.success === 200) {
 						this.$EventBus.$emit(events.RELOAD_APP_LIST);
 					}
+				}).catch((err) => {
+					this.toastError(err, this.$t('Unable to delete the web link'))
+				}).finally(() => {
+					this.isUninstalling = false
 				})
 			} else if (this.isV2App) {
 				this.$openAPI.appManagement.compose.uninstallComposeApp(this.item.name, checkDelConfig).then((res) => {
@@ -649,26 +819,20 @@ export default {
 						this.$EventBus.$emit(events.UPDATE_SYNC_STATUS);
 					}
 				}).catch((err) => {
-					this.$buefy.toast.open({
-						message: err.response.data.data,
-						type: 'is-danger',
-						position: 'is-top',
-						duration: 5000
-					})
+					this.isUninstalling = false
+					this.toastError(err, this.$t('Unable to uninstall the app'))
 				})
 			} else {
 				// former app uninstall
 				this.$api.container.uninstall(this.item.name, { 'delete_config_folder': checkDelConfig }).then((res) => {
 					if (res.data.success === 200) {
 						this.$EventBus.$emit(events.UPDATE_SYNC_STATUS);
+					} else {
+						this.isUninstalling = false
 					}
 				}).catch((err) => {
-					this.$buefy.toast.open({
-						message: err.response.data.data,
-						type: 'is-danger',
-						position: 'is-top',
-						duration: 5000
-					})
+					this.isUninstalling = false
+					this.toastError(err, this.$t('Unable to uninstall the app'))
 				})
 			}
 
@@ -706,7 +870,8 @@ export default {
 					height: 480
 				})
 			} catch (e) {
-				console.log('openTips Error:', e)
+				console.error('openTips Error:', e)
+				this.toastError(e, this.$t('Unable to load the tips'))
 			}
 		},
 
@@ -744,20 +909,15 @@ export default {
 					item.status = res.data.data
 					this.updateState()
 				} else {
-					this.confirmWindow({
-						title: 'Error',
-						message: res.data.data || res.data.message,
+					this.$buefy.toast.open({
+						message: escapeHtml(res.data.message || (typeof res.data.data === 'string' ? res.data.data : '') || this.$t('Something went wrong')),
 						type: 'is-danger',
-						cancelText: ''
+						position: 'is-top',
+						duration: 5000
 					})
 				}
 			}).catch((err) => {
-				this.$buefy.toast.open({
-					message: err.response.data.data || err.response.data.message,
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 3000
-				})
+				this.toastError(err)
 			}).finally(() => {
 				this.isStarting = false
 			})
@@ -768,12 +928,9 @@ export default {
 				this.updateState()
 				item.status = status
 			}).catch((err) => {
-				this.confirmWindow({
-					title: 'Error',
-					message: err.response.data.data || err.response.data.message,
-					type: 'is-danger',
-					cancelText: ''
-				})
+				this.toastError(err)
+			}).finally(() => {
+				this.isStarting = false
 			})
 		},
 
@@ -811,16 +968,14 @@ export default {
 					initData.appstore_id = name
 
 					this.$api.container.install(initData).catch((err) => {
-						this.$buefy.toast.open({
-							message: err.response.data.message,
-							type: 'is-warning'
-						})
+						this.toastError(err)
 					}).then(() => {
 						this.isCloning = false;
 						this.closeMenu();
 					})
 				}
 			}).catch(() => {
+				this.isCloning = false;
 				this.$buefy.toast.open({
 					message: this.$t(`There was an error loading the data, please try again!`),
 					type: 'is-danger'
@@ -831,42 +986,87 @@ export default {
 		exportYAML(item) {
 			this.closeMenu();
 			this.$api.container.exportAsCompose(item.name).then(res => {
-				const blob = new Blob([res.data], { type: '' });
-				FileSaver.saveAs(blob, `${item.image}.yaml`);
+				this.saveYamlFile(res.data, item)
 			}).catch((err) => {
-				this.$buefy.toast.open({
-					message: err.response.data.message,
-					type: 'is-warning'
-				})
+				this.toastError(err, this.$t('Unable to export the compose file'))
+			})
+		},
+
+		saveYamlFile(yaml, item) {
+			return saveYamlFile(yaml, item && (item.name || item.image))
+		},
+
+		rebuildConfirm(app) {
+			this.closeMenu();
+			this.confirmWindow({
+				title: this.$t('Rebuild app'),
+				message: this.$t('Rebuild {name} as a compose app? Its current container is archived (removed) and the app is reinstalled from an exported compose file. It is unavailable until the reinstall finishes.', { name: `<b>${escapeHtml(this.displayTitle)}</b>` }),
+				type: 'is-warning',
+				confirmText: this.$t('Rebuild'),
+				cancelText: this.$t('Cancel'),
+				height: 250,
+				onConfirm: () => this.rebuild(app)
 			})
 		},
 
 		async rebuild(app) {
 			this.closeMenu();
+			if (pendingRebuilds[app.name]) return
 			this.isRebuilding = true;
+			// 1. export yaml - nothing has been changed yet if this fails
+			let file
 			try {
-				// 1. get yaml
-				const file = await this.$api.container.exportAsCompose(app.name).then(res => res.data)
-				// 2. archive
-				await this.$api.container.archive(app.name)
-				// 3.install compose
-				await this.$openAPI.appManagement.compose.installComposeApp(file, { name: app.name })
+				file = await this.$api.container.exportAsCompose(app.name).then(res => res.data)
+				if (!file) throw new Error(this.$t('The exported compose file is empty'))
+				// 2. validate it before removing anything (dry run, the old
+				// container still holds its ports so skip the port check)
+				await this.$openAPI.appManagement.compose.installComposeApp(file, true, false)
 			} catch (e) {
 				this.isRebuilding = false;
 				console.error('rebuild Error:', e)
-				this.$buefy.toast.open({
-					message: this.$t(`Rebulid error`),
-					type: 'is-danger'
-				})
+				this.toastError(e, this.$t('Rebuild error'))
+				return
 			}
-			// 4.sockiet :: install-end :: change UI status.
-			// this.isRebuilding = false;
+			// 3. archive (removes the legacy container)
+			try {
+				await this.$api.container.archive(app.name)
+			} catch (e) {
+				this.isRebuilding = false;
+				console.error('rebuild archive Error:', e)
+				this.toastError(e, this.$t('Rebuild error'))
+				return
+			}
+			// 4. install compose - the result arrives via app:install-end/-error,
+			// watched outside this component (see watchRebuild).
+			const watch = watchRebuild(this, app.name, file)
+			try {
+				await this.$openAPI.appManagement.compose.installComposeApp(file, false, true)
+			} catch (e) {
+				console.error('rebuild install Error:', e)
+				watch.fail(apiErrorText(e, this.$t('Rebuild error')))
+			}
+		},
+
+		onRebuildDone({ name }) {
+			if (name === this.item.name) this.isRebuilding = false
+		},
+
+		updateAppConfirm() {
 			this.closeMenu();
+			this.confirmWindow({
+				title: this.$t('Update app'),
+				message: this.$t('Update {name} to the latest image? It restarts briefly.', { name: `<b>${escapeHtml(this.displayTitle)}</b>` }),
+				confirmText: this.$t('Update'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.checkAppVersion(this.item.name)
+			})
 		},
 
 		checkAppVersion(name) {
 			this.closeMenu();
 			this.isCheckThenUpdate = true;
+			this.updateFailed = false;
+			this.imageWasUpdated = false;
 			this.$openAPI.appManagement.compose.updateComposeApp(name).then(resp => {
 				// 200:
 				if (resp.status === 200) {
@@ -874,7 +1074,7 @@ export default {
 					this.$messageBus('apps_checkupdate', this.item.name.toString());
 					this.$buefy.toast.open({
 						// value is `In the process of asynchronous updating.` or `compose app `app Name` is up to date`
-						message: resp.data.message,
+						message: escapeHtml(resp.data.message || this.$t('Updating')),
 						type: 'is-success'
 					})
 
@@ -884,16 +1084,30 @@ export default {
 						type: 'is-success'
 					})
 				}
-			}).catch(() => {
-				this.$buefy.toast.open({
-					message: this.$t(`Unable to update at the moment!`),
-					type: 'is-danger'
-				})
+			}).catch((err) => {
+				this.toastError(err, this.$t(`Unable to update at the moment!`))
 			}).finally(() => {
 				this.closeMenu();
 				this.isCheckThenUpdate = false;
 			})
 		},
+		// Socket events are broadcast to every card - only react to our own.
+		isOwnEvent(res) {
+			const props = (res && res.Properties) || {}
+			const name = props['app:name'] || props['dry_run.name'] || props['name']
+			return !!name && name === this.item.name
+		},
+
+		toastSocketError(res, fallback) {
+			const msg = (res && res.Properties && res.Properties['message']) || fallback || this.$t('Something went wrong')
+			this.$buefy.toast.open({
+				message: escapeHtml(msg),
+				duration: 5000,
+				type: 'is-danger',
+				position: 'is-top'
+			})
+		},
+
 		/**
 		 * @description: Format Dot Class
 		 * @param {String} status
@@ -919,79 +1133,63 @@ export default {
 
 	sockets: {
 		"app:start-error"(res) {
-			// toast info.
-			this.$buefy.toast.open({
-				message: res.Properties["message"],
-				duration: 5000,
-				type: "is-danger",
-			})
+			if (!this.isOwnEvent(res)) return
+			this.isRestarting = false
+			this.isStarting = false
+			this.toastSocketError(res)
 		},
 		"app:start-end"(res) {
-			if (res.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(res)) {
 				this.isRestarting = false
 				this.isStarting = false
 			}
 		},
 		"app:stop-error"(res) {
-			// toast info.
-			this.$buefy.toast.open({
-				message: res.Properties["message"],
-				duration: 5000,
-				type: "is-danger",
-			})
+			if (!this.isOwnEvent(res)) return
+			this.isRestarting = false
+			this.isStarting = false
+			this.toastSocketError(res)
 		},
 		"app:stop-end"(res) {
-			if (res.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(res)) {
 				this.isRestarting = false
 				this.isStarting = false
 			}
 		},
 		"app:restart-error"(res) {
-			// toast info.
-			this.$buefy.toast.open({
-				message: res.Properties["message"],
-				duration: 5000,
-				type: "is-danger",
-			})
+			if (!this.isOwnEvent(res)) return
+			this.isRestarting = false
+			this.isStarting = false
+			this.toastSocketError(res)
 		},
 		"app:restart-end"(res) {
-			if (res.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(res)) {
 				this.isRestarting = false
 				this.isStarting = false
 			}
 		},
 		"app:apply-changes-begin"(res) {
-			if (res.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(res)) {
 				this.isSaving = true
 			}
 		},
 		"app:apply-changes-error"(res) {
-			// toast info.
-			this.$buefy.toast.open({
-				message: res.Properties["message"],
-				duration: 5000,
-				type: "is-danger",
-			})
+			if (!this.isOwnEvent(res)) return
+			this.isSaving = false
+			this.toastSocketError(res)
 		},
 		"app:apply-changes-end"(res) {
-			if (res.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(res)) {
 				this.isRestarting = false
 				this.isStarting = false
 				this.isSaving = false
 			}
 		},
-		/**
-		 * @description: Update App Status
-		 * @param {Object} data
-		 * @return {void}
-		 */
-		'app:update-begin'() {
-			
-		},
 
 		'docker:image:pull-end'(data) {
-			if (data.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(data)) {
 				if (data.Properties['docker:image:updated'] === 'true') {
+					this.imageWasUpdated = true;
 					this.isUpdating = true;
 				}
 				this.isCheckThenUpdate = false;
@@ -999,9 +1197,25 @@ export default {
 		},
 
 		'docker:image:pull-error'(data) {
-			if (data.Properties["app:name"] === this.item.name) {
+			if (this.isOwnEvent(data)) {
 				this.isCheckThenUpdate = false;
 			}
+		},
+
+		'app:update-error'(data) {
+			if (!this.isOwnEvent(data)) return
+			this.updateFailed = true;
+			this.isUpdating = false;
+			this.isCheckThenUpdate = false;
+			this.$buefy.toast.open({
+				message: escapeHtml(this.$t('Update of {name} failed: {reason}', {
+					name: this.displayTitle,
+					reason: (data.Properties && data.Properties['message']) || this.$t('Something went wrong')
+				})),
+				type: 'is-danger',
+				position: 'is-top',
+				duration: 8000
+			})
 		},
 
 		/**
@@ -1010,47 +1224,35 @@ export default {
 		 * @return {void}
 		 */
 		'app:update-end'(data) {
-			if (data.Properties["app:name"] !== this.item.name)
-				return
-			if (data.Properties['docker:image:updated'] === 'true') {
-				return
-			}
+			if (!this.isOwnEvent(data)) return
 			this.isUpdating = false;
-			// item.name comes from the installed app's manifest, not
-			// developer-authored text - escape before it hits toast.open's
-			// v-html-rendered message.
-			this.$buefy.toast.open({
-				message: this.$t(`{appName} is the latest version!`, { appName: escapeHtml(this.item.name) }),
-				type: 'is-success',
-				duration: 5000
-			})
-		},
-		"app:install-end"(res) {
-			if (res.Properties["dry_run.name"] === this.item.name) {
-				// 4.sockiet :: install-end :: change UI status.
-				this.isRebuilding = false;
-				// 5.message toast
+			this.isCheckThenUpdate = false;
+			const updated = this.imageWasUpdated || data.Properties['docker:image:updated'] === 'true'
+			this.imageWasUpdated = false
+			// The backend publishes update-error from a goroutine and
+			// update-end from a defer, so the error can land just after the
+			// end - wait a moment before claiming success.
+			clearTimeout(this.updateEndTimer)
+			this.updateEndTimer = setTimeout(() => {
+				if (this.updateFailed) {
+					this.updateFailed = false
+					return
+				}
+				// displayTitle comes from the installed app's manifest -
+				// escape before it hits toast.open's v-html message.
 				this.$buefy.toast.open({
-					message: this.$t(`{title} rebulid completed`, { title: escapeHtml(ice_i18n(this.item.title)) }),
-					type: 'is-success'
+					message: updated
+						? this.$t('{appName} was updated', { appName: escapeHtml(this.displayTitle) })
+						: this.$t(`{appName} is the latest version!`, { appName: escapeHtml(this.displayTitle) }),
+					type: 'is-success',
+					duration: 5000
 				})
-			}
-		},
-		"app:install-error"(res) {
-			if (res.Properties["dry_run.name"] === this.item.name) {
-				// 4.sockiet :: install-end :: change UI status.
-				this.isRebuilding = false;
-				// 5.message toast
-				this.$buefy.toast.open({
-					message: res.Properties["message"],
-					type: 'is-warning'
-				})
-			}
+			}, 800)
 		},
 		"app:uninstall-error"(res) {
-			if (res.Properties['id'] === this.item.name) {
-				this.isUninstalling = false;
-			}
+			if (!this.isOwnEvent(res)) return
+			this.isUninstalling = false;
+			this.toastSocketError(res, this.$t('Unable to uninstall the app'))
 		},
 	}
 
@@ -1098,15 +1300,15 @@ export default {
 	z-index: 30;
 }
 
-// 0.4.4
-.dropdown.is-right .dropdown-menu {
-	top: 0;
-	left: calc(100% + 6px);
+// Keyboard access for the tile (role=button, tabindex=0).
+.app-card > .cards-content:focus {
+	outline: none;
 }
 
-.dropdown.is-left .dropdown-menu {
-	top: 0;
-	left: calc(-100% - 14px);
+.app-card > .cards-content:focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+	border-radius: var(--radius-card);
 }
 </style>
 <style lang="scss">
@@ -1120,12 +1322,6 @@ export default {
 
 	.modal-card-body {
 		padding: var(--space-4) var(--space-6) var(--space-6);
-
-		#checkDelConfig {
-			margin-right: var(--space-2);
-			height: 1.25rem;
-			width: 1.25rem;
-		}
 
 		border: 1px solid var(--theme-card-border);
 	}
@@ -1144,11 +1340,6 @@ export default {
 
 		.button {
 			margin-right: 0;
-		}
-
-		.is-dark {
-			margin-left: var(--space-4);
-			background: hsla(208, 100%, 45%, 1);
 		}
 	}
 }

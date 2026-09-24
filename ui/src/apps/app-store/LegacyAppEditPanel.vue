@@ -2,10 +2,12 @@
 	<div class="app-editor-container">
 		<!-- Top Hero: App Identity & Live Preview -->
 		<div class="editor-hero-section">
-			<div
+			<button
+				type="button"
 				class="hero-icon-preview"
 				:style="{ borderRadius: iconRadius + '%' }"
 				:title="$t('Click to fine-tune crop and zoom')"
+				:aria-label="$t('Crop & Fine-Tune')"
 				@click="iconTab = 'studio'"
 			>
 				<div
@@ -24,17 +26,18 @@
 						alt=""
 					/>
 				</div>
-				<div class="hero-edit-overlay">
+				<div class="hero-edit-overlay" aria-hidden="true">
 					<i class="mdi mdi-crop-free"></i>
 					<span>{{ $t('Crop') }}</span>
 				</div>
-			</div>
+			</button>
 
 			<div class="hero-form-fields">
 				<div class="field-row">
-					<label class="field-lbl">{{ $t('Application Name') }}</label>
+					<label class="field-lbl" :for="uid + '-name'">{{ $t('Application Name') }}</label>
 					<div class="input-with-reset">
 						<b-input
+							:id="uid + '-name'"
 							v-model="name"
 							:placeholder="originalName"
 							size="is-small"
@@ -46,6 +49,7 @@
 							class="btn-clear-field"
 							type="button"
 							:title="$t('Reset name to default')"
+							:aria-label="$t('Reset name to default')"
 							@click="name = ''"
 						>
 							<i class="mdi mdi-close-circle"></i>
@@ -55,12 +59,13 @@
 
 				<div v-if="showUrlField" class="field-row mt-2">
 					<div class="is-flex is-align-items-center is-justify-content-between mb-1">
-						<label class="field-lbl mb-0">{{ $t('Web UI URL') }}</label>
-						<a v-if="url" :href="url" target="_blank" class="test-url-link">
+						<label class="field-lbl mb-0" :for="uid + '-url'">{{ $t('Web UI URL') }}</label>
+						<a v-if="url" :href="url" target="_blank" rel="noopener noreferrer" class="test-url-link">
 							<i class="mdi mdi-open-in-new mr-1"></i>{{ $t('Test URL') }}
 						</a>
 					</div>
 					<b-input
+						:id="uid + '-url'"
 						v-model="url"
 						:placeholder="urlPlaceholder"
 						size="is-small"
@@ -92,35 +97,59 @@
 		</div>
 
 		<!-- Navigation Tabs -->
-		<div class="editor-tabs-bar">
+		<div class="editor-tabs-bar" role="tablist" :aria-label="$t('Icon source')" @keydown="onTabsKeydown">
 			<button
+				:id="uid + '-tab-store'"
 				type="button"
 				class="tab-btn"
+				role="tab"
 				:class="{ active: iconTab === 'store' }"
+				:aria-selected="iconTab === 'store' ? 'true' : 'false'"
+				:aria-controls="uid + '-panel'"
+				:tabindex="iconTab === 'store' ? 0 : -1"
+				data-tab="store"
 				@click="iconTab = 'store'"
 			>
 				<i class="mdi mdi-shopping-outline mr-1"></i>{{ $t('App Store Icons') }}
 			</button>
 			<button
+				:id="uid + '-tab-custom'"
 				type="button"
 				class="tab-btn"
+				role="tab"
 				:class="{ active: iconTab === 'custom' }"
+				:aria-selected="iconTab === 'custom' ? 'true' : 'false'"
+				:aria-controls="uid + '-panel'"
+				:tabindex="iconTab === 'custom' ? 0 : -1"
+				data-tab="custom"
 				@click="iconTab = 'custom'"
 			>
 				<i class="mdi mdi-image-plus-outline mr-1"></i>{{ $t('Upload / URL') }}
 			</button>
 			<button
+				:id="uid + '-tab-studio'"
 				type="button"
 				class="tab-btn"
+				role="tab"
 				:class="{ active: iconTab === 'studio' }"
+				:aria-selected="iconTab === 'studio' ? 'true' : 'false'"
+				:aria-controls="uid + '-panel'"
+				:tabindex="iconTab === 'studio' ? 0 : -1"
+				data-tab="studio"
 				@click="iconTab = 'studio'"
 			>
 				<i class="mdi mdi-crop-free mr-1"></i>{{ $t('Crop & Fine-Tune') }}
 			</button>
 			<button
+				:id="uid + '-tab-badges'"
 				type="button"
 				class="tab-btn"
+				role="tab"
 				:class="{ active: iconTab === 'badges' }"
+				:aria-selected="iconTab === 'badges' ? 'true' : 'false'"
+				:aria-controls="uid + '-panel'"
+				:tabindex="iconTab === 'badges' ? 0 : -1"
+				data-tab="badges"
 				@click="iconTab = 'badges'"
 			>
 				<i class="mdi mdi-palette-outline mr-1"></i>{{ $t('Monogram') }}
@@ -128,12 +157,13 @@
 		</div>
 
 		<!-- Tab Workspace Bodies -->
-		<div class="editor-tab-body">
+		<div :id="uid + '-panel'" class="editor-tab-body" role="tabpanel" :aria-labelledby="uid + '-tab-' + iconTab">
 			<!-- 1. App Store Icon Catalog (Clean Normal Background - No Checkerboard) -->
 			<div v-if="iconTab === 'store'" class="tab-pane-full">
 				<div class="search-bar-row">
 					<b-input
 						v-model="storeSearch"
+						:aria-label="$t('Search icons')"
 						:placeholder="$t('Search icons (Nextcloud, Plex, Jellyfin, AdGuard, etc.)...')"
 						icon="magnify"
 						size="is-small"
@@ -143,26 +173,28 @@
 				</div>
 
 				<div class="store-catalog-grid" :class="{ 'is-loading': loadingStoreIcons }">
-					<div
+					<button
 						v-for="app in filteredStoreApps"
 						:key="app.id || app.title"
+						type="button"
 						class="catalog-item-card"
 						:class="{ 'is-active': isCurrentIcon(app.icon) }"
 						:title="app.title"
+						:aria-pressed="isCurrentIcon(app.icon) ? 'true' : 'false'"
 						@click="selectStoreIcon(app)"
 					>
-						<div class="catalog-thumb-box">
-							<img :src="app.icon" class="catalog-thumb" :alt="app.title" loading="lazy" />
-							<div v-if="isCurrentIcon(app.icon)" class="check-badge">
+						<span class="catalog-thumb-box">
+							<img :src="app.icon" class="catalog-thumb" alt="" loading="lazy" />
+							<span v-if="isCurrentIcon(app.icon)" class="check-badge" aria-hidden="true">
 								<i class="mdi mdi-check"></i>
-							</div>
-						</div>
+							</span>
+						</span>
 						<span class="catalog-label">{{ app.title }}</span>
-					</div>
+					</button>
 
 					<div v-if="!filteredStoreApps.length" class="empty-results-box">
 						<i class="mdi mdi-file-search-outline"></i>
-						<span>{{ $t('No matching icons found for') }} "{{ storeSearch }}"</span>
+						<span>{{ $t('No matching icons found for "{query}"', { query: storeSearch }) }}</span>
 					</div>
 				</div>
 			</div>
@@ -170,19 +202,28 @@
 			<!-- 2. Dual Source Custom Icon Studio (Upload File + Image URL) -->
 			<div v-else-if="iconTab === 'custom'" class="tab-pane-custom-grid">
 				<!-- Left Card: Local File Upload -->
-				<div class="import-card dropzone-card" @click="$refs.iconFile.click()">
-					<div class="card-icon-bubble is-blue">
+				<div
+					class="import-card dropzone-card"
+					:class="{ 'is-drag-over': isDragOver }"
+					@click="openFilePicker"
+					@dragenter.prevent="onDropzoneDragOver"
+					@dragover.prevent="onDropzoneDragOver"
+					@dragleave.prevent="onDropzoneDragLeave"
+					@drop.prevent="onDropzoneDrop"
+				>
+					<div class="card-icon-bubble is-blue" aria-hidden="true">
 						<i class="mdi mdi-cloud-upload-outline"></i>
 					</div>
 					<h3 class="import-card-title">{{ $t('Upload Image File') }}</h3>
 					<p class="import-card-desc">{{ $t('Drag and drop an image file here, or click to browse local files') }}</p>
 					
 					<div class="drop-btn-wrap">
-						<button type="button" class="btn-browse">
-							<i class="mdi mdi-folder-open-outline mr-1"></i>{{ $t('Browse Files') }}
+						<button type="button" class="btn-browse" :disabled="isCompressing" @click.stop="openFilePicker">
+							<i class="mdi mdi-folder-open-outline mr-1" aria-hidden="true"></i>{{ $t('Browse Files') }}
 						</button>
 					</div>
 
+					<p v-if="isDragOver" class="drop-hint" aria-live="polite">{{ $t('Drop the image to use it') }}</p>
 					<div class="format-tags">
 						<span class="fmt-tag">PNG</span>
 						<span class="fmt-tag">SVG</span>
@@ -195,12 +236,14 @@
 					accept="image/*"
 					style="display: none"
 					type="file"
+					tabindex="-1"
+					aria-hidden="true"
 					@change="handleIconFile"
 				/>
 
 				<!-- Right Card: Web Image URL -->
 				<div class="import-card url-card">
-					<div class="card-icon-bubble is-purple">
+					<div class="card-icon-bubble is-purple" aria-hidden="true">
 						<i class="mdi mdi-link-variant"></i>
 					</div>
 					<h3 class="import-card-title">{{ $t('Import from Web URL') }}</h3>
@@ -209,7 +252,8 @@
 					<div class="url-input-group mt-2">
 						<b-input
 							v-model="inputUrl"
-							:placeholder="$t('https://example.com/icon.svg')"
+							:aria-label="$t('Image URL')"
+							placeholder="https://example.com/icon.svg"
 							icon="web"
 							size="is-small"
 							expanded
@@ -246,6 +290,10 @@
 			<div v-else-if="iconTab === 'studio'" class="tab-pane-studio">
 				<!-- Left: Large Interactive Canvas with Light-Grey Checkerboard -->
 				<div class="studio-canvas-col">
+					<p v-if="iconCorsBlocked" class="studio-notice" role="status">
+						<i class="mdi mdi-information-outline mr-1" aria-hidden="true"></i>
+						{{ $t("This image's server doesn't allow editing it here, so zoom, position and background can't be applied. Upload the image instead to edit it.") }}
+					</p>
 					<div
 						ref="viewport"
 						class="interactive-viewport transparency-checkerboard"
@@ -266,7 +314,7 @@
 								:style="imgTransformStyle"
 								draggable="false"
 								class="canvas-source-img"
-								alt=""
+								:alt="$t('Icon preview')"
 								@load="onImageLoaded"
 							/>
 						</div>
@@ -284,24 +332,26 @@
 						<div class="control-header">
 							<div class="control-title">
 								<i class="mdi mdi-magnify-plus-outline mr-1"></i>
-								<span>{{ $t('Zoom Scale') }}</span>
+								<label :for="uid + '-zoom'">{{ $t('Zoom Scale') }}</label>
 							</div>
 							<span class="control-val">{{ Math.round(iconZoom * 100) }}%</span>
 						</div>
 						<div class="slider-interactive-wrap">
-							<button class="btn-step" type="button" :disabled="iconZoom <= 1" @click="stepZoom(-0.1)">
-								<i class="mdi mdi-minus"></i>
+							<button class="btn-step" type="button" :disabled="iconZoom <= 1" :aria-label="$t('Zoom out')" :title="$t('Zoom out')" @click="stepZoom(-0.1)">
+								<i class="mdi mdi-minus" aria-hidden="true"></i>
 							</button>
 							<input
+								:id="uid + '-zoom'"
 								v-model.number="iconZoom"
+								:aria-valuetext="Math.round(iconZoom * 100) + '%'"
 								max="3"
 								min="1"
 								step="0.02"
 								type="range"
 								class="studio-range-slider"
 							/>
-							<button class="btn-step" type="button" :disabled="iconZoom >= 3" @click="stepZoom(0.1)">
-								<i class="mdi mdi-plus"></i>
+							<button class="btn-step" type="button" :disabled="iconZoom >= 3" :aria-label="$t('Zoom in')" :title="$t('Zoom in')" @click="stepZoom(0.1)">
+								<i class="mdi mdi-plus" aria-hidden="true"></i>
 							</button>
 						</div>
 					</div>
@@ -311,12 +361,14 @@
 						<div class="control-header">
 							<div class="control-title">
 								<i class="mdi mdi-rounded-corner mr-1"></i>
-								<span>{{ $t('Corner Roundness') }}</span>
+								<label :for="uid + '-radius'">{{ $t('Corner Roundness') }}</label>
 							</div>
 							<span class="control-val">{{ iconRadius }}%</span>
 						</div>
 						<input
+							:id="uid + '-radius'"
 							v-model.number="iconRadius"
+							:aria-valuetext="iconRadius + '%'"
 							max="50"
 							min="0"
 							step="1"
@@ -332,6 +384,8 @@
 								type="button"
 								class="pill-btn"
 								:class="{ active: iconRadius === p.value }"
+								:aria-pressed="iconRadius === p.value ? 'true' : 'false'"
+								:aria-label="$t('Roundness {value}', { value: p.label })"
 								@click="iconRadius = p.value"
 							>
 								{{ p.label }}
@@ -354,9 +408,11 @@
 								class="color-dot is-none"
 								:class="{ active: !iconBgColor || iconBgColor === 'transparent' }"
 								:title="$t('Transparent (None)')"
+								:aria-label="$t('Transparent (None)')"
+								:aria-pressed="(!iconBgColor || iconBgColor === 'transparent') ? 'true' : 'false'"
 								@click="iconBgColor = 'transparent'"
 							>
-								<i class="mdi mdi-circle-off-outline"></i>
+								<i class="mdi mdi-circle-off-outline" aria-hidden="true"></i>
 							</button>
 							<button
 								v-for="c in colorPalettePresets"
@@ -365,15 +421,17 @@
 								class="color-dot"
 								:style="{ backgroundColor: c.value }"
 								:class="{ active: iconBgColor === c.value }"
-								:title="c.label"
+								:title="$t(c.label)"
+								:aria-label="$t(c.label)"
+								:aria-pressed="iconBgColor === c.value ? 'true' : 'false'"
 								@click="iconBgColor = c.value"
 							>
-								<i v-if="iconBgColor === c.value" class="mdi mdi-check" :class="{ 'is-dark-check': c.value === '#ffffff' }"></i>
+								<i v-if="iconBgColor === c.value" class="mdi mdi-check" :class="{ 'is-dark-check': c.value === '#ffffff' }" aria-hidden="true"></i>
 							</button>
 							<!-- Custom Color Picker -->
 							<label class="color-picker-label" :title="$t('Custom Color')">
-								<input v-model="iconBgColor" type="color" class="custom-color-input" />
-								<i class="mdi mdi-eyedropper"></i>
+								<input v-model="iconBgColor" type="color" class="custom-color-input" :aria-label="$t('Custom Color')" />
+								<i class="mdi mdi-eyedropper" aria-hidden="true"></i>
 							</label>
 						</div>
 					</div>
@@ -399,9 +457,10 @@
 							type="button"
 							class="monogram-color-tile"
 							:style="{ background: bg }"
+							:aria-label="$t('Monogram color {n}', { n: idx + 1 })"
 							@click="generateBadgeIcon(bg)"
 						>
-							<span>{{ badgeLetter }}</span>
+							<span aria-hidden="true">{{ badgeLetter }}</span>
 						</button>
 					</div>
 				</div>
@@ -414,18 +473,20 @@
 				v-if="override"
 				type="button"
 				class="btn-danger-link"
-				@click="resetAllOverrides"
+				@click="resetAllOverridesConfirm"
 			>
 				<i class="mdi mdi-restore mr-1"></i>{{ $t('Reset to Defaults') }}
 			</button>
 			<div class="is-flex-grow-1"></div>
 			<div class="footer-btn-group">
 				<b-button rounded @click="$emit('close')">{{ $t('Cancel') }}</b-button>
-				<b-button type="is-primary" rounded :loading="isSaving" @click="save">
+				<b-button type="is-primary" rounded :loading="isSaving" :disabled="isSaving" @click="save">
 					<i class="mdi mdi-check mr-1"></i>{{ $t('Save Changes') }}
 				</b-button>
 			</div>
 		</footer>
+
+		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
 </template>
 
@@ -433,6 +494,24 @@
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import events from '@/events/events'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { apiErrorHtml } from '@/mixins/app/apiError'
+
+const TAB_ORDER = ['store', 'custom', 'studio', 'badges']
+
+// Loads `src` as a CORS-enabled image so it can be drawn into a canvas
+// without tainting it. Resolves null when the server doesn't allow it.
+function loadCorsImage(src) {
+	return new Promise(resolve => {
+		if (!src) return resolve(null)
+		const img = new Image()
+		// Must be set before src.
+		if (!String(src).startsWith('data:')) img.crossOrigin = 'anonymous'
+		img.onload = () => resolve(img)
+		img.onerror = () => resolve(null)
+		img.src = src
+	})
+}
 
 const VIEWPORT_SIZE = 160
 const OUTPUT_SIZE = 256
@@ -474,7 +553,7 @@ const BADGE_GRADIENTS = [
 
 export default {
 	name: 'LegacyAppEditPanel',
-	mixins: [business_LegacyAppOverrides],
+	mixins: [business_LegacyAppOverrides, confirmWindowMixin],
 	props: {
 		item: {
 			type: Object,
@@ -506,6 +585,9 @@ export default {
 			isSaving: false,
 			dragging: false,
 			dragStart: null,
+			isDragOver: false,
+			iconCorsBlocked: false,
+			uid: 'legacy-edit-' + Math.random().toString(36).slice(2, 8),
 			badgeGradients: BADGE_GRADIENTS,
 			roundnessPresets: [
 				{ label: '0%', value: 0 },
@@ -551,6 +633,9 @@ export default {
 			if (!this.storeSearch.trim()) return this.storeApps
 			const q = this.storeSearch.trim().toLowerCase()
 			return this.storeApps.filter(app => app.title.toLowerCase().includes(q))
+		},
+		iconSourceForCanvas() {
+			return this.iconRaw || this.icon || ''
 		},
 		imgTransformStyle() {
 			const maxPan = (this.iconZoom - 1) * (VIEWPORT_SIZE / 2)
@@ -603,10 +688,78 @@ export default {
 		this.fetchStoreIcons()
 		this.fetchContainerSuggestions()
 	},
+	watch: {
+		// Find out up front whether the current icon can be edited in a
+		// canvas, so the studio can say so instead of silently saving the
+		// original on Save.
+		iconSourceForCanvas: {
+			immediate: true,
+			handler(src) {
+				const token = (this.corsProbeToken = (this.corsProbeToken || 0) + 1)
+				if (!src || String(src).startsWith('data:')) {
+					this.iconCorsBlocked = false
+					return
+				}
+				loadCorsImage(src).then(img => {
+					if (token !== this.corsProbeToken) return
+					this.iconCorsBlocked = !img
+				})
+			}
+		}
+	},
 	beforeDestroy() {
 		this.stopDrag()
 	},
 	methods: {
+		onTabsKeydown(event) {
+			const idx = TAB_ORDER.indexOf(this.iconTab)
+			let next = null
+			if (event.key === 'ArrowRight') next = TAB_ORDER[(idx + 1) % TAB_ORDER.length]
+			else if (event.key === 'ArrowLeft') next = TAB_ORDER[(idx - 1 + TAB_ORDER.length) % TAB_ORDER.length]
+			else if (event.key === 'Home') next = TAB_ORDER[0]
+			else if (event.key === 'End') next = TAB_ORDER[TAB_ORDER.length - 1]
+			if (!next) return
+			event.preventDefault()
+			this.iconTab = next
+			this.$nextTick(() => {
+				const btn = this.$el.querySelector(`[data-tab="${next}"]`)
+				if (btn) btn.focus()
+			})
+		},
+
+		openFilePicker() {
+			if (this.isCompressing || !this.$refs.iconFile) return
+			this.$refs.iconFile.click()
+		},
+
+		onDropzoneDragOver(event) {
+			if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+			this.isDragOver = true
+		},
+
+		onDropzoneDragLeave(event) {
+			// Ignore leave events fired when moving over child elements.
+			if (event.currentTarget && event.relatedTarget && event.currentTarget.contains(event.relatedTarget)) return
+			this.isDragOver = false
+		},
+
+		onDropzoneDrop(event) {
+			this.isDragOver = false
+			const files = (event.dataTransfer && event.dataTransfer.files) || []
+			const file = Array.from(files).find(f => f.type && f.type.startsWith('image/'))
+			if (!file) {
+				this.$buefy.toast.open({
+					message: this.$t('Drop an image file (PNG, SVG, WEBP or JPG).'),
+					type: 'is-warning',
+					position: 'is-top',
+					duration: 3000,
+					queue: false
+				})
+				return
+			}
+			this.loadIconFile(file)
+		},
+
 		isCurrentIcon(src) {
 			return (this.iconRaw || this.icon) === src
 		},
@@ -817,11 +970,29 @@ export default {
 
 		handleIconFile(event) {
 			const file = event.target.files[0]
+			// Reset so picking the same file again still fires change.
+			event.target.value = ''
 			if (!file) return
+			this.loadIconFile(file)
+		},
+
+		loadIconFile(file) {
 			this.isCompressing = true
+			const fail = () => {
+				this.isCompressing = false
+				this.$buefy.toast.open({
+					message: this.$t('This image could not be read.'),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 3000,
+					queue: false
+				})
+			}
 			const reader = new FileReader()
+			reader.onerror = fail
 			reader.onload = () => {
 				const img = new Image()
+				img.onerror = fail
 				img.onload = () => {
 					const dataUrl = this.resizeImageToDataUrl(img)
 					this.icon = dataUrl
@@ -904,15 +1075,21 @@ export default {
 			window.removeEventListener('touchend', this.stopDrag)
 		},
 
-		bakeRenderedIcon() {
+		// Returns { dataUrl, baked }. baked=false when the source can't be
+		// drawn into a canvas (cross-origin without CORS): the original is
+		// used and roundness is still applied at render.
+		async bakeRenderedIcon() {
+			const original = this.iconRaw || this.icon
 			const canvas = document.createElement('canvas')
 			canvas.width = OUTPUT_SIZE
 			canvas.height = OUTPUT_SIZE
 			const ctx = canvas.getContext('2d')
 
 			try {
-				const img = this.$refs.canvasImg || this.$refs.heroPreviewImg
-				if (!img) return this.iconRaw || this.icon
+				// A CORS-enabled copy - the on-screen <img>s have no
+				// crossorigin and would taint the canvas.
+				const img = await loadCorsImage(original)
+				if (!img) return { dataUrl: original, baked: false }
 
 				// If custom background plate color is selected
 				if (this.iconBgColor && this.iconBgColor !== 'transparent') {
@@ -932,26 +1109,49 @@ export default {
 				const maxPan = (this.iconZoom - 1) * (OUTPUT_SIZE / 2)
 				const pxX = this.iconPanX * maxPan
 				const pxY = this.iconPanY * maxPan
+				// "contain": keep the aspect ratio, never stretch.
+				const nw = img.naturalWidth || OUTPUT_SIZE
+				const nh = img.naturalHeight || OUTPUT_SIZE
+				const fit = Math.min(OUTPUT_SIZE / nw, OUTPUT_SIZE / nh)
+				const dw = nw * fit
+				const dh = nh * fit
 
 				ctx.save()
 				ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2)
 				ctx.translate(pxX, pxY)
 				ctx.scale(this.iconZoom, this.iconZoom)
-				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
+				ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
 				ctx.restore()
 
 				if (this.iconBgColor && this.iconBgColor !== 'transparent') {
 					ctx.restore()
 				}
 
-				return canvas.toDataURL('image/png')
+				return { dataUrl: canvas.toDataURL('image/png'), baked: true }
 			} catch (e) {
-				return this.iconRaw || this.icon
+				// Tainted canvas (SecurityError) or a broken image.
+				return { dataUrl: original, baked: false }
 			}
 		},
 
+		resetAllOverridesConfirm() {
+			this.confirmWindow({
+				title: this.$t('Reset to Defaults'),
+				message: this.$t('Reset the name, icon and link of this app to their original defaults?'),
+				type: 'is-warning',
+				confirmText: this.$t('Reset'),
+				cancelText: this.$t('Cancel'),
+				onConfirm: () => this.resetAllOverrides()
+			})
+		},
+
 		async resetAllOverrides() {
-			await this.saveLegacyAppOverride(this.item.name, null)
+			try {
+				await this.saveLegacyAppOverride(this.item.name, null)
+			} catch (e) {
+				this.toastSaveError(e)
+				return
+			}
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 			this.$buefy.toast.open({
 				message: `<i class="mdi mdi-restore mr-1"></i> ${this.$t('App reset to original defaults')}`,
@@ -963,30 +1163,62 @@ export default {
 			this.$emit('close')
 		},
 
-		async save() {
-			this.isSaving = true
-			const bakedIcon = this.bakeRenderedIcon()
-			await this.saveLegacyAppOverride(this.item.name, {
-				title: this.name,
-				url: this.url,
-				icon: bakedIcon,
-				iconRaw: this.iconRaw || this.icon,
-				iconZoom: this.iconZoom,
-				iconPanX: this.iconPanX,
-				iconPanY: this.iconPanY,
-				iconRadius: this.iconRadius,
-				iconBgColor: this.iconBgColor
-			})
-			this.$EventBus.$emit(events.RELOAD_APP_LIST)
-			this.isSaving = false
+		toastSaveError(e) {
+			console.error('LegacyAppEditPanel save', e)
 			this.$buefy.toast.open({
-				message: `<i class="mdi mdi-check-circle-outline mr-1"></i> ${this.$t('App settings saved')}`,
-				type: 'is-dark',
+				message: this.$t('App settings could not be saved: {reason}', { reason: apiErrorHtml(e, this.$t('Something went wrong')) }),
+				type: 'is-danger',
 				position: 'is-top',
-				duration: 2000,
+				duration: 6000,
 				queue: false
 			})
-			this.$emit('close')
+		},
+
+		async save() {
+			if (this.isSaving) return
+			this.isSaving = true
+			let baked
+			try {
+				const hasEdits = this.iconZoom !== 1 || this.iconPanX !== 0 || this.iconPanY !== 0 ||
+					(this.iconBgColor && this.iconBgColor !== 'transparent')
+				baked = await this.bakeRenderedIcon()
+				await this.saveLegacyAppOverride(this.item.name, {
+					title: this.name.trim(),
+					url: this.url.trim(),
+					icon: baked.dataUrl,
+					iconRaw: this.iconRaw || this.icon,
+					iconZoom: this.iconZoom,
+					iconPanX: this.iconPanX,
+					iconPanY: this.iconPanY,
+					iconRadius: this.iconRadius,
+					iconBgColor: this.iconBgColor
+				})
+				this.$EventBus.$emit(events.RELOAD_APP_LIST)
+				if (!baked.baked && hasEdits) {
+					// Saved, but say so plainly instead of silently dropping
+					// the zoom/position/background edits.
+					this.$buefy.toast.open({
+						message: this.$t('Saved. This image cannot be edited here, so only the name, link and roundness were applied - upload the image to crop or zoom it.'),
+						type: 'is-warning',
+						position: 'is-top',
+						duration: 6000,
+						queue: false
+					})
+				} else {
+					this.$buefy.toast.open({
+						message: `<i class="mdi mdi-check-circle-outline mr-1"></i> ${this.$t('App settings saved')}`,
+						type: 'is-dark',
+						position: 'is-top',
+						duration: 2000,
+						queue: false
+					})
+				}
+				this.$emit('close')
+			} catch (e) {
+				this.toastSaveError(e)
+			} finally {
+				this.isSaving = false
+			}
 		}
 	}
 }
@@ -994,6 +1226,7 @@ export default {
 
 <style lang="scss" scoped>
 .app-editor-container {
+	position: relative;
 	height: 100%;
 	display: flex;
 	flex-direction: column;
@@ -1030,9 +1263,9 @@ export default {
 	overflow: hidden;
 	background: var(--theme-card-subtle, #f8fafc);
 	border: 1px solid var(--theme-card-border, #cbd5e1);
-	box-shadow: var(--shadow-md);
+	padding: 0;
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: border-color 0.15s ease;
 
 	.hero-crop-box {
 		position: absolute;
@@ -1049,7 +1282,7 @@ export default {
 		height: 100% !important;
 		max-width: none !important;
 		max-height: none !important;
-		object-fit: cover;
+		object-fit: contain;
 		display: block;
 		pointer-events: none;
 	}
@@ -1073,9 +1306,9 @@ export default {
 		}
 	}
 
-	&:hover {
-		border-color: #2563eb;
-		transform: scale(1.04);
+	&:hover,
+	&:focus-visible {
+		border-color: var(--color-primary, #2563eb);
 
 		.hero-edit-overlay {
 			opacity: 1;
@@ -1137,7 +1370,7 @@ export default {
 	align-items: center;
 
 	i {
-		color: #fbbf24;
+		color: var(--color-warning-fg);
 	}
 }
 
@@ -1155,26 +1388,26 @@ export default {
 	font-size: var(--font-2xs);
 	font-family: monospace;
 	font-weight: 600;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	cursor: pointer;
-	transition: all 0.12s ease;
+	transition: background 0.12s ease, border-color 0.12s ease;
 
 	&:hover {
 		background: rgba(59, 130, 246, 0.1);
-		border-color: #2563eb;
+		border-color: var(--color-primary, #2563eb);
 	}
 
 	&.is-active {
-		background: #2563eb;
+		background: var(--color-primary, #2563eb);
 		color: #ffffff;
-		border-color: #2563eb;
+		border-color: var(--color-primary, #2563eb);
 	}
 }
 
 .test-url-link {
 	font-size: var(--font-2xs);
 	font-weight: 600;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	display: inline-flex;
 	align-items: center;
 
@@ -1219,9 +1452,8 @@ export default {
 
 	&.active {
 		background: var(--theme-card-bg, #ffffff);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border-color: var(--theme-card-border, #cbd5e1);
-		box-shadow: var(--shadow-sm);
 	}
 }
 
@@ -1265,8 +1497,11 @@ export default {
 	background: var(--theme-card-subtle, #f8fafc);
 	border: 1px solid var(--theme-card-border, #e2e8f0);
 	cursor: pointer;
-	transition: all 0.15s ease;
+	transition: border-color 0.15s ease, background 0.15s ease;
 	text-align: center;
+	font: inherit;
+	color: inherit;
+	min-width: 0;
 
 	.catalog-thumb-box {
 		position: relative;
@@ -1284,7 +1519,7 @@ export default {
 		.catalog-thumb {
 			width: 100%;
 			height: 100%;
-			object-fit: cover;
+			object-fit: contain;
 		}
 
 		.check-badge {
@@ -1294,17 +1529,17 @@ export default {
 			width: 15px;
 			height: 15px;
 			border-radius: 50%;
-			background: #2563eb;
+			background: var(--color-primary, #2563eb);
 			color: #ffffff;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			font-size: var(--font-2xs);
-			box-shadow: var(--shadow-sm);
 		}
 	}
 
 	.catalog-label {
+		display: block;
 		font-size: var(--font-2xs);
 		font-weight: 500;
 		color: var(--theme-text-secondary, #334155);
@@ -1315,16 +1550,13 @@ export default {
 	}
 
 	&:hover {
-		border-color: #2563eb;
-		background: var(--theme-card-bg, #ffffff);
-		transform: translateY(-2px);
-		box-shadow: var(--shadow-md);
+		border-color: var(--color-primary, #2563eb);
+		background: var(--theme-card-hover, var(--theme-card-bg, #ffffff));
 	}
 
 	&.is-active {
-		border-color: #2563eb;
+		border-color: var(--color-primary, #2563eb);
 		background: rgba(59, 130, 246, 0.1);
-		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 	}
 }
 
@@ -1372,17 +1604,10 @@ export default {
 		cursor: pointer;
 		background: var(--theme-card-bg, #ffffff);
 
-		&:hover {
-			border-color: #2563eb;
+		&:hover,
+		&.is-drag-over {
+			border-color: var(--color-primary, #2563eb);
 			background: rgba(59, 130, 246, 0.1);
-			transform: translateY(-2px);
-			box-shadow: var(--shadow-xl);
-
-			.btn-browse {
-				background: #2563eb;
-				color: #ffffff;
-				border-color: #2563eb;
-			}
 		}
 	}
 
@@ -1392,7 +1617,6 @@ export default {
 
 		&:hover {
 			border-color: var(--theme-card-border, #cbd5e1);
-			box-shadow: var(--shadow-lg);
 		}
 	}
 }
@@ -1409,12 +1633,12 @@ export default {
 
 	&.is-blue {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 	}
 
 	&.is-purple {
 		background: rgba(124, 58, 237, 0.1);
-		color: #a78bfa;
+		color: var(--color-accent-fg);
 	}
 }
 
@@ -1448,8 +1672,34 @@ export default {
 	cursor: pointer;
 	display: inline-flex;
 	align-items: center;
-	transition: all 0.15s ease;
-	pointer-events: none;
+	transition: background 0.15s ease, border-color 0.15s ease;
+
+	&:hover:not(:disabled) {
+		background: var(--color-primary, #2563eb);
+		color: #ffffff;
+		border-color: var(--color-primary, #2563eb);
+	}
+}
+
+.drop-hint {
+	margin: 0 0 var(--space-2);
+	font-size: var(--font-xs);
+	font-weight: 600;
+	color: var(--color-primary-fg);
+}
+
+.studio-notice {
+	display: flex;
+	align-items: flex-start;
+	max-width: 220px;
+	margin: 0 0 var(--space-2);
+	padding: var(--space-2);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-sm);
+	background: var(--theme-card-subtle);
+	color: var(--color-warning-fg);
+	font-size: var(--font-2xs);
+	line-height: 1.4;
 }
 
 .format-tags {
@@ -1496,7 +1746,7 @@ export default {
 	background: transparent;
 	font-size: var(--font-2xs);
 	font-weight: 600;
-	color: #ef4444;
+	color: var(--color-danger-fg);
 	cursor: pointer;
 	padding: 0;
 	display: inline-flex;
@@ -1534,7 +1784,6 @@ export default {
 	border-radius: var(--radius-modal);
 	overflow: hidden;
 	border: 1px solid var(--theme-card-border, #cbd5e1);
-	box-shadow: var(--shadow-lg);
 	user-select: none;
 
 	&.is-draggable {
@@ -1562,7 +1811,7 @@ export default {
 	height: 100% !important;
 	max-width: none !important;
 	max-height: none !important;
-	object-fit: cover;
+	object-fit: contain;
 	pointer-events: none;
 	display: block;
 }
@@ -1619,12 +1868,17 @@ export default {
 	color: var(--theme-text-secondary, #334155);
 	display: flex;
 	align-items: center;
+
+	label {
+		font: inherit;
+		color: inherit;
+	}
 }
 
 .control-val {
 	font-size: var(--font-xs);
 	font-weight: 700;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 }
 
 .slider-interactive-wrap {
@@ -1647,8 +1901,8 @@ export default {
 		padding: 0;
 
 		&:hover:not(:disabled) {
-			border-color: #2563eb;
-			color: #2563eb;
+			border-color: var(--color-primary, #2563eb);
+			color: var(--color-primary-fg);
 		}
 
 		&:disabled {
@@ -1660,7 +1914,7 @@ export default {
 
 .studio-range-slider {
 	flex: 1;
-	accent-color: #2563eb;
+	accent-color: var(--color-primary, #2563eb);
 	cursor: pointer;
 	height: 4px;
 }
@@ -1684,14 +1938,14 @@ export default {
 	text-align: center;
 
 	&:hover {
-		border-color: #2563eb;
-		color: #2563eb;
+		border-color: var(--color-primary, #2563eb);
+		color: var(--color-primary-fg);
 	}
 
 	&.active {
-		background: #2563eb;
+		background: var(--color-primary, #2563eb);
 		color: #ffffff;
-		border-color: #2563eb;
+		border-color: var(--color-primary, #2563eb);
 	}
 }
 
@@ -1730,7 +1984,7 @@ export default {
 
 	&.active {
 		transform: scale(1.1);
-		box-shadow: 0 0 0 2px #2563eb;
+		box-shadow: 0 0 0 2px var(--color-primary, #2563eb);
 	}
 
 	.is-dark-check {
@@ -1753,9 +2007,15 @@ export default {
 	font-size: var(--font-2xs);
 	overflow: hidden;
 
-	&:hover {
-		border-color: #2563eb;
-		color: #2563eb;
+	&:hover,
+	&:focus-within {
+		border-color: var(--color-primary, #2563eb);
+		color: var(--color-primary-fg);
+	}
+
+	&:focus-within {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: 2px;
 	}
 
 	.custom-color-input {
@@ -1773,7 +2033,7 @@ export default {
 	background: transparent;
 	font-size: var(--font-xs);
 	font-weight: 600;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	cursor: pointer;
 	padding: 0;
 	display: inline-flex;
@@ -1828,12 +2088,10 @@ export default {
 	color: #ffffff;
 	font-size: var(--font-xl);
 	font-weight: 700;
-	transition: transform 0.12s ease, box-shadow 0.12s ease;
-	box-shadow: var(--shadow-sm);
+	transition: opacity 0.12s ease;
 
 	&:hover {
-		transform: scale(1.1);
-		box-shadow: var(--shadow-lg);
+		opacity: 0.9;
 	}
 }
 
@@ -1852,7 +2110,7 @@ export default {
 	background: transparent;
 	font-size: var(--font-xs);
 	font-weight: 600;
-	color: #dc2626;
+	color: var(--color-danger-fg);
 	cursor: pointer;
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-sm);
@@ -1868,5 +2126,30 @@ export default {
 .footer-btn-group {
 	display: flex;
 	gap: var(--space-2);
+}
+
+/* Keyboard focus for every custom button in the editor. */
+.hero-icon-preview,
+.btn-clear-field,
+.sugg-pill,
+.tab-btn,
+.catalog-item-card,
+.btn-browse,
+.helper-link,
+.btn-step,
+.pill-btn,
+.color-dot,
+.btn-reset-transforms,
+.monogram-color-tile,
+.btn-danger-link,
+.studio-range-slider {
+	&:focus {
+		outline: none;
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: 2px;
+	}
 }
 </style>

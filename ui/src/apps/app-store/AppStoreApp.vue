@@ -1,7 +1,7 @@
 <template>
 	<div class="appstore-app" :class="{ 'is-compact': isCompact, 'is-narrow': isNarrow }">
 		<!-- Left Navigation Sidebar -->
-		<aside class="appstore-sidebar">
+		<aside class="appstore-sidebar" :aria-label="$t('App Store sections')">
 			<div class="sidebar-brand">
 				<img :src="appStoreIcon" class="brand-icon" alt="App Store" />
 				<div class="brand-info">
@@ -12,8 +12,12 @@
 
 			<div class="sidebar-nav">
 				<button
+					type="button"
 					class="nav-item"
 					:class="{ 'is-active': viewMode === 'store' && activeTab === 'discover' }"
+					:aria-current="viewMode === 'store' && activeTab === 'discover' ? 'page' : null"
+					:aria-label="isCompact ? $t('Discover') : null"
+					:title="isCompact ? $t('Discover') : null"
 					@click="switchToStoreTab('discover')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-compass-outline"></i></span>
@@ -21,8 +25,12 @@
 				</button>
 
 				<button
+					type="button"
 					class="nav-item"
 					:class="{ 'is-active': viewMode === 'store' && activeTab === 'all' }"
+					:aria-current="viewMode === 'store' && activeTab === 'all' ? 'page' : null"
+					:aria-label="isCompact ? $t('All Apps') : null"
+					:title="isCompact ? $t('All Apps') : null"
 					@click="switchToStoreTab('all')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-view-grid-outline"></i></span>
@@ -36,10 +44,14 @@
 
 				<div class="category-list">
 					<button
-						v-for="cat in cateMenu"
+						v-for="cat in sidebarCategories"
 						:key="cat.id"
+						type="button"
 						class="nav-item category-item"
 						:class="{ 'is-active': viewMode === 'store' && activeTab === 'category' && currentCate.name === cat.name }"
+						:aria-current="viewMode === 'store' && activeTab === 'category' && currentCate.name === cat.name ? 'page' : null"
+						:aria-label="isCompact ? cat.name : null"
+						:title="isCompact ? cat.name : null"
 						@click="selectCategory(cat)"
 					>
 						<span class="nav-icon"><i :class="'mdi mdi-' + getCateIcon(cat.name)"></i></span>
@@ -53,8 +65,12 @@
 				</div>
 
 				<button
+					type="button"
 					class="nav-item"
 					:class="{ 'is-active': viewMode === 'store' && activeTab === 'installed' }"
+					:aria-current="viewMode === 'store' && activeTab === 'installed' ? 'page' : null"
+					:aria-label="isCompact ? $t('Installed') : null"
+					:title="isCompact ? $t('Installed') : null"
 					@click="switchToStoreTab('installed')"
 				>
 					<span class="nav-icon"><i class="mdi mdi-check-circle-outline"></i></span>
@@ -64,12 +80,12 @@
 			</div>
 
 			<div class="sidebar-footer">
-				<button class="footer-btn custom-install-btn" :class="{ 'is-active': viewMode === 'installer' }" @click="openCustomInstall">
+				<button type="button" class="footer-btn custom-install-btn" :class="{ 'is-active': viewMode === 'installer' }" :aria-label="isCompact ? $t('Custom Install') : null" :title="isCompact ? $t('Custom Install') : null" @click="openCustomInstall">
 					<i class="mdi mdi-plus footer-icon"></i>
 					<span>{{ $t('Custom Install') }}</span>
 				</button>
 
-				<button class="footer-btn sources-btn" @click="showSourcesModal = true">
+				<button type="button" class="footer-btn sources-btn" :aria-label="isCompact ? $t('App Sources') : null" :title="isCompact ? $t('App Sources') : null" @click="showSourcesModal = true">
 					<i class="mdi mdi-source-branch footer-icon"></i>
 					<span>{{ $t('App Sources') }}</span>
 				</button>
@@ -84,12 +100,14 @@
 					<i class="mdi mdi-magnify search-icon"></i>
 					<input
 						v-model="searchQuery"
-						type="text"
+						type="search"
 						class="search-input"
-						:placeholder="$t('Search 400+ self-hosted apps, tools, and servers...')"
+						:aria-label="$t('Search apps')"
+						:placeholder="$t('Search {n} apps...', { n: totalAppCount || '' })"
 						@input="onSearchInput"
+						@keydown.esc="clearSearch"
 					/>
-					<button v-if="searchQuery" class="clear-search-btn" @click="clearSearch">
+					<button v-if="searchQuery" type="button" class="clear-search-btn" :aria-label="$t('Clear search')" :title="$t('Clear search')" @click="clearSearch">
 						<i class="mdi mdi-close-circle"></i>
 					</button>
 				</div>
@@ -98,9 +116,9 @@
 					<!-- Store Sources Dropdown -->
 					<b-dropdown v-model="currentAuthor" aria-role="list" class="source-dropdown">
 						<template #trigger="{ active }">
-							<button class="filter-btn">
-								<i class="mdi mdi-storefront-outline"></i>
-								<span>{{ currentAuthor.name }}</span>
+							<button type="button" class="filter-btn" :aria-label="$t('Publisher: {name}', { name: $t(currentAuthor.name) })">
+								<i class="mdi mdi-account-check-outline" aria-hidden="true"></i>
+								<span>{{ currentAuthor.name === 'All' ? $t('All publishers') : $t(currentAuthor.name) }}</span>
 								<i :class="'mdi ' + (active ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
 							</button>
 						</template>
@@ -110,16 +128,16 @@
 							:value="item"
 							:class="{ 'is-active': currentAuthor.name === item.name }"
 						>
-							{{ item.name }}
+							{{ item.name === 'All' ? $t('All publishers') : $t(item.name) }}
 						</b-dropdown-item>
 					</b-dropdown>
 
 					<!-- Sort Dropdown -->
 					<b-dropdown v-model="currentSort" aria-role="list" class="sort-dropdown">
 						<template #trigger="{ active }">
-							<button class="filter-btn">
-								<i class="mdi mdi-sort-variant"></i>
-								<span>{{ currentSort.name }}</span>
+							<button type="button" class="filter-btn" :aria-label="$t('Sort: {name}', { name: $t(currentSort.name) })">
+								<i class="mdi mdi-sort-variant" aria-hidden="true"></i>
+								<span>{{ $t(currentSort.name) }}</span>
 								<i :class="'mdi ' + (active ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
 							</button>
 						</template>
@@ -129,42 +147,72 @@
 							:value="item"
 							:class="{ 'is-active': currentSort.name === item.name }"
 						>
-							{{ item.name }}
+							{{ $t(item.name) }}
 						</b-dropdown-item>
 					</b-dropdown>
 
 					<!-- Refresh Button -->
-					<button class="icon-btn refresh-btn" :class="{ 'is-spinning': isLoading }" :title="$t('Refresh Store')" @click="refreshStore">
+					<button type="button" class="icon-btn refresh-btn" :class="{ 'is-spinning': isLoading }" :title="$t('Refresh Store')" :aria-label="$t('Refresh Store')" :disabled="isLoading" @click="refreshStore">
 						<i class="mdi mdi-refresh"></i>
 					</button>
 				</div>
 			</header>
 
+			<!-- Phone width: the sidebar is hidden, so its sections live here. -->
+			<nav v-if="isNarrow" class="narrow-nav" :aria-label="$t('App Store sections')">
+				<label class="sr-only" for="appstore-narrow-section">{{ $t('Section') }}</label>
+				<select id="appstore-narrow-section" class="narrow-select" :value="narrowSection" @change="onNarrowSection($event.target.value)">
+					<option value="discover">{{ $t('Discover') }}</option>
+					<option value="all">{{ $t('All Apps') }} ({{ allAppsList.length }})</option>
+					<option value="installed">{{ $t('Installed') }} ({{ installedList.length }})</option>
+					<optgroup :label="$t('Categories')">
+						<option v-for="cat in sidebarCategories" :key="'n-' + cat.id" :value="'cat:' + cat.name">{{ cat.name }} ({{ cat.count }})</option>
+					</optgroup>
+				</select>
+				<button type="button" class="icon-btn" :title="$t('Custom Install')" :aria-label="$t('Custom Install')" @click="openCustomInstall">
+					<i class="mdi mdi-plus" aria-hidden="true"></i>
+				</button>
+				<button type="button" class="icon-btn" :title="$t('App Sources')" :aria-label="$t('App Sources')" @click="showSourcesModal = true">
+					<i class="mdi mdi-source-branch" aria-hidden="true"></i>
+				</button>
+			</nav>
+
 			<!-- Scrollable Content Body -->
 			<div class="main-body">
+				<!-- Catalog couldn't be loaded: say so (it used to look like an
+				     empty store / "no apps found"). -->
+				<div v-if="loadError && !allAppsList.length" class="store-error" role="alert">
+					<i class="mdi mdi-cloud-alert-outline store-error-icon" aria-hidden="true"></i>
+					<h4 class="empty-title">{{ $t('The app catalog could not be loaded') }}</h4>
+					<p class="empty-desc">{{ loadError }}</p>
+					<button type="button" class="empty-action-btn" :disabled="isLoading" @click="refreshStore">{{ $t('Try again') }}</button>
+				</div>
+
 				<!-- Discover Tab: Featured Hero Carousel & Curated Categories -->
-				<section v-if="activeTab === 'discover' && !searchQuery" class="discover-section">
+				<section v-else-if="activeTab === 'discover' && !searchQuery" class="discover-section">
 					<!-- Hero Swiper Carousel -->
 					<div v-if="recommendList.length > 0" class="hero-carousel-wrapper">
-						<div class="hero-carousel">
+						<div class="hero-carousel" @mouseenter="heroPaused = true" @mouseleave="heroPaused = false" @focusin="heroPaused = true" @focusout="heroPaused = false">
 							<div
 								v-for="(item, idx) in featuredList"
 								:key="'feat-' + item.id"
 								class="hero-slide"
 								:class="{ 'is-active': currentHeroIndex === idx }"
+								:aria-hidden="currentHeroIndex === idx ? null : 'true'"
+								:inert="currentHeroIndex === idx ? null : ''"
 							>
 								<div class="hero-ambient-glow"></div>
 
 								<div class="hero-content">
 									<div class="hero-badge">
 										<i class="mdi mdi-star"></i>
-										<span>{{ $t('FEATURED APPLICATION') }}</span>
+										<span>{{ $t('Featured') }}</span>
 									</div>
 									<div class="hero-app-info">
-										<img :src="item.icon" class="hero-app-icon" :alt="item.title" @error="onIconError" />
+										<img :src="item.icon" class="hero-app-icon" alt="" @error="onIconError" />
 										<div class="hero-text-col">
 											<h3 class="hero-app-title">{{ item.title }}</h3>
-											<span class="hero-app-meta">{{ item.category }} • {{ (item.architectures || ['amd64']).join(', ') }}</span>
+											<span class="hero-app-meta">{{ item.category }}<template v-if="item.author"> • {{ item.author }}</template></span>
 										</div>
 									</div>
 									<p class="hero-app-tagline">{{ item.tagline }}</p>
@@ -197,27 +245,27 @@
 												<span>{{ $t('Customize') }}</span>
 											</button>
 										</template>
-										<button class="hero-details-btn" @click="showAppDetail(item.id)">
+										<button type="button" class="hero-details-btn" @click="showAppDetail(item.id)">
 											<span>{{ $t('Details') }}</span>
 											<i class="mdi mdi-chevron-right"></i>
 										</button>
 									</div>
 								</div>
 
-								<div class="hero-preview-box" @click="showAppDetail(item.id)">
+								<button type="button" class="hero-preview-box" :aria-label="$t('{title}: details', { title: item.title })" @click="showAppDetail(item.id)">
 									<img
 										:src="item.thumbnail || item.screenshots[0] || item.icon"
 										class="hero-preview-img"
 										:alt="item.title"
 										@error="onBannerError($event, item)"
 									/>
-								</div>
+								</button>
 							</div>
 
-							<button class="carousel-arrow is-prev" @click="prevHero" :title="$t('Previous')">
+							<button type="button" class="carousel-arrow is-prev" :title="$t('Previous')" :aria-label="$t('Previous')" @click="prevHero">
 								<i class="mdi mdi-chevron-left"></i>
 							</button>
-							<button class="carousel-arrow is-next" @click="nextHero" :title="$t('Next')">
+							<button type="button" class="carousel-arrow is-next" :title="$t('Next')" :aria-label="$t('Next')" @click="nextHero">
 								<i class="mdi mdi-chevron-right"></i>
 							</button>
 
@@ -225,8 +273,11 @@
 								<button
 									v-for="(_, idx) in featuredList"
 									:key="'dot-' + idx"
+									type="button"
 									class="carousel-dot"
 									:class="{ 'is-active': currentHeroIndex === idx }"
+									:aria-label="$t('Show featured app {n}', { n: idx + 1 })"
+									:aria-current="currentHeroIndex === idx ? 'true' : null"
 									@click="currentHeroIndex = idx"
 								></button>
 							</div>
@@ -237,315 +288,56 @@
 					<div v-if="recommendList.length > 0" class="section-block">
 						<div class="section-header">
 							<div>
-								<h3 class="section-title">{{ $t('Spotlight & Editors’ Picks') }}</h3>
-								<span class="section-subtitle">{{ $t('Curated essential self-hosted applications for your home server') }}</span>
+								<h3 class="section-title">{{ $t('Recommended') }}</h3>
+								<span class="section-subtitle">{{ $t('Popular picks from your app sources') }}</span>
 							</div>
 						</div>
 						<div class="app-grid">
-							<div
+							<store-app-card
 								v-for="item in recommendList.slice(0, 4)"
 								:key="'spotlight-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<div v-else class="card-btn-split">
-												<button
-													class="card-btn is-install"
-													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
-													:class="{ 'is-loading': isAppInstalling(item.id) }"
-													@click="installApp(item.id, item)"
-												>
-													<span>{{ getInstallButtonText(item.id) }}</span>
-												</button>
-												<button
-													class="card-btn-cog"
-													:disabled="!isArchCompatible(item)"
-													:title="$t('Customize & Install')"
-													@click="openCustomizeForApp(item.id, item)"
-												>
-													<i class="mdi mdi-tune-variant"></i>
-												</button>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
+								:item="item"
+								:installed="installedSet.has(item.id)"
+								:installing="installingMap[item.id]"
+								:compatible="isArchCompatible(item)"
+								:arch="arch"
+								:category-icon="getCateIcon(item.category)"
+								@detail="showAppDetail"
+								@install="installApp"
+								@customize="openCustomizeForApp"
+								@open="openThirdContainerByAppInfo"
+							></store-app-card>
 						</div>
 					</div>
 
-					<!-- Section: Media & Streaming -->
-					<div v-if="mediaApps.length > 0" class="section-block">
+					<!-- The store's largest categories (from the catalog itself, so
+					     a store with other category names still gets rows). -->
+					<div v-for="row in discoverRows" :key="'row-' + row.name" class="section-block">
 						<div class="section-header">
 							<div>
-								<h3 class="section-title">{{ $t('Media & Entertainment') }}</h3>
-								<span class="section-subtitle">{{ $t('Stream movies, music, audiobooks, and organize your collection') }}</span>
+								<h3 class="section-title">{{ row.name }}</h3>
+								<span class="section-subtitle">{{ $t('{n} apps', { n: row.count }) }}</span>
 							</div>
-							<button class="see-all-btn" @click="selectCategoryByName('Media')">
-								<span>{{ $t('See All') }}</span>
-								<i class="mdi mdi-chevron-right"></i>
+							<button type="button" class="see-all-btn" @click="selectCategoryByName(row.name)">
+								<span>{{ $t('See all') }}</span>
+								<i class="mdi mdi-chevron-right" aria-hidden="true"></i>
 							</button>
 						</div>
 						<div class="app-grid">
-							<div
-								v-for="item in mediaApps"
-								:key="'media-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<div v-else class="card-btn-split">
-												<button
-													class="card-btn is-install"
-													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
-													:class="{ 'is-loading': isAppInstalling(item.id) }"
-													@click="installApp(item.id, item)"
-												>
-													<span>{{ getInstallButtonText(item.id) }}</span>
-												</button>
-												<button
-													class="card-btn-cog"
-													:disabled="!isArchCompatible(item)"
-													:title="$t('Customize & Install')"
-													@click="openCustomizeForApp(item.id, item)"
-												>
-													<i class="mdi mdi-tune-variant"></i>
-												</button>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Section: AI & LLMs -->
-					<div v-if="aiApps.length > 0" class="section-block">
-						<div class="section-header">
-							<div>
-								<h3 class="section-title">{{ $t('AI & Next-Gen LLMs') }}</h3>
-								<span class="section-subtitle">{{ $t('Run open-source large language models, ChatGPT clones, and AI agents privately') }}</span>
-							</div>
-							<button class="see-all-btn" @click="selectCategoryByName('AI')">
-								<span>{{ $t('See All') }}</span>
-								<i class="mdi mdi-chevron-right"></i>
-							</button>
-						</div>
-						<div class="app-grid">
-							<div
-								v-for="item in aiApps"
-								:key="'ai-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<div v-else class="card-btn-split">
-												<button
-													class="card-btn is-install"
-													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
-													:class="{ 'is-loading': isAppInstalling(item.id) }"
-													@click="installApp(item.id, item)"
-												>
-													<span>{{ getInstallButtonText(item.id) }}</span>
-												</button>
-												<button
-													class="card-btn-cog"
-													:disabled="!isArchCompatible(item)"
-													:title="$t('Customize & Install')"
-													@click="openCustomizeForApp(item.id, item)"
-												>
-													<i class="mdi mdi-tune-variant"></i>
-												</button>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Section: Developer Tools -->
-					<div v-if="devApps.length > 0" class="section-block">
-						<div class="section-header">
-							<div>
-								<h3 class="section-title">{{ $t('Developer & DevOps Tools') }}</h3>
-								<span class="section-subtitle">{{ $t('Code editors, databases, container managers, and automation suites') }}</span>
-							</div>
-							<button class="see-all-btn" @click="selectCategoryByName('Developer')">
-								<span>{{ $t('See All') }}</span>
-								<i class="mdi mdi-chevron-right"></i>
-							</button>
-						</div>
-						<div class="app-grid">
-							<div
-								v-for="item in devApps"
-								:key="'dev-' + item.id"
-								class="app-card"
-								@click="showAppDetail(item.id)"
-							>
-								<div class="card-banner">
-									<img
-										v-if="item.thumbnail || item.screenshots[0]"
-										:src="item.thumbnail || item.screenshots[0]"
-										class="card-banner-img"
-										:alt="item.title"
-										loading="lazy"
-										@error="onBannerError($event, item)"
-									/>
-									<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-										<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-									</div>
-								</div>
-
-								<div class="app-card-body">
-									<div class="app-card-top">
-										<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-										<div class="app-info">
-											<h4 class="app-title">{{ item.title }}</h4>
-											<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-										</div>
-									</div>
-									<p class="app-tagline">{{ item.tagline }}</p>
-									<div class="app-card-bottom">
-										<div class="app-meta-group">
-											<span class="app-cat-pill">{{ item.category }}</span>
-											<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-										</div>
-										<div class="app-card-action" @click.stop>
-											<button
-												v-if="installedList.includes(item.id)"
-												class="card-btn is-open"
-												@click="openThirdContainerByAppInfo(item)"
-											>
-												{{ $t('Open') }}
-											</button>
-											<div v-else class="card-btn-split">
-												<button
-													class="card-btn is-install"
-													:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
-													:class="{ 'is-loading': isAppInstalling(item.id) }"
-													@click="installApp(item.id, item)"
-												>
-													<span>{{ getInstallButtonText(item.id) }}</span>
-												</button>
-												<button
-													class="card-btn-cog"
-													:disabled="!isArchCompatible(item)"
-													:title="$t('Customize & Install')"
-													@click="openCustomizeForApp(item.id, item)"
-												>
-													<i class="mdi mdi-tune-variant"></i>
-												</button>
-											</div>
-										</div>
-									</div>
-								</div>
-							</div>
+							<store-app-card
+								v-for="item in row.apps"
+								:key="row.name + '-' + item.id"
+								:item="item"
+								:installed="installedSet.has(item.id)"
+								:installing="installingMap[item.id]"
+								:compatible="isArchCompatible(item)"
+								:arch="arch"
+								:category-icon="getCateIcon(item.category)"
+								@detail="showAppDetail"
+								@install="installApp"
+								@customize="openCustomizeForApp"
+								@open="openThirdContainerByAppInfo"
+							></store-app-card>
 						</div>
 					</div>
 				</section>
@@ -588,70 +380,20 @@
 
 					<!-- App Cards Grid -->
 					<div v-else class="app-grid">
-						<div
+						<store-app-card
 							v-for="item in displayAppsList"
 							:key="item.id"
-							class="app-card"
-							@click="showAppDetail(item.id)"
-						>
-							<div class="card-banner">
-								<img
-									v-if="item.thumbnail || item.screenshots[0]"
-									:src="item.thumbnail || item.screenshots[0]"
-									class="card-banner-img"
-									:alt="item.title"
-									loading="lazy"
-									@error="onBannerError($event, item)"
-								/>
-								<div v-else class="card-banner-placeholder" :style="getGradientBg(item.title)">
-									<i :class="'mdi mdi-' + getCateIcon(item.category) + ' placeholder-icon'"></i>
-								</div>
-							</div>
-
-							<div class="app-card-body">
-								<div class="app-card-top">
-									<img :src="item.icon" class="app-icon" :alt="item.title" @error="onIconError" />
-									<div class="app-info">
-										<h4 class="app-title">{{ item.title }}</h4>
-										<span class="app-author">{{ item.author || item.developer || 'Community' }}</span>
-									</div>
-								</div>
-								<p class="app-tagline">{{ item.tagline }}</p>
-								<div class="app-card-bottom">
-									<div class="app-meta-group">
-										<span class="app-cat-pill">{{ item.category }}</span>
-										<span class="app-arch-text">{{ (item.architectures || ['amd64']).join(', ') }}</span>
-									</div>
-									<div class="app-card-action" @click.stop>
-										<button
-											v-if="installedList.includes(item.id)"
-											class="card-btn is-open"
-											@click="openThirdContainerByAppInfo(item)"
-										>
-											{{ $t('Open') }}
-										</button>
-										<div v-else class="card-btn-split">
-											<button
-												class="card-btn is-install"
-												:disabled="!isArchCompatible(item) || isAppInstalling(item.id)"
-												:class="{ 'is-loading': isAppInstalling(item.id) }"
-												@click="installApp(item.id, item)"
-											>
-												<span>{{ getInstallButtonText(item.id) }}</span>
-											</button>
-											<button
-												class="card-btn-cog"
-												:disabled="!isArchCompatible(item)"
-												:title="$t('Customize & Install')"
-												@click="openCustomizeForApp(item.id, item)"
-											>
-												<i class="mdi mdi-tune-variant"></i>
-											</button>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
+							:item="item"
+							:installed="installedSet.has(item.id)"
+							:installing="installingMap[item.id]"
+							:compatible="isArchCompatible(item)"
+							:arch="arch"
+							:category-icon="getCateIcon(item.category)"
+							@detail="showAppDetail"
+							@install="installApp"
+							@customize="openCustomizeForApp"
+							@open="openThirdContainerByAppInfo"
+						></store-app-card>
 					</div>
 				</section>
 			</div>
@@ -727,11 +469,11 @@
 						<div class="form-grid-2">
 							<div class="form-group">
 								<label class="form-label">{{ $t('Display Name') }} <span class="req">*</span></label>
-								<input v-model="formState.title" type="text" class="form-input" :placeholder="$t('e.g., Nextcloud')" />
+								<input :aria-label="$t('Display Name')" v-model="formState.title" type="text" class="form-input" :placeholder="$t('e.g., Nextcloud')" />
 							</div>
 							<div class="form-group">
 								<label class="form-label">{{ $t('Container Name') }} <span class="req">*</span></label>
-								<input v-model="formState.containerName" type="text" class="form-input" :placeholder="$t('e.g., nextcloud')" />
+								<input :aria-label="$t('Container Name')" v-model="formState.containerName" type="text" class="form-input" :placeholder="$t('e.g., nextcloud')" />
 							</div>
 						</div>
 
@@ -739,19 +481,19 @@
 							<div class="form-group">
 								<label class="form-label">{{ $t('Docker Image') }} <span class="req">*</span></label>
 								<div class="input-with-tags">
-									<input v-model="formState.image" type="text" class="form-input" :placeholder="$t('e.g., nextcloud:latest')" />
+									<input :aria-label="$t('Docker Image')" v-model="formState.image" type="text" class="form-input" :placeholder="$t('e.g., nextcloud:latest')" />
 								</div>
 								<div class="quick-tags">
 									<span class="quick-tag-label">{{ $t('Quick Tags:') }}</span>
-									<button class="quick-tag-btn" @click="appendImageTag('latest')">:latest</button>
-									<button class="quick-tag-btn" @click="appendImageTag('alpine')">:alpine</button>
-									<button class="quick-tag-btn" @click="appendImageTag('stable')">:stable</button>
+									<button type="button" class="quick-tag-btn" @click="appendImageTag('latest')">:latest</button>
+									<button type="button" class="quick-tag-btn" @click="appendImageTag('alpine')">:alpine</button>
+									<button type="button" class="quick-tag-btn" @click="appendImageTag('stable')">:stable</button>
 								</div>
 							</div>
 
 							<div class="form-group">
 								<label class="form-label">{{ $t('Category') }}</label>
-								<select v-model="formState.category" class="form-select">
+								<select :aria-label="$t('Category')" v-model="formState.category" class="form-select">
 									<option value="Productivity">{{ $t('Productivity') }}</option>
 									<option value="Media">{{ $t('Media & Streaming') }}</option>
 									<option value="AI">{{ $t('AI & LLMs') }}</option>
@@ -770,7 +512,7 @@
 							<label class="form-label">{{ $t('Icon URL') }}</label>
 							<div class="icon-input-row">
 								<img :src="formState.icon || defaultAppIcon" class="icon-preview-thumb" alt="" @error="onFormIconError" />
-								<input v-model="formState.icon" type="text" class="form-input" :placeholder="$t('https://icon.casaos.io/main/all/app.png')" />
+								<input :aria-label="$t('Icon URL')" v-model="formState.icon" type="text" class="form-input" :placeholder="$t('https://icon.casaos.io/main/all/app.png')" />
 							</div>
 						</div>
 					</div>
@@ -791,18 +533,18 @@
 						<div v-if="formState.webUI.enabled" class="form-grid-3 mt-3">
 							<div class="form-group">
 								<label class="form-label">{{ $t('Protocol') }}</label>
-								<select v-model="formState.webUI.scheme" class="form-select">
+								<select :aria-label="$t('Protocol')" v-model="formState.webUI.scheme" class="form-select">
 									<option value="http">http://</option>
 									<option value="https">https://</option>
 								</select>
 							</div>
 							<div class="form-group">
 								<label class="form-label">{{ $t('Port') }}</label>
-								<input v-model="formState.webUI.port" type="text" class="form-input" :placeholder="$t('e.g., 80 or 8080')" />
+								<input :aria-label="$t('Port')" v-model="formState.webUI.port" type="text" class="form-input" :placeholder="$t('e.g., 80 or 8080')" />
 							</div>
 							<div class="form-group">
 								<label class="form-label">{{ $t('Index Path [Optional]') }}</label>
-								<input v-model="formState.webUI.index" type="text" class="form-input" :placeholder="$t('/index.html or /login')" />
+								<input :aria-label="$t('Index Path [Optional]')" v-model="formState.webUI.index" type="text" class="form-input" :placeholder="$t('/index.html or /login')" />
 							</div>
 						</div>
 					</div>
@@ -821,26 +563,26 @@
 							<div v-for="(p, pidx) in formState.ports" :key="'port-' + pidx" class="dynamic-row">
 								<div class="dynamic-field">
 									<span class="field-mini-label">{{ $t('Host Port') }}</span>
-									<input v-model="p.host" type="text" class="form-input is-sm" placeholder="8080" />
+									<input :aria-label="$t('Host Port')" v-model="p.host" type="text" class="form-input is-sm" placeholder="8080" />
 								</div>
 								<span class="row-arrow">➔</span>
 								<div class="dynamic-field">
 									<span class="field-mini-label">{{ $t('Container Port') }}</span>
-									<input v-model="p.container" type="text" class="form-input is-sm" placeholder="80" />
+									<input :aria-label="$t('Container Port')" v-model="p.container" type="text" class="form-input is-sm" placeholder="80" />
 								</div>
 								<div class="dynamic-field is-protocol">
 									<span class="field-mini-label">{{ $t('Protocol') }}</span>
-									<select v-model="p.protocol" class="form-select is-sm">
+									<select :aria-label="$t('Protocol')" v-model="p.protocol" class="form-select is-sm">
 										<option value="TCP">TCP</option>
 										<option value="UDP">UDP</option>
 									</select>
 								</div>
-								<button class="delete-row-btn" @click="removePort(pidx)">
+								<button type="button" class="delete-row-btn" :aria-label="$t('Remove row')" :title="$t('Remove row')" @click="removePort(pidx)">
 									<i class="mdi mdi-delete-outline"></i>
 								</button>
 							</div>
 
-							<button class="add-row-btn" @click="addPort">
+							<button type="button" class="add-row-btn" @click="addPort">
 								<i class="mdi mdi-plus"></i>
 								<span>{{ $t('Add Port Mapping') }}</span>
 							</button>
@@ -861,26 +603,26 @@
 							<div v-for="(v, vidx) in formState.volumes" :key="'vol-' + vidx" class="dynamic-row">
 								<div class="dynamic-field is-wide">
 									<span class="field-mini-label">{{ $t('Host Path') }}</span>
-									<input v-model="v.host" type="text" class="form-input is-sm" placeholder="/DATA/AppData/app/config" />
+									<input :aria-label="$t('Host Path')" v-model="v.host" type="text" class="form-input is-sm" placeholder="/DATA/AppData/app/config" />
 								</div>
 								<span class="row-arrow">➔</span>
 								<div class="dynamic-field is-wide">
 									<span class="field-mini-label">{{ $t('Container Path') }}</span>
-									<input v-model="v.container" type="text" class="form-input is-sm" placeholder="/config" />
+									<input :aria-label="$t('Container Path')" v-model="v.container" type="text" class="form-input is-sm" placeholder="/config" />
 								</div>
 								<div class="dynamic-field is-mode">
 									<span class="field-mini-label">{{ $t('Mode') }}</span>
-									<select v-model="v.mode" class="form-select is-sm">
+									<select :aria-label="$t('Mode')" v-model="v.mode" class="form-select is-sm">
 										<option value="rw">Read / Write (rw)</option>
 										<option value="ro">Read-Only (ro)</option>
 									</select>
 								</div>
-								<button class="delete-row-btn" @click="removeVolume(vidx)">
+								<button type="button" class="delete-row-btn" :aria-label="$t('Remove row')" :title="$t('Remove row')" @click="removeVolume(vidx)">
 									<i class="mdi mdi-delete-outline"></i>
 								</button>
 							</div>
 
-							<button class="add-row-btn" @click="addVolume">
+							<button type="button" class="add-row-btn" @click="addVolume">
 								<i class="mdi mdi-plus"></i>
 								<span>{{ $t('Add Volume Mount') }}</span>
 							</button>
@@ -901,19 +643,19 @@
 							<div v-for="(e, eidx) in formState.envs" :key="'env-' + eidx" class="dynamic-row">
 								<div class="dynamic-field is-wide">
 									<span class="field-mini-label">{{ $t('Key / Name') }}</span>
-									<input v-model="e.key" type="text" class="form-input is-sm is-mono" placeholder="TZ" />
+									<input :aria-label="$t('Key / Name')" v-model="e.key" type="text" class="form-input is-sm is-mono" placeholder="TZ" />
 								</div>
 								<span class="row-arrow">=</span>
 								<div class="dynamic-field is-wide">
 									<span class="field-mini-label">{{ $t('Value') }}</span>
-									<input v-model="e.value" type="text" class="form-input is-sm is-mono" placeholder="UTC" />
+									<input :aria-label="$t('Value')" v-model="e.value" type="text" class="form-input is-sm is-mono" placeholder="UTC" />
 								</div>
-								<button class="delete-row-btn" @click="removeEnv(eidx)">
+								<button type="button" class="delete-row-btn" :aria-label="$t('Remove row')" :title="$t('Remove row')" @click="removeEnv(eidx)">
 									<i class="mdi mdi-delete-outline"></i>
 								</button>
 							</div>
 
-							<button class="add-row-btn" @click="addEnv">
+							<button type="button" class="add-row-btn" @click="addEnv">
 								<i class="mdi mdi-plus"></i>
 								<span>{{ $t('Add Environment Variable') }}</span>
 							</button>
@@ -928,7 +670,7 @@
 								<h4 class="card-heading">{{ $t('Advanced & Hardware Configuration') }}</h4>
 								<span class="card-caption">{{ $t('Network drivers, restart policy, memory limits, and GPU / hardware devices') }}</span>
 							</div>
-							<button class="accordion-toggle-btn">
+							<button type="button" class="accordion-toggle-btn" :aria-label="$t('Advanced settings')" :aria-expanded="showAdvanced ? 'true' : 'false'" @click.stop="showAdvanced = !showAdvanced">
 								<i :class="'mdi ' + (showAdvanced ? 'mdi-chevron-up' : 'mdi-chevron-down')"></i>
 							</button>
 						</div>
@@ -937,16 +679,17 @@
 							<div class="form-grid-3">
 								<div class="form-group">
 									<label class="form-label">{{ $t('Network Driver') }}</label>
-									<select v-model="formState.network" class="form-select">
+									<select :aria-label="$t('Network Driver')" v-model="formState.network" class="form-select">
 										<option value="bridge">bridge (Isolated NAT)</option>
 										<option value="host">host (Direct Host Networking)</option>
 										<option v-for="net in networkOptions" :key="net" :value="net">{{ net }}</option>
+										<option v-if="formState.network && !['bridge', 'host'].includes(formState.network) && !networkOptions.includes(formState.network)" :value="formState.network">{{ formState.network }}</option>
 									</select>
 								</div>
 
 								<div class="form-group">
 									<label class="form-label">{{ $t('Restart Policy') }}</label>
-									<select v-model="formState.restart" class="form-select">
+									<select :aria-label="$t('Restart Policy')" v-model="formState.restart" class="form-select">
 										<option value="unless-stopped">unless-stopped (Recommended)</option>
 										<option value="always">always</option>
 										<option value="on-failure">on-failure</option>
@@ -956,7 +699,7 @@
 
 								<div class="form-group">
 									<label class="form-label">{{ $t('Memory Limit (MB)') }}</label>
-									<input v-model="formState.memoryLimit" type="text" class="form-input" placeholder="0 (Unlimited)" />
+									<input :aria-label="$t('Memory Limit (MB)')" v-model="formState.memoryLimit" type="text" class="form-input" :placeholder="$t('0 = no limit')" />
 								</div>
 							</div>
 
@@ -969,7 +712,7 @@
 
 							<div class="form-group mt-3">
 								<label class="form-label">{{ $t('Container Command / Entrypoint') }}</label>
-								<input v-model="formState.command" type="text" class="form-input is-mono" placeholder="e.g., sh -c 'npm start'" />
+								<input :aria-label="$t('Container Command / Entrypoint')" v-model="formState.command" type="text" class="form-input is-mono" placeholder="e.g., sh -c 'npm start'" />
 							</div>
 
 							<!-- Devices Section -->
@@ -979,18 +722,18 @@
 									<div v-for="(dev, didx) in formState.devices" :key="'dev-' + didx" class="dynamic-row">
 										<div class="dynamic-field is-wide">
 											<span class="field-mini-label">{{ $t('Host Device') }}</span>
-											<input v-model="dev.host" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
+											<input :aria-label="$t('Host Device')" v-model="dev.host" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
 										</div>
 										<span class="row-arrow">➔</span>
 										<div class="dynamic-field is-wide">
 											<span class="field-mini-label">{{ $t('Container Device') }}</span>
-											<input v-model="dev.container" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
+											<input :aria-label="$t('Container Device')" v-model="dev.container" type="text" class="form-input is-sm is-mono" placeholder="/dev/dri" />
 										</div>
-										<button class="delete-row-btn" @click="removeDevice(didx)">
+										<button type="button" class="delete-row-btn" :aria-label="$t('Remove row')" :title="$t('Remove row')" @click="removeDevice(didx)">
 											<i class="mdi mdi-delete-outline"></i>
 										</button>
 									</div>
-									<button class="add-row-btn" @click="addDevice">
+									<button type="button" class="add-row-btn" @click="addDevice">
 										<i class="mdi mdi-plus"></i>
 										<span>{{ $t('Add Device Passthrough') }}</span>
 									</button>
@@ -1022,10 +765,16 @@
 			</div>
 
 			<!-- Installer Bottom Footer -->
+			<div v-if="installerTab === 'form' && formErrors.length" class="installer-errors" role="alert">
+				<i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i>
+				<ul>
+					<li v-for="err in formErrors" :key="err">{{ err }}</li>
+				</ul>
+			</div>
 			<footer class="installer-footer">
 				<div class="installer-footer-info">
 					<i class="mdi mdi-information-outline"></i>
-					<span>{{ $t('Docker 20.10+ · Container configurations are fully persistent and managed via NivaroOS Compose.') }}</span>
+					<span>{{ formState.isEditing ? $t('Saving recreates the container with these settings. Its data folders are kept.') : $t('The app is installed as a Docker Compose app and appears on your desktop.') }}</span>
 				</div>
 				<div class="installer-footer-btns">
 					<button class="installer-cancel-btn" @click="viewMode = 'store'">
@@ -1034,7 +783,7 @@
 					<button
 						class="installer-deploy-btn"
 						:class="{ 'is-loading': isDeployingCustom }"
-						:disabled="!isFormValid"
+						:disabled="!isFormValid || isDeployingCustom"
 						@click="installFromInstaller"
 					>
 						<i v-if="!isDeployingCustom" class="mdi mdi-check-circle-outline"></i>
@@ -1045,168 +794,145 @@
 			</footer>
 		</main>
 
-		<!-- In-Window App Detail Drawer -->
-		<transition name="drawer-slide">
-			<div v-if="selectedAppDetail" class="app-detail-drawer" @click.self="closeAppDetail">
-				<div class="drawer-panel">
-					<header class="drawer-header">
-						<button class="back-btn" @click="closeAppDetail">
-							<i class="mdi mdi-arrow-left"></i>
-							<span>{{ $t('Back to Store') }}</span>
-						</button>
-						<div class="drawer-header-spacer"></div>
-						<button class="drawer-close-btn" @click="closeAppDetail">
-							<i class="mdi mdi-close"></i>
-						</button>
-					</header>
-
-					<div class="drawer-content">
-						<!-- App Hero -->
-						<div class="detail-hero">
-							<img :src="selectedAppDetail.icon" class="detail-icon" :alt="selectedAppDetail.title" @error="onIconError" />
-							<div class="detail-hero-info">
-								<h2 class="detail-title">{{ i18n(selectedAppDetail.title) }}</h2>
-								<p class="detail-tagline">{{ i18n(selectedAppDetail.tagline) }}</p>
-								<div class="detail-meta-row">
-									<span v-if="selectedAppDetail.category" class="detail-pill">{{ selectedAppDetail.category }}</span>
-									<span v-if="selectedAppDetail.version" class="detail-pill is-subtle">v{{ selectedAppDetail.version }}</span>
-									<span v-if="selectedAppDetail.developer" class="detail-pill is-subtle">{{ selectedAppDetail.developer }}</span>
-									<span v-if="!isArchCompatible(selectedAppDetail)" class="detail-pill is-danger">{{ $t('Incompatible Architecture') }}</span>
-								</div>
-								<div class="detail-actions">
-									<button
-										v-if="installedList.includes(selectedAppDetail.id)"
-										class="detail-action-btn is-open"
-										@click="openThirdContainerByAppInfo(selectedAppDetail)"
-									>
-										<i class="mdi mdi-launch"></i>
-										<span>{{ $t('Open App') }}</span>
-									</button>
-									<template v-else>
-										<button
-											class="detail-action-btn is-install"
-											:disabled="!isArchCompatible(selectedAppDetail) || isAppInstalling(selectedAppDetail.id)"
-											:class="{ 'is-loading': isAppInstalling(selectedAppDetail.id) }"
-											@click="installApp(selectedAppDetail.id, selectedAppDetail)"
-										>
-											<i v-if="!isAppInstalling(selectedAppDetail.id)" class="mdi mdi-download"></i>
-											<span>{{ getInstallButtonText(selectedAppDetail.id) }}</span>
-										</button>
-										<button
-											class="detail-action-btn is-customize"
-											:disabled="!isArchCompatible(selectedAppDetail)"
-											@click="openCustomizeForApp(selectedAppDetail.id, selectedAppDetail)"
-										>
-											<i class="mdi mdi-tune-variant"></i>
-											<span>{{ $t('Customize & Install') }}</span>
-										</button>
-									</template>
-								</div>
-							</div>
+		<!-- App details, screenshots and App Sources are real desktop
+		     windows (they were overlays covering the whole store). -->
+		<settings-overlay
+			:active="!!selectedAppDetail"
+			:title="selectedAppDetail ? i18n(selectedAppDetail.title) : ''"
+			width="46rem"
+			body-class="appstore-detail-body"
+			@close="closeAppDetail"
+		>
+			<div v-if="selectedAppDetail" class="detail-window">
+				<div class="detail-hero">
+					<img :src="selectedAppDetail.icon || defaultAppIcon" class="detail-icon" alt="" @error="onIconError" />
+					<div class="detail-hero-info">
+						<h2 class="detail-title">{{ i18n(selectedAppDetail.title) }}</h2>
+						<p class="detail-tagline">{{ i18n(selectedAppDetail.tagline) }}</p>
+						<div class="detail-meta-row">
+							<span v-if="selectedAppDetail.category" class="detail-pill">{{ selectedAppDetail.category }}</span>
+							<span v-if="selectedAppDetail.version" class="detail-pill is-subtle">v{{ selectedAppDetail.version }}</span>
+							<span v-if="selectedAppDetail.developer || selectedAppDetail.author" class="detail-pill is-subtle">{{ selectedAppDetail.developer || selectedAppDetail.author }}</span>
+							<span v-if="!isArchCompatible(selectedAppDetail)" class="detail-pill is-danger">{{ $t('Not built for this server\'s CPU ({arch})', { arch: arch || '?' }) }}</span>
 						</div>
-
-						<!-- Screenshots Gallery with Lightbox -->
-						<div v-if="detailScreenshots.length > 0" class="detail-section">
-							<h4 class="detail-section-title">{{ $t('Screenshots & Preview') }}</h4>
-							<div class="screenshots-gallery">
-								<div
-									v-for="(img, sidx) in detailScreenshots"
-									:key="'screen-' + sidx"
-									class="screenshot-item"
-									@click="activeLightboxImage = img"
-								>
-									<img :src="img" :alt="'Screenshot ' + (sidx + 1)" loading="lazy" />
-									<div class="screenshot-hover-overlay">
-										<i class="mdi mdi-magnify-plus-outline"></i>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<!-- Description Markdown -->
-						<div class="detail-section">
-							<h4 class="detail-section-title">{{ $t('About this App') }}</h4>
-							<div class="detail-description">
-								<p class="description-text">{{ i18n(selectedAppDetail.description) || i18n(selectedAppDetail.tagline) }}</p>
-							</div>
-						</div>
-
-						<!-- Specifications -->
-						<div class="detail-section">
-							<h4 class="detail-section-title">{{ $t('Specifications & Details') }}</h4>
-							<div class="specs-grid">
-								<div class="spec-card">
-									<span class="spec-label">{{ $t('Category') }}</span>
-									<span class="spec-value">{{ selectedAppDetail.category || 'Utility' }}</span>
-								</div>
-								<div class="spec-card">
-									<span class="spec-label">{{ $t('Memory Required') }}</span>
-									<span class="spec-value">{{ selectedAppDetail.min_memory || '256 MB' }}</span>
-								</div>
-								<div class="spec-card">
-									<span class="spec-label">{{ $t('Architectures') }}</span>
-									<span class="spec-value">{{ (selectedAppDetail.architectures || ['amd64', 'arm64']).join(', ') }}</span>
-								</div>
-								<div class="spec-card">
-									<span class="spec-label">{{ $t('Developer') }}</span>
-									<span class="spec-value">{{ selectedAppDetail.developer || selectedAppDetail.author || 'Community' }}</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</transition>
-
-		<!-- Screenshot Lightbox Modal -->
-		<transition name="fade">
-			<div v-if="activeLightboxImage" class="lightbox-overlay" @click="activeLightboxImage = null">
-				<button class="lightbox-close-btn" @click="activeLightboxImage = null">
-					<i class="mdi mdi-close"></i>
-				</button>
-				<img :src="activeLightboxImage" class="lightbox-img" alt="Enlarged screenshot" @click.stop />
-			</div>
-		</transition>
-
-		<!-- In-Window Sources Management Modal -->
-		<transition name="fade">
-			<div v-if="showSourcesModal" class="sources-overlay" @click.self="showSourcesModal = false">
-				<div class="sources-panel">
-					<header class="sources-header">
-						<h3 class="sources-title">{{ $t('App Store Sources') }}</h3>
-						<button class="drawer-close-btn" @click="showSourcesModal = false">
-							<i class="mdi mdi-close"></i>
-						</button>
-					</header>
-					<div class="sources-body">
-						<div class="add-source-box">
-							<input
-								v-model="newSourceUrl"
-								type="text"
-								class="source-input"
-								:placeholder="$t('Enter GitHub repository zip or store JSON URL...')"
-							/>
-							<button class="add-source-btn" :disabled="!newSourceUrl.trim()" @click="addStoreSource">
-								{{ $t('Add Source') }}
+						<div class="detail-actions">
+							<button
+								v-if="installedSet.has(selectedAppDetail.id)"
+								type="button"
+								class="detail-action-btn is-open"
+								@click="openThirdContainerByAppInfo(selectedAppDetail)"
+							>
+								<i class="mdi mdi-launch" aria-hidden="true"></i>
+								<span>{{ $t('Open App') }}</span>
 							</button>
-						</div>
-						<div class="sources-list">
-							<div v-for="(src, sidx) in storeSourcesList" :key="'src-' + sidx" class="source-row">
-								<div class="source-info">
-									<span class="source-name">{{ src.name || src.url || src }}</span>
-								</div>
-								<button class="delete-source-btn" @click="removeStoreSource(src)">
-									<i class="mdi mdi-delete-outline"></i>
+							<template v-else>
+								<button
+									type="button"
+									class="detail-action-btn is-install"
+									:disabled="!isArchCompatible(selectedAppDetail) || isAppInstalling(selectedAppDetail.id)"
+									:class="{ 'is-loading': isAppInstalling(selectedAppDetail.id) }"
+									@click="installApp(selectedAppDetail.id, selectedAppDetail)"
+								>
+									<i v-if="!isAppInstalling(selectedAppDetail.id)" class="mdi mdi-download" aria-hidden="true"></i>
+									<span>{{ getInstallButtonText(selectedAppDetail.id) }}</span>
 								</button>
-							</div>
+								<button
+									type="button"
+									class="detail-action-btn is-customize"
+									:disabled="!isArchCompatible(selectedAppDetail) || isAppInstalling(selectedAppDetail.id)"
+									@click="openCustomizeForApp(selectedAppDetail.id, selectedAppDetail)"
+								>
+									<i class="mdi mdi-tune-variant" aria-hidden="true"></i>
+									<span>{{ $t('Customize & Install') }}</span>
+								</button>
+							</template>
 						</div>
 					</div>
-					<footer class="sources-footer">
-						<button class="footer-done-btn" @click="showSourcesModal = false">{{ $t('Done') }}</button>
-					</footer>
+				</div>
+
+				<div v-if="detailScreenshots.length > 0" class="detail-section">
+					<h4 class="detail-section-title">{{ $t('Screenshots') }}</h4>
+					<div class="screenshots-gallery" tabindex="0" :aria-label="$t('Screenshots')">
+						<button
+							v-for="(img, sidx) in detailScreenshots"
+							:key="'screen-' + sidx"
+							type="button"
+							class="screenshot-item"
+							:aria-label="$t('Enlarge screenshot {n}', { n: sidx + 1 })"
+							@click="activeLightboxImage = img"
+						>
+							<img :src="img" alt="" loading="lazy" />
+							<span class="screenshot-hover-overlay" aria-hidden="true">
+								<i class="mdi mdi-magnify-plus-outline"></i>
+							</span>
+						</button>
+					</div>
+				</div>
+
+				<div class="detail-section">
+					<h4 class="detail-section-title">{{ $t('About this app') }}</h4>
+					<div class="detail-description">
+						<p class="description-text">{{ i18n(selectedAppDetail.description) || i18n(selectedAppDetail.tagline) }}</p>
+					</div>
+				</div>
+
+				<!-- Only facts the store actually provides (it used to show
+				     made-up fallbacks like "256 MB" and "Community"). -->
+				<div v-if="detailSpecs.length" class="detail-section">
+					<h4 class="detail-section-title">{{ $t('Details') }}</h4>
+					<div class="specs-grid">
+						<div v-for="spec in detailSpecs" :key="spec.label" class="spec-card">
+							<span class="spec-label">{{ spec.label }}</span>
+							<span class="spec-value">{{ spec.value }}</span>
+						</div>
+					</div>
 				</div>
 			</div>
-		</transition>
+		</settings-overlay>
+
+		<settings-overlay :active="!!activeLightboxImage" :title="$t('Screenshot')" width="60rem" @close="activeLightboxImage = null">
+			<img v-if="activeLightboxImage" :src="activeLightboxImage" class="lightbox-img" :alt="$t('Screenshot')" />
+		</settings-overlay>
+
+		<settings-overlay :active="showSourcesModal" :title="$t('App Sources')" width="34rem" @close="showSourcesModal = false">
+			<p class="sources-intro">{{ $t('Each source is a .zip catalog of app definitions. Apps from every source appear together in the store.') }}</p>
+			<form class="add-source-box" @submit.prevent="addStoreSource">
+				<label class="sr-only" for="appstore-source-url">{{ $t('Source address') }}</label>
+				<input
+					id="appstore-source-url"
+					v-model="newSourceUrl"
+					type="url"
+					class="source-input"
+					placeholder="https://example.com/store/main.zip"
+					:disabled="!!addingSource"
+				/>
+				<button type="submit" class="add-source-btn" :disabled="!newSourceUrl.trim() || !!addingSource">
+					<i v-if="addingSource" class="mdi mdi-loading mdi-spin" aria-hidden="true"></i>
+					{{ addingSource ? $t('Adding...') : $t('Add app source') }}
+				</button>
+			</form>
+			<p v-if="addingSource" class="sources-hint" role="status">{{ $t('Downloading and checking the catalog - this can take a minute.') }}</p>
+			<div class="sources-list">
+				<div v-for="src in storeSourcesList" :key="'src-' + (src.id !== undefined ? src.id : src.url)" class="source-row">
+					<i class="mdi mdi-source-branch source-row-icon" aria-hidden="true"></i>
+					<div class="source-info">
+						<span class="source-name" :title="src.url || src">{{ sourceLabel(src) }}</span>
+						<span class="source-url">{{ src.url || src }}</span>
+					</div>
+					<button
+						type="button"
+						class="delete-source-btn"
+						:disabled="removingSourceId === src.id"
+						:title="$t('Remove')"
+						:aria-label="$t('Remove {url}', { url: src.url || src })"
+						@click="removeStoreSource(src)"
+					>
+						<i :class="removingSourceId === src.id ? 'mdi mdi-loading mdi-spin' : 'mdi mdi-delete-outline'" aria-hidden="true"></i>
+					</button>
+				</div>
+				<p v-if="!storeSourcesList.length" class="sources-hint">{{ $t('No app sources yet.') }}</p>
+			</div>
+		</settings-overlay>
 	</div>
 </template>
 
@@ -1220,12 +946,21 @@ import debounce from 'lodash/debounce'
 import YAML from 'yaml'
 import FileSaver from 'file-saver'
 import copy from 'clipboard-copy'
+import { escapeHtml } from '@/utils/escapeHtml'
+import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
+import StoreAppCard from './StoreAppCard.vue'
+import { applyFormToDoc, docToFormState, parsePortSpec } from './composeForm'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
 	aarch64: 'arm64',
-	armv7l: 'armv7'
+	armv7l: 'arm',
+	armhf: 'arm'
 }
+
+// Publishers treated as "official" by the Publisher filter.
+const OFFICIAL_AUTHORS = ['NivaroOS', 'CasaOS', 'IceWhale', 'ZimaOS Team', 'Official']
 
 const GRADIENTS = [
 	'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -1274,9 +1009,28 @@ function createDefaultFormState() {
 
 export default {
 	name: 'AppStoreApp',
-	mixins: [business_OpenThirdApp, business_ShowNewAppTag],
+	components: { StoreAppCard, SettingsOverlay },
+	mixins: [business_OpenThirdApp, business_ShowNewAppTag, confirmWindowMixin],
 	props: {
+		// A store app id (compose name) to show right away.
 		storeId: {
+			type: [String, Number],
+			default: ''
+		},
+		// Compose YAML to open in the custom installer (Import to NivaroOS on
+		// a plain container sends its exported compose).
+		initialComposeYaml: {
+			type: String,
+			default: ''
+		},
+		importContainerName: {
+			type: String,
+			default: ''
+		},
+		// Stamped by OPEN_WINDOW when an already-open store window is asked
+		// again (e.g. "Setting" on another app): the props above changed, but
+		// mounted() doesn't run again, so a watcher acts on it.
+		requestedAt: {
 			type: Number,
 			default: 0
 		},
@@ -1308,12 +1062,13 @@ export default {
 				{ name: 'Community' }
 			],
 			currentAuthor: { name: 'All' },
+			// "Popularity"/"Newest" did nothing (no such data in the catalog).
 			sortMenu: [
-				{ name: 'Popularity' },
+				{ name: 'Recommended' },
 				{ name: 'Name (A-Z)' },
-				{ name: 'Newest' }
+				{ name: 'Name (Z-A)' }
 			],
-			currentSort: { name: 'Popularity' },
+			currentSort: { name: 'Recommended' },
 			allAppsList: [],
 			recommendList: [],
 			installedList: [],
@@ -1330,7 +1085,14 @@ export default {
 			storeSourcesList: [],
 			networks: [],
 			width: 1040,
-			resizeObserver: null
+			resizeObserver: null,
+			loadError: '',
+			detailLoadingId: '',
+			addingSource: false,
+			removingSourceId: null,
+			yamlError: '',
+			serverArch: '',
+			heroPaused: false
 		}
 	},
 	computed: {
@@ -1339,6 +1101,50 @@ export default {
 		},
 		isNarrow() {
 			return this.width < 540
+		},
+		installedSet() {
+			return new Set(this.installedList)
+		},
+		// The backend adds an "All" (id 0) category - the sidebar already has
+		// "All Apps", so it was listed twice.
+		narrowSection() {
+			return this.activeTab === 'category' ? 'cat:' + this.currentCate.name : this.activeTab
+		},
+		sidebarCategories() {
+			return this.cateMenu.filter((c) => c.name !== 'All' && c.id !== 0)
+		},
+		// Discover rows: the three biggest categories of this catalog.
+		discoverRows() {
+			return [...this.sidebarCategories]
+				.sort((a, b) => b.count - a.count)
+				.slice(0, 3)
+				.map((c) => ({ name: c.name, count: c.count, apps: this.allAppsList.filter((item) => item.category === c.name).slice(0, 6) }))
+				.filter((r) => r.apps.length)
+		},
+		formErrors() {
+			const f = this.formState
+			const errs = []
+			if (this.installerTab !== 'form') return errs
+			if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(f.containerName || '')) errs.push(this.$t('Container name: letters, numbers, - _ . only, starting with a letter or number.'))
+			const seen = new Set()
+			for (const p of f.ports || []) {
+				for (const [label, v] of [['host', p.host], ['container', p.container]]) {
+					if (v === '' || v === undefined) continue
+					if (!/^\d+(-\d+)?$/.test(String(v)) || String(v).split('-').some((n) => +n < 1 || +n > 65535)) errs.push(this.$t('Port {port} is not valid (1-65535).', { port: v }))
+					if (label === 'host' && v) {
+						const k = `${v}/${p.protocol}`
+						if (seen.has(k)) errs.push(this.$t('Host port {port} is used twice.', { port: v }))
+						seen.add(k)
+					}
+				}
+			}
+			for (const e of f.envs || []) {
+				if (e.key && !/^[A-Za-z_][A-Za-z0-9_.]*$/.test(e.key)) errs.push(this.$t('Environment variable name "{key}" is not valid.', { key: e.key }))
+			}
+			for (const v of f.volumes || []) {
+				if (v.container && !String(v.container).startsWith('/')) errs.push(this.$t('Container path {path} must start with /.', { path: v.container }))
+			}
+			return [...new Set(errs)]
 		},
 		totalAppCount() {
 			return this.allAppsList.length
@@ -1350,23 +1156,19 @@ export default {
 			if (this.installerTab === 'yaml') {
 				return Boolean(this.customComposeYaml && this.customComposeYaml.trim())
 			}
-			return Boolean(this.formState.title && this.formState.image && this.formState.containerName)
+			return Boolean(this.formState.title && this.formState.image && this.formState.containerName) && this.formErrors.length === 0
 		},
+		// The server's CPU architecture, when known. hardwareInfo comes from
+		// /sys/utilization, which has no arch - it used to default to amd64,
+		// so every arm64-only app showed "incompatible" on an arm64 box.
+		// Unknown means "don't second-guess": the backend already filters
+		// the catalog for this architecture.
 		arch() {
-			const rawArch = this.$store.state.hardwareInfo?.cpu?.arch || 'x86_64'
+			const rawArch = this.$store.state.hardwareInfo?.cpu?.arch || this.serverArch || ''
 			return ARCH_MAP[rawArch] || rawArch
 		},
 		featuredList() {
 			return this.recommendList.slice(0, 6)
-		},
-		mediaApps() {
-			return this.allAppsList.filter(item => item.category === 'Media').slice(0, 6)
-		},
-		aiApps() {
-			return this.allAppsList.filter(item => item.category === 'AI').slice(0, 6)
-		},
-		devApps() {
-			return this.allAppsList.filter(item => item.category === 'Developer').slice(0, 6)
 		},
 		currentViewTitle() {
 			if (this.searchQuery) return `${this.$t('Search Results for')} "${this.searchQuery}"`
@@ -1384,26 +1186,41 @@ export default {
 			}
 
 			if (this.currentAuthor.name === 'Official') {
-				list = list.filter(item => item.author === 'CasaOS' || item.author === 'Official' || item.author === 'IceWhale' || item.author === 'ZimaOS Team')
+				list = list.filter(item => OFFICIAL_AUTHORS.includes(item.author))
 			} else if (this.currentAuthor.name === 'Community') {
-				list = list.filter(item => item.author !== 'CasaOS' && item.author !== 'Official' && item.author !== 'IceWhale' && item.author !== 'ZimaOS Team')
+				list = list.filter(item => !OFFICIAL_AUTHORS.includes(item.author))
 			}
 
 			if (this.debouncedSearch) {
-				const q = this.debouncedSearch.toLowerCase()
+				const words = this.debouncedSearch.toLowerCase().split(/\s+/).filter(Boolean)
 				list = list.filter(item => {
-					const title = (item.title || '').toLowerCase()
-					const tag = (item.tagline || '').toLowerCase()
-					const cat = (item.category || '').toLowerCase()
-					return title.includes(q) || tag.includes(q) || cat.includes(q)
+					const hay = [item.title, item.tagline, item.category, item.author, item.id].join(' ').toLowerCase()
+					return words.every((w) => hay.includes(w))
 				})
 			}
 
 			if (this.currentSort.name === 'Name (A-Z)') {
 				list.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+			} else if (this.currentSort.name === 'Name (Z-A)') {
+				list.sort((a, b) => (b.title || '').localeCompare(a.title || ''))
+			} else {
+				// Recommended first, then by name.
+				const rec = new Set(this.recommendList.map((r) => r.id))
+				list.sort((a, b) => (rec.has(b.id) - rec.has(a.id)) || (a.title || '').localeCompare(b.title || ''))
 			}
 
 			return list
+		},
+		detailSpecs() {
+			const d = this.selectedAppDetail
+			if (!d) return []
+			const out = []
+			if (d.category) out.push({ label: this.$t('Category'), value: d.category })
+			if (d.min_memory) out.push({ label: this.$t('Memory required'), value: d.min_memory })
+			if (d.architectures && d.architectures.length) out.push({ label: this.$t('Architectures'), value: d.architectures.join(', ') })
+			if (d.developer || d.author) out.push({ label: this.$t('Developer'), value: d.developer || d.author })
+			if (d.version) out.push({ label: this.$t('Version'), value: d.version })
+			return out
 		},
 		detailScreenshots() {
 			if (!this.selectedAppDetail) return []
@@ -1411,48 +1228,59 @@ export default {
 			return Array.isArray(links) ? links.filter(Boolean) : [links]
 		}
 	},
+	// No deep formState watcher any more: it regenerated the YAML from the
+	// form on every keystroke, throwing away everything the form doesn't
+	// model. The YAML is now produced from the loaded document + the form's
+	// edits only when it's needed (YAML tab, export, deploy).
 	watch: {
-		formState: {
-			handler() {
-				if (this.viewMode === 'installer' && this.installerTab === 'form') {
-					this.customComposeYaml = this.formDataToYaml(this.formState)
-				}
-			},
-			deep: true
+		requestedAt() {
+			this.handleDeepLink()
+		},
+		activeTab() {
+			this.startHeroAutoplay()
+		},
+		viewMode() {
+			this.startHeroAutoplay()
 		}
 	},
 	created() {
 		this.onSearchInput = debounce(() => {
 			this.debouncedSearch = this.searchQuery
 			if (this.searchQuery && this.activeTab === 'discover') {
+				this.searchFromTab = 'discover'
 				this.activeTab = 'all'
 			}
+			if (!this.searchQuery && this.searchFromTab) this.clearSearch()
 		}, 250)
 	},
 	async mounted() {
+		// Only the breakpoints matter; assigning the raw width on every
+		// resize frame re-rendered the whole store.
 		this.resizeObserver = new ResizeObserver(entries => {
-			if (entries && entries[0]) {
-				this.width = entries[0].contentRect.width
-			}
+			if (!entries || !entries[0]) return
+			const w = entries[0].contentRect.width
+			const bucket = w < 540 ? 500 : w < 768 ? 700 : 1040
+			if (bucket !== this.width) this.width = bucket
 		})
 		this.resizeObserver.observe(this.$el)
 
 		await Promise.all([
 			this.initStore(),
-			this.fetchNetworks()
+			this.fetchNetworks(),
+			this.fetchServerArch()
 		])
 
 		this.startHeroAutoplay()
-
-		if (this.initialMode === 'edit' && this.initialAppName) {
-			this.openEditForInstalledApp(this.initialAppName)
-		} else if (this.initialMode === 'custom') {
-			this.openCustomInstall()
-		}
+		this.handleDeepLink()
+		document.addEventListener('visibilitychange', this.startHeroAutoplay)
 	},
 	beforeDestroy() {
+		this.destroyed = true
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 		if (this.heroTimer) clearInterval(this.heroTimer)
+		if (this.onSearchInput && this.onSearchInput.cancel) this.onSearchInput.cancel()
+		clearTimeout(this.refreshListTimer)
+		document.removeEventListener('visibilitychange', this.startHeroAutoplay)
 	},
 	methods: {
 		i18n(text) {
@@ -1471,8 +1299,11 @@ export default {
 		getCateIcon(name) {
 			const n = (name || '').toLowerCase().trim()
 			if (n === 'all') return 'view-grid-outline'
-			if (n.includes('ai') || n.includes('llm') || n.includes('gpt')) return 'robot-outline'
-			if (n.includes('dev') || n.includes('code') || n.includes('it')) return 'code-tags'
+			// Whole words: includes('it') matched "productivity"/"utilities",
+			// includes('ai') matched "mail".
+			const w = (re) => re.test(n)
+			if (w(/\b(ai|llm|gpt|ml)\b/)) return 'robot-outline'
+			if (w(/\b(dev|developer|development|code|coding|it)\b/)) return 'code-tags'
 			if (n.includes('media') || n.includes('video') || n.includes('music') || n.includes('audio')) return 'movie-open-outline'
 			if (n.includes('home') || n.includes('automation') || n.includes('iot')) return 'home-outline'
 			if (n.includes('network') || n.includes('dns') || n.includes('vpn')) return 'lan-connect'
@@ -1505,13 +1336,55 @@ export default {
 		onBannerError(e, item) {
 			e.target.style.display = 'none'
 		},
+		// The carousel only turns while it's visible (Discover tab, tab in
+		// the foreground, not paused by hover/focus) and never for users who
+		// asked for reduced motion. It used to tick every 7 s regardless,
+		// re-rendering the store even on other tabs or when minimised.
 		startHeroAutoplay() {
 			if (this.heroTimer) clearInterval(this.heroTimer)
+			this.heroTimer = null
+			const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+			if (reduced || document.hidden || this.viewMode !== 'store' || this.activeTab !== 'discover') return
 			this.heroTimer = setInterval(() => {
-				if (this.featuredList.length > 1 && this.viewMode === 'store') {
-					this.nextHero()
-				}
+				if (this.featuredList.length > 1 && !this.heroPaused) this.nextHero()
 			}, 7000)
+		},
+		async fetchServerArch() {
+			try {
+				const res = await this.$api.sys.hardwareInfo()
+				this.serverArch = (res.data && res.data.data && res.data.data.arch) || ''
+			} catch (e) {
+				this.serverArch = ''
+			}
+		},
+		// Deep links: open the store on an app's details, its settings
+		// (Setting in an app's menu) or the custom installer.
+		handleDeepLink() {
+			if (this.initialMode === 'edit' && this.initialAppName) {
+				this.openEditForInstalledApp(this.initialAppName)
+			} else if (this.initialMode === 'custom') {
+				this.openCustomInstall()
+				if (this.initialComposeYaml) {
+					this.customComposeYaml = this.initialComposeYaml
+					const parsed = this.yamlToFormData(this.initialComposeYaml)
+					if (parsed) {
+						this.formState = parsed
+					} else {
+						this.installerTab = 'yaml'
+						this.toast(this.$t('The container\'s configuration could not be read: {reason}', { reason: this.yamlError }), 'is-warning')
+					}
+				}
+			} else if (this.storeId !== '' && this.storeId !== 0 && this.storeId !== null) {
+				this.showAppDetail(String(this.storeId))
+			}
+		},
+		apiMessage(e, fallback) {
+			return (e && e.response && e.response.data && (e.response.data.message || (typeof e.response.data.data === 'string' && e.response.data.data))) || (e && e.message) || fallback || String(e)
+		},
+		toast(message, type = 'is-danger', duration = 4500) {
+			// Buefy toasts render HTML: app titles and server messages come
+			// from store sources, so they are always escaped.
+			this.$buefy.toast.open({ message: escapeHtml(message), type, position: 'is-top', duration })
 		},
 		nextHero() {
 			this.currentHeroIndex = (this.currentHeroIndex + 1) % this.featuredList.length
@@ -1519,29 +1392,34 @@ export default {
 		prevHero() {
 			this.currentHeroIndex = (this.currentHeroIndex - 1 + this.featuredList.length) % this.featuredList.length
 		},
+		// Loads everything; returns false (and sets loadError) when the
+		// catalog couldn't be loaded, so the UI shows an error with Retry
+		// instead of a blank "no apps" store.
 		async initStore() {
 			this.isLoading = true
+			this.loadError = ''
 			try {
-				await Promise.all([
+				const results = await Promise.allSettled([
 					this.fetchCategories(),
 					this.fetchRecommend(),
 					this.fetchStoreList(),
 					this.fetchSources()
 				])
-			} catch (e) {
-				console.error('Failed to init app store', e)
+				const failed = results.find((r) => r.status === 'rejected')
+				if (results[2].status === 'rejected') {
+					this.loadError = this.apiMessage(results[2].reason, this.$t('The app catalog could not be loaded.'))
+				}
+				return !failed
 			} finally {
 				this.isLoading = false
 			}
 		},
 		async fetchNetworks() {
 			try {
-				const res = await this.$openAPI.appManagement.compose.dockerNetworks()
-				if (res && res.data && res.data.data) {
-					this.networks = res.data.data
-				}
+				const res = await this.$api.container.getNetworks()
+				this.networks = (res && res.data && res.data.data) || []
 			} catch (e) {
-				console.warn('Failed to load docker networks', e)
+				this.networks = []
 			}
 		},
 		async fetchCategories() {
@@ -1551,7 +1429,7 @@ export default {
 					this.cateMenu = res.data.data.filter(c => c.count > 0)
 				}
 			} catch (e) {
-				console.warn('Failed to load categories', e)
+				throw e
 			}
 		},
 		async fetchRecommend() {
@@ -1574,7 +1452,7 @@ export default {
 					}
 				})
 			} catch (e) {
-				console.warn('Failed to load recommend apps', e)
+				throw e
 			}
 		},
 		async fetchStoreList() {
@@ -1598,7 +1476,7 @@ export default {
 				})
 				this.installedList = res.data?.data?.installed || []
 			} catch (e) {
-				console.warn('Failed to load store list', e)
+				throw e
 			}
 		},
 		async fetchSources() {
@@ -1606,17 +1484,17 @@ export default {
 				const res = await this.$openAPI.appManagement.appStore.appStoreList()
 				this.storeSourcesList = res.data?.data || []
 			} catch (e) {
-				console.warn('Failed to load sources', e)
+				throw e
 			}
 		},
 		async refreshStore() {
-			await this.initStore()
-			this.$buefy.toast.open({
-				message: this.$t('App store catalog refreshed'),
-				type: 'is-success',
-				position: 'is-top',
-				duration: 2000
-			})
+			const ok = await this.initStore()
+			if (ok) this.toast(this.$t('App store catalog refreshed'), 'is-success', 2000)
+			else this.toast(this.loadError || this.$t('Some store data could not be refreshed.'), 'is-danger')
+		},
+		onNarrowSection(v) {
+			if (v.startsWith('cat:')) this.selectCategoryByName(v.slice(4))
+			else this.switchToStoreTab(v)
 		},
 		switchToStoreTab(tab) {
 			this.viewMode = 'store'
@@ -1637,18 +1515,27 @@ export default {
 		clearSearch() {
 			this.searchQuery = ''
 			this.debouncedSearch = ''
+			// Typing on Discover jumped to All; clearing goes back.
+			if (this.searchFromTab) {
+				this.activeTab = this.searchFromTab
+				this.searchFromTab = ''
+			}
 		},
 		async showAppDetail(id) {
+			// Only the latest click opens: a slow earlier response used to
+			// open app A over app B.
+			const seq = (this.detailSeq = (this.detailSeq || 0) + 1)
+			this.detailLoadingId = id
 			try {
 				const res = await this.$openAPI.appManagement.appStore.composeAppStoreInfo(id)
+				if (seq !== this.detailSeq) return
 				if (res && res.data && res.data.data) {
-					this.selectedAppDetail = {
-						id,
-						...res.data.data
-					}
+					this.selectedAppDetail = { id, ...res.data.data }
 				}
 			} catch (e) {
-				console.error('Failed to get app details', e)
+				if (seq === this.detailSeq) this.toast(this.$t('Could not load the details of {app}: {reason}', { app: id, reason: this.apiMessage(e) }))
+			} finally {
+				if (seq === this.detailSeq) this.detailLoadingId = ''
 			}
 		},
 		closeAppDetail() {
@@ -1674,15 +1561,22 @@ export default {
 					}
 
 					if (composeJSON && composeJSON['x-casaos']?.tips?.before_install?.en_us) {
+						// One window per app (a shared id made a second install
+						// replace the first one's callback), and closing it
+						// cancels the install instead of leaving the button
+						// stuck on "Installing...".
 						this.$store.commit('OPEN_WINDOW', {
-							id: 'tip-editor',
-							title: this.$t('Tips'),
+							id: 'tip-editor-' + id,
+							title: this.$t('Before installing {title}', { title: (item && item.title) || id }),
 							component: 'TipEditorModal',
 							props: {
 								isDialog: true,
 								composeData: composeJSON,
 								onSubmit: async () => {
 									await this.executeInstall(res.data, item || { title: id, id })
+								},
+								onCancel: () => {
+									this.$delete(this.installingMap, id)
 								}
 							},
 							width: 440,
@@ -1696,12 +1590,7 @@ export default {
 				}
 			} catch (e) {
 				this.$delete(this.installingMap, id)
-				this.$buefy.toast.open({
-					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 4000
-				})
+				this.toast(this.$t('Installation failed') + ': ' + this.apiMessage(e))
 			}
 		},
 		async executeInstall(yamlData, item) {
@@ -1711,33 +1600,20 @@ export default {
 				}
 				const installRes = await this.$openAPI.appManagement.compose.installComposeApp(yamlData, false, true)
 				if (installRes.status === 200) {
-					this.$buefy.toast.open({
-						message: this.$t('Installation started for {title}', { title: item?.title || 'app' }),
-						type: 'is-success',
-						position: 'is-top',
-						duration: 3000
-					})
+					this.toast(this.$t('Installation started for {title}', { title: item?.title || 'app' }), 'is-success', 3000)
 				} else {
 					this.$delete(this.installingMap, item.id)
-					this.$buefy.toast.open({
-						message: installRes.data?.message || this.$t('Installation failed'),
-						type: 'is-warning',
-						position: 'is-top',
-						duration: 4000
-					})
+					this.toast(installRes.data?.message || this.$t('Installation failed'), 'is-warning')
 				}
 			} catch (e) {
 				this.$delete(this.installingMap, item.id)
-				this.$buefy.toast.open({
-					message: this.$t('Installation failed') + ': ' + (e.response?.data?.message || e.message || e),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 4000
-				})
+				this.toast(this.$t('Installation failed') + ': ' + this.apiMessage(e))
 			}
 		},
 		/* Custom Modern Container Studio Methods */
 		openCustomInstall() {
+			this.baseDoc = null
+			this.yamlError = ''
 			this.formState = createDefaultFormState()
 			this.customComposeYaml = this.formDataToYaml(this.formState)
 			this.selectedAppDetail = null
@@ -1766,11 +1642,7 @@ export default {
 					this.installerTab = 'form'
 				}
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: this.$t('Failed to load container configuration') + ': ' + (e.response?.data?.message || e.message),
-					type: 'is-danger',
-					position: 'is-top'
-				})
+				this.toast(this.$t('Failed to load container configuration') + ': ' + this.apiMessage(e))
 			} finally {
 				this.isLoading = false
 			}
@@ -1798,24 +1670,28 @@ export default {
 					this.installerTab = 'form'
 				}
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: this.$t('Failed to load app compose configuration') + ': ' + (e.response?.data?.message || e.message),
-					type: 'is-danger',
-					position: 'is-top'
-				})
+				this.toast(this.$t('Failed to load app compose configuration') + ': ' + this.apiMessage(e))
 			} finally {
 				this.isLoading = false
 			}
 		},
 		switchInstallerTab(tab) {
+			if (tab === this.installerTab) return
 			if (tab === 'yaml') {
 				this.customComposeYaml = this.formDataToYaml(this.formState)
 			} else if (tab === 'form') {
+				// Invalid YAML: stay on the YAML tab and say why, instead of
+				// silently falling back to the old form (which then got
+				// deployed, discarding what was typed).
+				this.yamlError = ''
 				const parsed = this.yamlToFormData(this.customComposeYaml)
-				if (parsed) {
-					parsed.isEditing = this.formState.isEditing
-					this.formState = parsed
+				if (!parsed) {
+					this.$buefy.toast.open({ message: escapeHtml(this.$t('The YAML has an error: {reason}', { reason: this.yamlError })), type: 'is-danger', position: 'is-top', duration: 5000 })
+					return
 				}
+				parsed.isEditing = this.formState.isEditing
+				parsed.appName = this.formState.isEditing ? this.formState.appName : parsed.appName
+				this.formState = parsed
 			}
 			this.installerTab = tab
 		},
@@ -1859,7 +1735,11 @@ export default {
 						this.customComposeYaml = yaml
 						const parsed = this.yamlToFormData(yaml)
 						if (parsed) {
+							parsed.isEditing = this.formState.isEditing
+							if (this.formState.isEditing) parsed.appName = this.formState.appName
 							this.formState = parsed
+						} else {
+							this.installerTab = 'yaml'
 						}
 					}
 				},
@@ -1891,6 +1771,7 @@ export default {
 			}
 		},
 		async installFromInstaller() {
+			if (this.isDeployingCustom) return
 			const finalYaml = this.installerTab === 'form' ? this.formDataToYaml(this.formState) : this.customComposeYaml
 
 			if (!finalYaml.trim()) {
@@ -1912,259 +1793,111 @@ export default {
 				}
 
 				if (res.status === 200) {
-					this.$buefy.toast.open({
-						message: this.formState.isEditing ? this.$t('Container settings saved successfully!') : this.$t('Application installation started!'),
-						type: 'is-success',
-						position: 'is-top',
-						duration: 4000
-					})
+					this.toast(this.formState.isEditing ? this.$t('Container settings saved successfully!') : this.$t('Application installation started!'), 'is-success', 4000)
 					this.viewMode = 'store'
 					this.activeTab = 'installed'
-					setTimeout(() => {
-						this.fetchStoreList()
-					}, 4000)
+					this.scheduleListRefresh(4000)
 				} else {
-					this.$buefy.toast.open({
-						message: res.data?.message || this.$t('Operation failed'),
-						type: 'is-warning',
-						position: 'is-top',
-						duration: 5000
-					})
+					this.toast(res.data?.message || this.$t('Operation failed'), 'is-warning', 5000)
 				}
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: this.$t('Error') + ': ' + (e.response?.data?.message || e.message || e),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 5000
-				})
+				this.toast(this.$t('Error') + ': ' + this.apiMessage(e), 'is-danger', 6000)
 			} finally {
 				this.isDeployingCustom = false
 			}
 		},
+		// Parse compose YAML into the form, remembering the whole document so
+		// saving writes the form's edits back into it (see composeForm.js).
 		yamlToFormData(yamlStr) {
 			try {
 				const doc = YAML.parse(yamlStr) || {}
-				const services = doc.services || {}
-				const mainKey = doc['x-casaos']?.main || Object.keys(services)[0] || 'app'
-				const service = services[mainKey] || {}
-
-				const titleObj = doc['x-casaos']?.title
-				const title = (typeof titleObj === 'object' ? (titleObj.custom || titleObj.en_us || titleObj['en-US']) : titleObj) || doc.name || mainKey
-				const icon = doc['x-casaos']?.icon || ''
-				const category = doc['x-casaos']?.category || 'Others'
-				const tagline = doc['x-casaos']?.tagline?.en_us || ''
-				const description = doc['x-casaos']?.description?.en_us || ''
-
-				const rawPorts = service.ports || []
-				const ports = rawPorts.map(p => {
-					if (typeof p === 'string' || typeof p === 'number') {
-						const parts = String(p).split('/')
-						const proto = (parts[1] || 'TCP').toUpperCase()
-						const hostAndCont = parts[0].split(':')
-						if (hostAndCont.length >= 2) {
-							return { host: hostAndCont[0], container: hostAndCont[1], protocol: proto }
-						} else {
-							return { host: hostAndCont[0], container: hostAndCont[0], protocol: proto }
-						}
-					} else if (p && typeof p === 'object') {
-						return { host: String(p.published || p.target), container: String(p.target), protocol: (p.protocol || 'TCP').toUpperCase() }
-					}
-					return { host: '', container: '', protocol: 'TCP' }
-				}).filter(p => p.container)
-
-				const rawVols = service.volumes || []
-				const volumes = rawVols.map(v => {
-					if (typeof v === 'string') {
-						const parts = v.split(':')
-						return { host: parts[0] || '', container: parts[1] || '', mode: parts[2] || 'rw' }
-					} else if (v && typeof v === 'object') {
-						return { host: v.source || '', container: v.target || '', mode: v.read_only ? 'ro' : 'rw' }
-					}
-					return { host: '', container: '', mode: 'rw' }
-				}).filter(v => v.container)
-
-				const rawEnvs = service.environment || []
-				const envs = []
-				if (Array.isArray(rawEnvs)) {
-					rawEnvs.forEach(e => {
-						const eq = e.indexOf('=')
-						if (eq > -1) {
-							envs.push({ key: e.slice(0, eq), value: e.slice(eq + 1) })
-						} else {
-							envs.push({ key: e, value: '' })
-						}
-					})
-				} else if (rawEnvs && typeof rawEnvs === 'object') {
-					Object.entries(rawEnvs).forEach(([k, val]) => {
-						envs.push({ key: k, value: String(val) })
-					})
-				}
-
-				const rawDevs = service.devices || []
-				const devices = rawDevs.map(d => {
-					if (typeof d === 'string') {
-						const parts = d.split(':')
-						return { host: parts[0] || '', container: parts[1] || parts[0] || '' }
-					}
-					return { host: '', container: '' }
-				}).filter(d => d.host)
-
-				const scheme = doc['x-casaos']?.scheme || 'http'
-				const portMap = doc['x-casaos']?.port_map || (ports[0]?.container || '')
-				const index = doc['x-casaos']?.index || ''
-
-				return {
-					appName: doc.name || mainKey,
-					mainService: mainKey,
-					title: title,
-					icon: icon,
-					category: category,
-					tagline: tagline,
-					description: description,
-					image: service.image || '',
-					containerName: service.container_name || doc.name || mainKey,
-					webUI: {
-						enabled: Boolean(portMap),
-						scheme: scheme,
-						port: portMap,
-						index: index
-					},
-					ports: ports,
-					volumes: volumes,
-					envs: envs,
-					devices: devices,
-					network: service.network_mode || (service.networks ? service.networks[0] : 'bridge') || 'bridge',
-					restart: service.restart || 'unless-stopped',
-					privileged: Boolean(service.privileged),
-					command: Array.isArray(service.command) ? service.command.join(' ') : (service.command || ''),
-					memoryLimit: service.deploy?.resources?.limits?.memory || ''
-				}
+				if (typeof doc !== 'object' || !doc.services) throw new Error(this.$t('No "services:" section found'))
+				this.baseDoc = doc
+				return docToFormState(doc)
 			} catch (e) {
-				console.error('Failed to parse compose YAML to form', e)
+				this.yamlError = e.message || String(e)
 				return null
 			}
 		},
 		formDataToYaml(form) {
-			const mainKey = form.mainService || form.appName || 'app'
-			const safeName = (form.appName || form.containerName || 'custom-app').toLowerCase().replace(/[^a-z0-9_-]/g, '-')
-
-			const service = {
-				image: form.image || 'nginx:latest',
-				container_name: form.containerName || safeName,
-				restart: form.restart || 'unless-stopped'
+			return YAML.stringify(applyFormToDoc(this.baseDoc || null, form))
+		},
+		// Registration runs in the background on the server; the result
+		// arrives as app-store:register-end / -error (see sockets below).
+		async addStoreSource() {
+			const url = this.newSourceUrl.trim()
+			if (!url || this.addingSource) return
+			if (!/^https?:\/\/[^\s/]+\/\S+\.zip(\?\S*)?$/i.test(url)) {
+				this.toast(this.$t('Enter the https:// address of a store .zip file.'), 'is-warning')
+				return
 			}
-
-			if (form.network === 'host') {
-				service.network_mode = 'host'
-			} else if (form.network && form.network !== 'bridge') {
-				service.networks = [form.network]
+			if (this.storeSourcesList.some((src) => (src.url || src) === url)) {
+				this.toast(this.$t('This app source is already added.'), 'is-warning')
+				return
 			}
-
-			if (form.ports && form.ports.length > 0 && form.network !== 'host') {
-				service.ports = form.ports
-					.filter(p => p.container)
-					.map(p => {
-						const proto = p.protocol && p.protocol !== 'TCP' ? `/${p.protocol.toLowerCase()}` : ''
-						if (p.host) {
-							return `${p.host}:${p.container}${proto}`
-						}
-						return `${p.container}${proto}`
-					})
+			this.addingSource = url
+			try {
+				await this.$openAPI.appManagement.appStore.registerAppStore(url)
+				this.newSourceUrl = ''
+				// Fallback if the result event never arrives.
+				clearTimeout(this.addSourceTimer)
+				this.addSourceTimer = setTimeout(() => this.onSourceRegistered(url), 60000)
+			} catch (e) {
+				this.addingSource = false
+				this.toast(this.$t('Failed to add store source') + ': ' + this.apiMessage(e))
 			}
-
-			if (form.volumes && form.volumes.length > 0) {
-				service.volumes = form.volumes
-					.filter(v => v.container)
-					.map(v => {
-						const mode = v.mode ? `:${v.mode}` : ''
-						return `${v.host || '/DATA/AppData/' + safeName}:${v.container}${mode}`
-					})
+		},
+		async onSourceRegistered(url, error) {
+			if (!this.addingSource) return
+			clearTimeout(this.addSourceTimer)
+			this.addingSource = false
+			if (error) {
+				this.toast(this.$t('Could not add {url}: {reason}', { url, reason: error }))
+				return
 			}
-
-			if (form.envs && form.envs.length > 0) {
-				service.environment = form.envs
-					.filter(e => e.key)
-					.map(e => `${e.key}=${e.value || ''}`)
-			}
-
-			if (form.devices && form.devices.length > 0) {
-				service.devices = form.devices
-					.filter(d => d.host)
-					.map(d => `${d.host}:${d.container || d.host}`)
-			}
-
-			if (form.privileged) {
-				service.privileged = true
-			}
-
-			if (form.command && form.command.trim()) {
-				service.command = form.command.trim()
-			}
-
-			if (form.memoryLimit && String(form.memoryLimit).trim() && String(form.memoryLimit) !== '0') {
-				const mem = isNaN(form.memoryLimit) ? form.memoryLimit : `${form.memoryLimit}M`
-				service.deploy = {
-					resources: {
-						limits: {
-							memory: mem
-						}
+			await this.initStore()
+			this.toast(this.$t('App source added.'), 'is-success', 3000)
+		},
+		removeStoreSource(src) {
+			const url = src.url || src
+			this.confirmWindow({
+				title: this.$t('Remove app source'),
+				message: escapeHtml(this.$t('Remove {url}? Its apps disappear from the store. Apps you already installed keep running.', { url })),
+				confirmText: this.$t('Remove'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: async () => {
+					this.removingSourceId = src.id
+					try {
+						// The API takes the source's id (it was sent the URL,
+						// so removing a source never worked).
+						await this.$openAPI.appManagement.appStore.unregisterAppStore(src.id)
+						await this.initStore()
+					} catch (e) {
+						this.toast(this.$t('Could not remove the app source') + ': ' + this.apiMessage(e))
+					} finally {
+						this.removingSourceId = null
 					}
 				}
-			}
-
-			const doc = {
-				name: safeName,
-				services: {
-					[mainKey]: service
-				},
-				'x-casaos': {
-					architectures: ['amd64', 'arm64'],
-					main: mainKey,
-					title: {
-						custom: form.title || safeName,
-						en_us: form.title || safeName
-					},
-					icon: form.icon || 'https://icon.casaos.io/main/all/default.png',
-					tagline: {
-						en_us: form.tagline || ''
-					},
-					description: {
-						en_us: form.description || ''
-					},
-					category: form.category || 'Others',
-					port_map: form.webUI?.enabled ? String(form.webUI.port || '') : '',
-					scheme: form.webUI?.scheme || 'http',
-					index: form.webUI?.index || ''
-				}
-			}
-
-			return YAML.stringify(doc)
+			})
 		},
-		async addStoreSource() {
-			if (!this.newSourceUrl.trim()) return
+		sourceLabel(src) {
+			const url = src.url || String(src)
+			const gh = url.match(/github\.com\/([^/]+)\/([^/]+)/i)
+			if (gh) return `${gh[1]}/${gh[2]}`
 			try {
-				await this.$openAPI.appManagement.appStore.registerAppStore(this.newSourceUrl.trim())
-				this.newSourceUrl = ''
-				await this.fetchSources()
-				await this.refreshStore()
+				return new URL(url).hostname
 			} catch (e) {
-				this.$buefy.toast.open({
-					message: this.$t('Failed to add store source') + ': ' + (e.message || e),
-					type: 'is-danger',
-					position: 'is-top'
-				})
+				return url
 			}
 		},
-		async removeStoreSource(src) {
-			const url = src.url || src
-			try {
-				await this.$openAPI.appManagement.appStore.unregisterAppStore(url)
-				await this.fetchSources()
-				await this.refreshStore()
-			} catch (e) {
-				console.error('Failed to remove store source', e)
-			}
+		// Several install-end events in a row (multi-app installs) refresh
+		// the 4 MB catalog once, not once per event.
+		scheduleListRefresh(ms = 800) {
+			clearTimeout(this.refreshListTimer)
+			this.refreshListTimer = setTimeout(() => {
+				if (!this.destroyed) this.fetchStoreList().catch(() => {})
+			}, ms)
 		}
 	},
 	sockets: {
@@ -2180,17 +1913,31 @@ export default {
 		'app:install-end'(res) {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name
-			if (name) {
+			if (name && this.installingMap[name] !== undefined) {
 				this.$delete(this.installingMap, name)
+				this.toast(this.$t('{app} is installed.', { app: name }), 'is-success', 3000)
 			}
-			this.fetchStoreList()
+			this.scheduleListRefresh()
 		},
+		// Install failures used to just reset the button with no reason.
 		'app:install-error'(res) {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name
-			if (name) {
+			if (name && this.installingMap[name] !== undefined) {
 				this.$delete(this.installingMap, name)
+				this.toast(this.$t('Installing {app} failed: {reason}', { app: name, reason: props.message || props['message'] || this.$t('see the app logs') }), 'is-danger', 8000)
 			}
+		},
+		// The server sends register-error followed by register-end; an end
+		// event that carries a message is a failure too.
+		'app-store:register-end'(res) {
+			const props = res.Properties || {}
+			const url = props['app-store:url'] || props['app_store:url'] || props.url || this.addingSource
+			this.onSourceRegistered(url, props.message || '')
+		},
+		'app-store:register-error'(res) {
+			const props = res.Properties || {}
+			this.onSourceRegistered(props['app-store:url'] || props['app_store:url'] || props.url || this.addingSource, props.message || this.$t('registration failed'))
 		}
 	}
 }
@@ -2202,7 +1949,7 @@ export default {
 	height: 100%;
 	width: 100%;
 	background: var(--theme-bg-window, #f8fafc); color: var(--theme-text-primary, #0f172a);
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	font-family: $family-sans-serif;
 	position: relative;
 	overflow: hidden;
 }
@@ -2307,18 +2054,21 @@ export default {
 		}
 	}
 
+	// Same selected look as the Settings sidebar: a subtle surface and a
+	// blue icon (a solid blue fill made this app look different from all
+	// the others).
 	&.is-active {
-		background: #2563eb;
-		color: #ffffff;
+		background: var(--theme-card-hover, rgba(0, 0, 0, 0.06));
+		color: var(--theme-text-primary, #0f172a);
 		font-weight: 600;
 
 		.nav-icon {
-			color: #ffffff;
+			color: var(--color-primary-fg);
 		}
 
 		.nav-count {
-			background: rgba(255, 255, 255, 0.22);
-			color: #ffffff;
+			background: var(--theme-card-subtle, #f1f5f9);
+			color: var(--theme-text-secondary, #475569);
 		}
 	}
 }
@@ -2388,17 +2138,17 @@ export default {
 
 	&.custom-install-btn {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border: 1px solid rgba(59, 130, 246, 0.35);
 
 		.footer-icon {
-			color: #2563eb;
+			color: var(--color-primary-fg);
 		}
 
 		&:hover, &.is-active {
-			background: #2563eb;
+			background: var(--color-primary);
 			color: #ffffff;
-			border-color: #2563eb;
+			border-color: var(--color-primary);
 
 			.footer-icon {
 				color: #ffffff;
@@ -2458,6 +2208,8 @@ export default {
 }
 
 .search-input {
+	-webkit-appearance: none;
+	appearance: none;
 	width: 100%;
 	padding: var(--space-2) var(--space-8) var(--space-2) 2.35rem;
 	border-radius: var(--radius-sm);
@@ -2469,9 +2221,12 @@ export default {
 	transition: all 0.15s ease;
 
 	&:focus {
-		border-color: #2563eb;
+		border-color: var(--color-primary-fg);
 		background: var(--theme-card-bg, #ffffff);
-		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+	}
+
+	&::-webkit-search-cancel-button {
+		display: none;
 	}
 }
 
@@ -2568,8 +2323,8 @@ export default {
 	height: 240px;
 	border-radius: var(--radius-modal);
 	overflow: hidden;
-	background: var(--theme-card-bg, #0f172a);
-	box-shadow: var(--shadow-md);
+	// Always dark, in both themes: all of the hero's text is light.
+	background: #0f172a;
 }
 
 .hero-slide {
@@ -2632,7 +2387,6 @@ export default {
 	width: 44px;
 	height: 44px;
 	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-sm);
 	background: var(--theme-card-bg, #ffffff);
 	padding: var(--space-1);
 	flex-shrink: 0;
@@ -2652,13 +2406,13 @@ export default {
 
 .hero-app-meta {
 	font-size: var(--font-xs);
-	color: var(--theme-text-muted, #94a3b8);
+	color: rgba(255, 255, 255, 0.72);
 	font-weight: 400;
 }
 
 .hero-app-tagline {
 	font-size: var(--font-sm);
-	color: var(--theme-text-muted, #cbd5e1);
+	color: rgba(255, 255, 255, 0.82);
 	text-shadow: none !important;
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
@@ -2691,11 +2445,11 @@ export default {
 	}
 
 	&.is-install {
-		background: #2563eb;
+		background: var(--color-primary);
 		color: #ffffff;
 
 		&:hover {
-			background: #1d4ed8;
+			background: var(--color-primary-hover);
 		}
 
 		&.is-loading {
@@ -2732,7 +2486,7 @@ export default {
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-pill);
 	background: transparent;
-	color: var(--theme-text-muted, #cbd5e1);
+	color: rgba(255, 255, 255, 0.82);
 	font-size: var(--font-sm);
 	font-weight: 500;
 	border: none;
@@ -2748,13 +2502,15 @@ export default {
 }
 
 .hero-preview-box {
+	padding: 0;
+	border: none;
+	font: inherit;
 	position: relative;
 	z-index: 2;
 	width: 250px;
 	height: 145px;
 	border-radius: var(--radius-card);
 	overflow: hidden;
-	box-shadow: var(--shadow-md);
 	border: 1px solid rgba(255, 255, 255, 0.12);
 	cursor: pointer;
 	transition: transform 0.2s ease;
@@ -2763,7 +2519,6 @@ export default {
 	background: #0f172a;
 
 	&:hover {
-		transform: scale(1.02);
 	}
 }
 
@@ -2828,7 +2583,7 @@ export default {
 
 	&.is-active {
 		width: 16px;
-		background: var(--theme-card-bg, #ffffff);
+		background: #ffffff;
 	}
 }
 
@@ -2863,7 +2618,7 @@ export default {
 	gap: var(--space-1);
 	background: transparent;
 	border: none;
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	font-size: var(--font-sm);
 	font-weight: 600;
 	cursor: pointer;
@@ -2873,7 +2628,7 @@ export default {
 	}
 
 	&:hover {
-		color: #1d4ed8;
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -2909,7 +2664,6 @@ export default {
 	flex-direction: column;
 	cursor: pointer;
 	transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-	box-shadow: var(--shadow-sm);
 	text-shadow: none !important;
 
 	* {
@@ -2917,12 +2671,9 @@ export default {
 	}
 
 	&:hover {
-		transform: translateY(-2px);
-		box-shadow: var(--shadow-md);
 		border-color: var(--theme-card-border, #cbd5e1);
 
 		.card-banner-img {
-			transform: scale(1.02);
 		}
 	}
 }
@@ -2977,7 +2728,6 @@ export default {
 	height: 40px;
 	border-radius: var(--radius-control);
 	object-fit: cover;
-	box-shadow: var(--shadow-sm);
 	flex-shrink: 0;
 	background: var(--theme-card-subtle, #f8fafc);
 	padding: var(--space-1);
@@ -3070,11 +2820,11 @@ export default {
 	white-space: nowrap;
 
 	&.is-install {
-		background: #2563eb;
+		background: var(--color-primary);
 		color: #ffffff;
 
 		&:hover {
-			background: #1d4ed8;
+			background: var(--color-primary-hover);
 		}
 
 		&:disabled {
@@ -3086,7 +2836,7 @@ export default {
 
 	&.is-open {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border: 1px solid rgba(59, 130, 246, 0.35);
 
 		&:hover {
@@ -3100,8 +2850,7 @@ export default {
 	align-items: center;
 	border-radius: var(--radius-pill);
 	overflow: hidden;
-	background: #2563eb;
-	box-shadow: var(--shadow-sm);
+	background: var(--color-primary);
 
 	.card-btn.is-install {
 		border-radius: 0;
@@ -3109,7 +2858,7 @@ export default {
 	}
 
 	.card-btn-cog {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 		color: #ffffff;
 		border: none;
 		padding: var(--space-1) var(--space-2);
@@ -3124,7 +2873,7 @@ export default {
 		}
 
 		&:hover {
-			background: #1d4ed8;
+			background: var(--color-primary-hover);
 		}
 
 		&:disabled {
@@ -3146,6 +2895,7 @@ export default {
 
 .installer-header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--space-3) var(--space-6);
@@ -3247,8 +2997,7 @@ export default {
 
 	&.is-active {
 		background: var(--theme-card-bg, #ffffff);
-		color: #2563eb;
-		box-shadow: var(--shadow-sm);
+		color: var(--color-primary-fg);
 	}
 }
 
@@ -3302,7 +3051,6 @@ export default {
 	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: var(--radius-card);
 	padding: var(--space-5) var(--space-6);
-	box-shadow: var(--shadow-sm);
 }
 
 .card-title-row {
@@ -3330,11 +3078,11 @@ export default {
 	font-size: var(--font-lg);
 	flex-shrink: 0;
 
-	&.is-blue { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
-	&.is-emerald { background: rgba(5, 150, 105, 0.12); color: #059669; }
-	&.is-indigo { background: rgba(79, 70, 229, 0.12); color: #4f46e5; }
-	&.is-amber { background: var(--theme-warning-soft, rgba(217, 119, 6, 0.12)); color: #fbbf24; }
-	&.is-purple { background: rgba(147, 51, 234, 0.12); color: #9333ea; }
+	&.is-blue { background: rgba(37, 99, 235, 0.12); color: var(--color-primary-fg); }
+	&.is-emerald { background: rgba(5, 150, 105, 0.12); color: var(--color-success-fg); }
+	&.is-indigo { background: rgba(79, 70, 229, 0.12); color: var(--color-accent-fg); }
+	&.is-amber { background: var(--theme-warning-soft, rgba(217, 119, 6, 0.12)); color: var(--color-warning-fg); }
+	&.is-purple { background: rgba(147, 51, 234, 0.12); color: var(--color-accent-fg); }
 	&.is-slate { background: var(--theme-card-subtle, rgba(71, 85, 105, 0.12)); color: var(--theme-text-secondary, #475569); }
 }
 
@@ -3363,15 +3111,17 @@ export default {
 }
 
 /* Forms & Inputs */
+// auto-fit instead of fixed 2/3 columns: they overflowed a phone-width
+// window and were cramped at tablet width.
 .form-grid-2 {
 	display: grid;
-	grid-template-columns: repeat(2, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
 	gap: var(--space-4);
 }
 
 .form-grid-3 {
 	display: grid;
-	grid-template-columns: repeat(3, 1fr);
+	grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
 	gap: var(--space-4);
 }
 
@@ -3387,7 +3137,7 @@ export default {
 	color: var(--theme-text-secondary, #334155);
 
 	.req {
-		color: #ef4444;
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -3395,15 +3145,15 @@ export default {
 	width: 100%;
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-sm);
-	border: 1px solid var(--theme-card-border, #cbd5e1);
-	background: var(--theme-card-subtle, #f8fafc);
+	border: 1px solid var(--theme-input-border, #94a3b8);
+	background: var(--theme-input-bg, #ffffff);
 	font-size: var(--font-sm);
 	color: var(--theme-text-primary, #0f172a);
 	outline: none;
 	transition: all 0.15s ease;
 
 	&:focus {
-		border-color: #2563eb;
+		border-color: var(--color-primary-fg);
 		background: var(--theme-card-bg, #ffffff);
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 	}
@@ -3472,6 +3222,7 @@ export default {
 
 .dynamic-row {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: flex-end;
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-3);
@@ -3481,7 +3232,8 @@ export default {
 }
 
 .dynamic-field {
-	flex: 1;
+	flex: 1 1 8rem;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
@@ -3490,11 +3242,11 @@ export default {
 	}
 
 	&.is-protocol {
-		flex: 0 0 90px;
+		flex: 0 1 90px;
 	}
 
 	&.is-mode {
-		flex: 0 0 160px;
+		flex: 0 1 160px;
 	}
 }
 
@@ -3526,7 +3278,7 @@ export default {
 
 	&:hover {
 		background: rgba(239, 68, 68, 0.1);
-		color: #ef4444;
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -3540,7 +3292,7 @@ export default {
 	border-radius: var(--radius-control);
 	border: 1px dashed var(--theme-card-border, #cbd5e1);
 	background: var(--theme-card-bg, #ffffff);
-	color: #2563eb;
+	color: var(--color-primary-fg);
 	font-size: var(--font-sm);
 	font-weight: 600;
 	cursor: pointer;
@@ -3566,7 +3318,6 @@ export default {
 	border-radius: var(--radius-card);
 	overflow: hidden;
 	border: 1px solid #1e293b;
-	box-shadow: var(--shadow-sm);
 }
 
 .yaml-studio-bar {
@@ -3642,7 +3393,7 @@ export default {
 	color: var(--theme-text-muted, #64748b);
 
 	i.mdi {
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		font-size: var(--font-md);
 	}
 }
@@ -3675,7 +3426,7 @@ export default {
 	gap: var(--space-2);
 	padding: var(--space-2) var(--space-6);
 	border-radius: var(--radius-sm);
-	background: #2563eb;
+	background: var(--color-primary);
 	border: none;
 	color: #ffffff;
 	font-size: var(--font-sm);
@@ -3688,7 +3439,7 @@ export default {
 	}
 
 	&:hover {
-		background: #1d4ed8;
+		background: var(--color-primary-hover);
 	}
 
 	&:disabled {
@@ -3775,91 +3526,18 @@ export default {
 .empty-action-btn {
 	padding: var(--space-2) var(--space-5);
 	border-radius: var(--radius-sm);
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #ffffff;
 	border: none;
 	font-weight: 600;
 	cursor: pointer;
 }
 
-/* App Detail Drawer */
-.app-detail-drawer {
-	position: absolute;
-	inset: 0;
-	background: rgba(15, 23, 42, 0.4);
-	backdrop-filter: blur(4px);
-	z-index: 100;
-	display: flex;
-	justify-content: flex-end;
-}
-
-.drawer-panel {
-	width: 640px;
-	max-width: 90%;
-	height: 100%;
-	background: var(--theme-card-bg, #ffffff);
-	box-shadow: var(--shadow-md);
+/* App detail window (a SettingsOverlay window) */
+.detail-window {
 	display: flex;
 	flex-direction: column;
-}
-
-.drawer-header {
-	display: flex;
-	align-items: center;
-	padding: var(--space-4) var(--space-5);
-	border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
-}
-
-.back-btn {
-	display: flex;
-	align-items: center;
-	gap: var(--space-1);
-	background: transparent;
-	border: none;
-	color: var(--theme-text-secondary, #475569);
-	font-size: var(--font-sm);
-	font-weight: 600;
-	cursor: pointer;
-
-	i.mdi {
-		font-size: var(--font-md);
-	}
-
-	&:hover {
-		color: var(--theme-text-primary, #0f172a);
-	}
-}
-
-.drawer-header-spacer {
-	flex: 1;
-}
-
-.drawer-close-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 50%;
-	border: none;
-	background: var(--theme-card-subtle, #f1f5f9);
-	color: var(--theme-text-muted, #64748b);
-	cursor: pointer;
-
-	i.mdi {
-		font-size: var(--font-md);
-	}
-
-	&:hover {
-		background: var(--theme-card-border, #e2e8f0);
-		color: var(--theme-text-primary, #0f172a);
-	}
-}
-
-.drawer-content {
-	flex: 1;
-	overflow-y: auto;
-	padding: var(--space-6) var(--space-8) 3rem;
+	gap: var(--space-2);
 }
 
 .detail-hero {
@@ -3874,7 +3552,6 @@ export default {
 	width: 64px;
 	height: 64px;
 	border-radius: var(--radius-modal);
-	box-shadow: var(--shadow-sm);
 	flex-shrink: 0;
 	border: 1px solid var(--theme-card-border, #f1f5f9);
 }
@@ -3910,7 +3587,7 @@ export default {
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-pill);
 	background: rgba(59, 130, 246, 0.1);
-	color: #2563eb;
+	color: var(--color-primary-fg);
 
 	&.is-subtle {
 		background: var(--theme-card-subtle, #f1f5f9);
@@ -3919,7 +3596,7 @@ export default {
 
 	&.is-danger {
 		background: rgba(239, 68, 68, 0.08);
-		color: #dc2626;
+		color: var(--color-danger-fg);
 	}
 }
 
@@ -3944,11 +3621,11 @@ export default {
 	}
 
 	&.is-install {
-		background: #2563eb;
+		background: var(--color-primary);
 		color: #ffffff;
 
 		&:hover {
-			background: #1d4ed8;
+			background: var(--color-primary-hover);
 		}
 
 		&.is-loading {
@@ -3958,7 +3635,7 @@ export default {
 
 	&.is-customize {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border: 1px solid rgba(59, 130, 246, 0.35);
 
 		&:hover {
@@ -3968,7 +3645,7 @@ export default {
 
 	&.is-open {
 		background: rgba(59, 130, 246, 0.1);
-		color: #2563eb;
+		color: var(--color-primary-fg);
 		border: 1px solid rgba(59, 130, 246, 0.35);
 
 		&:hover {
@@ -4003,6 +3680,10 @@ export default {
 }
 
 .screenshot-item {
+	padding: 0;
+	border: none;
+	background: none;
+	cursor: zoom-in;
 	position: relative;
 	flex-shrink: 0;
 	width: 250px;
@@ -4011,11 +3692,9 @@ export default {
 	overflow: hidden;
 	border: 1px solid var(--theme-card-border, #e2e8f0);
 	cursor: pointer;
-	box-shadow: var(--shadow-sm);
 	transition: transform 0.15s ease;
 
 	&:hover {
-		transform: scale(1.02);
 
 		.screenshot-hover-overlay {
 			opacity: 1;
@@ -4086,108 +3765,30 @@ export default {
 	color: var(--theme-text-primary, #1e293b);
 }
 
-/* Lightbox */
-.lightbox-overlay {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.85);
-	backdrop-filter: blur(8px);
-	z-index: 200;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-8);
-	cursor: pointer;
-}
-
+/* Screenshot window */
 .lightbox-img {
-	max-width: 90vw;
-	max-height: 90vh;
-	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-xl);
-	object-fit: contain;
+	display: block;
+	max-width: 100%;
+	max-height: 75vh;
+	margin: 0 auto;
+	border-radius: var(--radius-control);
 }
 
-.lightbox-close-btn {
+/* App Sources window */
+.sources-intro,
+.sources-hint {
+	margin: 0 0 var(--space-3);
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary, #475569);
+}
+
+.sr-only {
 	position: absolute;
-	top: 1.5rem;
-	right: 1.5rem;
-	width: 38px;
-	height: 38px;
-	border-radius: 50%;
-	border: none;
-	background: rgba(255, 255, 255, 0.2);
-	color: #ffffff;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: var(--font-xl);
-	cursor: pointer;
-
-	&:hover {
-		background: rgba(255, 255, 255, 0.35);
-	}
-}
-
-/* Sources Modal */
-.sources-overlay {
-	position: absolute;
-	inset: 0;
-	background: rgba(15, 23, 42, 0.45);
-	backdrop-filter: blur(4px);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 110;
-}
-
-.sources-panel {
-	width: 540px;
-	max-width: 90%;
-	background: var(--theme-card-bg, #ffffff);
-	border-radius: var(--radius-card);
-	box-shadow: var(--shadow-md);
-	display: flex;
-	flex-direction: column;
+	width: 1px;
+	height: 1px;
 	overflow: hidden;
-}
-
-.sources-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: var(--space-4) var(--space-5);
-	border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
-}
-
-.sources-title {
-	font-size: var(--font-md);
-	font-weight: 700;
-	color: var(--theme-text-primary, #0f172a);
-}
-
-.sources-body {
-	padding: var(--space-5);
-}
-
-.sources-footer {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-5);
-	border-top: 1px solid var(--theme-card-border, #e2e8f0);
-	background: var(--theme-card-subtle, #f8fafc);
-}
-
-.footer-done-btn {
-	padding: var(--space-2) var(--space-4);
-	border-radius: var(--radius-sm);
-	background: #2563eb;
-	border: none;
-	color: #ffffff;
-	font-weight: 600;
-	cursor: pointer;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
 }
 
 .add-source-box {
@@ -4198,21 +3799,27 @@ export default {
 
 .source-input {
 	flex: 1;
+	min-width: 0;
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-sm);
-	border: 1px solid var(--theme-card-border, #cbd5e1);
+	border: 1px solid var(--theme-input-border, #94a3b8);
+	background: var(--theme-input-bg, #ffffff);
+	color: var(--theme-text-primary, #0f172a);
 	font-size: var(--font-sm);
-	outline: none;
 
 	&:focus {
-		border-color: #2563eb;
+		border-color: var(--color-primary-fg);
+		outline: none;
 	}
 }
 
 .add-source-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-sm);
-	background: #2563eb;
+	background: var(--color-primary);
 	color: #ffffff;
 	border: none;
 	font-weight: 600;
@@ -4221,7 +3828,8 @@ export default {
 	white-space: nowrap;
 
 	&:disabled {
-		background: var(--theme-card-border, #cbd5e1);
+		background: var(--theme-card-subtle, #e2e8f0);
+		color: var(--theme-text-secondary, #475569);
 		cursor: not-allowed;
 	}
 }
@@ -4229,37 +3837,56 @@ export default {
 .sources-list {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
-	max-height: 160px;
-	overflow-y: auto;
+	gap: var(--space-2);
 }
 
 .source-row {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	gap: var(--space-3);
 	padding: var(--space-2) var(--space-3);
 	background: var(--theme-card-subtle, #f8fafc);
 	border: 1px solid var(--theme-card-border, #e2e8f0);
 	border-radius: var(--radius-sm);
 }
 
+.source-row-icon {
+	color: var(--theme-text-muted, #5b6779);
+	font-size: var(--font-lg);
+}
+
+.source-info {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
 .source-name {
 	font-size: var(--font-sm);
-	font-weight: 500;
-	color: var(--theme-text-secondary, #334155);
-	word-break: break-all;
+	font-weight: 600;
+	color: var(--theme-text-primary, #0f172a);
+}
+
+.source-url {
+	font-size: var(--font-xs);
+	color: var(--theme-text-muted, #5b6779);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .delete-source-btn {
 	border: none;
 	background: transparent;
-	color: #ef4444;
+	color: var(--color-danger-fg);
 	cursor: pointer;
 	padding: var(--space-1);
 	font-size: var(--font-md);
-	&:hover {
-		color: #dc2626;
+	border-radius: var(--radius-sm);
+
+	&:hover:not(:disabled) {
+		background: var(--color-danger-soft, rgba(239, 68, 68, 0.1));
 	}
 }
 
@@ -4299,25 +3926,109 @@ export default {
 }
 
 /* Transitions */
-.drawer-slide-enter-active, .drawer-slide-leave-active {
-	transition: all 0.25s ease;
-	.drawer-panel {
-		transition: transform 0.25s ease;
-	}
-}
-
-.drawer-slide-enter, .drawer-slide-leave-to {
-	opacity: 0;
-	.drawer-panel {
-		transform: translateX(100%);
-	}
-}
-
 .fade-enter-active, .fade-leave-active {
 	transition: opacity 0.2s ease;
 }
 
 .fade-enter, .fade-leave-to {
 	opacity: 0;
+}
+.narrow-nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-4);
+	border-bottom: 1px solid var(--theme-card-border, #e2e8f0);
+}
+
+.narrow-select {
+	flex: 1;
+	min-width: 0;
+	height: 2.25rem;
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--theme-input-border, #94a3b8);
+	background: var(--theme-input-bg, #ffffff);
+	color: var(--theme-text-primary, #0f172a);
+	font-size: var(--font-sm);
+}
+
+.store-error {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--space-2);
+	padding: var(--space-8) var(--space-4);
+}
+
+.store-error-icon {
+	font-size: 3rem;
+	color: var(--color-danger-fg);
+}
+
+// Keyboard focus ring everywhere in the store (it had none, and several
+// inputs set outline:none), matching Settings' :focus-visible rule.
+.appstore-app :focus-visible {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+}
+
+// Fields show focus with their own border colour + a tight ring.
+.appstore-app input:focus-visible,
+.appstore-app select:focus-visible,
+.appstore-app textarea:focus-visible {
+	outline-offset: -1px;
+}
+.installer-errors {
+	display: flex;
+	gap: var(--space-2);
+	margin: 0 var(--space-6);
+	padding: var(--space-2) var(--space-3);
+	border-left: 3px solid var(--color-danger-fg);
+	border-radius: var(--radius-sm);
+	background: var(--color-danger-soft, rgba(239, 68, 68, 0.1));
+	color: var(--theme-text-primary, #0f172a);
+	font-size: var(--font-sm);
+
+	.mdi {
+		color: var(--color-danger-fg);
+	}
+
+	ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+}
+// Narrow windows: less padding around the installer.
+.appstore-app.is-compact {
+	.installer-body {
+		padding: var(--space-4);
+	}
+
+	.installer-footer {
+		padding: var(--space-3) var(--space-4);
+		flex-wrap: wrap;
+	}
+
+	.installer-header {
+		padding: var(--space-2) var(--space-4);
+	}
+
+	.installer-errors {
+		margin: 0 var(--space-4);
+	}
+
+	.hero-actions,
+	.detail-actions,
+	.main-header,
+	.header-actions {
+		flex-wrap: wrap;
+	}
+}
+.hero-actions,
+.detail-actions {
+	flex-wrap: wrap;
 }
 </style>

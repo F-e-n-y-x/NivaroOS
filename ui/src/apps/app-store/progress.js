@@ -12,11 +12,18 @@ class ProgressTracker {
 	}
 
 	linkLayer(id, tracker) {
+		if (!tracker || !tracker.layers[id]) {
+			return;
+		}
 		this.layers[id] = tracker.layers[id];
 	}
 
 	updateLayer(id, progress) {
 		if (id == null) {
+			return;
+		}
+		// Docker omits progressDetail (or sends {}) on some status lines.
+		if (!progress || typeof progress.current !== 'number') {
 			return;
 		}
 		if (!this.layers[id]) {
@@ -73,7 +80,7 @@ class DockerProgress {
 					this.extractionProgressTracker.addLayer(id);
 					break;
 				case 'Ready to download':
-					this.downloadProgressTracker.linkLayer(id, evt.extractionProgressTracker);
+					this.downloadProgressTracker.linkLayer(id, this.extractionProgressTracker);
 					break;
 				case 'Downloading':
 					this.downloadProgressTracker.updateLayer(id, evt.progressDetail);

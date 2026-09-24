@@ -1,0 +1,74 @@
+import { describe, expect, test } from 'vitest'
+import { applyFormToDoc, docToFormState, parsePortSpec } from './composeForm'
+
+// A store app the way the server returns it: two services, labels,
+// healthcheck, an array command, a byte memory limit, store metadata.
+const storeDoc = () => ({
+	name: 'immich',
+	services: {
+		server: {
+			image: 'ghcr.io/immich-app/immich-server:v1.120',
+			container_name: 'immich-server',
+			restart: 'always',
+			command: ['sh', '-c', 'start.sh --flag "a b"'],
+			ports: ['127.0.0.1:2283:2283', { target: 3001, published: '3001', protocol: 'tcp', host_ip: '0.0.0.0' }],
+			environment: { DB_HOST: 'db', TZ: 'UTC' },
+			labels: { icon: 'x.png' },
+			healthcheck: { test: ['CMD', 'curl', 'localhost'] },
+			depends_on: ['db'],
+			deploy: { resources: { limits: { memory: 536870912 } } },
+			networks: { immich_default: {} }
+		},
+		db: { image: 'postgres:16', volumes: ['/DATA/AppData/immich/pg:/var/lib/postgresql/data'] }
+	},
+	networks: { immich_default: {} },
+	'x-casaos': { main: 'server', store_app_id: 'immich', author: 'Immich', title: { en_us: 'Immich', zh_cn: '图' }, tips: { before_install: { en_us: 'hi' } }, port_map: '2283', architectures: ['amd64'] }
+})
+
+describe('App Store form <-> compose', () => {
+	test('saving an unchanged form leaves the document exactly as it was', () => {
+		const doc = storeDoc()
+		expect(applyFormToDoc(doc, docToFormState(doc))).toEqual(storeDoc())
+	})
+
+	test('editing one field changes only that field', () => {
+		const doc = storeDoc()
+		const form = docToFormState(doc)
+		form.image = 'ghcr.io/immich-app/immich-server:v1.121'
+		const out = applyFormToDoc(doc, form)
+		expect(out.services.server.image).toBe('ghcr.io/immich-app/immich-server:v1.121')
+		const expected = storeDoc()
+		expected.services.server.image = out.services.server.image
+		expect(out).toEqual(expected)
+	})
+
+	test('reads the values the old parser corrupted', () => {
+		const f = docToFormState(storeDoc())
+		expect(f.ports[0]).toEqual({ hostIp: '127.0.0.1', host: '2283', container: '2283', protocol: 'TCP' })
+		expect(f.memoryLimit).toBe('512')
+		expect(f.network).toBe('immich_default')
+		expect(f.command).toBe(`sh -c 'start.sh --flag "a b"'`)
+		expect(f.mainService).toBe('server')
+	})
+
+	test('a changed port list keeps the host IP', () => {
+		const doc = storeDoc()
+		const form = docToFormState(doc)
+		form.ports = form.ports.concat([{ hostIp: '', host: '9000', container: '90', protocol: 'UDP' }])
+		expect(applyFormToDoc(doc, form).services.server.ports).toEqual(['127.0.0.1:2283:2283', '0.0.0.0:3001:3001', '9000:90/udp'])
+	})
+
+	test('port specs', () => {
+		expect(parsePortSpec('80')).toEqual({ hostIp: '', host: '', container: '80', protocol: 'TCP' })
+		expect(parsePortSpec('8080:80/udp')).toEqual({ hostIp: '', host: '8080', container: '80', protocol: 'UDP' })
+		expect(parsePortSpec('[::1]:8080:80')).toEqual({ hostIp: '::1', host: '8080', container: '80', protocol: 'TCP' })
+	})
+
+	test('a brand new app gets a complete document', () => {
+		const out = applyFormToDoc(null, { appName: 'My App', mainService: 'app', title: 'My App', image: 'nginx', containerName: 'my-app', ports: [{ host: '8080', container: '80', protocol: 'TCP' }], volumes: [], envs: [], devices: [], network: 'bridge', webUI: { enabled: true, scheme: 'http', port: '8080', index: '' } })
+		expect(out.name).toBe('my-app')
+		expect(out.services.app.ports).toEqual(['8080:80'])
+		expect(out['x-casaos'].port_map).toBe('8080')
+		expect(out['x-casaos'].main).toBe('app')
+	})
+})

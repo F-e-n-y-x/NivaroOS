@@ -228,7 +228,9 @@ const mutations = {
 			// A deep link to the same section again (e.g. "Change wallpaper"
 			// twice) must still take effect: stamp the request so the window
 			// can react even when the value itself didn't change.
-			if (props) existing.props = { ...existing.props, ...props, ...(props.section ? { sectionRequestedAt: Date.now() } : {}) }
+			// requestedAt lets an open window react to being asked again (the
+			// App Store opening another app's settings, a deep link...).
+			if (props) existing.props = { ...existing.props, ...props, requestedAt: props.requestedAt || Date.now(), ...(props.section ? { sectionRequestedAt: Date.now() } : {}) }
 			persistWindows(state)
 			return
 		}

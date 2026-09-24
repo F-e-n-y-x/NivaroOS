@@ -9,6 +9,12 @@
 // call `this.confirmWindow({ title, message, confirmText, cancelText,
 // type, hasIcon, icon, iconPack, onConfirm, onCancel })` exactly where
 // `this.$buefy.dialog.confirm({...})` used to be called.
+//
+// Optional `checkbox: { label, checked, checkedHint, uncheckedHint,
+// checkedIsDanger }` renders a real, window-scoped checkbox under the
+// message; its final state is passed to `onConfirm(checked)`. Label and
+// hints are plain text (escaped); `message` is still HTML, so escape any
+// user/store-controlled value you interpolate into it.
 export const confirmWindowMixin = {
 	data() {
 		return {
@@ -43,7 +49,7 @@ export const confirmWindowMixin = {
 			if (!options) return
 			const dialogId = 'dialog-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)
 			const width = options.width || 420
-			const height = options.height || 210
+			const height = options.height || (options.checkbox ? 260 : 210)
 			const x = options.x !== undefined ? options.x : Math.max(16, Math.round((window.innerWidth - width) / 2))
 			const y = options.y !== undefined ? options.y : Math.max(40, Math.round((window.innerHeight - height) / 2))
 
@@ -67,7 +73,8 @@ export const confirmWindowMixin = {
 						icon: options.icon || '',
 						iconPack: options.iconPack || 'mdi',
 						onConfirm: options.onConfirm,
-						onCancel: options.onCancel
+						onCancel: options.onCancel,
+						checkbox: options.checkbox || null
 					},
 					width,
 					height,
@@ -80,9 +87,13 @@ export const confirmWindowMixin = {
 			}
 		},
 		_onConfirmWindowConfirm() {
-			const onConfirm = this.confirmWindowState && this.confirmWindowState.onConfirm
+			const state = this.confirmWindowState
+			const onConfirm = state && state.onConfirm
 			this.confirmWindowState = null
-			if (onConfirm) onConfirm()
+			if (!onConfirm) return
+			// The inline fallback has no checkbox UI - use its default value.
+			if (state.checkbox) onConfirm(!!state.checkbox.checked)
+			else onConfirm()
 		},
 		_onConfirmWindowCancel() {
 			const onCancel = this.confirmWindowState && this.confirmWindowState.onCancel

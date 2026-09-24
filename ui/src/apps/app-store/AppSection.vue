@@ -38,20 +38,30 @@
 				></folder-card>
 				
 				<!-- Live Downloading / Installing App Tile -->
-				<div v-else-if="item.app_type === 'installing'" class="installing-app-slot common-card is-flex is-align-items-center is-justify-content-center">
+				<div v-else-if="item.app_type === 'installing'"
+					class="installing-app-slot common-card is-flex is-align-items-center is-justify-content-center"
+					:class="{ 'is-failed': item.failed }"
+					:role="item.failed ? 'status' : 'progressbar'"
+					:aria-label="item.failed
+						? $t('Installing {name} failed: {reason}', { name: item.title || item.name, reason: item.errorMessage })
+						: $t('Installing {name}', { name: item.title || item.name })"
+					:aria-valuemin="item.failed ? null : 0"
+					:aria-valuemax="item.failed ? null : 100"
+					:aria-valuenow="item.failed ? null : (item.progress || 0)"
+					:title="item.failed ? item.errorMessage : null">
 					<div class="cards-content has-text-centered is-flex is-justify-content-center is-flex-direction-column" style="padding:6px 4px 4px;width:100%;height:100%">
 						<div class="is-flex is-justify-content-center is-relative">
 							<div class="installing-icon-box">
 								<img :src="item.icon || defaultAppIcon" class="is-52x52 installing-icon" :alt="item.title || item.name || ''" @error="onIconError" />
 								<div class="installing-ring-wrap">
-									<svg class="progress-ring-svg" viewBox="0 0 72 72">
+									<svg class="progress-ring-svg" viewBox="0 0 72 72" aria-hidden="true" focusable="false">
 										<circle class="ring-track" cx="36" cy="36" r="32"></circle>
 										<circle
 											class="ring-fill"
 											cx="36"
 											cy="36"
 											r="32"
-											:style="{ strokeDashoffset: 201 - (201 * (item.progress || 10)) / 100 }"
+											:style="{ strokeDashoffset: item.failed ? 0 : 201 - (201 * (item.progress || 10)) / 100 }"
 										></circle>
 									</svg>
 								</div>
@@ -60,7 +70,10 @@
 						<p class="app-label one-line" style="margin-top:4px">
 							<span class="one-line installing-title">{{ item.title || item.name }}</span>
 						</p>
-						<span class="installing-badge">{{ item.progress ? (item.progress + '%') : $t('Installing...') }}</span>
+						<span v-if="item.failed" class="installing-badge is-failed">
+							<i class="mdi mdi-alert-circle-outline" aria-hidden="true"></i> {{ $t('Install failed') }}
+						</span>
+						<span v-else class="installing-badge">{{ item.progress ? (item.progress + '%') : $t('Installing...') }}</span>
 					</div>
 				</div>
 
@@ -97,8 +110,13 @@ import isEqual from 'lodash/isEqual'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import defaultAppIcon from '@/assets/img/app-icons/default.svg'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { apiErrorHtml } from '@/mixins/app/apiError'
+import { escapeHtml } from '@/utils/escapeHtml'
 
-const SYNCTHING_STORE_ID = 74
+// Store ids are compose project names (catalog Apps/Syncthing -> `name: syncthing`).
+const SYNCTHING_STORE_ID = 'syncthing'
+const LIST_REFRESH_MS = 8000
+const INSTALL_FAILED_TILE_MS = 15000
 
 const builtInApplications = [
 	{
@@ -191,7 +209,11 @@ export default {
 			marquee: null,
 			justDragged: false,
 			retryCount: 0,
-			appListErrorMessage: ''
+			appListErrorMessage: '',
+			// Real canvas size once it's laid out; `known: false` until then
+			// (hidden/zero-size canvas), in which case positions are never
+			// saved - only clamped at render.
+			canvasSize: { w: 0, h: 0, known: false }
 		}
 	},
 	provide() {
@@ -213,10 +235,17 @@ export default {
 			return list
 		},
 		positionedAppList() {
+			// Saved positions are kept as-is even when the current viewport
+			// is smaller than the one they were arranged on; they're only
+			// clamped (to the last visible grid cell) for display.
+			const { w, h, known } = this.canvasSize
+			const ROW_H = CELL_H + GAP
+			const maxX = known ? Math.max(0, Math.floor(Math.max(0, w - CELL_W) / SNAP) * SNAP) : Infinity
+			const maxY = known ? Math.max(0, Math.floor(Math.max(0, h - CELL_H) / ROW_H) * ROW_H) : Infinity
 			return this.positions
 				.map(p => {
 					const item = this.combinedAppList.find(i => i.name === p.name)
-					return item ? { ...item, x: p.x, y: p.y } : null
+					return item ? { ...item, x: Math.min(p.x, maxX), y: Math.min(p.y, maxY) } : null
 				})
 				.filter(Boolean)
 		},
@@ -273,61 +302,42 @@ export default {
 	},
 	created() {
 		this.getList()
-		this.$EventBus.$on(events.OPEN_APP_STORE_AND_GOTO_SYNCTHING, () => {
-			this.showInstall(SYNCTHING_STORE_ID)
-		})
+		// Keep a reference to every handler: `$off(event)` without one would
+		// strip every other component's listener for that event too.
+		this.busHandlers = {
+			[events.OPEN_APP_STORE_AND_GOTO_SYNCTHING]: () => this.showInstall(SYNCTHING_STORE_ID),
+			[events.RELOAD_APP_LIST]: () => this.getList(),
+			[events.SHOW_CUSTOM_INSTALL]: () => this.showInstall(0, 'custom'),
+			[events.SHOW_EXTERNAL_LINK_PANEL]: () => this.showExternalLinkPanel(),
+			[events.SHOW_CREATE_FOLDER_PROMPT]: () => this.createFolderPrompt(),
+			[events.ARRANGE_APPS]: () => this.arrangeApps(),
+			// FolderWindow events (folder open in windowed mode)
+			[events.REMOVE_FROM_FOLDER]: (payload) => this.handleRemoveFromFolder(payload),
+			[events.REMOVE_MULTIPLE_FROM_FOLDER]: (payload) => this.handleRemoveMultipleFromFolder(payload),
+			[events.GET_APP_LIST]: () => this.getList(),
+			[events.SHOW_CONFIG_PANEL]: (item) => this.showConfigPanel(item),
+			[events.SHOW_CONTAINER_PANEL]: (item) => this.showContainerPanel(item)
+		}
+		Object.keys(this.busHandlers).forEach(evt => this.$EventBus.$on(evt, this.busHandlers[evt]))
 
-		this.$EventBus.$on(events.RELOAD_APP_LIST, () => {
-			this.getList()
-		})
-
-		this.$EventBus.$on(events.SHOW_CUSTOM_INSTALL, () => {
-			this.showInstall(0, 'custom')
-		})
-		this.$EventBus.$on(events.SHOW_EXTERNAL_LINK_PANEL, () => {
-			this.showExternalLinkPanel()
-		})
-		this.$EventBus.$on(events.SHOW_CREATE_FOLDER_PROMPT, () => {
-			this.createFolderPrompt()
-		})
-		this.$EventBus.$on(events.ARRANGE_APPS, () => {
-			this.arrangeApps()
-		})
-
-		// FolderWindow events (folder open in windowed mode)
-		this.$EventBus.$on(events.REMOVE_FROM_FOLDER, ({ item, folderId }) => {
-			this.handleRemoveFromFolder({ item, folderId })
-		})
-		this.$EventBus.$on(events.REMOVE_MULTIPLE_FROM_FOLDER, ({ items, folderId }) => {
-			this.handleRemoveMultipleFromFolder({ items, folderId })
-		})
-		this.$EventBus.$on(events.GET_APP_LIST, () => {
-			this.getList()
-		})
-		this.$EventBus.$on(events.SHOW_CONFIG_PANEL, (item) => {
-			this.showConfigPanel(item)
-		})
-		this.$EventBus.$on(events.SHOW_CONTAINER_PANEL, (item) => {
-			this.showContainerPanel(item)
-		})
-
+		// Background refresh: skipped while the tab is hidden, and never
+		// overlapping a still-running getList (see getList's single-flight).
 		this.ListRefreshTimer = setInterval(() => {
+			if (typeof document !== 'undefined' && document.hidden) return
 			this.getList()
-		}, 8000)
+		}, LIST_REFRESH_MS)
+		this.onVisibilityChange = () => {
+			if (!document.hidden) this.getList()
+		}
+		document.addEventListener('visibilitychange', this.onVisibilityChange)
 	},
 	beforeDestroy() {
-		this.$EventBus.$off(events.OPEN_APP_STORE_AND_GOTO_SYNCTHING)
-		this.$EventBus.$off(events.SHOW_CUSTOM_INSTALL)
-		this.$EventBus.$off(events.SHOW_EXTERNAL_LINK_PANEL)
-		this.$EventBus.$off(events.SHOW_CREATE_FOLDER_PROMPT)
-		this.$EventBus.$off(events.ARRANGE_APPS)
-		this.$EventBus.$off(events.REMOVE_FROM_FOLDER)
-		this.$EventBus.$off(events.REMOVE_MULTIPLE_FROM_FOLDER)
-		this.$EventBus.$off(events.GET_APP_LIST)
-		this.$EventBus.$off(events.SHOW_CONFIG_PANEL)
-		this.$EventBus.$off(events.SHOW_CONTAINER_PANEL)
+		Object.keys(this.busHandlers || {}).forEach(evt => this.$EventBus.$off(evt, this.busHandlers[evt]))
 		window.removeEventListener('resize', this.getSkCount)
+		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 		clearInterval(this.ListRefreshTimer)
+		if (this.canvasObserver) this.canvasObserver.disconnect()
+		Object.values(this.failedInstallTimers || {}).forEach(clearTimeout)
 	},
 	mounted() {
 		window.addEventListener('resize', this.getSkCount)
@@ -337,8 +347,15 @@ export default {
 		onIconError(e) {
 			e.target.src = defaultAppIcon
 		},
-		maxRowsPerCol() {
-			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : (window.innerHeight - 120)
+		clearFailedInstallTimer(name) {
+			if (!this.failedInstallTimers) this.failedInstallTimers = {}
+			if (this.failedInstallTimers[name]) {
+				clearTimeout(this.failedInstallTimers[name])
+				delete this.failedInstallTimers[name]
+			}
+		},
+		maxRowsPerCol(height) {
+			const canvasHeight = height || (this.$refs.canvas && this.$refs.canvas.clientHeight) || (window.innerHeight - 120)
 			const available = Math.max(CELL_H, canvasHeight - 16)
 			return Math.max(1, Math.floor(available / (CELL_H + GAP)))
 		},
@@ -356,10 +373,35 @@ export default {
 			}
 		},
 
-		async getList() {
+		// Single-flight: a call made while a refresh is running doesn't start
+		// a second, overlapping one (whose older response could land last) -
+		// it queues exactly one more run after the current one finishes.
+		getList() {
+			if (this.listInFlight) {
+				this.listQueued = true
+				return this.listInFlight
+			}
+			this.listInFlight = this.loadList().finally(() => {
+				this.listInFlight = null
+				if (this.listQueued) {
+					this.listQueued = false
+					this.getList()
+				}
+			})
+			return this.listInFlight
+		},
+
+		async loadList() {
 			try {
 				const orgAppList = await this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || [])
-				const legacyOverrides = await this.getLegacyAppOverrides()
+				let legacyOverrides
+				try {
+					legacyOverrides = await this.getLegacyAppOverrides()
+					this.lastOverrides = legacyOverrides
+				} catch (e) {
+					console.error('getLegacyAppOverrides', e)
+					legacyOverrides = this.lastOverrides || {}
+				}
 				const applyOverride = item => {
 					const override = legacyOverrides[item.name]
 					if (!override) return
@@ -375,19 +417,40 @@ export default {
 					applyOverride(item)
 				})
 
-				builtInApplications.forEach(item => {
+				// Fresh copies: never mutate the shared module-level
+				// definitions (a removed override would otherwise stick).
+				const builtIns = builtInApplications.map(item => ({ ...item, title: { ...item.title } }))
+				builtIns.forEach(item => {
 					applyOverride(item)
 				})
 
-				let linkAppList = await this.getLinkAppList()
+				let linkAppList = []
+				try {
+					linkAppList = await this.getLinkAppList()
+				} catch (e) {
+					console.error('getLinkAppList', e)
+					linkAppList = this.lastLinkAppList || []
+				}
+				this.lastLinkAppList = linkAppList
 				linkAppList.forEach(item => {
 					item.icon = item.icon || assetUrl(require(`@/assets/img/app-icons/default.svg`))
 					applyOverride(item)
 				})
 
-				let allApps = concat(builtInApplications, orgAppList, linkAppList)
+				let allApps = concat(builtIns, orgAppList, linkAppList)
 
-				let folders = await this.getFolders()
+				// A failed folder read must never be followed by a folder
+				// write (it would save [] over every folder) - fall back to
+				// the last good copy for display only and skip the writes.
+				let folders
+				let foldersReadable = true
+				try {
+					folders = await this.getFolders()
+				} catch (e) {
+					console.error('getFolders', e)
+					foldersReadable = false
+					folders = JSON.parse(JSON.stringify(this.lastFolders || []))
+				}
 
 				// Self-heal: an app can transiently look like a stray "container"
 				// for a single poll (e.g. mid-update, while Docker Compose is
@@ -403,20 +466,16 @@ export default {
 				// into themselves.
 				const currentAppTypeByName = {}
 				allApps.forEach(item => { currentAppTypeByName[item.name] = item.app_type })
-				let prunedStaleAutoFile = false
-				folders.forEach(f => {
-					if (!f.isAutoContainerFolder) return
-					const kept = f.appNames.filter(n => {
-						const type = currentAppTypeByName[n]
-						return type === undefined || type === 'container'
-					})
-					if (kept.length !== f.appNames.length) {
-						f.appNames = kept
-						prunedStaleAutoFile = true
+				const hasStaleAutoFile = folders.some(f => f.isAutoContainerFolder && f.appNames.some(n => {
+					const type = currentAppTypeByName[n]
+					return !(type === undefined || type === 'container')
+				}))
+				if (foldersReadable && hasStaleAutoFile) {
+					try {
+						folders = await this.pruneStaleAutoFiledApps(currentAppTypeByName)
+					} catch (e) {
+						console.error('pruneStaleAutoFiledApps', e)
 					}
-				})
-				if (prunedStaleAutoFile) {
-					await this.saveFolders(folders)
 				}
 
 				const initialFolderIdByAppName = {}
@@ -431,20 +490,26 @@ export default {
 				// already in a folder - including one the user deliberately moved
 				// back out, tracked via getContainerAutoExcludes().
 				const unfiledContainers = allApps.filter(item => item.app_type === 'container' && !initialFolderIdByAppName[item.name])
-				if (unfiledContainers.length) {
-					const excludes = await this.getContainerAutoExcludes()
-					const toFile = unfiledContainers.filter(item => !excludes.includes(item.name))
-					if (toFile.length) {
-						const groupsByProject = {}
-						toFile.forEach(item => {
-							const project = parseComposeProject(ice_i18n(item.title))
-							const key = project || ''
-							if (!groupsByProject[key]) groupsByProject[key] = { project: project || null, appNames: [] }
-							groupsByProject[key].appNames.push(item.name)
-						})
-						await this.autoFileContainerApps(Object.values(groupsByProject))
-						folders = await this.getFolders()
+				if (foldersReadable && unfiledContainers.length) {
+					try {
+						const excludes = await this.getContainerAutoExcludes()
+						const toFile = unfiledContainers.filter(item => !excludes.includes(item.name))
+						if (toFile.length) {
+							const groupsByProject = {}
+							toFile.forEach(item => {
+								const project = parseComposeProject(ice_i18n(item.title))
+								const key = project || ''
+								if (!groupsByProject[key]) groupsByProject[key] = { project: project || null, appNames: [] }
+								groupsByProject[key].appNames.push(item.name)
+							})
+							folders = await this.autoFileContainerApps(Object.values(groupsByProject)) || folders
+						}
+					} catch (e) {
+						console.error('autoFileContainerApps', e)
 					}
+				}
+				if (foldersReadable) {
+					this.lastFolders = JSON.parse(JSON.stringify(folders))
 				}
 
 				const folderIdByAppName = {}
@@ -462,28 +527,36 @@ export default {
 				}))
 				allApps = concat(folderPseudoItems, ungrouped)
 
-				// Sync any open FolderWindow windows with fresh folder data without stealing focus or bumping zIndex
+				// Sync any open FolderWindow windows with fresh folder data -
+				// only when something actually changed, so an idle poll doesn't
+				// re-render (and re-persist) every open folder window.
 				folderPseudoItems.forEach(f => {
 					const winId = `folder-${f.folderData.id}`
 					const win = this.$store.state.windows.find(w => w.id === winId)
-					if (win) {
+					if (!win) return
+					const sameTitle = win.title === f.folderData.name
+					const sameFolder = win.props && isEqual(win.props.folder, f.folderData)
+					if (!sameTitle || !sameFolder) {
 						this.$store.commit('UPDATE_WINDOW_PROPS', { id: winId, title: f.folderData.name, props: { folder: f.folderData } })
 					}
 				})
 
 				this.appList = allApps
 
-				const savedPositions = await this.$api.users
-					.getCustomStorage(orderConfig)
-					.then(res => (Array.isArray(res.data.data) ? res.data.data : []))
-
-				const reconciled = this.reconcileAppPositions(this.combinedAppList, savedPositions)
-				this.positions = reconciled
-				if (!isEqual(savedPositions, reconciled)) {
-					this.savePositions()
+				let savedPositions = null
+				try {
+					savedPositions = await this.$api.users
+						.getCustomStorage(orderConfig)
+						.then(res => (Array.isArray(res.data.data) ? res.data.data : []))
+					this.lastSavedPositions = savedPositions
+				} catch (e) {
+					console.error('get app_order', e)
 				}
 
 				this.isLoading = false
+				await this.$nextTick()
+				this.syncPositions(savedPositions !== null)
+
 				this.retryCount = 0
 				this.appListErrorMessage = ''
 			} catch (error) {
@@ -492,19 +565,54 @@ export default {
 			}
 		},
 
-		reconcileAppPositions(appList, saved) {
-			const knownNames = appList.map(i => i.name)
-			const canvasWidth = this.$refs.canvas ? this.$refs.canvas.clientWidth : (window.innerWidth - 360)
-			const canvasHeight = this.$refs.canvas ? this.$refs.canvas.clientHeight : (window.innerHeight - 120)
-			const maxRows = this.maxRowsPerCol()
+		measureCanvas() {
+			const el = this.$refs.canvas
+			if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+				return { w: el.clientWidth, h: el.clientHeight, known: true }
+			}
+			return { w: Math.max(CELL_W, window.innerWidth - 360), h: Math.max(CELL_H, window.innerHeight - 120), known: false }
+		},
 
-			const isOnCanvas = p => (
+		ensureCanvasObserver() {
+			const el = this.$refs.canvas
+			if (!el || this.canvasObserver || typeof ResizeObserver === 'undefined') return
+			this.canvasObserver = new ResizeObserver(() => {
+				const wasKnown = this.canvasSize.known
+				this.canvasSize = this.measureCanvas()
+				// First time the real size is known: place any new icons for
+				// the real grid (and persist that, if anything was added).
+				if (!wasKnown && this.canvasSize.known) this.syncPositions(true)
+			})
+			this.canvasObserver.observe(el)
+		},
+
+		// Reconciles saved positions against the current app list. Only
+		// persists when the set of apps changed (new/removed/overlapping
+		// icons) AND the real canvas size is known - never because the
+		// current viewport happens to be smaller.
+		syncPositions(allowSave) {
+			this.ensureCanvasObserver()
+			const size = this.measureCanvas()
+			this.canvasSize = size
+			if (this.draggingName) return
+			const saved = this.lastSavedPositions || this.positions || []
+			const reconciled = this.reconcileAppPositions(this.combinedAppList, saved, size)
+			this.positions = reconciled
+			if (allowSave && size.known && !isEqual(saved, reconciled)) {
+				this.savePositions()
+			}
+		},
+
+		reconcileAppPositions(appList, saved, size) {
+			const knownNames = appList.map(i => i.name)
+			const maxRows = this.maxRowsPerCol((size || this.measureCanvas()).h)
+
+			const isValid = p => (
+				p &&
 				Number.isInteger(p.x) &&
 				Number.isInteger(p.y) &&
 				p.x >= 0 &&
-				p.x <= Math.max(0, canvasWidth - CELL_W) &&
-				p.y >= 0 &&
-				p.y <= Math.max(0, canvasHeight - CELL_H)
+				p.y >= 0
 			)
 
 			const placedRects = []
@@ -512,8 +620,8 @@ export default {
 			const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 
 			const kept = []
-			for (const p of saved) {
-				if (knownNames.includes(p.name) && isOnCanvas(p) && !kept.some(k => k.name === p.name)) {
+			for (const p of saved || []) {
+				if (knownNames.includes(p.name) && isValid(p) && !kept.some(k => k.name === p.name)) {
 					const rect = rectOf(p)
 					if (!placedRects.some(r => overlaps(rect, r))) {
 						placedRects.push(rect)
@@ -546,10 +654,15 @@ export default {
 		},
 
 		savePositions() {
-			this.$api.users.setCustomStorage(orderConfig, this.positions).then(res => {
+			const toSave = this.positions.map(p => ({ ...p }))
+			this.lastSavedPositions = toSave
+			this.$api.users.setCustomStorage(orderConfig, toSave).then(res => {
 				if (res.data.success === 200 && Array.isArray(res.data.data)) {
 					this.positions = res.data.data
+					this.lastSavedPositions = res.data.data
 				}
+			}).catch(e => {
+				console.error('save app_order', e)
 			})
 		},
 
@@ -631,12 +744,14 @@ export default {
 
 			const startMouseX = e.clientX
 			const startMouseY = e.clientY
-			const startItem = this.positions.find(p => p.name === item.name)
+			// Displayed (render-clamped) coordinates, so the drag starts where
+			// the icon actually is on screen.
+			const startItem = this.positionedAppList.find(p => p.name === item.name)
 			if (!startItem) return
 
 			const initialOffsets = {}
 			groupNames.forEach(name => {
-				const p = this.positions.find(pos => pos.name === name)
+				const p = this.positionedAppList.find(pos => pos.name === name)
 				if (p) initialOffsets[name] = { dx: p.x - startItem.x, dy: p.y - startItem.y }
 			})
 
@@ -690,7 +805,9 @@ export default {
 						this.draggingGroup = null
 						this.groupGhosts = null
 						this.dragOverFolderId = null
-						this.addAppToFolder(item.name, targetFolderId).then(() => this.getList())
+						this.addAppToFolder(item.name, targetFolderId)
+							.catch(err => this.toastFolderError(err))
+							.then(() => this.getList())
 						return
 					}
 					if (isGroupDrag) {
@@ -805,7 +922,13 @@ export default {
 					confirmText: this.$t('Create'),
 					cancelText: this.$t('Cancel'),
 					onConfirm: async (name) => {
-						await this.createFolder(name)
+						const trimmed = String(name || '').trim()
+						if (!trimmed) return
+						try {
+							await this.createFolder(trimmed)
+						} catch (e) {
+							this.toastFolderError(e)
+						}
 						this.getList()
 					}
 				},
@@ -827,7 +950,13 @@ export default {
 					confirmText: this.$t('Save'),
 					cancelText: this.$t('Cancel'),
 					onConfirm: async (name) => {
-						await this.renameFolder(folder.id, name)
+						const trimmed = String(name || '').trim()
+						if (!trimmed) return
+						try {
+							await this.renameFolder(folder.id, trimmed)
+						} catch (e) {
+							this.toastFolderError(e)
+						}
 						this.getList()
 					}
 				},
@@ -838,16 +967,39 @@ export default {
 
 		deleteFolderConfirm(folder) {
 			this.confirmWindow({
-				message: this.$t('Delete this folder? Apps inside it are not affected.'),
+				title: this.$t('Delete folder'),
+				message: this.$t('Delete the folder {name}? Apps inside it are not affected.', { name: `<b>${escapeHtml(folder.name)}</b>` }),
+				type: 'is-danger',
+				confirmText: this.$t('Delete'),
 				onConfirm: async () => {
-					await this.deleteFolder(folder.id)
+					try {
+						await this.deleteFolder(folder.id)
+					} catch (e) {
+						this.toastFolderError(e)
+					}
 					this.getList()
 				}
 			})
 		},
 
+		toastFolderError(err) {
+			console.error(err)
+			this.$buefy.toast.open({
+				message: this.$t('Folders could not be updated: {reason}', { reason: apiErrorHtml(err, this.$t('Something went wrong')) }),
+				type: 'is-danger',
+				position: 'is-top',
+				duration: 5000
+			})
+		},
+
 		async addToFolderPrompt(item) {
-			const folders = await this.getFolders()
+			let folders
+			try {
+				folders = await this.getFolders()
+			} catch (e) {
+				this.toastFolderError(e)
+				return
+			}
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'add-to-folder',
 				title: this.$t('Add to folder'),
@@ -892,7 +1044,7 @@ export default {
 		},
 
 		handleRemoveFromFolder({ item, folderId, clientX, clientY }) {
-			this.removeAppFromFolder(item.name, folderId).then(async (folders) => {
+			return this.removeAppFromFolder(item.name, folderId).then(async (folders) => {
 				// If this was the auto-filed "Other Containers" folder, remember the
 				// user's choice permanently so getList() won't re-file it right back
 				// in on its next refresh.
@@ -901,24 +1053,34 @@ export default {
 					await this.addContainerAutoExclude(item.name)
 				}
 				this.placeDroppedItems([item.name], clientX, clientY)
-				this.getList()
-			})
+			}).catch(err => this.toastFolderError(err)).then(() => this.getList())
 		},
 
 		handleRemoveMultipleFromFolder({ items, folderId, clientX, clientY }) {
 			const appNames = items.map(i => i.name)
-			this.removeAppsFromFolder(appNames, folderId).then(async (folders) => {
+			return this.removeAppsFromFolder(appNames, folderId).then(async (folders) => {
 				const folder = folders.find(f => f.id === folderId)
 				if (folder && folder.isAutoContainerFolder) {
 					await this.addContainerAutoExcludes(appNames)
 				}
 				this.placeDroppedItems(appNames, clientX, clientY)
-				this.getList()
-			})
+			}).catch(err => this.toastFolderError(err)).then(() => this.getList())
 		},
 
 		async openLegacyEditModal(item) {
-			const override = await this.getLegacyAppOverride(item.name)
+			let override
+			try {
+				override = await this.getLegacyAppOverride(item.name)
+			} catch (e) {
+				console.error(e)
+				this.$buefy.toast.open({
+					message: this.$t('Unable to load the app settings: {reason}', { reason: apiErrorHtml(e, this.$t('Something went wrong')) }),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 5000
+				})
+				return
+			}
 			const displayName = (item.title && ice_i18n(item.title)) || item.name
 			this.$store.commit('OPEN_WINDOW', {
 				id: `edit-app-${item.name}`,
@@ -973,8 +1135,47 @@ export default {
 			}
 		},
 
+		// "Import to NivaroOS": a plain (non-compose) container has no compose
+		// app to load via myComposeApp (404), so export its compose first and
+		// open the custom installer pre-filled with that YAML. Compose apps
+		// keep the regular edit flow.
 		async showContainerPanel(item) {
-			await this.showConfigPanel(item)
+			if (!item || item.app_type !== 'container') {
+				await this.showConfigPanel(item)
+				return
+			}
+			const displayName = (item.title && ice_i18n(item.title)) || item.name
+			try {
+				const res = await this.$api.container.exportAsCompose(item.name)
+				const yaml = res && res.data
+				if (!yaml || typeof yaml !== 'string') {
+					throw new Error(this.$t('The exported compose file is empty'))
+				}
+				this.$messageBus('apps_custominstall')
+				this.$store.commit('OPEN_WINDOW', {
+					id: 'appstore',
+					title: `${this.$t('App Store')} - ${displayName}`,
+					component: 'AppStoreApp',
+					width: 1040,
+					height: 720,
+					props: {
+						initialMode: 'custom',
+						initialAppName: '',
+						initialComposeYaml: yaml,
+						importContainerName: item.name,
+						// lets an already-open App Store react to a repeat request
+						requestedAt: Date.now()
+					}
+				})
+			} catch (e) {
+				console.error('Import container failed', e)
+				this.$buefy.toast.open({
+					message: this.$t('Unable to import {name}: {reason}', { name: escapeHtml(displayName), reason: apiErrorHtml(e, this.$t('Something went wrong')) }),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 6000
+				})
+			}
 		},
 
 		async showExternalLinkPanel(item = {}) {
@@ -1012,14 +1213,21 @@ export default {
 			const title = this.parseTitle(props['app:title']) || name
 			const icon = props['app:icon'] || defaultAppIcon
 
+			this.clearFailedInstallTimer(name)
 			let existing = this.installingApps.find(a => a.name === name)
+			if (existing && existing.failed) {
+				this.installingApps = this.installingApps.filter(a => a.name !== name)
+				existing = null
+			}
 			if (!existing) {
 				existing = {
 					name,
 					title,
 					icon,
 					app_type: 'installing',
-					progress: 5
+					progress: 5,
+					failed: false,
+					errorMessage: ''
 				}
 				this.installingApps.push(existing)
 			}
@@ -1034,7 +1242,7 @@ export default {
 			const num = parseInt(rawProgress, 10)
 
 			let existing = this.installingApps.find(a => a.name === name)
-			if (existing && !isNaN(num)) {
+			if (existing && !existing.failed && !isNaN(num)) {
 				existing.progress = Math.min(99, Math.max(existing.progress, num))
 			}
 		},
@@ -1042,14 +1250,30 @@ export default {
 		'app:install-end'(res) {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name || 'app'
-			this.installingApps = this.installingApps.filter(a => a.name !== name)
+			// install-end is also published (from a defer) after a failure -
+			// keep a failed tile visible until its own timer clears it.
+			this.installingApps = this.installingApps.filter(a => a.name !== name || a.failed)
 			this.getList()
 		},
 
+		// Show the failure on the tile itself instead of making it vanish;
+		// the reason is also announced by the install-status toast/notice.
 		'app:install-error'(res) {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name || 'app'
-			this.installingApps = this.installingApps.filter(a => a.name !== name)
+			const existing = this.installingApps.find(a => a.name === name)
+			if (!existing) {
+				this.getList()
+				return
+			}
+			existing.failed = true
+			existing.errorMessage = props.message || this.$t('Deployment encountered an error.')
+			this.clearFailedInstallTimer(name)
+			this.failedInstallTimers[name] = setTimeout(() => {
+				delete this.failedInstallTimers[name]
+				this.installingApps = this.installingApps.filter(a => a.name !== name)
+				this.syncPositions(false)
+			}, INSTALL_FAILED_TILE_MS)
 			this.getList()
 		},
 
@@ -1219,6 +1443,19 @@ export default {
 	font-weight: 600;
 	color: #ffffff;
 	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.installing-app-slot.is-failed {
+	opacity: 1;
+
+	.ring-fill {
+		stroke: #f87171;
+	}
+}
+
+.installing-badge.is-failed {
+	color: #fecaca;
+	border-color: rgba(248, 113, 113, 0.5);
 }
 
 .installing-badge {

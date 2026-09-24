@@ -142,7 +142,11 @@ export default {
 			if (body) body.style.flex = ''
 			const want = Math.min(natural + 46, window.innerHeight - 96)
 			if (want > 120 && Math.abs(want - win.height) > 4) {
-				this.$store.commit('UPDATE_WINDOW_RECT', { id: this.windowId, x: win.x, y: win.y, width: win.width, height: want })
+				// Keep the whole window on screen: move it up if it would grow
+				// past the bottom (under the dock).
+				const maxBottom = window.innerHeight - 56
+				const y = win.y + want > maxBottom ? Math.max(8, maxBottom - want) : win.y
+				this.$store.commit('UPDATE_WINDOW_RECT', { id: this.windowId, x: win.x, y, width: win.width, height: want })
 			}
 		},
 		closeWindow() {

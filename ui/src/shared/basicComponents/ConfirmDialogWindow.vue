@@ -6,6 +6,13 @@
 			</div>
 			<div class="confirm-dialog-main">
 				<div class="confirm-dialog-message" v-html="message"></div>
+				<!-- Optional real checkbox (confirmWindow({ checkbox: { label, checked,
+				     checkedHint, uncheckedHint } })). Its state is scoped to this
+				     window and handed to onConfirm(checked) - no global DOM ids. -->
+				<div v-if="checkbox" class="confirm-dialog-checkbox">
+					<b-checkbox v-model="checkboxChecked" size="is-small">{{ checkbox.label }}</b-checkbox>
+					<p v-if="checkboxHint" class="confirm-dialog-hint" :class="{ 'is-danger': checkboxChecked && checkbox.checkedIsDanger }" aria-live="polite">{{ checkboxHint }}</p>
+				</div>
 			</div>
 		</div>
 		<div class="confirm-dialog-actions">
@@ -33,12 +40,15 @@ export default {
 		icon: { type: String, default: '' },
 		iconPack: { type: String, default: 'mdi' },
 		onConfirm: { type: Function, default: null },
-		onCancel: { type: Function, default: null }
+		onCancel: { type: Function, default: null },
+		// { label, checked, checkedHint, uncheckedHint, checkedIsDanger }
+		checkbox: { type: Object, default: null }
 	},
 	data() {
 		return {
 			loading: false,
-			responded: false
+			responded: false,
+			checkboxChecked: !!(this.checkbox && this.checkbox.checked)
 		}
 	},
 	computed: {
@@ -51,6 +61,10 @@ export default {
 		},
 		iconClass() {
 			return this.type || 'is-primary'
+		},
+		checkboxHint() {
+			if (!this.checkbox) return ''
+			return (this.checkboxChecked ? this.checkbox.checkedHint : this.checkbox.uncheckedHint) || ''
 		}
 	},
 	methods: {
@@ -60,7 +74,7 @@ export default {
 			const winId = this.id || (this.$parent && this.$parent.win && this.$parent.win.id)
 			if (typeof this.onConfirm === 'function') {
 				try {
-					const res = this.onConfirm()
+					const res = this.checkbox ? this.onConfirm(this.checkboxChecked) : this.onConfirm()
 					if (res && typeof res.then === 'function') {
 						this.loading = true
 						await res
@@ -173,6 +187,25 @@ export default {
 
 	::v-deep .text-muted {
 		color: var(--theme-text-muted, #64748b);
+	}
+}
+
+.confirm-dialog-checkbox {
+	margin-top: var(--space-3);
+
+	::v-deep .b-checkbox.checkbox {
+		color: var(--theme-text-primary, #1e293b);
+		font-size: var(--font-sm, 0.85rem);
+	}
+}
+
+.confirm-dialog-hint {
+	margin: var(--space-1) 0 0;
+	font-size: var(--font-xs, 0.75rem);
+	color: var(--theme-text-secondary, #475569);
+
+	&.is-danger {
+		color: var(--color-danger-fg, #b91c1c);
 	}
 }
 

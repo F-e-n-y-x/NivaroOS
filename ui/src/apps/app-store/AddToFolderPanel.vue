@@ -6,7 +6,8 @@
 				<b-field :label="$t('Folder')">
 					<b-autocomplete ref="input" v-model="name" :data="filteredFolders" :open-on-focus="true"
 						:placeholder="$t('Existing or new folder name')" append-to-body expanded field="name"
-						@select="option => (name = option.name)">
+						maxlength="30" @select="option => (name = option ? option.name : name)"
+						@keyup.native.enter="confirm">
 						<template #empty>{{ $t('No matching folders - this will create a new one') }}</template>
 					</b-autocomplete>
 				</b-field>
@@ -17,7 +18,7 @@
 		<footer class="modal-card-foot is-flex is-align-items-center">
 			<div class="is-flex-grow-1"></div>
 			<div>
-				<b-button :disabled="!name" :label="$t('Add')" expaned rounded type="is-primary" @click="confirm" />
+				<b-button :disabled="!trimmedName || isSaving" :loading="isSaving" :label="$t('Add')" expanded rounded type="is-primary" @click="confirm" />
 			</div>
 		</footer>
 		<!-- Modal-Card Footer End -->
@@ -39,6 +40,7 @@
 <script>
 import events from '@/events/events'
 import business_Folders from '@/mixins/app/Business_Folders'
+import { apiErrorHtml } from '@/mixins/app/apiError'
 
 export default {
 	mixins: [business_Folders],
@@ -60,13 +62,17 @@ export default {
 	},
 	data() {
 		return {
-			name: ''
+			name: '',
+			isSaving: false
 		}
 	},
 	computed: {
+		trimmedName() {
+			return String(this.name || '').trim()
+		},
 		filteredFolders() {
-			if (!this.name) return this.folders
-			const lower = this.name.toLowerCase()
+			if (!this.trimmedName) return this.folders
+			const lower = this.trimmedName.toLowerCase()
 			return this.folders.filter(f => f.name.toLowerCase().includes(lower))
 		}
 	},
@@ -77,18 +83,32 @@ export default {
 	},
 	methods: {
 		async confirm() {
-			if (!this.name) return
-			this.$emit('confirm', this.name)
+			const name = this.trimmedName
+			if (!name || this.isSaving) return
+			this.isSaving = true
+			this.$emit('confirm', name)
 
-			if (this.itemName) {
-				let folder = this.folders.find(f => f.name === this.name)
-				if (!folder) {
-					folder = await this.createFolder(this.name)
+			try {
+				if (this.itemName) {
+					let folder = this.folders.find(f => f.name.trim() === name)
+					if (!folder) {
+						folder = await this.createFolder(name)
+					}
+					await this.addAppToFolder(this.itemName, folder.id)
+					this.$EventBus.$emit(events.GET_APP_LIST)
 				}
-				await this.addAppToFolder(this.itemName, folder.id)
-				this.$EventBus.$emit(events.GET_APP_LIST)
+				this.$emit('close')
+			} catch (e) {
+				console.error('add to folder', e)
+				this.$buefy.toast.open({
+					message: this.$t('Folders could not be updated: {reason}', { reason: apiErrorHtml(e, this.$t('Something went wrong')) }),
+					type: 'is-danger',
+					position: 'is-top',
+					duration: 5000
+				})
+			} finally {
+				this.isSaving = false
 			}
-			this.$emit('close')
 		}
 	}
 }

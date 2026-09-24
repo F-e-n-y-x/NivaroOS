@@ -1,3 +1,5 @@
+import { apiErrorHtml } from './apiError'
+
 export default {
 	methods: {
 		openAppToNewWindow(appInfo) {
@@ -24,31 +26,44 @@ export default {
 		},
 		async openThirdContainerByAppInfo(appInfo) {
 			try {
-				await this.$openAPI.appManagement.compose.setComposeAppStatus(appInfo.id, 'start')
-
-				let allinfo = await this.$openAPI.appManagement.compose.myComposeApp(appInfo.id).then(res => {
+				const allinfo = await this.$openAPI.appManagement.compose.myComposeApp(appInfo.id).then(res => {
 					return res.data.data
 				})
-				
-				let containerInfoV2 = allinfo.store_info
-				let app = {
+
+				const compose = (allinfo && allinfo.compose) || {}
+				const services = compose.services || {}
+				const containerInfoV2 = (allinfo && allinfo.store_info) || {}
+				// The main service key is whatever x-casaos.main names - not
+				// necessarily the app id - so fall back to the first service.
+				const mainName = (compose['x-casaos'] && compose['x-casaos'].main) || containerInfoV2.main
+				const mainService = services[mainName] || services[appInfo.id] || services[Object.keys(services)[0]] || {}
+				const app = {
 					"id": appInfo.id,
 					"name": appInfo.id,
 					scheme: containerInfoV2.scheme,
 					hostname: containerInfoV2.hostname || this.$baseIp,
 					port: containerInfoV2.port_map,
 					index: containerInfoV2.index,
-					image: allinfo.compose.services[appInfo.id].image,
+					image: mainService.image || '',
 				}
 
-				if (allinfo.status.indexOf('running') === -1) { 
-					await this.$openAPI.appManagement.compose.setComposeAppStatus(allinfo.compose.name, 'start')
+				const status = String((allinfo && allinfo.status) || '')
+				if (status.indexOf('running') === -1) {
+					await this.$openAPI.appManagement.compose.setComposeAppStatus(compose.name || appInfo.id, 'start')
 					this.firstOpenThirdApp(app)
-				}else{
+				} else {
 					this.openAppToNewWindow(app)
 				}
 			} catch (e) {
 				console.error(e);
+				if (this.$buefy && this.$buefy.toast) {
+					this.$buefy.toast.open({
+						message: apiErrorHtml(e, this.$t('Unable to open the app')),
+						type: 'is-danger',
+						position: 'is-top',
+						duration: 5000
+					})
+				}
 			}
 
 		},

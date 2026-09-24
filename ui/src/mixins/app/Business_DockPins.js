@@ -25,15 +25,40 @@ export const SYSTEM_NAME_MAP = {
 }
 
 
+// Shared read cache for the many desktop AppCards that each want to know
+// whether they're pinned: concurrent callers share one in-flight request and
+// a result is reused for a short TTL, so N cards (created together, or all
+// reacting to one RELOAD_APP_LIST) cost one request instead of N.
+// getDockPins() itself stays uncached (the Dock writes pins directly and
+// must always read fresh); it just refreshes the cache as a side effect.
+const PINS_CACHE_TTL = 3000
+let pinsCache = null // { value, at }
+let pinsInFlight = null
+
+export function invalidateDockPinsCache() {
+	pinsCache = null
+}
+
 export default {
 	methods: {
+		getDockPinsCached() {
+			if (pinsCache && Date.now() - pinsCache.at < PINS_CACHE_TTL) {
+				return Promise.resolve(pinsCache.value.slice())
+			}
+			if (!pinsInFlight) {
+				pinsInFlight = this.getDockPins().finally(() => {
+					pinsInFlight = null
+				})
+			}
+			return pinsInFlight.then(pins => pins.slice())
+		},
+
 		async getDockPins() {
 			try {
 				const res = await this.$api.users.getCustomStorage(pinsConfig)
-				if (res.data && Array.isArray(res.data.data)) {
-					return res.data.data
-				}
-				return [...DEFAULT_PINS]
+				const pins = (res.data && Array.isArray(res.data.data)) ? res.data.data : [...DEFAULT_PINS]
+				pinsCache = { value: pins.slice(), at: Date.now() }
+				return pins
 			} catch (e) {
 				return [...DEFAULT_PINS]
 			}
@@ -47,7 +72,12 @@ export default {
 				return norm !== normalizedName && n !== name
 			})
 			const next = pinned ? withoutName.concat(normalizedName) : withoutName
-			return this.$api.users.setCustomStorage(pinsConfig, next)
+			invalidateDockPinsCache()
+			try {
+				return await this.$api.users.setCustomStorage(pinsConfig, next)
+			} finally {
+				invalidateDockPinsCache()
+			}
 		}
 	}
 }

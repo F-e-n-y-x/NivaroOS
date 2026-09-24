@@ -10,14 +10,16 @@ const overridesConfig = 'legacy_app_overrides'
 
 export default {
 	methods: {
+		// Throws when the read fails - saveLegacyAppOverride() must never
+		// write back an empty map in place of overrides it couldn't read.
 		async getLegacyAppOverrides() {
-			try {
-				const res = await this.$api.users.getCustomStorage(overridesConfig)
-				return (res.data && res.data.data) || {}
-			} catch (e) {
-				console.error('getLegacyAppOverrides', e)
-				return {}
+			const res = await this.$api.users.getCustomStorage(overridesConfig)
+			const data = res && res.data && res.data.data
+			if (data === undefined || data === null || data === '') return {}
+			if (typeof data !== 'object' || Array.isArray(data)) {
+				throw new Error('Unexpected app override data')
 			}
+			return data
 		},
 
 		async getLegacyAppOverride(appName) {

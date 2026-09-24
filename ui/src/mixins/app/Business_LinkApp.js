@@ -10,15 +10,16 @@ import uniqWith from 'lodash/uniqWith'
 
 export default {
 	methods: {
+		// Throws on read failure: callers that write the list back
+		// (connect / delete) must not save over links they couldn't read.
 		async getLinkAppList() {
-			try {
-				// forecast null or String.
-				let LinkAppList = await this.$api.users.getLinkAppDetail().then(v => v.data.data || []);
-				LinkAppList = this.transferLinkAppList(LinkAppList);
-				return LinkAppList
-			} catch (e) {
-				console.error('getLinkAppList', e)
+			// forecast null or String.
+			let LinkAppList = await this.$api.users.getLinkAppDetail().then(v => v.data.data || []);
+			if (typeof LinkAppList === 'string') {
+				try { LinkAppList = JSON.parse(LinkAppList) } catch (e) { LinkAppList = [] }
 			}
+			if (!Array.isArray(LinkAppList)) LinkAppList = []
+			return this.transferLinkAppList(LinkAppList);
 		},
 
 		setLinkAppList(LinkAppList) {

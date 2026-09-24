@@ -35,20 +35,33 @@ function parseComposeProject(rawName) {
 }
 export { parseComposeProject }
 
+// Every read-modify-write of app_folders (and of the auto-file excludes)
+// goes through this one module-level chain, shared by every component using
+// the mixin - so the desktop's background refresh can't interleave with a
+// user action (add/remove/rename/delete) and save a stale copy over it.
+let folderWriteChain = Promise.resolve()
+export function withFolderLock(fn) {
+	const run = folderWriteChain.then(() => fn())
+	folderWriteChain = run.catch(() => {})
+	return run
+}
+
 function makeFolderId() {
 	return 'folder-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
 }
 
 export default {
 	methods: {
+		// Throws when the read fails - callers must NOT fall back to [] and
+		// then save, or one flaky request wipes every folder the user made.
 		async getFolders() {
-			try {
-				const res = await this.$api.users.getCustomStorage(foldersConfig)
-				return (res.data && res.data.data) || []
-			} catch (e) {
-				console.error('getFolders', e)
-				return []
+			const res = await this.$api.users.getCustomStorage(foldersConfig)
+			const data = res && res.data && res.data.data
+			if (data === undefined || data === null || data === '') return []
+			if (!Array.isArray(data)) {
+				throw new Error('Unexpected folder data')
 			}
+			return data
 		},
 
 		saveFolders(folders) {
@@ -56,39 +69,45 @@ export default {
 		},
 
 		async createFolder(name) {
-			const folders = await this.getFolders()
-			const folder = {
-				id: 'folder-' + Date.now(),
-				name,
-				icon: null,
-				appNames: []
-			}
-			folders.push(folder)
-			await this.saveFolders(folders)
-			return folder
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const folder = {
+					id: makeFolderId(),
+					name,
+					icon: null,
+					appNames: []
+				}
+				folders.push(folder)
+				await this.saveFolders(folders)
+				return folder
+			})
 		},
 
 		async addAppToFolder(appName, folderId) {
-			const folders = await this.getFolders()
-			folders.forEach(f => {
-				f.appNames = f.appNames.filter(n => n !== appName)
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				folders.forEach(f => {
+					f.appNames = f.appNames.filter(n => n !== appName)
+				})
+				const folder = folders.find(f => f.id === folderId)
+				if (folder) {
+					folder.appNames.push(appName)
+				}
+				await this.saveFolders(folders)
+				return folders
 			})
-			const folder = folders.find(f => f.id === folderId)
-			if (folder) {
-				folder.appNames.push(appName)
-			}
-			await this.saveFolders(folders)
-			return folders
 		},
 
 		async removeAppFromFolder(appName, folderId) {
-			const folders = await this.getFolders()
-			const folder = folders.find(f => f.id === folderId)
-			if (folder) {
-				folder.appNames = folder.appNames.filter(n => n !== appName)
-			}
-			await this.saveFolders(folders)
-			return folders
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const folder = folders.find(f => f.id === folderId)
+				if (folder) {
+					folder.appNames = folder.appNames.filter(n => n !== appName)
+				}
+				await this.saveFolders(folders)
+				return folders
+			})
 		},
 
 		// Same as removeAppFromFolder but for several apps at once, in a
@@ -96,41 +115,49 @@ export default {
 		// would race itself (each call's getFolders() can miss the previous
 		// call's not-yet-saved removal), silently leaving some apps behind.
 		async removeAppsFromFolder(appNames, folderId) {
-			const folders = await this.getFolders()
-			const folder = folders.find(f => f.id === folderId)
-			if (folder) {
-				folder.appNames = folder.appNames.filter(n => !appNames.includes(n))
-			}
-			await this.saveFolders(folders)
-			return folders
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const folder = folders.find(f => f.id === folderId)
+				if (folder) {
+					folder.appNames = folder.appNames.filter(n => !appNames.includes(n))
+				}
+				await this.saveFolders(folders)
+				return folders
+			})
 		},
 
 		async deleteFolder(folderId) {
-			const folders = await this.getFolders()
-			const remaining = folders.filter(f => f.id !== folderId)
-			await this.saveFolders(remaining)
-			return remaining
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const remaining = folders.filter(f => f.id !== folderId)
+				await this.saveFolders(remaining)
+				return remaining
+			})
 		},
 
 		async renameFolder(folderId, name) {
-			const folders = await this.getFolders()
-			const folder = folders.find(f => f.id === folderId)
-			if (folder) {
-				folder.name = name
-			}
-			await this.saveFolders(folders)
-			return folders
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const folder = folders.find(f => f.id === folderId)
+				if (folder) {
+					folder.name = name
+				}
+				await this.saveFolders(folders)
+				return folders
+			})
 		},
 
 		async setFolderIcon(folderId, icon, iconRadius) {
-			const folders = await this.getFolders()
-			const folder = folders.find(f => f.id === folderId)
-			if (folder) {
-				if (icon) folder.icon = icon
-				folder.iconRadius = iconRadius
-			}
-			await this.saveFolders(folders)
-			return folders
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				const folder = folders.find(f => f.id === folderId)
+				if (folder) {
+					if (icon) folder.icon = icon
+					folder.iconRadius = iconRadius
+				}
+				await this.saveFolders(folders)
+				return folders
+			})
 		},
 
 		// Files each group's app names into its own compose-project folder
@@ -142,39 +169,69 @@ export default {
 		//
 		// groups: [{ project: string|null, appNames: string[] }]
 		async autoFileContainerApps(groups) {
-			if (!groups.length) return
-			const folders = await this.getFolders()
-			groups.forEach(({ project, appNames }) => {
-				if (!appNames.length) return
-				let folder = project
-					? folders.find(f => f.composeProject === project)
-					: folders.find(f => f.isAutoContainerFolder && !f.composeProject)
-				if (!folder) {
-					folder = {
-						id: makeFolderId(),
-						name: project || AUTO_CONTAINER_FOLDER_NAME,
-						icon: null,
-						appNames: [],
-						isAutoContainerFolder: true
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				if (!groups.length) return folders
+				// Re-check against the fresh copy: a user action may have
+				// filed one of these apps since the caller's read.
+				const alreadyFiled = new Set()
+				folders.forEach(f => f.appNames.forEach(n => alreadyFiled.add(n)))
+				let changed = false
+				groups.forEach(({ project, appNames: rawNames }) => {
+					const appNames = rawNames.filter(n => !alreadyFiled.has(n))
+					if (!appNames.length) return
+					changed = true
+					let folder = project
+						? folders.find(f => f.composeProject === project)
+						: folders.find(f => f.isAutoContainerFolder && !f.composeProject)
+					if (!folder) {
+						folder = {
+							id: makeFolderId(),
+							name: project || AUTO_CONTAINER_FOLDER_NAME,
+							icon: null,
+							appNames: [],
+							isAutoContainerFolder: true
+						}
+						if (project) folder.composeProject = project
+						folders.push(folder)
 					}
-					if (project) folder.composeProject = project
-					folders.push(folder)
-				}
-				appNames.forEach(name => {
-					if (!folder.appNames.includes(name)) folder.appNames.push(name)
+					appNames.forEach(name => {
+						if (!folder.appNames.includes(name)) folder.appNames.push(name)
+					})
 				})
+				if (changed) await this.saveFolders(folders)
+				return folders
 			})
-			await this.saveFolders(folders)
 		},
 
+		// Drops apps from auto-filed container folders once they're no
+		// longer plain containers (see AppSection.loadList). Returns the
+		// fresh folder list; saves only when something changed.
+		async pruneStaleAutoFiledApps(currentAppTypeByName) {
+			return withFolderLock(async () => {
+				const folders = await this.getFolders()
+				let changed = false
+				folders.forEach(f => {
+					if (!f.isAutoContainerFolder) return
+					const kept = f.appNames.filter(n => {
+						const type = currentAppTypeByName[n]
+						return type === undefined || type === 'container'
+					})
+					if (kept.length !== f.appNames.length) {
+						f.appNames = kept
+						changed = true
+					}
+				})
+				if (changed) await this.saveFolders(folders)
+				return folders
+			})
+		},
+
+		// Throws on read failure for the same reason as getFolders().
 		async getContainerAutoExcludes() {
-			try {
-				const res = await this.$api.users.getCustomStorage(containerAutoExcludeConfig)
-				return (res.data && res.data.data) || []
-			} catch (e) {
-				console.error('getContainerAutoExcludes', e)
-				return []
-			}
+			const res = await this.$api.users.getCustomStorage(containerAutoExcludeConfig)
+			const data = res && res.data && res.data.data
+			return Array.isArray(data) ? data : []
 		},
 
 		// Called when the user removes an app from the auto container folder
@@ -187,17 +244,19 @@ export default {
 		// Batched version - see removeAppsFromFolder for why a loop of single
 		// read-modify-write calls would race itself.
 		async addContainerAutoExcludes(appNames) {
-			const excludes = await this.getContainerAutoExcludes()
-			let changed = false
-			appNames.forEach(name => {
-				if (!excludes.includes(name)) {
-					excludes.push(name)
-					changed = true
+			return withFolderLock(async () => {
+				const excludes = await this.getContainerAutoExcludes()
+				let changed = false
+				appNames.forEach(name => {
+					if (!excludes.includes(name)) {
+						excludes.push(name)
+						changed = true
+					}
+				})
+				if (changed) {
+					await this.$api.users.setCustomStorage(containerAutoExcludeConfig, excludes)
 				}
 			})
-			if (changed) {
-				await this.$api.users.setCustomStorage(containerAutoExcludeConfig, excludes)
-			}
 		}
 	}
 }

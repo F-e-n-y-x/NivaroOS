@@ -9,21 +9,25 @@
 						:style="imgTransformStyle"
 						draggable="false"
 						class="icon-preview-img"
-						alt=""
+						:alt="$t('Icon preview')"
 						@load="onImageLoaded"
 					/>
 				</div>
 			</div>
 
+			<p v-if="corsBlocked" class="icon-editor-notice" role="status">
+				<i class="mdi mdi-information-outline mr-1" aria-hidden="true"></i>
+				{{ $t("This image's server doesn't allow editing it here. Only the roundness will be saved - upload the image instead to crop or zoom it.") }}
+			</p>
 			<div class="editor-control">
-				<label><i class="mdi mdi-magnify-plus-outline mr-1"></i>{{ $t('Zoom') }}</label>
-				<input v-model.number="zoom" max="3" min="1" step="0.02" type="range" class="slider-control" />
-				<span class="zoom-value">{{ Math.round(zoom * 100) }}%</span>
+				<label :for="uid + '-zoom'"><i class="mdi mdi-magnify-plus-outline mr-1" aria-hidden="true"></i>{{ $t('Zoom') }}</label>
+				<input :id="uid + '-zoom'" v-model.number="zoom" :disabled="corsBlocked" max="3" min="1" step="0.02" type="range" class="slider-control" />
+				<span class="zoom-value" aria-hidden="true">{{ Math.round(zoom * 100) }}%</span>
 			</div>
 			<div class="editor-control">
-				<label><i class="mdi mdi-rounded-corner mr-1"></i>{{ $t('Roundness') }}</label>
-				<input v-model.number="radius" max="50" min="0" step="1" type="range" class="slider-control" />
-				<span class="zoom-value">{{ radius }}%</span>
+				<label :for="uid + '-radius'"><i class="mdi mdi-rounded-corner mr-1" aria-hidden="true"></i>{{ $t('Roundness') }}</label>
+				<input :id="uid + '-radius'" v-model.number="radius" max="50" min="0" step="1" type="range" class="slider-control" />
+				<span class="zoom-value" aria-hidden="true">{{ radius }}%</span>
 			</div>
 		</section>
 		<footer class="modal-card-foot is-flex is-align-items-center">
@@ -33,7 +37,7 @@
 			</b-button>
 			<div class="is-flex-grow-1"></div>
 			<div>
-				<b-button :label="$t('Apply')" rounded type="is-primary" @click="apply" />
+				<b-button :label="$t('Apply')" :loading="isApplying" rounded type="is-primary" @click="apply" />
 			</div>
 		</footer>
 	</div>
@@ -42,6 +46,7 @@
 <script>
 import events from '@/events/events'
 import business_Folders from '@/mixins/app/Business_Folders'
+import { apiErrorHtml } from '@/mixins/app/apiError'
 
 const VIEWPORT_SIZE = 220
 const OUTPUT_SIZE = 256
@@ -90,7 +95,13 @@ export default {
 			naturalWidth: 0,
 			naturalHeight: 0,
 			dragging: false,
-			dragStart: null
+			dragStart: null,
+			// A CORS-enabled copy of the image for the canvas; the on-screen
+			// <img> has no crossorigin so it always displays.
+			canvasImage: null,
+			corsBlocked: false,
+			isApplying: false,
+			uid: 'icon-editor-' + Math.random().toString(36).slice(2, 8)
 		}
 	},
 	watch: {
@@ -115,11 +126,20 @@ export default {
 	methods: {
 		loadImage() {
 			const img = new Image()
+			// Must be set before src, or the canvas gets tainted.
 			img.crossOrigin = 'anonymous'
 			img.onload = () => {
 				this.naturalWidth = img.naturalWidth || VIEWPORT_SIZE
 				this.naturalHeight = img.naturalHeight || VIEWPORT_SIZE
 				this.imageLoaded = true
+				this.canvasImage = img
+				this.corsBlocked = false
+			}
+			img.onerror = () => {
+				// Usually the server sends no CORS headers: the picture still
+				// shows (plain <img>) but can't be re-drawn into a canvas.
+				this.canvasImage = null
+				this.corsBlocked = !String(this.src || '').startsWith('data:')
 			}
 			img.src = this.src
 		},
@@ -170,49 +190,78 @@ export default {
 			window.removeEventListener('mouseup', this.stopDrag)
 			window.removeEventListener('touchend', this.stopDrag)
 		},
-		apply() {
+		// Draws the image "contained" (aspect ratio kept, never stretched)
+		// into the square output with the current zoom/pan.
+		renderToDataUrl() {
+			const img = this.canvasImage
+			if (!img) return null
 			const canvas = document.createElement('canvas')
 			canvas.width = OUTPUT_SIZE
 			canvas.height = OUTPUT_SIZE
 			const ctx = canvas.getContext('2d')
+			const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
+			const nw = img.naturalWidth || OUTPUT_SIZE
+			const nh = img.naturalHeight || OUTPUT_SIZE
+			const fit = Math.min(OUTPUT_SIZE / nw, OUTPUT_SIZE / nh)
+			const dw = nw * fit
+			const dh = nh * fit
 
-			let payload
+			ctx.save()
+			ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2)
+			ctx.translate(this.offsetX * ratio, this.offsetY * ratio)
+			ctx.scale(this.zoom, this.zoom)
+			ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+			ctx.restore()
+			// Throws a SecurityError if the canvas is tainted.
+			return canvas.toDataURL('image/png')
+		},
+
+		async apply() {
+			if (this.isApplying) return
+			let dataUrl = null
 			try {
-				const img = this.$refs.img
-				const ratio = OUTPUT_SIZE / VIEWPORT_SIZE
-
-				ctx.save()
-				ctx.translate(OUTPUT_SIZE / 2, OUTPUT_SIZE / 2)
-				ctx.translate(this.offsetX * ratio, this.offsetY * ratio)
-				ctx.scale(this.zoom, this.zoom)
-				ctx.drawImage(img, -OUTPUT_SIZE / 2, -OUTPUT_SIZE / 2, OUTPUT_SIZE, OUTPUT_SIZE)
-				ctx.restore()
-
-				payload = {
-					dataUrl: canvas.toDataURL('image/png'),
-					rawSrc: this.src,
-					zoom: this.zoom,
-					offsetX: this.offsetX,
-					offsetY: this.offsetY,
-					radius: this.radius
-				}
+				dataUrl = this.renderToDataUrl()
 			} catch (e) {
-				// Cross-origin image fallback
-				payload = {
-					dataUrl: null,
-					rawSrc: this.src,
-					zoom: this.zoom,
-					offsetX: this.offsetX,
-					offsetY: this.offsetY,
-					radius: this.radius
-				}
+				console.warn('IconEditorModal: canvas export blocked', e)
+				dataUrl = null
+			}
+			if (!dataUrl) {
+				this.corsBlocked = true
+			}
+			const payload = {
+				dataUrl,
+				rawSrc: this.src,
+				zoom: this.zoom,
+				offsetX: this.offsetX,
+				offsetY: this.offsetY,
+				radius: this.radius
 			}
 			this.$emit('apply', payload)
 
 			if (this.folderId) {
-				this.setFolderIcon(this.folderId, payload.dataUrl, payload.radius).then(() => {
+				this.isApplying = true
+				try {
+					await this.setFolderIcon(this.folderId, payload.dataUrl, payload.radius)
 					this.$EventBus.$emit(events.GET_APP_LIST)
-				})
+					if (!dataUrl) {
+						this.$buefy.toast.open({
+							message: this.$t('Only the roundness was saved - this image cannot be cropped here.'),
+							type: 'is-warning',
+							position: 'is-top',
+							duration: 5000
+						})
+					}
+				} catch (e) {
+					this.$buefy.toast.open({
+						message: this.$t('Folders could not be updated: {reason}', { reason: apiErrorHtml(e, this.$t('Something went wrong')) }),
+						type: 'is-danger',
+						position: 'is-top',
+						duration: 5000
+					})
+					return
+				} finally {
+					this.isApplying = false
+				}
 			}
 			this.$emit('close')
 		}
@@ -264,10 +313,23 @@ export default {
 	height: 100% !important;
 	max-width: none !important;
 	max-height: none !important;
-	object-fit: cover;
+	object-fit: contain;
 	user-select: none;
 	pointer-events: none;
 	display: block;
+}
+
+.icon-editor-notice {
+	display: flex;
+	align-items: flex-start;
+	margin: 0 0 var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-sm);
+	background: var(--theme-card-subtle);
+	color: var(--color-warning-fg);
+	font-size: var(--font-xs);
+	line-height: 1.4;
 }
 
 .editor-control {
@@ -293,8 +355,18 @@ export default {
 
 	.slider-control {
 		flex-grow: 1;
-		accent-color: #2563eb;
+		accent-color: var(--color-primary, #2563eb);
 		cursor: pointer;
+
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-fg);
+			outline-offset: 2px;
+		}
+
+		&:disabled {
+			cursor: not-allowed;
+			opacity: 0.5;
+		}
 	}
 
 	.zoom-value {
