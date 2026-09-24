@@ -11,23 +11,33 @@
 					<div class="widget-header-text">
 						<span class="widget-title">{{ $t("Processor") }}</span>
 						<span class="widget-header-meta" :title="cpuModelShort">
-							{{ cpuModelShort || (cpuVendor ? cpuVendor + ' Architecture' : 'System CPU') }}
+							{{ cpuModelShort || (cpuVendor ? $t('{vendor} processor', { vendor: cpuVendor }) : $t('System CPU')) }}
 						</span>
 					</div>
 				</div>
 				<div class="widget-header-right">
-					<div
+					<button
 						v-if="percpu.length > 1"
+						type="button"
 						:class="{ active: showCores }"
 						:title="$t('Toggle per-core usage')"
+						:aria-label="$t('Toggle per-core usage')"
+						:aria-pressed="showCores ? 'true' : 'false'"
 						class="widget-icon-btn"
 						@click="toggleCores"
 					>
-						<i class="mdi mdi-view-grid-outline"></i>
-					</div>
-					<div class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+						<i class="mdi mdi-view-grid-outline" aria-hidden="true"></i>
+					</button>
+					<button
+						type="button"
+						class="widget-icon-btn"
+						:title="$t('Processes')"
+						:aria-label="$t('Processes')"
+						:aria-expanded="showMore ? 'true' : 'false'"
+						@click="showMoreInfo"
+					>
 						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
-					</div>
+					</button>
 				</div>
 			</div>
 
@@ -43,16 +53,22 @@
 					<div class="bento-specs-grid">
 						<div class="spec-tile" :title="$t('Clock Speed')">
 							<span class="spec-label">{{ $t('Clock') }}</span>
-							<span class="spec-val">{{ mhz ? (mhz / 1000).toFixed(1) + ' GHz' : 'Dynamic' }}</span>
+							<span class="spec-val">{{ mhz ? (mhz / 1000).toFixed(1) + ' GHz' : $t('Dynamic') }}</span>
 						</div>
 						<div class="spec-tile" :title="$t('Cores and Threads')">
 							<span class="spec-label">{{ $t('Cores') }}</span>
-							<span class="spec-val">{{ cpuCores }}C / {{ percpu.length || cpuCores }}T</span>
+							<span class="spec-val">{{ coresLabel }}</span>
 						</div>
-						<div class="spec-tile" :title="$t('Temperature / Power') + ' (Click to switch °C/°F)'" @click="changeFormat" style="cursor: pointer;">
+						<button
+							type="button"
+							class="spec-tile spec-tile-btn"
+							:title="$t('Temperature / Power (click to switch °C/°F)')"
+							:aria-label="$t('Temperature {temp}, power {power}. Switch between °C and °F', { temp: temperature, power: power || '—' })"
+							@click="changeFormat"
+						>
 							<span class="spec-label">{{ $t('Thermals') }}</span>
-							<span class="spec-val">{{ temperature || 'Normal' }}{{ powerClean ? ' · ' + powerClean : '' }}</span>
-						</div>
+							<span class="spec-val">{{ temperature }}{{ power ? ' · ' + power : '' }}</span>
+						</button>
 						<div class="spec-tile" :title="$t('Load State')">
 							<span class="spec-label">{{ $t('Load') }}</span>
 							<span class="spec-val">{{ loadState }}</span>
@@ -109,6 +125,25 @@ import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
 import { subscribeContainerUsage } from "@/utils/containerUsagePoller.js";
 
+// °C/°F is one setting for every widget (CPU and GPU): stored in
+// localStorage and broadcast with a window event so a switch in one widget
+// updates the others at once (the native "storage" event covers other tabs).
+const TEMPERATURE_KEY = "temperatureFormat";
+const TEMPERATURE_EVENT = "nivaroos:temperature-format";
+function readTemperatureFormat() {
+	try {
+		return localStorage.getItem(TEMPERATURE_KEY) === "°F" ? "°F" : "°C";
+	} catch (e) {
+		return "°C";
+	}
+}
+function writeTemperatureFormat(format) {
+	try {
+		localStorage.setItem(TEMPERATURE_KEY, format);
+	} catch (e) { /* private mode */ }
+	window.dispatchEvent(new CustomEvent(TEMPERATURE_EVENT, { detail: format }));
+}
+
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
 	name: "cpu",
@@ -133,25 +168,21 @@ export default {
 			cpuSeries: 0,
 			percpu: [],
 			containerCpuList: [],
-			temperatureFormat: localStorage.getItem("temperatureFormat")
-				? localStorage.getItem("temperatureFormat")
-				: "°C",
-			orgTemperature: 0,
+			temperatureFormat: readTemperatureFormat(),
+			// null = the board exposes no usable CPU sensor (VMs, LXC,
+			// some ARM boards) -> shown as "—", never as a fake 0°C.
+			orgTemperature: null,
 			power: "",
-			powerList: [],
+			lastEnergy: null,
 		};
 	},
 	computed: {
 		temperature() {
-			const temp =
-				this.temperatureFormat == "°C"
-					? this.orgTemperature + "°C"
-					: this.celsiusToFahrenheit(this.orgTemperature) + "°F";
-			return temp;
-		},
-		powerClean() {
-			if (!this.power) return "";
-			return this.power.replace(" / ", "").trim();
+			const c = this.orgTemperature;
+			if (c === null || c === undefined || !isFinite(c) || c <= 0) return "—";
+			return this.temperatureFormat === "°F"
+				? this.celsiusToFahrenheit(c) + "°F"
+				: Math.round(c) + "°C";
 		},
 		loadState() {
 			const p = parseInt(this.cpuSeries);
@@ -162,6 +193,12 @@ export default {
 		cpuModelParts() {
 			return this.splitCpuModelName(this.modelName);
 		},
+		// "6C / 12T"; just the thread count until the core count is known.
+		coresLabel() {
+			const threads = this.percpu.length || this.cpuCores;
+			if (!this.cpuCores) return threads ? `${threads}T` : "—";
+			return `${this.cpuCores}C / ${threads}T`;
+		},
 		cpuVendor() {
 			return this.cpuModelParts.vendor;
 		},
@@ -169,11 +206,26 @@ export default {
 			return this.cpuModelParts.model;
 		},
 	},
+	watch: {
+		// Home.vue refetches the hardware snapshot (retry after a failed
+		// first load); follow it instead of keeping the first copy forever.
+		"$store.state.hardwareInfo.cpu": {
+			handler(cpu) {
+				if (!cpu) return;
+				this.cpuCores = cpu.num || this.cpuCores;
+				this.modelName = cpu.model_name || this.modelName;
+				if (cpu.mhz) this.mhz = cpu.mhz;
+			},
+		},
+	},
 	created() {
-		this.cpuCores = this.$store.state.hardwareInfo.cpu.num;
-		this.modelName = this.$store.state.hardwareInfo.cpu.model_name || "";
-		this.mhz = this.$store.state.hardwareInfo.cpu.mhz || 0;
-		this.updateCharts(this.$store.state.hardwareInfo.cpu);
+		const cpu = this.$store.state.hardwareInfo.cpu || {};
+		this.cpuCores = cpu.num || 0;
+		this.modelName = cpu.model_name || "";
+		this.mhz = cpu.mhz || 0;
+		this.updateCharts(cpu);
+		window.addEventListener(TEMPERATURE_EVENT, this.onTemperatureFormat);
+		window.addEventListener("storage", this.onTemperatureStorage);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -185,6 +237,8 @@ export default {
 		if (this.unsubscribeUsage) {
 			this.unsubscribeUsage();
 		}
+		window.removeEventListener(TEMPERATURE_EVENT, this.onTemperatureFormat);
+		window.removeEventListener("storage", this.onTemperatureStorage);
 	},
 	methods: {
 		splitCpuModelName(raw) {
@@ -217,25 +271,56 @@ export default {
 		},
 
 		changeFormat() {
-			this.temperatureFormat = this.temperatureFormat == "°C" ? "°F" : "°C";
-			localStorage.setItem("temperatureFormat", this.temperatureFormat);
+			this.temperatureFormat = this.temperatureFormat === "°C" ? "°F" : "°C";
+			writeTemperatureFormat(this.temperatureFormat);
+		},
+
+		onTemperatureFormat(e) {
+			if (e && e.detail) this.temperatureFormat = e.detail;
+		},
+
+		onTemperatureStorage(e) {
+			if (e && e.key === TEMPERATURE_KEY) this.temperatureFormat = readTemperatureFormat();
 		},
 
 		updateCharts(cpu) {
-			this.cpuSeries = cpu.percent;
+			if (!cpu) return;
+			this.cpuSeries = cpu.percent || 0;
 			this.percpu = cpu.percpu || [];
-			this.pushPower(cpu.power);
-			this.orgTemperature = cpu.temperature == undefined ? 0 : cpu.temperature;
-			if (this.powerList.length == 2 && (cpu.model === "intel" || cpu.model === "amd")) {
-				this.power =
-					(
-						(this.powerList[1].value - this.powerList[0].value) /
-						1000000 /
-						(this.powerList[1].timestamp - this.powerList[0].timestamp)
-					).toFixed(1) + "W";
-			} else {
+			if (cpu.num) this.cpuCores = cpu.num;
+			if (cpu.mhz) this.mhz = cpu.mhz;
+			const t = cpu.temperature;
+			this.orgTemperature = typeof t === "number" && t > 0 ? t : null;
+			this.updatePower(cpu.power);
+		},
+
+		// power = { value: energy counter in µJ | null, timestamp: ms,
+		// max: counter range in µJ } (older backends: strings, seconds).
+		// Watts = Δenergy / Δt; guards against no RAPL (value null/"0"),
+		// Δt <= 0 and the counter wrapping at max_energy_range_uj.
+		updatePower(p) {
+			const value = p && p.value !== null && p.value !== undefined && p.value !== "" ? Number(p.value) : NaN;
+			let ts = p ? Number(p.timestamp) : NaN;
+			if (!isFinite(value) || value <= 0 || !isFinite(ts)) {
+				this.lastEnergy = null;
 				this.power = "";
+				return;
 			}
+			if (ts < 1e12) ts *= 1000; // legacy backend sent seconds
+			const max = p && Number(p.max) > 0 ? Number(p.max) : 0;
+			const prev = this.lastEnergy;
+			this.lastEnergy = { value, ts };
+			if (!prev) return;
+			const dt = (ts - prev.ts) / 1000;
+			if (!(dt > 0)) return;
+			let dE = value - prev.value;
+			if (dE < 0) {
+				if (!max) return; // wrapped but range unknown: skip sample
+				dE += max;
+			}
+			const watts = dE / 1e6 / dt;
+			if (!isFinite(watts) || watts < 0 || watts > 5000) return;
+			this.power = watts.toFixed(1) + "W";
 		},
 
 		applyUsage(res) {
@@ -263,10 +348,8 @@ export default {
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
-				this.$messageBus("widget_cpu", "open");
 				this.unsubscribeUsage = subscribeContainerUsage((res) => this.applyUsage(res));
 			} else {
-				this.$messageBus("widget_cpu", "close");
 				if (this.unsubscribeUsage) {
 					this.unsubscribeUsage();
 					this.unsubscribeUsage = null;
@@ -279,17 +362,16 @@ export default {
 			localStorage.setItem("cpuShowCores", this.showCores);
 		},
 
-		pushPower(power) {
-			if (this.powerList.length >= 2) {
-				this.powerList.shift();
-			}
-			this.powerList.push(power);
-		},
 	},
 	sockets: {
 		"nivaroos:system:utilization"(res) {
-			let data = res.Properties;
-			let cpu = JSON.parse(data.sys_cpu);
+			if (document.hidden) return;
+			let cpu;
+			try {
+				cpu = JSON.parse(res.Properties.sys_cpu);
+			} catch (e) {
+				return;
+			}
 			this.updateCharts(cpu);
 		},
 	},
@@ -299,6 +381,19 @@ export default {
 <style lang="scss">
 .widget {
 	&.cpu {
+		.spec-tile-btn {
+			font: inherit;
+			text-align: left;
+			cursor: pointer;
+			width: 100%;
+			margin: 0;
+
+			&:focus-visible {
+				outline: 2px solid var(--color-primary-fg, #1d4ed8);
+				outline-offset: 1px;
+			}
+		}
+
 		.arrow-btn {
 			transition: transform 0.25s ease;
 

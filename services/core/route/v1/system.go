@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -265,34 +268,23 @@ func GetSystemNetworkInterfaces(ctx echo.Context) error {
 type diskUsageEntry struct {
 	MountPoint string `json:"mount_point"`
 	Fstype     string `json:"fstype"`
-	Total      string `json:"total"`
-	Used       string `json:"used"`
-	Percent    string `json:"percent"`
-	IsUSB      bool   `json:"is_usb"`
+	// Human-readable sizes, 1024-based with the KB/MB/GB/TB labels the
+	// rest of the UI uses (ui/src/mixins/file_utils.js renderSize).
+	Total   string `json:"total"`
+	Used    string `json:"used"`
+	Free    string `json:"free"`
+	Percent string `json:"percent"` // used/size, "NN%"
+	IsUSB   bool   `json:"is_usb"`
+	// Media/transport of the backing device: nvme, ssd, hdd, usb, mmc,
+	// virtual, raid, network, pool or "" when it can't be told.
+	Kind       string `json:"kind"`
+	IsSystem   bool   `json:"is_system"`
+	Device     string `json:"device"`
 	Model      string `json:"model"`
 	Label      string `json:"label"`
-	SizeBytes  uint64 `json:"size_bytes,omitempty"`
-	UsedBytes  uint64 `json:"used_bytes,omitempty"`
-	AvailBytes uint64 `json:"avail_bytes,omitempty"`
-}
-
-type lsblkJSONOutput struct {
-	Blockdevices []lsblkDevice `json:"blockdevices"`
-}
-
-type lsblkDevice struct {
-	Name        string        `json:"name"`
-	Type        string        `json:"type"`
-	Fstype      *string       `json:"fstype"`
-	Label       *string       `json:"label"`
-	Size        *uint64       `json:"size"`
-	Mountpoints []string      `json:"mountpoints"`
-	Tran        *string       `json:"tran"`
-	Model       *string       `json:"model"`
-	Fsavail     *uint64       `json:"fsavail"`
-	Fsused      *uint64       `json:"fsused"`
-	FsusePct    *string       `json:"fsuse%"`
-	Children    []lsblkDevice `json:"children"`
+	SizeBytes  uint64 `json:"size_bytes"`
+	UsedBytes  uint64 `json:"used_bytes"`
+	AvailBytes uint64 `json:"avail_bytes"`
 }
 
 func formatDiskBytes(b uint64) string {
@@ -313,101 +305,411 @@ func formatDiskBytes(b uint64) string {
 	return fmt.Sprintf("%.0f %s", val, units[exp])
 }
 
-// GetSystemDisksUsage inspects lsblk block devices (with df fallback) for
-// exact per-mount usage breakdown, filesystem type, drive model, and USB
-// bus detection across all mounted drives.
-func GetSystemDisksUsage(ctx echo.Context) error {
-	out, err := exec.Command("lsblk", "-J", "-b", "-o", "NAME,TYPE,FSTYPE,LABEL,SIZE,MOUNTPOINTS,TRAN,MODEL,FSAVAIL,FSUSED,FSUSE%").Output()
-	disks := []diskUsageEntry{}
-	if err == nil {
-		var parsed lsblkJSONOutput
-		if json.Unmarshal(out, &parsed) == nil {
-			var processDevice func(d lsblkDevice, parentTran, parentModel string)
-			processDevice = func(d lsblkDevice, parentTran, parentModel string) {
-				tran := parentTran
-				if d.Tran != nil && *d.Tran != "" {
-					tran = *d.Tran
-				}
-				model := parentModel
-				if d.Model != nil && *d.Model != "" {
-					model = strings.TrimSpace(*d.Model)
-				}
-				fstype := ""
-				if d.Fstype != nil {
-					fstype = *d.Fstype
-				}
-				label := ""
-				if d.Label != nil {
-					label = *d.Label
-				}
-				var size uint64
-				if d.Size != nil {
-					size = *d.Size
-				}
-				var used uint64
-				if d.Fsused != nil {
-					used = *d.Fsused
-				}
-				var avail uint64
-				if d.Fsavail != nil {
-					avail = *d.Fsavail
-				} else if size > used {
-					avail = size - used
-				}
-				pcent := "0%"
-				if d.FsusePct != nil && *d.FsusePct != "" {
-					pcent = *d.FsusePct
-				} else if size > 0 && used > 0 {
-					pcent = fmt.Sprintf("%d%%", (used*100)/size)
-				}
+// Filesystems that never hold user data (kernel/pseudo/container layers).
+var diskPseudoFs = map[string]bool{
+	"proc": true, "sysfs": true, "tmpfs": true, "devtmpfs": true, "devpts": true,
+	"cgroup": true, "cgroup2": true, "overlay": true, "aufs": true, "squashfs": true,
+	"efivarfs": true, "debugfs": true, "tracefs": true, "securityfs": true, "pstore": true,
+	"bpf": true, "autofs": true, "mqueue": true, "hugetlbfs": true, "configfs": true,
+	"fusectl": true, "binfmt_misc": true, "nsfs": true, "rpc_pipefs": true, "ramfs": true,
+	"selinuxfs": true, "nfsd": true, "tmpfs.lxcfs": true, "fuse.lxcfs": true,
+	"fuse.gvfsd-fuse": true, "fuse.portal": true, "fuse.snapfuse": true, "iso9660": true,
+	"udf": true, "shiftfs": true, "zram": true,
+}
 
-				for _, mp := range d.Mountpoints {
-					if mp == "" || mp == "[SWAP]" || fstype == "swap" {
-						continue
-					}
-					disks = append(disks, diskUsageEntry{
-						MountPoint: mp,
-						Fstype:     fstype,
-						Label:      label,
-						Model:      model,
-						SizeBytes:  size,
-						UsedBytes:  used,
-						AvailBytes: avail,
-						Total:      formatDiskBytes(size),
-						Used:       formatDiskBytes(used),
-						Percent:    pcent,
-						IsUSB:      strings.ToLower(tran) == "usb",
-					})
-				}
+// Remote filesystems worth showing. statfs on these can block when the
+// server is gone, so they are measured with a timeout.
+var diskNetworkFs = map[string]bool{
+	"nfs": true, "nfs4": true, "cifs": true, "smb3": true, "smbfs": true,
+	"fuse.sshfs": true, "9p": true, "glusterfs": true, "fuse.glusterfs": true, "ceph": true, "fuse.ceph": true,
+}
 
-				for _, child := range d.Children {
-					processDevice(child, tran, model)
-				}
-			}
+var diskPoolFs = map[string]bool{"fuse.mergerfs": true, "mergerfs": true, "zfs": true, "fuse.unionfs": true}
 
-			for _, dev := range parsed.Blockdevices {
-				processDevice(dev, "", "")
+// Mount trees that belong to container runtimes, snaps, etc.
+var diskSkipPrefixes = []string{
+	"/proc", "/sys", "/dev", "/run", "/snap/", "/var/snap/", "/var/lib/docker/",
+	"/var/lib/containers/", "/var/lib/kubelet/", "/var/lib/lxc/", "/var/lib/lxd/",
+	"/var/lib/incus/", "/var/lib/snapd/",
+}
+
+type mountInfoEntry struct {
+	devID  string // "major:minor"
+	root   string
+	mount  string
+	fstype string
+	source string
+}
+
+// /proc/self/mountinfo escapes space, tab, newline and backslash as \ooo.
+func unescapeMountField(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if v, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(v))
+				i += 3
+				continue
 			}
 		}
+		b.WriteByte(s[i])
 	}
+	return b.String()
+}
 
-	// Fallback to df if lsblk returned nothing
+func parseMountInfo(data string) []mountInfoEntry {
+	var out []mountInfoEntry
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 10 {
+			continue
+		}
+		sep := -1
+		for i := 6; i < len(fields); i++ {
+			if fields[i] == "-" {
+				sep = i
+				break
+			}
+		}
+		if sep < 0 || sep+2 >= len(fields) {
+			continue
+		}
+		out = append(out, mountInfoEntry{
+			devID:  fields[2],
+			root:   unescapeMountField(fields[3]),
+			mount:  unescapeMountField(fields[4]),
+			fstype: fields[sep+1],
+			source: unescapeMountField(fields[sep+2]),
+		})
+	}
+	return out
+}
+
+// statfsWithTimeout guards against a hung NFS/SMB server blocking the request.
+func statfsWithTimeout(path string, timeout time.Duration) (*syscall.Statfs_t, error) {
+	type res struct {
+		st  syscall.Statfs_t
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		var st syscall.Statfs_t
+		err := syscall.Statfs(path, &st)
+		ch <- res{st, err}
+	}()
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return nil, r.err
+		}
+		return &r.st, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("statfs %s: timeout", path)
+	}
+}
+
+func readSysTrim(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// diskOfBlock resolves a block device name (sda1, nvme0n1p2, dm-0, md0)
+// to the whole-disk name that carries the transport/rotational info.
+func diskOfBlock(kname string, depth int) string {
+	if kname == "" || depth > 5 {
+		return kname
+	}
+	sys := "/sys/class/block/" + kname
+	if _, err := os.Stat(sys + "/partition"); err == nil {
+		if link, err := filepath.EvalSymlinks(sys); err == nil {
+			return filepath.Base(filepath.Dir(link))
+		}
+	}
+	// device-mapper (LVM/LUKS) and md: follow the first underlying device.
+	if strings.HasPrefix(kname, "dm-") {
+		if slaves, err := os.ReadDir(sys + "/slaves"); err == nil && len(slaves) > 0 {
+			return diskOfBlock(slaves[0].Name(), depth+1)
+		}
+	}
+	return kname
+}
+
+var virtualDiskModel = regexp.MustCompile(`(?i)qemu|vbox|virtual|vmware|msft|xen|bochs`)
+
+// blockKind labels a whole disk from sysfs, so it works with any lsblk
+// version (and without lsblk at all).
+func blockKind(disk string) (kind, model string) {
+	sys := "/sys/block/" + disk
+	model = readSysTrim(sys + "/device/model")
+	if model == "" {
+		model = readSysTrim(sys + "/device/name") // mmc
+	}
+	link, _ := filepath.EvalSymlinks(sys)
+	switch {
+	case strings.Contains(link, "/usb"):
+		return "usb", model
+	case strings.HasPrefix(disk, "nvme"):
+		return "nvme", model
+	case strings.HasPrefix(disk, "mmcblk"):
+		return "mmc", model
+	case strings.HasPrefix(disk, "md"):
+		return "raid", model
+	case strings.HasPrefix(disk, "vd") || strings.HasPrefix(disk, "xvd") || strings.Contains(link, "/virtio"):
+		return "virtual", model
+	case virtualDiskModel.MatchString(model):
+		return "virtual", model
+	case strings.HasPrefix(disk, "loop") || strings.HasPrefix(disk, "zram") || strings.HasPrefix(disk, "ram"):
+		return "", model
+	}
+	switch readSysTrim(sys + "/queue/rotational") {
+	case "1":
+		return "hdd", model
+	case "0":
+		return "ssd", model
+	}
+	return "", model
+}
+
+// blockLabels maps a resolved device path to its filesystem label.
+func blockLabels() map[string]string {
+	labels := map[string]string{}
+	entries, err := os.ReadDir("/dev/disk/by-label")
+	if err != nil {
+		return labels
+	}
+	for _, e := range entries {
+		target, err := filepath.EvalSymlinks(filepath.Join("/dev/disk/by-label", e.Name()))
+		if err != nil {
+			continue
+		}
+		labels[target] = unescapeUdevLabel(e.Name())
+	}
+	return labels
+}
+
+// udev escapes unsafe characters in by-label names as \xHH.
+func unescapeUdevLabel(s string) string {
+	if !strings.Contains(s, `\x`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) && s[i+1] == 'x' {
+			if v, err := strconv.ParseUint(s[i+2:i+4], 16, 8); err == nil {
+				b.WriteByte(byte(v))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// zpoolUsage returns pool -> [size, alloc, free] from `zpool list`, so a
+// ZFS pool is reported once with its real capacity instead of once per
+// dataset (each dataset's statfs only shows its own used + pool free).
+func zpoolUsage() map[string][3]uint64 {
+	pools := map[string][3]uint64{}
+	if _, err := exec.LookPath("zpool"); err != nil {
+		return pools
+	}
+	out, err := exec.Command("zpool", "list", "-Hp", "-o", "name,size,alloc,free").Output()
+	if err != nil {
+		return pools
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(line)
+		if len(f) != 4 {
+			continue
+		}
+		size, e1 := strconv.ParseUint(f[1], 10, 64)
+		alloc, e2 := strconv.ParseUint(f[2], 10, 64)
+		free, e3 := strconv.ParseUint(f[3], 10, 64)
+		if e1 == nil && e2 == nil && e3 == nil {
+			pools[f[0]] = [3]uint64{size, alloc, free}
+		}
+	}
+	return pools
+}
+
+func diskMountSkipped(m mountInfoEntry) bool {
+	if diskPseudoFs[m.fstype] {
+		return true
+	}
+	if strings.HasPrefix(m.source, "/dev/loop") || strings.HasPrefix(m.source, "/dev/zram") {
+		return true
+	}
+	if m.mount == "/" {
+		return false
+	}
+	for _, p := range diskSkipPrefixes {
+		if m.mount == strings.TrimSuffix(p, "/") || strings.HasPrefix(m.mount, strings.TrimSuffix(p, "/")+"/") {
+			return true
+		}
+	}
+	// Other FUSE filesystems (rclone cloud drives, app-specific mounts)
+	// report made-up capacities; only the known pooled/remote ones are shown.
+	if strings.HasPrefix(m.fstype, "fuse.") && !diskPoolFs[m.fstype] && !diskNetworkFs[m.fstype] {
+		return true
+	}
+	return false
+}
+
+// collectDisksUsage lists every real data filesystem once: kernel mount
+// table + statfs (no dependency on the lsblk version - MOUNTPOINTS only
+// exists since util-linux 2.37), deduplicated per filesystem (btrfs
+// subvolumes and bind mounts share one), with the backing device's
+// transport/rotational flags from sysfs.
+func collectDisksUsage() []diskUsageEntry {
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return nil
+	}
+	mounts := parseMountInfo(string(data))
+	// Shortest mount point first, so "/" wins over "/home" for a shared
+	// btrfs filesystem and a bind mount never hides the original.
+	sort.SliceStable(mounts, func(i, j int) bool {
+		if len(mounts[i].mount) != len(mounts[j].mount) {
+			return len(mounts[i].mount) < len(mounts[j].mount)
+		}
+		return mounts[i].mount < mounts[j].mount
+	})
+
+	labels := blockLabels()
+	var pools map[string][3]uint64
+	seen := map[string]bool{}
+	disks := []diskUsageEntry{}
+	for _, m := range mounts {
+		if diskMountSkipped(m) {
+			continue
+		}
+		isNet := diskNetworkFs[m.fstype]
+		timeout := 2 * time.Second
+		if !isNet {
+			timeout = 5 * time.Second
+		}
+		st, err := statfsWithTimeout(m.mount, timeout)
+		if err != nil || st.Blocks == 0 {
+			continue
+		}
+		bsize := uint64(st.Bsize)
+		if st.Frsize > 0 {
+			bsize = uint64(st.Frsize)
+		}
+		size := st.Blocks * bsize
+		free := st.Bfree * bsize
+		avail := st.Bavail * bsize
+		used := uint64(0)
+		if size > free {
+			used = size - free
+		}
+
+		// Dedupe key: one entry per filesystem.
+		key := "dev:" + m.devID
+		switch {
+		case m.fstype == "btrfs":
+			key = fmt.Sprintf("btrfs:%x:%x", st.Fsid.X__val[0], st.Fsid.X__val[1])
+		case m.fstype == "zfs":
+			key = "zfs:" + strings.SplitN(m.source, "/", 2)[0]
+		case isNet:
+			key = "net:" + m.source
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		e := diskUsageEntry{MountPoint: m.mount, Fstype: m.fstype, IsSystem: m.mount == "/"}
+		switch {
+		case isNet:
+			e.Kind = "network"
+			e.Device = m.source
+		case diskPoolFs[m.fstype]:
+			e.Kind = "pool"
+			e.Device = m.source
+			if m.fstype == "zfs" {
+				if pools == nil {
+					pools = zpoolUsage()
+				}
+				pool := strings.SplitN(m.source, "/", 2)[0]
+				if p, ok := pools[pool]; ok && p[0] > 0 {
+					size, used, avail = p[0], p[1], p[2]
+				}
+				e.Label = pool
+			}
+		case strings.HasPrefix(m.source, "/dev/"):
+			dev := m.source
+			if real, err := filepath.EvalSymlinks(dev); err == nil {
+				dev = real
+			}
+			e.Device = dev
+			e.Label = labels[dev]
+			disk := diskOfBlock(filepath.Base(dev), 0)
+			e.Kind, e.Model = blockKind(disk)
+		}
+		e.IsUSB = e.Kind == "usb"
+		e.SizeBytes, e.UsedBytes, e.AvailBytes = size, used, avail
+		e.Total = formatDiskBytes(size)
+		e.Used = formatDiskBytes(used)
+		e.Free = formatDiskBytes(avail)
+		pct := uint64(0)
+		if size > 0 {
+			pct = (used*100 + size/2) / size
+		}
+		e.Percent = fmt.Sprintf("%d%%", pct)
+		disks = append(disks, e)
+	}
+	// Stable, meaningful order: system first, then by mount point.
+	sort.SliceStable(disks, func(i, j int) bool {
+		if disks[i].IsSystem != disks[j].IsSystem {
+			return disks[i].IsSystem
+		}
+		return disks[i].MountPoint < disks[j].MountPoint
+	})
+	return disks
+}
+
+// GetSystemDisksUsage lists mounted data filesystems (loop/snap/squashfs,
+// container layers and pseudo filesystems filtered out) with bytes, a
+// consistent used/size percentage and the device's media kind.
+func GetSystemDisksUsage(ctx echo.Context) error {
+	disks := collectDisksUsage()
+
+	// Fallback to df when the mount table could not be read at all.
 	if len(disks) == 0 {
-		dfOut, dfErr := exec.Command("sh", "-c", "df -h --output=fstype,size,used,pcent,target -x tmpfs -x devtmpfs -x overlay -x squashfs -x efivarfs 2>/dev/null | tail -n +2").Output()
+		dfOut, dfErr := exec.Command("sh", "-c", "df -B1 --output=fstype,size,used,avail,target -x tmpfs -x devtmpfs -x overlay -x squashfs -x efivarfs 2>/dev/null | tail -n +2").Output()
 		if dfErr == nil {
 			for _, line := range strings.Split(strings.TrimSpace(string(dfOut)), "\n") {
 				fields := strings.Fields(line)
 				if len(fields) < 5 {
 					continue
 				}
+				size, _ := strconv.ParseUint(fields[1], 10, 64)
+				used, _ := strconv.ParseUint(fields[2], 10, 64)
+				avail, _ := strconv.ParseUint(fields[3], 10, 64)
 				mountPoint := strings.Join(fields[4:], " ")
+				if size == 0 || strings.HasPrefix(mountPoint, "/snap/") {
+					continue
+				}
+				pct := (used*100 + size/2) / size
 				disks = append(disks, diskUsageEntry{
 					Fstype:     fields[0],
-					Total:      fields[1],
-					Used:       fields[2],
-					Percent:    fields[3],
 					MountPoint: mountPoint,
-					IsUSB:      strings.HasPrefix(mountPoint, "/media/") || strings.Contains(mountPoint, "usb"),
+					IsSystem:   mountPoint == "/",
+					SizeBytes:  size,
+					UsedBytes:  used,
+					AvailBytes: avail,
+					Total:      formatDiskBytes(size),
+					Used:       formatDiskBytes(used),
+					Free:       formatDiskBytes(avail),
+					Percent:    fmt.Sprintf("%d%%", pct),
 				})
 			}
 		}
@@ -676,4 +978,3 @@ func PostSystemSpeedTest(ctx echo.Context) error {
 func GetSystemSpeedTestStatus(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, &model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: currentProgress()})
 }
-

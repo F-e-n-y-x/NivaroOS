@@ -18,14 +18,30 @@ GetSysInfo() {
 }
 
 #获取网卡信息
+# $1 == 1: virtual interfaces; otherwise physical ones. When a host has no
+# physical NIC at all (LXC/OpenVZ containers, some VPS: only veth/venet),
+# the interface(s) carrying the default route are listed instead, so the
+# network widget still has something real to show.
 GetNetCard() {
   if [ "$1" == "1" ]; then
     if [ -d "/sys/devices/virtual/net" ]; then
       ls /sys/devices/virtual/net
     fi
   else
-    if [ -d "/sys/devices/virtual/net" ] && [ -d "/sys/class/net" ]; then
-      ls /sys/class/net/ | grep -v "$(ls /sys/devices/virtual/net/)" -w
+    local found=0 p n
+    for p in /sys/class/net/*; do
+      [ -e "$p" ] || continue
+      n=${p##*/}
+      [ "$n" == "lo" ] && continue
+      [ -e "/sys/devices/virtual/net/$n" ] && continue
+      echo "$n"
+      found=1
+    done
+    if [ "$found" == "0" ]; then
+      {
+        awk 'NR > 1 && $2 == "00000000" { print $1 }' /proc/net/route 2>/dev/null
+        awk '$1 == "00000000000000000000000000000000" && $2 == "00" && $10 != "lo" { print $10 }' /proc/net/ipv6_route 2>/dev/null
+      } | awk '!seen[$0]++'
     fi
   fi
 }

@@ -22,6 +22,7 @@
 						type="button"
 						class="console-tab-btn"
 						:class="{ active: activeTab === 'terminal' }"
+						:aria-pressed="activeTab === 'terminal' ? 'true' : 'false'"
 						@click="switchTab('terminal')"
 					>
 						<i class="mdi mdi-console mr-1"></i>
@@ -31,6 +32,7 @@
 						type="button"
 						class="console-tab-btn"
 						:class="{ active: activeTab === 'logs' }"
+						:aria-pressed="activeTab === 'logs' ? 'true' : 'false'"
 						@click="switchTab('logs')"
 					>
 						<i class="mdi mdi-text-box-search-outline mr-1"></i>
@@ -40,17 +42,19 @@
 
 				<button
 					v-if="activeTab === 'logs'"
+					type="button"
 					class="header-tool-btn mr-3"
 					:class="{ 'is-spinning': loadingLogs }"
 					:title="$t('Refresh logs')"
-					@click="fetchLogs"
+					:aria-label="$t('Refresh logs')"
+					@click="fetchLogs()"
 				>
-					<i class="mdi mdi-refresh"></i>
+					<i class="mdi mdi-refresh" aria-hidden="true"></i>
 				</button>
 
 				<div class="window-controls">
-					<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="$emit('minimize')"></button>
-					<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="$emit('close')"></button>
+					<button type="button" class="window-btn window-btn-minimize" :title="$t('Minimize')" :aria-label="$t('Minimize')" @click.stop="$emit('minimize')"></button>
+					<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="$emit('close')"></button>
 				</div>
 			</div>
 		</div>
@@ -88,15 +92,16 @@
 								type="text"
 								class="log-search-input"
 								:placeholder="$t('Filter logs...')"
+								:aria-label="$t('Filter logs...')"
 							/>
-							<button v-if="logSearch" class="clear-search-btn" @click="logSearch = ''">
-								<i class="mdi mdi-close"></i>
+							<button v-if="logSearch" type="button" class="clear-search-btn" :aria-label="$t('Clear filter')" @click="logSearch = ''">
+								<i class="mdi mdi-close" aria-hidden="true"></i>
 							</button>
 						</div>
 
 						<!-- Line Count Selector -->
 						<div class="custom-select-wrap">
-							<select v-model="lineCount" @change="fetchLogs">
+							<select v-model="lineCount" :aria-label="$t('Number of lines')" @change="fetchLogs()">
 								<option :value="100">100 {{ $t('lines') }}</option>
 								<option :value="500">500 {{ $t('lines') }}</option>
 								<option :value="1000">1000 {{ $t('lines') }}</option>
@@ -108,7 +113,7 @@
 
 						<!-- Timestamps checkbox -->
 						<label class="custom-check">
-							<input type="checkbox" v-model="showTimestamps" @change="fetchLogs" />
+							<input type="checkbox" v-model="showTimestamps" @change="fetchLogs()" />
 							<span>{{ $t('Timestamps') }}</span>
 						</label>
 
@@ -121,47 +126,56 @@
 						<!-- Auto-scroll checkbox -->
 						<label class="custom-check">
 							<input type="checkbox" v-model="autoScroll" />
-							<span>{{ $t('Auto-scroll') }}</span>
+							<span>{{ $t('Follow') }}</span>
 						</label>
 					</div>
 
 					<div class="toolbar-right is-flex is-align-items-center">
 						<span v-if="logSearch" class="match-pill mr-3">
-							{{ filteredLines.length }} / {{ rawLines.length }} {{ $t('matches') }}
-						</span>
-						<button class="toolbar-btn mr-2" @click="copyLogs" :disabled="!logContent">
-							<i class="mdi mdi-content-copy mr-1"></i>
-							{{ $t('Copy') }}
-						</button>
-						<button class="toolbar-btn mr-2" @click="downloadLogs" :disabled="!logContent">
-							<i class="mdi mdi-download mr-1"></i>
-							{{ $t('Download') }}
-						</button>
-						<button class="toolbar-btn" @click="clearLogsView" :disabled="!logContent">
-							<i class="mdi mdi-trash-can-outline mr-1"></i>
-							{{ $t('Clear View') }}
-						</button>
+							{{ filteredLines.length }} / {{ visibleLines.length }} {{ $t('matches') }}
+							</span>
+							<button type="button" class="toolbar-btn mr-2" :disabled="!visibleLines.length" :aria-label="$t('Copy')" @click="copyLogs">
+								<i class="mdi mdi-content-copy mr-1" aria-hidden="true"></i>
+								<span class="toolbar-btn-text">{{ $t('Copy') }}</span>
+							</button>
+							<button type="button" class="toolbar-btn mr-2" :disabled="!visibleLines.length" :aria-label="$t('Download')" @click="downloadLogs">
+								<i class="mdi mdi-download mr-1" aria-hidden="true"></i>
+								<span class="toolbar-btn-text">{{ $t('Download') }}</span>
+							</button>
+							<button v-if="!clearMarker" type="button" class="toolbar-btn" :disabled="!visibleLines.length" :aria-label="$t('Clear View')" @click="clearLogsView">
+								<i class="mdi mdi-trash-can-outline mr-1" aria-hidden="true"></i>
+								<span class="toolbar-btn-text">{{ $t('Clear View') }}</span>
+							</button>
+							<button v-else type="button" class="toolbar-btn" :aria-label="$t('Show earlier lines')" @click="restoreLogsView">
+								<i class="mdi mdi-history mr-1" aria-hidden="true"></i>
+								<span class="toolbar-btn-text">{{ $t('Show earlier lines') }}</span>
+							</button>
 					</div>
 				</div>
 
 				<!-- Log Lines Viewport -->
-				<div ref="logViewport" class="log-viewport scrollbars">
-					<div v-if="loadingLogs && !logContent" class="loading-state is-flex is-align-items-center is-justify-content-center">
+				<div v-if="logError" class="logs-error" role="alert">
+					<i class="mdi mdi-alert-circle-outline mr-1" aria-hidden="true"></i>{{ logError }}
+				</div>
+				<div ref="logViewport" class="log-viewport scrollbars" tabindex="0" role="log" :aria-label="$t('Container logs')" @scroll="onLogScroll">
+					<div v-if="loadingLogs && !logLines.length" class="loading-state is-flex is-align-items-center is-justify-content-center">
 						<b-icon icon="loading" pack="mdi" size="is-medium" custom-class="mdi-spin mr-2"></b-icon>
 						<span>{{ $t('Loading logs...') }}</span>
 					</div>
-					<div v-else-if="!logContent" class="empty-logs is-flex is-align-items-center is-justify-content-center">
-						<span class="text-muted is-size-7">{{ $t('No log output recorded yet for this container.') }}</span>
+					<div v-else-if="!visibleLines.length" class="empty-logs is-flex is-align-items-center is-justify-content-center">
+						<span class="text-muted is-size-7">{{ clearMarker ? $t('No new log lines since the view was cleared.') : $t('No log output recorded yet for this container.') }}</span>
 					</div>
 					<div v-else class="log-content">
+						<!-- Keyed by a per-line sequence id, so a refresh that only adds
+						     lines patches just the new rows instead of every row. -->
 						<div
-							v-for="(line, idx) in filteredLines"
-							:key="idx"
+							v-for="line in filteredLines"
+							:key="line.id"
 							class="log-line"
-							:class="{ 'highlight': logSearch && line.toLowerCase().includes(logSearch.toLowerCase()) }"
+							:class="{ 'highlight': logSearch }"
 						>
-							<span class="line-num">{{ idx + 1 }}</span>
-							<span class="line-text">{{ line }}</span>
+							<span class="line-num">{{ line.id }}</span>
+							<span class="line-text">{{ line.text }}</span>
 						</div>
 					</div>
 				</div>
@@ -173,6 +187,11 @@
 <script>
 import qs from 'qs'
 import TerminalCard from '@/apps/terminal/TerminalCard.vue'
+
+const LOG_POLL_MS = 3000
+const STATUS_POLL_MS = 10000
+// Within this many px of the bottom counts as "following" the log.
+const FOLLOW_SLACK_PX = 48
 
 export default {
 	name: 'container-console-panel',
@@ -199,19 +218,33 @@ export default {
 		status: {
 			type: String,
 			default: 'running'
+		},
+		// Stamped by OPEN_WINDOW when an already-open console is asked for
+		// again (e.g. "Logs" clicked for a container whose Terminal is open).
+		requestedAt: {
+			type: Number,
+			default: 0
 		}
 	},
 	data() {
 		return {
 			activeTab: this.initialTab || 'terminal',
-			logContent: '',
+			// [{ id, text }] - id is a sequence number that stays with the
+			// line across refreshes (see mergeLogs()).
+			logLines: [],
+			nextLineId: 1,
+			clearMarker: null,
+			logError: '',
 			loadingLogs: false,
+			logsInFlight: false,
 			lineCount: 500,
 			showTimestamps: true,
 			autoRefresh: true,
 			autoScroll: true,
+			nearBottom: true,
 			logSearch: '',
 			logTimer: null,
+			statusTimer: null,
 			restarting: false,
 			starting: false,
 			currentStatus: this.status || 'running'
@@ -230,7 +263,7 @@ export default {
 					if (typeof p === 'object' && p !== null) {
 						return p.custom || p.en_us || p.en_US || Object.values(p)[0] || this.containerId
 					}
-				} catch (e) {}
+				} catch (e) { /* not JSON */ }
 			}
 			return val
 		},
@@ -242,6 +275,8 @@ export default {
 			const parts = this.containerImage.split('/')
 			return parts[parts.length - 1]
 		},
+		// cols/rows are placeholders: TerminalCard replaces them with the
+		// fitted size of the terminal when it connects.
 		terminalWsUrl() {
 			const query = {
 				token: this.$store.state.access_token,
@@ -250,18 +285,15 @@ export default {
 			}
 			return `${this.$wsProtocol}//${this.$baseURL}/v1/container/${this.containerId}/terminal?${qs.stringify(query)}`
 		},
-		rawLines() {
-			if (!this.logContent) return []
-			const lines = this.logContent.split('\n')
-			if (lines.length > 0 && lines[lines.length - 1] === '') {
-				return lines.slice(0, lines.length - 1)
-			}
-			return lines
+		// Lines after the "Clear view" marker.
+		visibleLines() {
+			if (!this.clearMarker) return this.logLines
+			return this.logLines.filter(l => l.id > this.clearMarker)
 		},
 		filteredLines() {
-			if (!this.logSearch) return this.rawLines
+			if (!this.logSearch) return this.visibleLines
 			const q = this.logSearch.toLowerCase()
-			return this.rawLines.filter(line => line.toLowerCase().includes(q))
+			return this.visibleLines.filter(line => line.text.toLowerCase().includes(q))
 		}
 	},
 	mounted() {
@@ -269,9 +301,13 @@ export default {
 			this.fetchLogs()
 		}
 		this.startLogPolling()
+		this.statusTimer = setInterval(this.refreshStatus, STATUS_POLL_MS)
+		document.addEventListener('visibilitychange', this.onVisibility)
 	},
 	beforeDestroy() {
 		this.stopLogPolling()
+		clearInterval(this.statusTimer)
+		document.removeEventListener('visibilitychange', this.onVisibility)
 	},
 	watch: {
 		autoRefresh(val) {
@@ -281,13 +317,34 @@ export default {
 				this.stopLogPolling()
 			}
 		},
-		activeTab(tab) {
-			if (tab === 'logs' && !this.logContent) {
-				this.fetchLogs()
-			}
+		// Props are not copied once: a re-open of the same console (same
+		// window id) updates them, and the window follows.
+		initialTab(tab) {
+			if (tab) this.switchTab(tab)
+		},
+		requestedAt() {
+			if (this.initialTab) this.switchTab(this.initialTab)
+			this.refreshStatus()
+		},
+		status(val) {
+			if (val) this.currentStatus = val
+		},
+		currentStatus(val, old) {
+			// Came back up / went down: pick up the new log lines at once.
+			if (val !== old && this.activeTab === 'logs') this.fetchLogs(true)
 		}
 	},
 	methods: {
+		// On screen = page visible and this window not minimised
+		// (a minimised window is display:none -> no client rects).
+		isOnScreen() {
+			return !document.hidden && !!this.$el && this.$el.getClientRects().length > 0
+		},
+		onVisibility() {
+			if (!this.isOnScreen()) return
+			this.refreshStatus()
+			if (this.activeTab === 'logs' && this.autoRefresh) this.fetchLogs(true)
+		},
 		switchTab(tab) {
 			this.activeTab = tab
 			if (tab === 'logs') {
@@ -303,10 +360,10 @@ export default {
 		startLogPolling() {
 			this.stopLogPolling()
 			this.logTimer = setInterval(() => {
-				if (this.activeTab === 'logs' && this.autoRefresh) {
+				if (this.activeTab === 'logs' && this.autoRefresh && this.isOnScreen()) {
 					this.fetchLogs(true)
 				}
-			}, 3000)
+			}, LOG_POLL_MS)
 		},
 		stopLogPolling() {
 			if (this.logTimer) {
@@ -314,7 +371,27 @@ export default {
 				this.logTimer = null
 			}
 		},
+		async refreshStatus() {
+			if (!this.isOnScreen()) return
+			try {
+				const res = await this.$api.container.getAllContainersWithUpdates()
+				const list = (res && res.data && res.data.data) || []
+				const id = this.containerId
+				const name = String(id).replace(/^\//, '')
+				const c = list.find(x => x && (x.id === id || (x.id && (x.id.startsWith(id) || id.startsWith(x.id))) || x.name === name))
+				if (c && c.state) this.currentStatus = c.state
+			} catch (e) {
+				// Keep the last known state; the next tick retries.
+			}
+		},
 		async fetchLogs(silent = false) {
+			if (this.logsInFlight) {
+				// An explicit refresh (line count changed...) must not be lost
+				// behind a background tick that is still running.
+				if (!silent) this.pendingFullFetch = true
+				return
+			}
+			this.logsInFlight = true
 			if (!silent) this.loadingLogs = true
 			try {
 				const res = await this.$api.container.getRawLogs(
@@ -322,27 +399,78 @@ export default {
 					this.lineCount,
 					this.showTimestamps
 				)
+				let text = ''
 				if (res && res.data) {
 					if (typeof res.data === 'string') {
-						this.logContent = res.data
+						text = res.data
 					} else if (res.data.data !== undefined) {
-						this.logContent = res.data.data || ''
+						text = res.data.data || ''
 					} else {
-						this.logContent = JSON.stringify(res.data, null, 2)
-					}
-					if (this.autoScroll) {
-						this.$nextTick(() => {
-							this.scrollToBottom()
-						})
+						text = JSON.stringify(res.data, null, 2)
 					}
 				}
+				this.logError = ''
+				this.mergeLogs(text, !silent)
 			} catch (err) {
-				if (!silent) {
-					console.error('Failed to fetch container logs:', err)
-				}
+				const reason = (err && err.response && err.response.data && err.response.data.message) || (err && err.message) || this.$t('Unknown error')
+				this.logError = this.$t('Could not load logs: {reason}', { reason })
 			} finally {
+				this.logsInFlight = false
 				if (!silent) this.loadingLogs = false
+				if (this.pendingFullFetch) {
+					this.pendingFullFetch = false
+					this.fetchLogs()
+				}
 			}
+		},
+		// The API only returns "the last N lines", so each refresh is lined
+		// up with what is already shown: the longest suffix of the current
+		// lines that is a prefix of the new ones is kept (same ids), only
+		// the rest is appended. No new lines -> no reactive change at all.
+		// replace=true (explicit refresh, line count/timestamps changed)
+		// renders the response as-is.
+		mergeLogs(text, replace = false) {
+			const incoming = text.split('\n')
+			if (incoming.length && incoming[incoming.length - 1] === '') incoming.pop()
+			if (replace) this.clearMarker = null
+			const old = replace ? [] : this.logLines
+			let keepFrom = -1
+			let overlap = 0
+			if (old.length && incoming.length) {
+				const last = old[old.length - 1].text
+				// Try the most recent occurrence of the last shown line first.
+				for (let j = incoming.length - 1; j >= 0 && keepFrom < 0; j--) {
+					if (incoming[j] !== last) continue
+					let ok = true
+					for (let k = 1; k <= j && k < old.length && k <= 50; k++) {
+						if (incoming[j - k] !== old[old.length - 1 - k].text) {
+							ok = false
+							break
+						}
+					}
+					if (ok) {
+						overlap = j + 1
+						keepFrom = Math.max(0, old.length - overlap)
+					}
+				}
+			}
+			if (keepFrom >= 0) {
+				const added = incoming.slice(overlap)
+				const kept = old.slice(keepFrom)
+				if (!added.length && keepFrom === 0) return
+				const next = kept.concat(added.map(t => ({ id: this.nextLineId++, text: t })))
+				this.logLines = next.length > this.lineCount ? next.slice(next.length - this.lineCount) : next
+			} else {
+				this.logLines = incoming.map(t => ({ id: this.nextLineId++, text: t }))
+			}
+			if (this.autoScroll && this.nearBottom) {
+				this.$nextTick(this.scrollToBottom)
+			}
+		},
+		onLogScroll() {
+			const vp = this.$refs.logViewport
+			if (!vp) return
+			this.nearBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight <= FOLLOW_SLACK_PX
 		},
 		scrollToBottom() {
 			const vp = this.$refs.logViewport
@@ -350,30 +478,45 @@ export default {
 				vp.scrollTop = vp.scrollHeight
 			}
 		},
+		// Hides what is on screen now without re-fetching: later refreshes
+		// only show lines that arrive after this point.
 		clearLogsView() {
-			this.logContent = ''
+			const last = this.logLines[this.logLines.length - 1]
+			this.clearMarker = last ? last.id : this.nextLineId - 1
+			this.nearBottom = true
+		},
+		restoreLogsView() {
+			this.clearMarker = null
+			this.$nextTick(this.scrollToBottom)
+		},
+		visibleText() {
+			return this.visibleLines.map(l => l.text).join('\n')
 		},
 		copyLogs() {
-			if (!this.logContent) return
-			navigator.clipboard.writeText(this.logContent).then(() => {
-				this.$buefy.toast.open({
-					message: this.$t('Logs copied to clipboard'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000
-				})
-			}).catch(() => {
-				this.$buefy.toast.open({
-					message: this.$t('Failed to copy logs'),
-					type: 'is-danger',
-					position: 'is-top',
-					duration: 2000
-				})
+			const text = this.visibleText()
+			if (!text) return
+			const done = () => this.$buefy.toast.open({
+				message: this.$t('Logs copied to clipboard'),
+				type: 'is-success',
+				position: 'is-top',
+				duration: 2000
 			})
+			const fail = () => this.$buefy.toast.open({
+				message: this.$t('Failed to copy logs'),
+				type: 'is-danger',
+				position: 'is-top',
+				duration: 2000
+			})
+			if (!navigator.clipboard || !navigator.clipboard.writeText) {
+				fail()
+				return
+			}
+			navigator.clipboard.writeText(text).then(done).catch(fail)
 		},
 		downloadLogs() {
-			if (!this.logContent) return
-			const blob = new Blob([this.logContent], { type: 'text/plain;charset=utf-8' })
+			const text = this.visibleText()
+			if (!text) return
+			const blob = new Blob([text + '\n'], { type: 'text/plain;charset=utf-8' })
 			const url = URL.createObjectURL(blob)
 			const a = document.createElement('a')
 			a.href = url
@@ -436,6 +579,7 @@ export default {
 
 <style lang="scss" scoped>
 .container-console-panel {
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	width: 100%;
@@ -463,7 +607,7 @@ export default {
 }
 
 .header-left {
-	flex-shrink: 0;
+	flex: 0 1 auto;
 	display: flex;
 	align-items: center;
 	min-width: 0;
@@ -693,6 +837,8 @@ export default {
 }
 
 .logs-toolbar {
+	flex-wrap: wrap;
+	row-gap: var(--space-2);
 	padding: var(--space-2) var(--space-4);
 	background: #18181b;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -726,7 +872,7 @@ export default {
 		transition: all 0.15s ease;
 
 		&::placeholder {
-			color: #71717a;
+			color: #8a8a93;
 		}
 
 		&:focus {
@@ -903,8 +1049,8 @@ export default {
 
 	.line-num {
 		user-select: none;
-		color: #52525b;
-		width: 48px;
+		color: #8a8a93;
+		min-width: 48px;
 		flex-shrink: 0;
 		text-align: right;
 		padding-right: var(--space-4);
@@ -920,5 +1066,105 @@ export default {
 .loading-state, .empty-logs {
 	height: 100%;
 	min-height: 200px;
+}
+.logs-error {
+	flex-shrink: 0;
+	padding: var(--space-2) var(--space-4);
+	background: rgba(239, 68, 68, 0.14);
+	border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+	color: #fca5a5;
+	font-size: var(--font-xs);
+}
+
+.toolbar-left,
+.toolbar-right {
+	flex-wrap: wrap;
+	row-gap: var(--space-2);
+}
+
+.console-tab-btn,
+.header-tool-btn,
+.window-btn,
+.toolbar-btn,
+.clear-search-btn,
+.log-viewport {
+	&:focus-visible {
+		outline: 2px solid #93c5fd;
+		outline-offset: 1px;
+	}
+}
+
+.custom-check input[type="checkbox"]:focus-visible {
+	outline: 2px solid #93c5fd;
+	outline-offset: 1px;
+}
+
+// Narrow window (phone: always full-screen): header wraps into two rows,
+// toolbar buttons collapse to icons (they keep their aria-label).
+@container (max-width: 640px) {
+	.panel-header {
+		height: auto;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+	}
+
+	.header-spacer {
+		display: none;
+	}
+
+	.header-left {
+		flex: 1 1 100%;
+		min-width: 0;
+
+		.container-title {
+			max-width: none;
+			flex: 0 1 auto;
+			min-width: 0;
+		}
+
+		.image-tag {
+			display: none;
+		}
+	}
+
+	.header-right {
+		flex: 1 1 100%;
+		justify-content: space-between;
+
+		.console-tabs {
+			margin-right: 0 !important;
+		}
+	}
+
+	.logs-toolbar {
+		padding: var(--space-2) var(--space-3);
+	}
+
+	.search-box {
+		flex: 1 1 100%;
+		margin-right: 0;
+
+		.log-search-input,
+		.log-search-input:focus {
+			width: 100%;
+		}
+	}
+
+	.toolbar-btn-text {
+		display: none;
+	}
+
+	.toolbar-btn .mdi {
+		margin-right: 0 !important;
+	}
+
+	.log-viewport {
+		padding: var(--space-2) var(--space-3);
+	}
+
+	.log-line .line-num {
+		display: none;
+	}
 }
 </style>

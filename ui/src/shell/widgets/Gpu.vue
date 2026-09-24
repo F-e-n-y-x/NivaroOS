@@ -16,9 +16,17 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
-					<div v-if="!unavailable" class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+					<button
+						v-if="!unavailable"
+						type="button"
+						class="widget-icon-btn"
+						:title="$t('Processes')"
+						:aria-label="$t('Processes')"
+						:aria-expanded="showMore ? 'true' : 'false'"
+						@click="showMoreInfo"
+					>
 						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
-					</div>
+					</button>
 				</div>
 			</div>
 			<!-- Header End -->
@@ -57,7 +65,7 @@
 						</div>
 						<div class="spec-tile" :title="$t('Power Consumption')">
 							<span class="spec-label">{{ $t('Power') }}</span>
-							<span class="spec-val">{{ powerDraw.toFixed(0) }}W</span>
+							<span class="spec-val">{{ powerDraw > 0 ? powerDraw.toFixed(0) + 'W' : '—' }}</span>
 						</div>
 					</div>
 				</div>
@@ -70,7 +78,7 @@
 				<div class="gpu-unavail-desc">
 					{{ $t("Detected a {vendor} GPU with no working driver.", { vendor: driverSuggestionLabel }) }}
 				</div>
-				<button class="widget-icon-btn install-driver-btn" @click="installDriver">
+				<button type="button" class="widget-icon-btn install-driver-btn" @click="installDriver">
 					{{ $t("Install Driver") }}
 				</button>
 				<div v-if="installError" class="gpu-unavail-desc install-error">{{ installError }}</div>
@@ -78,7 +86,7 @@
 			<div v-else class="gpu-unavailable-card">
 				<i class="mdi mdi-monitor-dashboard gpu-unavail-icon"></i>
 				<div class="gpu-unavail-title">{{ $t("Integrated Graphics") }}</div>
-				<div class="gpu-unavail-desc">{{ $t("No discrete GPU telemetry sidecar detected on system.") }}</div>
+				<div class="gpu-unavail-desc">{{ $t("No dedicated GPU with live stats was found on this system.") }}</div>
 			</div>
 
 			<!-- Top GPU Processes -->
@@ -105,26 +113,36 @@ import slice from "lodash/slice";
 import { mixin } from "@/mixins/mixin";
 import RadialBar from "@/shared/widgets/RadialBar.vue";
 
-const SIDECAR_HOST = `http://${window.location.hostname}:28640`;
-const SIDECAR_URL = `${SIDECAR_HOST}/gpu-stats`;
-const DRIVER_STATUS_URL = `${SIDECAR_HOST}/driver-status`;
+import { instance as http } from "@/service/service.js";
+
+// The gpu-sidecar is reached same-origin through the gateway
+// (/v1/gpu/<endpoint> -> 127.0.0.1:28640/<endpoint>) with the normal auth
+// header from the shared axios instance - no extra port to open, no
+// mixed-content failure behind HTTPS.
+const GPU_STATS_URL = "/v1/gpu/gpu-stats";
+const DRIVER_STATUS_URL = "/v1/gpu/driver-status";
+const REQUEST_TIMEOUT_MS = 8000;
 // Run directly in a real terminal (see installDriver()) rather than through
-// gpu-sidecar's own /driver-install HTTP endpoint - that endpoint still
-// exists and works, but a silent background request can't show the admin
-// what's actually happening for a multi-minute package install, or let them
-// answer a prompt (license text, "keep local config file?", etc.) if one
-// comes up.
+// gpu-sidecar's own /driver-install HTTP endpoint - a silent background
+// request can't show the admin a multi-minute package install, or let them
+// answer a prompt (license text, "keep local config file?", etc.).
 const DRIVER_SCRIPT_PATH = "/usr/local/bin/nivaroos-gpu-driver-install.sh";
-// Polling this hits the gpu-sidecar, which shells out to nvidia-smi twice
-// per request - fine at a snappy interval while the process list is open
-// and someone is actually watching it, wasteful kept up at that same rate
-// for the entire time the dashboard tab merely happens to be open. The
-// main gauge (utilization/VRAM/temp/power) has no other live-update path
-// (unlike Cpu.vue/Ram.vue, which get pushed real-time over the websocket
-// regardless of expand state), so this never stops entirely - it just
-// backs off to a slower interval while collapsed instead of pausing.
+// nvidia-smi is run per request: fast while the process list is open,
+// slower while collapsed, and backing off exponentially (up to 5 min) on a
+// machine without a GPU/driver instead of hammering the sidecar forever.
 const POLL_INTERVAL_EXPANDED_MS = 2000;
 const POLL_INTERVAL_COLLAPSED_MS = 6000;
+const POLL_BACKOFF_MAX_MS = 5 * 60 * 1000;
+
+const TEMPERATURE_KEY = "temperatureFormat";
+const TEMPERATURE_EVENT = "nivaroos:temperature-format";
+function readTemperatureFormat() {
+	try {
+		return localStorage.getItem(TEMPERATURE_KEY) === "°F" ? "°F" : "°C";
+	} catch (e) {
+		return "°C";
+	}
+}
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -142,6 +160,9 @@ export default {
 	data() {
 		return {
 			timer: null,
+			inFlight: false,
+			failures: 0,
+			driverChecked: false,
 			showMore: false,
 			unavailable: false,
 			gpuName: "",
@@ -154,6 +175,7 @@ export default {
 			processes: [],
 			driverSuggestion: null,
 			installError: "",
+			temperatureFormat: readTemperatureFormat(),
 		};
 	},
 	computed: {
@@ -162,14 +184,11 @@ export default {
 			return (this.memoryUsedBytes / this.memoryTotalBytes) * 100;
 		},
 		temperatureDisplay() {
-			const format = localStorage.getItem("temperatureFormat") || "°C";
-			if (format === "°F") {
+			if (!(this.temperature > 0)) return "—";
+			if (this.temperatureFormat === "°F") {
 				return Math.round((this.temperature * 9) / 5 + 32) + "°F";
 			}
 			return Math.round(this.temperature) + "°C";
-		},
-		powerAndTemperature() {
-			return `${this.powerDraw.toFixed(0)}W · ${this.temperatureDisplay}`;
 		},
 		driverSuggestionLabel() {
 			const labels = { nvidia: "NVIDIA", amd: "AMD", intel: "Intel" };
@@ -178,7 +197,9 @@ export default {
 	},
 	created() {
 		this.poll();
-		this.timer = setInterval(this.poll, POLL_INTERVAL_COLLAPSED_MS);
+		window.addEventListener(TEMPERATURE_EVENT, this.onTemperatureFormat);
+		window.addEventListener("storage", this.onTemperatureStorage);
+		document.addEventListener("visibilitychange", this.onVisibility);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -187,17 +208,36 @@ export default {
 		});
 	},
 	beforeDestroy() {
-		clearInterval(this.timer);
+		this.destroyed_ = true;
+		clearTimeout(this.timer);
+		window.removeEventListener(TEMPERATURE_EVENT, this.onTemperatureFormat);
+		window.removeEventListener("storage", this.onTemperatureStorage);
+		document.removeEventListener("visibilitychange", this.onVisibility);
 	},
 	methods: {
+		schedule() {
+			clearTimeout(this.timer);
+			if (this.destroyed_) return;
+			let delay = this.showMore ? POLL_INTERVAL_EXPANDED_MS : POLL_INTERVAL_COLLAPSED_MS;
+			if (this.failures > 0) {
+				delay = Math.min(POLL_BACKOFF_MAX_MS, POLL_INTERVAL_COLLAPSED_MS * Math.pow(2, this.failures - 1));
+			}
+			this.timer = setTimeout(this.poll, delay);
+		},
+
 		poll() {
-			fetch(SIDECAR_URL)
+			// Hidden tab: don't poll at all; onVisibility() resumes.
+			if (document.hidden || this.inFlight || this.destroyed_) return;
+			this.inFlight = true;
+			http.get(GPU_STATS_URL, { timeout: REQUEST_TIMEOUT_MS })
 				.then((res) => {
-					if (!res.ok) throw new Error("sidecar error");
-					return res.json();
-				})
-				.then((data) => {
+					const data = res && res.data;
+					if (!data || typeof data !== "object" || data.error || !data.name) {
+						throw new Error((data && data.error) || "no gpu");
+					}
+					this.failures = 0;
 					this.unavailable = false;
+					this.driverSuggestion = null;
 					this.gpuName = data.name || "";
 					this.driverVersion = data.driver_version || "";
 					this.utilizationPercent = data.utilization_percent || 0;
@@ -214,15 +254,21 @@ export default {
 				})
 				.catch(() => {
 					this.unavailable = true;
-					this.checkDriverStatus();
+					this.failures++;
+					// Once per failure streak, not on every backed-off retry.
+					if (!this.driverChecked) this.checkDriverStatus();
+				})
+				.finally(() => {
+					this.inFlight = false;
+					this.schedule();
 				});
 		},
 
 		checkDriverStatus() {
-			fetch(DRIVER_STATUS_URL)
-				.then((res) => (res.ok ? res.json() : null))
-				.then((data) => {
-					const gpus = (data && data.gpus) || [];
+			this.driverChecked = true;
+			http.get(DRIVER_STATUS_URL, { timeout: REQUEST_TIMEOUT_MS })
+				.then((res) => {
+					const gpus = (res && res.data && res.data.gpus) || [];
 					const broken = gpus.find((g) => !g.driver_working);
 					this.driverSuggestion = broken ? broken.vendor : null;
 				})
@@ -231,15 +277,33 @@ export default {
 				});
 		},
 
+		// Retry right away (and re-check the driver) when the page comes
+		// back - e.g. after the driver install terminal was used.
+		onVisibility() {
+			if (document.hidden) return;
+			if (this.unavailable) {
+				this.failures = Math.min(this.failures, 1);
+				this.driverChecked = false;
+			}
+			clearTimeout(this.timer);
+			this.poll();
+		},
+
+		onTemperatureFormat(e) {
+			if (e && e.detail) this.temperatureFormat = e.detail;
+		},
+
+		onTemperatureStorage(e) {
+			if (e && e.key === TEMPERATURE_KEY) this.temperatureFormat = readTemperatureFormat();
+		},
+
 		// Opens a real terminal with the install command pre-typed, rather
-		// than running it silently over a background fetch() - a package
-		// install can prompt (license text, "keep local config file?",
-		// etc.), take minutes, or just fail in a way a single success/fail
-		// toast can't usefully explain. The terminal is the same
-		// /v1/sys/wsterm session as the desktop's own Terminal app - it
-		// runs as the machine's regular desktop user, not root, so `sudo`
-		// prompting for a password interactively in there is the correct,
-		// expected, secure flow, not a bug.
+		// than running it silently over a background request - a package
+		// install can prompt, take minutes, or fail in a way a single toast
+		// can't explain. The terminal is the same /v1/sys/wsterm session as
+		// the desktop's Terminal app - it runs as the machine's regular
+		// desktop user, not root, so `sudo` prompting for a password there is
+		// the expected, secure flow.
 		installDriver() {
 			this.installError = "";
 			const vendorFlag = this.driverSuggestion ? ` --vendor=${this.driverSuggestion}` : "";
@@ -252,6 +316,11 @@ export default {
 					width: 820,
 					height: 480,
 				});
+				// Re-check periodically while the install runs, from a short
+				// backoff again instead of up to 5 minutes.
+				this.failures = 1;
+				this.driverChecked = false;
+				this.schedule();
 			} catch (e) {
 				this.installError = this.$t("Could not open a terminal - see system logs.");
 			}
@@ -259,8 +328,7 @@ export default {
 
 		showMoreInfo() {
 			this.showMore = !this.showMore;
-			clearInterval(this.timer);
-			this.timer = setInterval(this.poll, this.showMore ? POLL_INTERVAL_EXPANDED_MS : POLL_INTERVAL_COLLAPSED_MS);
+			if (!this.unavailable) this.schedule();
 		},
 	},
 };

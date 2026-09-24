@@ -63,8 +63,8 @@ type SystemService interface {
 	CreateFile(path string) (int, error)
 	RenameFile(oldF, newF string) (int, error)
 	MkdirAll(path string) (int, error)
-	GetCPUTemperature() int
-	GetCPUPower() map[string]string
+	GetCPUTemperature() *int
+	GetCPUPower() map[string]interface{}
 	GetMacAddress() (string, error)
 	SystemReboot() error
 	SystemShutdown() error
@@ -599,33 +599,143 @@ func GetCPUThermalZone() string {
 	return path
 }
 
-func (s *systemService) GetCPUTemperature() int {
-	outPut := ""
-	path := GetCPUThermalZone()
-	if len(path) > 0 {
-		outPut = string(file.ReadFullFile(path + "/temp"))
-	} else {
-		outPut = string(file.ReadFullFile("/sys/class/hwmon/hwmon0/temp1_input"))
-		if len(outPut) == 0 {
-			outPut = "0"
+// hwmon drivers that report the CPU package/die temperature, best first.
+// k10temp/zenpower: AMD, coretemp: Intel, cpu_thermal/soc_thermal & co: ARM
+// SoCs (Raspberry Pi, Rockchip, Allwinner, Amlogic...).
+var cpuHwmonDrivers = []string{"k10temp", "zenpower", "coretemp", "cpu_thermal", "cpu-thermal", "soc_thermal", "soc-thermal", "cpuss0_thermal", "x86_pkg_temp"}
+
+// Preferred sensor labels inside a CPU hwmon: Tdie is the real die temp
+// on AMD parts where Tctl carries a fan-control offset.
+var cpuHwmonLabels = []string{"tdie", "tctl", "package id 0", "physical id 0", "cpu"}
+
+// findCPUHwmonInput returns the tempN_input file of the best CPU sensor
+// found under /sys/class/hwmon, or "".
+func findCPUHwmonInput() string {
+	dirs, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	byDriver := map[string]string{}
+	for _, dir := range dirs {
+		name := strings.TrimSpace(string(file.ReadFullFile(filepath.Join(dir, "name"))))
+		if name == "" {
+			continue
+		}
+		if _, dup := byDriver[name]; !dup {
+			byDriver[name] = dir
 		}
 	}
-
-	celsius, _ := strconv.Atoi(strings.TrimSpace(outPut))
-
-	if celsius > 1000 {
-		celsius = celsius / 1000
+	for _, drv := range cpuHwmonDrivers {
+		dir, ok := byDriver[drv]
+		if !ok {
+			continue
+		}
+		inputs, _ := filepath.Glob(filepath.Join(dir, "temp*_input"))
+		if len(inputs) == 0 {
+			continue
+		}
+		labels := map[string]string{}
+		for _, in := range inputs {
+			label := strings.ToLower(strings.TrimSpace(string(file.ReadFullFile(strings.TrimSuffix(in, "_input") + "_label"))))
+			labels[label] = in
+		}
+		for _, want := range cpuHwmonLabels {
+			if in, ok := labels[want]; ok {
+				return in
+			}
+		}
+		// No known label (ARM drivers usually have none): temp1, else the first.
+		if in := filepath.Join(dir, "temp1_input"); file.Exists(in) {
+			return in
+		}
+		return inputs[0]
 	}
-	return celsius
+	return ""
 }
 
-func (s *systemService) GetCPUPower() map[string]string {
-	data := make(map[string]string, 2)
-	data["timestamp"] = strconv.FormatInt(time.Now().Unix(), 10)
-	if file.Exists("/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj") {
-		data["value"] = strings.TrimSpace(string(file.ReadFullFile("/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj")))
+// readMilliCelsius parses a sysfs temperature (millidegrees, or degrees on
+// a few old drivers) and rejects values no working CPU sensor reports.
+func readMilliCelsius(path string) (int, bool) {
+	raw := strings.TrimSpace(string(file.ReadFullFile(path)))
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+	if v > 1000 || v < -1000 {
+		v = v / 1000
+	}
+	if v <= 0 || v > 150 {
+		return 0, false
+	}
+	return v, true
+}
+
+// GetCPUTemperature returns the CPU temperature in °C, or nil when the
+// machine exposes no usable sensor (VMs, LXC, many boards) - callers must
+// show "n/a", never 0.
+func (s *systemService) GetCPUTemperature() *int {
+	const keyName = "cpu_temperature_input"
+	path := ""
+	if cached, ok := Cache.Get(keyName); ok {
+		path, _ = cached.(string)
 	} else {
-		data["value"] = "0"
+		path = findCPUHwmonInput()
+		if path == "" {
+			// GetCPUThermalZone falls back to thermal_zone0 even when that is
+			// e.g. acpitz or a Wi-Fi chip; only accept a CPU/SoC zone here.
+			if zone := GetCPUThermalZone(); zone != "" {
+				zt := strings.ToLower(strings.TrimSpace(string(file.ReadFullFile(zone + "/type"))))
+				if strings.Contains(zt, "cpu") || strings.Contains(zt, "soc") || strings.Contains(zt, "x86_pkg") {
+					path = zone + "/temp"
+				}
+			}
+		}
+		if path != "" {
+			logger.Info("CPU temperature sensor", zap.String("path", path))
+		}
+		Cache.SetDefault(keyName, path)
+	}
+	if path == "" {
+		return nil
+	}
+	if v, ok := readMilliCelsius(path); ok {
+		return &v
+	}
+	return nil
+}
+
+// raplZone is the package-0 energy counter (Intel, and AMD Zen via the
+// same powercap interface on Linux 5.8+). Absent in VMs/containers/ARM.
+func raplZone() string {
+	for _, dir := range []string{"/sys/class/powercap/intel-rapl:0", "/sys/class/powercap/intel-rapl/intel-rapl:0"} {
+		if file.Exists(dir + "/energy_uj") {
+			return dir
+		}
+	}
+	return ""
+}
+
+// GetCPUPower returns the raw package energy counter:
+// {"value": µJ or nil when there is no RAPL, "max": counter range in µJ
+// (it wraps back to 0 there), "timestamp": unix ms}. The UI derives watts
+// from two samples.
+func (s *systemService) GetCPUPower() map[string]interface{} {
+	data := map[string]interface{}{
+		"timestamp": time.Now().UnixMilli(),
+		"value":     nil,
+		"max":       0,
+	}
+	zone := raplZone()
+	if zone == "" {
+		return data
+	}
+	v, err := strconv.ParseUint(strings.TrimSpace(string(file.ReadFullFile(zone+"/energy_uj"))), 10, 64)
+	if err != nil || v == 0 {
+		return data
+	}
+	data["value"] = v
+	if max, err := strconv.ParseUint(strings.TrimSpace(string(file.ReadFullFile(zone+"/max_energy_range_uj"))), 10, 64); err == nil {
+		data["max"] = max
 	}
 	return data
 }

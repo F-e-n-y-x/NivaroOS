@@ -16,9 +16,16 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
-					<div class="widget-icon-btn" :title="$t('Processes')" @click="showMoreInfo">
+					<button
+						type="button"
+						class="widget-icon-btn"
+						:title="$t('Processes')"
+						:aria-label="$t('Processes')"
+						:aria-expanded="showMore ? 'true' : 'false'"
+						@click="showMoreInfo"
+					>
 						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
-					</div>
+					</button>
 				</div>
 			</div>
 
@@ -50,7 +57,7 @@
 						</template>
 						<template v-else>
 							<span class="bento-chip is-purple">
-								<i class="mdi mdi-memory"></i> {{ renderSize(totalMemory) }} System RAM
+								<i class="mdi mdi-memory"></i> {{ $t('{size} system RAM', { size: renderSize(totalMemory) }) }}
 							</span>
 						</template>
 					</div>
@@ -110,6 +117,9 @@ export default {
 			showMore: false,
 			totalMemory: 0,
 			usedMemory: 0,
+			// MemAvailable from the kernel (what can be allocated without
+			// swapping, page cache included) - NOT total-used.
+			availableMemory: null,
 			ramSeries: 0,
 			containerRamList: [],
 			dimms: [],
@@ -117,6 +127,7 @@ export default {
 	},
 	computed: {
 		freeMemory() {
+			if (typeof this.availableMemory === "number" && this.availableMemory >= 0) return this.availableMemory;
 			const diff = this.totalMemory - this.usedMemory;
 			return diff > 0 ? diff : 0;
 		},
@@ -142,10 +153,18 @@ export default {
 			}));
 		},
 	},
+	watch: {
+		// Follow a refetched hardware snapshot (Home.vue retries a failed load).
+		"$store.state.hardwareInfo.mem"(mem) {
+			if (!mem) return;
+			if (mem.dimms) this.dimms = mem.dimms;
+			this.updateCharts(mem);
+		},
+	},
 	created() {
-		this.totalMemory = this.$store.state.hardwareInfo.mem.total;
-		this.dimms = this.$store.state.hardwareInfo.mem.dimms || [];
-		this.updateCharts(this.$store.state.hardwareInfo.mem);
+		const mem = this.$store.state.hardwareInfo.mem || {};
+		this.dimms = mem.dimms || [];
+		this.updateCharts(mem);
 	},
 	mounted() {
 		this.$smoothReflow({
@@ -160,8 +179,11 @@ export default {
 	},
 	methods: {
 		updateCharts(mem) {
-			this.ramSeries = mem.usedPercent;
-			this.usedMemory = mem.used;
+			if (!mem) return;
+			if (mem.total) this.totalMemory = mem.total;
+			this.ramSeries = mem.usedPercent || 0;
+			this.usedMemory = mem.used || 0;
+			this.availableMemory = typeof mem.available === "number" ? mem.available : null;
 		},
 		applyUsage(res) {
 			this.containerRamList = res.data.data.map((item) => {
@@ -192,10 +214,8 @@ export default {
 		showMoreInfo() {
 			this.showMore = !this.showMore;
 			if (this.showMore) {
-				this.$messageBus("widget_ram", "open");
 				this.unsubscribeUsage = subscribeContainerUsage((res) => this.applyUsage(res));
 			} else {
-				this.$messageBus("widget_ram", "close");
 				if (this.unsubscribeUsage) {
 					this.unsubscribeUsage();
 					this.unsubscribeUsage = null;
@@ -205,8 +225,13 @@ export default {
 	},
 	sockets: {
 		"nivaroos:system:utilization"(res) {
-			let data = res.Properties;
-			let mem = JSON.parse(data.sys_mem);
+			if (document.hidden) return;
+			let mem;
+			try {
+				mem = JSON.parse(res.Properties.sys_mem);
+			} catch (e) {
+				return;
+			}
 			this.updateCharts(mem);
 		},
 	},

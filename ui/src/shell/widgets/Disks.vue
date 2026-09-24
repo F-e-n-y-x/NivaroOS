@@ -16,42 +16,58 @@
 					</div>
 				</div>
 				<div class="widget-header-right">
-					<div class="widget-icon-btn" :title="$t('Storage Settings')" @click="showDiskManagement">
-						<i class="mdi mdi-cog-outline"></i>
-					</div>
+					<button
+						type="button"
+						class="widget-icon-btn"
+						:title="$t('Storage Settings')"
+						:aria-label="$t('Storage Settings')"
+						@click="showDiskManagement"
+					>
+						<i class="mdi mdi-cog-outline" aria-hidden="true"></i>
+					</button>
 				</div>
 			</div>
 			<!-- Header End -->
 
 			<!-- Unified Bento Disks & USB Drives List -->
 			<div class="disks-bento-list pt-1">
-				<div v-if="!visibleDisks.length" class="has-text-centered is-size-7 py-3 text-muted">
+				<div v-if="loadError && !disksUsage.length" class="has-text-centered is-size-7 py-3 text-muted" role="status">
+					{{ $t('Could not read storage usage') }}
+				</div>
+				<div v-else-if="!visibleDisks.length" class="has-text-centered is-size-7 py-3 text-muted">
 					{{ $t('No storage drives found') }}
 				</div>
 				<div v-for="d in visibleDisks" :key="d.mount_point" class="disk-bento-card">
 					<div class="disk-card-top">
 						<div class="disk-card-left">
-							<span class="disk-type-pill" :class="d.is_usb ? 'is-usb' : 'is-internal'">
-								<i class="mdi" :class="d.is_usb ? 'mdi-usb' : 'mdi-harddisk'"></i>
-								{{ d.is_usb ? 'USB' : (d.mount_point === '/' ? 'System' : 'NVMe') }}
+							<span class="disk-type-pill" :class="diskKind(d).cls">
+								<i class="mdi" :class="diskKind(d).icon" aria-hidden="true"></i>
+								{{ diskKind(d).label }}
 							</span>
 							<span class="disk-name" :title="getDiskTitle(d)">
 								{{ getDiskTitle(d) }}
 							</span>
 						</div>
-						<span class="disk-pct-badge">{{ percentValue(d.percent) }}%</span>
+						<span class="disk-pct-badge">{{ diskPercent(d) }}%</span>
 					</div>
 
-					<div class="disk-track">
+					<div
+						class="disk-track"
+						role="progressbar"
+						:aria-label="$t('{name} usage', { name: getDiskTitle(d) })"
+						:aria-valuenow="diskPercent(d)"
+						aria-valuemin="0"
+						aria-valuemax="100"
+					>
 						<div
 							class="disk-fill"
-							:class="getDiskBarClass(d.percent)"
-							:style="{ width: percentValue(d.percent) + '%' }"
+							:class="getDiskBarClass(diskPercent(d))"
+							:style="{ width: diskPercent(d) + '%' }"
 						></div>
 					</div>
 
 					<div class="disk-meta-row">
-						<span>{{ d.used }} / {{ d.total }}</span>
+						<span>{{ diskUsed(d) }} / {{ diskTotal(d) }}</span>
 						<span class="free-pill">{{ getFreeDisplay(d) }}</span>
 					</div>
 				</div>
@@ -66,6 +82,19 @@ import events from '@/events/events'
 
 const storageWidgetConfigKey = "storage_widget_config"
 const REFRESH_MS = 20000
+
+// Media kind (from the backend's sysfs lookup) -> pill label/icon/colour.
+const DISK_KINDS = {
+	nvme: { label: 'NVMe', icon: 'mdi-harddisk', cls: 'is-internal' },
+	ssd: { label: 'SSD', icon: 'mdi-harddisk', cls: 'is-internal' },
+	hdd: { label: 'HDD', icon: 'mdi-harddisk', cls: 'is-internal' },
+	usb: { label: 'USB', icon: 'mdi-usb', cls: 'is-usb' },
+	mmc: { label: 'SD', icon: 'mdi-sd', cls: 'is-usb' },
+	raid: { label: 'RAID', icon: 'mdi-database', cls: 'is-pool' },
+	pool: { label: 'Pool', icon: 'mdi-database', cls: 'is-pool' },
+	network: { label: 'Network', icon: 'mdi-server-network', cls: 'is-network' },
+	virtual: { label: 'Virtual', icon: 'mdi-harddisk', cls: 'is-internal' }
+}
 
 export default {
 	// eslint-disable-next-line vue/multi-word-component-names
@@ -82,6 +111,8 @@ export default {
 			disksUsage: [],
 			hiddenMounts: [],
 			hasCustomHiddenMounts: false,
+			loadError: false,
+			loading: false,
 			timer: 0
 		}
 	},
@@ -97,26 +128,73 @@ export default {
 
 	mounted() {
 		this.refresh()
+		// The hidden-mounts config only changes through Settings, which
+		// broadcasts SET_STORAGE_WIDGET_HIDDEN_MOUNTS - fetch it once here
+		// rather than on every usage refresh.
+		this.loadWidgetConfig()
 		this.timer = setInterval(this.refresh, REFRESH_MS)
 		this.$EventBus.$on(events.SET_STORAGE_WIDGET_HIDDEN_MOUNTS, this.setHiddenMounts)
+		document.addEventListener('visibilitychange', this.onVisibility)
 	},
 
 	beforeDestroy() {
 		this.$EventBus.$off(events.SET_STORAGE_WIDGET_HIDDEN_MOUNTS, this.setHiddenMounts)
+		document.removeEventListener('visibilitychange', this.onVisibility)
 		clearInterval(this.timer)
 	},
 
 	methods: {
 		refresh() {
+			if (document.hidden || this.loading) return
+			this.loading = true
 			this.$api.sys.getDisksUsage().then(res => {
-				if (res.data.success === 200) this.disksUsage = res.data.data || []
+				if (res.data.success === 200) {
+					this.disksUsage = res.data.data || []
+					this.loadError = false
+				}
+			}).catch(() => {
+				this.loadError = true
+			}).finally(() => {
+				this.loading = false
 			})
+		},
+
+		loadWidgetConfig() {
 			this.$api.users.getCustomStorage(storageWidgetConfigKey).then(res => {
 				if (res.data.success === 200 && res.data.data) {
 					this.hiddenMounts = res.data.data.hiddenMounts || []
 					this.hasCustomHiddenMounts = true
 				}
-			})
+			}).catch(() => { /* keep defaults */ })
+		},
+
+		onVisibility() {
+			if (!document.hidden) this.refresh()
+		},
+
+		diskKind(d) {
+			const k = DISK_KINDS[d.kind]
+			if (k) return { ...k, label: this.$t(k.label) }
+			if (d.is_usb) return { ...DISK_KINDS.usb, label: this.$t('USB') }
+			return { label: this.$t('Disk'), icon: 'mdi-harddisk', cls: d.mount_point === '/' ? 'is-system' : 'is-internal' }
+		},
+
+		// Sizes come as bytes and are formatted with the same renderSize()
+		// (1024-based, KB/MB/GB/TB) as the rest of the UI; the pre-formatted
+		// strings are only a fallback for an older backend.
+		diskTotal(d) {
+			return d.size_bytes ? this.renderSize(d.size_bytes) : (d.total || '')
+		},
+
+		diskUsed(d) {
+			return d.size_bytes ? this.renderSize(d.used_bytes || 0) : (d.used || '')
+		},
+
+		diskPercent(d) {
+			if (d.size_bytes) {
+				return Math.min(100, Math.max(0, Math.round(((d.used_bytes || 0) / d.size_bytes) * 100)))
+			}
+			return this.percentValue(d.percent)
 		},
 
 		isEfiPartition(disk) {
@@ -158,13 +236,14 @@ export default {
 		},
 
 		getFreeDisplay(d) {
-			if (d.free) return `${d.free} ${this.$t('Free')}`
-			const freePct = 100 - this.percentValue(d.percent)
-			return `${freePct}% ${this.$t('Free')}`
+			if (d.size_bytes && typeof d.avail_bytes === 'number') {
+				return this.$t('{size} free', { size: this.renderSize(d.avail_bytes) })
+			}
+			if (d.free) return this.$t('{size} free', { size: d.free })
+			return this.$t('{size} free', { size: `${100 - this.diskPercent(d)}%` })
 		},
 
 		showDiskManagement() {
-			this.$messageBus('widget_storagemanager');
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'settings',
 				title: this.$t('Settings'),
@@ -176,9 +255,6 @@ export default {
 		},
 	},
 	sockets: {
-		"nivaroos:system:utilization"() {
-			// Kept in sync with system updates
-		},
 		"local-storage:disk:added"() {
 			this.refresh()
 		},

@@ -8,27 +8,46 @@
 		     the only titlebar, hiding it would remove drag/minimize/close
 		     entirely whenever Logs is showing. -->
 		<div class="terminal-tabs" @pointerdown="$emit('drag-start', $event)">
-			<button v-for="tab in terminalTabs" :key="tab.id" class="terminal-tab"
-				:class="{ active: tab.id === activeTerminalTabId }" @click="activateTerminalTab(tab.id)">
-				<span class="one-line">{{ tab.title }}</span>
-				<span v-if="canCloseTab(tab)" class="terminal-tab-close" @click.stop="closeTerminalTab(tab.id)">
+			<div v-for="tab in terminalTabs" :key="tab.id" class="terminal-tab"
+				:class="{ active: tab.id === activeTerminalTabId }">
+				<button type="button" class="terminal-tab-label" :aria-pressed="tab.id === activeTerminalTabId ? 'true' : 'false'"
+					@click="activateTerminalTab(tab.id)">
+					<span class="one-line">{{ tab.title }}</span>
+				</button>
+				<button v-if="canCloseTab(tab)" type="button" class="terminal-tab-close"
+					:title="$t('Close {name}', { name: tab.title })" :aria-label="$t('Close {name}', { name: tab.title })"
+					@click.stop="closeTerminalTab(tab.id)">
 					<b-icon icon="close" size="is-small"></b-icon>
-				</span>
-			</button>
-			<button class="terminal-tab-add" :title="$t('New tab')" @click="addTerminalTab">
+				</button>
+			</div>
+			<button type="button" class="terminal-tab-add" :title="$t('New tab')" :aria-label="$t('New tab')" @click="addTerminalTab">
 				<b-icon icon="plus" size="is-small"></b-icon>
 			</button>
-			<button class="terminal-tab-add" :title="$t('New Window')" @click="openNewWindow">
+			<button type="button" class="terminal-tab-add" :title="$t('New Window')" :aria-label="$t('New Window')" @click="openNewWindow">
 				<b-icon icon="open-in-new" size="is-small"></b-icon>
 			</button>
 			<div class="terminal-tabs-spacer"></div>
-			<button class="logs-button" :class="{ active: hasLogsTab }" @click="openLogsTab">
+			<template v-if="activeTerminalTabId !== 'logs'">
+				<button type="button" class="terminal-tab-add" :title="$t('Smaller text (Ctrl+-)')" :aria-label="$t('Smaller text (Ctrl+-)')" @click="zoomActive(-1)">
+					<b-icon icon="magnify-minus-outline" size="is-small"></b-icon>
+				</button>
+				<button type="button" class="terminal-tab-add" :title="$t('Larger text (Ctrl+=)')" :aria-label="$t('Larger text (Ctrl+=)')" @click="zoomActive(1)">
+					<b-icon icon="magnify-plus-outline" size="is-small"></b-icon>
+				</button>
+				<button type="button" class="terminal-tab-add" :class="{ active: copyOnSelect }"
+					:title="$t('Copy on select (Ctrl+Shift+C / Ctrl+Shift+V always work)')"
+					:aria-label="$t('Copy on select')" :aria-pressed="copyOnSelect ? 'true' : 'false'"
+					@click="toggleCopyOnSelect">
+					<b-icon icon="content-copy" size="is-small"></b-icon>
+				</button>
+			</template>
+			<button type="button" class="logs-button" :class="{ active: hasLogsTab }" @click="openLogsTab">
 				<b-icon icon="history-records-outline" pack="casa" custom-size="casa-14px" />
 				<span>{{ $t('Logs') }}</span>
 			</button>
 			<div class="window-controls">
-				<button class="window-btn window-btn-minimize" :title="$t('Minimize')" @click.stop="$emit('minimize')"></button>
-				<button class="window-btn window-btn-close" :title="$t('Close')" @click.stop="$emit('close')"></button>
+				<button type="button" class="window-btn window-btn-minimize" :title="$t('Minimize')" :aria-label="$t('Minimize')" @click.stop="$emit('minimize')"></button>
+				<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="$emit('close')"></button>
 			</div>
 		</div>
 
@@ -43,7 +62,7 @@
 			     how many elements actually end up using it - that silently
 			     broke every this.$refs.logs.active(...) call below. -->
 			<div v-if="hasLogsTab" v-show="activeTerminalTabId === 'logs'" class="terminal-body-layer">
-				<logs-card ref="logs" :data="logData"></logs-card>
+				<logs-card ref="logs" :data="logData" :error="logError"></logs-card>
 			</div>
 		</div>
 
@@ -72,7 +91,10 @@ export default {
 			isLoading: false,
 			wsUrl: ``,
 			logData: "",
-			timer: '',
+			logError: "",
+			logsInFlight: false,
+			timer: null,
+			copyOnSelect: (() => { try { return localStorage.getItem('terminalCopyOnSelect') === '1' } catch (e) { return false } })(),
 			// Each tab is either a `type: 'shell'` (its own independent pty
 			// session - own TerminalCard, own WebSocket) or the single
 			// `type: 'logs'` tab (fixed id 'logs', toggled via the logs
@@ -95,17 +117,57 @@ export default {
 		}
 	},
 	mounted() {
-		this.getLogs();
+		// 500 log lines are only fetched while the Logs tab is actually on
+		// screen (not merely open, not while this window is minimised or the
+		// browser tab is hidden) - see logsVisible().
 		this.timer = setInterval(() => {
-			this.getLogs();
+			if (this.logsVisible()) this.getLogs();
 		}, 1000 * 5);
+		document.addEventListener('visibilitychange', this.onVisibility);
 	},
 	methods: {
+		logsVisible() {
+			if (document.hidden || this.activeTerminalTabId !== 'logs' || !this.$el) return false
+			// A minimised window is display:none -> no client rects.
+			return this.$el.getClientRects().length > 0
+		},
+		onVisibility() {
+			if (this.logsVisible()) this.getLogs()
+		},
 		getLogs() {
+			if (this.logsInFlight) return
+			this.logsInFlight = true
 			this.$api.sys.getLogs(500).then(res => {
-				let data = res.data.data
-				let replaceData = data.replace(/\n(.{8})/gu, '\n');
-				this.logData = replaceData.substring(8, replaceData.length - 1);
+				const data = (res.data && res.data.data) || ''
+				// Lines are shown whole (the old code cut the first 8
+				// characters of every line - the "YYYY-MM-" of the timestamp);
+				// only the trailing newline is dropped.
+				this.logData = typeof data === 'string' ? data.replace(/\n+$/, '') : String(data)
+				this.logError = ''
+			}).catch(err => {
+				this.logError = this.$t('Could not load logs: {reason}', {
+					reason: (err && err.response && err.response.data && err.response.data.message) || (err && err.message) || this.$t('Unknown error')
+				})
+			}).finally(() => {
+				this.logsInFlight = false
+			})
+		},
+		activeShellRef() {
+			const tab = this.terminalTabs.find(t => t.id === this.activeTerminalTabId && t.type === 'shell')
+			return tab ? this.getTabRef(tab) : null
+		},
+		zoomActive(delta) {
+			const ref = this.activeShellRef()
+			if (ref) {
+				ref.zoom(delta)
+				this.$nextTick(() => ref.active(true))
+			}
+		},
+		toggleCopyOnSelect() {
+			this.copyOnSelect = !this.copyOnSelect
+			this.shellTabs.forEach(tab => {
+				const ref = this.getTabRef(tab)
+				if (ref) ref.setCopyOnSelect(this.copyOnSelect)
 			})
 		},
 		// Any ref used lexically inside a v-for is collected into an array by
@@ -163,14 +225,10 @@ export default {
 		openLogsTab() {
 			if (!this.hasLogsTab) {
 				this.terminalTabs.push({ id: 'logs', title: this.$t('Logs'), type: 'logs' })
-				this.$messageBus('terminallogs_logs')
-				// Fresh content right away instead of waiting for the next
-				// 5s poll tick - the Logs pane didn't even exist until now,
-				// so whatever it first renders shouldn't be however stale
-				// logData happened to be since the last poll.
-				this.getLogs()
 			}
 			this.activateTerminalTab('logs')
+			// Fresh content right away instead of waiting for the next 5s tick.
+			this.getLogs()
 		},
 		closeTerminalTab(id) {
 			const tab = this.terminalTabs.find(t => t.id === id)
@@ -185,6 +243,7 @@ export default {
 	},
 	destroyed() {
 		clearInterval(this.timer);
+		document.removeEventListener('visibilitychange', this.onVisibility);
 	}
 }
 </script>
@@ -300,11 +359,38 @@ export default {
 	}
 }
 
+.terminal-tab-label {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+	cursor: pointer;
+}
+
+.terminal-tab-label,
+.terminal-tab-close,
+.terminal-tab-add,
+.logs-button,
+.window-btn {
+	&:focus-visible {
+		outline: 2px solid #93c5fd;
+		outline-offset: 1px;
+	}
+}
+
 .terminal-tab-close {
 	display: flex;
 	align-items: center;
+	border: none;
+	background: transparent;
+	color: inherit;
 	border-radius: var(--radius-xs);
 	padding: 1px;
+	cursor: pointer;
 
 	&:hover {
 		background: rgba(255, 255, 255, 0.15);

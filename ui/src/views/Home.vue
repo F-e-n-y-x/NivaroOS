@@ -26,6 +26,10 @@ import AppSection from '@/apps/app-store/AppSection.vue'
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import { THEME_MODES, getStoredThemeMode, applyTheme } from '@/utils/theme'
+import { escapeHtml } from '@/utils/escapeHtml'
+import { formatSize } from '@/utils/formatSize'
+import activityService from '@/service/activity'
+import { isFormatting } from '@/apps/storage/storageJobs'
 
 const wallpaperConfig = 'wallpaper'
 
@@ -74,15 +78,7 @@ export default {
 	mounted() {
 		window.addEventListener('resize', this.onResize)
 		this.onResize()
-		if (sessionStorage.getItem('fromWelcome')) {
-			this.$messageBus('global_newvisit')
-			sessionStorage.removeItem('fromWelcome')
-		}
-		this.$messageBus('global_visit')
-
-		this.$EventBus.$on('casaUI:openStorageManager', () => {
-			this.showStorageManagerPanelModal()
-		})
+		sessionStorage.removeItem('fromWelcome')
 	},
 	methods: {
 		async getConfig() {
@@ -100,7 +96,6 @@ export default {
 				}
 			}
 
-			this.$store.commit('SET_RECOMMEND_SWITCH', systemConfig.data.data.recommend_switch)
 			this.barData = systemConfig.data.data
 			this.isLoading = false
 		},
@@ -122,13 +117,24 @@ export default {
 			}
 		},
 
-		getHardwareInfo() {
+		// The widgets only mount once this succeeds, so a transient failure
+		// (core still starting, network blip) must not leave the sidebar
+		// empty until a reload: retry with backoff 2s, 4s ... capped at 60s.
+		getHardwareInfo(attempt = 0) {
+			const retry = () => {
+				if (this._isDestroyed) return
+				setTimeout(() => {
+					if (!this._isDestroyed) this.getHardwareInfo(attempt + 1)
+				}, Math.min(60000, 2000 * Math.pow(2, attempt)))
+			}
 			this.$api.sys.getUtilization().then(res => {
 				if (res.data.success === 200) {
 					this.hardwareInfoLoading = false
 					this.$store.commit('SET_HARDWARE_INFO', res.data.data)
+				} else {
+					retry()
 				}
-			})
+			}).catch(retry)
 		},
 
 		openHomeContaxtMenu(e) {
@@ -176,8 +182,7 @@ export default {
 			}).catch(() => {})
 		},
 
-		async showStorageManagerPanelModal() {
-			this.$messageBus('widget_storagemanager')
+		openStorageSettings() {
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'settings',
 				title: this.$t('Settings'),
@@ -186,24 +191,67 @@ export default {
 				height: 540,
 				props: { section: 'storage' }
 			})
+		},
+
+		// Normalises a local-storage:disk:* event. Hot-plug events carry the
+		// udev keys (local-storage:model / local-storage:path); the backend
+		// adds lsblk details (model, path, mount_point as a comma-joined list
+		// with empty entries for unmounted partitions, size, children:num)
+		// when it can still read the disk.
+		diskEventInfo(res) {
+			const p = (res && (res.Properties || res.properties)) || {}
+			const model = (p['local-storage:model'] || p.model || '').replace(/_/g, ' ').trim()
+			const path = p['local-storage:path'] || p.path || ''
+			const mountPoints = String(p.mount_point || '').split(',').map(m => m.trim()).filter(Boolean)
+			const tran = String(p.tran || p['local-storage:bus'] || '').toLowerCase()
+			const size = Number(p.size) || 0
+			const partitions = p['children:num'] !== undefined ? Number(p['children:num']) : null
+			return { model, path, mountPoints, isUsb: tran === 'usb', size, partitions }
 		}
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.onResize)
-		this.$EventBus.$off('casaUI:openStorageManager')
 	},
 	sockets: {
 		'local-storage:disk:added'(res) {
-			const props = res.Properties || {}
-			const model = props.model || 'External Storage'
-			const mountPoint = props.mount_point || '/DATA'
+			const info = this.diskEventInfo(res)
+			// Our own format repartitions the disk, which udev reports as a
+			// remove + add - that's not a newly connected drive.
+			if (isFormatting(info.path)) return
+			const name = info.model || info.path || this.$t('External storage')
+			const detail = [info.path, info.size ? formatSize(info.size) : ''].filter(Boolean).join(' · ')
+			const mountPoint = info.mountPoints[0] || ''
+			const needsSetup = !mountPoint && info.partitions === 0
+			const title = needsSetup
+				? this.$t('New unformatted disk detected')
+				: (info.isUsb ? this.$t('USB drive connected') : this.$t('Storage drive connected'))
+			const action = mountPoint
+				? { label: this.$t('Open in Files'), path: mountPoint }
+				: { label: this.$t('Storage settings'), window: { id: 'settings', title: this.$t('Settings'), component: 'SettingsApp', width: 760, height: 540, props: { section: 'storage' } } }
+			activityService.add({
+				title,
+				message: [name, detail, info.mountPoints.join(', ')].filter(Boolean).join(' - '),
+				type: info.isUsb ? 'usb' : 'storage',
+				status: needsSetup ? 'warning' : 'info',
+				action
+			})
 			this.$buefy.snackbar.open({
-				message: this.$t('Storage drive connected: {model}', { model }),
+				message: `${escapeHtml(title)}: <b>${escapeHtml(name)}</b>`,
 				type: 'is-info',
 				position: 'is-top',
-				actionText: this.$t('Open in Files'),
-				onAction: () => this.showFiles(mountPoint),
+				actionText: action.label,
+				onAction: () => (mountPoint ? this.showFiles(mountPoint) : this.openStorageSettings()),
 				duration: 6000
+			})
+		},
+		'local-storage:disk:removed'(res) {
+			const info = this.diskEventInfo(res)
+			if (isFormatting(info.path)) return
+			activityService.add({
+				title: info.isUsb ? this.$t('USB drive disconnected') : this.$t('Storage drive removed'),
+				message: info.model || info.path || this.$t('External storage'),
+				type: info.isUsb ? 'usb' : 'storage',
+				status: 'info'
 			})
 		}
 	}

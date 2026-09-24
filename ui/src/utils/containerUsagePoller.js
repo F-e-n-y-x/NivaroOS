@@ -10,13 +10,28 @@ import container from '@/service/container.js'
 const POLL_INTERVAL_MS = 1000
 
 let timer = null
+let inFlight = false
 const subscribers = new Set()
 
+// One request at a time (a slow docker-stats call must not stack up a
+// queue of 1s requests), nothing while the page is hidden, and a failed
+// request is simply retried on the next tick instead of surfacing as an
+// unhandled rejection. A subscriber that throws doesn't starve the others.
 function tick() {
+	if (inFlight || (typeof document !== 'undefined' && document.hidden)) return
+	inFlight = true
 	container.getHardwareUsage().then((res) => {
 		for (const callback of subscribers) {
-			callback(res)
+			try {
+				callback(res)
+			} catch (e) {
+				console.error('container usage subscriber failed:', e)
+			}
 		}
+	}).catch(() => {
+		/* transient failure - next tick retries */
+	}).finally(() => {
+		inFlight = false
 	})
 }
 
