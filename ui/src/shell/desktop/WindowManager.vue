@@ -25,8 +25,13 @@
 		</div>
 
 		<drag-drop-menu></drag-drop-menu>
-		<transfers-panel></transfers-panel>
-		<container-install-status></container-install-status>
+		<!-- One bottom-right column for the transient progress cards, so
+		     file transfers and app installs stack instead of overlapping
+		     in the same corner. -->
+		<div class="shell-progress-stack" :class="{ 'is-mobile': isMobileShell }">
+			<container-install-status></container-install-status>
+			<transfers-panel></transfers-panel>
+		</div>
 	</div>
 </template>
 
@@ -96,6 +101,33 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.shell-progress-stack {
+	position: fixed;
+	right: 1.5rem;
+	bottom: 4.8rem;
+	z-index: 9999;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-3);
+	max-width: calc(100vw - 2rem);
+	max-height: calc(100vh - 6rem);
+	pointer-events: none;
+
+	// Above the phone tab bar, full width minus the gutters.
+	&.is-mobile {
+		left: var(--space-4);
+		right: var(--space-4);
+		bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px));
+		max-width: none;
+		align-items: stretch;
+	}
+
+	> * {
+		pointer-events: auto;
+	}
+}
+
 .desktop-status-tray {
 	position: fixed;
 	right: 1.5rem;

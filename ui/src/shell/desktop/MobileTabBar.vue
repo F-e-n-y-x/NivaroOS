@@ -8,33 +8,55 @@
 	is where you go for anything not already pinned to your own dock.
 -->
 <template>
-	<nav class="mobile-tab-bar">
+	<nav class="mobile-tab-bar" :aria-label="$t('Main navigation')">
 		<button
 			v-for="tab in tabs"
 			:key="tab.id"
 			type="button"
 			class="mobile-tab"
 			:class="{ active: activeTabId === tab.id }"
+			:aria-current="activeTabId === tab.id ? 'page' : null"
+			:aria-label="tab.id === 'notifications' && unreadCount > 0 ? $t('Notifications ({count} unread)', { count: unreadCount }) : null"
 			@click="selectTab(tab)"
 		>
-			<b-icon :icon="tab.icon" :pack="tab.pack || 'mdi'" custom-size="mdi-24px"></b-icon>
+			<span class="mobile-tab-icon">
+				<b-icon :icon="tab.id === 'notifications' && unreadCount > 0 ? 'bell-badge-outline' : tab.icon" :pack="tab.pack || 'mdi'" custom-size="mdi-24px"></b-icon>
+				<span v-if="tab.id === 'notifications' && unreadCount > 0" class="mobile-tab-badge" aria-hidden="true">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+			</span>
 			<span>{{ $t(tab.label) }}</span>
 		</button>
 	</nav>
 </template>
 
 <script>
+import { COMPONENT_REGISTRY } from '@/utils/desktop/windowRegistry'
+import { activityService } from '@/service/activity'
+
+// The phone has no tray (NotificationCenter / clock pill), so its
+// notification list - with sign-out and restart/shutdown - is a screen
+// of its own. Registered here until windowRegistry.js lists it.
+
 const TABS = [
 	{ id: 'files', label: 'Files', icon: 'folder-outline', component: 'FilesApp' },
 	{ id: 'apps', label: 'Apps', icon: 'apps' },
 	{ id: 'vms', label: 'VMs', icon: 'display-applications-outline', pack: 'casa', component: 'VmManagerApp' },
-	{ id: 'settings', label: 'Settings', icon: 'cog-outline', component: 'SettingsApp' }
+	{ id: 'settings', label: 'Settings', icon: 'cog-outline', component: 'SettingsApp' },
+	{ id: 'notifications', label: 'Alerts', icon: 'bell-outline', component: 'NotificationList', props: { isWindow: true, showAccount: true }, titleKey: 'Notifications' }
 ]
 
 export default {
 	name: 'mobile-tab-bar',
 	data() {
-		return { tabs: TABS }
+		return { tabs: TABS, unreadCount: 0 }
+	},
+	created() {
+		this.unreadCount = activityService.getUnreadCount()
+		this.unsubscribe = activityService.subscribe(list => {
+			this.unreadCount = list.filter(a => !a.read).length
+		})
+	},
+	beforeDestroy() {
+		if (this.unsubscribe) this.unsubscribe()
 	},
 	computed: {
 		windows() {
@@ -69,7 +91,7 @@ export default {
 			if (existing) {
 				this.$store.commit('FOCUS_WINDOW', tab.id)
 			} else {
-				this.$store.commit('OPEN_WINDOW', { id: tab.id, title: this.$t(tab.label), component: tab.component })
+				this.$store.commit('OPEN_WINDOW', { id: tab.id, title: this.$t(tab.titleKey || tab.label), component: tab.component, props: tab.props })
 			}
 		}
 	}
@@ -109,11 +131,36 @@ export default {
 	cursor: pointer;
 
 	&.active {
-		color: var(--color-primary, #2563eb);
+		color: var(--color-primary-fg, var(--color-primary, #2563eb));
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--theme-focus-ring, var(--color-primary));
+		outline-offset: -2px;
 	}
 
 	&:active {
 		opacity: 0.7;
 	}
+}
+.mobile-tab-icon {
+	position: relative;
+	display: inline-flex;
+}
+
+.mobile-tab-badge {
+	position: absolute;
+	top: -4px;
+	right: -10px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 var(--space-1);
+	border-radius: var(--radius-pill);
+	background: var(--color-danger);
+	color: #ffffff;
+	font-size: var(--font-2xs);
+	font-weight: 700;
+	line-height: 16px;
+	text-align: center;
 }
 </style>

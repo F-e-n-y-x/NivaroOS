@@ -134,9 +134,6 @@ const mutations = {
 		state.existingAppsSwitch = val
 	},
 
-	SET_RECOMMEND_SWITCH(state, val) {
-		state.recommendSwitch = val
-	},
 
 	SET_HARDWARE_INFO(state, val) {
 		state.hardwareInfo = val

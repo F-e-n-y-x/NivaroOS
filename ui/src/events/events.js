@@ -27,5 +27,8 @@ const events = {
 	GET_APP_LIST: 'getAppList',
 	SHOW_CONFIG_PANEL: 'showConfigPanel',
 	SHOW_CONTAINER_PANEL: 'showContainerPanel',
+	// A disk was formatted/added/removed from Settings > Storage - every
+	// storage panel (and the Files sidebar) re-reads its list.
+	STORAGE_CHANGED: 'nivaroos:storage-changed',
 };
 export default events;

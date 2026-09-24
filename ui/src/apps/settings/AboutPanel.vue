@@ -73,6 +73,16 @@
 					</a>
 				</div>
 			</div>
+			<div class="setting-row">
+				<b-icon class="row-icon" icon="message-alert-outline" pack="mdi" size="is-20"></b-icon>
+				<div class="row-label">
+					<div class="setting-title">{{ $t('Feedback & bug reports') }}</div>
+					<div class="setting-desc">{{ $t('Opens a GitHub issue; you see exactly what will be public before sending.') }}</div>
+				</div>
+				<div class="row-control">
+					<b-button rounded size="is-small" @click="openFeedback">{{ $t('Send feedback') }}</b-button>
+				</div>
+			</div>
 		</div>
 
 		<!-- System Logs -->
@@ -151,6 +161,9 @@ export default {
 		this.loadLogs()
 	},
 	methods: {
+		openFeedback() {
+			this.$store.commit('OPEN_WINDOW', { id: 'feedback', title: this.$t('Feedback'), component: 'FeedbackPanel', width: 520, height: 560 })
+		},
 		loadHardware() {
 			this.$api.sys.hardwareInfo().then(res => {
 				if (res.data.success === 200) this.hardware = res.data.data

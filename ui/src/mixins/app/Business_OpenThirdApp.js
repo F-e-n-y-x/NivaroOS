@@ -6,7 +6,6 @@ export default {
 			this.hasNewTag(appInfo.name) ? this.firstOpenThirdApp(appInfo) : this.openThirdApp(appInfo, true);
 		},
 		openThirdApp(appInfo, isNewWindows) {
-			this.$messageBus('apps_open', appInfo.name);
 			if (appInfo.hostname !== "" || appInfo.port !== "" || appInfo.index !== "") {
 				const hostIp = appInfo.hostname || this.$baseIp
 				const scheme = appInfo.scheme || 'http'

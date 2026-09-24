@@ -1595,9 +1595,6 @@ export default {
 		},
 		async executeInstall(yamlData, item) {
 			try {
-				if (this.$messageBus) {
-					this.$messageBus('appstore_install', item?.title || '')
-				}
 				const installRes = await this.$openAPI.appManagement.compose.installComposeApp(yamlData, false, true)
 				if (installRes.status === 200) {
 					this.toast(this.$t('Installation started for {title}', { title: item?.title || 'app' }), 'is-success', 3000)

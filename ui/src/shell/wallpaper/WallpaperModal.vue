@@ -235,7 +235,6 @@ export default {
 			localStorage.setItem('wallpaper', activePath)
 			localStorage.setItem('wallpaper_dual_mode', String(this.dualMode))
 			this.$store.commit('SET_WALLPAPER', data)
-			this.$messageBus('dashboardsetting_wallpaper', activePath.toString())
 			this.$EventBus.$emit('desktop:wallpaper-change')
 
 			this.$api.users.setCustomStorage(wallpaperConfig, data).catch(err => {

@@ -208,7 +208,6 @@ export default {
 			return this.$api.users.saveLinkAppDetail(json).then((res) => {
 				if (res.data.success == 200) {
 					if (newName) this.addIdToSessionStorage(newName);
-					this.$messageBus('apps_external')
 					this.$EventBus.$emit(events.GET_APP_LIST)
 					this.$emit('updateState')
 					this.$emit('close')

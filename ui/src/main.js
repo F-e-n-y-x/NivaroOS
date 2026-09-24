@@ -12,7 +12,6 @@ import VueFullscreen from 'vue-fullscreen'
 import Vue2TouchEvents from 'vue2-touch-events'
 import VueSocialSharing from 'vue-social-sharing'
 import VueSocketIOExt from 'vue-socket.io-extended';
-import messageBus from '@/events/index.js'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
 
@@ -90,7 +89,6 @@ Vue.prototype.$wsProtocol = wsProtocol;
 
 // Create an EventBus
 Vue.prototype.$EventBus = new Vue();
-Vue.prototype.$messageBus = messageBus;
 
 new Vue({
 	router,

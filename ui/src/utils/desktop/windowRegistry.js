@@ -36,14 +36,12 @@ import HostDesktopPanel from '@/shell/desktop/HostDesktopPanel.vue'
 import AddToFolderPanel from '@/apps/app-store/AddToFolderPanel.vue'
 import IconEditorModal from '@/apps/app-store/IconEditorModal.vue'
 import ExternalLinkPanel from '@/apps/app-store/ExternalLinkPanel.vue'
-import MergeStorages from '@/apps/storage/MergeStorages.vue'
 import TipEditorModal from '@/apps/app-store/TipEditorModal.vue'
 import ImportPanel from '@/shared/forms/ImportPanel.vue'
 import AppTerminalPanel from '@/apps/app-store/AppTerminalPanel.vue'
 import CreatePanel from '@/apps/files/fileList/CreatePanel.vue'
 import FeedbackPanel from '@/shared/feedback/FeedbackPanel.vue'
-import ShareModal from '@/apps/files/share/ShareModal.vue'
-import DiskLearnMore from '@/apps/storage/DiskLearnMore.vue'
+import NotificationList from '@/shell/desktop/NotificationList.vue'
 import FilePanel from '@/apps/files/fileList/FilePanel.vue'
 import TransferConflictWindow from '@/apps/files/dialogs/TransferConflictWindow.vue'
 
@@ -82,14 +80,12 @@ export const COMPONENT_REGISTRY = {
 	AddToFolderPanel,
 	IconEditorModal,
 	ExternalLinkPanel,
-	MergeStorages,
 	TipEditorModal,
 	ImportPanel,
 	AppTerminalPanel,
 	CreatePanel,
 	FeedbackPanel,
-	ShareModal,
-	DiskLearnMore,
+	NotificationList,
 	FilePanel,
 	TransferConflictWindow
 }

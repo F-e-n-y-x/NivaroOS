@@ -763,13 +763,6 @@ export default {
 					break
 				default:
 					toastType = 'is-success'
-					if (driver === 'Dropbox') {
-						this.$messageBus('files_addlocation_dropbox')
-					} else if (driver === 'Google Drive') {
-						this.$messageBus('files_addlocation_googledrive')
-					} else if (driver === 'OneDrive') {
-						this.$messageBus('files_addlocation_onedrive')
-					}
 					this.getCloudStorage()
 					break
 			}

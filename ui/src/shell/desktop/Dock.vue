@@ -18,9 +18,13 @@
 				<button
 					v-for="item in dockItems"
 					:key="'dock-' + item.name"
+					type="button"
 					class="dock-item"
 					:title="displayName(item)"
+					:aria-label="displayName(item)"
+					aria-haspopup="menu"
 					@click="launchItem(item)"
+					@keydown="onItemKeydown($event, { type: 'item', data: item })"
 					@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'item', data: item })"
 				>
 					<img
@@ -40,9 +44,13 @@
 			<button
 				v-for="win in extraWindows"
 				:key="win.id"
+				type="button"
 				class="dock-item"
 				:title="win.title"
+				:aria-label="win.title"
+				aria-haspopup="menu"
 				@click="toggleWindow(win)"
+				@keydown="onItemKeydown($event, { type: 'window', data: win })"
 				@contextmenu.prevent.stop="openDockContextMenu($event, { type: 'window', data: win })"
 			>
 				<img v-if="isViewerWindow(win)" :src="viewerIconUrl" class="dock-icon" :alt="win.title" />
@@ -66,8 +74,11 @@
 			v-if="ctxMenu.visible"
 			ref="dockCtxMenu"
 			class="dock-context-menu"
+			role="menu"
+			:aria-label="ctxMenu.title || $t('Taskbar')"
 			:style="{ bottom: ctxMenu.bottom + 'px', left: ctxMenu.left + 'px' }"
 			@contextmenu.prevent.stop
+			@keydown="onMenuKeydown"
 		>
 			<!-- Header with App info -->
 			<div v-if="ctxMenu.title" class="ctx-header is-flex is-align-items-center">
@@ -83,32 +94,32 @@
 					<div v-if="ctxMenu.status" class="ctx-header-sub text-muted is-size-7">{{ ctxMenu.status }}</div>
 				</div>
 			</div>
-			<div v-if="ctxMenu.title" class="ctx-divider"></div>
+			<div v-if="ctxMenu.title" class="ctx-divider" role="separator"></div>
 
 			<!-- 1. Pinned Item Actions -->
 			<template v-if="ctxMenu.target && ctxMenu.target.type === 'item'">
 				<!-- Built-in system desktop window actions -->
 				<template v-if="isBuiltinApp(ctxMenu.target.data)">
-					<button class="ctx-item" @click="handleItemAction('toggle')">
+					<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('toggle')">
 						<i class="mdi mdi-open-in-app ctx-icon"></i>
 						<span class="ctx-label">{{ isItemOpen(ctxMenu.target.data) ? (isItemMinimized(ctxMenu.target.data) ? $t('Restore') : $t('Bring to Front')) : $t('Open') }}</span>
 					</button>
 
-					<button v-if="isMultiWindowApp(ctxMenu.target.data)" class="ctx-item" @click="handleItemAction('newWindow')">
+					<button v-if="isMultiWindowApp(ctxMenu.target.data)" type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('newWindow')">
 						<i class="mdi mdi-plus-box-multiple-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('New Window') }}</span>
 					</button>
 
-					<div class="ctx-divider"></div>
+					<div class="ctx-divider" role="separator"></div>
 
-					<button class="ctx-item" @click="handleItemAction('unpin')">
+					<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('unpin')">
 						<i class="mdi mdi-pin-off-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
 					</button>
 
-					<div v-if="isItemOpen(ctxMenu.target.data)" class="ctx-divider"></div>
+					<div v-if="isItemOpen(ctxMenu.target.data)" class="ctx-divider" role="separator"></div>
 
-					<button v-if="isItemOpen(ctxMenu.target.data)" class="ctx-item is-danger" @click="handleItemAction('close')">
+					<button v-if="isItemOpen(ctxMenu.target.data)" type="button" role="menuitem" tabindex="-1" class="ctx-item is-danger" @click="handleItemAction('close')">
 						<i class="mdi mdi-close ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Close Window') }}</span>
 					</button>
@@ -116,34 +127,34 @@
 
 				<!-- Docker / Web App Container Actions (External Web Services) -->
 				<template v-else>
-					<button class="ctx-item" @click="handleItemAction('toggle')">
+					<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('toggle')">
 						<i class="mdi mdi-open-in-new ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Open') }}</span>
 					</button>
 
-					<button v-if="ctxMenu.target.data.app_type === 'container'" class="ctx-item" @click="handleItemAction('import')">
+					<button v-if="ctxMenu.target.data.app_type === 'container'" type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('import')">
 						<i class="mdi mdi-download-box-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Import to NivaroOS') }}</span>
 					</button>
 
-					<button class="ctx-item" @click="handleItemAction('edit')">
+					<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('edit')">
 						<i class="mdi mdi-pencil-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Edit Settings') }}</span>
 					</button>
 
-					<button v-if="ctxMenu.target.data.app_type !== 'LinkApp'" class="ctx-item" @click="handleItemAction('restart')">
+					<button v-if="ctxMenu.target.data.app_type !== 'LinkApp'" type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('restart')">
 						<i class="mdi mdi-restart ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Restart App') }}</span>
 					</button>
 
-					<button v-if="ctxMenu.target.data.app_type === 'container'" class="ctx-item" @click="handleItemAction('toggleContainer')">
+					<button v-if="ctxMenu.target.data.app_type === 'container'" type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('toggleContainer')">
 						<i :class="ctxMenu.target.data.status === 'running' ? 'mdi mdi-stop-circle-outline' : 'mdi mdi-play-circle-outline'" class="ctx-icon"></i>
 						<span class="ctx-label">{{ ctxMenu.target.data.status === 'running' ? $t('Stop Container') : $t('Start Container') }}</span>
 					</button>
 
-					<div class="ctx-divider"></div>
+					<div class="ctx-divider" role="separator"></div>
 
-					<button class="ctx-item" @click="handleItemAction('unpin')">
+					<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleItemAction('unpin')">
 						<i class="mdi mdi-pin-off-outline ctx-icon"></i>
 						<span class="ctx-label">{{ $t('Unpin from Taskbar') }}</span>
 					</button>
@@ -152,19 +163,19 @@
 
 			<!-- 2. Running Extra Window Actions -->
 			<template v-else-if="ctxMenu.target && ctxMenu.target.type === 'window'">
-				<button class="ctx-item" @click="handleWindowAction('toggle')">
+				<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleWindowAction('toggle')">
 					<i :class="ctxMenu.target.data.minimized ? 'mdi mdi-window-maximize' : 'mdi mdi-window-minimize'" class="ctx-icon"></i>
 					<span class="ctx-label">{{ ctxMenu.target.data.minimized ? $t('Restore Window') : $t('Minimize Window') }}</span>
 				</button>
 
-				<button class="ctx-item" @click="handleWindowAction('pin')">
+				<button v-if="pinnableDefFor(ctxMenu.target.data)" type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="handleWindowAction('pin')">
 					<i class="mdi mdi-pin-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Pin to Taskbar') }}</span>
 				</button>
 
-				<div class="ctx-divider"></div>
+				<div class="ctx-divider" role="separator"></div>
 
-				<button class="ctx-item is-danger" @click="handleWindowAction('close')">
+				<button type="button" role="menuitem" tabindex="-1" class="ctx-item is-danger" @click="handleWindowAction('close')">
 					<i class="mdi mdi-close ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Close Window') }}</span>
 				</button>
@@ -172,15 +183,15 @@
 
 			<!-- 3. Dock Background Actions -->
 			<template v-else>
-				<button class="ctx-item" @click="openAppearanceSettings">
+				<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="openAppearanceSettings">
 					<i class="mdi mdi-palette-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Taskbar & Appearance') }}</span>
 				</button>
-				<button class="ctx-item" @click="openSystemSettings">
+				<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="openSystemSettings">
 					<i class="mdi mdi-cog-outline ctx-icon"></i>
 					<span class="ctx-label">{{ $t('System Settings') }}</span>
 				</button>
-				<button class="ctx-item" @click="restoreDefaultPins">
+				<button type="button" role="menuitem" tabindex="-1" class="ctx-item" @click="restoreDefaultPins">
 					<i class="mdi mdi-restore ctx-icon"></i>
 					<span class="ctx-label">{{ $t('Reset Pinned Apps') }}</span>
 				</button>
@@ -190,6 +201,7 @@
 </template>
 
 <script>
+import { checkDownloadStationInstalled } from '@/utils/downloadStationInstalled'
 import events from '@/events/events'
 import filesIcon from '@/assets/img/app-icons/files.svg'
 import appStoreIcon from '@/assets/img/app-icons/appstore.png'
@@ -204,6 +216,7 @@ import business_LinkApp from '@/mixins/app/Business_LinkApp'
 import business_LegacyAppOverrides from '@/mixins/app/Business_LegacyAppOverrides'
 import business_DockPins, { DEFAULT_PINS, SYSTEM_NAME_MAP } from '@/mixins/app/Business_DockPins'
 import { ice_i18n } from '@/mixins/base/common-i18n'
+import { escapeHtml } from '@/utils/escapeHtml'
 
 import viewerIcon from '@/assets/img/app-icons/viewer.png'
 import vmIcon from '@/assets/img/app-icons/vm.png'
@@ -265,7 +278,7 @@ export default {
 	},
 	created() {
 		this.loadDockItems()
-		this.$EventBus.$on(events.RELOAD_APP_LIST, this.loadDockItems)
+		this.$EventBus.$on(events.RELOAD_APP_LIST, this.reloadDockItems)
 	},
 	mounted() {
 		this.handleCloseOtherMenus = sender => {
@@ -275,20 +288,24 @@ export default {
 		}
 		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.addEventListener('mousedown', this.onOutsideClick)
+		document.addEventListener('keydown', this.onDocKeydown)
 		window.addEventListener('blur', this.closeCtxMenu)
 		window.addEventListener('resize', this.closeCtxMenu)
 	},
 	beforeDestroy() {
-		this.$EventBus.$off(events.RELOAD_APP_LIST, this.loadDockItems)
+		this.$EventBus.$off(events.RELOAD_APP_LIST, this.reloadDockItems)
 		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.removeEventListener('mousedown', this.onOutsideClick)
+		document.removeEventListener('keydown', this.onDocKeydown)
 		window.removeEventListener('blur', this.closeCtxMenu)
 		window.removeEventListener('resize', this.closeCtxMenu)
 	},
 	methods: {
 		// Save new pinned order on drag end
 		async onDockDragEnd() {
-			const names = this.dockItems.map(item => item.name)
+			// Keep pins that are hidden right now (e.g. Download Station
+			// while its sidecar is down) instead of silently dropping them.
+			const names = this.dockItems.map(item => item.name).concat(this.hiddenPins || [])
 			try {
 				await this.$api.users.setCustomStorage('dock_pinned_apps', names)
 			} catch (e) {
@@ -309,11 +326,73 @@ export default {
 				this.closeCtxMenu()
 			}
 		},
-		closeCtxMenu() {
+		closeCtxMenu(returnFocus) {
+			const wasOpen = this.ctxMenu.visible
 			this.ctxMenu.visible = false
+			if (returnFocus === true && wasOpen && this.menuTrigger && document.contains(this.menuTrigger)) this.menuTrigger.focus()
+		},
+		// Only a window that IS one of the built-in apps (Files, Terminal,
+		// Settings...) can be pinned - not a viewer, dialog or console.
+		pinnableDefFor(win) {
+			if (!win) return null
+			return Object.values(BUILTIN_DEFS).find(d => d.component === win.component) || null
+		},
+		// Shift+F10 / the context-menu key open the item's menu from the keyboard.
+		onItemKeydown(e, target) {
+			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+				e.preventDefault()
+				e.stopPropagation()
+				const rect = e.currentTarget.getBoundingClientRect()
+				this.menuTrigger = e.currentTarget
+				this.openDockContextMenu({ clientX: rect.left + rect.width / 2, clientY: rect.top }, target)
+			}
+		},
+		menuItems() {
+			const menu = this.$refs.dockCtxMenu
+			return menu ? Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])')) : []
+		},
+		focusMenuItem(index) {
+			const items = this.menuItems()
+			if (!items.length) return
+			const i = (index + items.length) % items.length
+			items[i].focus()
+		},
+		onMenuKeydown(e) {
+			const items = this.menuItems()
+			const current = items.indexOf(document.activeElement)
+			switch (e.key) {
+				case 'ArrowDown':
+					e.preventDefault()
+					this.focusMenuItem(current + 1)
+					break
+				case 'ArrowUp':
+					e.preventDefault()
+					this.focusMenuItem(current < 0 ? items.length - 1 : current - 1)
+					break
+				case 'Home':
+					e.preventDefault()
+					this.focusMenuItem(0)
+					break
+				case 'End':
+					e.preventDefault()
+					this.focusMenuItem(items.length - 1)
+					break
+				case 'Escape':
+					e.preventDefault()
+					e.stopPropagation()
+					this.closeCtxMenu(true)
+					break
+				case 'Tab':
+					this.closeCtxMenu()
+					break
+			}
+		},
+		onDocKeydown(e) {
+			if (e.key === 'Escape' && this.ctxMenu.visible) this.closeCtxMenu(true)
 		},
 		openDockContextMenu(event, target) {
 			this.$EventBus.$emit('CLOSE_ALL_CONTEXT_MENUS', this)
+			if (event && event.currentTarget && event.currentTarget.focus) this.menuTrigger = event.currentTarget
 			const menuWidth = 215
 			const maxLeft = Math.max(12, window.innerWidth - menuWidth - 16)
 			const left = Math.max(12, Math.min(maxLeft, event.clientX - menuWidth / 2))
@@ -363,8 +442,13 @@ export default {
 				iconRadius,
 				target
 			}
+			this.$nextTick(() => this.focusMenuItem(0))
 		},
-		async loadDockItems() {
+		reloadDockItems() {
+			return this.loadDockItems(true)
+		},
+		async loadDockItems(recheckOptional = false) {
+			const dsInstalled = await checkDownloadStationInstalled(recheckOptional === true)
 			const [pins, orgAppList, linkAppList, overrides] = await Promise.all([
 				this.getDockPins(),
 				this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || []).catch(() => []),
@@ -376,8 +460,13 @@ export default {
 			const allApps = orgAppList.concat(linkAppList)
 			const items = []
 
+			const hiddenPins = []
 			pins.forEach(pinName => {
 				const norm = SYSTEM_NAME_MAP[pinName] || pinName
+				if (norm === 'Download Station' && !dsInstalled) {
+					hiddenPins.push(pinName)
+					return
+				}
 				if (BUILTIN_DEFS[norm]) {
 					const def = BUILTIN_DEFS[norm]
 					const override = overrides[def.name] || overrides[def.id]
@@ -411,6 +500,7 @@ export default {
 				}
 			})
 
+			this.hiddenPins = hiddenPins
 			this.dockItems = items
 		},
 		displayName(item) {
@@ -464,11 +554,22 @@ export default {
 
 			// User Container / Link App
 			if (item.app_type === 'container') {
-				if (item.overrideUrl) window.open(item.overrideUrl, '_blank')
+				// Same as AppCard: a plain container has no web UI NivaroOS
+				// knows about until a URL is set via Edit Settings.
+				if (item.overrideUrl) {
+					window.open(item.overrideUrl, '_blank', 'noopener,noreferrer')
+				} else {
+					this.$buefy.toast.open({
+						message: this.$t('{name} has no web address yet. Right-click it and choose Edit Settings to add one, or Import to NivaroOS.', { name: escapeHtml(this.displayName(item)) }),
+						type: 'is-info',
+						position: 'is-top',
+						duration: 5000
+					})
+				}
 				return
 			}
 			if (item.app_type === 'LinkApp') {
-				window.open(item.hostname, '_blank')
+				window.open(item.hostname, '_blank', 'noopener,noreferrer')
 				return
 			}
 			if (item.status === 'running') {
@@ -518,7 +619,6 @@ export default {
 			} else if (action === 'import') {
 				this.$EventBus.$emit(events.SHOW_CONTAINER_PANEL, item)
 			} else if (action === 'restart') {
-				this.$messageBus('apps_restart', item.name)
 				const req = item.app_type === 'v2app'
 					? this.$openAPI.appManagement.compose.setComposeAppStatus(item.name, 'restart')
 					: this.$api.container.updateState(item.name, 'restart')
@@ -528,6 +628,13 @@ export default {
 						type: 'is-info',
 						position: 'is-top',
 						duration: 2000
+					})
+				}).catch(err => {
+					this.$buefy.toast.open({
+						message: escapeHtml(err?.response?.data?.message || this.$t('Failed to restart the app')),
+						type: 'is-danger',
+						position: 'is-top',
+						duration: 3000
 					})
 				})
 			} else if (action === 'toggleContainer') {
@@ -543,7 +650,7 @@ export default {
 					this.$EventBus.$emit(events.UPDATE_SYNC_STATUS)
 				}).catch((err) => {
 					this.$buefy.toast.open({
-						message: err?.response?.data?.message || this.$t('Failed to change container state'),
+						message: escapeHtml(err?.response?.data?.message || this.$t('Failed to change container state')),
 						type: 'is-danger',
 						position: 'is-top',
 						duration: 3000
@@ -551,7 +658,7 @@ export default {
 				})
 			} else if (action === 'unpin') {
 				this.setDockPinned(item.name, false).then(() => {
-					this.loadDockItems()
+					// RELOAD_APP_LIST reloads this dock too (see created()).
 					this.$EventBus.$emit(events.RELOAD_APP_LIST)
 					this.$buefy.toast.open({
 						message: `<i class="mdi mdi-pin-off-outline mr-1"></i> ${this.$t('Removed from taskbar')}`,
@@ -572,8 +679,10 @@ export default {
 			if (action === 'toggle') {
 				this.toggleWindow(win)
 			} else if (action === 'pin') {
-				this.setDockPinned(win.title, true).then(() => {
-					this.loadDockItems()
+				const def = this.pinnableDefFor(win)
+				if (!def) return
+				this.setDockPinned(def.name, true).then(() => {
+					// RELOAD_APP_LIST reloads this dock too (see created()).
 					this.$EventBus.$emit(events.RELOAD_APP_LIST)
 					this.$buefy.toast.open({
 						message: `<i class="mdi mdi-pin-outline mr-1"></i> ${this.$t('Pinned to taskbar')}`,
@@ -611,7 +720,6 @@ export default {
 		restoreDefaultPins() {
 			this.closeCtxMenu()
 			this.$api.users.setCustomStorage('dock_pinned_apps', [...DEFAULT_PINS]).then(() => {
-				this.loadDockItems()
 				this.$EventBus.$emit(events.RELOAD_APP_LIST)
 				this.$buefy.toast.open({
 					message: `<i class="mdi mdi-restore mr-1"></i> ${this.$t('Taskbar reset to default')}`,
@@ -834,7 +942,9 @@ export default {
 		text-overflow: ellipsis;
 	}
 
-	&:hover {
+	&:hover,
+	&:focus-visible {
+		outline: none;
 		background: var(--theme-menu-item-hover-bg, rgba(0, 0, 0, 0.9));
 		color: var(--theme-menu-item-hover-text, #ffffff);
 
@@ -843,15 +953,20 @@ export default {
 		}
 	}
 
+	&:focus-visible {
+		box-shadow: 0 0 0 2px var(--theme-focus-ring, var(--color-primary));
+	}
+
 	&.is-danger {
-		color: #dc2626;
+		color: var(--color-danger-fg);
 
 		.ctx-icon {
-			color: #dc2626;
+			color: var(--color-danger-fg);
 		}
 
-		&:hover {
-			background: #dc2626;
+		&:hover,
+		&:focus-visible {
+			background: var(--color-danger);
 			color: #ffffff;
 
 			.ctx-icon {
@@ -869,5 +984,9 @@ export default {
 	height: 1px;
 	margin: var(--space-1) var(--space-2);
 	background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
+}
+.dock-item:focus-visible {
+	outline: 2px solid var(--theme-focus-ring, var(--color-primary));
+	outline-offset: 3px;
 }
 </style>

@@ -95,6 +95,7 @@
 </template>
 
 <script>
+import { checkDownloadStationInstalled } from '@/utils/downloadStationInstalled'
 import { assetUrl } from '@/utils/assetUrl'
 import AppCard from './AppCard.vue'
 import AppCardSkeleton from './AppCardSkeleton.vue'
@@ -419,7 +420,9 @@ export default {
 
 				// Fresh copies: never mutate the shared module-level
 				// definitions (a removed override would otherwise stick).
-				const builtIns = builtInApplications.map(item => ({ ...item, title: { ...item.title } }))
+				// Download Station is optional: only listed when its sidecar is installed.
+				const dsInstalled = await checkDownloadStationInstalled()
+				const builtIns = builtInApplications.filter(item => dsInstalled || item.name !== 'Download Station').map(item => ({ ...item, title: { ...item.title } }))
 				builtIns.forEach(item => {
 					applyOverride(item)
 				})
@@ -1094,7 +1097,6 @@ export default {
 
 		async showInstall(storeId = 0, mode = '') {
 			if (mode === 'custom') {
-				this.$messageBus('apps_custominstall')
 			}
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'appstore',
@@ -1112,7 +1114,6 @@ export default {
 		/* Windowed Container Customizer / Config */
 		async showConfigPanel(item) {
 			const name = item.name
-			this.$messageBus('appsexsiting_open', name)
 			try {
 				if (item?.app_type === 'LinkApp') {
 					await this.showExternalLinkPanel(item)
@@ -1151,7 +1152,6 @@ export default {
 				if (!yaml || typeof yaml !== 'string') {
 					throw new Error(this.$t('The exported compose file is empty'))
 				}
-				this.$messageBus('apps_custominstall')
 				this.$store.commit('OPEN_WINDOW', {
 					id: 'appstore',
 					title: `${this.$t('App Store')} - ${displayName}`,

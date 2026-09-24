@@ -326,7 +326,6 @@ export default {
       })
     },
     logout() {
-      this.$messageBus('account_setting_logout')
       this.$store.commit('SET_DEFAULT_WALLPAPER')
       this.$router.push("/logout");
     },

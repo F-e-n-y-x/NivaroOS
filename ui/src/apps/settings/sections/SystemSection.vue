@@ -384,7 +384,6 @@ export default {
 			}
 			this.portError = ''
 			this.savingPort = true
-			this.$messageBus('dashboardsetting_webuiport', String(port))
 			// The gateway's field is a string; a number was always a 400.
 			this.$api.sys.editServerPort({ port: String(port) }).then(res => {
 				if (res.data.success === 200) {

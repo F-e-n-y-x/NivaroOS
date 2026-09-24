@@ -11,7 +11,6 @@
 // out of a document, and applyFormToDoc() writes the edited fields back
 // into a copy of that same document, leaving everything else as it was.
 
-const DEFAULT_ICON = 'https://icon.casaos.io/main/all/default.png'
 
 function clone(v) {
 	return v === undefined ? undefined : JSON.parse(JSON.stringify(v))
@@ -258,7 +257,12 @@ export function applyFormToDoc(baseDoc, form) {
 	const changed = (k) => !baseDoc || form[k] !== original[k]
 	if (!baseDoc && !x.architectures) x.architectures = ['amd64', 'arm64']
 	if (changed('title')) x.title = setLocalized(x.title, form.title || safeName)
-	if (changed('icon')) x.icon = form.icon || DEFAULT_ICON
+	// No icon: leave it unset and the UI shows its bundled default (the old
+	// fallback pointed at CasaOS's icon CDN).
+	if (changed('icon')) {
+		if (form.icon) x.icon = form.icon
+		else delete x.icon
+	}
 	if (changed('tagline')) x.tagline = setLocalized(x.tagline, form.tagline || '')
 	if (changed('description')) x.description = setLocalized(x.description, form.description || '')
 	if (changed('category')) x.category = form.category || 'Others'

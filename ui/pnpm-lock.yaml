@@ -209,9 +209,6 @@ importers:
       vue-aplayer:
         specifier: ^1.6.1
         version: 1.6.1(vue@2.7.16)
-      vue-awesome-swiper:
-        specifier: ^4.1.1
-        version: 4.1.1(swiper@5.4.5)(vue@2.7.16)
       vue-breakpoint-mixin:
         specifier: ^1.5.0
         version: 1.5.0
@@ -384,9 +381,6 @@ importers:
       style-resources-loader:
         specifier: ^1.5.0
         version: 1.5.0(webpack@5.110.1)
-      swiper:
-        specifier: ^5.4.5
-        version: 5.4.5
       tailwindcss:
         specifier: ^3.4.15
         version: 3.4.19(yaml@1.10.3)
@@ -4135,9 +4129,6 @@ packages:
   dom-serializer@2.0.0:
     resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
 
-  dom7@2.1.5:
-    resolution: {integrity: sha512-xnhwVgyOh3eD++/XGtH+5qBwYTgCm0aW91GFgPJ3XG+jlsRLyJivnbP0QmUBFhI+Oaz9FV0s7cxgXHezwOEBYA==}
-
   domain-browser@4.22.0:
     resolution: {integrity: sha512-IGBwjF7tNk3cwypFNH/7bfzBcgSCbaMOD3GsaY1AU/JRrnHnYgEM0+9kQt52iZxjNsjBtJYtao146V+f8jFZNw==}
     engines: {node: '>=10'}
@@ -7864,9 +7855,6 @@ packages:
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
 
-  ssr-window@2.0.0:
-    resolution: {integrity: sha512-NXzN+/HPObKAx191H3zKlYomE5WrVIkoCB5IaSdvKokxTpjBdWfr0RaP+1Z5KOfDT0ZVz+2tdtiBkhsEQ9p+0A==}
-
   ssri@8.0.1:
     resolution: {integrity: sha512-97qShzy1AiyxvPNIkLWoGua7xoQzzPjQ0HAH4B0rWKo7SZ6USuPcrUiAFrws0UH8RrbWmgq3LMTObhPIHbbBeQ==}
     engines: {node: '>= 8'}
@@ -8053,10 +8041,6 @@ packages:
     resolution: {integrity: sha512-bkxnTg1kSU0guhIBmibA6UUhrQmPVA1XsQLN+ylCd+UWzbnLkySOcXpyk1mrl05f+pcaCx2eHb+sp6BgMZWX+Q==}
     engines: {node: '>=16'}
     hasBin: true
-
-  swiper@5.4.5:
-    resolution: {integrity: sha512-7QjA0XpdOmiMoClfaZ2lYN6ICHcMm72LXiY+NF4fQLFidigameaofvpjEEiTQuw3xm5eksG5hzkaRsjQX57vtA==}
-    engines: {node: '>= 4.7.0'}
 
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
@@ -8548,13 +8532,6 @@ packages:
     resolution: {integrity: sha512-c+ZAwZ63bVDsKkcHeKLAonIL2gY4nrVRdKypoPRXSkh+8B1cVhFT2tx8HSTNT6eX6WZyDtaYrEJfcgetrfvcdQ==}
     peerDependencies:
       vue: ^2.5.16
-
-  vue-awesome-swiper@4.1.1:
-    resolution: {integrity: sha512-50um10t6N+lJaORkpwSi1wWuMmBI1sgFc9Znsi5oUykw2cO5DzLaBHcO2JNX21R+Ue4TGoIJDhhxjBHtkFrTEQ==}
-    engines: {node: '>=8'}
-    peerDependencies:
-      swiper: ^5.2.0
-      vue: 2.x
 
   vue-breakpoint-mixin@1.5.0:
     resolution: {integrity: sha512-0GHAnt8kkGiyVGQawl4qZvl7A5edj+CnPI6wHkx05JGcsNVycUESSmnz/WkRm18D0WkzrPTnzVgTc7d6XI7wFA==}
@@ -13375,10 +13352,6 @@ snapshots:
       domhandler: 5.0.3
       entities: 4.5.0
 
-  dom7@2.1.5:
-    dependencies:
-      ssr-window: 2.0.0
-
   domain-browser@4.22.0: {}
 
   domelementtype@1.3.1: {}
@@ -17489,8 +17462,6 @@ snapshots:
 
   sprintf-js@1.0.3: {}
 
-  ssr-window@2.0.0: {}
-
   ssri@8.0.1:
     dependencies:
       minipass: 3.3.6
@@ -17692,11 +17663,6 @@ snapshots:
       csso: 5.0.5
       picocolors: 1.1.1
       sax: 1.6.1
-
-  swiper@5.4.5:
-    dependencies:
-      dom7: 2.1.5
-      ssr-window: 2.0.0
 
   symbol-tree@3.2.4: {}
 
@@ -18215,11 +18181,6 @@ snapshots:
 
   vue-aplayer@1.6.1(vue@2.7.16):
     dependencies:
-      vue: 2.7.16
-
-  vue-awesome-swiper@4.1.1(swiper@5.4.5)(vue@2.7.16):
-    dependencies:
-      swiper: 5.4.5
       vue: 2.7.16
 
   vue-breakpoint-mixin@1.5.0: {}

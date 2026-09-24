@@ -137,7 +137,7 @@
 						<div class="is-relative">
 							<b-image :class="dotClass(item.status, isLoading)" :alt="i18n(item.title) || item.name || ''"
 								:style="item.iconRadius ? { borderRadius: item.iconRadius + '%', overflow: 'hidden' } : null"
-								:src="item.icon" :src-fallback="require('@/assets/img/app-icons/default.svg')" class="is-52x52"
+								:src="item.icon || require('@/assets/img/app-icons/default.svg')" :src-fallback="require('@/assets/img/app-icons/default.svg')" class="is-52x52"
 								webp-fallback=".jpg"></b-image>
 							<!-- Unstable-->
 							<cTooltip v-if="newAppIds.includes(item.name)" class="__position" content="NEW"></cTooltip>
@@ -724,7 +724,6 @@ export default {
 		 * @return {*} void
 		 */
 		restartApp() {
-			this.$messageBus('apps_restart', this.item.name);
 			this.isRestarting = true
 			if (this.isV2App) {
 				this.restartAppV2();
@@ -761,7 +760,6 @@ export default {
 		 * @return {*} void
 		 */
 		uninstallConfirm() {
-			this.$messageBus('apps_uninstall', this.item.name);
 			this.closeMenu();
 			const dataPath = `/DATA/AppData/${this.item.name}`
 			this.confirmWindow({
@@ -880,7 +878,6 @@ export default {
 		 * @return {*} void
 		 */
 		configApp() {
-			this.$messageBus('apps_setting', this.item.name);
 			this.closeMenu();
 			this.$emit("configApp", this.item, this.isV2App);
 		},
@@ -892,7 +889,6 @@ export default {
 		 */
 		toggle(item) {
 			// only have 'apps_stop' event
-			this.$messageBus('apps_stop', item.name);
 			this.isStarting = true;
 			const status = item.status === "running" ? "stop" : "start"
 			if (this.isV2App) {
@@ -939,8 +935,6 @@ export default {
 			this.$api.apps.getAppInfo(name).then(resp => {
 				if (resp.data.success == 200) {
 					let respData = resp.data.data
-					// messageBus :: apps_clone
-					this.$messageBus('apps_clone', this.item.name.toString());
 
 					let initData = {}
 					initData.protocol = respData.protocol
@@ -1070,8 +1064,6 @@ export default {
 			this.$openAPI.appManagement.compose.updateComposeApp(name).then(resp => {
 				// 200:
 				if (resp.status === 200) {
-					// messageBus :: apps_checkThenUpdate
-					this.$messageBus('apps_checkupdate', this.item.name.toString());
 					this.$buefy.toast.open({
 						// value is `In the process of asynchronous updating.` or `compose app `app Name` is up to date`
 						message: escapeHtml(resp.data.message || this.$t('Updating')),

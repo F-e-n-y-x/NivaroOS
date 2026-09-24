@@ -1,5 +1,5 @@
 <template>
-	<div v-if="tasks.length" class="container-install-status">
+	<div v-if="tasks.length" class="container-install-status" role="status" aria-live="polite">
 		<transition-group name="install-card-anim" tag="div" class="install-tasks-stack">
 			<div
 				v-for="task in tasks"
@@ -31,7 +31,7 @@
 						<span class="task-status-text">{{ task.statusText }}</span>
 					</div>
 
-					<button class="task-dismiss-btn" :title="$t('Dismiss')" @click="dismissTask(task.id)">
+					<button type="button" class="task-dismiss-btn" :title="$t('Dismiss')" :aria-label="$t('Dismiss')" @click="dismissTask(task.id)">
 						<i class="mdi mdi-close"></i>
 					</button>
 				</div>
@@ -55,9 +55,13 @@
 import defaultAppIcon from '@/assets/img/app-icons/default.svg'
 import { ice_i18n } from '@/mixins/base/common-i18n'
 import events from '@/events/events'
+import activityService from '@/service/activity'
 
 const FINISHED_LINGER_MS = 3200
 
+// Also the Notification Center's source for every app lifecycle event
+// (install/update/apply/uninstall/start/stop/restart): this component is
+// mounted with the desktop shell on every screen size.
 export default {
 	name: 'ContainerInstallStatus',
 	data() {
@@ -66,12 +70,33 @@ export default {
 			tasks: []
 		}
 	},
+	created() {
+		this.lingerTimers = {}
+	},
+	beforeDestroy() {
+		Object.values(this.lingerTimers).forEach(clearTimeout)
+		this.lingerTimers = {}
+	},
 	methods: {
 		onIconError(e) {
 			e.target.src = defaultAppIcon
 		},
+		cancelLinger(id) {
+			if (this.lingerTimers[id]) {
+				clearTimeout(this.lingerTimers[id])
+				delete this.lingerTimers[id]
+			}
+		},
 		dismissTask(id) {
+			this.cancelLinger(id)
 			this.tasks = this.tasks.filter(t => t.id !== id)
+		},
+		finishLater(task) {
+			this.cancelLinger(task.id)
+			this.lingerTimers[task.id] = setTimeout(() => {
+				delete this.lingerTimers[task.id]
+				this.tasks = this.tasks.filter(t => t.id !== task.id)
+			}, FINISHED_LINGER_MS)
 		},
 		getOrCreateTask(id, name, title, icon, isUpdate = false) {
 			let task = this.tasks.find(t => t.id === id || t.name === name)
@@ -90,6 +115,9 @@ export default {
 				}
 				this.tasks.push(task)
 			}
+			// A task that starts again (retry, second install) must not be
+			// removed by the previous run's "finished" timer.
+			this.cancelLinger(task.id)
 			if (title) task.title = title
 			if (icon) task.icon = icon
 			if (isUpdate) task.isUpdate = true
@@ -105,6 +133,27 @@ export default {
 			} catch (e) {
 				return String(raw)
 			}
+		},
+		appInfo(res) {
+			const props = (res && res.Properties) || {}
+			const name = props['app:name'] || props.name || ''
+			return {
+				props,
+				name,
+				title: this.parseTitle(props['app:title']) || name || this.$t('Application'),
+				icon: props['app:icon'] || '',
+				message: props.message || ''
+			}
+		},
+		log(res, title, status, message) {
+			const info = this.appInfo(res)
+			activityService.add({
+				title,
+				message: message !== undefined ? message : info.title,
+				type: 'app',
+				status,
+				icon: info.icon
+			})
 		},
 		formatProgressMessage(val) {
 			const p = Number(val)
@@ -153,10 +202,9 @@ export default {
 				task.progress = 100
 				task.finished = true
 				task.statusText = this.$t('Installation complete! Container is ready.')
-				setTimeout(() => {
-					this.dismissTask(task.id)
-				}, FINISHED_LINGER_MS)
+				this.finishLater(task)
 			}
+			this.log(res, this.$t('App installed'), 'success', task ? task.title : undefined)
 
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 			this.$EventBus.$emit(events.UPDATE_SYNC_STATUS)
@@ -170,6 +218,7 @@ export default {
 			task.finished = false
 			task.statusText = this.$t('Installation failed')
 			task.errorMessage = props.message || this.$t('Deployment encountered an error.')
+			this.log(res, this.$t('App installation failed'), 'error', `${task.title}: ${task.errorMessage}`)
 		},
 
 		'app:apply-changes-begin'(res) {
@@ -194,10 +243,9 @@ export default {
 				task.progress = 100
 				task.finished = true
 				task.statusText = this.$t('Container updated successfully!')
-				setTimeout(() => {
-					this.dismissTask(task.id)
-				}, FINISHED_LINGER_MS)
+				this.finishLater(task)
 			}
+			this.log(res, this.$t('App settings applied'), 'success', task ? task.title : undefined)
 
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 		},
@@ -209,6 +257,7 @@ export default {
 			task.error = true
 			task.statusText = this.$t('Update failed')
 			task.errorMessage = props.message || this.$t('Failed to apply container update.')
+			this.log(res, this.$t('Applying app settings failed'), 'error', `${task.title}: ${task.errorMessage}`)
 		},
 
 		'app:update-begin'(res) {
@@ -228,15 +277,15 @@ export default {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name || 'app'
 			const task = this.tasks.find(t => t.id === name || t.name === name)
+			const updated = props['docker:image:updated'] !== 'false'
 
 			if (task) {
 				task.progress = 100
 				task.finished = true
 				task.statusText = this.$t('Container updated successfully!')
-				setTimeout(() => {
-					this.dismissTask(task.id)
-				}, FINISHED_LINGER_MS)
+				this.finishLater(task)
 			}
+			this.log(res, updated ? this.$t('App updated') : this.$t('App is up to date'), 'success', task ? task.title : undefined)
 
 			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 		},
@@ -248,6 +297,46 @@ export default {
 			task.error = true
 			task.statusText = this.$t('Update failed')
 			task.errorMessage = props.message || this.$t('Container update encountered an error.')
+			this.log(res, this.$t('App update failed'), 'error', `${task.title}: ${task.errorMessage}`)
+		},
+
+		// Uninstall / start / stop / restart: no progress card, just the
+		// Notification Center entry and a refreshed app list.
+		'app:uninstall-end'(res) {
+			this.log(res, this.$t('App uninstalled'), 'info')
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:uninstall-error'(res) {
+			const info = this.appInfo(res)
+			this.log(res, this.$t('App uninstall failed'), 'error', info.message ? `${info.title}: ${info.message}` : info.title)
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:start-end'(res) {
+			this.log(res, this.$t('App started'), 'success')
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:start-error'(res) {
+			const info = this.appInfo(res)
+			this.log(res, this.$t('App failed to start'), 'error', info.message ? `${info.title}: ${info.message}` : info.title)
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:stop-end'(res) {
+			this.log(res, this.$t('App stopped'), 'info')
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:stop-error'(res) {
+			const info = this.appInfo(res)
+			this.log(res, this.$t('App failed to stop'), 'error', info.message ? `${info.title}: ${info.message}` : info.title)
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:restart-end'(res) {
+			this.log(res, this.$t('App restarted'), 'success')
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
+		},
+		'app:restart-error'(res) {
+			const info = this.appInfo(res)
+			this.log(res, this.$t('App failed to restart'), 'error', info.message ? `${info.title}: ${info.message}` : info.title)
+			this.$EventBus.$emit(events.RELOAD_APP_LIST)
 		}
 	}
 }
@@ -255,15 +344,12 @@ export default {
 
 <style lang="scss" scoped>
 .container-install-status {
-	position: fixed;
-	bottom: 84px;
-	right: 20px;
-	z-index: 9999;
+	position: relative;
 	pointer-events: none;
 	display: flex;
 	flex-direction: column;
-	max-width: 380px;
-	width: calc(100vw - 40px);
+	max-width: 22rem;
+	width: 100%;
 	background: transparent !important;
 	border: none !important;
 	box-shadow: none !important;
@@ -290,11 +376,11 @@ export default {
 	transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
 	&.is-finished {
-		border-color: rgba(16, 185, 129, 0.5);
+		border-color: var(--color-success);
 	}
 
 	&.is-error {
-		border-color: rgba(239, 68, 68, 0.5);
+		border-color: var(--color-danger);
 	}
 }
 
@@ -346,7 +432,7 @@ export default {
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
-	background: #10b981;
+	background: var(--color-success);
 	color: #ffffff;
 	display: flex;
 	align-items: center;
@@ -363,7 +449,7 @@ export default {
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
-	background: #ef4444;
+	background: var(--color-danger);
 	color: #ffffff;
 	display: flex;
 	align-items: center;
@@ -401,26 +487,26 @@ export default {
 .task-pct-badge {
 	font-size: var(--font-2xs);
 	font-weight: 600;
-	color: var(--color-primary, #2563eb);
-	background: rgba(37, 99, 235, 0.1);
+	color: var(--color-primary-fg, var(--color-primary));
+	background: var(--color-primary-soft, var(--theme-info-soft));
 	padding: 0.12rem var(--space-2);
 	border-radius: var(--radius-pill);
 	white-space: nowrap;
 
 	&.is-success {
-		color: #10b981;
-		background: rgba(16, 185, 129, 0.12);
+		color: var(--color-success-fg);
+		background: var(--color-success-soft, var(--theme-success-soft));
 	}
 
 	&.is-danger {
-		color: #ef4444;
-		background: rgba(239, 68, 68, 0.12);
+		color: var(--color-danger-fg);
+		background: var(--color-danger-soft, var(--theme-danger-soft));
 	}
 }
 
 .task-status-text {
 	font-size: var(--font-xs);
-	color: var(--theme-text-secondary, #64748b);
+	color: var(--theme-text-secondary);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -429,7 +515,7 @@ export default {
 .task-dismiss-btn {
 	background: transparent;
 	border: none;
-	color: var(--theme-text-muted, #94a3b8);
+	color: var(--theme-text-secondary);
 	font-size: var(--font-md);
 	cursor: pointer;
 	padding: var(--space-1);
@@ -443,26 +529,29 @@ export default {
 		color: var(--theme-text-primary, #0f172a);
 		background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
 	}
+
+	&:focus-visible {
+		outline: 2px solid var(--theme-focus-ring, var(--color-primary));
+		outline-offset: 2px;
+	}
 }
 
 .install-progress-bar-track {
 	width: 100%;
 	height: 4px;
-	background: var(--theme-control-border, rgba(0, 0, 0, 0.08));
+	background: var(--theme-card-hover);
 	border-radius: var(--radius-pill);
 	overflow: hidden;
 }
 
 .install-progress-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, #2563eb, #38bdf8);
+	background: var(--color-primary);
 	border-radius: var(--radius-pill);
 	transition: width 0.3s ease;
-	box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
 
 	&.is-finished {
-		background: #10b981;
-		box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+		background: var(--color-success);
 	}
 
 	&.is-indeterminate {
@@ -477,12 +566,12 @@ export default {
 }
 
 .install-error-box {
-	background: rgba(239, 68, 68, 0.1);
-	border: 1px solid rgba(239, 68, 68, 0.25);
+	background: var(--color-danger-soft, var(--theme-danger-soft));
+	border: 1px solid var(--color-danger);
 	border-radius: var(--radius-sm);
 	padding: var(--space-1) var(--space-2);
 	font-size: var(--font-2xs);
-	color: #ef4444;
+	color: var(--color-danger-fg);
 	line-height: 1.3;
 }
 

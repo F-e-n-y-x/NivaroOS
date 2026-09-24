@@ -12,19 +12,21 @@
 -->
 <template>
 	<div v-if="jobs.length" class="transfers-panel" :class="{ collapsed }" @mouseenter="hovering = true" @mouseleave="onLeave">
-		<header class="tp-head" @click="collapsed = !collapsed">
-			<b-icon :icon="headIcon" custom-size="mdi-18px" class="tp-head-icon" :class="headTone"></b-icon>
-			<div class="tp-head-text">
-				<div class="tp-head-title one-line">{{ summaryTitle }}</div>
-				<div v-if="collapsed && activeJobs.length" class="tp-mini-track">
-					<div class="tp-mini-fill" :style="{ width: overallPercent + '%' }"></div>
-				</div>
-			</div>
-			<button v-if="finishedJobs.length && !collapsed" class="tp-link" :title="$t('Remove finished transfers from the list')" @click.stop="clearFinished">{{ $t('Clear') }}</button>
-			<b-icon :icon="collapsed ? 'chevron-up' : 'chevron-down'" custom-size="mdi-18px" class="tp-chevron"></b-icon>
-		</header>
+		<div class="tp-head">
+			<button type="button" class="tp-toggle" :aria-expanded="String(!collapsed)" aria-controls="transfers-panel-list" @click="collapsed = !collapsed">
+				<b-icon :icon="headIcon" custom-size="mdi-18px" class="tp-head-icon" :class="headTone"></b-icon>
+				<span class="tp-head-text">
+					<span class="tp-head-title one-line" aria-live="polite">{{ summaryTitle }}</span>
+					<span v-if="collapsed && activeJobs.length" class="tp-mini-track">
+						<span class="tp-mini-fill" :style="{ width: overallPercent + '%' }"></span>
+					</span>
+				</span>
+				<b-icon :icon="collapsed ? 'chevron-up' : 'chevron-down'" custom-size="mdi-18px" class="tp-chevron"></b-icon>
+			</button>
+			<button v-if="finishedJobs.length && !collapsed" type="button" class="tp-link tp-clear" :title="$t('Remove finished transfers from the list')" @click="clearFinished">{{ $t('Clear') }}</button>
+		</div>
 
-		<div v-if="!collapsed" class="tp-list scrollbars-light">
+		<div v-if="!collapsed" id="transfers-panel-list" class="tp-list scrollbars-light">
 			<div v-for="job in jobs" :key="job.id" class="tp-job" :class="'is-' + job.state">
 				<b-icon :icon="kindIcon(job)" custom-size="mdi-18px" class="tp-kind"></b-icon>
 				<div class="tp-body">
@@ -52,10 +54,10 @@
 						<button v-if="job.kind !== 'delete' && isTerminal(job) && job.dest" class="tp-link" @click="showFolder(job)">{{ $t('Show in folder') }}</button>
 					</div>
 				</div>
-				<button v-if="!isTerminal(job)" class="tp-icon-btn" :title="$t('Cancel')" :disabled="busy[job.id]" @click="doCancel(job)">
+				<button v-if="!isTerminal(job)" type="button" class="tp-icon-btn" :title="$t('Cancel')" :aria-label="$t('Cancel {title}', { title: title(job) })" :disabled="busy[job.id]" @click="doCancel(job)">
 					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 				</button>
-				<button v-else class="tp-icon-btn" :title="$t('Dismiss')" @click="hide(job.id)">
+				<button v-else type="button" class="tp-icon-btn" :title="$t('Dismiss')" :aria-label="$t('Dismiss')" @click="hide(job.id)">
 					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 				</button>
 			</div>
@@ -83,7 +85,9 @@ export default {
 	name: 'transfers-panel',
 	data() {
 		return {
-			collapsed: false,
+			// On a phone an expanded list would cover the full-screen app
+			// underneath - start as the one-line summary there.
+			collapsed: !!(this.$store.state.isMobile || this.$store.state.isTablet),
 			hovering: false,
 			expanded: {},
 			busy: {},
@@ -307,7 +311,8 @@ export default {
 			// A problem should never go unnoticed, even with the panel
 			// collapsed or the job hidden.
 			if (['done_with_errors', 'failed', 'interrupted'].includes(job.state)) {
-				this.collapsed = false
+				// The summary line already says "needs attention" on phones.
+				if (!(this.$store.state.isMobile || this.$store.state.isTablet)) this.collapsed = false
 				activityService.add({
 					title: job.state === 'failed' ? this.$t('Transfer failed') : this.$t('Transfer finished with problems'),
 					message: `${this.title(job)} - ${this.meta(job)}`,
@@ -322,22 +327,20 @@ export default {
 
 <style lang="scss" scoped>
 .transfers-panel {
-	position: fixed;
-	right: 1.5rem;
-	bottom: 4.8rem;
-	z-index: 1900;
+	position: relative;
+	pointer-events: auto;
 	width: 22rem;
 	max-width: calc(100vw - 2rem);
 	max-height: min(60vh, 32rem);
 	display: flex;
 	flex-direction: column;
-	background: rgba(24, 24, 27, 0.94);
+	background: var(--theme-card-bg);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
-	color: #f4f4f5;
-	border: 1px solid rgba(255, 255, 255, 0.08);
+	color: var(--theme-text-primary);
+	border: 1px solid var(--theme-card-border);
 	border-radius: var(--radius-card, 12px);
-	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+	box-shadow: var(--shadow-xl);
 	overflow: hidden;
 	font-size: var(--font-sm);
 }
@@ -353,24 +356,45 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding: 0.65rem var(--space-3);
-	cursor: pointer;
+	padding-right: var(--space-3);
 	user-select: none;
+}
+
+.tp-toggle {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.65rem var(--space-3);
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
 
 	.collapsed & {
 		padding-bottom: 0.6rem;
 	}
 }
 
+.tp-head-text,
+.tp-head-title,
+.tp-mini-track,
+.tp-mini-fill {
+	display: block;
+}
+
 .tp-head-icon {
 	flex-shrink: 0;
-	color: #93c5fd;
+	color: var(--color-primary-fg, var(--color-primary));
 
 	&.tone-ok {
-		color: #4ade80;
+		color: var(--color-success-fg);
 	}
 	&.tone-warn {
-		color: #fbbf24;
+		color: var(--color-warning-fg);
 	}
 }
 
@@ -388,26 +412,26 @@ export default {
 	margin-top: 0.35rem;
 	height: 3px;
 	border-radius: 99px;
-	background: rgba(255, 255, 255, 0.14);
+	background: var(--theme-card-hover);
 	overflow: hidden;
 }
 
 .tp-mini-fill {
 	height: 100%;
-	background: #3b82f6;
+	background: var(--color-primary);
 	transition: width 0.3s ease;
 }
 
 .tp-chevron {
 	flex-shrink: 0;
-	color: rgba(255, 255, 255, 0.55);
+	color: var(--theme-text-secondary);
 }
 
 .tp-list {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	border-top: 1px solid rgba(255, 255, 255, 0.07);
+	border-top: 1px solid var(--theme-card-border);
 }
 
 .tp-job {
@@ -415,7 +439,7 @@ export default {
 	align-items: flex-start;
 	gap: var(--space-2);
 	padding: 0.7rem var(--space-3);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	border-bottom: 1px solid var(--theme-table-divider, var(--theme-card-border));
 
 	&:last-child {
 		border-bottom: none;
@@ -425,15 +449,15 @@ export default {
 .tp-kind {
 	flex-shrink: 0;
 	margin-top: 0.1rem;
-	color: rgba(255, 255, 255, 0.6);
+	color: var(--theme-text-secondary);
 
 	.is-done & {
-		color: #4ade80;
+		color: var(--color-success-fg);
 	}
 	.is-done_with_errors &,
 	.is-failed &,
 	.is-interrupted & {
-		color: #fbbf24;
+		color: var(--color-warning-fg);
 	}
 }
 
@@ -452,7 +476,7 @@ export default {
 	margin: 0.4rem 0 0.3rem;
 	height: 4px;
 	border-radius: 99px;
-	background: rgba(255, 255, 255, 0.14);
+	background: var(--theme-card-hover);
 	overflow: hidden;
 }
 
@@ -460,7 +484,7 @@ export default {
 	position: absolute;
 	inset: 0 auto 0 0;
 	border-radius: inherit;
-	background: #3b82f6;
+	background: var(--color-primary);
 	transition: width 0.3s ease;
 
 	&.indeterminate {
@@ -488,14 +512,14 @@ export default {
 .tp-meta {
 	margin-top: 0.15rem;
 	font-size: var(--font-xs);
-	color: rgba(255, 255, 255, 0.62);
+	color: var(--theme-text-secondary);
 	font-variant-numeric: tabular-nums;
 
 	&.tone-ok {
-		color: #86efac;
+		color: var(--color-success-fg);
 	}
 	&.tone-warn {
-		color: #fcd34d;
+		color: var(--color-warning-fg);
 	}
 }
 
@@ -503,7 +527,7 @@ export default {
 	margin-top: 0.4rem;
 	padding: 0.4rem 0.5rem;
 	border-radius: 8px;
-	background: rgba(0, 0, 0, 0.28);
+	background: var(--theme-card-subtle);
 	max-height: 9rem;
 	overflow-y: auto;
 }
@@ -515,20 +539,20 @@ export default {
 	font-size: var(--font-2xs);
 
 	& + & {
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
+		border-top: 1px solid var(--theme-card-border);
 	}
 }
 
 .tp-fname {
-	color: #f4f4f5;
+	color: var(--theme-text-primary);
 }
 
 .tp-freason {
-	color: #fca5a5;
+	color: var(--color-danger-fg);
 }
 
 .tp-more {
-	color: rgba(255, 255, 255, 0.55);
+	color: var(--theme-text-secondary);
 }
 
 .tp-actions {
@@ -548,7 +572,7 @@ export default {
 	padding: 0;
 	font: inherit;
 	font-size: var(--font-xs);
-	color: #93c5fd;
+	color: var(--color-primary-fg, var(--color-primary));
 	cursor: pointer;
 
 	&.strong {
@@ -573,15 +597,23 @@ export default {
 	border: none;
 	border-radius: 6px;
 	background: transparent;
-	color: rgba(255, 255, 255, 0.55);
+	color: var(--theme-text-secondary);
 	cursor: pointer;
 
 	&:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.1);
-		color: #fff;
+		background: var(--theme-card-hover);
+		color: var(--theme-text-primary);
 	}
 	&:disabled {
 		opacity: 0.4;
+	}
+}
+.tp-toggle,
+.tp-link,
+.tp-icon-btn {
+	&:focus-visible {
+		outline: 2px solid var(--theme-focus-ring, var(--color-primary));
+		outline-offset: 2px;
 	}
 }
 </style>

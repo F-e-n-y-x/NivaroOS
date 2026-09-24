@@ -9,10 +9,10 @@
     <!-- Modal-Card Header End -->
     <!-- Modal-Card Body Start -->
     <section class="modal-card-body">
-      <b-tabs v-model="activeTab" :animated="false">
+      <b-tabs v-model="activeTab" :animated="false" @input="errors = ''">
         <b-tab-item label="Docker Compose">
           <b-field :message="errors" :type="{ 'is-danger': !!errors }">
-            <b-input v-model="dockerComposeCommands" :placeholder="$t('Notice: If there are multiple services, only the first set can be analyzed correctly')" class="import-area" type="textarea"></b-input>
+            <b-input v-model="dockerComposeCommands" :aria-label="$t('Docker Compose YAML')" :placeholder="$t('Notice: If there are multiple services, only the first set can be analyzed correctly')" class="import-area" type="textarea"></b-input>
           </b-field>
 
           <b-upload ref="importUpload" v-model="dropFiles" accept=".yaml,.yml" drag-drop expanded @input="onSelect">
@@ -29,22 +29,7 @@
         </b-tab-item>
         <b-tab-item label="Docker CLI">
           <b-field :message="errors" :type="{ 'is-danger': !!errors }" class="mb-0">
-            <b-input v-model="dockerCliCommands" class="import-area-cli" type="textarea"></b-input>
-          </b-field>
-        </b-tab-item>
-
-        <b-tab-item v-if="false" :label="$t('AppFile')">
-          <b-field :message="errors" :type="{ 'is-danger': !!errors }">
-            <b-upload ref="importUpload" v-model="dropFiles" accept="application/json" drag-drop expanded @input="onSelect">
-              <section class="section">
-                <div class="content has-text-centered">
-                  <p>
-                    <b-icon :icon="uploadIcon" size="is-large"></b-icon>
-                  </p>
-                  <p>{{ dropText }}</p>
-                </div>
-              </section>
-            </b-upload>
+            <b-input v-model="dockerCliCommands" :aria-label="$t('Docker run command')" placeholder="docker run -d -p 8080:80 nginx" class="import-area-cli" type="textarea"></b-input>
           </b-field>
         </b-tab-item>
       </b-tabs>
@@ -73,11 +58,9 @@ export default {
   data() {
     return {
       activeTab: 0,
-      file: {},
-      dropFiles: {},
+      dropFiles: null,
       dockerCliCommands: "",
       dockerComposeCommands: "",
-      appFileLoaded: false,
       errors: "",
       dropText: this.$t('Drop your Docker Compose file here or click to upload'),
       uploadIcon: "upload",
@@ -96,143 +79,96 @@ export default {
     }
   },
   methods: {
-    /**
-     * @description: Emit Event to tell parent Update
-     * @param {*}
-     * @return {*} void
-     */
     emitSubmit() {
+      this.errors = ""
+      let yaml = ""
       if (this.activeTab == 1) {
         const cleanedCommand = this.dockerCliCommands.replace(/`#.*?`/g, '').replace(/#.*$/gm, '').trim();
-        this.dockerComposeCommands = composerize(cleanedCommand);
-        this.dockerComposeCommands = this.addTitleToYaml(this.dockerComposeCommands)
-        this.$emit('update', this.dockerComposeCommands)
-        if (typeof this.onUpdate === 'function') this.onUpdate(this.dockerComposeCommands)
-        this.$emit('close')
-      } else if (this.activeTab == 0) {
-        this.dockerComposeCommands = this.addTitleToYaml(this.dockerComposeCommands)
-        this.errors = ""
-        this.$emit('update', this.dockerComposeCommands)
-        if (typeof this.onUpdate === 'function') this.onUpdate(this.dockerComposeCommands)
-        this.$emit('close')
-      } else if (this.activeTab == 2) {
-        if (this.appFileLoaded) {
-          this.errors = ""
-          this.$emit('close')
-        } else {
-          this.errors = this.$t('Please import a valid App file')
-          this.parseError = true;
+        if (!cleanedCommand) {
+          this.errors = this.$t('Paste a docker run command first.')
+          return
         }
+        try {
+          yaml = composerize(cleanedCommand)
+        } catch (e) {
+          this.errors = this.$t('Could not convert this command: {error}', { error: (e && e.message) || String(e) })
+          return
+        }
+      } else {
+        yaml = this.dockerComposeCommands
       }
-    },
-
-    addTitleToYaml(yaml) {
-      const yamlObj = parse(yaml)
-      const serviceName = Object.keys(yamlObj.services)[0]
-      if (serviceName == undefined) return stringify(yamlObj)
-      yamlObj['x-casaos'] = {}
-      yamlObj['x-casaos'].title = {}
-      yamlObj['x-casaos'].title.en_us = serviceName
-      yamlObj['x-casaos'].icon = `https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/${serviceName}/icon.png`
-      return stringify(yamlObj)
-    },
-
-    volumeAutoCheck(containerPath, hostPath, appName) {
-      let finalHostPath = hostPath
-      const rootDir = "/DATA"
-      const checkArray = [
-        {
-          keywords: ["config"],
-          value: `/AppData/${appName}${containerPath}`
-        },
-        {
-          keywords: ["tvshows", "TV", "tv"],
-          value: `/Media/TV Shows`
-        },
-        {
-          keywords: ["movies", "Movie", "movie"],
-          value: `/Media/Movies`
-        },
-        {
-          keywords: ["Music", "music"],
-          value: `/Media/Music`
-        },
-        {
-          keywords: ["download"],
-          value: `/Downloads`
-        },
-        {
-          keywords: ["pictures", "photo"],
-          value: `/Gallery`
-        },
-        {
-          keywords: ["media"],
-          value: `/Media`
-        }
-      ]
-      checkArray.forEach(item => {
-        if (item.keywords.some(keywordsItem => {
-          return containerPath.includes(keywordsItem)
-        })) {
-          finalHostPath = rootDir + item.value
-        }
-      })
-      return finalHostPath
-    },
-
-    /**
-     * @description: Make String to Array
-     * @param {*}
-     * @return {Array}
-     */
-    makeArray(foo) {
-      const newArray = (typeof (foo) == "string") ? [foo] : foo
-      return (newArray == undefined) ? [] : newArray
-    },
-
-    checkYAML() {
-      let yaml = parse(this.dockerComposeCommands);
-      if (!(yaml?.name in yaml.services)) {
-        this.errors = this.$t("Please select a service name in the \"services\" and add it as the value of the top-level attribute \"name\" to serve as the main application.");
-        return false
+      const result = this.normalizeCompose(yaml)
+      if (result.error) {
+        this.errors = result.error
+        return
       }
-      return true
+      this.dockerComposeCommands = result.yaml
+      this.$emit('update', result.yaml)
+      if (typeof this.onUpdate === 'function') this.onUpdate(result.yaml)
+      this.$emit('close')
     },
-    onSelect(val) {
-      const _this = this
-      const reader = new FileReader();
+
+    // Validates a compose document and fills in the NivaroOS (x-casaos)
+    // app metadata it needs, keeping whatever the file already has
+    // (port_map, tips, icon, index...). Returns { yaml } or { error }.
+    normalizeCompose(text) {
+      if (!text || !String(text).trim()) {
+        return { error: this.$t('Paste a Docker Compose file or upload one first.') }
+      }
+      let doc
+      try {
+        doc = parse(text)
+      } catch (e) {
+        const where = e && e.linePos && e.linePos[0] ? ` (${this.$t('line {line}', { line: e.linePos[0].line })})` : ''
+        return { error: this.$t('This is not valid YAML: {error}', { error: ((e && e.message) || String(e)).split('\n')[0] + where }) }
+      }
+      if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+        return { error: this.$t('This is not a Docker Compose file - it has no "services" section.') }
+      }
+      const services = doc.services
+      if (!services || typeof services !== 'object' || Array.isArray(services) || !Object.keys(services).length) {
+        return { error: this.$t('This is not a Docker Compose file - it has no "services" section.') }
+      }
+      const names = Object.keys(services)
+      const bad = names.find(n => !services[n] || typeof services[n] !== 'object')
+      if (bad) {
+        return { error: this.$t('Service "{name}" is empty or invalid.', { name: bad }) }
+      }
+      if (!names.some(n => services[n].image || services[n].build)) {
+        return { error: this.$t('No service has an "image" to run.') }
+      }
+
+      const existing = doc['x-casaos'] && typeof doc['x-casaos'] === 'object' ? doc['x-casaos'] : {}
+      // The main service: x-casaos.main, then the top-level "name" if it
+      // names a service, then the first service.
+      const main = (existing.main && services[existing.main]) ? existing.main
+        : (doc.name && services[doc.name] ? doc.name : names[0])
+      const merged = { ...existing, main }
+      if (!merged.title || typeof merged.title !== 'object' || !Object.keys(merged.title).length) {
+        merged.title = { en_us: main }
+      }
+      // No icon invented here: the UI shows its own built-in default for
+      // apps without one (the old CasaOS CDN guess was usually a 404).
+      doc['x-casaos'] = merged
+      return { yaml: stringify(doc) }
+    },
+
+    onSelect(file) {
+      if (!file) return
       if (typeof FileReader === "undefined") {
-        this.$buefy.toast.open({
-          duration: 3000,
-          message: this.$t('Your browser does not support file reading.'),
-          type: 'is-danger'
-        })
+        this.errors = this.$t('Your browser does not support file reading.')
         return;
       }
-      reader.readAsText(val)
-      reader.onload = function () {
-        _this.dockerComposeCommands = this.result
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.errors = ""
+        this.dockerComposeCommands = String(reader.result || '')
+        this.dropText = file.name || this.dropText
       }
-    },
-    clearInput() {
-      this.uploadIcon = "upload"
-      this.dropText = this.$t('Drop your Docker Compose file here or click to upload')
-      this.appFileLoaded = false
-      this.$refs.importUpload.clearInput()
-      this.$buefy.toast.open({
-        duration: 3000,
-        message: this.$t('This is not a valid json file.'),
-        type: 'is-danger'
-      })
-      this.appFileLoaded = false
-    },
-
-    getNetworkModel(netName) {
-      const network = this.oriNetWorks.filter(net => {
-        return net.name == netName
-      })
-      return (network.length > 0) ? network[0].name : this.oriNetWorks[0].name
-
+      reader.onerror = () => {
+        this.errors = this.$t('Could not read {name}.', { name: file.name || this.$t('the file') })
+      }
+      reader.readAsText(file)
     },
   },
 }

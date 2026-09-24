@@ -1,6 +1,7 @@
 <template>
 	<div class="datetime-pill-wrap">
-		<button type="button" class="datetime-pill" :class="{ 'is-active': menuOpen }" @click.stop="toggleMenu">
+		<button type="button" class="datetime-pill" :class="{ 'is-active': menuOpen }" :aria-expanded="String(menuOpen)" aria-haspopup="dialog"
+			:aria-label="$t('Clock, calendar and power')" @click.stop="toggleMenu">
 			<div class="datetime-text">
 				<template v-if="customFormat">
 					<span class="pill-time">{{ customText }}</span>
@@ -14,21 +15,21 @@
 		</button>
 
 		<transition name="pop-up">
-			<div v-if="menuOpen" class="quick-control-menu" @click.stop>
+			<div v-if="menuOpen" ref="menu" class="quick-control-menu" role="dialog" :aria-label="$t('Clock, calendar and power')" @click.stop>
 				<!-- Top Header: User Profile + System Actions -->
 				<div class="menu-top-header">
 					<div class="user-profile-left">
 						<div class="user-avatar">{{ userInitial }}</div>
 						<div class="user-meta">
-							<span class="user-name">{{ userName }}</span>
+							<span class="user-name">{{ userName || $t('User') }}</span>
 							<span class="user-badge">{{ $t('Signed in') }}</span>
 						</div>
 					</div>
 					<div class="header-actions-right">
-						<button type="button" class="hdr-btn" :title="$t('Settings')" @click="openSettings('system')">
+						<button type="button" class="hdr-btn" :title="$t('Settings')" :aria-label="$t('Settings')" @click="openSettings('system')">
 							<i class="mdi mdi-cog-outline"></i>
 						</button>
-						<button type="button" class="hdr-btn is-logout" :title="$t('Sign out')" @click="logout">
+						<button type="button" class="hdr-btn is-logout" :title="$t('Sign out')" :aria-label="$t('Sign out')" @click="logout">
 							<i class="mdi mdi-logout"></i>
 						</button>
 					</div>
@@ -55,10 +56,10 @@
 							<button type="button" class="cal-btn-today" @click="goToToday">
 								{{ $t('Today') }}
 							</button>
-							<button type="button" class="cal-arrow-btn" :title="$t('Previous Month')" @click="prevMonth">
+							<button type="button" class="cal-arrow-btn" :title="$t('Previous Month')" :aria-label="$t('Previous Month')" @click="prevMonth">
 								<i class="mdi mdi-chevron-left"></i>
 							</button>
-							<button type="button" class="cal-arrow-btn" :title="$t('Next Month')" @click="nextMonth">
+							<button type="button" class="cal-arrow-btn" :title="$t('Next Month')" :aria-label="$t('Next Month')" @click="nextMonth">
 								<i class="mdi mdi-chevron-right"></i>
 							</button>
 						</div>
@@ -77,6 +78,8 @@
 							v-for="(day, idx) in calendarDays"
 							:key="idx"
 							type="button"
+							:aria-label="day.label"
+							:aria-current="day.isToday ? 'date' : null"
 							class="cal-day-cell"
 							:class="{
 								'is-today': day.isToday,
@@ -106,14 +109,20 @@
 			</div>
 		</transition>
 
-		<b-modal v-model="showPowerModal" :can-cancel="false" scroll="clip" width="20rem">
-			<b-message @close="resetPowerModal">
-				<template #header>
-					{{ $t(powerTitle) }}
-				</template>
-				<div>{{ $t(powerMessage) }}</div>
-			</b-message>
-		</b-modal>
+		<!-- Restart/shutdown progress: a non-blocking status card by the
+		     tray (the rest of the desktop stays usable), dismissible. -->
+		<transition name="pop-up">
+			<div v-if="showPowerModal" class="power-status-card" :class="'is-' + (powerState || 'pending')" role="status" aria-live="polite">
+				<i class="mdi power-status-icon" :class="powerState === 'error' ? 'mdi-alert-circle-outline' : (powerState === 'off' ? 'mdi-power' : 'mdi-loading mdi-spin')" aria-hidden="true"></i>
+				<div class="power-status-text">
+					<strong>{{ $t(powerTitle) }}</strong>
+					<span>{{ $t(powerMessage) }}</span>
+				</div>
+				<button type="button" class="hdr-btn" :title="$t('Dismiss')" :aria-label="$t('Dismiss')" @click="resetPowerModal">
+					<i class="mdi mdi-close"></i>
+				</button>
+			</div>
+		</transition>
 
 		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
@@ -132,6 +141,9 @@ export default {
 			timeText: '',
 			dateText: '',
 			customText: '',
+			fullDateText: '',
+			// Changes at midnight - recomputes the calendar's "today" mark.
+			todayKey: '',
 			menuOpen: false,
 			currentViewingDate: new Date(),
 			selectedDate: new Date()
@@ -153,20 +165,30 @@ export default {
 		customFormat() {
 			return this.$store.state.customDateTimeFormat
 		},
+		// Vuex's user is empty again after a page reload; Login stores the
+		// signed-in user in localStorage too.
 		userName() {
-			return (this.$store.state.user && this.$store.state.user.username) || 'ayush'
+			const u = this.$store.state.user
+			if (u && u.username) return u.username
+			try {
+				const stored = JSON.parse(localStorage.getItem('user') || 'null')
+				return (stored && stored.username) || ''
+			} catch (e) {
+				return ''
+			}
 		},
 		userInitial() {
-			return (this.userName || 'U').charAt(0).toUpperCase()
+			return (this.userName || this.$t('User')).charAt(0).toUpperCase()
 		},
-		fullDateText() {
-			const today = new Date()
-			const options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' }
+		// 0 = Sunday ... 6 = Saturday, from the locale where the browser
+		// knows it (Intl.Locale weekInfo), else Sunday.
+		weekStart() {
 			try {
-				return today.toLocaleDateString(this.lang, options)
-			} catch (e) {
-				return this.dateText
-			}
+				const loc = new Intl.Locale(this.lang)
+				const info = (typeof loc.getWeekInfo === 'function' ? loc.getWeekInfo() : loc.weekInfo)
+				if (info && info.firstDay) return info.firstDay % 7
+			} catch (e) { /* unsupported */ }
+			return 0
 		},
 		calendarMonthYear() {
 			const options = { month: 'long', year: 'numeric' }
@@ -177,14 +199,26 @@ export default {
 			}
 		},
 		weekdays() {
-			return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+			// 2024-01-07 was a Sunday.
+			const names = []
+			for (let i = 0; i < 7; i++) {
+				const d = new Date(2024, 0, 7 + ((this.weekStart + i) % 7))
+				try {
+					names.push(d.toLocaleDateString(this.lang, { weekday: 'narrow' }))
+				} catch (e) {
+					names.push(['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()])
+				}
+			}
+			return names
 		},
 		calendarDays() {
+			// eslint-disable-next-line no-unused-expressions
+			this.todayKey // re-evaluate when the day changes
 			const year = this.currentViewingDate.getFullYear()
 			const month = this.currentViewingDate.getMonth()
 
 			const firstDayOfMonth = new Date(year, month, 1)
-			const startingDayOfWeek = firstDayOfMonth.getDay()
+			const startingDayOfWeek = (firstDayOfMonth.getDay() - this.weekStart + 7) % 7
 
 			const lastDayOfMonth = new Date(year, month + 1, 0)
 			const totalDaysInMonth = lastDayOfMonth.getDate()
@@ -236,6 +270,14 @@ export default {
 				})
 			}
 
+			const lang = this.lang
+			days.forEach(day => {
+				try {
+					day.label = day.date.toLocaleDateString(lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+				} catch (e) {
+					day.label = day.date.toDateString()
+				}
+			})
 			return days
 		}
 	},
@@ -253,6 +295,7 @@ export default {
 			this.updateClock()
 		},
 		lang() {
+			this.fullDateText = ''
 			this.updateClock()
 		}
 	},
@@ -260,6 +303,7 @@ export default {
 		this.updateClock()
 		this.timer = setInterval(this.updateClock, 1000)
 		document.addEventListener('click', this.closeMenu)
+		document.addEventListener('keydown', this.onKeydown)
 		this.onCloseTrayPopovers = (sender) => {
 			if (sender !== 'datetime') {
 				this.menuOpen = false
@@ -270,6 +314,7 @@ export default {
 	beforeDestroy() {
 		clearInterval(this.timer)
 		document.removeEventListener('click', this.closeMenu)
+		document.removeEventListener('keydown', this.onKeydown)
 		this.$EventBus.$off('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
 	methods: {
@@ -281,25 +326,40 @@ export default {
 		},
 		updateClock() {
 			const today = new Date()
-			if (this.customFormat) {
-				this.customText = formatStrftime(today, this.customFormat)
-				return
-			}
+			// timeText/dateText feed the menu's clock card even when a custom
+			// pattern drives the pill itself.
 			this.timeText = formatTime(today, this.timeFormat, this.showSeconds)
 			this.dateText = formatDate(today, this.lang, this.dateFormatStyle)
+			if (this.customFormat) this.customText = formatStrftime(today, this.customFormat)
+			const key = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`
+			if (key !== this.todayKey || !this.fullDateText) {
+				this.todayKey = key
+				try {
+					this.fullDateText = today.toLocaleDateString(this.lang, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })
+				} catch (e) {
+					this.fullDateText = this.dateText
+				}
+			}
+		},
+		onKeydown(e) {
+			if (e.key === 'Escape' && this.menuOpen) {
+				this.menuOpen = false
+				const pill = this.$el && this.$el.querySelector('.datetime-pill')
+				if (pill) pill.focus()
+			}
 		},
 		closeMenu() {
 			this.menuOpen = false
 		},
+		// Always from the 1st: setMonth() on the 31st overflows into the
+		// month after (Jan 31 + 1 month = Mar 3).
 		prevMonth() {
-			const d = new Date(this.currentViewingDate)
-			d.setMonth(d.getMonth() - 1)
-			this.currentViewingDate = d
+			const d = this.currentViewingDate
+			this.currentViewingDate = new Date(d.getFullYear(), d.getMonth() - 1, 1)
 		},
 		nextMonth() {
-			const d = new Date(this.currentViewingDate)
-			d.setMonth(d.getMonth() + 1)
-			this.currentViewingDate = d
+			const d = this.currentViewingDate
+			this.currentViewingDate = new Date(d.getFullYear(), d.getMonth() + 1, 1)
 		},
 		goToToday() {
 			this.currentViewingDate = new Date()
@@ -324,7 +384,6 @@ export default {
 		},
 		logout() {
 			this.menuOpen = false
-			this.$messageBus('account_setting_logout')
 			this.$router.push('/logout')
 		},
 		restart() {
@@ -732,5 +791,61 @@ export default {
 .pop-up-leave-to {
 	opacity: 0;
 	transform: translateY(6px) scale(0.97);
+}
+
+.datetime-pill:focus-visible,
+.hdr-btn:focus-visible,
+.cal-arrow-btn:focus-visible,
+.cal-btn-today:focus-visible,
+.cal-day-cell:focus-visible,
+.pwr-btn:focus-visible {
+	outline: 2px solid var(--theme-focus-ring, var(--color-primary));
+	outline-offset: 2px;
+}
+
+.power-status-card {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 0.75rem);
+	width: 20rem;
+	max-width: calc(100vw - 3rem);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	background: var(--theme-card-bg);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-modal);
+	box-shadow: var(--shadow-lg);
+	color: var(--theme-text-primary);
+	z-index: 1000;
+
+	&.is-error {
+		border-color: var(--color-danger);
+	}
+}
+
+.power-status-icon {
+	font-size: var(--font-xl);
+	line-height: 1;
+	color: var(--color-primary-fg, var(--color-primary));
+
+	.is-error & {
+		color: var(--color-danger-fg);
+	}
+}
+
+.power-status-text {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	font-size: var(--font-sm);
+
+	span {
+		color: var(--theme-text-secondary);
+		font-size: var(--font-xs);
+	}
 }
 </style>

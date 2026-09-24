@@ -261,13 +261,6 @@ button.dropdown-item.is-active {
 }
 
 
-.swiper-button-next, .swiper-button-prev{
-	transition: opacity 0.3s;
-	&.swiper-button-disabled{
-		opacity: 0 !important;
-	}
-}
-
 .vue-slider-process{
 	background-color: $primary !important;
 }

@@ -23,7 +23,6 @@ const state = {
 	searchEngine: '',
 	searchEngineSwitch: true,
 	existingAppsSwitch: true,
-	recommendSwitch: true,
 
 	siteLoading: true,
 	needInitialization: false,
