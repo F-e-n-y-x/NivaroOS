@@ -165,12 +165,20 @@
 							<button
 								v-if="!isTesting"
 								type="button"
-								class="speedtest-mini-btn"
-								:title="$t('Run speedtest again')"
-								:aria-label="$t('Run speedtest again')"
+								class="speedtest-start-btn"
 								@click.stop="startInlineSpeedtest"
 							>
-								<i class="mdi mdi-refresh"></i>
+								<i :class="['mdi', hasTestRun ? 'mdi-refresh' : 'mdi-play']" aria-hidden="true"></i>
+								<span>{{ hasTestRun ? $t('Test again') : $t('Start test') }}</span>
+							</button>
+							<button
+								v-else
+								type="button"
+								class="speedtest-start-btn is-stop"
+								@click.stop="cancelSpeedtest"
+							>
+								<i class="mdi mdi-stop" aria-hidden="true"></i>
+								<span>{{ $t('Stop') }}</span>
 							</button>
 							<button
 								type="button"
@@ -391,9 +399,13 @@ export default {
 			if (st === 'down') return this.$t('Link down');
 			return this.$t('Link state unknown');
 		},
+		// A finished (or failed) run - the start button then reads "Test again".
+		hasTestRun() {
+			return this.testPhase === 'done' || this.testPhase === 'error';
+		},
 		speedtestButtonLabel() {
 			if (this.isTesting) return this.$t('Testing... (Click to cancel)');
-			return this.showingResults ? this.$t('Back to Live Traffic') : this.$t('Start Speedtest');
+			return this.showingResults ? this.$t('Back to Live Traffic') : this.$t('Speedtest');
 		},
 		sparkPaths() {
 			const max = Math.max(1, ...this.downSeries, ...this.upSeries);
@@ -418,8 +430,8 @@ export default {
 				}
 				return '--';
 			}
-			if (this.showingResults && this.testResults.download !== null) {
-				return this.testResults.download.toFixed(1);
+			if (this.showingResults) {
+				return this.testResults.download !== null ? this.testResults.download.toFixed(1) : '--';
 			}
 			return this.formatSpeed(this.currentDownSpeed);
 		},
@@ -439,8 +451,8 @@ export default {
 				}
 				return '--';
 			}
-			if (this.showingResults && this.testResults.upload !== null) {
-				return this.testResults.upload.toFixed(1);
+			if (this.showingResults) {
+				return this.testResults.upload !== null ? this.testResults.upload.toFixed(1) : '--';
 			}
 			return this.formatSpeed(this.currentUpSpeed);
 		},
@@ -478,7 +490,7 @@ export default {
 				case 'server_running': return this.$t('Finding nearest server...');
 				case 'done': return this.$t('Speedtest Complete');
 				case 'error': return this.testError || this.$t('Test Failed');
-				default: return this.$t('Ready');
+				default: return this.$t('Pick a test');
 			}
 		}
 	},
@@ -611,8 +623,17 @@ export default {
 			} else if (this.showingResults) {
 				this.exitSpeedtest();
 			} else {
-				this.startInlineSpeedtest();
+				this.openSpeedtest();
 			}
+		},
+		// Opens the speedtest panel without running anything: pick Internet
+		// or LAN first, then press Start.
+		openSpeedtest() {
+			this.showingResults = true;
+			this.testError = null;
+			this.testResults = { ping: null, jitter: null, download: null, upload: null };
+			this.testServer = '';
+			this.testPhase = 'idle';
 		},
 		exitSpeedtest() {
 			this.isTesting = false;
@@ -620,14 +641,14 @@ export default {
 			this.testPhase = 'idle';
 			this.syncSeries();
 		},
+		// Stop leaves the panel open and ready, so another test is one click
+		// away; the header button (or the chart button) goes back to traffic.
 		cancelSpeedtest() {
 			if (this.abortController) {
 				this.abortController.abort();
 			}
 			this.isTesting = false;
-			this.showingResults = false;
-			this.testPhase = 'idle';
-			this.syncSeries();
+			this.openSpeedtest();
 		},
 
 		setTestMode(mode) {
@@ -1118,6 +1139,46 @@ export default {
 				background: rgba(37, 99, 235, 0.12);
 				color: var(--color-primary-fg, #1d4ed8);
 				border-color: rgba(37, 99, 235, 0.3);
+			}
+		}
+
+		.speedtest-start-btn {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.25rem;
+			height: 22px;
+			padding: 0 0.55rem;
+			border-radius: var(--radius-pill, 999px);
+			border: 1px solid transparent;
+			background: var(--color-primary, #2563eb);
+			color: #ffffff;
+			font: inherit;
+			font-size: 0.72rem;
+			font-weight: 600;
+			cursor: pointer;
+			white-space: nowrap;
+
+			.mdi {
+				font-size: 0.85rem;
+			}
+
+			&:hover {
+				background: var(--color-primary-hover, #1d4ed8);
+			}
+
+			&.is-stop {
+				background: transparent;
+				color: var(--color-danger-fg, #b91c1c);
+				border-color: currentColor;
+
+				&:hover {
+					background: rgba(220, 38, 38, 0.1);
+				}
+			}
+
+			&:focus-visible {
+				outline: 2px solid var(--color-primary-fg, #1d4ed8);
+				outline-offset: 2px;
 			}
 		}
 	}

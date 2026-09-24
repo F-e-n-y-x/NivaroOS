@@ -2977,5 +2977,9 @@
   "Couldn't reach NivaroOS. Check the connection and try again.": "Couldn't reach NivaroOS. Check the connection and try again.",
   "Formatting finished": "Formatting finished",
   "Storage setup finished": "Storage setup finished",
-  "Storage setup failed": "Storage setup failed"
+  "Storage setup failed": "Storage setup failed",
+  "Test again": "Test again",
+  "Start test": "Start test",
+  "Speedtest": "Speedtest",
+  "Pick a test": "Pick a test"
 }
