@@ -25,7 +25,7 @@
 						:aria-expanded="showMore ? 'true' : 'false'"
 						@click="showMoreInfo"
 					>
-						<b-icon :class="{ open: showMore }" class="arrow-btn" icon="right-outline" pack="casa"></b-icon>
+						<i class="mdi mdi-chevron-right arrow-btn" :class="{ open: showMore }" aria-hidden="true"></i>
 					</button>
 				</div>
 			</div>
@@ -338,6 +338,7 @@ export default {
 .widget {
 	&.gpu {
 		.arrow-btn {
+			display: inline-block;
 			transition: transform 0.25s ease;
 
 			&.open {
