@@ -17,6 +17,10 @@ import (
 // Station does; every non-GET also needs the admin role. Loopback
 // automation (no Origin, no Sec-Fetch-Site, not via the gateway) skips the
 // JWT, as in services/common/middleware/localauth.go.
+//
+// /devices/:id/* are the exception: they take only that device's own
+// token (devices.go) - no JWT, no loopback shortcut - and a device token
+// is rejected on every other route.
 
 // APIBase is where the gateway mounts the service (127.0.0.1:28643). The
 // service accepts paths with or without it.

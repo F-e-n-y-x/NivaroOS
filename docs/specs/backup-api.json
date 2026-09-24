@@ -12,7 +12,8 @@
   "auth": {
     "none": "no credentials",
     "jwt": "ES256 JWT in Authorization: Bearer or ?token=; every non-GET route also needs the admin role (403 forbidden). Loopback automation (no Origin, no Sec-Fetch-Site, not via the gateway, no X-Forwarded-For) skips the JWT.",
-    "token": "single-use download token in the path"
+    "token": "single-use download token in the path",
+    "device": "device token (POST /devices, shown once) in Authorization: Bearer only - never ?token=. Accepted ONLY on /devices/:id/* for that device; no JWT and no loopback shortcut there, and a device token is rejected (401) everywhere else. Survives password changes; revoked by DELETE /devices/:id. Rotated by the server every 30 days: the answer carries the new token in X-NivaroOS-Device-Token and the old one's end in X-NivaroOS-Device-Token-Old-Valid-Until (RFC 3339, 24 h later)."
   },
   "envelope": {
     "shape": {
@@ -2520,6 +2521,105 @@
         "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V5"
       },
       "notes": "Backup's side of the IsBusy lock contract, for Scheduled Tasks (spec §8.1)."
+    },
+    {
+      "id": "devices_list",
+      "method": "GET",
+      "path": "/devices",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]Device",
+      "response": [
+        {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-24T18:02:11Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z"
+        }
+      ],
+      "notes": "Enrolled phones, oldest first, for Settings > Devices. Admin only (403 forbidden otherwise), also for GET. Never includes tokens or their hashes."
+    },
+    {
+      "id": "devices_enroll",
+      "method": "POST",
+      "path": "/devices",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 201,
+      "request_type": "DeviceEnrollRequest",
+      "request": {
+        "name": "Pixel 8",
+        "platform": "android"
+      },
+      "response_type": "DeviceEnrollment",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": null,
+          "token_rotated_at": "2026-09-24T10:15:00Z"
+        },
+        "token": "nvd_q3Zp9m1W0yXcVb7aL2kR5tNe8fHs4dJu6gOi1PwQxYc"
+      },
+      "errors": [
+        "validation (field_errors name: required|invalid, platform: invalid)",
+        "invalid_state (32 devices already)",
+        "rate_limited"
+      ],
+      "notes": "Admin only. platform: android (default), ios, other. token is a random 256-bit secret shown only in this answer; the server stores its SHA-256. default_dest is /DATA/Backup/<name>, sanitised like companion folders and made unique (<name> (2)); the folder itself is created by the Phase 2 upload endpoints."
+    },
+    {
+      "id": "devices_revoke",
+      "method": "DELETE",
+      "path": "/devices/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "Empty",
+      "response": {},
+      "errors": [
+        "not_found"
+      ],
+      "notes": "Admin only. Revokes at once: every token of the device stops working. Backups already in its folder are kept."
+    },
+    {
+      "id": "device_ping",
+      "method": "GET",
+      "path": "/devices/:id/ping",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "DevicePing",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-24T18:02:11Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z"
+        },
+        "server_time": "2026-09-24T18:02:11Z",
+        "rotates_at": "2026-10-24T10:15:00Z"
+      },
+      "errors": [
+        "unauthorized (no, wrong, revoked or expired device token, or another device's)"
+      ],
+      "notes": "For the phone to check its credential. May carry X-NivaroOS-Device-Token (see auth.device): store it at once; if the answer is lost, the next request with the old token (within 24 h) gets another new one."
     }
   ]
 }

@@ -1,6 +1,7 @@
 <!-- Settings (spec §12.9): defaults for new jobs, log retention,
-     remembered USB drives, the Scheduled Tasks import, and what the
-     service runs on. -->
+     remembered USB drives, phones set up to back up here (device
+     credentials, mobile plan D5), the Scheduled Tasks import, and what
+     the service runs on. -->
 <template>
 	<div class="bk-section bk-settings">
 		<div class="bk-section-head">
@@ -64,6 +65,37 @@
 					<button type="button" class="bk-btn is-small" :disabled="driveBusy === d.endpoint.ref_id" @click="forgetDrive(d)">{{ $t('backup.settings.forget') }}</button>
 				</li>
 			</ul>
+		</section>
+
+		<!-- Phones (device credentials) -->
+		<section class="bk-card" :aria-labelledby="`${uid}-devices`" :aria-busy="devicesLoading ? 'true' : null">
+			<h3 :id="`${uid}-devices`" class="bk-card-title">{{ $t('backup.settings.devices') }}</h3>
+			<p class="bk-secondary bk-card-text">{{ $t('backup.settings.devices_hint') }}</p>
+			<p v-if="devicesError" class="bk-inline-error" role="alert">
+				{{ $t('backup.settings.devices_error') }}
+				<button type="button" class="bk-btn is-small" @click="loadDevices">{{ $t('backup.retry') }}</button>
+			</p>
+			<p v-else-if="!devicesLoading && !devices.length" class="bk-secondary bk-card-text">{{ $t('backup.settings.devices_none') }}</p>
+			<ul v-if="devices.length" class="bk-drives">
+				<li v-for="d in devices" :key="d.id" class="bk-drive">
+					<b-icon :icon="d.platform === 'other' ? 'devices' : 'cellphone'" pack="mdi" custom-size="mdi-20px" aria-hidden="true"></b-icon>
+					<div class="bk-drive-main">
+						<span class="bk-device-name">{{ d.name }}</span>
+						<span class="bk-drive-meta">{{ deviceMeta(d) }}</span>
+						<span class="bk-drive-meta">{{ $t('backup.settings.device_folder', { path: d.default_dest }) }}</span>
+					</div>
+					<button
+						type="button"
+						class="bk-btn is-small"
+						:disabled="deviceBusy === d.id"
+						:aria-label="$t('backup.settings.device_remove_label', { name: d.name })"
+						@click="revokeDevice(d)"
+					>
+						{{ $t('backup.settings.device_remove') }}
+					</button>
+				</li>
+			</ul>
+			<span class="bk-sr-only" aria-live="polite">{{ devicesNote }}</span>
 		</section>
 
 		<!-- Import from Scheduled Tasks -->
@@ -158,6 +190,11 @@ export default {
 			driveNames: {},
 			driveBusy: '',
 			migration: null,
+			devices: [],
+			devicesLoading: false,
+			devicesError: null,
+			deviceBusy: '',
+			devicesNote: '',
 			rerunning: false,
 			loadError: null
 		}
@@ -179,6 +216,7 @@ export default {
 	},
 	created() {
 		this.load()
+		this.loadDevices()
 	},
 	methods: {
 		async load() {
@@ -270,6 +308,53 @@ export default {
 						this.toast(e.code === 'invalid_state' ? this.$t('backup.settings.forget_in_use') : this.errText(e), 'is-danger')
 					} finally {
 						this.driveBusy = ''
+					}
+				}
+			})
+		},
+		// The phone list loads on its own, so the rest of Settings works
+		// even when it can't.
+		async loadDevices() {
+			this.devicesLoading = true
+			this.devicesError = null
+			try {
+				this.devices = (await this.bkApi.listDevices()) || []
+			} catch (e) {
+				this.devicesError = e
+			} finally {
+				this.devicesLoading = false
+			}
+		},
+		platformName(p) {
+			if (p === 'ios') return this.$t('backup.settings.device_platform_ios')
+			if (p === 'other') return this.$t('backup.settings.device_platform_other')
+			return this.$t('backup.settings.device_platform_android')
+		},
+		deviceMeta(d) {
+			const seen = d.last_seen
+				? this.$t('backup.settings.device_last_seen', { when: this.fmt.relative(d.last_seen) })
+				: this.$t('backup.settings.device_never_seen')
+			return [this.platformName(d.platform), seen].join(' · ')
+		},
+		revokeDevice(d) {
+			this.confirmWindow({
+				title: this.$t('backup.settings.device_remove_title'),
+				message: escapeHtml(this.$t('backup.settings.device_remove_message', { name: d.name, path: d.default_dest })),
+				confirmText: this.$t('backup.settings.device_remove_confirm'),
+				type: 'is-danger',
+				onConfirm: async () => {
+					this.deviceBusy = d.id
+					this.devicesNote = ''
+					try {
+						await this.bkApi.revokeDevice(d.id)
+						this.devices = this.devices.filter(x => x.id !== d.id)
+						this.devicesNote = this.$t('backup.settings.device_removed', { name: d.name })
+						this.toast(this.devicesNote)
+					} catch (e) {
+						if (e.code === 'not_found') this.devices = this.devices.filter(x => x.id !== d.id)
+						else this.toastError(e)
+					} finally {
+						this.deviceBusy = ''
 					}
 				}
 			})
@@ -389,6 +474,11 @@ export default {
 	flex-direction: column;
 	gap: 0.125rem;
 	min-width: 0;
+}
+.bk-device-name {
+	font-weight: 600;
+	color: var(--theme-text-primary);
+	overflow-wrap: anywhere;
 }
 .bk-drive-meta {
 	font-size: var(--font-xs);

@@ -171,7 +171,15 @@ export function createBackupClient(transport = axiosTransport) {
 		listDrives: opts => get('/drives', undefined, opts),
 		renameDrive: (uuid, label, opts) => put(`/drives/${enc(uuid)}`, { label }, opts),
 		forgetDrive: (uuid, opts) => del(`/drives/${enc(uuid)}`, undefined, opts),
-		busy: (kind, target, opts) => get('/busy', { kind, target }, opts)
+		busy: (kind, target, opts) => get('/busy', { kind, target }, opts),
+
+		// Phones enrolled for backup (device credentials). The phone app
+		// enrols itself; the web UI lists and revokes. GET
+		// /devices/:id/ping takes the device's own token, so it has no
+		// method here.
+		listDevices: opts => get('/devices', undefined, opts),
+		enrollDevice: ({ name, platform } = {}, opts) => post('/devices', { name, platform }, opts),
+		revokeDevice: (id, opts) => del(`/devices/${enc(id)}`, undefined, opts)
 	}
 }
 

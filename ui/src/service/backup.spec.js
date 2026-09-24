@@ -26,6 +26,7 @@ describe('backup client against the WP-0 fixtures', () => {
 		expect(await c.getSettings()).toEqual(fixture('GET', '/settings').response)
 		expect(await c.getMigration()).toEqual(fixture('GET', '/migration').response)
 		expect(await c.listDrives()).toEqual(fixture('GET', '/drives').response)
+		expect(await c.listDevices()).toEqual(fixture('GET', '/devices').response)
 		expect((await c.runJob('bk_1')).run_id).toMatch(/^run_/)
 		expect((await c.restore('bk_1', fixture('POST', '/jobs/:id/restore').request)).run_id).toMatch(/^run_/)
 	})
@@ -51,10 +52,16 @@ describe('backup client against the WP-0 fixtures', () => {
 			c.listVersions('bk_1'), c.browseVersion('bk_1', 'current'), c.restore('bk_1', fixture('POST', '/jobs/:id/restore').request),
 			c.createDownload({ jobId: 'bk_1', versionId: 'current', paths: [] }),
 			c.getSettings(), c.putSettings(fixture('GET', '/settings').response), c.getMigration(), c.rerunMigration(),
-			c.listDrives(), c.renameDrive('3A4F-1C22', 'Stick'), c.forgetDrive('3A4F-1C22'), c.busy('app', 'immich')
+			c.listDrives(), c.renameDrive('3A4F-1C22', 'Stick'), c.forgetDrive('3A4F-1C22'), c.busy('app', 'immich'),
+			c.listDevices(), c.enrollDevice({ name: 'Pixel 8', platform: 'android' }), c.revokeDevice('dev_1')
 		])
-		// The token download is a plain same-origin link (downloadUrl), not an API call.
-		const expected = doc.endpoints.map(e => `${e.method} ${e.path}`).filter(k => k !== 'GET /downloads/:token')
+		// The token download is a plain same-origin link (downloadUrl), not
+		// an API call; device routes take the phone's own token, never the
+		// web UI's session.
+		const expected = doc.endpoints
+			.filter(e => e.auth !== 'device')
+			.map(e => `${e.method} ${e.path}`)
+			.filter(k => k !== 'GET /downloads/:token')
 		expect(expected.filter(k => !hit.has(k))).toEqual([])
 	})
 

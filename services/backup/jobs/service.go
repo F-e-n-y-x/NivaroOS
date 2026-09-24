@@ -36,7 +36,10 @@ type Config struct {
 	// PublicKey verifies user JWTs (default: user-service's JWKS via
 	// external.GetPublicKey).
 	PublicKey func() (*ecdsa.PublicKey, error)
-	Now       func() time.Time
+	// DeviceBackupRoot is where enrolled phones' backup folders go
+	// (default DefaultDeviceBackupRoot, /DATA/Backup).
+	DeviceBackupRoot string
+	Now              func() time.Time
 	// MinStateFree is the free space DataDir's disk needs for a run to
 	// start (default 256 MiB; negative: no check).
 	MinStateFree int64

@@ -65,6 +65,10 @@ var apiTypes = map[string]func() interface{}{
 	"RememberedDrive":       func() interface{} { return new(RememberedDrive) },
 	"RememberedDriveUpdate": func() interface{} { return new(RememberedDriveUpdate) },
 	"BusyResult":            func() interface{} { return new(BusyResult) },
+	"Device":                func() interface{} { return new(Device) },
+	"DeviceEnrollRequest":   func() interface{} { return new(DeviceEnrollRequest) },
+	"DeviceEnrollment":      func() interface{} { return new(DeviceEnrollment) },
+	"DevicePing":            func() interface{} { return new(DevicePing) },
 }
 
 func newAPIValue(t *testing.T, name string) interface{} {
@@ -137,7 +141,7 @@ func TestAPIFixtures(t *testing.T) {
 		}
 		ids[ep.ID], routes[route] = true, true
 		switch ep.Auth {
-		case "none", "jwt", "token":
+		case "none", "jwt", "token", "device":
 		default:
 			t.Errorf("%s: auth %q", ep.ID, ep.Auth)
 		}
@@ -157,7 +161,7 @@ func TestAPIFixtures(t *testing.T) {
 			}
 		})
 	}
-	for _, must := range []string{"GET /health", "GET /capabilities", "GET /jobs", "POST /jobs", "PUT /jobs/:id", "GET /runs", "POST /runs/:id/decide", "POST /jobs/:id/restore"} {
+	for _, must := range []string{"GET /health", "GET /capabilities", "GET /jobs", "POST /jobs", "PUT /jobs/:id", "GET /runs", "POST /runs/:id/decide", "POST /jobs/:id/restore", "GET /devices", "POST /devices", "DELETE /devices/:id", "GET /devices/:id/ping"} {
 		if !routes[must] {
 			t.Errorf("missing route %s", must)
 		}

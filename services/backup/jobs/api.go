@@ -35,6 +35,8 @@ func (s *Service) Handler() http.Handler {
 	api := http.NewServeMux()
 	s.routes(api)
 	authed := s.requireAuth(api)
+	devMux := http.NewServeMux()
+	s.deviceRoutes(devMux)
 	return withCORS(stripPrefix(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
@@ -46,6 +48,14 @@ func (s *Service) Handler() http.Handler {
 		}
 		if s.store == nil {
 			writeError(w, http.StatusServiceUnavailable, ErrorBody{ErrorCode: ErrStoreUnavailable, Detail: describeErr(s.storeErr)})
+			return
+		}
+		// /devices/{id}/* take the device token only (devices.go).
+		if id, scoped, bad := deviceScope(r.URL.Path); bad {
+			writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
+			return
+		} else if scoped {
+			s.serveDevice(devMux, w, r, id)
 			return
 		}
 		authed.ServeHTTP(w, r)
@@ -85,6 +95,9 @@ func (s *Service) routes(m *http.ServeMux) {
 	m.HandleFunc("PUT /drives/{uuid}", s.handleDriveUpdate)
 	m.HandleFunc("DELETE /drives/{uuid}", s.handleDriveForget)
 	m.HandleFunc("GET /busy", s.handleBusy)
+	m.HandleFunc("GET /devices", s.handleDevicesList)
+	m.HandleFunc("POST /devices", s.handleDeviceEnroll)
+	m.HandleFunc("DELETE /devices/{id}", s.handleDeviceRevoke)
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
 	})
