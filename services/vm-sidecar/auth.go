@@ -36,7 +36,11 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isLoopbackAutomation(r) {
+		// /host/* (the host's own desktop, its display, and installing
+		// packages as root) always needs a real token, even from loopback:
+		// any local process or host-network container could otherwise
+		// drive the machine's desktop.
+		if isLoopbackAutomation(r) && !isHostRoute(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -58,6 +62,10 @@ func requireAuth(next http.Handler, runtimePath string) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isHostRoute(path string) bool {
+	return path == "/host" || strings.HasPrefix(path, "/host/")
 }
 
 // isLoopbackAutomation reports whether r is same-host, non-browser

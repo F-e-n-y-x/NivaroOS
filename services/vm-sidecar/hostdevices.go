@@ -6,17 +6,19 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	osuser "os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 )
-
 
 type HostUSBDevice struct {
 	VendorID    string `json:"vendor_id"`
@@ -161,9 +163,17 @@ func GetHostCapabilities() (HostCapabilities, error) {
 }
 
 type HostDisplayInfo struct {
-	Current     string              `json:"current"`
-	Width       int                 `json:"width"`
-	Height      int                 `json:"height"`
+	Current string `json:"current"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	// Display is the X display actually being streamed (":0", ":1"...).
+	Display string `json:"display"`
+	// Output is the connected RandR output resolutions apply to ("" when
+	// headless - then only the framebuffer size can change).
+	Output   string `json:"output"`
+	Headless bool   `json:"headless"`
+	// Resolutions are the output's real xrandr modes; the standard list
+	// below only when there is no connected output to ask.
 	Resolutions []DisplayResolution `json:"resolutions"`
 }
 
@@ -186,154 +196,395 @@ var standardResolutions = []DisplayResolution{
 	{Width: 800, Height: 600, Label: "800 x 600 (SVGA 4:3)"},
 }
 
-func getHostXAuth() string {
-	candidates := []string{
-		"/var/run/lightdm/root/:0",
-		"/run/lightdm/root/:0",
-		"/root/.Xauthority",
+// errNoHostDisplay: no X11 display to talk to (nothing running, Wayland
+// only, or the cookie can't be found). Handlers answer 503 with it rather
+// than inventing a 1920x1080 display that doesn't exist.
+var errNoHostDisplay = errors.New("no X11 display found on this machine - Host Desktop needs a running Xorg session (not Wayland)")
+
+// hostXTarget is the X display Host Desktop streams and how to authenticate
+// to it. It's resolved the same way the x11vnc wrapper
+// (hostdesktop/nivaroos-host-desktop.sh) does it; while that wrapper is
+// running we simply use what it resolved - including its root-only copy of
+// the cookie, which matters because this service runs with ProtectHome and
+// may not be able to read /run/user/<uid>/gdm/Xauthority or ~/.Xauthority.
+type hostXTarget struct {
+	Display     string
+	XAuthority  string
+	SessionType string
+	Desktop     string
+	XWayland    bool
+}
+
+// hostDesktopStatePath is written by the wrapper script (KEY=value lines).
+const hostDesktopStatePath = "/run/nivaroos/host-desktop.env"
+
+func parseKeyValueLines(content string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(content, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || k == "" {
+			continue
+		}
+		out[k] = v
 	}
-	for _, f := range candidates {
-		if _, err := os.Stat(f); err == nil {
-			return f
+	return out
+}
+
+func readHostDesktopState() map[string]string {
+	b, err := os.ReadFile(hostDesktopStatePath)
+	if err != nil {
+		return map[string]string{}
+	}
+	return parseKeyValueLines(string(b))
+}
+
+func isRegularFile(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
+// displayNumber turns ":1" / ":1.0" into "1".
+func displayNumber(d string) string {
+	d = strings.TrimPrefix(d, ":")
+	if i := strings.IndexByte(d, '.'); i >= 0 {
+		d = d[:i]
+	}
+	return d
+}
+
+func displaySocketExists(d string) bool {
+	n := displayNumber(d)
+	if n == "" {
+		return false
+	}
+	st, err := os.Stat("/tmp/.X11-unix/X" + n)
+	return err == nil && st.Mode()&os.ModeSocket != 0
+}
+
+// parseXorgCmdline recognises a real X server's argv (Xorg/X - never
+// Xwayland, which x11vnc can't capture) and pulls out its display and
+// -auth cookie file.
+func parseXorgCmdline(args []string) (display, auth string, ok bool) {
+	if len(args) == 0 {
+		return "", "", false
+	}
+	switch filepath.Base(args[0]) {
+	case "Xorg", "X", "Xorg.bin", "Xorg.wrap":
+	default:
+		return "", "", false
+	}
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		if display == "" && len(a) > 1 && a[0] == ':' && a[1] >= '0' && a[1] <= '9' {
+			display = a
+		}
+		if a == "-auth" && i+1 < len(args) {
+			auth = args[i+1]
 		}
 	}
-	// A regular (non-root) user's own desktop login session - the common
-	// case for a physical/VM desktop not using lightdm's root autologin -
-	// keeps its Xauthority cookie under their home directory, not any of
-	// the fixed root-owned paths above. Without this fallback, every
-	// xrandr call below silently fails to open the display on exactly
-	// that kind of device (auth == ""), which is what made the resolution
-	// changer look like it just didn't work - matches the same fallback
-	// installer/install.sh's own x11vnc wrapper script already has.
-	if matches, err := filepath.Glob("/home/*/.Xauthority"); err == nil {
-		for _, m := range matches {
-			if _, statErr := os.Stat(m); statErr == nil {
-				return m
-			}
+	if display == "" {
+		display = ":0"
+	}
+	return display, auth, true
+}
+
+type xorgServer struct{ Display, Auth string }
+
+func listXorgServers() []xorgServer {
+	dirs, _ := filepath.Glob("/proc/[0-9]*")
+	seen := map[string]bool{}
+	var out []xorgServer
+	for _, d := range dirs {
+		b, err := os.ReadFile(filepath.Join(d, "cmdline"))
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		disp, auth, ok := parseXorgCmdline(strings.Split(strings.TrimRight(string(b), "\x00"), "\x00"))
+		if !ok || seen[disp] {
+			continue
+		}
+		seen[disp] = true
+		out = append(out, xorgServer{Display: disp, Auth: auth})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Display < out[j].Display })
+	return out
+}
+
+type seatSession struct{ Type, Display, Desktop, User, UID string }
+
+func activeSeatSession() seatSession {
+	var s seatSession
+	out, err := exec.Command("loginctl", "show-seat", "seat0", "-p", "ActiveSession", "--value").Output()
+	if err != nil {
+		return s
+	}
+	id := strings.TrimSpace(string(out))
+	if id == "" {
+		return s
+	}
+	out, err = exec.Command("loginctl", "show-session", id, "-p", "Type", "-p", "Display", "-p", "Desktop", "-p", "Name", "-p", "User").Output()
+	if err != nil {
+		return s
+	}
+	kv := parseKeyValueLines(string(out))
+	return seatSession{Type: kv["Type"], Display: kv["Display"], Desktop: kv["Desktop"], User: kv["Name"], UID: kv["User"]}
+}
+
+// guessXAuth mirrors the wrapper's guess_auth_for: well-known cookie
+// locations for display managers that didn't pass -auth visibly.
+func guessXAuth(display, uid, user string) string {
+	cands := []string{"/run/lightdm/root/" + display, "/var/run/lightdm/root/" + display}
+	if uid != "" {
+		cands = append(cands, "/run/user/"+uid+"/gdm/Xauthority")
+	}
+	for _, pat := range []string{"/run/sddm/*", "/var/run/sddm/*"} {
+		m, _ := filepath.Glob(pat)
+		cands = append(cands, m...)
+	}
+	if user != "" {
+		if u, err := osuser.Lookup(user); err == nil {
+			cands = append(cands, filepath.Join(u.HomeDir, ".Xauthority"))
+		}
+	}
+	cands = append(cands, "/root/.Xauthority")
+	if m, err := filepath.Glob("/home/*/.Xauthority"); err == nil {
+		cands = append(cands, m...)
+	}
+	for _, c := range cands {
+		if isRegularFile(c) {
+			return c
 		}
 	}
 	return ""
 }
 
-func GetHostDisplay() (HostDisplayInfo, error) {
-	cmd := exec.Command("xrandr", "-display", ":0")
-	if auth := getHostXAuth(); auth != "" {
-		cmd.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
-	} else {
-		cmd.Env = append(os.Environ(), "DISPLAY=:0")
-	}
-	out, err := cmd.Output()
-	curWidth := 1920
-	curHeight := 1080
-	if err == nil {
-		re := regexp.MustCompile(`current (\d+) x (\d+)`)
-		match := re.FindStringSubmatch(string(out))
-		if len(match) == 3 {
-			curWidth, _ = strconv.Atoi(match[1])
-			curHeight, _ = strconv.Atoi(match[2])
+// pickHostX is the pure decision half of resolveHostX: which X server to
+// stream given the active seat0 session and the running Xorg servers.
+func pickHostX(sess seatSession, servers []xorgServer) (display, auth string) {
+	for _, s := range servers {
+		if sess.Display != "" && s.Display == sess.Display {
+			return s.Display, s.Auth
 		}
 	}
-	return HostDisplayInfo{
-		Current:     fmt.Sprintf("%dx%d", curWidth, curHeight),
-		Width:       curWidth,
-		Height:      curHeight,
-		Resolutions: standardResolutions,
-	}, nil
-}
-
-// xrandrEnv builds the environment every xrandr/cvt invocation against the
-// host's display needs - DRYs up what used to be four copy-pasted if/else
-// blocks across GetHostDisplay/SetHostDisplay.
-func xrandrEnv(auth string) []string {
-	if auth != "" {
-		return append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+auth)
+	if len(servers) > 0 && sess.Type != "wayland" {
+		return servers[0].Display, servers[0].Auth
 	}
-	return append(os.Environ(), "DISPLAY=:0")
+	if sess.Type == "x11" && sess.Display != "" {
+		return sess.Display, ""
+	}
+	return "", ""
 }
 
-// getConnectedOutput finds the actual connected display output's name (e.g.
-// "HDMI-0", "DP-1", "eDP-1") - this varies by GPU/driver and cabling, so it
-// can never be hardcoded the way a previous version of this function
-// assumed ("HDMI-0"), which silently failed on any other output name and
-// fell back to a bare framebuffer resize that doesn't actually change the
-// monitor's own output mode.
-func getConnectedOutput(auth string) (string, error) {
-	cmd := exec.Command("xrandr", "-display", ":0")
-	cmd.Env = xrandrEnv(auth)
-	out, err := cmd.Output()
+func resolveHostX() hostXTarget {
+	st := readHostDesktopState()
+	if st["STATE"] == "running" && st["DISPLAY"] != "" && displaySocketExists(st["DISPLAY"]) {
+		t := hostXTarget{
+			Display:     st["DISPLAY"],
+			XAuthority:  st["XAUTHORITY"],
+			SessionType: st["SESSION_TYPE"],
+			Desktop:     st["DESKTOP"],
+			XWayland:    st["XWAYLAND"] == "1",
+		}
+		if t.XAuthority != "" && !isRegularFile(t.XAuthority) {
+			t.XAuthority = ""
+		}
+		return t
+	}
+	sess := activeSeatSession()
+	t := hostXTarget{SessionType: sess.Type, Desktop: sess.Desktop}
+	t.Display, t.XAuthority = pickHostX(sess, listXorgServers())
+	if t.Display == "" {
+		return t
+	}
+	if t.XAuthority == "" || !isRegularFile(t.XAuthority) {
+		t.XAuthority = guessXAuth(t.Display, sess.UID, sess.User)
+	}
+	return t
+}
+
+// xEnv is the environment every X client (xrandr/xset/xdotool/
+// nvidia-settings) run against the host display gets.
+func xEnv(t hostXTarget) []string {
+	env := make([]string, 0, len(os.Environ())+2)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "DISPLAY=") || strings.HasPrefix(e, "XAUTHORITY=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	env = append(env, "DISPLAY="+t.Display)
+	if t.XAuthority != "" {
+		env = append(env, "XAUTHORITY="+t.XAuthority)
+	}
+	return env
+}
+
+func xCommand(t hostXTarget, name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.Env = xEnv(t)
+	return cmd
+}
+
+var (
+	xrandrCurrentRe   = regexp.MustCompile(`current (\d+) x (\d+)`)
+	xrandrConnectedRe = regexp.MustCompile(`^(\S+) connected( primary)?`)
+	xrandrModeRe      = regexp.MustCompile(`^\s+(\d+)x(\d+)i?\s`)
+)
+
+type xrandrState struct {
+	Width, Height int
+	Output        string
+	Modes         []DisplayResolution
+}
+
+// parseXrandr reads `xrandr --query` output: the screen's current size,
+// the primary (else first) connected output, and that output's modes.
+func parseXrandr(out string) xrandrState {
+	var st xrandrState
+	if m := xrandrCurrentRe.FindStringSubmatch(out); len(m) == 3 {
+		st.Width, _ = strconv.Atoi(m[1])
+		st.Height, _ = strconv.Atoi(m[2])
+	}
+	type outputModes struct {
+		name    string
+		primary bool
+		modes   []DisplayResolution
+	}
+	var outputs []*outputModes
+	var cur *outputModes
+	for _, line := range strings.Split(out, "\n") {
+		if m := xrandrConnectedRe.FindStringSubmatch(line); m != nil {
+			cur = &outputModes{name: m[1], primary: m[2] != ""}
+			outputs = append(outputs, cur)
+			continue
+		}
+		if line != "" && line[0] != ' ' && line[0] != '\t' {
+			cur = nil // "disconnected" output or "Screen" line
+			continue
+		}
+		if cur == nil {
+			continue
+		}
+		if m := xrandrModeRe.FindStringSubmatch(line); m != nil {
+			w, _ := strconv.Atoi(m[1])
+			h, _ := strconv.Atoi(m[2])
+			dup := false
+			for _, r := range cur.modes {
+				if r.Width == w && r.Height == h {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				cur.modes = append(cur.modes, DisplayResolution{Width: w, Height: h, Label: resolutionLabel(w, h)})
+			}
+		}
+	}
+	var chosen *outputModes
+	for _, o := range outputs {
+		if o.primary {
+			chosen = o
+			break
+		}
+	}
+	if chosen == nil && len(outputs) > 0 {
+		chosen = outputs[0]
+	}
+	if chosen != nil {
+		st.Output = chosen.name
+		st.Modes = chosen.modes
+	}
+	return st
+}
+
+func resolutionLabel(w, h int) string {
+	for _, r := range standardResolutions {
+		if r.Width == w && r.Height == h {
+			return r.Label
+		}
+	}
+	return fmt.Sprintf("%d x %d", w, h)
+}
+
+func queryXrandr(t hostXTarget) (xrandrState, error) {
+	out, err := xCommand(t, "xrandr", "--query").Output()
 	if err != nil {
-		return "", fmt.Errorf("xrandr: %w", err)
+		return xrandrState{}, fmt.Errorf("xrandr on %s: %w", t.Display, err)
 	}
-	// Prefer the primary connected output if xrandr reports one, otherwise
-	// the first connected output found.
-	re := regexp.MustCompile(`(?m)^(\S+) connected primary`)
-	if match := re.FindStringSubmatch(string(out)); len(match) == 2 {
-		return match[1], nil
+	return parseXrandr(string(out)), nil
+}
+
+func GetHostDisplay() (HostDisplayInfo, error) {
+	t := resolveHostX()
+	if t.Display == "" || t.XWayland {
+		return HostDisplayInfo{}, errNoHostDisplay
 	}
-	re = regexp.MustCompile(`(?m)^(\S+) connected`)
-	if match := re.FindStringSubmatch(string(out)); len(match) == 2 {
-		return match[1], nil
+	st, err := queryXrandr(t)
+	if err != nil {
+		return HostDisplayInfo{}, err
 	}
-	return "", fmt.Errorf("no connected display output found")
+	info := HostDisplayInfo{
+		Current:     fmt.Sprintf("%dx%d", st.Width, st.Height),
+		Width:       st.Width,
+		Height:      st.Height,
+		Display:     t.Display,
+		Output:      st.Output,
+		Headless:    st.Output == "",
+		Resolutions: st.Modes,
+	}
+	if len(info.Resolutions) == 0 {
+		info.Resolutions = standardResolutions
+	}
+	return info, nil
 }
 
 func SetHostDisplay(w, h int) error {
 	if w < 640 || h < 480 || w > 7680 || h > 4320 {
 		return fmt.Errorf("resolution out of supported range (640x480 - 7680x4320)")
 	}
-	auth := getHostXAuth()
-
-	// The NVIDIA proprietary driver (confirmed via Xorg.0.log on real
-	// deployments of this) does not support RandR's dynamic mode creation
-	// (xrandr --newmode/--addmode fail with a BadName/RRCreateMode X error,
-	// verified directly against a running instance) - nvidia-settings'
-	// CurrentMetaMode is NVIDIA's own, driver-correct way to set an
-	// arbitrary resolution live, and is what actually works here.
-	if _, err := exec.LookPath("nvidia-settings"); err == nil {
-		if err := setHostDisplayNvidia(w, h, auth); err == nil {
-			return nil
-		}
-		// Fall through to the generic xrandr path below - e.g. an NVIDIA
-		// card running the open-source nouveau driver instead, where
-		// nvidia-settings is installed but CurrentMetaMode isn't a valid
-		// NV-CONTROL attribute.
+	t := resolveHostX()
+	if t.Display == "" || t.XWayland {
+		return errNoHostDisplay
 	}
 
-	return setHostDisplayXrandr(w, h, auth)
+	// The NVIDIA proprietary driver doesn't support RandR's dynamic mode
+	// creation (--newmode/--addmode fail with BadName/RRCreateMode);
+	// nvidia-settings' CurrentMetaMode is its own live way to do it.
+	if _, err := exec.LookPath("nvidia-settings"); err == nil {
+		if err := setHostDisplayNvidia(w, h, t); err == nil {
+			return nil
+		}
+		// Fall through - e.g. nouveau with nvidia-settings installed.
+	}
+
+	return setHostDisplayXrandr(w, h, t)
 }
 
 // setHostDisplayNvidia asks the NVIDIA driver itself to switch to an
-// arbitrary resolution via a ViewPortIn/ViewPortOut metamode - this is a
-// live, no-restart resolution change, unlike editing xorg.conf.
-func setHostDisplayNvidia(w, h int, auth string) error {
-	dpy, err := getNvidiaDisplayName(auth)
+// arbitrary resolution via a ViewPortIn/ViewPortOut metamode - a live,
+// no-restart change.
+func setHostDisplayNvidia(w, h int, t hostXTarget) error {
+	dpy, err := getNvidiaDisplayName(t)
 	if err != nil {
 		return err
 	}
 	resStr := fmt.Sprintf("%dx%d", w, h)
 	metaMode := fmt.Sprintf("%s: nvidia-auto-select @%s +0+0 {ViewPortIn=%s, ViewPortOut=%s+0+0}", dpy, resStr, resStr, resStr)
-	cmd := exec.Command("nvidia-settings", "--assign", "CurrentMetaMode="+metaMode)
-	cmd.Env = xrandrEnv(auth)
-	if out, err := cmd.CombinedOutput(); err != nil || strings.Contains(string(out), "ERROR:") {
-		return fmt.Errorf("nvidia-settings: %s (%w)", string(out), err)
+	out, err := xCommand(t, "nvidia-settings", "--assign", "CurrentMetaMode="+metaMode).CombinedOutput()
+	if err != nil || strings.Contains(string(out), "ERROR:") {
+		return fmt.Errorf("nvidia-settings: %s (%v)", string(out), err)
 	}
 	return nil
 }
 
 // getNvidiaDisplayName finds NVIDIA's own display identifier (e.g. "DPY-0")
-// from its current metamode - this varies by GPU/connector, so (matching
-// getConnectedOutput's reasoning for the plain-xrandr path) it can't be
-// hardcoded either.
-func getNvidiaDisplayName(auth string) (string, error) {
-	cmd := exec.Command("nvidia-settings", "-q", "CurrentMetaMode", "-t")
-	cmd.Env = xrandrEnv(auth)
-	out, err := cmd.Output()
+// from its current metamode.
+func getNvidiaDisplayName(t hostXTarget) (string, error) {
+	out, err := xCommand(t, "nvidia-settings", "-q", "CurrentMetaMode", "-t").Output()
 	if err != nil {
 		return "", fmt.Errorf("nvidia-settings -q CurrentMetaMode: %w", err)
 	}
-	// -t's terse output is "id=..., switchable=..., source=... :: DPY-0:
-	// nvidia-auto-select @... +0+0 {...}" - anchor on the "::" separator
-	// before the display name, or a naive `(\S+):` matches the "::" itself.
+	// "id=..., switchable=..., source=... :: DPY-0: nvidia-auto-select ..."
 	re := regexp.MustCompile(`::\s*(\S+):`)
 	match := re.FindStringSubmatch(string(out))
 	if len(match) != 2 {
@@ -342,35 +593,56 @@ func getNvidiaDisplayName(auth string) (string, error) {
 	return match[1], nil
 }
 
-// setHostDisplayXrandr is the plain-RandR path for non-NVIDIA drivers
-// (Intel/AMD's open-source drivers support --newmode/--addmode properly,
-// unlike NVIDIA's proprietary one). It only handles resolutions that are
-// already a known mode for the connected output (standard/EDID-detected
-// resolutions almost always are) - genuinely custom resolutions fall back
-// to a framebuffer-only resize, which changes the VNC-visible canvas size
-// without necessarily matching the physical output's own mode.
-func setHostDisplayXrandr(w, h int, auth string) error {
+// setHostDisplayXrandr: a headless X server (no connected output) can only
+// change its framebuffer size, so that goes straight to --fb. With an
+// output: an existing mode is selected directly; otherwise a CVT mode is
+// created and added (works on modesetting/amdgpu/intel); only if that
+// fails too does it fall back to a framebuffer-only resize.
+func setHostDisplayXrandr(w, h int, t hostXTarget) error {
 	resStr := fmt.Sprintf("%dx%d", w, h)
-
-	output, err := getConnectedOutput(auth)
+	st, err := queryXrandr(t)
 	if err != nil {
 		return err
 	}
-
-	cmdMode := exec.Command("xrandr", "-display", ":0", "--output", output, "--mode", resStr)
-	cmdMode.Env = xrandrEnv(auth)
-	if out, err := cmdMode.CombinedOutput(); err == nil {
+	fb := func() error {
+		if out, err := xCommand(t, "xrandr", "--fb", resStr).CombinedOutput(); err != nil {
+			return fmt.Errorf("xrandr --fb %s: %s (%w)", resStr, strings.TrimSpace(string(out)), err)
+		}
 		return nil
-	} else if !strings.Contains(string(out), "cannot find mode") {
-		return fmt.Errorf("xrandr: %s (%w)", string(out), err)
 	}
+	if st.Output == "" {
+		return fb()
+	}
+	out, err := xCommand(t, "xrandr", "--output", st.Output, "--mode", resStr).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if !strings.Contains(string(out), "cannot find mode") {
+		return fmt.Errorf("xrandr: %s (%w)", strings.TrimSpace(string(out)), err)
+	}
+	if name, modeline, ok := cvtModeline(w, h); ok {
+		_ = xCommand(t, "xrandr", append([]string{"--newmode", name}, modeline...)...).Run()
+		if xCommand(t, "xrandr", "--addmode", st.Output, name).Run() == nil &&
+			xCommand(t, "xrandr", "--output", st.Output, "--mode", name).Run() == nil {
+			return nil
+		}
+	}
+	return fb()
+}
 
-	cmdFb := exec.Command("xrandr", "-display", ":0", "--fb", resStr)
-	cmdFb.Env = xrandrEnv(auth)
-	if out, err := cmdFb.CombinedOutput(); err != nil {
-		return fmt.Errorf("xrandr --fb: %s (%w)", string(out), err)
+var cvtModelineRe = regexp.MustCompile(`(?m)^Modeline\s+"([^"]+)"\s+(.+)$`)
+
+// cvtModeline runs `cvt W H` and returns the mode name and timing fields.
+func cvtModeline(w, h int) (string, []string, bool) {
+	out, err := exec.Command("cvt", strconv.Itoa(w), strconv.Itoa(h)).Output()
+	if err != nil {
+		return "", nil, false
 	}
-	return nil
+	m := cvtModelineRe.FindStringSubmatch(string(out))
+	if m == nil {
+		return "", nil, false
+	}
+	return m[1], strings.Fields(m[2]), true
 }
 
 func RegisterHostRoutes(mux *http.ServeMux) {
@@ -386,7 +658,11 @@ func RegisterHostRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /host/display", func(w http.ResponseWriter, r *http.Request) {
 		disp, err := GetHostDisplay()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+			status := http.StatusInternalServerError
+			if errors.Is(err, errNoHostDisplay) {
+				status = http.StatusServiceUnavailable
+			}
+			writeError(w, status, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, disp)
@@ -414,11 +690,18 @@ func RegisterHostRoutes(mux *http.ServeMux) {
 			return
 		}
 		if err := SetHostDisplay(req.Width, req.Height); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, errNoHostDisplay) {
+				status = http.StatusServiceUnavailable
+			}
+			writeError(w, status, err)
+			return
+		}
+		disp, err := GetHostDisplay()
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		disp, _ := GetHostDisplay()
 		writeJSON(w, http.StatusOK, disp)
 	})
 }
-

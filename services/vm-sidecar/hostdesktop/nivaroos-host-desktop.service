@@ -1,0 +1,23 @@
+# NivaroOS Host Desktop - single source of truth, embedded into
+# nivaroos-vm-sidecar (see hostdesktop_install.go). Do not copy elsewhere.
+[Unit]
+Description=NivaroOS Host Desktop VNC Server (x11vnc on a root-only unix socket)
+# Only the generic alias: every display manager (gdm, sddm, lightdm, xdm,
+# lxdm...) installs itself as display-manager.service. Ordering only - never
+# Wants=/Requires= a specific DM, which would pull in one that isn't used.
+After=network.target systemd-user-sessions.service display-manager.service
+# The script waits for a display itself, so restarts should be rare; if it
+# does crash-loop, stop trying instead of spinning forever.
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nivaroos-host-desktop.sh
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

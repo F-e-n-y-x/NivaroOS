@@ -7,7 +7,7 @@
 -->
 <template>
 	<div class="host-desktop-standalone-page">
-		<host-desktop-panel :show-close="true" @close="closeTab"></host-desktop-panel>
+		<host-desktop-panel :show-close="true" :standalone="true" @close="closeTab"></host-desktop-panel>
 	</div>
 </template>
 

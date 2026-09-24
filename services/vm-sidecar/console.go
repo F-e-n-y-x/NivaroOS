@@ -125,15 +125,21 @@ func handleConsole(store *LibvirtStore) http.HandlerFunc {
 	}
 }
 
+// handleHostConsole proxies to the host desktop's x11vnc, which listens
+// only on a root-owned 0600 unix socket (no TCP port, no password): the
+// JWT check in requireAuth (never skipped for /host/*) is the one gate.
 func handleHostConsole() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		addr := "127.0.0.1:5900"
-		tcpConn, err := net.Dial("tcp", addr)
+		vncConn, err := net.DialTimeout("unix", hostVNCSocketPath, 5*time.Second)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("connect to host desktop VNC server at %s: %v (is host desktop server running?)", addr, err), http.StatusBadGateway)
+			reason := GetHostDesktopStatus().Reason
+			if reason == "" {
+				reason = err.Error()
+			}
+			http.Error(w, "host desktop VNC server unavailable: "+reason, http.StatusBadGateway)
 			return
 		}
-		defer tcpConn.Close()
+		defer vncConn.Close()
 
 		wsConn, err := consoleUpgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -142,8 +148,20 @@ func handleHostConsole() http.HandlerFunc {
 		}
 		defer wsConn.Close()
 
-		proxyConsole(wsConn, tcpConn)
+		hostConsoleSessions.Add(1)
+		defer hostConsoleSessions.Add(-1)
+		noteHostConsoleInput()
+		proxyConsole(wsConn, hostInputTracker{vncConn})
 	}
+}
+
+// hostInputTracker records when the viewer last sent anything (keys,
+// pointer) - the CapsLock watcher only acts on an idle session.
+type hostInputTracker struct{ net.Conn }
+
+func (c hostInputTracker) Write(b []byte) (int, error) {
+	noteHostConsoleInput()
+	return c.Conn.Write(b)
 }
 
 // proxyConsole pumps bytes both ways between a console WebSocket and a VNC

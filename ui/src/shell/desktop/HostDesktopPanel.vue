@@ -1,542 +1,697 @@
 <!-- src/shell/desktop/HostDesktopPanel.vue -->
 <!--
 	Host PC / Server Desktop Console.
-	Streams the host machine's physical X11 desktop display (:0) directly
-	into the NivaroOS desktop window or standalone browser tab via noVNC (RFB).
-	Follows the exact UI architecture, design tokens, and components of VmConsolePanel:
+	Streams the host machine's own X11 desktop into the NivaroOS desktop
+	window or a standalone browser tab via noVNC (RFB), over vm-sidecar's
+	authenticated /host/console WebSocket (which proxies to x11vnc's
+	root-only unix socket - there is no raw VNC port).
+	Follows the UI architecture, design tokens, and components of VmConsolePanel:
 	- Console toolbar with identity, status pill, and grouped action bars
-	- Draggable floating on-screen keyboard (identical layout, shortcuts, and behavior)
+	- Draggable floating on-screen keyboard
 	- Keys shortcut menu (Ctrl+Alt+Del, Win Key, Alt+Tab, Ctrl+Shift+Esc, Alt+F4)
 	- Quick clipboard paste modal (with keystroke typing and clipboard paste)
-	- Quick display size & resolution changer with presets, auto-match window, and custom WxH
+	- Display resolution changer (real xrandr modes, match window, custom WxH)
 	- View scaling toggle (Fit to Window vs 1:1 Actual Size)
-	- Speedometer quality presets (High Quality, Balanced, Low Bandwidth)
-	- Dedicated Fullscreen and Open in New Tab actions
-	- Console statusbar displaying live connection dot, resolution, quality, scale, and display info
+	- Quality presets and stream settings (x11vnc refresh behaviour)
+	- Fullscreen and Open in New Tab actions
+	- Statusbar with connection, resolution, quality, scale, and display info
 -->
 <template>
-	<div v-if="installed === false" class="host-desktop-panel host-desktop-not-installed">
-		<div class="not-installed-card">
-			<b-icon icon="monitor-off" custom-size="mdi-36px"></b-icon>
-			<h3>{{ $t('Host Desktop Streaming is not installed') }}</h3>
-			<p>{{ $t('Install it to stream this machine\'s own physical desktop over VNC.') }}</p>
-			<b-button type="is-primary" :loading="installing" @click="installHostDesktop">
-				{{ $t('Install') }}
-			</b-button>
-			<p v-if="installError" class="not-installed-error">{{ installError }}</p>
-		</div>
-	</div>
-	<div v-else-if="installChecked && needsDesktopChoice" class="host-desktop-panel host-desktop-not-installed">
-		<div class="not-installed-card">
-			<b-icon icon="monitor-question" custom-size="mdi-36px"></b-icon>
-			<h3>{{ $t('No compatible desktop to stream') }}</h3>
-			<p v-if="deState === 'no_de'">
-				{{ $t('This machine has no desktop environment installed yet.') }}
-			</p>
-			<p v-else>
-				{{ $t('{de} is running under Wayland, which Host Desktop cannot capture - only an X11 session can be streamed.', { de: deName || $t('Your desktop') }) }}
-			</p>
-			<div class="de-choice-list">
-				<button
-					v-if="deState === 'wayland_only' && (deName === 'gnome' || deName === 'plasma')"
-					type="button"
-					class="de-choice-btn"
-					@click="chooseDesktop('x11-companion')"
-				>
-					{{ $t('Add an X11 session to your existing {de} (recommended)', { de: deName }) }}
-				</button>
-				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'xfce')">
-					{{ $t('Install XFCE alongside (lightweight, most compatible)') }}
-				</button>
-				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'cinnamon')">
-					{{ $t('Install Cinnamon alongside (modern look)') }}
-				</button>
-				<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'mate')">
-					{{ $t('Install MATE alongside (lightweight, classic look)') }}
-				</button>
-				<button
-					v-if="deState === 'wayland_only'"
-					type="button"
-					class="de-choice-btn de-choice-destructive"
-					@click="openReplaceDesktopPrompt"
-				>
-					{{ $t('Replace {de} entirely (destructive)', { de: deName }) }}
-				</button>
+	<div ref="root" class="host-desktop-root">
+		<!-- Session expired: the token could not be refreshed. -->
+		<div v-if="authExpired" class="host-desktop-panel host-desktop-not-installed">
+			<div class="not-installed-card" role="alert">
+				<b-icon icon="account-lock-outline" custom-size="mdi-36px"></b-icon>
+				<h3>{{ $t('Your session expired - sign in again') }}</h3>
+				<b-button type="is-primary" @click="checkAgain">{{ $t('Check again') }}</b-button>
 			</div>
-			<div v-if="showReplacePrompt" class="de-replace-confirm">
-				<p>{{ $t('This removes {de} and installs the desktop you pick next. Type its name to confirm:', { de: deName }) }}</p>
-				<div class="de-replace-row">
-					<select v-model="replaceChoice" class="de-replace-select">
-						<option value="xfce">XFCE</option>
-						<option value="cinnamon">Cinnamon</option>
-						<option value="mate">MATE</option>
-					</select>
-					<input v-model="replaceConfirmText" type="text" :placeholder="deName" class="de-replace-input" />
-					<b-button type="is-danger" :disabled="replaceConfirmText !== deName" @click="confirmReplaceDesktop">
-						{{ $t('Replace') }}
+		</div>
+
+		<div v-else-if="installed === false" class="host-desktop-panel host-desktop-not-installed">
+			<div class="not-installed-card">
+				<b-icon icon="monitor-off" custom-size="mdi-36px"></b-icon>
+				<h3>{{ $t('Host Desktop Streaming is not installed') }}</h3>
+				<p>{{ $t('Install it to stream this machine\'s own physical desktop over VNC.') }}</p>
+				<b-button type="is-primary" :loading="installing" @click="installHostDesktop">
+					{{ $t('Install') }}
+				</b-button>
+				<p v-if="installing" class="not-installed-hint">{{ $t('Installing packages - this can take a few minutes.') }}</p>
+				<p v-if="installError" class="not-installed-error" role="alert">{{ installError }}</p>
+				<details v-if="installLog" class="install-log">
+					<summary>{{ $t('Show install log') }}</summary>
+					<pre>{{ installLog }}</pre>
+				</details>
+			</div>
+		</div>
+
+		<div v-else-if="installChecked && needsDesktopChoice" class="host-desktop-panel host-desktop-not-installed">
+			<div class="not-installed-card de-card">
+				<b-icon icon="monitor-dashboard" custom-size="mdi-36px"></b-icon>
+				<h3>{{ $t('No compatible desktop to stream') }}</h3>
+				<p v-if="deState === 'no_de'">
+					{{ $t('This machine has no desktop environment installed yet.') }}
+				</p>
+				<p v-else-if="deState === 'wayland_session'">
+					{{ $t('{de} is currently running a Wayland session. Log out on the server and choose the "Xorg" or "X11" session at the login screen, then check again.', { de: deDisplayName || $t('Your desktop') }) }}
+				</p>
+				<p v-else-if="deState === 'unsupported'">
+					{{ deReason || $t('Host Desktop streaming is not supported on this system.') }}
+				</p>
+				<p v-else>
+					{{ $t('{de} is running under Wayland, which Host Desktop cannot capture - only an X11 session can be streamed.', { de: deDisplayName || $t('Your desktop') }) }}
+				</p>
+				<p v-if="deReason && deState !== 'unsupported'" class="not-installed-hint">{{ deReason }}</p>
+
+				<div v-if="canProvision" class="de-choice-list">
+					<button
+						v-if="deState === 'wayland_only' && deX11Companion"
+						type="button"
+						class="de-choice-btn"
+						@click="chooseDesktop('x11-companion')"
+					>
+						{{ $t('Add an X11 session to your existing {de} (recommended)', { de: deDisplayName }) }}
+					</button>
+					<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'xfce')">
+						{{ $t('Install XFCE alongside (lightweight, most compatible)') }}
+					</button>
+					<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'cinnamon')">
+						{{ $t('Install Cinnamon alongside (modern look)') }}
+					</button>
+					<button type="button" class="de-choice-btn" @click="chooseDesktop('alongside', 'mate')">
+						{{ $t('Install MATE alongside (lightweight, classic look)') }}
+					</button>
+					<button
+						v-if="deState === 'wayland_only' && deName"
+						type="button"
+						class="de-choice-btn de-choice-destructive"
+						@click="openReplaceDesktopPrompt"
+					>
+						{{ $t('Replace {de} entirely (destructive)', { de: deDisplayName }) }}
+					</button>
+				</div>
+
+				<div v-if="showReplacePrompt && canProvision" class="de-replace-confirm">
+					<p>{{ $t('This removes {de} and installs the desktop you pick next. Type its name to confirm:', { de: deName }) }}</p>
+					<div class="de-replace-row">
+						<label class="sr-only" for="hd-replace-choice">{{ $t('Desktop to install') }}</label>
+						<select id="hd-replace-choice" v-model="replaceChoice" class="de-replace-select">
+							<option value="xfce">XFCE</option>
+							<option value="cinnamon">Cinnamon</option>
+							<option value="mate">MATE</option>
+						</select>
+						<label class="sr-only" for="hd-replace-confirm">{{ $t('Type {de} to confirm', { de: deName }) }}</label>
+						<input
+							id="hd-replace-confirm"
+							v-model="replaceConfirmText"
+							type="text"
+							:placeholder="deName"
+							class="de-replace-input"
+							autocomplete="off"
+						/>
+						<b-button type="is-danger" :disabled="replaceConfirmText !== deName" @click="confirmReplaceDesktop">
+							{{ $t('Replace') }}
+						</b-button>
+					</div>
+				</div>
+
+				<!-- Standalone tab has no window manager to open a terminal in:
+				     show the exact command to run instead. -->
+				<div v-if="provisionCommand" class="de-command-box">
+					<p v-if="standalone">{{ $t('Run this command in a terminal on the server (or open the Terminal app from the NivaroOS dashboard):') }}</p>
+					<p v-else>{{ $t('A terminal opened with this command. When it finishes, check again:') }}</p>
+					<div class="de-command-row">
+						<code class="de-command">{{ provisionCommand }}</code>
+						<button type="button" class="de-choice-btn de-copy-btn" :aria-label="$t('Copy command')" @click="copyProvisionCommand">
+							<b-icon icon="content-copy" size="is-small"></b-icon>
+						</button>
+					</div>
+					<a v-if="standalone" class="de-dashboard-link" href="/#/" target="_blank" rel="noopener">{{ $t('Open NivaroOS dashboard') }}</a>
+				</div>
+
+				<div class="de-footer-actions">
+					<b-button :loading="checkingAgain" @click="checkAgain">{{ $t('Check again') }}</b-button>
+					<b-button v-if="deState !== 'unsupported'" type="is-text" class="de-try-anyway" @click="tryAnyway">
+						{{ $t('Try anyway') }}
 					</b-button>
 				</div>
+				<p v-if="installError" class="not-installed-error" role="alert">{{ installError }}</p>
 			</div>
-			<p v-if="installError" class="not-installed-error">{{ installError }}</p>
 		</div>
-	</div>
-	<div v-else-if="installChecked" class="host-desktop-panel">
-		<!-- Main Console Toolbar -->
-		<div class="console-toolbar">
-			<!-- Identity / Status -->
-			<div class="vm-identity">
-				<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
-				<span class="vm-name">{{ $t('Host Desktop') }}</span>
-				<span class="status-pill" :class="'is-' + status">{{ statusText }}</span>
-				<span v-if="status === 'connected' && pingMs !== null" class="ping-pill" :class="pingClass" :title="$t('Round-trip time to this host')">
-					<b-icon icon="wifi" custom-size="mdi-14px"></b-icon>
-					{{ pingMs }} ms
-				</span>
-			</div>
 
-			<div class="toolbar-actions">
-				<!-- Segment 1: Input Controls -->
-				<div class="toolbar-group">
-					<button
-						type="button"
-						class="toolbar-btn icon-only-btn"
-						:class="{ active: keyboardOpen }"
-						:title="$t('On-Screen Keyboard')"
-						@click="keyboardOpen = !keyboardOpen"
-					>
-						<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
-					</button>
-
-					<div ref="keysMenuWrapper" class="menu-wrapper">
-						<button
-							type="button"
-							class="toolbar-btn"
-							:title="$t('Send Key Shortcuts')"
-							@click="keysMenuOpen = !keysMenuOpen"
-						>
-							<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
-							<span>{{ $t('Keys') }}</span>
-							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
-						</button>
-						<div v-if="keysMenuOpen" class="power-menu keys-menu">
-							<button type="button" class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
-								<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon>
-								<span>Ctrl+Alt+Del</span>
-							</button>
-							<button type="button" class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
-								<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon>
-								<span>{{ $t('Win Key') }}</span>
-							</button>
-							<button type="button" class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
-								<b-icon icon="tab" custom-size="mdi-16px"></b-icon>
-								<span>Alt + Tab</span>
-							</button>
-							<button type="button" class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
-								<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon>
-								<span>Ctrl+Shift+Esc</span>
-							</button>
-							<button type="button" class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
-								<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon>
-								<span>Alt + F4</span>
-							</button>
-						</div>
-					</div>
-
-					<button
-						type="button"
-						class="toolbar-btn icon-only-btn"
-						:title="$t('Paste clipboard text into Host')"
-						@click="pasteClipboard"
-					>
-						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-					</button>
+		<div v-else-if="installChecked" class="host-desktop-panel">
+			<!-- Main Console Toolbar -->
+			<div class="console-toolbar">
+				<!-- Identity / Status -->
+				<div class="vm-identity">
+					<b-icon icon="monitor" custom-size="mdi-18px"></b-icon>
+					<span class="vm-name">{{ $t('Host Desktop') }}</span>
+					<span class="status-pill" :class="'is-' + status" aria-live="polite">{{ statusText }}</span>
+					<span v-if="status === 'connected' && pingMs !== null" class="ping-pill" :class="pingClass" :title="$t('Round-trip time to this host')">
+						<b-icon icon="wifi" custom-size="mdi-14px"></b-icon>
+						{{ pingMs }} ms
+					</span>
 				</div>
 
-				<div class="toolbar-divider"></div>
-
-				<!-- Segment 2: View & Stream Controls -->
-				<div class="toolbar-group">
-					<!-- Display Resolution & Size Menu -->
-					<div ref="displayMenuWrapper" class="menu-wrapper">
+				<div class="toolbar-actions">
+					<!-- Segment 1: Input Controls -->
+					<div class="toolbar-group">
 						<button
 							type="button"
-							class="toolbar-btn"
-							:class="{ active: displayMenuOpen }"
-							:title="$t('Display Resolution & Size')"
-							@click="displayMenuOpen = !displayMenuOpen"
+							class="toolbar-btn icon-only-btn"
+							:class="{ active: keyboardOpen }"
+							:title="$t('On-Screen Keyboard')"
+							:aria-label="$t('On-Screen Keyboard')"
+							:aria-pressed="keyboardOpen ? 'true' : 'false'"
+							@click="toggleKeyboard"
 						>
-							<b-icon icon="monitor-screenshot" custom-size="mdi-16px"></b-icon>
-							<span>{{ currentResolution || '1920x1080' }}</span>
-							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+							<b-icon icon="keyboard-outline" custom-size="mdi-16px"></b-icon>
 						</button>
 
-						<div v-if="displayMenuOpen" class="device-menu display-dropdown-menu">
-							<div class="device-menu-header-row">
-								<div class="header-title-group">
-									<b-icon icon="monitor-screenshot" size="is-small"></b-icon>
-									<p class="device-menu-title">{{ $t('Display Resolution') }}</p>
-								</div>
-								<span class="active-resolution-badge">{{ currentResolution || '1920x1080' }}</span>
-							</div>
-							<p class="device-menu-hint">{{ $t('Dynamically change host physical display resolution.') }}</p>
-
-							<!-- Auto Match Window Option -->
-							<div
-								class="device-menu-row auto-match-row"
-								:class="{ disabled: resizingHost }"
-								@click="matchWindowResolution"
+						<div ref="keysMenuWrapper" class="menu-wrapper">
+							<button
+								type="button"
+								class="toolbar-btn"
+								:title="$t('Send Key Shortcuts')"
+								:aria-label="$t('Send Key Shortcuts')"
+								aria-haspopup="menu"
+								:aria-expanded="keysMenuOpen ? 'true' : 'false'"
+								@click="keysMenuOpen = !keysMenuOpen"
 							>
-								<div class="device-row-icon active">
-									<b-icon icon="arrow-expand-all" size="is-small"></b-icon>
-								</div>
-								<div class="network-row-details">
-									<span class="network-row-label">{{ $t('Match Current Window') }}</span>
-									<span class="network-row-meta">{{ currentWindowEstimate }}</span>
-								</div>
-								<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-							</div>
-
-							<p class="device-menu-title device-menu-title-divided">{{ $t('Preset Resolutions') }}</p>
-							<div class="device-menu-scrollable">
-								<div
-									v-for="r in availableResolutions"
-									:key="r.width + 'x' + r.height"
-									class="device-menu-row"
-									:class="{ active: currentResolution === `${r.width}x${r.height}` }"
-									@click="changeResolution(r.width, r.height)"
-								>
-									<div class="device-row-icon" :class="{ active: currentResolution === `${r.width}x${r.height}` }">
-										<b-icon icon="monitor" size="is-small"></b-icon>
-									</div>
-									<span class="device-menu-desc">{{ r.label }}</span>
-									<b-icon
-										v-if="currentResolution === `${r.width}x${r.height}`"
-										icon="check"
-										size="is-small"
-										custom-class="has-text-success"
-									></b-icon>
-								</div>
-							</div>
-
-							<p class="device-menu-title device-menu-title-divided">{{ $t('Custom Resolution') }}</p>
-							<div class="custom-res-row" @click.stop>
-								<input
-									v-model.number="customWidth"
-									type="number"
-									class="custom-res-field"
-									placeholder="1920"
-									min="640"
-									max="7680"
-								/>
-								<span class="custom-res-multiply">×</span>
-								<input
-									v-model.number="customHeight"
-									type="number"
-									class="custom-res-field"
-									placeholder="1080"
-									min="480"
-									max="4320"
-								/>
-								<button
-									type="button"
-									class="custom-res-btn"
-									:disabled="resizingHost || !customWidth || !customHeight"
-									@click="applyCustomResolution"
-								>
-									<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-									<span v-else>{{ $t('Set') }}</span>
+								<b-icon icon="keyboard-settings-outline" custom-size="mdi-16px"></b-icon>
+								<span>{{ $t('Keys') }}</span>
+								<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+							</button>
+							<div v-if="keysMenuOpen" class="power-menu keys-menu" role="menu">
+								<button type="button" role="menuitem" class="power-menu-item" @click="sendCtrlAltDel(); keysMenuOpen = false">
+									<b-icon icon="apple-keyboard-control" custom-size="mdi-16px"></b-icon>
+									<span>Ctrl+Alt+Del</span>
+								</button>
+								<button type="button" role="menuitem" class="power-menu-item" @click="sendWinKey(); keysMenuOpen = false">
+									<b-icon icon="microsoft-windows" custom-size="mdi-16px"></b-icon>
+									<span>{{ $t('Win Key') }}</span>
+								</button>
+								<button type="button" role="menuitem" class="power-menu-item" @click="sendAltTab(); keysMenuOpen = false">
+									<b-icon icon="tab" custom-size="mdi-16px"></b-icon>
+									<span>Alt + Tab</span>
+								</button>
+								<button type="button" role="menuitem" class="power-menu-item" @click="sendCtrlShiftEsc(); keysMenuOpen = false">
+									<b-icon icon="chart-line" custom-size="mdi-16px"></b-icon>
+									<span>Ctrl+Shift+Esc</span>
+								</button>
+								<button type="button" role="menuitem" class="power-menu-item" @click="sendAltF4(); keysMenuOpen = false">
+									<b-icon icon="close-box-outline" custom-size="mdi-16px"></b-icon>
+									<span>Alt + F4</span>
 								</button>
 							</div>
 						</div>
+
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							:title="$t('Paste clipboard text into Host')"
+							:aria-label="$t('Paste clipboard text into Host')"
+							@click="pasteClipboard"
+						>
+							<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
+						</button>
 					</div>
 
-					<!-- Fit vs 1:1 Scale Toggle -->
-					<button
-						type="button"
-						class="toolbar-btn"
-						:title="scaleToFit ? $t('Show actual size (1:1)') : $t('Scale to fit window')"
-						@click="toggleScale"
-					>
-						<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
-						<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
-					</button>
+					<div class="toolbar-divider"></div>
 
-					<!-- Bandwidth & Stream Quality Menu -->
-					<div ref="qualityMenuWrapper" class="menu-wrapper">
+					<!-- Segment 2: View & Stream Controls -->
+					<div class="toolbar-group">
+						<!-- Display Resolution & Size Menu -->
+						<div ref="displayMenuWrapper" class="menu-wrapper">
+							<button
+								type="button"
+								class="toolbar-btn"
+								:class="{ active: displayMenuOpen }"
+								:title="$t('Display Resolution & Size')"
+								:aria-label="$t('Display Resolution & Size')"
+								aria-haspopup="menu"
+								:aria-expanded="displayMenuOpen ? 'true' : 'false'"
+								@click="displayMenuOpen = !displayMenuOpen"
+							>
+								<b-icon icon="monitor-screenshot" custom-size="mdi-16px"></b-icon>
+								<span>{{ resolutionLabel }}</span>
+								<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+							</button>
+
+							<div v-if="displayMenuOpen" class="device-menu display-dropdown-menu" role="menu">
+								<div class="device-menu-header-row">
+									<div class="header-title-group">
+										<b-icon icon="monitor-screenshot" size="is-small"></b-icon>
+										<p class="device-menu-title">{{ $t('Display Resolution') }}</p>
+									</div>
+									<span class="active-resolution-badge">{{ resolutionLabel }}</span>
+								</div>
+								<p class="device-menu-hint">{{ $t('Dynamically change host physical display resolution.') }}</p>
+								<p v-if="displayError" class="device-menu-hint device-menu-error" role="alert">{{ displayError }}</p>
+
+								<!-- Auto Match Window Option -->
+								<button
+									type="button"
+									role="menuitem"
+									class="device-menu-row auto-match-row"
+									:class="{ disabled: resizingHost }"
+									:disabled="resizingHost"
+									@click="matchWindowResolution"
+								>
+									<span class="device-row-icon active">
+										<b-icon icon="arrow-expand-all" size="is-small"></b-icon>
+									</span>
+									<span class="network-row-details">
+										<span class="network-row-label">{{ $t('Match Current Window') }}</span>
+										<span class="network-row-meta">{{ currentWindowEstimate }}</span>
+									</span>
+									<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+								</button>
+
+								<p class="device-menu-title device-menu-title-divided">
+									{{ displayHeadless ? $t('Preset Resolutions') : $t('Available Modes') }}
+								</p>
+								<div class="device-menu-scrollable">
+									<button
+										v-for="r in availableResolutions"
+										:key="r.width + 'x' + r.height"
+										type="button"
+										role="menuitemradio"
+										:aria-checked="currentResolution === `${r.width}x${r.height}` ? 'true' : 'false'"
+										class="device-menu-row"
+										:class="{ active: currentResolution === `${r.width}x${r.height}` }"
+										:disabled="resizingHost"
+										@click="changeResolution(r.width, r.height)"
+									>
+										<span class="device-row-icon" :class="{ active: currentResolution === `${r.width}x${r.height}` }">
+											<b-icon icon="monitor" size="is-small"></b-icon>
+										</span>
+										<span class="device-menu-desc">{{ r.label || `${r.width} x ${r.height}` }}</span>
+										<b-icon
+											v-if="currentResolution === `${r.width}x${r.height}`"
+											icon="check"
+											size="is-small"
+											custom-class="has-text-success"
+										></b-icon>
+									</button>
+									<p v-if="!availableResolutions.length" class="device-menu-hint">{{ $t('No display modes reported.') }}</p>
+								</div>
+
+								<p class="device-menu-title device-menu-title-divided">{{ $t('Custom Resolution') }}</p>
+								<div class="custom-res-row" @click.stop>
+									<label class="sr-only" for="hd-custom-width">{{ $t('Width') }}</label>
+									<input
+										id="hd-custom-width"
+										v-model.number="customWidth"
+										type="number"
+										class="custom-res-field"
+										placeholder="1920"
+										min="640"
+										max="7680"
+									/>
+									<span class="custom-res-multiply" aria-hidden="true">×</span>
+									<label class="sr-only" for="hd-custom-height">{{ $t('Height') }}</label>
+									<input
+										id="hd-custom-height"
+										v-model.number="customHeight"
+										type="number"
+										class="custom-res-field"
+										placeholder="1080"
+										min="480"
+										max="4320"
+									/>
+									<button
+										type="button"
+										class="custom-res-btn"
+										:disabled="resizingHost || !customWidth || !customHeight"
+										@click="applyCustomResolution"
+									>
+										<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										<span v-else>{{ $t('Set') }}</span>
+									</button>
+								</div>
+							</div>
+						</div>
+
+						<!-- Fit vs 1:1 Scale Toggle -->
 						<button
 							type="button"
 							class="toolbar-btn"
-							:title="$t('Display & Bandwidth Quality')"
-							@click="qualityMenuOpen = !qualityMenuOpen"
+							:title="scaleToFit ? $t('Show actual size (1:1)') : $t('Scale to fit window')"
+							:aria-label="scaleToFit ? $t('Show actual size (1:1)') : $t('Scale to fit window')"
+							@click="toggleScale"
 						>
-							<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
-							<span>{{ qualityModeLabel }}</span>
-							<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
+							<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" custom-size="mdi-16px"></b-icon>
+							<span>{{ scaleToFit ? $t('Fit') : $t('1:1') }}</span>
 						</button>
-						<div v-if="qualityMenuOpen" class="power-menu quality-menu">
+
+						<!-- Bandwidth & Stream Quality Menu -->
+						<div ref="qualityMenuWrapper" class="menu-wrapper">
 							<button
-								v-for="q in qualityOptions"
-								:key="q.mode"
 								type="button"
-								class="power-menu-item quality-menu-item"
-								:class="{ active: qualityMode === q.mode }"
-								@click="setQualityMode(q.mode)"
+								class="toolbar-btn"
+								:title="$t('Display & Bandwidth Quality')"
+								:aria-label="$t('Display & Bandwidth Quality')"
+								aria-haspopup="menu"
+								:aria-expanded="qualityMenuOpen ? 'true' : 'false'"
+								@click="qualityMenuOpen = !qualityMenuOpen"
 							>
-								<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
-								<span class="quality-menu-text">
-									<span class="quality-menu-title">{{ $t(q.label) }}</span>
-									<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
-								</span>
-								<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+								<b-icon icon="speedometer" custom-size="mdi-16px"></b-icon>
+								<span>{{ qualityModeLabel }}</span>
+								<b-icon icon="chevron-down" custom-size="mdi-14px"></b-icon>
 							</button>
+							<div v-if="qualityMenuOpen" class="power-menu quality-menu" role="menu">
+								<button
+									v-for="q in qualityOptions"
+									:key="q.mode"
+									type="button"
+									role="menuitemradio"
+									:aria-checked="qualityMode === q.mode ? 'true' : 'false'"
+									class="power-menu-item quality-menu-item"
+									:class="{ active: qualityMode === q.mode }"
+									@click="setQualityMode(q.mode)"
+								>
+									<b-icon :icon="q.icon" custom-size="mdi-18px"></b-icon>
+									<span class="quality-menu-text">
+										<span class="quality-menu-title">{{ $t(q.label) }}</span>
+										<span class="quality-menu-desc">{{ $t(q.desc) }}</span>
+									</span>
+									<b-icon v-if="qualityMode === q.mode" icon="check" custom-size="mdi-16px" class="quality-menu-check"></b-icon>
+								</button>
+
+								<div class="stream-settings" @click.stop>
+									<p class="device-menu-title device-menu-title-divided">{{ $t('Stream Settings') }}</p>
+									<label class="stream-setting-row" for="hd-noxdamage">
+										<input id="hd-noxdamage" v-model="streamSettings.noxdamage" type="checkbox" :disabled="savingSettings" />
+										<span>{{ $t('Disable X damage (for compositors)') }}</span>
+									</label>
+									<label class="stream-setting-row" for="hd-fixscreen">
+										<span>{{ $t('Periodic full refresh (fixes stale patches)') }}</span>
+										<select id="hd-fixscreen" v-model.number="streamSettings.fixscreen" class="stream-setting-select" :disabled="savingSettings">
+											<option :value="0">{{ $t('Off') }}</option>
+											<option :value="5">5 s</option>
+											<option :value="15">15 s</option>
+											<option :value="60">60 s</option>
+										</select>
+									</label>
+									<button type="button" class="custom-res-btn stream-settings-save" :disabled="savingSettings" @click="saveStreamSettings">
+										<b-icon v-if="savingSettings" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+										<span v-else>{{ $t('Apply & restart stream') }}</span>
+									</button>
+								</div>
+							</div>
 						</div>
+
+						<!-- Fullscreen Action -->
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							:title="$t('Fullscreen')"
+							:aria-label="$t('Fullscreen')"
+							@click="toggleFullscreen"
+						>
+							<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
+						</button>
+
+						<!-- Open Standalone Tab Action -->
+						<button
+							v-if="!standalone"
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							:title="$t('Open in New Tab')"
+							:aria-label="$t('Open in New Tab')"
+							@click="openInNewTab"
+						>
+							<b-icon icon="open-in-new" custom-size="mdi-16px"></b-icon>
+						</button>
 					</div>
 
-					<!-- Fullscreen Action -->
+					<!-- Optional Close Button for Standalone Tab Wrapper -->
 					<button
+						v-if="showClose"
 						type="button"
-						class="toolbar-btn icon-only-btn"
-						:title="$t('Fullscreen')"
-						@click="toggleFullscreen"
+						class="toolbar-btn icon-only-btn close-btn"
+						:title="$t('Close')"
+						:aria-label="$t('Close')"
+						@click="closePanel"
 					>
-						<b-icon icon="fullscreen" custom-size="mdi-16px"></b-icon>
-					</button>
-
-					<!-- Open Standalone Tab Action -->
-					<button
-						type="button"
-						class="toolbar-btn icon-only-btn"
-						:title="$t('Open in New Tab')"
-						@click="openInNewTab"
-					>
-						<b-icon icon="open-in-new" custom-size="mdi-16px"></b-icon>
+						<b-icon icon="close" custom-size="mdi-16px"></b-icon>
 					</button>
 				</div>
-
-				<!-- Optional Close Button for Standalone Tab Wrapper -->
-				<button
-					v-if="showClose"
-					type="button"
-					class="toolbar-btn icon-only-btn close-btn"
-					:title="$t('Close')"
-					@click="$emit('close')"
-				>
-					<b-icon icon="close" custom-size="mdi-16px"></b-icon>
-				</button>
 			</div>
-		</div>
 
-		<!-- Display Canvas Screen Container -->
-		<div
-			ref="screen"
-			class="console-screen"
-			:class="{ 'is-scrollable': !scaleToFit }"
-		></div>
+			<!-- Display Canvas Screen Container -->
+			<div
+				ref="screen"
+				class="console-screen"
+				:class="{ 'is-scrollable': !scaleToFit }"
+			></div>
 
-		<!-- Changing the host's actual display mode mid-stream produces a few
-		     garbled/corrupted frames while x11vnc catches up to the new
-		     framebuffer size - this covers that transition instead of
-		     showing it. -->
-		<div v-if="resizingHost" class="console-resizing-overlay">
-			<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
-			<span>{{ $t('Adjusting display resolution...') }}</span>
-		</div>
+			<!-- Changing the host's actual display mode mid-stream produces a few
+			     garbled/corrupted frames while x11vnc catches up to the new
+			     framebuffer size - this covers that transition instead of
+			     showing it. -->
+			<div v-if="resizingHost" class="console-resizing-overlay">
+				<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+				<span>{{ $t('Adjusting display resolution...') }}</span>
+			</div>
 
-		<!-- Disconnected / Reconnecting Overlay -->
-		<div v-if="status !== 'connected'" class="console-status">
-			<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
-			<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
-			<span>{{ statusText }}</span>
-			<button v-if="status === 'disconnected'" class="reconnect-btn" @click="connect">
-				{{ $t('Reconnect') }}
-			</button>
-		</div>
+			<!-- Disconnected / Reconnecting Overlay -->
+			<div v-if="status !== 'connected'" class="console-status" aria-live="polite">
+				<b-icon v-if="status === 'connecting'" icon="loading" custom-class="mdi-spin" custom-size="mdi-36px"></b-icon>
+				<b-icon v-else icon="lan-disconnect" custom-size="mdi-36px"></b-icon>
+				<span>{{ statusText }}</span>
+				<span v-if="connectError" class="console-status-reason">{{ connectError }}</span>
+				<span v-else-if="status === 'disconnected' && serviceStatus && serviceStatus.reason" class="console-status-reason">
+					{{ serviceStatus.reason }}
+				</span>
+				<div v-if="status === 'disconnected'" class="console-status-actions">
+					<button type="button" class="reconnect-btn" @click="manualReconnect">
+						{{ $t('Reconnect') }}
+					</button>
+					<button
+						v-if="serviceStatus && serviceStatus.installed && !serviceStatus.service_active"
+						type="button"
+						class="reconnect-btn is-secondary"
+						:disabled="restartingService"
+						@click="restartService"
+					>
+						<b-icon v-if="restartingService" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
+						<span>{{ $t('Restart service') }}</span>
+					</button>
+					<button type="button" class="reconnect-btn is-secondary" @click="checkAgain">
+						{{ $t('Check again') }}
+					</button>
+				</div>
+			</div>
 
-		<!-- Floating Draggable On-Screen Keyboard -->
-		<div
-			v-show="keyboardOpen"
-			ref="keyboard"
-			class="on-screen-keyboard"
-			:style="keyboardStyle"
-		>
-			<div class="osk-header" @pointerdown="startKeyboardDrag">
-				<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
-				<span class="osk-title">{{ $t('Keyboard') }}</span>
-				<button
-					type="button"
-					class="osk-close"
-					:title="$t('Close')"
-					@pointerdown.stop
-					@mousedown.stop
-					@click.stop="closeKeyboard"
-				>
+			<!-- Non-blocking "host copied text" chip (replaces the old dialog that
+			     popped up and stole focus every time the host clipboard changed). -->
+			<div v-if="clipChip.visible" class="host-clip-chip" role="status">
+				<b-icon icon="clipboard-check-outline" size="is-small"></b-icon>
+				<span>{{ clipChip.copied ? $t('Copied from Host clipboard') : $t('Host copied text') }}</span>
+				<button v-if="!clipChip.copied" type="button" class="host-clip-chip-btn" @click="openCopyDialog">
+					{{ $t('View') }}
+				</button>
+				<button type="button" class="host-clip-chip-btn" :aria-label="$t('Dismiss')" @click="hideClipChip">
 					<b-icon icon="close" size="is-small"></b-icon>
 				</button>
 			</div>
-			<div class="osk-keys">
-				<div class="osk-alpha">
-					<div v-for="(row, i) in keyboardRows" :key="'a' + i" class="osk-row">
-						<button
-							v-for="key in row"
-							:key="key.code"
-							type="button"
-							class="osk-key"
-							:style="keyStyle(key)"
-							:class="{ active: key.sticky && stickyState(key.sticky) }"
-							@click="pressKey(key)"
-						>
-							{{ keyLabel(key) }}
-						</button>
-					</div>
-				</div>
-				<div class="osk-side">
-					<div class="osk-row osk-fn-spacer"></div>
-					<div v-for="(row, i) in navRows" :key="'n' + i" class="osk-row">
-						<button
-							v-for="key in row"
-							:key="key.code"
-							type="button"
-							class="osk-key"
-							:style="keyStyle(key)"
-							@click="pressKey(key)"
-						>
-							{{ keyLabel(key) }}
-						</button>
-					</div>
-					<div class="osk-side-fill"></div>
-					<div v-for="(row, i) in arrowRows" :key="'r' + i" class="osk-row">
-						<button
-							v-for="(key, j) in row"
-							:key="j"
-							type="button"
-							class="osk-key"
-							:class="{ 'osk-key-empty': !key }"
-							:style="keyStyle(key || { u: 1 })"
-							:disabled="!key"
-							@click="key && pressKey(key)"
-						>
-							{{ key ? keyLabel(key) : '' }}
-						</button>
-					</div>
-				</div>
-				<div class="osk-shortcuts-col">
-					<button
-						v-for="s in shortcuts"
-						:key="s.key"
-						type="button"
-						class="osk-key osk-shortcut-btn"
-						:style="keyStyle({ u: 1 })"
-						:title="$t(s.label)"
-						@click="sendShortcut(s.key)"
-					>
-						<b-icon :icon="s.icon" size="is-small"></b-icon>
-					</button>
-				</div>
-			</div>
-		</div>
 
-		<!-- Statusbar at the Bottom -->
-		<div class="console-statusbar">
-			<button
-				v-if="capsLockActive"
-				type="button"
-				class="statusbar-item statusbar-capslock"
-				:title="$t('Caps Lock is on - click to turn off')"
-				@click="disableCapsLock"
+			<!-- Floating Draggable On-Screen Keyboard -->
+			<div
+				v-show="keyboardVisible"
+				ref="keyboard"
+				class="on-screen-keyboard"
+				:class="{ 'is-compact': compactKeyboard }"
+				:style="keyboardStyle"
+				role="dialog"
+				:aria-label="$t('On-Screen Keyboard')"
 			>
-				<b-icon icon="apple-keyboard-caps" size="is-small"></b-icon>
-				{{ $t('Caps Lock') }}
-			</button>
-			<span class="statusbar-item" :class="{ 'is-live': status === 'connected' }">
-				<span class="activity-dot"></span>{{ statusText }}
-			</span>
-			<span class="statusbar-item">
-				<b-icon icon="monitor" size="is-small"></b-icon>
-				{{ currentResolution || '1920x1080' }}
-			</span>
-			<span class="statusbar-item">
-				<b-icon icon="speedometer" size="is-small"></b-icon>
-				{{ qualityModeLabel }}
-			</span>
-			<span class="statusbar-item">
-				<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" size="is-small"></b-icon>
-				{{ scaleToFit ? $t('Fit') : $t('1:1') }}
-			</span>
-			<span class="statusbar-item">
-				<b-icon icon="desktop-classic" size="is-small"></b-icon>
-				{{ $t('Display :0') }}
-			</span>
-		</div>
-
-		<!-- Quick Paste & Type Modal -->
-		<vm-overlay-panel
-			:active="showPasteDialog"
-			:title="$t('Paste Text to Host Desktop')"
-			max-width="30rem"
-			@close="showPasteDialog = false"
-		>
-			<div class="paste-modal-content">
-				<p class="paste-modal-desc">
-					{{ $t('Type or paste text (Ctrl+V) to send to the host desktop.') }}
-				</p>
-				<textarea
-					ref="pasteInput"
-					v-model="pasteText"
-					class="paste-modal-textarea"
-					rows="4"
-					:placeholder="$t('Paste your text here...')"
-					@keydown.enter.ctrl="sendPasteText(false)"
-				></textarea>
-				<div class="paste-modal-actions">
-					<button type="button" class="paste-action-btn" @click="sendPasteText(true)">
-						<b-icon icon="keyboard-outline" size="is-small"></b-icon>
-						<span>{{ $t('Type Keystrokes') }}</span>
-					</button>
+				<div class="osk-header" @pointerdown="startKeyboardDrag">
+					<b-icon icon="drag-horizontal-variant" size="is-small"></b-icon>
+					<span class="osk-title">{{ $t('Keyboard') }}</span>
 					<button
 						type="button"
-						class="paste-action-btn is-primary"
-						:disabled="!pasteText"
-						@click="sendPasteText(false)"
+						class="osk-close"
+						:title="$t('Close')"
+						:aria-label="$t('Close')"
+						@pointerdown.stop
+						@mousedown.stop
+						@click.stop="closeKeyboard"
 					>
-						<b-icon icon="content-paste" size="is-small"></b-icon>
-						<span>{{ $t('Paste Clipboard') }}</span>
+						<b-icon icon="close" size="is-small"></b-icon>
 					</button>
 				</div>
+				<div class="osk-keys">
+					<div class="osk-alpha">
+						<div v-for="(row, i) in keyboardRows" :key="'a' + i" class="osk-row">
+							<button
+								v-for="key in row"
+								:key="key.code"
+								type="button"
+								class="osk-key"
+								:style="keyStyle(key)"
+								:class="{ active: key.sticky && stickyState(key.sticky) }"
+								:aria-pressed="key.sticky ? (stickyState(key.sticky) ? 'true' : 'false') : null"
+								@click="pressKey(key)"
+							>
+								{{ keyLabel(key) }}
+							</button>
+						</div>
+					</div>
+					<div class="osk-side">
+						<div class="osk-row osk-fn-spacer"></div>
+						<div v-for="(row, i) in navRows" :key="'n' + i" class="osk-row">
+							<button
+								v-for="key in row"
+								:key="key.code"
+								type="button"
+								class="osk-key"
+								:style="keyStyle(key)"
+								@click="pressKey(key)"
+							>
+								{{ keyLabel(key) }}
+							</button>
+						</div>
+						<div class="osk-side-fill"></div>
+						<div v-for="(row, i) in arrowRows" :key="'r' + i" class="osk-row">
+							<button
+								v-for="(key, j) in row"
+								:key="j"
+								type="button"
+								class="osk-key"
+								:class="{ 'osk-key-empty': !key }"
+								:style="keyStyle(key || { u: 1 })"
+								:disabled="!key"
+								:aria-hidden="key ? null : 'true'"
+								:aria-label="key ? key.code : null"
+								@click="key && pressKey(key)"
+							>
+								{{ key ? keyLabel(key) : '' }}
+							</button>
+						</div>
+					</div>
+					<div class="osk-shortcuts-col">
+						<button
+							v-for="s in shortcuts"
+							:key="s.key"
+							type="button"
+							class="osk-key osk-shortcut-btn"
+							:style="keyStyle({ u: 1 })"
+							:title="$t(s.label)"
+							:aria-label="$t(s.label)"
+							@click="sendShortcut(s.key)"
+						>
+							<b-icon :icon="s.icon" size="is-small"></b-icon>
+						</button>
+					</div>
+				</div>
 			</div>
-		</vm-overlay-panel>
 
-		<!-- Host Clipboard Fallback: shown whenever the browser's Clipboard API
-		     can't write directly (e.g. no HTTPS), so copying from the host
-		     still has a manual path instead of silently doing nothing. -->
-		<vm-overlay-panel
-			:active="showCopyDialog"
-			:title="$t('Copied from Host Desktop')"
-			max-width="30rem"
-			@close="showCopyDialog = false"
-		>
-			<div class="paste-modal-content">
-				<p class="paste-modal-desc">
-					{{ $t('The host copied this text, but this browser tab can\'t write it to your clipboard automatically. It\'s selected below - press Ctrl+C (or Cmd+C) to copy it.') }}
-				</p>
-				<textarea
-					ref="copyOutput"
-					v-model="copyText"
-					class="paste-modal-textarea"
-					rows="4"
-					readonly
-					@focus="$event.target.select()"
-				></textarea>
+			<!-- Statusbar at the Bottom -->
+			<div class="console-statusbar">
+				<button
+					v-if="capsLockActive"
+					type="button"
+					class="statusbar-item statusbar-capslock"
+					:title="$t('Caps Lock is on - click to turn off')"
+					@click="disableCapsLock"
+				>
+					<b-icon icon="apple-keyboard-caps" size="is-small"></b-icon>
+					{{ $t('Caps Lock') }}
+				</button>
+				<span class="statusbar-item" :class="{ 'is-live': status === 'connected' }">
+					<span class="activity-dot"></span>{{ statusText }}
+				</span>
+				<span class="statusbar-item">
+					<b-icon icon="monitor" size="is-small"></b-icon>
+					{{ resolutionLabel }}
+				</span>
+				<span class="statusbar-item">
+					<b-icon icon="speedometer" size="is-small"></b-icon>
+					{{ qualityModeLabel }}
+				</span>
+				<span class="statusbar-item">
+					<b-icon :icon="scaleToFit ? 'fit-to-page-outline' : 'aspect-ratio'" size="is-small"></b-icon>
+					{{ scaleToFit ? $t('Fit') : $t('1:1') }}
+				</span>
+				<span v-if="hostDisplayName" class="statusbar-item">
+					<b-icon icon="desktop-classic" size="is-small"></b-icon>
+					{{ $t('Display {display}', { display: hostDisplayName }) }}
+				</span>
 			</div>
-		</vm-overlay-panel>
-	</div>
-	<div v-else class="host-desktop-panel host-desktop-checking">
-		<span>{{ $t('Checking Host Desktop status...') }}</span>
+
+			<!-- Quick Paste & Type Modal -->
+			<vm-overlay-panel
+				:active="showPasteDialog"
+				:title="$t('Paste Text to Host Desktop')"
+				width="30rem"
+				@close="showPasteDialog = false"
+			>
+				<div class="paste-modal-content">
+					<label class="paste-modal-desc" for="hd-paste-input">
+						{{ $t('Type or paste text (Ctrl+V) to send to the host desktop.') }}
+					</label>
+					<textarea
+						id="hd-paste-input"
+						ref="pasteInput"
+						v-model="pasteText"
+						class="paste-modal-textarea"
+						rows="4"
+						:placeholder="$t('Paste your text here...')"
+						@keydown.enter.ctrl="sendPasteText(false)"
+					></textarea>
+					<div class="paste-modal-actions">
+						<button type="button" class="paste-action-btn" :disabled="!pasteText" @click="sendPasteText(true)">
+							<b-icon icon="keyboard-outline" size="is-small"></b-icon>
+							<span>{{ $t('Type Keystrokes') }}</span>
+						</button>
+						<button
+							type="button"
+							class="paste-action-btn is-primary"
+							:disabled="!pasteText"
+							@click="sendPasteText(false)"
+						>
+							<b-icon icon="content-paste" size="is-small"></b-icon>
+							<span>{{ $t('Paste Clipboard') }}</span>
+						</button>
+					</div>
+				</div>
+			</vm-overlay-panel>
+
+			<!-- Manual copy fallback, only opened on request from the chip above
+			     (the Clipboard API needs a secure context). -->
+			<vm-overlay-panel
+				:active="showCopyDialog"
+				:title="$t('Copied from Host Desktop')"
+				width="30rem"
+				@close="showCopyDialog = false"
+			>
+				<div class="paste-modal-content">
+					<label class="paste-modal-desc" for="hd-copy-output">
+						{{ $t('The host copied this text, but this browser tab can\'t write it to your clipboard automatically. It\'s selected below - press Ctrl+C (or Cmd+C) to copy it.') }}
+					</label>
+					<textarea
+						id="hd-copy-output"
+						ref="copyOutput"
+						v-model="copyText"
+						class="paste-modal-textarea"
+						rows="4"
+						readonly
+						@focus="$event.target.select()"
+					></textarea>
+				</div>
+			</vm-overlay-panel>
+		</div>
+		<div v-else class="host-desktop-panel host-desktop-checking" aria-live="polite">
+			<span>{{ $t('Checking Host Desktop status...') }}</span>
+		</div>
 	</div>
 </template>
 
 <script>
 import RFB from '@novnc/novnc'
-import axios from 'axios'
+import { instance as http } from '@/service/service'
 import VmOverlayPanel from '@/apps/vm/VmOverlayPanel.vue'
 
 const QUALITY_PRESETS = {
@@ -545,11 +700,31 @@ const QUALITY_PRESETS = {
 	low: { qualityLevel: 2, compressionLevel: 8 },
 }
 
+const DEFAULT_QUALITY = 'balanced'
+
 const QUALITY_OPTIONS = [
 	{ mode: 'high', icon: 'high-definition', label: 'High Quality', desc: 'Sharpest picture, most data' },
 	{ mode: 'balanced', icon: 'tune-vertical', label: 'Balanced', desc: 'Good picture, moderate data' },
 	{ mode: 'low', icon: 'speedometer-slow', label: 'Low Bandwidth', desc: 'Softer picture, least lag' },
 ]
+
+const DE_DISPLAY_NAMES = {
+	gnome: 'GNOME',
+	plasma: 'KDE Plasma',
+	xfce: 'Xfce',
+	cinnamon: 'Cinnamon',
+	mate: 'MATE',
+	lxqt: 'LXQt',
+	budgie: 'Budgie',
+	deepin: 'Deepin',
+	lxde: 'LXDE',
+}
+
+// The on-screen keyboard's host window id (see Dock.vue / ContextMenu.vue).
+const HOST_DESKTOP_WINDOW_ID = 'host-desktop'
+
+const SIDECAR_PORT = 28641
+const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
 
 const SPECIAL_KEYSYMS = {
 	Backspace: 0xff08,
@@ -584,6 +759,13 @@ const SPECIAL_KEYSYMS = {
 	F10: 0xffc7,
 	F11: 0xffc8,
 	F12: 0xffc9,
+}
+
+// Latched modifiers on the on-screen keyboard: data prop -> keysym/code.
+const STICKY_MODIFIERS = {
+	shiftActive: { keysym: 0xffe1, code: 'ShiftLeft' },
+	ctrlActive: { keysym: 0xffe3, code: 'ControlLeft' },
+	altActive: { keysym: 0xffe9, code: 'AltLeft' },
 }
 
 const SHORTCUTS = [
@@ -653,6 +835,41 @@ const ARROW_ROWS = [
 	[{ code: 'ArrowLeft', special: 'ArrowLeft', label: '◀' }, { code: 'ArrowDown', special: 'ArrowDown', label: '▼' }, { code: 'ArrowRight', special: 'ArrowRight', label: '▶' }],
 ]
 
+function sidecarUrl(path) {
+	const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
+	const host = window.location.hostname || '127.0.0.1'
+	return `${proto}//${host}:${SIDECAR_PORT}${path}`
+}
+
+// The app instance's request interceptor adds a "Language" header, which
+// vm-sidecar's CORS preflight doesn't allow (Content-Type, Authorization
+// only) - strip it per request (axios gives each request its own copy of
+// the header objects) while keeping the default JSON body transform.
+function stripLanguageHeader(data, headers) {
+	if (headers) {
+		delete headers.Language
+		if (headers.common) delete headers.common.Language
+	}
+	return data
+}
+
+function sidecarConfig(config) {
+	const defaults = http.defaults.transformRequest
+	return {
+		...(config || {}),
+		transformRequest: [stripLanguageHeader].concat(Array.isArray(defaults) ? defaults : defaults ? [defaults] : []),
+	}
+}
+
+function errorMessage(e, fallback) {
+	const d = e && e.response && e.response.data
+	return (d && (d.error || d.message)) || fallback
+}
+
+function isUnauthorized(e) {
+	return !!(e && e.response && e.response.status === 401)
+}
+
 export default {
 	name: 'HostDesktopPanel',
 	components: {
@@ -660,6 +877,12 @@ export default {
 	},
 	props: {
 		showClose: {
+			type: Boolean,
+			default: false,
+		},
+		// True in the standalone browser tab (views/HostDesktopStandalone.vue),
+		// which has no window manager - OPEN_WINDOW does nothing there.
+		standalone: {
 			type: Boolean,
 			default: false,
 		},
@@ -678,10 +901,11 @@ export default {
 			qualityMenuOpen: false,
 			displayMenuOpen: false,
 			scaleToFit: true,
-			qualityMode: 'high',
+			qualityMode: DEFAULT_QUALITY,
 			qualityOptions: QUALITY_OPTIONS,
 			keyboardOpen: false,
 			keyboardPos: null,
+			compactKeyboard: false,
 			shiftActive: false,
 			capsLockActive: false,
 			ctrlActive: false,
@@ -690,11 +914,16 @@ export default {
 			pasteText: '',
 			showCopyDialog: false,
 			copyText: '',
+			clipChip: { visible: false, copied: false },
+			clipChipTimer: null,
 			clipboardInsecureWarned: false,
-			currentResolution: '1920x1080',
+			currentResolution: '',
 			availableResolutions: [],
+			displayName: '',
+			displayHeadless: false,
+			displayError: '',
 			resizingHost: false,
-			currentWindowEstimate: '1920 × 1080',
+			currentWindowEstimate: '',
 			customWidth: null,
 			customHeight: null,
 			keyboardRows: KEYBOARD_ROWS,
@@ -705,17 +934,37 @@ export default {
 			installChecked: false,
 			installing: false,
 			installError: '',
+			installLog: '',
+			authExpired: false,
 			deChecked: false,
 			deState: '',
 			deName: '',
+			deReason: '',
+			deX11Companion: false,
+			forceConnect: false,
+			checkingAgain: false,
+			provisionCommand: '',
 			showReplacePrompt: false,
 			replaceChoice: 'xfce',
 			replaceConfirmText: '',
+			serviceStatus: null,
+			connectError: '',
+			restartingService: false,
+			streamSettings: { fixscreen: 0, noxdamage: true },
+			savingSettings: false,
+			connectedThisAttempt: false,
 		}
 	},
 	computed: {
 		needsDesktopChoice() {
-			return this.deChecked && this.deState !== '' && this.deState !== 'supported'
+			return !this.forceConnect && this.deChecked && this.deState !== '' && this.deState !== 'supported'
+		},
+		canProvision() {
+			return this.deState === 'no_de' || this.deState === 'wayland_only'
+		},
+		deDisplayName() {
+			if (!this.deName) return ''
+			return DE_DISPLAY_NAMES[this.deName] || this.deName
 		},
 		statusText() {
 			switch (this.status) {
@@ -728,6 +977,12 @@ export default {
 					return this.$t('Disconnected')
 			}
 		},
+		resolutionLabel() {
+			return this.currentResolution || '—'
+		},
+		hostDisplayName() {
+			return this.displayName || (this.serviceStatus && this.serviceStatus.display) || ''
+		},
 		qualityModeLabel() {
 			const m = this.qualityOptions.find((q) => q.mode === this.qualityMode)
 			return m ? this.$t(m.label) : this.qualityMode
@@ -737,6 +992,15 @@ export default {
 			if (this.pingMs < 80) return 'is-good'
 			if (this.pingMs < 200) return 'is-ok'
 			return 'is-bad'
+		},
+		// The desktop window this panel lives in (none in the standalone tab).
+		minimized() {
+			if (this.standalone || !this.$store || !this.$store.state.windows) return false
+			const win = this.$store.state.windows.find((w) => w.id === HOST_DESKTOP_WINDOW_ID)
+			return !!(win && win.minimized)
+		},
+		keyboardVisible() {
+			return this.keyboardOpen && !this.minimized && this.status === 'connected'
 		},
 		keyboardStyle() {
 			if (!this.keyboardPos) return {}
@@ -755,28 +1019,29 @@ export default {
 				this.$emit('status-change', val)
 			},
 		},
-		keyboardOpen(open) {
-			if (open) {
+		keyboardVisible(visible) {
+			if (visible) {
 				this.$nextTick(() => {
-					const target = document.fullscreenElement ? this.$el : document.body
-					if (this.$refs.keyboard && this.$refs.keyboard.parentNode !== target) {
-						target.appendChild(this.$refs.keyboard)
-					}
-					if (!this.keyboardPos && this.$refs.keyboard) {
-						const kbRect = this.$refs.keyboard.getBoundingClientRect()
-						this.keyboardPos = {
-							x: Math.max(10, Math.round((window.innerWidth - kbRect.width) / 2)),
-							y: Math.max(10, Math.round(window.innerHeight - kbRect.height - 50)),
-						}
-					}
-					this.clampKeyboardPos()
+					this.placeKeyboard()
 				})
+			}
+		},
+		minimized(min) {
+			if (min) {
+				this.stopCapsLockPoll()
+				this.closeMenus()
+			} else if (this.status === 'connected') {
+				this.startCapsLockPoll()
 			}
 		},
 		displayMenuOpen(open) {
 			if (open) {
 				this.updateWindowEstimate()
+				this.fetchHostDisplay()
 			}
+		},
+		qualityMenuOpen(open) {
+			if (open) this.fetchStreamSettings()
 		},
 	},
 	mounted() {
@@ -787,19 +1052,28 @@ export default {
 			}
 		} catch (e) {}
 
+		this.updateCompactKeyboard()
 		this.checkInstalled()
 
 		document.addEventListener('mousedown', this.onOutsideClick)
+		document.addEventListener('keydown', this.onDocumentKeydown)
 		document.addEventListener('fullscreenchange', this.onFullscreenChange)
+		document.addEventListener('visibilitychange', this.onVisibilityChange)
 		window.addEventListener('resize', this.onWindowResize)
 
-		this.panelResizeObserver = new ResizeObserver(() => {
-			this.clampKeyboardPos()
-			this.updateWindowEstimate()
-		})
-		this.panelResizeObserver.observe(this.$el)
+		// Observe the stable root wrapper - the inner panel is swapped by
+		// v-if (checking / not installed / console) and would orphan the
+		// observer if it were observed directly.
+		if (typeof ResizeObserver !== 'undefined' && this.$refs.root) {
+			this.panelResizeObserver = new ResizeObserver(() => {
+				this.clampKeyboardPos()
+				this.updateWindowEstimate()
+			})
+			this.panelResizeObserver.observe(this.$refs.root)
+		}
 	},
 	beforeDestroy() {
+		this.releaseStickyModifiers()
 		this.intentionalDisconnect = true
 		this.clearReconnectTimer()
 		if (this.rfb) {
@@ -807,70 +1081,156 @@ export default {
 			this.rfb = null
 		}
 		document.removeEventListener('mousedown', this.onOutsideClick)
+		document.removeEventListener('keydown', this.onDocumentKeydown)
 		document.removeEventListener('fullscreenchange', this.onFullscreenChange)
+		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 		window.removeEventListener('resize', this.onWindowResize)
 		this.stopCapsLockPoll()
+		this.hideClipChip()
 
 		if (this.panelResizeObserver) {
 			this.panelResizeObserver.disconnect()
+			this.panelResizeObserver = null
 		}
 		if (this.$refs.keyboard && this.$refs.keyboard.parentNode) {
 			this.$refs.keyboard.parentNode.removeChild(this.$refs.keyboard)
 		}
 	},
 	methods: {
-		connect() {
+		// ── Sidecar requests (app axios instance: token + 401 refresh/retry) ──
+		sidecarGet(path, config) {
+			return http.get(sidecarUrl(path), sidecarConfig(config))
+		},
+		sidecarPost(path, data, config) {
+			return http.post(sidecarUrl(path), data || {}, sidecarConfig(config))
+		},
+		sidecarPut(path, data, config) {
+			return http.put(sidecarUrl(path), data || {}, sidecarConfig(config))
+		},
+
+		// Refreshes serviceStatus. Returns false only on an auth failure the
+		// app's refresh flow couldn't recover from.
+		async fetchServiceStatus() {
+			try {
+				const res = await this.sidecarGet('/host/desktop/status')
+				this.serviceStatus = res.data || null
+				if (this.serviceStatus && this.serviceStatus.display && !this.displayName) {
+					this.displayName = this.serviceStatus.display
+				}
+				return true
+			} catch (e) {
+				if (isUnauthorized(e)) {
+					this.authExpired = true
+					return false
+				}
+				// Older sidecar without /status, or transient error: keep going.
+				return true
+			}
+		},
+
+		async connect() {
 			this.clearReconnectTimer()
 			if (this.rfb) {
+				this.releaseStickyModifiers()
 				this.intentionalDisconnect = true
 				this.rfb.disconnect()
 				this.rfb = null
 			}
 			this.intentionalDisconnect = false
 			this.status = 'connecting'
+			this.connectError = ''
+			this.connectedThisAttempt = false
 
-			const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+			// A cheap authenticated call first: if the access token is stale,
+			// the app's interceptor refreshes it here, so the WebSocket below
+			// (which can only carry the token as a query param, and can't be
+			// retried by the interceptor) gets a fresh one.
+			const ok = await this.fetchServiceStatus()
+			if (!ok) {
+				this.status = 'disconnected'
+				this.intentionalDisconnect = true
+				return
+			}
+			if (this.intentionalDisconnect) return
+
+			// The console element only exists once the console branch of the
+			// template has rendered (e.g. right after an install).
+			await this.$nextTick()
+			if (!this.$refs.screen) {
+				await this.$nextTick()
+			}
+			if (!this.$refs.screen) {
+				this.status = 'disconnected'
+				return
+			}
+
+			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 			const host = window.location.hostname || '127.0.0.1'
-			// vm-sidecar now requires the same JWT every other API call sends - a
-			// WebSocket handshake can't carry a custom header, so it rides as a
-			// query param (see vm-sidecar/auth.go).
-			const token = localStorage.getItem('access_token') || ''
-			const url = `${proto}//${host}:28641/host/console?token=${encodeURIComponent(token)}`
+			let token = ''
+			try {
+				token = localStorage.getItem('access_token') || ''
+			} catch (e) {}
+			const url = `${wsProto}//${host}:${SIDECAR_PORT}/host/console?token=${encodeURIComponent(token)}`
 
 			try {
-				this.rfb = new RFB(this.$refs.screen, url)
-				this.rfb.scaleViewport = this.scaleToFit
-				this.rfb.resizeSession = false
+				const rfb = new RFB(this.$refs.screen, url)
+				this.rfb = rfb
+				rfb.scaleViewport = this.scaleToFit
+				rfb.resizeSession = false
+				this.applyQualityPreset()
 
-				const preset = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
-				this.rfb.qualityLevel = preset.qualityLevel
-				this.rfb.compressionLevel = preset.compressionLevel
-
-				this.rfb.addEventListener('connect', () => {
+				rfb.addEventListener('connect', () => {
+					if (this.rfb !== rfb) return
 					this.status = 'connected'
+					this.connectedThisAttempt = true
+					this.connectError = ''
 					this.reconnectAttempt = 0
-					const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS.high
-					this.rfb.qualityLevel = p.qualityLevel
-					this.rfb.compressionLevel = p.compressionLevel
-					this.startCapsLockPoll()
+					this.applyQualityPreset()
+					if (!this.minimized) this.startCapsLockPoll()
+					this.fetchHostDisplay()
 				})
 
-				this.rfb.addEventListener('disconnect', () => {
+				rfb.addEventListener('disconnect', () => {
+					if (this.rfb !== rfb) return
+					// The host never saw our key-ups; reset the latches locally.
+					this.shiftActive = false
+					this.ctrlActive = false
+					this.altActive = false
 					this.status = 'disconnected'
 					this.stopCapsLockPoll()
 					this.pingMs = null
+					this.rfb = null
+					// Ask the sidecar why (a failed WebSocket upgrade's 502 body
+					// isn't readable from the browser).
+					this.fetchServiceStatus()
 					if (!this.intentionalDisconnect) {
 						this.scheduleReconnect()
 					}
 				})
 
-				this.rfb.addEventListener('clipboard', (e) => {
+				rfb.addEventListener('securityfailure', (e) => {
+					const reason = e && e.detail && e.detail.reason
+					this.connectError = reason
+						? this.$t('The host desktop VNC server rejected the connection: {reason}', { reason })
+						: this.$t('The host desktop VNC server rejected the connection.')
+					this.intentionalDisconnect = true
+				})
+
+				rfb.addEventListener('credentialsrequired', () => {
+					this.connectError = this.$t('The host desktop VNC server asked for a password. NivaroOS runs it without one behind its own sign-in - restart the Host Desktop service to restore its settings.')
+					this.intentionalDisconnect = true
+					try {
+						rfb.disconnect()
+					} catch (err) {}
+				})
+
+				rfb.addEventListener('clipboard', (e) => {
 					const text = e.detail && e.detail.text
 					if (!text) return
 					this.receiveHostClipboard(text)
 				})
 
-				this.rfb.addEventListener('fbsize', (e) => {
+				rfb.addEventListener('fbsize', (e) => {
 					if (e.detail && e.detail.width && e.detail.height) {
 						this.currentResolution = `${e.detail.width}x${e.detail.height}`
 					}
@@ -887,6 +1247,18 @@ export default {
 			}
 		},
 
+		manualReconnect() {
+			this.reconnectAttempt = 0
+			this.connect()
+		},
+
+		applyQualityPreset() {
+			if (!this.rfb) return
+			const p = QUALITY_PRESETS[this.qualityMode] || QUALITY_PRESETS[DEFAULT_QUALITY]
+			this.rfb.qualityLevel = p.qualityLevel
+			this.rfb.compressionLevel = p.compressionLevel
+		},
+
 		clearReconnectTimer() {
 			if (this.reconnectTimer) {
 				clearTimeout(this.reconnectTimer)
@@ -899,6 +1271,7 @@ export default {
 		// without hammering the server with rapid retries.
 		scheduleReconnect() {
 			this.clearReconnectTimer()
+			if (this.authExpired) return
 			const delay = Math.min(15000, 1000 * Math.pow(2, this.reconnectAttempt))
 			this.reconnectAttempt += 1
 			this.reconnectTimer = setTimeout(() => {
@@ -911,21 +1284,18 @@ export default {
 
 		async checkInstalled() {
 			try {
-				const res = await axios.get('/api/host/desktop/installed')
+				const res = await this.sidecarGet('/host/desktop/installed')
 				this.installed = !!(res.data && res.data.installed)
 			} catch (e) {
-				try {
-					const host = window.location.hostname || '127.0.0.1'
-					const res = await axios.get(`//${host}:28641/host/desktop/installed`, {
-						headers: { Authorization: localStorage.getItem('access_token') || '' },
-					})
-					this.installed = !!(res.data && res.data.installed)
-				} catch (err) {
-					// Can't tell either way - assume installed rather than
-					// blocking an otherwise-working panel behind a transient
-					// network/proxy error unrelated to whether it's installed.
-					this.installed = true
+				if (isUnauthorized(e)) {
+					this.authExpired = true
+					this.installChecked = true
+					return
 				}
+				// Can't tell either way - assume installed rather than
+				// blocking an otherwise-working panel behind a transient
+				// network error unrelated to whether it's installed.
+				this.installed = true
 			}
 			this.installChecked = true
 			if (this.installed) {
@@ -937,48 +1307,97 @@ export default {
 			}
 		},
 
+		// Re-runs the whole detection (installed -> desktop -> connect), e.g.
+		// after provisioning a desktop or restarting the service.
+		async checkAgain() {
+			this.checkingAgain = true
+			this.installChecked = false
+			this.authExpired = false
+			this.installError = ''
+			this.forceConnect = false
+			this.deChecked = false
+			this.provisionCommand = ''
+			this.intentionalDisconnect = true
+			this.clearReconnectTimer()
+			if (this.rfb) {
+				this.releaseStickyModifiers()
+				this.rfb.disconnect()
+				this.rfb = null
+			}
+			this.reconnectAttempt = 0
+			try {
+				await this.checkInstalled()
+			} finally {
+				this.checkingAgain = false
+			}
+		},
+
 		// Streaming (x11vnc) being installed and there being an X11 desktop
-		// for it to actually capture are separate questions - see
-		// installer/host-desktop-de-install.sh's header comment. If this
-		// check itself is unavailable (older backend, transient error), we
-		// treat it as supported rather than blocking an otherwise-working
-		// panel behind a check that can't answer.
+		// for it to actually capture are separate questions. If this check
+		// itself is unavailable (older backend, transient error), treat it
+		// as supported rather than blocking the panel.
 		async checkDeStatus() {
 			try {
-				let res = null
-				try {
-					res = await axios.get('/api/host/desktop/de-status')
-				} catch (e) {
-					const host = window.location.hostname || '127.0.0.1'
-					res = await axios.get(`//${host}:28641/host/desktop/de-status`, {
-						headers: { Authorization: localStorage.getItem('access_token') || '' },
-					})
-				}
-				this.deState = (res.data && res.data.state) || 'supported'
-				this.deName = (res.data && res.data.de_name) || ''
+				const res = await this.sidecarGet('/host/desktop/de-status')
+				const d = res.data || {}
+				this.deState = d.state || 'supported'
+				this.deName = d.de_name || ''
+				this.deReason = d.reason || ''
+				this.deX11Companion = !!d.x11_companion_available
+				if (d.display && !this.displayName) this.displayName = d.display
 			} catch (e) {
+				if (isUnauthorized(e)) this.authExpired = true
 				this.deState = 'supported'
 			}
 			this.deChecked = true
 		},
 
+		async tryAnyway() {
+			this.forceConnect = true
+			await this.$nextTick()
+			this.connect()
+			this.fetchHostDisplay()
+		},
+
 		chooseDesktop(action, de, confirm) {
 			this.installError = ''
-			const parts = [`sudo bash /usr/local/bin/nivaroos-host-desktop-de-install.sh --action=${action}`]
+			// No sudo prefix: the script re-execs itself with sudo when it
+			// isn't already root (and sudo may not even exist when it is).
+			const parts = [`bash /usr/local/bin/nivaroos-host-desktop-de-install.sh --action=${action}`]
 			if (de) parts.push(`--de=${de}`)
 			if (confirm) parts.push(`--confirm=${confirm}`)
+			const command = parts.join(' ')
+			this.provisionCommand = command
+			if (this.standalone) return
 			try {
 				this.$store.commit('OPEN_WINDOW', {
 					id: 'terminal-host-desktop-de-' + Date.now(),
 					title: this.$t('Set Up Desktop'),
 					component: 'TerminalPanel',
-					props: { initCommand: parts.join(' ') },
+					props: { initCommand: command },
 					width: 820,
 					height: 480,
 				})
 			} catch (e) {
-				this.installError = this.$t('Could not open a terminal - see system logs.')
+				this.installError = this.$t('Could not open a terminal - run the command above on the server instead.')
 			}
+		},
+
+		async copyProvisionCommand() {
+			const text = this.provisionCommand
+			if (!text) return
+			try {
+				if (navigator.clipboard && navigator.clipboard.writeText) {
+					await navigator.clipboard.writeText(text)
+					this.$buefy.toast.open({ message: this.$t('Command copied'), type: 'is-success', duration: 2000 })
+					return
+				}
+			} catch (e) {}
+			this.$buefy.toast.open({
+				message: this.$t('Select the command and copy it manually.'),
+				type: 'is-warning',
+				duration: 3000,
+			})
 		},
 
 		openReplaceDesktopPrompt() {
@@ -995,51 +1414,111 @@ export default {
 		async installHostDesktop() {
 			this.installing = true
 			this.installError = ''
+			this.installLog = ''
 			try {
-				let res = null
-				try {
-					res = await axios.post('/api/host/desktop/install')
-				} catch (e) {
-					const host = window.location.hostname || '127.0.0.1'
-					res = await axios.post(
-						`//${host}:28641/host/desktop/install`,
-						{},
-						{ headers: { Authorization: localStorage.getItem('access_token') || '' } }
-					)
-				}
-				this.installed = !!(res && res.data && res.data.installed)
+				const res = await this.sidecarPost('/host/desktop/install', {}, { timeout: INSTALL_TIMEOUT_MS })
+				const d = (res && res.data) || {}
+				this.installLog = d.log || ''
+				this.installed = !!d.installed
 				if (this.installed) {
-					this.connect()
-					this.fetchHostDisplay()
+					const warnings = Array.isArray(d.warnings) ? d.warnings.filter(Boolean) : []
+					if (warnings.length) {
+						this.$buefy.toast.open({ message: warnings.join(' '), type: 'is-warning', duration: 6000 })
+					}
+					await this.checkDeStatus()
+					if (!this.needsDesktopChoice) {
+						// connect() waits for the console element to render.
+						this.connect()
+						this.fetchHostDisplay()
+					}
 				} else {
 					this.installError = this.$t('Install finished, but the service did not come up - check the server logs.')
 				}
 			} catch (e) {
-				this.installError = (e.response && e.response.data && e.response.data.message) || this.$t('Failed to install Host Desktop streaming')
+				if (isUnauthorized(e)) {
+					this.authExpired = true
+				}
+				const d = e && e.response && e.response.data
+				if (d && d.log) this.installLog = d.log
+				this.installError = errorMessage(e, this.$t('Failed to install Host Desktop streaming'))
 			} finally {
 				this.installing = false
 			}
 		},
 
+		async restartService() {
+			this.restartingService = true
+			try {
+				const res = await this.sidecarPost('/host/desktop/restart')
+				if (res && res.data) this.serviceStatus = res.data
+				this.reconnectAttempt = 0
+				this.connect()
+			} catch (e) {
+				if (isUnauthorized(e)) this.authExpired = true
+				this.$buefy.toast.open({
+					message: errorMessage(e, this.$t('Could not restart the Host Desktop service')),
+					type: 'is-danger',
+					duration: 4000,
+				})
+			} finally {
+				this.restartingService = false
+			}
+		},
+
+		async fetchStreamSettings() {
+			try {
+				const res = await this.sidecarGet('/host/desktop/settings')
+				if (res && res.data) {
+					this.streamSettings = {
+						fixscreen: Number(res.data.fixscreen) || 0,
+						noxdamage: res.data.noxdamage !== false,
+					}
+				}
+			} catch (e) {}
+		},
+
+		async saveStreamSettings() {
+			this.savingSettings = true
+			try {
+				const res = await this.sidecarPut('/host/desktop/settings', {
+					fixscreen: Number(this.streamSettings.fixscreen) || 0,
+					noxdamage: !!this.streamSettings.noxdamage,
+				})
+				if (res && res.data) {
+					this.streamSettings = {
+						fixscreen: Number(res.data.fixscreen) || 0,
+						noxdamage: res.data.noxdamage !== false,
+					}
+				}
+				this.qualityMenuOpen = false
+				this.$buefy.toast.open({ message: this.$t('Stream settings saved - reconnecting'), type: 'is-success', duration: 2500 })
+				// The service restarts to apply them; the resulting disconnect
+				// reconnects on its own (backoff starts at 1s).
+				this.reconnectAttempt = 0
+			} catch (e) {
+				if (isUnauthorized(e)) this.authExpired = true
+				this.$buefy.toast.open({
+					message: errorMessage(e, this.$t('Could not save stream settings')),
+					type: 'is-danger',
+					duration: 4000,
+				})
+			} finally {
+				this.savingSettings = false
+			}
+		},
+
 		async fetchHostDisplay() {
 			try {
-				const res = await axios.get('/api/host/display')
-				if (res.data) {
-					this.currentResolution = res.data.current || this.currentResolution
-					this.availableResolutions = res.data.resolutions || []
-				}
+				const res = await this.sidecarGet('/host/display')
+				const d = res.data || {}
+				this.displayError = ''
+				if (d.current) this.currentResolution = d.current
+				this.availableResolutions = Array.isArray(d.resolutions) ? d.resolutions : []
+				this.displayHeadless = !!d.headless
+				if (d.display) this.displayName = d.display
 			} catch (e) {
-				// Direct sidecar port fallback
-				try {
-					const host = window.location.hostname || '127.0.0.1'
-					const res = await axios.get(`//${host}:28641/host/display`, {
-						headers: { Authorization: localStorage.getItem('access_token') || '' },
-					})
-					if (res.data) {
-						this.currentResolution = res.data.current || this.currentResolution
-						this.availableResolutions = res.data.resolutions || []
-					}
-				} catch (err) {}
+				if (isUnauthorized(e)) return
+				this.displayError = errorMessage(e, this.$t('Could not read the host display.'))
 			}
 		},
 
@@ -1047,19 +1526,10 @@ export default {
 			if (!width || !height || this.resizingHost) return
 			this.resizingHost = true
 			try {
-				let res = null
-				try {
-					res = await axios.post('/api/host/display', { width, height })
-				} catch (e) {
-					const host = window.location.hostname || '127.0.0.1'
-					res = await axios.post(
-						`//${host}:28641/host/display`,
-						{ width, height },
-						{ headers: { Authorization: localStorage.getItem('access_token') || '' } }
-					)
-				}
+				const res = await this.sidecarPost('/host/display', { width, height })
 				if (res && res.data) {
 					this.currentResolution = res.data.current || `${width}x${height}`
+					if (Array.isArray(res.data.resolutions)) this.availableResolutions = res.data.resolutions
 				}
 				this.displayMenuOpen = false
 				this.$buefy.toast.open({
@@ -1067,17 +1537,14 @@ export default {
 					type: 'is-success',
 					duration: 2500,
 				})
-				// Changing the host's actual X server mode produces a few
-				// garbled frames while x11vnc (via -xrandr resize) catches up
-				// to the new framebuffer size. Wait for noVNC's `fbsize` event
-				// (confirmation the resize was actually detected) - or a
-				// timeout, in case it's somehow missed - plus a short settle
-				// buffer, before the overlay covering the canvas comes down.
+				// Changing the host's X server mode produces a few garbled
+				// frames while x11vnc (via -xrandr resize) catches up. Wait for
+				// noVNC's `fbsize` event - or a timeout - plus a short settle.
 				await this.waitForResize(4000)
 				await new Promise((resolve) => setTimeout(resolve, 700))
 			} catch (e) {
 				this.$buefy.toast.open({
-					message: this.$t('Failed to change display resolution'),
+					message: errorMessage(e, this.$t('Failed to change display resolution')),
 					type: 'is-danger',
 					duration: 3500,
 				})
@@ -1094,20 +1561,47 @@ export default {
 			})
 		},
 
-		updateWindowEstimate() {
-			if (!this.$refs.screen) return
-			const w = Math.round(this.$refs.screen.clientWidth)
-			const h = Math.round(this.$refs.screen.clientHeight)
-			if (w > 0 && h > 0) {
-				this.currentWindowEstimate = `${w} × ${h}`
+		// Physical pixel size the stream area wants: CSS size x device pixel
+		// ratio (capped at 2 - beyond that the host would render at sizes no
+		// one can read), snapped to even numbers and the supported range.
+		windowTargetSize() {
+			if (!this.$refs.screen) return null
+			const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1))
+			const even = (n) => n - (n % 2)
+			const w = Math.min(7680, Math.max(640, even(Math.round(this.$refs.screen.clientWidth * dpr))))
+			const h = Math.min(4320, Math.max(480, even(Math.round(this.$refs.screen.clientHeight * dpr))))
+			return { w, h }
+		},
+
+		// For a real monitor, custom sizes usually aren't valid modes - pick
+		// the largest reported mode that fits, else the closest one.
+		nearestMode(w, h) {
+			const modes = this.availableResolutions.filter((r) => r && r.width && r.height)
+			if (this.displayHeadless || !modes.length) return { w, h }
+			const fitting = modes.filter((r) => r.width <= w && r.height <= h)
+			if (fitting.length) {
+				const best = fitting.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a))
+				return { w: best.width, h: best.height }
 			}
+			const best = modes.reduce((a, b) =>
+				Math.abs(b.width - w) + Math.abs(b.height - h) < Math.abs(a.width - w) + Math.abs(a.height - h) ? b : a
+			)
+			return { w: best.width, h: best.height }
+		},
+
+		updateWindowEstimate() {
+			const t = this.windowTargetSize()
+			if (!t) return
+			const m = this.nearestMode(t.w, t.h)
+			this.currentWindowEstimate = `${m.w} × ${m.h}`
 		},
 
 		async matchWindowResolution() {
-			if (!this.$refs.screen || this.resizingHost) return
-			const w = Math.max(640, Math.round(this.$refs.screen.clientWidth))
-			const h = Math.max(480, Math.round(this.$refs.screen.clientHeight))
-			await this.changeResolution(w, h)
+			if (this.resizingHost) return
+			const t = this.windowTargetSize()
+			if (!t) return
+			const m = this.nearestMode(t.w, t.h)
+			await this.changeResolution(m.w, m.h)
 		},
 
 		async applyCustomResolution() {
@@ -1128,11 +1622,7 @@ export default {
 			try {
 				localStorage.setItem('host_desktop_quality_mode', mode)
 			} catch (e) {}
-			if (this.rfb) {
-				const preset = QUALITY_PRESETS[mode] || QUALITY_PRESETS.high
-				this.rfb.qualityLevel = preset.qualityLevel
-				this.rfb.compressionLevel = preset.compressionLevel
-			}
+			this.applyQualityPreset()
 			this.$buefy.toast.open({
 				message: `${this.$t('Bandwidth profile')}: ${this.qualityModeLabel}`,
 				type: 'is-info',
@@ -1143,13 +1633,32 @@ export default {
 		toggleFullscreen() {
 			if (document.fullscreenElement) {
 				document.exitFullscreen()
-			} else {
+			} else if (this.$el && this.$el.requestFullscreen) {
 				this.$el.requestFullscreen()
 			}
 		},
 
 		openInNewTab() {
 			window.open('/#/host-desktop', '_blank')
+		},
+
+		closePanel() {
+			this.releaseStickyModifiers()
+			this.$emit('close')
+		},
+
+		closeMenus() {
+			this.keysMenuOpen = false
+			this.qualityMenuOpen = false
+			this.displayMenuOpen = false
+		},
+
+		onDocumentKeydown(event) {
+			if (event.key !== 'Escape') return
+			if (this.keysMenuOpen || this.qualityMenuOpen || this.displayMenuOpen) {
+				this.closeMenus()
+				event.stopPropagation()
+			}
 		},
 
 		onOutsideClick(event) {
@@ -1176,24 +1685,74 @@ export default {
 			}
 		},
 
+		onVisibilityChange() {
+			if (document.hidden) {
+				this.stopCapsLockPoll()
+			} else if (this.status === 'connected' && !this.minimized) {
+				this.startCapsLockPoll()
+			}
+		},
+
 		onWindowResize() {
+			this.updateCompactKeyboard()
 			this.clampKeyboardPos()
 			this.updateWindowEstimate()
 		},
 
-		onFullscreenChange() {
-			if (!this.keyboardOpen || !this.$refs.keyboard) return
+		updateCompactKeyboard() {
+			this.compactKeyboard = typeof window !== 'undefined' && window.innerWidth < 900
+		},
+
+		// The keyboard is re-parented to <body> (or the fullscreen element)
+		// so it can float over the whole page, like VmConsolePanel's.
+		placeKeyboard() {
+			const kb = this.$refs.keyboard
+			if (!kb) return
 			const target = document.fullscreenElement ? this.$el : document.body
-			if (this.$refs.keyboard.parentNode !== target) {
-				target.appendChild(this.$refs.keyboard)
+			if (kb.parentNode !== target) {
+				target.appendChild(kb)
 			}
-			this.$nextTick(() => {
-				this.clampKeyboardPos()
-			})
+			if (!this.keyboardPos) {
+				const kbRect = kb.getBoundingClientRect()
+				this.keyboardPos = {
+					x: Math.max(0, Math.round((window.innerWidth - kbRect.width) / 2)),
+					y: Math.max(0, Math.round(window.innerHeight - kbRect.height - 50)),
+				}
+			}
+			this.clampKeyboardPos()
+		},
+
+		onFullscreenChange() {
+			if (!this.keyboardVisible || !this.$refs.keyboard) return
+			this.$nextTick(() => this.placeKeyboard())
+		},
+
+		toggleKeyboard() {
+			if (this.keyboardOpen) {
+				this.closeKeyboard()
+			} else {
+				this.keyboardOpen = true
+			}
 		},
 
 		closeKeyboard() {
+			// Hidden latched modifiers would keep affecting every key typed on
+			// the real keyboard - release them with the keyboard.
+			this.releaseStickyModifiers()
 			this.keyboardOpen = false
+		},
+
+		releaseStickyModifiers() {
+			Object.keys(STICKY_MODIFIERS).forEach((prop) => {
+				if (!this[prop]) return
+				const m = STICKY_MODIFIERS[prop]
+				if (this.rfb) {
+					try {
+						this.rfb.sendKey(m.keysym, m.code, false)
+					} catch (e) {}
+				}
+				this[prop] = false
+			})
 		},
 
 		startKeyboardDrag(event) {
@@ -1238,12 +1797,12 @@ export default {
 			return this[prop]
 		},
 
+		// Key widths are expressed in units of --osk-key (shrunk on phones
+		// by the .is-compact class) so the whole keyboard scales together.
 		keyStyle(key) {
-			const KEY_REM = 2.3
-			const GAP_REM = 0.25
 			const u = key.u || 1
-			const style = { width: `${u * KEY_REM + (u - 1) * GAP_REM}rem` }
-			if (key.gapBefore) style.marginLeft = `${key.gapBefore}rem`
+			const style = { width: `calc(var(--osk-key) * ${u} + var(--osk-gap) * ${u - 1})` }
+			if (key.gapBefore) style.marginLeft = `calc(var(--osk-key) * ${(key.gapBefore / 2.3).toFixed(3)})`
 			return style
 		},
 
@@ -1255,16 +1814,13 @@ export default {
 		pressKey(key) {
 			if (!this.rfb) return
 			if (key.sticky) {
-				// CapsLock toggles on a full press+release, unlike Shift/Ctrl/Alt which
-				// stay "active" only while genuinely held down - sending it as a bare
-				// key-down with no matching key-up left the host's X server thinking
-				// the CapsLock key was being physically held.
+				// CapsLock toggles on a full press+release, unlike Shift/Ctrl/Alt
+				// which stay latched until pressed again.
 				if (key.special === 'CapsLock') {
 					const keysym = SPECIAL_KEYSYMS.CapsLock
 					this.rfb.sendKey(keysym, key.code, true)
 					this.rfb.sendKey(keysym, key.code, false)
-					// Optimistic - the poll started in connect() confirms (or
-					// corrects) this against the host's real state shortly after.
+					// Optimistic - re-checked against the host's real state.
 					this.capsLockActive = !this.capsLockActive
 					setTimeout(() => this.pollCapsLock(), 400)
 					return
@@ -1296,13 +1852,12 @@ export default {
 			this.rfb.sendKey(ctrl, 'ControlLeft', false)
 		},
 
-		// The indicator has to reflect the HOST's real CapsLock lock state, not
-		// the accessing device's own keyboard - those are two different
-		// keyboards. There's no VNC-protocol push for host LED state, so this
-		// polls vm-sidecar's /host/desktop/capslock (backed by `xset q` against
-		// the host's X server) while connected.
+		// The indicator reflects the HOST's CapsLock state (vm-sidecar's
+		// /host/desktop/capslock, backed by `xset q`), polled only while
+		// connected, visible and not minimised.
 		startCapsLockPoll() {
 			this.stopCapsLockPoll()
+			if (this.status !== 'connected' || this.minimized || document.hidden) return
 			this.pollCapsLock()
 			this.capsLockPollTimer = setInterval(() => this.pollCapsLock(), 1500)
 		},
@@ -1315,29 +1870,18 @@ export default {
 		},
 
 		async pollCapsLock() {
-			// Also doubles as the topbar ping reading - it's already a small,
-			// frequent round trip to vm-sidecar, so timing it avoids a second
-			// polling loop just for latency. It measures RTT to vm-sidecar, not
-			// literal VNC frame latency, but that's the number that actually
-			// reflects whether this connection is currently responsive.
+			if (this.status !== 'connected') return
+			// Doubles as the toolbar ping reading (RTT to vm-sidecar).
 			const t0 = performance.now()
 			try {
-				let res = null
-				try {
-					res = await axios.get('/api/host/desktop/capslock')
-				} catch (e) {
-					const host = window.location.hostname || '127.0.0.1'
-					res = await axios.get(`//${host}:28641/host/desktop/capslock`, {
-						headers: { Authorization: localStorage.getItem('access_token') || '' },
-					})
-				}
+				const res = await this.sidecarGet('/host/desktop/capslock')
+				if (this.status !== 'connected') return
 				this.pingMs = Math.round(performance.now() - t0)
 				if (res && res.data) {
 					this.capsLockActive = !!res.data.caps_lock
 				}
 			} catch (e) {
-				// Transient network/proxy hiccup - leave both readings at their
-				// last known values rather than flicker them, the next poll retries.
+				// Transient hiccup - keep the last known values.
 			}
 		},
 
@@ -1346,7 +1890,6 @@ export default {
 			const keysym = SPECIAL_KEYSYMS.CapsLock
 			this.rfb.sendKey(keysym, 'CapsLock', true)
 			this.rfb.sendKey(keysym, 'CapsLock', false)
-			// Optimistic - confirmed (or corrected) by the next poll tick.
 			this.capsLockActive = false
 			setTimeout(() => this.pollCapsLock(), 400)
 		},
@@ -1409,42 +1952,47 @@ export default {
 			}, 60)
 		},
 
-		// Pushed here whenever x11vnc detects the host's X selection changed.
-		// The Clipboard API's writeText() requires a secure context (HTTPS, or
-		// localhost) - on plain http:// over a LAN IP, navigator.clipboard is
-		// undefined outright, so this used to silently do nothing. Now it falls
-		// back to a dialog with the text ready to select/Ctrl+C manually, same
-		// pattern as the existing paste fallback below.
+		// Pushed whenever x11vnc sees the host clipboard change. writeText()
+		// needs a secure context; when it can't, a small chip offers the
+		// manual copy dialog instead of popping one up and stealing focus.
 		receiveHostClipboard(text) {
+			this.copyText = text
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard
 					.writeText(text)
-					.then(() => {
-						this.$buefy.toast.open({
-							message: this.$t('Copied from Host clipboard'),
-							type: 'is-success',
-							position: 'is-top',
-							duration: 2000,
-						})
-					})
-					.catch(() => this.showHostClipboardFallback(text))
+					.then(() => this.showClipChip(true))
+					.catch(() => this.showClipChip(false))
 				return
 			}
-			this.showHostClipboardFallback(text)
-		},
-
-		showHostClipboardFallback(text) {
-			this.copyText = text
-			this.showCopyDialog = true
+			this.showClipChip(false)
 			if (!this.clipboardInsecureWarned && !window.isSecureContext) {
 				this.clipboardInsecureWarned = true
 				this.$buefy.toast.open({
-					message: this.$t('Automatic clipboard sync needs HTTPS - open Host Desktop over https:// to enable it. Copy manually below for now.'),
+					message: this.$t('Automatic clipboard sync needs HTTPS - open Host Desktop over https:// to enable it.'),
 					type: 'is-warning',
 					position: 'is-top',
 					duration: 6000,
 				})
 			}
+		},
+
+		showClipChip(copied) {
+			this.clipChip = { visible: true, copied }
+			if (this.clipChipTimer) clearTimeout(this.clipChipTimer)
+			this.clipChipTimer = setTimeout(() => this.hideClipChip(), copied ? 2500 : 8000)
+		},
+
+		hideClipChip() {
+			if (this.clipChipTimer) {
+				clearTimeout(this.clipChipTimer)
+				this.clipChipTimer = null
+			}
+			this.clipChip = { visible: false, copied: false }
+		},
+
+		openCopyDialog() {
+			this.hideClipChip()
+			this.showCopyDialog = true
 			this.$nextTick(() => {
 				if (this.$refs.copyOutput) {
 					this.$refs.copyOutput.focus()
@@ -1482,17 +2030,14 @@ export default {
 		sendPasteText(asKeystrokes = false) {
 			if (!this.rfb || !this.pasteText) return
 			if (asKeystrokes) {
-				// Iterate by Unicode codepoint, not UTF-16 code unit - charCodeAt()
-				// alone splits anything outside the BMP (emoji, etc) into two bogus
-				// keysyms, one per surrogate half. X11 keysyms equal the codepoint
-				// directly only for Latin-1 (<= 0xFF); anything above that needs the
-				// 0x01000000 Unicode-keysym offset (X.org's keysymdef.h convention),
-				// or the host would receive the wrong character or nothing at all.
+				// Iterate by codepoint; keysyms above Latin-1 use the
+				// 0x01000000 Unicode offset (x11vnc runs with -add_keysyms so
+				// the host can type characters its keymap lacks).
 				const str = this.pasteText
 				for (const char of str) {
 					if (char === '\n') {
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', true)
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', false)
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', true)
+						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', false)
 					} else {
 						const cp = char.codePointAt(0)
 						const keysym = cp <= 0xff ? cp : 0x01000000 + cp
@@ -1523,6 +2068,37 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.host-desktop-root {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	background: #000;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+// Keyboard focus ring for everything interactive in the panel (inputs used
+// to set `outline: none` with only a subtle border change).
+.host-desktop-root ::v-deep button:focus-visible,
+.host-desktop-root ::v-deep select:focus-visible,
+.host-desktop-root ::v-deep input:focus-visible,
+.host-desktop-root ::v-deep textarea:focus-visible,
+.host-desktop-root ::v-deep summary:focus-visible,
+.host-desktop-root ::v-deep a:focus-visible {
+	outline: 2px solid #60a5fa;
+	outline-offset: 2px;
+}
+
 .host-desktop-panel {
 	position: absolute;
 	inset: 0;
@@ -1560,8 +2136,99 @@ export default {
 	}
 }
 
+.host-desktop-not-installed {
+	overflow-y: auto;
+	padding: var(--space-3, 1rem) 0;
+}
+
+.not-installed-card.de-card {
+	max-width: 30rem;
+	width: 100%;
+	margin: auto;
+}
+
+.not-installed-hint {
+	font-size: 0.8rem !important;
+}
+
 .not-installed-error {
-	color: #f14668;
+	color: #f14668 !important;
+}
+
+.install-log {
+	width: 100%;
+	text-align: left;
+	font-size: 0.8rem;
+	color: rgba(255, 255, 255, 0.7);
+
+	pre {
+		max-height: 12rem;
+		overflow: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+		background: rgba(255, 255, 255, 0.06);
+		color: rgba(255, 255, 255, 0.85);
+		padding: 0.5rem;
+		border-radius: 6px;
+		font-size: 0.75rem;
+	}
+}
+
+.de-command-box {
+	width: 100%;
+	text-align: left;
+	margin-top: var(--space-2, 0.5rem);
+
+	p {
+		margin: 0 0 0.35rem;
+		font-size: 0.8rem;
+	}
+}
+
+.de-command-row {
+	display: flex;
+	gap: 0.4rem;
+	align-items: stretch;
+}
+
+.de-command {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: block;
+	padding: 0.5rem 0.6rem;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.08);
+	color: #e5e7eb;
+	font-size: 0.75rem;
+	white-space: pre-wrap;
+	word-break: break-all;
+	user-select: all;
+}
+
+.de-copy-btn {
+	width: auto !important;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+}
+
+.de-dashboard-link {
+	display: inline-block;
+	margin-top: 0.4rem;
+	font-size: 0.8rem;
+	color: #60a5fa;
+}
+
+.de-footer-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2, 0.5rem);
+	justify-content: center;
+	margin-top: var(--space-2, 0.5rem);
+}
+
+.de-try-anyway {
+	color: rgba(255, 255, 255, 0.75) !important;
 }
 
 .de-choice-list {
@@ -1608,6 +2275,7 @@ export default {
 
 .de-replace-row {
 	display: flex;
+	flex-wrap: wrap;
 	gap: var(--space-2, 0.5rem);
 	align-items: center;
 }
@@ -1703,7 +2371,8 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);
-	flex-wrap: nowrap;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 	min-width: 0;
 	overflow: visible;
 }
@@ -1767,6 +2436,13 @@ export default {
 }
 
 @media (max-width: 680px) {
+	.console-toolbar {
+		flex-wrap: wrap;
+		padding: var(--space-1) var(--space-2);
+	}
+	.toolbar-actions {
+		justify-content: flex-start;
+	}
 	.toolbar-btn span {
 		display: none;
 	}
@@ -1961,6 +2637,11 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
+	width: 100%;
+	border: none;
+	background: none;
+	font-family: inherit;
+	text-align: left;
 	padding: var(--space-2) var(--space-2);
 	border-radius: var(--radius-control);
 	cursor: pointer;
@@ -1968,16 +2649,51 @@ export default {
 	font-size: var(--font-xs);
 	transition: background 0.12s ease;
 
-	&:hover:not(.disabled) {
+	&:hover:not(.disabled):not(:disabled) {
 		background: rgba(255, 255, 255, 0.06);
 	}
 	&.active {
 		background: rgba(37, 99, 235, 0.15);
 	}
-	&.disabled {
+	&.disabled,
+	&:disabled {
 		opacity: 0.5;
 		cursor: default;
 	}
+}
+
+.device-menu-error {
+	color: #f87171;
+}
+
+.stream-settings {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: 0 var(--space-2) var(--space-2);
+}
+
+.stream-setting-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	font-size: var(--font-xs);
+	color: rgba(255, 255, 255, 0.85);
+	cursor: pointer;
+}
+
+.stream-setting-select {
+	background: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: var(--radius-sm);
+	color: #fff;
+	font-size: var(--font-xs);
+	padding: 0.15rem 0.3rem;
+}
+
+.stream-settings-save {
+	align-self: flex-end;
 }
 
 .auto-match-row {
@@ -2048,7 +2764,6 @@ export default {
 	font-family: monospace;
 
 	&:focus {
-		outline: none;
 		border-color: rgba(59, 130, 246, 0.6);
 	}
 }
@@ -2126,7 +2841,61 @@ export default {
 	}
 }
 
+.console-status-reason {
+	max-width: min(32rem, 90vw);
+	text-align: center;
+	font-size: var(--font-sm);
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.console-status-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: var(--space-2);
+}
+
+.host-clip-chip {
+	position: absolute;
+	right: var(--space-3);
+	bottom: 2.5rem;
+	z-index: 15;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	max-width: calc(100% - 2rem);
+	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+	border-radius: var(--radius-pill);
+	background: rgba(30, 30, 36, 0.92);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	color: rgba(255, 255, 255, 0.9);
+	font-size: var(--font-xs);
+	box-shadow: var(--shadow-md);
+	pointer-events: auto;
+}
+
+.host-clip-chip-btn {
+	display: inline-flex;
+	align-items: center;
+	border: none;
+	background: rgba(255, 255, 255, 0.12);
+	color: #fff;
+	font-family: inherit;
+	font-size: var(--font-2xs);
+	font-weight: 600;
+	padding: 0.15rem 0.5rem;
+	border-radius: var(--radius-pill);
+	cursor: pointer;
+
+	&:hover {
+		background: rgba(255, 255, 255, 0.22);
+	}
+}
+
 .reconnect-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
 	border: none;
 	background: #3273dc;
 	color: #fff;
@@ -2137,13 +2906,25 @@ export default {
 	border-radius: var(--radius-sm);
 	cursor: pointer;
 
-	&:hover {
+	&:hover:not(:disabled) {
 		background: #2366d1;
+	}
+	&.is-secondary {
+		background: rgba(255, 255, 255, 0.14);
+		&:hover:not(:disabled) {
+			background: rgba(255, 255, 255, 0.24);
+		}
+	}
+	&:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 }
 
 /* Floating On-Screen Keyboard */
 .on-screen-keyboard {
+	--osk-key: 2.3rem;
+	--osk-gap: 0.25rem;
 	position: fixed !important;
 	left: 50%;
 	bottom: 2rem;
@@ -2163,6 +2944,25 @@ export default {
 	border-radius: var(--radius-modal);
 	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
 	user-select: none;
+	color: #fff;
+
+	// Phones / narrow windows: shrink every key together (widths are in
+	// --osk-key units) and drop the side columns so the keyboard fits.
+	&.is-compact {
+		--osk-key: min(2.3rem, calc((100vw - 3rem) / 15.5));
+		--osk-gap: 0.15rem;
+		max-width: calc(100vw - 0.5rem);
+		padding: var(--space-1) var(--space-2) var(--space-2);
+
+		.osk-side,
+		.osk-shortcuts-col {
+			display: none;
+		}
+		.osk-key {
+			padding: var(--space-1) 0;
+			font-size: var(--font-2xs);
+		}
+	}
 }
 
 .osk-header {
@@ -2217,7 +3017,7 @@ export default {
 }
 
 .osk-fn-spacer {
-	height: 2.3rem;
+	height: var(--osk-key);
 	visibility: hidden;
 }
 
@@ -2241,7 +3041,7 @@ export default {
 
 .osk-row {
 	display: flex;
-	gap: var(--space-1);
+	gap: var(--osk-gap);
 }
 
 .osk-key {
@@ -2345,25 +3145,28 @@ export default {
 }
 
 .paste-modal-desc {
+	display: block;
 	font-size: var(--font-sm);
-	color: rgba(255, 255, 255, 0.7);
+	color: var(--theme-text-secondary, #475569);
 	margin: 0;
 }
 
 .paste-modal-textarea {
 	width: 100%;
-	background: rgba(0, 0, 0, 0.45);
-	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: var(--theme-input-bg, #f8fafc);
+	border: 1px solid var(--theme-input-border, #8391a2);
 	border-radius: var(--radius-control);
 	padding: var(--space-2);
-	color: #fff;
+	color: var(--theme-input-text, #0f172a);
 	font-family: monospace;
 	font-size: var(--font-sm);
 	resize: vertical;
 
+	&::placeholder {
+		color: var(--theme-input-placeholder, #64748b);
+	}
 	&:focus {
-		outline: none;
-		border-color: rgba(255, 255, 255, 0.4);
+		border-color: var(--theme-input-focus, #2563eb);
 	}
 }
 
@@ -2385,17 +3188,18 @@ export default {
 	font-size: var(--font-xs);
 	font-weight: 600;
 	cursor: pointer;
-	background: rgba(255, 255, 255, 0.12);
-	color: #fff;
+	background: var(--theme-card-hover, rgba(0, 0, 0, 0.045));
+	color: var(--theme-text-primary, #0f172a);
 	transition: background 0.15s ease;
 
 	&:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.22);
+		background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	}
 	&.is-primary {
-		background: rgba(255, 255, 255, 0.22);
+		background: var(--color-primary, #2563eb);
+		color: #fff;
 		&:hover:not(:disabled) {
-			background: rgba(255, 255, 255, 0.32);
+			background: #1d4ed8;
 		}
 	}
 	&:disabled {
