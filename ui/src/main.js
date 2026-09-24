@@ -1,6 +1,7 @@
 import 'intersection-observer'
 import Vue from 'vue'
 import { assetUrl } from '@/utils/assetUrl'
+import { watchForUpdates } from '@/utils/updateWatcher'
 import App from '@/App.vue'
 import router from '@/router'
 import store from '@/store'
@@ -96,12 +97,29 @@ Vue.prototype.$EventBus = new Vue();
 // Templates wrap every asset require() in $assetUrl().
 Vue.prototype.$assetUrl = assetUrl;
 
-new Vue({
+const app = new Vue({
 	router,
 	i18n,
 	store,
 	render: h => h(App)
 }).$mount('#app')
+
+// After an update the open tab still runs the old build (see
+// utils/updateWatcher.js): offer the reload instead of leaving parts of
+// the desktop that can't load any more.
+watchForUpdates({
+	router,
+	socket,
+	onUpdate() {
+		app.$buefy.snackbar.open({
+			message: i18n.t('NivaroOS was updated. Reload to use the new version.'),
+			actionText: i18n.t('Reload'),
+			indefinite: true,
+			position: 'is-bottom-right',
+			onAction: () => window.location.reload(),
+		})
+	},
+})
 
 
 
