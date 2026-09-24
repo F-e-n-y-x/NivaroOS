@@ -61,6 +61,8 @@ IS_UPGRADE="false"
 WITH_VM=""
 WITH_HOST_DESKTOP=""
 WITH_DOWNLOAD_STATION=""
+WITH_BACKUP=""
+FORCE=""
 YES=""
 DEBUG=""
 CLI_WIDTH=""
@@ -643,6 +645,9 @@ parse_args() {
 			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
 			--with-download-station) WITH_DOWNLOAD_STATION=yes ;;
 			--without-download-station) WITH_DOWNLOAD_STATION=no ;;
+			--with-backup) WITH_BACKUP=yes ;;
+			--without-backup) WITH_BACKUP=no ;;
+			--force) FORCE=yes ;;
 			--port=*) CUSTOM_PORT="${1#*=}" ;;
 			--port)
 				shift
@@ -672,6 +677,9 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
 				printf '%b\n' "  ${COLOR_CYAN}--with-download-station${COLOR_RESET}      Install Download Station (multi-connection downloads, lite browser, ad blocker) [default]"
 				printf '%b\n' "  ${COLOR_CYAN}--without-download-station${COLOR_RESET}   Skip Download Station installation"
+				printf '%b\n' "  ${COLOR_CYAN}--with-backup${COLOR_RESET}                Install Backup & Sync (scheduled backups and sync to any storage or cloud) [default]"
+				printf '%b\n' "  ${COLOR_CYAN}--without-backup${COLOR_RESET}             Skip Backup & Sync installation"
+				printf '%b\n' "  ${COLOR_CYAN}--force${COLOR_RESET}                      Upgrade even while a backup is running (it is stopped and retried after the upgrade)"
 				printf '%b\n' "  ${COLOR_CYAN}--port <port>${COLOR_RESET}                Custom HTTP dashboard port (default: 80 or next free port)"
 				printf '%b\n' "  ${COLOR_CYAN}--width <cols>${COLOR_RESET}               Force specific terminal box width (default: auto-detect)"
 				printf '%b\n' "  ${COLOR_CYAN}--branch <branch>${COLOR_RESET}            Git branch or tag to install (default: master)"
@@ -811,6 +819,11 @@ compute_default_selections() {
 	if [ -z "$WITH_DOWNLOAD_STATION" ]; then
 		WITH_DOWNLOAD_STATION=yes
 	fi
+	# On by default for the same reason: one pure-Go service (rclone is
+	# linked in), no system packages.
+	if [ -z "$WITH_BACKUP" ]; then
+		WITH_BACKUP=yes
+	fi
 }
 
 # Samba and mDNS are core parts of NivaroOS (Network Shares and mobile-app
@@ -842,7 +855,7 @@ select_components() {
 		printf '%b\n' "  ${COLOR_MUTED}Core Platform (Dashboard, Gateway, App Store, File Manager, Samba File${COLOR_RESET}"
 		printf '%b\n\n' "  ${COLOR_MUTED}Sharing, mDNS Discovery) always installs.${COLOR_RESET}"
 
-		local vm_desc hd_desc ds_desc
+		local vm_desc hd_desc ds_desc bk_desc
 		if [ "$KVM_AVAILABLE" = "yes" ]; then
 			vm_desc="KVM hardware acceleration detected on this CPU."
 		else
@@ -850,21 +863,25 @@ select_components() {
 		fi
 		hd_desc="Requires VM Manager (shares its vm-sidecar). Streams this machine's own physical desktop."
 		ds_desc="IDM-style downloader with a built-in lite browser and uBlock Origin filter lists. No extra packages."
+		bk_desc="Scheduled and plug-in backups, mirrors and archives to any drive, share or cloud account. No extra packages."
 
 		CBM_LABELS=(
 			"VM Manager - QEMU/KVM, Libvirt, Web Console, VirtIO-FS"
 			"Host Desktop Streaming - stream this machine's own desktop over VNC"
 			"Download Station - multi-connection downloads, lite browser, ad blocker"
+			"Backup & Sync - scheduled backups and sync to drives, shares and clouds"
 		)
 		CBM_DESCS=(
 			"$vm_desc"
 			"$hd_desc"
 			"$ds_desc"
+			"$bk_desc"
 		)
 		CBM_STATE=(
 			"$([ "$WITH_VM" = "yes" ] && echo 1 || echo 0)"
 			"$([ "$WITH_HOST_DESKTOP" = "yes" ] && echo 1 || echo 0)"
 			"$([ "$WITH_DOWNLOAD_STATION" = "yes" ] && echo 1 || echo 0)"
+			"$([ "$WITH_BACKUP" = "yes" ] && echo 1 || echo 0)"
 		)
 
 		checkbox_menu "Select Optional Components"
@@ -872,6 +889,7 @@ select_components() {
 		WITH_VM="$([ "${CBM_STATE[0]}" = "1" ] && echo yes || echo no)"
 		WITH_HOST_DESKTOP="$([ "${CBM_STATE[1]}" = "1" ] && echo yes || echo no)"
 		WITH_DOWNLOAD_STATION="$([ "${CBM_STATE[2]}" = "1" ] && echo yes || echo no)"
+		WITH_BACKUP="$([ "${CBM_STATE[3]}" = "1" ] && echo yes || echo no)"
 	fi
 
 	if [ "$WITH_HOST_DESKTOP" = "yes" ] && [ "$WITH_VM" != "yes" ]; then
@@ -883,17 +901,21 @@ select_components() {
 	[ "$WITH_VM" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
+	[ "$WITH_BACKUP" = "yes" ] && TOTAL_STEPS=$((TOTAL_STEPS + 1))
 
 	printf '%b\n' "${COLOR_BOLD}${COLOR_WHITE}Selected Components:${COLOR_RESET}"
 	local mark_vm="${COLOR_MUTED}○ VM Manager (off)${COLOR_RESET}"
 	local mark_hd="${COLOR_MUTED}○ Host Desktop (off)${COLOR_RESET}"
 	local mark_ds="${COLOR_MUTED}○ Download Station (off)${COLOR_RESET}"
+	local mark_bk="${COLOR_MUTED}○ Backup & Sync (off)${COLOR_RESET}"
 	[ "$WITH_VM" = "yes" ] && mark_vm="${COLOR_GREEN}✔ VM Manager${COLOR_RESET}"
 	[ "$WITH_HOST_DESKTOP" = "yes" ] && mark_hd="${COLOR_GREEN}✔ Host Desktop${COLOR_RESET}"
 	[ "$WITH_DOWNLOAD_STATION" = "yes" ] && mark_ds="${COLOR_GREEN}✔ Download Station${COLOR_RESET}"
+	[ "$WITH_BACKUP" = "yes" ] && mark_bk="${COLOR_GREEN}✔ Backup & Sync${COLOR_RESET}"
 	printf '%b\n' "  ${mark_vm}"
 	printf '%b\n' "  ${mark_hd}"
-	printf '%b\n\n' "  ${mark_ds}"
+	printf '%b\n' "  ${mark_ds}"
+	printf '%b\n\n' "  ${mark_bk}"
 }
 
 # ------------------------------------------------------------------------------
@@ -1797,6 +1819,190 @@ install_download_station() {
 }
 
 # ------------------------------------------------------------------------------
+# Backup & Sync Installation (Optional Add-on, on by default). One pure-Go
+# service: the job side (store, schedules, conditions, hooks, REST API at
+# /v1/backup through the gateway) and the engine (rclone linked as a
+# library, reading the same rclone.conf local-storage maintains, so every
+# cloud account is a backup target). It links local-storage's TeraBox
+# backend, so it builds from the same source tree. Its first start imports
+# the old backup/sync Scheduled Tasks by itself (through core's API, and
+# retried until core answers) - no installer step for that.
+# ------------------------------------------------------------------------------
+install_backup() {
+	run_step "Installing Backup & Sync (Scheduled Backups, Sync & Archives)" "
+		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
+		# Stopping it now is safe: the update check (check_running_backups)
+		# already waited for or cancelled running jobs, and a run cut off
+		# here is replayed and retried at the next start.
+		systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
+
+		cd \"${SRC_DIR}/services/backup\"
+		export GOWORK=off
+		if ! go build -o /usr/bin/nivaroos-backup.new .; then
+			rm -f /usr/bin/nivaroos-backup.new
+			echo 'Backup & Sync failed to build (see the log above). The previous version, if any, is kept.' >&2
+			exit 1
+		fi
+		mv -f /usr/bin/nivaroos-backup.new /usr/bin/nivaroos-backup
+		echo '/usr/bin/nivaroos-backup' >> \"$MANIFEST_FILE\"
+
+		# The service creates what it needs itself (StateDirectory= and at
+		# start); creating the folders here too keeps the modes right on a
+		# box where an older run left them 0755.
+		mkdir -p /var/lib/nivaroos/backup/logs /var/lib/nivaroos/backup/staging /var/lib/nivaroos/backup/engine
+		chmod 700 /var/lib/nivaroos/backup /var/lib/nivaroos/backup/logs /var/lib/nivaroos/backup/staging /var/lib/nivaroos/backup/engine
+		# rclone's config folder (local-storage's cloud accounts) is one of
+		# the unit's writable paths; one that appears only after the service
+		# started would stay read-only to it until a restart.
+		[ -d /root/.config/rclone ] || install -d -m 700 /root/.config/rclone
+
+		# The unit lives in the project (hardened: read-only system, writable
+		# storage roots, own state and rclone's config folder only) - one
+		# copy, updated with every install.
+		cp -f \"${SRC_DIR}/services/backup/build/sysroot/usr/lib/systemd/system/nivaroos-backup.service\" /usr/lib/systemd/system/nivaroos-backup.service
+		echo '/usr/lib/systemd/system/nivaroos-backup.service' >> \"$MANIFEST_FILE\"
+
+		systemctl daemon-reload >/dev/null 2>&1 || true
+		systemctl enable --now nivaroos-backup >/dev/null 2>&1 || true
+	"
+}
+
+# ------------------------------------------------------------------------------
+# Update deferral (spec docs/specs/2026-09-24-backup-sync-app.md §8.4). An
+# upgrade restarts every service; a backup cut off mid-transfer is retried
+# afterwards, but a long cloud upload would start over, so running backups
+# are waited for (or cancelled, or the update aborted) first. Runs before
+# any service is stopped. Asks the service directly on its loopback port as
+# local automation (no token: loopback peer, no browser headers); an old
+# install without Backup, or a service that doesn't answer, has nothing to
+# wait for. --force skips the check.
+# ------------------------------------------------------------------------------
+BACKUP_API="http://127.0.0.1:28643/v1/backup"
+BACKUP_WAIT_MAX_SECS=7200
+
+# running_backup_ids prints the ids of running backup runs, one per line
+# (nothing when none run or the service isn't there).
+running_backup_ids() {
+	local body
+	body="$(curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
+	printf '%s' "$body" | grep -o '"id":"run_[^"]*"' | sed 's/^"id":"//; s/"$//' || true
+}
+
+# running_backup_names prints "job name" per running run, for the prompt.
+running_backup_names() {
+	local body
+	body="$(curl -fsS -m 5 "${BACKUP_API}/runs?status=running" 2>/dev/null)" || return 0
+	printf '%s' "$body" | grep -o '"job_name":"[^"]*"' | sed 's/^"job_name":"//; s/"$//' || true
+}
+
+cancel_running_backups() {
+	local id
+	for id in $(running_backup_ids); do
+		curl -fsS -m 10 -X POST -H 'Content-Type: application/json' -d '{}' "${BACKUP_API}/runs/${id}/cancel" >/dev/null 2>&1 || true
+	done
+	# Cancelling stops the transfer and runs the post hooks (restarting
+	# apps and VMs the job stopped); give that a moment to finish.
+	local i
+	for i in $(seq 1 60); do
+		[ -z "$(running_backup_ids)" ] && return 0
+		sleep 2
+	done
+	warn "Some backups are still stopping; the upgrade stops the rest, and those are retried after it."
+}
+
+# wait_for_running_backups waits up to BACKUP_WAIT_MAX_SECS, then cancels.
+wait_for_running_backups() {
+	local waited=0
+	while [ -n "$(running_backup_ids)" ]; do
+		if [ "$waited" -ge "$BACKUP_WAIT_MAX_SECS" ]; then
+			warn "Backups still running after $((BACKUP_WAIT_MAX_SECS / 3600)) h - cancelling them so the upgrade can go on (each job runs again at its next scheduled time)."
+			cancel_running_backups
+			return 0
+		fi
+		if [ $((waited % 60)) -eq 0 ]; then
+			info "Waiting for running backups to finish ($((waited / 60)) min so far; --force skips this)..."
+		fi
+		sleep 15
+		waited=$((waited + 15))
+	done
+	success "No backups running any more."
+}
+
+check_running_backups() {
+	[ "$IS_UPGRADE" = "true" ] || return 0
+	[ "$FORCE" = "yes" ] && return 0
+	command -v curl >/dev/null 2>&1 || return 0
+	[ -n "$(running_backup_ids)" ] || return 0
+
+	local names
+	names="$(running_backup_names)"
+	printf '%b\n' "${COLOR_BOLD}${COLOR_YELLOW}Backups are running right now:${COLOR_RESET}"
+	while IFS= read -r n; do
+		[ -n "$n" ] && printf '%b\n' "  • ${n}"
+	done <<< "$names"
+	printf '\n'
+
+	if [ -n "$YES" ] || [ "$INTERACTIVE_TTY" != "true" ]; then
+		wait_for_running_backups
+		return 0
+	fi
+
+	local choice=""
+	printf '%b\n' "  ${COLOR_CYAN}1${COLOR_RESET}) Wait for them to finish (default)"
+	printf '%b\n' "  ${COLOR_CYAN}2${COLOR_RESET}) Cancel them now (each job runs again at its next scheduled time)"
+	printf '%b\n' "  ${COLOR_CYAN}3${COLOR_RESET}) Abort the upgrade"
+	printf '%b' "  ${COLOR_CYAN}?${COLOR_RESET} ${COLOR_BOLD}Choice [1]:${COLOR_RESET} "
+	read -r choice </dev/tty || choice=""
+	case "$choice" in
+		2) cancel_running_backups ;;
+		3)
+			info "Upgrade aborted; nothing was changed."
+			exit 0
+			;;
+		*) wait_for_running_backups ;;
+	esac
+}
+
+# pause_backup_service stops Backup & Sync for the rest of an upgrade, right
+# after check_running_backups and before any core service is stopped. Left
+# running, it could start a scheduled run during the clone and build that
+# follow, whose apps would then be stopped while install_core_services
+# stops app-management underneath it. Stopping it here also runs the post
+# hooks of anything still running (with --force the check was skipped)
+# while app-management still answers; a run cut off is replayed, and a
+# restart that fails is retried, when the new build starts. install_backup
+# starts it again; with --without-backup, remove_backup_module removes it.
+pause_backup_service() {
+	[ "$IS_UPGRADE" = "true" ] || return 0
+	systemctl is-active --quiet nivaroos-backup.service 2>/dev/null || return 0
+	info "Pausing Backup & Sync until the upgrade is done..."
+	systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
+}
+
+# remove_backup_module is an upgrade with --without-backup on a box that has
+# Backup & Sync: it is removed instead of being left running, unbuilt,
+# against the new core. First the Scheduled Tasks it took over are handed
+# back (while core still runs - this is before install_core_services), so
+# the user's old backups run again; then the binary and unit go. Its data
+# (/var/lib/nivaroos/backup: jobs, history) stays, so installing it again
+# later picks up where it left off. Failing to reach core is reported, not
+# fatal.
+remove_backup_module() {
+	[ "$IS_UPGRADE" = "true" ] || return 0
+	[ "$WITH_BACKUP" = "no" ] || return 0
+	[ -x /usr/bin/nivaroos-backup ] || return 0
+	info "Removing Backup & Sync (--without-backup); its jobs and history are kept in /var/lib/nivaroos/backup."
+	systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
+	if ! /usr/bin/nivaroos-backup release-scheduled-tasks; then
+		warn "Could not hand every Scheduled Task back from Backup & Sync (is core running?). They stay disabled in Scheduled Tasks; enable them there."
+	fi
+	systemctl disable nivaroos-backup.service >/dev/null 2>&1 || true
+	rm -f /usr/bin/nivaroos-backup /usr/lib/systemd/system/nivaroos-backup.service
+	systemctl daemon-reload >/dev/null 2>&1 || true
+	success "Backup & Sync removed."
+}
+
+# ------------------------------------------------------------------------------
 # Host Desktop Streaming Installation (Optional Add-on, requires VM Manager -
 # it streams over the vm-sidecar the VM Manager installs). The sidecar binary
 # owns this entirely: the x11vnc wrapper, its unit and the desktop provisioner
@@ -2224,6 +2430,14 @@ print_summary() {
 		render_sum_line "${COLOR_MUTED}○ Download Station (Off)${COLOR_RESET}"
 	fi
 
+	if [ "$WITH_BACKUP" = "yes" ]; then
+		local s_bk="${COLOR_GREEN}✔ Backup & Sync${COLOR_RESET}"
+		if ! systemctl is-active --quiet nivaroos-backup.service 2>/dev/null; then s_bk="${COLOR_RED}✖ Backup & Sync${COLOR_RESET}"; fi
+		render_sum_line "${s_bk}"
+	else
+		render_sum_line "${COLOR_MUTED}○ Backup & Sync (Off)${COLOR_RESET}"
+	fi
+
 	local s_smb="${COLOR_GREEN}✔ Samba File Sharing${COLOR_RESET}"
 	if ! (systemctl is-active --quiet smbd 2>/dev/null || systemctl is-active --quiet smb 2>/dev/null || systemctl is-active --quiet samba 2>/dev/null); then
 		s_smb="${COLOR_RED}✖ Samba File Sharing${COLOR_RESET}"
@@ -2267,6 +2481,10 @@ main() {
 	fi
 	printf "\n"
 
+	check_running_backups
+	remove_backup_module
+	pause_backup_service
+
 	install_core_dependencies
 	tune_system_limits
 	check_docker
@@ -2284,6 +2502,10 @@ main() {
 
 	if [ "$WITH_DOWNLOAD_STATION" = "yes" ]; then
 		install_download_station
+	fi
+
+	if [ "$WITH_BACKUP" = "yes" ]; then
+		install_backup
 	fi
 
 	install_ui

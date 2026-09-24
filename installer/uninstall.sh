@@ -13,7 +13,7 @@ set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
@@ -477,6 +477,21 @@ run_step() {
 	fi
 }
 
+# Backup & Sync took over the old backup/sync Scheduled Tasks (disabled in
+# core, marked migrated_to=backup). Hand them back before anything is
+# removed, so uninstalling never silently leaves a user's old backups off:
+# stop the service first (so it can't take a task back meanwhile), then
+# release while core still runs. Idempotent; failing to reach core is
+# reported, not fatal - the uninstall goes on.
+release_backup_tasks() {
+	run_step "Handing Scheduled Tasks back from Backup & Sync" "
+		systemctl stop nivaroos-backup.service >/dev/null 2>&1 || true
+		if ! /usr/bin/nivaroos-backup release-scheduled-tasks; then
+			echo 'Could not hand every Scheduled Task back (is core running?). They stay disabled in schedules.json.' >&2
+		fi
+	"
+}
+
 stop_services() {
 	run_step "Stopping active systemd services & background daemons" "
 		for unit in $ALL_UNITS; do
@@ -508,6 +523,7 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-download-sidecar.service \
+			/usr/lib/systemd/system/nivaroos-backup.service \
 			/usr/lib/systemd/system/nivaroos-host-desktop.service \
 			/usr/lib/systemd/system/rclone.service \
 			/usr/lib/systemd/system/usb-mount@.service \
@@ -531,7 +547,7 @@ remove_binaries() {
 			/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
 			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
-			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
+			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos-host-desktop.sh \
 			/usr/local/bin/nivaroos-host-desktop-de-install.sh \
@@ -669,7 +685,7 @@ verify_teardown() {
 		for b in /usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
 			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
-			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-cli \
+			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli \
 			/usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
 			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf; do
 			if [ -e \"\$b\" ]; then
@@ -769,10 +785,16 @@ main() {
 		TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	fi
 	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # verify_teardown
+	if [ -x /usr/bin/nivaroos-backup ]; then
+		TOTAL_STEPS=$((TOTAL_STEPS + 1)) # release_backup_tasks
+	fi
 
 	info "Beginning NivaroOS teardown..."
 	printf "\n"
 
+	if [ -x /usr/bin/nivaroos-backup ]; then
+		release_backup_tasks
+	fi
 	stop_services
 	remove_unit_files
 	revert_host_desktop_changes
