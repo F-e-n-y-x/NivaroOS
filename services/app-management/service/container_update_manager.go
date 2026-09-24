@@ -580,9 +580,9 @@ func (m *ContainerUpdateManager) UpdateAndRecreateContainer(ctx context.Context,
 
 	var updatedViaCompose bool
 	if projectName := inspect.Config.Labels["com.docker.compose.project"]; projectName != "" {
-		composeApps, err := MyService.Compose().List(ctx)
+		composeApp, err := MyService.Compose().Get(ctx, projectName)
 		if err == nil {
-			if composeApp, ok := composeApps[projectName]; ok && composeApp != nil {
+			if composeApp != nil {
 				if storeInfo, _ := composeApp.StoreInfo(true); storeInfo != nil && storeInfo.StoreAppID != nil && *storeInfo.StoreAppID != "" {
 					if updateErr := composeApp.Update(ctx); updateErr == nil {
 						updatedViaCompose = true

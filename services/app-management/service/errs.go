@@ -8,6 +8,8 @@ import (
 
 var (
 	ErrComposeAppNotFound                  = fmt.Errorf("compose app not found")
+	ErrComposeAppAlreadyInstalled          = fmt.Errorf("compose app with the same name is already installed")
+	ErrComposeAppAlreadyInstalling         = fmt.Errorf("compose app with the same name is already being installed")
 	ErrComposeAppNotMatch                  = fmt.Errorf("compose app not match")
 	ErrComposeExtensionNameXCasaOSNotFound = fmt.Errorf("extension `%s` not found", common.ComposeExtensionNameXCasaOS)
 	ErrComposeFileNotFound                 = fmt.Errorf("compose file not found")

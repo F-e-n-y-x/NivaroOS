@@ -121,9 +121,15 @@ func (m *ContainerUpdateManager) runUpdate(ctx context.Context, job *UpdateJob, 
 		}
 		for _, step := range rebuildSteps(src, wasRunning) {
 			job.logf("$ %s", strings.Join(step, " "))
-			cmd := exec.CommandContext(ctx, step[0], step[1:]...)
-			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "COMPOSE_PROGRESS=plain")
-			cmd.Dir = filepath.Dir(src.ComposeFile)
+			var cmd *exec.Cmd
+			if step[0] == "git" && len(step) > 3 && step[1] == "-C" {
+				// git runs as the repo owner, never as root in a user's repo
+				cmd = gitCmd(ctx, step[2], step[3:]...)
+			} else {
+				cmd = exec.CommandContext(ctx, step[0], step[1:]...)
+				cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "COMPOSE_PROGRESS=plain")
+				cmd.Dir = filepath.Dir(src.ComposeFile)
+			}
 			out, err := cmd.CombinedOutput()
 			for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 				if l != "" {

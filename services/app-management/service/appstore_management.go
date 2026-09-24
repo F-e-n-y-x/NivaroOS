@@ -11,6 +11,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
+	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/utils/downloadHelper"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -20,7 +21,16 @@ import (
 	"go.uber.org/zap"
 )
 
-var ErrAppStoreSourceExists = fmt.Errorf("appstore source already exists")
+var (
+	ErrAppStoreSourceExists      = fmt.Errorf("appstore source already exists")
+	ErrAppStoreSourceRegistering = fmt.Errorf("appstore source is already being registered")
+	ErrAppStoreSourceNotFound    = fmt.Errorf("appstore source not found")
+	ErrAppStoreInvalidURL        = fmt.Errorf("invalid appstore url - an http(s) link to a .zip file is expected")
+)
+
+// how long a failed "is an update available" check is remembered, so a
+// broken registry or missing image does not get re-checked on every list
+const updateCheckFailureTTL = 10 * time.Minute
 
 type AppStoreManagement struct {
 	isAppUpgradable      gcache.Cache
@@ -28,10 +38,16 @@ type AppStoreManagement struct {
 	isAppUpgrading       sync.Map
 	onAppStoreRegister   []func(string) error
 	onAppStoreUnregister []func(string) error
+
+	// url (lowercase) -> struct{} while a register is in flight
+	registering sync.Map
+
+	// held while UpdateCatalog runs, so cron runs never overlap
+	updatingCatalog sync.Mutex
 }
 
 func (a *AppStoreManagement) AppStoreList() []codegen.AppStoreMetadata {
-	return lo.Map(config.ServerInfo.AppStoreList, func(appStoreURL string, id int) codegen.AppStoreMetadata {
+	return lo.Map(config.AppStoreList(), func(appStoreURL string, id int) codegen.AppStoreMetadata {
 		appStore, err := AppStoreByURL(appStoreURL)
 		if err != nil {
 			logger.Error("failed to construct appstore", zap.Error(err), zap.String("appstoreURL", appStoreURL))
@@ -67,11 +83,13 @@ func (a *AppStoreManagement) OnAppStoreUnregister(fn func(string) error) {
 }
 
 func (a *AppStoreManagement) ChangeGlobal(key string, value string) error {
-	config.Global[key] = value
+	if err := config.SetGlobal(key, value); err != nil {
+		return err
+	}
 
 	go func() {
 		if err := config.SaveGlobal(); err != nil {
-			logger.Error("failed to save global env", zap.Error(err), zap.String("key", key), zap.String("value", value))
+			logger.Error("failed to save global env", zap.Error(err), zap.String("key", key))
 			return
 		}
 	}()
@@ -80,11 +98,7 @@ func (a *AppStoreManagement) ChangeGlobal(key string, value string) error {
 }
 
 func (a *AppStoreManagement) DeleteGlobal(key string) error {
-	for k := range config.Global {
-		if k == key {
-			delete(config.Global, k)
-		}
-	}
+	config.DeleteGlobal(key)
 
 	go func() {
 		if err := config.SaveGlobal(); err != nil {
@@ -96,109 +110,79 @@ func (a *AppStoreManagement) DeleteGlobal(key string) error {
 	return nil
 }
 
-func (a *AppStoreManagement) RegisterAppStore(ctx context.Context, appstoreURL string, callbacks ...func(*codegen.AppStoreMetadata)) error {
-	// check if appstore already exists
-	for _, url := range config.ServerInfo.AppStoreList {
-		if strings.EqualFold(url, appstoreURL) {
-			return ErrAppStoreSourceExists
-		}
+// ValidateAppStoreURL checks a store url synchronously, before any download.
+func ValidateAppStoreURL(appstoreURL string) error {
+	if err := downloadHelper.ValidateURL(appstoreURL); err != nil {
+		return fmt.Errorf("%w: %s", ErrAppStoreInvalidURL, err.Error())
 	}
-
-	appstore, err := AppStoreByURL(appstoreURL)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		go PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterBegin, nil)
-
-		defer PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterEnd, nil)
-
-		var err error
-
-		defer func() {
-			if err == nil {
-				return
-			}
-
-			PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterError, map[string]string{
-				common.PropertyTypeMessage.Name: err.Error(),
-			})
-		}()
-
-		if err = appstore.UpdateCatalog(); err != nil {
-			logger.Error("failed to update appstore catalog", zap.Error(err), zap.String("appstoreURL", appstoreURL))
-
-			return
-		}
-
-		// if everything is good, add to the list
-		config.ServerInfo.AppStoreList = append(config.ServerInfo.AppStoreList, appstoreURL)
-
-		if err = config.SaveSetup(); err != nil {
-			logger.Error("failed to save appstore list", zap.Error(err), zap.String("appstoreURL", appstoreURL))
-			return
-		}
-
-		for _, fn := range a.onAppStoreRegister {
-			if err := fn(appstoreURL); err != nil {
-				logger.Error("failed to run onAppStoreRegister", zap.Error(err), zap.String("appstoreURL", appstoreURL))
-			}
-		}
-
-		appStoreMetadata := &codegen.AppStoreMetadata{
-			ID:  utils.Ptr(len(config.ServerInfo.AppStoreList) - 1),
-			URL: &appstoreURL,
-		}
-
-		for _, callback := range callbacks {
-			callback(appStoreMetadata)
-		}
-	}()
 
 	return nil
 }
 
-// TODO: refactor the function and above function
-func (a *AppStoreManagement) RegisterAppStoreSync(ctx context.Context, appstoreURL string, callbacks ...func(*codegen.AppStoreMetadata)) error {
-	// check if appstore already exists
-	for _, url := range config.ServerInfo.AppStoreList {
-		if strings.EqualFold(url, appstoreURL) {
-			return ErrAppStoreSourceExists
-		}
+func isAppStoreRegistered(appstoreURL string) bool {
+	return lo.ContainsBy(config.AppStoreList(), func(url string) bool { return strings.EqualFold(url, appstoreURL) })
+}
+
+// beginRegister validates the url and reserves it, so two concurrent
+// registers of the same url cannot both run. The returned func releases it.
+func (a *AppStoreManagement) beginRegister(appstoreURL string) (func(), error) {
+	if err := ValidateAppStoreURL(appstoreURL); err != nil {
+		return nil, err
 	}
+
+	if isAppStoreRegistered(appstoreURL) {
+		return nil, ErrAppStoreSourceExists
+	}
+
+	key := strings.ToLower(appstoreURL)
+	if _, loaded := a.registering.LoadOrStore(key, struct{}{}); loaded {
+		return nil, ErrAppStoreSourceRegistering
+	}
+
+	return func() { a.registering.Delete(key) }, nil
+}
+
+func (a *AppStoreManagement) registerAppStore(ctx context.Context, appstoreURL string, callbacks []func(*codegen.AppStoreMetadata)) (err error) {
+	// every event of this register carries the store url
+	eventProperties := map[string]string{common.PropertyTypeAppStoreURL.Name: appstoreURL}
+
+	go PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterBegin, lo.Assign(eventProperties))
+
+	defer func() {
+		if err != nil {
+			// error first, then end - both carry the url; end also carries the
+			// error message so a listener of only "-end" can tell it failed
+			PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterError, lo.Assign(eventProperties, map[string]string{
+				common.PropertyTypeMessage.Name: err.Error(),
+			}))
+			PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterEnd, lo.Assign(eventProperties, map[string]string{
+				common.PropertyTypeMessage.Name: err.Error(),
+			}))
+			return
+		}
+
+		PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterEnd, lo.Assign(eventProperties))
+	}()
 
 	appstore, err := AppStoreByURL(appstoreURL)
 	if err != nil {
 		return err
 	}
 
-	go PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterBegin, nil)
-
-	defer PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterEnd, nil)
-
-	defer func() {
-		if err == nil {
-			return
-		}
-
-		PublishEventWrapper(ctx, common.EventTypeAppStoreRegisterError, map[string]string{
-			common.PropertyTypeMessage.Name: err.Error(),
-		})
-	}()
-
 	if err = appstore.UpdateCatalog(); err != nil {
 		logger.Error("failed to update appstore catalog", zap.Error(err), zap.String("appstoreURL", appstoreURL))
-
 		return err
 	}
 
 	// if everything is good, add to the list
-	config.ServerInfo.AppStoreList = append(config.ServerInfo.AppStoreList, appstoreURL)
-
-	if err = config.SaveSetup(); err != nil {
+	added, err := config.AddAppStore(appstoreURL)
+	if err != nil {
 		logger.Error("failed to save appstore list", zap.Error(err), zap.String("appstoreURL", appstoreURL))
 		return err
+	}
+
+	if !added {
+		return ErrAppStoreSourceExists
 	}
 
 	for _, fn := range a.onAppStoreRegister {
@@ -207,8 +191,11 @@ func (a *AppStoreManagement) RegisterAppStoreSync(ctx context.Context, appstoreU
 		}
 	}
 
+	list := config.AppStoreList()
+	id := lo.IndexOf(list, appstoreURL)
+
 	appStoreMetadata := &codegen.AppStoreMetadata{
-		ID:  utils.Ptr(len(config.ServerInfo.AppStoreList) - 1),
+		ID:  utils.Ptr(id),
 		URL: &appstoreURL,
 	}
 
@@ -219,20 +206,56 @@ func (a *AppStoreManagement) RegisterAppStoreSync(ctx context.Context, appstoreU
 	return nil
 }
 
+// RegisterAppStore validates the url synchronously (ErrAppStoreInvalidURL,
+// ErrAppStoreSourceExists, ErrAppStoreSourceRegistering) and then downloads
+// and registers the store in the background. The outcome is published as
+// app-store:register-end / app-store:register-error, both with the url.
+func (a *AppStoreManagement) RegisterAppStore(ctx context.Context, appstoreURL string, callbacks ...func(*codegen.AppStoreMetadata)) error {
+	release, err := a.beginRegister(appstoreURL)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer release()
+
+		_ = a.registerAppStore(ctx, appstoreURL, callbacks)
+	}()
+
+	return nil
+}
+
+func (a *AppStoreManagement) RegisterAppStoreSync(ctx context.Context, appstoreURL string, callbacks ...func(*codegen.AppStoreMetadata)) error {
+	release, err := a.beginRegister(appstoreURL)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	return a.registerAppStore(ctx, appstoreURL, callbacks)
+}
+
+// UnregisterAppStore removes the store at index appStoreID of AppStoreList().
 func (a *AppStoreManagement) UnregisterAppStore(appStoreID uint) error {
-	if appStoreID >= uint(len(config.ServerInfo.AppStoreList)) {
+	list := config.AppStoreList()
+	if appStoreID >= uint(len(list)) {
 		return fmt.Errorf("appstore id %d out of range", appStoreID)
 	}
 
-	appStoreURL := config.ServerInfo.AppStoreList[appStoreID]
+	return a.UnregisterAppStoreByURL(list[appStoreID])
+}
 
+// UnregisterAppStoreByURL removes a store by its url, which (unlike its
+// index) does not shift when the list changes concurrently.
+func (a *AppStoreManagement) UnregisterAppStoreByURL(appStoreURL string) error {
 	// remove appstore from list
-	{
-		config.ServerInfo.AppStoreList = append(config.ServerInfo.AppStoreList[:appStoreID], config.ServerInfo.AppStoreList[appStoreID+1:]...)
+	removed, err := config.RemoveAppStore(appStoreURL)
+	if err != nil {
+		return err
+	}
 
-		if err := config.SaveSetup(); err != nil {
-			return err
-		}
+	if !removed {
+		return ErrAppStoreSourceNotFound
 	}
 
 	// remove appstore workdir
@@ -252,6 +275,8 @@ func (a *AppStoreManagement) UnregisterAppStore(appStoreID uint) error {
 				logger.Error("error while removing appstore workdir", zap.Error(err), zap.String("workdir", workdir))
 			}
 		}
+
+		forgetAppStore(appStoreURL)
 	}
 
 	for _, fn := range a.onAppStoreUnregister {
@@ -263,7 +288,7 @@ func (a *AppStoreManagement) UnregisterAppStore(appStoreID uint) error {
 }
 
 func (a *AppStoreManagement) AppStoreMap() (map[string]AppStore, error) {
-	appStoreMap := lo.SliceToMap(config.ServerInfo.AppStoreList, func(appStoreURL string) (string, AppStore) {
+	appStoreMap := lo.SliceToMap(config.AppStoreList(), func(appStoreURL string) (string, AppStore) {
 		appStore, err := AppStoreByURL(appStoreURL)
 		if err != nil {
 			return "", nil
@@ -423,6 +448,14 @@ func (a *AppStoreManagement) Catalog() (map[string]*ComposeApp, error) {
 }
 
 func (a *AppStoreManagement) UpdateCatalog() error {
+	// never run two catalog updates at once (startup run, 10 min cron, ...):
+	// if one is still running, skip this one
+	if !a.updatingCatalog.TryLock() {
+		logger.Info("previous appstore catalog update is still running - skipping this run")
+		return nil
+	}
+	defer a.updatingCatalog.Unlock()
+
 	// reload config.
 	// the appstore may be change in runtime.
 	config.ReloadConfig()
@@ -433,7 +466,7 @@ func (a *AppStoreManagement) UpdateCatalog() error {
 	}
 
 	for url, appStore := range appStoreMap {
-		if err := appStore.UpdateCatalog(); err != nil {
+		if err := updateStoreCatalogSafely(appStore); err != nil {
 			logger.Error("error while updating catalog for app store", zap.Error(err), zap.String("url", url))
 		}
 	}
@@ -442,6 +475,18 @@ func (a *AppStoreManagement) UpdateCatalog() error {
 	a.isAppUpgradable.Purge()
 
 	return nil
+}
+
+// updateStoreCatalogSafely updates one store; a panic is logged as an error
+// so one broken store never takes the process down.
+func updateStoreCatalogSafely(appStore AppStore) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic while updating appstore catalog: %v", r)
+		}
+	}()
+
+	return appStore.UpdateCatalog()
 }
 
 func (a *AppStoreManagement) ComposeApp(id string) (*ComposeApp, error) {
@@ -498,6 +543,9 @@ func (a *AppStoreManagement) IsUpdateAvailable(composeApp *ComposeApp) bool {
 	isUpdate, err := a.isUpdateAvailable(composeApp)
 	if err != nil {
 		logger.Error("failed to check if update is available", zap.Error(err))
+		// remember the failure for a while too, so a broken check is not
+		// repeated (registry round trips) on every list request
+		_ = a.isAppUpgradable.SetWithExpire(storeID, false, updateCheckFailureTTL)
 		return false
 	}
 	_ = a.isAppUpgradable.Set(storeID, isUpdate)
@@ -512,13 +560,13 @@ func (a *AppStoreManagement) isUpdateAvailable(composeApp *ComposeApp) (bool, er
 		return false, nil
 	}
 
-	// if app is uncontrolled, no update available
-	if storeInfo.IsUncontrolled != nil && *storeInfo.IsUncontrolled {
+	if storeInfo == nil || storeInfo.StoreAppID == nil || *storeInfo.StoreAppID == "" {
 		return false, nil
 	}
 
-	if storeInfo == nil || storeInfo.StoreAppID == nil || *storeInfo.StoreAppID == "" {
-		return false, err
+	// if app is uncontrolled, no update available
+	if storeInfo.IsUncontrolled != nil && *storeInfo.IsUncontrolled {
+		return false, nil
 	}
 
 	storeComposeApp, err := a.ComposeApp(*storeInfo.StoreAppID)

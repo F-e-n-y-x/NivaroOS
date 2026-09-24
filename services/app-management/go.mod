@@ -10,7 +10,6 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/getkin/kin-openapi v0.114.0
 	github.com/go-resty/resty/v2 v2.7.0
-	github.com/hashicorp/go-getter v1.7.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/opencontainers/image-spec v1.1.0-rc5

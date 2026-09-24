@@ -6,9 +6,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -107,9 +109,80 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// gitRunAs is who git runs as for a repository.
+type gitRunAs struct {
+	UID, GID uint32
+	Home     string
+}
+
+// gitIdentityFor decides who runs git in a repo owned by uid/gid. A repo
+// owned by an unprivileged user is handled as that user: git reads config
+// (core.fsmonitor, core.sshCommand, hooks, ...) from the repo, and running it
+// as root there would let the repo owner run anything as root. Their HOME is
+// used so their own credential helper still works. nil means "run as root".
+func gitIdentityFor(uid, gid uint32, lookupHome func(uid uint32) string) *gitRunAs {
+	if uid == 0 {
+		return nil
+	}
+
+	return &gitRunAs{UID: uid, GID: gid, Home: lookupHome(uid)}
+}
+
+// gitArgs builds the git argument list. When git runs as root (the repo is
+// root's) the repo is trusted by exact path only - never safe.directory=* -
+// and config that executes programs is switched off.
+func gitArgs(dir string, runAs *gitRunAs, args ...string) []string {
+	base := []string{"-C", dir}
+	if runAs == nil {
+		base = append(base,
+			"-c", "safe.directory="+dir,
+			"-c", "core.fsmonitor=false",
+			"-c", "core.hooksPath=/dev/null",
+		)
+	}
+
+	return append(base, args...)
+}
+
+func homeOf(uid uint32) string {
+	if u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10)); err == nil && u.HomeDir != "" {
+		return u.HomeDir
+	}
+
+	return "/nonexistent"
+}
+
+// gitOwner returns the owner of dir, or (0, 0, false) if it can't be told.
+func gitOwner(dir string) (uint32, uint32, bool) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+
+	return stat.Uid, stat.Gid, true
+}
+
 func gitCmd(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir, "-c", "safe.directory=*"}, args...)...)
+	var runAs *gitRunAs
+	if uid, gid, ok := gitOwner(dir); ok {
+		runAs = gitIdentityFor(uid, gid, homeOf)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", gitArgs(dir, runAs, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
+
+	if runAs != nil && os.Geteuid() == 0 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: runAs.UID, Gid: runAs.GID},
+		}
+		cmd.Env = append(cmd.Env, "HOME="+runAs.Home, "USER=", "LOGNAME=")
+	}
+
 	return cmd
 }
 
@@ -167,7 +240,8 @@ func composeArgs(src ContainerSource) []string {
 func rebuildSteps(src ContainerSource, wasRunning bool) [][]string {
 	var steps [][]string
 	if src.Kind == "git" {
-		steps = append(steps, []string{"git", "-C", src.Repo, "-c", "safe.directory=*", "pull", "--ff-only", "origin", src.Branch})
+		// run through gitCmd (see runUpdate) so it runs as the repo owner
+		steps = append(steps, []string{"git", "-C", src.Repo, "pull", "--ff-only", "origin", src.Branch})
 	}
 	base := composeArgs(src)
 	steps = append(steps, append(append([]string{"docker"}, base...), "build", "--pull", src.Service))

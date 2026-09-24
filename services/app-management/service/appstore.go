@@ -3,12 +3,14 @@ package service
 import (
 	"crypto/md5" // nolint: gosec
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
@@ -31,24 +33,37 @@ type AppStore interface {
 }
 
 type appStore struct {
+	// mu guards categoryMap, catalog, recommend and lastFingerprint
+	mu          sync.RWMutex
 	categoryMap map[string]codegen.CategoryInfo
 	catalog     map[string]*ComposeApp
 	recommend   []string
 	url         string
 
-	lastAPPStoreSize int64
+	// updateMu makes UpdateCatalog single-flight per store
+	updateMu sync.Mutex
+
+	// fingerprint (ETag / Last-Modified / size) of the last downloaded zip
+	lastFingerprint string
 }
 
 var (
-	appStoreMap = make(map[string]*appStore)
+	appStoreMap   = make(map[string]*appStore)
+	appStoreMapMu sync.Mutex
+
+	appStoreHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 	ErrNotAppStore             = fmt.Errorf("not an appstore")
 	ErrDefaultAppStoreNotFound = fmt.Errorf("default appstore not found")
 )
 
 func (s *appStore) CategoryMap() (map[string]codegen.CategoryInfo, error) {
-	if s.categoryMap != nil {
-		return s.categoryMap, nil
+	s.mu.RLock()
+	categoryMap := s.categoryMap
+	s.mu.RUnlock()
+
+	if categoryMap != nil {
+		return categoryMap, nil
 	}
 
 	workdir, err := s.WorkDir()
@@ -61,41 +76,98 @@ func (s *appStore) CategoryMap() (map[string]codegen.CategoryInfo, error) {
 		return nil, err
 	}
 
-	categoryMap := LoadCategoryMap(storeRoot)
+	categoryMap = LoadCategoryMap(storeRoot)
 
+	s.mu.Lock()
 	s.categoryMap = categoryMap
+	s.mu.Unlock()
 
-	return s.categoryMap, nil
+	return categoryMap, nil
+}
+
+// storeFingerprint identifies a version of the store zip from a HEAD
+// response. It returns "" when nothing usable is known (e.g. GitHub codeload
+// answers HEAD with Content-Length -1), which means "assume changed".
+func storeFingerprint(header http.Header, contentLength int64) string {
+	if etag := strings.TrimSpace(header.Get("ETag")); etag != "" {
+		return "etag:" + etag
+	}
+
+	if lastModified := strings.TrimSpace(header.Get("Last-Modified")); lastModified != "" {
+		return "last-modified:" + lastModified
+	}
+
+	if contentLength > 0 {
+		return fmt.Sprintf("size:%d", contentLength)
+	}
+
+	return ""
+}
+
+// storeUnchanged reports whether the download can be skipped.
+func storeUnchanged(previous, current string, workdirExists bool) bool {
+	return workdirExists && previous != "" && current != "" && previous == current
+}
+
+func (s *appStore) headFingerprint() (string, error) {
+	req, err := http.NewRequest(http.MethodHead, s.url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	res, err := appStoreHTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
+
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to check appstore %s, status code: %d", s.url, res.StatusCode)
+	}
+
+	return storeFingerprint(res.Header, res.ContentLength), nil
 }
 
 func (s *appStore) UpdateCatalog() error {
+	// one update per store at a time (register + cron + startup may overlap)
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
 	isSuccessful := false
 
 	if _, err := url.Parse(s.url); err != nil {
 		return err
 	}
 
-	// check wether the zip package size change
+	// check whether the zip package changed (ETag / Last-Modified / size)
 	// if not, skip the update
 	{
-		// timeout 5s
-		http.DefaultClient.Timeout = 5 * time.Second
-		res, err := http.Head(s.url)
+		fingerprint, err := s.headFingerprint()
 		if err != nil {
 			return err
 		}
-		if res.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to get appstore size, status code: %d", res.StatusCode)
+
+		workdir, err := s.WorkDir()
+		if err != nil {
+			return err
 		}
-		if res.ContentLength == s.lastAPPStoreSize {
-			logger.Info("appstore size not changed", zap.String("url", s.url))
+
+		s.mu.RLock()
+		previous := s.lastFingerprint
+		s.mu.RUnlock()
+
+		if storeUnchanged(previous, fingerprint, file.Exists(workdir)) {
+			logger.Info("appstore not changed", zap.String("url", s.url))
 			return nil
 		}
-		logger.Info("appstore size changed, update app store", zap.String("url", s.url))
+		logger.Info("appstore changed (or unknown), update app store", zap.String("url", s.url), zap.String("fingerprint", fingerprint))
 
 		defer func() {
 			if isSuccessful {
-				s.lastAPPStoreSize = res.ContentLength
+				s.mu.Lock()
+				s.lastFingerprint = fingerprint
+				s.mu.Unlock()
 			}
 		}()
 	}
@@ -160,14 +232,19 @@ func (s *appStore) UpdateCatalog() error {
 		return err
 	}
 
-	s.catalog, err = BuildCatalog(storeRoot)
+	catalog, err := BuildCatalog(storeRoot)
 	if err != nil {
 		return err
 	}
 
-	s.categoryMap = LoadCategoryMap(storeRoot)
+	categoryMap := LoadCategoryMap(storeRoot)
+	recommend := LoadRecommend(storeRoot)
 
-	s.recommend = LoadRecommend(storeRoot)
+	s.mu.Lock()
+	s.catalog = catalog
+	s.categoryMap = categoryMap
+	s.recommend = recommend
+	s.mu.Unlock()
 
 	isSuccessful = true
 
@@ -175,8 +252,12 @@ func (s *appStore) UpdateCatalog() error {
 }
 
 func (s *appStore) Recommend() ([]string, error) {
-	if s.recommend != nil && len(s.recommend) > 0 {
-		return s.recommend, nil
+	s.mu.RLock()
+	recommend := s.recommend
+	s.mu.RUnlock()
+
+	if len(recommend) > 0 {
+		return recommend, nil
 	}
 
 	workdir, err := s.WorkDir()
@@ -193,8 +274,12 @@ func (s *appStore) Recommend() ([]string, error) {
 }
 
 func (s *appStore) Catalog() (map[string]*ComposeApp, error) {
-	if s.catalog != nil && len(s.catalog) > 0 {
-		return s.catalog, nil
+	s.mu.RLock()
+	catalog := s.catalog
+	s.mu.RUnlock()
+
+	if len(catalog) > 0 {
+		return catalog, nil
 	}
 
 	workdir, err := s.WorkDir()
@@ -207,14 +292,16 @@ func (s *appStore) Catalog() (map[string]*ComposeApp, error) {
 		return nil, err
 	}
 
-	catalog, err := BuildCatalog(storeRoot)
+	catalog, err = BuildCatalog(storeRoot)
 	if err != nil {
 		return nil, err
 	}
 
+	s.mu.Lock()
 	s.catalog = catalog
+	s.mu.Unlock()
 
-	return s.catalog, nil
+	return catalog, nil
 }
 
 func (s *appStore) ComposeApp(appStoreID string) (*ComposeApp, error) {
@@ -255,6 +342,10 @@ func AppStoreByURL(appstoreURL string) (AppStore, error) {
 
 	// a appstoreKey is a normalized appstore url where everything is in lowercase
 	appstoreKey := strings.ToLower(appstoreURL)
+
+	appStoreMapMu.Lock()
+	defer appStoreMapMu.Unlock()
+
 	if appstore, ok := appStoreMap[appstoreKey]; ok {
 		return appstore, nil
 	}
@@ -265,6 +356,15 @@ func AppStoreByURL(appstoreURL string) (AppStore, error) {
 	}
 
 	return appStoreMap[appstoreKey], nil
+}
+
+// forgetAppStore drops the cached store object for a url (after unregister),
+// so a later re-register starts from a clean state.
+func forgetAppStore(appstoreURL string) {
+	appStoreMapMu.Lock()
+	defer appStoreMapMu.Unlock()
+
+	delete(appStoreMap, strings.ToLower(appstoreURL))
 }
 
 func NewDefaultAppStore() (AppStore, error) {
@@ -390,7 +490,7 @@ func BuildCatalog(storeRoot string) (map[string]*ComposeApp, error) {
 			return nil
 		}
 
-		composeApp, err := NewComposeAppFromYAML(composeYAML, true, false)
+		composeApp, err := parseCatalogComposeApp(composeYAML)
 		if err != nil {
 			logger.Info("failed to parse compose app - contact the contributor of this app to fix it", zap.Error(err), zap.String("composeFile", composeFile))
 			return fs.SkipDir // skip invalid compose app
@@ -404,6 +504,20 @@ func BuildCatalog(storeRoot string) (map[string]*ComposeApp, error) {
 	}
 
 	return catalog, nil
+}
+
+// parseCatalogComposeApp parses one store app; a panic while parsing a
+// malformed app is turned into an error so one bad app is skipped instead of
+// killing the process.
+func parseCatalogComposeApp(composeYAML []byte) (composeApp *ComposeApp, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			composeApp = nil
+			err = fmt.Errorf("panic while parsing compose app: %v", r)
+		}
+	}()
+
+	return newComposeAppFromYAML(composeYAML, true, false, true)
 }
 
 func StoreRoot(workdir string) (string, error) {

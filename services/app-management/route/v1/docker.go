@@ -22,6 +22,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/ssh"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/errdefs"
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -748,12 +749,17 @@ func uninstall(ctx context.Context, container *types.ContainerJSON, isDelete boo
 
 	if container.Config.Labels["origin"] != "custom" && isDelete {
 		// step: 删除文件夹
+		// only the container's own /DATA/AppData/<name> folder is removed -
+		// never a folder that merely contains the name (/DATA/Media/tv for "tv")
+		sources := []string{}
 		for _, v := range container.Mounts {
-			if strings.Contains(v.Source, container.Name) {
-				path := filepath.Join(strings.Split(v.Source, container.Name)[0], container.Name)
-				if err := file.RMDir(path); err != nil {
-					return err
-				}
+			if v.Type == mount.TypeBind {
+				sources = append(sources, v.Source)
+			}
+		}
+		for _, path := range service.AppDataPathsToRemove(container.Name, sources, "") {
+			if err := file.RMDir(path); err != nil {
+				return err
 			}
 		}
 	}

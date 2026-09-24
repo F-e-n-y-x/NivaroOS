@@ -13,6 +13,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/compose-spec/compose-go/types"
+	"github.com/docker/compose/v2/pkg/api"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -44,16 +45,15 @@ func (a *AppManagement) MyComposeApp(ctx echo.Context, id codegen.ComposeAppID) 
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	accept := ctx.Request().Header.Get(echo.HeaderAccept)
@@ -122,7 +122,7 @@ func (a *AppManagement) IsNewComposeUncontrolled(newComposeApp *service.ComposeA
 	}
 
 	// compare store info
-	StoreApp, err := service.MyService.AppStoreManagement().ComposeApp(newComposeApp.Name)
+	StoreApp, err := service.MyService.AppStoreManagement().ComposeApp(newComposeApp.StoreAppID())
 	if err != nil {
 		return false, err
 	}
@@ -148,16 +148,15 @@ func (a *AppManagement) ApplyComposeAppSettings(ctx echo.Context, id codegen.Com
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	buf, err := YAMLfromRequest(ctx)
@@ -341,10 +340,21 @@ func (a *AppManagement) InstallComposeApp(ctx echo.Context, params codegen.Insta
 	// attach context key/value pairs from upstream
 	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
 
+	// Install itself reserves the name and refuses an existing app, so this
+	// is race free (the IsInstalling check above is only a fast path)
 	if err := service.MyService.Compose().Install(backgroundCtx, composeApp); err != nil {
 		logger.Error("failed to start compose app installation", zap.Error(err))
 
 		message := err.Error()
+		switch {
+		case errors.Is(err, service.ErrComposeAppAlreadyInstalling):
+			message = fmt.Sprintf("compose app `%s` is already being installed", composeApp.Name)
+			return ctx.JSON(http.StatusConflict, codegen.ComposeAppBadRequest{Message: &message})
+		case errors.Is(err, service.ErrComposeAppAlreadyInstalled):
+			message = fmt.Sprintf("compose app `%s` is already installed - uninstall it first, or change its settings instead", composeApp.Name)
+			return ctx.JSON(http.StatusConflict, codegen.ComposeAppBadRequest{Message: &message})
+		}
+
 		if err == service.ErrComposeExtensionNameXCasaOSNotFound {
 			return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 		}
@@ -365,16 +375,15 @@ func (a *AppManagement) UninstallComposeApp(ctx echo.Context, id codegen.Compose
 		})
 	}
 
-	appList, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := appList[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	// attach context key/value pairs from upstream
@@ -404,16 +413,15 @@ func (a *AppManagement) UpdateComposeApp(ctx echo.Context, id codegen.ComposeApp
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	if params.Force != nil && !*params.Force {
@@ -452,16 +460,15 @@ func (a *AppManagement) SetComposeAppStatus(ctx echo.Context, id codegen.Compose
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
@@ -488,16 +495,15 @@ func (a *AppManagement) ComposeAppLogs(ctx echo.Context, id codegen.ComposeAppID
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	lines := lo.If(params.Lines == nil, 1000).Else(*params.Lines)
@@ -518,16 +524,15 @@ func (a *AppManagement) ComposeAppContainers(ctx echo.Context, id codegen.Compos
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	containerLists, err := composeApp.Containers(ctx.Request().Context())
@@ -575,16 +580,15 @@ func (a *AppManagement) CheckComposeAppHealthByID(ctx echo.Context, id codegen.C
 		})
 	}
 
-	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
+	composeApp, err := service.MyService.Compose().Get(ctx.Request().Context(), id)
 	if err != nil {
+		if errors.Is(err, service.ErrComposeAppNotFound) {
+			message := fmt.Sprintf("compose app `%s` not found", id)
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
+
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-	}
-
-	composeApp, ok := composeApps[id]
-	if !ok {
-		message := fmt.Sprintf("compose app `%s` not found", id)
-		return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
 	}
 
 	result, err := composeApp.HealthCheck()
@@ -640,12 +644,22 @@ type composeAppsWithStoreInfoOpts struct {
 }
 
 func composeAppsWithStoreInfo(ctx context.Context, opts composeAppsWithStoreInfoOpts) (map[string]codegen.ComposeAppWithStoreInfo, error) {
+	result, _, err := composeAppsWithStoreInfoAndContainers(ctx, opts)
+	return result, err
+}
+
+// composeAppsWithStoreInfoAndContainers also returns the containers of each
+// app (by compose app id), so callers like the app grid don't ask docker for
+// them a second time.
+func composeAppsWithStoreInfoAndContainers(ctx context.Context, opts composeAppsWithStoreInfoOpts) (map[string]codegen.ComposeAppWithStoreInfo, map[string][]api.ContainerSummary, error) {
 	composeApps, err := service.MyService.Compose().List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return lo.MapValues(composeApps, func(composeApp *service.ComposeApp, id string) codegen.ComposeAppWithStoreInfo {
+	containersByApp := map[string][]api.ContainerSummary{}
+
+	result := lo.MapValues(composeApps, func(composeApp *service.ComposeApp, id string) codegen.ComposeAppWithStoreInfo {
 		if composeApp == nil {
 			return codegen.ComposeAppWithStoreInfo{}
 		}
@@ -656,6 +670,16 @@ func composeAppsWithStoreInfo(ctx context.Context, opts composeAppsWithStoreInfo
 			Status:          utils.Ptr("unknown"),
 			UpdateAvailable: utils.Ptr(false),
 			IsUncontrolled:  utils.Ptr(false),
+		}
+
+		// containers (once per app)
+		containerLists, containersErr := composeApp.Containers(ctx)
+		if containersErr != nil {
+			logger.Error("failed to get containers", zap.Error(containersErr), zap.String("composeAppID", id))
+		} else {
+			for _, containerList := range containerLists {
+				containersByApp[id] = append(containersByApp[id], containerList...)
+			}
 		}
 
 		storeInfo, err := composeApp.StoreInfo(true)
@@ -678,19 +702,17 @@ func composeAppsWithStoreInfo(ctx context.Context, opts composeAppsWithStoreInfo
 			return composeAppWithStoreInfo
 		}
 
-		containerLists, err := composeApp.Containers(ctx)
-		if err != nil {
-			logger.Error("failed to get containers", zap.Error(err), zap.String("composeAppID", id))
+		if containersErr != nil {
 			return composeAppWithStoreInfo
 		}
 
 		mainContainers, ok := containerLists[*storeInfo.Main]
-		if !ok {
+		if !ok || len(mainContainers) == 0 {
 			logger.Error("failed to get main app container", zap.String("composeAppID", id))
 			return composeAppWithStoreInfo
 		}
 
-		isUncontrolled, ok := composeApp.Extensions[common.ComposeExtensionNameXCasaOS].(map[string]interface{})[common.ComposeExtensionPropertyNameIsUncontrolled].(bool)
+		isUncontrolled, ok := composeApp.IsUncontrolled()
 		if ok {
 			composeAppWithStoreInfo.IsUncontrolled = &isUncontrolled
 		}
@@ -713,5 +735,7 @@ func composeAppsWithStoreInfo(ctx context.Context, opts composeAppsWithStoreInfo
 		composeAppWithStoreInfo.Status = &mainContainers[0].State
 
 		return composeAppWithStoreInfo
-	}), nil
+	})
+
+	return result, containersByApp, nil
 }

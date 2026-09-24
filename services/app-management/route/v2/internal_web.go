@@ -10,7 +10,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/compose/v2/pkg/api"
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
@@ -19,7 +18,7 @@ import (
 
 func (a *AppManagement) GetAppGrid(ctx echo.Context) error {
 	// v2 Apps
-	composeAppsWithStoreInfo, err := composeAppsWithStoreInfo(ctx.Request().Context(), composeAppsWithStoreInfoOpts{
+	composeAppsWithStoreInfo, containersByApp, err := composeAppsWithStoreInfoAndContainers(ctx.Request().Context(), composeAppsWithStoreInfoOpts{
 		checkIsUpdateAvailable: false,
 	})
 	if err != nil {
@@ -50,19 +49,11 @@ func (a *AppManagement) GetAppGrid(ctx echo.Context) error {
 		return *item
 	})
 
-	// containers from compose apps
+	// containers from compose apps (fetched above, once per app; an app whose
+	// containers could not be listed is just skipped here)
 	composeAppContainers := []codegen.ContainerSummary{}
-	for _, app := range composeAppsWithStoreInfo {
-		composeApp := (service.ComposeApp)(*app.Compose)
-		containerLists, err := composeApp.Containers(ctx.Request().Context())
-		if err != nil {
-			logger.Error("failed to get containers for compose app", zap.Error(err), zap.String("app", composeApp.Name))
-			return nil
-		}
-
-		for _, containcontainerList := range containerLists {
-			composeAppContainers = append(composeAppContainers, containcontainerList...)
-		}
+	for _, containers := range containersByApp {
+		composeAppContainers = append(composeAppContainers, containers...)
 	}
 
 	containerAppGridItems := lo.FilterMap(*containers, func(app model.MyAppList, i int) (codegen.WebAppGridItem, bool) {
@@ -149,13 +140,13 @@ func WebAppGridItemAdapterV2(composeAppWithStoreInfo *codegen.ComposeAppWithStor
 		item.Title = &composeAppStoreInfo.Title
 		item.IsUncontrolled = composeAppStoreInfo.IsUncontrolled
 
-		var mainApp *types.ServiceConfig
-		for i, service := range composeApp.Services {
-			if service.Name == *composeAppStoreInfo.Main {
-				mainApp = &composeApp.Services[i]
-				item.Image = &mainApp.Image // Hengxin needs this image property for some reason...
+		if composeAppStoreInfo.Main != nil {
+			for i, service := range composeApp.Services {
+				if service.Name == *composeAppStoreInfo.Main {
+					item.Image = &composeApp.Services[i].Image // Hengxin needs this image property for some reason...
+					break
+				}
 			}
-			break
 		}
 	}
 

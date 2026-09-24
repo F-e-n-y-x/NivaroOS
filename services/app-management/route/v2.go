@@ -60,6 +60,10 @@ func InitV2Router() http.Handler {
 
 	e.Use(echo_middleware.Gzip())
 
+	// a panic in a handler (e.g. a malformed compose app) becomes a 500
+	// instead of killing the whole service
+	e.Use(echo_middleware.Recover())
+
 	e.Use(echo_middleware.Logger())
 
 	e.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{

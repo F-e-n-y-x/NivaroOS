@@ -69,6 +69,7 @@ func main() {
 		println("build date:", date)
 
 		config.InitSetup(*configFlag, _confSample)
+		// reads the `env` file next to the -c config file (not the config file itself)
 		config.InitGlobal(*configFlag)
 
 		logger.LogInit(config.AppInfo.LogPath, config.AppInfo.LogSaveName, config.AppInfo.LogFileExt)
@@ -82,18 +83,26 @@ func main() {
 	{
 		crontab := cron.New(cron.WithSeconds())
 
-		// schedule async v2job to get v2 appstore list
-		go func() {
-			// run once at startup
+		// a panic while updating the catalog must never take the process down
+		// (it would crash loop on the same bad store); overlapping runs are
+		// skipped inside UpdateCatalog.
+		updateCatalog := func(when string) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("panic when updating AppStore catalog", zap.String("when", when), zap.Any("panic", r))
+				}
+			}()
+
 			if err := service.MyService.AppStoreManagement().UpdateCatalog(); err != nil {
-				logger.Error("error when updating AppStore catalog at startup", zap.Error(err))
+				logger.Error("error when updating AppStore catalog", zap.String("when", when), zap.Error(err))
 			}
-		}()
+		}
+
+		// schedule async v2job to get v2 appstore list
+		go updateCatalog("startup") // run once at startup
 
 		if _, err := crontab.AddFunc("@every 10m", func() {
-			if err := service.MyService.AppStoreManagement().UpdateCatalog(); err != nil {
-				logger.Error("error when updating AppStore catalog", zap.Error(err))
-			}
+			updateCatalog("cron")
 		}); err != nil {
 			panic(err)
 		}

@@ -3,9 +3,9 @@ package v2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -42,23 +42,14 @@ func (a *AppManagement) RegisterAppStore(ctx echo.Context, params codegen.Regist
 
 	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
 
+	// the url is checked here (400 invalid, 409 already registered or being
+	// registered); the download runs in the background and ends with an
+	// app-store:register-end (or -error) event carrying app-store:url
 	if err := service.MyService.AppStoreManagement().RegisterAppStore(backgroundCtx, *params.Url); err != nil {
-		message := err.Error()
-
-		if err != nil {
-			switch err {
-			case service.ErrAppStoreSourceExists:
-				return ctx.JSON(http.StatusConflict, codegen.ResponseConflict{Message: &message})
-			case service.ErrNotAppStore:
-				return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
-			default:
-				return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-			}
-		}
+		return registerAppStoreError(ctx, err)
 	}
 
-	logFilepath := filepath.Join(config.AppInfo.LogPath, fmt.Sprintf("%s.%s", config.AppInfo.LogSaveName, config.AppInfo.LogFileExt))
-	message := fmt.Sprintf("trying to register app store asynchronously - see %s for any errors.", logFilepath)
+	message := "app store is being registered asynchronously - wait for the app-store:register-end or app-store:register-error event."
 	return ctx.JSON(http.StatusOK, codegen.AppStoreRegisterOK{
 		Message: &message,
 	})
@@ -74,16 +65,7 @@ func (a *AppManagement) RegisterAppStoreSync(ctx echo.Context, params codegen.Re
 
 	err := service.MyService.AppStoreManagement().RegisterAppStoreSync(backgroundCtx, *params.Url)
 	if err != nil {
-		message := err.Error()
-
-		switch err {
-		case service.ErrAppStoreSourceExists:
-			return ctx.JSON(http.StatusConflict, codegen.ResponseConflict{Message: &message})
-		case service.ErrNotAppStore:
-			return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
-		default:
-			return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
-		}
+		return registerAppStoreError(ctx, err)
 	}
 
 	return ctx.JSON(http.StatusOK, codegen.AppStoreRegisterOK{
@@ -91,8 +73,23 @@ func (a *AppManagement) RegisterAppStoreSync(ctx echo.Context, params codegen.Re
 	})
 }
 
+func registerAppStoreError(ctx echo.Context, err error) error {
+	message := err.Error()
+
+	switch {
+	case errors.Is(err, service.ErrAppStoreSourceExists), errors.Is(err, service.ErrAppStoreSourceRegistering):
+		return ctx.JSON(http.StatusConflict, codegen.ResponseConflict{Message: &message})
+	case errors.Is(err, service.ErrNotAppStore), errors.Is(err, service.ErrAppStoreInvalidURL):
+		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
+	default:
+		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
+	}
+}
+
 func (a *AppManagement) UnregisterAppStore(ctx echo.Context, id codegen.AppStoreID) error {
-	appStoreList := service.MyService.AppStoreManagement().AppStoreList()
+	// resolve the index to its url once, and remove by url: an index can
+	// point at another store if the list changed in between
+	appStoreList := config.AppStoreList()
 
 	if id < 0 || id >= len(appStoreList) {
 		message := fmt.Sprintf("app store id %d is not found", id)
@@ -104,8 +101,11 @@ func (a *AppManagement) UnregisterAppStore(ctx echo.Context, id codegen.AppStore
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
 	}
 
-	if err := service.MyService.AppStoreManagement().UnregisterAppStore(uint(id)); err != nil {
+	if err := service.MyService.AppStoreManagement().UnregisterAppStoreByURL(appStoreList[id]); err != nil {
 		message := err.Error()
+		if errors.Is(err, service.ErrAppStoreSourceNotFound) {
+			return ctx.JSON(http.StatusNotFound, codegen.ResponseNotFound{Message: &message})
+		}
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{Message: &message})
 	}
 
@@ -434,9 +434,16 @@ func (a *AppManagement) UpgradableAppList(ctx echo.Context) error {
 			title = []byte("unknown")
 		}
 
-		storeComposeApp, err := service.MyService.AppStoreManagement().ComposeApp(id)
+		// look the app up by its store app id - the compose project name
+		// can differ from it
+		storeAppID := id
+		if storeInfo.StoreAppID != nil && *storeInfo.StoreAppID != "" {
+			storeAppID = *storeInfo.StoreAppID
+		}
+
+		storeComposeApp, err := service.MyService.AppStoreManagement().ComposeApp(storeAppID)
 		if err != nil || storeComposeApp == nil {
-			logger.Error("failed to get compose app", zap.Error(err), zap.String("appStoreID", id))
+			logger.Error("failed to get compose app", zap.Error(err), zap.String("appStoreID", storeAppID))
 			continue
 		}
 		tag, err := storeComposeApp.MainTag()

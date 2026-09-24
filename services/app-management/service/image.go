@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	client2 "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
 
@@ -53,6 +54,8 @@ func (ds *dockerService) PullImage(ctx context.Context, imageName string) error 
 			common.PropertyTypeImageName.Name: imageName,
 			common.PropertyTypeMessage.Name:   err.Error(),
 		})
+
+		return err
 	}
 
 	return nil
@@ -68,10 +71,16 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 		ctx = common.WithProperties(ctx, make(map[string]string))
 	}
 
-	go PublishEventWrapper(ctx, common.EventTypeImagePullBegin, map[string]string{
+	// events published from goroutines get their own copy of the context
+	// properties: the defer below writes the result into the original map,
+	// which must not be written while a publisher ranges over it.
+	eventCtx := common.WithProperties(ctx, lo.Assign(common.PropertiesFromContext(ctx)))
+
+	go PublishEventWrapper(eventCtx, common.EventTypeImagePullBegin, map[string]string{
 		common.PropertyTypeImageName.Name: imageName,
 	})
 
+	// published synchronously after the defer below has added the result
 	defer PublishEventWrapper(ctx, common.EventTypeImagePullEnd, map[string]string{
 		common.PropertyTypeImageName.Name: imageName,
 
@@ -91,7 +100,7 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 
 	if strings.HasPrefix(imageName, "sha256:") {
 		message := "container uses a pinned image, and cannot be updated"
-		go PublishEventWrapper(ctx, common.EventTypeImagePullError, map[string]string{
+		go PublishEventWrapper(eventCtx, common.EventTypeImagePullError, map[string]string{
 			common.PropertyTypeImageName.Name: imageName,
 			common.PropertyTypeMessage.Name:   message,
 		})
@@ -101,7 +110,7 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 
 	imageInfo1, err := docker.Image(ctx, imageName)
 	if err != nil {
-		go PublishEventWrapper(ctx, common.EventTypeImagePullError, map[string]string{
+		go PublishEventWrapper(eventCtx, common.EventTypeImagePullError, map[string]string{
 			common.PropertyTypeImageName.Name: imageName,
 			common.PropertyTypeMessage.Name:   err.Error(),
 		})
@@ -115,9 +124,9 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 	}
 
 	if err = docker.PullImage(ctx, imageName, func(out io.ReadCloser) {
-		pullImageProgress(ctx, out, "UPDATE", 1, 1)
+		pullImageProgress(eventCtx, out, "UPDATE", 1, 1)
 	}); err != nil {
-		go PublishEventWrapper(ctx, common.EventTypeImagePullError, map[string]string{
+		go PublishEventWrapper(eventCtx, common.EventTypeImagePullError, map[string]string{
 			common.PropertyTypeImageName.Name: imageName,
 			common.PropertyTypeMessage.Name:   err.Error(),
 		})
@@ -126,7 +135,7 @@ func (ds *dockerService) PullLatestImage(ctx context.Context, imageName string) 
 
 	imageInfo2, err := docker.Image(ctx, imageName)
 	if err != nil {
-		go PublishEventWrapper(ctx, common.EventTypeImagePullError, map[string]string{
+		go PublishEventWrapper(eventCtx, common.EventTypeImagePullError, map[string]string{
 			common.PropertyTypeImageName.Name: imageName,
 			common.PropertyTypeMessage.Name:   err.Error(),
 		})
@@ -200,6 +209,36 @@ func (t *Throttler) ThrottleFunc(f func()) {
 	}
 }
 
+// imagePullProgress is the overall progress (0-100) while pulling image
+// currentImage (1-based) of totalImageNum, with completedLayers of layers of
+// the current image done. Earlier images count as complete, so the value
+// only goes up across images.
+func imagePullProgress(completedLayers, layers, currentImage, totalImageNum int) int {
+	if totalImageNum <= 0 {
+		return 0
+	}
+
+	fraction := 0.0
+	if layers > 0 {
+		fraction = float64(completedLayers) / float64(layers)
+	}
+
+	if fraction > 1 {
+		fraction = 1
+	}
+
+	progress := int((float64(currentImage-1) + fraction) / float64(totalImageNum) * 100)
+
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 100 {
+		progress = 100
+	}
+
+	return progress
+}
+
 func pullImageProgress(ctx context.Context, out io.ReadCloser, notificationType string, totalImageNum int, currentImage int) {
 	layerNum := 0
 	completedLayerNum := 0
@@ -209,13 +248,27 @@ func pullImageProgress(ctx context.Context, out io.ReadCloser, notificationType 
 		return
 	}
 
+	// the UI only listens to app:install-progress (for installs and
+	// updates alike), so notificationType does not change the event name.
+	_ = notificationType
+
 	throttler := NewThrottler(500 * time.Millisecond)
+
+	// publish synchronously, in order - progress events used to be sent from
+	// one goroutine each and could arrive out of order (going backwards)
+	publish := func(progress int) {
+		PublishEventWrapper(ctx, common.EventTypeAppInstallProgress, map[string]string{
+			common.PropertyTypeAppProgress.Name: fmt.Sprintf("%d", progress),
+		})
+	}
+
+	lastProgress := -1
 
 	for decoder.More() {
 		var message jsonmessage.JSONMessage
 		if err := decoder.Decode(&message); err != nil {
 			logger.Error("failed to decode json message", zap.Error(err))
-			continue
+			break // a broken stream never recovers; More() would spin
 		}
 
 		switch message.Status {
@@ -227,28 +280,20 @@ func pullImageProgress(ctx context.Context, out io.ReadCloser, notificationType 
 			completedLayerNum++
 		}
 
-		// layer progress
-		completedFraction := float32(completedLayerNum) / float32(layerNum)
-
-		// image progress
-		currentImageFraction := float32(currentImage) / float32(totalImageNum)
-		progress := completedFraction * currentImageFraction * 100
+		progress := imagePullProgress(completedLayerNum, layerNum, currentImage, totalImageNum)
+		if progress < lastProgress {
+			progress = lastProgress
+		}
 
 		// reduce the event send frequency
 		throttler.ThrottleFunc(func() {
-			go func(progress int) {
-				// ensure progress is in [0, 100]
-				if progress < 0 {
-					progress = 0
-				}
-				if progress > 100 {
-					progress = 100
-				}
-
-				PublishEventWrapper(ctx, common.EventTypeAppInstallProgress, map[string]string{
-					common.PropertyTypeAppProgress.Name: fmt.Sprintf("%d", progress),
-				})
-			}(int(progress))
+			publish(progress)
+			lastProgress = progress
 		})
+	}
+
+	// always report this image as done, so the last image ends at 100%
+	if final := imagePullProgress(1, 1, currentImage, totalImageNum); final != lastProgress {
+		publish(final)
 	}
 }

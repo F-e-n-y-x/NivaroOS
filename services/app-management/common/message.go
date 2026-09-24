@@ -13,6 +13,15 @@ var (
 	}
 )
 
+// app-store properties
+var (
+	PropertyTypeAppStoreURL = message_bus.PropertyType{
+		Name:        "app-store:url",
+		Description: utils.Ptr("url of the app store (source) the event is about"),
+		Example:     utils.Ptr("https://casaos.app/store/main.zip"),
+	}
+)
+
 // app properties
 var (
 	PropertyTypeAppName = message_bus.PropertyType{
@@ -110,19 +119,20 @@ var (
 	EventTypeAppStoreRegisterBegin = message_bus.EventType{
 		SourceID:         AppManagementServiceName,
 		Name:             "app-store:register-begin",
-		PropertyTypeList: []message_bus.PropertyType{},
+		PropertyTypeList: []message_bus.PropertyType{PropertyTypeAppStoreURL},
 	}
 
 	EventTypeAppStoreRegisterEnd = message_bus.EventType{
 		SourceID:         AppManagementServiceName,
 		Name:             "app-store:register-end",
-		PropertyTypeList: []message_bus.PropertyType{},
+		PropertyTypeList: []message_bus.PropertyType{PropertyTypeAppStoreURL, PropertyTypeMessage},
 	}
 
 	EventTypeAppStoreRegisterError = message_bus.EventType{
 		SourceID: AppManagementServiceName,
 		Name:     "app-store:register-error",
 		PropertyTypeList: []message_bus.PropertyType{
+			PropertyTypeAppStoreURL,
 			PropertyTypeMessage,
 		},
 	}

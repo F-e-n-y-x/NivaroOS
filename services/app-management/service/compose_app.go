@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,12 +25,11 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
+	portutil "github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/random"
 	"github.com/compose-spec/compose-go/cli"
 	"github.com/compose-spec/compose-go/loader"
 	"github.com/compose-spec/compose-go/types"
-	composeCmd "github.com/docker/compose/v2/cmd/compose"
 
 	"github.com/docker/compose/v2/cmd/formatter"
 	"github.com/docker/compose/v2/pkg/api"
@@ -40,8 +41,34 @@ import (
 
 type ComposeApp codegen.ComposeApp
 
+// XCasaOS returns the x-casaos extension as a map. ok is false when it is
+// missing, null (`x-casaos:` with no value) or not a mapping - never panics.
+func (a *ComposeApp) XCasaOS() (map[string]interface{}, bool) {
+	if a == nil || a.Extensions == nil {
+		return nil, false
+	}
+
+	extension, ok := a.Extensions[common.ComposeExtensionNameXCasaOS].(map[string]interface{})
+	if !ok || extension == nil {
+		return nil, false
+	}
+
+	return extension, true
+}
+
+// IsUncontrolled reads x-casaos.is_uncontrolled; ok is false if it is not set.
+func (a *ComposeApp) IsUncontrolled() (value bool, ok bool) {
+	extension, ok := a.XCasaOS()
+	if !ok {
+		return false, false
+	}
+
+	value, ok = extension[common.ComposeExtensionPropertyNameIsUncontrolled].(bool)
+	return value, ok
+}
+
 func (a *ComposeApp) StoreInfo(includeApps bool) (*codegen.ComposeAppStoreInfo, error) {
-	ex, ok := a.Extensions[common.ComposeExtensionNameXCasaOS]
+	ex, ok := a.XCasaOS()
 	if !ok {
 		return nil, ErrComposeExtensionNameXCasaOSNotFound
 	}
@@ -53,7 +80,7 @@ func (a *ComposeApp) StoreInfo(includeApps bool) (*codegen.ComposeAppStoreInfo, 
 	}
 
 	// TODO refactor this with ComposeAppWithStoreInfo
-	isUncontrolled, ok := a.Extensions[common.ComposeExtensionNameXCasaOS].(map[string]interface{})[common.ComposeExtensionPropertyNameIsUncontrolled].(bool)
+	isUncontrolled, ok := a.IsUncontrolled()
 	if ok {
 		storeInfo.IsUncontrolled = &isUncontrolled
 	}
@@ -93,6 +120,19 @@ func (a *ComposeApp) StoreInfo(includeApps bool) (*codegen.ComposeAppStoreInfo, 
 	return &storeInfo, nil
 }
 
+// StoreAppID is x-casaos.store_app_id, falling back to the compose project
+// name (which is the store app id by convention at install time, but can
+// differ, e.g. after an install under another name).
+func (a *ComposeApp) StoreAppID() string {
+	if extension, ok := a.XCasaOS(); ok {
+		if id, ok := extension[common.ComposeExtensionPropertyNameStoreAppID].(string); ok && id != "" {
+			return id
+		}
+	}
+
+	return a.Name
+}
+
 func (a *ComposeApp) AuthorType() codegen.StoreAppAuthorType {
 	storeInfo, err := a.StoreInfo(false)
 	if err != nil {
@@ -111,13 +151,7 @@ func (a *ComposeApp) AuthorType() codegen.StoreAppAuthorType {
 
 func (a *ComposeApp) SetStoreAppID(storeAppID string) (string, bool) {
 	// set store_app_id (by convention is the same as app name at install time if it does not exist)
-	extension, ok := a.Extensions[common.ComposeExtensionNameXCasaOS]
-	if !ok {
-		logger.Info("compose app does not have x-casaos extension - might not be a compose app for CasaOS", zap.String("app", a.Name))
-		return "", false
-	}
-
-	composeAppStoreInfo, ok := extension.(map[string]interface{})
+	composeAppStoreInfo, ok := a.XCasaOS()
 	if !ok {
 		logger.Info("compose app does not have valid x-casaos extension - might not be a compose app for CasaOS", zap.String("app", a.Name))
 		return "", false
@@ -142,7 +176,7 @@ func (a *ComposeApp) SetTitle(title, lang string) {
 	}
 
 	extension, ok := a.Extensions[common.ComposeExtensionNameXCasaOS]
-	if !ok {
+	if !ok || extension == nil {
 		extension = map[string]interface{}{}
 		a.Extensions[common.ComposeExtensionNameXCasaOS] = extension
 	}
@@ -209,22 +243,14 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 		return ErrComposeAppNotMatch
 	}
 
-	for _, service := range storeComposeApp.Services {
-		localComposeAppService := a.App(service.Name)
-
-		for _, tag := range common.NeedCheckDigestTags {
-			if strings.HasSuffix(service.Image, tag) {
-				// keep latest
-			} else {
-				localComposeAppService.Image = service.Image
-			}
-		}
-	}
+	// build the new compose on a copy: `a` must keep describing what is
+	// running now, because a failed update rolls back to it.
+	updated := a.withServices(updatedServiceImages(a.Services, storeComposeApp.Services))
 
 	// the code is need by stable diffusion.
-	removeRuntime(a)
+	removeRuntime(updated)
 
-	newComposeYAML, err := yaml.Marshal(a)
+	newComposeYAML, err := yaml.Marshal(updated)
 	if err != nil {
 		return err
 	}
@@ -257,6 +283,35 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 	}(ctx)
 
 	return nil
+}
+
+// withServices returns a shallow copy of a with its own Services slice.
+func (a *ComposeApp) withServices(services types.Services) *ComposeApp {
+	copied := *a
+	copied.Services = services
+	return &copied
+}
+
+// updatedServiceImages returns a copy of local where each service takes the
+// store's image, unless the store image uses a tag that is checked by digest
+// (e.g. latest), which keeps the local image.
+func updatedServiceImages(local, store types.Services) types.Services {
+	result := make(types.Services, len(local))
+	copy(result, local)
+
+	for _, storeService := range store {
+		for i := range result {
+			if result[i].Name != storeService.Name {
+				continue
+			}
+
+			if !lo.SomeBy(common.NeedCheckDigestTags, func(tag string) bool { return strings.HasSuffix(storeService.Image, tag) }) {
+				result[i].Image = storeService.Image
+			}
+		}
+	}
+
+	return result
 }
 
 // TODO rename the function to service and add error return value
@@ -349,6 +404,8 @@ func (a *ComposeApp) Pull(ctx context.Context) error {
 					common.PropertyTypeImageName.Name: app.Image,
 					common.PropertyTypeMessage.Name:   err.Error(),
 				})
+
+				return fmt.Errorf("failed to pull image %s: %w", app.Image, err)
 			}
 
 			return nil
@@ -360,17 +417,71 @@ func (a *ComposeApp) Pull(ctx context.Context) error {
 	return nil
 }
 
+// injectEnvVariableToComposeApp sets global settings (config.Global, e.g.
+// OPENAI_API_KEY) as environment variables of the services - but only the
+// ones the app's compose file actually references ($KEY / ${KEY} or an
+// environment entry named KEY). Injecting every global into every container
+// leaked e.g. API keys into apps that never asked for them.
 func (a *ComposeApp) injectEnvVariableToComposeApp() {
-	for _, service := range a.Services {
-		for k, v := range config.Global {
+	global := config.GlobalSnapshot()
+	if len(global) == 0 {
+		return
+	}
+
+	var raw []byte
+	for _, composeFile := range a.ComposeFiles {
+		if content, err := os.ReadFile(composeFile); err == nil {
+			raw = append(append(raw, content...), '\n')
+		}
+	}
+
+	for i := range a.Services {
+		keys := referencedGlobalKeys(raw, a.Services[i].Environment, global)
+		if len(keys) == 0 {
+			continue
+		}
+
+		if a.Services[i].Environment == nil {
+			a.Services[i].Environment = types.MappingWithEquals{}
+		}
+
+		for _, k := range keys {
 			// if there is same name var declared in environment in compose yaml
 			// we should not reassign a value to it.
-			if service.Environment[k] == nil {
-				service.Environment[k] = utils.Ptr(v)
+			if a.Services[i].Environment[k] == nil {
+				a.Services[i].Environment[k] = utils.Ptr(global[k])
 			}
 		}
 	}
 }
+
+// referencedGlobalKeys returns the keys of global that the raw compose text
+// references as $KEY or ${KEY...}, or that are declared in environment.
+func referencedGlobalKeys(raw []byte, environment types.MappingWithEquals, global map[string]string) []string {
+	referenced := map[string]bool{}
+	for _, match := range composeVariablePattern.FindAllSubmatch(raw, -1) {
+		name := string(match[1])
+		if name == "" {
+			name = string(match[2])
+		}
+		if name != "" { // "" is an escaped $$
+			referenced[name] = true
+		}
+	}
+
+	keys := []string{}
+	for k := range global {
+		if _, declared := environment[k]; declared || referenced[k] {
+			keys = append(keys, k)
+		}
+	}
+
+	sort.Strings(keys)
+	return keys
+}
+
+// $$ is an escaped dollar; $NAME and ${NAME[:-default...]} are references
+var composeVariablePattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)|\$([A-Za-z_][A-Za-z0-9_]*)`)
 
 func (a *ComposeApp) Up(ctx context.Context, service api.Service) error {
 	a.injectEnvVariableToComposeApp()
@@ -387,16 +498,41 @@ func (a *ComposeApp) Up(ctx context.Context, service api.Service) error {
 	return nil
 }
 
+// bindSourceToCreate returns the host path to create for a service volume,
+// or "" when nothing should be created: named volumes (declared in the
+// project), anonymous volumes and tmpfs (no source) and non-bind mounts.
+func bindSourceToCreate(volume types.ServiceVolumeConfig, projectVolumes types.Volumes) string {
+	if volume.Source == "" {
+		return ""
+	}
+
+	if _, ok := projectVolumes[volume.Source]; ok {
+		// this is a internal volume, so skip.
+		return ""
+	}
+
+	if volume.Type != "" && volume.Type != types.VolumeTypeBind {
+		return ""
+	}
+
+	if !filepath.IsAbs(volume.Source) {
+		// compose resolves relative binds against the working dir; a bare
+		// name here is a volume that is not declared - let compose handle it
+		return ""
+	}
+
+	return volume.Source
+}
+
 func (a *ComposeApp) UpWithCheckRequire(ctx context.Context, service api.Service) error {
 	// prepare source path for volumes if not exist
 	for i, app := range a.Services {
 		for _, volume := range app.Volumes {
-			if _, ok := a.Volumes[volume.Source]; ok {
-				// this is a internal volume, so skip.
+			path := bindSourceToCreate(volume, a.Volumes)
+			if path == "" {
 				continue
 			}
 
-			path := volume.Source
 			if err := file.IsNotExistMkDir(path); err != nil {
 				go PublishEventWrapper(ctx, common.EventTypeContainerStartError, map[string]string{
 					common.PropertyTypeMessage.Name: err.Error(),
@@ -452,11 +588,20 @@ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) er
 				return
 			}
 
-			if err := a.Up(ctx, service); err != nil {
+			// start what was running before from the restored file, not from
+			// `a` (which callers may have changed)
+			original, err := LoadComposeAppFromConfigFiles(a.Name, a.ComposeFiles)
+			if err != nil {
+				logger.Error("failed to load original compose app for rollback", zap.Error(err), zap.String("name", a.Name))
+				return
+			}
+
+			if err := original.Up(ctx, service); err != nil {
 				logger.Error("failed to start original compose app", zap.Error(err), zap.String("name", a.Name))
 				return
 			}
 
+			logger.Info("rolled back compose app to its previous compose file", zap.String("name", a.Name))
 		}
 	}()
 
@@ -465,7 +610,7 @@ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) er
 		return err
 	}
 
-	newComposeApp, err := LoadComposeAppFromConfigFile(a.Name, currentComposeFile)
+	newComposeApp, err := LoadComposeAppFromConfigFiles(a.Name, a.ComposeFiles)
 	if err != nil {
 		return err
 	}
@@ -480,7 +625,7 @@ func (a *ComposeApp) PullAndApply(ctx context.Context, newComposeYAML []byte) er
 
 	err = newComposeApp.UpWithCheckRequire(ctx, service)
 
-	success = true
+	success = err == nil
 
 	return err
 }
@@ -511,12 +656,11 @@ func (a *ComposeApp) PullAndInstall(ctx context.Context) error {
 		for i, app := range a.Services {
 			// prepare source path for volumes if not exist
 			for _, volume := range app.Volumes {
-				if _, ok := a.Volumes[volume.Source]; ok {
-					// this is a internal volume, so skip.
+				path := bindSourceToCreate(volume, a.Volumes)
+				if path == "" {
 					continue
 				}
 
-				path := volume.Source
 				if err := file.IsNotExistMkDir(path); err != nil {
 					go PublishEventWrapper(ctx, common.EventTypeContainerCreateError, map[string]string{
 						common.PropertyTypeMessage.Name: err.Error(),
@@ -598,11 +742,7 @@ func (a *ComposeApp) Uninstall(ctx context.Context, deleteConfigFolder bool) err
 
 	defer PublishEventWrapper(ctx, common.EventTypeContainerRemoveEnd, nil)
 
-	if err := service.Down(ctx, a.Name, api.DownOptions{
-		RemoveOrphans: true,
-		Images:        "all",
-		Volumes:       true,
-	}); err != nil {
+	if err := service.Down(ctx, a.Name, uninstallDownOptions(deleteConfigFolder)); err != nil {
 		go PublishEventWrapper(ctx, common.EventTypeImageRemoveError, map[string]string{
 			common.PropertyTypeMessage.Name: err.Error(),
 		})
@@ -610,32 +750,131 @@ func (a *ComposeApp) Uninstall(ctx context.Context, deleteConfigFolder bool) err
 		return err
 	}
 
-	if err := file.RMDir(a.WorkingDir); err != nil {
-		go PublishEventWrapper(ctx, common.EventTypeImageRemoveError, map[string]string{
-			common.PropertyTypeMessage.Name: err.Error(),
-		})
+	// the compose working dir (holding compose.yaml) is only ours to delete
+	// when it is the app's folder under AppsPath - a compose project started
+	// elsewhere (Portainer, a user's own folder) keeps its files
+	if IsManagedWorkingDir(a.Name, a.WorkingDir) {
+		if err := file.RMDir(a.WorkingDir); err != nil {
+			go PublishEventWrapper(ctx, common.EventTypeImageRemoveError, map[string]string{
+				common.PropertyTypeMessage.Name: err.Error(),
+			})
+		}
+	} else {
+		logger.Info("not removing compose working dir outside of the apps folder", zap.String("name", a.Name), zap.String("workingDir", a.WorkingDir))
 	}
 
 	if !deleteConfigFolder {
 		return nil
 	}
 
+	sources := []string{}
 	for _, app := range a.Services {
 		for _, volume := range app.Volumes {
-			if strings.Contains(volume.Source, a.Name) {
-				path := filepath.Join(strings.Split(volume.Source, a.Name)[0], a.Name)
-				if err := file.RMDir(path); err != nil {
-					logger.Error("failed to remove compose app config folder", zap.Error(err), zap.String("path", path))
-
-					go PublishEventWrapper(ctx, common.EventTypeImageRemoveError, map[string]string{
-						common.PropertyTypeMessage.Name: err.Error(),
-					})
-				}
+			if volume.Type != "" && volume.Type != types.VolumeTypeBind {
+				continue // named volumes were removed by Down(Volumes: true)
 			}
+			sources = append(sources, volume.Source)
+		}
+	}
+
+	for _, path := range AppDataPathsToRemove(a.Name, sources, a.WorkingDir) {
+		logger.Info("removing compose app data folder", zap.String("name", a.Name), zap.String("path", path))
+		if err := file.RMDir(path); err != nil {
+			logger.Error("failed to remove compose app config folder", zap.Error(err), zap.String("path", path))
+
+			go PublishEventWrapper(ctx, common.EventTypeImageRemoveError, map[string]string{
+				common.PropertyTypeMessage.Name: err.Error(),
+			})
 		}
 	}
 
 	return nil
+}
+
+// uninstallDownOptions: "keep data" (deleteConfigFolder=false) must not
+// remove named volumes - they are the data. Images are only removed on a
+// full removal; docker refuses (and compose ignores) removing an image that
+// another container still uses, so images shared with other apps survive.
+// When data is kept the images are kept too, so a reinstall is instant.
+func uninstallDownOptions(deleteConfigFolder bool) api.DownOptions {
+	options := api.DownOptions{
+		RemoveOrphans: true,
+		Volumes:       deleteConfigFolder,
+	}
+
+	if deleteConfigFolder {
+		options.Images = "all"
+	}
+
+	return options
+}
+
+// AppDataRoot is where store apps keep their data: /DATA/AppData/<app>/...
+var AppDataRoot = "/DATA/AppData"
+
+// AppDataPathsToRemove decides which host folders are deleted when an app is
+// uninstalled with "delete data". Only the app's own folder under
+// AppDataRoot (/DATA/AppData/<name>, for any bind source inside it) and the
+// app's compose working dir are ever returned. Everything else - media
+// folders that merely contain the name (/DATA/Media/tv for app "tv"),
+// /DATA itself, /mnt/data, relative paths, other apps' folders - is kept.
+func AppDataPathsToRemove(appName string, sources []string, workingDir string) []string {
+	result := []string{}
+
+	name := strings.TrimPrefix(appName, "/") // v1 container names start with "/"
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return result
+	}
+
+	appDir := filepath.Join(filepath.Clean(AppDataRoot), name)
+
+	add := func(path string) {
+		if !lo.Contains(result, path) {
+			result = append(result, path)
+		}
+	}
+
+	for _, source := range sources {
+		if source == "" || !filepath.IsAbs(source) {
+			continue
+		}
+
+		if isPathWithin(appDir, filepath.Clean(source)) {
+			add(appDir)
+		}
+	}
+
+	if IsManagedWorkingDir(name, workingDir) {
+		add(filepath.Clean(workingDir))
+	}
+
+	return result
+}
+
+// IsManagedWorkingDir reports whether dir is <AppsPath>/<name>, i.e. a
+// compose folder NivaroOS created at install time.
+func IsManagedWorkingDir(name, dir string) bool {
+	if name == "" || dir == "" || !filepath.IsAbs(dir) {
+		return false
+	}
+
+	appsPath := filepath.Clean(config.AppInfo.AppsPath)
+	if appsPath == "" || appsPath == "." || appsPath == "/" {
+		return false
+	}
+
+	return filepath.Clean(dir) == filepath.Join(appsPath, name)
+}
+
+// isPathWithin reports whether path is dir or inside it, by path segments
+// (so /DATA/AppData/tv2 is not within /DATA/AppData/tv).
+func isPathWithin(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func (a *ComposeApp) Apply(ctx context.Context, newComposeYAML []byte) error {
@@ -795,7 +1034,7 @@ func (a *ComposeApp) Logs(ctx context.Context, lines int) ([]byte, error) {
 }
 
 func (a *ComposeApp) GetPortsInUse() (*codegen.ComposeAppValidationErrorsPortsInUse, error) {
-	tcpPorts, udpPorts, err := port.ListPortsInUse()
+	tcpPorts, udpPorts, err := portutil.ListPortsInUse()
 	if err != nil {
 		return nil, err
 	}
@@ -902,32 +1141,69 @@ func (a *ComposeApp) HealthCheck() (bool, error) {
 }
 
 func LoadComposeAppFromConfigFile(appID string, configFile string) (*ComposeApp, error) {
-	options := composeCmd.ProjectOptions{
-		ProjectDir:  filepath.Dir(configFile),
-		ProjectName: appID,
+	return LoadComposeAppFromConfigFiles(appID, []string{configFile})
+}
+
+// interpolationEnv is what ${VAR} in an installed compose file can resolve
+// to: AppID, the base variables (PUID, PGID, TZ, DefaultUserName, ...) and
+// the global settings. The process environment of this service is NOT
+// included - it used to be, which leaked host variables into apps.
+func interpolationEnv(appID string) []string {
+	env := []string{}
+	for k, v := range config.GlobalSnapshot() {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	env := []string{fmt.Sprintf("%s=%s", "AppID", appID)}
 	for k, v := range baseInterpolationMap() {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	// load project
-	project, err := options.ToProject(
-		nil,
-		nil,
-		cli.WithWorkingDirectory(options.ProjectDir), // this has to be the first option, otherwise it will assume the dir where this program is running is the working directory.
+	return append(env, fmt.Sprintf("%s=%s", "AppID", appID))
+}
 
-		cli.WithOsEnv,
+// LoadComposeAppFromConfigFiles loads an installed compose project from its
+// compose file(s) (a project can be made of several, e.g. an override file).
+func LoadComposeAppFromConfigFiles(appID string, configFiles []string) (*ComposeApp, error) {
+	configFiles = lo.Filter(configFiles, func(f string, _ int) bool { return strings.TrimSpace(f) != "" })
+	if len(configFiles) == 0 {
+		return nil, ErrComposeFileNotFound
+	}
+
+	projectDir := filepath.Dir(configFiles[0])
+
+	// this mirrors composeCmd.ProjectOptions.ToProject, which always adds
+	// cli.WithOsEnv - that is exactly what must not happen here.
+	options, err := cli.NewProjectOptions(
+		configFiles,
+		cli.WithWorkingDirectory(projectDir), // this has to be the first option, otherwise it will assume the dir where this program is running is the working directory.
+		cli.WithEnv(interpolationEnv(appID)),
 		cli.WithDotEnv,
-		cli.WithEnv(env),
-		cli.WithConfigFileEnv,
-		cli.WithDefaultConfigPath,
-		cli.WithEnvFiles(options.EnvFiles...),
-		cli.WithName(options.ProjectName),
+		cli.WithName(appID),
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return (*ComposeApp)(project), err
+	project, err := cli.ProjectFromOptions(options)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, s := range project.Services {
+		s.CustomLabels = map[string]string{
+			api.ProjectLabel:     project.Name,
+			api.ServiceLabel:     s.Name,
+			api.VersionLabel:     api.ComposeVersion,
+			api.WorkingDirLabel:  project.WorkingDir,
+			api.ConfigFilesLabel: strings.Join(project.ComposeFiles, ","),
+			api.OneoffLabel:      "False",
+		}
+		project.Services[i] = s
+	}
+
+	project.WithoutUnnecessaryResources()
+
+	return (*ComposeApp)(project), nil
 }
 
 var gpuCache *([]external.NvidiaGPUInfo) = nil
@@ -955,15 +1231,34 @@ func removeRuntime(a *ComposeApp) {
 }
 
 func NewComposeAppFromYAML(yaml []byte, skipInterpolation, skipValidation bool) (*ComposeApp, error) {
-	tmpWorkingDir, err := os.MkdirTemp("", "nivaroos-compose-app-*")
-	if err != nil {
-		return nil, err
+	return newComposeAppFromYAML(yaml, skipInterpolation, skipValidation, false)
+}
+
+// catalogWorkingDir is a working dir that is never created: parsing a store
+// catalog entry only needs some absolute dir to resolve relative paths.
+var catalogWorkingDir = filepath.Join(os.TempDir(), "nivaroos-compose-catalog")
+
+func newComposeAppFromYAML(yaml []byte, skipInterpolation, skipValidation, forCatalog bool) (*ComposeApp, error) {
+	tmpWorkingDir := catalogWorkingDir
+	if !forCatalog {
+		dir, err := os.MkdirTemp("", "nivaroos-compose-app-*")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(dir)
+		tmpWorkingDir = dir
 	}
-	defer os.RemoveAll(tmpWorkingDir)
 
 	// the WEBUI_PORT interpolate will tiger twice. In `pulished` and `port-map`.
 	// So we need to promise multiple WEBUI_PORT interpolate is a same value.
-	port, _ := port.GetAvailablePort("tcp")
+	// Only look for a free port when WEBUI_PORT is actually used.
+	port := 0
+	webUIPort := func() int {
+		if port == 0 {
+			port, _ = portutil.GetAvailablePort("tcp")
+		}
+		return port
+	}
 
 	project, err := loader.Load(
 		types.ConfigDetails{
@@ -985,25 +1280,16 @@ func NewComposeAppFromYAML(yaml []byte, skipInterpolation, skipValidation bool) 
 			o.Interpolate.LookupValue = func(key string) (string, bool) {
 				switch key {
 				case "WEBUI_PORT":
-					fmt.Printf("WEBUI_PORT is not specified, using %d\n", port)
-					return strconv.Itoa(port), true
+					p := webUIPort()
+					fmt.Printf("WEBUI_PORT is not specified, using %d\n", p)
+					return strconv.Itoa(p), true
 				}
 
-				for k := range baseInterpolationMap() {
-					if k == key {
-						// example:  TZ => $TZ
-						// we didn't want to interpolate base interpolation value.
-						// they should be interpolated in LoadComposeAppFromConfig
-						return fmt.Sprintf("$%s", k), true
-					}
-				}
-				// the function may can to replace the above code.
-				value, ok := os.LookupEnv(key)
-				if ok {
-					return value, true
-				} else {
-					return fmt.Sprintf("$%s", key), true
-				}
+				// everything else is kept as a reference (TZ => $TZ) and is
+				// resolved when the installed compose file is loaded, from
+				// AppID, the base variables and the global settings only (see
+				// interpolationEnv). The process environment is never used.
+				return fmt.Sprintf("$%s", key), true
 			}
 
 			if getNameFrom(yaml) != "" {
@@ -1064,8 +1350,7 @@ func getNameFrom(composeYAML []byte) string {
 }
 
 func (a *ComposeApp) SetUncontrolled(uncontrolled bool) error {
-	xCasaos := a.Extensions[common.ComposeExtensionNameXCasaOS]
-	xCasaosMap, ok := xCasaos.(map[string]interface{})
+	xCasaosMap, ok := a.XCasaOS()
 
 	// set to controlled app
 	if !ok {
