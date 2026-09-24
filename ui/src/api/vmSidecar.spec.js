@@ -82,10 +82,24 @@ describe('vmSidecar', () => {
 		expect(names).toEqual(['enp7s0'])
 	})
 
-	test('consoleUrl builds a ws:// URL scoped to the VM name', () => {
+	test('consoleUrl builds a same-origin ws:// URL scoped to the VM name', () => {
 		// window is undefined under vitest's node environment, so the
 		// client falls back to "localhost" - see vmSidecar.js.
-		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost:28641/vms/my-vm/console?token=')
+		expect(vmSidecar.consoleUrl('my-vm')).toBe('ws://localhost/v1/vm-sidecar/vms/my-vm/console?token=')
+	})
+
+	test('behind a tunnel over https everything stays on the page origin', () => {
+		const had = 'window' in globalThis
+		const prev = globalThis.window
+		globalThis.window = { location: { protocol: 'https:', host: 'nivaro.example.com', origin: 'https://nivaro.example.com' } }
+		try {
+			expect(vmSidecar.baseUrl).toBe('https://nivaro.example.com/v1/vm-sidecar')
+			expect(vmSidecar.consoleUrl('win 11')).toBe('wss://nivaro.example.com/v1/vm-sidecar/vms/win%2011/console?token=')
+			expect(vmSidecar.screenshotUrl('a')).toMatch(/^https:\/\/nivaro\.example\.com\/v1\/vm-sidecar\/vms\/a\/screenshot\?token=/)
+		} finally {
+			if (had) globalThis.window = prev
+			else delete globalThis.window
+		}
 	})
 
 	test('sharedFolder endpoints call correct URLs and verbs', async () => {

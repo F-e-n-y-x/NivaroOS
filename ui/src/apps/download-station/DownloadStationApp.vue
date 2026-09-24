@@ -23,12 +23,8 @@
 
 		<div class="ds-content">
 			<div v-if="offline" class="ds-offline" role="alert">
-				<b-icon :icon="offlineReason === 'https-unavailable' ? 'lock-alert-outline' : offlineReason === 'auth' ? 'account-lock-outline' : 'lan-disconnect'" custom-size="mdi-48px"></b-icon>
-				<template v-if="offlineReason === 'https-unavailable'">
-					<p class="ds-offline-title">{{ $t('Download Station can\'t be reached over HTTPS') }}</p>
-					<p class="ds-offline-hint">{{ $t('NivaroOS is open over HTTPS, and Download Station could not be reached through its secure route. If the service is running, open NivaroOS over http:// on your local network instead.') }}</p>
-				</template>
-				<template v-else-if="offlineReason === 'auth'">
+				<b-icon :icon="offlineReason === 'auth' ? 'account-lock-outline' : 'lan-disconnect'" custom-size="mdi-48px"></b-icon>
+				<template v-if="offlineReason === 'auth'">
 					<p class="ds-offline-title">{{ $t('Your session has expired') }}</p>
 					<p class="ds-offline-hint">{{ $t('Sign in to NivaroOS again, then retry.') }}</p>
 				</template>

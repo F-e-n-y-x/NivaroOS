@@ -2,14 +2,10 @@
 // Download Station windowed app. Same auth convention as vmSidecar.js - the
 // JWT is read straight from localStorage and sent as Authorization.
 //
-// Where the API is reached:
-//  - page served over http: directly on the sidecar's own port
-//    (http://<host>:28642), like the other sidecars.
-//  - page served over https: the sidecar only speaks plain HTTP, which an
-//    https page may not call (mixed content), so the API goes through the
-//    NivaroOS gateway's same-origin route /v1/download-station/* instead.
-//    If that route isn't there, requests fail with code 'https-unavailable'
-//    so the app can say so instead of "service not running".
+// The API always goes through the NivaroOS gateway's same-origin route
+// /v1/download-station/*, so it works wherever the dashboard works: on the
+// LAN, over https (the sidecar itself speaks plain http) and behind a
+// reverse proxy or tunnel that only publishes the dashboard's port.
 //
 // The lite browser is different: its proxied pages must run on the
 // sidecar's own origin (never the UI's, where page scripts could read the
@@ -38,7 +34,7 @@ export function sidecarOrigin() {
 }
 
 export function apiBase() {
-	return isHttpsPage() ? `${loc().origin}${GATEWAY_PREFIX}` : sidecarOrigin()
+	return `${loc().origin}${GATEWAY_PREFIX}`
 }
 
 function authToken() {
@@ -64,7 +60,7 @@ async function request(path, options = {}) {
 	try {
 		res = await fetch(`${apiBase()}${path}`, { ...options, headers })
 	} catch (e) {
-		throw makeError(e.message || 'network error', isHttpsPage() ? 'https-unavailable' : 'unreachable')
+		throw makeError(e.message || 'network error', 'unreachable')
 	}
 	if (!res.ok) {
 		let text = ''
@@ -73,10 +69,10 @@ async function request(path, options = {}) {
 			text = await res.text()
 			body = JSON.parse(text)
 		} catch (e) {}
-		// Through the gateway, a missing route (or a stopped sidecar) comes
-		// back as the gateway's own 404/502, not as our JSON.
-		if (isHttpsPage() && [404, 502, 503, 504].includes(res.status) && !body.error && !body.message) {
-			throw makeError(`${options.method || 'GET'} ${path} failed: ${res.status}`, 'https-unavailable', res.status)
+		// A stopped sidecar comes back as the gateway's own 502, not as our
+		// JSON: that's "not running", not a request error.
+		if ([502, 503, 504].includes(res.status) && !body.error && !body.message) {
+			throw makeError(`${options.method || 'GET'} ${path} failed: ${res.status}`, 'unreachable', res.status)
 		}
 		const code = res.status === 401 ? 'auth' : res.status === 403 ? 'forbidden' : 'http'
 		throw makeError(body.error || body.message || `${options.method || 'GET'} ${path} failed: ${res.status}`, code, res.status)

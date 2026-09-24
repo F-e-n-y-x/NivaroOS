@@ -19,6 +19,10 @@ func TestIsLoopbackAutomation(t *testing.T) {
 		{"loopback with Sec-Fetch-Site", "127.0.0.1:5000", map[string]string{"Sec-Fetch-Site": "same-site"}, false},
 		{"loopback with Sec-Fetch-Site none", "127.0.0.1:5000", map[string]string{"Sec-Fetch-Site": "none"}, false},
 		{"LAN address", "192.168.1.20:5000", nil, false},
+		// Through the gateway (loopback peer): only when the gateway vouched.
+		{"via gateway, LAN client", "127.0.0.1:5000", map[string]string{"X-Forwarded-For": "192.168.1.20"}, false},
+		{"via gateway, forged vouch without proxy mark", "127.0.0.1:5000", map[string]string{"X-Forwarded-For": "203.0.113.9", "X-Nivaroos-Local-Automation": "0"}, false},
+		{"via gateway, vouched local script", "127.0.0.1:5000", map[string]string{"X-Forwarded-For": "127.0.0.1", "X-Nivaroos-Local-Automation": "1"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -129,5 +133,21 @@ func TestConsoleCheckOrigin(t *testing.T) {
 		if got := consoleUpgrader.CheckOrigin(r); got != c.want {
 			t.Errorf("origin %q: got %v, want %v", c.origin, got, c.want)
 		}
+	}
+}
+
+// Behind a tunnel or reverse proxy (Cloudflare Tunnel, nginx) the page's
+// origin is the public hostname, which the proxy reports.
+func TestSameHostOrigin_BehindReverseProxy(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/vms/win11/console", nil)
+	r.Host = "127.0.0.1:80"
+	r.Header.Set("X-Forwarded-Host", "nivaro.example.com")
+	r.Header.Set("Origin", "https://nivaro.example.com")
+	if !sameHostOrigin(r) {
+		t.Fatal("the public hostname reported by the proxy should be accepted")
+	}
+	r.Header.Set("Origin", "https://evil.example")
+	if sameHostOrigin(r) {
+		t.Fatal("another site must still be refused")
 	}
 }

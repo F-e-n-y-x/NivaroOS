@@ -647,6 +647,7 @@
 <script>
 import RFB from '@novnc/novnc'
 import { instance as http } from '@/service/service'
+import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSidecar'
 import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
 
@@ -679,7 +680,6 @@ const DE_DISPLAY_NAMES = {
 // The on-screen keyboard's host window id (see Dock.vue / ContextMenu.vue).
 const HOST_DESKTOP_WINDOW_ID = 'host-desktop'
 
-const SIDECAR_PORT = 28641
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
 
 const SPECIAL_KEYSYMS = {
@@ -791,10 +791,10 @@ const ARROW_ROWS = [
 	[{ code: 'ArrowLeft', special: 'ArrowLeft', label: '◀' }, { code: 'ArrowDown', special: 'ArrowDown', label: '▼' }, { code: 'ArrowRight', special: 'ArrowRight', label: '▶' }],
 ]
 
+// Through the gateway's same-origin route (see api/vmSidecar.js), so Host
+// Desktop works over https and behind a tunnel or reverse proxy too.
 function sidecarUrl(path) {
-	const proto = window.location.protocol === 'https:' ? 'https:' : 'http:'
-	const host = window.location.hostname || '127.0.0.1'
-	return `${proto}//${host}:${SIDECAR_PORT}${path}`
+	return `${sidecarApiBase()}${path}`
 }
 
 // The app instance's request interceptor adds a "Language" header, which
@@ -1126,13 +1126,11 @@ export default {
 				return
 			}
 
-			const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-			const host = window.location.hostname || '127.0.0.1'
 			let token = ''
 			try {
 				token = localStorage.getItem('access_token') || ''
 			} catch (e) {}
-			const url = `${wsProto}//${host}:${SIDECAR_PORT}/host/console?token=${encodeURIComponent(token)}`
+			const url = `${sidecarWsBase()}/host/console?token=${encodeURIComponent(token)}`
 
 			try {
 				const rfb = new RFB(this.$refs.screen, url)

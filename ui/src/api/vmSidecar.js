@@ -1,19 +1,34 @@
-// Thin REST/WebSocket client for nivaroos-vm-sidecar (port 28641), used by
-// the VM Manager windowed app. Mirrors the SIDECAR_URL convention the GPU
-// widget already uses for its own sidecar. Guarded against a missing
-// `window` (the unit tests run under vitest's default "node" environment,
-// which has no DOM globals) rather than requiring jsdom just for this.
-const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
-const protocol = isHttps ? 'https:' : 'http:'
-const wsProtocol = isHttps ? 'wss:' : 'ws:'
-const BASE_URL = `${protocol}//${hostname}:28641`
+// Thin REST/WebSocket client for nivaroos-vm-sidecar, used by the VM
+// Manager windowed app. Everything goes through the NivaroOS gateway's
+// same-origin route /v1/vm-sidecar/* (REST and the VNC console
+// WebSockets), so it works wherever the dashboard itself works: on the LAN,
+// over https, and behind a reverse proxy or tunnel (Cloudflare Tunnel,
+// nginx) that only publishes the dashboard's port. It used to call the
+// sidecar's own port (28641) directly, which none of those carry.
+// Guarded against a missing `window` (the unit tests run under vitest's
+// default "node" environment, which has no DOM globals).
+export const GATEWAY_PREFIX = '/v1/vm-sidecar'
+
+function loc() {
+	return typeof window !== 'undefined' && window.location ? window.location : { protocol: 'http:', host: 'localhost', origin: 'http://localhost' }
+}
+
+// Same-origin base for REST calls and <img> URLs.
+export function apiBase() {
+	return `${loc().origin}${GATEWAY_PREFIX}`
+}
+
+// Same-origin base for WebSockets (ws:// on http pages, wss:// on https).
+export function wsBase() {
+	const l = loc()
+	return `${l.protocol === 'https:' ? 'wss:' : 'ws:'}//${l.host}${GATEWAY_PREFIX}`
+}
 
 // The sidecar now requires the same JWT every other NivaroOS API call sends
 // (it used to accept anything from the LAN with no auth at all) - read it
 // the same way service.js's axios instance does, straight from localStorage,
-// since this client talks to the sidecar's own port directly rather than
-// through that axios instance.
+// since this client uses fetch/XHR/WebSocket rather than that axios
+// instance.
 function authToken() {
 	return localStorage.getItem('access_token') || ''
 }
@@ -22,7 +37,7 @@ async function request(path, options = {}) {
 	const headers = { ...(options.headers || {}) }
 	const token = authToken()
 	if (token) headers.Authorization = token
-	const res = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+	const res = await fetch(`${apiBase()}${path}`, { ...options, headers })
 	if (!res.ok) {
 		let body = {}
 		try {
@@ -57,14 +72,16 @@ const jsonBody = (payload, method = 'POST') => ({
 })
 
 export const vmSidecar = {
-	baseUrl: BASE_URL,
+	get baseUrl() {
+		return apiBase()
+	},
 
 	getSetupStatus: () => request('/setup/status'),
 	// InstallResult carries its own success flag regardless of HTTP
 	// status (500 on failure) - read the body directly instead of
 	// throwing, so the caller can show the failed step/output.
 	runSetupInstall: () =>
-		fetch(`${BASE_URL}/setup/install`, { method: 'POST', headers: { Authorization: authToken() } }).then(res => res.json()),
+		fetch(`${apiBase()}/setup/install`, { method: 'POST', headers: { Authorization: authToken() } }).then(res => res.json()),
 
 	listVMs: () => request('/vms'),
 	getVM: name => request(`/vms/${encodeURIComponent(name)}`),
@@ -86,7 +103,7 @@ export const vmSidecar = {
 	uploadISOWithProgress(file, onProgress) {
 		const xhr = new XMLHttpRequest()
 		const promise = new Promise((resolve, reject) => {
-			xhr.open('POST', `${BASE_URL}/isos`)
+			xhr.open('POST', `${apiBase()}/isos`)
 			const token = authToken()
 			if (token) xhr.setRequestHeader('Authorization', token)
 			xhr.upload.onprogress = e => {
@@ -165,8 +182,8 @@ export const vmSidecar = {
 	// Neither a WebSocket handshake nor a plain <img src> can carry a custom
 	// header, so the token has to ride as a query param here - the sidecar's
 	// auth accepts either (see vm-sidecar/auth.go).
-	consoleUrl: name => `${wsProtocol}//${hostname}:28641/vms/${encodeURIComponent(name)}/console?token=${encodeURIComponent(authToken())}`,
+	consoleUrl: name => `${wsBase()}/vms/${encodeURIComponent(name)}/console?token=${encodeURIComponent(authToken())}`,
 	// A cache-busting `t` param is left for the caller to append when
 	// polling (a plain <img src> won't re-fetch an unchanged URL).
-	screenshotUrl: name => `${BASE_URL}/vms/${encodeURIComponent(name)}/screenshot?token=${encodeURIComponent(authToken())}`
+	screenshotUrl: name => `${apiBase()}/vms/${encodeURIComponent(name)}/screenshot?token=${encodeURIComponent(authToken())}`
 }

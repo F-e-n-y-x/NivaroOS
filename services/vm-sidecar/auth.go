@@ -3,12 +3,11 @@ package main
 import (
 	"crypto/ecdsa"
 	"encoding/json"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 )
 
@@ -70,39 +69,20 @@ func isHostRoute(path string) bool {
 
 // isLoopbackAutomation reports whether r is same-host, non-browser
 // automation (a script, another local service) - the only kind of caller
-// allowed to skip the JWT. Every modern browser attaches Sec-Fetch-Site to
-// every request it makes and Origin to every cross-origin/non-GET one, so
-// requiring both to be absent keeps a browser tab on this box (which also
-// arrives from loopback) on the normal token path.
+// allowed to skip the JWT. It's the shared rule: the socket peer is
+// loopback, there's no Origin / Sec-Fetch-Site (every browser sends one),
+// and a request that came through the gateway (which is also loopback, and
+// is how the UI reaches this service now) counts only when the gateway
+// vouched that its own client was same-host automation. Without that last
+// part, anyone who can reach the dashboard would get the whole VM API
+// without a token.
 func isLoopbackAutomation(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
-		return false
-	}
-	return r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Site") == ""
+	return middleware.IsLocalAutomation(r)
 }
 
-// sameHostOrigin reports whether r's Origin header names the same host
-// this request was addressed to (any port/scheme) - the web UI is served
-// from this same box on a different port, so that's the one cross-origin
-// caller CORS and the console WebSocket should accept.
+// sameHostOrigin reports whether r's Origin names the host the browser
+// used for this request - directly (Host) or behind a reverse proxy or
+// tunnel (X-Forwarded-Host) - any port or scheme.
 func sameHostOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return false
-	}
-	u, err := url.Parse(origin)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		return false
-	}
-	reqHost := r.Host
-	if h, _, err := net.SplitHostPort(reqHost); err == nil {
-		reqHost = h
-	}
-	reqHost = strings.TrimSuffix(strings.TrimPrefix(reqHost, "["), "]")
-	return reqHost != "" && strings.EqualFold(u.Hostname(), reqHost)
+	return middleware.SameHostOrigin(r)
 }

@@ -116,6 +116,56 @@ var backupProxy = &httputil.ReverseProxy{
 	},
 }
 
+// VM Manager and Host Desktop (nivaroos-vm-sidecar), same-origin at
+// /v1/vm-sidecar/* - REST and the VNC console WebSockets - proxied to
+// http://127.0.0.1:28641 with the prefix stripped. The UI used to talk to
+// :28641 directly, which a reverse proxy or tunnel that only publishes the
+// dashboard's port (Cloudflare Tunnel, nginx, Tailscale Funnel) doesn't
+// carry, and which an https page can't reach at all (mixed content). The
+// sidecar validates the JWT itself; the gateway only vouches for same-host
+// automation, like for its other backends.
+const (
+	vmSidecarPathPrefix = "/v1/vm-sidecar"
+	vmSidecarAddr       = "127.0.0.1:28641"
+)
+
+func isVMSidecarPath(p string) bool {
+	return p == vmSidecarPathPrefix || strings.HasPrefix(p, vmSidecarPathPrefix+"/")
+}
+
+func stripVMSidecarPrefix(p string) string {
+	p = strings.TrimPrefix(p, vmSidecarPathPrefix)
+	if p == "" {
+		return "/"
+	}
+	return p
+}
+
+var vmSidecarProxy = newVMSidecarProxy(vmSidecarAddr)
+
+func newVMSidecarProxy(addr string) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
+		Director: func(r *http.Request) {
+			r.URL.Scheme = "http"
+			r.URL.Host = addr
+			r.URL.Path = stripVMSidecarPrefix(r.URL.Path)
+			if r.URL.RawPath != "" {
+				r.URL.RawPath = stripVMSidecarPrefix(r.URL.RawPath)
+			}
+			if _, ok := r.Header["User-Agent"]; !ok {
+				r.Header.Set("User-Agent", "")
+			}
+		},
+		// ISO uploads and downloads stream through; don't hold them in buffers.
+		FlushInterval: -1,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"vm manager unavailable"}`))
+		},
+	}
+}
+
 type GatewayRoute struct {
 	management *service.Management
 }
@@ -232,6 +282,13 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			}
 			rewriteRequestSourceIP(r)
 			dsProxy.ServeHTTP(w, r)
+			return
+		}
+
+		if isVMSidecarPath(r.URL.Path) {
+			nivaroos_middleware.MarkLocalAutomation(r)
+			rewriteRequestSourceIP(r)
+			vmSidecarProxy.ServeHTTP(w, r)
 			return
 		}
 

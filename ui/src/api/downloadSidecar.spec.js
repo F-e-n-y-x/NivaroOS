@@ -35,10 +35,10 @@ describe('downloadSidecar', () => {
 		})
 	})
 
-	test('over http it calls the sidecar port directly, with the token', async () => {
+	test('over http it goes through the same-origin gateway route, with the token', async () => {
 		global.fetch.mockReturnValue(response([]))
 		await downloadSidecar.listDownloads()
-		expect(global.fetch).toHaveBeenCalledWith('http://nas.local:28642/downloads', { headers: { Authorization: 'tok' } })
+		expect(global.fetch).toHaveBeenCalledWith(`http://nas.local${GATEWAY_PREFIX}/downloads`, { headers: { Authorization: 'tok' } })
 		expect(downloadSidecar.browserAvailable()).toBe(true)
 	})
 
@@ -50,10 +50,10 @@ describe('downloadSidecar', () => {
 		expect(sidecarOrigin()).toBe('http://nas.example.com:28642')
 	})
 
-	test('a missing gateway route is reported as https-unavailable, not "not running"', async () => {
+	test('a stopped sidecar behind the gateway is reported as unreachable', async () => {
 		setLocation('https:', 'nas.example.com')
-		global.fetch.mockReturnValue(response('<html>404</html>', 404))
-		await expect(downloadSidecar.listDownloads()).rejects.toMatchObject({ code: 'https-unavailable' })
+		global.fetch.mockReturnValue(response('Bad Gateway', 502))
+		await expect(downloadSidecar.listDownloads()).rejects.toMatchObject({ code: 'unreachable' })
 	})
 
 	test('an unreachable sidecar over http is reported as unreachable', async () => {
@@ -70,7 +70,7 @@ describe('downloadSidecar', () => {
 		global.fetch.mockReturnValue(response({ path: '/DATA/New' }, 201))
 		await downloadSidecar.createFolder('/DATA', 'New')
 		const [url, opts] = global.fetch.mock.calls[0]
-		expect(url).toBe('http://nas.local:28642/storage/folders')
+		expect(url).toBe(`http://nas.local${GATEWAY_PREFIX}/storage/folders`)
 		expect(opts.method).toBe('POST')
 		expect(opts.headers['Content-Type']).toBe('application/json')
 		expect(JSON.parse(opts.body)).toEqual({ parent: '/DATA', name: 'New' })
