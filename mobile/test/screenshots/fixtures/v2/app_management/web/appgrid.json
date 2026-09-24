@@ -1,0 +1,205 @@
+{
+ "data": [
+  {
+   "app_type": "container",
+   "image": "jellyfin/jellyfin:latest",
+   "is_uncontrolled": false,
+   "name": "jellyfin",
+   "status": "running",
+   "title": {
+    "en_us": "jellyfin"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "nextcloud:29",
+   "is_uncontrolled": false,
+   "name": "nextcloud",
+   "status": "running",
+   "title": {
+    "en_us": "nextcloud"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/home-assistant/home-assistant:stable",
+   "is_uncontrolled": false,
+   "name": "homeassistant",
+   "status": "running",
+   "title": {
+    "en_us": "homeassistant"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "pihole/pihole:latest",
+   "is_uncontrolled": false,
+   "name": "pihole",
+   "status": "running",
+   "title": {
+    "en_us": "pihole"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "portainer/portainer-ce:latest",
+   "is_uncontrolled": false,
+   "name": "portainer",
+   "status": "running",
+   "title": {
+    "en_us": "portainer"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "searxng/searxng:latest",
+   "is_uncontrolled": false,
+   "name": "searxng",
+   "status": "exited",
+   "title": {
+    "en_us": "searxng"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "comfyui-1080ti:latest",
+   "is_uncontrolled": false,
+   "name": "comfyui",
+   "status": "exited",
+   "title": {
+    "en_us": "comfyui"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/immich-app/immich-server:release",
+   "is_uncontrolled": false,
+   "name": "immich_server",
+   "status": "running",
+   "title": {
+    "en_us": "immich_server"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23",
+   "is_uncontrolled": false,
+   "name": "immich_postgres",
+   "status": "running",
+   "title": {
+    "en_us": "immich_postgres"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/immich-app/immich-machine-learning:release-cuda",
+   "is_uncontrolled": false,
+   "name": "immich_machine_learning",
+   "status": "running",
+   "title": {
+    "en_us": "immich_machine_learning"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "docker.io/valkey/valkey:9@sha256:4963247afc4cd33c7d3b2d2816b9f7f8eeebab148d29056c2ca4d7cbc966f2d9",
+   "is_uncontrolled": false,
+   "name": "immich_redis",
+   "status": "running",
+   "title": {
+    "en_us": "immich_redis"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "syncthing/syncthing:latest",
+   "is_uncontrolled": false,
+   "name": "syncthing",
+   "status": "exited",
+   "title": {
+    "en_us": "syncthing"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "openspeedtest/latest:latest",
+   "is_uncontrolled": false,
+   "name": "openspeedtest",
+   "status": "running",
+   "title": {
+    "en_us": "openspeedtest"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "vaultwarden/server:latest",
+   "is_uncontrolled": false,
+   "name": "vaultwarden",
+   "status": "exited",
+   "title": {
+    "en_us": "vaultwarden"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "louislam/uptime-kuma:1",
+   "is_uncontrolled": false,
+   "name": "uptime-kuma",
+   "status": "running",
+   "title": {
+    "en_us": "uptime-kuma"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+   "is_uncontrolled": false,
+   "name": "paperless",
+   "status": "exited",
+   "title": {
+    "en_us": "paperless"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "ghcr.io/advplyr/audiobookshelf:latest",
+   "is_uncontrolled": false,
+   "name": "audiobookshelf",
+   "status": "running",
+   "title": {
+    "en_us": "audiobookshelf"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "deluan/navidrome:latest",
+   "is_uncontrolled": false,
+   "name": "navidrome",
+   "status": "exited",
+   "title": {
+    "en_us": "navidrome"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "debian:latest",
+   "is_uncontrolled": false,
+   "name": "debian-ssh",
+   "status": "exited",
+   "title": {
+    "en_us": "debian-ssh"
+   }
+  },
+  {
+   "app_type": "container",
+   "image": "filebrowser/filebrowser:latest",
+   "is_uncontrolled": false,
+   "name": "filebrowser",
+   "status": "running",
+   "title": {
+    "en_us": "filebrowser"
+   }
+  }
+ ],
+ "message": "This data is for internal use ONLY - will not be supported for public use."
+}

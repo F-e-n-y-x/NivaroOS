@@ -60,7 +60,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
       setState(() => _batteryIgnored = ignored);
       if (ignored) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
+          SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
         );
       }
     }
@@ -111,7 +111,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
     if (mounted) {
       setState(() => _syncing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('Companion devices synced with server.'),
           backgroundColor: NivaroColors.success,
         ),
@@ -129,7 +129,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
         backgroundColor: NivaroColors.surfaceContainerHigh,
         title: Row(
           children: [
-            const Icon(Icons.edit_rounded, color: NivaroColors.primaryLight, size: 22),
+            Icon(Icons.edit_rounded, color: NivaroColors.primaryLight, size: 22),
             const SizedBox(width: 10),
             Text(dev.isCurrentDevice ? 'Rename This Device' : 'Rename Companion Device',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -143,13 +143,13 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
             children: [
               Text(
                 'Enter a friendly name for ${dev.model}:',
-                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
               ),
               const SizedBox(height: 14),
               TextFormField(
                 controller: controller,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: NivaroColors.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'e.g. Ayush\'s Pixel 8',
                   filled: true,
@@ -208,7 +208,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
         title: const Text('Disconnect Companion Device', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         content: Text(
           'Are you sure you want to remove "${dev.name}"? It will need to reconnect to pair again with the server.',
-          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13.5),
+          style: TextStyle(color: NivaroColors.textMuted, fontSize: 13.5),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -277,9 +277,9 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    const Text('Connected Client Devices', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+                    Text('Connected Client Devices', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: NivaroColors.textPrimary)),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       'Manage mobile and tablet companion apps connected to your NivaroOS personal cloud server. View storage and rename connected devices.',
                       style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                     ),
@@ -295,7 +295,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: (_bgRunning ? NivaroColors.success : NivaroColors.primary).withOpacity(0.15),
+                                    color: (_bgRunning ? NivaroColors.success : NivaroColors.primary).withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
@@ -319,7 +319,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                             decoration: BoxDecoration(
-                                              color: (_bgRunning ? NivaroColors.success : Colors.white12).withOpacity(0.2),
+                                              color: (_bgRunning ? NivaroColors.success : Colors.white12).withValues(alpha: 0.2),
                                               borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: Text(
@@ -338,14 +338,14 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                                         _bgRunning
                                             ? 'Phone storage server & sync active with screen off'
                                             : 'Foreground service inactive',
-                                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
                                       ),
                                     ],
                                   ),
                                 ),
                                 Switch(
                                   value: _bgRunning,
-                                  activeColor: NivaroColors.primaryLight,
+                                  activeThumbColor: NivaroColors.primaryLight,
                                   onChanged: _toggleBgService,
                                 ),
                               ],
@@ -355,15 +355,15 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: NivaroColors.warning.withOpacity(0.12),
+                                  color: NivaroColors.warning.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: NivaroColors.warning.withOpacity(0.25)),
+                                  border: Border.all(color: NivaroColors.warning.withValues(alpha: 0.25)),
                                 ),
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.battery_alert_rounded, color: NivaroColors.warningLight, size: 16),
+                                    Icon(Icons.battery_alert_rounded, color: NivaroColors.warningLight, size: 16),
                                     const SizedBox(width: 8),
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
                                         'Battery optimization may pause background sync in sleep',
                                         style: TextStyle(color: NivaroColors.warningLight, fontSize: 11.5, fontWeight: FontWeight.w500),
@@ -441,7 +441,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: dev.isCurrentDevice ? NivaroColors.primary.withOpacity(0.5) : NivaroColors.borderSubtle,
+          color: dev.isCurrentDevice ? NivaroColors.primary.withValues(alpha: 0.5) : NivaroColors.borderSubtle,
           width: dev.isCurrentDevice ? 1.5 : 1.0,
         ),
         boxShadow: const [
@@ -457,12 +457,12 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: dev.isCurrentDevice ? NivaroColors.primary.withOpacity(0.15) : NivaroColors.surfaceRaised,
+                  color: dev.isCurrentDevice ? NivaroColors.primary.withValues(alpha: 0.15) : NivaroColors.surfaceRaised,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _getDeviceIcon(dev),
-                  color: dev.isCurrentDevice ? NivaroColors.primaryLight : Colors.white70,
+                  color: dev.isCurrentDevice ? NivaroColors.primaryLight : NivaroColors.textSecondary,
                   size: 24,
                 ),
               ),
@@ -476,7 +476,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                         Flexible(
                           child: Text(
                             dev.name,
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5, color: Colors.white),
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5, color: NivaroColors.textPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -485,10 +485,10 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
-                              color: NivaroColors.primary.withOpacity(0.2),
+                              color: NivaroColors.primary.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text('THIS DEVICE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                            child: Text('THIS DEVICE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 9.5, fontWeight: FontWeight.w800)),
                           ),
                         ],
                       ],
@@ -496,33 +496,33 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
                     const SizedBox(height: 3),
                     Text(
                       '${dev.model} · ${dev.platform} · ${dev.appVersion}',
-                      style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 19, color: NivaroColors.primaryLight),
+                icon: Icon(Icons.edit_outlined, size: 19, color: NivaroColors.primaryLight),
                 tooltip: 'Rename device',
                 onPressed: () => _showRenameDialog(dev),
               ),
               if (!dev.isCurrentDevice)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 19, color: NivaroColors.dangerLight),
+                  icon: Icon(Icons.delete_outline_rounded, size: 19, color: NivaroColors.dangerLight),
                   tooltip: 'Disconnect device',
                   onPressed: () => _confirmDeleteDevice(dev),
                 ),
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: NivaroColors.borderSubtle),
+          Divider(height: 1, color: NivaroColors.borderSubtle),
           const SizedBox(height: 12),
 
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Device Storage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.white70)),
-              Text('$usedStr / $totalStr', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: NivaroColors.primaryLight)),
+              Text('Device Storage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: NivaroColors.textSecondary)),
+              Text('$usedStr / $totalStr', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: NivaroColors.primaryLight)),
             ],
           ),
           const SizedBox(height: 8),
@@ -539,7 +539,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.cloud_upload_outlined, size: 13, color: NivaroColors.textMuted),
                   SizedBox(width: 4),
@@ -588,7 +588,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
               ),
               Text(
                 'IP: ${dev.ipAddress}',
-                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
               ),
             ],
           ),
@@ -608,15 +608,15 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.cloud_sync_rounded, color: NivaroColors.accentLight, size: 22),
               SizedBox(width: 10),
-              Text('Shared Cloud Storage Gateway', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white)),
+              Text('Shared Cloud Storage Gateway', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: NivaroColors.textPrimary)),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'All registered companion devices can access shared device folders in the Files tab. Files pasted to a companion folder are automatically relayed by your NivaroOS server.',
             style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, height: 1.4),
           ),

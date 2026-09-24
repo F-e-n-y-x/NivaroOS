@@ -1,0 +1,907 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "count": 112,
+  "security_count": 23,
+  "packages": [
+   {
+    "name": "at-spi2-common",
+    "suite": "stable,stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "at-spi2-core",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "base-files",
+    "suite": "stable",
+    "new_version": "13.8+deb13u7",
+    "current_version": "13.8+deb13u6",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "bind9-dnsutils",
+    "suite": "stable-security",
+    "new_version": "1:9.20.29-1~deb13u1",
+    "current_version": "1:9.20.26-1~deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "bind9-host",
+    "suite": "stable-security",
+    "new_version": "1:9.20.29-1~deb13u1",
+    "current_version": "1:9.20.26-1~deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "bind9-libs",
+    "suite": "stable-security",
+    "new_version": "1:9.20.29-1~deb13u1",
+    "current_version": "1:9.20.26-1~deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "busybox",
+    "suite": "stable",
+    "new_version": "1:1.37.0-6+b9",
+    "current_version": "1:1.37.0-6+b8",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "cinnamon-common",
+    "suite": "stable,stable",
+    "new_version": "6.4.10-2+deb13u1",
+    "current_version": "6.4.10-2",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "cinnamon",
+    "suite": "stable",
+    "new_version": "6.4.10-2+deb13u1",
+    "current_version": "6.4.10-2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "cloudflared",
+    "suite": "unknown",
+    "new_version": "2026.9.3",
+    "current_version": "2026.8.3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "containerd.io",
+    "suite": "trixie",
+    "new_version": "2.3.5-1~debian.13~trixie",
+    "current_version": "2.3.4-2~debian.13~trixie",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "dhcpcd-base",
+    "suite": "stable",
+    "new_version": "1:10.1.0-11+deb13u4",
+    "current_version": "1:10.1.0-11+deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "dirmngr",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "dnsmasq-base",
+    "suite": "stable",
+    "new_version": "2.91-1+deb13u2",
+    "current_version": "2.91-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "docker-buildx-plugin",
+    "suite": "trixie",
+    "new_version": "0.37.1-1~debian.13~trixie",
+    "current_version": "0.37.0-1~debian.13~trixie",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "docker-ce-cli",
+    "suite": "trixie",
+    "new_version": "5:29.8.1-1~debian.13~trixie",
+    "current_version": "5:29.8.0-1~debian.13~trixie",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "docker-ce-rootless-extras",
+    "suite": "trixie",
+    "new_version": "5:29.8.1-1~debian.13~trixie",
+    "current_version": "5:29.8.0-1~debian.13~trixie",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "docker-ce",
+    "suite": "trixie",
+    "new_version": "5:29.8.1-1~debian.13~trixie",
+    "current_version": "5:29.8.0-1~debian.13~trixie",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "firefox-esr",
+    "suite": "stable-security",
+    "new_version": "140.16.0esr-1~deb13u1",
+    "current_version": "140.15.0esr-1~deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "gh",
+    "suite": "unknown",
+    "new_version": "2.101.0",
+    "current_version": "2.100.0",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gir1.2-atk-1.0",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gir1.2-glib-2.0",
+    "suite": "stable",
+    "new_version": "2.84.4-3~deb13u5",
+    "current_version": "2.84.4-3~deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gnupg-utils",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "google-chrome-stable",
+    "suite": "stable",
+    "new_version": "154.0.8037.57-1",
+    "current_version": "152.0.7977.82-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpg-agent",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpg-wks-client",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpg",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpgconf",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpgsm",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gpgv",
+    "suite": "stable",
+    "new_version": "2.4.7-21+deb13u1+b5",
+    "current_version": "2.4.7-21+deb13u1+b4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "gstreamer1.0-alsa",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "gstreamer1.0-gl",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "gstreamer1.0-plugins-base",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "gstreamer1.0-plugins-base",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": true
+   },
+   {
+    "name": "gstreamer1.0-x",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "gstreamer1.0-x",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": true
+   },
+   {
+    "name": "gzip",
+    "suite": "stable",
+    "new_version": "1.13-1+deb13u1",
+    "current_version": "1.13-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "imagemagick-7-common",
+    "suite": "stable,stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "imagemagick-7.q16",
+    "suite": "stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "imagemagick",
+    "suite": "stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libasound2-data",
+    "suite": "stable,stable",
+    "new_version": "1.2.14-1+deb13u1",
+    "current_version": "1.2.14-1",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "libasound2t64",
+    "suite": "stable",
+    "new_version": "1.2.14-1+deb13u1",
+    "current_version": "1.2.14-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libasound2t64",
+    "suite": "stable",
+    "new_version": "1.2.14-1+deb13u1",
+    "current_version": "1.2.14-1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libatk-bridge2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libatk-bridge2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libatk1.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libatk1.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libatopology2t64",
+    "suite": "stable",
+    "new_version": "1.2.14-1+deb13u1",
+    "current_version": "1.2.14-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libatspi2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libatspi2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.56.2-1+deb13u2",
+    "current_version": "2.56.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libaudit-common",
+    "suite": "stable,stable",
+    "new_version": "1:4.0.2-2+deb13u1",
+    "current_version": "1:4.0.2-2",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "libaudit1",
+    "suite": "stable",
+    "new_version": "1:4.0.2-2+deb13u1",
+    "current_version": "1:4.0.2-2+b2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libc-bin",
+    "suite": "stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libc-dev-bin",
+    "suite": "stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libc-l10n",
+    "suite": "stable,stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "libc6-dev",
+    "suite": "stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libc6",
+    "suite": "stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libc6",
+    "suite": "stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libcap2-bin",
+    "suite": "stable",
+    "new_version": "1:2.75-10+deb13u1+b3",
+    "current_version": "1:2.75-10+deb13u1+b1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libcap2",
+    "suite": "stable",
+    "new_version": "1:2.75-10+deb13u1+b3",
+    "current_version": "1:2.75-10+deb13u1+b1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libcap2",
+    "suite": "stable",
+    "new_version": "1:2.75-10+deb13u1+b3",
+    "current_version": "1:2.75-10+deb13u1+b1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libde265-0",
+    "suite": "stable,stable-security",
+    "new_version": "1.0.15-1+deb13u2",
+    "current_version": "1.0.15-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "libde265-0",
+    "suite": "stable,stable-security",
+    "new_version": "1.0.15-1+deb13u2",
+    "current_version": "1.0.15-1+deb13u1",
+    "arch": "i386",
+    "is_security": true
+   },
+   {
+    "name": "libevent-2.1-7t64",
+    "suite": "stable-security",
+    "new_version": "2.1.13-stable-1~deb13u1",
+    "current_version": "2.1.12-stable-10+b1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "libfluidsynth3",
+    "suite": "stable",
+    "new_version": "2.4.4+dfsg-1+deb13u3",
+    "current_version": "2.4.4+dfsg-1+deb13u2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libglib2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.84.4-3~deb13u5",
+    "current_version": "2.84.4-3~deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libglib2.0-0t64",
+    "suite": "stable",
+    "new_version": "2.84.4-3~deb13u5",
+    "current_version": "2.84.4-3~deb13u3",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libglib2.0-bin",
+    "suite": "stable",
+    "new_version": "2.84.4-3~deb13u5",
+    "current_version": "2.84.4-3~deb13u3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libglib2.0-data",
+    "suite": "stable,stable",
+    "new_version": "2.84.4-3~deb13u5",
+    "current_version": "2.84.4-3~deb13u3",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "libgstreamer-gl1.0-0",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "libgstreamer-plugins-base1.0-0",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "libgstreamer-plugins-base1.0-0",
+    "suite": "stable-security",
+    "new_version": "1.26.2-1+deb13u2",
+    "current_version": "1.26.2-1+deb13u1",
+    "arch": "i386",
+    "is_security": true
+   },
+   {
+    "name": "libjbig2dec0",
+    "suite": "stable-security",
+    "new_version": "0.20-1+deb13u1",
+    "current_version": "0.20-1+b3",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "libmagickcore-7.q16-10-extra",
+    "suite": "stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libmagickcore-7.q16-10",
+    "suite": "stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libmagickwand-7.q16-10",
+    "suite": "stable",
+    "new_version": "8:203.0.113.44+dfsg1-1+deb13u12",
+    "current_version": "8:203.0.113.44+dfsg1-1+deb13u11",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libmbedcrypto16",
+    "suite": "stable",
+    "new_version": "3.6.6-0.1~deb13u1",
+    "current_version": "3.6.5-0.1~deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libmbedcrypto16",
+    "suite": "stable",
+    "new_version": "3.6.6-0.1~deb13u1",
+    "current_version": "3.6.5-0.1~deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libnfs14",
+    "suite": "stable",
+    "new_version": "5.0.2-1+deb13u1",
+    "current_version": "5.0.2-1+b2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libnvidia-container-tools",
+    "suite": "unknown",
+    "new_version": "1.20.1-1",
+    "current_version": "1.20.0-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libnvidia-container1",
+    "suite": "unknown",
+    "new_version": "1.20.1-1",
+    "current_version": "1.20.0-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libodbc2",
+    "suite": "stable",
+    "new_version": "2.3.12-2+deb13u1",
+    "current_version": "2.3.12-2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libodbc2",
+    "suite": "stable",
+    "new_version": "2.3.12-2+deb13u1",
+    "current_version": "2.3.12-2",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libodbccr2",
+    "suite": "stable",
+    "new_version": "2.3.12-2+deb13u1",
+    "current_version": "2.3.12-2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libodbccr2",
+    "suite": "stable",
+    "new_version": "2.3.12-2+deb13u1",
+    "current_version": "2.3.12-2",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libperl5.40",
+    "suite": "stable",
+    "new_version": "5.40.1-6+deb13u1",
+    "current_version": "5.40.1-6",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libpython3.13-minimal",
+    "suite": "stable",
+    "new_version": "3.13.5-2+deb13u5",
+    "current_version": "3.13.5-2+deb13u4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libpython3.13-stdlib",
+    "suite": "stable",
+    "new_version": "3.13.5-2+deb13u5",
+    "current_version": "3.13.5-2+deb13u4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libpython3.13",
+    "suite": "stable",
+    "new_version": "3.13.5-2+deb13u5",
+    "current_version": "3.13.5-2+deb13u4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libraw23t64",
+    "suite": "stable",
+    "new_version": "0.21.4-2+deb13u1",
+    "current_version": "0.21.4-2",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libsqlite3-0",
+    "suite": "stable",
+    "new_version": "3.46.1-7+deb13u2",
+    "current_version": "3.46.1-7+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libsqlite3-0",
+    "suite": "stable",
+    "new_version": "3.46.1-7+deb13u2",
+    "current_version": "3.46.1-7+deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libssh2-1t64",
+    "suite": "stable",
+    "new_version": "1.11.1-1+deb13u2",
+    "current_version": "1.11.1-1+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "libssh2-1t64",
+    "suite": "stable",
+    "new_version": "1.11.1-1+deb13u2",
+    "current_version": "1.11.1-1+deb13u1",
+    "arch": "i386",
+    "is_security": false
+   },
+   {
+    "name": "libunbound8",
+    "suite": "stable-security",
+    "new_version": "1.26.1-0+deb13u1",
+    "current_version": "1.22.0-2+deb13u3",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "linux-xanmod-x64v3",
+    "suite": "unknown",
+    "new_version": "7.2.7-xanmod1-0",
+    "current_version": "7.1.13-xanmod1-0",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "locales",
+    "suite": "stable,stable",
+    "new_version": "2.41-12+deb13u4",
+    "current_version": "2.41-12+deb13u3",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "nvidia-container-toolkit-base",
+    "suite": "unknown",
+    "new_version": "1.20.1-1",
+    "current_version": "1.20.0-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "nvidia-container-toolkit",
+    "suite": "unknown",
+    "new_version": "1.20.1-1",
+    "current_version": "1.20.0-1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "perl-base",
+    "suite": "stable",
+    "new_version": "5.40.1-6+deb13u1",
+    "current_version": "5.40.1-6",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "perl-modules-5.40",
+    "suite": "stable,stable",
+    "new_version": "5.40.1-6+deb13u1",
+    "current_version": "5.40.1-6",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "perl",
+    "suite": "stable",
+    "new_version": "5.40.1-6+deb13u1",
+    "current_version": "5.40.1-6",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "python3.13-minimal",
+    "suite": "stable",
+    "new_version": "3.13.5-2+deb13u5",
+    "current_version": "3.13.5-2+deb13u4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "python3.13",
+    "suite": "stable",
+    "new_version": "3.13.5-2+deb13u5",
+    "current_version": "3.13.5-2+deb13u4",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "sqlite3",
+    "suite": "stable",
+    "new_version": "3.46.1-7+deb13u2",
+    "current_version": "3.46.1-7+deb13u1",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "tailscale",
+    "suite": "unknown",
+    "new_version": "1.102.4",
+    "current_version": "1.102.3",
+    "arch": "amd64",
+    "is_security": false
+   },
+   {
+    "name": "tzdata",
+    "suite": "stable,stable",
+    "new_version": "2026c-0+deb13u1",
+    "current_version": "2026b-0+deb13u1",
+    "arch": "all",
+    "is_security": false
+   },
+   {
+    "name": "xdg-dbus-proxy",
+    "suite": "stable-security",
+    "new_version": "0.1.6-1+deb13u3",
+    "current_version": "0.1.6-1+deb13u2",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "xserver-common",
+    "suite": "stable-security,stable-security",
+    "new_version": "2:21.1.16-1.3+deb13u4",
+    "current_version": "2:21.1.16-1.3+deb13u3",
+    "arch": "all",
+    "is_security": true
+   },
+   {
+    "name": "xserver-xorg-core",
+    "suite": "stable-security",
+    "new_version": "2:21.1.16-1.3+deb13u4",
+    "current_version": "2:21.1.16-1.3+deb13u3",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "xserver-xorg-dev",
+    "suite": "stable-security",
+    "new_version": "2:21.1.16-1.3+deb13u4",
+    "current_version": "2:21.1.16-1.3+deb13u3",
+    "arch": "amd64",
+    "is_security": true
+   },
+   {
+    "name": "xserver-xorg-legacy",
+    "suite": "stable-security",
+    "new_version": "2:21.1.16-1.3+deb13u4",
+    "current_version": "2:21.1.16-1.3+deb13u3",
+    "arch": "amd64",
+    "is_security": true
+   }
+  ],
+  "last_checked": "2026-09-25T01:08:57+05:30"
+ }
+}

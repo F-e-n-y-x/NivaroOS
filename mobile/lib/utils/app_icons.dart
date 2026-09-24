@@ -67,8 +67,9 @@ class AppIconHelper {
   /// Checks if the app is a known built-in system app
   static String? getBuiltInAsset(String appName) {
     final key = appName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-    if (key == 'appstore' || key == 'appstore')
+    if (key == 'appstore' || key == 'appstore') {
       return 'assets/app/appstore.png';
+    }
     if (key == 'files') return 'assets/app/files.svg';
     if (key == 'settings') return 'assets/app/settings.png';
     if (key == 'terminal') return 'assets/app/terminal.png';
@@ -135,7 +136,7 @@ class NivaroAppIcon extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _defaultWebUiIcon(),
+          errorBuilder: (_, _, _) => _defaultWebUiIcon(),
         );
       }
     } else if (resolved.startsWith('data:image/')) {
@@ -157,7 +158,7 @@ class NivaroAppIcon extends StatelessWidget {
               width: size,
               height: size,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _defaultWebUiIcon(),
+              errorBuilder: (_, _, _) => _defaultWebUiIcon(),
             );
           }
         } catch (_) {
@@ -183,7 +184,7 @@ class NivaroAppIcon extends StatelessWidget {
         height: size,
         fit: BoxFit.cover,
         headers: _authHeadersFor(resolved),
-        errorBuilder: (_, __, ___) => _defaultWebUiIcon(),
+        errorBuilder: (_, _, _) => _defaultWebUiIcon(),
       );
     }
 
@@ -195,14 +196,14 @@ class NivaroAppIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(effectiveR),
         border: Border.all(
           color: isRunning && showRunningGlow
-              ? NivaroColors.success.withOpacity(0.4)
+              ? NivaroColors.success.withValues(alpha: 0.4)
               : NivaroColors.borderSubtle,
           width: 1,
         ),
         boxShadow: isRunning && showRunningGlow
             ? [
                 BoxShadow(
-                  color: NivaroColors.success.withOpacity(0.2),
+                  color: NivaroColors.success.withValues(alpha: 0.2),
                   blurRadius: 10,
                   spreadRadius: 1,
                 ),

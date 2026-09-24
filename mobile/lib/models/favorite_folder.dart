@@ -6,7 +6,7 @@ class FavoriteFolder {
   final String name;
   final String path;
   final IconData icon;
-  final Color color;
+  final Color? _color;
   final bool isCustom;
   final String? pack;
 
@@ -14,10 +14,13 @@ class FavoriteFolder {
     required this.name,
     required this.path,
     required this.icon,
-    this.color = NivaroColors.primaryLight,
+    this._color,
     this.isCustom = false,
     this.pack,
   });
+
+  /// Tint for the folder's icon; follows the active theme unless set.
+  Color get color => _color ?? NivaroColors.primaryLight;
 
   factory FavoriteFolder.fromCustomJson(Map<String, dynamic> json) {
     final name = json['name'] as String? ?? 'Shortcut';
@@ -64,7 +67,7 @@ class FavoriteFolder {
   }
 
   /// Standard WebUI built-in favorite folders (FolderTree.vue parity)
-  static List<FavoriteFolder> get defaultWebUiFavorites => const [
+  static List<FavoriteFolder> get defaultWebUiFavorites => [
         FavoriteFolder(
           name: 'Root',
           path: '/',

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -157,7 +158,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
       } catch (_) {}
     }
 
-    final now = DateTime.now();
+    final now = clock.now();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
 
@@ -258,7 +259,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         backgroundColor: NivaroColors.surfaceRaised,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(NivaroShape.large)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.system_security_update_rounded,
                 color: NivaroColors.primaryLight, size: 24),
@@ -269,13 +270,13 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         ),
         content: Text(
           'Are you sure you want to trigger the NivaroOS server update pipeline to $_serverLatestVersion?\n\nCore services will apply latest components and restart automatically.',
-          style: const TextStyle(
+          style: TextStyle(
               color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: NivaroColors.textMuted)),
           ),
           FilledButton(
@@ -375,7 +376,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: NivaroColors.surfaceRaised,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 24),
             SizedBox(width: 10),
@@ -384,12 +385,12 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         ),
         content: Text(
           'This will execute `apt-get dist-upgrade` on the host server to upgrade $_upgradablePackages packages${_securityCount > 0 ? " (including $_securityCount security updates)" : ""}.\n\nYou can watch live execution logs as packages are configured.',
-          style: const TextStyle(color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
+          style: TextStyle(color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: NivaroColors.textMuted)),
+            child: Text('Cancel', style: TextStyle(color: NivaroColors.textMuted)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -586,20 +587,20 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 16),
                     decoration: BoxDecoration(
-                      color: NivaroColors.primary.withOpacity(0.12),
+                      color: NivaroColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: NivaroColors.primaryLight.withOpacity(0.3)),
+                          color: NivaroColors.primaryLight.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline_rounded,
+                        Icon(Icons.info_outline_rounded,
                             color: NivaroColors.primaryLight, size: 18),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             _serverStatusMessage!,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: NivaroColors.textPrimary,
                                 fontSize: 12.5),
                           ),
@@ -654,7 +655,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                     style: FilledButton.styleFrom(
                       backgroundColor: NivaroColors.surfaceRaised,
                       foregroundColor: NivaroColors.textPrimary,
-                      side: const BorderSide(color: NivaroColors.borderSubtle),
+                      side: BorderSide(color: NivaroColors.borderSubtle),
                       minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(
                           borderRadius:
@@ -667,7 +668,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   Center(
                     child: Text(
                       'Last checked today at $_lastServerCheckedTime',
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NivaroColors.textMuted, fontSize: 11.5),
                     ),
                   ),
@@ -693,19 +694,19 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isUpToDate
-                  ? NivaroColors.success.withOpacity(0.15)
-                  : NivaroColors.warning.withOpacity(0.15),
+                  ? NivaroColors.success.withValues(alpha: 0.15)
+                  : NivaroColors.warning.withValues(alpha: 0.15),
               border: Border.all(
                 color: isUpToDate
-                    ? NivaroColors.successLight.withOpacity(0.5)
-                    : NivaroColors.warning.withOpacity(0.5),
+                    ? NivaroColors.successLight.withValues(alpha: 0.5)
+                    : NivaroColors.warning.withValues(alpha: 0.5),
                 width: 2,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isUpToDate
-                      ? NivaroColors.success.withOpacity(0.2)
-                      : NivaroColors.warning.withOpacity(0.2),
+                      ? NivaroColors.success.withValues(alpha: 0.2)
+                      : NivaroColors.warning.withValues(alpha: 0.2),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
@@ -724,7 +725,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
             isUpToDate
                 ? 'NivaroOS Server is Up to Date'
                 : 'New Server Update Available',
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 19,
                 color: NivaroColors.textPrimary),
@@ -735,7 +736,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                 ? 'Your server is running the latest stable build ($_serverCurrentVersion)'
                 : 'A new server release ($_serverLatestVersion) is available',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NivaroColors.textSecondary, fontSize: 13),
           ),
         ],
@@ -761,7 +762,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   color: (_appHasUpdate
                           ? NivaroColors.warning
                           : NivaroColors.primary)
-                      .withOpacity(0.15),
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.android_rounded,
@@ -785,14 +786,14 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                           : (_appHasUpdate
                               ? 'Installed: $_appInstalledVersion · Latest: $_appLatestVersion$sizeMb'
                               : 'Installed: $_appInstalledVersion · Up to date'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NivaroColors.textMuted, fontSize: 12),
                     ),
                   ],
                 ),
               ),
               if (!_appChecking && !_appHasUpdate)
-                const Icon(Icons.check_circle_rounded,
+                Icon(Icons.check_circle_rounded,
                     color: NivaroColors.successLight, size: 20),
             ],
           ),
@@ -815,7 +816,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   const SizedBox(height: 8),
                   Text(
                       '${(_appDownloadProgress * 100).toStringAsFixed(0)}% downloaded',
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: NivaroColors.textMuted, fontSize: 11.5)),
                 ],
               )
@@ -836,7 +837,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
             if (_appReleaseNotes.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(_appReleaseNotes,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: NivaroColors.textSecondary,
                       fontSize: 12.5,
                       height: 1.4)),
@@ -853,24 +854,24 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SectionHeader(
+          const LegacySectionHeader(
             title: 'Server Version Information',
             subtitle: 'Release channel & system binaries',
           ),
           const SizedBox(height: 6),
           _infoRow('Installed Version', _serverCurrentVersion,
               isBadge: true, badgeColor: NivaroColors.primary),
-          const Divider(height: 20, color: NivaroColors.borderSubtle),
+          Divider(height: 20, color: NivaroColors.borderSubtle),
           _infoRow('Latest Release', _serverLatestVersion,
               isBadge: true,
               badgeColor: _serverNeedUpdate
                   ? NivaroColors.warning
                   : NivaroColors.success),
-          const Divider(height: 20, color: NivaroColors.borderSubtle),
+          Divider(height: 20, color: NivaroColors.borderSubtle),
           _infoRow('Release Channel', 'Stable (Production)', isBadge: false),
-          const Divider(height: 20, color: NivaroColors.borderSubtle),
+          Divider(height: 20, color: NivaroColors.borderSubtle),
           _infoRow('Kernel Hypervisor', 'KVM Sidecar Active', isBadge: false),
-          const Divider(height: 20, color: NivaroColors.borderSubtle),
+          Divider(height: 20, color: NivaroColors.borderSubtle),
           _infoRow('Host Architecture', 'x86_64 / Linux 6.x', isBadge: false),
         ],
       ),
@@ -885,14 +886,14 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.star_rounded,
+              Icon(Icons.star_rounded,
                   color: NivaroColors.warning, size: 20),
               const SizedBox(width: 8),
               Text(
                 _serverNeedUpdate
                     ? 'Server Release Notes ($_serverLatestVersion)'
                     : 'Server Release Highlights ($_serverCurrentVersion)',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14.5,
                     color: NivaroColors.textPrimary),
@@ -903,11 +904,11 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           if (_serverChangeLog.isNotEmpty)
             Text(
               _serverChangeLog,
-              style: const TextStyle(
+              style: TextStyle(
                   color: NivaroColors.textSecondary, fontSize: 13, height: 1.5),
             )
           else
-            const Text(
+            Text(
               '• Native Hypervisor KVM Sidecar for seamless Virtual Machine management\n• High-FPS Real-time Video Stream & VNC Remote Console\n• Native Terminal Emulator with VT100/ANSI PTY engine & xterm.dart\n• Zero-dependency Go Speedtest Engine (Internal & Local Link)\n• Unified Multi-Drive File Explorer with Companion Device Storage Sharing',
               style: TextStyle(
                   color: NivaroColors.textSecondary, fontSize: 13, height: 1.5),
@@ -932,7 +933,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.code_rounded,
+              Icon(Icons.code_rounded,
                   color: NivaroColors.primaryLight, size: 20),
               const SizedBox(width: 8),
               const Text('Latest Git Commit (master)',
@@ -947,7 +948,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                 ),
                 child: Text(
                   sha,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       color: NivaroColors.primaryLight,
@@ -959,7 +960,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           const SizedBox(height: 10),
           Text(
             message,
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
                 color: NivaroColors.textPrimary),
@@ -968,7 +969,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
           Text(
             'Committed by $author',
             style:
-                const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
           ),
         ],
       ),
@@ -989,7 +990,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   color: (_securityCount > 0
                           ? NivaroColors.danger
                           : (_upgradablePackages > 0 ? NivaroColors.warning : NivaroColors.info))
-                      .withOpacity(0.15),
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1029,7 +1030,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                 ),
               ),
               if (_upgradingApt)
-                const SizedBox(
+                SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
@@ -1056,7 +1057,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _refreshingRepos ? null : _refreshAptRepositories,
                   icon: _refreshingRepos
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 1.5, color: NivaroColors.textPrimary))
@@ -1066,7 +1067,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                   style: OutlinedButton.styleFrom(
                     visualDensity: VisualDensity.compact,
                     foregroundColor: NivaroColors.textPrimary,
-                    side: const BorderSide(color: NivaroColors.borderSubtle),
+                    side: BorderSide(color: NivaroColors.borderSubtle),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
@@ -1082,7 +1083,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       foregroundColor: NivaroColors.primaryLight,
-                      side: const BorderSide(color: NivaroColors.borderHighlight),
+                      side: BorderSide(color: NivaroColors.borderHighlight),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
@@ -1128,16 +1129,16 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label,
-            style: const TextStyle(
+            style: TextStyle(
                 color: NivaroColors.textSecondary, fontSize: 13)),
         if (isBadge)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: BoxDecoration(
-              color: (badgeColor ?? NivaroColors.primary).withOpacity(0.18),
+              color: (badgeColor ?? NivaroColors.primary).withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: (badgeColor ?? NivaroColors.primary).withOpacity(0.4)),
+                  color: (badgeColor ?? NivaroColors.primary).withValues(alpha: 0.4)),
             ),
             child: Text(
               value,
@@ -1151,7 +1152,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         else
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
                 color: NivaroColors.textPrimary),
@@ -1224,7 +1225,7 @@ class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1232,13 +1233,13 @@ class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
             ),
             child: Row(
               children: [
                 if (_isRunning)
-                  const SizedBox(
+                  SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
@@ -1262,7 +1263,7 @@ class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
                       ),
                       Text(
                         _isRunning ? 'Running apt-get dist-upgrade in background' : '${_logs.length} log lines recorded',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
                       ),
                     ],
                   ),
@@ -1279,7 +1280,7 @@ class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
               color: const Color(0xFF0D1117),
               padding: const EdgeInsets.all(14),
               child: _logs.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text('Waiting for output from apt...',
                           style: TextStyle(color: NivaroColors.textMuted, fontFamily: 'monospace')),
                     )
@@ -1344,7 +1345,7 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1352,7 +1353,7 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
             ),
             child: Column(
@@ -1371,7 +1372,7 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 22),
+                    Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 22),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1384,13 +1385,13 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         margin: const EdgeInsets.only(right: 8),
                         decoration: BoxDecoration(
-                          color: NivaroColors.danger.withOpacity(0.2),
+                          color: NivaroColors.danger.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: NivaroColors.dangerLight.withOpacity(0.4)),
+                          border: Border.all(color: NivaroColors.dangerLight.withValues(alpha: 0.4)),
                         ),
                         child: Text(
                           '${widget.securityCount} Security',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: NivaroColors.dangerLight, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -1405,18 +1406,18 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                   onChanged: (val) => setState(() => _filter = val),
                   decoration: InputDecoration(
                     hintText: 'Search packages...',
-                    hintStyle: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: NivaroColors.textMuted),
+                    hintStyle: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: NivaroColors.textMuted),
                     filled: true,
                     fillColor: NivaroColors.surfaceRaised,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                      borderSide: BorderSide(color: NivaroColors.borderSubtle),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                      borderSide: BorderSide(color: NivaroColors.borderSubtle),
                     ),
                   ),
                 ),
@@ -1425,13 +1426,13 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
           ),
           Expanded(
             child: filtered.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text('No matching packages found.', style: TextStyle(color: NivaroColors.textMuted)),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+                    separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
                     itemBuilder: (context, i) {
                       final p = filtered[i];
                       final isSec = p['is_security'] == true;
@@ -1450,10 +1451,10 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: NivaroColors.danger.withOpacity(0.18),
+                                  color: NivaroColors.danger.withValues(alpha: 0.18),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(Icons.security_rounded, color: NivaroColors.dangerLight, size: 12),
@@ -1476,15 +1477,15 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                             children: [
                               Text(
                                 p['current_version']?.toString() ?? '',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NivaroColors.textMuted, fontSize: 11.5, fontFamily: 'monospace'),
                               ),
                               const SizedBox(width: 6),
-                              const Icon(Icons.arrow_forward_rounded, size: 12, color: NivaroColors.primaryLight),
+                              Icon(Icons.arrow_forward_rounded, size: 12, color: NivaroColors.primaryLight),
                               const SizedBox(width: 6),
                               Text(
                                 p['new_version']?.toString() ?? '',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NivaroColors.successLight,
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w600,
@@ -1493,7 +1494,7 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
                               const Spacer(),
                               Text(
                                 p['arch']?.toString() ?? '',
-                                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                               ),
                             ],
                           ),
@@ -1504,7 +1505,7 @@ class _PackagesListSheetState extends State<_PackagesListSheet> {
           ),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: NivaroColors.borderSubtle)),
             ),
             child: FilledButton.icon(

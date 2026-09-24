@@ -1,0 +1,30 @@
+[
+ {
+  "name": "WIN11.PRO.25H2.U10.X64.(WPE).ISO",
+  "size_mib": 5570
+ },
+ {
+  "name": "debian-13.7.0-amd64-netinst.iso",
+  "size_mib": 756
+ },
+ {
+  "name": "linuxmint-22.3-cinnamon-64bit.iso",
+  "size_mib": 2948
+ },
+ {
+  "name": "nivaroos-guest-tools.iso",
+  "size_mib": 1502
+ },
+ {
+  "name": "virtio-win.iso",
+  "size_mib": 1500
+ },
+ {
+  "name": "winfsp.iso",
+  "size_mib": 2
+ },
+ {
+  "name": "zimaos-x86_64-1.7.1_installer.iso",
+  "size_mib": 1864
+ }
+]

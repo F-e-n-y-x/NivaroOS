@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -115,7 +116,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           child: Container(
             padding: const EdgeInsets.all(22),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: NivaroColors.surfaceContainerLowest,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
@@ -129,11 +130,11 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: NivaroColors.primary.withOpacity(0.12),
+                        color: NivaroColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       alignment: Alignment.center,
-                      child: const Icon(Icons.add_to_photos_rounded, color: NivaroColors.primaryLight, size: 22),
+                      child: Icon(Icons.add_to_photos_rounded, color: NivaroColors.primaryLight, size: 22),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -142,9 +143,9 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                         children: [
                           Text(
                             existing == null ? 'Add Server Profile' : 'Edit Server Profile',
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16.5, color: NivaroColors.textPrimary),
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16.5, color: NivaroColors.textPrimary),
                           ),
-                          const Text('Configure host address and login credentials', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+                          Text('Configure host address and login credentials', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
                         ],
                       ),
                     ),
@@ -157,15 +158,15 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: NivaroColors.danger.withOpacity(0.12),
+                      color: NivaroColors.danger.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: NivaroColors.danger.withOpacity(0.3)),
+                      border: Border.all(color: NivaroColors.danger.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 16),
+                        Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 16),
                         const SizedBox(width: 8),
-                        Expanded(child: Text(errorText!, style: const TextStyle(color: NivaroColors.dangerLight, fontSize: 12))),
+                        Expanded(child: Text(errorText!, style: TextStyle(color: NivaroColors.dangerLight, fontSize: 12))),
                       ],
                     ),
                   ),
@@ -174,7 +175,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
 
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Server Nickname',
                     hintText: 'e.g. Home Server, Office Lab',
                     filled: true,
@@ -185,7 +186,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
 
                 TextField(
                   controller: urlCtrl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Server URL or IP',
                     hintText: 'http://192.168.1.100:8080 or https://...',
                     filled: true,
@@ -199,7 +200,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                     Expanded(
                       child: TextField(
                         controller: userCtrl,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Username',
                           hintText: 'admin',
                           filled: true,
@@ -212,7 +213,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                       child: TextField(
                         controller: passCtrl,
                         obscureText: true,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Password',
                           hintText: '••••••••',
                           filled: true,
@@ -299,7 +300,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                               username: username,
                               accessToken: accessToken,
                               refreshToken: refreshToken,
-                              lastConnected: DateTime.now(),
+                              lastConnected: clock.now(),
                             );
 
                             await StorageService.instance.saveProfile(profile);
@@ -362,7 +363,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isActive ? NivaroColors.primary.withOpacity(0.08) : NivaroColors.surfaceRaised,
+          color: isActive ? NivaroColors.primary.withValues(alpha: 0.08) : NivaroColors.surfaceRaised,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isActive ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
@@ -375,7 +376,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: isActive ? NivaroColors.primary.withOpacity(0.2) : NivaroColors.surfaceContainerHighest,
+                color: isActive ? NivaroColors.primary.withValues(alpha: 0.2) : NivaroColors.surfaceContainerHighest,
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -394,7 +395,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                       Flexible(
                         child: Text(
                           profile.name,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: NivaroColors.textPrimary),
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: NivaroColors.textPrimary),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -404,10 +405,10 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: NivaroColors.success.withOpacity(0.2),
+                            color: NivaroColors.success.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text(
+                          child: Text(
                             'ACTIVE',
                             style: TextStyle(color: NivaroColors.successLight, fontSize: 9.5, fontWeight: FontWeight.w800),
                           ),
@@ -418,20 +419,20 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                   const SizedBox(height: 3),
                   Text(
                     profile.url,
-                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'User: ${profile.username}',
-                    style: const TextStyle(color: NivaroColors.textFaint, fontSize: 11),
+                    style: TextStyle(color: NivaroColors.textFaint, fontSize: 11),
                   ),
                 ],
               ),
             ),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded, size: 20, color: NivaroColors.textSecondary),
+                icon: Icon(Icons.more_vert_rounded, size: 20, color: NivaroColors.textSecondary),
                 onSelected: (val) {
                   if (val == 'switch') {
                     _switchToProfile(profile);
@@ -445,7 +446,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                 },
                 itemBuilder: (context) => [
                   if (!isActive)
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'switch',
                       child: Row(
                         children: [
@@ -455,7 +456,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                         ],
                       ),
                     ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'relogin',
                     child: Row(
                       children: [
@@ -465,7 +466,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                       ],
                     ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'edit',
                     child: Row(
                       children: [
@@ -476,7 +477,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                     ),
                   ),
                   if (_profiles.length > 1)
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
@@ -502,21 +503,21 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
         title: const Text('Server Profiles', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_rounded, size: 24, color: NivaroColors.primaryLight),
+            icon: Icon(Icons.add_rounded, size: 24, color: NivaroColors.primaryLight),
             tooltip: 'Add Server',
             onPressed: () => _addOrEditProfile(),
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: NivaroColors.primaryLight))
+          ? Center(child: CircularProgressIndicator(color: NivaroColors.primaryLight))
           : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1050),
                 child: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    const SectionHeader(
+                    const LegacySectionHeader(
                       title: 'Saved NivaroOS Servers',
                       subtitle: 'Tap any server profile to switch active connection',
                     ),

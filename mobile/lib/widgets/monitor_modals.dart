@@ -194,7 +194,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.90,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -222,15 +222,15 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: NivaroColors.infoLight.withOpacity(0.12),
+                    color: NivaroColors.infoLight.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.infoLight.withOpacity(0.3)),
+                    border: Border.all(color: NivaroColors.infoLight.withValues(alpha: 0.3)),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.speed_rounded, color: NivaroColors.infoLight, size: 22),
+                  child: Icon(Icons.speed_rounded, color: NivaroColors.infoLight, size: 22),
                 ),
                 const SizedBox(width: 14),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -340,7 +340,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                 Text(
                   _wanError!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: NivaroColors.textMuted),
+                  style: TextStyle(fontSize: 12, color: NivaroColors.textMuted),
                 ),
               ],
               const SizedBox(height: 16),
@@ -359,7 +359,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   final text = (_wanTesting || _wanResult != null) ? val.toStringAsFixed(1) : '--';
                   return Text(
                     text,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 54,
                       fontWeight: FontWeight.w900,
                       color: NivaroColors.textPrimary,
@@ -368,7 +368,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   );
                 },
               ),
-              const Text(
+              Text(
                 'Mbps (Megabits / second)',
                 style: TextStyle(color: NivaroColors.infoLight, fontSize: 13, fontWeight: FontWeight.w700),
               ),
@@ -381,7 +381,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   child: LinearProgressIndicator(
                     value: _wanProgress,
                     backgroundColor: NivaroColors.surfaceRaised,
-                    valueColor: const AlwaysStoppedAnimation<Color>(NivaroColors.infoLight),
+                    valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.infoLight),
                     minHeight: 6,
                   ),
                 ),
@@ -451,7 +451,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.router_rounded, color: NivaroColors.primaryLight, size: 18),
                   SizedBox(width: 8),
@@ -514,7 +514,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                 Text(
                   _linkError!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: NivaroColors.textMuted),
+                  style: TextStyle(fontSize: 12, color: NivaroColors.textMuted),
                 ),
               ],
               const SizedBox(height: 16),
@@ -533,7 +533,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   final text = (_linkTesting || _linkResult != null) ? val.toStringAsFixed(1) : '--';
                   return Text(
                     text,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 54,
                       fontWeight: FontWeight.w900,
                       color: NivaroColors.textPrimary,
@@ -542,7 +542,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   );
                 },
               ),
-              const Text(
+              Text(
                 'Mbps Direct Throughput',
                 style: TextStyle(color: NivaroColors.successLight, fontSize: 13, fontWeight: FontWeight.w700),
               ),
@@ -555,7 +555,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                   child: LinearProgressIndicator(
                     value: _linkProgress,
                     backgroundColor: NivaroColors.surfaceRaised,
-                    valueColor: const AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
+                    valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
                     minHeight: 6,
                   ),
                 ),
@@ -625,7 +625,7 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.wifi_tethering_rounded, color: NivaroColors.successLight, size: 18),
                   SizedBox(width: 8),
@@ -644,18 +644,18 @@ class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with Sing
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: NivaroColors.success.withOpacity(0.08),
+                    color: NivaroColors.success.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: NivaroColors.success.withOpacity(0.2)),
+                    border: Border.all(color: NivaroColors.success.withValues(alpha: 0.2)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle_outline_rounded, color: NivaroColors.successLight, size: 16),
+                      Icon(Icons.check_circle_outline_rounded, color: NivaroColors.successLight, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _linkResult!.realWorldSpeedText,
-                          style: const TextStyle(color: NivaroColors.successLight, fontSize: 11.5, fontWeight: FontWeight.w600),
+                          style: TextStyle(color: NivaroColors.successLight, fontSize: 11.5, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
@@ -692,9 +692,9 @@ class _MetricPill extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: NivaroColors.textPrimary)),
+        Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: NivaroColors.textPrimary)),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
+        Text(label, style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
       ],
     );
   }
@@ -713,8 +713,8 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
+          Text(label, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
         ],
       ),
     );
@@ -742,7 +742,7 @@ class CpuDetailModal extends StatelessWidget {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -767,26 +767,26 @@ class CpuDetailModal extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: NivaroColors.primary.withOpacity(0.12),
+                    color: NivaroColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.3)),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.memory_rounded, color: NivaroColors.primaryLight, size: 22),
+                  child: Icon(Icons.memory_rounded, color: NivaroColors.primaryLight, size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Processor & Cores',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${stats.cpuCores} Cores · ${stats.cpuPercent.toStringAsFixed(0)}% Total Load',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -799,7 +799,7 @@ class CpuDetailModal extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: NivaroColors.borderSubtle),
+          Divider(height: 1, color: NivaroColors.borderSubtle),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -843,9 +843,9 @@ class CpuDetailModal extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const SectionHeader(title: 'Per-Core Utilization'),
+                const LegacySectionHeader(title: 'Per-Core Utilization'),
                 if (stats.cpuPerCore.isEmpty)
-                  const Text('Per-core statistics unavailable', style: TextStyle(color: NivaroColors.textMuted))
+                  Text('Per-core statistics unavailable', style: TextStyle(color: NivaroColors.textMuted))
                 else
                   ...List.generate(stats.cpuPerCore.length, (idx) {
                     final pct = stats.cpuPerCore[idx];
@@ -928,7 +928,7 @@ class RamDetailModal extends StatelessWidget {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.80,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -953,26 +953,26 @@ class RamDetailModal extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: NivaroColors.purpleLight.withOpacity(0.12),
+                    color: NivaroColors.purpleLight.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.purpleLight.withOpacity(0.3)),
+                    border: Border.all(color: NivaroColors.purpleLight.withValues(alpha: 0.3)),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.developer_board_rounded, color: NivaroColors.purpleLight, size: 22),
+                  child: Icon(Icons.developer_board_rounded, color: NivaroColors.purpleLight, size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Memory Breakdown',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)} in use (${stats.memUsedPercent.toStringAsFixed(0)}%)',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -985,7 +985,7 @@ class RamDetailModal extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: NivaroColors.borderSubtle),
+          Divider(height: 1, color: NivaroColors.borderSubtle),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -998,7 +998,7 @@ class RamDetailModal extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Total Installed RAM', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
+                          Text('Total Installed RAM', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
                           Text(formatBytes(stats.memTotal), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                         ],
                       ),
@@ -1008,7 +1008,7 @@ class RamDetailModal extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: (stats.memUsedPercent / 100).clamp(0, 1),
                           backgroundColor: NivaroColors.surfaceRaised,
-                          valueColor: const AlwaysStoppedAnimation<Color>(NivaroColors.purpleLight),
+                          valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.purpleLight),
                           minHeight: 12,
                         ),
                       ),
@@ -1026,7 +1026,7 @@ class RamDetailModal extends StatelessWidget {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: NivaroColors.textPrimary,
-                      side: const BorderSide(color: NivaroColors.borderHighlight),
+                      side: BorderSide(color: NivaroColors.borderHighlight),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () => _flushCache(context),
@@ -1065,7 +1065,7 @@ class StorageDetailModal extends StatelessWidget {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1090,26 +1090,26 @@ class StorageDetailModal extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: NivaroColors.success.withOpacity(0.12),
+                    color: NivaroColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.success.withOpacity(0.3)),
+                    border: Border.all(color: NivaroColors.success.withValues(alpha: 0.3)),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.pie_chart_rounded, color: NivaroColors.successLight, size: 22),
+                  child: Icon(Icons.pie_chart_rounded, color: NivaroColors.successLight, size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Storage Pools & Disks',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${formatBytes(stats.storageUsed)} of ${formatBytes(stats.storageTotal)} used (${stats.storagePercentText})',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -1122,13 +1122,13 @@ class StorageDetailModal extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: NivaroColors.borderSubtle),
+          Divider(height: 1, color: NivaroColors.borderSubtle),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               children: [
                 if (stats.disks.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(child: Text('No storage disks detected.', style: TextStyle(color: NivaroColors.textMuted))),
                   )
@@ -1142,7 +1142,7 @@ class StorageDetailModal extends StatelessWidget {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.storage_rounded, color: NivaroColors.primaryLight, size: 20),
+                                  Icon(Icons.storage_rounded, color: NivaroColors.primaryLight, size: 20),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
@@ -1152,14 +1152,14 @@ class StorageDetailModal extends StatelessWidget {
                                   ),
                                   Text(
                                     d.percent,
-                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: NivaroColors.textPrimary),
+                                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: NivaroColors.textPrimary),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 8),
                               Text(
                                 '${d.mountPoint} · ${d.filesystem.isNotEmpty ? d.filesystem.toUpperCase() : "EXT4"}',
-                                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                               ),
                               const SizedBox(height: 10),
                               ClipRRect(
@@ -1167,7 +1167,7 @@ class StorageDetailModal extends StatelessWidget {
                                 child: LinearProgressIndicator(
                                   value: d.fraction,
                                   backgroundColor: NivaroColors.surfaceRaised,
-                                  valueColor: const AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
+                                  valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
                                   minHeight: 7,
                                 ),
                               ),
@@ -1175,8 +1175,8 @@ class StorageDetailModal extends StatelessWidget {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('${formatBytes(d.usedBytes)} used', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
-                                  Text('${formatBytes(d.freeBytes)} available', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+                                  Text('${formatBytes(d.usedBytes)} used', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+                                  Text('${formatBytes(d.freeBytes)} available', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
                                 ],
                               ),
                             ],
@@ -1223,7 +1223,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(

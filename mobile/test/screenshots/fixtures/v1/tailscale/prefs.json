@@ -1,0 +1,17 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "accept_routes": true,
+  "accept_dns": true,
+  "run_ssh": false,
+  "shields_up": false,
+  "exit_node_allow_lan_access": true,
+  "advertise_routes": [
+   "0.0.0.0/0",
+   "::/0",
+   "192.168.10.0/24"
+  ],
+  "hostname": ""
+ }
+}

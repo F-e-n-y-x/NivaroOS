@@ -118,20 +118,20 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
               Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2))),
               const SizedBox(height: 12),
               ListTile(
-                leading: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
+                leading: Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
                 title: const Text('Graceful ACPI Shutdown', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Send ACPI power button signal to guest OS'),
                 onTap: () => Navigator.pop(context, 'shutdown'),
               ),
               ListTile(
-                leading: const Icon(Icons.restart_alt_rounded, color: NivaroColors.warningLight),
+                leading: Icon(Icons.restart_alt_rounded, color: NivaroColors.warningLight),
                 title: const Text('Reset / Reboot', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Hard reset virtual machine processor'),
                 onTap: () => Navigator.pop(context, 'reset'),
               ),
               ListTile(
-                leading: const Icon(Icons.stop_circle_rounded, color: NivaroColors.dangerLight),
-                title: const Text('Force Power Off', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w600)),
+                leading: Icon(Icons.stop_circle_rounded, color: NivaroColors.dangerLight),
+                title: Text('Force Power Off', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w600)),
                 subtitle: const Text('Instantly cut power to VM'),
                 onTap: () => Navigator.pop(context, 'force-off'),
               ),
@@ -204,7 +204,7 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
               elevation: 0,
               title: Row(
                 children: [
-                  const PulsingStatusDot(color: NivaroColors.success, size: 7),
+                  PulsingStatusDot(color: NivaroColors.success, size: 7),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -217,7 +217,7 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
                         ),
                         Text(
                           _vm != null ? '${_vm!.vcpus} vCPU · ${(_vm!.memoryMib / 1024).toStringAsFixed(1)} GB' : 'Virtual Machine Console',
-                          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                         ),
                       ],
                     ),
@@ -246,7 +246,7 @@ class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingOb
                 RoundIconButton(
                   icon: Icons.power_settings_new_rounded,
                   tooltip: 'Power Menu',
-                  color: NivaroColors.danger.withOpacity(0.15),
+                  color: NivaroColors.danger.withValues(alpha: 0.15),
                   iconColor: NivaroColors.dangerLight,
                   onPressed: _powerMenu,
                 ),
@@ -422,8 +422,8 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
             const SizedBox(height: 16),
             Row(
               children: [
-                const Expanded(
-                  child: Text('VM Snapshots', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white)),
+                Expanded(
+                  child: Text('VM Snapshots', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.textPrimary)),
                 ),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
@@ -443,11 +443,11 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Text(_error!, style: const TextStyle(color: NivaroColors.dangerLight)),
+                  child: Text(_error!, style: TextStyle(color: NivaroColors.dangerLight)),
                 ),
               )
             else if (_snapshots.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(
                   child: Text('No snapshots created yet.', style: TextStyle(color: NivaroColors.textMuted)),
@@ -458,7 +458,7 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _snapshots.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+                  separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
                   itemBuilder: (context, index) {
                     final snap = _snapshots[index];
                     return ListTile(
@@ -466,16 +466,16 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
                       leading: Container(
                         width: 38,
                         height: 38,
-                        decoration: BoxDecoration(color: NivaroColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.camera_alt_rounded, color: NivaroColors.primaryLight, size: 20),
+                        decoration: BoxDecoration(color: NivaroColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                        child: Icon(Icons.camera_alt_rounded, color: NivaroColors.primaryLight, size: 20),
                       ),
                       title: Text(snap.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(snap.state, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                      subtitle: Text(snap.state, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.restore_rounded, color: NivaroColors.warningLight),
+                            icon: Icon(Icons.restore_rounded, color: NivaroColors.warningLight),
                             tooltip: 'Revert to snapshot',
                             onPressed: () {
                               Navigator.pop(context);
@@ -483,7 +483,7 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
                             },
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
+                            icon: Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
                             tooltip: 'Delete snapshot',
                             onPressed: () => _deleteSnapshot(snap.name),
                           ),
@@ -598,7 +598,7 @@ class _IsoSheetState extends State<_IsoSheet> {
           children: [
             Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
             const SizedBox(height: 16),
-            const Text('Virtual CD-ROM / ISO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white)),
+            Text('Virtual CD-ROM / ISO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.textPrimary)),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -621,14 +621,14 @@ class _IsoSheetState extends State<_IsoSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text('Available Host ISOs', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textSecondary)),
+            Text('Available Host ISOs', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textSecondary)),
             const SizedBox(height: 8),
             if (_loading)
               const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
             else if (_error != null)
-              Text(_error!, style: const TextStyle(color: NivaroColors.dangerLight))
+              Text(_error!, style: TextStyle(color: NivaroColors.dangerLight))
             else if (_isos.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text('No ISO images found in /DATA/ISOs', style: TextStyle(color: NivaroColors.textMuted)),
               )
@@ -637,12 +637,12 @@ class _IsoSheetState extends State<_IsoSheet> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _isos.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+                  separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
                   itemBuilder: (context, index) {
                     final iso = _isos[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.disc_full_rounded, color: NivaroColors.primaryLight),
+                      leading: Icon(Icons.disc_full_rounded, color: NivaroColors.primaryLight),
                       title: Text(iso.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                       trailing: TextButton(
                         onPressed: () => _insertIso(iso.path),

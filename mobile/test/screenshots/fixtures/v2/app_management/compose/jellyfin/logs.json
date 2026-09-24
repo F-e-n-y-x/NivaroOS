@@ -1,0 +1,5 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": "jellyfin  | [01:02:11] [INF] [1] Main: Jellyfin version: 10.10.7\njellyfin  | [01:02:11] [INF] [1] Main: Environment Variables: [\"[JELLYFIN_DATA_DIR, /config]\"]\njellyfin  | [01:02:12] [INF] [1] Main: Operating system: Debian GNU/Linux 12 (bookworm)\njellyfin  | [01:02:12] [INF] [1] Main: Processor count: 12\njellyfin  | [01:02:13] [INF] [1] Emby.Server.Implementations.ApplicationHost: ServerId: 1b2c3d4e5f60718293a4b5c6d7e8f901\njellyfin  | [01:02:15] [INF] [1] Jellyfin.Networking.Manager.NetworkManager: Defined LAN addresses: [192.168.1.0/24]\njellyfin  | [01:02:16] [INF] [8] Emby.Server.Implementations.ScheduledTasks.TaskManager: Scan Media Library Completed after 0 minute(s) and 42 seconds\njellyfin  | [01:02:18] [INF] [1] Main: Startup complete 0:00:07.1\njellyfin  | [01:14:02] [WRN] [22] MediaBrowser.Controller.MediaEncoding.TranscodeManager: Transcoding throttled, client is too slow\njellyfin  | [01:20:44] [INF] [31] Emby.Server.Implementations.Session.SessionManager: Playback stopped reported by app \"Jellyfin Android\" playing \"Big Buck Bunny\"\n"
+}

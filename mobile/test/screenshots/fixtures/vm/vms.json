@@ -1,0 +1,108 @@
+[
+ {
+  "name": "Ghost-Windows-11",
+  "state": "shutoff",
+  "vcpus": 4,
+  "memory_mib": 4096,
+  "disk_path": "/DATA/VMs/Ghost-Windows-11/Ghost-Windows-11.qcow2",
+  "disk_gib": 60,
+  "network_mode": "bridge:br0",
+  "disks": [
+   {
+    "path": "/DATA/VMs/Ghost-Windows-11/Ghost-Windows-11.qcow2",
+    "gib": 60,
+    "bus": "sata",
+    "target": "sdb",
+    "ssd": true
+   }
+  ],
+  "networks": [
+   {
+    "mode": "bridge",
+    "bridge_name": "br0",
+    "model": "e1000e",
+    "mac": "52:54:00:6e:c7:e1",
+    "link_state": "down"
+   }
+  ],
+  "shared_folders": [
+   {
+    "source_dir": "/DATA/VMs/share",
+    "target_tag": "share"
+   }
+  ],
+  "firmware": "uefi",
+  "display_width": 1280,
+  "display_height": 720,
+  "clipboard_channel": true
+ },
+ {
+  "name": "mint",
+  "state": "shutoff",
+  "vcpus": 2,
+  "memory_mib": 2048,
+  "disk_path": "/DATA/VMs/mint/mint.qcow2",
+  "disk_gib": 20,
+  "network_mode": "bridge:br0",
+  "disks": [
+   {
+    "path": "/DATA/VMs/mint/mint.qcow2",
+    "gib": 20,
+    "bus": "sata",
+    "target": "sdb",
+    "ssd": true
+   }
+  ],
+  "networks": [
+   {
+    "mode": "bridge",
+    "bridge_name": "br0",
+    "model": "e1000e",
+    "mac": "52:54:00:74:cb:ad",
+    "link_state": "up"
+   }
+  ],
+  "iso_path": "/DATA/VMs/ISOs/linuxmint-22.3-cinnamon-64bit.iso",
+  "shared_folders": [
+   {
+    "source_dir": "/DATA/VMs/share",
+    "target_tag": "share"
+   }
+  ],
+  "firmware": "uefi",
+  "display_width": 1280,
+  "display_height": 720,
+  "clipboard_channel": true
+ },
+ {
+  "name": "zimaOS",
+  "state": "shutoff",
+  "vcpus": 2,
+  "memory_mib": 2048,
+  "disk_path": "/DATA/VMs/zimaOS/zimaOS.qcow2",
+  "disk_gib": 20,
+  "network_mode": "bridge:br0",
+  "disks": [
+   {
+    "path": "/DATA/VMs/zimaOS/zimaOS.qcow2",
+    "gib": 20,
+    "bus": "sata",
+    "target": "sdb",
+    "ssd": true
+   }
+  ],
+  "networks": [
+   {
+    "mode": "bridge",
+    "bridge_name": "br0",
+    "model": "e1000e",
+    "mac": "52:54:00:b6:e6:6c",
+    "link_state": "up"
+   }
+  ],
+  "firmware": "uefi",
+  "display_width": 1280,
+  "display_height": 720,
+  "clipboard_channel": true
+ }
+]

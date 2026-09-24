@@ -52,8 +52,9 @@ users just enter their server's address manually the first time.
 ## Building it yourself
 
 Requires a JDK (17-21), the Android SDK (`platform-tools`,
-`platforms;android-34` or newer, `build-tools;34.0.0` or newer), and
-[Flutter](https://docs.flutter.dev/get-started/install) (stable channel).
+`platforms;android-37.0`, `build-tools;36.0.0` or newer, `ndk;28.2.13676358`),
+and [Flutter](https://docs.flutter.dev/get-started/install) 3.47.5 or newer
+(stable channel).
 
 ```sh
 cd mobile
@@ -61,9 +62,9 @@ flutter pub get
 flutter build apk --debug   # -> build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-For a release build you'll need your own signing key (see
-[Flutter's signing guide](https://docs.flutter.dev/deployment/android)) -
-`app/build.gradle` currently builds debug-signed only.
+A release build is signed with the key named in `android/key.properties`
+(see [Flutter's signing guide](https://docs.flutter.dev/deployment/android));
+without that file `android/app/build.gradle.kts` falls back to the debug key.
 
 ## Installing the APK
 
@@ -81,6 +82,19 @@ adaptive icon safe zone). After changing either:
 flutter pub get
 dart run flutter_launcher_icons
 ```
+
+## Tests and screenshots
+
+```sh
+/opt/flutter-3.47/bin/flutter test                                   # everything
+/opt/flutter-3.47/bin/flutter test test/screenshots --update-goldens # redraw the PNGs
+```
+
+`test/ui/` covers the design system (including a WCAG contrast check of
+both themes), `test/shell/` the navigation shell, and `test/screenshots/`
+renders every screen and shared widget against a fake server built from
+`test/screenshots/fixtures/`. The UI rules and how to use the shared
+widgets are in `docs/specs/2026-09-25-mobile-design-system.md`.
 
 ## Known limitations (v1)
 

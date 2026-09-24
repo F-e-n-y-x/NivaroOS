@@ -78,7 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (widget.isReauth && Navigator.canPop(context)) {
         Navigator.of(context).pop(true);
       } else {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
+        // The shell becomes the only route, so discovery, a server switch
+        // or an old shell can't sit under it and back at Home leaves the
+        // app (with Android's predictive back-to-home animation).
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (_) => false);
       }
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -151,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Container(
                               width: 48,
                               height: 48,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: LinearGradient(
                                   colors: [
@@ -166,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: const Icon(Icons.dns_rounded, color: Colors.white, size: 26),
                             ),
                             const SizedBox(width: 14),
-                            const Expanded(
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -199,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               Expanded(
                                 child: Text(
                                   serverHost,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: NivaroColors.textSecondary,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
@@ -225,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Sign in with your NivaroOS administrator account.',
                     style: TextStyle(color: NivaroColors.textMuted, fontSize: 14),
                   ),
@@ -241,7 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fillColor: NivaroColors.surfaceRaised,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(NivaroShape.large),
-                        borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                        borderSide: BorderSide(color: NivaroColors.borderSubtle),
                       ),
                     ),
                   ),
@@ -263,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fillColor: NivaroColors.surfaceRaised,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(NivaroShape.large),
-                        borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                        borderSide: BorderSide(color: NivaroColors.borderSubtle),
                       ),
                     ),
                   ),
@@ -274,9 +277,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: NivaroColors.danger.withValues(alpha: 0.15),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: NivaroColors.danger, size: 20),
+                          Icon(Icons.error_outline_rounded, color: NivaroColors.danger, size: 20),
                           const SizedBox(width: 12),
-                          Expanded(child: Text(_error!, style: const TextStyle(color: NivaroColors.danger, fontSize: 13))),
+                          Expanded(child: Text(_error!, style: TextStyle(color: NivaroColors.danger, fontSize: 13))),
                         ],
                       ),
                     ),

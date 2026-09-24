@@ -384,7 +384,7 @@ class _AppsScreenState extends State<AppsScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: NivaroColors.surfaceContainerLowest,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -407,7 +407,7 @@ class _AppsScreenState extends State<AppsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(app.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 16.5,
                               color: NivaroColors.textPrimary)),
@@ -433,7 +433,7 @@ class _AppsScreenState extends State<AppsScreen> {
                           if (app.port != null && app.port!.isNotEmpty) ...[
                             const SizedBox(width: 8),
                             Text('· Port ${app.port}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NivaroColors.textMuted,
                                     fontSize: 11)),
                           ],
@@ -449,20 +449,20 @@ class _AppsScreenState extends State<AppsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Divider(height: 1, color: NivaroColors.borderSubtle),
+            Divider(height: 1, color: NivaroColors.borderSubtle),
             const SizedBox(height: 8),
             if (browserUrl.isNotEmpty)
               ListTile(
-                leading: const Icon(Icons.open_in_browser_rounded,
+                leading: Icon(Icons.open_in_browser_rounded,
                     color: NivaroColors.primaryLight),
                 title: const Text('Open in Browser',
                     style: TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(browserUrl,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NivaroColors.textMuted, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.arrow_outward_rounded,
+                trailing: Icon(Icons.arrow_outward_rounded,
                     size: 18, color: NivaroColors.textFaint),
                 onTap: () {
                   Navigator.pop(context);
@@ -471,11 +471,11 @@ class _AppsScreenState extends State<AppsScreen> {
               ),
             if (app.appType != 'system') ...[
               ListTile(
-                leading: const Icon(Icons.terminal_rounded,
+                leading: Icon(Icons.terminal_rounded,
                     color: NivaroColors.warningLight),
                 title: const Text('Open Container Terminal',
                     style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Interactive root shell inside container',
+                subtitle: Text('Interactive root shell inside container',
                     style:
                         TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
                 onTap: () {
@@ -492,11 +492,11 @@ class _AppsScreenState extends State<AppsScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.article_rounded,
+                leading: Icon(Icons.article_rounded,
                     color: NivaroColors.infoLight),
                 title: const Text('Container Logs',
                     style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Stream real-time STDOUT & STDERR logs',
+                subtitle: Text('Stream real-time STDOUT & STDERR logs',
                     style:
                         TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
                 onTap: () {
@@ -522,7 +522,7 @@ class _AppsScreenState extends State<AppsScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.restart_alt_rounded,
+                leading: Icon(Icons.restart_alt_rounded,
                     color: NivaroColors.purpleLight),
                 title: const Text('Restart App Container',
                     style: TextStyle(fontWeight: FontWeight.w600)),
@@ -608,7 +608,7 @@ class _AppsScreenState extends State<AppsScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: NivaroColors.surfaceContainerLowest,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -631,7 +631,7 @@ class _AppsScreenState extends State<AppsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(app.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 17,
                               color: NivaroColors.textPrimary)),
@@ -657,7 +657,7 @@ class _AppsScreenState extends State<AppsScreen> {
                           if (app.port != null && app.port!.isNotEmpty) ...[
                             const SizedBox(width: 8),
                             Text('· Port ${app.port}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: NivaroColors.textMuted,
                                     fontSize: 11)),
                           ],
@@ -706,12 +706,12 @@ class _AppsScreenState extends State<AppsScreen> {
               const SizedBox(height: 10),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.article_rounded,
+                leading: Icon(Icons.article_rounded,
                     color: NivaroColors.primaryLight),
                 title: const Text('Container Logs',
                     style:
                         TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                trailing: const Icon(Icons.chevron_right_rounded,
+                trailing: Icon(Icons.chevron_right_rounded,
                     color: NivaroColors.textFaint),
                 onTap: () {
                   Navigator.pop(context);
@@ -746,7 +746,7 @@ class _AppsScreenState extends State<AppsScreen> {
                   // Header
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Applications',
                           style: TextStyle(
@@ -786,7 +786,7 @@ class _AppsScreenState extends State<AppsScreen> {
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Search installed applications...',
-                      prefixIcon: const Icon(Icons.search_rounded,
+                      prefixIcon: Icon(Icons.search_rounded,
                           size: 20, color: NivaroColors.textMuted),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
@@ -843,11 +843,11 @@ class _AppsScreenState extends State<AppsScreen> {
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         children: [
-                          const Icon(Icons.error_outline_rounded,
+                          Icon(Icons.error_outline_rounded,
                               color: NivaroColors.dangerLight, size: 36),
                           const SizedBox(height: 10),
                           Text(_error!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: NivaroColors.textMuted, fontSize: 13),
                               textAlign: TextAlign.center),
                           const SizedBox(height: 14),
@@ -873,7 +873,7 @@ class _AppsScreenState extends State<AppsScreen> {
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: _load,
-                              child: const Text('Retry Connection',
+                              child: Text('Retry Connection',
                                   style: TextStyle(
                                       color: NivaroColors.textMuted,
                                       fontSize: 12.5)),
@@ -885,7 +885,7 @@ class _AppsScreenState extends State<AppsScreen> {
                       ),
                     )
                   else if (_filteredApps.isEmpty && _filteredOthers.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
                       child: Center(
                           child: Text('No applications found.',
@@ -965,7 +965,7 @@ class _AppsScreenState extends State<AppsScreen> {
                     // Standalone Containers Section (if any)
                     if (_filteredOthers.isNotEmpty) ...[
                       const SizedBox(height: 24),
-                      const SectionHeader(
+                      const LegacySectionHeader(
                         title: 'Standalone Containers',
                         subtitle: 'Docker containers running outside compose',
                       ),
@@ -1031,7 +1031,7 @@ class _AppsScreenState extends State<AppsScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(app.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
                         color: NivaroColors.textPrimary),
@@ -1066,7 +1066,7 @@ class _AppsScreenState extends State<AppsScreen> {
                   : NivaroColors.successLight,
               onPressed: () => _toggleApp(app),
             ),
-          const Icon(Icons.chevron_right_rounded,
+          Icon(Icons.chevron_right_rounded,
               size: 18, color: NivaroColors.textFaint),
         ],
       ),
@@ -1093,7 +1093,7 @@ class _AppsScreenState extends State<AppsScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(c.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
                         color: NivaroColors.textPrimary),
@@ -1138,12 +1138,12 @@ class _FilterChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
         decoration: BoxDecoration(
           color: selected
-              ? NivaroColors.primary.withOpacity(0.18)
+              ? NivaroColors.primary.withValues(alpha: 0.18)
               : NivaroColors.surfaceRaised,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected
-                ? NivaroColors.primaryLight.withOpacity(0.4)
+                ? NivaroColors.primaryLight.withValues(alpha: 0.4)
                 : NivaroColors.borderSubtle,
           ),
         ),

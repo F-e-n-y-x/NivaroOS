@@ -19,6 +19,7 @@
         android:label="NivaroOS"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher">
         <!-- The actual background sync service (headless Dart isolate) and
              its boot-restart receiver are registered by the

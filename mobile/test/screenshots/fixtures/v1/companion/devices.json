@@ -1,0 +1,54 @@
+{
+ "success": 200,
+ "message": "success",
+ "data": [
+  {
+   "id": "dev_android_9ff52c1f63e80db7",
+   "name": "Alex's tablet",
+   "model": "SM-X710",
+   "platform": "Android",
+   "os_version": "Android 16 (SDK 36)",
+   "app_version": "v1.2.1+6",
+   "ip": "192.168.10.105",
+   "port": 8765,
+   "shares_storage": true,
+   "root_path": "/storage/emulated/0",
+   "storage_used": 12914339840,
+   "storage_total": 110674915328,
+   "battery_level": 42,
+   "is_online": true,
+   "last_seen": "2026-09-25T01:09:08.776868562+05:30",
+   "created_at": "2026-09-22T01:50:46.958083562+05:30",
+   "storage_path": "/DATA/Companion/Alex_s tablet",
+   "server_storage_used": 0,
+   "custom_props": {
+    "user_renamed": true
+   },
+   "connection": "lan"
+  },
+  {
+   "id": "dev_android_55334c80f7d035de",
+   "name": "Alex's phone",
+   "model": "SM-S938B",
+   "platform": "Android",
+   "os_version": "Android 16 (SDK 36)",
+   "app_version": "v1.2.1+6",
+   "ip": "192.168.10.108",
+   "port": 8765,
+   "shares_storage": true,
+   "root_path": "/storage/emulated/0",
+   "storage_used": 64006029312,
+   "storage_total": 234073620480,
+   "battery_level": 76,
+   "is_online": true,
+   "last_seen": "2026-09-25T01:09:08.972419023+05:30",
+   "created_at": "2026-09-19T20:00:34.500749328+05:30",
+   "storage_path": "/DATA/Companion/Alex_s phone",
+   "server_storage_used": 0,
+   "custom_props": {
+    "user_renamed": true
+   },
+   "connection": "lan"
+  }
+ ]
+}

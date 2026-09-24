@@ -1,0 +1,82 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "cpu": {
+   "mhz": 4208.451,
+   "model": "amd",
+   "model_name": "AMD Ryzen 5 3600 6-Core Processor",
+   "num": 6,
+   "percent": 1.1,
+   "percpu": [
+    0,
+    3,
+    2,
+    1,
+    0,
+    0,
+    1.5,
+    1.9,
+    1.9,
+    0.5,
+    0,
+    1.4
+   ],
+   "power": {
+    "max": 65532610987,
+    "timestamp": 1790278748070,
+    "value": 40495196056
+   },
+   "temperature": 48
+  },
+  "mem": {
+   "available": 16640380928,
+   "dimms": [
+    {
+     "locator": "DIMM 0",
+     "size": "16 GB",
+     "type": "DDR4",
+     "speed": "3200 MT/s",
+     "manufacturer": "Unknown",
+     "part_number": "F4-3200C16-16GVK"
+    },
+    {
+     "locator": "DIMM 0",
+     "size": "16 GB",
+     "type": "DDR4",
+     "speed": "3200 MT/s",
+     "manufacturer": "Unknown",
+     "part_number": "F4-3200C16-16GVK"
+    }
+   ],
+   "free": 1446326272,
+   "total": 33572569088,
+   "used": 14111805440,
+   "usedPercent": 42
+  },
+  "net": [
+   {
+    "name": "enp7s0",
+    "bytesSent": 58505658047,
+    "bytesRecv": 109437257873,
+    "packetsSent": 134601250,
+    "packetsRecv": 264573128,
+    "errin": 0,
+    "errout": 0,
+    "dropin": 14115,
+    "dropout": 0,
+    "fifoin": 0,
+    "fifoout": 0,
+    "state": "up",
+    "time": 1790278748
+   }
+  ],
+  "sys_disk": {
+   "avail": 5700608684032,
+   "health": true,
+   "size": 7438094622720,
+   "used": 1714353516544
+  },
+  "sys_usb": []
+ }
+}

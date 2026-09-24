@@ -9,7 +9,7 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
@@ -293,11 +293,11 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.movie_filter_rounded, color: NivaroColors.dangerLight, size: 44),
+                  Icon(Icons.movie_filter_rounded, color: NivaroColors.dangerLight, size: 44),
                   const SizedBox(height: 12),
                   Text(
                     'Built-in video decoder notice: $errorMessage',
-                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
@@ -377,7 +377,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             if (widget.file.isCsv) _parseCsv(newText);
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Local file saved successfully!'),
               backgroundColor: NivaroColors.success,
             ),
@@ -396,7 +396,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             if (widget.file.isCsv) _parseCsv(newText);
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('File saved successfully on server!'),
               backgroundColor: NivaroColors.success,
             ),
@@ -486,13 +486,13 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Enter page number (1 - $_pdfTotalPages):', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
+            Text('Enter page number (1 - $_pdfTotalPages):', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
             const SizedBox(height: 12),
             TextField(
               controller: textEdit,
               keyboardType: TextInputType.number,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 filled: true,
                 fillColor: NivaroColors.surfaceContainerLowest,
                 border: OutlineInputBorder(),
@@ -562,7 +562,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             ),
             Text(
               '${widget.isLocal ? "Device Storage" : "NivaroOS Server"} · ${formatBytes(widget.file.size)} · ${widget.file.categoryLabel}',
-              style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+              style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
             ),
           ],
         ),
@@ -607,7 +607,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                 ),
               ],
               IconButton(
-                icon: const Icon(Icons.edit_note_rounded, size: 24, color: NivaroColors.primaryLight),
+                icon: Icon(Icons.edit_note_rounded, size: 24, color: NivaroColors.primaryLight),
                 tooltip: 'Edit text file',
                 onPressed: () => setState(() {
                   _isEditing = true;
@@ -618,7 +618,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
               IconButton(
                 icon: _isSaving
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.save_rounded, size: 22, color: NivaroColors.successLight),
+                    : Icon(Icons.save_rounded, size: 22, color: NivaroColors.successLight),
                 tooltip: 'Save changes',
                 onPressed: _isSaving ? null : _saveFile,
               ),
@@ -705,9 +705,9 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: catColor.withOpacity(0.15),
+                    color: catColor.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
-                    border: Border.all(color: catColor.withOpacity(0.3), width: 1.5),
+                    border: Border.all(color: catColor.withValues(alpha: 0.3), width: 1.5),
                   ),
                   alignment: Alignment.center,
                   child: Icon(
@@ -729,7 +729,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   widget.isLocal
                       ? 'Reading from device storage...'
                       : 'Streaming from NivaroOS Server...',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
                 ),
                 const SizedBox(height: 24),
 
@@ -759,7 +759,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                       _totalBytes > 0
                           ? '${formatBytes(_downloadedBytes)} / ${formatBytes(_totalBytes)}'
                           : formatBytes(_downloadedBytes),
-                      style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       _downloadSpeed.isNotEmpty
@@ -799,13 +799,13 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 48),
+                Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 48),
                 const SizedBox(height: 16),
                 Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
                 const SizedBox(height: 10),
                 Text(
                   _error!,
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -882,7 +882,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
 
   Widget _buildVideoPlayer() {
     if (_videoLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -903,13 +903,13 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.movie_filter_rounded, color: NivaroColors.purpleLight, size: 48),
+                Icon(Icons.movie_filter_rounded, color: NivaroColors.purpleLight, size: 48),
                 const SizedBox(height: 14),
                 Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 Text(
                   _videoError ?? 'Built-in video decoder does not support this stream.',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
@@ -952,11 +952,11 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.picture_as_pdf_rounded, color: NivaroColors.dangerLight, size: 48),
+                Icon(Icons.picture_as_pdf_rounded, color: NivaroColors.dangerLight, size: 48),
                 const SizedBox(height: 14),
                 Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
                 const SizedBox(height: 8),
-                Text('PDF error: $_pdfError', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
+                Text('PDF error: $_pdfError', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
                 const SizedBox(height: 20),
                 FilledButton.icon(
                   onPressed: _openWithExternalApp,
@@ -1019,11 +1019,11 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.82),
+                  color: Colors.black.withValues(alpha: 0.82),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.white12),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, spreadRadius: 2),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 8, spreadRadius: 2),
                   ],
                 ),
                 child: Row(
@@ -1097,9 +1097,9 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.broken_image_rounded, color: NivaroColors.dangerLight, size: 48),
+                Icon(Icons.broken_image_rounded, color: NivaroColors.dangerLight, size: 48),
                 const SizedBox(height: 12),
-                Text('Could not decode image format ($error)', style: const TextStyle(color: NivaroColors.textMuted)),
+                Text('Could not decode image format ($error)', style: TextStyle(color: NivaroColors.textMuted)),
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _openWithExternalApp,
@@ -1125,7 +1125,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
           if (_imageTransformController.value != Matrix4.identity()) {
             _imageTransformController.value = Matrix4.identity();
           } else {
-            _imageTransformController.value = Matrix4.identity()..scale(2.5, 2.5);
+            _imageTransformController.value = Matrix4.identity()..scaleByDouble(2.5, 2.5, 2.5, 1.0);
           }
         },
         child: InteractiveViewer(
@@ -1168,13 +1168,13 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                     width: 110,
                     height: 110,
                     decoration: BoxDecoration(
-                      color: NivaroColors.cyan.withOpacity(0.15),
+                      color: NivaroColors.cyan.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
-                      border: Border.all(color: NivaroColors.cyan.withOpacity(0.4), width: 3),
+                      border: Border.all(color: NivaroColors.cyan.withValues(alpha: 0.4), width: 3),
                       boxShadow: _audioPlaying
                           ? [
                               BoxShadow(
-                                color: NivaroColors.cyan.withOpacity(0.35),
+                                color: NivaroColors.cyan.withValues(alpha: 0.35),
                                 blurRadius: 24,
                                 spreadRadius: 6,
                               ),
@@ -1185,11 +1185,11 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                     child: Container(
                       width: 44,
                       height: 44,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: NivaroColors.surfaceContainerHigh,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.music_note_rounded, color: NivaroColors.cyanLight, size: 24),
+                      child: Icon(Icons.music_note_rounded, color: NivaroColors.cyanLight, size: 24),
                     ),
                   ),
                 ),
@@ -1202,7 +1202,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                 const SizedBox(height: 6),
                 Text(
                   '${formatBytes(widget.file.size)} · Audio Stream',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
                 ),
                 const SizedBox(height: 24),
 
@@ -1230,8 +1230,8 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(posStr, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                      Text(durStr, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                      Text(posStr, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                      Text(durStr, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -1329,17 +1329,17 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
           p: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 14, height: 1.5),
           h1: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
           h2: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
-          h3: const TextStyle(color: NivaroColors.primaryLight, fontSize: 16, fontWeight: FontWeight.w600),
-          code: const TextStyle(fontFamily: 'monospace', backgroundColor: Color(0xFF161B22), color: NivaroColors.cyanLight, fontSize: 12.5),
+          h3: TextStyle(color: NivaroColors.primaryLight, fontSize: 16, fontWeight: FontWeight.w600),
+          code: TextStyle(fontFamily: 'monospace', backgroundColor: Color(0xFF161B22), color: NivaroColors.cyanLight, fontSize: 12.5),
           codeblockDecoration: BoxDecoration(
             color: const Color(0xFF0D1117),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.white12),
           ),
           blockquoteDecoration: BoxDecoration(
-            color: NivaroColors.primary.withOpacity(0.08),
+            color: NivaroColors.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
-            border: const Border(left: BorderSide(color: NivaroColors.primary, width: 4)),
+            border: Border(left: BorderSide(color: NivaroColors.primary, width: 4)),
           ),
         ),
         onTapLink: (text, href, title) {
@@ -1456,7 +1456,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
               const SizedBox(width: 12),
               Text(
                 '${rows.length} of ${_csvRows.length - 1} rows · ${header.length} cols',
-                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5, fontWeight: FontWeight.bold),
+                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -1473,10 +1473,10 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   headingRowColor: WidgetStateProperty.all(NivaroColors.surfaceContainerHigh),
                   dataRowColor: WidgetStateProperty.resolveWith((states) {
                     return states.contains(WidgetState.hovered)
-                        ? NivaroColors.primary.withOpacity(0.12)
+                        ? NivaroColors.primary.withValues(alpha: 0.12)
                         : NivaroColors.surfaceDim;
                   }),
-                  headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: NivaroColors.cyanLight, fontSize: 13),
+                  headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: NivaroColors.cyanLight, fontSize: 13),
                   dataTextStyle: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 12.5),
                   columns: [
                     const DataColumn(label: Text('#')),
@@ -1544,7 +1544,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                     decoration: InputDecoration(
                       hintText: 'Find in text...',
                       hintStyle: const TextStyle(fontSize: 12.5, color: Colors.white30),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 16, color: NivaroColors.primaryLight),
+                      prefixIcon: Icon(Icons.search_rounded, size: 16, color: NivaroColors.primaryLight),
                       suffixIcon: _codeSearchQuery.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear_rounded, size: 16),
@@ -1607,7 +1607,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
     final isMatched = query.isNotEmpty && lineText.toLowerCase().contains(query);
 
     return Container(
-      color: isMatched ? NivaroColors.warning.withOpacity(0.18) : Colors.transparent,
+      color: isMatched ? NivaroColors.warning.withValues(alpha: 0.18) : Colors.transparent,
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1655,7 +1655,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF97316).withOpacity(0.15),
+                    color: const Color(0xFFF97316).withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
@@ -1666,7 +1666,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                 const SizedBox(height: 6),
                 Text(
                   '${formatBytes(widget.file.size)} · ${widget.file.extension.toUpperCase()} Compressed Archive',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
                 ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
@@ -1714,7 +1714,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: NivaroColors.infoLight.withOpacity(0.15),
+                    color: NivaroColors.infoLight.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
@@ -1733,7 +1733,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
                 const SizedBox(height: 6),
                 Text(
                   '${formatBytes(widget.file.size)} · ${widget.file.categoryLabel}',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
                 ),
                 const SizedBox(height: 24),
                 FilledButton.icon(

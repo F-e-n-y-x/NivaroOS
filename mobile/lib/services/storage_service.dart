@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -7,8 +8,8 @@ import '../models/server_profile.dart';
 
 /// Everything this app needs to remember between launches - multi-server profiles,
 /// active server connection, and credentials - kept in the platform secure
-/// storage (Android Keystore-backed EncryptedSharedPreferences / iOS
-/// Keychain), cached in memory for synchronous-feeling reads after init().
+/// storage (Android Keystore-wrapped AES-GCM / iOS Keychain), cached in
+/// memory for synchronous-feeling reads after init().
 ///
 /// This used to write everything (including access/refresh tokens and every
 /// saved server profile's credentials) to a plain JSON file in the app's
@@ -20,8 +21,13 @@ class StorageService {
   StorageService._();
   static final StorageService instance = StorageService._();
 
+  // Builds up to 1.2.1 used flutter_secure_storage 9.x with
+  // EncryptedSharedPreferences. 10.x re-encrypts that data into its own
+  // cipher storage on first access (migrateOnAlgorithmChange, on by
+  // default), so the default options keep every saved token. 11.x drops
+  // that migration - see the pin in pubspec.yaml.
   static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: AndroidOptions(),
   );
 
   final Map<String, String> _cache = {};
@@ -36,6 +42,10 @@ class StorageService {
   static const _keyCompanionDeviceName = 'companion_device_name';
   static const _keyCompanionDeviceId = 'companion_device_id';
   static const _keyCompanionSecret = 'companion_secret';
+  static const _keyThemeMode = 'theme_mode';
+
+  // Display preferences, not account data: clearAll() (sign out) keeps them.
+  static const _preservedKeys = {_keyThemeMode};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -122,6 +132,17 @@ class StorageService {
     await _set(_keyCompanionSecret, secret);
   }
 
+  /// 'system', 'light' or 'dark'; null until the user picks one.
+  Future<String?> getThemeMode() async {
+    if (!_initialized) await init();
+    return _cache[_keyThemeMode];
+  }
+
+  Future<void> setThemeMode(String mode) async {
+    if (!_initialized) await init();
+    await _set(_keyThemeMode, mode);
+  }
+
   Future<String?> getServerUrl() async {
     if (!_initialized) await init();
     return _cache[_keyServerUrl];
@@ -168,7 +189,7 @@ class StorageService {
             accessToken: accessToken,
             refreshToken: refreshToken,
             username: username,
-            lastConnected: DateTime.now(),
+            lastConnected: clock.now(),
           );
           await saveProfile(updated);
         } else {
@@ -179,7 +200,7 @@ class StorageService {
             username: username,
             accessToken: accessToken,
             refreshToken: refreshToken,
-            lastConnected: DateTime.now(),
+            lastConnected: clock.now(),
           );
           await saveProfile(newProfile);
         }
@@ -218,7 +239,7 @@ class StorageService {
           username: currentUsername ?? 'Admin',
           accessToken: await getAccessToken(),
           refreshToken: await getRefreshToken(),
-          lastConnected: DateTime.now(),
+          lastConnected: clock.now(),
         );
         final raw = jsonEncode([defaultProfile.toJson()]);
         await _set(_keyServerProfiles, raw);
@@ -287,13 +308,20 @@ class StorageService {
         username: profile.username,
       );
     }
-    final updated = profile.copyWith(lastConnected: DateTime.now());
+    final updated = profile.copyWith(lastConnected: clock.now());
     await saveProfile(updated);
   }
 
   Future<void> clearAll() async {
     if (!_initialized) await init();
+    final kept = {
+      for (final key in _preservedKeys)
+        if (_cache[key] != null) key: _cache[key]!,
+    };
     _cache.clear();
     await _secureStorage.deleteAll();
+    for (final entry in kept.entries) {
+      await _set(entry.key, entry.value);
+    }
   }
 }

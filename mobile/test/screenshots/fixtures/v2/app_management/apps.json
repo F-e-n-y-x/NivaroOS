@@ -1,0 +1,1098 @@
+{
+ "data": {
+  "installed": [],
+  "list": {
+   "2fauth": {
+    "apps": {
+     "2fauth": {
+      "devices": null,
+      "envs": null,
+      "image": "2fauth/2fauth:6.1.3",
+      "ports": [
+       {
+        "container": "8000",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/2fauth",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "386",
+     "arm64",
+     "arm"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Productivity",
+    "description": {
+     "en_US": "2FAuth is a web based self-hosted alternative to One Time Passcode (OTP) generators like Google Authenticator, designed for both mobile and desktop."
+    },
+    "developer": "Bubka",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/2FAuth/icon.svg",
+    "index": "/",
+    "main": "2fauth",
+    "port_map": "8000",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/2FAuth/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/2FAuth/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/2FAuth/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "A web app to manage your Two-Factor Authentication (2FA) accounts and generate their security codes"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/2FAuth/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "2FAuth"
+    }
+   },
+   "adguard-home": {
+    "apps": {
+     "adguard-home": {
+      "devices": null,
+      "envs": null,
+      "image": "adguard/adguardhome:v0.107.79",
+      "ports": [
+       {
+        "container": "53",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "53",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "3000",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "853",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "784",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/opt/adguardhome/work",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "/opt/adguardhome/conf",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "386",
+     "amd64",
+     "arm",
+     "arm64",
+     "ppc64le"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Networking",
+    "description": {
+     "en_US": "Difference from Traditional Ad Blockers. Unlike traditional ad-blocking plugins that work only on individual devices, AdGuard Home offers a network-wide solution. By setting it up, you can block ads and trackers across all your home devices without needing to install any additional software on each device. This means comprehensive protection with minimal effort.\n\nHow AdGuard Home Works and How to Use It. AdGuard Home functions as a DNS server that reroutes tracking domains to a \"black hole,\" effectively preventing your devices from connecting to these servers. This blocks ads and trackers not only on your computer but also on your smartphone and smart home devices. To start using AdGuard Home, deploy it on your device, then change the DNS address assigned by DHCP on your router to the IP address of your AdGuard Home server.\n\nBenefits of Deploying AdGuard Home on Zima Private Cloud. Deploying AdGuard Home on a Zima device simplifies network-wide ad and tracker blocking, providing a seamless and secure browsing experience for all your home devices. With Zima, you gain the flexibility to monitor network activity and create custom filtering rules tailored to your needs.\n"
+    },
+    "developer": "AdguardTeam",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/icon.svg",
+    "index": "/",
+    "main": "adguard-home",
+    "port_map": "3001",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "Network-wide ad and tracker blocking"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/AdGuardHome/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "AdGuard Home"
+    }
+   },
+   "audiobookshelf": {
+    "apps": {
+     "audiobookshelf": {
+      "devices": null,
+      "envs": null,
+      "image": "ghcr.io/advplyr/audiobookshelf:2.35.0",
+      "ports": [
+       {
+        "container": "80",
+        "description": {
+         "de_DE": "WebUI HTTP Port",
+         "el_GR": "Θύρα HTTP WebUI",
+         "en_GB": "WebUI HTTP Port",
+         "en_US": "WebUI HTTP Port",
+         "fr_FR": "Port HTTP WebUI",
+         "hr_HR": "WebUI HTTP port",
+         "it_IT": "Porta HTTP WebUI",
+         "ja_JP": "WebUI HTTPポート",
+         "ko_KR": "WebUI HTTP 포트",
+         "nb_NO": "WebUI HTTP-port",
+         "pt_PT": "Porta HTTP WebUI",
+         "ru_RU": "HTTP порт веб-интерфейса",
+         "sv_SE": "WebUI HTTP-port",
+         "tr_TR": "WebUI HTTP Portu",
+         "zh_CN": "WebUI HTTP端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/audiobooks",
+        "description": {
+         "de_DE": "Hörbuchverzeichnis",
+         "el_GR": "Κατάλογος ηχητικών βιβλίων",
+         "en_GB": "Audiobooks directory",
+         "en_US": "Audiobooks directory",
+         "fr_FR": "Répertoire des livres audio",
+         "hr_HR": "Direktorij audioknjiga",
+         "it_IT": "Directory degli audiolibri",
+         "ja_JP": "オーディオブックディレクトリ",
+         "ko_KR": "오디오북 디렉터리",
+         "nb_NO": "Lydbokskatalog",
+         "pt_PT": "Diretório de audiolivros",
+         "ru_RU": "Каталог аудиокниг",
+         "sv_SE": "Ljudbokskatalog",
+         "tr_TR": "Sesli kitap dizini",
+         "zh_CN": "有声书目录"
+        }
+       },
+       {
+        "container": "/podcasts",
+        "description": {
+         "de_DE": "Podcast-Verzeichnis",
+         "el_GR": "Κατάλογος podcast",
+         "en_GB": "Podcasts directory",
+         "en_US": "Podcasts directory",
+         "fr_FR": "Répertoire des podcasts",
+         "hr_HR": "Direktorij podcasta",
+         "it_IT": "Directory dei podcast",
+         "ja_JP": "ポッドキャストディレクトリ",
+         "ko_KR": "팟캐스트 디렉터리",
+         "nb_NO": "Podkastkatalog",
+         "pt_PT": "Diretório de podcasts",
+         "ru_RU": "Каталог подкастов",
+         "sv_SE": "Podcastkatalog",
+         "tr_TR": "Podcast dizini",
+         "zh_CN": "播客目录"
+        }
+       },
+       {
+        "container": "/config",
+        "description": {
+         "de_DE": "Konfigurationsverzeichnis",
+         "el_GR": "Κατάλογος ρυθμίσεων",
+         "en_GB": "Configuration directory",
+         "en_US": "Configuration directory",
+         "fr_FR": "Répertoire de configuration",
+         "hr_HR": "Direktorij konfiguracije",
+         "it_IT": "Directory di configurazione",
+         "ja_JP": "設定ディレクトリ",
+         "ko_KR": "설정 디렉터리",
+         "nb_NO": "Konfigurasjonskatalog",
+         "pt_PT": "Diretório de configuração",
+         "ru_RU": "Каталог конфигурации",
+         "sv_SE": "Konfigurationskatalog",
+         "tr_TR": "Yapılandırma dizini",
+         "zh_CN": "配置目录"
+        }
+       },
+       {
+        "container": "/metadata",
+        "description": {
+         "de_DE": "Metadatenverzeichnis",
+         "el_GR": "Κατάλογος μεταδεδομένων",
+         "en_GB": "Metadata directory",
+         "en_US": "Metadata directory",
+         "fr_FR": "Répertoire des métadonnées",
+         "hr_HR": "Direktorij metapodataka",
+         "it_IT": "Directory dei metadati",
+         "ja_JP": "メタデータディレクトリ",
+         "ko_KR": "메타데이터 디렉터리",
+         "nb_NO": "Metadata-katalog",
+         "pt_PT": "Diretório de metadados",
+         "ru_RU": "Каталог метаданных",
+         "sv_SE": "Metadatakatalog",
+         "tr_TR": "Meta veri dizini",
+         "zh_CN": "元数据目录"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "advplyr",
+    "category": "Media",
+    "description": {
+     "en_US": "Audiobookshelf is a self-hosted media server designed for managing and streaming audiobooks, podcasts, and e-books, offering a secure and flexible solution for personal media libraries. Its lightweight architecture and intuitive Web interface (available as a Progressive Web App, PWA) enable seamless access from any browser, while beta Android and iOS apps support offline listening, catering to privacy-focused media enthusiasts.\n\nThe app supports on-the-fly streaming of all audio formats and provides robust management tools, including automatic metadata and cover art fetching from multiple sources, bulk drag-and-drop uploads for books and podcasts, and chapter editing with lookup via the Audnexus API. Users can search and subscribe to podcasts with auto-downloading episodes or manage content via open RSS feeds. It supports multi-user access with custom permissions, ensuring individual playback progress syncs across devices. Additionally, it offers audio tools (like merging files into m4b or embedding metadata) and experimental e-book support (epub, pdf, cbr, cbz), with the ability to send e-books to devices like Kindle.\n\nIt automatically detects library updates, eliminating manual rescans, and includes daily automated backups to safeguard metadata. Chromecast support (on Web and Android apps) enhances streaming capabilities, while an active community provides support documentation for continuous improvements. Whether for personal collections or family sharing, the app's intuitive interface and versatile features deliver a modern media management platform, meeting diverse needs.\n\n**Key Features:**\n- Multi-user support w/ custom permissions\n- Keeps progress per user and syncs across devices\n- Lookup and apply metadata and cover art from several providers\n- Audiobook chapter editor w/ chapter lookup\n- Audiobook tools: Embed metadata in audio files & merge multiple audio files to a single m4b\n- Search and add podcasts to download episodes w/ auto-download\n- Open RSS feeds for audiobooks and podcast episodes\n- Backups with automated backup scheduling\n- Basic ebook support and ereader (epub, pdf, cbr, cbz) + send to device (i.e. Kindle)\n\n**Learn More:**\n- [Audiobookshelf Official Website](https://audiobookshelf.org)\n- [Audiobookshelf GitHub Repository](https://github.com/advplyr/audiobookshelf)\n"
+    },
+    "developer": "advplyr",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Audiobookshelf/icon.svg",
+    "index": "/",
+    "main": "audiobookshelf",
+    "port_map": "13378",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Audiobookshelf/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Audiobookshelf/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Audiobookshelf/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "Audiobookshelf is a self-hosted audiobook and podcast server."
+    },
+    "thumbnail": "",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Audiobookshelf"
+    }
+   },
+   "emby": {
+    "apps": {
+     "emby": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "UID",
+        "description": {
+         "en_US": "UID used to run Emby."
+        }
+       },
+       {
+        "container": "GID",
+        "description": {
+         "en_US": "Primary GID used to run Emby."
+        }
+       },
+       {
+        "container": "GIDLIST",
+        "description": {
+         "en_US": "Comma-separated supplementary group IDs. The default includes users (100), video (44), and render (109); adjust these IDs if the host uses different values."
+        }
+       },
+       {
+        "container": "TZ",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ],
+      "image": "emby/embyserver:4.9.5.0",
+      "ports": [
+       {
+        "container": "8096",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "8920",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/config",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "/data/tvshows",
+        "description": {
+         "en_US": ""
+        }
+       },
+       {
+        "container": "/data/movies",
+        "description": {
+         "en_US": ""
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Media",
+    "description": {
+     "en_US": "Emby is a personal media management platform that brings home videos, music, and photos together, automatically converting and streaming to any device. An intuitive design makes it ideal for users to enjoy media content anytime, anywhere, meeting family entertainment and media management needs.\n\nCore features include cross-device media streaming and easy access. It supports real-time conversion and streaming of personal media to any device for seamless playback. A connection service enables easy media access while away from home. Live TV functionality supports streaming, managing DVR, and accessing a library of recordings. Mobile sync delivers media to smartphones and tablets for offline access, automatically updating new content.\n\nIt offers parental controls to restrict children's content access, set schedules and time limits, and remotely monitor sessions. Chromecast support enables easy streaming of videos, music, photos, and Live TV. Content is presented elegantly, enhancing visual experience. Cloud sync supports backup, archiving, and multi-resolution storage for optimized streaming. Web-based media management facilitates editing metadata, images, and searching subtitles, while DLNA integration auto-detects network devices for content streaming. With convenience and versatility at the core, the platform delivers a modern media management solution.\n\n**Key Features:**\n- Automatic conversion and streaming of media to any device\n- Easy access via connection service while away from home\n- Live TV streaming, DVR management, and recording library access\n- Mobile sync to smartphones and tablets for offline access\n- Parental controls with content restrictions, schedules, and remote monitoring\n- Chromecast support for streaming videos, music, photos, and Live TV\n- Cloud sync for backup and multi-resolution storage\n- Web-based media management for editing metadata and searching subtitles\n- DLNA integration for auto-detecting network devices and streaming content\n\n**Learn More:**\n- [Emby Official Website](https://emby.media/)\n"
+    },
+    "developer": "Emby Team",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/icon.svg",
+    "index": "/",
+    "main": "emby",
+    "port_map": "8096",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "Emby brings together your personal videos, music, photos, and live television."
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Emby/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Emby"
+    }
+   },
+   "immich": {
+    "apps": {
+     "database": {
+      "devices": null,
+      "envs": null,
+      "image": "ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23",
+      "ports": null,
+      "volumes": null
+     },
+     "immich-machine-learning": {
+      "devices": null,
+      "envs": null,
+      "image": "ghcr.io/immich-app/immich-machine-learning:v2.7.2",
+      "ports": null,
+      "volumes": null
+     },
+     "immich-server": {
+      "devices": null,
+      "envs": null,
+      "image": "ghcr.io/immich-app/immich-server:v2.7.2",
+      "ports": null,
+      "volumes": null
+     },
+     "redis": {
+      "devices": null,
+      "envs": null,
+      "image": "docker.io/valkey/valkey:9@sha256:3eeb09785cd61ec8e3be35f8804c8892080f3ca21934d628abc24ee4ed1698f6",
+      "ports": null,
+      "volumes": null
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "Cp0204",
+    "category": "Media",
+    "description": {
+     "en_US": "Immich: Revolutionizing Your Home Media Experience\n\nImmich is here to transform the way you manage and enjoy your media files across your home TV, smartphones, and other devices. Unlike traditional photo albums or mainstream cloud services, immich offers a seamless and modern platform for organizing, sharing, and accessing your photos and videos. Imagine effortlessly backing up your precious moments from your mobile devices and viewing them instantly on your TV or sharing them with family members—immich makes it all possible.\n\nImmich stands out with its automatic backup from mobile devices, a sleek web-based interface for easy media browsing, and advanced features like face recognition and object detection. You can organize your media by location, enjoy 4K video playback, and even manage RAW photos. Plus, with multi-user support, sharing memories with friends and family is a breeze. The best part? Immich offers these powerful features for low cost, ensuring you get a premium experience without breaking the bank.\n\nDeploying immich on a private cloud device like Zima brings unparalleled convenience. Enjoy unlimited storage capacity, blazing-fast local network speeds, and easy multi-device access. With immich on your Zima private cloud, your media is always at your fingertips, safe and secure in your home.\n"
+    },
+    "developer": "alextran1502",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Immich/icon.svg",
+    "index": "/",
+    "main": "immich-server",
+    "port_map": "2283",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Immich/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Immich/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Immich/screenshot-3.png"
+    ],
+    "store_app_id": "immich",
+    "tagline": {
+     "en_US": "Self-hosted media management solution"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Immich/thumbnail.png",
+    "tips": {
+     "before_install": {
+      "de_DE": "⚠️ Das Projekt befindet sich in sehr aktiver Entwicklung.\n⚠️ Erwarten Sie Fehler und einschneidende Änderungen.\n⚠️ Verwenden Sie die App nicht als einzige Möglichkeit, Ihre Fotos und Videos zu speichern.\n⚠️ Befolgen Sie immer den 3-2-1-Backup-Plan für Ihre wertvollen Fotos und Videos!\n\n## Autorisierte Mediendateien und Daten\n1. Klicken Sie auf das Einstellungssymbol in der oberen rechten Ecke der App.\n2. Legen Sie im immich-server-Tab den Speicherort Ihres Albums im Abschnitt Volumes fest (Standard ist `/DATA/Gallery/immich`).\n\nFür die vollständige Projektdokumentation und Installationsanweisungen, bitte [hier klicken](https://immich.app).\n",
+      "el_GR": "⚠️ Το έργο βρίσκεται σε πολύ ενεργή ανάπτυξη.\n⚠️ Αναμένονται σφάλματα και αλλαγές που μπορεί να προκαλέσουν προβλήματα.\n⚠️ Μην χρησιμοποιείτε την εφαρμογή ως τον μοναδικό τρόπο αποθήκευσης των φωτογραφιών και βίντεό σας.\n⚠️ Ακολουθείτε πάντα το σχέδιο backup 3-2-1 για τις πολύτιμες φωτογραφίες και βίντεό σας!\n\n## Εξουσιοδοτημένα αρχεία μέσων και δεδομένα\n1. Κάντε κλικ στο εικονίδιο ρυθμίσεων στην επάνω δεξιά γωνία της εφαρμογής.\n2. Στην καρτέλα immich-server, χαρτογραφήστε τη θέση αποθήκευσης του άλμπουμ σας στην ενότητα Volumes (η προεπιλογή είναι `/DATA/Gallery/immich`).\n\nΓια την πλήρη τεκμηρίωση του έργου και τις οδηγίες εγκατάστασης, παρακαλώ [ανατρέξτε](https://immich.app).\n",
+      "en_GB": "⚠️ The project is under very active development.\n⚠️ Expect bugs and breaking changes.\n⚠️ Do not use the app as the only way to store your photos and videos.\n⚠️ Always follow 3-2-1 backup plan for your precious photos and videos!\n\n## Authorised Media Files and Data\n1. Click on the settings icon in the upper right corner of the App.\n2. In the immich-server tab, map your album storage location in the Volumes section (default is `/DATA/Gallery/immich`).\n\nFor complete project documentation and installation instructions, please [refer to](https://immich.app).\n",
+      "en_US": "⚠️ The project is under very active development.\n⚠️ Expect bugs and breaking changes.\n⚠️ Do not use the app as the only way to store your photos and videos.\n⚠️ Always follow 3-2-1 backup plan for your precious photos and videos!\n\n## Authorized Media Files and Data\n1. Click on the settings icon in the upper right corner of the App.\n2. In the immich-server tab, map your album storage location in the Volumes section (default is `/DATA/Gallery/immich`).\n\nFor complete project documentation and installation instructions, please [refer to](https://immich.app).\n",
+      "fr_FR": "⚠️ Le projet est en développement très actif.\n⚠️ Attendez-vous à des bugs et des changements majeurs.\n⚠️ N'utilisez pas l'application comme seul moyen de stocker vos photos et vidéos.\n⚠️ Suivez toujours le plan de sauvegarde 3-2-1 pour vos photos et vidéos précieuses !\n\n## Fichiers multimédias et données autorisés\n1. Cliquez sur l'icône des paramètres dans le coin supérieur droit de l'application.\n2. Dans l'onglet immich-server, mappez l'emplacement de stockage de votre album dans la section Volumes (par défaut : `/DATA/Gallery/immich`).\n\nPour la documentation complète du projet et les instructions d'installation, veuillez [consulter](https://immich.app).\n",
+      "hr_HR": "⚠️ Projekt je u vrlo aktivnom razvoju.\n⚠️ Očekujte pogreške i promjene koje mogu uzrokovati probleme.\n⚠️ Nemojte koristiti aplikaciju kao jedini način pohrane vaših fotografija i videa.\n⚠️ Uvijek slijedite 3-2-1 plan sigurnosnog kopiranja za svoje dragocjene fotografije i videe!\n\n## Ovlaštene medijske datoteke i podaci\n1. Kliknite na ikonu postavki u gornjem desnom kutu aplikacije.\n2. U kartici immich-server, mapirajte lokaciju pohrane albuma u odjeljku Volumi (zadano je `/DATA/Gallery/immich`).\n\nZa potpunu dokumentaciju projekta i upute za instalaciju, molimo [pogledajte](https://immich.app).\n",
+      "it_IT": "⚠️ Il progetto è in fase di sviluppo molto attivo.\n⚠️ Aspettatevi bug e modifiche che potrebbero causare problemi.\n⚠️ Non utilizzate l'app come unico mezzo per archiviare foto e video.\n⚠️ Seguite sempre il piano di backup 3-2-1 per le vostre foto e video preziosi!\n\n## File multimediali e dati autorizzati\n1. Cliccate sull'icona delle impostazioni nell'angolo superiore destro dell'app.\n2. Nella scheda immich-server, mappate la posizione di archiviazione dell'album nella sezione Volumi (il valore predefinito è `/DATA/Gallery/immich`).\n\nPer la documentazione completa del progetto e le istruzioni di installazione, consultate [qui](https://immich.app).\n",
+      "ja_JP": "⚠️ このプロジェクトは非常に活発な開発中です。\n⚠️ バグや破壊的変更が予想されます。\n⚠️ 写真やビデオを保存する唯一の手段としてアプリを使用しないでください。\n⚠️ 大切な写真やビデオには常に3-2-1バックアップ計画に従ってください！\n\n## 許可されたメディアファイルとデータ\n1. アプリの右上にある設定アイコンをクリックします。\n2. immich-serverタブで、ボリュームセクションにアルバムの保存場所をマッピングします（デフォルトは`/DATA/Gallery/immich`）。\n\nプロジェクトの完全なドキュメントとインストール手順については、[こちら](https://immich.app)を参照してください。\n",
+      "ko_KR": "⚠️ 이 프로젝트는 매우 활발한 개발 단계에 있습니다.\n⚠️ 버그와 주요 변경 사항이 발생할 수 있습니다.\n⚠️ 사진과 비디오를 저장하는 유일한 방법으로 앱을 사용하지 마세요.\n⚠️ 소중한 사진과 비디오를 위해 항상 3-2-1 백업 계획을 따르세요!\n\n## 승인된 미디어 파일 및 데이터\n1. 앱의 오른쪽 상단에 있는 설정 아이콘을 클릭하세요.\n2. immich-server 탭에서 볼륨 섹션에 앨범 저장 위치를 매핑하세요 (기본값은 `/DATA/Gallery/immich`입니다).\n\n전체 프로젝트 문서 및 설치 지침은 [여기](https://immich.app)를 참조하세요.\n",
+      "nb_NO": "⚠️ Prosjektet er under svært aktiv utvikling.\n⚠️ Forvent feil og endringer som kan føre til problemer.\n⚠️ Ikke bruk appen som den eneste måten å lagre bildene og videoene dine på.\n⚠️ Følg alltid 3-2-1 backup-planen for dine verdifulle bilder og videoer!\n\n## Autoriserte mediefiler og data\n1. Klikk på innstillingsikonet i øvre høyre hjørne av appen.\n2. I immich-server-fanen, kartlegg lagringsplasseringen for albumet i Volumer-seksjonen (standard er `/DATA/Gallery/immich`).\n\nFor fullstendig prosjektdokumentasjon og installasjonsinstruksjoner, vennligst [se her](https://immich.app).\n",
+      "pt_PT": "⚠️ O projeto está em desenvolvimento muito ativo.\n⚠️ Espere bugs e alterações que podem causar problemas.\n⚠️ Não utilize a aplicação como a única forma de armazenar as suas fotos e vídeos.\n⚠️ Siga sempre o plano de backup 3-2-1 para as suas fotos e vídeos valiosos!\n\n## Ficheiros multimédia e dados autorizados\n1. Clique no ícone de configurações no canto superior direito da aplicação.\n2. Na aba immich-server, mapeie a localização de armazenamento do seu álbum na secção Volumes (o padrão é `/DATA/Gallery/immich`).\n\nPara a documentação completa do projeto e instruções de instalação, por favor [consulte](https://immich.app).\n",
+      "ru_RU": "⚠️ Проект находится в стадии активной разработки.\n⚠️ Ожидайте ошибок и изменений, которые могут вызвать проблемы.\n⚠️ Не используйте приложение как единственный способ хранения ваших фотографий и видео.\n⚠️ Всегда следуйте плану резервного копирования 3-2-1 для ваших ценных фотографий и видео!\n\n## Авторизованные медиафайлы и данные\n1. Нажмите на значок настроек в правом верхнем углу приложения.\n2. На вкладке immich-server укажите расположение хранилища альбома в разделе Volumes (по умолчанию `/DATA/Gallery/immich`).\n\nПолную документацию по проекту и инструкции по установке можно найти [здесь](https://immich.app).\n",
+      "sv_SE": "⚠️ Projektet är under mycket aktiv utveckling.\n⚠️ Förvänta dig buggar och förändringar som kan orsaka problem.\n⚠️ Använd inte appen som det enda sättet att lagra dina bilder och videor.\n⚠️ Följ alltid 3-2-1 backup-planen för dina värdefulla bilder och videor!\n\n## Auktoriserade mediefiler och data\n1. Klicka på inställningsikonen i det övre högra hörnet av appen.\n2. I immich-server-fliken, mappa din albumlagringsplats i avsnittet Volymer (standard är `/DATA/Gallery/immich`).\n\nFör fullständig projektdokumentation och installationsinstruktioner, vänligen [se här](https://immich.app).\n",
+      "tr_TR": "⚠️ Proje çok aktif bir geliştirme aşamasında.\n⚠️ Hatalar ve sorunlara yol açabilecek değişiklikler bekleniyor.\n⚠️ Fotoğraflarınızı ve videolarınızı saklamanın tek yolu olarak uygulamayı kullanmayın.\n⚠️ Değerli fotoğraflarınız ve videolarınız için her zaman 3-2-1 yedekleme planını takip edin!\n\n## Yetkili Medya Dosyaları ve Veriler\n1. Uygulamanın sağ üst köşesindeki ayarlar simgesine tıklayın.\n2. immich-server sekmesinde, Volumes bölümünde albüm depolama konumunuzu eşleştirin (varsayılan `/DATA/Gallery/immich`).\n\nTam proje dokümantasyonu ve kurulum talimatları için lütfen [buraya](https://immich.app) bakın.\n",
+      "zh_CN": "⚠️ 该项目正处于非常活跃的开发阶段。\n⚠️ 可能会出现错误和重大变更。\n⚠️ 请勿将该应用作为存储照片和视频的唯一方式。\n⚠️ 请始终遵循 3-2-1 备份计划以保护您珍贵的照片和视频！\n\n## 授权的媒体文件和数据\n1. 点击应用右上角的设置图标。\n2. 在 immich-server 选项卡中，在 Volumes 部分映射您的相册存储位置（默认为 `/DATA/Gallery/immich`）。\n\n有关完整的项目文档和安装说明，请[参考](https://immich.app)。\n"
+     }
+    },
+    "title": {
+     "en_US": "Immich"
+    }
+   },
+   "jellyfin": {
+    "apps": {
+     "jellyfin": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "TZ",
+        "description": {
+         "en_US": "TimeZone",
+         "zh_CN": "时区"
+        }
+       },
+       {
+        "container": "PUID",
+        "description": {
+         "en_US": "Run Jellyfin as specified uid.",
+         "zh_CN": "Jellyfin运行的用户ID"
+        }
+       },
+       {
+        "container": "PGID",
+        "description": {
+         "en_US": "Run Jellyfin as specified gid.",
+         "zh_CN": "Jellyfin运行的用户组ID"
+        }
+       },
+       {
+        "container": "JELLYFIN_PublishedServerUrl",
+        "description": {
+         "en_US": "The autodiscovery response domain or IP address.",
+         "zh_CN": "自动发现响应域名或IP地址"
+        }
+       }
+      ],
+      "image": "linuxserver/jellyfin:10.11.10",
+      "ports": [
+       {
+        "container": "8096",
+        "description": {
+         "en_US": "WebUI HTTP Port",
+         "zh_CN": "WebUI HTTP端口"
+        }
+       },
+       {
+        "container": "8920",
+        "description": {
+         "en_US": "WebUI HTTPS Port",
+         "zh_CN": "WebUI HTTPS端口"
+        }
+       },
+       {
+        "container": "7359",
+        "description": {
+         "en_US": "Jellyfin auto-discovery Port",
+         "zh_CN": "Jellyfin自动发现端口"
+        }
+       },
+       {
+        "container": "1900",
+        "description": {
+         "en_US": "Jellyfin DLNA Port",
+         "zh_CN": "Jellyfin DLNA端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/config",
+        "description": {
+         "en_US": "Jellyfin config directory.",
+         "zh_CN": "Jellyfin配置目录"
+        }
+       },
+       {
+        "container": "/Media",
+        "description": {
+         "en_US": "Jellyfin Media directory.",
+         "zh_CN": "Jellyfin媒体目录"
+        }
+       },
+       {
+        "container": "/opt/vc/lib",
+        "description": {
+         "en_US": "OpenMax libs",
+         "zh_CN": "OpenMax库"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Media",
+    "description": {
+     "en_US": "Jellyfin stands out among media server applications for its fully open-source, free, and privacy-focused design. Unlike Emby and Plex, Jellyfin delivers robust media management, real-time transcoding, and granular multi-user permissions without subscription costs, operating independently of cloud services to ensure full user control over data. Its community-driven development and efficient resource usage enable smooth performance on low-end devices, making it the go-to choice for privacy-conscious and budget-savvy users.\n\nPicture your movies, TV shows, and music at your fingertips, accessible on any device. Jellyfin transforms your media collection into a personalized entertainment hub, surpassing traditional photo albums with a seamless browsing and playback experience.\nJellyfin offers high-quality streaming, automatic metadata fetching, and personalized recommendations, all at no cost. It supports multiple users, each with their own media library, catering to the diverse needs of families or teams.\nDeploying Jellyfin on private cloud devices like Zima provides near-unlimited storage, smooth streaming, and secure multi-device access. For NAS enthusiasts or anyone looking to elevate their home media setup, Jellyfin is the perfect solution.\n"
+    },
+    "developer": "Jellyfin",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.svg",
+    "index": "/",
+    "main": "jellyfin",
+    "port_map": "8097",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "The personal Media System"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Jellyfin"
+    }
+   },
+   "navidrome": {
+    "apps": {
+     "navidrome": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "ND_SCANSCHEDULE",
+        "description": {
+         "en_US": "Configure periodic scans using cron syntax.",
+         "zh_CN": "使用cron语法配置定期扫描。"
+        }
+       },
+       {
+        "container": "ND_LOGLEVEL",
+        "description": {
+         "en_US": "Log level.",
+         "zh_CN": "日志级别。"
+        }
+       },
+       {
+        "container": "ND_SESSIONTIMEOUT",
+        "description": {
+         "en_US": "How long Navidrome will wait before closing web ui idle sessions",
+         "zh_CN": "Navidrome在关闭Web UI空闲会话之前等待多长时间"
+        }
+       },
+       {
+        "container": "ND_BASEURL",
+        "description": {
+         "en_US": "Base URL (only the path part) to configure Navidrome behind a proxy (ex: /music)",
+         "zh_CN": "配置Navidrome在代理后面的基本URL（仅路径部分）（例如：/music）"
+        }
+       },
+       {
+        "container": "TZ",
+        "description": {
+         "en_US": "TimeZone",
+         "zh_CN": "时区"
+        }
+       }
+      ],
+      "image": "deluan/navidrome:0.61.2",
+      "ports": [
+       {
+        "container": "4533",
+        "description": {
+         "en_US": "WebUI Port for Navidrome",
+         "zh_CN": "Navidrome的WebUI端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/data",
+        "description": {
+         "en_US": "AppData Data File",
+         "zh_CN": "AppData数据文件"
+        }
+       },
+       {
+        "container": "/music",
+        "description": {
+         "en_US": "Music folder",
+         "zh_CN": "音乐文件夹"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64",
+     "arm"
+    ],
+    "author": "The Navidrome Authors",
+    "category": "Media",
+    "description": {
+     "en_US": "Navidrome is an open source web-based music collection server and streamer. It gives you freedom to listen to your music collection from any browser or mobile device. It's like your personal Spotify!"
+    },
+    "developer": "",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Navidrome/icon.svg",
+    "index": "/",
+    "main": "navidrome",
+    "port_map": "4533",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Navidrome/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Navidrome/screenshot-2.png"
+    ],
+    "store_app_id": "navidrome",
+    "tagline": {
+     "en_US": "Music Collection and Streaming Server"
+    },
+    "thumbnail": "",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Navidrome"
+    }
+   },
+   "nextcloud": {
+    "apps": {
+     "nextcloud": {
+      "devices": null,
+      "envs": null,
+      "image": "nextcloud:33.0.3",
+      "ports": [
+       {
+        "container": "80",
+        "description": {
+         "en_US": "WebUI HTTP Port",
+         "zh_CN": "WebUI HTTP 端口"
+        }
+       },
+       {
+        "container": "443",
+        "description": {
+         "en_US": "WebUI HTTPS Port",
+         "zh_CN": "WebUI HTTPS 端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/var/www/html",
+        "description": {
+         "en_US": "Nextcloud config directory.",
+         "zh_CN": "Nextcloud 配置目录。"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm",
+     "arm64",
+     "386",
+     "ppc64le",
+     "s390x"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Productivity",
+    "description": {
+     "en_US": "Discover the ultimate solution for remote collaboration with Nextcloud. Unlike traditional office software, Nextcloud seamlessly integrates files, communication, and productivity tools into one platform, enhancing teamwork and streamlining your workflow. Say goodbye to the limitations of conventional tools and embrace a new era of collaboration.\n\nNextcloud stands out with its robust features tailored for every need. Enjoy secure file storage, real-time communication via Talk, comprehensive groupware, and powerful office integration, all in one place. Experience these top-notch features at an affordable price, making it accessible for everyone to elevate their collaboration game.\n\nDeploying Nextcloud on a Zima private cloud device brings unparalleled convenience. Benefit from unlimited storage, secure data privacy, local network speeds, and multi-device access, ensuring you have everything you need at your fingertips.\n"
+    },
+    "developer": "Nextcloud",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/icon.svg",
+    "index": "/",
+    "main": "nextcloud",
+    "port_map": "10081",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/screenshot-3.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/screenshot-4.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/screenshot-5.png"
+    ],
+    "tagline": {
+     "en_US": "Content collaboration platform"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Nextcloud/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Nextcloud"
+    }
+   },
+   "photoprism": {
+    "apps": {
+     "photoprism": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "TZ",
+        "description": {
+         "en_US": "TimeZone",
+         "zh_CN": "时区"
+        }
+       },
+       {
+        "container": "PHOTOPRISM_UPLOAD_NSFW",
+        "description": {
+         "en_US": "true or false, is it possible to upload NSFW",
+         "zh_CN": "true 或 false，是否允许上传 NSFW"
+        }
+       },
+       {
+        "container": "PHOTOPRISM_ADMIN_PASSWORD",
+        "description": {
+         "en_US": "The password of admin",
+         "zh_CN": "管理员密码"
+        }
+       }
+      ],
+      "image": "photoprism/photoprism:260523",
+      "ports": [
+       {
+        "container": "2342",
+        "description": {
+         "en_US": "WebUI HTTP Port",
+         "zh_CN": "WebUI HTTP 端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/photoprism/storage",
+        "description": {
+         "en_US": "PhotoPrism storage directory.",
+         "zh_CN": "PhotoPrism 存储目录"
+        }
+       },
+       {
+        "container": "/photoprism/originals",
+        "description": {
+         "en_US": "PhotoPrism originals directory.",
+         "zh_CN": "PhotoPrism 原始文件目录"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Media",
+    "description": {
+     "en_US": "Your AI-Powered Photos App for the Decentralized Web\n\nPhotoPrism brings the magic of AI to your home TV, phone, and multiple devices, revolutionizing the way you manage and share your photos. Unlike traditional photo albums that require manual organization, PhotoPrism automatically tags and finds your pictures, making it easier than ever to relive your memories. Whether you're showing family photos on your TV or sharing vacation snapshots on your phone, PhotoPrism makes the experience seamless and enjoyable.\n\nPhotoPrism offers a host of features designed to enhance your photo management experience. With powerful search capabilities, automatic tagging, and a user-friendly interface, you'll find it easy to keep your photo collection organized. The app is free to use, with premium options available for those seeking additional features and support. Users can expect a smooth, intuitive experience that blends cutting-edge technology with everyday convenience.\n\nDeploying PhotoPrism on Zima private cloud devices offers unparalleled convenience. Enjoy unlimited storage capacity, the speed of your local network, and access from multiple devices without the need for the internet. It's the perfect solution for NAS enthusiasts who value privacy and performance.\n"
+    },
+    "developer": "PhotoPrism",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/icon.svg",
+    "index": "/",
+    "main": "photoprism",
+    "port_map": "2342",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "Browse Your Life in Images"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/PhotoPrism/thumbnail.png",
+    "tips": {
+     "before_install": {
+      "en_US": "## PhotoPrism\n\nDefault Account\n\n| Username | Password |\n| -------- | -------- |\n| `admin`    | `casaos`   |\n",
+      "zh_CN": "## PhotoPrism\n\n默认账号\n\n| 用户名 | 密码 |\n| -------- | -------- |\n| `admin`    | `casaos`   |\n"
+     }
+    },
+    "title": {
+     "en_US": "PhotoPrism"
+    }
+   },
+   "plex": {
+    "apps": {
+     "plex": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "PUID",
+        "description": {
+         "en_US": "Run Plex as specified uid.",
+         "zh_CN": "以指定的uid运行Plex"
+        }
+       },
+       {
+        "container": "PGID",
+        "description": {
+         "en_US": "Run Plex as specified gid.",
+         "zh_CN": "以指定的gid运行Plex"
+        }
+       },
+       {
+        "container": "VERSION",
+        "description": {
+         "en_US": "Let Docker handle the Plex Version",
+         "zh_CN": "让Docker处理Plex版本"
+        }
+       }
+      ],
+      "image": "lscr.io/linuxserver/plex:1.43.3",
+      "ports": null,
+      "volumes": [
+       {
+        "container": "/config",
+        "description": {
+         "en_US": "Plex config directory.",
+         "zh_CN": "Plex配置目录"
+        }
+       },
+       {
+        "container": "/Media",
+        "description": {
+         "en_US": "Plex Media directory.",
+         "zh_CN": "Plex媒体目录"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Media",
+    "description": {
+     "en_US": "Transform your home into a cinematic oasis with your very own media server. Unlike streaming platforms that compress and limit the quality of your content, a Plex server in your home allows you to maintain the pristine, high-bitrate glory of Blu-ray and beyond. Imagine pairing this high-fidelity, uninterrupted media access with cutting-edge home theater tech like VR headsets, 75-inch UHD TVs, or 100-inch laser projectors. The result? A breathtaking visual and auditory experience that streams seamlessly across TVs and mobile devices alike, right from the comfort of your couch. \n\nDeploy Plex on a Zima devices and unlock the ultimate in home entertainment convenience. Enjoy ALMOST limitless storage capacity for your entire media library, lightning-fast local network speeds, and the ability to stream content effortlessly to any device in your home. Experience a world where your favorite shows and movies are always just a click away, stored securely and privately on your own terms.\n"
+    },
+    "developer": "Plex",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/icon.svg",
+    "index": "/web/index.html",
+    "main": "plex",
+    "port_map": "32400",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "Stream Movies & TV Shows"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Plex/thumbnail.png",
+    "tips": {
+     "before_install": {
+      "en_US": "## Plex\n\n#### Stream Movies & TV Shows <br>\n\n*FAQ*\nAuthorized Files and Data to Plex\n\n1. Click setting via top right menu of App icon\n2. map your device's media location in 'Host Path' and link it to Plex's 'Container Path' at /Media for seamless access.\n  To add a media library in Plex\n3. Go to Plex settings\n4. click 'Add Library'\n5. select your media type, and specify the path, such as /Media, where your media files are stored for Plex to catalog and include in your library.\n",
+      "zh_CN": "## Plex\n\n#### 常见问题解答\n\n*FAQ*\n授权文件和数据给 Plex\n\n1. 点击应用程序图标右上角的设置菜单。\n2. 在“主机路径”中映射您设备的媒体位置，并将其链接到 Plex 的“容器路径”/Media 以实现无缝访问。\n  要在 Plex 中添加媒体库：\n3. 进入 Plex 设置。\n4. 点击“添加库”。\n5. 选择您的媒体类型，并指定路径，例如 /Media，Plex 将存储和编目您的媒体文件，并将其包含在您的库中。\n"
+     }
+    },
+    "title": {
+     "en_US": "Plex"
+    }
+   },
+   "syncthing": {
+    "apps": {
+     "syncthing": {
+      "devices": null,
+      "envs": [
+       {
+        "container": "TZ",
+        "description": {
+         "en_US": "TimeZone",
+         "zh_CN": "时区"
+        }
+       },
+       {
+        "container": "PUID",
+        "description": {
+         "en_US": "Run Syncthing as specified uid.",
+         "zh_CN": "以指定的用户ID运行Syncthing"
+        }
+       },
+       {
+        "container": "PGID",
+        "description": {
+         "en_US": "Run Syncthing as specified gid.",
+         "zh_CN": "以指定的组ID运行Syncthing"
+        }
+       }
+      ],
+      "image": "linuxserver/syncthing:1.29.7",
+      "ports": [
+       {
+        "container": "8384",
+        "description": {
+         "en_US": "WebUI HTTP Port",
+         "zh_CN": "WebUI HTTP端口"
+        }
+       },
+       {
+        "container": "22000",
+        "description": {
+         "en_US": "Syncthing listening Port (TCP)",
+         "zh_CN": "Syncthing监听端口（TCP）"
+        }
+       },
+       {
+        "container": "22000",
+        "description": {
+         "en_US": "Syncthing listening Port (UDP)",
+         "zh_CN": "Syncthing监听端口（UDP）"
+        }
+       },
+       {
+        "container": "21027",
+        "description": {
+         "en_US": "Syncthing protocol discovery Port (TCP)",
+         "zh_CN": "Syncthing协议发现端口（TCP）"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/config",
+        "description": {
+         "en_US": "Syncthing config directory.",
+         "zh_CN": "Syncthing配置目录"
+        }
+       },
+       {
+        "container": "/DATA",
+        "description": {
+         "en_US": "Syncthing Accessible Directory.",
+         "zh_CN": "Syncthing可访问目录"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Productivity",
+    "description": {
+     "en_US": "# Unlocking the True Potential of Data Backup\n\nSay goodbye to traditional cloud backup limitations and embrace the future with Syncthing. Unlike conventional cloud services that often come with privacy concerns and storage restrictions, Syncthing provides a secure, real-time file synchronization solution that keeps your data exclusively in your hands. Whether you're syncing work documents or personal photos, you have complete control over where and how your files are stored and shared.\n\n# Features That Make a Difference\n\nSyncthing offers a seamless, user-friendly experience with powerful features designed for everyday users. Enjoy continuous file synchronization between multiple devices without any subscription fees. Experience peace of mind knowing that your data is encrypted and protected from unauthorized access. Syncthing’s open-source nature means no hidden costs, providing a truly transparent and cost-effective solution for your file management needs.\n\n# The Power of Syncthing on Zima\n\nDeploying Syncthing on Zima private cloud devices unlocks unparalleled convenience: enjoy unlimited storage capacity, ensure the privacy of your data, and benefit from blazing local network speeds. Transform your data management and synchronization with the perfect combination of Syncthing’s capabilities and Zima’s powerful infrastructure.\n"
+    },
+    "developer": "Syncthing",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/icon.svg",
+    "index": "/",
+    "main": "syncthing",
+    "port_map": "8384",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/screenshot-2.png"
+    ],
+    "tagline": {
+     "en_US": "Open decentralized file synchronization"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Syncthing/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Syncthing"
+    }
+   },
+   "vaultwarden": {
+    "apps": {
+     "vaultwarden": {
+      "devices": null,
+      "envs": null,
+      "image": "vaultwarden/server:1.36.0",
+      "ports": [
+       {
+        "container": "80",
+        "description": {
+         "en_US": "WebUI HTTP Port",
+         "zh_CN": "WebUI HTTP 端口"
+        }
+       }
+      ],
+      "volumes": [
+       {
+        "container": "/data",
+        "description": {
+         "en_US": "Vaultwarden data directory.",
+         "zh_CN": "Vaultwarden 数据目录。"
+        }
+       }
+      ]
+     }
+    },
+    "architectures": [
+     "amd64",
+     "arm",
+     "arm64"
+    ],
+    "author": "ZimaOS Team",
+    "category": "Productivity",
+    "description": {
+     "en_US": "Alternative implementation of the Bitwarden server API written in Rust and compatible with upstream Bitwarden clients*, perfect for self-hosted deployment where running the official resource-heavy service might not be ideal."
+    },
+    "developer": "Daniel García",
+    "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/icon.svg",
+    "index": "/",
+    "main": "vaultwarden",
+    "port_map": "10380",
+    "scheme": "http",
+    "screenshot_link": [
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/screenshot-1.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/screenshot-2.png",
+     "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/screenshot-3.png"
+    ],
+    "tagline": {
+     "en_US": "A self-hosted Bitwarden server"
+    },
+    "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Vaultwarden/thumbnail.png",
+    "tips": {
+     "before_install": null
+    },
+    "title": {
+     "en_US": "Vaultwarden"
+    }
+   }
+  }
+ }
+}

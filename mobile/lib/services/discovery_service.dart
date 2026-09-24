@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
 class DiscoveredServer {
@@ -23,8 +24,13 @@ class DiscoveredServer {
 class DiscoveryService {
   static const _serviceType = '_nivaroos._tcp.local';
 
+  /// Makes the mDNS client. Tests replace it so a scan never touches the
+  /// real network (and screenshots don't depend on what's on the LAN).
+  @visibleForTesting
+  static MDnsClient Function() clientFactory = MDnsClient.new;
+
   Stream<DiscoveredServer> discover({Duration timeout = const Duration(seconds: 5)}) async* {
-    final client = MDnsClient();
+    final client = clientFactory();
     try {
       await client.start();
 

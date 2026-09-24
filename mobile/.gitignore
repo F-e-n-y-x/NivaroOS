@@ -41,3 +41,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Diff images from failed golden comparisons (flutter test writes them)
+/test/screenshots/failures/

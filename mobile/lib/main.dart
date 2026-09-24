@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'theme.dart';
+import 'ui/theme/app_theme.dart';
+import 'ui/theme/theme_controller.dart';
 import 'services/api_client.dart';
 import 'services/storage_service.dart';
 import 'screens/discovery_screen.dart';
@@ -9,11 +12,15 @@ import 'services/permission_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Draw behind the status and navigation bars (Android 15 enforces this
+  // for apps targeting 35+ anyway); screens handle the insets.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   Widget initialScreen = const DiscoveryScreen();
 
   try {
     await StorageService.instance.init().timeout(const Duration(milliseconds: 1500));
+    await ThemeController.instance.load();
     await ApiClient.instance.init().timeout(const Duration(milliseconds: 1500));
 
     final serverUrl = await StorageService.instance.getServerUrl();
@@ -47,11 +54,23 @@ class NivaroApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NivaroOS',
-      debugShowCheckedModeBanner: false,
-      theme: buildNivaroTheme(),
-      home: initialScreen,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'NivaroOS',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        // System bar icons follow the app's theme on every screen, not only
+        // under an app bar (Home, login and discovery have none), so a
+        // Dark choice on a light phone still gets light status icons.
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
+          child: LegacyThemeBridge(child: child ?? const SizedBox.shrink()),
+        ),
+        home: initialScreen,
+      ),
     );
   }
 }

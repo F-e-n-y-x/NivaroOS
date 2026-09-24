@@ -1,0 +1,35 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "exit_code": 100,
+  "finished_at": "2026-09-24T00:44:19+05:30",
+  "job": {
+   "id": "20260924-004418-70f2a1ff",
+   "kind": "install",
+   "packages": [
+    "nvtest-no-such-package"
+   ],
+   "state": "failed",
+   "exit_code": 100,
+   "started_at": "2026-09-24T00:44:18.735604044+05:30",
+   "finished_at": "2026-09-24T00:44:19.446856677+05:30",
+   "logs": [
+    "[00:44:18] $ env DEBIAN_FRONTEND=noninteractive LC_ALL=C NEEDRESTART_MODE=a apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y -- nvtest-no-such-package",
+    "Reading package lists...",
+    "Building dependency tree...",
+    "Reading state information...",
+    "E: Unable to locate package nvtest-no-such-package"
+   ]
+  },
+  "logs": [
+   "[00:44:18] $ env DEBIAN_FRONTEND=noninteractive LC_ALL=C NEEDRESTART_MODE=a apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y -- nvtest-no-such-package",
+   "Reading package lists...",
+   "Building dependency tree...",
+   "Reading state information...",
+   "E: Unable to locate package nvtest-no-such-package"
+  ],
+  "running": false,
+  "started_at": "2026-09-24T00:44:18+05:30"
+ }
+}

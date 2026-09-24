@@ -1,0 +1,299 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "Version": "1.102.3-t9329c3677-ga522f65e9",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": [
+   "100.64.0.1",
+   "fd7a:115c:a1e0::da3a:e321"
+  ],
+  "Self": {
+   "ID": "nd31f35efd4CNTRL",
+   "NodeID": 2169148809050235,
+   "PublicKey": "nodekey:43387d6db034c5d4da8c640c13c5d0dd7f4fd4551015a3dc31cd2a6176bfaf97",
+   "HostName": "atom",
+   "DNSName": "atom.example-tailnet.ts.net.",
+   "OS": "linux",
+   "UserID": 254123618430062,
+   "TailscaleIPs": [
+    "100.64.0.1",
+    "fd7a:115c:a1e0::da3a:e321"
+   ],
+   "AllowedIPs": [
+    "100.64.0.1/32",
+    "fd7a:115c:a1e0::da3a:e321/128",
+    "192.168.10.0/24",
+    "0.0.0.0/0",
+    "::/0"
+   ],
+   "PrimaryRoutes": [
+    "192.168.10.0/24"
+   ],
+   "Addrs": [
+    "10.0.2.30:9264",
+    "203.0.113.145:63341",
+    "172.17.0.1:41641",
+    "172.18.0.1:41641",
+    "172.19.0.1:41641",
+    "172.21.0.1:41641",
+    "172.22.0.1:41641",
+    "192.168.10.10:41641",
+    "192.168.122.1:41641"
+   ],
+   "CurAddr": "",
+   "Relay": "blr",
+   "PeerRelay": "",
+   "RxBytes": 0,
+   "TxBytes": 0,
+   "Created": "2026-08-17T08:05:38.50022191Z",
+   "LastWrite": "0001-01-01T00:00:00Z",
+   "LastSeen": "0001-01-01T00:00:00Z",
+   "LastHandshake": "0001-01-01T00:00:00Z",
+   "Online": true,
+   "ExitNode": false,
+   "ExitNodeOption": true,
+   "Active": false,
+   "PeerAPIURL": [
+    "http://100.64.0.1:58098",
+    "http://[fd7a:115c:a1e0::da3a:e321]:35109"
+   ],
+   "TaildropTarget": 0,
+   "NoFileSharingReason": "",
+   "Capabilities": [
+    "HTTPS://TAILSCALE.COM/s/DEPRECATED-NODE-CAPS#see-https://github.com/tailscale/tailscale/issues/11508",
+    "default-auto-update",
+    "funnel",
+    "https",
+    "https://tailscale.com/cap/file-sharing",
+    "https://tailscale.com/cap/funnel-ports?ports=443,8443,10000",
+    "https://tailscale.com/cap/is-admin",
+    "https://tailscale.com/cap/is-owner",
+    "https://tailscale.com/cap/ssh",
+    "https://tailscale.com/cap/tailnet-lock",
+    "probe-udp-lifetime",
+    "ssh-behavior-v1",
+    "ssh-env-vars",
+    "store-appc-routes",
+    "tailnet-display-name"
+   ],
+   "CapMap": {
+    "default-auto-update": [
+     true
+    ],
+    "funnel": null,
+    "https": null,
+    "https://tailscale.com/cap/file-sharing": null,
+    "https://tailscale.com/cap/funnel-ports?ports=443,8443,10000": null,
+    "https://tailscale.com/cap/is-admin": null,
+    "https://tailscale.com/cap/is-owner": null,
+    "https://tailscale.com/cap/ssh": null,
+    "https://tailscale.com/cap/tailnet-lock": null,
+    "probe-udp-lifetime": null,
+    "ssh-behavior-v1": null,
+    "ssh-env-vars": null,
+    "store-appc-routes": null,
+    "tailnet-display-name": [
+     "alex@example.com"
+    ]
+   },
+   "InNetworkMap": true,
+   "InMagicSock": false,
+   "InEngine": false
+  },
+  "Health": [],
+  "MagicDNSSuffix": "example-tailnet.ts.net",
+  "CurrentTailnet": {
+   "Name": "alex@example.com",
+   "MagicDNSSuffix": "example-tailnet.ts.net",
+   "MagicDNSEnabled": false
+  },
+  "CertDomains": null,
+  "ExtraRecords": null,
+  "Peer": {
+   "nodekey:cec48ad62a99e0529b4f96e39e8286f92301e7f29944ee76978a6853d371822d": {
+    "ID": "n6678545427CNTRL",
+    "NodeID": 4196363188985211,
+    "PublicKey": "nodekey:cec48ad62a99e0529b4f96e39e8286f92301e7f29944ee76978a6853d371822d",
+    "HostName": "zero",
+    "DNSName": "zero.example-tailnet.ts.net.",
+    "OS": "linux",
+    "UserID": 254123618430062,
+    "TailscaleIPs": [
+     "100.64.0.3",
+     "fd7a:115c:a1e0::b53a:c431"
+    ],
+    "AllowedIPs": [
+     "100.64.0.3/32",
+     "fd7a:115c:a1e0::b53a:c431/128",
+     "0.0.0.0/0",
+     "::/0"
+    ],
+    "Addrs": null,
+    "CurAddr": "",
+    "Relay": "blr",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-08-22T22:58:19.153080711Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": true,
+    "Active": false,
+    "PeerAPIURL": [
+     "http://100.64.0.3:33758",
+     "http://[fd7a:115c:a1e0::b53a:c431]:43812"
+    ],
+    "TaildropTarget": 1,
+    "NoFileSharingReason": "",
+    "CapMap": {
+     "suggest-exit-node": null
+    },
+    "InNetworkMap": true,
+    "InMagicSock": true,
+    "InEngine": false
+   },
+   "nodekey:4c93abe5b9735c4ae9c9e0f69ad5563d6d7cc3f5a94504c481dae4f43b78eadc": {
+    "ID": "n07aac29da4CNTRL",
+    "NodeID": 1675360579782114,
+    "PublicKey": "nodekey:4c93abe5b9735c4ae9c9e0f69ad5563d6d7cc3f5a94504c481dae4f43b78eadc",
+    "HostName": "laptop",
+    "DNSName": "laptop.example-tailnet.ts.net.",
+    "OS": "windows",
+    "UserID": 254123618430062,
+    "TailscaleIPs": [
+     "100.121.116.116",
+     "fd7a:115c:a1e0::c53a:7475"
+    ],
+    "AllowedIPs": [
+     "100.121.116.116/32",
+     "fd7a:115c:a1e0::c53a:7475/128"
+    ],
+    "Addrs": null,
+    "CurAddr": "",
+    "Relay": "blr",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-06-23T10:35:27.938403157Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "2026-08-09T10:53:31.1Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": false,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "PeerAPIURL": null,
+    "TaildropTarget": 5,
+    "NoFileSharingReason": "",
+    "InNetworkMap": true,
+    "InMagicSock": true,
+    "InEngine": false
+   },
+   "nodekey:01aaa8867a763720dd1356cdab39de1a2d966b124372b49730f5b6c95de7a886": {
+    "ID": "n600a1a0483CNTRL",
+    "NodeID": 8032391033170977,
+    "PublicKey": "nodekey:01aaa8867a763720dd1356cdab39de1a2d966b124372b49730f5b6c95de7a886",
+    "HostName": "Alex's phone",
+    "DNSName": "alex-phone.example-tailnet.ts.net.",
+    "OS": "android",
+    "UserID": 254123618430062,
+    "TailscaleIPs": [
+     "100.64.0.64",
+     "fd7a:115c:a1e0::843a:ae41"
+    ],
+    "AllowedIPs": [
+     "100.64.0.64/32",
+     "fd7a:115c:a1e0::843a:ae41/128"
+    ],
+    "Addrs": null,
+    "CurAddr": "",
+    "Relay": "blr",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-07-12T10:13:21.927909361Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "LastSeen": "2026-09-05T00:31:42.1Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": false,
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "Active": false,
+    "PeerAPIURL": [
+     "http://100.64.0.64:1",
+     "http://[fd7a:115c:a1e0::843a:ae41]:1"
+    ],
+    "TaildropTarget": 5,
+    "NoFileSharingReason": "",
+    "InNetworkMap": true,
+    "InMagicSock": true,
+    "InEngine": false
+   },
+   "nodekey:f88cf7b9dfe2762bc11d4a53c12d9808c1a7fadc51c395989c795c8a64279cf7": {
+    "ID": "n1313d4ca21CNTRL",
+    "NodeID": 8431226494575831,
+    "PublicKey": "nodekey:f88cf7b9dfe2762bc11d4a53c12d9808c1a7fadc51c395989c795c8a64279cf7",
+    "HostName": "router",
+    "DNSName": "router.example-tailnet.ts.net.",
+    "OS": "linux",
+    "UserID": 254123618430062,
+    "TailscaleIPs": [
+     "100.64.0.2",
+     "fd7a:115c:a1e0::43a:6333"
+    ],
+    "AllowedIPs": [
+     "100.64.0.2/32",
+     "fd7a:115c:a1e0::43a:6333/128",
+     "192.168.11.0/24",
+     "0.0.0.0/0",
+     "::/0"
+    ],
+    "PrimaryRoutes": [
+     "192.168.11.0/24"
+    ],
+    "Addrs": null,
+    "CurAddr": "",
+    "Relay": "blr",
+    "PeerRelay": "",
+    "RxBytes": 0,
+    "TxBytes": 0,
+    "Created": "2026-03-31T01:00:02.884858844Z",
+    "LastWrite": "2026-09-25T00:01:38.794383613+05:30",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "Online": true,
+    "ExitNode": false,
+    "ExitNodeOption": true,
+    "Active": false,
+    "PeerAPIURL": [
+     "http://100.64.0.2:45896",
+     "http://[fd7a:115c:a1e0::43a:6333]:57382"
+    ],
+    "TaildropTarget": 1,
+    "NoFileSharingReason": "",
+    "CapMap": {
+     "suggest-exit-node": null
+    },
+    "InNetworkMap": true,
+    "InMagicSock": true,
+    "InEngine": false
+   }
+  },
+  "User": {
+   "254123618430062": {
+    "ID": 254123618430062,
+    "LoginName": "alex@example.com",
+    "DisplayName": "Alex Morgan",
+    "ProfilePicURL": ""
+   }
+  },
+  "ClientVersion": null
+ }
+}

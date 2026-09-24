@@ -188,7 +188,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
           children: [
             if (!isEdit) ...[
-              const SectionHeader(title: 'Quick OS Presets', subtitle: 'Auto-fill recommended specs'),
+              const LegacySectionHeader(title: 'Quick OS Presets', subtitle: 'Auto-fill recommended specs'),
               SizedBox(
                 height: 64,
                 child: ListView.builder(
@@ -215,7 +215,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                                 width: 32,
                                 height: 32,
                                 decoration: BoxDecoration(
-                                  color: p.color.withOpacity(0.15),
+                                  color: p.color.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.center,
@@ -226,8 +226,8 @@ class _VmFormScreenState extends State<VmFormScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white)),
-                                  Text('${p.vcpus}C · ${p.ram}GB RAM', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 10.5)),
+                                  Text(p.name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: NivaroColors.textPrimary)),
+                                  Text('${p.vcpus}C · ${p.ram}GB RAM', style: TextStyle(color: NivaroColors.textMuted, fontSize: 10.5)),
                                 ],
                               ),
                             ],
@@ -241,7 +241,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
               const SizedBox(height: 18),
             ],
 
-            const SectionHeader(title: 'General Information'),
+            const LegacySectionHeader(title: 'General Information'),
             DarkCard(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -265,7 +265,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  const Text('Firmware Boot Architecture', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  Text('Firmware Boot Architecture', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -287,10 +287,10 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Text('Display Resolution Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  Text('Display Resolution Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
-                    value: _resolutions.indexWhere((r) => r.width == _displayWidth && r.height == _displayHeight).clamp(0, _resolutions.length - 1),
+                    initialValue: _resolutions.indexWhere((r) => r.width == _displayWidth && r.height == _displayHeight).clamp(0, _resolutions.length - 1),
                     isExpanded: true,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.display_settings_rounded, size: 19),
@@ -317,7 +317,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
             ),
             const SizedBox(height: 18),
 
-            const SectionHeader(title: 'Resource Allocation'),
+            const LegacySectionHeader(title: 'Resource Allocation'),
             DarkCard(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -329,8 +329,8 @@ class _VmFormScreenState extends State<VmFormScreen> {
                       const Text('vCPU Cores', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(color: NivaroColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                        child: Text('$_vcpus Cores', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.primaryLight)),
+                        decoration: BoxDecoration(color: NivaroColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_vcpus Cores', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.primaryLight)),
                       ),
                     ],
                   ),
@@ -362,8 +362,8 @@ class _VmFormScreenState extends State<VmFormScreen> {
                       const Text('Memory (RAM)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(color: NivaroColors.purpleLight.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                        child: Text('$_ramGb GB RAM', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.purpleLight)),
+                        decoration: BoxDecoration(color: NivaroColors.purpleLight.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_ramGb GB RAM', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.purpleLight)),
                       ),
                     ],
                   ),
@@ -393,7 +393,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
             ),
             const SizedBox(height: 18),
 
-            const SectionHeader(title: 'Virtual Storage & Bus'),
+            const LegacySectionHeader(title: 'Virtual Storage & Bus'),
             DarkCard(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -405,8 +405,8 @@ class _VmFormScreenState extends State<VmFormScreen> {
                       const Text('Primary Virtual Disk', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(color: NivaroColors.success.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                        child: Text('$_diskGb GB', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.successLight)),
+                        decoration: BoxDecoration(color: NivaroColors.success.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+                        child: Text('$_diskGb GB', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: NivaroColors.successLight)),
                       ),
                     ],
                   ),
@@ -419,7 +419,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     onChanged: (v) => setState(() => _diskGb = v.round()),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Disk Controller Bus', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  Text('Disk Controller Bus', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -452,7 +452,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('SSD Emulation (TRIM / Discard)', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                    subtitle: const Text('Allows guest OS to reclaim deleted blocks', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
+                    subtitle: Text('Allows guest OS to reclaim deleted blocks', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
                     value: _diskSsd,
                     onChanged: (v) => setState(() => _diskSsd = v),
                   ),
@@ -461,7 +461,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
             ),
             const SizedBox(height: 18),
 
-            const SectionHeader(title: 'Virtual Network'),
+            const LegacySectionHeader(title: 'Virtual Network'),
             DarkCard(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -500,7 +500,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  const Text('NIC Device Model', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
+                  Text('NIC Device Model', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -534,7 +534,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
             ),
             const SizedBox(height: 18),
 
-            const SectionHeader(title: 'Boot Media / ISO'),
+            const LegacySectionHeader(title: 'Boot Media / ISO'),
             DarkCard(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -547,7 +547,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     )
                   else
                     DropdownButtonFormField<String?>(
-                      value: _selectedIso,
+                      initialValue: _selectedIso,
                       isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Select Boot ISO Image',
@@ -570,7 +570,7 @@ class _VmFormScreenState extends State<VmFormScreen> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Prioritize CD-ROM in Boot Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                      subtitle: const Text('Attempts to boot from selected ISO first', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
+                      subtitle: Text('Attempts to boot from selected ISO first', style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
                       value: _bootCdromFirst,
                       onChanged: (v) => setState(() => _bootCdromFirst = v),
                     ),

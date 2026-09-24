@@ -1,0 +1,13 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "name": "Google Drive",
+   "fs": "gdrive:",
+   "mount_point": "/DATA/Cloud/Google Drive",
+   "type": "drive",
+   "icon": ""
+  }
+ ]
+}

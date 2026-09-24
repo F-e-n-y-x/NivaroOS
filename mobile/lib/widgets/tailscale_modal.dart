@@ -82,7 +82,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Enter your Tailscale Auth Key (tskey-auth-...) from admin.tailscale.com/keys:',
                 style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
               ),
@@ -167,7 +167,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.90,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -195,19 +195,19 @@ class _TailscaleModalState extends State<TailscaleModal> {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: NivaroColors.primary.withOpacity(0.12),
+                    color: NivaroColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.3)),
                   ),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.vpn_lock_rounded, color: NivaroColors.primaryLight, size: 22),
+                  child: Icon(Icons.vpn_lock_rounded, color: NivaroColors.primaryLight, size: 22),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Tailscale VPN Manager',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
                       ),
@@ -247,7 +247,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
               ],
             ),
           ),
-          const Divider(height: 1, color: NivaroColors.borderSubtle),
+          Divider(height: 1, color: NivaroColors.borderSubtle),
 
           // Content
           Expanded(
@@ -277,7 +277,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                         isRunning
                                             ? 'Server is accessible securely from any device in your tailnet.'
                                             : 'Connect this server to your Tailscale mesh network for zero-config remote access.',
-                                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
+                                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
                                       ),
                                     ],
                                   ),
@@ -287,14 +287,14 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                     ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5))
                                     : Switch(
                                         value: isRunning,
-                                        activeColor: NivaroColors.primaryLight,
+                                        activeThumbColor: NivaroColors.primaryLight,
                                         onChanged: (val) => _toggleState(val),
                                       ),
                               ],
                             ),
                             if (!isRunning) ...[
                               const SizedBox(height: 14),
-                              const Divider(height: 1, color: NivaroColors.borderSubtle),
+                              Divider(height: 1, color: NivaroColors.borderSubtle),
                               const SizedBox(height: 12),
                               Row(
                                 children: [
@@ -357,7 +357,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.computer_rounded, color: NivaroColors.primaryLight, size: 18),
+                                  Icon(Icons.computer_rounded, color: NivaroColors.primaryLight, size: 18),
                                   const SizedBox(width: 8),
                                   Text(
                                     status.hostName,
@@ -367,10 +367,10 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: NivaroColors.success.withOpacity(0.12),
+                                      color: NivaroColors.success.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
-                                    child: const Text('Host Node', style: TextStyle(color: NivaroColors.successLight, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    child: Text('Host Node', style: TextStyle(color: NivaroColors.successLight, fontSize: 11, fontWeight: FontWeight.bold)),
                                   ),
                                 ],
                               ),
@@ -388,11 +388,11 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                     ),
                                     child: Row(
                                       children: [
-                                        const Text('Tailscale IP: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                        Text('Tailscale IP: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
                                         Expanded(
-                                          child: Text(status.selfIp, style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: NivaroColors.primaryLight)),
+                                          child: Text(status.selfIp, style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: NivaroColors.primaryLight)),
                                         ),
-                                        const Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
+                                        Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
                                       ],
                                     ),
                                   ),
@@ -411,11 +411,11 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                     ),
                                     child: Row(
                                       children: [
-                                        const Text('Domain: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                        Text('Domain: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
                                         Expanded(
-                                          child: Text('${status.hostName}.${status.magicDns}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
+                                          child: Text('${status.hostName}.${status.magicDns}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
                                         ),
-                                        const Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
+                                        Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
                                       ],
                                     ),
                                   ),
@@ -428,12 +428,12 @@ class _TailscaleModalState extends State<TailscaleModal> {
                       ],
 
                       // Tailnet Peers List
-                      SectionHeader(
+                      LegacySectionHeader(
                         title: 'Tailnet Devices (${status?.peers.length ?? 0})',
                         subtitle: 'Connected nodes on this secure mesh network',
                       ),
                       if (status == null || status.peers.isEmpty)
-                        const DarkCard(
+                        DarkCard(
                           padding: EdgeInsets.all(16),
                           child: Row(
                             children: [
@@ -473,7 +473,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                           const SizedBox(height: 2),
                                           Text(
                                             '${peer.ip.isNotEmpty ? peer.ip : "No IP"} · ${peer.os}',
-                                            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                                           ),
                                         ],
                                       ),
@@ -481,7 +481,7 @@ class _TailscaleModalState extends State<TailscaleModal> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: peer.online ? NivaroColors.success.withOpacity(0.12) : NivaroColors.surfaceMuted,
+                                        color: peer.online ? NivaroColors.success.withValues(alpha: 0.12) : NivaroColors.surfaceMuted,
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(

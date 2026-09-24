@@ -106,7 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _isIgnoringBattery = isIgnoring);
       if (isIgnoring) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
+          SnackBar(content: Text('Unrestricted background battery access granted!'), backgroundColor: NivaroColors.success),
         );
       }
     }
@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: NivaroColors.surfaceContainerLowest,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -158,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
                 Icon(Icons.power_settings_new_rounded, color: NivaroColors.dangerLight, size: 24),
                 SizedBox(width: 12),
@@ -167,18 +167,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.restart_alt_rounded, color: NivaroColors.warningLight),
+              leading: Icon(Icons.restart_alt_rounded, color: NivaroColors.warningLight),
               title: const Text('Reboot Host Server', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Safely restarts operating system and running services', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+              subtitle: Text('Safely restarts operating system and running services', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
               onTap: () {
                 Navigator.pop(context);
                 _powerAction('restart');
               },
             ),
             ListTile(
-              leading: const Icon(Icons.power_off_rounded, color: NivaroColors.dangerLight),
+              leading: Icon(Icons.power_off_rounded, color: NivaroColors.dangerLight),
               title: const Text('Shutdown Host Server', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('Completely powers off the host machine', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+              subtitle: Text('Completely powers off the host machine', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
               onTap: () {
                 Navigator.pop(context);
                 _powerAction('shutdown');
@@ -256,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [NivaroColors.primaryLight, NivaroColors.primaryDark]),
+                        gradient: LinearGradient(colors: [NivaroColors.primaryLight, NivaroColors.primaryDark]),
                         shape: BoxShape.circle,
                         border: Border.all(color: NivaroColors.borderHighlight, width: 1.5),
                       ),
@@ -273,7 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(_username.isNotEmpty ? _username : 'Administrator', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                           const SizedBox(height: 2),
-                          Text(_serverUrl, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                          Text(_serverUrl, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -283,13 +283,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 24),
 
               // Server & Hypervisor Management
-              const SectionHeader(title: 'Server & Hypervisor'),
+              const LegacySectionHeader(title: 'Server & Hypervisor'),
               DarkCard(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.dns_rounded, color: NivaroColors.primaryLight),
+                      leading: Icon(Icons.dns_rounded, color: NivaroColors.primaryLight),
                       title: const Text('Server Profiles', style: TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: const Text('Manage multiple NivaroOS server connections'),
                       trailing: const Icon(Icons.chevron_right_rounded),
@@ -297,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.devices_rounded, color: NivaroColors.primaryLight),
+                      leading: Icon(Icons.devices_rounded, color: NivaroColors.primaryLight),
                       title: const Text('Companion Devices', style: TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: const Text('Connected client devices, device storage & sync'),
                       trailing: const Icon(Icons.chevron_right_rounded),
@@ -327,10 +327,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: (_serverSecurityUpdates > 0 ? NivaroColors.danger : NivaroColors.warning).withOpacity(0.18),
+                                color: (_serverSecurityUpdates > 0 ? NivaroColors.danger : NivaroColors.warning).withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: (_serverSecurityUpdates > 0 ? NivaroColors.dangerLight : NivaroColors.warningLight).withOpacity(0.4),
+                                  color: (_serverSecurityUpdates > 0 ? NivaroColors.dangerLight : NivaroColors.warningLight).withValues(alpha: 0.4),
                                 ),
                               ),
                               child: Text(
@@ -352,7 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.receipt_long_rounded, color: NivaroColors.infoLight),
+                      leading: Icon(Icons.receipt_long_rounded, color: NivaroColors.infoLight),
                       title: const Text('System Logs', style: TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: const Text('Gateway, libvirt hypervisor and kernel logs'),
                       trailing: const Icon(Icons.chevron_right_rounded),
@@ -360,7 +360,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.dangerLight),
+                      leading: Icon(Icons.power_settings_new_rounded, color: NivaroColors.dangerLight),
                       title: const Text('Server Power Controls', style: TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: const Text('Safely reboot or power off NivaroOS host server'),
                       trailing: const Icon(Icons.chevron_right_rounded),
@@ -373,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
               // Background & Unattended Execution
               if (Platform.isAndroid) ...[
-                const SectionHeader(title: 'Background & Unattended Service'),
+                const LegacySectionHeader(title: 'Background & Unattended Service'),
                 DarkCard(
                   padding: EdgeInsets.zero,
                   child: Column(
@@ -391,7 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: const TextStyle(fontSize: 12),
                         ),
                         value: _bgServiceRunning,
-                        activeColor: NivaroColors.primaryLight,
+                        activeThumbColor: NivaroColors.primaryLight,
                         onChanged: _toggleBgService,
                       ),
                       const Divider(height: 1),
@@ -408,22 +408,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           style: const TextStyle(fontSize: 12),
                         ),
                         trailing: _isIgnoringBattery
-                            ? const Icon(Icons.check_circle_rounded, color: NivaroColors.successLight, size: 22)
+                            ? Icon(Icons.check_circle_rounded, color: NivaroColors.successLight, size: 22)
                             : OutlinedButton(
                                 onPressed: _requestBatteryWhitelist,
                                 style: OutlinedButton.styleFrom(
                                   visualDensity: VisualDensity.compact,
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  side: const BorderSide(color: NivaroColors.warningLight),
+                                  side: BorderSide(color: NivaroColors.warningLight),
                                 ),
-                                child: const Text('Allow', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
+                                child: Text('Allow', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
                               ),
                         onTap: _requestBatteryWhitelist,
                       ),
                       if (_isSamsungDevice) ...[
                         const Divider(height: 1),
                         ListTile(
-                          leading: const Icon(Icons.phonelink_lock_rounded, color: NivaroColors.warningLight),
+                          leading: Icon(Icons.phonelink_lock_rounded, color: NivaroColors.warningLight),
                           title: const Text('Samsung "Sleeping Apps"', style: TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: const Text(
                             'Samsung phones can still stop sync in the background even after the exemption above - open Battery usage for this app and add it to "Never sleeping apps"',
@@ -434,23 +434,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: OutlinedButton.styleFrom(
                               visualDensity: VisualDensity.compact,
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              side: const BorderSide(color: NivaroColors.warningLight),
+                              side: BorderSide(color: NivaroColors.warningLight),
                             ),
-                            child: const Text('Open', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
+                            child: Text('Open', style: TextStyle(color: NivaroColors.warningLight, fontSize: 12, fontWeight: FontWeight.w700)),
                           ),
                           onTap: () => BackgroundService.instance.openSamsungBatterySettings(),
                         ),
                       ],
                       const Divider(height: 1),
                       SwitchListTile(
-                        secondary: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
+                        secondary: Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
                         title: const Text('Start on Device Boot', style: TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: const Text(
                           'Automatically launches background companion service when phone turns on',
                           style: TextStyle(fontSize: 12),
                         ),
                         value: _autoStartBoot,
-                        activeColor: NivaroColors.primaryLight,
+                        activeThumbColor: NivaroColors.primaryLight,
                         onChanged: _toggleAutoStartBoot,
                       ),
                     ],
@@ -460,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
 
               // About Card
-              const SectionHeader(title: 'About NivaroOS Mobile'),
+              const LegacySectionHeader(title: 'About NivaroOS Mobile'),
               DarkCard(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -468,8 +468,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       width: 44,
                       height: 44,
-                      decoration: BoxDecoration(color: NivaroColors.primary.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.cloud_done_rounded, color: NivaroColors.primaryLight),
+                      decoration: BoxDecoration(color: NivaroColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                      child: Icon(Icons.cloud_done_rounded, color: NivaroColors.primaryLight),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -478,7 +478,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           const Text('NivaroOS Mobile Companion', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
                           const SizedBox(height: 2),
-                          Text('$_appVersion · Personal Cloud in your pocket', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                          Text('$_appVersion · Personal Cloud in your pocket', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -490,10 +490,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Sign out button
               OutlinedButton.icon(
                 onPressed: _logout,
-                icon: const Icon(Icons.logout_rounded, color: NivaroColors.dangerLight, size: 18),
-                label: const Text('Sign Out of Server', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w700)),
+                icon: Icon(Icons.logout_rounded, color: NivaroColors.dangerLight, size: 18),
+                label: Text('Sign Out of Server', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w700)),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: NivaroColors.dangerLight.withOpacity(0.4)),
+                  side: BorderSide(color: NivaroColors.dangerLight.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
                 ),

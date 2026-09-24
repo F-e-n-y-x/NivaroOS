@@ -182,7 +182,7 @@ class _VmListScreenState extends State<VmListScreen> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: _osColor(vm.name).withOpacity(0.15),
+                    color: _osColor(vm.name).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(_osIcon(vm.name), color: _osColor(vm.name)),
@@ -193,7 +193,7 @@ class _VmListScreenState extends State<VmListScreen> {
               ),
               const Divider(height: 20),
               ListTile(
-                leading: const Icon(Icons.edit_note_rounded, color: NivaroColors.textPrimary),
+                leading: Icon(Icons.edit_note_rounded, color: NivaroColors.textPrimary),
                 title: const Text('Configure Specs'),
                 onTap: () {
                   Navigator.pop(context);
@@ -202,7 +202,7 @@ class _VmListScreenState extends State<VmListScreen> {
               ),
               if (vm.isRunning) ...[
                 ListTile(
-                  leading: const Icon(Icons.restart_alt_rounded, color: NivaroColors.primaryLight),
+                  leading: Icon(Icons.restart_alt_rounded, color: NivaroColors.primaryLight),
                   title: const Text('Reset / Restart'),
                   onTap: () {
                     Navigator.pop(context);
@@ -210,8 +210,8 @@ class _VmListScreenState extends State<VmListScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.power_settings_new_rounded, color: NivaroColors.warningLight),
-                  title: const Text('Force Power Off', style: TextStyle(color: NivaroColors.warningLight)),
+                  leading: Icon(Icons.power_settings_new_rounded, color: NivaroColors.warningLight),
+                  title: Text('Force Power Off', style: TextStyle(color: NivaroColors.warningLight)),
                   onTap: () {
                     Navigator.pop(context);
                     _act(vm, _client.forceOff);
@@ -220,8 +220,8 @@ class _VmListScreenState extends State<VmListScreen> {
               ],
               ListTile(
                 enabled: !busy,
-                leading: const Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
-                title: const Text('Delete VM', style: TextStyle(color: NivaroColors.dangerLight)),
+                leading: Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
+                title: Text('Delete VM', style: TextStyle(color: NivaroColors.dangerLight)),
                 onTap: () {
                   Navigator.pop(context);
                   _deleteVm(vm);
@@ -290,7 +290,7 @@ class _VmListScreenState extends State<VmListScreen> {
                           const SizedBox(height: 2),
                           Text(
                             '${_vms.length} VMs configured · $runningCount running',
-                            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                           ),
                         ],
                       ),
@@ -317,9 +317,9 @@ class _VmListScreenState extends State<VmListScreen> {
                     child: Center(
                       child: Column(
                         children: [
-                          const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
+                          Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
                           const SizedBox(height: 12),
-                          Text(_error!, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
+                          Text(_error!, style: TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
                           const SizedBox(height: 14),
                           if (ApiClient.isAuthError(_error)) ...[
                             FilledButton.icon(
@@ -336,7 +336,7 @@ class _VmListScreenState extends State<VmListScreen> {
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: _load,
-                              child: const Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+                              child: Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
                             ),
                           ] else
                             OutlinedButton(onPressed: _load, child: const Text('Retry')),
@@ -354,15 +354,15 @@ class _VmListScreenState extends State<VmListScreen> {
                             width: 64,
                             height: 64,
                             decoration: BoxDecoration(
-                              color: NivaroColors.primary.withOpacity(0.15),
+                              color: NivaroColors.primary.withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.developer_board_rounded, size: 32, color: NivaroColors.primaryLight),
+                            child: Icon(Icons.developer_board_rounded, size: 32, color: NivaroColors.primaryLight),
                           ),
                           const SizedBox(height: 16),
                           const Text('No Virtual Machines', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Run full operating systems with KVM hardware acceleration.',
                             style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                             textAlign: TextAlign.center,
@@ -452,9 +452,9 @@ class _VmListScreenState extends State<VmListScreen> {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: osColor.withOpacity(0.15),
+                    color: osColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(NivaroShape.medium),
-                    border: Border.all(color: osColor.withOpacity(0.25)),
+                    border: Border.all(color: osColor.withValues(alpha: 0.25)),
                   ),
                   child: Icon(osIcon, color: osColor, size: 22),
                 ),
@@ -471,14 +471,14 @@ class _VmListScreenState extends State<VmListScreen> {
                       const SizedBox(height: 2),
                       Text(
                         '${vm.vcpus} vCPU · ${(vm.memoryMib / 1024).toStringAsFixed(1)} GB RAM · ${vm.diskGib} GB',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
                 StatusPill(label: vm.isRunning ? 'Running' : 'Stopped', state: vm.state),
                 IconButton(
-                  icon: const Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted, size: 20),
+                  icon: Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted, size: 20),
                   onPressed: busy ? null : () => _showMenu(vm),
                 ),
               ],
@@ -511,7 +511,7 @@ class _VmListScreenState extends State<VmListScreen> {
                       width: double.infinity,
                       height: double.infinity,
                       gaplessPlayback: true,
-                      errorBuilder: (_, __, ___) => const Center(
+                      errorBuilder: (_, _, _) => Center(
                         child: Icon(Icons.monitor_rounded, color: NivaroColors.textFaint, size: 48),
                       ),
                     ),
@@ -522,11 +522,11 @@ class _VmListScreenState extends State<VmListScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.75),
+                          color: Colors.black.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: NivaroColors.success.withOpacity(0.4)),
+                          border: Border.all(color: NivaroColors.success.withValues(alpha: 0.4)),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             PulsingStatusDot(color: NivaroColors.success, size: 6),
@@ -550,9 +550,9 @@ class _VmListScreenState extends State<VmListScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.65),
+                          color: Colors.black.withValues(alpha: 0.65),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withOpacity(0.15)),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -602,10 +602,10 @@ class _VmListScreenState extends State<VmListScreen> {
                   const SizedBox(width: 10),
                   OutlinedButton.icon(
                     onPressed: busy ? null : () => _act(vm, _client.shutdown),
-                    icon: const Icon(Icons.power_settings_new_rounded, size: 18, color: NivaroColors.dangerLight),
-                    label: const Text('Stop', style: TextStyle(color: NivaroColors.dangerLight)),
+                    icon: Icon(Icons.power_settings_new_rounded, size: 18, color: NivaroColors.dangerLight),
+                    label: Text('Stop', style: TextStyle(color: NivaroColors.dangerLight)),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: NivaroColors.borderSubtle),
+                      side: BorderSide(color: NivaroColors.borderSubtle),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
                     ),

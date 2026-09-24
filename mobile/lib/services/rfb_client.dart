@@ -388,8 +388,9 @@ class _ByteQueueReader {
   void close() {
     _closed = true;
     for (final p in _pending) {
-      if (!p.completer.isCompleted)
+      if (!p.completer.isCompleted) {
         p.completer.completeError(RfbException('Console connection closed.'));
+      }
     }
     _pending.clear();
   }
@@ -404,8 +405,9 @@ class _ByteQueueReader {
   }
 
   Future<Uint8List> read(int length) {
-    if (_closed)
+    if (_closed) {
       return Future.error(RfbException('Console connection closed.'));
+    }
     final completer = Completer<Uint8List>();
     _pending.add(_PendingRead(length, completer));
     _drain();

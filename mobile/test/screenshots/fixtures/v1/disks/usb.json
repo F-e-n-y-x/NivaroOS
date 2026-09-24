@@ -1,0 +1,20 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "name": "SanDisk Ultra",
+   "model": "SanDisk Ultra USB 3.0",
+   "is_usb": true,
+   "children": [
+    {
+     "mount_point": "/media/SANDISK",
+     "label": "SANDISK",
+     "size_bytes": 61530439680,
+     "avail_bytes": 40317034496,
+     "used_bytes": 21213405184
+    }
+   ]
+  }
+ ]
+}

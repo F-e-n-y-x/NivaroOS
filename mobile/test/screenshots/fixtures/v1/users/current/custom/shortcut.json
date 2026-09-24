@@ -1,0 +1,12 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "name": "Projects",
+   "path": "/DATA/Projects",
+   "icon": "folder-outline",
+   "pack": "casa"
+  }
+ ]
+}

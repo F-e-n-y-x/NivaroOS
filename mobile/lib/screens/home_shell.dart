@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dashboard_screen.dart';
 import 'files_screen.dart';
 import 'vm_list_screen.dart';
 import 'apps_screen.dart';
+import 'more_screen.dart';
 import 'settings_screen.dart';
 import 'login_screen.dart';
 import '../services/storage_service.dart';
 import '../services/permission_service.dart';
 import '../services/device_sync_service.dart';
 import '../services/api_client.dart';
-import '../widgets/common.dart';
+import '../ui/theme/spacing.dart';
 
-/// Main Application Shell with floating pill navigation bar and smooth tab transitions.
+/// One top-level destination: its label and its outlined / filled icon
+/// pair (filled only while selected, per the design brief).
+typedef _Destination = ({String label, IconData icon, IconData selectedIcon});
+
+/// The app shell (design brief §5): five destinations in a NavigationBar
+/// on phones, or a NavigationRail from 600dp, with each tab kept alive in
+/// an IndexedStack so switching doesn't reload it.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -21,10 +27,21 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  static const _filesTabIndex = 1;
+  static const _homeIndex = 0;
+  static const _filesIndex = 1;
+  static const _appsIndex = 2;
+  static const _vmsIndex = 3;
 
-  int _index = 0;
-  String _avatarInitial = '?';
+  static const List<_Destination> _destinations = [
+    (label: 'Home', icon: Icons.home_outlined, selectedIcon: Icons.home),
+    (label: 'Files', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
+    (label: 'Apps', icon: Icons.apps_outlined, selectedIcon: Icons.apps),
+    (label: 'VMs', icon: Icons.computer_outlined, selectedIcon: Icons.computer),
+    // No filled "more" glyph exists; the indicator pill marks selection.
+    (label: 'More', icon: Icons.more_horiz, selectedIcon: Icons.more_horiz),
+  ];
+
+  int _index = _homeIndex;
   bool _showingReauth = false;
   final _filesKey = GlobalKey<FilesScreenState>();
 
@@ -34,23 +51,23 @@ class _HomeShellState extends State<HomeShell> {
 
   late final List<Widget> _screens = [
     DashboardScreen(
-      onOpenFiles: () => _switchToTab(1),
-      onOpenVms: () => _switchToTab(2),
-      onOpenApps: () => _switchToTab(3),
+      onOpenFiles: () => _switchToTab(_filesIndex),
+      onOpenVms: () => _switchToTab(_vmsIndex),
+      onOpenApps: () => _switchToTab(_appsIndex),
     ),
     FilesScreen(key: _filesKey),
-    const VmListScreen(),
     AppsScreen(
-      onOpenFiles: () => _switchToTab(1),
-      onOpenVms: () => _switchToTab(2),
+      onOpenFiles: () => _switchToTab(_filesIndex),
+      onOpenVms: () => _switchToTab(_vmsIndex),
       onOpenSettings: _openSettings,
     ),
+    const VmListScreen(),
+    const MoreScreen(),
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadAvatar();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
     _startBackgroundSync();
   }
@@ -110,54 +127,79 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  Future<void> _loadAvatar() async {
-    final username = await StorageService.instance.getUsername();
-    if (!mounted || username == null || username.isEmpty) return;
-    setState(() => _avatarInitial = username.substring(0, 1).toUpperCase());
-  }
-
   void _openSettings() {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
   }
 
-  Future<void> _onPopInvoked(bool didPop, Object? result) async {
+  // Back steps out of whatever the current tab has open (Files: selection,
+  // search, sub-folder, extra tab), then returns to Home. On Home the shell
+  // lets the pop through: it is always the only route (every way in -
+  // launch, login, switching server - replaces the whole stack), so the
+  // system closes the app and Android 14+ can play its predictive
+  // back-to-home animation.
+  void _onPopInvoked(bool didPop, Object? result) {
     if (didPop) return;
-    if (_index == _filesTabIndex) {
+    if (_index == _filesIndex) {
       final handled = _filesKey.currentState?.handleBack() ?? false;
       if (handled) return;
     }
-    if (_index != 0) {
-      setState(() => _index = 0);
-      return;
-    }
-    SystemNavigator.pop();
+    setState(() => _index = _homeIndex);
   }
 
   @override
   Widget build(BuildContext context) {
+    final useRail = MediaQuery.sizeOf(context).width >= Space.mediumWidth;
+    final body = IndexedStack(index: _index, children: _screens);
+
     return PopScope(
-      canPop: false,
+      canPop: _index == _homeIndex,
       onPopInvokedWithResult: _onPopInvoked,
-      child: Scaffold(
-        extendBody: true,
-        body: Stack(
-          children: [
-            IndexedStack(index: _index, children: _screens),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: FloatingNavBar(
-                currentIndex: _index,
-                onTap: _switchToTab,
-                onAvatarTap: _openSettings,
-                avatarInitial: _avatarInitial,
+      child: useRail
+          ? Scaffold(
+              body: Row(
+                children: [
+                  // The rail sits on the leading edge, so it takes the
+                  // status bar, cutout and gesture insets on that side; the
+                  // tab's own Scaffold handles the rest.
+                  SafeArea(
+                    right: false,
+                    child: NavigationRail(
+                      selectedIndex: _index,
+                      onDestinationSelected: _switchToTab,
+                      labelType: NavigationRailLabelType.all,
+                      groupAlignment: -0.85,
+                      destinations: [
+                        for (final d in _destinations)
+                          NavigationRailDestination(
+                            icon: Icon(d.icon),
+                            selectedIcon: Icon(d.selectedIcon),
+                            label: Text(d.label),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: MediaQuery.removePadding(context: context, removeLeft: true, child: body),
+                  ),
+                ],
+              ),
+            )
+          : Scaffold(
+              body: body,
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _index,
+                onDestinationSelected: _switchToTab,
+                destinations: [
+                  for (final d in _destinations)
+                    NavigationDestination(
+                      icon: Icon(d.icon),
+                      selectedIcon: Icon(d.selectedIcon),
+                      label: d.label,
+                    ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }

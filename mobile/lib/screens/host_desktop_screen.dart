@@ -135,20 +135,20 @@ class _HostDesktopScreenState extends State<HostDesktopScreen>
                           color: NivaroColors.borderHighlight,
                           borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
-              const Text('Host Display Resolution',
+              Text('Host Display Resolution',
                   style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 18,
-                      color: Colors.white)),
+                      color: NivaroColors.textPrimary)),
               if (_display != null) ...[
                 const SizedBox(height: 4),
                 Text('Current: ${_display!.current}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: NivaroColors.textMuted, fontSize: 12)),
               ],
               const SizedBox(height: 14),
               if (resolutions.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Text(
                       'No alternate resolutions detected for this display.',
@@ -159,7 +159,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen>
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: resolutions.length,
-                    separatorBuilder: (_, __) => const Divider(
+                    separatorBuilder: (_, _) => Divider(
                         height: 1, color: NivaroColors.borderSubtle),
                     itemBuilder: (context, index) {
                       final r = resolutions[index];
@@ -179,7 +179,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen>
                             style:
                                 const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: isCurrent
-                            ? const Icon(Icons.check_circle_rounded,
+                            ? Icon(Icons.check_circle_rounded,
                                 color: NivaroColors.successLight)
                             : null,
                         onTap:
@@ -237,7 +237,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen>
               elevation: 0,
               title: Row(
                 children: [
-                  const PulsingStatusDot(color: NivaroColors.success, size: 7),
+                  PulsingStatusDot(color: NivaroColors.success, size: 7),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -250,7 +250,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen>
                           _display != null
                               ? 'NivaroOS Server · ${_display!.current}'
                               : 'NivaroOS Server Display',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: NivaroColors.textMuted, fontSize: 11),
                         ),
                       ],

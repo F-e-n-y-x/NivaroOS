@@ -1,0 +1,15 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "current_version": "1.0.0",
+  "need_update": false,
+  "version": {
+   "id": 0,
+   "change_log": "",
+   "version": "",
+   "created_at": "0001-01-01T00:00:00Z",
+   "updated_at": "0001-01-01T00:00:00Z"
+  }
+ }
+}

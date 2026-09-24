@@ -1,0 +1,209 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "content": [
+   {
+    "name": "AppData",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-17T16:40:24.713051072+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/AppData",
+    "date": "2026-09-17T16:40:24.713051072+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Companion",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-22T02:14:27.1840375+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Companion",
+    "date": "2026-09-22T02:14:27.1840375+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Desktop",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-03T01:49:52.623599468+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Desktop",
+    "date": "2026-09-03T01:49:52.623599468+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Documents",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-19T20:40:36.221693141+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents",
+    "date": "2026-09-19T20:40:36.221693141+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Downloads",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-24T20:29:13.975079622+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Downloads",
+    "date": "2026-09-24T20:29:13.975079622+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Gallery",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-15T20:20:38.139142044+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Gallery",
+    "date": "2026-09-15T20:20:38.139142044+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Media",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-08-19T19:40:14.363569341+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Media",
+    "date": "2026-08-19T19:40:14.363569341+05:30",
+    "extensions": null
+   },
+   {
+    "name": "VMs",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-24T11:49:17.933146225+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/VMs",
+    "date": "2026-09-24T11:49:17.933146225+05:30",
+    "extensions": null
+   },
+   {
+    "name": "blue",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-23T22:18:30.8311686+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/blue",
+    "date": "2026-09-23T22:18:30.8311686+05:30",
+    "extensions": {
+     "mounted": false,
+     "share": {
+      "id": "2",
+      "shared": "true"
+     }
+    }
+   },
+   {
+    "name": "Projects",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-23T21:30:20.520473234+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Projects",
+    "date": "2026-09-23T21:30:20.520473234+05:30",
+    "extensions": null
+   },
+   {
+    "name": "tank",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-23T23:45:18.304759999+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/tank",
+    "date": "2026-09-23T23:45:18.304759999+05:30",
+    "extensions": {
+     "mounted": false,
+     "share": {
+      "id": "3",
+      "shared": "true"
+     }
+    }
+   },
+   {
+    "name": "tower",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-23T23:30:30.0531043+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/tower",
+    "date": "2026-09-23T23:30:30.0531043+05:30",
+    "extensions": {
+     "mounted": false,
+     "share": {
+      "id": "4",
+      "shared": "true"
+     }
+    }
+   },
+   {
+    "name": "Budget 2026.xlsx",
+    "size": 48213,
+    "is_dir": false,
+    "modified": "2026-09-18T10:12:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Budget 2026.xlsx",
+    "date": "2026-09-18T10:12:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Holiday.jpg",
+    "size": 3481223,
+    "is_dir": false,
+    "modified": "2026-08-30T19:44:10+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Holiday.jpg",
+    "date": "2026-08-30T19:44:10+05:30",
+    "extensions": null
+   },
+   {
+    "name": "notes.md",
+    "size": 1843,
+    "is_dir": false,
+    "modified": "2026-09-24T22:05:31+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/notes.md",
+    "date": "2026-09-24T22:05:31+05:30",
+    "extensions": null
+   }
+  ],
+  "total": 15,
+  "index": 1,
+  "size": 100000
+ }
+}

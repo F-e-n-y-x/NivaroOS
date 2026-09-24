@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "==> Building NivaroOS Android Release APK..."
-/opt/flutter/bin/flutter build apk --release
+/opt/flutter-3.47/bin/flutter build apk --release
 
 OUTPUT_APK="$SCRIPT_DIR/build/app/outputs/flutter-apk/app-release.apk"
 DEST_DIR="/DATA/Downloads"

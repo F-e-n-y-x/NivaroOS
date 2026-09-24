@@ -1,0 +1,82 @@
+import 'package:flutter/material.dart';
+
+import '../theme/spacing.dart';
+import 'section_header.dart';
+
+/// A settings-style group: an optional [SectionHeader], then rows (usually
+/// ListTiles) as one rounded block, with an optional footnote underneath.
+/// Use it for settings, "More", and any detail screen that is a set of
+/// labelled rows.
+///
+/// Rows are separate segments with a 2dp gap between them instead of
+/// divider lines (the Android 16 settings style): the block has large outer
+/// corners, the joins have small ones, and each row's ripple stays inside
+/// its own segment. The segments are `surfaceContainer` on the `surface`
+/// page, the pairing test/ui/theme_contrast_test.dart pins.
+///
+/// Inside the block the rows keep a 16dp inner padding whatever the screen
+/// gutter, so the header - indented by the same 16dp - lines up with the
+/// rows' leading icons. Don't mix TileGroups and flat full-width lists on
+/// one screen: their headers sit on different edges.
+class TileGroup extends StatelessWidget {
+  const TileGroup({super.key, this.title, required this.children, this.footer});
+
+  final String? title;
+  final List<Widget> children;
+
+  /// Small print under the group - what a setting does, or why it's off.
+  final String? footer;
+
+  /// The gap between two rows, showing the page through.
+  static const double gap = 2;
+
+  static const _outer = Radius.circular(Corners.large);
+  static const _inner = Radius.circular(Corners.extraSmall);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final last = children.length - 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (title != null)
+          Padding(padding: const EdgeInsetsDirectional.only(start: Space.lg), child: SectionHeader(title: title!))
+        else
+          const SizedBox(height: Space.sm),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: gutter),
+          child: ListTileTheme.merge(
+            contentPadding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i <= last; i++) ...[
+                  if (i > 0) const SizedBox(height: gap),
+                  Card.filled(
+                    color: theme.colorScheme.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(
+                        top: i == 0 ? _outer : _inner,
+                        bottom: i == last ? _outer : _inner,
+                      ),
+                    ),
+                    child: children[i],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (footer != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(gutter + Space.lg, Space.sm, gutter + Space.lg, 0),
+            child: Text(footer!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          ),
+      ],
+    );
+  }
+}

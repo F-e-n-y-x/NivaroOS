@@ -80,7 +80,7 @@ class _ContainerLogsScreenState extends State<ContainerLogsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('${widget.appTitle} Logs', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            Text(widget.appId, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
+            Text(widget.appId, style: TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
           ],
         ),
         actions: [

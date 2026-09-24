@@ -189,7 +189,7 @@ class VmClient {
   Map<String, String> _authHeaders([Map<String, String>? extra]) {
     final token = ApiClient.instance.accessToken;
     return {
-      if (extra != null) ...extra,
+      ...?extra,
       if (token != null && token.isNotEmpty) 'Authorization': token,
     };
   }
@@ -282,10 +282,10 @@ class VmClient {
     List<String>? bootOrder,
   }) async {
     final body = <String, dynamic>{
-      if (vcpus != null) 'vcpus': vcpus,
-      if (memoryMib != null) 'memory_mib': memoryMib,
-      if (firmware != null) 'firmware': firmware,
-      if (isoPath != null) 'iso_path': isoPath,
+      'vcpus': ?vcpus,
+      'memory_mib': ?memoryMib,
+      'firmware': ?firmware,
+      'iso_path': ?isoPath,
       if (diskGib != null && diskGib > 0)
         'disks': [
           VmDisk(
@@ -303,9 +303,9 @@ class VmClient {
                   model: nicModel ?? 'virtio')
               .toJson()
         ],
-      if (displayWidth != null) 'display_width': displayWidth,
-      if (displayHeight != null) 'display_height': displayHeight,
-      if (bootOrder != null) 'boot_order': bootOrder,
+      'display_width': ?displayWidth,
+      'display_height': ?displayHeight,
+      'boot_order': ?bootOrder,
     };
     final res = await http.put(_uri('/vms/${Uri.encodeComponent(name)}'),
         headers: _authHeaders({'Content-Type': 'application/json'}),

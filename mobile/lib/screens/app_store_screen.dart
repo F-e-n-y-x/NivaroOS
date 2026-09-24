@@ -238,12 +238,12 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Deploy container app "$id" to NivaroOS with automatic volumes and network mappings.', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
+            Text('Deploy container app "$id" to NivaroOS with automatic volumes and network mappings.', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
             const SizedBox(height: 16),
             TextField(
               controller: portCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Web Port (Optional Override)',
                 hintText: 'e.g. 8080',
                 filled: true,
@@ -321,18 +321,18 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search 150+ self-hosted applications...',
-                hintStyle: const TextStyle(color: NivaroColors.textFaint, fontSize: 13),
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: NivaroColors.textFaint),
+                hintStyle: TextStyle(color: NivaroColors.textFaint, fontSize: 13),
+                prefixIcon: Icon(Icons.search_rounded, size: 20, color: NivaroColors.textFaint),
                 filled: true,
                 fillColor: NivaroColors.surface,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(NivaroShape.large),
-                  borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                  borderSide: BorderSide(color: NivaroColors.borderSubtle),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(NivaroShape.large),
-                  borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                  borderSide: BorderSide(color: NivaroColors.borderSubtle),
                 ),
               ),
             ),
@@ -374,7 +374,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
 
             // Featured Carousel
             if (_selectedCategory == 'all' || _selectedCategory == 'Featured') ...[
-              const SectionHeader(title: 'Featured Apps'),
+              const LegacySectionHeader(title: 'Featured Apps'),
               SizedBox(
                 height: 145,
                 child: ListView.builder(
@@ -409,7 +409,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(f.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), overflow: TextOverflow.ellipsis),
-                                    Text(f.category, style: const TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w600)),
+                                    Text(f.category, style: TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                               ),
@@ -417,7 +417,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
                           ),
                           Text(
                             f.desc,
-                            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -445,7 +445,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
               const SizedBox(height: 20),
             ],
 
-            const SectionHeader(title: 'App Catalog'),
+            const LegacySectionHeader(title: 'App Catalog'),
             if (_loading && _catalog.isEmpty)
               const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
             else if (_error != null && _catalog.isEmpty)
@@ -453,9 +453,9 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
                 child: Center(
                   child: Column(
                     children: [
-                      const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
+                      Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
                       const SizedBox(height: 10),
-                      Text(_error!, style: const TextStyle(color: NivaroColors.textMuted)),
+                      Text(_error!, style: TextStyle(color: NivaroColors.textMuted)),
                       const SizedBox(height: 12),
                       OutlinedButton(onPressed: _load, child: const Text('Retry')),
                     ],
@@ -501,7 +501,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
                                   const SizedBox(height: 2),
                                   Text(
                                     app.tagline.isNotEmpty ? app.tagline : app.category,
-                                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+                                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -552,7 +552,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
                                   const SizedBox(height: 2),
                                   Text(
                                     app.tagline.isNotEmpty ? app.tagline : app.category,
-                                    style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),

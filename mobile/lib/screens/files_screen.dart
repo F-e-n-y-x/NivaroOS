@@ -504,7 +504,7 @@ class FilesScreenState extends State<FilesScreen> {
     final granted = await PermissionService.requestManageStorage();
     if (!granted && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Storage permission is required to browse phone files.'), backgroundColor: NivaroColors.warning),
+        SnackBar(content: Text('Storage permission is required to browse phone files.'), backgroundColor: NivaroColors.warning),
       );
     }
     _openPath(_defaultLocalDevicePath, isLocal: true);
@@ -654,16 +654,16 @@ class FilesScreenState extends State<FilesScreen> {
             children: [
               Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 16),
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.star_rounded, color: NivaroColors.warningLight, size: 22),
                   SizedBox(width: 10),
-                  Text('Favorites & Bookmarks', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Colors.white)),
+                  Text('Favorites & Bookmarks', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary)),
                 ],
               ),
               const SizedBox(height: 14),
               if (_favorites.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
                   child: Center(child: Text('No favorite folders yet.', style: TextStyle(color: NivaroColors.textMuted))),
                 )
@@ -672,7 +672,7 @@ class FilesScreenState extends State<FilesScreen> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: _favorites.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+                    separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
                     itemBuilder: (context, index) {
                       final fav = _favorites[index];
                       return ListTile(
@@ -681,14 +681,14 @@ class FilesScreenState extends State<FilesScreen> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: NivaroColors.warning.withOpacity(0.14),
+                            color: NivaroColors.warning.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           alignment: Alignment.center,
-                          child: const Icon(Icons.folder_special_rounded, color: NivaroColors.warningLight, size: 20),
+                          child: Icon(Icons.folder_special_rounded, color: NivaroColors.warningLight, size: 20),
                         ),
                         title: Text(fav.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                        subtitle: Text(fav.path, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
+                        subtitle: Text(fav.path, style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
                         onTap: () {
                           Navigator.pop(context);
                           _openPath(fav.path);
@@ -1069,7 +1069,7 @@ class FilesScreenState extends State<FilesScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: entry.isDir ? NivaroColors.warning.withOpacity(0.15) : NivaroColors.primary.withOpacity(0.15),
+                    color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
@@ -1080,11 +1080,11 @@ class FilesScreenState extends State<FilesScreen> {
                   ),
                 ),
                 title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                subtitle: Text(entry.isDir ? 'Folder' : formatBytes(entry.size), style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                subtitle: Text(entry.isDir ? 'Folder' : formatBytes(entry.size), style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
               ),
               const Divider(height: 16),
               ListTile(
-                leading: const Icon(Icons.check_circle_outline_rounded, color: NivaroColors.primaryLight),
+                leading: Icon(Icons.check_circle_outline_rounded, color: NivaroColors.primaryLight),
                 title: const Text('Select Item'),
                 onTap: () {
                   Navigator.pop(context);
@@ -1092,7 +1092,7 @@ class FilesScreenState extends State<FilesScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.copy_rounded, color: Colors.white70),
+                leading: Icon(Icons.copy_rounded, color: NivaroColors.textSecondary),
                 title: const Text('Copy Item'),
                 onTap: () {
                   Navigator.pop(context);
@@ -1106,7 +1106,7 @@ class FilesScreenState extends State<FilesScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.cut_rounded, color: Colors.white70),
+                leading: Icon(Icons.cut_rounded, color: NivaroColors.textSecondary),
                 title: const Text('Cut / Move Item'),
                 onTap: () {
                   Navigator.pop(context);
@@ -1120,8 +1120,8 @@ class FilesScreenState extends State<FilesScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
-                title: const Text('Delete', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w700)),
+                leading: Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
+                title: Text('Delete', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w700)),
                 onTap: () {
                   Navigator.pop(context);
                   _deleteSingleEntry(entry);
@@ -1161,7 +1161,7 @@ class FilesScreenState extends State<FilesScreen> {
       backgroundColor: NivaroColors.background,
       appBar: AppBar(
         backgroundColor: NivaroColors.surfaceDim,
-        foregroundColor: Colors.white,
+        foregroundColor: NivaroColors.textPrimary,
         elevation: 0,
         leading: tab.atHome
             ? null
@@ -1174,7 +1174,7 @@ class FilesScreenState extends State<FilesScreen> {
             ? TextField(
                 controller: _searchController,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: NivaroColors.textPrimary),
                 decoration: const InputDecoration(
                   hintText: 'Search files & folders...',
                   border: InputBorder.none,
@@ -1256,7 +1256,7 @@ class FilesScreenState extends State<FilesScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 enabled: false,
                 child: Text('VIEW STYLE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10, fontWeight: FontWeight.w800)),
               ),
@@ -1264,9 +1264,9 @@ class FilesScreenState extends State<FilesScreen> {
                 value: 'view_compact',
                 child: Row(
                   children: [
-                    Icon(Icons.grid_view_rounded, size: 18, color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : Colors.white70),
+                    Icon(Icons.grid_view_rounded, size: 18, color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
                     const SizedBox(width: 10),
-                    Text('Thumbnail Grid (Compact)', style: TextStyle(color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : Colors.white, fontWeight: tab.viewMode == 'compact' ? FontWeight.w700 : FontWeight.normal)),
+                    Text('Thumbnail Grid (Compact)', style: TextStyle(color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'compact' ? FontWeight.w700 : FontWeight.normal)),
                   ],
                 ),
               ),
@@ -1274,9 +1274,9 @@ class FilesScreenState extends State<FilesScreen> {
                 value: 'view_grid',
                 child: Row(
                   children: [
-                    Icon(Icons.view_module_rounded, size: 18, color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : Colors.white70),
+                    Icon(Icons.view_module_rounded, size: 18, color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
                     const SizedBox(width: 10),
-                    Text('Large Cards Grid', style: TextStyle(color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : Colors.white, fontWeight: tab.viewMode == 'grid' ? FontWeight.w700 : FontWeight.normal)),
+                    Text('Large Cards Grid', style: TextStyle(color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'grid' ? FontWeight.w700 : FontWeight.normal)),
                   ],
                 ),
               ),
@@ -1284,14 +1284,14 @@ class FilesScreenState extends State<FilesScreen> {
                 value: 'view_list',
                 child: Row(
                   children: [
-                    Icon(Icons.view_list_rounded, size: 18, color: tab.viewMode == 'list' ? NivaroColors.primaryLight : Colors.white70),
+                    Icon(Icons.view_list_rounded, size: 18, color: tab.viewMode == 'list' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
                     const SizedBox(width: 10),
-                    Text('Detailed List', style: TextStyle(color: tab.viewMode == 'list' ? NivaroColors.primaryLight : Colors.white, fontWeight: tab.viewMode == 'list' ? FontWeight.w700 : FontWeight.normal)),
+                    Text('Detailed List', style: TextStyle(color: tab.viewMode == 'list' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'list' ? FontWeight.w700 : FontWeight.normal)),
                   ],
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 enabled: false,
                 child: Text('BOOKMARKS & STORAGE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10, fontWeight: FontWeight.w800)),
               ),
@@ -1306,7 +1306,7 @@ class FilesScreenState extends State<FilesScreen> {
                     ],
                   ),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'all_favorites',
                 child: Row(
                   children: [
@@ -1316,7 +1316,7 @@ class FilesScreenState extends State<FilesScreen> {
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'local_storage',
                 child: Row(
                   children: [
@@ -1421,16 +1421,16 @@ class FilesScreenState extends State<FilesScreen> {
             children: [
               Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.primaryLight),
                   ),
                   const SizedBox(width: 10),
-                  Text(_transferTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                  Text(_transferTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: NivaroColors.textPrimary)),
                 ],
               ),
-              Text('$_transferCurrentIndex of $_transferTotalCount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: NivaroColors.primaryLight)),
+              Text('$_transferCurrentIndex of $_transferTotalCount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: NivaroColors.primaryLight)),
             ],
           ),
           const SizedBox(height: 6),
@@ -1446,7 +1446,7 @@ class FilesScreenState extends State<FilesScreen> {
           const SizedBox(height: 4),
           Text(
             _transferCurrentFile,
-            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -1474,7 +1474,7 @@ class FilesScreenState extends State<FilesScreen> {
                     color: isSelected ? NivaroColors.surfaceRaised : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isSelected ? NivaroColors.primary.withOpacity(0.5) : NivaroColors.borderSubtle,
+                      color: isSelected ? NivaroColors.primary.withValues(alpha: 0.5) : NivaroColors.borderSubtle,
                     ),
                   ),
                   child: InkWell(
@@ -1504,7 +1504,7 @@ class FilesScreenState extends State<FilesScreen> {
                             InkWell(
                               onTap: () => _closeTab(index),
                               borderRadius: BorderRadius.circular(8),
-                              child: const Padding(
+                              child: Padding(
                                 padding: EdgeInsets.all(2),
                                 child: Icon(Icons.close_rounded, size: 13, color: NivaroColors.textMuted),
                               ),
@@ -1580,7 +1580,7 @@ class FilesScreenState extends State<FilesScreen> {
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: NivaroColors.surfaceDim,
         border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
       ),
@@ -1588,7 +1588,7 @@ class FilesScreenState extends State<FilesScreen> {
         children: [
           InkWell(
             onTap: () => _openPath(_defaultHomePath),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.dns_rounded, size: 14, color: NivaroColors.primaryLight),
@@ -1598,7 +1598,7 @@ class FilesScreenState extends State<FilesScreen> {
             ),
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
+          Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
           const SizedBox(width: 4),
           Expanded(
             child: ListView.builder(
@@ -1623,7 +1623,7 @@ class FilesScreenState extends State<FilesScreen> {
                     ),
                     if (!isLast) ...[
                       const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
+                      Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
                       const SizedBox(width: 4),
                     ],
                   ],
@@ -1662,12 +1662,12 @@ class FilesScreenState extends State<FilesScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Storage Devices & Drives',
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
                     ),
                     if (_disksLoading)
-                      const SizedBox(
+                      SizedBox(
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.primaryLight),
@@ -1683,7 +1683,7 @@ class FilesScreenState extends State<FilesScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: NivaroColors.borderSubtle),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Icon(Icons.dns_outlined, color: NivaroColors.textMuted, size: 22),
                       SizedBox(width: 12),
@@ -1711,7 +1711,7 @@ class FilesScreenState extends State<FilesScreen> {
                     for (final disk in _disks)
                       _buildTileCard(
                         icon: disk.isUsb ? Icons.usb_rounded : Icons.dns_rounded,
-                        iconBgColor: disk.isUsb ? NivaroColors.accent.withOpacity(0.15) : NivaroColors.primary.withOpacity(0.15),
+                        iconBgColor: disk.isUsb ? NivaroColors.accent.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
                         iconColor: disk.isUsb ? NivaroColors.accentLight : NivaroColors.primaryLight,
                         title: disk.label.isNotEmpty ? disk.label : disk.mountPoint,
                         subtitle: '${_formatBytes(disk.usedBytes)} / ${_formatBytes(disk.sizeBytes)}',
@@ -1729,14 +1729,14 @@ class FilesScreenState extends State<FilesScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Companion Devices',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
                       ),
                       if (_companionDevices.isNotEmpty)
                         Text(
                           '${_companionDevices.length} Connected',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
                         ),
                     ],
                   ),
@@ -1749,7 +1749,7 @@ class FilesScreenState extends State<FilesScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     padding: EdgeInsets.zero,
                     itemCount: _companionDevices.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final dev = _companionDevices[index];
                       return _buildCompanionCard1Col(dev);
@@ -1765,14 +1765,14 @@ class FilesScreenState extends State<FilesScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Cloud Storage',
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
                     ),
                     if (_cloudAccounts.isNotEmpty)
                       Text(
                         '${_cloudAccounts.length} Connected',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
                       ),
                   ],
                 ),
@@ -1800,12 +1800,12 @@ class FilesScreenState extends State<FilesScreen> {
 
                     return _buildTileCard(
                       icon: iconData,
-                      iconBgColor: iconColor.withOpacity(0.15),
+                      iconBgColor: iconColor.withValues(alpha: 0.15),
                       iconColor: iconColor,
                       title: account.displayName,
                       subtitle: account.mountPoint.isNotEmpty ? account.mountPoint : account.providerTitle,
                       badgeText: account.downloadMbps != null ? '${account.downloadMbps!.toStringAsFixed(0)}M' : null,
-                      badgeColor: NivaroColors.success.withOpacity(0.15),
+                      badgeColor: NivaroColors.success.withValues(alpha: 0.15),
                       badgeTextColor: NivaroColors.successLight,
                       onTap: () {
                         if (account.mountPoint.isNotEmpty) {
@@ -1826,7 +1826,7 @@ class FilesScreenState extends State<FilesScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Favorite Folders',
                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
                     ),
@@ -1834,7 +1834,7 @@ class FilesScreenState extends State<FilesScreen> {
                       InkWell(
                         onTap: _showFavoritesSheet,
                         borderRadius: BorderRadius.circular(8),
-                        child: const Padding(
+                        child: Padding(
                           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           child: Text('View All', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w700)),
                         ),
@@ -1845,7 +1845,7 @@ class FilesScreenState extends State<FilesScreen> {
               if (_favoritesLoading)
                 const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
               else if (_favorites.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.all(12),
                   child: Text('No favorite folders yet. Use the 3-dot menu in any folder to bookmark.', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
                 )
@@ -1865,7 +1865,7 @@ class FilesScreenState extends State<FilesScreen> {
                     final fav = _favorites[index];
                     return _buildTileCard(
                       icon: Icons.folder_special_rounded,
-                      iconBgColor: NivaroColors.warning.withOpacity(0.15),
+                      iconBgColor: NivaroColors.warning.withValues(alpha: 0.15),
                       iconColor: NivaroColors.warningLight,
                       title: fav.name,
                       subtitle: fav.path,
@@ -1936,7 +1936,7 @@ class FilesScreenState extends State<FilesScreen> {
                             Expanded(
                               child: Text(
                                 title,
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary),
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1946,7 +1946,7 @@ class FilesScreenState extends State<FilesScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: badgeColor ?? NivaroColors.primary.withOpacity(0.12),
+                                  color: badgeColor ?? NivaroColors.primary.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -1964,7 +1964,7 @@ class FilesScreenState extends State<FilesScreen> {
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
-                          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -2008,14 +2008,14 @@ class FilesScreenState extends State<FilesScreen> {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: NivaroColors.primary.withOpacity(0.12),
+              color: NivaroColors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.cloud_queue_rounded, color: NivaroColors.primaryLight, size: 20),
+            child: Icon(Icons.cloud_queue_rounded, color: NivaroColors.primaryLight, size: 20),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2083,22 +2083,22 @@ class FilesScreenState extends State<FilesScreen> {
                   Icon(_getCloudIcon(account.type), color: _getCloudColor(account.type), size: 24),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(account.displayName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Colors.white)),
+                    child: Text(account.displayName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary)),
                   ),
                 ],
               ),
               const SizedBox(height: 14),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Provider Type', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                subtitle: Text(account.providerTitle, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white)),
+                title: Text('Provider Type', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                subtitle: Text(account.providerTitle, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textPrimary)),
               ),
               if (account.mountPoint.isNotEmpty)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Mount Path', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                  subtitle: Text(account.mountPoint, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.primaryLight)),
-                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: NivaroColors.textMuted),
+                  title: Text('Mount Path', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                  subtitle: Text(account.mountPoint, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.primaryLight)),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: NivaroColors.textMuted),
                   onTap: () {
                     Navigator.pop(context);
                     _openPath(account.mountPoint);
@@ -2107,8 +2107,8 @@ class FilesScreenState extends State<FilesScreen> {
               if (account.downloadMbps != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Transfer Speed', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                  subtitle: Text('Download: ${account.downloadMbps!.toStringAsFixed(1)} Mbps | Upload: ${account.uploadMbps?.toStringAsFixed(1) ?? "--"} Mbps', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.white)),
+                  title: Text('Transfer Speed', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+                  subtitle: Text('Download: ${account.downloadMbps!.toStringAsFixed(1)} Mbps | Upload: ${account.uploadMbps?.toStringAsFixed(1) ?? "--"} Mbps', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textPrimary)),
                 ),
             ],
           ),
@@ -2153,7 +2153,7 @@ class FilesScreenState extends State<FilesScreen> {
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: isSelected ? NivaroColors.primary.withOpacity(0.18) : NivaroColors.surfaceContainerLow,
+              color: isSelected ? NivaroColors.primary.withValues(alpha: 0.18) : NivaroColors.surfaceContainerLow,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
@@ -2170,7 +2170,7 @@ class FilesScreenState extends State<FilesScreen> {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: entry.isDir ? NivaroColors.warning.withOpacity(0.12) : NivaroColors.primary.withOpacity(0.12),
+                        color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.12) : NivaroColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
@@ -2180,7 +2180,7 @@ class FilesScreenState extends State<FilesScreen> {
                       ),
                     ),
                     if (isSelected)
-                      const CircleAvatar(
+                      CircleAvatar(
                         radius: 8,
                         backgroundColor: NivaroColors.primary,
                         child: Icon(Icons.check, size: 11, color: Colors.white),
@@ -2190,7 +2190,7 @@ class FilesScreenState extends State<FilesScreen> {
                 const SizedBox(height: 8),
                 Text(
                   entry.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: NivaroColors.textPrimary),
                   maxLines: 2,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
@@ -2198,7 +2198,7 @@ class FilesScreenState extends State<FilesScreen> {
                 const SizedBox(height: 2),
                 Text(
                   entry.isDir ? 'Folder' : formatBytes(entry.size),
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 10),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 10),
                 ),
               ],
             ),
@@ -2233,7 +2233,7 @@ class FilesScreenState extends State<FilesScreen> {
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? NivaroColors.primary.withOpacity(0.18) : NivaroColors.surfaceContainerLow,
+              color: isSelected ? NivaroColors.primary.withValues(alpha: 0.18) : NivaroColors.surfaceContainerLow,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
@@ -2253,7 +2253,7 @@ class FilesScreenState extends State<FilesScreen> {
                       size: 32,
                     ),
                     if (isSelected)
-                      const CircleAvatar(
+                      CircleAvatar(
                         radius: 10,
                         backgroundColor: NivaroColors.primary,
                         child: Icon(Icons.check, size: 12, color: Colors.white),
@@ -2265,14 +2265,14 @@ class FilesScreenState extends State<FilesScreen> {
                   children: [
                     Text(
                       entry.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.white),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       entry.isDir ? 'Folder' : formatBytes(entry.size),
-                      style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                     ),
                   ],
                 ),
@@ -2291,7 +2291,7 @@ class FilesScreenState extends State<FilesScreen> {
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 130),
       itemCount: entries.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, color: NivaroColors.borderSubtle),
+      separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
       itemBuilder: (context, index) {
         final entry = entries[index];
         final isSelected = _currentTab.selectedPaths.contains(entry.path);
@@ -2300,12 +2300,12 @@ class FilesScreenState extends State<FilesScreen> {
           onTap: () => _onEntryTap(entry),
           onLongPress: () => _toggleSelection(entry.path),
           selected: isSelected,
-          selectedTileColor: NivaroColors.primary.withOpacity(0.15),
+          selectedTileColor: NivaroColors.primary.withValues(alpha: 0.15),
           leading: Container(
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: entry.isDir ? NivaroColors.warning.withOpacity(0.12) : NivaroColors.primary.withOpacity(0.12),
+              color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.12) : NivaroColors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
@@ -2318,12 +2318,12 @@ class FilesScreenState extends State<FilesScreen> {
           title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
           subtitle: Text(
             entry.isDir ? 'Folder' : formatBytes(entry.size),
-            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
+            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
           ),
           trailing: isSelected
-              ? const Icon(Icons.check_circle_rounded, color: NivaroColors.primaryLight)
+              ? Icon(Icons.check_circle_rounded, color: NivaroColors.primaryLight)
               : IconButton(
-                  icon: const Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted, size: 20),
+                  icon: Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted, size: 20),
                   tooltip: 'Options',
                   onPressed: () => _showEntryActions(entry),
                 ),
@@ -2341,7 +2341,7 @@ class FilesScreenState extends State<FilesScreen> {
       decoration: BoxDecoration(
         color: NivaroColors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: NivaroColors.primaryLight.withOpacity(0.6), width: 1.5),
+        border: Border.all(color: NivaroColors.primaryLight.withValues(alpha: 0.6), width: 1.5),
         boxShadow: const [
           BoxShadow(color: Color(0xAA000000), blurRadius: 16, offset: Offset(0, 4)),
         ],
@@ -2357,7 +2357,7 @@ class FilesScreenState extends State<FilesScreen> {
                 visualDensity: VisualDensity.compact,
               ),
               const SizedBox(width: 4),
-              Text('$count Selected', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white)),
+              Text('$count Selected', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: NivaroColors.textPrimary)),
             ],
           ),
           Row(
@@ -2378,7 +2378,7 @@ class FilesScreenState extends State<FilesScreen> {
                 onPressed: _cutSelected,
               ),
               IconButton(
-                icon: const Icon(Icons.delete_rounded, size: 20, color: NivaroColors.dangerLight),
+                icon: Icon(Icons.delete_rounded, size: 20, color: NivaroColors.dangerLight),
                 tooltip: 'Delete',
                 onPressed: _deleteSelected,
               ),
@@ -2440,7 +2440,7 @@ class FilesScreenState extends State<FilesScreen> {
             color: NivaroColors.surfaceContainerLow,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: dev.isCurrentDevice ? NivaroColors.primary.withOpacity(0.4) : NivaroColors.borderSubtle,
+              color: dev.isCurrentDevice ? NivaroColors.primary.withValues(alpha: 0.4) : NivaroColors.borderSubtle,
               width: dev.isCurrentDevice ? 1.2 : 1.0,
             ),
             boxShadow: const [
@@ -2457,8 +2457,8 @@ class FilesScreenState extends State<FilesScreen> {
                     height: 38,
                     decoration: BoxDecoration(
                       color: dev.isCurrentDevice
-                          ? NivaroColors.primary.withOpacity(0.15)
-                          : NivaroColors.purple.withOpacity(0.15),
+                          ? NivaroColors.primary.withValues(alpha: 0.15)
+                          : NivaroColors.purple.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     alignment: Alignment.center,
@@ -2478,7 +2478,7 @@ class FilesScreenState extends State<FilesScreen> {
                             Flexible(
                               child: Text(
                                 dev.name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13.5,
                                   color: NivaroColors.textPrimary,
@@ -2492,8 +2492,8 @@ class FilesScreenState extends State<FilesScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: dev.isCurrentDevice
-                                    ? NivaroColors.primary.withOpacity(0.15)
-                                    : (dev.isOnline ? NivaroColors.success.withOpacity(0.15) : Colors.white10),
+                                    ? NivaroColors.primary.withValues(alpha: 0.15)
+                                    : (dev.isOnline ? NivaroColors.success.withValues(alpha: 0.15) : Colors.white10),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -2536,7 +2536,7 @@ class FilesScreenState extends State<FilesScreen> {
                           children: [
                             Text(
                               '$usedStr / $totalStr ($pctStr)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: NivaroColors.textMuted,
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w500,
@@ -2546,7 +2546,7 @@ class FilesScreenState extends State<FilesScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 '· ${_formatBytes(dev.serverStorageUsed)} synced',
-                                style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                               ),
                             ],
                           ],
@@ -2554,7 +2554,7 @@ class FilesScreenState extends State<FilesScreen> {
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded, color: NivaroColors.textMuted, size: 20),
+                  Icon(Icons.chevron_right_rounded, color: NivaroColors.textMuted, size: 20),
                 ],
               ),
               const SizedBox(height: 8),
@@ -2615,7 +2615,7 @@ class FilesScreenState extends State<FilesScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: NivaroColors.purple.withOpacity(0.15),
+                  color: NivaroColors.purple.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(_getCompanionIcon(dev), color: NivaroColors.purpleLight, size: 22),
@@ -2630,7 +2630,7 @@ class FilesScreenState extends State<FilesScreen> {
                         Flexible(
                           child: Text(
                             dev.name,
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Colors.white),
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: NivaroColors.textPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -2638,7 +2638,7 @@ class FilesScreenState extends State<FilesScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: dev.isOnline ? NivaroColors.success.withOpacity(0.15) : Colors.white10,
+                            color: dev.isOnline ? NivaroColors.success.withValues(alpha: 0.15) : Colors.white10,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -2654,7 +2654,7 @@ class FilesScreenState extends State<FilesScreen> {
                           const SizedBox(width: 6),
                           Text(
                             '${dev.batteryLevel}%',
-                            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ],
@@ -2662,7 +2662,7 @@ class FilesScreenState extends State<FilesScreen> {
                     const SizedBox(height: 2),
                     Text(
                       '${dev.model} · ${dev.platform} · Companion Sync Folder',
-                      style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11),
+                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
                     ),
                   ],
                 ),
@@ -2673,8 +2673,8 @@ class FilesScreenState extends State<FilesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Device Storage', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: Colors.white70)),
-              Text('$usedStr / $totalStr', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: NivaroColors.primaryLight)),
+              Text('Device Storage', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: NivaroColors.textSecondary)),
+              Text('$usedStr / $totalStr', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: NivaroColors.primaryLight)),
             ],
           ),
           const SizedBox(height: 6),
@@ -2704,11 +2704,11 @@ class FilesScreenState extends State<FilesScreen> {
           const SizedBox(height: 12),
           Text(
             compDev != null ? 'No files shared yet with ${compDev.name}.' : 'This folder is empty.',
-            style: const TextStyle(color: NivaroColors.textMuted, fontSize: 14),
+            style: TextStyle(color: NivaroColors.textMuted, fontSize: 14),
           ),
           if (compDev != null) ...[
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Files placed in this folder will sync with this companion device.',
               style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
             ),
@@ -2725,9 +2725,9 @@ class FilesScreenState extends State<FilesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 44, color: NivaroColors.dangerLight),
+            Icon(Icons.error_outline_rounded, size: 44, color: NivaroColors.dangerLight),
             const SizedBox(height: 12),
-            Text(_error ?? 'Could not load folder contents.', style: const TextStyle(color: Colors.white, fontSize: 14), textAlign: TextAlign.center),
+            Text(_error ?? 'Could not load folder contents.', style: TextStyle(color: NivaroColors.textPrimary, fontSize: 14), textAlign: TextAlign.center),
             const SizedBox(height: 16),
             if (ApiClient.isAuthError(_error)) ...[
               FilledButton.icon(
@@ -2744,7 +2744,7 @@ class FilesScreenState extends State<FilesScreen> {
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () => _load(),
-                child: const Text('Try Again', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+                child: Text('Try Again', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
               ),
             ] else
               ElevatedButton(

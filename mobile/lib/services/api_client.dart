@@ -113,7 +113,7 @@ class ApiClient {
 
   Map<String, String> _headers({bool json = true}) => {
         if (json) 'Content-Type': 'application/json',
-        if (_accessToken != null) 'Authorization': _accessToken!,
+        'Authorization': ?_accessToken,
       };
 
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {

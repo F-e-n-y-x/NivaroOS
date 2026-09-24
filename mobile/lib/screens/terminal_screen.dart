@@ -5,8 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 import '../theme.dart';
+import '../ui/theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
+
+// The terminal's chrome is dark in both app themes, so text on it takes
+// the dark scheme's roles rather than the active theme's.
+final _terminalScheme = AppTheme.dark().colorScheme;
 
 /// Authentic native interactive terminal for NivaroOS:
 /// - True VT100/ANSI terminal emulation powered by xterm.dart
@@ -316,6 +321,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
       backgroundColor: const Color(0xFF0A0D14),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F131D),
+        // The terminal is dark in both themes, so its bar keeps light
+        // content and light status icons whatever the app theme is.
+        foregroundColor: Colors.white,
+        systemOverlayStyle: AppTheme.systemBarsStyle(Brightness.dark),
         elevation: 0,
         titleSpacing: 12,
         title: Row(
@@ -344,7 +353,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       : (_connecting ? const Color(0xFFF59E0B) : const Color(0xFFEF4444)),
                   boxShadow: [
                     BoxShadow(
-                      color: (_connected ? const Color(0xFF22C55E) : const Color(0xFFEF4444)).withOpacity(0.4),
+                      color: (_connected ? const Color(0xFF22C55E) : const Color(0xFFEF4444)).withValues(alpha: 0.4),
                       blurRadius: 4,
                       spreadRadius: 1,
                     ),
@@ -356,7 +365,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.keyboard_rounded, size: 21, color: NivaroColors.primaryLight),
+            icon: Icon(Icons.keyboard_rounded, size: 21, color: NivaroColors.primaryLight),
             tooltip: 'Toggle Soft Keyboard',
             onPressed: () {
               if (_focusNode.hasFocus) {
@@ -367,11 +376,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
             },
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded, size: 22, color: NivaroColors.textSecondary),
+            icon: Icon(Icons.more_vert_rounded, size: 22, color: NivaroColors.textSecondary),
             color: NivaroColors.surfaceRaised,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: NivaroColors.borderSubtle),
+              side: BorderSide(color: NivaroColors.borderSubtle),
             ),
             tooltip: 'Terminal Options',
             onSelected: (val) {
@@ -415,7 +424,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'paste',
                 child: Row(
                   children: [
@@ -425,7 +434,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'clear',
                 child: Row(
                   children: [
@@ -440,7 +449,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 value: 'font_plus',
                 child: Row(
                   children: [
-                    const Icon(Icons.text_increase_rounded, size: 18, color: NivaroColors.textSecondary),
+                    Icon(Icons.text_increase_rounded, size: 18, color: NivaroColors.textSecondary),
                     const SizedBox(width: 10),
                     Text('Increase Font (${_fontSize.toInt()}pt)', style: const TextStyle(fontSize: 13.5)),
                   ],
@@ -450,13 +459,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 value: 'font_minus',
                 child: Row(
                   children: [
-                    const Icon(Icons.text_decrease_rounded, size: 18, color: NivaroColors.textSecondary),
+                    Icon(Icons.text_decrease_rounded, size: 18, color: NivaroColors.textSecondary),
                     const SizedBox(width: 10),
                     Text('Decrease Font (${_fontSize.toInt()}pt)', style: const TextStyle(fontSize: 13.5)),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'font_reset',
                 child: Row(
                   children: [
@@ -482,7 +491,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _quickMacros.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
                 itemBuilder: (context, i) {
                   final macro = _quickMacros[i];
                   return Center(
@@ -500,7 +509,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                         ),
                         child: Text(
                           macro,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: NivaroColors.textSecondary),
+                          style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: _terminalScheme.onSurfaceVariant),
                         ),
                       ),
                     ),
@@ -602,7 +611,7 @@ class _KeyButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: active ? (color ?? NivaroColors.primary).withOpacity(0.25) : const Color(0xFF1E2436),
+            color: active ? (color ?? NivaroColors.primary).withValues(alpha: 0.25) : const Color(0xFF1E2436),
             borderRadius: BorderRadius.circular(5),
             border: Border.all(
               color: active ? (color ?? NivaroColors.primaryLight) : NivaroColors.borderSubtle,
@@ -614,7 +623,7 @@ class _KeyButton extends StatelessWidget {
               fontFamily: 'monospace',
               fontSize: 11.5,
               fontWeight: FontWeight.bold,
-              color: active ? (color ?? NivaroColors.primaryLight) : (color ?? NivaroColors.textPrimary),
+              color: active ? (color ?? NivaroColors.primaryLight) : (color ?? _terminalScheme.onSurface),
             ),
           ),
         ),

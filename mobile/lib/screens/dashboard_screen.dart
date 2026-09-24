@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
@@ -105,7 +106,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       stats = stats.withDisks(disks);
 
       final net = stats.primaryNet;
-      final now = DateTime.now();
+      final now = clock.now();
       if (net != null && _lastNet != null && _lastNetAt != null) {
         final elapsed = now.difference(_lastNetAt!).inMilliseconds / 1000;
         if (elapsed > 0) {
@@ -147,12 +148,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: NivaroColors.surfaceContainerHighest,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.largeIncreased)),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        content: Text(body, style: const TextStyle(color: NivaroColors.textMuted)),
+        content: Text(body, style: TextStyle(color: NivaroColors.textMuted)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(title, style: const TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.bold)),
+            child: Text(title, style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -218,14 +219,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: NivaroColors.primary.withOpacity(0.15),
+                    color: NivaroColors.primary.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
-                    border: Border.all(color: NivaroColors.primary.withOpacity(0.35)),
+                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.35)),
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     _username.isEmpty ? 'N' : _username.substring(0, 1).toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.primaryLight),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.primaryLight),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -240,7 +241,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      const Row(
+                      Row(
                         children: [
                           PulsingStatusDot(color: NivaroColors.success, size: 6.5),
                           SizedBox(width: 6),
@@ -257,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(width: 8),
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted),
+                  icon: Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted),
                   color: NivaroColors.surfaceContainerHighest,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
                   onSelected: (v) {
@@ -267,7 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _confirmAndSetState('off', 'Power Off Server', 'This completely powers off the server hardware.');
                     }
                   },
-                  itemBuilder: (context) => const [
+                  itemBuilder: (context) => [
                     PopupMenuItem(
                       value: 'restart',
                       child: Row(
@@ -314,7 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             // Live Virtual Machine Feeds (if any running)
             if (_runningVms.isNotEmpty) ...[
-              SectionHeader(
+              LegacySectionHeader(
                 title: 'Live Virtual Machines',
                 subtitle: '${_runningVms.length} running with real-time screen stream',
                 trailing: TextButton(
@@ -353,7 +354,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
 
             // Real-Time System Monitor (Clickable Tiles)
-            const SectionHeader(
+            const LegacySectionHeader(
               title: 'System Health & Metrics',
               subtitle: 'Tap any metric for hardware diagnostics & speedtests',
             ),
@@ -364,9 +365,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Center(
                         child: Column(
                           children: [
-                            const Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
+                            Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
                             const SizedBox(height: 10),
-                            Text(_error!, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
+                            Text(_error!, style: TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
                             const SizedBox(height: 14),
                             if (ApiClient.isAuthError(_error)) ...[
                               FilledButton.icon(
@@ -383,7 +384,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               const SizedBox(height: 8),
                               TextButton(
                                 onPressed: _load,
-                                child: const Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
+                                child: Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
                               ),
                             ] else
                               OutlinedButton(onPressed: _load, child: const Text('Retry Connection')),
@@ -423,19 +424,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           Text(
                             '${stats.cpuPercent.toStringAsFixed(0)}%',
-                            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
+                            style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
                           ),
                           if (stats.cpuTemperature != null) ...[
                             const Spacer(),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: NivaroColors.warning.withOpacity(0.14),
+                                color: NivaroColors.warning.withValues(alpha: 0.14),
                                 borderRadius: BorderRadius.circular(NivaroShape.small),
                               ),
                               child: Text(
                                 '${stats.cpuTemperature!.toStringAsFixed(0)}°C',
-                                style: const TextStyle(color: NivaroColors.warningLight, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                style: TextStyle(color: NivaroColors.warningLight, fontSize: 10.5, fontWeight: FontWeight.w700),
                               ),
                             ),
                           ],
@@ -453,7 +454,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onTap: () => RamDetailModal.show(context, stats),
                       value: Text(
                         '${stats.memUsedPercent.toStringAsFixed(0)}%',
-                        style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
+                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
                       ),
                       subtitle: '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)}',
                     ),
@@ -489,7 +490,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       onTap: () => StorageDetailModal.show(context, stats, onOpenFiles: widget.onOpenFiles),
                       value: Text(
                         stats.storagePercentText,
-                        style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
+                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
                       ),
                       subtitle: '${formatBytes(stats.storageUsed)} of ${formatBytes(stats.storageTotal)}',
                     ),
@@ -499,7 +500,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 18),
 
               // Quick Access Section (Adaptive columns on tablets)
-              const SectionHeader(
+              const LegacySectionHeader(
                 title: 'Quick Access',
                 subtitle: 'Server management shortcuts & utilities',
               ),
@@ -579,9 +580,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 20),
 
               // Storage Drives List (Adaptive responsive grid on tablet)
-              const SectionHeader(title: 'Storage Devices & Disks'),
+              const LegacySectionHeader(title: 'Storage Devices & Disks'),
               if (stats.disks.isEmpty)
-                const Text('No storage devices detected.', style: TextStyle(color: NivaroColors.textMuted))
+                Text('No storage devices detected.', style: TextStyle(color: NivaroColors.textMuted))
               else
                 Builder(builder: (context) {
                   final width = MediaQuery.of(context).size.width;
@@ -642,7 +643,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: NivaroColors.surfaceContainerLowest,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -664,7 +665,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: d.isUsb ? NivaroColors.accent.withOpacity(0.15) : NivaroColors.primary.withOpacity(0.15),
+                    color: d.isUsb ? NivaroColors.accent.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -685,7 +686,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 2),
                       Text(
                         'Mount point: ${d.mountPoint}',
-                        style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                       ),
                     ],
                   ),
@@ -693,12 +694,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: NivaroColors.primary.withOpacity(0.15),
+                    color: NivaroColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     d.percent,
-                    style: const TextStyle(color: NivaroColors.primaryLight, fontWeight: FontWeight.bold, fontSize: 12),
+                    style: TextStyle(color: NivaroColors.primaryLight, fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
               ],
@@ -724,7 +725,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             if (d.filesystem.isNotEmpty) ...[
               const SizedBox(height: 14),
-              Text('Filesystem: ${d.filesystem}', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
+              Text('Filesystem: ${d.filesystem}', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
             ],
             const SizedBox(height: 22),
             FilledButton.icon(
@@ -750,7 +751,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
+        Text(label, style: TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
         const SizedBox(height: 2),
         Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: valueColor)),
       ],
@@ -784,7 +785,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   width: double.infinity,
                   height: double.infinity,
                   gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorBuilder: (_, _, _) => Center(
                     child: Icon(Icons.monitor_rounded, color: NivaroColors.textFaint, size: 36),
                   ),
                 ),
@@ -794,11 +795,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.75),
+                      color: Colors.black.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: NivaroColors.success.withOpacity(0.4)),
+                      border: Border.all(color: NivaroColors.success.withValues(alpha: 0.4)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         PulsingStatusDot(color: NivaroColors.success, size: 5),
@@ -815,7 +816,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                const Icon(Icons.monitor_rounded, color: NivaroColors.primaryLight, size: 18),
+                Icon(Icons.monitor_rounded, color: NivaroColors.primaryLight, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -826,10 +827,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 Text(
                   '${vm.vcpus} vCPU · ${(vm.memoryMib / 1024).toStringAsFixed(1)} GB',
-                  style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12),
+                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
                 ),
                 const SizedBox(width: 6),
-                const Icon(Icons.chevron_right_rounded, size: 18, color: NivaroColors.textFaint),
+                Icon(Icons.chevron_right_rounded, size: 18, color: NivaroColors.textFaint),
               ],
             ),
           ),
@@ -875,7 +876,7 @@ class _QuickButton extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: NivaroColors.primary.withOpacity(0.12),
+                  color: NivaroColors.primary.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
@@ -884,7 +885,7 @@ class _QuickButton extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 label,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: NivaroColors.textSecondary),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: NivaroColors.textSecondary),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -915,7 +916,7 @@ class _NetSpeedRow extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '${formatBytes(rate)}/s',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NivaroColors.textPrimary),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NivaroColors.textPrimary),
         ),
       ],
     );

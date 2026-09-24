@@ -1,0 +1,19 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "disk_name": "WDC WDS480G2G0A",
+   "fstype": "ext4",
+   "children": [
+    {
+     "mount_point": "/DATA",
+     "label": "DATA",
+     "size_bytes": 453563432960,
+     "avail_bytes": 183509667840,
+     "used_bytes": 246938120192
+    }
+   ]
+  }
+ ]
+}

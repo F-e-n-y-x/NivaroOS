@@ -92,7 +92,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
                         const SizedBox(height: 2),
                         Text(
                           _scanning ? 'Searching for NivaroOS servers on Wi-Fi...' : '${_found.length} server(s) found on network',
-                          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                         ),
                       ],
                     ),
@@ -123,7 +123,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
                         backgroundColor: NivaroColors.surfaceRaised,
                         child: ListView.separated(
                           itemCount: _found.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, _) => const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final s = _found[i];
                             return DarkCard(
@@ -133,7 +133,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
                                   Container(
                                     width: 48,
                                     height: 48,
-                                    decoration: const BoxDecoration(
+                                    decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       gradient: LinearGradient(
                                         colors: [
@@ -158,7 +158,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
                                         const SizedBox(height: 2),
                                         Text(
                                           '${s.host}:${s.port}',
-                                          style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13),
+                                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
                                         ),
                                       ],
                                     ),
@@ -224,7 +224,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> with SingleTickerProv
                           fillColor: NivaroColors.surfaceRaised,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(NivaroShape.medium),
-                            borderSide: const BorderSide(color: NivaroColors.borderSubtle),
+                            borderSide: BorderSide(color: NivaroColors.borderSubtle),
                           ),
                         ),
                       ),
@@ -301,7 +301,7 @@ class _EmptyState extends StatelessWidget {
               scanning
                   ? 'Searching for mDNS broadcast beacons from your NivaroOS server on this Wi-Fi network.'
                   : 'Make sure your server is powered on and connected to the same subnet, or enter its IP address directly.',
-              style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13, height: 1.4),
+              style: TextStyle(color: NivaroColors.textMuted, fontSize: 13, height: 1.4),
               textAlign: TextAlign.center,
             ),
           ),

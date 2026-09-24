@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
@@ -126,7 +127,7 @@ class CompanionDevice {
       isCurrentDevice: currentDeviceId != null && currentDeviceId == devId,
       storagePath: json['storage_path'] as String? ?? '',
       serverStorageUsed: (json['server_storage_used'] as num?)?.toInt() ?? 0,
-      lastActive: DateTime.tryParse(json['last_seen'] as String? ?? json['last_active'] as String? ?? '') ?? DateTime.now(),
+      lastActive: DateTime.tryParse(json['last_seen'] as String? ?? json['last_active'] as String? ?? '') ?? clock.now(),
     );
   }
 }
@@ -164,8 +165,16 @@ class DeviceSyncService {
     return id;
   }
 
+  /// Replaces the statvfs reading in tests and screenshots, where the
+  /// host machine's own disk (whose free space changes from run to run)
+  /// would otherwise show up as this phone's storage.
+  @visibleForTesting
+  static Map<String, int>? storageMetricsOverride;
+
   /// Measures exact hardware storage metrics via POSIX statvfs
   Map<String, int> getRealStorageMetrics() {
+    final override = storageMetricsOverride;
+    if (override != null) return override;
     try {
       final dylib = Platform.isAndroid
           ? DynamicLibrary.open('libc.so')
@@ -281,7 +290,7 @@ class DeviceSyncService {
       batteryLevel: batteryPct,
       isCurrentDevice: true,
       isOnline: true,
-      lastActive: DateTime.now(),
+      lastActive: clock.now(),
       customProps: isUserRenamed ? {'user_renamed': true} : {},
     );
 
@@ -439,7 +448,7 @@ class DeviceSyncService {
         isCurrentDevice: true,
         storagePath: matched.storagePath,
         serverStorageUsed: matched.serverStorageUsed,
-        lastActive: DateTime.now(),
+        lastActive: clock.now(),
       );
     } else {
       list.insert(0, currentDev);

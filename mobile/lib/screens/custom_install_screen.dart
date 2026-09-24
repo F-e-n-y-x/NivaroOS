@@ -76,7 +76,7 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const SectionHeader(title: 'Quick Templates'),
+          const LegacySectionHeader(title: 'Quick Templates'),
           SizedBox(
             height: 40,
             child: ListView.builder(
@@ -98,7 +98,7 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
           ),
           const SizedBox(height: 20),
 
-          const SectionHeader(title: 'Docker Compose YAML'),
+          const LegacySectionHeader(title: 'Docker Compose YAML'),
           DarkCard(
             padding: const EdgeInsets.all(12),
             child: TextField(

@@ -632,7 +632,7 @@ class _RfbViewState extends State<RfbView> {
                       BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
                     ],
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.mouse_rounded, size: 14, color: NivaroColors.primaryLight),
@@ -652,7 +652,7 @@ class _RfbViewState extends State<RfbView> {
               bottom: 0,
               child: Container(
                 height: 44,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: Color(0xF20D0F16),
                   border: Border(top: BorderSide(color: NivaroColors.borderSubtle)),
                 ),
@@ -668,7 +668,7 @@ class _RfbViewState extends State<RfbView> {
                     _KeyBtn(label: 'Tab', onTap: () => _sendSingleKey(_keysymTab)),
                     _KeyBtn(label: 'Enter', onTap: () => _sendSingleKey(_keysymEnter)),
                     _KeyBtn(label: 'Del', onTap: () => _sendSingleKey(_keysymDelete)),
-                    const VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
+                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
                     _KeyBtn(label: 'Ctrl+Alt+Del', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, _keysymAltL, _keysymDelete])),
                     _KeyBtn(label: 'Alt+Tab', isMacro: true, onTap: () => _sendKeyCombination([_keysymAltL, _keysymTab])),
                     _KeyBtn(label: 'Alt+F4', isMacro: true, onTap: () => _sendKeyCombination([_keysymAltL, _keysymTable[LogicalKeyboardKey.f4]!])),
@@ -678,13 +678,13 @@ class _RfbViewState extends State<RfbView> {
                     _KeyBtn(label: 'Ctrl+V', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x0076])),
                     _KeyBtn(label: 'Ctrl+Z', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x007A])),
                     _KeyBtn(label: 'Ctrl+A', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x0061])),
-                    const VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
+                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
                     _KeyBtn(label: 'F1', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f1]!)),
                     _KeyBtn(label: 'F2', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f2]!)),
                     _KeyBtn(label: 'F5', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f5]!)),
                     _KeyBtn(label: 'F11', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f11]!)),
                     _KeyBtn(label: 'F12', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f12]!)),
-                    const VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
+                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
                     _KeyBtn(label: '▲', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowUp]!)),
                     _KeyBtn(label: '▼', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowDown]!)),
                     _KeyBtn(label: '◄', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowLeft]!)),
@@ -793,7 +793,7 @@ class _RfbViewState extends State<RfbView> {
                     ),
                     child: Text(
                       sensText,
-                      style: const TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w800),
+                      style: TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
@@ -898,7 +898,7 @@ class _RfbViewState extends State<RfbView> {
               ),
               child: Text(
                 sensText,
-                style: const TextStyle(color: NivaroColors.primaryLight, fontSize: 10.5, fontWeight: FontWeight.w800),
+                style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10.5, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -940,7 +940,7 @@ class _RfbViewState extends State<RfbView> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(right: 6),
                   child: Icon(Icons.drag_indicator_rounded, size: 16, color: NivaroColors.textMuted),
                 ),
@@ -1110,7 +1110,7 @@ class _RfbViewState extends State<RfbView> {
                 if (widget.onPower != null) ...[
                   const SizedBox(width: 4),
                   IconButton(
-                    icon: const Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
+                    icon: Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
                     tooltip: 'Power Menu',
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.all(4),
@@ -1139,7 +1139,7 @@ class _RfbViewState extends State<RfbView> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(left: 2, right: 6),
             child: Icon(Icons.drag_indicator_rounded, size: 16, color: NivaroColors.textMuted),
           ),
@@ -1268,7 +1268,7 @@ class _RfbViewState extends State<RfbView> {
             ),
           if (widget.onPower != null)
             IconButton(
-              icon: const Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
+              icon: Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
               tooltip: 'Power Menu',
               visualDensity: VisualDensity.compact,
               onPressed: widget.onPower,
@@ -1299,13 +1299,13 @@ class _RfbViewState extends State<RfbView> {
         decoration: BoxDecoration(
           color: const Color(0xF212151E),
           shape: BoxShape.circle,
-          border: Border.all(color: NivaroColors.primary.withOpacity(0.6), width: 1.5),
+          border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.6), width: 1.5),
           boxShadow: const [
             BoxShadow(color: Color(0xAA000000), blurRadius: 12, offset: Offset(0, 3)),
           ],
         ),
         alignment: Alignment.center,
-        child: const Icon(Icons.tune_rounded, size: 22, color: NivaroColors.primaryLight),
+        child: Icon(Icons.tune_rounded, size: 22, color: NivaroColors.primaryLight),
       ),
     );
   }
@@ -1322,9 +1322,9 @@ class _RfbViewState extends State<RfbView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: NivaroColors.primaryLight, strokeWidth: 2.5),
+          CircularProgressIndicator(color: NivaroColors.primaryLight, strokeWidth: 2.5),
           const SizedBox(height: 12),
-          Text(_streamError ?? 'Connecting to VM display feed...', style: const TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
+          Text(_streamError ?? 'Connecting to VM display feed...', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
         ],
       ),
     );
@@ -1348,9 +1348,9 @@ class _RfbViewState extends State<RfbView> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.videocam_off_rounded, size: 40, color: NivaroColors.warningLight),
+                    Icon(Icons.videocam_off_rounded, size: 40, color: NivaroColors.warningLight),
                     const SizedBox(height: 10),
-                    Text(err, style: const TextStyle(color: NivaroColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
+                    Text(err, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: () {
@@ -1362,7 +1362,7 @@ class _RfbViewState extends State<RfbView> {
                 ),
               );
             }
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1469,12 +1469,12 @@ class _KeyBtn extends StatelessWidget {
           decoration: BoxDecoration(
             color: active
                 ? NivaroColors.primary
-                : (isMacro ? NivaroColors.primary.withOpacity(0.15) : NivaroColors.surfaceRaised),
+                : (isMacro ? NivaroColors.primary.withValues(alpha: 0.15) : NivaroColors.surfaceRaised),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: active
                   ? NivaroColors.primaryLight
-                  : (isMacro ? NivaroColors.primary.withOpacity(0.4) : NivaroColors.borderSubtle),
+                  : (isMacro ? NivaroColors.primary.withValues(alpha: 0.4) : NivaroColors.borderSubtle),
             ),
           ),
           alignment: Alignment.center,
