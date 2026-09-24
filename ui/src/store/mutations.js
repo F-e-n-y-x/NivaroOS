@@ -6,7 +6,7 @@ const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
 // carry a live snapshot of an app list item as props, which is
 // meaningless to resurrect after a reload (the app list itself will
 // have been refetched fresh by then).
-const PERSISTABLE_COMPONENTS = ['FilesApp', 'TerminalPanel', 'SettingsApp', 'AppStoreApp', 'DownloadStationApp']
+const PERSISTABLE_COMPONENTS = ['FilesApp', 'TerminalPanel', 'SettingsApp', 'AppStoreApp', 'DownloadStationApp', 'BackupApp']
 
 function persistWindows(state) {
 	const toSave = state.windows

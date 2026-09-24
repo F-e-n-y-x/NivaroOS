@@ -668,6 +668,11 @@ export default {
 						id: 'download-station', title: this.$t('Download Station'), component: 'DownloadStationApp', width: 980, height: 640
 					})
 					break;
+				case "Backup & Sync":
+					this.$store.commit('OPEN_WINDOW', {
+						id: 'backup', title: this.$t('Backup & Sync'), component: 'BackupApp', width: 1040, height: 680
+					})
+					break;
 				case "Host Desktop":
 					this.$store.commit('OPEN_WINDOW', {
 						id: 'host-desktop', title: this.$t('Host Desktop'), component: 'HostDesktopPanel', width: 1024, height: 680

@@ -13,6 +13,17 @@
 				</div>
 			</div>
 
+			<p v-if="migratedToBackup" class="schedule-notice mb-3" role="note">
+				<i class="mdi mdi-swap-horizontal-bold" aria-hidden="true"></i>
+				<span>{{ $t('schedule.editor.migrated') }}</span>
+				<button type="button" class="notice-link" @click="openBackupApp">{{ $t('schedule.backup_card.open') }}</button>
+			</p>
+			<p v-else-if="backupInstalled && form.type === 'backup'" class="schedule-notice mb-3" role="note">
+				<i class="mdi mdi-shield-check-outline" aria-hidden="true"></i>
+				<span>{{ $t('schedule.editor.backup_better') }}</span>
+				<button type="button" class="notice-link" @click="openBackupApp">{{ $t('schedule.backup_card.open') }}</button>
+			</p>
+
 			<!-- 1. General Task Settings -->
 			<div class="setting-card mb-3">
 				<div class="setting-row">
@@ -33,7 +44,8 @@
 					<div class="row-label">{{ $t('Task Type') }}</div>
 					<div class="row-control">
 						<b-select v-model="form.type" size="is-small" expanded @input="onTypeChange">
-							<option value="backup">{{ $t('Cloud Sync & Backup') }}</option>
+							<option v-if="offerBackupType" value="backup">{{ $t('Cloud Sync & Backup') }}</option>
+							<option v-if="backupInstalled && !(task && task.type === 'backup')" :value="backupWizardType">{{ $t('schedule.editor.file_backup') }}</option>
 							<option value="vm">{{ $t('Virtual Machine (VM)') }}</option>
 							<option value="container">{{ $t('Docker Container') }}</option>
 							<option value="maintenance">{{ $t('System Maintenance') }}</option>
@@ -302,41 +314,15 @@
 				</div>
 			</div>
 
-			<!-- 3. Schedule Builder -->
+			<!-- 3. Schedule (shared ScheduleBuilder: never rewrites a cron it
+			     can't show, previews the next runs; server time when Backup &
+			     Sync is installed, this device's clock otherwise) -->
 			<div class="setting-card mb-3">
 				<div class="setting-row align-start">
 					<b-icon class="row-icon" icon="clock-outline" custom-size="mdi-20px"></b-icon>
-					<div class="row-label">
-						<div>{{ $t('Execution Schedule') }}</div>
-						<div class="is-size-7 text-primary font-medium mt-1">
-							<i class="mdi mdi-calendar-clock mr-1"></i>
-							{{ humanizeCron(form.cron) }}
-						</div>
-					</div>
-					<div class="row-control path-control-col">
-						<b-select v-model="presetSchedule" size="is-small" expanded @input="onPresetScheduleChange">
-							<option value="0 2 * * *">{{ $t('Nightly at 2:00 AM (02:00)') }}</option>
-							<option value="0 3 * * *">{{ $t('Nightly at 3:00 AM (03:00)') }}</option>
-							<option value="0 23 * * *">{{ $t('Nightly at 11:00 PM (23:00)') }}</option>
-							<option value="0 0 * * *">{{ $t('Nightly at Midnight (00:00)') }}</option>
-							<option value="0 12 * * *">{{ $t('Daily at Noon (12:00 PM)') }}</option>
-							<option value="0 3 * * 0">{{ $t('Weekly (Every Sunday at 3:00 AM)') }}</option>
-							<option value="0 4 * * 0">{{ $t('Weekly (Every Sunday at 4:00 AM)') }}</option>
-							<option value="0 * * * *">{{ $t('Every hour') }}</option>
-							<option value="*/30 * * * *">{{ $t('Every 30 minutes') }}</option>
-							<option value="0 0 1 * *">{{ $t('Monthly (1st day of month)') }}</option>
-							<option value="custom">{{ $t('Custom Cron Expression') }}</option>
-						</b-select>
-
-						<div v-if="presetSchedule === 'custom'" class="cron-custom-row is-flex is-align-items-center mt-2">
-							<b-input
-								v-model="form.cron"
-								placeholder="0 2 * * *"
-								size="is-small"
-								class="mr-2"
-							></b-input>
-							<span class="is-size-7 text-muted font-mono">(min hour dom month dow)</span>
-						</div>
+					<div class="row-label schedule-col">
+						<schedule-builder v-model="form.cron" :preview-fn="cronPreviewFn" allow-minutes show-legend
+							:legend="$t('Execution Schedule')" @validity="cronValid = $event"></schedule-builder>
 					</div>
 				</div>
 
@@ -371,8 +357,18 @@
 
 <script>
 import { apiError } from '@/utils/apiError'
+import ScheduleBuilder from '@/shared/scheduling/ScheduleBuilder.vue'
+import { checkBackupInstalled } from '@/utils/backupInstalled'
+import backup from '@/service/backup'
+import { backupWindow } from '@/apps/backup/windows'
+
+// Picking this "type" opens the Backup & Sync wizard instead (only offered
+// when Backup & Sync is installed; spec §12.10).
+const BACKUP_WIZARD_TYPE = '__backup_wizard'
+
 export default {
 	name: 'ScheduledTaskWindow',
+	components: { ScheduleBuilder },
 	props: {
 		windowId: {
 			type: String,
@@ -391,7 +387,9 @@ export default {
 		return {
 			saving: false,
 			showAdvanced: false,
-			presetSchedule: '0 2 * * *',
+			cronValid: true,
+			backupInstalled: false,
+			backupWizardType: BACKUP_WIZARD_TYPE,
 			targetVms: [],
 			targetContainers: [],
 			targetClouds: [],
@@ -414,9 +412,35 @@ export default {
 			}
 		}
 	},
+	computed: {
+		// Existing file-backup tasks stay editable here; new ones go to
+		// Backup & Sync when it is installed.
+		offerBackupType() {
+			return !this.backupInstalled || (this.task && this.task.type === 'backup')
+		},
+		// Only said while Backup & Sync is there to run it (uninstalling it
+		// hands the task back and drops the marker).
+		migratedToBackup() {
+			return this.backupInstalled && !!(this.task && this.task.migrated_to === 'backup')
+		},
+		// Server-side preview (server time zone) through Backup & Sync's
+		// /cron/preview - same robfig parser as Scheduled Tasks.
+		cronPreviewFn() {
+			return this.backupInstalled ? cron => backup.cronPreview(cron) : null
+		}
+	},
 	async created() {
-		await this.fetchTargets()
+		const [installed] = await Promise.all([checkBackupInstalled(), this.fetchTargets()])
+		this.backupInstalled = installed
 		this.initFormData()
+		// With Backup & Sync installed, a new task isn't a file backup any
+		// more (that is the wizard's job): start on the first other type.
+		if (installed && !this.task && this.form.type === 'backup') {
+			const type = this.targetVms.length ? 'vm' : this.targetContainers.length ? 'container' : 'maintenance'
+			this.form.type = type
+			this.onTypeChange(type)
+		}
+		this.previousType = this.form.type
 	},
 	methods: {
 		async fetchTargets() {
@@ -447,11 +471,6 @@ export default {
 						this.form.direction = 'local_to_local'
 					}
 				}
-				if (['0 2 * * *', '0 3 * * *', '0 23 * * *', '0 0 * * *', '0 12 * * *', '0 3 * * 0', '0 4 * * 0', '0 * * * *', '*/30 * * * *', '0 0 1 * *'].includes(this.form.cron)) {
-					this.presetSchedule = this.form.cron
-				} else {
-					this.presetSchedule = 'custom'
-				}
 				return
 			}
 
@@ -479,11 +498,6 @@ export default {
 					this.form.dest_path = this.targetClouds[0].remote + 'NivaroOS-Backup'
 				}
 
-				if (['0 2 * * *', '0 3 * * *', '0 23 * * *', '0 0 * * *', '0 12 * * *', '0 3 * * 0', '0 4 * * 0', '0 * * * *', '*/30 * * * *', '0 0 1 * *'].includes(this.form.cron)) {
-					this.presetSchedule = this.form.cron
-				} else {
-					this.presetSchedule = 'custom'
-				}
 				return
 			}
 
@@ -494,7 +508,13 @@ export default {
 				this.form.dest_path = '/DATA/Backup'
 			}
 		},
+		// Changing the type keeps the schedule (it used to reset the cron).
 		onTypeChange(type) {
+			if (type === BACKUP_WIZARD_TYPE) {
+				this.openBackupWizard()
+				return
+			}
+			this.previousType = type
 			if (type === 'backup') {
 				this.form.action = 'copy'
 				this.form.direction = 'local_to_cloud'
@@ -504,30 +524,22 @@ export default {
 				} else {
 					this.form.dest_path = '/DATA/Backup'
 				}
-				this.presetSchedule = '0 2 * * *'
-				this.form.cron = '0 2 * * *'
 			} else if (type === 'vm') {
 				this.form.action = 'stop'
 				if (this.targetVms.length) {
 					this.form.target_id = this.targetVms[0].name
 					this.form.target_name = this.targetVms[0].name
 				}
-				this.presetSchedule = '0 23 * * *'
-				this.form.cron = '0 23 * * *'
 			} else if (type === 'container') {
 				this.form.action = 'restart'
 				if (this.targetContainers.length) {
 					this.form.target_id = this.targetContainers[0].name || this.targetContainers[0].id
 					this.form.target_name = this.targetContainers[0].name
 				}
-				this.presetSchedule = '0 3 * * 0'
-				this.form.cron = '0 3 * * 0'
 			} else if (type === 'maintenance') {
 				this.form.action = 'fstrim'
 				this.form.target_id = 'fstrim'
 				this.form.target_name = 'SSD / Disk TRIM'
-				this.presetSchedule = '0 0 * * *'
-				this.form.cron = '0 0 * * *'
 			} else if (type === 'command') {
 				this.form.action = 'run_command'
 				this.form.target_id = 'bash'
@@ -567,19 +579,23 @@ export default {
 			else if (action === 'docker_prune') this.form.target_name = 'Docker cleanup'
 			else if (action === 'disk_standby_check') this.form.target_name = 'Disk Standby Check'
 		},
-		onPresetScheduleChange() {
-			if (this.presetSchedule !== 'custom') {
-				this.form.cron = this.presetSchedule
-			}
+		openBackupWizard() {
+			// Put the select back, then hand over to Backup & Sync.
+			this.form.type = this.previousType || (this.task && this.task.type) || 'vm'
+			this.$store.commit('OPEN_WINDOW', backupWindow(this.$t.bind(this), 'wizard', {}))
+			if (!this.form.id) this.close()
+		},
+		openBackupApp() {
+			this.$store.commit('OPEN_WINDOW', backupWindow(this.$t.bind(this), 'app', { section: 'jobs' }))
 		},
 		getDefaultNamePlaceholder() {
 			switch (this.form.type) {
-				case 'backup': return 'e.g. Nightly Documents Backup to Cloud'
-				case 'vm': return 'e.g. Shut down gaming VM nightly'
-				case 'container': return 'e.g. Weekly container restart'
-				case 'maintenance': return 'e.g. Nightly SSD trim & cache drop'
-				case 'command': return 'e.g. Custom log rotation script'
-				default: return 'e.g. Automated scheduled task'
+				case 'backup': return this.$t('e.g. Nightly Documents Backup to Cloud')
+				case 'vm': return this.$t('e.g. Shut down gaming VM nightly')
+				case 'container': return this.$t('e.g. Weekly container restart')
+				case 'maintenance': return this.$t('e.g. Nightly SSD trim & cache drop')
+				case 'command': return this.$t('e.g. Custom log rotation script')
+				default: return this.$t('e.g. Automated scheduled task')
 			}
 		},
 		getSyncModeDesc(action) {
@@ -611,20 +627,6 @@ export default {
 				default: return ''
 			}
 		},
-		humanizeCron(cron) {
-			if (!cron) return ''
-			if (cron === '0 2 * * *') return this.$t('Every day at 2:00 AM')
-			if (cron === '0 3 * * *') return this.$t('Every day at 3:00 AM')
-			if (cron === '0 23 * * *') return this.$t('Every day at 11:00 PM')
-			if (cron === '0 0 * * *') return this.$t('Every day at Midnight (00:00)')
-			if (cron === '0 12 * * *') return this.$t('Every day at Noon (12:00 PM)')
-			if (cron === '0 3 * * 0') return this.$t('Every Sunday at 3:00 AM')
-			if (cron === '0 4 * * 0') return this.$t('Every Sunday at 4:00 AM')
-			if (cron === '0 * * * *') return this.$t('Every hour')
-			if (cron === '*/30 * * * *') return this.$t('Every 30 minutes')
-			if (cron === '0 0 1 * *') return this.$t('Monthly (1st at Midnight)')
-			return `Cron: ${cron}`
-		},
 		close() {
 			if (this.$store) {
 				this.$store.commit('CLOSE_WINDOW', this.windowId)
@@ -632,6 +634,15 @@ export default {
 			this.$emit('close')
 		},
 		async saveTask() {
+			if (!this.cronValid) {
+				this.$buefy.toast.open({
+					message: this.$t('schedule.editor.fix_schedule'),
+					type: 'is-warning',
+					position: 'is-top',
+					duration: 3000
+				})
+				return
+			}
 			if (!this.form.name) {
 				this.$buefy.toast.open({
 					message: this.$t('Please enter a task name'),
@@ -892,16 +903,44 @@ export default {
 	user-select: none;
 }
 
-.cron-custom-row {
-	width: 100%;
-}
-
-.font-mono {
-	font-family: monospace;
-}
-
 .font-medium {
 	font-weight: 500;
+}
+
+.schedule-col {
+	min-width: 0;
+}
+
+.schedule-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-sm);
+	background: var(--theme-info-soft);
+	color: var(--color-info-fg);
+	font-size: var(--font-xs);
+
+	span {
+		flex: 1 1 12rem;
+	}
+}
+
+.notice-link {
+	border: none;
+	background: transparent;
+	padding: 0;
+	color: var(--color-primary-fg);
+	font: inherit;
+	font-weight: 600;
+	text-decoration: underline;
+	cursor: pointer;
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: 2px;
+	}
 }
 
 .task-window-foot {

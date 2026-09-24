@@ -180,6 +180,21 @@
     --theme-success-soft:    rgba(22, 163, 74, 0.1);
     --theme-danger-soft:     rgba(239, 68, 68, 0.1);
     --theme-info-soft:       rgba(2, 132, 199, 0.1);
+
+    // ── Status pills (Backup & Sync, spec §13) ───────────────
+    // Opaque pairs: each fg reaches >= 4.5:1 on its bg AND on the card
+    // (checked by apps/backup/__tests__/tokens.contrast.spec.js), so a
+    // status never relies on colour alone and never on a faint tint.
+    --status-ok-bg:      #dcfce7;
+    --status-ok-fg:      #166534;
+    --status-warn-bg:    #fef3c7;
+    --status-warn-fg:    #92400e;
+    --status-danger-bg:  #fee2e2;
+    --status-danger-fg:  #991b1b;
+    --status-info-bg:    #e0f2fe;
+    --status-info-fg:    #075985;
+    --status-muted-bg:   #f1f5f9;
+    --status-muted-fg:   #475569;
 }
 
 

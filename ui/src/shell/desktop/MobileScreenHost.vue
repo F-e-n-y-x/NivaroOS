@@ -148,7 +148,10 @@ export default {
 
 .mobile-screen {
 	position: absolute;
-	inset: 0;
+	// Ends above MobileTabBar (fixed over the bottom of the screen, same
+	// height), so a screen's own bottom bar - section tabs, a dialog's
+	// action buttons - is never underneath it.
+	inset: 0 0 calc(var(--mobile-tab-bar-height, 3.5rem) + env(safe-area-inset-bottom, 0px)) 0;
 	display: flex;
 	flex-direction: column;
 	background: var(--theme-bg-window, #ffffff);

@@ -114,6 +114,10 @@ export default {
 	// The home indicator / gesture-nav area on real phones sits below this -
 	// this keeps tab labels from ever being crowded against the very edge.
 	padding-bottom: env(safe-area-inset-bottom, 0);
+	// A fixed height MobileScreenHost's screens end above (keep the two
+	// --mobile-tab-bar-height fallbacks in step).
+	box-sizing: border-box;
+	height: calc(var(--mobile-tab-bar-height, 3.5rem) + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-tab {

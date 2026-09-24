@@ -90,6 +90,13 @@
 							:aria-expanded="String(expandedPath === d.path)" @click="toggleDetails(d)">
 							<b-icon icon="information-outline" pack="casa" size="is-16"></b-icon>
 						</button>
+						<!-- Backup & Sync (optional module): a drive's own mount point,
+						     never a pool member (back up to the pool instead) or the
+						     system disk. -->
+						<b-button v-if="backupInstalled && d.model !== 'System' && !poolOf(d) && firstMount(storageOf(d))" rounded size="is-small" class="mr-2"
+							:aria-label="$t('backup.entry.back_up_to_named', { name: diskName(d) })" @click="backUpTo(firstMount(storageOf(d)))">
+							{{ $t('backup.entry.back_up_to_drive') }}
+						</b-button>
 						<!-- The disk the system runs from is never offered for removal. -->
 						<span v-if="d.model === 'System'" class="setting-chip">{{ $t('System disk') }}</span>
 						<b-button v-else rounded size="is-small" type="is-danger" outlined :loading="busyPath === d.path" @click="confirmRemove(d)">
@@ -122,6 +129,10 @@
 					<div class="setting-desc">{{ u.name }} &middot; {{ formatSize(u.size) }}</div>
 				</div>
 				<div class="row-control">
+					<b-button v-if="backupInstalled && firstMount(u)" rounded size="is-small"
+						:aria-label="$t('backup.entry.back_up_to_named', { name: u.model || u.name })" @click="backUpTo(firstMount(u))">
+						{{ $t('backup.entry.back_up_to_drive') }}
+					</b-button>
 					<b-button v-for="c in u.children" :key="c.mount_point" rounded size="is-small" type="is-danger" outlined class="ml-2" @click="confirmEject(c)">
 						{{ $t('Eject {mount}', { mount: c.mount_point }) }}
 					</b-button>
@@ -142,6 +153,8 @@ import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import events from '@/events/events'
 import activityService from '@/service/activity'
 import { createStorage, STORAGE_JOB_EVENTS, jobIdFromEvent, kickJob } from '@/apps/storage/storageJobs'
+import { checkBackupInstalled } from '@/utils/backupInstalled'
+import { backupWindow } from '@/apps/backup/windows'
 
 // Nudge the job poller as soon as the backend publishes a job event,
 // instead of waiting for the next poll tick.
@@ -171,7 +184,8 @@ export default {
 			formatTyped: '',
 			formatError: null,
 			// { id, path, progress, step, reconnecting } while a format runs
-			job: null
+			job: null,
+			backupInstalled: false
 		}
 	},
 	computed: {
@@ -180,6 +194,7 @@ export default {
 		}
 	},
 	created() {
+		checkBackupInstalled().then(ok => { this.backupInstalled = ok })
 		this.refreshAll()
 		this.$EventBus.$on(events.STORAGE_CHANGED, this.refreshAll)
 	},
@@ -273,6 +288,17 @@ export default {
 				const srcs = Array.isArray(m.source_volume_uuids) ? m.source_volume_uuids : []
 				return srcs.some(u => uuids.includes(u)) || mounts.includes(m.mount_point)
 			}) || null
+		},
+		// firstMount: the first mounted partition of a disk (or USB drive).
+		firstMount(s) {
+			if (!s || !Array.isArray(s.children)) return ''
+			const c = s.children.find(x => x.mount_point)
+			return c ? c.mount_point : ''
+		},
+		// backUpTo opens Backup & Sync's new-job wizard with this drive as
+		// the destination (resolved to the drive's identity there).
+		backUpTo(mountPoint) {
+			this.$store.commit('OPEN_WINDOW', backupWindow(this.$t.bind(this), 'app', { wizard: true, destPath: mountPoint }))
 		},
 		toggleDetails(disk) {
 			this.expandedPath = this.expandedPath === disk.path ? '' : disk.path

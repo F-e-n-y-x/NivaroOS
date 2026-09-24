@@ -1,0 +1,337 @@
+// Shared look of Backup & Sync: the app and its separate windows (run,
+// browse, restore). Loaded once, unscoped, by BackupApp.vue (every window
+// component is registered - and bundled - with it), so every class is
+// prefixed .bk-. Theme tokens only, no hex values (spec §13, checked by
+// __tests__/tokens.contrast.spec.js). Buttons follow Download Station's.
+
+.bk-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	border: 1px solid var(--theme-card-border);
+	background: var(--theme-card-subtle);
+	color: var(--theme-text-primary);
+	font-family: inherit;
+	font-size: var(--font-sm);
+	font-weight: 500;
+	line-height: 1.2;
+	min-height: 2rem;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	white-space: nowrap;
+	text-decoration: none;
+	transition: background 0.15s ease, transform 0.1s ease;
+
+	.icon {
+		width: 1rem;
+		height: 1rem;
+	}
+	&:hover:not(:disabled) {
+		background: var(--theme-card-hover);
+	}
+	&:active:not(:disabled) {
+		transform: scale(0.98);
+	}
+	&:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	&.is-primary {
+		border-color: transparent;
+		background: var(--color-primary);
+		color: var(--color-primary-text);
+		&:hover:not(:disabled) {
+			background: var(--color-primary-hover);
+		}
+	}
+	&.is-danger {
+		border-color: transparent;
+		background: var(--color-danger-hover);
+		color: var(--color-danger-text);
+		&:hover:not(:disabled) {
+			background: var(--color-danger-hover);
+			filter: brightness(0.92);
+		}
+	}
+	&.is-link {
+		border-color: transparent;
+		background: transparent;
+		color: var(--color-primary-fg);
+		padding-left: var(--space-2);
+		padding-right: var(--space-2);
+		&:hover:not(:disabled) {
+			background: var(--theme-card-hover);
+		}
+	}
+	&.is-small {
+		min-height: 1.75rem;
+		font-size: var(--font-xs);
+		padding: 0 var(--space-2);
+	}
+}
+
+.bk-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 2rem;
+	height: 2rem;
+	border: none;
+	background: transparent;
+	color: var(--theme-text-secondary);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	padding: 0;
+	&:hover:not(:disabled) {
+		background: var(--theme-card-hover);
+		color: var(--theme-text-primary);
+	}
+	&:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+}
+
+// One focus ring for everything interactive (spec §13).
+.bk-scope,
+.bk-window {
+	button,
+	a,
+	input,
+	select,
+	textarea,
+	summary,
+	[tabindex],
+	[role='button'],
+	[role='menuitem'],
+	[role='tab'],
+	[role='switch'],
+	[role='option'] {
+		&:focus {
+			outline: none;
+		}
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-fg);
+			outline-offset: 2px;
+		}
+	}
+}
+
+// Status pill: icon + text + colour, never colour alone.
+.bk-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.125rem var(--space-2);
+	border-radius: var(--radius-pill);
+	font-size: var(--font-xs);
+	font-weight: 500;
+	line-height: 1.4;
+	white-space: nowrap;
+	background: var(--status-muted-bg);
+	color: var(--status-muted-fg);
+	.icon {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+	@each $tone in ok, warn, danger, info, muted {
+		&.is-#{$tone} {
+			background: var(--status-#{$tone}-bg);
+			color: var(--status-#{$tone}-fg);
+		}
+	}
+}
+
+// Coloured text/icons on a card use the -fg tokens.
+@each $tone in ok, warn, danger, info, muted {
+	.bk-tone-#{$tone} {
+		color: var(--status-#{$tone}-fg);
+	}
+}
+
+.bk-card {
+	background: var(--theme-card-bg);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-card);
+	padding: var(--space-4);
+	min-width: 0;
+}
+
+.bk-card-title {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0 0 var(--space-3);
+	font-size: var(--font-md);
+	font-weight: 600;
+	color: var(--theme-text-primary);
+}
+
+.bk-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-5);
+	min-width: 0;
+}
+
+.bk-section-head {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	h2 {
+		margin: 0;
+		margin-right: auto;
+		font-size: var(--font-xl);
+		font-weight: 600;
+		color: var(--theme-text-primary);
+	}
+}
+
+.bk-muted {
+	color: var(--theme-text-muted);
+}
+.bk-secondary {
+	color: var(--theme-text-secondary);
+}
+
+.bk-sr-only {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+// Progress bar (role="progressbar" is on the element). An unknown total
+// shows a moving stripe, off under prefers-reduced-motion.
+.bk-progress {
+	position: relative;
+	height: 0.5rem;
+	border-radius: var(--radius-pill);
+	background: var(--theme-bg-subtle);
+	border: 1px solid var(--theme-card-border);
+	overflow: hidden;
+	> span {
+		position: absolute;
+		inset: 0 auto 0 0;
+		background: var(--color-primary);
+		border-radius: inherit;
+		transition: width 0.4s ease;
+	}
+	&.is-indeterminate > span {
+		width: 30%;
+		animation: bk-indeterminate 1.4s ease-in-out infinite;
+	}
+	&.is-large {
+		height: 0.75rem;
+	}
+}
+
+@keyframes bk-indeterminate {
+	from {
+		left: -30%;
+	}
+	to {
+		left: 100%;
+	}
+}
+
+.bk-input,
+.bk-select {
+	min-height: 2rem;
+	padding: var(--space-1) var(--space-2);
+	border: 1px solid var(--theme-input-border);
+	border-radius: var(--radius-sm);
+	background: var(--theme-input-bg);
+	color: var(--theme-input-text);
+	font-family: inherit;
+	font-size: var(--font-sm);
+	min-width: 0;
+	&::placeholder {
+		color: var(--theme-input-placeholder);
+	}
+}
+
+// Chips (filters): aria-pressed carries the state.
+.bk-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-height: 1.75rem;
+	padding: 0 var(--space-3);
+	border-radius: var(--radius-pill);
+	border: 1px solid var(--theme-card-border);
+	background: var(--theme-card-bg);
+	color: var(--theme-text-secondary);
+	font-family: inherit;
+	font-size: var(--font-xs);
+	font-weight: 500;
+	cursor: pointer;
+	&[aria-pressed='true'] {
+		background: var(--theme-card-selected);
+		border-color: var(--color-primary-fg);
+		color: var(--color-primary-fg);
+	}
+}
+
+// The log and technical output use the theme's subtle surface, never the
+// dark terminal look (spec §12.5: not a DARK_WINDOW component).
+.bk-code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: var(--font-xs);
+	background: var(--theme-bg-subtle);
+	color: var(--theme-text-primary);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-sm);
+}
+
+.bk-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--space-2);
+	padding: var(--space-8) var(--space-4);
+	color: var(--theme-text-secondary);
+	.icon {
+		color: var(--theme-text-muted);
+	}
+}
+
+// Touch targets: 44 px on phones and tablets (spec §13).
+@media (pointer: coarse), (max-width: 1023px) {
+	.bk-btn,
+	.bk-input,
+	.bk-select {
+		min-height: 44px;
+	}
+	.bk-icon-btn {
+		width: 44px;
+		height: 44px;
+	}
+	.bk-chip {
+		min-height: 44px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bk-btn,
+	.bk-progress > span {
+		transition: none;
+	}
+	.bk-progress.is-indeterminate > span {
+		animation: none;
+		left: 0;
+		width: 100%;
+		opacity: 0.35;
+	}
+}

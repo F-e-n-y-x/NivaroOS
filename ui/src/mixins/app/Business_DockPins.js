@@ -16,6 +16,8 @@ export const SYSTEM_NAME_MAP = {
 	'host-desktop': 'Host Desktop',
 	'download-station': 'Download Station',
 	'Download Station': 'Download Station',
+	backup: 'Backup & Sync',
+	'Backup & Sync': 'Backup & Sync',
 	'Host Desktop': 'Host Desktop',
 	'Files': 'Files',
 	'App Store': 'App Store',

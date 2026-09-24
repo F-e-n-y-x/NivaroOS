@@ -58,19 +58,52 @@
 		<!-- ==================== QUICK AUTOMATION TEMPLATES ==================== -->
 		<h3 class="setting-card-title">{{ $t('Quick Automation Templates') }}</h3>
 		<div class="columns is-multiline is-mobile mb-4">
-			<div v-for="tpl in quickTemplates" :key="tpl.id" class="column is-3-desktop is-6-tablet is-12-mobile">
-				<div class="template-card" @click="applyTemplate(tpl)">
+			<div v-if="backupInstalled" class="column is-6-desktop is-12-tablet is-12-mobile">
+				<button type="button" class="template-card backup-card" @click="openBackupApp()">
+					<span class="template-icon mb-2 backup-card-icon" aria-hidden="true"><i class="mdi mdi-backup-restore"></i></span>
+					<span class="template-title">{{ $t('schedule.backup_card.title') }}</span>
+					<span class="template-desc mt-1">{{ $t('schedule.backup_card.desc') }}</span>
+					<span class="backup-card-cta mt-2">{{ $t('schedule.backup_card.open') }} <i class="mdi mdi-arrow-right" aria-hidden="true"></i></span>
+				</button>
+			</div>
+			<div v-for="tpl in visibleTemplates" :key="tpl.id" class="column is-3-desktop is-6-tablet is-12-mobile">
+				<button type="button" class="template-card" @click="applyTemplate(tpl)">
 					<div class="template-icon mb-2" :style="{ color: tpl.color, background: tpl.bg }">
 						<i :class="['mdi', 'mdi-' + tpl.icon]"></i>
 					</div>
 					<div class="template-title">{{ tpl.name }}</div>
 					<div class="template-desc is-flex is-align-items-center mt-1">
-						<i class="mdi mdi-clock-outline mr-1"></i>
+						<i class="mdi mdi-clock-outline mr-1" aria-hidden="true"></i>
 						<span>{{ tpl.scheduleText }}</span>
 					</div>
-				</div>
+				</button>
 			</div>
 		</div>
+
+		<!-- Backup & Sync jobs, read-only (spec §12.10) -->
+		<details v-if="backupInstalled" class="backup-jobs mb-4" @toggle="onBackupJobsToggle">
+			<summary class="backup-jobs-summary">
+				<span>{{ $t('schedule.backup_jobs.title') }}</span>
+				<span v-if="backupJobs" class="backup-jobs-count">{{ backupJobs.length }}</span>
+			</summary>
+			<div class="backup-jobs-body">
+				<p v-if="backupJobsLoading" class="text-muted is-size-7" role="status">{{ $t('Loading...') }}</p>
+				<p v-else-if="backupJobsError" class="backup-jobs-error is-size-7" role="alert">{{ backupJobsError }}</p>
+				<p v-else-if="backupJobs && !backupJobs.length" class="text-muted is-size-7">{{ $t('schedule.backup_jobs.none') }}</p>
+				<ul v-else-if="backupJobs" class="backup-jobs-list">
+					<li v-for="j in backupJobs" :key="j.id">
+						<button type="button" class="backup-job-row" @click="openBackupApp(j.id)">
+							<span class="backup-job-name one-line">{{ j.name }}</span>
+							<span class="backup-job-health" :class="'health-' + (j.health || 'ok')">
+								<i :class="['mdi', 'mdi-' + healthIcon(j.health)]" aria-hidden="true"></i>
+								<span>{{ $t('backup.health.' + (j.health || 'ok')) }}</span>
+							</span>
+							<span class="backup-job-next text-muted">{{ j.next_run ? $t('schedule.backup_jobs.next', { when: backupWhen(j.next_run) }) : $t('schedule.backup_jobs.no_next') }}</span>
+						</button>
+					</li>
+				</ul>
+			</div>
+		</details>
 
 		<!-- ==================== SCHEDULED TASKS LIST ==================== -->
 		<div class="is-flex is-align-items-center is-justify-content-between mb-3">
@@ -119,6 +152,9 @@
 				<div class="row-label">
 					<div class="setting-title is-flex is-align-items-center is-flex-wrap-wrap">
 						<span class="task-name mr-2">{{ t.name }}</span>
+						<span v-if="isMoved(t)" class="type-pill migrated-pill mr-2">
+							<i class="mdi mdi-swap-horizontal-bold mr-1" aria-hidden="true"></i>{{ $t('schedule.migrated_pill') }}
+						</span>
 						<span class="type-pill mr-2" :class="'type-' + t.type">
 							{{ formatTypeLabel(t.type) }}
 						</span>
@@ -129,16 +165,20 @@
 						</span>
 					</div>
 					<div class="setting-desc is-flex is-align-items-center is-flex-wrap-wrap mt-1">
-						<span class="cron-pill mr-3">
+						<!-- Core no longer runs a moved task: no schedule, no next run. -->
+						<span v-if="isMoved(t)" class="text-muted is-size-7 mr-3">
+							{{ backupInstalled ? $t('schedule.migrated_note') : $t('schedule.migrated_note_unreachable') }}
+						</span>
+						<span v-else class="cron-pill mr-3">
 							<i class="mdi mdi-clock-outline mr-1"></i>
 							{{ humanizeCron(t.cron) }}
 						</span>
-						<span v-if="t.next_run" class="text-muted is-size-7 mr-3">
+						<span v-if="t.next_run && !isMoved(t)" class="text-muted is-size-7 mr-3">
 							{{ $t('Next') }}: {{ formatNextRun(t.next_run) }}
 						</span>
 						<span v-if="t.last_run" class="is-size-7 is-flex is-align-items-center mr-3">
 							<span class="status-dot mr-1" :class="statusClass(t.last_status)" :title="t.last_status"></span>
-							<span class="text-muted">{{ $t('Last run') }}: {{ formatTimeAgo(t.last_run) }} ({{ t.last_status || 'done' }})</span>
+							<span class="text-muted">{{ $t('Last run') }}: {{ formatTimeAgo(t.last_run) }} ({{ statusLabel(t.last_status) }})</span>
 						</span>
 					</div>
 				</div>
@@ -146,11 +186,13 @@
 				<!-- Controls -->
 				<div class="row-control is-flex is-align-items-center">
 					<!-- Enable toggle -->
-					<div class="mr-3" :title="t.enabled ? $t('Task is enabled') : $t('Task is disabled')">
+					<div class="mr-3" :title="isMoved(t) ? $t('schedule.migrated_control') : t.enabled ? $t('Task is enabled') : $t('Task is disabled')">
 						<b-switch
 							v-model="t.enabled"
 							size="is-small"
 							type="is-primary"
+							:disabled="isMoved(t)"
+							:aria-label="isMoved(t) ? $t('schedule.migrated_control') : null"
 							@input="toggleTask(t)"
 						></b-switch>
 					</div>
@@ -162,9 +204,9 @@
 							rounded
 							size="is-small"
 							:loading="runningId === t.id"
-							:disabled="runningId === t.id"
+							:disabled="runningId === t.id || isMoved(t)"
 							@click="runNow(t)"
-							:title="$t('Run immediately now')"
+							:title="isMoved(t) ? $t('schedule.migrated_control') : $t('Run immediately now')"
 						>
 							<i class="mdi mdi-play mr-1"></i>
 							{{ $t('Run Now') }}
@@ -212,6 +254,12 @@
 import { escapeHtml } from '@/utils/escapeHtml'
 import { apiError } from '@/utils/apiError'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { checkBackupInstalled, isMovedToBackup, countsAsActive } from '@/utils/backupInstalled'
+import { createFormatter } from '@/apps/backup/format'
+import backup from '@/service/backup'
+import { backupWindow } from '@/apps/backup/windows'
+import { errorText } from '@/apps/backup/messages'
+import { describeCronText } from '@/shared/scheduling/cronText'
 
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
@@ -228,6 +276,12 @@ export default {
 			tasks: [],
 			loadingTasks: false,
 			runningId: null,
+			backupInstalled: false,
+			backupJobs: null,
+			backupJobsLoading: false,
+			backupJobsError: '',
+			// Backup & Sync's server time zone (its jobs run in server time)
+			backupTimeZone: '',
 			targetVms: [],
 			targetContainers: [],
 			targetClouds: [],
@@ -322,11 +376,16 @@ export default {
 		}
 	},
 	computed: {
+		// File backup and sync templates move to Backup & Sync once it is
+		// installed; without it they stay as they always were.
+		visibleTemplates() {
+			return this.backupInstalled ? this.quickTemplates.filter(t => t.type !== 'backup') : this.quickTemplates
+		},
 		activeTasksCount() {
-			return this.tasks.filter(t => t.enabled).length
+			return this.tasks.filter(countsAsActive).length
 		},
 		nextUpcomingTask() {
-			const active = this.tasks.filter(t => t.enabled && t.next_run)
+			const active = this.tasks.filter(t => countsAsActive(t) && t.next_run)
 			if (!active.length) return null
 			const sorted = [...active].sort((a, b) => new Date(a.next_run) - new Date(b.next_run))
 			return sorted[0]
@@ -340,6 +399,9 @@ export default {
 		}
 	},
 	mounted() {
+		checkBackupInstalled().then(ok => {
+			this.backupInstalled = ok
+		})
 		this.fetchTasks()
 		this.fetchTargets()
 		this.$EventBus.$on('scheduled-tasks-changed', this.fetchTasks)
@@ -524,10 +586,10 @@ export default {
 		formatTypeLabel(type) {
 			switch (type) {
 				case 'backup': return this.$t('Backup & Sync')
-				case 'vm': return 'VM'
-				case 'container': return 'Container'
-				case 'maintenance': return 'Maintenance'
-				case 'command': return 'Script'
+				case 'vm': return this.$t('VM')
+				case 'container': return this.$t('Container')
+				case 'maintenance': return this.$t('Maintenance')
+				case 'command': return this.$t('Script')
 				default: return type
 			}
 		},
@@ -544,26 +606,58 @@ export default {
 				case 'reboot': return this.$t('Reboot')
 				case 'update': return this.$t('Update & Recreate')
 				case 'fstrim': return 'fstrim'
-				case 'drop_caches': return 'Drop Caches'
-				case 'docker_prune': return 'Docker Prune'
-				case 'disk_standby_check': return 'Disk Standby Check'
+				case 'drop_caches': return this.$t('Drop Caches')
+				case 'docker_prune': return this.$t('Docker Prune')
+				case 'disk_standby_check': return this.$t('Disk Standby Check')
 				case 'run_command': return this.$t('Execute Command')
 				default: return action
 			}
 		},
+		openBackupApp(jobId) {
+			const params = jobId ? { section: 'jobs', jobId } : { section: 'overview' }
+			this.$store.commit('OPEN_WINDOW', backupWindow(this.$t.bind(this), 'app', params))
+		},
+		onBackupJobsToggle(e) {
+			if (e.target.open && !this.backupJobsLoading) this.fetchBackupJobs()
+		},
+		isMoved(t) {
+			return isMovedToBackup(t)
+		},
+		// A backup job's next run as Backup & Sync shows it: in server
+		// time, and saying so (the list above is in the browser's time).
+		backupWhen(next) {
+			const f = this.$store.state.timeFormat
+			const fmt = createFormatter({
+				locale: this.$i18n.locale, timeZone: this.backupTimeZone || undefined,
+				hour12: typeof f === 'string' ? f !== 'HH:MM' : undefined, t: this.$t.bind(this)
+			})
+			return `${fmt.when(next)} (${this.$t('schedule.builder.server_time')})`
+		},
+		async fetchBackupJobs() {
+			this.backupJobsLoading = true
+			this.backupJobsError = ''
+			try {
+				const [jobs, caps] = await Promise.all([backup.listJobs(), backup.capabilities().catch(() => null)])
+				this.backupTimeZone = (caps && caps.timezone) || ''
+				this.backupJobs = Array.isArray(jobs) ? jobs : []
+			} catch (err) {
+				this.backupJobsError = errorText(this.$t.bind(this), err)
+			} finally {
+				this.backupJobsLoading = false
+			}
+		},
+		statusLabel(status) {
+			if (!status) return this.$t('schedule.status.done')
+			const key = 'schedule.status.' + status
+			return this.$te(key) ? this.$t(key) : status
+		},
+		healthIcon(health) {
+			return { problem: 'alert-octagon-outline', offline: 'power-plug-off-outline', warning: 'alert-outline', disabled: 'pause-circle-outline' }[health] || 'check-circle-outline'
+		},
 		humanizeCron(cron) {
 			if (!cron) return ''
-			if (cron === '0 2 * * *') return this.$t('Every day at 2:00 AM')
-			if (cron === '0 3 * * *') return this.$t('Every day at 3:00 AM')
-			if (cron === '0 23 * * *') return this.$t('Every day at 11:00 PM')
-			if (cron === '0 0 * * *') return this.$t('Every day at Midnight (00:00)')
-			if (cron === '0 12 * * *') return this.$t('Every day at Noon (12:00 PM)')
-			if (cron === '0 3 * * 0') return this.$t('Every Sunday at 3:00 AM')
-			if (cron === '0 4 * * 0') return this.$t('Every Sunday at 4:00 AM')
-			if (cron === '0 * * * *') return this.$t('Every hour')
-			if (cron === '*/30 * * * *') return this.$t('Every 30 minutes')
-			if (cron === '0 0 1 * *') return this.$t('Monthly (1st at Midnight)')
-			return `Cron: ${cron}`
+			const f = this.$store.state.timeFormat
+			return describeCronText(this.$t.bind(this), cron, { locale: this.$i18n.locale, hour12: typeof f === 'string' ? f.startsWith('h') : undefined }) || cron
 		},
 		formatNextRun(dateStr) {
 			if (!dateStr) return ''
@@ -650,6 +744,10 @@ export default {
 .template-card {
 	display: flex;
 	flex-direction: column;
+	width: 100%;
+	text-align: left;
+	font: inherit;
+	color: inherit;
 	padding: var(--space-3) var(--space-4);
 	background: var(--theme-card-bg, rgba(255, 255, 255, 0.7));
 	border: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.07));
@@ -688,6 +786,133 @@ export default {
 		color: var(--theme-text-muted, #71717a);
 		line-height: 1.3;
 	}
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: 2px;
+	}
+}
+
+.backup-card {
+	border-color: var(--color-primary-fg);
+
+	.backup-card-icon {
+		background: var(--color-primary-soft);
+		color: var(--color-primary-fg);
+	}
+	.backup-card-cta {
+		font-size: var(--font-xs);
+		font-weight: 600;
+		color: var(--color-primary-fg);
+	}
+}
+
+.backup-jobs {
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-card);
+	background: var(--theme-card-bg);
+}
+
+.backup-jobs-summary {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 2.5rem;
+	padding: 0 var(--space-4);
+	font-size: var(--font-sm);
+	font-weight: 600;
+	color: var(--theme-text-primary);
+	cursor: pointer;
+
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: -2px;
+	}
+}
+
+.backup-jobs-count {
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-pill);
+	background: var(--theme-pill-bg);
+	color: var(--theme-pill-color);
+	font-size: var(--font-2xs);
+}
+
+.backup-jobs-body {
+	padding: 0 var(--space-4) var(--space-3);
+}
+
+.backup-jobs-error {
+	color: var(--color-danger-fg);
+}
+
+.backup-jobs-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.backup-job-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-3);
+	width: 100%;
+	min-height: 2.5rem;
+	padding: var(--space-1) var(--space-2);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--theme-text-primary);
+	font: inherit;
+	font-size: var(--font-sm);
+	text-align: left;
+	cursor: pointer;
+
+	&:hover {
+		background: var(--theme-card-hover);
+	}
+	&:focus-visible {
+		outline: 2px solid var(--color-primary-fg);
+		outline-offset: -2px;
+	}
+}
+
+.backup-job-name {
+	flex: 1 1 10rem;
+	min-width: 0;
+	font-weight: 500;
+}
+
+.backup-job-health {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	font-size: var(--font-xs);
+	font-weight: 600;
+
+	&.health-ok {
+		color: var(--color-success-fg);
+	}
+	&.health-warning,
+	&.health-offline {
+		color: var(--color-warning-fg);
+	}
+	&.health-problem {
+		color: var(--color-danger-fg);
+	}
+	&.health-disabled {
+		color: var(--theme-text-muted);
+	}
+}
+
+.backup-job-next {
+	font-size: var(--font-xs);
+}
+
+.migrated-pill {
+	background: var(--theme-info-soft);
+	color: var(--color-info-fg);
 }
 
 .task-item-row {

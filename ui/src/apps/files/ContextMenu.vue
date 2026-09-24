@@ -84,6 +84,11 @@
 					<i :class="isFavorite ? 'mdi mdi-star text-amber-500' : 'mdi mdi-star-outline'" class="ctx-icon"></i>
 					<span class="ctx-label">{{ isFavorite ? $t('Remove from Favorite') : $t('Add to Favorite') }}</span>
 				</button>
+				<!-- Only with the Backup & Sync module installed (spec §0). -->
+				<button v-if="backupInstalled" class="ctx-item" @click="act('backup-folder')">
+					<i class="mdi mdi-backup-restore ctx-icon"></i>
+					<span class="ctx-label">{{ $t('backup.entry.back_up_folder') }}</span>
+				</button>
 			</template>
 			<div class="ctx-divider"></div>
 			<button class="ctx-item" @click="act('share')">
@@ -151,6 +156,8 @@
 import { mixin } from '@/mixins/mixin'
 import events from '@/events/events'
 import { isArchive as isArchiveFile } from '@/utils/files/archive'
+import { checkBackupInstalled } from '@/utils/backupInstalled'
+import { backupWindow } from '@/apps/backup/windows'
 
 const MENU_WIDTH = 224
 const MENU_HEIGHT = 380
@@ -160,7 +167,7 @@ export default {
 	mixins: [mixin],
 	inject: ['filesController'],
 	data() {
-		return { visible: false, x: 0, y: 0, item: null, selectedItems: [] }
+		return { visible: false, x: 0, y: 0, item: null, selectedItems: [], backupInstalled: false }
 	},
 	computed: {
 		isMultiSelect() {
@@ -182,6 +189,7 @@ export default {
 		}
 	},
 	mounted() {
+		checkBackupInstalled().then(ok => { this.backupInstalled = ok })
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('resize', this.close)
 	},
@@ -319,6 +327,13 @@ export default {
 					break
 				case 'open-new-tab':
 					this.$emit('open-new-tab-request', this.item)
+					break
+				case 'backup-folder':
+					// Backup & Sync resolves the path to a drive and folder
+					// and opens its new-job wizard with it as the source.
+					if (this.item && this.item.path) {
+						this.$store.commit('OPEN_WINDOW', backupWindow(this.$t.bind(this), 'app', { wizard: true, sourcePath: this.item.path }))
+					}
 					break
 			}
 			this.close()

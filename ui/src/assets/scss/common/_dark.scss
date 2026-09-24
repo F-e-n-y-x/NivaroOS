@@ -114,6 +114,18 @@ html.is-dark {
 	--theme-danger-soft:         rgba(248, 113, 113, 0.15);
 	--theme-info-soft:           rgba(56, 189, 248, 0.15);
 
+	// ── Status pills (see _root.scss) ──────────────────────
+	--status-ok-bg:              #052e16;
+	--status-ok-fg:              #86efac;
+	--status-warn-bg:            #422006;
+	--status-warn-fg:            #fcd34d;
+	--status-danger-bg:          #450a0a;
+	--status-danger-fg:          #fca5a5;
+	--status-info-bg:            #082f49;
+	--status-info-fg:            #7dd3fc;
+	--status-muted-bg:           #27272a;
+	--status-muted-fg:           #d4d4d8;
+
 
 
 

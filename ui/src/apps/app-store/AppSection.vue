@@ -96,6 +96,7 @@
 
 <script>
 import { checkDownloadStationInstalled } from '@/utils/downloadStationInstalled'
+import { checkBackupInstalled } from '@/utils/backupInstalled'
 import { assetUrl } from '@/utils/assetUrl'
 import AppCard from './AppCard.vue'
 import AppCardSkeleton from './AppCardSkeleton.vue'
@@ -173,6 +174,14 @@ const builtInApplications = [
 		name: 'Download Station',
 		title: { en_us: 'Download Station' },
 		icon: assetUrl(require(`@/assets/img/app-icons/download-station.svg`)),
+		status: 'running',
+		app_type: 'system'
+	},
+	{
+		id: '8',
+		name: 'Backup & Sync',
+		title: { en_us: 'Backup & Sync' },
+		icon: assetUrl(require(`@/assets/img/app-icons/backup.svg`)),
 		status: 'running',
 		app_type: 'system'
 	}
@@ -420,9 +429,12 @@ export default {
 
 				// Fresh copies: never mutate the shared module-level
 				// definitions (a removed override would otherwise stick).
-				// Download Station is optional: only listed when its sidecar is installed.
-				const dsInstalled = await checkDownloadStationInstalled()
-				const builtIns = builtInApplications.filter(item => dsInstalled || item.name !== 'Download Station').map(item => ({ ...item, title: { ...item.title } }))
+				// Download Station and Backup & Sync are optional: only listed
+				// when their service is installed.
+				const [dsInstalled, backupInstalled] = await Promise.all([checkDownloadStationInstalled(), checkBackupInstalled()])
+				const builtIns = builtInApplications
+					.filter(item => (dsInstalled || item.name !== 'Download Station') && (backupInstalled || item.name !== 'Backup & Sync'))
+					.map(item => ({ ...item, title: { ...item.title } }))
 				builtIns.forEach(item => {
 					applyOverride(item)
 				})

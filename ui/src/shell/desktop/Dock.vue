@@ -59,6 +59,7 @@
 				<img v-else-if="win.component === 'TerminalPanel' || win.component === 'SystemUpdateWindow' || win.component === 'ContainerConsolePanel' || win.component === 'AppTerminalPanel'" :src="getBuiltinIcon('Terminal')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'HostDesktopPanel'" :src="getBuiltinIcon('Host Desktop')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isDownloadStationWindow(win)" :src="getBuiltinIcon('Download Station')" class="dock-icon" :alt="win.title" />
+				<img v-else-if="isBackupWindow(win)" :src="getBuiltinIcon('Backup & Sync')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || $assetUrl(require('@/assets/img/app-icons/default.svg'))" class="dock-icon" :alt="win.title" />
@@ -203,6 +204,7 @@
 <script>
 import { assetUrl } from '@/utils/assetUrl'
 import { checkDownloadStationInstalled } from '@/utils/downloadStationInstalled'
+import { checkBackupInstalled } from '@/utils/backupInstalled'
 import events from '@/events/events'
 import filesIcon from '@/assets/img/app-icons/files.svg'
 import appStoreIcon from '@/assets/img/app-icons/appstore.png'
@@ -211,6 +213,7 @@ import terminalIcon from '@/assets/img/app-icons/terminal.png'
 import vmManagerIcon from '@/assets/img/app-icons/vm-manager.png'
 import desktopIcon from '@/assets/img/app-icons/desktop.svg'
 import downloadStationIcon from '@/assets/img/app-icons/download-station.svg'
+import backupIcon from '@/assets/img/app-icons/backup.svg'
 import business_ShowNewAppTag from '@/mixins/app/Business_ShowNewAppTag'
 import business_OpenThirdApp from '@/mixins/app/Business_OpenThirdApp'
 import business_LinkApp from '@/mixins/app/Business_LinkApp'
@@ -229,6 +232,7 @@ const BUILTIN_DEFS = {
 	Terminal: { id: 'terminal', name: 'Terminal', label: 'Terminal', defaultIcon: terminalIcon, component: 'TerminalPanel', width: 720, height: 480 },
 	'Host Desktop': { id: 'host-desktop', name: 'Host Desktop', label: 'Host Desktop', defaultIcon: desktopIcon, component: 'HostDesktopPanel', width: 1024, height: 680 },
 	'Download Station': { id: 'download-station', name: 'Download Station', label: 'Download Station', defaultIcon: downloadStationIcon, component: 'DownloadStationApp', width: 980, height: 640 },
+	'Backup & Sync': { id: 'backup', name: 'Backup & Sync', label: 'Backup & Sync', defaultIcon: assetUrl(backupIcon), component: 'BackupApp', width: 1040, height: 680 },
 	VMs: { id: 'vms', name: 'VMs', label: 'VMs', defaultIcon: vmManagerIcon, component: 'VmManagerApp', width: 880, height: 560 },
 	Settings: { id: 'settings', name: 'Settings', label: 'Settings', defaultIcon: settingsIcon, component: 'SettingsApp', width: 760, height: 540 }
 }
@@ -238,6 +242,13 @@ const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewe
 const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
 const DS_COMPONENTS = ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow']
 const isDsComponent = c => DS_COMPONENTS.includes(c)
+// Backup & Sync windows (the job wizard, run, preview, browse, restore)
+// show the app's icon; the shared storage pickers don't - Scheduled Tasks
+// uses them too.
+const BACKUP_COMPONENTS = ['BackupApp', 'BackupJobWizardWindow', 'BackupRunWindow', 'BackupPreviewWindow', 'BackupBrowseWindow', 'BackupRestoreWindow']
+const isBackupComponent = c => BACKUP_COMPONENTS.includes(c)
+// Optional modules: a pin only shows while its service answers.
+const OPTIONAL_BUILTINS = { 'Download Station': 'ds', 'Backup & Sync': 'backup' }
 
 export default {
 	name: 'dock',
@@ -316,6 +327,9 @@ export default {
 
 		isDownloadStationWindow(win) {
 			return isDsComponent(win.component)
+		},
+		isBackupWindow(win) {
+			return isBackupComponent(win.component)
 		},
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
@@ -424,6 +438,8 @@ export default {
 					icon = this.getBuiltinIcon('Terminal')
 				} else if (isDsComponent(win.component)) {
 					icon = this.getBuiltinIcon('Download Station')
+				} else if (isBackupComponent(win.component)) {
+					icon = this.getBuiltinIcon('Backup & Sync')
 				} else if (win.component === 'SettingsApp') {
 					icon = this.getBuiltinIcon('Settings')
 				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
@@ -449,7 +465,8 @@ export default {
 			return this.loadDockItems(true)
 		},
 		async loadDockItems(recheckOptional = false) {
-			const dsInstalled = await checkDownloadStationInstalled(recheckOptional === true)
+			const [dsInstalled, backupInstalled] = await Promise.all([checkDownloadStationInstalled(recheckOptional === true), checkBackupInstalled(recheckOptional === true)])
+			const optionalInstalled = { ds: dsInstalled, backup: backupInstalled }
 			const [pins, orgAppList, linkAppList, overrides] = await Promise.all([
 				this.getDockPins(),
 				this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || []).catch(() => []),
@@ -464,7 +481,7 @@ export default {
 			const hiddenPins = []
 			pins.forEach(pinName => {
 				const norm = SYSTEM_NAME_MAP[pinName] || pinName
-				if (norm === 'Download Station' && !dsInstalled) {
+				if (OPTIONAL_BUILTINS[norm] && !optionalInstalled[OPTIONAL_BUILTINS[norm]]) {
 					hiddenPins.push(pinName)
 					return
 				}

@@ -2,12 +2,15 @@
 	<div class="scheduled-task-log-window">
 		<div class="task-log-meta">
 			<div class="meta-details">
-				<span class="task-target-name">{{ task.target_name || task.name }}</span>
-				<span class="meta-tag">{{ task.action || task.type || 'Custom Command' }}</span>
+				<span class="task-target-name">{{ current.target_name || current.name }}</span>
+				<span class="meta-tag">{{ actionLabel }}</span>
+				<span v-if="isRunning" class="meta-tag is-running" role="status">
+					<i class="mdi mdi-loading mdi-spin mr-1" aria-hidden="true"></i>{{ $t('schedule.log.running') }}
+				</span>
 			</div>
 			<div class="meta-actions">
-				<span v-if="task.last_run" class="task-timestamp">
-					<i class="mdi mdi-clock-outline mr-1"></i>{{ task.last_run }}
+				<span v-if="current.last_run" class="task-timestamp">
+					<i class="mdi mdi-clock-outline mr-1" aria-hidden="true"></i>{{ lastRunText }}
 				</span>
 				<b-button rounded size="is-small" type="is-primary" icon-left="content-copy" @click="copyOutput">
 					{{ $t('Copy Output') }}
@@ -16,7 +19,7 @@
 		</div>
 
 		<div class="task-log-body">
-			<pre class="task-output-pre">{{ task.last_output || $t('No output text recorded.') }}</pre>
+			<pre ref="output" class="task-output-pre" aria-live="off">{{ current.last_output || $t('No output text recorded.') }}</pre>
 		</div>
 
 		<div class="task-log-foot">
@@ -36,7 +39,59 @@ export default {
 			default: () => ({})
 		}
 	},
+	data() {
+		return {
+			// The task as last fetched; refreshed while it runs, so the
+			// output fills in live (it used to be a snapshot of the list row).
+			fresh: null
+		}
+	},
+	computed: {
+		current() {
+			return this.fresh || this.task || {}
+		},
+		isRunning() {
+			return this.current.last_status === 'running'
+		},
+		actionLabel() {
+			const action = this.current.action || this.current.sync_mode || ''
+			if (!action) return this.$t('schedule.action.run_command')
+			const key = `schedule.action.${action}`
+			const text = this.$t(key)
+			return text === key ? action : text
+		},
+		lastRunText() {
+			const d = new Date(this.current.last_run)
+			return isNaN(d.getTime()) ? this.current.last_run : d.toLocaleString()
+		}
+	},
+	mounted() {
+		if (this.isRunning) this.poll()
+	},
+	beforeDestroy() {
+		clearTimeout(this.pollTimer)
+	},
 	methods: {
+		poll() {
+			clearTimeout(this.pollTimer)
+			this.pollTimer = setTimeout(async () => {
+				if (!this.task || !this.task.id) return
+				try {
+					const res = await this.$api.schedules.getSchedule(this.task.id)
+					const t = res && res.data && res.data.data
+					if (t) {
+						const el = this.$refs.output && this.$refs.output.parentElement
+						const atBottom = !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 8
+						this.fresh = t
+						// Follow new output unless the user scrolled up.
+						if (atBottom) this.$nextTick(() => el && (el.scrollTop = el.scrollHeight))
+					}
+				} catch (e) {
+					// Keep showing what we have; try again.
+				}
+				if (this.isRunning) this.poll()
+			}, 2000)
+		},
 		close() {
 			const id = `task-log-${(this.task && this.task.id) || ''}`
 			if (this.$store) {
@@ -45,7 +100,7 @@ export default {
 			this.$emit('close')
 		},
 		copyOutput() {
-			const text = this.task.last_output || ''
+			const text = this.current.last_output || ''
 			if (!text) return
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard.writeText(text).then(() => {
@@ -112,6 +167,12 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
+}
+
+.meta-tag.is-running {
+	display: inline-flex;
+	align-items: center;
+	color: #bfdbfe;
 }
 
 .task-timestamp {

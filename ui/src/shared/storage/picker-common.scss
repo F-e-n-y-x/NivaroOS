@@ -1,0 +1,156 @@
+// Shared look of the storage/folder pickers and the Backup wizard: theme
+// tokens only (no literal colours - spec §13), a visible focus ring and
+// 44 px touch targets on coarse pointers. Status pills use the
+// --status-<tone>-{bg,fg} tokens with the -fg colour tokens as fallback.
+
+@mixin picker-focus-ring {
+	outline: 2px solid var(--color-primary-fg);
+	outline-offset: 2px;
+}
+
+@mixin picker-pill {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0.1rem var(--space-2);
+	border-radius: var(--radius-pill);
+	font-size: var(--font-xs);
+	font-weight: 600;
+	white-space: nowrap;
+
+	&.tone-ok {
+		background: var(--status-ok-bg, var(--theme-success-soft));
+		color: var(--status-ok-fg, var(--color-success-fg));
+	}
+	&.tone-warn {
+		background: var(--status-warn-bg, var(--theme-warning-soft));
+		color: var(--status-warn-fg, var(--color-warning-fg));
+	}
+	&.tone-danger {
+		background: var(--status-danger-bg, var(--theme-danger-soft));
+		color: var(--status-danger-fg, var(--color-danger-fg));
+	}
+	&.tone-info {
+		background: var(--status-info-bg, var(--theme-info-soft));
+		color: var(--status-info-fg, var(--color-info-fg));
+	}
+	&.tone-muted {
+		background: var(--status-muted-bg, var(--theme-pill-bg));
+		color: var(--status-muted-fg, var(--theme-text-muted));
+	}
+}
+
+@mixin picker-button-base {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	min-height: 2.25rem;
+	padding: 0 var(--space-4);
+	border-radius: var(--radius-pill);
+	font-family: inherit;
+	font-size: var(--font-sm);
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+
+	&:focus-visible {
+		@include picker-focus-ring;
+	}
+	&:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
+	}
+	@media (pointer: coarse) {
+		min-height: 44px;
+	}
+}
+
+@mixin picker-primary-button {
+	@include picker-button-base;
+	border: 1px solid var(--color-primary);
+	background: var(--color-primary);
+	color: var(--color-primary-text);
+
+	&:hover:not(:disabled) {
+		background: var(--color-primary-hover);
+	}
+}
+
+@mixin picker-secondary-button {
+	@include picker-button-base;
+	border: 1px solid var(--theme-card-border);
+	background: var(--theme-card-bg);
+	color: var(--theme-text-primary);
+
+	&:hover:not(:disabled) {
+		background: var(--theme-card-hover);
+	}
+}
+
+@mixin picker-link-button {
+	@include picker-button-base;
+	padding: 0 var(--space-2);
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--color-primary-fg);
+
+	&:hover:not(:disabled) {
+		background: var(--color-primary-soft);
+	}
+}
+
+@mixin picker-input {
+	min-height: 2.25rem;
+	padding: 0 var(--space-3);
+	border: 1px solid var(--theme-input-border);
+	border-radius: var(--radius-control);
+	background: var(--theme-input-bg);
+	color: var(--theme-input-text);
+	font-family: inherit;
+	font-size: var(--font-sm);
+
+	&::placeholder {
+		color: var(--theme-input-placeholder);
+	}
+	&:focus-visible {
+		@include picker-focus-ring;
+		outline-offset: 0;
+		border-color: var(--color-primary-fg);
+	}
+	&[aria-invalid='true'] {
+		border-color: var(--color-danger-fg);
+	}
+	&:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	@media (pointer: coarse) {
+		min-height: 44px;
+	}
+}
+
+@mixin picker-note($tone: 'warn') {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-sm);
+	font-size: var(--font-xs);
+	line-height: 1.45;
+
+	@if $tone == 'warn' {
+		background: var(--status-warn-bg, var(--theme-warning-soft));
+		color: var(--status-warn-fg, var(--color-warning-fg));
+	} @else if $tone == 'danger' {
+		background: var(--status-danger-bg, var(--theme-danger-soft));
+		color: var(--status-danger-fg, var(--color-danger-fg));
+	} @else if $tone == 'ok' {
+		background: var(--status-ok-bg, var(--theme-success-soft));
+		color: var(--status-ok-fg, var(--color-success-fg));
+	} @else {
+		background: var(--status-info-bg, var(--theme-info-soft));
+		color: var(--status-info-fg, var(--color-info-fg));
+	}
+}

@@ -1,0 +1,210 @@
+// Form pieces shared by the job wizard's step components (imported into
+// each scoped style block). Theme tokens only - no literal colours (spec
+// §13); focus rings on :focus-visible; 44 px targets on touch screens.
+@import '../../../shared/storage/picker-common.scss';
+
+.wz-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-width: 0;
+
+	& + & {
+		margin-top: var(--space-5);
+		padding-top: var(--space-5);
+		border-top: 1px solid var(--theme-card-border);
+	}
+}
+
+.wz-heading {
+	margin: 0;
+	font-size: var(--font-md);
+	font-weight: 600;
+	color: var(--theme-text-primary);
+}
+
+.wz-sub {
+	margin: 0;
+	font-size: var(--font-sm);
+	color: var(--theme-text-secondary);
+	line-height: 1.45;
+}
+
+.wz-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-width: 0;
+}
+
+// A checkbox sharing a line with an input lines up with it.
+.wz-row > .wz-check {
+	align-items: center;
+}
+
+.wz-label {
+	font-size: var(--font-sm);
+	font-weight: 600;
+	color: var(--theme-text-primary);
+}
+
+.wz-hint {
+	margin: 0;
+	font-size: var(--font-xs);
+	color: var(--theme-text-muted);
+	line-height: 1.45;
+}
+
+.wz-input,
+.wz-select {
+	@include picker-input;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.wz-number {
+	@include picker-input;
+	width: 5.5rem;
+}
+
+.wz-check {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	min-height: 2rem;
+	font-size: var(--font-sm);
+	color: var(--theme-text-primary);
+	cursor: pointer;
+	line-height: 1.4;
+
+	input[type='checkbox'],
+	input[type='radio'] {
+		flex-shrink: 0;
+		width: 18px;
+		height: 18px;
+		margin-top: 0.1rem;
+		accent-color: var(--color-primary);
+		cursor: pointer;
+	}
+	input:focus-visible {
+		@include picker-focus-ring;
+	}
+	input:disabled + span,
+	&.is-disabled {
+		color: var(--theme-text-secondary);
+		cursor: not-allowed;
+	}
+	@media (pointer: coarse) {
+		min-height: 44px;
+		align-items: center;
+	}
+}
+
+.wz-field-error {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin: 0;
+	font-size: var(--font-xs);
+	font-weight: 600;
+	color: var(--color-danger-fg);
+}
+
+.wz-note {
+	margin: 0;
+	&.tone-warn {
+		@include picker-note('warn');
+	}
+	&.tone-danger {
+		@include picker-note('danger');
+	}
+	&.tone-info {
+		@include picker-note('info');
+	}
+	&.tone-ok {
+		@include picker-note('ok');
+	}
+	.wz-note-action {
+		@include picker-secondary-button;
+		min-height: 1.75rem;
+		margin-top: var(--space-1);
+		padding: 0 var(--space-3);
+		font-size: var(--font-xs);
+	}
+}
+
+.wz-primary {
+	@include picker-primary-button;
+}
+
+.wz-secondary {
+	@include picker-secondary-button;
+}
+
+.wz-link {
+	@include picker-link-button;
+}
+
+.wz-pill {
+	@include picker-pill;
+}
+
+.wz-details {
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-sm);
+	background: var(--theme-card-subtle);
+
+	> summary {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+		min-height: 2.25rem;
+		padding: 0 var(--space-3);
+		font-size: var(--font-sm);
+		font-weight: 600;
+		color: var(--theme-text-primary);
+		cursor: pointer;
+		list-style: none;
+
+		&::-webkit-details-marker {
+			display: none;
+		}
+		&::before {
+			content: '▸';
+			color: var(--theme-text-muted);
+			transition: transform 0.15s ease;
+		}
+		&:focus-visible {
+			@include picker-focus-ring;
+			outline-offset: -2px;
+		}
+		@media (pointer: coarse) {
+			min-height: 44px;
+		}
+	}
+	&[open] > summary::before {
+		transform: rotate(90deg);
+	}
+	> .wz-details-body {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-3);
+		padding: var(--space-2) var(--space-3) var(--space-3);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		> summary::before {
+			transition: none;
+		}
+	}
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
