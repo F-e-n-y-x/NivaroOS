@@ -54,9 +54,32 @@
 						</div>
 					</div>
 
-					<button type="button" class="toolbar-btn icon-only-btn" :title="$t('Paste clipboard text into VM')" @click="pasteClipboard">
-						<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-					</button>
+					<div class="menu-wrapper">
+						<button
+							type="button"
+							class="toolbar-btn icon-only-btn"
+							data-rclip-toggle
+							:class="{ active: clipboardOpen }"
+							:title="$t('Clipboard: paste and history')"
+							:aria-label="$t('Clipboard: paste and history')"
+							:aria-expanded="clipboardOpen ? 'true' : 'false'"
+							aria-haspopup="dialog"
+							@click="clipboardOpen = !clipboardOpen"
+						>
+							<b-icon icon="clipboard-text-multiple-outline" custom-size="mdi-16px"></b-icon>
+						</button>
+						<remote-clipboard-panel
+							v-if="clipboardOpen"
+							class="clipboard-popover"
+							:target="clipboardTarget"
+							:target-label="vmName"
+							:connected="status === 'connected'"
+							:sync-hint="clipboardHint"
+							@send="clipboardSend"
+							@type="clipboardType"
+							@close="closeClipboard"
+						></remote-clipboard-panel>
+					</div>
 				</div>
 
 				<div class="toolbar-divider"></div>
@@ -496,32 +519,6 @@
 
 
 
-		<!-- Quick Paste & Type Modal -->
-		<vm-overlay-panel :active="showPasteDialog" :title="$t('Paste Text to VM')" width="30rem" @close="showPasteDialog = false">
-			<div class="paste-modal-content">
-				<p class="paste-modal-desc">
-					{{ $t('Type or paste text (Ctrl+V) to send to the virtual machine.') }}
-				</p>
-				<textarea
-					ref="pasteInput"
-					v-model="pasteText"
-					class="paste-modal-textarea"
-					rows="4"
-					:placeholder="$t('Paste your text here...')"
-					@keydown.enter.ctrl="sendPasteText(false)"
-				></textarea>
-				<div class="paste-modal-actions">
-					<button type="button" class="paste-action-btn" @click="sendPasteText(true)">
-						<b-icon icon="keyboard-outline" size="is-small"></b-icon>
-						<span>{{ $t('Type Keystrokes') }}</span>
-					</button>
-					<button type="button" class="paste-action-btn is-primary" :disabled="!pasteText" @click="sendPasteText(false)">
-						<b-icon icon="content-paste" size="is-small"></b-icon>
-						<span>{{ $t('Paste Clipboard') }}</span>
-					</button>
-				</div>
-			</div>
-		</vm-overlay-panel>
 
 		<confirm-window v-bind="confirmWindowProps" @confirm="_onConfirmWindowConfirm" @cancel="_onConfirmWindowCancel"></confirm-window>
 	</div>
@@ -533,7 +530,8 @@ import { vmSidecar } from '@/api/vmSidecar'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import VmDropdown from './VmDropdown.vue'
 import VmFilePickerDialog from './VmFilePickerDialog.vue'
-import VmOverlayPanel from './VmOverlayPanel.vue'
+import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
+import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
 
 const STATE_POLL_MS = 3000
 
@@ -692,7 +690,7 @@ export default {
 	components: {
 		VmDropdown,
 		VmFilePickerDialog,
-		VmOverlayPanel,
+		RemoteClipboardPanel,
 	},
 	props: {
 		vmName: { type: String, required: true },
@@ -708,8 +706,7 @@ export default {
 			status: 'connecting',
 			vmState: null,
 			vm: null,
-			showPasteDialog: false,
-			pasteText: '',
+			clipboardOpen: false,
 			scaleToFit: true,
 			// The VNC stream's own encoding quality/compression trade-off -
 			// distinct from both the VM's display resolution (a libvirt
@@ -770,6 +767,17 @@ export default {
 		}
 	},
 	computed: {
+		clipboardTarget() {
+			return { kind: 'vm', name: this.vmName }
+		},
+		// Copy/paste needs the VM's clipboard channel (added by vm-sidecar
+		// the next time the VM starts) and the agent from Guest Tools.
+		clipboardHint() {
+			if (this.vm && this.vm.clipboard_channel === false) {
+				return this.$t('Clipboard sharing turns on the next time this VM starts. Until then, use Type it.')
+			}
+			return this.$t('Copy and paste needs NivaroOS Guest Tools installed in the VM. If nothing arrives, use Type it.')
+		},
 		// Mirrors the vm-sidecar's own safeSubdirNameRe - this folder name
 		// becomes a directory name on the host, so anything outside this
 		// charset would be rejected server-side anyway; validating it here
@@ -952,7 +960,9 @@ export default {
 			rfb.addEventListener('clipboard', (e) => {
 				if (rfb !== this.rfb) return
 				const text = e.detail && e.detail.text
-				if (text && navigator.clipboard && navigator.clipboard.writeText) {
+				if (!text) return
+				recordClipboard({ text, direction: 'from', target: this.clipboardTarget })
+				if (navigator.clipboard && navigator.clipboard.writeText) {
 					navigator.clipboard.writeText(text).catch(() => {})
 				}
 			})
@@ -1124,64 +1134,16 @@ export default {
 				}
 			}, 60)
 		},
-		async pasteClipboard() {
-			if (!this.rfb) return
-			let text = ''
-			try {
-				if (navigator.clipboard && navigator.clipboard.readText) {
-					text = await navigator.clipboard.readText()
-				}
-			} catch (e) {
-				// Browser permission or non-secure HTTP context blocked direct read
-			}
-			if (text) {
-				this.rfb.clipboardPasteFrom(text)
-				this.$buefy.toast.open({
-					message: this.$t('Pasted into VM clipboard'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			} else {
-				this.pasteText = ''
-				this.showPasteDialog = true
-				this.$nextTick(() => {
-					if (this.$refs.pasteInput) this.$refs.pasteInput.focus()
-				})
-			}
+		// Clipboard popover (shared/clipboard/RemoteClipboardPanel.vue).
+		clipboardSend(text) {
+			if (this.rfb) this.rfb.clipboardPasteFrom(text)
 		},
-		sendPasteText(asKeystrokes = false) {
-			if (!this.rfb || !this.pasteText) return
-			if (asKeystrokes) {
-				const str = this.pasteText
-				for (let i = 0; i < str.length; i++) {
-					const char = str[i]
-					if (char === '\n') {
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', true)
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter || 0xff0d, 'Enter', false)
-					} else {
-						const code = str.charCodeAt(i)
-						this.rfb.sendKey(code, null, true)
-						this.rfb.sendKey(code, null, false)
-					}
-				}
-				this.$buefy.toast.open({
-					message: this.$t('Typed text into VM'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			} else {
-				this.rfb.clipboardPasteFrom(this.pasteText)
-				this.$buefy.toast.open({
-					message: this.$t('Pasted into VM clipboard'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			}
-			this.pasteText = ''
-			this.showPasteDialog = false
+		clipboardType(text) {
+			typeText(this.rfb, text)
+		},
+		closeClipboard() {
+			this.clipboardOpen = false
+			if (this.rfb) this.rfb.focus()
 		},
 		toggleScale() {
 			this.scaleToFit = !this.scaleToFit
@@ -2961,72 +2923,6 @@ export default {
 	}
 }
 
-.paste-modal-content {
-	padding: var(--space-4);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-
-.paste-modal-desc {
-	font-size: var(--font-sm);
-	color: rgba(255, 255, 255, 0.7);
-	margin: 0;
-}
-
-.paste-modal-textarea {
-	width: 100%;
-	background: rgba(0, 0, 0, 0.45);
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	border-radius: var(--radius-control);
-	padding: var(--space-2);
-	color: #fff;
-	font-family: monospace;
-	font-size: var(--font-sm);
-	resize: vertical;
-
-	&:focus {
-		outline: none;
-		border-color: rgba(255, 255, 255, 0.4);
-	}
-}
-
-.paste-modal-actions {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-
-.paste-action-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	border: none;
-	border-radius: var(--radius-sm);
-	padding: var(--space-2) var(--space-3);
-	font-family: inherit;
-	font-size: var(--font-xs);
-	font-weight: 600;
-	cursor: pointer;
-	background: rgba(255, 255, 255, 0.12);
-	color: #fff;
-	transition: background 0.15s ease;
-
-	&:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.22);
-	}
-	&.is-primary {
-		background: rgba(255, 255, 255, 0.22);
-		&:hover:not(:disabled) {
-			background: rgba(255, 255, 255, 0.32);
-		}
-	}
-	&:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-}
 .gt-ok {
 	color: #4ade80;
 }

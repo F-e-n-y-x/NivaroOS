@@ -205,15 +205,31 @@
 							</div>
 						</div>
 
-						<button
-							type="button"
-							class="toolbar-btn icon-only-btn"
-							:title="$t('Paste clipboard text into Host')"
-							:aria-label="$t('Paste clipboard text into Host')"
-							@click="pasteClipboard"
-						>
-							<b-icon icon="content-paste" custom-size="mdi-16px"></b-icon>
-						</button>
+						<div class="menu-wrapper">
+							<button
+								type="button"
+								class="toolbar-btn icon-only-btn"
+								data-rclip-toggle
+								:class="{ active: clipboardOpen }"
+								:title="$t('Clipboard: paste and history')"
+								:aria-label="$t('Clipboard: paste and history')"
+								:aria-expanded="clipboardOpen ? 'true' : 'false'"
+								aria-haspopup="dialog"
+								@click="clipboardOpen = !clipboardOpen"
+							>
+								<b-icon icon="clipboard-text-multiple-outline" custom-size="mdi-16px"></b-icon>
+							</button>
+							<remote-clipboard-panel
+								v-if="clipboardOpen"
+								:target="clipboardTarget"
+								:target-label="$t('Host')"
+								:connected="status === 'connected'"
+								:sync-hint="clipboardHint"
+								@send="clipboardSend"
+								@type="clipboardType"
+								@close="closeClipboard"
+							></remote-clipboard-panel>
+						</div>
 					</div>
 
 					<div class="toolbar-divider"></div>
@@ -489,7 +505,7 @@
 			<div v-if="clipChip.visible" class="host-clip-chip" role="status">
 				<b-icon icon="clipboard-check-outline" size="is-small"></b-icon>
 				<span>{{ clipChip.copied ? $t('Copied from Host clipboard') : $t('Host copied text') }}</span>
-				<button v-if="!clipChip.copied" type="button" class="host-clip-chip-btn" @click="openCopyDialog">
+				<button v-if="!clipChip.copied" type="button" class="host-clip-chip-btn" @click="openClipboardFromChip">
 					{{ $t('View') }}
 				</button>
 				<button type="button" class="host-clip-chip-btn" :aria-label="$t('Dismiss')" @click="hideClipChip">
@@ -621,67 +637,6 @@
 				</span>
 			</div>
 
-			<!-- Quick Paste & Type Modal -->
-			<vm-overlay-panel
-				:active="showPasteDialog"
-				:title="$t('Paste Text to Host Desktop')"
-				width="30rem"
-				@close="showPasteDialog = false"
-			>
-				<div class="paste-modal-content">
-					<label class="paste-modal-desc" for="hd-paste-input">
-						{{ $t('Type or paste text (Ctrl+V) to send to the host desktop.') }}
-					</label>
-					<textarea
-						id="hd-paste-input"
-						ref="pasteInput"
-						v-model="pasteText"
-						class="paste-modal-textarea"
-						rows="4"
-						:placeholder="$t('Paste your text here...')"
-						@keydown.enter.ctrl="sendPasteText(false)"
-					></textarea>
-					<div class="paste-modal-actions">
-						<button type="button" class="paste-action-btn" :disabled="!pasteText" @click="sendPasteText(true)">
-							<b-icon icon="keyboard-outline" size="is-small"></b-icon>
-							<span>{{ $t('Type Keystrokes') }}</span>
-						</button>
-						<button
-							type="button"
-							class="paste-action-btn is-primary"
-							:disabled="!pasteText"
-							@click="sendPasteText(false)"
-						>
-							<b-icon icon="content-paste" size="is-small"></b-icon>
-							<span>{{ $t('Paste Clipboard') }}</span>
-						</button>
-					</div>
-				</div>
-			</vm-overlay-panel>
-
-			<!-- Manual copy fallback, only opened on request from the chip above
-			     (the Clipboard API needs a secure context). -->
-			<vm-overlay-panel
-				:active="showCopyDialog"
-				:title="$t('Copied from Host Desktop')"
-				width="30rem"
-				@close="showCopyDialog = false"
-			>
-				<div class="paste-modal-content">
-					<label class="paste-modal-desc" for="hd-copy-output">
-						{{ $t('The host copied this text, but this browser tab can\'t write it to your clipboard automatically. It\'s selected below - press Ctrl+C (or Cmd+C) to copy it.') }}
-					</label>
-					<textarea
-						id="hd-copy-output"
-						ref="copyOutput"
-						v-model="copyText"
-						class="paste-modal-textarea"
-						rows="4"
-						readonly
-						@focus="$event.target.select()"
-					></textarea>
-				</div>
-			</vm-overlay-panel>
 		</div>
 		<div v-else class="host-desktop-panel host-desktop-checking" aria-live="polite">
 			<span>{{ $t('Checking Host Desktop status...') }}</span>
@@ -692,7 +647,8 @@
 <script>
 import RFB from '@novnc/novnc'
 import { instance as http } from '@/service/service'
-import VmOverlayPanel from '@/apps/vm/VmOverlayPanel.vue'
+import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
+import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
 
 const QUALITY_PRESETS = {
 	high: { qualityLevel: 9, compressionLevel: 1 },
@@ -873,7 +829,7 @@ function isUnauthorized(e) {
 export default {
 	name: 'HostDesktopPanel',
 	components: {
-		VmOverlayPanel,
+		RemoteClipboardPanel,
 	},
 	props: {
 		showClose: {
@@ -910,10 +866,7 @@ export default {
 			capsLockActive: false,
 			ctrlActive: false,
 			altActive: false,
-			showPasteDialog: false,
-			pasteText: '',
-			showCopyDialog: false,
-			copyText: '',
+			clipboardOpen: false,
 			clipChip: { visible: false, copied: false },
 			clipChipTimer: null,
 			clipboardInsecureWarned: false,
@@ -979,6 +932,15 @@ export default {
 		},
 		resolutionLabel() {
 			return this.currentResolution || '—'
+		},
+		clipboardTarget() {
+			return { kind: 'host', name: 'Host' }
+		},
+		clipboardHint() {
+			if (!window.isSecureContext) {
+				return this.$t("Over http:// this browser won't share its clipboard automatically: use the box below, and Copy in the history.")
+			}
+			return ''
 		},
 		hostDisplayName() {
 			return this.displayName || (this.serviceStatus && this.serviceStatus.display) || ''
@@ -1956,7 +1918,8 @@ export default {
 		// needs a secure context; when it can't, a small chip offers the
 		// manual copy dialog instead of popping one up and stealing focus.
 		receiveHostClipboard(text) {
-			this.copyText = text
+			if (!text) return
+			recordClipboard({ text, direction: 'from', target: this.clipboardTarget })
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard
 					.writeText(text)
@@ -1990,78 +1953,27 @@ export default {
 			this.clipChip = { visible: false, copied: false }
 		},
 
-		openCopyDialog() {
+		// The chip's "View": the clipboard popover lists the text with a
+		// Copy button that also works without the Clipboard API.
+		openClipboardFromChip() {
 			this.hideClipChip()
-			this.showCopyDialog = true
-			this.$nextTick(() => {
-				if (this.$refs.copyOutput) {
-					this.$refs.copyOutput.focus()
-					this.$refs.copyOutput.select()
-				}
-			})
+			this.clipboardOpen = true
 		},
 
-		async pasteClipboard() {
-			if (!this.rfb) return
-			let text = ''
-			try {
-				if (navigator.clipboard && navigator.clipboard.readText) {
-					text = await navigator.clipboard.readText()
-				}
-			} catch (e) {}
-
-			if (text) {
-				this.rfb.clipboardPasteFrom(text)
-				this.$buefy.toast.open({
-					message: this.$t('Pasted into Host clipboard'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			} else {
-				this.pasteText = ''
-				this.showPasteDialog = true
-				this.$nextTick(() => {
-					if (this.$refs.pasteInput) this.$refs.pasteInput.focus()
-				})
-			}
+		// Clipboard popover (shared/clipboard/RemoteClipboardPanel.vue).
+		clipboardSend(text) {
+			if (this.rfb) this.rfb.clipboardPasteFrom(text)
 		},
 
-		sendPasteText(asKeystrokes = false) {
-			if (!this.rfb || !this.pasteText) return
-			if (asKeystrokes) {
-				// Iterate by codepoint; keysyms above Latin-1 use the
-				// 0x01000000 Unicode offset (x11vnc runs with -add_keysyms so
-				// the host can type characters its keymap lacks).
-				const str = this.pasteText
-				for (const char of str) {
-					if (char === '\n') {
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', true)
-						this.rfb.sendKey(SPECIAL_KEYSYMS.Enter, 'Enter', false)
-					} else {
-						const cp = char.codePointAt(0)
-						const keysym = cp <= 0xff ? cp : 0x01000000 + cp
-						this.rfb.sendKey(keysym, null, true)
-						this.rfb.sendKey(keysym, null, false)
-					}
-				}
-				this.$buefy.toast.open({
-					message: this.$t('Typed text into Host'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			} else {
-				this.rfb.clipboardPasteFrom(this.pasteText)
-				this.$buefy.toast.open({
-					message: this.$t('Pasted into Host clipboard'),
-					type: 'is-success',
-					position: 'is-top',
-					duration: 2000,
-				})
-			}
-			this.pasteText = ''
-			this.showPasteDialog = false
+		clipboardType(text) {
+			// x11vnc runs with -add_keysyms, so Unicode keysyms type
+			// characters the host keymap lacks.
+			typeText(this.rfb, text)
+		},
+
+		closeClipboard() {
+			this.clipboardOpen = false
+			if (this.rfb) this.rfb.focus()
 		},
 	},
 }
@@ -3133,78 +3045,6 @@ export default {
 
 	&:hover {
 		background: rgba(255, 221, 87, 0.3);
-	}
-}
-
-/* Paste Modal */
-.paste-modal-content {
-	padding: var(--space-4);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-
-.paste-modal-desc {
-	display: block;
-	font-size: var(--font-sm);
-	color: var(--theme-text-secondary, #475569);
-	margin: 0;
-}
-
-.paste-modal-textarea {
-	width: 100%;
-	background: var(--theme-input-bg, #f8fafc);
-	border: 1px solid var(--theme-input-border, #8391a2);
-	border-radius: var(--radius-control);
-	padding: var(--space-2);
-	color: var(--theme-input-text, #0f172a);
-	font-family: monospace;
-	font-size: var(--font-sm);
-	resize: vertical;
-
-	&::placeholder {
-		color: var(--theme-input-placeholder, #64748b);
-	}
-	&:focus {
-		border-color: var(--theme-input-focus, #2563eb);
-	}
-}
-
-.paste-modal-actions {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: var(--space-2);
-}
-
-.paste-action-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-1);
-	border: none;
-	border-radius: var(--radius-sm);
-	padding: var(--space-2) var(--space-3);
-	font-family: inherit;
-	font-size: var(--font-xs);
-	font-weight: 600;
-	cursor: pointer;
-	background: var(--theme-card-hover, rgba(0, 0, 0, 0.045));
-	color: var(--theme-text-primary, #0f172a);
-	transition: background 0.15s ease;
-
-	&:hover:not(:disabled) {
-		background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
-	}
-	&.is-primary {
-		background: var(--color-primary, #2563eb);
-		color: #fff;
-		&:hover:not(:disabled) {
-			background: #1d4ed8;
-		}
-	}
-	&:disabled {
-		opacity: 0.4;
-		cursor: default;
 	}
 }
 </style>
