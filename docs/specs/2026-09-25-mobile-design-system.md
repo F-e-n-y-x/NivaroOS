@@ -774,3 +774,17 @@ faster than 30 s). Stored per phone. Polling still pauses when Home isn't
 visible or the app is in the background. Charts keep the same time span
 (their sample count adapts), and the VM console preview refreshes at the
 chosen interval but never faster than every 5 s.
+
+## Owner request (2026-09-26): tabs in Files
+
+"Multi tab support in files so I can copy from one and then paste in new
+tab." Files keeps browser-style tabs: each has its own place (a folder,
+the locations page or the Trash), Back history, selection and scroll;
+the clipboard is shared ("3 items on clipboard · Clear / Paste here"),
+and paste is off in the Trash. A tabs button with the count sits in the
+app bar (it opens a tab switcher sheet: switch, close, New tab, New tab
+here); with two or more tabs a strip of the direction's chips sits under
+the bar for one-tap switching, × on the tab on screen, + for a new tab
+at the locations page. Folders also have "Open in new tab". One tab
+looks as before apart from the button. The open tabs and the active one
+are saved per server and come back after a restart.

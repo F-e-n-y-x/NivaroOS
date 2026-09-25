@@ -32,13 +32,35 @@ String trashFolderLabel(String folder) {
 String _shortFolder(String folder) => folder == '/' ? 'Root' : baseName(folder);
 
 class TrashScreen extends StatefulWidget {
-  const TrashScreen({super.key, this.onRestored, this.onShowFolder});
+  const TrashScreen({
+    super.key,
+    this.onRestored,
+    this.onShowFolder,
+    this.inPlace = false,
+    this.leading,
+    this.actions = const [],
+    this.header,
+    this.floatingActionButton,
+    this.controller,
+  });
 
   /// Folders something was restored into (so Files can reload them).
   final void Function(Set<String> folders)? onRestored;
 
   /// "Show" on the restore snackbar: close the Trash and open this folder.
   final void Function(String folder)? onShowFolder;
+
+  /// Shown in place, as a Files tab, rather than pushed: "Show" then
+  /// leaves the navigation to [onShowFolder].
+  final bool inPlace;
+
+  // In a Files tab: its Up button, the tabs button, the tab strip over
+  // the list, the paste bar (which can't paste here) and its scroll.
+  final Widget? leading;
+  final List<Widget> actions;
+  final Widget? header;
+  final Widget? floatingActionButton;
+  final ScrollController? controller;
 
   /// The last listing, shown at once the next time the Trash opens.
   static TrashListing? _cached;
@@ -198,7 +220,7 @@ class _TrashScreenState extends State<TrashScreen> {
                   label: 'Show',
                   onPressed: () {
                     final folder = folders.first;
-                    if (mounted) Navigator.of(context).maybePop();
+                    if (mounted && !widget.inPlace) Navigator.of(context).maybePop();
                     widget.onShowFolder?.call(folder);
                   },
                 )
@@ -341,17 +363,23 @@ class _TrashScreenState extends State<TrashScreen> {
     final banner = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ?widget.header,
         if (_stale) OfflineBanner(lastUpdated: _fetched, onRetry: _load),
         if (_busy != null) const LinearProgressIndicator(minHeight: 2),
       ],
     );
     return AppScaffold.slivers(
       title: 'Trash',
+      leading: widget.leading,
       appBar: _selectionBar(),
       banner: banner,
       onRefresh: _load,
       maxContentWidth: Space.readingMaxWidth,
+      controller: widget.controller,
+      floatingActionButton: widget.floatingActionButton,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       actions: [
+        ...widget.actions,
         if (listing != null && !listing.isEmpty)
           PopupMenuButton<String>(
             tooltip: 'More options',
@@ -428,7 +456,8 @@ class _TrashScreenState extends State<TrashScreen> {
           },
         ),
       ],
-      const SliverToBoxAdapter(child: SizedBox(height: Space.xl)),
+      // Room for the paste bar over the last row, when there is one.
+      SliverToBoxAdapter(child: SizedBox(height: Space.xl + (widget.floatingActionButton == null ? 0 : MediaQuery.textScalerOf(context).scale(56)))),
     ];
   }
 

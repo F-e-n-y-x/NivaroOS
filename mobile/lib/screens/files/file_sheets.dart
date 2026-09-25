@@ -1,5 +1,5 @@
 // Bottom sheets and dialogs of the Files screen: conflicts, item actions,
-// sort, names, info and locations.
+// sort, names, info, locations and tabs.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -191,7 +191,7 @@ class _ConflictSheetState extends State<ConflictSheet> {
 // Item actions
 
 /// What the actions sheet can do; the screen decides which apply.
-enum EntryAction { open, select, copy, move, rename, compress, extract, favorite, unfavorite, info, openWith, delete }
+enum EntryAction { open, openInNewTab, select, copy, move, rename, compress, extract, favorite, unfavorite, info, openWith, delete }
 
 /// The menu for one item: its name and size at the top, then actions.
 Future<EntryAction?> showEntryActions(
@@ -221,6 +221,7 @@ Future<EntryAction?> showEntryActions(
           ),
           const Divider(indent: Space.xl, endIndent: Space.xl),
           if (actions.contains(EntryAction.select)) tile(EntryAction.select, Icons.check_circle_outline, 'Select'),
+          if (actions.contains(EntryAction.openInNewTab)) tile(EntryAction.openInNewTab, Icons.tab_outlined, 'Open in new tab'),
           if (actions.contains(EntryAction.openWith)) tile(EntryAction.openWith, Icons.open_in_new_outlined, 'Open with another app'),
           if (actions.contains(EntryAction.copy)) tile(EntryAction.copy, Icons.content_copy_outlined, 'Copy'),
           if (actions.contains(EntryAction.move)) tile(EntryAction.move, Icons.drive_file_move_outlined, 'Move'),
@@ -541,4 +542,92 @@ String locationSubtitle(FileLocation l) {
     ?space,
     if (l.detail == null && space == null && l.online) l.path,
   ].join(' · ');
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+
+/// What was picked in the tabs sheet.
+enum TabsChoice { select, newTab, newTabHere }
+
+/// The open tabs, like a browser's tab switcher: tap one to show it, ×
+/// to close it (right away, the sheet stays open), and New tab (at the
+/// locations page) or, with [hereTitle], a new tab at the place on screen.
+/// Returns the choice and, for select, the tab's id.
+Future<(TabsChoice, int?)?> showTabsSheet(
+  BuildContext context, {
+  required List<FileTabInfo> tabs,
+  required int activeId,
+  required ValueChanged<int> onClose,
+  String? hereTitle,
+}) {
+  return _showSheet<(TabsChoice, int?)>(
+    context,
+    (context) => _TabsSheet(tabs: tabs, activeId: activeId, onClose: onClose, hereTitle: hereTitle),
+  );
+}
+
+class _TabsSheet extends StatefulWidget {
+  const _TabsSheet({required this.tabs, required this.activeId, required this.onClose, this.hereTitle});
+  final List<FileTabInfo> tabs;
+  final int activeId;
+  final ValueChanged<int> onClose;
+  final String? hereTitle;
+
+  @override
+  State<_TabsSheet> createState() => _TabsSheetState();
+}
+
+class _TabsSheetState extends State<_TabsSheet> {
+  late final _tabs = [...widget.tabs];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final here = widget.hereTitle;
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: _SheetTitle('Tabs', subtitle: '${formatCount(_tabs.length, 'tab')} open'),
+          ),
+          for (final t in _tabs)
+            ListTile(
+              leading: Icon(t.icon),
+              title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: t.subtitle == null ? null : Text(t.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis),
+              selected: t.id == widget.activeId,
+              onTap: () => Navigator.of(context).pop((TabsChoice.select, t.id)),
+              trailing: _tabs.length > 1
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Close “${t.title}”',
+                      onPressed: () {
+                        widget.onClose(t.id);
+                        setState(() => _tabs.remove(t));
+                      },
+                    )
+                  : null,
+            ),
+          const Divider(indent: Space.xl, endIndent: Space.xl),
+          ListTile(
+            leading: Icon(Icons.add, color: scheme.primary),
+            title: const Text('New tab'),
+            subtitle: const Text('Starts at the locations'),
+            onTap: () => Navigator.of(context).pop((TabsChoice.newTab, null)),
+          ),
+          if (here != null)
+            ListTile(
+              leading: Icon(Icons.tab_outlined, color: scheme.primary),
+              title: const Text('New tab here'),
+              subtitle: Text('Opens “$here” in another tab', maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.of(context).pop((TabsChoice.newTabHere, null)),
+            ),
+          const SizedBox(height: Space.sm),
+        ],
+      ),
+    );
+  }
 }

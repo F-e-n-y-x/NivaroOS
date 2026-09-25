@@ -43,7 +43,8 @@ class AppScaffold extends StatelessWidget {
     this.maxContentWidth = Space.readingMaxWidth,
     this.titleStyle,
   })  : slivers = null,
-        collapsingTitle = false;
+        collapsingTitle = false,
+        controller = null;
 
   const AppScaffold.slivers({
     super.key,
@@ -60,6 +61,7 @@ class AppScaffold extends StatelessWidget {
     this.maxContentWidth = Space.readingMaxWidth,
     this.collapsingTitle,
     this.titleStyle,
+    this.controller,
   }) : body = null;
 
   /// Heights of the M3 small app bar and of the medium one while expanded,
@@ -107,6 +109,10 @@ class AppScaffold extends StatelessWidget {
   /// Replaces the bar's title style (Home, whose title is the server's
   /// name rather than a page name).
   final TextStyle? titleStyle;
+
+  /// Sliver form only: the scroll view's controller, for a screen that
+  /// keeps its own scroll offsets (the tabs in Files).
+  final ScrollController? controller;
 
   bool _collapsing(BuildContext context) => collapsingTitle ?? false;
 
@@ -186,6 +192,7 @@ class AppScaffold extends StatelessWidget {
         // around it, so drags in the side margins still scroll.
         final inset = max == null ? 0.0 : ((constraints.maxWidth - max) / 2).clamp(0.0, double.infinity);
         return CustomScrollView(
+          controller: controller,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             if (ownBar) bar,

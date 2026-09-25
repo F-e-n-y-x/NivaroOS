@@ -56,6 +56,8 @@ class StorageService {
   static const _keyShareMinutes = 'share_minutes';
   static const _keyDoneMigrations = 'done_migrations';
   static const _keyUpdateCheck = 'app_update_check';
+  // Per server, like the secret: the tabs open in Files there.
+  static const _keyFilesTabsPrefix = 'files_tabs@';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
   static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyNotificationsAsked};
@@ -231,6 +233,28 @@ class StorageService {
     if (!_initialized) await init();
     final done = (_cache[_keyDoneMigrations] ?? '').split('\n').where((e) => e.isNotEmpty).toSet()..add(name);
     await _set(_keyDoneMigrations, done.join('\n'));
+  }
+
+  /// The tabs open in Files on the current server (JSON written by
+  /// FilesTabs.encode), so they come back after a restart.
+  Future<String?> getFilesTabs() async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return null;
+    return _cache['$_keyFilesTabsPrefix${_serverKey(url)}'];
+  }
+
+  /// Saves the Files tabs for the current server; null forgets them.
+  Future<void> setFilesTabs(String? json) async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    final key = '$_keyFilesTabsPrefix${_serverKey(url)}';
+    if (json == null) {
+      await _remove(key);
+    } else if (_cache[key] != json) {
+      await _set(key, json);
+    }
   }
 
   /// The last app-update check (JSON written by AppUpdateService).

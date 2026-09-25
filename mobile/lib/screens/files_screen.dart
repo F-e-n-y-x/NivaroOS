@@ -13,11 +13,13 @@ import '../services/api_client.dart';
 import '../services/device_sync_service.dart';
 import '../services/permission_service.dart';
 import '../services/shortcuts_service.dart';
+import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'file_viewer_screen.dart';
 import 'files/file_ops.dart';
 import 'files/file_sheets.dart';
+import 'files/file_tabs.dart';
 import 'files/file_widgets.dart';
 import 'files/transfers.dart';
 import 'files/trash_api.dart';
@@ -34,12 +36,15 @@ class _Listing {
 }
 
 /// What is on the Files clipboard: items picked with Copy or Move, waiting
-/// for "Copy here" / "Move here" in another folder.
+/// for "Paste here" in another folder, in any tab.
 class _Clip {
-  const _Clip(this.entries, this.isLocal, this.kind);
+  const _Clip(this.entries, this.isLocal, this.kind, this.from);
   final List<FileEntry> entries;
   final bool isLocal;
   final TransferKind kind;
+
+  /// The name of the folder they were picked in.
+  final String from;
 }
 
 /// The Files tab (design brief §1a, plan WP1-15/WP1-26), modelled on Google
@@ -48,11 +53,17 @@ class _Clip {
 /// breadcrumb trail, sort and view controls, long-press multi-select with
 /// a contextual bar, and copy / move by picking the items and then the
 /// destination. Copies and moves with name conflicts ask first.
+///
+/// Folders open in tabs, as in a browser: each tab has its own place, way
+/// back, selection and scroll, and the clipboard is shared, so items copied
+/// in one tab are pasted in another. The open tabs come back after a
+/// restart.
 class FilesScreen extends StatefulWidget {
   const FilesScreen({super.key, this.initialPath, this.initialIsLocal = false});
 
   /// Opens straight into this folder instead of the locations page
-  /// (screenshots, deep links).
+  /// (screenshots, deep links), in a single tab that isn't saved over the
+  /// tabs from last time.
   final String? initialPath;
   final bool initialIsLocal;
 
@@ -61,9 +72,24 @@ class FilesScreen extends StatefulWidget {
 }
 
 class FilesScreenState extends State<FilesScreen> {
-  // Where we are; null path = the locations page.
-  String? _path;
-  bool _isLocal = false;
+  // Where we are: the tab on screen's place. A null path is the locations
+  // page (or the Trash, with _place.isTrash).
+  FilesTabs _tabs = FilesTabs();
+  FilesTab get _tab => _tabs.active;
+  FilesPlace get _place => _tab.place;
+  String? get _path => _place.path;
+  bool get _isLocal => _place.isLocal;
+
+  /// Whether the tabs are saved for next time (not for [FilesScreen.initialPath]).
+  bool _saveTabsEnabled = true;
+
+  /// Set once the tabs change here, so the saved ones arriving late don't
+  /// replace them.
+  bool _tabsChanged = false;
+
+  /// The scroll of the tab on screen; a new one (at the tab's own offset)
+  /// whenever another tab or place comes up.
+  ScrollController _scroll = ScrollController(keepScrollOffset: false);
 
   final _cache = <String, _Listing>{};
   bool _loading = false;
@@ -81,7 +107,8 @@ class FilesScreenState extends State<FilesScreen> {
   bool _searching = false;
   final _search = TextEditingController();
 
-  final _selected = <String>{};
+  /// The tab on screen's selection: each tab keeps its own.
+  Set<String> get _selected => _tab.selected;
   _Clip? _clip;
 
   // The locations page
@@ -120,22 +147,26 @@ class FilesScreenState extends State<FilesScreen> {
     _loadHome();
     final initial = widget.initialPath;
     if (initial != null) {
-      _path = initial;
-      _isLocal = widget.initialIsLocal;
+      _saveTabsEnabled = false;
+      _tabs = FilesTabs(FilesPlace.folder(initial, isLocal: widget.initialIsLocal));
       _load();
+    } else {
+      _restoreTabs();
     }
   }
 
   @override
   void dispose() {
+    _scroll.dispose();
     _search.dispose();
     _transfers.dispose();
     super.dispose();
   }
 
-  /// Back steps out of selection, then search, then up a folder, then to
-  /// the locations page. False when there is nothing left to step out of
-  /// (the shell then goes to Home).
+  /// Back steps out of selection, then search, then back to where the tab
+  /// was before (or, with nowhere to go back to, up a folder), then to the
+  /// locations page. False when there is nothing left to step out of (the
+  /// shell then goes to Home).
   bool handleBack() {
     if (_selected.isNotEmpty) {
       setState(_selected.clear);
@@ -145,8 +176,12 @@ class FilesScreenState extends State<FilesScreen> {
       _closeSearch();
       return true;
     }
-    if (_path != null) {
-      _up();
+    if (_tab.history.isNotEmpty) {
+      _show(_tab.back);
+      return true;
+    }
+    if (!_place.isHome) {
+      _up(record: false);
       return true;
     }
     return false;
@@ -384,18 +419,35 @@ class FilesScreenState extends State<FilesScreen> {
   // -------------------------------------------------------------------------
   // Navigation
 
-  void _open(String path, {required bool isLocal}) {
+  double get _offset => _scroll.hasClients ? _scroll.offset : 0;
+
+  /// Changes what is on screen with [change] (another place in this tab,
+  /// or another tab), then brings it up: at its own scroll offset, with no
+  /// search or error from the last one, freshly listed.
+  void _show(void Function() change) {
+    final from = _place;
+    _tab.offset = _offset;
     setState(() {
-      _path = path;
-      _isLocal = isLocal;
-      _selected.clear();
+      change();
       _searching = false;
       _search.clear();
       _error = null;
       _stale = false;
+      _loading = false;
+      final old = _scroll;
+      _scroll = ScrollController(initialScrollOffset: _tab.offset, keepScrollOffset: false);
+      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
     });
-    _load();
+    _saveTabs();
+    if (_path != null) _load();
+    // Leaving the Trash: its row on the locations page says what is left.
+    if (from.isTrash && !_place.isTrash) _loadTrash();
   }
+
+  /// Takes the tab on screen to [to]; with [record], Back comes back.
+  void _go(FilesPlace to, {bool record = true}) => _show(() => _tab.go(to, record: record, offset: _offset));
+
+  void _open(String path, {required bool isLocal}) => _go(FilesPlace.folder(path, isLocal: isLocal));
 
   Future<void> _openLocation(FileLocation l) async {
     if (l.kind == LocationKind.trash) return _openTrash();
@@ -409,24 +461,10 @@ class FilesScreenState extends State<FilesScreen> {
     _open(l.path, isLocal: l.isLocal);
   }
 
-  /// The Trash, as its own screen over Files. What comes back from it is
-  /// reloaded here; its "Show" opens the folder it went back to.
-  Future<void> _openTrash() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => TrashScreen(
-        onRestored: (folders) {
-          for (final f in folders) {
-            _cache.remove(_key(f, false));
-          }
-          if (_path != null && !_isLocal && folders.contains(_path)) _load();
-        },
-        onShowFolder: (folder) {
-          if (mounted) _open(folder, isLocal: false);
-        },
-      ),
-    ));
-    if (mounted) _loadTrash();
-  }
+  /// The Trash, in this tab like any other place (so it can be a tab of
+  /// its own). What comes back from it is reloaded; its "Show" opens the
+  /// folder it went back to.
+  void _openTrash() => _go(const FilesPlace.trash());
 
   FileLocation get _trashLocation => FileLocation(
         label: 'Trash',
@@ -435,25 +473,132 @@ class FilesScreenState extends State<FilesScreen> {
         detail: _trash == null ? 'Deleted files, kept for 30 days' : TrashApi.summary(_trash!),
       );
 
-  void _goHome() {
-    setState(() {
-      _path = null;
-      _selected.clear();
-      _searching = false;
-      _search.clear();
-      _error = null;
-    });
+  /// Up a folder, or from a location's top (or the Trash) to the
+  /// locations page. When that is where the tab just came from, it is the
+  /// same as Back, so Back doesn't then return down again.
+  void _up({bool record = true}) {
+    final path = _path;
+    if (path == null && !_place.isTrash) return;
+    final root = _location?.path;
+    final FilesPlace to = path == null || path == root || path == '/' || (root == null && parentOf(path) == path)
+        ? const FilesPlace.home()
+        : FilesPlace.folder(parentOf(path), isLocal: _isLocal);
+    final history = _tab.history;
+    if (history.isNotEmpty && history.last.place == to) {
+      _show(_tab.back);
+    } else {
+      _go(to, record: record);
+    }
   }
 
-  void _up() {
-    final path = _path;
-    if (path == null) return;
-    final root = _location?.path;
-    if (path == root || path == '/' || (root == null && parentOf(path) == path)) {
-      _goHome();
-      return;
+  // -------------------------------------------------------------------------
+  // Tabs
+
+  /// The tabs open last time, unless something has changed here already.
+  Future<void> _restoreTabs() async {
+    String? saved;
+    try {
+      saved = await StorageService.instance.getFilesTabs();
+    } catch (_) {}
+    final tabs = FilesTabs.decode(saved);
+    if (tabs == null || !mounted || _tabsChanged) return;
+    _show(() => _tabs = tabs);
+  }
+
+  void _saveTabs() {
+    _tabsChanged = true;
+    if (!_saveTabsEnabled) return;
+    final json = _tabs.encode();
+    StorageService.instance.setFilesTabs(json).catchError((Object _) {});
+  }
+
+  FilesTab? _tabById(int id) => _tabs.all.where((t) => t.id == id).firstOrNull;
+
+  void _switchTab(int id) {
+    final tab = _tabById(id);
+    if (tab == null || tab == _tab) return;
+    _show(() => _tabs.activate(tab));
+  }
+
+  /// Opens a tab at [place] next to this one and shows it.
+  void _newTab([FilesPlace place = const FilesPlace.home()]) => _show(() => _tabs.open(place));
+
+  void _closeTab(int id) {
+    final tab = _tabById(id);
+    if (tab == null) return;
+    if (tab == _tab) {
+      _show(() => _tabs.close(tab));
+    } else {
+      setState(() => _tabs.close(tab));
+      _saveTabs();
     }
-    _open(parentOf(path), isLocal: _isLocal);
+  }
+
+  /// A place's name: a folder's own (or its location's, for a location
+  /// root), "Trash", or "Files" for the locations page.
+  String _titleOf(FilesPlace p) {
+    if (p.isTrash) return 'Trash';
+    final path = p.path;
+    if (path == null) return 'Files';
+    final l = locationFor(path, _allLocations, isLocal: p.isLocal);
+    if (l != null && l.path == path) return l.label;
+    if (path == '/') return 'Root';
+    return baseName(path);
+  }
+
+  FileTabInfo _tabInfo(FilesTab t) {
+    final p = t.place;
+    final path = p.path;
+    final l = path == null ? null : locationFor(path, _allLocations, isLocal: p.isLocal);
+    return FileTabInfo(
+      id: t.id,
+      title: _titleOf(p),
+      icon: p.isTrash
+          ? Icons.delete_outline
+          : path == null
+              ? Icons.home_outlined
+              : (l != null && l.path == path ? locationIcon(l.kind) : Icons.folder_outlined),
+      subtitle: p.isTrash
+          ? (_trash == null ? null : TrashApi.summary(_trash!))
+          : path == null
+              ? 'Locations'
+              : [if (p.isLocal) 'This phone', path].join(' · '),
+    );
+  }
+
+  Future<void> _showTabs() async {
+    final choice = await showTabsSheet(
+      context,
+      tabs: [for (final t in _tabs.all) _tabInfo(t)],
+      activeId: _tab.id,
+      onClose: _closeTab,
+      hereTitle: _place.isHome ? null : _title,
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case (TabsChoice.select, final int id):
+        _switchTab(id);
+      case (TabsChoice.newTab, _):
+        _newTab();
+      case (TabsChoice.newTabHere, _):
+        _newTab(_place);
+      case (TabsChoice.select, null):
+        break;
+    }
+  }
+
+  Widget _tabsButton() => TabsButton(count: _tabs.length, onPressed: _showTabs);
+
+  /// The strip of tabs, while there is more than one.
+  Widget? _tabStrip() {
+    if (_tabs.length < 2) return null;
+    return FileTabStrip(
+      tabs: [for (final t in _tabs.all) _tabInfo(t)],
+      activeId: _tab.id,
+      onSelect: _switchTab,
+      onClose: _closeTab,
+      onNew: _newTab,
+    );
   }
 
   void _closeSearch() {
@@ -533,7 +678,7 @@ class FilesScreenState extends State<FilesScreen> {
     final entries = items ?? _selectedEntries;
     if (entries.isEmpty) return;
     setState(() {
-      _clip = _Clip(entries, _isLocal, kind);
+      _clip = _Clip(entries, _isLocal, kind, _title);
       _selected.clear();
     });
   }
@@ -872,6 +1017,7 @@ class FilesScreenState extends State<FilesScreen> {
     final server = !_isLocal;
     final actions = <EntryAction>{
       EntryAction.select,
+      if (e.isDir) EntryAction.openInNewTab,
       if (!e.isDir && _isLocal) EntryAction.openWith,
       EntryAction.copy,
       EntryAction.move,
@@ -888,6 +1034,8 @@ class FilesScreenState extends State<FilesScreen> {
     switch (action) {
       case EntryAction.open:
         _onTap(e);
+      case EntryAction.openInNewTab:
+        _newTab(FilesPlace.folder(e.path, isLocal: _isLocal));
       case EntryAction.select:
         _toggle(e);
       case EntryAction.copy:
@@ -942,41 +1090,69 @@ class FilesScreenState extends State<FilesScreen> {
   // Building
 
   /// The folder's name, or its location's for a location root.
-  String get _title {
-    final path = _path;
-    if (path == null) return 'Files';
-    final l = _location;
-    if (l != null && l.path == path) return l.label;
-    if (path == '/') return 'Root';
-    return baseName(path);
-  }
+  String get _title => _titleOf(_place);
 
   @override
   Widget build(BuildContext context) {
+    final home = _place.isHome;
     final banner = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_path == null ? _homeStale : _stale)
-          OfflineBanner(lastUpdated: _path == null ? _homeUpdated : _listing?.fetched, onRetry: _refresh),
+        ?_tabStrip(),
+        if (home ? _homeStale : _stale && !_place.isTrash)
+          OfflineBanner(lastUpdated: home ? _homeUpdated : _listing?.fetched, onRetry: _refresh),
         TransferStrip(progress: _transfers.current, onCancel: _transfers.cancelCurrent, queued: _transfers.queued),
       ],
     );
-    return _path == null ? _buildHome(banner) : _buildFolder(banner);
+    // A new subtree for each tab and place, so the scroll view starts at
+    // that tab's own offset.
+    return KeyedSubtree(
+      key: ValueKey('${_tab.id} $_place'),
+      child: _place.isTrash ? _buildTrash(banner) : (home ? _buildHome(banner) : _buildFolder(banner)),
+    );
   }
 
   Widget? _pasteBar() {
     final clip = _clip;
     if (clip == null) return null;
-    final move = clip.kind == TransferKind.move;
-    final what = clip.entries.length == 1 ? '“${clip.entries.first.name}”' : '${clip.entries.length} items';
-    final canPaste = _path != null && _error == null && !_loading;
+    final n = clip.entries.length;
+    final String detail;
+    var canPaste = false;
+    if (_place.isTrash) {
+      detail = "Can't paste into Trash";
+    } else if (_path == null) {
+      detail = 'Open a folder to paste ${n == 1 ? 'it' : 'them'}';
+    } else {
+      detail = '${clip.kind == TransferKind.move ? 'Moving' : 'Copying'} from ${clip.from}';
+      canPaste = _error == null && !_loading;
+    }
     return PasteBar(
-      label: _path == null ? '${move ? 'Moving' : 'Copying'} $what. Open a folder to put ${clip.entries.length == 1 ? 'it' : 'them'} in.' : '${move ? 'Moving' : 'Copying'} $what',
-      actionLabel: move ? 'Move here' : 'Copy here',
+      label: '${n == 1 ? '“${clip.entries.first.name}”' : '$n items'} on clipboard',
+      detail: detail,
+      actionLabel: 'Paste here',
       onPaste: canPaste ? _paste : null,
       onCancel: () => setState(() => _clip = null),
     );
   }
+
+  // The Trash, in a tab -------------------------------------------------------
+
+  Widget _buildTrash(Widget banner) => TrashScreen(
+        inPlace: true,
+        leading: IconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Up', onPressed: _up),
+        actions: [_tabsButton()],
+        header: banner,
+        floatingActionButton: _pasteBar(),
+        controller: _scroll,
+        onRestored: (folders) {
+          for (final f in folders) {
+            _cache.remove(_key(f, false));
+          }
+        },
+        onShowFolder: (folder) {
+          if (mounted) _open(folder, isLocal: false);
+        },
+      );
 
   // The locations page -------------------------------------------------------
 
@@ -985,7 +1161,9 @@ class FilesScreenState extends State<FilesScreen> {
     final nothing = _storage.isEmpty && !_storageLoading;
     return AppScaffold.slivers(
       title: 'Files',
+      actions: [_tabsButton()],
       banner: banner,
+      controller: _scroll,
       onRefresh: _loadHome,
       floatingActionButton: _pasteBar(),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -1276,6 +1454,8 @@ class FilesScreenState extends State<FilesScreen> {
             switch (v) {
               case 'all':
                 setState(() => _selected.addAll(_visible.map((e) => e.path)));
+              case 'tab':
+                if (single != null) _newTab(FilesPlace.folder(single.path, isLocal: _isLocal));
               case 'rename':
                 if (single != null) _rename(single);
               case 'compress':
@@ -1288,6 +1468,7 @@ class FilesScreenState extends State<FilesScreen> {
           },
           itemBuilder: (context) => [
             const PopupMenuItem(value: 'all', child: Text('Select all')),
+            if (single != null && single.isDir) const PopupMenuItem(value: 'tab', child: Text('Open in new tab')),
             if (single != null) const PopupMenuItem(value: 'rename', child: Text('Rename')),
             if (server) const PopupMenuItem(value: 'compress', child: Text('Compress to ZIP')),
             if (server && single != null && single.isExtractable) const PopupMenuItem(value: 'extract', child: Text('Extract here')),
@@ -1304,6 +1485,7 @@ class FilesScreenState extends State<FilesScreen> {
     final canUnfav = _customFavorites.contains(path);
     return [
       IconButton(icon: const Icon(Icons.search), tooltip: 'Search in this folder', onPressed: () => setState(() => _searching = true)),
+      _tabsButton(),
       PopupMenuButton<String>(
         tooltip: 'More options',
         onSelected: (v) {
@@ -1350,6 +1532,7 @@ class FilesScreenState extends State<FilesScreen> {
       bottom: _folderBottom(context),
       appBar: _selectionBar(),
       banner: banner,
+      controller: _scroll,
       onRefresh: _load,
       maxContentWidth: _grid ? null : Space.readingMaxWidth,
       floatingActionButton: fab,

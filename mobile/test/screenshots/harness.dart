@@ -125,7 +125,9 @@ class FakeResponse {
 
 /// The fake NivaroOS server. Every request is answered from the fixture
 /// tree unless [overrides] has an entry for it, keyed "GET /v1/sys/logs"
-/// (method, space, path; for the VM sidecar the path starts with /vm).
+/// (method, space, path; for the VM sidecar the path starts with /vm). A
+/// key with the query as well ("GET /v1/folder?path=/DATA/Documents/Work",
+/// decoded) wins over the one without, for a screen that lists two folders.
 /// A request with no fixture gets a 404 and is recorded in [misses], so a
 /// screen that calls something new shows up in the test output.
 class FakeServer {
@@ -150,7 +152,7 @@ class FakeServer {
     final path = req.url.port == vmSidecarPort ? '/vm${req.url.path}' : req.url.path;
     final key = '${req.method} $path';
     requests.add(key);
-    final override = overrides[key];
+    final override = (req.url.hasQuery ? overrides['$key?${Uri.decodeQueryComponent(req.url.query)}'] : null) ?? overrides[key];
     if (override != null) {
       final r = override is FakeResponse ? override : FakeResponse(override);
       return _json(r.body, r.status);
@@ -250,6 +252,9 @@ Future<void> signIn() async {
     'username': 'alex',
   });
   await StorageService.instance.init();
+  // The storage cache outlives the mock above: no Files tabs from the
+  // test before.
+  await StorageService.instance.setFilesTabs(null);
   ApiClient.instance.setBaseUrl(fakeServer);
   ApiClient.instance.setSession('test-token', 'test-refresh');
 }

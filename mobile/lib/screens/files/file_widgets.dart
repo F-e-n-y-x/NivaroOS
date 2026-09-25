@@ -577,24 +577,31 @@ class TransferStrip extends StatelessWidget {
   }
 }
 
-/// While something is on the Files clipboard: "Copying 3 items", Cancel
-/// and "Copy here". A floating toolbar over the list, so the user can
-/// move between folders to pick the destination.
+/// While something is on the Files clipboard: "3 items on clipboard",
+/// where they came from, Clear and "Paste here". A floating toolbar over
+/// the list, so the user can move between folders (and tabs) to pick the
+/// destination.
 class PasteBar extends StatelessWidget {
   const PasteBar({
     super.key,
     required this.label,
+    this.detail,
     required this.actionLabel,
     required this.onPaste,
     required this.onCancel,
   });
 
   final String label;
+
+  /// A second, quieter line: what paste will do, or why it can't here.
+  final String? detail;
   final String actionLabel;
 
   /// Null while pasting here isn't possible (the items' own folder for a
   /// move, or a location that isn't a folder).
   final VoidCallback? onPaste;
+
+  /// Clears the clipboard.
   final VoidCallback onCancel;
 
   @override
@@ -611,18 +618,217 @@ class PasteBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.sm, Space.sm),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final text = Semantics(
+              liveRegion: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
+                  if (detail != null)
+                    Text(
+                      detail!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                ],
               ),
-              const SizedBox(width: Space.sm),
-              TextButton(onPressed: onCancel, child: const Text('Cancel')),
+            );
+            final buttons = [
+              TextButton(onPressed: onCancel, child: const Text('Clear')),
               const SizedBox(width: Space.xs),
               FilledButton(onPressed: onPaste, child: Text(actionLabel)),
+            ];
+            // Too narrow for the words beside the buttons (a small phone,
+            // large text): the buttons go under them.
+            if (constraints.maxWidth < MediaQuery.textScalerOf(context).scale(340)) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(padding: const EdgeInsets.only(top: Space.xs, right: Space.sm), child: text),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: buttons),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: text),
+                const SizedBox(width: Space.sm),
+                ...buttons,
+              ],
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+
+/// What a tab shows in the strip and the tabs sheet.
+class FileTabInfo {
+  const FileTabInfo({required this.id, required this.title, required this.icon, this.subtitle});
+  final int id;
+  final String title;
+  final IconData icon;
+
+  /// Where it is in full (the folder's path), for the sheet and tooltips.
+  final String? subtitle;
+}
+
+/// The tabs button in the Files app bar: the number of open tabs in a
+/// square, as browsers draw it. Opens the tabs sheet.
+class TabsButton extends StatelessWidget {
+  const TabsButton({super.key, required this.count, required this.onPressed});
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      value: count == 1 ? '1 tab open' : '$count tabs open',
+      child: IconButton(
+        tooltip: 'Tabs',
+        onPressed: onPressed,
+        icon: Builder(builder: (context) {
+          final icon = IconTheme.of(context);
+          final size = icon.size ?? 24;
+          final color = icon.color ?? Theme.of(context).colorScheme.onSurfaceVariant;
+          return ExcludeSemantics(
+            child: SizedBox.square(
+              dimension: size,
+              child: Center(
+                child: Container(
+                  width: size * 0.8,
+                  height: size * 0.8,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: color, width: size / 12),
+                    borderRadius: BorderRadius.circular(size / 6),
+                  ),
+                  // Sized from the icon, which already follows the text size.
+                  child: Text(
+                    count > 99 ? '∞' : '$count',
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(color: color, fontSize: size * (count > 9 ? 0.36 : 0.46), fontWeight: FontWeight.w700, height: 1),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+/// The open tabs as a row of chips under the app bar, shown while there is
+/// more than one: tap to switch, × on the one on screen to close it, + for
+/// a new tab. The chips are the direction's own (ChipTheme).
+class FileTabStrip extends StatefulWidget {
+  const FileTabStrip({
+    super.key,
+    required this.tabs,
+    required this.activeId,
+    required this.onSelect,
+    required this.onClose,
+    required this.onNew,
+  });
+
+  final List<FileTabInfo> tabs;
+  final int activeId;
+  final ValueChanged<int> onSelect;
+  final ValueChanged<int> onClose;
+  final VoidCallback onNew;
+
+  @override
+  State<FileTabStrip> createState() => _FileTabStripState();
+}
+
+class _FileTabStripState extends State<FileTabStrip> {
+  final _scroll = ScrollController();
+  final _keys = <int, GlobalKey>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _revealActive();
+  }
+
+  @override
+  void didUpdateWidget(FileTabStrip old) {
+    super.didUpdateWidget(old);
+    if (old.activeId != widget.activeId || old.tabs.length != widget.tabs.length) _revealActive();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls the tab on screen into view (a new one opens off the edge).
+  void _revealActive() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _keys[widget.activeId]?.currentContext;
+      if (!mounted || context == null) return;
+      Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+      Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final ids = {for (final t in widget.tabs) t.id};
+    _keys.removeWhere((id, _) => !ids.contains(id));
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        // Opaque, as the bar above it: the list scrolls underneath.
+        color: theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.fromLTRB(gutter, Space.xs, gutter - Space.sm, Space.xs),
+          child: Row(
+            children: [
+              for (final (i, t) in widget.tabs.indexed) ...[
+                if (i > 0) const SizedBox(width: Space.sm),
+                _chip(t, i),
+              ],
+              IconButton(icon: const Icon(Icons.add), tooltip: 'New tab', onPressed: widget.onNew),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _chip(FileTabInfo t, int i) {
+    final active = t.id == widget.activeId;
+    return Semantics(
+      key: _keys.putIfAbsent(t.id, GlobalKey.new),
+      hint: 'Tab ${i + 1} of ${widget.tabs.length}',
+      child: InputChip(
+        avatar: Icon(t.icon),
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 160),
+          child: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        tooltip: t.subtitle,
+        selected: active,
+        showCheckmark: false,
+        onPressed: () => widget.onSelect(t.id),
+        onDeleted: active ? () => widget.onClose(t.id) : null,
+        deleteButtonTooltipMessage: 'Close tab',
       ),
     );
   }

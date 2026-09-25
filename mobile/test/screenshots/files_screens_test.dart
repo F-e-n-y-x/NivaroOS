@@ -23,6 +23,21 @@ const _documents = '/DATA/Documents';
 
 final _docs = {'GET /v1/folder': fixture('files/documents'), 'GET /v1/trash/support': fixture('files/trash_support')};
 
+/// Documents, with Work (opened in a second tab) empty.
+final _docsAndWork = {..._docs, 'GET /v1/folder?path=$_documents/Work': fixture('files/empty')};
+
+/// Copies Budget 2026.xlsx, then opens Work in a new tab from its menu.
+Future<void> _copyThenWorkTab(WidgetTester t) async {
+  await t.tap(find.byTooltip('More options for Budget 2026.xlsx'));
+  await _wait(t);
+  await t.tap(find.text('Copy'));
+  await _wait(t);
+  await t.tap(find.byTooltip('More options for Work'));
+  await _wait(t);
+  await t.tap(find.text('Open in new tab'));
+  await _wait(t);
+}
+
 /// Local files for the viewer to open.
 final _dir = Directory.systemTemp.createTempSync('nivaro_files_shots');
 File _local(String name, String content) => File('${_dir.path}/$name')..writeAsStringSync(content);
@@ -83,7 +98,7 @@ class _Parts extends StatelessWidget {
       title: 'Gallery',
       collapsingTitle: false,
       banner: TransferStrip(progress: progress, onCancel: () {}, queued: 1),
-      floatingActionButton: PasteBar(label: 'Moving 3 items', actionLabel: 'Move here', onPaste: () {}, onCancel: () {}),
+      floatingActionButton: PasteBar(label: '3 items on clipboard', detail: 'Moving from Downloads', actionLabel: 'Paste here', onPaste: () {}, onCancel: () {}),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       slivers: const [FolderSkeleton(rows: 6)],
     );
@@ -175,6 +190,45 @@ final Map<String, _Shot> _shots = {
       await t.tap(find.byTooltip('More options for Budget 2026.xlsx'));
       await _wait(t);
       await t.tap(find.text('Move'));
+      await _wait(t);
+    },
+  ),
+  // Tabs: the strip with the shared clipboard, the tabs sheet, and the
+  // Trash as a tab (where paste is off).
+  'files_tabs_paste': _Shot(
+    () => const FilesScreen(initialPath: _documents),
+    overrides: _docsAndWork,
+    tab: true,
+    small: true,
+    text2x: true,
+    tablet: true,
+    before: _copyThenWorkTab,
+  ),
+  'files_tabs_sheet': _Shot(
+    () => const FilesScreen(initialPath: _documents),
+    overrides: _docsAndWork,
+    tab: true,
+    text2x: true,
+    before: (t) async {
+      await _copyThenWorkTab(t);
+      await t.tap(find.byTooltip('Tabs'));
+      await _wait(t);
+    },
+  ),
+  'files_tabs_trash': _Shot(
+    () => const FilesScreen(initialPath: _documents),
+    overrides: _docsAndWork,
+    tab: true,
+    small: true,
+    before: (t) async {
+      await _copyThenWorkTab(t);
+      await t.tap(find.byTooltip('Tabs'));
+      await _wait(t);
+      await t.tap(find.text('New tab'));
+      await _wait(t);
+      await t.scrollUntilVisible(find.text('Trash'), 200, scrollable: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first);
+      await _wait(t);
+      await t.tap(find.text('Trash'));
       await _wait(t);
     },
   ),
