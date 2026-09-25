@@ -6,6 +6,7 @@ import '../services/rfb_client.dart';
 import '../services/vm_client.dart';
 import '../ui/ui.dart';
 import '../widgets/rfb_view.dart';
+import 'host_display_fit.dart';
 
 /// The NivaroOS server's own desktop (x11vnc on its display), through the
 /// same console as a VM (`/v1/vm-sidecar/host/console`). The one thing
@@ -153,6 +154,9 @@ class _ResolutionSheet extends StatelessWidget {
     final gutter = Space.gutter(context);
     final d = display;
     final options = d?.resolutions ?? const <DisplayResolution>[];
+    // This phone's real screen, for the sizes that keep its shape.
+    final media = MediaQuery.of(context);
+    final fits = phoneFitSizes(media.size * media.devicePixelRatio);
     return ListView(
       shrinkWrap: true,
       padding: const EdgeInsets.only(bottom: Space.lg),
@@ -168,6 +172,29 @@ class _ResolutionSheet extends StatelessWidget {
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
+        if (d != null && fits.isNotEmpty) ...[
+          const SectionHeader(title: 'Fit this phone'),
+          Padding(
+            padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.sm),
+            child: Text(
+              'Same shape as this screen held sideways, so the desktop fills it. Lower sizes stream faster on a slow connection.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ),
+          for (final f in fits)
+            Builder(builder: (context) {
+              final current = f.width == d.width && f.height == d.height;
+              return ListTile(
+                leading: Icon(f.percent == 100 ? Icons.smartphone_outlined : Icons.aspect_ratio_outlined),
+                title: Text('${f.width} × ${f.height}'),
+                subtitle: Text(f.percent == 100 ? 'Sharpest · pixel for pixel' : '${f.percent}% · faster'),
+                selected: current,
+                trailing: current ? const Icon(Icons.check, semanticLabel: 'Current') : null,
+                onTap: current ? null : () => Navigator.of(context).pop(DisplayResolution(width: f.width, height: f.height, label: '')),
+              );
+            }),
+          const SectionHeader(title: "Server's screen modes"),
+        ],
         if (d == null)
           Padding(
             padding: EdgeInsets.symmetric(horizontal: gutter),
