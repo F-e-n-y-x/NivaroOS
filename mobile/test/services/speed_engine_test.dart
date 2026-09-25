@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/services/speed/speed_engine.dart';
+import 'package:nivaroos_mobile/services/speedtest_service.dart';
 
 void main() {
   test('JSON server list: https hosts, "Sponsor (City)" names, nearest first', () {
@@ -23,5 +24,14 @@ void main() {
     // Ramp-up slices (10, 20, 30) and one burst (5000) don't count.
     expect(trimmedMean([10, 20, 30, 900, 940, 950, 960, 980, 1000, 5000]), closeTo((900 + 940 + 950 + 960 + 980 + 1000) / 6, 0.01));
     expect(trimmedMean(const []), 0);
+  });
+
+  test('home-network hosts: private, link-local and .local; not public names or Tailscale', () {
+    for (final h in ['192.168.1.10', '10.0.0.5', '172.16.0.1', '172.31.255.1', '169.254.3.4', 'nas.local', 'fe80::1']) {
+      expect(isHomeNetworkHost(h), isTrue, reason: h);
+    }
+    for (final h in ['nivaro.example.com', '172.32.0.1', '100.64.0.1', '8.8.8.8', '192.169.1.1', '']) {
+      expect(isHomeNetworkHost(h), isFalse, reason: h);
+    }
   });
 }

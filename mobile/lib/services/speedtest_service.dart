@@ -183,18 +183,61 @@ class SpeedtestService {
 
   /// The link between this phone and the NivaroOS server, against the
   /// gateway's `/speedtest/{ping,download,upload}` (no size limit there).
+  /// When the saved server address goes through the internet (a Cloudflare
+  /// or other tunnel, a public name), the test would measure that path - so
+  /// it first tries the server's own home-network addresses and, if this
+  /// phone reaches one directly, measures over the LAN instead. The result's
+  /// [SpeedResult.server] says which path was measured.
   Future<SpeedResult> runPhoneToServerTest({SpeedtestProgressCallback? onProgress}) async {
     onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting, fraction: 0.02));
-    final api = ApiClient.instance;
+    final path = await _serverPath();
     return _runPhoneTest(
-      name: api.buildUri('/').host,
-      ping: api.buildUri('/speedtest/ping'),
-      download: (_) => api.buildUri('/speedtest/download'),
-      upload: (_) => api.buildUri('/speedtest/upload'),
+      name: path.label,
+      ping: path.base.replace(path: '/speedtest/ping'),
+      download: (_) => path.base.replace(path: '/speedtest/download'),
+      upload: (_) => path.base.replace(path: '/speedtest/upload'),
       uploadBodyBytes: 200 * 1000 * 1000,
       unreachable: "Couldn't reach the server's speed test. Check the connection and try again.",
       onProgress: onProgress,
     );
+  }
+
+  /// Where to test the phone-to-server link: the saved address when it's
+  /// already on the home network, else the first of the server's LAN
+  /// addresses this phone can reach, else the saved address.
+  Future<({Uri base, String label})> _serverPath() async {
+    final api = ApiClient.instance;
+    final saved = api.buildUri('/').replace(path: '', query: null);
+    if (isHomeNetworkHost(saved.host)) return (base: saved, label: 'Home network · ${saved.host}');
+
+    final lan = <Uri>[];
+    try {
+      final results = await Future.wait([
+        api.get('/sys/network-interfaces').timeout(const Duration(seconds: 3)),
+        api.get('/gateway/port').timeout(const Duration(seconds: 3)),
+      ]);
+      final port = int.tryParse('${results[1]['data']}') ?? 80;
+      final ifaces = results[0]['data'];
+      if (ifaces is List) {
+        for (final i in ifaces) {
+          final ip = i is Map ? i['ip']?.toString() ?? '' : '';
+          if (isHomeNetworkHost(ip)) lan.add(Uri(scheme: 'http', host: ip, port: port));
+        }
+      }
+    } catch (_) {
+      // Can't ask the server: test the saved address.
+    }
+    if (lan.isNotEmpty) {
+      final probe = SpeedEngine(streams: 1);
+      final reachable = await Future.wait([
+        for (final base in lan)
+          probe.latency(base.replace(path: '/speedtest/ping'), samples: 2, timeout: const Duration(milliseconds: 900)).then((l) => l == null ? null : base),
+      ]);
+      for (final base in reachable) {
+        if (base != null) return (base: base, label: 'Home network · ${base.host}');
+      }
+    }
+    return (base: saved, label: 'Through ${saved.host} · not a direct home-network link');
   }
 
   /// Latency, then download, then upload with [SpeedEngine] (see there for
@@ -238,4 +281,17 @@ class SpeedtestService {
   }
 
   static double _round(double v) => (v * 10).roundToDouble() / 10;
+}
+
+/// A private (RFC 1918), link-local or .local address: the phone reaching
+/// it is on the same network as the server, with nothing in between.
+bool isHomeNetworkHost(String host) {
+  final h = host.toLowerCase();
+  if (h.endsWith('.local')) return true;
+  final p = h.split('.').map(int.tryParse).toList();
+  if (p.length != 4 || p.any((x) => x == null || x < 0 || x > 255)) {
+    return h.startsWith('fe80:') || h.startsWith('fd') || h.startsWith('fc');
+  }
+  final a = p[0]!, b = p[1]!;
+  return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || (a == 169 && b == 254);
 }
