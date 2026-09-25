@@ -2049,6 +2049,10 @@ otherwise.
    what's new, update NivaroOS; the phone app's own update lives here too)
    and "System packages" (Debian package updates, security first, upgrade).
    Two rows in More; Home's attention rows link to the right one.
+6. **Files gets tabs (2026-09-26)**, like the web UI's Files: several
+   folders open at once, copy or cut in one tab and paste in another; tabs
+   survive leaving and returning to Files. To build after stage 3 (the
+   Files screen is owned by the Trash work until then).
 
 ---
 

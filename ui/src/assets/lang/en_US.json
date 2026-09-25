@@ -2982,5 +2982,7 @@
   "Start test": "Start test",
   "Speedtest": "Speedtest",
   "Pick a test": "Pick a test",
-  "Shell to open": "Shell to open"
+  "Shell to open": "Shell to open",
+  "Fit this window, lower resolution": "Fit this window, lower resolution",
+  "{percent}% of the window": "{percent}% of the window"
 }

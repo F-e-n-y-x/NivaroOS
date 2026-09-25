@@ -283,6 +283,37 @@
 									<b-icon v-if="resizingHost" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
 								</button>
 
+								<!-- Same shape as this window, fewer pixels: fills the window
+								     without black bars and streams faster on a slow link. -->
+								<template v-if="windowFitOptions.length">
+									<p class="device-menu-title device-menu-title-divided">{{ $t('Fit this window, lower resolution') }}</p>
+									<button
+										v-for="o in windowFitOptions"
+										:key="'fit-' + o.w + 'x' + o.h"
+										type="button"
+										role="menuitemradio"
+										:aria-checked="currentResolution === `${o.w}x${o.h}` ? 'true' : 'false'"
+										class="device-menu-row"
+										:class="{ active: currentResolution === `${o.w}x${o.h}` }"
+										:disabled="resizingHost"
+										@click="changeResolution(o.w, o.h)"
+									>
+										<span class="device-row-icon" :class="{ active: currentResolution === `${o.w}x${o.h}` }">
+											<b-icon icon="aspect-ratio" size="is-small"></b-icon>
+										</span>
+										<span class="network-row-details">
+											<span class="network-row-label">{{ o.w }} × {{ o.h }}</span>
+											<span class="network-row-meta">{{ $t('{percent}% of the window', { percent: o.percent }) }}</span>
+										</span>
+										<b-icon
+											v-if="currentResolution === `${o.w}x${o.h}`"
+											icon="check"
+											size="is-small"
+											custom-class="has-text-success"
+										></b-icon>
+									</button>
+								</template>
+
 								<p class="device-menu-title device-menu-title-divided">
 									{{ displayHeadless ? $t('Preset Resolutions') : $t('Available Modes') }}
 								</p>
@@ -647,6 +678,7 @@
 <script>
 import RFB from '@novnc/novnc'
 import { instance as http } from '@/service/service'
+import { windowFitSizes } from '@/utils/windowFit'
 import { apiBase as sidecarApiBase, wsBase as sidecarWsBase } from '@/api/vmSidecar'
 import RemoteClipboardPanel from '@/shared/clipboard/RemoteClipboardPanel.vue'
 import { record as recordClipboard, typeText } from '@/service/remoteClipboard'
@@ -877,6 +909,9 @@ export default {
 			displayError: '',
 			resizingHost: false,
 			currentWindowEstimate: '',
+			// The window's target size ({w, h}), for the lower-resolution
+			// options that keep its shape.
+			windowTarget: null,
 			customWidth: null,
 			customHeight: null,
 			keyboardRows: KEYBOARD_ROWS,
@@ -909,6 +944,11 @@ export default {
 		}
 	},
 	computed: {
+		// The window's shape at 75%, 66% and 50% of its size: even numbers,
+		// never below 640×480 (the smallest size the sidecar accepts).
+		windowFitOptions() {
+			return windowFitSizes(this.windowTarget)
+		},
 		needsDesktopChoice() {
 			return !this.forceConnect && this.deChecked && this.deState !== '' && this.deState !== 'supported'
 		},
@@ -1544,6 +1584,7 @@ export default {
 			const t = this.windowTargetSize()
 			if (!t) return
 			this.currentWindowEstimate = `${t.w} × ${t.h}`
+			this.windowTarget = t
 		},
 
 		async matchWindowResolution() {
