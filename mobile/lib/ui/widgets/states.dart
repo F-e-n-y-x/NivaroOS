@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 
 /// The layout shared by [EmptyState] and [ErrorState].
@@ -117,7 +118,7 @@ class EmptyState extends StatelessWidget {
       title: title,
       message: message,
       actions: [
-        if (actionLabel != null && onAction != null) FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),
+        if (actionLabel != null && onAction != null) FilledButton.tonal(style: tonalButtonStyle(context), onPressed: onAction, child: Text(actionLabel!)),
       ],
       sliver: sliver,
     );

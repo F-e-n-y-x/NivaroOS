@@ -20,6 +20,8 @@ import 'files/file_ops.dart';
 import 'files/file_sheets.dart';
 import 'files/file_widgets.dart';
 import 'files/transfers.dart';
+import 'files/trash_api.dart';
+import 'files/trash_screen.dart';
 
 /// Where this phone's own files start.
 const phoneStorageRoot = '/storage/emulated/0';
@@ -98,6 +100,10 @@ class FilesScreenState extends State<FilesScreen> {
   DateTime? _homeUpdated;
   bool _homeStale = false;
 
+  /// What's in the server's Trash, for its row; null until known (or when
+  /// it couldn't be read).
+  TrashListing? _trash;
+
   late final TransferQueue _transfers = TransferQueue(onFinished: _onTransferFinished);
 
   String _key(String path, bool isLocal) => '${isLocal ? 'phone' : 'server'}:$path';
@@ -150,7 +156,7 @@ class FilesScreenState extends State<FilesScreen> {
   // Loading
 
   Future<void> _loadHome() async {
-    await Future.wait([_loadStorage(), _loadPhones(), _loadCloud(), _loadFavorites()]);
+    await Future.wait([_loadStorage(), _loadPhones(), _loadCloud(), _loadFavorites(), _loadTrash()]);
     if (!mounted) return;
     final offline = _storageError is ApiException && (_storageError as ApiException).isUnreachable;
     setState(() {
@@ -201,6 +207,15 @@ class FilesScreenState extends State<FilesScreen> {
         _storage = list;
       }
     });
+  }
+
+  Future<void> _loadTrash() async {
+    try {
+      final t = await TrashApi.list();
+      if (mounted) setState(() => _trash = t);
+    } catch (_) {
+      // The row still opens the Trash, which says what went wrong.
+    }
   }
 
   Future<void> _loadPhones() async {
@@ -383,6 +398,7 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   Future<void> _openLocation(FileLocation l) async {
+    if (l.kind == LocationKind.trash) return _openTrash();
     if (l.isLocal) {
       final granted = await PermissionService.requestManageStorage();
       if (!granted && mounted) {
@@ -392,6 +408,32 @@ class FilesScreenState extends State<FilesScreen> {
     if (!mounted) return;
     _open(l.path, isLocal: l.isLocal);
   }
+
+  /// The Trash, as its own screen over Files. What comes back from it is
+  /// reloaded here; its "Show" opens the folder it went back to.
+  Future<void> _openTrash() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => TrashScreen(
+        onRestored: (folders) {
+          for (final f in folders) {
+            _cache.remove(_key(f, false));
+          }
+          if (_path != null && !_isLocal && folders.contains(_path)) _load();
+        },
+        onShowFolder: (folder) {
+          if (mounted) _open(folder, isLocal: false);
+        },
+      ),
+    ));
+    if (mounted) _loadTrash();
+  }
+
+  FileLocation get _trashLocation => FileLocation(
+        label: 'Trash',
+        path: '',
+        kind: LocationKind.trash,
+        detail: _trash == null ? 'Deleted files, kept for 30 days' : TrashApi.summary(_trash!),
+      );
 
   void _goHome() {
     setState(() {
@@ -694,9 +736,9 @@ class FilesScreenState extends State<FilesScreen> {
     final confirmed = toTrash
         ? await ConfirmDialog.destructive(
             context,
-            title: 'Move $what to trash?',
-            message: 'You can undo this right away, or restore ${items.length == 1 ? 'it' : 'them'} later from the trash in the web UI.',
-            confirmLabel: 'Move to trash',
+            title: 'Move $what to Trash?',
+            message: 'You can undo this right away, or restore ${items.length == 1 ? 'it' : 'them'} later from Trash in Files.',
+            confirmLabel: 'Move to Trash',
             permanent: false,
           )
         : await ConfirmDialog.destructive(
@@ -726,10 +768,11 @@ class FilesScreenState extends State<FilesScreen> {
       final protected = data is Map ? (data['protected'] as List? ?? const []) : const [];
       setState(_selected.clear);
       await _load();
+      if (ids.isNotEmpty) _loadTrash();
       if (protected.isNotEmpty) {
         _snack(res['message']?.toString() ?? 'Some items are drives or system folders and were left alone.');
       } else if (ids.isNotEmpty) {
-        _snack('Moved $what to trash', action: SnackBarAction(label: 'Undo', onPressed: () => _restore(ids)));
+        _snack('Moved $what to Trash', action: SnackBarAction(label: 'Undo', onPressed: () => _restore(ids, what)));
       } else {
         _snack('Deleted $what');
       }
@@ -739,13 +782,25 @@ class FilesScreenState extends State<FilesScreen> {
     }
   }
 
-  Future<void> _restore(List<String> ids) async {
+  /// Undo of a delete: puts [ids] back from the Trash ([what] names them).
+  Future<void> _restore(List<String> ids, String what) async {
     try {
-      await ApiClient.instance.post('/trash/restore', body: {'ids': ids});
-      await _load();
-      _snack('Restored');
+      final r = await TrashApi.restore(ids);
+      for (final f in r.folders) {
+        if (f != _path) _cache.remove(_key(f, false));
+      }
+      if (_path != null && !_isLocal) await _load();
+      _loadTrash();
+      if (!mounted) return;
+      if (r.failed.isNotEmpty) {
+        _snack("Couldn't restore ${r.failed.length == 1 ? '“${r.failed.first.name}”' : '${r.failed.length} items'}: ${r.failed.first.error}", error: true);
+      } else if (r.renamed.isNotEmpty) {
+        _snack(TrashApi.restoredMessage(r, folderLabel: (f) => f == '/' ? 'Root' : baseName(f)));
+      } else {
+        _snack('Restored $what');
+      }
     } catch (e) {
-      _snack("Couldn't restore: ${_plain(e)}", error: true);
+      _snack("Couldn't restore $what: ${_plain(e)}", error: true);
     }
   }
 
@@ -879,7 +934,7 @@ class FilesScreenState extends State<FilesScreen> {
   }
 
   Future<void> _showLocations() async {
-    final l = await showLocationsSheet(context, locations: [..._allLocations, ..._favorites], current: _location);
+    final l = await showLocationsSheet(context, locations: [..._allLocations, _trashLocation, ..._favorites], current: _location);
     if (l != null) await _openLocation(l);
   }
 
@@ -941,6 +996,7 @@ class FilesScreenState extends State<FilesScreen> {
           SliverList.list(children: [
             ?_summaryPanel(),
             _storageGroup(),
+            _trashGroup(),
             _phonesGroup(),
             _cloudGroup(),
             _favoritesGroup(),
@@ -1020,8 +1076,8 @@ class FilesScreenState extends State<FilesScreen> {
     return Padding(
       padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
       child: Card.filled(
-        color: scheme.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
+        color: DesignTokens.of(context).cardColor,
+        shape: DesignTokens.of(context).cardShape(),
         child: Padding(
           padding: const EdgeInsets.all(Space.lg),
           child: Semantics(
@@ -1073,6 +1129,19 @@ class FilesScreenState extends State<FilesScreen> {
       ]);
     }
     return TileGroup(title: 'Drives', children: [for (final l in _storage) _usageTile(l)]);
+  }
+
+  /// The Trash, just under the drives it holds deleted files from.
+  Widget _trashGroup() {
+    final t = _trash;
+    return TileGroup(children: [
+      ListTile(
+        leading: const Icon(Icons.delete_outline),
+        title: const Text('Trash'),
+        subtitle: Text(t == null ? 'Deleted files, kept for 30 days' : TrashApi.summary(t)),
+        onTap: _openTrash,
+      ),
+    ]);
   }
 
   Widget _favoritesGroup() {
@@ -1198,7 +1267,7 @@ class FilesScreenState extends State<FilesScreen> {
         IconButton(icon: const Icon(Icons.drive_file_move_outlined), tooltip: 'Move', onPressed: () => _clipSelected(TransferKind.move)),
         IconButton(
           icon: const Icon(Icons.delete_outline),
-          tooltip: _isLocal ? 'Delete' : 'Move to trash',
+          tooltip: _isLocal ? 'Delete' : 'Move to Trash',
           onPressed: () => _delete(items),
         ),
         PopupMenuButton<String>(

@@ -493,3 +493,284 @@ Not changed, on purpose:
   does the same); its subtitle got shorter instead.
 - App store details keep their flat header (icon, name, Install): the store
   page is a catalogue entry, not a running thing with a state.
+
+## 10. Design system v3 — directions (stage 3, 2026-09-26)
+
+Owner feedback on 1.3.0: the app still reads as basic, with basic
+colours. He likes the line charts but not the combined server card; he
+wants one card per metric, like the web UI's desktop widgets
+(`ui/src/shell/widgets/*.vue`). He also wants running VMs on Home and
+more themes. Stage 3 builds three visual directions as switchable
+tokens, so he can choose from real screenshots and then try them on the
+phone.
+
+### What is shared (keep whatever direction wins)
+
+- **Appearance model** (`lib/ui/theme/appearance.dart`,
+  `theme_controller.dart`). `Appearance` has four settings: mode, accent,
+  wallpaper and direction. All four are saved through `StorageService`
+  (`theme_mode`, `theme_accent`, `theme_wallpaper`, `design_direction`)
+  and all survive sign-out.
+  - **Mode:** System, Light, Dark or True black. True black is an
+    explicit choice; System never selects it.
+  - **Accents:** a curated set of eight. NivaroOS blue (the default),
+    Teal, Lime, Amber, Ember, Rose, Violet and Graphite. There is no
+    free colour wheel.
+  - **Wallpaper colour:** on Android 12+, the app reads
+    `DynamicColorPlugin.getCorePalette()` (dynamic_color **1.9.0**; 2.x
+    doesn't compile against Flutter 3.47's `ColorScheme`). It reads it
+    again on every resume. The palette's key colour is used as a seed
+    through the same `ColorScheme.fromSeed` path as the accents, so
+    there is one code path and true black still applies. The option is
+    hidden when the phone has no palette.
+- **Themes** (`AppTheme.build` / `forAppearance`) are cached per
+  combination.
+  - True black makes only the backdrop `#000`. The containers sit on a
+    near-black ladder. App bars and the navigation bar get no tint, so
+    they don't turn navy when content scrolls under them (the mihon#1011
+    bug). Cards and TileGroup segments get a hairline edge.
+  - `MaterialApp` gets the black theme as its `darkTheme`.
+- **Picker:** the Appearance screen, opened from More → App →
+  Appearance (`lib/ui/widgets/appearance_picker.dart`). It has three
+  sections, and every change applies at once:
+  - Mode: four small pictures of Home, each drawn in that mode's real
+    colours. The selected one gets an outline and a check.
+  - Colour: swatches, with Wallpaper first when the phone offers it.
+  - Style: a sample card for each direction.
+- **Home** (`lib/screens/dashboard_screen.dart`).
+  - A server header shows the name, the verdict, the OS and the uptime.
+  - Below it, one `MetricCard` per metric: Processor, Memory, Network,
+    Storage, and Graphics when the GPU sidecar
+    (`GET /v1/gpu/gpu-stats`) reports one.
+  - Then Needs attention, then **Virtual machines**, then Apps.
+    - Running and paused VMs are listed with a state chip, the vCPU and
+      memory spec, **Open console** and **Shut down**. Shut down asks
+      first; force stop stays on the VMs tab.
+    - One row after the list opens the VMs tab.
+  - The grid is two columns on phones, three below 840dp and four above.
+    At large text it drops to one column. A row that can't fit the next
+    card is closed by widening its last card.
+- **Metric cards:**
+  - Each card has a label and one big tabular number with a smaller unit.
+  - Next comes a status word plus facts, for example "Light · 48 °C ·
+    4.2 GHz". The word comes from the web UI's load bands (Light /
+    Moderate / Heavy, then Maxed out as a warning). Memory and Storage
+    get a word only when they run low.
+  - Last comes the card's own `LiveChart`. The line turns the status
+    colour only together with a status word, so colour is never the only
+    signal.
+  - Network shows download (solid line) and upload (dashed, a size
+    smaller), each with a key.
+  - Storage changes too slowly for a line. It shows one thin bar per
+    drive instead, like the web UI's Disks widget.
+- **`LiveChart`** (`lib/ui/widgets/live_chart.dart`):
+  - A monotone cubic line that never overshoots.
+  - Readings sit on a fixed 2-minute grid anchored at the right edge, so
+    a fresh chart grows in from the right. It needs at least two readings;
+    before that it shows "Collecting…".
+  - A flat fill or none; never a gradient.
+  - A dot marks "now" and a dotted line marks zero. It can also draw a
+    threshold line and a scale.
+  - History: 40 polls at 3 s each (`LiveHistory`), with separate series
+    for download, upload and GPU.
+- **Detail pages** (Processor, Memory, Network, and the new Graphics
+  page) start with a `HistoryPanel`. It shows the reading now, a 160dp
+  chart with a scale and a time span, and the low, average and high over
+  that span.
+- **Contrast:** `test/ui/theme_contrast_test.dart` now checks every text
+  and non-text pair in **every direction × accent × light/dark/black**
+  (96 themes, 9,657 checks). That includes the chart lines, meter bars,
+  card type and Tonal's header panel.
+
+### The three directions
+
+The three are selectable under Appearance → Design preview. **Rack is
+the default** (the recommendation below) until the owner picks; to adopt
+another everywhere, flip `DesignDirection.defaultDirection`. `v2` (the
+1.3 theme) stays in code only for the reference column of the comparison
+sheets; the app no longer offers it, and a saved `v2` loads as the
+default. Screens have one
+code path. A direction changes only the `ColorScheme` neutrals, the text
+theme, the component shapes and the `DesignTokens` extension (card
+colour and edge, corners, hero, label and data type, and chart style).
+`SectionHeader`, `TileGroup`, `MetricCard`, `LiveChart` and the dialog,
+sheet, button and chip themes read those tokens.
+
+| | A · Rack | B · Tonal | C · Console |
+|---|---|---|---|
+| Mood | Warm instrument panel (Lintel, Nothing OS, Braun) | Material 3 Expressive, Pixel-native | Night-shift ops console (s.host, iStat Menus, Linear) |
+| Page / card (light) | paper `#F1EFEA` / white with a `#E0DCD4` hairline | tonal `surface` / `surfaceContainerHigh` | `#F3F4F1` / white with a hairline |
+| Page / card (dark) | graphite `#131312` / `#1F1F1D` with a hairline | tonal dark | `#0B0C0D` / `#181A1D` with a hairline |
+| Type | Geist; Geist Mono for section micro-labels; hero numbers Geist Light 45sp | Google Sans Flex; bold 45sp hero numbers | IBM Plex Sans; Plex Mono for every number and label (uppercase) |
+| Shape | cards 14, buttons 12, sheets 24 | cards 24, header panel 28, stadium buttons | cards 10, buttons 8, chips 6, sheets 16 |
+| Chart | 1.5dp line in ink, no fill, accent "now" dot | 2.5dp accent line, 12% flat fill, ringed dot | 1.25dp accent line, dotted grid, "−2 MIN … NOW" |
+| Loud moment | the big thin numbers | the server header as a `primaryContainer` panel | the accent line on graphite (Console keeps the accent's own chroma) |
+| Signature accent (shot) | Ember | Violet | Lime, dark |
+
+References: Lintel
+(https://dribbble.com/shots/27751806-Lintel-Smart-Home-Dashboard), Vault &
+Vine (https://dribbble.com/shots/27663435-Vault-Vine-File-Manager-App-UI),
+Nothing OS concept (https://dribbble.com/shots/25627970-New-Nothing-OS-4-0-Concept),
+Muggle system monitor widget (https://dribbble.com/shots/14561614), Home Assistant 2025.9 tile
+card (https://www.home-assistant.io/blog/2025/09/03/release-20259/), Nixtio
+(https://dribbble.com/shots/27583405), Solora
+(https://dribbble.com/shots/27441647), M3 Expressive
+(https://m3.material.io/blog/building-with-m3-expressive), s.host
+(https://dribbble.com/shots/26130028), MSP alert triage
+(https://dribbble.com/shots/27598264), Data Center Monitoring
+(https://dribbble.com/shots/26611461), iStat Menus
+(https://bjango.com/mac/istatmenus/). Typefaces: Geist, Google Sans Flex and IBM
+Plex, bundled as static Latin cuts in `mobile/assets/fonts/` under the OFL.
+Their licences are registered in `LicenseRegistry`, so they appear in About.
+
+**Screenshots:** `mobile/test/screenshots/goldens/directions/<v2|rack|tonal|console>/`
+has Home in light, dark and black, Home scrolled to Needs attention, VMs
+and Apps, the Processor page, Files, Appearance, App info, and Home in the
+direction's signature accent. `goldens/directions/compare/*.png` puts all
+four side by side for each screen and mode, and `home_accents.png`
+compares the signature accents. Generate them with
+`flutter test test/screenshots/directions_test.dart --update-goldens`.
+
+**Recommendation: A · Rack.** It is the most distinctive of the three
+without being loud. The warm neutrals, hairlines and big light numbers
+give it the craft of the best references. It reads equally well in light,
+dark and true black. Keeping the charts in ink leaves colour for status,
+which suits a server monitor. Tonal is the safe native choice, but it is
+the closest to the "generic Material" the owner called basic. Console
+fits the homelab identity best, but it is dark-first and denser.
+
+**Open for the rollout, after the pick:**
+- A few screens still hard-code panel corners (`Corners.extraLarge` on
+  the Files storage panel and the App info header). They should read
+  `DesignTokens.cardRadius`.
+- Mono type for paths, IPs and image tags on Files and App info.
+- A contrast-level setting (Standard / Medium / High, using the
+  `contrastLevel` of `fromSeed`).
+- Tweening chart updates between polls.
+
+## Owner feedback (2026-09-26): true black keeps each style's character
+
+In True black mode every design direction (Console, Rack, Tonal) must stay
+recognisably itself - its own accent treatment, surface layering (as borders
+or faint tonal steps on #000), type, chart and card style - not fall back to
+one generic default dark theme. True black = that style's dark variant with
+pure-black backgrounds and only the minimum changes OLED needs.
+
+
+## Owner decision (2026-09-26): the styles stay a user choice
+
+The owner likes the styles and wants them kept as a customisation layer:
+Console, Rack and Tonal remain selectable in Settings > Appearance > Style
+(with Mode and Colour), not reduced to one winner. The recommended one is
+the default. Every screen must look right in every style x mode (light,
+dark, true black) x accent, and new screens are built and screenshot-tested
+that way.
+The owner also said (2026-09-26): later work may improve the styles or add
+more of them when it makes the app better - no need to ask first. New
+styles must meet the same bar (every screen x mode x accent, contrast
+tests, screenshots) before they ship.
+
+## Owner request (2026-09-26): Monochrome, first in Colour
+
+Settings > Appearance > Colour starts with a Monochrome swatch so the owner
+can build a monotone look: accent = near-black in light mode and near-white
+in dark / true black, with neutral (grey) containers and no hue anywhere
+else - buttons, switches, charts, selection and focus all monochrome, still
+meeting 4.5:1 / 3:1 contrast. Status colours (success / warning / error /
+info) keep their hues because they carry meaning. Works with every style.
+
+## Owner request (2026-09-26): a style styles the whole app
+
+Today a style mostly changes cards and widgets. Each style must own the
+whole UI through ThemeData, so screens adopt it without per-screen code:
+typography (its font pairing everywhere, not just headings), top app bars
+(shape, weight, scroll-under behaviour), navigation bar / rail (indicator
+shape, label style), list tiles and groups, all buttons, text fields,
+chips, switches / checkboxes / sliders, progress, tabs, dialogs, bottom
+sheets, snackbars, menus, tooltips, dividers, icons (weight / fill), page
+transitions and motion, scrollbars, and the scaffold background treatment.
+Screens must not hard-code any of these; a style = one theme builder.
+Checked by a component gallery screenshot per style x mode x accent plus
+every screen's screenshots.
+
+## Owner request (2026-09-26): console preview for a single running VM
+
+Home's Running VMs section shows a live console preview (a periodically
+refreshed screenshot of the VM's display, tap = open its console) only
+when exactly ONE VM is running. With two or more running, no previews -
+just the rows (name, state, open console / stop). The preview is fetched
+from /v1/vm-sidecar/vms/{name}/screenshot with the Authorization header
+(never a token in the URL), refreshes only while Home is visible (every
+~5 s, paused in the background), keeps the VM's aspect ratio, and shows a
+quiet placeholder while loading or if the VM has no display.
+
+
+### Stage-3 polish (2026-09-26): both critics' fixes, applied to all three
+
+The stage-3 review (a Claude critique; Gemini's quota was exhausted, so its
+column is the builder's own reading) found the directions differed only in
+the Home cards and shared one generic card template. Applied to every
+direction so the owner compares each at its best:
+
+- **Each direction owns the whole app, not just Home.** Title and headline
+  roles in the direction's face and weight (Geist Light titles in Rack),
+  its primary button (`ButtonTreatment`: ink in Rack, tonal in Tonal, an
+  accent outline with a mono label in Console; tonal buttons restate their
+  fill through `tonalButtonStyle`), `TileGroup` as one hairline panel with
+  ruled rows in Rack and Console (`ruledGroups`), status chips as an
+  outline with a coloured icon and ink word there (`outlinedChips`), and
+  usage bars and meters in the direction's height and fill (a hairline
+  track with an ink fill in Rack). The Files storage panel, the Trash
+  summary and the App info header read `DesignTokens.cardColor` /
+  `cardShape()` instead of hard-coded corners.
+- **No spaced-capital eyebrows, no changed case.** Section labels are
+  sentence case in every direction (Rack: Geist Medium, one step up).
+  Console uses mono only for numbers, units and time labels; names, facts
+  and headers stay in Plex Sans in their own case (`enp7s0`, `blue`).
+- **Metric card: the chart is the body.** The chart takes all the height
+  the text leaves and runs to the card's edges (`LiveChart(bleed: true)`);
+  its minimum height grows with the text scale. Units sit at about half
+  the number's size on its baseline, a hair apart; a value too wide scales
+  down instead of being cut. Rack drops the card icons so the number leads
+  and marks "now" with an accent dot plus a short accent tick.
+- **Network: two charts, two scales.** Download and upload side by side,
+  each over its own chart with its peak named ("peak 3.7 MB/s"); the
+  detail page draws upload as a second chart with its own scale.
+- **Home header:** the server's name is the app bar's title (no "Home"
+  large title over it). Every screen now uses the small 64dp bar; top-level
+  screens set their title a size up (headlineSmall). Tonal's verdict panel
+  follows health: neutral when all is clear, the status container (a wash
+  in dark) when something needs attention.
+- **Tonal:** the busiest percentage metric's card takes the primary
+  container (not while it is alerting; the status word says it then);
+  tighter card padding.
+- **Palettes:** Rack paper `#EEEBE3`, cards `#F8F6F1`, ink `#1D1C1A`; dark
+  warm graphite `#161513` / `#22201C`. Console light is graphite on grey
+  (`#E9EAE6` / `#F4F5F2`, ink `#202224`); Console lime is seeded from
+  `#B5D334` and drawn at 1.5dp.
+- **Detail pages:** Low / Average / High are the chart's header; a
+  25/50/75 grid in every direction; a percentage chart zooms to 25, 50 or
+  100% and its scale says so; the Processor and Memory lists no longer
+  repeat the reading the panel shows.
+- **Appearance:** a live preview of two Home cards at the top; Design
+  preview (three samples drawn in their own themes, Rack marked
+  Recommended), then Mode, then Colour. Wallpaper colours are a "Match
+  wallpaper" switch; the eight accents are a labelled 4 × 2 grid. The
+  settings row reads "Rack · System default · NivaroOS blue".
+- **Storage keeps its drive bars** (the server reports no disk activity
+  to draw a line from, and capacity is flat over two minutes). **Open for
+  the owner:** whether Storage should get a line anyway.
+- **Screenshots:** `directions_test.dart` also shoots Home at 360 × 740 and
+  200% text, Trash and a Trash item, Appearance at 200% text and with
+  wallpaper colours on, for every direction, each with a comparison sheet.
+
+## Owner request (2026-09-26): widget refresh interval setting
+
+Settings > Home (or Appearance) gets "Refresh widgets": 2 s, 4 s (default),
+10 s, 30 s, 1 min, and "Only when I pull to refresh". It sets how often
+Home's metric widgets (CPU, memory, network, GPU, running VMs) and their
+detail pages poll the server; drive usage keeps its slower pace (never
+faster than 30 s). Stored per phone. Polling still pauses when Home isn't
+visible or the app is in the background. Charts keep the same time span
+(their sample count adapts), and the VM console preview refreshes at the
+chosen interval but never faster than every 5 s.

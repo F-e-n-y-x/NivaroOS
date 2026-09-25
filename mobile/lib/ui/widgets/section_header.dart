@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 
-/// The label above a group of rows: titleSmall in the primary colour, on
-/// the screen gutter, with an optional text action on the right ("See all").
+/// The label above a group of rows, in the direction's section style
+/// (DesignTokens.sectionLabel; always sentence case), on the screen gutter, with an optional text action on the right ("See all").
 class SectionHeader extends StatelessWidget {
   const SectionHeader({super.key, required this.title, this.actionLabel, this.onAction});
 
@@ -15,7 +16,7 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = DesignTokens.of(context);
     final gutter = Space.gutter(context);
     final hasAction = actionLabel != null && onAction != null;
     return Padding(
@@ -27,7 +28,7 @@ class SectionHeader extends StatelessWidget {
           Expanded(
             child: Semantics(
               header: true,
-              child: Text(title, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
+              child: Text(title, style: tokens.sectionLabel),
             ),
           ),
           if (hasAction) TextButton(onPressed: onAction, child: Text(actionLabel!)),

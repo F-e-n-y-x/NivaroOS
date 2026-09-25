@@ -422,17 +422,17 @@ class _VmCard extends StatelessWidget {
     final large = MediaQuery.textScalerOf(context).scale(10) > 13;
 
     final Widget primary = switch (state) {
-      VmPowerState.running => FilledButton.tonalIcon(
+      VmPowerState.running => FilledButton.tonalIcon(style: tonalButtonStyle(context), 
           onPressed: busy ? null : onConsole,
           icon: const Icon(Icons.desktop_windows_outlined),
           label: const Text('Console'),
         ),
-      VmPowerState.paused => FilledButton.tonalIcon(
+      VmPowerState.paused => FilledButton.tonalIcon(style: tonalButtonStyle(context), 
           onPressed: busy ? null : onResume,
           icon: const Icon(Icons.play_arrow_outlined),
           label: const Text('Resume'),
         ),
-      _ => FilledButton.tonalIcon(
+      _ => FilledButton.tonalIcon(style: tonalButtonStyle(context), 
           onPressed: busy ? null : onStart,
           icon: const Icon(Icons.play_arrow_outlined),
           label: const Text('Start'),
@@ -808,7 +808,7 @@ class _DeleteVmDialogState extends State<DeleteVmDialog> {
       actions: [
         TextButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
+          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError, side: BorderSide.none),
           onPressed: () {
             HapticFeedback.heavyImpact();
             Navigator.of(context).pop(_wipe);

@@ -107,8 +107,10 @@ void main() {
 
     testWidgets('network details label the three speed tests; the server test runs on the server', (tester) async {
       final server = await _run(tester, const DashboardScreen(), () async {
-        await tester.tap(find.text('Network in'));
+        await tester.tap(find.text('Network'));
         await _settle(tester);
+        // Under the download and upload charts.
+        await tester.scrollUntilVisible(find.text("Server's internet"), 300);
         expect(find.text("Server's internet"), findsOneWidget);
         await tester.scrollUntilVisible(find.text("This phone's internet"), 300);
         expect(find.text('This phone to the server'), findsOneWidget);

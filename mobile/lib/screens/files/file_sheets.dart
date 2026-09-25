@@ -52,24 +52,33 @@ Future<T?> _showSheet<T>(BuildContext context, WidgetBuilder builder) => showMod
 /// copy or move: keep both, replace or skip, for all of them at once
 /// ("Apply to all", on by default) or one at a time. Returns the answer per
 /// source path, or null for Cancel.
+///
+/// A restore from the Trash passes [restore]: the server never overwrites
+/// there, so the choices are Keep both (the restored one gets
+/// "(restored)" in its name) and Skip.
 Future<Map<String, ConflictChoice>?> showConflictSheet(
   BuildContext context, {
   required List<String> conflicts,
   required String destName,
-  required TransferKind kind,
+  TransferKind kind = TransferKind.copy,
+  bool restore = false,
 }) {
   return _showSheet<Map<String, ConflictChoice>>(
     context,
-    (context) => ConflictSheet(conflicts: conflicts, destName: destName, kind: kind),
+    (context) => ConflictSheet(conflicts: conflicts, destName: destName, kind: kind, restore: restore),
   );
 }
 
 class ConflictSheet extends StatefulWidget {
-  const ConflictSheet({super.key, required this.conflicts, required this.destName, required this.kind});
+  const ConflictSheet({super.key, required this.conflicts, required this.destName, this.kind = TransferKind.copy, this.restore = false});
 
   final List<String> conflicts;
   final String destName;
   final TransferKind kind;
+
+  /// Restoring from the Trash: no Replace, and the kept copy is renamed
+  /// the server's way.
+  final bool restore;
 
   @override
   State<ConflictSheet> createState() => _ConflictSheetState();
@@ -110,7 +119,10 @@ class _ConflictSheetState extends State<ConflictSheet> {
         : '${widget.conflicts.length} items are already in ${widget.destName}';
     final shown = widget.conflicts.take(4).map(baseName).toList();
     final more = widget.conflicts.length - shown.length;
-    final verb = widget.kind == TransferKind.move ? 'moved' : 'copied';
+    final verb = widget.restore ? 'restored' : (widget.kind == TransferKind.move ? 'moved' : 'copied');
+    final keepBoth = widget.restore
+        ? (many && _applyToAll ? 'The restored ones get “(restored)” added, like “photo (restored).jpg”' : 'The restored one becomes “${restoredName(name)}”')
+        : (many && _applyToAll ? 'The new ones get a number, like “photo (2).jpg”' : 'The new one becomes “${uniqueName(name, {name})}”');
 
     return SingleChildScrollView(
       child: Column(
@@ -134,15 +146,16 @@ class _ConflictSheetState extends State<ConflictSheet> {
           ListTile(
             leading: const Icon(Icons.file_copy_outlined),
             title: const Text('Keep both'),
-            subtitle: Text(many && _applyToAll ? 'The new ones get a number, like “photo (2).jpg”' : 'The new one becomes “${uniqueName(name, {name})}”'),
+            subtitle: Text(keepBoth),
             onTap: () => _choose(ConflictChoice.keepBoth),
           ),
-          ListTile(
-            leading: Icon(Icons.swap_horiz, color: scheme.error),
-            title: Text('Replace', style: TextStyle(color: scheme.error)),
-            subtitle: const Text('The ones already there are overwritten'),
-            onTap: () => _choose(ConflictChoice.replace),
-          ),
+          if (!widget.restore)
+            ListTile(
+              leading: Icon(Icons.swap_horiz, color: scheme.error),
+              title: Text('Replace', style: TextStyle(color: scheme.error)),
+              subtitle: const Text('The ones already there are overwritten'),
+              onTap: () => _choose(ConflictChoice.replace),
+            ),
           ListTile(
             leading: const Icon(Icons.skip_next_outlined),
             title: const Text('Skip'),
@@ -218,7 +231,7 @@ Future<EntryAction?> showEntryActions(
           if (actions.contains(EntryAction.unfavorite)) tile(EntryAction.unfavorite, Icons.star_outlined, 'Remove from favorites'),
           if (actions.contains(EntryAction.info)) tile(EntryAction.info, Icons.info_outline, 'Details'),
           if (actions.contains(EntryAction.delete))
-            tile(EntryAction.delete, Icons.delete_outline, deleteIsPermanent ? 'Delete' : 'Move to trash', danger: true),
+            tile(EntryAction.delete, Icons.delete_outline, deleteIsPermanent ? 'Delete' : 'Move to Trash', danger: true),
           const SizedBox(height: Space.sm),
         ],
       ),
@@ -472,7 +485,11 @@ Future<FileLocation?> showLocationsSheet(
 }) {
   return _showSheet<FileLocation>(context, (context) {
     final groups = <String, List<FileLocation>>{
-      'Server storage': [for (final l in locations) if (l.kind == LocationKind.storage || l.kind == LocationKind.usb) l],
+      // The Trash spans the server's drives, so it closes their group.
+      'Server storage': [
+        for (final l in locations) if (l.kind == LocationKind.storage || l.kind == LocationKind.usb) l,
+        for (final l in locations) if (l.kind == LocationKind.trash) l,
+      ],
       'Phones': [for (final l in locations) if (l.kind == LocationKind.thisPhone || l.kind == LocationKind.phone) l],
       'Cloud': [for (final l in locations) if (l.kind == LocationKind.cloud) l],
       'Favorites': [for (final l in locations) if (l.kind == LocationKind.favorite) l],

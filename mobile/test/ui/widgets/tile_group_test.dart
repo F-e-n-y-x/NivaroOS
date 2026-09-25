@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nivaroos_mobile/ui/theme/appearance.dart';
 import 'package:nivaroos_mobile/ui/theme/spacing.dart';
 import 'package:nivaroos_mobile/ui/widgets/section_header.dart';
 import 'package:nivaroos_mobile/ui/widgets/tile_group.dart';
@@ -7,12 +8,15 @@ import 'package:nivaroos_mobile/ui/widgets/tile_group.dart';
 import '../pump.dart';
 
 void main() {
-  testWidgets('header, rows as separate segments, and a footer', (tester) async {
-    await pumpUi(tester, const TileGroup(
-      title: 'Server',
-      footer: 'Only admins see these.',
-      children: [ListTile(title: Text('Updates')), ListTile(title: Text('Logs')), ListTile(title: Text('Terminal'))],
-    ));
+  testWidgets('tonal directions: header, rows as separate segments, and a footer', (tester) async {
+    await pumpUi(
+        tester,
+        const TileGroup(
+          title: 'Server',
+          footer: 'Only admins see these.',
+          children: [ListTile(title: Text('Updates')), ListTile(title: Text('Logs')), ListTile(title: Text('Terminal'))],
+        ),
+        direction: DesignDirection.v2);
     expect(find.byType(SectionHeader), findsOneWidget);
     expect(find.byType(Divider), findsNothing);
     expect(find.text('Only admins see these.'), findsOneWidget);
@@ -36,8 +40,23 @@ void main() {
     expect(tester.getTopLeft(find.text('Server')).dx, tester.getTopLeft(find.byIcon(Icons.update_outlined)).dx);
   });
 
+  testWidgets('Rack and Console: one hairline panel with ruled rows', (tester) async {
+    for (final d in [DesignDirection.rack, DesignDirection.console]) {
+      await pumpUi(
+          tester,
+          const TileGroup(title: 'Server', children: [ListTile(title: Text('Updates')), ListTile(title: Text('Logs')), ListTile(title: Text('Terminal'))]),
+          direction: d);
+      expect(find.byType(Card), findsNothing);
+      expect(find.byType(Divider), findsNWidgets(2));
+      final edged = tester
+          .widgetList<Material>(find.ancestor(of: find.text('Updates'), matching: find.byType(Material)))
+          .where((m) => m.shape is RoundedRectangleBorder && (m.shape! as RoundedRectangleBorder).side.style == BorderStyle.solid);
+      expect(edged, hasLength(1));
+    }
+  });
+
   testWidgets('without a title there is no header', (tester) async {
-    await pumpUi(tester, const TileGroup(children: [ListTile(title: Text('Only'))]));
+    await pumpUi(tester, const TileGroup(children: [ListTile(title: Text('Only'))]), direction: DesignDirection.v2);
     expect(find.byType(SectionHeader), findsNothing);
     final shape = tester.widget<Card>(find.byType(Card)).shape! as RoundedRectangleBorder;
     expect(shape.borderRadius, BorderRadius.circular(Corners.large));

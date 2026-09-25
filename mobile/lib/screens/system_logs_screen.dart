@@ -346,7 +346,7 @@ class _LogTile extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: Space.lg),
-              FilledButton.tonalIcon(
+              FilledButton.tonalIcon(style: tonalButtonStyle(context), 
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: entry.raw));
                   if (sheet.mounted) Navigator.of(sheet).pop();

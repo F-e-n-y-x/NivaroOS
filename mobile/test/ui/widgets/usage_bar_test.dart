@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/design_tokens.dart';
 import 'package:nivaroos_mobile/ui/theme/status_colors.dart';
 import 'package:nivaroos_mobile/ui/widgets/usage_bar.dart';
 
@@ -24,7 +25,8 @@ void main() {
     expect(find.text('55%'), findsOneWidget);
     expect(find.text('230 GB of 422 GB'), findsOneWidget);
     expect(_bar(tester).value, closeTo(230 / 422, 1e-9));
-    expect(_fill(tester), AppTheme.light().colorScheme.primary);
+    // Below the warning level: the direction's meter fill (ink in Rack).
+    expect(_fill(tester), AppTheme.light().extension<DesignTokens>()!.meterFill(AppTheme.light().colorScheme));
     // The percentage outranks the label.
     final label = tester.widget<Text>(find.text('System disk')).style!;
     final percent = tester.widget<Text>(find.text('55%')).style!;

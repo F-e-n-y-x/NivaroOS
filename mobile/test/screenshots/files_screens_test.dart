@@ -13,6 +13,7 @@ import 'package:nivaroos_mobile/screens/files/file_ops.dart';
 import 'package:nivaroos_mobile/screens/files/file_sheets.dart';
 import 'package:nivaroos_mobile/screens/files/file_widgets.dart';
 import 'package:nivaroos_mobile/screens/files/transfers.dart';
+import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
 import 'package:nivaroos_mobile/ui/ui.dart';
 
@@ -224,6 +225,49 @@ final Map<String, _Shot> _shots = {
         )),
   ),
   'files_parts': _Shot(() => const _Parts(), small: true),
+  'trash': _Shot(() => const TrashScreen(), small: true, text2x: true, tablet: true),
+  'trash_empty': _Shot(() => const TrashScreen(), overrides: {'GET /v1/trash': fixture('files/trash_empty')}),
+  'trash_error': _Shot(
+    () => const TrashScreen(),
+    overrides: {'GET /v1/trash': const FakeResponse({'success': 500, 'message': 'Trash index is unreadable'}, status: 500)},
+  ),
+  'trash_selection': _Shot(
+    () => const TrashScreen(),
+    small: true,
+    before: (t) async {
+      await t.longPress(find.text('notes.md'));
+      await _wait(t);
+      await t.tap(find.text('Old invoices'));
+      await _wait(t);
+    },
+  ),
+  'trash_item': _Shot(
+    () => const TrashScreen(),
+    text2x: true,
+    before: (t) async {
+      await t.scrollUntilVisible(find.text('Old invoices'), 200, scrollable: find.byType(Scrollable).first);
+      await _wait(t);
+      await t.tap(find.text('Old invoices'));
+      await _wait(t);
+    },
+  ),
+  'trash_restore_conflict': _Shot(
+    () => const TrashScreen(),
+    overrides: {'GET /v1/folder': fixture('files/documents')},
+    before: (t) async {
+      await t.tap(find.text('notes.md'));
+      await _wait(t);
+      await t.tap(find.text('Restore'));
+      await _wait(t);
+    },
+  ),
+  'trash_empty_confirm': _Shot(
+    () => const TrashScreen(),
+    before: (t) async {
+      await t.tap(find.text('Empty Trash'));
+      await _wait(t);
+    },
+  ),
   'file_viewer_markdown': _Shot(
     () => FileViewerScreen(file: _entry(_readme), path: _readme.path, isLocal: true),
     small: true,
@@ -242,7 +286,10 @@ final Map<String, _Shot> _shots = {
 };
 
 void main() {
-  setUp(signIn);
+  setUp(() async {
+    TrashScreen.clearCache();
+    await signIn();
+  });
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
     Future<void> shootOne(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
@@ -256,7 +303,7 @@ void main() {
           overrides: s.overrides,
           before: s.before,
           tab: s.tab,
-          pushed: name.startsWith('file_viewer'),
+          pushed: name.startsWith('file_viewer') || name.startsWith('trash'),
         );
 
     // Real elevation shadows: flutter_test draws them as solid black

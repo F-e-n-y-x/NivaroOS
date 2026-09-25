@@ -186,7 +186,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
           ]),
           TileGroup(title: 'App', children: [
-            const ThemeModeTile(),
+            const AppearanceTile(),
             ListTile(
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Settings'),

@@ -5,10 +5,13 @@
 //
 //   flutter test test/screenshots/home_test.dart --update-goldens
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/models/dashboard_stats.dart';
+import 'package:nivaroos_mobile/models/gpu_stats.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
 import 'package:nivaroos_mobile/screens/system_logs_screen.dart';
 import 'package:nivaroos_mobile/screens/system_updates_screen.dart';
@@ -21,7 +24,9 @@ import 'harness.dart';
 /// Home after a couple of minutes on screen: two minutes of readings
 /// behind the sparklines (the history is kept in memory from the 4 s
 /// polls, so a fresh Home starts with none).
-class _HistoryController extends HomeController {
+class HistoryController extends HomeController {
+  HistoryController();
+
   @override
   Future<void> refreshAll() async {
     await super.refreshAll();
@@ -29,17 +34,39 @@ class _HistoryController extends HomeController {
     if (last == null) return;
     // A second reading's traffic rate, as the next poll would give.
     live.value = LiveStats(stats: last.stats, rate: const NetRate(upBytesPerSec: 48300, downBytesPerSec: 2415000), updatedAt: last.updatedAt);
-    history.cpu
-      ..clear()
-      ..addAll([4, 6, 5, 9, 14, 11, 7, 6, 8, 12, 18, 22, 16, 10, 8, 7, 9, 6, 5, 4, 6, 8, 5, 3, 2, 3, 2, 1, 2, 1]);
-    history.memory
-      ..clear()
-      ..addAll([for (var i = 0; i < 30; i++) 40 + (i % 7) * 0.4 + (i > 20 ? 1.2 : 0)]);
-    history.netDown
-      ..clear()
-      ..addAll([for (var i = 0; i < 30; i++) (i % 9 == 4 ? 3.9e6 : 1.2e6 + (i % 5) * 3e5)]);
+    fillHistory(history);
     notifyListeners();
   }
+}
+
+/// Two minutes of plausible readings behind the charts (40 polls).
+void fillHistory(LiveHistory history) {
+  const cpu = <double>[4, 6, 5, 9, 14, 11, 7, 6, 8, 12, 18, 22, 16, 10, 8, 7, 9, 6, 5, 4, 6, 8, 5, 3, 2, 3, 2, 1, 2, 1, 3, 5, 9, 7, 4, 3, 2, 2, 1, 1];
+  history.cpu
+    ..clear()
+    ..addAll(cpu);
+  history.memory
+    ..clear()
+    ..addAll([for (var i = 0; i < 40; i++) 40 + (i % 7) * 0.4 + (i > 26 ? 1.2 : 0)]);
+  history.netDown
+    ..clear()
+    ..addAll([for (var i = 0; i < 40; i++) (i % 9 == 4 ? 3.9e6 : 1.2e6 + (i % 5) * 3e5 + (i > 30 ? 6e5 : 0))]);
+  history.netUp
+    ..clear()
+    ..addAll([for (var i = 0; i < 40; i++) 3.2e4 + (i % 6) * 9e3 + (i % 13 == 7 ? 4.1e5 : 0)]);
+  history.gpu
+    ..clear()
+    ..addAll([for (var i = 0; i < 40; i++) i < 18 ? 2.0 + i % 3 : (i < 30 ? 38 + (i % 4) * 6 : 6.0 - i % 3)]);
+}
+
+/// The fixture's VMs with two of them on, so Home shows its VM rows.
+Map<String, Object> get runningVms {
+  final list = (jsonDecode(File('test/screenshots/fixtures/v1/vm-sidecar/vms.json').readAsStringSync()) as List).cast<Map<String, dynamic>>();
+  return {
+    'GET /v1/vm-sidecar/vms': [
+      for (final v in list) {...v, 'state': v['name'] == 'Ghost-Windows-11' ? 'running' : v['name'] == 'mint' ? 'paused' : v['state']},
+    ],
+  };
 }
 
 /// Home that never finishes its first load: the skeleton.
@@ -75,6 +102,12 @@ class _StaleController extends HomeController {
   Future<void> refreshLive({bool forceDisks = false}) async {
     if (live.value == null) return super.refreshLive(forceDisks: forceDisks);
   }
+}
+
+LiveHistory _filled() {
+  final h = LiveHistory();
+  fillHistory(h);
+  return h;
 }
 
 LiveStats _live() {
@@ -168,8 +201,18 @@ final _allClear = <String, Object>{
 };
 
 final Map<String, _Shot> _shots = {
-  'home': _Shot(() => DashboardScreen(controller: _HistoryController()), tab: true, dense: true, tablet: true),
-  'home_all_clear': _Shot(() => DashboardScreen(controller: _HistoryController()), tab: true, overrides: _allClear),
+  'home': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, dense: true, tablet: true, overrides: runningVms),
+  'home_vms_scrolled': _Shot(
+    () => DashboardScreen(controller: HistoryController()),
+    tab: true,
+    overrides: runningVms,
+    before: (tester) async {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
+      await tester.pump(const Duration(seconds: 1));
+    },
+  ),
+  'home_gpu': _Shot(() => GpuDetailScreen(gpu: ValueNotifier(GpuStats.tryParse(fixture('v1/gpu/gpu-stats'))), history: _filled()), dense: true),
+  'home_all_clear': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, overrides: _allClear),
   'home_loading': _Shot(() => DashboardScreen(controller: _LoadingController()), tab: true),
   'home_offline': _Shot(() => DashboardScreen(controller: _OfflineController()), tab: true),
   'home_stale': _Shot(() => DashboardScreen(controller: _StaleController()), tab: true),
@@ -178,10 +221,10 @@ final Map<String, _Shot> _shots = {
     tab: true,
     overrides: {'GET /v1/sys/utilization': const FakeResponse({'success': 500, 'message': 'The system monitor is not running.'}, status: 500)},
   ),
-  'home_cpu': _Shot(() => CpuDetailScreen(live: ValueNotifier(_live()), onRetry: () {}), dense: true),
-  'home_memory': _Shot(() => MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}), dense: true),
+  'home_cpu': _Shot(() => CpuDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), dense: true),
+  'home_memory': _Shot(() => MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), dense: true),
   'home_storage': _Shot(() => StorageDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, onOpenFiles: () {}), dense: true),
-  'home_network': _Shot(() => NetworkDetailScreen(live: ValueNotifier(_live()), onRetry: () {}), overrides: _speedtest, dense: true),
+  'home_network': _Shot(() => NetworkDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), overrides: _speedtest, dense: true),
   'updates': _Shot(() => const SystemUpdatesScreen(), overrides: {'GET /v1/sys/packages/check': _packages(), ..._releases()}, dense: true),
   // The server's Debian packages: their own page, apart from NivaroOS (plan §7.5).
   'updates_system_packages': _Shot(() => const SystemUpdatesScreen(page: UpdatesPage.packages), overrides: {'GET /v1/sys/packages/check': _packages(), ..._releases()}, dense: true),

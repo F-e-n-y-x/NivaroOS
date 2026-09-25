@@ -6,40 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/dashboard_stats.dart';
+import '../models/gpu_stats.dart';
 import '../services/api_client.dart';
+import '../services/vm_client.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
 import 'system_updates_screen.dart';
+import 'vm_console_screen.dart';
+import 'vm_list_screen.dart' show VmStateChip;
 
-/// The last few minutes of live readings (one per poll), for Home's
-/// sparklines. Kept in memory only: the server has no history endpoint, so
-/// the lines start when Home opens and say so until there are two points.
-class LiveHistory {
-  LiveHistory({this.capacity = 30});
-
-  /// 30 readings at the 4 s poll: the last two minutes.
-  final int capacity;
-  final List<double> cpu = [];
-  final List<double> memory = [];
-
-  /// Download rate in bytes per second.
-  final List<double> netDown = [];
-
-  void _push(List<double> list, double v) {
-    list.add(v);
-    if (list.length > capacity) list.removeAt(0);
-  }
-
-  void add(LiveStats live) {
-    final s = live.stats;
-    _push(cpu, s.cpuPercent);
-    _push(memory, s.memTotal > 0 ? s.memUsed / s.memTotal * 100 : 0);
-    final rate = live.rate;
-    if (rate != null) _push(netDown, rate.downBytesPerSec);
-  }
-}
+export '../widgets/monitor_modals.dart' show LiveHistory;
 
 /// Loads everything Home shows and keeps the live part fresh.
 ///
@@ -49,15 +27,27 @@ class LiveHistory {
 /// on its own and just leaves its part out; only the live reading decides
 /// whether Home shows an error or the offline banner.
 class HomeController extends ChangeNotifier {
-  HomeController({ApiClient? api}) : _api = api ?? ApiClient.instance;
+  HomeController({ApiClient? api, VmClient? vmClient})
+      : _api = api ?? ApiClient.instance,
+        _vm = vmClient;
 
   final ApiClient _api;
+  final VmClient? _vm;
+  VmClient get vmClient => _vm ?? VmClient();
 
   /// The latest utilization reading, shared with the detail screens.
   final ValueNotifier<LiveStats?> live = ValueNotifier(null);
 
-  /// Recent readings, for the sparklines.
+  /// Recent readings, for the metric cards' charts.
   final LiveHistory history = LiveHistory();
+
+  /// The GPU's latest reading; null when the server has no dedicated GPU
+  /// (or its sidecar isn't answering), and then Home shows no GPU card.
+  final ValueNotifier<GpuStats?> gpu = ValueNotifier(null);
+
+  // Set once the GPU sidecar said there is no GPU, so the live polls stop
+  // asking; pull-to-refresh asks again.
+  bool _noGpu = false;
 
   /// Why the first reading failed; null once there is data.
   Object? liveError;
@@ -67,8 +57,14 @@ class HomeController extends ChangeNotifier {
   List<BackupJobBrief> backups = const [];
   AppCounts? apps;
 
+  /// Every VM; null when the VM manager didn't answer.
+  List<Vm>? vmList;
+
   /// Running and total VMs; null when the VM manager didn't answer.
-  ({int running, int total})? vms;
+  ({int running, int total})? get vms {
+    final l = vmList;
+    return l == null ? null : (running: l.where((v) => v.isRunning).length, total: l.length);
+  }
 
   List<DiskUsage> _disks = const [];
   DateTime? _disksAt;
@@ -94,6 +90,7 @@ class HomeController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     live.dispose();
+    gpu.dispose();
     super.dispose();
   }
 
@@ -101,6 +98,7 @@ class HomeController extends ChangeNotifier {
   Future<void> refreshLive({bool forceDisks = false}) async {
     if (_liveBusy) return;
     _liveBusy = true;
+    if (!_noGpu) unawaited(_loadGpu());
     try {
       final util = await _api.get('/sys/utilization');
       var stats = DashboardStats.fromUtilization(util['data'] as Map<String, dynamic>? ?? const {});
@@ -142,8 +140,37 @@ class HomeController extends ChangeNotifier {
     _notify();
   }
 
+  // The GPU sidecar, through the gateway like the web UI's GPU widget. It
+  // answers raw JSON (no envelope), and an error or no name on a machine
+  // without a dedicated GPU.
+  Future<void> _loadGpu() async {
+    try {
+      final res = await _api.getRaw('/v1/gpu/gpu-stats');
+      final g = res.statusCode == 200 ? GpuStats.tryParse(jsonDecode(res.body)) : null;
+      if (_disposed) return;
+      if (g == null) {
+        _noGpu = true;
+        gpu.value = null;
+        return;
+      }
+      gpu.value = g;
+      history.addGpu(g);
+    } catch (_) {
+      // Keep the last reading; the next poll asks again.
+    }
+  }
+
+  /// Asks a VM to shut down (like pressing its power button), then reads
+  /// the list again a little later.
+  Future<void> shutdownVm(String name) async {
+    await vmClient.shutdown(name);
+    await _loadVms();
+    _notify();
+  }
+
   /// Everything, as on open and pull-to-refresh.
   Future<void> refreshAll() async {
+    _noGpu = false;
     if (live.value == null) {
       liveError = null;
       _notify();
@@ -235,22 +262,23 @@ class HomeController extends ChangeNotifier {
     try {
       final res = await _api.getRaw('/v1/vm-sidecar/vms');
       if (res.statusCode != 200) {
-        vms = null;
+        vmList = null;
         return;
       }
       final list = jsonDecode(res.body);
       if (list is! List) return;
-      final all = list.whereType<Map>().toList();
-      vms = (running: all.where((v) => v['state'] == 'running').length, total: all.length);
+      vmList = list.whereType<Map<String, dynamic>>().map(Vm.fromJson).toList();
     } catch (_) {
-      vms = null;
+      vmList = null;
     }
   }
 }
 
-/// Home: the server at a glance. What state it's in first, then what needs
-/// the owner, then the health meters. Tabs and tools live in the
-/// navigation bar and More, so none are repeated here.
+/// Home: the server at a glance. Which server and whether it is fine
+/// first, then one card per metric - processor, memory, network, storage,
+/// graphics - each with its own live chart, then what needs the owner and
+/// what is running. Tabs and tools live in the navigation bar and More,
+/// so none are repeated here.
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onOpenFiles;
   final VoidCallback? onOpenVms;
@@ -268,7 +296,7 @@ class DashboardScreen extends StatefulWidget {
     this.onOpenVms,
     this.onOpenApps,
     this.controller,
-    this.pollEvery = const Duration(seconds: 4),
+    this.pollEvery = const Duration(seconds: 3),
   });
 
   @override
@@ -287,6 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _c.addListener(_changed);
+    _c.gpu.addListener(_changed);
     _c.refreshAll();
     _timer = Timer.periodic(widget.pollEvery, (_) => _tick());
   }
@@ -295,6 +324,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _timer?.cancel();
     _c.removeListener(_changed);
+    _c.gpu.removeListener(_changed);
     if (widget.controller == null) _c.dispose();
     super.dispose();
   }
@@ -320,14 +350,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _detailsOpen--;
   }
 
-  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive));
-  void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive));
+  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
+  void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
   void _openStorage() => _openDetail(StorageDetailScreen(live: _c.live, onRetry: _c.refreshLive, onOpenFiles: widget.onOpenFiles));
-  void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive));
+  void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
+  void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history, pollEvery: widget.pollEvery));
 
   Future<void> _openUpdates(UpdatesPage page) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SystemUpdatesScreen(page: page)));
     _c.loadUpdates();
+  }
+
+  Future<void> _openConsole(Vm vm) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => VmConsoleScreen(vmName: vm.name, client: _c.vmClient)));
+    if (mounted) _c.refreshAll();
+  }
+
+  Future<void> _shutdownVm(Vm vm) async {
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Shut down “${vm.name}”?',
+      message: 'It gets the same signal as pressing its power button, so it can close its programs first. Force stop is on the VMs tab.',
+      confirmLabel: 'Shut down',
+    );
+    if (!ok || !mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await _c.shutdownVm(vm.name);
+      messenger?.showSnackBar(SnackBar(content: Text('Shutting down ${vm.name}')));
+    } on VmException catch (e) {
+      messenger?.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _power(String state) => confirmServerPower(context, restart: state == 'restart');
@@ -349,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final List<Widget> slivers;
     if (live == null && error == null) {
-      slivers = const [SliverToBoxAdapter(child: _SummarySkeleton())];
+      slivers = const [SliverToBoxAdapter(child: _HomeSkeleton())];
     } else if (live == null) {
       final offline = error is ApiException && error.statusCode == null;
       slivers = [
@@ -367,8 +420,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       slivers = [SliverList.list(children: _content(context, live))];
     }
 
+    // The server's name is the page's title: Home is the navigation tab
+    // already, and a "Home" large title over the name was two headings
+    // and a band of empty space. A small bar keeps the cards above the
+    // fold.
+    final host = _c.host;
+    final name = (host?.hostname.isNotEmpty ?? false) ? host!.hostname : (Uri.tryParse(ApiClient.instance.baseUrl)?.host ?? 'Home');
     return AppScaffold.slivers(
-      title: 'Home',
+      title: name.isEmpty ? 'Home' : name,
+      collapsingTitle: false,
       onRefresh: _c.refreshAll,
       banner: live != null && live.stale ? OfflineBanner(lastUpdated: live.updatedAt, onRetry: _c.refreshLive) : null,
       actions: [
@@ -389,87 +449,129 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Widget> _content(BuildContext context, LiveStats live) {
-    final s = live.stats;
     final attention = _c.attention;
-    final drives = s.dataDisks;
     final apps = _c.apps;
-    final vms = _c.vms;
+    final vms = _c.vmList;
 
-    final panel = ServerPanel(
-      attention: attention,
-      host: _c.host,
-      fallbackName: Uri.tryParse(ApiClient.instance.baseUrl)?.host ?? '',
+    final header = ServerHeader(attention: attention, host: _c.host);
+    final metrics = MetricCards(
       live: live,
       history: _c.history,
+      gpu: _c.gpu.value,
+      window: _c.history.window(widget.pollEvery),
       onOpenCpu: _openCpu,
       onOpenMemory: _openMemory,
       onOpenNetwork: _openNetwork,
+      onOpenStorage: _openStorage,
+      onOpenGpu: _openGpu,
     );
     final needs = attention.isEmpty
         ? null
         : TileGroup(title: 'Needs attention', children: [for (final a in attention) _attentionTile(context, a)]);
-    final storage = TileGroup(title: 'Storage', children: [
-      UsageTile(
-        icon: Icons.storage_outlined,
-        bar: UsageBar(
-          value: s.storageUsed.toDouble(),
-          max: s.storageTotal.toDouble(),
-          label: drives.length == 1 ? '1 drive' : '${drives.length} drives',
-          detail: drives.isEmpty ? 'No drives reported' : '${formatBytes(s.storageUsed)} of ${formatBytes(s.storageTotal)} used',
-          warnAt: diskWarnAt,
-          criticalAt: diskCriticalAt,
-        ),
-        onTap: _openStorage,
-      ),
-    ]);
-    final running = apps == null && vms == null
+    final machines = vms == null ? null : _vmGroup(context, vms);
+    final appsGroup = apps == null
         ? null
-        : TileGroup(title: 'Running', children: [
-            if (apps != null)
-              ListTile(
-                leading: const Icon(Icons.apps_outlined),
-                title: const Text('Apps'),
-                subtitle: Text(apps.total == 0 ? 'None installed' : '${apps.running} of ${apps.total} running'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: widget.onOpenApps,
-              ),
-            if (vms != null)
-              ListTile(
-                leading: const Icon(Icons.computer_outlined),
-                title: const Text('Virtual machines'),
-                subtitle: Text(vms.total == 0
-                    ? 'None set up'
-                    : vms.running == 0
-                        ? 'None running · ${vms.total} in total'
-                        : '${vms.running} of ${vms.total} running'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: widget.onOpenVms,
-              ),
+        : TileGroup(title: 'Apps', children: [
+            ListTile(
+              leading: const Icon(Icons.apps_outlined),
+              title: Text(apps.total == 0 ? 'No apps installed' : '${apps.running} of ${apps.total} running'),
+              subtitle: apps.total == 0 ? const Text('Install one from the app store') : null,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onOpenApps,
+            ),
           ]);
 
     return [
       LayoutBuilder(builder: (context, constraints) {
-        // Wide windows: the server and what needs attention on the left,
-        // storage and what's running on the right, instead of one long
-        // column of stretched rows.
+        // Wide windows: the metric cards across the top, then what needs
+        // attention beside what's running.
         if (constraints.maxWidth >= 720) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: Column(children: [panel, ?needs])),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  child: Column(children: [storage, ?running]),
-                ),
-              ),
-            ],
-          );
+          return Column(children: [
+            header,
+            metrics,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: Column(children: [?needs])),
+                Expanded(child: Column(children: [?machines, ?appsGroup])),
+              ],
+            ),
+          ]);
         }
-        return Column(children: [panel, ?needs, storage, ?running]);
+        return Column(children: [header, metrics, ?needs, ?machines, ?appsGroup]);
       }),
       const SizedBox(height: Space.lg),
     ];
+  }
+
+  /// Running and paused VMs, each with its console and a stop button, like
+  /// the apps; the rest are one row that opens the VMs tab.
+  Widget _vmGroup(BuildContext context, List<Vm> vms) {
+    final active = vms.where((v) => v.isActive).toList();
+    final idle = vms.length - active.length;
+    return TileGroup(title: 'Virtual machines', children: [
+      for (final vm in active.take(4)) _vmTile(context, vm),
+      ListTile(
+        leading: const Icon(Icons.computer_outlined),
+        title: Text(vms.isEmpty
+            ? 'No virtual machines'
+            : active.isEmpty
+                ? 'None running'
+                : 'All virtual machines'),
+        subtitle: Text(vms.isEmpty
+            ? 'Create one on the VMs tab'
+            : [
+                if (active.length > 4) '${active.length - 4} more running',
+                if (idle > 0) idle == 1 ? '1 turned off' : '$idle turned off',
+                if (idle == 0 && active.length <= 4) '${vms.length} in total',
+              ].join(' · ')),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: widget.onOpenVms,
+      ),
+    ]);
+  }
+
+  Widget _vmTile(BuildContext context, Vm vm) {
+    final t = DesignTokens.of(context);
+    final running = vm.isRunning;
+    final spec = [
+      if (vm.vcpus > 0) vm.vcpus == 1 ? '1 vCPU' : '${vm.vcpus} vCPU',
+      if (vm.memoryMib > 0) formatBytes(vm.memoryMib * 1024 * 1024, decimals: vm.memoryMib % 1024 == 0 ? 0 : 1),
+    ].join(' · ');
+    return ListTile(
+      leading: const Icon(Icons.computer_outlined),
+      title: Text(vm.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: Space.xs),
+        child: Wrap(
+          spacing: Space.sm,
+          runSpacing: Space.xs,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            VmStateChip(state: vm.powerState),
+            if (spec.isNotEmpty) Text(spec, style: t.data),
+          ],
+        ),
+      ),
+      isThreeLine: false,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (running)
+            IconButton(
+              tooltip: 'Open console of ${vm.name}',
+              icon: const Icon(Icons.desktop_windows_outlined),
+              onPressed: () => _openConsole(vm),
+            ),
+          IconButton(
+            tooltip: 'Shut down ${vm.name}',
+            icon: const Icon(Icons.stop_circle_outlined),
+            onPressed: () => _shutdownVm(vm),
+          ),
+        ],
+      ),
+      onTap: running ? () => _openConsole(vm) : widget.onOpenVms,
+    );
   }
 
   Widget _attentionTile(BuildContext context, AttentionItem a) {
@@ -522,36 +624,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-/// The one-second answer, and Home's one expressive moment: which server
-/// this is, whether it is fine, how long it has been up, and its live
-/// processor, memory and network readings with the last two minutes as
-/// sparklines. A tonal panel, so it reads as the thing the screen is about.
-class ServerPanel extends StatelessWidget {
-  const ServerPanel({
-    super.key,
-    required this.attention,
-    required this.host,
-    required this.fallbackName,
-    required this.live,
-    required this.history,
-    this.onOpenCpu,
-    this.onOpenMemory,
-    this.onOpenNetwork,
-  });
+/// The one-second answer under the server's name (the app bar's title):
+/// whether it is fine, what it runs and how long it has been up.
+///
+/// In a direction with a status panel (Tonal) this sits on a tonal panel
+/// whose colour is the health itself: the status container when
+/// something needs attention, a neutral container when all is clear.
+class ServerHeader extends StatelessWidget {
+  const ServerHeader({super.key, required this.attention, required this.host});
 
   final List<AttentionItem> attention;
   final HostInfo? host;
-  final String fallbackName;
-  final LiveStats live;
-  final LiveHistory history;
-  final VoidCallback? onOpenCpu;
-  final VoidCallback? onOpenMemory;
-  final VoidCallback? onOpenNetwork;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final t = DesignTokens.of(context);
     final worst = attention.isEmpty ? null : attention.first.severity;
     final status = switch (worst) {
       null => Status.success,
@@ -572,93 +661,70 @@ class ServerPanel extends StatelessWidget {
       _ => Icons.info_outline,
     };
     final h = host;
-    final name = (h?.hostname.isNotEmpty ?? false) ? h!.hostname : fallbackName;
     final facts = [
       if (h != null && h.osName.isNotEmpty) h.osName,
       if (h != null && h.uptime.isNotEmpty) 'Up ${h.uptime}',
     ];
-    final s = live.stats;
-    final rate = live.rate;
-    final (netValue, netUnit) = rate == null ? ('—', null) : splitUnit(formatBytes(rate.downBytesPerSec));
     final gutter = Space.gutter(context);
+    final tone = StatusColors.toneOf(context, status);
+    // In dark theme a full status container (a deep red block) is the
+    // loudest thing on the page; a wash of the status colour over the
+    // card tone says the same with less weight, in ordinary ink.
+    final dark = theme.brightness == Brightness.dark;
+    final calm = status == Status.success || dark;
+    final panel = !t.statusPanel
+        ? null
+        : status == Status.success
+            ? scheme.surfaceContainerHighest
+            : dark
+                ? Color.alphaBlend(tone.color.withValues(alpha: .16), scheme.surfaceContainerHigh)
+                : tone.container;
+    final on = panel == null || calm ? scheme.onSurface : tone.onContainer;
+    final muted = panel == null || calm ? scheme.onSurfaceVariant : tone.onContainer;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
-      child: Card.filled(
-        color: scheme.surfaceContainerHigh,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.sm),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                container: true,
-                liveRegion: true,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    StatusDisc(status: status, icon: icon),
-                    const SizedBox(width: Space.lg),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Semantics(
-                            header: true,
-                            child: Text(name, style: theme.textTheme.headlineSmall?.emphasized, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          ),
-                          const SizedBox(height: 2),
-                          AnimatedSwitcher(
-                            duration: Motion.of(context).short,
-                            child: Text(verdict, key: ValueKey(verdict), style: theme.textTheme.titleSmall?.copyWith(color: scheme.onSurface)),
-                          ),
-                          for (final f in facts) ...[
-                            const SizedBox(height: 2),
-                            Text(f, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+    final Widget content = Semantics(
+      container: true,
+      liveRegion: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (panel == null) StatusDisc(status: status, icon: icon, size: 40) else ExcludeSemantics(child: Icon(icon, size: 28, color: calm ? tone.color : on)),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedSwitcher(
+                  duration: Motion.of(context).short,
+                  child: Text(verdict, key: ValueKey(verdict), style: theme.textTheme.titleMedium?.copyWith(color: on)),
                 ),
-              ),
-              const SizedBox(height: Space.md),
-              _Vitals(children: [
-                _Vital(
-                  label: 'Processor',
-                  value: '${s.cpuPercent.round()}',
-                  unit: '%',
-                  values: history.cpu,
-                  max: 100,
-                  onTap: onOpenCpu,
-                ),
-                _Vital(
-                  label: 'Memory',
-                  value: s.memTotal > 0 ? '${(s.memUsed / s.memTotal * 100).round()}' : '—',
-                  unit: s.memTotal > 0 ? '%' : null,
-                  values: history.memory,
-                  max: 100,
-                  onTap: onOpenMemory,
-                ),
-                _Vital(
-                  label: 'Network in',
-                  value: netValue,
-                  unit: netUnit == null ? null : '$netUnit/s',
-                  values: history.netDown,
-                  onTap: onOpenNetwork,
-                ),
-              ]),
-            ],
+                if (facts.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(facts.map((f) => f.replaceAll(' ', '\u00A0')).join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                ],
+              ],
+            ),
           ),
-        ),
+        ],
+      ),
+    );
+
+    if (panel == null) {
+      return Padding(padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.lg), child: content);
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, t.gap),
+      child: Material(
+        color: panel,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
+        child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: content),
       ),
     );
   }
 }
 
-/// A status as a 48dp tonal disc with its icon: the colour says the
-/// state, the icon says it again for anyone who can't see colour.
+/// A status as a tonal disc with its icon: the colour says the state, the
+/// icon says it again for anyone who can't see colour.
 class StatusDisc extends StatelessWidget {
   const StatusDisc({super.key, required this.status, required this.icon, this.size = 48});
 
@@ -684,159 +750,316 @@ class StatusDisc extends StatelessWidget {
   }
 }
 
-/// Three readings side by side, or stacked one per row when the text is
-/// large (a column at 200% text holds about four characters).
-class _Vitals extends StatelessWidget {
-  const _Vitals({required this.children});
+/// The metric cards, one per resource, in a grid that fits the window:
+/// two columns on a phone, three or four on a tablet, one at large text.
+class MetricCards extends StatelessWidget {
+  const MetricCards({
+    super.key,
+    required this.live,
+    required this.history,
+    required this.gpu,
+    required this.window,
+    this.onOpenCpu,
+    this.onOpenMemory,
+    this.onOpenNetwork,
+    this.onOpenStorage,
+    this.onOpenGpu,
+  });
 
-  final List<_Vital> children;
+  final LiveStats live;
+  final LiveHistory history;
+  final GpuStats? gpu;
+  final String window;
+  final VoidCallback? onOpenCpu;
+  final VoidCallback? onOpenMemory;
+  final VoidCallback? onOpenNetwork;
+  final VoidCallback? onOpenStorage;
+  final VoidCallback? onOpenGpu;
 
-  @override
-  Widget build(BuildContext context) {
-    final stacked = MediaQuery.textScalerOf(context).scale(10) > 13;
-    if (stacked) {
-      return Column(children: [for (final c in children) c.asRow()]);
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [for (final c in children) Expanded(child: c)],
-    );
+  static String _range(List<double> v, String Function(double) f) {
+    if (v.length < 2) return 'Collecting readings.';
+    final lo = v.reduce((a, b) => a < b ? a : b), hi = v.reduce((a, b) => a > b ? a : b);
+    return 'Over the last minutes: ${f(lo)} to ${f(hi)}.';
   }
-}
-
-class _Vital extends StatelessWidget {
-  const _Vital({required this.label, required this.value, this.unit, required this.values, this.max, this.onTap, this.row = false});
-
-  final String label;
-  final String value;
-  final String? unit;
-  final List<double> values;
-  final double? max;
-  final VoidCallback? onTap;
-  final bool row;
-
-  _Vital asRow() => _Vital(label: label, value: value, unit: unit, values: values, max: max, onTap: onTap, row: true);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final reading = Text.rich(
-      TextSpan(children: [
-        TextSpan(text: value, style: theme.textTheme.titleLarge?.emphasized.tabular),
-        if (unit != null) TextSpan(text: unit == '%' ? unit : ' $unit', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-      ]),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+    final s = live.stats;
+    final gutter = Space.gutter(context);
+    final inset = DesignTokens.of(context).cardPadding.left;
+    String pct(double v) => '${v.round()} percent';
+    LiveChart chart(List<double> values, MetricLevel? level) =>
+        LiveChart(series: [ChartSeries(values)], capacity: history.capacity, max: 100, alert: alertColor(context, level), window: window, bleed: true, labelInset: inset);
+
+    // The busiest of the percentage metrics, for a direction that
+    // emphasises it (Tonal) - unless it is already alerting, when the
+    // status word and colour say it instead.
+    final memPct = s.memTotal > 0 ? s.memUsed / s.memTotal * 100 : 0.0;
+    final loads = {'cpu': s.cpuPercent, 'memory': memPct, if (gpu != null) 'gpu': gpu!.utilizationPercent};
+    final busiest = loads.entries.reduce((a, b) => b.value > a.value ? b : a).key;
+
+    // CPU
+    final cpuLevel = loadLevel(s.cpuPercent);
+    final cpuFacts = [
+      if (s.cpuTemperature != null) '${s.cpuTemperature!.toStringAsFixed(0)}\u00A0°C',
+      if (s.cpuMhz > 0) '${(s.cpuMhz / 1000).toStringAsFixed(1)} GHz',
+    ].join(' · ');
+    final cpu = MetricCard(
+      icon: Icons.memory_outlined,
+      label: 'Processor',
+      value: '${s.cpuPercent.round()}',
+      unit: '%',
+      level: cpuLevel,
+      detail: cpuFacts.isEmpty ? null : cpuFacts,
+      onTap: onOpenCpu,
+      emphasized: busiest == 'cpu' && !cpuLevel.alerting,
+      semanticLabel: 'Processor, ${pct(s.cpuPercent)}, ${cpuLevel.word.toLowerCase()} load. ${_range(history.cpu, pct)}',
+      body: chart(history.cpu, cpuLevel),
     );
-    final name = Text(label, style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis);
-    final spark = Sparkline(values: values, max: max, height: 28, width: double.infinity);
-    final Widget content = row
-        ? Row(
-            children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [name, reading])),
-              const SizedBox(width: Space.md),
-              SizedBox(width: 96, child: spark),
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [name, const SizedBox(height: 2), reading, const SizedBox(height: Space.sm), spark],
-          );
-    return Semantics(
-      button: onTap != null,
-      label: '$label, $value${unit == null ? '' : ' $unit'}',
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Corners.medium),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.sm), child: content),
-        ),
+
+    // Memory
+    final memLevel = memoryLevel(memPct);
+    final memory = MetricCard(
+      icon: Icons.developer_board_outlined,
+      label: 'Memory',
+      value: s.memTotal > 0 ? '${memPct.round()}' : '—',
+      unit: s.memTotal > 0 ? '%' : null,
+      level: memLevel,
+      detail: s.memTotal > 0 ? usedOf(s.memUsed, s.memTotal) : 'Not reported',
+      onTap: onOpenMemory,
+      emphasized: busiest == 'memory' && !(memLevel?.alerting ?? false),
+      semanticLabel: 'Memory, ${pct(memPct)} in use${memLevel == null ? '' : ', ${memLevel.word.toLowerCase()}'}. ${_range(history.memory, pct)}',
+      body: chart(history.memory, memLevel),
+    );
+
+    // Network: download and upload side by side, each with its own chart
+    // on its own scale - on one scale, upload is a flat line at the
+    // bottom whenever download is busy.
+    final rate = live.rate;
+    final net = s.primaryNet;
+    final (down, downUnit) = rate == null ? ('—', null) : splitUnit(formatBytes(rate.downBytesPerSec));
+    final (up, upUnit) = rate == null ? ('—', null) : splitUnit(formatBytes(rate.upBytesPerSec));
+    final network = MetricCard(
+      icon: Icons.swap_vert,
+      label: 'Network',
+      value: down,
+      meta: net == null || net.name.isEmpty ? null : '${net.name}${net.state.isEmpty ? '' : ' · ${net.state}'}',
+      values: _NetValues(
+        down: down,
+        downUnit: downUnit,
+        up: up,
+        upUnit: upUnit,
+        downSeries: history.netDown,
+        upSeries: history.netUp,
+        capacity: history.capacity,
+        window: window,
+      ),
+      onTap: onOpenNetwork,
+      semanticLabel: rate == null
+          ? 'Network, measuring'
+          : 'Network, download ${formatBytes(rate.downBytesPerSec)} per second, upload ${formatBytes(rate.upBytesPerSec)} per second',
+      body: const SizedBox.shrink(),
+    );
+
+    // Storage: capacity changes too slowly for a line, so one thin bar per
+    // drive, as the web UI's Disks widget shows them.
+    final drives = s.dataDisks;
+    final storeLevel = drives.isEmpty ? null : storageLevel(s.storageFraction);
+    final storage = MetricCard(
+      icon: Icons.storage_outlined,
+      label: 'Storage',
+      value: drives.isEmpty ? '—' : '${(s.storageFraction * 100).round()}',
+      unit: drives.isEmpty ? null : '%',
+      level: storeLevel,
+      detail: drives.isEmpty
+          ? 'No drives reported'
+          : '${usedOf(s.storageUsed, s.storageTotal)} · ${drives.length == 1 ? '1 drive' : '${drives.length} drives'}',
+      onTap: onOpenStorage,
+      padBody: true,
+      semanticLabel: drives.isEmpty
+          ? 'Storage, no drives reported'
+          : 'Storage, ${pct(s.storageFraction * 100)} used, ${formatBytes(s.storageUsed)} of ${formatBytes(s.storageTotal)} on ${drives.length} drives',
+      body: MeterBars(
+        items: [for (final d in drives.take(3)) (d.label, d.sizeKnown ? d.usedBytes / d.sizeBytes : 0.0)],
+        warnAt: diskWarnAt,
+        criticalAt: diskCriticalAt,
       ),
     );
+
+    // Graphics, only when the server reports a GPU.
+    final g = gpu;
+    MetricCard? graphics;
+    if (g != null) {
+      final level = loadLevel(g.utilizationPercent, gpu: true);
+      graphics = MetricCard(
+        icon: Icons.videogame_asset_outlined,
+        label: 'Graphics',
+        value: '${g.utilizationPercent.round()}',
+        unit: '%',
+        level: level,
+        detail: [
+          if (g.temperatureC != null) '${g.temperatureC!.toStringAsFixed(0)}\u00A0°C',
+          // One unbreakable phrase, so it wraps as a whole.
+          if (g.memoryTotalMib > 0) 'VRAM ${usedOf(g.memoryUsedBytes, g.memoryTotalBytes)}'.replaceAll(' ', '\u00A0'),
+        ].join(' · '),
+        onTap: onOpenGpu,
+        emphasized: busiest == 'gpu' && !level.alerting,
+        semanticLabel: 'Graphics, ${g.name}, ${pct(g.utilizationPercent)}, ${level.word.toLowerCase()}. ${_range(history.gpu, pct)}',
+        body: chart(history.gpu, level),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: gutter),
+      child: LayoutBuilder(builder: (context, c) {
+        final big = MediaQuery.textScalerOf(context).scale(10) > 13;
+        final columns = big ? 1 : c.maxWidth < 560 ? 2 : c.maxWidth < 840 ? 3 : 4;
+        final List<(int, Widget)> cards = switch (columns) {
+          1 || 2 => [(1, cpu), (1, memory), (2, network), (1, storage), if (graphics != null) (1, graphics)],
+          3 => [(1, cpu), (1, memory), if (graphics != null) (1, graphics), (2, network), (1, storage)],
+          _ => [(1, cpu), (1, memory), if (graphics != null) (1, graphics), (1, storage), (2, network)],
+        };
+        return MetricGrid(columns: columns, children: cards);
+      }),
+    );
   }
 }
 
-/// The panel's shape while Home loads for the first time.
-class _SummarySkeleton extends StatelessWidget {
-  const _SummarySkeleton();
+/// Network's two readings side by side, each over its own chart with its
+/// own scale, and the chart's peak named so the scale is readable.
+class _NetValues extends StatelessWidget {
+  const _NetValues({
+    required this.down,
+    required this.downUnit,
+    required this.up,
+    required this.upUnit,
+    required this.downSeries,
+    required this.upSeries,
+    required this.capacity,
+    required this.window,
+  });
+
+  final String down;
+  final String? downUnit;
+  final String up;
+  final String? upUnit;
+  final List<double> downSeries;
+  final List<double> upSeries;
+  final int capacity;
+  final String window;
+
+  static String _peak(List<double> v) => v.length < 2 ? '' : ' · peak\u00A0${formatBytes(v.reduce((a, b) => a > b ? a : b)).replaceAll(' ', '\u00A0')}/s';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = DesignTokens.of(context);
+    final pad = t.cardPadding;
+    Widget half(String name, String value, String? unit, List<double> series, {required bool first}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsetsDirectional.only(start: first ? pad.left : Space.sm, end: first ? Space.sm : pad.right),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  MetricValue(value: value, unit: unit == null ? null : '$unit/s'),
+                  const SizedBox(height: 2),
+                  Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: name, style: t.data.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600)),
+                      TextSpan(text: _peak(series), style: t.data),
+                    ]),
+                    maxLines: 2,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Space.sm),
+            Expanded(
+              child: LiveChart(
+                series: [ChartSeries(series)],
+                capacity: capacity,
+                window: window,
+                bleed: true,
+                labelInset: first ? pad.left : Space.sm,
+              ),
+            ),
+          ],
+        );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: half('Download', down, downUnit, downSeries, first: true)),
+        VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .6)),
+        Expanded(child: half('Upload', up, upUnit, upSeries, first: false)),
+      ],
+    );
+  }
+}
+
+/// Home's shape while it loads for the first time: the header and the
+/// first four cards.
+class _HomeSkeleton extends StatelessWidget {
+  const _HomeSkeleton();
 
   @override
   Widget build(BuildContext context) {
     final gutter = Space.gutter(context);
-    final scheme = Theme.of(context).colorScheme;
+    final t = DesignTokens.of(context);
+    Widget card() => DecoratedBox(
+          decoration: ShapeDecoration(color: t.cardColor, shape: t.cardShape()),
+          child: const Padding(
+            padding: EdgeInsets.all(Space.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FractionallySizedBox(widthFactor: 0.6, child: SkeletonBox(height: 14)),
+                SizedBox(height: Space.lg),
+                FractionallySizedBox(widthFactor: 0.4, child: SkeletonBox(height: 36)),
+                SizedBox(height: Space.sm),
+                FractionallySizedBox(widthFactor: 0.7, child: SkeletonBox(height: 12)),
+                SizedBox(height: Space.lg),
+                SkeletonBox(height: 44),
+              ],
+            ),
+          ),
+        );
     return Semantics(
       label: 'Loading',
       liveRegion: true,
       child: ExcludeSemantics(
         child: SkeletonPulse(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
-                child: Card.filled(
-                  color: scheme.surfaceContainerHigh,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
-                  child: const Padding(
-                    padding: EdgeInsets.all(Space.lg),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            SkeletonBox(width: 48, height: 48, radius: 24),
-                            SizedBox(width: Space.lg),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  FractionallySizedBox(widthFactor: 0.5, child: SkeletonBox(height: 24)),
-                                  SizedBox(height: Space.sm),
-                                  FractionallySizedBox(widthFactor: 0.7, child: SkeletonBox(height: 14)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: Space.xl),
-                        Row(
-                          children: [
-                            Expanded(child: _SkeletonVital()),
-                            SizedBox(width: Space.lg),
-                            Expanded(child: _SkeletonVital()),
-                            SizedBox(width: Space.lg),
-                            Expanded(child: _SkeletonVital()),
-                          ],
-                        ),
-                      ],
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Row(
+                  children: [
+                    SkeletonBox(width: 48, height: 48, radius: 24),
+                    SizedBox(width: Space.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FractionallySizedBox(widthFactor: 0.5, child: SkeletonBox(height: 24)),
+                          SizedBox(height: Space.sm),
+                          FractionallySizedBox(widthFactor: 0.7, child: SkeletonBox(height: 14)),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-              TileGroup(title: 'Storage', children: [SkeletonRow(subtitle: true)]),
-            ],
+                const SizedBox(height: Space.xl),
+                for (var r = 0; r < 2; r++) ...[
+                  if (r > 0) SizedBox(height: t.gap),
+                  Row(children: [Expanded(child: card()), SizedBox(width: t.gap), Expanded(child: card())]),
+                ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class _SkeletonVital extends StatelessWidget {
-  const _SkeletonVital();
-
-  @override
-  Widget build(BuildContext context) => const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          FractionallySizedBox(widthFactor: 0.6, child: SkeletonBox(height: 12)),
-          SizedBox(height: Space.sm),
-          FractionallySizedBox(widthFactor: 0.4, child: SkeletonBox(height: 20)),
-          SizedBox(height: Space.sm),
-          SkeletonBox(height: 28),
-        ],
-      );
 }

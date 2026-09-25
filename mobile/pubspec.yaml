@@ -1,7 +1,7 @@
 name: nivaroos_mobile
 description: Native Android/iOS companion app for NivaroOS - your personal cloud, in your pocket.
 publish_to: 'none'
-version: 1.3.1+8
+version: 1.4.0+10
 
 environment:
   sdk: ^3.13.4
@@ -38,6 +38,7 @@ dependencies:
   xterm: ^4.0.0
   flutter_background_service: ^5.1.0
   battery_plus: ^7.1.1
+  dynamic_color: ^1.9.0
 
 dev_dependencies:
   flutter_test:
@@ -50,6 +51,57 @@ flutter:
   assets:
     - assets/icon/
     - assets/app/
+    - assets/fonts/OFL-geist.txt
+    - assets/fonts/OFL-googlesansflex.txt
+    - assets/fonts/OFL-ibmplexsans.txt
+  # Design system v3 typefaces (docs/specs/2026-09-25-mobile-design-system.md,
+  # 'Design system v3 - directions'). Static Latin cuts from Google Fonts
+  # (via Fontsource), SIL OFL 1.1; licences in assets/fonts/OFL-*.txt.
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist-300.ttf
+          weight: 300
+        - asset: assets/fonts/Geist-400.ttf
+          weight: 400
+        - asset: assets/fonts/Geist-500.ttf
+          weight: 500
+        - asset: assets/fonts/Geist-600.ttf
+          weight: 600
+    - family: GeistMono
+      fonts:
+        - asset: assets/fonts/GeistMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/GeistMono-500.ttf
+          weight: 500
+    - family: GoogleSansFlex
+      fonts:
+        - asset: assets/fonts/GoogleSansFlex-300.ttf
+          weight: 300
+        - asset: assets/fonts/GoogleSansFlex-400.ttf
+          weight: 400
+        - asset: assets/fonts/GoogleSansFlex-500.ttf
+          weight: 500
+        - asset: assets/fonts/GoogleSansFlex-600.ttf
+          weight: 600
+        - asset: assets/fonts/GoogleSansFlex-700.ttf
+          weight: 700
+    - family: IBMPlexSans
+      fonts:
+        - asset: assets/fonts/IBMPlexSans-300.ttf
+          weight: 300
+        - asset: assets/fonts/IBMPlexSans-400.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSans-600.ttf
+          weight: 600
+    - family: IBMPlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexMono-500.ttf
+          weight: 500
 
 flutter_launcher_icons:
   android: true

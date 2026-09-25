@@ -6,6 +6,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/appearance.dart';
+import 'package:nivaroos_mobile/ui/theme/design_tokens.dart';
 import 'package:nivaroos_mobile/ui/theme/status_colors.dart';
 
 double _channel(double c) => c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
@@ -25,10 +27,19 @@ void main() {
     expect(contrast(const Color(0xFF767676), Colors.white), closeTo(4.54, 0.01));
   });
 
-  for (final theme in [AppTheme.light(), AppTheme.dark()]) {
+  // Every theme the app can show: each design direction, each accent, in
+  // light, dark and true black. (Wallpaper colours can't be listed; they
+  // go through the same fromSeed path as the accents.)
+  final themes = <String, ThemeData>{
+    for (final d in DesignDirection.values)
+      for (final a in AccentColor.values)
+        for (final (mode, b, black) in const [('light', Brightness.light, false), ('dark', Brightness.dark, false), ('black', Brightness.dark, true)])
+          '${d.name} ${a.name} $mode': AppTheme.build(brightness: b, black: black, accent: a, direction: d),
+  };
+  for (final MapEntry(key: name, value: theme) in themes.entries) {
     final s = theme.colorScheme;
     final st = theme.extension<StatusColors>()!;
-    final name = theme.brightness.name;
+    final tk = theme.extension<DesignTokens>()!;
     final surfaces = {
       'surface': s.surface,
       'surfaceContainerLowest': s.surfaceContainerLowest,
@@ -84,7 +95,44 @@ void main() {
           ('${t.key} disc icon on its wash', t.value.color, Color.alphaBlend(t.value.color.withValues(alpha: 0.18), s.surfaceContainerHigh)),
       // Sparklines on the tonal panels.
       ('primary line on surfaceContainerHigh', s.primary, s.surfaceContainerHigh),
+      // Metric cards: the chart lines (main and second series) and the
+      // storage bars on the card colour.
+      ('chart line on card', tk.chart.inkLine ? s.onSurface : s.primary, tk.cardColor),
+      ('second chart line on card', tk.chart.inkLine || tk.chart.grid ? s.onSurfaceVariant : s.tertiary, tk.cardColor),
+      ('warning line on card', st.warning.color, tk.cardColor),
+      ('error line on card', s.error, tk.cardColor),
+      ('meter bar on its track', tk.meterFill(s), s.surfaceContainerHighest),
+      ('meter bar on card', tk.meterFill(s), tk.cardColor),
+      if (tk.emphasisCard != null) ('chart line on the emphasised card', tk.onEmphasisCard!, tk.emphasisCard!),
+      // Outlined status chips: the status icon on the page and on cards.
+      if (tk.outlinedChips)
+        for (final t in tones.entries) ...[
+          ('${t.key} chip icon on card', t.value.color, tk.cardColor),
+        ],
     ];
+    text.addAll([
+      ('card label on card', tk.cardLabel.color!, tk.cardColor),
+      ('card value on card', tk.heroValue.color!, tk.cardColor),
+      ('card unit on card', tk.heroUnit.color!, tk.cardColor),
+      ('card facts on card', tk.data.color!, tk.cardColor),
+      ('section header on page', tk.sectionLabel.color!, s.surface),
+      ('chart label on card', tk.chartLabel.color!, tk.cardColor),
+      // The emphasised metric card (Tonal): its type and muted type.
+      if (tk.emphasisCard != null) ...[
+        ('emphasised card text', tk.onEmphasisCard!, tk.emphasisCard!),
+        ('emphasised card muted text', Color.alphaBlend(tk.onEmphasisCard!.withValues(alpha: .84), tk.emphasisCard!), tk.emphasisCard!),
+      ],
+      // Tonal's Home verdict panel in dark theme: ink on a wash of the
+      // status colour.
+      if (tk.statusPanel && theme.brightness == Brightness.dark)
+        for (final t in tones.entries) ...[
+          ('verdict on the ${t.key} wash', s.onSurface, Color.alphaBlend(t.value.color.withValues(alpha: .16), s.surfaceContainerHigh)),
+          ('verdict facts on the ${t.key} wash', s.onSurfaceVariant, Color.alphaBlend(t.value.color.withValues(alpha: .16), s.surfaceContainerHigh)),
+        ],
+      // Rack's ink button and Console's outlined one.
+      if (tk.button == ButtonTreatment.ink) ('ink button label', s.surface, s.onSurface),
+      if (tk.button == ButtonTreatment.outlined) ('outlined button label', s.primary, s.surface),
+    ]);
 
     // Not a WCAG pair: pins the choice of TileGroup segment colour on the
     // page, so they stay visibly apart (surfaceContainerLow was 1.05:1 and

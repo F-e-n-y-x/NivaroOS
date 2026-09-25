@@ -34,6 +34,7 @@ import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
 import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/appearance.dart';
 import 'package:nivaroos_mobile/ui/theme/scaled_icons.dart';
 import 'package:nivaroos_mobile/utils/app_icons.dart';
 
@@ -89,6 +90,16 @@ Future<void> loadRealFonts() async {
   if (roboto.isEmpty) throw StateError('No Roboto fonts in ${dir.path}');
   await _loadFamily('Roboto', roboto);
   await _loadFamily('MaterialIcons', [File('${dir.path}/MaterialIcons-Regular.otf')]);
+  // The design directions' typefaces, bundled in assets/fonts/ and
+  // declared in pubspec.yaml (tests don't load pubspec fonts by themselves).
+  final bundled = <String, List<File>>{};
+  for (final f in Directory('assets/fonts').listSync().whereType<File>().where((f) => f.path.endsWith('.ttf'))) {
+    final family = f.uri.pathSegments.last.split('-').first;
+    (bundled[family] ??= []).add(f);
+  }
+  for (final e in bundled.entries) {
+    await _loadFamily(e.key, e.value);
+  }
   final mono = [File('test/screenshots/fonts/RobotoMono-Regular.ttf'), File('test/screenshots/fonts/RobotoMono-Bold.ttf')];
   // The app asks for 'monospace'; xterm asks for its own list first.
   for (final family in ['monospace', 'RobotoMono', 'Roboto Mono']) {
@@ -286,12 +297,13 @@ class _PushedHostState extends State<_PushedHost> {
 /// Wraps [child] the way `NivaroApp` does: both themes, system bar
 /// styling, icons scaled with the text, and an optional text scale. With
 /// [pushed], [child] is pushed over a blank first route, as a detail
-/// screen is in the app.
-Widget testApp(Widget child, {Brightness brightness = Brightness.light, double textScale = 1, bool pushed = false}) {
+/// screen is in the app. [appearance] picks the direction, accent and
+/// true black (with [brightness] dark); the default is the app's default.
+Widget testApp(Widget child, {Brightness brightness = Brightness.light, double textScale = 1, bool pushed = false, Appearance appearance = const Appearance()}) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
-    theme: AppTheme.light(),
-    darkTheme: AppTheme.dark(),
+    theme: AppTheme.forAppearance(appearance, Brightness.light),
+    darkTheme: AppTheme.forAppearance(appearance, Brightness.dark),
     themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
     builder: (context, app) => AnnotatedRegion<SystemUiOverlayStyle>(
       value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
@@ -336,6 +348,7 @@ Future<void> shoot(
   bool tab = false,
   bool pushed = false,
   String? themeName,
+  Appearance appearance = const Appearance(),
 }) async {
   await loadRealFonts();
   final findings = <String>[];
@@ -353,8 +366,9 @@ Future<void> shoot(
   addTearDown(() => FlutterError.onError = testHandler);
   stubPlatformChannels();
   NivaroAppIcon.debugNetworkIcon = _fakeNetworkIcon;
-  tester.view.physicalSize = size * 3;
-  tester.view.devicePixelRatio = 3;
+  // 2x: sharp enough to review, and half the bytes of 3x in git.
+  tester.view.physicalSize = size * 2;
+  tester.view.devicePixelRatio = 2;
   // A phone's status bar and gesture bar, so edge-to-edge insets show.
   tester.view.padding = const FakeViewPadding(top: 24 * 3, bottom: 24 * 3);
   tester.view.viewPadding = const FakeViewPadding(top: 24 * 3, bottom: 24 * 3);
@@ -364,7 +378,7 @@ Future<void> shoot(
   final done = Completer<void>();
   final page = tab ? Scaffold(body: screen) : screen;
   runZonedGuarded(() => withClock(Clock.fixed(shotTime), () => http.runWithClient(() async {
-    await tester.pumpWidget(testApp(page, brightness: brightness, textScale: textScale, pushed: pushed));
+    await tester.pumpWidget(testApp(page, brightness: brightness, textScale: textScale, pushed: pushed, appearance: appearance));
     // Real file IO (fixtures, temp files) only completes outside the fake
     // clock, so alternate a little real time with fake frames.
     for (var i = 0; i < 10; i++) {

@@ -1015,8 +1015,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
           Padding(
             padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
             child: Card.filled(
-              color: scheme.surfaceContainerHigh,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
+              color: DesignTokens.of(context).cardColor,
+              shape: DesignTokens.of(context).cardShape(),
               child: Padding(
                 padding: const EdgeInsets.all(Space.lg),
                 child: Column(
@@ -1188,7 +1188,7 @@ class _UninstallDialogState extends State<_UninstallDialog> {
       actions: [
         TextButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
+          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError, side: BorderSide.none),
           onPressed: () {
             HapticFeedback.heavyImpact();
             Navigator.of(context).pop(_deleteData);

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/appearance.dart';
 import 'package:nivaroos_mobile/ui/theme/status_colors.dart';
 import 'package:nivaroos_mobile/ui/widgets/status_chip.dart';
 
@@ -14,8 +16,17 @@ void main() {
     }
   });
 
-  testWidgets('uses the tonal container of its status', (tester) async {
-    await pumpUi(tester, const StatusChip(label: 'Running', status: Status.success));
+  testWidgets('Rack: an outline, the icon in the status colour, the word in ink', (tester) async {
+    await pumpUi(tester, const StatusChip(label: 'Running', status: Status.success), direction: DesignDirection.rack);
+    final box = tester.widget<DecoratedBox>(find.descendant(of: find.byType(StatusChip), matching: find.byType(DecoratedBox)));
+    expect((box.decoration as BoxDecoration).color, isNull);
+    expect((box.decoration as BoxDecoration).border, isNotNull);
+    expect(tester.widget<Icon>(find.byType(Icon)).color, StatusColors.light.success.color);
+    expect(tester.widget<Text>(find.text('Running')).style?.color, AppTheme.build(brightness: Brightness.light, direction: DesignDirection.rack).colorScheme.onSurface);
+  });
+
+  testWidgets('tonal directions: the tonal container of its status', (tester) async {
+    await pumpUi(tester, const StatusChip(label: 'Running', status: Status.success), direction: DesignDirection.tonal);
     final box = tester.widget<DecoratedBox>(find.descendant(of: find.byType(StatusChip), matching: find.byType(DecoratedBox)));
     expect((box.decoration as BoxDecoration).color, StatusColors.light.success.container);
     final text = tester.widget<Text>(find.text('Running'));

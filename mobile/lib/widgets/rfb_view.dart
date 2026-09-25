@@ -1280,7 +1280,7 @@ class ConsolePlaceholder extends StatelessWidget {
                     textAlign: TextAlign.center),
                 if (actionLabel != null) ...[
                   const SizedBox(height: Space.xl),
-                  FilledButton.tonal(
+                  FilledButton.tonal(style: tonalButtonStyle(context), 
                     onPressed: busy ? null : onAction,
                     child: busy
                         ? Semantics(

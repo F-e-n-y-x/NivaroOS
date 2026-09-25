@@ -70,7 +70,7 @@ abstract final class ConfirmDialog {
             ),
             if (destructive)
               FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
+                style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError, side: BorderSide.none),
                 onPressed: () {
                   HapticFeedback.heavyImpact();
                   Navigator.of(context).pop(true);

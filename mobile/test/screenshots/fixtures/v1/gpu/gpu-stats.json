@@ -1,0 +1,65 @@
+{
+    "index": 0,
+    "name": "NVIDIA GeForce GTX 1080 Ti",
+    "driver_version": "580.178.04",
+    "utilization_percent": 3,
+    "memory_used_mib": 298,
+    "memory_total_mib": 11264,
+    "temperature_c": 37,
+    "power_draw_w": 15.87,
+    "power_limit_w": 250,
+    "processes": [
+        {
+            "gpu": 0,
+            "pid": 1927,
+            "command": "Xorg",
+            "utilization_percent": 0
+        },
+        {
+            "gpu": 0,
+            "pid": 2359,
+            "command": "cinnamon",
+            "utilization_percent": 1
+        },
+        {
+            "gpu": 0,
+            "pid": 2529,
+            "command": "zenith",
+            "utilization_percent": 0
+        }
+    ],
+    "gpu_count": 1,
+    "gpus": [
+        {
+            "index": 0,
+            "name": "NVIDIA GeForce GTX 1080 Ti",
+            "driver_version": "580.178.04",
+            "utilization_percent": 3,
+            "memory_used_mib": 298,
+            "memory_total_mib": 11264,
+            "temperature_c": 37,
+            "power_draw_w": 15.87,
+            "power_limit_w": 250,
+            "processes": [
+                {
+                    "gpu": 0,
+                    "pid": 1927,
+                    "command": "Xorg",
+                    "utilization_percent": 0
+                },
+                {
+                    "gpu": 0,
+                    "pid": 2359,
+                    "command": "cinnamon",
+                    "utilization_percent": 1
+                },
+                {
+                    "gpu": 0,
+                    "pid": 2529,
+                    "command": "zenith",
+                    "utilization_percent": 0
+                }
+            ]
+        }
+    ]
+}

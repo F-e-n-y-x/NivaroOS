@@ -449,7 +449,7 @@ class _SnapshotsSheetState extends State<SnapshotsSheet> {
           child: Row(children: [
             Expanded(child: Semantics(header: true, child: Text('Snapshots', style: theme.textTheme.titleLarge))),
             const SizedBox(width: Space.md),
-            FilledButton.tonalIcon(
+            FilledButton.tonalIcon(style: tonalButtonStyle(context), 
               onPressed: _busy || list == null ? null : _take,
               icon: const Icon(Icons.add),
               label: const Text('Take snapshot'),

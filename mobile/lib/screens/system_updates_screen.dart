@@ -443,7 +443,7 @@ class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
         padding: const EdgeInsets.all(Space.md),
         child: Align(
           alignment: AlignmentDirectional.centerStart,
-          child: FilledButton.tonalIcon(onPressed: onPressed, icon: const Icon(Icons.download_outlined), label: Text(label)),
+          child: FilledButton.tonalIcon(style: tonalButtonStyle(context), onPressed: onPressed, icon: const Icon(Icons.download_outlined), label: Text(label)),
         ),
       );
 

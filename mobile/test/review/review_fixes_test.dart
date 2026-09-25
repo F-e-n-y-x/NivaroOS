@@ -80,19 +80,23 @@ void main() {
     expect(h.netDown, [2, 3, 4]);
   });
 
-  testWidgets('pushed screens get the small bar with a back arrow, tabs the medium one (design 4)', (tester) async {
+  // Stage 3 (design brief §10): tabs no longer open with the medium bar's
+  // 112dp band; every screen gets the small bar, tabs with a larger title.
+  testWidgets('pushed screens get the small bar with a back arrow, tabs the small bar with a larger title', (tester) async {
     Widget page(String t) => AppScaffold.slivers(title: t, slivers: const [SliverToBoxAdapter(child: SizedBox(height: 10))]);
     await tester.pumpWidget(testApp(page('Root')));
-    // The status bar inset is 0 here: medium expands to 112, small is 64.
+    // The status bar inset is 0 here: the small bar is 64.
     double lowestTitle(String t) {
       final f = find.text(t);
       return [for (var i = 0; i < f.evaluate().length; i++) tester.getBottomLeft(f.at(i)).dy].reduce((a, b) => a > b ? a : b);
     }
-    expect(lowestTitle('Root'), greaterThan(64), reason: 'medium bar on the root: the large title sits under the toolbar row');
+    expect(lowestTitle('Root'), lessThan(64), reason: 'small bar on the root too');
+    final rootSize = tester.widget<Text>(find.text('Root')).style?.fontSize;
     expect(find.byType(BackButton), findsNothing);
     Navigator.of(tester.element(find.text('Root').first)).push(MaterialPageRoute<void>(builder: (_) => page('Pushed')));
     await tester.pumpAndSettle();
     expect(find.byType(BackButton), findsOneWidget);
     expect(lowestTitle('Pushed'), lessThan(64), reason: 'small bar when pushed');
+    expect(tester.widget<Text>(find.text('Pushed')).style?.fontSize, isNot(rootSize), reason: 'the root title is a size up');
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'ui/theme/app_theme.dart';
@@ -76,29 +77,70 @@ class BootScreen extends StatelessWidget {
       );
 }
 
-class NivaroApp extends StatelessWidget {
+class NivaroApp extends StatefulWidget {
   final Widget initialScreen;
   const NivaroApp({super.key, required this.initialScreen});
 
   @override
+  State<NivaroApp> createState() => _NivaroAppState();
+}
+
+class _NivaroAppState extends State<NivaroApp> with WidgetsBindingObserver {
+  final _theme = ThemeController.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // The bundled typefaces' licences, next to the packages' in About.
+    LicenseRegistry.addLicense(() async* {
+      for (final (name, file) in const [
+        ('Geist, Geist Mono', 'OFL-geist.txt'),
+        ('Google Sans Flex', 'OFL-googlesansflex.txt'),
+        ('IBM Plex Sans, IBM Plex Mono', 'OFL-ibmplexsans.txt'),
+      ]) {
+        yield LicenseEntryWithLineBreaks([name], await rootBundle.loadString('assets/fonts/$file'));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // The wallpaper may have changed while the app was in the background.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _theme.refreshWallpaper();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: ThemeController.instance,
-      builder: (context, mode, _) => MaterialApp(
-        title: 'NivaroOS',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: mode,
-        // System bar icons follow the app's theme on every screen, not only
-        // under an app bar (Home, login and discovery have none), so a
-        // Dark choice on a light phone still gets light status icons.
-        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-          value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
-          child: ScaledIcons(child: child ?? const SizedBox.shrink()),
-        ),
-        home: initialScreen,
-      ),
+    return ListenableBuilder(
+      listenable: Listenable.merge([_theme, _theme.wallpaperSeed]),
+      builder: (context, _) {
+        final a = _theme.value;
+        final wallpaper = _theme.wallpaperSeed.value;
+        final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+        return MaterialApp(
+          title: 'NivaroOS',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.forAppearance(a, Brightness.light, wallpaperSeed: wallpaper),
+          darkTheme: AppTheme.forAppearance(a, Brightness.dark, wallpaperSeed: wallpaper),
+          themeMode: a.mode.themeMode,
+          themeAnimationDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+          // System bar icons follow the app's theme on every screen, not only
+          // under an app bar (Home, login and discovery have none), so a
+          // Dark choice on a light phone still gets light status icons.
+          builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+            value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
+            child: ScaledIcons(child: child ?? const SizedBox.shrink()),
+          ),
+          home: widget.initialScreen,
+        );
+      },
     );
   }
 }

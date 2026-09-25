@@ -37,6 +37,7 @@ IconData locationIcon(LocationKind kind) => switch (kind) {
       LocationKind.phone => Icons.smartphone_outlined,
       LocationKind.favorite => Icons.folder_outlined,
       LocationKind.root => Icons.dns_outlined,
+      LocationKind.trash => Icons.delete_outline,
     };
 
 /// "2.4 MB · 5 min ago" for a file, "Folder · Yesterday" for a folder.

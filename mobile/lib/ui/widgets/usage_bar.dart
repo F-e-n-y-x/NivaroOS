@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/design_tokens.dart';
 import '../theme/motion.dart';
 import '../theme/spacing.dart';
 import '../theme/status_colors.dart';
@@ -10,7 +11,8 @@ import '../theme/status_colors.dart';
 /// gap and a stop dot), with an optional detail line ("230 GB of 422 GB")
 /// below. Screens use this for every meter, so there is one bar style in
 /// the app. The bar turns warning at [warnAt] and error at [criticalAt]; below
-/// that it is the primary colour, because "fine" needs no colour of its own.
+/// that it is the primary colour (ink in Rack), because "fine" needs no
+/// colour of its own. Its height follows the direction.
 ///
 /// When [max] is zero or less the size is unknown: the bar stays empty and
 /// the percentage reads "—" rather than a made-up number.
@@ -49,7 +51,8 @@ class UsageBar extends StatelessWidget {
     final scheme = theme.colorScheme;
     final f = fraction;
     final s = status;
-    final fill = s == null ? scheme.primary : StatusColors.toneOf(context, s).color;
+    final tokens = DesignTokens.of(context);
+    final fill = s == null ? tokens.meterFill(scheme) : StatusColors.toneOf(context, s).color;
     final percent = f == null ? '—' : '${(f * 100).round()}%';
 
     return Semantics(
@@ -78,8 +81,8 @@ class UsageBar extends StatelessWidget {
               curve: Motion.standard,
               builder: (context, v, _) => LinearProgressIndicator(
                 value: v,
-                minHeight: Space.sm,
-                borderRadius: BorderRadius.circular(Corners.extraSmall),
+                minHeight: tokens.meterHeight,
+                borderRadius: BorderRadius.circular(tokens.meterHeight <= 4 ? tokens.meterHeight / 2 : Corners.extraSmall),
                 color: fill,
                 stopIndicatorColor: fill,
                 backgroundColor: scheme.surfaceContainerHighest,

@@ -1,0 +1,77 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "items": [
+   {
+    "id": "7a4c26d5fbb8",
+    "name": "Camera uploads 2025",
+    "original_path": "/DATA/Gallery/Camera uploads 2025",
+    "deleted_at": "2026-09-25T13:58:02",
+    "size": 0,
+    "is_dir": true,
+    "measuring": true,
+    "root": "/DATA"
+   },
+   {
+    "id": "1f3a9c20d4e5",
+    "name": "Holiday draft.jpg",
+    "original_path": "/DATA/Documents/Holiday draft.jpg",
+    "deleted_at": "2026-09-25T13:51:12",
+    "size": 3481207,
+    "is_dir": false,
+    "root": "/DATA"
+   },
+   {
+    "id": "2b7e41f0a9c3",
+    "name": "notes.md",
+    "original_path": "/DATA/Documents/notes.md",
+    "deleted_at": "2026-09-25T11:20:40",
+    "size": 2214,
+    "is_dir": false,
+    "root": "/DATA"
+   },
+   {
+    "id": "3c0d82e1b7f4",
+    "name": "Old invoices",
+    "original_path": "/DATA/Documents/Invoices/Old invoices",
+    "deleted_at": "2026-09-24T18:02:05",
+    "size": 48213504,
+    "is_dir": true,
+    "items": 37,
+    "root": "/DATA"
+   },
+   {
+    "id": "4d19f3a2c8e5",
+    "name": "jellyfin-backup-2026-08.tar.gz",
+    "original_path": "/DATA/Backups/jellyfin-backup-2026-08.tar.gz",
+    "deleted_at": "2026-09-22T09:14:51",
+    "size": 1288490188,
+    "is_dir": false,
+    "root": "/DATA"
+   },
+   {
+    "id": "5e2a04b3d9f6",
+    "name": "Screen recording 2026-09-20.mp4",
+    "original_path": "/media/SANDISK/Recordings/Screen recording 2026-09-20.mp4",
+    "deleted_at": "2026-09-21T21:40:33",
+    "size": 219873280,
+    "is_dir": false,
+    "root": "/media/SANDISK"
+   },
+   {
+    "id": "6f3b15c4eaa7",
+    "name": "Taxes 2023",
+    "original_path": "/DATA/Documents/Taxes 2023",
+    "deleted_at": "2026-08-29T16:05:00",
+    "size": 5452595,
+    "is_dir": true,
+    "items": 12,
+    "root": "/DATA"
+   }
+  ],
+  "count": 7,
+  "bytes": 1565512988,
+  "retention_days": 30
+ }
+}

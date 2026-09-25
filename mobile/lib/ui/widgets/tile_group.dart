@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 import 'section_header.dart';
 
@@ -8,11 +9,13 @@ import 'section_header.dart';
 /// Use it for settings, "More", and any detail screen that is a set of
 /// labelled rows.
 ///
-/// Rows are separate segments with a 2dp gap between them instead of
-/// divider lines (the Android 16 settings style): the block has large outer
+/// In the tonal directions rows are separate segments with a 2dp gap
+/// between them instead of divider lines (the Android 16 settings style): the block has large outer
 /// corners, the joins have small ones, and each row's ripple stays inside
 /// its own segment. The segments are `surfaceContainer` on the `surface`
-/// page, the pairing test/ui/theme_contrast_test.dart pins.
+/// page, the pairing test/ui/theme_contrast_test.dart pins. Rack and
+/// Console draw one hairline-edged panel with ruled rows instead
+/// (`DesignTokens.ruledGroups`).
 ///
 /// Inside the block the rows keep a 16dp inner padding whatever the screen
 /// gutter, so the header - indented by the same 16dp - lines up with the
@@ -30,12 +33,58 @@ class TileGroup extends StatelessWidget {
   /// The gap between two rows, showing the page through.
   static const double gap = 2;
 
-  static const _outer = Radius.circular(Corners.large);
-  static const _inner = Radius.circular(Corners.extraSmall);
+
+  /// Rack and Console: one panel on the card colour with a hairline edge,
+  /// rows ruled by inset hairlines - an instrument panel rather than a
+  /// stack of tonal segments.
+  Widget _ruled(ThemeData theme, DesignTokens tokens, Radius outer) {
+    final line = theme.colorScheme.outlineVariant;
+    return Material(
+      color: tokens.cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(outer), side: BorderSide(color: line)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) Divider(height: 1, thickness: 1, indent: Space.lg, color: line),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _segments(ThemeData theme, Radius outer, Radius inner, int last) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i <= last; i++) ...[
+            if (i > 0) const SizedBox(height: gap),
+            Card.filled(
+              color: theme.colorScheme.surfaceContainer,
+              shape: RoundedRectangleBorder(
+                // On true black the segments keep a hairline edge: a
+                // near-black fill alone barely registers.
+                side: theme.colorScheme.surface == Colors.black ? BorderSide(color: theme.colorScheme.outlineVariant) : BorderSide.none,
+                borderRadius: BorderRadius.vertical(
+                  top: i == 0 ? outer : inner,
+                  bottom: i == last ? outer : inner,
+                ),
+              ),
+              child: children[i],
+            ),
+          ],
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = DesignTokens.of(context);
+    final outer = Radius.circular(tokens.groupRadius);
+    final inner = Radius.circular(tokens.groupInnerRadius);
     final gutter = Space.gutter(context);
     final last = children.length - 1;
     return Column(
@@ -50,25 +99,7 @@ class TileGroup extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: gutter),
           child: ListTileTheme.merge(
             contentPadding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i <= last; i++) ...[
-                  if (i > 0) const SizedBox(height: gap),
-                  Card.filled(
-                    color: theme.colorScheme.surfaceContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.vertical(
-                        top: i == 0 ? _outer : _inner,
-                        bottom: i == last ? _outer : _inner,
-                      ),
-                    ),
-                    child: children[i],
-                  ),
-                ],
-              ],
-            ),
+            child: tokens.ruledGroups ? _ruled(theme, tokens, outer) : _segments(theme, outer, inner, last),
           ),
         ),
         if (footer != null)

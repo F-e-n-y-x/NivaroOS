@@ -44,6 +44,21 @@ String uniqueName(String name, Set<String> taken, {bool isDir = false}) {
   }
 }
 
+/// The name the server gives a restored item whose old name has been
+/// reused since (services/core service/trash `restoredName`): "photo.jpg"
+/// → "photo (restored).jpg", then "photo (restored 2).jpg" if [taken]
+/// has that too. Like Go's filepath.Ext, the extension is from the last
+/// dot, for folders as well.
+String restoredName(String name, [Set<String> taken = const {}]) {
+  final dot = name.lastIndexOf('.');
+  final stem = dot >= 0 ? name.substring(0, dot) : name;
+  final ext = dot >= 0 ? name.substring(dot) : '';
+  for (var i = 1;; i++) {
+    final candidate = '$stem ${i == 1 ? '(restored)' : '(restored $i)'}$ext';
+    if (!taken.contains(candidate)) return candidate;
+  }
+}
+
 /// Why a proposed file or folder name can't be used, or null if it can.
 String? validateName(String name, {Set<String> taken = const {}, String? current}) {
   final trimmed = name.trim();
@@ -121,7 +136,8 @@ List<FileEntry> visibleEntries(List<FileEntry> entries, {bool showHidden = false
 // ---------------------------------------------------------------------------
 // Locations and breadcrumbs
 
-enum LocationKind { storage, usb, cloud, thisPhone, phone, favorite, root }
+/// [trash] is the server's Trash, which opens its own screen.
+enum LocationKind { storage, usb, cloud, thisPhone, phone, favorite, root, trash }
 
 /// A place files live: a server disk, a USB drive, a cloud mount, a
 /// phone's folder on the server, or this phone's own storage.

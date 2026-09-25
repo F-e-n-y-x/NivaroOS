@@ -213,7 +213,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                         ? const _ButtonProgress(label: 'Checking…')
                         : const Text('Continue');
                     return _found.isNotEmpty && value.text.trim().isEmpty
-                        ? FilledButton.tonal(style: style, onPressed: onPressed, child: child)
+                        ? FilledButton.tonal(style: style.merge(tonalButtonStyle(context)), onPressed: onPressed, child: child)
                         : FilledButton(style: style, onPressed: onPressed, child: child);
                   },
                 ),

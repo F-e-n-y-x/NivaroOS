@@ -5,6 +5,8 @@
 library;
 
 export 'theme/app_theme.dart';
+export 'theme/appearance.dart';
+export 'theme/design_tokens.dart';
 export 'theme/motion.dart';
 export 'theme/scaled_icons.dart';
 export 'theme/spacing.dart';
@@ -19,9 +21,10 @@ export 'widgets/metric_row.dart';
 export 'widgets/notice.dart';
 export 'widgets/relative_time.dart';
 export 'widgets/section_header.dart';
-export 'widgets/sparkline.dart';
+export 'widgets/live_chart.dart';
+export 'widgets/metric_card.dart';
 export 'widgets/states.dart';
 export 'widgets/status_chip.dart';
-export 'widgets/theme_mode_tile.dart';
+export 'widgets/appearance_picker.dart';
 export 'widgets/tile_group.dart';
 export 'widgets/usage_bar.dart';

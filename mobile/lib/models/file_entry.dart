@@ -196,3 +196,102 @@ class FileEntry {
   @override
   String toString() => 'FileEntry($path${isDir ? '/' : ''}, $size)';
 }
+
+/// Something in the server's Trash (`GET /v1/trash`, services/core
+/// service/trash): a file or folder moved there by a delete, with where it
+/// came from and when.
+class TrashItem {
+  const TrashItem({
+    required this.id,
+    required this.name,
+    required this.originalPath,
+    required this.deletedAt,
+    required this.size,
+    required this.isDir,
+    this.items = 0,
+    this.measuring = false,
+  });
+
+  final String id;
+  final String name;
+
+  /// Where it was; a restore puts it back here.
+  final String originalPath;
+  final DateTime? deletedAt;
+  final int size;
+  final bool isDir;
+
+  /// Entries inside a folder.
+  final int items;
+
+  /// A folder's size is still being counted (that happens after the move).
+  final bool measuring;
+
+  factory TrashItem.fromJson(Map<String, dynamic> j) {
+    final path = j['original_path'] as String? ?? '';
+    var name = j['name'] as String? ?? '';
+    if (name.isEmpty) name = path.split('/').where((s) => s.isNotEmpty).lastOrNull ?? '';
+    final at = j['deleted_at'];
+    return TrashItem(
+      id: j['id']?.toString() ?? '',
+      name: name,
+      originalPath: path,
+      deletedAt: at is String ? DateTime.tryParse(at) : null,
+      size: (j['size'] as num?)?.toInt() ?? 0,
+      isDir: j['is_dir'] as bool? ?? false,
+      items: (j['items'] as num?)?.toInt() ?? 0,
+      measuring: j['measuring'] as bool? ?? false,
+    );
+  }
+
+  /// The folder it was in ("/" for the root).
+  String get originalFolder {
+    final i = originalPath.lastIndexOf('/');
+    return i <= 0 ? '/' : originalPath.substring(0, i);
+  }
+
+  /// As a file entry, for its kind, icon and category.
+  FileEntry get entry => FileEntry(name: name, path: originalPath, isDir: isDir, size: size, modified: deletedAt);
+
+  /// When the server deletes it for good, given how many days it keeps
+  /// things; null when the deletion time is unknown.
+  DateTime? expiresAt(int retentionDays) => deletedAt?.add(Duration(days: retentionDays));
+
+  /// Whole days left until [expiresAt] (0 on the last day).
+  int? daysLeft(int retentionDays, DateTime now) {
+    final end = expiresAt(retentionDays);
+    if (end == null || retentionDays <= 0) return null;
+    final left = end.difference(now);
+    return left.isNegative ? 0 : left.inDays;
+  }
+
+  @override
+  String toString() => 'TrashItem($id, $originalPath)';
+}
+
+/// The whole Trash: its items (newest first), their total size and how
+/// many days the server keeps them.
+class TrashListing {
+  const TrashListing({required this.items, required this.bytes, required this.retentionDays});
+
+  final List<TrashItem> items;
+  final int bytes;
+  final int retentionDays;
+
+  static const empty = TrashListing(items: [], bytes: 0, retentionDays: 30);
+
+  /// The `data` of `GET /v1/trash`. An empty Trash sends `"items": null`.
+  factory TrashListing.fromJson(Object? data) {
+    if (data is! Map) return empty;
+    final items = [
+      for (final e in (data['items'] as List? ?? const []))
+        if (e is Map<String, dynamic>) TrashItem.fromJson(e),
+    ]..sort((a, b) => (b.deletedAt ?? DateTime(0)).compareTo(a.deletedAt ?? DateTime(0)));
+    final bytes = (data['bytes'] as num?)?.toInt() ?? items.fold<int>(0, (s, i) => s + i.size);
+    final days = (data['retention_days'] as num?)?.toInt() ?? 30;
+    return TrashListing(items: items, bytes: bytes, retentionDays: days > 0 ? days : 30);
+  }
+
+  bool get isEmpty => items.isEmpty;
+  bool get measuring => items.any((i) => i.measuring);
+}

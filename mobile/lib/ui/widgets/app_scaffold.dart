@@ -41,6 +41,7 @@ class AppScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.floatingActionButtonLocation,
     this.maxContentWidth = Space.readingMaxWidth,
+    this.titleStyle,
   })  : slivers = null,
         collapsingTitle = false;
 
@@ -58,6 +59,7 @@ class AppScaffold extends StatelessWidget {
     this.floatingActionButtonLocation,
     this.maxContentWidth = Space.readingMaxWidth,
     this.collapsingTitle,
+    this.titleStyle,
   }) : body = null;
 
   /// Heights of the M3 small app bar and of the medium one while expanded,
@@ -95,14 +97,18 @@ class AppScaffold extends StatelessWidget {
   final double? maxContentWidth;
 
   /// Sliver form only: a medium app bar whose large title collapses into
-  /// the bar on scroll. False gives a small pinned bar. Null (the default)
-  /// follows the app's rule: medium for a top-level screen (the five tabs,
-  /// the first screens), small for every screen pushed on top, which has
-  /// a back arrow.
+  /// the bar on scroll. Null or false (the default) gives a small pinned
+  /// bar: the medium bar's 112dp band of empty space above every tab's
+  /// title pushed the content down on every screen (stage-3 review). A
+  /// top-level screen (no back arrow) sets its title a size up
+  /// (headlineSmall, in the direction's title face) instead.
   final bool? collapsingTitle;
 
-  bool _collapsing(BuildContext context) =>
-      collapsingTitle ?? (leading == null && !(ModalRoute.of(context)?.impliesAppBarDismissal ?? false));
+  /// Replaces the bar's title style (Home, whose title is the server's
+  /// name rather than a page name).
+  final TextStyle? titleStyle;
+
+  bool _collapsing(BuildContext context) => collapsingTitle ?? false;
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +125,9 @@ class AppScaffold extends StatelessWidget {
         // has no spacing setting of its own).
         final hasLeading = leading != null || (ModalRoute.of(context)?.impliesAppBarDismissal ?? false);
         final titleShift = hasLeading ? 0.0 : inset + gutter - Space.lg;
-        final titleWidget = Padding(padding: EdgeInsetsDirectional.only(start: titleShift), child: Text(title));
+        final topLevel = !hasLeading && slivers != null && !(collapsingTitle ?? false);
+        final style = titleStyle ?? (topLevel ? Theme.of(context).textTheme.headlineSmall : null);
+        final titleWidget = Padding(padding: EdgeInsetsDirectional.only(start: titleShift), child: Text(title, style: style, maxLines: 1, overflow: TextOverflow.ellipsis));
 
         return Scaffold(
           appBar: appBar ??
@@ -169,7 +177,7 @@ class AppScaffold extends StatelessWidget {
     final collapsing = _collapsing(context);
     final Widget bar = collapsing
         ? SliverAppBar.medium(title: titleWidget, leading: leading, actions: actions, bottom: bottom)
-        : SliverAppBar(pinned: true, title: titleWidget, leading: leading, actions: actions, bottom: bottom);
+        : SliverAppBar(pinned: true, toolbarHeight: _smallBarHeight, title: titleWidget, leading: leading, actions: actions, bottom: bottom);
 
     Widget scroll = LayoutBuilder(
       builder: (context, constraints) {

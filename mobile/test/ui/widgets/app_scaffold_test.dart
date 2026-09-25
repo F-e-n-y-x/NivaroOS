@@ -35,8 +35,17 @@ void main() {
     expect(refreshed, 1);
   });
 
-  testWidgets('sliver form: medium app bar that collapses, content after the bottom inset', (tester) async {
+  testWidgets('sliver form: a top-level screen gets a small pinned bar with a larger title', (tester) async {
     await _pump(tester, AppScaffold.slivers(title: 'More', slivers: [SliverList.list(children: _rows(30))]));
+    final bar = tester.widget<SliverAppBar>(find.byType(SliverAppBar));
+    expect(bar.pinned, isTrue);
+    expect(bar.expandedHeight, isNull);
+    final title = tester.widget<Text>(find.text('More'));
+    expect(title.style?.fontSize, Theme.of(tester.element(find.text('More'))).textTheme.headlineSmall?.fontSize);
+  });
+
+  testWidgets('sliver form: medium app bar that collapses, content after the bottom inset', (tester) async {
+    await _pump(tester, AppScaffold.slivers(title: 'More', collapsingTitle: true, slivers: [SliverList.list(children: _rows(30))]));
     expect(find.byType(SliverAppBar), findsOneWidget);
     double barExtent() => tester.renderObject<RenderSliver>(find.byType(SliverAppBar)).geometry!.paintExtent;
     final expanded = barExtent();
@@ -98,7 +107,7 @@ void main() {
   });
 
   testWidgets('sliver form: pull-to-refresh starts below the expanded title', (tester) async {
-    await _pump(tester, AppScaffold.slivers(title: 'More', onRefresh: () async {}, slivers: [SliverList.list(children: _rows(3))]));
+    await _pump(tester, AppScaffold.slivers(title: 'More', collapsingTitle: true, onRefresh: () async {}, slivers: [SliverList.list(children: _rows(3))]));
     expect(tester.widget<RefreshIndicator>(find.byType(RefreshIndicator)).edgeOffset, 24 + 112);
     await _pump(tester, AppScaffold.slivers(
       title: 'Logs',

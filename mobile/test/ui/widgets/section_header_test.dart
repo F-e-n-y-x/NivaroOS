@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/design_tokens.dart';
 import 'package:nivaroos_mobile/ui/widgets/section_header.dart';
 
 import '../pump.dart';
 
 void main() {
-  testWidgets('shows the title as a header in the primary colour', (tester) async {
+  testWidgets("shows the title as a header in the direction's section style", (tester) async {
     final handle = tester.ensureSemantics();
     await pumpUi(tester, const SectionHeader(title: 'Storage'));
     final text = tester.widget<Text>(find.text('Storage'));
-    expect(text.style?.color, AppTheme.light().colorScheme.primary);
+    expect(text.style, AppTheme.light().extension<DesignTokens>()!.sectionLabel);
+    // Sentence case as written: no spaced-capital eyebrows.
+    expect(text.data, 'Storage');
     expect(tester.getSemantics(find.text('Storage')), matchesSemantics(label: 'Storage', isHeader: true));
     expect(find.byType(TextButton), findsNothing);
     handle.dispose();

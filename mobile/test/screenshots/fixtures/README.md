@@ -48,3 +48,9 @@ sources are the public casaos.app and bigbeartechworld URLs.
 `v1/container/jellyfin/logs` is written by hand in the shape of
 `GET /v1/container/{id}/logs?timestamps=true` (Docker RFC 3339 timestamps
 with nanoseconds, one line each).
+
+The Trash (`v1/trash.json`, `files/trash_empty.json`): the empty one is a
+real `GET /v1/trash` from this box (its Trash was empty, and the server
+sends `"items": null` then); the full one is written by hand in the same
+shape (services/core service/trash `Item`), with `deleted_at` in local
+time without an offset so the relative times match the frozen shot time.

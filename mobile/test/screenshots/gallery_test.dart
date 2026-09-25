@@ -117,7 +117,7 @@ Widget _gallery() => AppScaffold.slivers(
           title: 'Settings group',
           footer: 'Applies to this phone only.',
           children: [
-            ThemeModeTile(controller: ThemeController()),
+            AppearanceTile(controller: ThemeController()),
             ListTile(
               leading: const Icon(Icons.schedule_outlined),
               title: const Text('Last backup'),
@@ -274,19 +274,14 @@ void main() {
         before: _openButton,
       );
     });
-    testWidgets('theme_sheet ${b.name}', (tester) async {
+    testWidgets('appearance ${b.name}', (tester) async {
       await shoot(
         tester,
         dir: 'widgets',
-        name: 'theme_sheet',
+        name: 'appearance',
         brightness: b,
-        screen: Scaffold(
-          body: ListView(children: [ThemeModeTile(controller: ThemeController())]),
-        ),
-        before: (tester) async {
-          await tester.tap(find.text('Theme'));
-          await tester.pumpAndSettle();
-        },
+        pushed: true,
+        screen: AppearanceScreen(controller: ThemeController(Appearance(mode: b == Brightness.dark ? AppThemeMode.dark : AppThemeMode.light))),
       );
     });
   }

@@ -210,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 title: Text('NivaroOS for Android ${_versionLine()}'),
                 subtitle: Text(hasUpdate ? 'Version ${update!.latest!.version} is available' : 'App updates are on the Updates screen'),
                 trailing: hasUpdate
-                    ? FilledButton.tonal(onPressed: _openUpdates, child: const Text('View'))
+                    ? FilledButton.tonal(style: tonalButtonStyle(context), onPressed: _openUpdates, child: const Text('View'))
                     : const Icon(Icons.chevron_right),
                 onTap: _openUpdates,
               ),
