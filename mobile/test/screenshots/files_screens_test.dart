@@ -346,7 +346,7 @@ void main() {
   });
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
-    Future<void> shootOne(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
+    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
           tester,
           name: name,
           dir: 'files',
@@ -359,19 +359,6 @@ void main() {
           tab: s.tab,
           pushed: name.startsWith('file_viewer') || name.startsWith('trash'),
         );
-
-    // Real elevation shadows: flutter_test draws them as solid black
-    // outlines by default, which would put a black ring round the FAB.
-    // (The flag must be back to its default when the test body ends.)
-    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) async {
-      debugDisableShadows = false;
-      try {
-        await shootOne(tester, b, size: size, textScale: textScale);
-      } finally {
-        debugDisableShadows = true;
-      }
-    }
-
 
     for (final b in [Brightness.light, if (s.dark) Brightness.dark]) {
       testWidgets('$name ${b.name}', (t) => shot(t, b));

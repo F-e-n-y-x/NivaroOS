@@ -234,7 +234,7 @@ void main() {
   });
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
-    Future<void> shootOnce(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
+    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
           tester,
           name: name,
           dir: 'vms',
@@ -250,17 +250,6 @@ void main() {
           // so in the file name.
           themeName: s.dark ? null : (name.startsWith('vm_console') || name.startsWith('host_desktop') ? 'fixed_dark' : null),
         );
-    // Real elevation shadows rather than flutter_test's solid outlines, so
-    // the FAB and menus look as they do on a phone; reset before the test
-    // ends, as flutter_test requires.
-    Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) async {
-      debugDisableShadows = false;
-      try {
-        await shootOnce(tester, b, size: size, textScale: textScale);
-      } finally {
-        debugDisableShadows = true;
-      }
-    }
 
     for (final b in [Brightness.light, if (s.dark) Brightness.dark]) {
       testWidgets('$name ${b.name}', (tester) => shot(tester, b));

@@ -229,6 +229,41 @@ void main() {
     }
   });
 
+  group('Tonal', () {
+    for (final (mode, _, _) in _modes) {
+      for (final a in [AccentColor.mono, AccentColor.blue, AccentColor.violet]) {
+        testWidgets('$mode ${a.name}: the primary button ranks above a tonal one', (tester) async {
+          await tester.pumpWidget(MaterialApp(
+            theme: _theme(DesignDirection.tonal, mode, accent: a),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Row(children: [
+                  FilledButton(onPressed: () {}, child: const Text('Save')),
+                  FilledButton.tonal(onPressed: () {}, style: tonalButtonStyle(context), child: const Text('Tonal')),
+                ]),
+              ),
+            ),
+          ));
+          Color fill(String label) => tester
+              .widget<Material>(find.descendant(of: find.widgetWithText(FilledButton, label), matching: find.byType(Material)).first)
+              .color!;
+          final primary = fill('Save'), tonal = fill('Tonal');
+          expect(primary, isNot(tonal));
+          // Monochrome has only greys to tell them apart: ink against a
+          // grey container, not two neighbouring greys.
+          if (a == AccentColor.mono) expect(contrast(primary, tonal), greaterThanOrEqualTo(3));
+        });
+
+        test('$mode ${a.name}: the check shows on the switch thumb', () {
+          final t = _theme(DesignDirection.tonal, mode, accent: a);
+          final icon = t.switchTheme.thumbIcon!.resolve({WidgetState.selected})!;
+          final thumb = t.switchTheme.thumbColor?.resolve({WidgetState.selected}) ?? t.colorScheme.onPrimary;
+          expect(contrast(icon.color!, thumb), greaterThanOrEqualTo(3));
+        });
+      }
+    }
+  });
+
   group('stock components build in every style, mode and accent', () {
     for (final d in DesignDirection.selectable) {
       for (final (mode, _, _) in _modes) {

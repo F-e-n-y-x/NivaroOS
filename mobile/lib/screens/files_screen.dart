@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:file_picker/file_picker.dart';
@@ -110,6 +111,13 @@ class FilesScreenState extends State<FilesScreen> {
   /// The tab on screen's selection: each tab keeps its own.
   Set<String> get _selected => _tab.selected;
   _Clip? _clip;
+
+  /// The paste bar's height as last drawn; it floats over the body.
+  double _pasteBarHeight = 0;
+
+  /// Room the body keeps clear under the paste bar while it shows, so the
+  /// last row and an empty folder's button aren't hidden behind it.
+  double get _pasteBarRoom => _clip == null ? 0 : _pasteBarHeight + kFloatingActionButtonMargin + Space.md;
 
   // The locations page
   List<FileLocation> _storage = const [];
@@ -387,6 +395,14 @@ class FilesScreenState extends State<FilesScreen> {
       if (!mounted) return;
       setState(() {
         _cache[key] = _Listing(entries, clock.now());
+        // A selection can outlive its items (deleted or moved from another
+        // tab on the same folder): keep only what is still here, in every
+        // tab at this folder.
+        final place = FilesPlace.folder(path, isLocal: isLocal);
+        final here = {for (final e in entries) e.path};
+        for (final t in _tabs.all) {
+          if (t.place == place) t.selected.retainAll(here);
+        }
         if (_path == path && _isLocal == isLocal) {
           _loading = false;
           _stale = false;
@@ -688,6 +704,10 @@ class FilesScreenState extends State<FilesScreen> {
     final dest = _path;
     if (clip == null || dest == null) return;
     final destLocal = _isLocal;
+    // Where Paste was pressed: the tab on screen may change while the
+    // folder is listed below, and the sheet must name the folder the
+    // items go to.
+    final destName = _title;
     final sameSide = clip.isLocal == destLocal;
     final sources = [for (final e in clip.entries) e.path];
 
@@ -718,7 +738,7 @@ class FilesScreenState extends State<FilesScreen> {
       final answer = await showConflictSheet(
         context,
         conflicts: conflicts,
-        destName: _title,
+        destName: destName,
         kind: clip.kind,
       );
       if (answer == null || !mounted) return;
@@ -1126,12 +1146,17 @@ class FilesScreenState extends State<FilesScreen> {
       detail = '${clip.kind == TransferKind.move ? 'Moving' : 'Copying'} from ${clip.from}';
       canPaste = _error == null && !_loading;
     }
-    return PasteBar(
-      label: '${n == 1 ? '“${clip.entries.first.name}”' : '$n items'} on clipboard',
-      detail: detail,
-      actionLabel: 'Paste here',
-      onPaste: canPaste ? _paste : null,
-      onCancel: () => setState(() => _clip = null),
+    return HeightReporter(
+      onHeight: (h) {
+        if (mounted && h != _pasteBarHeight) setState(() => _pasteBarHeight = h);
+      },
+      child: PasteBar(
+        label: '${n == 1 ? '“${clip.entries.first.name}”' : '$n items'} on clipboard',
+        detail: detail,
+        actionLabel: 'Paste here',
+        onPaste: canPaste ? _paste : null,
+        onCancel: () => setState(() => _clip = null),
+      ),
     );
   }
 
@@ -1545,7 +1570,9 @@ class FilesScreenState extends State<FilesScreen> {
     if (_loading && _listing == null) return [const FolderSkeleton()];
     final error = _error;
     if (error != null) {
-      if (error is ApiException && error.isUnreachable) return [ErrorState.offline(onRetry: _load, sliver: true, details: error.details)];
+      if (error is ApiException && error.isUnreachable) {
+        return [ErrorState.offline(onRetry: _load, sliver: true, details: error.details, bottomInset: _pasteBarRoom)];
+      }
       return [
         ErrorState(
           title: "Couldn't open “$_title”",
@@ -1553,6 +1580,7 @@ class FilesScreenState extends State<FilesScreen> {
           onRetry: _load,
           details: error is ApiException ? error.details : error.toString(),
           sliver: true,
+          bottomInset: _pasteBarRoom,
         ),
       ];
     }
@@ -1567,6 +1595,7 @@ class FilesScreenState extends State<FilesScreen> {
             actionLabel: 'Clear search',
             onAction: _search.clear,
             sliver: true,
+            bottomInset: _pasteBarRoom,
           ),
         ];
       }
@@ -1579,6 +1608,7 @@ class FilesScreenState extends State<FilesScreen> {
             actionLabel: 'Show hidden files',
             onAction: () => setState(() => _showHidden = true),
             sliver: true,
+            bottomInset: _pasteBarRoom,
           ),
         ];
       }
@@ -1590,6 +1620,7 @@ class FilesScreenState extends State<FilesScreen> {
           actionLabel: _isLocal ? 'New folder' : 'Upload files',
           onAction: _isLocal ? _newFolder : _upload,
           sliver: true,
+          bottomInset: _pasteBarRoom,
         ),
       ];
     }
@@ -1656,7 +1687,7 @@ class FilesScreenState extends State<FilesScreen> {
         ),
       // Room for the FAB or the paste bar over the last row (it grows
       // with the text), so the last row's menu can scroll clear of it.
-      SliverToBoxAdapter(child: SizedBox(height: Space.xl + MediaQuery.textScalerOf(context).scale(56))),
+      SliverToBoxAdapter(child: SizedBox(height: math.max(Space.xl + MediaQuery.textScalerOf(context).scale(56), _pasteBarRoom))),
     ];
   }
 

@@ -320,7 +320,7 @@ class _ModeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final platform = MediaQuery.platformBrightnessOf(context);
+    ThemeData theme(AppThemeMode m, Brightness b) => AppTheme.forAppearance(appearance.copyWith(mode: m), b, wallpaperSeed: seed);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -329,15 +329,10 @@ class _ModeRow extends StatelessWidget {
           Expanded(
             child: _ModeTile(
               mode: m,
-              theme: AppTheme.forAppearance(
-                appearance.copyWith(mode: m),
-                switch (m) {
-                  AppThemeMode.system => platform,
-                  AppThemeMode.light => Brightness.light,
-                  _ => Brightness.dark,
-                },
-                wallpaperSeed: seed,
-              ),
+              // System follows the phone, so it shows both, whatever the
+              // phone is set to now: light and dark split on the diagonal.
+              theme: theme(m, m == AppThemeMode.light || m == AppThemeMode.system ? Brightness.light : Brightness.dark),
+              darkTheme: m == AppThemeMode.system ? theme(m, Brightness.dark) : null,
               selected: appearance.mode == m,
               onTap: () => onPick(m),
             ),
@@ -349,10 +344,13 @@ class _ModeRow extends StatelessWidget {
 }
 
 class _ModeTile extends StatelessWidget {
-  const _ModeTile({required this.mode, required this.theme, required this.selected, required this.onTap});
+  const _ModeTile({required this.mode, required this.theme, this.darkTheme, required this.selected, required this.onTap});
 
   final AppThemeMode mode;
   final ThemeData theme;
+
+  /// With it, the picture is [theme] above the diagonal and this below.
+  final ThemeData? darkTheme;
   final bool selected;
   final VoidCallback onTap;
 
@@ -380,7 +378,15 @@ class _ModeTile extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
-                  child: AspectRatio(aspectRatio: .62, child: _MiniApp(theme: theme)),
+                  child: AspectRatio(
+                    aspectRatio: .62,
+                    child: darkTheme == null
+                        ? _MiniApp(theme: theme)
+                        : Stack(fit: StackFit.expand, children: [
+                            _MiniApp(theme: theme),
+                            ClipPath(clipper: const _LowerRightHalf(), child: _MiniApp(theme: darkTheme!)),
+                          ]),
+                  ),
                 ),
               ),
               const SizedBox(height: Space.sm),
@@ -404,6 +410,22 @@ class _ModeTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The triangle below the diagonal from the top-right to the bottom-left
+/// corner.
+class _LowerRightHalf extends CustomClipper<Path> {
+  const _LowerRightHalf();
+
+  @override
+  Path getClip(Size size) => Path()
+    ..moveTo(size.width, 0)
+    ..lineTo(size.width, size.height)
+    ..lineTo(0, size.height)
+    ..close();
+
+  @override
+  bool shouldReclip(_LowerRightHalf oldClipper) => false;
 }
 
 /// A picture of Home in [theme]: a status strip, a metric card with its

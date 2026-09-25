@@ -416,6 +416,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
             subtitle: Text(problem.message),
             isThreeLine: true,
             trailing: FilledButton.tonal(
+              style: tonalButtonStyle(context),
               onPressed: _pairing ? null : _pairAgain,
               child: const Text('Pair again'),
             ),

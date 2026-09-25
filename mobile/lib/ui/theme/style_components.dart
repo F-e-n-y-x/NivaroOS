@@ -63,6 +63,10 @@ abstract final class StyleComponents {
 
     // The primary button is part of each style's identity: ink in Rack,
     // tonal in Tonal, an accent outline with a mono label in Console.
+    // Monochrome's containers are greys that sit next to the secondary
+    // container (in dark they are the same grey), so there Tonal's primary
+    // is ink on the page instead, to stay a step above a tonal button.
+    final monoAccent = s.primary == s.onSurface;
     final filled = switch (d) {
       DesignDirection.rack => FilledButton.styleFrom(
           backgroundColor: s.onSurface,
@@ -73,8 +77,8 @@ abstract final class StyleComponents {
           shape: buttonShape,
         ),
       DesignDirection.tonal => FilledButton.styleFrom(
-          backgroundColor: s.primaryContainer,
-          foregroundColor: s.onPrimaryContainer,
+          backgroundColor: monoAccent ? s.primary : s.primaryContainer,
+          foregroundColor: monoAccent ? s.onPrimary : s.onPrimaryContainer,
           textStyle: buttonLabel,
         ),
       _ => FilledButton.styleFrom(
@@ -120,7 +124,10 @@ abstract final class StyleComponents {
     // hairline, Tonal the M3 default.
     final switchTheme = tonal
         ? SwitchThemeData(
-            thumbIcon: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.selected) ? const Icon(Icons.check) : null),
+            // The check in the primary on the onPrimary thumb: M3 draws it
+            // in onPrimaryContainer, which Monochrome leaves near-white on
+            // a white thumb in light.
+            thumbIcon: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.selected) ? Icon(Icons.check, color: s.primary) : null),
           )
         : SwitchThemeData(
             thumbColor: WidgetStateProperty.resolveWith((st) {

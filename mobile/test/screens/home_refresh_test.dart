@@ -1,6 +1,7 @@
 // Home's live polling at the phone's "Refresh widgets" interval, and the
 // console preview of the one running VM: when it shows, how often it
 // asks for a picture, and that it stops while it can't be seen.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -142,12 +143,49 @@ void main() {
         await tester.pumpWidget(testApp(Scaffold(body: DashboardScreen(controller: controller, refresh: refresh))));
         await _settle(tester);
         expect(controller.history.capacity, 5);
+        expect(controller.history.cpu, isNotEmpty);
         await refresh.set(WidgetRefresh.s2);
         await tester.pump();
         expect(controller.history.capacity, 61);
+        // The readings 30 s apart are gone; the chart doesn't draw them
+        // 2 s apart.
+        expect(controller.history.cpu, isEmpty);
+        expect(controller.history.memory, isEmpty);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(minutes: 1));
       }, () => server.client);
+    });
+  });
+
+  group('Home VM list', () {
+    test('an older list that arrives late does not overwrite a newer one', () async {
+      final list = (jsonDecode(File('test/screenshots/fixtures/v1/vm-sidecar/vms.json').readAsStringSync()) as List).cast<Map<String, dynamic>>();
+      final held = Completer<void>();
+      var calls = 0;
+      final server = FakeServer();
+      final client = MockClient((req) async {
+        if (req.url.path != '/v1/vm-sidecar/vms') {
+          final copy = http.Request(req.method, req.url)..headers.addAll(req.headers);
+          return http.Response.fromStream(await server.client.send(copy));
+        }
+        // The first request (a poll) answers late, with a VM still
+        // running; the second (a pull-to-refresh) at once, with it off.
+        final first = ++calls == 1;
+        if (first) await held.future;
+        return http.Response(jsonEncode([
+          for (final v in list) {...v, 'state': first ? 'running' : 'shutoff'},
+        ]), 200);
+      });
+      await http.runWithClient(() async {
+        final c = HomeController();
+        final poll = c.pollVms();
+        await c.refreshAll();
+        expect(c.vms!.running, 0);
+        held.complete();
+        await poll;
+        expect(c.vms!.running, 0, reason: 'the late poll answer is older than the refresh');
+        c.dispose();
+      }, () => client);
     });
   });
 

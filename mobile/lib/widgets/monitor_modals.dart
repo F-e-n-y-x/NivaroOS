@@ -44,14 +44,23 @@ class LiveHistory {
   final List<double> gpu = [];
 
   /// Follows a new refresh interval: the charts keep covering [span], so
-  /// the number of readings changes (61 at 2 s, 3 at 1 min), and the
-  /// oldest readings beyond it are dropped.
+  /// the number of readings changes (61 at 2 s, 3 at 1 min). Readings
+  /// taken at another interval are dropped, since the charts space their
+  /// points by the new one (three readings 4 s apart must not read as
+  /// "2 min"); the lines start again and show they are collecting. Going
+  /// to pull-to-refresh only keeps them: its charts count refreshes, not
+  /// time.
   void retime(Duration? every) {
+    final was = this.every;
     this.every = every;
     if (every == null) return;
     capacity = math.max(span.inMilliseconds ~/ every.inMilliseconds + 1, 3);
     for (final list in [cpu, memory, netDown, netUp, gpu]) {
-      if (list.length > capacity) list.removeRange(0, list.length - capacity);
+      if (every != was) {
+        list.clear();
+      } else if (list.length > capacity) {
+        list.removeRange(0, list.length - capacity);
+      }
     }
   }
 

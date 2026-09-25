@@ -100,11 +100,26 @@ void main() {
       expect(h.window, '2 min');
     });
 
-    test('drops the oldest readings beyond the new span', () {
+    test('a new interval starts the lines again: old readings would be spaced wrong', () {
       final h = LiveHistory()..retime(const Duration(seconds: 2));
       h.cpu.addAll([for (var i = 0; i < 61; i++) i.toDouble()]);
-      h.retime(const Duration(seconds: 30));
-      expect(h.cpu, [56, 57, 58, 59, 60]);
+      h.netDown.addAll([1, 2, 3]);
+      // The same interval again (Home re-arming its timer) keeps them.
+      h.retime(const Duration(seconds: 2));
+      expect(h.cpu, hasLength(61));
+      h.retime(const Duration(minutes: 1));
+      expect(h.cpu, isEmpty);
+      expect(h.netDown, isEmpty);
+      expect(h.window, '2 min');
+    });
+
+    test('pull-to-refresh only keeps the readings; back to an interval drops them', () {
+      final h = LiveHistory()..retime(const Duration(seconds: 4));
+      h.cpu.addAll([1, 2, 3]);
+      h.retime(null);
+      expect(h.cpu, [1, 2, 3]);
+      h.retime(const Duration(seconds: 4));
+      expect(h.cpu, isEmpty);
     });
 
     test('pull-to-refresh only keeps the count and labels the chart in refreshes', () {

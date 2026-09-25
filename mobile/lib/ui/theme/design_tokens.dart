@@ -328,10 +328,11 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
 /// The style for a secondary, tonal button (`FilledButton.tonal`) in
 /// directions whose primary button isn't the M3 default: the theme's
 /// filled-button style applies to both variants, so tonal buttons restate
-/// their own fill. Null keeps the default.
+/// their own fill (in Tonal too, whose primary is itself a container fill,
+/// or the two would be the same button). Null keeps the default.
 ButtonStyle? tonalButtonStyle(BuildContext context) {
   final t = DesignTokens.of(context);
-  if (t.button == ButtonTreatment.accent || t.button == ButtonTreatment.tonal) return null;
+  if (t.button == ButtonTreatment.accent) return null;
   final s = Theme.of(context).colorScheme;
   return FilledButton.styleFrom(
     backgroundColor: s.secondaryContainer,

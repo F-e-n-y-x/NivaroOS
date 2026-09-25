@@ -3,6 +3,7 @@
 // sends the right batch job, Trash can be a tab (where paste is off), each
 // tab keeps its own selection and scroll, and the tabs come back after a
 // restart.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -10,9 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nivaroos_mobile/screens/files/file_tabs.dart';
+import 'package:nivaroos_mobile/screens/files/file_widgets.dart';
 import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
+import 'package:nivaroos_mobile/ui/ui.dart';
 
 import '../screenshots/harness.dart';
 
@@ -27,6 +30,15 @@ class _Server {
   final calls = <(String, Object?)>[];
   final listed = <String>[];
 
+  /// Folders listed from another fixture than the default.
+  final contents = <String, String>{};
+
+  /// Names gone from every listing (deleted elsewhere).
+  final removed = <String>{};
+
+  /// Listings held back until their completer completes.
+  final hold = <String, Completer<void>>{};
+
   Iterable<Object?> bodiesOf(String key) => calls.where((c) => c.$1 == key).map((c) => c.$2);
 
   late final client = MockClient((req) async {
@@ -35,8 +47,12 @@ class _Server {
     if (key == 'GET /v1/folder') {
       final path = req.url.queryParameters['path'] ?? '';
       listed.add(path);
-      return http.Response(jsonEncode(fixture(path == _documents ? 'files/documents' : 'files/empty')), 200,
-          headers: {'content-type': 'application/json'});
+      final held = hold.remove(path);
+      if (held != null) await held.future;
+      final listing = fixture(contents[path] ?? (path == _documents ? 'files/documents' : 'files/empty'));
+      final data = listing['data'] as Map<String, dynamic>;
+      data['content'] = [for (final e in data['content'] as List) if (!removed.contains((e as Map)['name'])) e];
+      return http.Response(jsonEncode(listing), 200, headers: {'content-type': 'application/json'});
     }
     final copy = http.Request(req.method, req.url)
       ..headers.addAll(req.headers)
@@ -63,8 +79,8 @@ Future<void> _run(WidgetTester tester, _Server server, Future<void> Function() b
   }, () => server.client);
 }
 
-Future<void> _pumpFiles(WidgetTester tester, {String? initialPath, Key? key}) async {
-  await tester.pumpWidget(testApp(Scaffold(body: FilesScreen(key: key, initialPath: initialPath))));
+Future<void> _pumpFiles(WidgetTester tester, {String? initialPath, Key? key, double textScale = 1}) async {
+  await tester.pumpWidget(testApp(Scaffold(body: FilesScreen(key: key, initialPath: initialPath)), textScale: textScale));
   await _settle(tester);
 }
 
@@ -169,6 +185,31 @@ void main() {
       expect(odd.all.first.place.isHome, isTrue);
       expect(odd.activeIndex, 0);
     });
+  });
+
+  group('paste bar', () {
+    for (final (d, stacked) in [(DesignDirection.rack, false), (DesignDirection.tonal, false), (DesignDirection.console, true)]) {
+      testWidgets('${d.name} at 412 dp: ${stacked ? 'wide buttons go under the words' : 'the words fit beside the buttons'}', (tester) async {
+        await tester.runAsync(loadRealFonts);
+        tester.view.physicalSize = phone * 2;
+        tester.view.devicePixelRatio = 2;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(testApp(
+          Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: PasteBar(label: '“Budget 2026.xlsx” on clipboard', detail: 'Copying from Documents', actionLabel: 'Paste here', onPaste: () {}, onCancel: () {}),
+            ),
+          ),
+          appearance: Appearance(direction: d),
+        ));
+        final words = tester.getRect(find.text('Copying from Documents'));
+        final paste = tester.getRect(find.widgetWithText(FilledButton, 'Paste here'));
+        expect(paste.top >= words.bottom, stacked);
+        // Beside the buttons, the detail line still fits on one line.
+        if (!stacked) expect(words.height, lessThan(24));
+      });
+    }
   });
 
   group('screen', () {
@@ -321,6 +362,85 @@ void main() {
         expect(state.handleBack(), isTrue, reason: 'back clears the selection first');
         await _settle(tester);
         expect(find.text('1'), findsNothing);
+      });
+    });
+
+    testWidgets('a selection lets go of items gone from the folder (deleted from another tab)', (tester) async {
+      final server = _Server({'GET /v1/trash/support': fixture('files/trash_support')});
+      await _run(tester, server, () async {
+        await _pumpFiles(tester, initialPath: _documents);
+        await tester.tap(find.byTooltip('Tabs'));
+        await _settle(tester);
+        await tester.tap(find.text('New tab here'));
+        await _settle(tester);
+        // Tab A: notes.md selected.
+        await tester.tap(find.byType(InputChip).first);
+        await _settle(tester);
+        await tester.longPress(find.text('notes.md'));
+        await _settle(tester);
+        expect(find.text('1'), findsOneWidget);
+        // Tab B, on the same folder, where notes.md goes away.
+        await tester.tap(find.byType(InputChip).last);
+        await _settle(tester);
+        server.removed.add('notes.md');
+        await tester.fling(find.text('Invoices'), const Offset(0, 400), 1000);
+        await _settle(tester);
+        expect(find.text('notes.md'), findsNothing);
+        // Back to A: the fresh listing no longer has it, so neither does
+        // the selection (no "1 selected" whose actions do nothing).
+        await tester.tap(find.byType(InputChip).first);
+        await _settle(tester);
+        expect(find.text('notes.md'), findsNothing);
+        expect(find.text('1'), findsNothing);
+        expect(find.byTooltip('Clear selection'), findsNothing);
+      });
+    });
+
+    testWidgets('the conflict sheet names the folder Paste was pressed in, even after a tab switch', (tester) async {
+      final server = _Server({'GET /v1/trash/support': fixture('files/trash_support')});
+      // Work already has a notes.md.
+      server.contents['$_documents/Work'] = 'files/documents';
+      await _run(tester, server, () async {
+        await _pumpFiles(tester, initialPath: _documents);
+        await _menu(tester, 'notes.md', 'Copy');
+        await _menu(tester, 'Work', 'Open in new tab');
+        expect(find.text('notes.md'), findsOneWidget);
+
+        // Paste in Work, and switch to Documents while Work is listed again.
+        final listing = server.hold['$_documents/Work'] = Completer<void>();
+        await tester.tap(find.widgetWithText(FilledButton, 'Paste here'));
+        await tester.pump();
+        await tester.tap(_chip('Documents'));
+        await _settle(tester);
+        listing.complete();
+        await _settle(tester);
+        expect(find.text('“notes.md” is already in Work'), findsOneWidget);
+      });
+    });
+
+    testWidgets('at 200% text the tab on screen and + stay clear of the edge, and the paste bar hides nothing', (tester) async {
+      final server = _Server({'GET /v1/trash/support': fixture('files/trash_support')});
+      // Real type: the test font's square glyphs would overflow at 200%.
+      await tester.runAsync(loadRealFonts);
+      await _run(tester, server, () async {
+        await _pumpFiles(tester, initialPath: _documents, textScale: 2);
+        await _menu(tester, 'Budget 2026.xlsx', 'Copy');
+        await _menu(tester, 'Work', 'Open in new tab');
+
+        final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+        final gutter = Space.gutter(tester.element(find.byType(FilesScreen)));
+        final chip = tester.getRect(_chip('Work'));
+        expect(chip.left, greaterThanOrEqualTo(gutter - 0.5));
+        expect(chip.right, lessThanOrEqualTo(screen.width - gutter + 0.5), reason: 'not flush against the edge');
+        expect(tester.getRect(find.byTooltip('New tab')).right, lessThanOrEqualTo(screen.width), reason: 'the last tab brings + with it');
+
+        // The empty folder keeps room for the paste bar under it, so its
+        // button scrolls clear of the bar instead of staying under it.
+        expect(find.text('“Budget 2026.xlsx” on clipboard'), findsOneWidget);
+        await tester.drag(find.text('This folder is empty'), const Offset(0, -600));
+        await _settle(tester);
+        expect(find.text('Upload files').hitTestable(), findsOneWidget);
+        expect(tester.getRect(find.text('Upload files')).bottom, lessThan(tester.getRect(find.byType(PasteBar)).top));
       });
     });
 

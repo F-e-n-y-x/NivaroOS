@@ -819,3 +819,27 @@ are saved per server and come back after a restart.
   `directions_test.dart` adds, per style, Home in Monochrome (light, true
   black), the VM preview, Files tabs and the Refresh widgets sheet, and
   Appearance in true black.
+
+### Stage-4 review fixes (2026-09-26)
+
+- **Screenshots draw real shadows** (`shoot()` turns off flutter_test's
+  solid black outline for elevated surfaces), so Rack and Tonal light no
+  longer look heavy-bordered. The component gallery is 412 × 1900 with the
+  dialog above the fields, and the snack bar shows above the navigation bar.
+- **Tonal:** a tonal button (`FilledButton.tonal`) restates the secondary
+  container through `tonalButtonStyle`, which Tonal now uses too (the theme's
+  primary-container fill had made Install and Open the same button in every
+  accent). In Monochrome, Tonal's primary is ink on the page. The switch
+  thumb's check is drawn in the primary, so it shows on the white thumb.
+- **Facts lines** ("Idle · 37 °C · VRAM ...") use `FactLine`: they wrap
+  between whole facts and a line never ends on a separator.
+- **Home:** the status header sits `Space.sm` under the app bar (Console's
+  rule no longer touches it); VM list answers older than the newest request
+  are dropped; a new refresh interval starts the charts over.
+- **Files:** the tab on screen is revealed a gutter clear of the edge (the
+  last one brings +); the folder keeps room for the paste bar under it; the
+  paste bar stacks its buttons when the words would get under 150 dp (Console's
+  mono buttons at 412 dp); selections drop items gone from the folder; the
+  conflict sheet names the folder Paste was pressed in.
+- **Appearance:** the System mode picture is split light / dark on the
+  diagonal. **Refresh widgets:** the radios line up with the sheet's title.

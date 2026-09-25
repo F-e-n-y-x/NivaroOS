@@ -1,9 +1,11 @@
 // The Files screen's rows, tiles and bars, on the v2 design system.
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../models/file_entry.dart';
 import '../../services/api_client.dart';
@@ -636,14 +638,21 @@ class PasteBar extends StatelessWidget {
                 ],
               ),
             );
+            const clear = 'Clear';
             final buttons = [
-              TextButton(onPressed: onCancel, child: const Text('Clear')),
+              TextButton(onPressed: onCancel, child: const Text(clear)),
               const SizedBox(width: Space.xs),
               FilledButton(onPressed: onPaste, child: Text(actionLabel)),
             ];
-            // Too narrow for the words beside the buttons (a small phone,
-            // large text): the buttons go under them.
-            if (constraints.maxWidth < MediaQuery.textScalerOf(context).scale(340)) {
+            // The words get what the buttons leave; when that is too
+            // narrow for them (a small phone, large text, or a style with
+            // wide buttons - Console's mono labels) the buttons go under
+            // them instead of squeezing them into a ragged column.
+            final scaler = MediaQuery.textScalerOf(context);
+            final besideWidth = constraints.maxWidth - Space.sm - Space.xs -
+                _buttonWidth(context, theme.textButtonTheme.style, clear, 12) -
+                _buttonWidth(context, theme.filledButtonTheme.style, actionLabel, 24);
+            if (besideWidth < scaler.scale(150)) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
@@ -664,6 +673,56 @@ class PasteBar extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// About how wide a button with [label] is drawn in [style] (the
+  /// theme's; [padding] each side where the style doesn't say), from its
+  /// label's type at the current text size.
+  static double _buttonWidth(BuildContext context, ButtonStyle? style, String label, double padding) {
+    final theme = Theme.of(context);
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style?.textStyle?.resolve({}) ?? theme.textTheme.labelLarge),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width + (style?.padding?.resolve({})?.horizontal ?? padding * 2);
+    painter.dispose();
+    return math.max(width, style?.minimumSize?.resolve({})?.width ?? 64);
+  }
+}
+
+/// Tells [onHeight] its child's height after each layout that changes it,
+/// so a screen can keep room under a bar that floats over its body (the
+/// paste bar, which grows with the text).
+class HeightReporter extends SingleChildRenderObjectWidget {
+  const HeightReporter({super.key, required this.onHeight, super.child});
+
+  final ValueChanged<double> onHeight;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderHeightReporter(onHeight);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderHeightReporter renderObject) => renderObject.onHeight = onHeight;
+}
+
+class RenderHeightReporter extends RenderProxyBox {
+  RenderHeightReporter(this.onHeight);
+
+  ValueChanged<double> onHeight;
+  double? _reported;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final h = size.height;
+    if (h == _reported) return;
+    _reported = h;
+    // Not during layout: the listener rebuilds the screen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (attached) onHeight(h);
+    });
   }
 }
 
@@ -773,13 +832,29 @@ class _FileTabStripState extends State<FileTabStrip> {
     super.dispose();
   }
 
-  /// Scrolls the tab on screen into view (a new one opens off the edge).
+  /// Scrolls the tab on screen into view (a new one opens off the edge),
+  /// a gutter clear of the screen's edges rather than flush against them
+  /// (Scrollable.ensureVisible would align the chip itself to the edge,
+  /// clipping its corner). The last tab brings the + button with it.
   void _revealActive() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = _keys[widget.activeId]?.currentContext;
-      if (!mounted || context == null) return;
-      Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
-      Scrollable.ensureVisible(context, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+      final box = _keys[widget.activeId]?.currentContext?.findRenderObject();
+      if (!mounted || box == null || !_scroll.hasClients) return;
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (viewport == null) return;
+      final p = _scroll.position;
+      final margin = Space.gutter(context);
+      final last = widget.tabs.isNotEmpty && widget.tabs.last.id == widget.activeId;
+      // The offsets that put the chip a margin from the leading edge, and
+      // a margin from the trailing one; keep the chip between the two,
+      // favouring its start when it is wider than the strip.
+      final atStart = viewport.getOffsetToReveal(box, 0).offset - margin;
+      final atEnd = last ? p.maxScrollExtent : viewport.getOffsetToReveal(box, 1).offset + margin;
+      var target = p.pixels;
+      if (target < atEnd) target = atEnd;
+      if (target > atStart) target = atStart;
+      target = target.clamp(p.minScrollExtent, p.maxScrollExtent);
+      if (target != p.pixels) _scroll.jumpTo(target);
     });
   }
 

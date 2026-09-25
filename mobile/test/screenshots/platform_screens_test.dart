@@ -249,28 +249,21 @@ void main() {
   });
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
-    // Real elevation shadows rather than flutter_test's solid outlines (the
-    // FAB, menus), reset before the test ends as flutter_test requires.
     Future<void> shot(WidgetTester tester, Brightness brightness, {Size size = phone, double textScale = 1}) async {
       if (s.setup != null) await tester.runAsync(s.setup!);
-      debugDisableShadows = false;
-      try {
-        await shoot(
-          tester,
-          name: name,
-          dir: 'platform',
-          screen: s.build(),
-          brightness: brightness,
-          size: size,
-          textScale: textScale,
-          overrides: s.overrides,
-          before: s.before,
-          tab: s.tab,
-          pushed: !s.tab && !s.root,
-        );
-      } finally {
-        debugDisableShadows = true;
-      }
+      await shoot(
+        tester,
+        name: name,
+        dir: 'platform',
+        screen: s.build(),
+        brightness: brightness,
+        size: size,
+        textScale: textScale,
+        overrides: s.overrides,
+        before: s.before,
+        tab: s.tab,
+        pushed: !s.tab && !s.root,
+      );
     }
 
     for (final b in Brightness.values) {

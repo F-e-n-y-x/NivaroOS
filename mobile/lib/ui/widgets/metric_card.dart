@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 import '../theme/status_colors.dart';
+import 'fact_line.dart';
 
 /// A word for how a metric is doing ("Moderate", "Running low"), with its
 /// status. The word is always shown with the colour, never colour alone.
@@ -157,19 +158,20 @@ class MetricCard extends StatelessWidget {
 
     final lvl = level;
     final tone = lvl == null ? null : StatusColors.toneOf(context, lvl.status);
-    final facts = Text.rich(
-      TextSpan(children: [
+    // Each fact breaks as a whole ("4 drives", never "4 / drives"), and a
+    // wrap never leaves a separator hanging.
+    final facts = FactLine(
+      [
         if (lvl != null)
           TextSpan(
             text: lvl.word,
             style: t.data.copyWith(color: lvl.alerting ? tone!.color : scheme.onSurface, fontWeight: FontWeight.w600),
           ),
-        if (lvl != null && detail != null) TextSpan(text: ' · ', style: t.data),
-        // Each fact breaks as a whole ("4 drives", never "4 / drives").
-        if (detail != null) TextSpan(text: detail!.split(' · ').map((f) => f.replaceAll(' ', '\u00A0')).join(' · '), style: t.data),
-      ]),
+        if (detail != null)
+          for (final f in detail!.split(FactLine.separator)) TextSpan(text: f),
+      ],
+      style: t.data,
       maxLines: 2,
-      overflow: TextOverflow.ellipsis,
     );
 
     final top = values == null

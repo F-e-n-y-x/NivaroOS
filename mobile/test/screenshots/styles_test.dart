@@ -8,14 +8,16 @@
 //
 //   flutter test test/screenshots/styles_test.dart --update-goldens
 //
-// PNGs: goldens/styles/<style>/components_<accent>_<mode>_412x1400.png.
+// PNGs: goldens/styles/<style>/components_<accent>_<mode>_412x1900.png.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/ui/ui.dart';
 
 import 'harness.dart';
 
-const _size = Size(412, 1400);
+// Tall enough for every section, with the FAB and the snack bar over
+// the empty end of the list rather than over a component.
+const _size = Size(412, 1900);
 
 /// Each style's signature accent (design brief §10).
 const _signature = {
@@ -110,6 +112,17 @@ class _ComponentsState extends State<_Components> {
               TextButton(onPressed: () {}, child: const Text('Retry')),
               IconButton.filledTonal(onPressed: () {}, icon: const Icon(Icons.terminal)),
             ]),
+            const SectionHeader(title: 'Card and dialog'),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: gutter),
+              child: const Card(child: ListTile(leading: Icon(Icons.backup_outlined), title: Text('Backup finished'), subtitle: Text('2 min ago · 1.2 GB'))),
+            ),
+            const SizedBox(height: Space.md),
+            AlertDialog(
+              title: const Text('Shut down nas?'),
+              content: const Text('Apps and VMs stop until it starts again.'),
+              actions: [TextButton(onPressed: () {}, child: const Text('Cancel')), TextButton(onPressed: () {}, child: const Text('Shut down'))],
+            ),
             const SectionHeader(title: 'Fields and progress'),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: gutter),
@@ -122,17 +135,6 @@ class _ComponentsState extends State<_Components> {
                 SizedBox(height: Space.lg),
                 Row(children: [CircularProgressIndicator(value: .7), SizedBox(width: Space.lg), Expanded(child: Divider())]),
               ]),
-            ),
-            const SectionHeader(title: 'Card and dialog'),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: gutter),
-              child: const Card(child: ListTile(leading: Icon(Icons.backup_outlined), title: Text('Backup finished'), subtitle: Text('2 min ago · 1.2 GB'))),
-            ),
-            const SizedBox(height: Space.md),
-            AlertDialog(
-              title: const Text('Shut down nas?'),
-              content: const Text('Apps and VMs stop until it starts again.'),
-              actions: [TextButton(onPressed: () {}, child: const Text('Cancel')), TextButton(onPressed: () {}, child: const Text('Shut down'))],
             ),
           ],
         ),
@@ -159,7 +161,13 @@ void main() {
                 ScaffoldMessenger.of(tester.element(find.byType(ListView))).showSnackBar(
                   SnackBar(content: const Text('Moved to the Trash'), action: SnackBarAction(label: 'Undo', onPressed: () {}), duration: const Duration(minutes: 1)),
                 );
+                // Two frames: the first starts the entrance animation, the
+                // second draws it finished (one long pump leaves it at 0).
+                await tester.pump();
+                await tester.pump(const Duration(seconds: 1));
+                expect(find.text('Moved to the Trash').hitTestable(), findsOneWidget);
                 await tester.tap(find.byIcon(Icons.more_vert));
+                await tester.pump();
                 await tester.pump(const Duration(seconds: 1));
               },
             ));

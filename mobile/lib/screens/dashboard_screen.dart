@@ -77,6 +77,9 @@ class HomeController extends ChangeNotifier {
   DateTime? _vmsAt;
   bool _liveBusy = false;
   bool _vmsBusy = false;
+
+  /// The newest VM list request ([_loadVms]).
+  int _vmsSeq = 0;
   bool _disposed = false;
 
   static const disksEvery = WidgetRefresh.drivesEvery;
@@ -294,10 +297,16 @@ class HomeController extends ChangeNotifier {
   // Through the gateway's same-origin route, so it works behind a tunnel
   // or reverse proxy too (plan M-01). The sidecar answers a bare list, so
   // it can't go through the JSON-envelope helper.
+  //
+  // A poll, a pull-to-refresh and the reload after a shutdown can overlap;
+  // only the answer to the newest request is kept, so an older list that
+  // arrives late can't overwrite a newer one.
   Future<void> _loadVms({bool keepOnError = false}) async {
     _vmsAt = clock.now();
+    final seq = ++_vmsSeq;
     try {
       final res = await _api.getRaw('/v1/vm-sidecar/vms');
+      if (seq != _vmsSeq) return;
       if (res.statusCode != 200) {
         if (!keepOnError) vmList = null;
         return;
@@ -306,7 +315,7 @@ class HomeController extends ChangeNotifier {
       if (list is! List) return;
       vmList = list.whereType<Map<String, dynamic>>().map(Vm.fromJson).toList();
     } catch (_) {
-      if (!keepOnError) vmList = null;
+      if (seq == _vmsSeq && !keepOnError) vmList = null;
     }
   }
 }
@@ -592,13 +601,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : active.isEmpty
                 ? 'None running'
                 : 'All virtual machines'),
-        subtitle: Text(vms.isEmpty
-            ? 'Create one on the VMs tab'
-            : [
+        subtitle: vms.isEmpty
+            ? const Text('Create one on the VMs tab')
+            : FactLine.plain([
                 if (active.length > 4) '${active.length - 4} more running',
                 if (idle > 0) idle == 1 ? '1 turned off' : '$idle turned off',
                 if (idle == 0 && active.length <= 4) '${vms.length} in total',
-              ].join(' · ')),
+              ]),
         trailing: const Icon(Icons.chevron_right),
         onTap: widget.onOpenVms,
       ),
@@ -611,7 +620,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final spec = [
       if (vm.vcpus > 0) vm.vcpus == 1 ? '1 vCPU' : '${vm.vcpus} vCPU',
       if (vm.memoryMib > 0) formatBytes(vm.memoryMib * 1024 * 1024, decimals: vm.memoryMib % 1024 == 0 ? 0 : 1),
-    ].join(' · ');
+    ];
     return ListTile(
       leading: const Icon(Icons.computer_outlined),
       title: Text(vm.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -623,7 +632,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             VmStateChip(state: vm.powerState),
-            if (spec.isNotEmpty) Text(spec, style: t.data),
+            if (spec.isNotEmpty) FactLine.plain(spec, style: t.data),
           ],
         ),
       ),
@@ -774,7 +783,7 @@ class ServerHeader extends StatelessWidget {
                 ),
                 if (facts.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(facts.map((f) => f.replaceAll(' ', '\u00A0')).join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                  FactLine.plain(facts, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
                 ],
               ],
             ),
@@ -784,10 +793,10 @@ class ServerHeader extends StatelessWidget {
     );
 
     if (panel == null) {
-      return Padding(padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.lg), child: content);
+      return Padding(padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.lg), child: content);
     }
     return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, t.gap),
+      padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, t.gap),
       child: Material(
         color: panel,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),

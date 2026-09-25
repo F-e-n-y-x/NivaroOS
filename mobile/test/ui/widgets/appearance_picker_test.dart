@@ -53,6 +53,25 @@ void main() {
     await c.set(const Appearance());
   });
 
+  for (final platform in Brightness.values) {
+    testWidgets('System mode shows light and dark, on a ${platform.name} phone too', (tester) async {
+      tester.platformDispatcher.platformBrightnessTestValue = platform;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      final c = ThemeController();
+      await pump(tester, c);
+      Set<Brightness> shown(String mode) => {
+            for (final t in tester.widgetList<Theme>(find.descendant(
+              of: find.byWidgetPredicate((w) => w is Semantics && w.properties.label == '$mode mode'),
+              matching: find.byType(Theme),
+            )))
+              t.data.brightness,
+          };
+      expect(shown('System default'), {Brightness.light, Brightness.dark});
+      expect(shown('Light'), {Brightness.light});
+      expect(shown('Dark'), {Brightness.dark});
+    });
+  }
+
   testWidgets('the swatches are a 3 × 3 grid', (tester) async {
     final c = ThemeController();
     await pump(tester, c);

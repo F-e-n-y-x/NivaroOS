@@ -19,6 +19,7 @@ class _StateLayout extends StatelessWidget {
     required this.message,
     required this.actions,
     required this.sliver,
+    this.bottomInset = 0,
   });
 
   final IconData icon;
@@ -27,6 +28,7 @@ class _StateLayout extends StatelessWidget {
   final String message;
   final List<Widget> actions;
   final bool sliver;
+  final double bottomInset;
 
   Widget _content(BuildContext context) {
     final theme = Theme.of(context);
@@ -66,7 +68,8 @@ class _StateLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final padding = EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl);
+    final gutter = Space.gutter(context);
+    final padding = EdgeInsets.fromLTRB(gutter, Space.xl, gutter, Space.xl + bottomInset);
     if (sliver) {
       return SliverFillRemaining(
         hasScrollBody: false,
@@ -99,6 +102,7 @@ class EmptyState extends StatelessWidget {
     this.actionLabel,
     this.onAction,
     this.sliver = false,
+    this.bottomInset = 0,
   });
 
   final IconData icon;
@@ -109,6 +113,11 @@ class EmptyState extends StatelessWidget {
 
   /// True to place it directly in a sliver list (`AppScaffold.slivers`).
   final bool sliver;
+
+  /// Room kept clear at the bottom for something floating over the
+  /// screen (a toolbar the size of Files' paste bar), so the state
+  /// centres in what is left and its action is never under it.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +130,7 @@ class EmptyState extends StatelessWidget {
         if (actionLabel != null && onAction != null) FilledButton.tonal(style: tonalButtonStyle(context), onPressed: onAction, child: Text(actionLabel!)),
       ],
       sliver: sliver,
+      bottomInset: bottomInset,
     );
   }
 }
@@ -138,13 +148,14 @@ class ErrorState extends StatelessWidget {
     this.details,
     this.icon = Icons.error_outline,
     this.sliver = false,
+    this.bottomInset = 0,
   }) : _offline = false;
 
   /// "Can't reach the server" with nothing cached to show: a network
   /// failure, with the wording and icon the whole app uses for it. Being
   /// offline is a situation, not a fault, so the icon is neutral rather
   /// than red. With cached data on screen, use an OfflineBanner instead.
-  const ErrorState.offline({super.key, required this.onRetry, this.details, this.sliver = false})
+  const ErrorState.offline({super.key, required this.onRetry, this.details, this.sliver = false, this.bottomInset = 0})
       : title = "Can't reach the server",
         message = 'Check that this phone is on the same network as the server, or connected through Tailscale.',
         icon = Icons.cloud_off_outlined,
@@ -154,6 +165,9 @@ class ErrorState extends StatelessWidget {
 
   /// True to place it directly in a sliver list (`AppScaffold.slivers`).
   final bool sliver;
+
+  /// As [EmptyState.bottomInset].
+  final double bottomInset;
 
   final String title;
   final String message;
@@ -185,6 +199,7 @@ class ErrorState extends StatelessWidget {
           ),
       ],
       sliver: sliver,
+      bottomInset: bottomInset,
     );
   }
 }

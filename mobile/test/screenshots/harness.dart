@@ -357,6 +357,37 @@ Future<void> shoot(
   String? themeName,
   Appearance appearance = const Appearance(),
 }) async {
+  // Real elevation shadows rather than flutter_test's default of a solid
+  // black outline round everything elevated (menus, the FAB, the paste
+  // bar), so a shot looks as it does on a phone. flutter_test checks the
+  // flag is back to its default as soon as the test body returns, before
+  // any tear-down runs, so it is reset in the finally below, not with
+  // addTearDown.
+  debugDisableShadows = false;
+  try {
+    await _shoot(tester, name: name, screen: screen, dir: dir, brightness: brightness, size: size, textScale: textScale, overrides: overrides, settle: settle, before: before, strict: strict, tab: tab, pushed: pushed, themeName: themeName, appearance: appearance);
+  } finally {
+    debugDisableShadows = true;
+  }
+}
+
+Future<void> _shoot(
+  WidgetTester tester, {
+  required String name,
+  required Widget screen,
+  required String dir,
+  required Brightness brightness,
+  required Size size,
+  required double textScale,
+  required Map<String, Object> overrides,
+  required Duration settle,
+  required Future<void> Function(WidgetTester tester)? before,
+  required bool strict,
+  required bool tab,
+  required bool pushed,
+  required String? themeName,
+  required Appearance appearance,
+}) async {
   await loadRealFonts();
   final findings = <String>[];
   final testHandler = FlutterError.onError;

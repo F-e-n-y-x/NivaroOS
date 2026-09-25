@@ -309,6 +309,10 @@ Future<WidgetRefresh?> showRefreshSheet(BuildContext context, WidgetRefresh curr
                       children: [
                         for (final r in WidgetRefresh.values)
                           RadioListTile<WidgetRefresh>(
+                            // The radio draws its circle about 10 dp inside
+                            // its touch box: pull it in so the circles line
+                            // up with the title and text above.
+                            contentPadding: const EdgeInsets.only(left: Space.xl - 10, right: Space.xl),
                             value: r,
                             title: Text(r == WidgetRefresh.defaultValue ? '${r.summary} (default)' : r.summary),
                           ),
