@@ -33,6 +33,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
   DateTime? _loadedAt;
   ShareStatus _share = ShareStatus.off;
   bool _shareBusy = false;
+  bool _pairing = false;
   bool? _batteryUnrestricted;
   Timer? _poll;
 
@@ -62,6 +63,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
   }
 
   Future<void> _load() async {
+    await DeviceSyncService.instance.restoreRemovedState();
     final thisPhone = await DeviceSyncService.instance.getLocalDeviceInfo();
     if (mounted) setState(() => _thisPhone = thisPhone);
     await _loadShare();
@@ -130,6 +132,17 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
       await _loadShare();
     } finally {
       if (mounted) setState(() => _shareBusy = false);
+    }
+  }
+
+  Future<void> _pairAgain() async {
+    setState(() => _pairing = true);
+    try {
+      final ok = await DeviceSyncService.instance.pairAgain();
+      _snack(ok ? 'This phone is paired again.' : "Couldn't pair this phone. Check the connection and try again.");
+      if (ok) await _load();
+    } finally {
+      if (mounted) setState(() => _pairing = false);
     }
   }
 
@@ -305,6 +318,7 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
       'timeout' => "Sharing stopped: Android allows this kind of background work for 6 hours a day. You can share again later today or tomorrow.",
       'not_allowed' => "Android didn't let sharing start. Open the app and try again.",
       'signed_out' => 'Sharing stopped because the sign-in on this server ended.',
+      'removed' => 'Sharing stopped because this phone was removed from the server.',
       'error' => "Sharing stopped because of a problem on this phone. Try again.",
       _ => null,
     };
@@ -395,7 +409,18 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
             onPressed: phone == null ? null : () => _rename(phone),
           ),
         ),
-        if (problem != null)
+        if (problem != null && problem.removed)
+          ListTile(
+            leading: Icon(Icons.link_off_outlined, color: StatusColors.of(context).warning.color),
+            title: const Text('Removed from the server'),
+            subtitle: Text(problem.message),
+            isThreeLine: true,
+            trailing: FilledButton.tonal(
+              onPressed: _pairing ? null : _pairAgain,
+              child: const Text('Pair again'),
+            ),
+          )
+        else if (problem != null)
           ListTile(
             leading: Icon(Icons.warning_amber_outlined, color: StatusColors.of(context).warning.color),
             title: Text(problem.otherAccount ? 'Paired with another account' : 'Not linked to your account yet'),

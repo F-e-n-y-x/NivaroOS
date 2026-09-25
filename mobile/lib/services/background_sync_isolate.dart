@@ -47,6 +47,8 @@ Future<void> shareServiceMain() async {
     ApiClient.sessionExpiredNotifier.addListener(() {
       if (ApiClient.sessionExpiredNotifier.value) stop('signed_out');
     });
+    // Removed from the server while sharing: this engine stops itself.
+    DeviceSyncService.onRemovedByServer = () => stop('removed');
     await CompanionFileServer.instance.start();
     DeviceSyncService.instance.startSharingHeartbeat();
     Timer.periodic(const Duration(minutes: 1), (_) => CompanionFileServer.instance.refreshAddress());

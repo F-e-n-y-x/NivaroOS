@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
+import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
 
 /// Why a path from the server was refused.
@@ -649,6 +650,11 @@ class CompanionFileServer {
       final data = jsonDecode(message) as Map<String, dynamic>;
       final reqId = data['id'];
       final action = data['action'];
+      if (data['type'] == 'removed') {
+        // The server removed this phone from its device list.
+        DeviceSyncService.instance.markRemoved();
+        return;
+      }
       if (action == 'list') {
         _ws?.add(jsonEncode({'id': reqId, 'action': 'list_response', ...listForTunnel(data['path'] as String?)}));
       } else if (action == 'ping') {

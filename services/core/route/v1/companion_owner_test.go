@@ -32,17 +32,18 @@ func useTempCompanionState(t *testing.T) (state, base string) {
 
 	companionMu.Lock()
 	oldState, oldBase, oldNoData := companionStateDir, companionBaseDir, companionBaseNoDATA
-	oldDevs, oldLoaded, oldKept := companionDevices, companionLoaded, companionKeptFolders
+	oldDevs, oldLoaded, oldKept, oldRemoved := companionDevices, companionLoaded, companionKeptFolders, companionRemoved
 	companionStateDir, companionBaseDir, companionBaseNoDATA = state, base, filepath.Join(root, "nodata")
 	companionDevices = map[string]*CompanionDevice{}
 	companionKeptFolders = map[string]companionKeptFolder{}
+	companionRemoved = map[string]companionRemovedRec{}
 	companionLoaded = false
 	companionMu.Unlock()
 
 	t.Cleanup(func() {
 		companionMu.Lock()
 		companionStateDir, companionBaseDir, companionBaseNoDATA = oldState, oldBase, oldNoData
-		companionDevices, companionLoaded, companionKeptFolders = oldDevs, oldLoaded, oldKept
+		companionDevices, companionLoaded, companionKeptFolders, companionRemoved = oldDevs, oldLoaded, oldKept, oldRemoved
 		companionMu.Unlock()
 	})
 	return state, base
@@ -401,7 +402,8 @@ func TestReRegisteredPhoneReusesItsKeptFolder(t *testing.T) {
 	companionDevices, companionKeptFolders, companionLoaded = map[string]*CompanionDevice{}, map[string]companionKeptFolder{}, false
 	loadCompanionDevicesLocked()
 	companionMu.Unlock()
-	register(t, 1, CompanionRegistrationDTO{ID: "p", Name: "Pixel"})
+	// Paired again from the app ("Pair again"; the heartbeat alone is refused).
+	register(t, 1, CompanionRegistrationDTO{ID: "p", Name: "Pixel", Repair: true})
 	if got := folder("p"); got != filepath.Join(base, "Pixel") {
 		t.Fatalf("re-paired phone got %q, not its kept folder", got)
 	}

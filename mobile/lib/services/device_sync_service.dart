@@ -186,12 +186,16 @@ class CompanionDevice {
 /// Why the last registration with the server failed, for the companion
 /// screen. Null after a successful one.
 class RegistrationProblem {
-  const RegistrationProblem(this.message, {this.otherAccount = false});
+  const RegistrationProblem(this.message, {this.otherAccount = false, this.removed = false});
 
   final String message;
 
   /// The server says this phone belongs to another NivaroOS account.
   final bool otherAccount;
+
+  /// The phone was removed from the server's device list; it stays
+  /// disconnected until the user pairs it again.
+  final bool removed;
 }
 
 /// This phone as a companion device of the server: registration (the
@@ -404,17 +408,80 @@ class DeviceSyncService {
     _shareTimer = null;
   }
 
+  /// Called when the server removed this phone, in whichever engine
+  /// noticed it (the app, or the sharing service - which stops itself).
+  static void Function()? onRemovedByServer;
+
+  /// The server removed this phone from its device list (a 410 from
+  /// register, or "removed" over the tunnel): forget the pairing, stop
+  /// sharing and the heartbeat, and stay quiet until [pairAgain].
+  Future<void> markRemoved() async {
+    await StorageService.instance.setCompanionRemoved(true);
+    await StorageService.instance.clearCompanionSecret();
+    stopSharingHeartbeat();
+    registrationProblem.value = RegistrationProblem(
+      'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
+      "It won't connect again until you pair it again.",
+      removed: true,
+    );
+    final hook = onRemovedByServer;
+    if (hook != null) {
+      hook();
+    } else {
+      await BackgroundService.instance.stopAll();
+    }
+  }
+
+  /// Shows the "removed" problem again after a restart (the flag is
+  /// stored; the notifier isn't).
+  Future<void> restoreRemovedState() async {
+    if (registrationProblem.value?.removed == true) return;
+    if (await StorageService.instance.getCompanionRemoved()) {
+      registrationProblem.value = RegistrationProblem(
+        'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
+        "It won't connect again until you pair it again.",
+        removed: true,
+      );
+    }
+  }
+
+  /// The user chose to pair a removed phone again.
+  Future<bool> pairAgain() async {
+    final ok = await syncWithServer(repair: true);
+    if (ok) {
+      await StorageService.instance.setCompanionRemoved(false);
+      registrationProblem.value = null;
+      await BackgroundService.instance.scheduleHeartbeat();
+    }
+    return ok;
+  }
+
   /// Registers this phone with the server (id only; the secret proves it
   /// is this phone). With [sharing], the file server's port goes with it.
-  /// Returns true when the server accepted it.
-  Future<bool> syncWithServer({bool sharing = false}) async {
+  /// A phone the server removed isn't registered again unless [repair]
+  /// (the user's "Pair again"). Returns true when the server accepted it.
+  Future<bool> syncWithServer({bool sharing = false, bool repair = false}) async {
     if (!ApiClient.instance.hasSession) return false;
+    if (!repair && await StorageService.instance.getCompanionRemoved()) {
+      // Removed earlier (maybe before a restart): say so, don't retry.
+      if (registrationProblem.value?.removed != true) {
+        registrationProblem.value = RegistrationProblem(
+          'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
+          "It won't connect again until you pair it again.",
+          removed: true,
+        );
+      }
+      return false;
+    }
     try {
       final device = await getLocalDeviceInfo();
       final heldSecret = await StorageService.instance.getCompanionSecret();
       final res = await ApiClient.instance.post(
         '/companion/register',
-        body: device.toRegistration(sharing: sharing, port: CompanionFileServer.instance.isRunning ? CompanionFileServer.instance.port : null),
+        body: {
+          ...device.toRegistration(sharing: sharing, port: CompanionFileServer.instance.isRunning ? CompanionFileServer.instance.port : null),
+          if (repair) 'repair': true,
+        },
         headers: (heldSecret != null && heldSecret.isNotEmpty) ? {'X-Companion-Secret': heldSecret} : null,
       );
       // The server hands back the secret its requests to this phone's file
@@ -436,6 +503,10 @@ class DeviceSyncService {
       }
       return true;
     } on ApiException catch (e) {
+      if (e.statusCode == 410) {
+        await markRemoved();
+        return false;
+      }
       if (e.statusCode == 403) {
         registrationProblem.value = RegistrationProblem(
           'This phone is paired with another NivaroOS account on this server. Remove it there first, or sign in with that account.',

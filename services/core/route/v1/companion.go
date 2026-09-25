@@ -99,6 +99,9 @@ type CompanionRegistrationDTO struct {
 	CreatedAt     interface{}            `json:"created_at,omitempty"`
 	StoragePath   string                 `json:"storage_path,omitempty"`
 	CustomProps   map[string]interface{} `json:"custom_props,omitempty"`
+	// Repair is true only when the user tapped "Pair again" on a phone the
+	// server removed; the app's automatic heartbeat never sets it.
+	Repair bool `json:"repair,omitempty"`
 }
 
 type CompanionFileItem struct {
@@ -147,6 +150,19 @@ func companionTunnelFor(id string) *companionTunnel {
 	companionWSMu.RLock()
 	defer companionWSMu.RUnlock()
 	return companionWSConns[id]
+}
+
+// notifyCompanionRemoved sends {"type":"removed"} over the phone's tunnel,
+// if it has one open, so the app unpairs right away instead of at its next
+// heartbeat.
+func notifyCompanionRemoved(id string) {
+	companionWSMu.Lock()
+	t, ok := companionWSConns[id]
+	companionWSMu.Unlock()
+	if !ok {
+		return
+	}
+	_ = t.send(map[string]string{"type": "removed"})
 }
 
 func closeCompanionTunnel(id string) {
@@ -276,6 +292,34 @@ type companionKeptFolder struct {
 
 var companionKeptFolders = map[string]companionKeptFolder{}
 
+// companionRemoved remembers phones a user removed (companion_removed.json,
+// by device id), so the app's automatic re-registration can't silently add
+// them back: it gets 410 until the user pairs the phone again from the app.
+// Entries expire after companionRemovedTTL.
+type companionRemovedRec struct {
+	OwnerUserID string    `json:"owner_user_id,omitempty"`
+	RemovedAt   time.Time `json:"removed_at"`
+}
+
+var companionRemoved = map[string]companionRemovedRec{}
+
+const companionRemovedTTL = 180 * 24 * time.Hour
+
+func getCompanionRemovedPath() string {
+	os.MkdirAll(companionStateDir, 0755)
+	return filepath.Join(companionStateDir, "companion_removed.json")
+}
+
+func saveCompanionRemovedLocked() {
+	data, err := json.MarshalIndent(companionRemoved, "", "  ")
+	if err == nil {
+		err = os.WriteFile(getCompanionRemovedPath(), data, 0600)
+	}
+	if err != nil {
+		logger.Error("companion: saving removed devices failed", zap.Error(err))
+	}
+}
+
 func getCompanionKeptFoldersPath() string {
 	os.MkdirAll(companionStateDir, 0755)
 	return filepath.Join(companionStateDir, "companion_kept_folders.json")
@@ -301,6 +345,17 @@ func loadCompanionDevicesLocked() {
 		return
 	}
 	companionLoaded = true
+	companionRemoved = map[string]companionRemovedRec{}
+	if data, err := os.ReadFile(getCompanionRemovedPath()); err == nil {
+		var removed map[string]companionRemovedRec
+		if json.Unmarshal(data, &removed) == nil {
+			for id, rec := range removed {
+				if time.Since(rec.RemovedAt) < companionRemovedTTL {
+					companionRemoved[id] = rec
+				}
+			}
+		}
+	}
 	companionKeptFolders = map[string]companionKeptFolder{}
 	if data, err := os.ReadFile(getCompanionKeptFoldersPath()); err == nil {
 		var kept map[string]companionKeptFolder
@@ -1241,6 +1296,20 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	now := time.Now()
 	matchedDev := companionDevices[input.ID]
 
+	// A phone the user removed stays removed: the heartbeat gets 410 and the
+	// app stops, until the user chooses "Pair again" (repair=true). Another
+	// account can't use that to undo the removal of someone else's phone.
+	if rec, removed := companionRemoved[input.ID]; removed && matchedDev == nil {
+		if !input.Repair || (rec.OwnerUserID != "" && uid != "" && rec.OwnerUserID != uid) {
+			return ctx.JSON(http.StatusGone, model.Result{
+				Success: http.StatusGone,
+				Message: "this phone was removed from NivaroOS - pair it again from the app to reconnect",
+			})
+		}
+		delete(companionRemoved, input.ID)
+		saveCompanionRemovedLocked()
+	}
+
 	if matchedDev != nil && uid != "" && matchedDev.OwnerUserID != "" && matchedDev.OwnerUserID != uid {
 		return ctx.JSON(http.StatusForbidden, model.Result{
 			Success: common_err.CLIENT_ERROR,
@@ -1552,11 +1621,16 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 		}
 	}
 
-	// 2. Remove device from map and save
+	// 2. Remove device from map and save; remember the removal so its
+	// automatic re-registration doesn't add it straight back.
 	delete(companionDevices, id)
 	saveCompanionDevicesLocked()
+	companionRemoved[id] = companionRemovedRec{OwnerUserID: dev.OwnerUserID, RemovedAt: time.Now()}
+	saveCompanionRemovedLocked()
 
-	// 3. Close any active WS connection
+	// 3. Tell a connected phone it was removed (it unpairs itself at once),
+	// then close its tunnel.
+	notifyCompanionRemoved(id)
 	closeCompanionTunnel(id)
 
 	return ctx.JSON(http.StatusOK, model.Result{

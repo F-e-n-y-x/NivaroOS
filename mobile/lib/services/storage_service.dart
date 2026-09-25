@@ -43,17 +43,21 @@ class StorageService {
   static const _keyCompanionDeviceId = 'companion_device_id';
   static const _keyCompanionSecret = 'companion_secret';
   static const _keyThemeMode = 'theme_mode';
+  static const _keyThemeAccent = 'theme_accent';
+  static const _keyThemeWallpaper = 'theme_wallpaper';
+  static const _keyDesignDirection = 'design_direction';
   // Per server: the secret the server gave this phone, keyed by server URL
   // ("companion_secret@http://nas.local"), so switching servers never sends
   // one server's secret to another (plan M-17).
   static const _keyCompanionSecretPrefix = 'companion_secret@';
+  static const _keyCompanionRemovedPrefix = 'companion_removed@';
   static const _keyNotificationsAsked = 'notifications_asked';
   static const _keyShareMinutes = 'share_minutes';
   static const _keyDoneMigrations = 'done_migrations';
   static const _keyUpdateCheck = 'app_update_check';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode, _keyNotificationsAsked};
+  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyNotificationsAsked};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -148,6 +152,35 @@ class StorageService {
     return null;
   }
 
+  /// Whether the current server removed this phone (from its settings):
+  /// the heartbeat then stays quiet until the user pairs it again.
+  Future<bool> getCompanionRemoved() async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return false;
+    return _cache['$_keyCompanionRemovedPrefix${_serverKey(url)}'] == '1';
+  }
+
+  Future<void> setCompanionRemoved(bool removed) async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    final key = '$_keyCompanionRemovedPrefix${_serverKey(url)}';
+    if (removed) {
+      await _set(key, '1');
+    } else {
+      await _remove(key);
+    }
+  }
+
+  /// Forgets the pairing secret for the current server.
+  Future<void> clearCompanionSecret() async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    await _remove('$_keyCompanionSecretPrefix${_serverKey(url)}');
+  }
+
   Future<void> setCompanionSecret(String secret) async {
     if (!_initialized) await init();
     final url = _cache[_keyServerUrl];
@@ -210,7 +243,7 @@ class StorageService {
     await _set(_keyUpdateCheck, json);
   }
 
-  /// 'system', 'light' or 'dark'; null until the user picks one.
+  /// 'system', 'light', 'dark' or 'black'; null until the user picks one.
   Future<String?> getThemeMode() async {
     if (!_initialized) await init();
     return _cache[_keyThemeMode];
@@ -219,6 +252,39 @@ class StorageService {
   Future<void> setThemeMode(String mode) async {
     if (!_initialized) await init();
     await _set(_keyThemeMode, mode);
+  }
+
+  /// The accent colour's name (AccentColor); null until the user picks one.
+  Future<String?> getThemeAccent() async {
+    if (!_initialized) await init();
+    return _cache[_keyThemeAccent];
+  }
+
+  Future<void> setThemeAccent(String accent) async {
+    if (!_initialized) await init();
+    await _set(_keyThemeAccent, accent);
+  }
+
+  /// 'true' when the accent follows the phone's wallpaper.
+  Future<String?> getThemeWallpaper() async {
+    if (!_initialized) await init();
+    return _cache[_keyThemeWallpaper];
+  }
+
+  Future<void> setThemeWallpaper(bool on) async {
+    if (!_initialized) await init();
+    await _set(_keyThemeWallpaper, on.toString());
+  }
+
+  /// The design direction's name (DesignDirection); null for the default.
+  Future<String?> getDesignDirection() async {
+    if (!_initialized) await init();
+    return _cache[_keyDesignDirection];
+  }
+
+  Future<void> setDesignDirection(String direction) async {
+    if (!_initialized) await init();
+    await _set(_keyDesignDirection, direction);
   }
 
   Future<String?> getServerUrl() async {
