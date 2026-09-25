@@ -240,7 +240,7 @@ class _VmConsolePreviewState extends State<VmConsolePreview> with WidgetsBinding
                       end: Space.sm,
                       bottom: Space.sm,
                       child: DecoratedBox(
-                        decoration: BoxDecoration(color: scheme.surface.withValues(alpha: .82), borderRadius: BorderRadius.circular(Corners.small)),
+                        decoration: BoxDecoration(color: scheme.surface.withValues(alpha: .82), borderRadius: BorderRadius.circular(t.radii.sm)),
                         child: Padding(
                           padding: const EdgeInsets.all(Space.xs),
                           child: Icon(Icons.open_in_full, size: 18, color: scheme.onSurface),

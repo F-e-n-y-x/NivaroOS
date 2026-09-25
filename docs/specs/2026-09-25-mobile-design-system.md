@@ -788,3 +788,34 @@ the bar for one-tap switching, × on the tab on screen, + for a new tab
 at the locations page. Folders also have "Open in new tab". One tab
 looks as before apart from the button. The open tabs and the active one
 are saved per server and come back after a restart.
+
+### Stage-4 build (2026-09-26): what was decided while building the requests
+
+- **Per-style component rules** live in `lib/ui/theme/style_components.dart`
+  (one builder per style; v2 keeps the Material defaults). Rack: precise
+  corners, hairlines on anything that floats, ink for things you press
+  (filled button, selected chip, FAB), the accent for things that are on
+  (switches, checks, sliders, progress). Tonal: stadium buttons, large soft
+  corners, filled text fields, a check in the switch thumb. Console: tight
+  corners, hairlines everywhere (also under the app bar), mono labels on
+  actions, one step denser. Screens read corners from
+  `DesignTokens.radii` and the mono face from `DesignTokens.mono()`.
+  **Open for the owner:** Rack's toggles use the accent; all-ink toggles
+  are a one-line flip in `style_components.dart`.
+- **Monochrome** is the first of nine swatches (3 x 3 grid). Its accent is
+  the style's ink: near-black in light, near-white in dark and true black.
+- **True black per style:** Rack = graphite cards with hairlines; Tonal =
+  its tonal steps dimmed toward black, no edges; Console = #000 panels drawn
+  by slightly brighter hairlines.
+- **Not done:** the terminal keeps the platform monospace (the bundled cuts
+  lack box-drawing glyphs); icon weight needs a move to Material Symbols.
+- **Refresh widgets:** at "every minute" a 2-minute chart holds only 3
+  points; the span is kept as asked. **Open for the owner:** whether charts
+  should keep a minimum number of points instead.
+- **Files tabs:** the Trash now opens in place in the current tab rather
+  than as a pushed screen; the paste bar reads Clear / Paste here.
+- **Screenshots:** `styles_test.dart` shoots a component gallery per style x
+  {Monochrome, blue, signature} x {light, dark, true black};
+  `directions_test.dart` adds, per style, Home in Monochrome (light, true
+  black), the VM preview, Files tabs and the Refresh widgets sheet, and
+  Appearance in true black.

@@ -24,10 +24,10 @@ const _documents = '/DATA/Documents';
 final _docs = {'GET /v1/folder': fixture('files/documents'), 'GET /v1/trash/support': fixture('files/trash_support')};
 
 /// Documents, with Work (opened in a second tab) empty.
-final _docsAndWork = {..._docs, 'GET /v1/folder?path=$_documents/Work': fixture('files/empty')};
+final docsAndWork = {..._docs, 'GET /v1/folder?path=$_documents/Work': fixture('files/empty')};
 
 /// Copies Budget 2026.xlsx, then opens Work in a new tab from its menu.
-Future<void> _copyThenWorkTab(WidgetTester t) async {
+Future<void> copyThenWorkTab(WidgetTester t) async {
   await t.tap(find.byTooltip('More options for Budget 2026.xlsx'));
   await _wait(t);
   await t.tap(find.text('Copy'));
@@ -197,31 +197,31 @@ final Map<String, _Shot> _shots = {
   // Trash as a tab (where paste is off).
   'files_tabs_paste': _Shot(
     () => const FilesScreen(initialPath: _documents),
-    overrides: _docsAndWork,
+    overrides: docsAndWork,
     tab: true,
     small: true,
     text2x: true,
     tablet: true,
-    before: _copyThenWorkTab,
+    before: copyThenWorkTab,
   ),
   'files_tabs_sheet': _Shot(
     () => const FilesScreen(initialPath: _documents),
-    overrides: _docsAndWork,
+    overrides: docsAndWork,
     tab: true,
     text2x: true,
     before: (t) async {
-      await _copyThenWorkTab(t);
+      await copyThenWorkTab(t);
       await t.tap(find.byTooltip('Tabs'));
       await _wait(t);
     },
   ),
   'files_tabs_trash': _Shot(
     () => const FilesScreen(initialPath: _documents),
-    overrides: _docsAndWork,
+    overrides: docsAndWork,
     tab: true,
     small: true,
     before: (t) async {
-      await _copyThenWorkTab(t);
+      await copyThenWorkTab(t);
       await t.tap(find.byTooltip('Tabs'));
       await _wait(t);
       await t.tap(find.text('New tab'));

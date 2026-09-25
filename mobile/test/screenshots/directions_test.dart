@@ -19,9 +19,11 @@ import 'package:nivaroos_mobile/screens/apps_screen.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
 import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
+import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/ui/ui.dart';
 import 'package:nivaroos_mobile/widgets/monitor_modals.dart';
 
+import 'files_screens_test.dart' show copyThenWorkTab, docsAndWork;
 import 'harness.dart';
 import 'home_test.dart' show HistoryController, fillHistory, runningVms, scrollToVms;
 
@@ -105,6 +107,15 @@ final Map<String, _Screen> _screens = {
     return CpuDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: h);
   }, pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark]),
   'files': _Screen(() => const FilesScreen(), tab: true, modes: const [AppThemeMode.light, AppThemeMode.dark]),
+  // Two tabs sharing a clipboard: the strip and the paste bar.
+  'files_tabs': _Screen(() => const FilesScreen(initialPath: '/DATA/Documents'),
+      tab: true, overrides: docsAndWork, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black], before: copyThenWorkTab),
+  // Settings > Home > Refresh widgets.
+  'settings_refresh': _Screen(() => const SettingsScreen(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.black], before: (tester) async {
+    await tester.tap(find.text('Refresh widgets'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  }),
   'trash': _Screen(() => const TrashScreen(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark], extra: const [(smallPhone, 1)], overrides: {
     'GET /v1/trash/support': fixture('files/trash_support'),
   }),
@@ -116,7 +127,7 @@ final Map<String, _Screen> _screens = {
     await tester.tap(find.text('Old invoices'));
     await tester.pump(const Duration(seconds: 1));
   }),
-  'appearance': _Screen(() => const SizedBox(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark], extra: const [(phone, 2)]),
+  'appearance': _Screen(() => const SizedBox(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black], extra: const [(phone, 2)]),
   'appearance_wallpaper': _Screen(() => const SizedBox(), pushed: true, wallpaper: true),
   'app_info': _Screen(() => const AppDetailScreen(app: _jellyfin), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark], overrides: {
     'GET /v2/app_management/compose/jellyfin': {
@@ -150,6 +161,10 @@ void main() {
     }
     final (accent, mode) = _signature[d]!;
     testWidgets('${d.name} home accent', (tester) => _shoot(tester, d, 'home', _screens['home']!, Appearance(mode: mode, accent: accent, direction: d), suffix: '_${accent.name}'));
+    // Monochrome: the style's own ink as the accent.
+    for (final m in const [AppThemeMode.light, AppThemeMode.black]) {
+      testWidgets('${d.name} home mono ${m.name}', (tester) => _shoot(tester, d, 'home', _screens['home']!, Appearance(mode: m, accent: AccentColor.mono, direction: d), suffix: '_mono'));
+    }
   }
 
   // Side by side: every direction's shot of one screen in one mode.
