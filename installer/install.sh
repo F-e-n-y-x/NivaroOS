@@ -1451,6 +1451,16 @@ clone_or_update_repo() {
 			fi
 		elif [ -d \"${SRC_DIR}/.git\" ]; then
 			cd \"$SRC_DIR\"
+			# The server never builds the phone app (mobile/): a sparse,
+			# blobless checkout keeps its sources and screenshot goldens off
+			# every box. Older installs are switched over once, here; fetches
+			# then skip mobile/'s files. Best effort: a git without
+			# sparse-checkout just keeps the full tree.
+			if ! git sparse-checkout list >/dev/null 2>&1; then
+				git config remote.origin.promisor true || true
+				git config remote.origin.partialclonefilter blob:none || true
+				git sparse-checkout set --no-cone '/*' '!/mobile/' 2>/dev/null || true
+			fi
 			git fetch --all --tags --prune
 			# reset --hard + clean (not checkout + pull) so a dirty tree -
 			# left behind by a previous crashed run, or a manual edit made
@@ -1463,7 +1473,15 @@ clone_or_update_repo() {
 			if [ -d \"$SRC_DIR\" ] && [ \"\$(ls -A \"$SRC_DIR\" 2>/dev/null)\" ]; then
 				rm -rf \"${SRC_DIR:?}\"/* \"${SRC_DIR:?}\"/.[!.]* 2>/dev/null || true
 			fi
-			git clone --branch \"$BRANCH\" --depth 1 \"$REPO_URL\" \"$SRC_DIR\"
+			# Everything but mobile/ (see above); a git too old for partial
+			# or sparse clones gets the plain shallow clone.
+			if git clone --branch \"$BRANCH\" --depth 1 --filter=blob:none --sparse \"$REPO_URL\" \"$SRC_DIR\" &&
+				git -C \"$SRC_DIR\" sparse-checkout set --no-cone '/*' '!/mobile/'; then
+				:
+			else
+				rm -rf \"${SRC_DIR:?}\"
+				git clone --branch \"$BRANCH\" --depth 1 \"$REPO_URL\" \"$SRC_DIR\"
+			fi
 		fi
 
 		# Ensure a new-enough Go toolchain: the highest go directive across
