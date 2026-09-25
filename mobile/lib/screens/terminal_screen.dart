@@ -436,6 +436,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       // text); the phone's text scale would make a
                       // 40-column shell unusable.
                       textScaler: TextScaler.noScaling,
+                      // The platform's monospace, not the style's: the
+                      // bundled Latin cuts lack the box-drawing and block
+                      // glyphs shells draw with, and a fallback glyph
+                      // would break the cell grid.
                       textStyle: TerminalStyle(fontSize: base * _fontScale, fontFamily: 'monospace'),
                       padding: const EdgeInsets.all(Space.xs),
                       deleteDetection: true,
@@ -609,7 +613,7 @@ class _Key extends StatelessWidget {
         child: Material(
           // Keys read as keys: a tonal cap, like a keyboard's.
           color: on ? scheme.secondaryContainer : scheme.surfaceContainerHighest,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.small)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm)),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
@@ -624,10 +628,7 @@ class _Key extends StatelessWidget {
                     maxScaleFactor: 1.3,
                     child: Text(
                       label,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontFamily: 'monospace',
-                        color: on ? scheme.onSecondaryContainer : scheme.onSurface,
-                      ),
+                      style: DesignTokens.of(context).mono(theme.textTheme.labelLarge).copyWith(color: on ? scheme.onSecondaryContainer : scheme.onSurface),
                     ),
                   ),
                 ),

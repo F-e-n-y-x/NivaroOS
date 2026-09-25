@@ -942,7 +942,7 @@ class _Notice extends StatelessWidget {
       child: Semantics(
         liveRegion: status == Status.error,
         child: DecoratedBox(
-          decoration: BoxDecoration(color: tone.container, borderRadius: BorderRadius.circular(Corners.medium)),
+          decoration: BoxDecoration(color: tone.container, borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.md)),
           child: Padding(
             padding: const EdgeInsets.all(Space.lg),
             child: Row(

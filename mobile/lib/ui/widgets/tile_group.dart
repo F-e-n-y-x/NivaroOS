@@ -56,7 +56,7 @@ class TileGroup extends StatelessWidget {
     );
   }
 
-  Widget _segments(ThemeData theme, Radius outer, Radius inner, int last) => Column(
+  Widget _segments(ThemeData theme, DesignTokens tokens, Radius outer, Radius inner, int last) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -65,9 +65,10 @@ class TileGroup extends StatelessWidget {
             Card.filled(
               color: theme.colorScheme.surfaceContainer,
               shape: RoundedRectangleBorder(
-                // On true black the segments keep a hairline edge: a
-                // near-black fill alone barely registers.
-                side: theme.colorScheme.surface == Colors.black ? BorderSide(color: theme.colorScheme.outlineVariant) : BorderSide.none,
+                // v2 on true black keeps a hairline edge (a near-black fill
+                // alone barely registers); Tonal's dimmed tonal steps show
+                // without one.
+                side: tokens.segmentBorder == null ? BorderSide.none : BorderSide(color: tokens.segmentBorder!),
                 borderRadius: BorderRadius.vertical(
                   top: i == 0 ? outer : inner,
                   bottom: i == last ? outer : inner,
@@ -99,7 +100,7 @@ class TileGroup extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: gutter),
           child: ListTileTheme.merge(
             contentPadding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            child: tokens.ruledGroups ? _ruled(theme, tokens, outer) : _segments(theme, outer, inner, last),
+            child: tokens.ruledGroups ? _ruled(theme, tokens, outer) : _segments(theme, tokens, outer, inner, last),
           ),
         ),
         if (footer != null)

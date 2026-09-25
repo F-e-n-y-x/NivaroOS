@@ -81,7 +81,7 @@ class FileThumbnail extends StatelessWidget {
       // and when it fails, the row shows the plain icon like other files.
       Widget framed(BuildContext context, Widget child, int? frame, bool sync) => sync || frame != null
           ? ClipRRect(
-              borderRadius: BorderRadius.circular(Corners.small),
+              borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm),
               child: ColoredBox(color: scheme.surfaceContainerHighest, child: SizedBox.expand(child: child)),
             )
           : Center(child: icon);
@@ -277,7 +277,7 @@ class FolderSkeleton extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.sm),
                 child: Row(
                   children: [
-                    const SkeletonBox(width: 40, height: 40, radius: Corners.small),
+                    const SkeletonBox(width: 40, height: 40, corner: Corner.sm),
                     const SizedBox(width: Space.lg),
                     Expanded(
                       child: Column(
@@ -551,10 +551,7 @@ class TransferStrip extends StatelessWidget {
                         children: [
                           Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
                           const SizedBox(height: Space.xs),
-                          LinearProgressIndicator(
-                            value: fraction,
-                            borderRadius: BorderRadius.circular(Corners.extraSmall),
-                          ),
+                          LinearProgressIndicator(value: fraction),
                           if (detail.isNotEmpty) ...[
                             const SizedBox(height: Space.xs),
                             Text(
@@ -611,7 +608,7 @@ class PasteBar extends StatelessWidget {
         elevation: 3,
         shadowColor: scheme.shadow,
         surfaceTintColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(Corners.large),
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.sm, Space.sm),
           child: Row(

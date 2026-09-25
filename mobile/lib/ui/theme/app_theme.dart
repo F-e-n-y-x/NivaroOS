@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'appearance.dart';
 import 'design_tokens.dart';
 import 'status_colors.dart';
+import 'style_components.dart';
 
 /// The app's themes (design brief §3 and "Design system v3"): Material 3
 /// from a seed colour, drawn in one of the [DesignDirection]s, in light,
@@ -54,7 +55,8 @@ abstract final class AppTheme {
     // Console draws lime as a thin signal line on graphite; the raw seed
     // is close to neon there, so it gets a slightly deeper, calmer lime.
     final seed = seedOverride ?? (direction == DesignDirection.console && accent == AccentColor.lime ? const Color(0xFFB5D334) : accent.seed);
-    return _cache[key] ??= _build(brightness, isBlack, seed, seedOverride == null && accent == AccentColor.blue, direction);
+    return _cache[key] ??= _build(brightness, isBlack, seed, seedOverride == null && accent == AccentColor.blue, direction,
+        mono: seedOverride == null && accent.isMono);
   }
 
   /// The same theme built with another scheme variant, so the owner can
@@ -62,7 +64,7 @@ abstract final class AppTheme {
   /// screenshots). The app itself never uses it.
   @visibleForTesting
   static ThemeData withVariant(Brightness brightness, DynamicSchemeVariant variant) =>
-      _build(brightness, false, seed, variant == DynamicSchemeVariant.tonalSpot, DesignDirection.v2, variant);
+      _build(brightness, false, seed, variant == DynamicSchemeVariant.tonalSpot, DesignDirection.v2, variant: variant);
 
   /// Status and navigation bar styling for [brightness]: transparent bars
   /// (the app draws edge to edge) with icons that contrast with the app's
@@ -81,22 +83,25 @@ abstract final class AppTheme {
     );
   }
 
+  /// [mono]: the Monochrome accent. The scheme is built with the M3
+  /// monochrome variant (grey containers, no hue), then its accent becomes
+  /// the style's own ink ([_monochrome]).
   static ColorScheme scheme(Brightness brightness, bool black, Color seed, bool brand, DesignDirection direction,
-      [DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot]) {
-    var s = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, dynamicSchemeVariant: variant);
+      [DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot, bool mono = false]) {
+    var s = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, dynamicSchemeVariant: mono ? DynamicSchemeVariant.monochrome : variant);
     // Owner decision (2026-09-25): with the brand blue, actions carry the
     // exact NivaroOS blue the web UI uses, while containers, the navigation
     // indicator and surfaces keep the calm tonal-spot palette. So
     // primary/onPrimary come from the fidelity scheme. Other accents and
     // the wallpaper use plain tonal spot, as the system does.
-    if (brand && variant == DynamicSchemeVariant.tonalSpot) {
+    if (brand && !mono && variant == DynamicSchemeVariant.tonalSpot) {
       final fidelity = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, dynamicSchemeVariant: DynamicSchemeVariant.fidelity);
       s = s.copyWith(primary: fidelity.primary, onPrimary: fidelity.onPrimary, surfaceTint: fidelity.primary);
     }
     // Console keeps the accent's own chroma (a signal colour on graphite);
     // tonal spot would mute lime to olive. Contrast holds: fidelity keeps
     // the same tones.
-    if (direction == DesignDirection.console && !brand && variant == DynamicSchemeVariant.tonalSpot) {
+    if (direction == DesignDirection.console && !brand && !mono && variant == DynamicSchemeVariant.tonalSpot) {
       final fidelity = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, dynamicSchemeVariant: DynamicSchemeVariant.fidelity);
       s = s.copyWith(primary: fidelity.primary, onPrimary: fidelity.onPrimary, primaryContainer: fidelity.primaryContainer, onPrimaryContainer: fidelity.onPrimaryContainer);
     }
@@ -106,23 +111,46 @@ abstract final class AppTheme {
       DesignDirection.console => _neutrals(s, dark ? (black ? _consoleBlack : _consoleDark) : _consoleLight),
       _ => black ? _tonalBlack(s) : s,
     };
-    return s;
+    return mono ? _monochrome(s, ownNeutrals: direction == DesignDirection.rack || direction == DesignDirection.console) : s;
   }
 
-  /// True black for the tonal directions: only the backdrop is #000; the
-  /// containers sit on a near-black ladder with a trace of the accent, so
-  /// cards, sheets and menus stay visible and fewer pixels switch fully
-  /// off and on while scrolling (black smear).
+  /// Monochrome: the accent is the page's ink - near-black on light,
+  /// near-white on dark and true black - and its on-colour is the page, so
+  /// a filled button, a switch or a selected check reads as ink on paper
+  /// (onPrimary on primary is the ink-on-page contrast, far above 4.5:1).
+  /// Containers stay the monochrome variant's greys. Where the style has
+  /// [ownNeutrals] (Rack, Console) the primary container is its inverse
+  /// surface - a softer ink - so what Console marks with it (the selected
+  /// chip or segment) stands out as clearly as a colour would, rather
+  /// than as one grey on another.
+  static ColorScheme _monochrome(ColorScheme s, {required bool ownNeutrals}) => s.copyWith(
+        primary: s.onSurface,
+        onPrimary: s.surface,
+        inversePrimary: s.onInverseSurface,
+        surfaceTint: s.surfaceTint == Colors.transparent ? Colors.transparent : s.onSurface,
+        // Tonal in dark: the monochrome variant's container is near-white
+        // (tone 85), which would turn the emphasised card into a lamp on
+        // black; its secondary container is the same idea a step down.
+        primaryContainer: ownNeutrals ? s.inverseSurface : (s.brightness == Brightness.dark ? s.secondaryContainer : null),
+        onPrimaryContainer: ownNeutrals ? s.onInverseSurface : (s.brightness == Brightness.dark ? s.onSecondaryContainer : null),
+      );
+
+  /// True black for the tonal directions: only the backdrop is #000. The
+  /// containers are the style's own dark tonal steps dimmed toward black
+  /// (not a flat grey ladder), so Tonal keeps its tinted, edge-free cards
+  /// on OLED, cards, sheets and menus stay visible, and fewer pixels
+  /// switch fully off and on while scrolling (black smear).
   static ColorScheme _tonalBlack(ColorScheme s) {
-    Color step(double a, int base) => Color.alphaBlend(s.primary.withValues(alpha: a), Color(base));
+    Color dim(Color c, double keep) => Color.lerp(Colors.black, c, keep)!;
     return s.copyWith(
       surface: Colors.black,
       surfaceDim: Colors.black,
       surfaceContainerLowest: Colors.black,
-      surfaceContainerLow: step(.04, 0xFF0A0A0A),
-      surfaceContainer: step(.05, 0xFF111111),
-      surfaceContainerHigh: step(.06, 0xFF191919),
-      surfaceContainerHighest: step(.07, 0xFF232323),
+      surfaceContainerLow: dim(s.surfaceContainerLow, .62),
+      surfaceContainer: dim(s.surfaceContainer, .74),
+      surfaceContainerHigh: dim(s.surfaceContainerHigh, .8),
+      surfaceContainerHighest: dim(s.surfaceContainerHighest, .86),
+      surfaceBright: dim(s.surfaceBright, .86),
       surfaceTint: Colors.transparent,
     );
   }
@@ -252,7 +280,9 @@ abstract final class AppTheme {
     onSurface: Color(0xFFE2E4E7),
     onSurfaceVariant: Color(0xFF878D94),
     outline: Color(0xFF666C74),
-    outlineVariant: Color(0xFF212427),
+    // A brighter rule than dark's: on black, panels are drawn by their
+    // hairlines alone (Console's terminal look).
+    outlineVariant: Color(0xFF2C3035),
     inverseSurface: Color(0xFFE8EAED),
     onInverseSurface: Color(0xFF181A1D),
     neutralContainer: Color(0xFF24282C),
@@ -272,116 +302,69 @@ abstract final class AppTheme {
       };
 
   static ThemeData _build(Brightness brightness, bool black, Color seed, bool brand, DesignDirection direction,
-      [DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot]) {
-    final s = scheme(brightness, black, seed, brand, direction, variant);
+      {DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot, bool mono = false}) {
+    final s = scheme(brightness, black, seed, brand, direction, variant, mono);
     final isDark = brightness == Brightness.dark;
     final family = _family(direction);
-    final flat = direction == DesignDirection.rack || direction == DesignDirection.console || black;
-
-    // Shapes per direction: Rack precise (12-14), Tonal soft (M3 Expressive
-    // large), Console tight (6-10); v2 keeps the M3 defaults.
-    final (double button, double chip, double dialog, double sheet) = switch (direction) {
-      DesignDirection.v2 => (-1, 8, 28, 28),
-      DesignDirection.rack => (12, 8, 20, 24),
-      DesignDirection.tonal => (-1, 12, 28, 28),
-      DesignDirection.console => (8, 6, 14, 16),
-    };
-    final OutlinedBorder? shape = button < 0 ? null : RoundedRectangleBorder(borderRadius: BorderRadius.circular(button));
-    final buttonStyle = ButtonStyle(shape: shape == null ? null : WidgetStatePropertyAll(shape));
-    // v2 keeps Flutter's defaults untouched, so its screens render exactly
-    // as the 1.3 build did.
-    final custom = direction != DesignDirection.v2;
-
-    // The primary button is part of each direction's identity: ink in Rack,
-    // tonal in Tonal, an accent outline with a mono label in Console.
-    final mono = _mono(direction);
-    final ButtonStyle? filled = switch (direction) {
-      DesignDirection.rack => FilledButton.styleFrom(
-          backgroundColor: s.onSurface,
-          foregroundColor: s.surface,
-          disabledBackgroundColor: s.onSurface.withValues(alpha: .12),
-          disabledForegroundColor: s.onSurface.withValues(alpha: .38),
-          shape: shape,
+    final ThemeData base;
+    if (direction == DesignDirection.v2) {
+      base = _v2(s, brightness, black);
+    } else {
+      // Every other style owns the whole UI: the component themes come
+      // from StyleComponents, on a theme that carries the style's faces.
+      final faces = ThemeData(useMaterial3: true, colorScheme: s, fontFamily: family, fontFamilyFallback: const ['Roboto']);
+      final text = _text(faces.textTheme, direction);
+      base = StyleComponents.apply(
+        faces.copyWith(
+          textTheme: text,
+          appBarTheme: AppBarTheme(centerTitle: false, systemOverlayStyle: systemBarsStyle(brightness)),
         ),
-      DesignDirection.tonal => FilledButton.styleFrom(backgroundColor: s.primaryContainer, foregroundColor: s.onPrimaryContainer),
-      DesignDirection.console => FilledButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          foregroundColor: s.primary,
-          side: BorderSide(color: s.primary, width: 1.5),
-          textStyle: TextStyle(fontFamily: mono, fontWeight: FontWeight.w500, fontSize: 14, letterSpacing: .2),
-          shape: shape,
-        ),
-      DesignDirection.v2 => null,
-    };
-
-    final base = ThemeData(
-      useMaterial3: true,
-      colorScheme: s,
-      fontFamily: family,
-      fontFamilyFallback: family == null ? null : const ['Roboto'],
-      appBarTheme: AppBarTheme(
-        centerTitle: false,
-        systemOverlayStyle: systemBarsStyle(brightness),
-        // Flat directions and true black keep the bar the page colour when
-        // content scrolls under it (no tint: on black it would turn navy).
-        backgroundColor: flat ? s.surface : null,
-        surfaceTintColor: flat ? Colors.transparent : null,
-        scrolledUnderElevation: flat ? 0 : null,
-      ),
-      // Symmetric padding so trailing values line up with the 16dp phone
-      // gutter. AppScaffold widens it to the pane's gutter on tablets, and
-      // TileGroup sets it back to 16 inside its cards.
-      listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 16)),
-      cardTheme: const CardThemeData(margin: EdgeInsets.zero, clipBehavior: Clip.antiAlias),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-      inputDecorationTheme: InputDecorationThemeData(
-        border: custom
-            ? OutlineInputBorder(borderRadius: BorderRadius.circular(direction == DesignDirection.console ? 6 : direction == DesignDirection.rack ? 10 : 4))
-            : const OutlineInputBorder(),
-      ),
-      filledButtonTheme: filled == null ? null : FilledButtonThemeData(style: filled),
-      outlinedButtonTheme: shape == null ? null : OutlinedButtonThemeData(style: buttonStyle),
-      textButtonTheme: shape == null ? null : TextButtonThemeData(style: buttonStyle),
-      elevatedButtonTheme: shape == null ? null : ElevatedButtonThemeData(style: buttonStyle),
-      segmentedButtonTheme: shape == null ? null : SegmentedButtonThemeData(style: buttonStyle),
-      chipTheme: custom ? ChipThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(chip), side: BorderSide(color: s.outlineVariant))) : null,
-      dividerTheme: flat ? DividerThemeData(color: s.outlineVariant, space: 1, thickness: 1) : null,
-      dialogTheme: custom || flat
-          ? DialogThemeData(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialog)),
-              backgroundColor: flat ? s.surfaceContainerHigh : null,
-            )
-          : null,
-      bottomSheetTheme: custom || flat
-          ? BottomSheetThemeData(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(sheet))),
-              backgroundColor: flat ? s.surfaceContainerLow : null,
-            )
-          : null,
-      navigationBarTheme: flat
-          ? NavigationBarThemeData(backgroundColor: s.surfaceContainerLow, surfaceTintColor: Colors.transparent, elevation: 0)
-          : null,
-      // The current M3 look for progress and sliders (rounded, with a gap
-      // and stop indicator) instead of the 2023 one Flutter still defaults
-      // to. The flag itself is marked deprecated because it will go away
-      // once false is the default; setting it to false is the documented
-      // way to opt in until then.
-      // ignore: deprecated_member_use
-      progressIndicatorTheme: const ProgressIndicatorThemeData(year2023: false),
-      // ignore: deprecated_member_use
-      sliderTheme: const SliderThemeData(year2023: false),
-    );
-
-    final text = _text(base.textTheme, direction);
-    // ThemeData's text theme carries colours and families only; Theme.of
-    // adds the sizes (Typography.englishLike2021) later. The tokens need
-    // real sizes, so they are built on the merged theme.
-    final sized = Typography.englishLike2021.merge(text);
+        direction,
+        // ThemeData's text theme carries colours and families only; Theme.of
+        // adds the sizes (Typography.englishLike2021) later. Component
+        // styles need real sizes, so they are built on the merged theme.
+        Typography.englishLike2021.merge(text),
+        black: black,
+        mono: _mono(direction),
+      );
+    }
+    final sized = Typography.englishLike2021.merge(base.textTheme);
     return base.copyWith(
-      textTheme: text,
       extensions: [isDark ? StatusColors.dark : StatusColors.light, _tokens(direction, s, sized, black)],
     );
   }
+
+  /// The v2 (1.3) theme, kept exactly as that build drew it for the
+  /// reference column of the comparison screenshots: Material defaults
+  /// plus the few settings 1.3 had.
+  static ThemeData _v2(ColorScheme s, Brightness brightness, bool black) => ThemeData(
+        useMaterial3: true,
+        colorScheme: s,
+        appBarTheme: AppBarTheme(
+          centerTitle: false,
+          systemOverlayStyle: systemBarsStyle(brightness),
+          // True black keeps the bar the page colour when content scrolls
+          // under it (no tint: on black it would turn navy).
+          backgroundColor: black ? s.surface : null,
+          surfaceTintColor: black ? Colors.transparent : null,
+          scrolledUnderElevation: black ? 0 : null,
+        ),
+        listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 16)),
+        cardTheme: const CardThemeData(margin: EdgeInsets.zero, clipBehavior: Clip.antiAlias),
+        snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+        inputDecorationTheme: const InputDecorationThemeData(border: OutlineInputBorder()),
+        dividerTheme: black ? DividerThemeData(color: s.outlineVariant, space: 1, thickness: 1) : null,
+        dialogTheme: black ? DialogThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)), backgroundColor: s.surfaceContainerHigh) : null,
+        bottomSheetTheme: black
+            ? BottomSheetThemeData(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))), backgroundColor: s.surfaceContainerLow)
+            : null,
+        navigationBarTheme: black ? NavigationBarThemeData(backgroundColor: s.surfaceContainerLow, surfaceTintColor: Colors.transparent, elevation: 0) : null,
+        // The current M3 look for progress and sliders; see StyleComponents.
+        // ignore: deprecated_member_use
+        progressIndicatorTheme: const ProgressIndicatorThemeData(year2023: false),
+        // ignore: deprecated_member_use
+        sliderTheme: const SliderThemeData(year2023: false),
+      );
 
   /// Each direction owns its title and headline type, so page titles, app
   /// bars and dialogs change with it, not only the Home cards.
@@ -398,14 +381,21 @@ abstract final class AppTheme {
             titleLarge: t.titleLarge?.copyWith(fontWeight: FontWeight.w400, letterSpacing: -0.2),
             titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w500),
             titleSmall: t.titleSmall?.copyWith(fontWeight: FontWeight.w500),
+            // Labels (buttons, chips, navigation) in Geist Medium, open.
+            labelLarge: t.labelLarge?.copyWith(fontWeight: FontWeight.w500, letterSpacing: .1),
+            labelMedium: t.labelMedium?.copyWith(fontWeight: FontWeight.w500, letterSpacing: .2),
+            labelSmall: t.labelSmall?.copyWith(fontWeight: FontWeight.w500, letterSpacing: .3),
           ),
-        // Expressive: headlines and titles emphasised.
+        // Expressive: headlines, titles and labels emphasised.
         DesignDirection.tonal => t.copyWith(
             headlineLarge: t.headlineLarge?.copyWith(fontWeight: FontWeight.w600),
             headlineMedium: t.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
             headlineSmall: t.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
             titleLarge: t.titleLarge?.copyWith(fontWeight: FontWeight.w600),
             titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            titleSmall: t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            labelLarge: t.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+            labelMedium: t.labelMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         DesignDirection.console => t.copyWith(
             headlineLarge: t.headlineLarge?.copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.5),
@@ -413,6 +403,13 @@ abstract final class AppTheme {
             headlineSmall: t.headlineSmall?.copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.3),
             titleLarge: t.titleLarge?.copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.2),
             titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            titleSmall: t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            // Small print and labels with tabular figures, so counts,
+            // sizes and times line up down a list like a readout.
+            bodySmall: t.bodySmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+            labelLarge: t.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+            labelMedium: t.labelMedium?.copyWith(fontWeight: FontWeight.w500, letterSpacing: .3, fontFeatures: const [FontFeature.tabularFigures()]),
+            labelSmall: t.labelSmall?.copyWith(fontWeight: FontWeight.w500, letterSpacing: .4, fontFeatures: const [FontFeature.tabularFigures()]),
           ),
       };
 
@@ -421,9 +418,10 @@ abstract final class AppTheme {
     final mono = _mono(d);
     TextStyle monoOf(TextStyle? x) => x!.copyWith(fontFamily: mono, fontFamilyFallback: const ['Roboto']);
     final variant = s.onSurfaceVariant;
-    // True black: hairlines in every direction, since fills barely register
-    // on #000.
-    Color? border(Color? c) => black ? s.outlineVariant : c;
+    // True black keeps each style's character (owner feedback 2026-09-26):
+    // Rack and Console already draw hairlines; Tonal keeps its edge-free
+    // tonal cards on dimmed tonal steps; only v2 falls back to a hairline.
+    final radii = StyleComponents.radii(d);
     return switch (d) {
       DesignDirection.v2 => DesignTokens(
           direction: d,
@@ -431,7 +429,8 @@ abstract final class AppTheme {
           groupRadius: 16,
           groupInnerRadius: 4,
           cardColor: s.surfaceContainer,
-          cardBorder: border(null),
+          cardBorder: black ? s.outlineVariant : null,
+          segmentBorder: black ? s.outlineVariant : null,
           gap: 12,
           cardPadding: const EdgeInsets.all(16),
           heroValue: t.displaySmall!.copyWith(fontWeight: FontWeight.w500, fontFeatures: tab, color: s.onSurface),
@@ -458,6 +457,8 @@ abstract final class AppTheme {
           groupInnerRadius: 4,
           cardColor: s.surfaceContainer,
           cardBorder: s.outlineVariant,
+          radii: radii,
+          monoFamily: mono,
           gap: 10,
           cardPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           heroValue: t.displayMedium!.copyWith(fontWeight: FontWeight.w300, letterSpacing: -1.5, fontFeatures: tab, color: s.onSurface, height: 1.05),
@@ -483,7 +484,8 @@ abstract final class AppTheme {
           groupRadius: 24,
           groupInnerRadius: 6,
           cardColor: s.surfaceContainerHigh,
-          cardBorder: border(null),
+          cardBorder: null,
+          radii: radii,
           gap: 12,
           cardPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           heroValue: t.displayMedium!.copyWith(fontWeight: FontWeight.w600, letterSpacing: -1, fontFeatures: tab, color: s.onSurface, height: 1.05),
@@ -510,8 +512,12 @@ abstract final class AppTheme {
           cardRadius: 10,
           groupRadius: 10,
           groupInnerRadius: 2,
-          cardColor: s.surfaceContainer,
+          // True black: the terminal look - panels are #000 ruled off by
+          // hairlines, so only lines, type and the signal colour light up.
+          cardColor: black ? s.surface : s.surfaceContainer,
           cardBorder: s.outlineVariant,
+          radii: radii,
+          monoFamily: mono,
           gap: 8,
           cardPadding: const EdgeInsets.all(14),
           // Mono only where it earns it: numbers, units and time labels.

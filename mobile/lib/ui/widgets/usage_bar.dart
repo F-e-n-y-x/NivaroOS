@@ -82,7 +82,7 @@ class UsageBar extends StatelessWidget {
               builder: (context, v, _) => LinearProgressIndicator(
                 value: v,
                 minHeight: tokens.meterHeight,
-                borderRadius: BorderRadius.circular(tokens.meterHeight <= 4 ? tokens.meterHeight / 2 : Corners.extraSmall),
+                borderRadius: BorderRadius.circular(tokens.meterHeight <= 4 ? tokens.meterHeight / 2 : tokens.radii.xs),
                 color: fill,
                 stopIndicatorColor: fill,
                 backgroundColor: scheme.surfaceContainerHighest,

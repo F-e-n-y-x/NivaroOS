@@ -508,7 +508,7 @@ class StoreAppRow extends StatelessWidget {
     return MergeSemantics(
       child: ListTile(
         onTap: onTap,
-        leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 56, radius: Corners.medium),
+        leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 56, radius: DesignTokens.of(context).radii.md),
         title: Text(app.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -671,7 +671,7 @@ class _StoreAppDetailScreenState extends State<StoreAppDetailScreen> {
           Padding(
             padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.lg),
             child: Row(children: [
-              NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 64, radius: Corners.large),
+              NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 64, radius: DesignTokens.of(context).radii.lg),
               const SizedBox(width: Space.lg),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -771,7 +771,7 @@ class _Screenshot extends StatelessWidget {
       image: true,
       label: 'Screenshot $index of $of',
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(Corners.medium),
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.md),
         child: AspectRatio(
           aspectRatio: 16 / 10,
           child: ColoredBox(

@@ -1,6 +1,8 @@
 // WCAG 2.2 contrast for every foreground/background pair the design system
-// uses, in both themes: 4.5:1 for text, 3:1 for icons, bars and borders
-// (design brief §6). A failure names the pair and prints its ratio.
+// and the stock component themes (StyleComponents) use, in every style ×
+// mode (light, dark, true black) × accent (Monochrome included): 4.5:1 for
+// text, 3:1 for icons, bars, borders and state marks (design brief §6).
+// A failure names the pair and prints its ratio.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -20,6 +22,119 @@ double contrast(Color a, Color b) {
 }
 
 typedef _Pair = (String, Color, Color);
+
+const _none = <WidgetState>{};
+const _selected = {WidgetState.selected};
+
+/// A colour as it lands on [bg] (translucent fills and transparent
+/// buttons).
+Color _on(Color c, Color bg) => Color.alphaBlend(c, bg);
+
+/// The pairs the component themes introduce, in [theme]'s own colours.
+/// A null theme value falls back to the M3 default role.
+({List<_Pair> text, List<_Pair> nonText}) _components(ThemeData theme) {
+  final s = theme.colorScheme;
+  final page = s.surface;
+  final filled = theme.filledButtonTheme.style!;
+  final filledBg = _on(filled.backgroundColor!.resolve(_none)!, page);
+  final filledFg = filled.foregroundColor!.resolve(_none)!;
+  final outlinedFg = theme.outlinedButtonTheme.style?.foregroundColor?.resolve(_none) ?? s.primary;
+  final outlinedSide = theme.outlinedButtonTheme.style?.side?.resolve(_none)?.color ?? s.outline;
+
+  final chip = theme.chipTheme;
+  final chipFill = _on(chip.color!.resolve(_selected)!, page);
+  final chipLabel = WidgetStateProperty.resolveAs(chip.labelStyle!.color!, _selected);
+  final chipIdle = _on(chip.color!.resolve(_none)!, page);
+  final chipIdleLabel = WidgetStateProperty.resolveAs(chip.labelStyle!.color!, _none);
+
+  final seg = theme.segmentedButtonTheme.style!;
+  final segFill = _on(seg.backgroundColor!.resolve(_selected)!, page);
+  final segLabel = seg.foregroundColor!.resolve(_selected)!;
+
+  final sw = theme.switchTheme;
+  final onTrack = sw.trackColor?.resolve(_selected) ?? s.primary;
+  final onThumb = sw.thumbColor?.resolve(_selected) ?? s.onPrimary;
+  final offTrack = sw.trackColor?.resolve(_none) ?? s.surfaceContainerHighest;
+  final offThumb = sw.thumbColor?.resolve(_none) ?? s.outline;
+  final offOutline = sw.trackOutlineColor?.resolve(_none) ?? s.outline;
+
+  final checkFill = theme.checkboxTheme.fillColor!.resolve(_selected)!;
+  final check = theme.checkboxTheme.checkColor!.resolve(_selected)!;
+  final checkEdge = WidgetStateProperty.resolveAs<BorderSide?>(theme.checkboxTheme.side, _none)!.color;
+  final radio = theme.radioTheme.fillColor!.resolve(_selected)!;
+
+  final fab = theme.floatingActionButtonTheme;
+  final fabBg = fab.backgroundColor ?? s.primaryContainer;
+  final fabFg = fab.foregroundColor ?? s.onPrimaryContainer;
+
+  final nav = theme.navigationBarTheme;
+  final navBg = nav.backgroundColor ?? s.surfaceContainer;
+  final navSelected = nav.labelTextStyle!.resolve(_selected)!.color!;
+  final navIdle = nav.labelTextStyle!.resolve(_none)!.color!;
+  final navIcon = nav.iconTheme!.resolve(_selected)!.color!;
+  final navIdleIcon = nav.iconTheme!.resolve(_none)!.color!;
+
+  final snack = theme.snackBarTheme;
+  final tooltip = (theme.tooltipTheme.decoration! as BoxDecoration).color!;
+  final dialogBg = theme.dialogTheme.backgroundColor ?? s.surfaceContainerHigh;
+  final sheetBg = theme.bottomSheetTheme.backgroundColor ?? s.surfaceContainerLow;
+  final menuBg = theme.popupMenuTheme.color!;
+  final input = theme.inputDecorationTheme;
+  final inputBg = input.filled ? input.fillColor! : page;
+  final tab = theme.tabBarTheme;
+  final tabLine = (tab.indicator! as UnderlineTabIndicator).borderSide.color;
+  final progress = theme.progressIndicatorTheme;
+  final slider = theme.sliderTheme;
+
+  return (
+    text: [
+      ('filled button label', filledFg, filledBg),
+      ('outlined button label', outlinedFg, page),
+      ('text button label', s.primary, page),
+      ('selected chip label', chipLabel, chipFill),
+      ('unselected chip label', chipIdleLabel, chipIdle),
+      ('selected segment label', segLabel, segFill),
+      ('FAB label', fabFg, fabBg),
+      ('navigation label, selected', navSelected, navBg),
+      ('navigation label', navIdle, navBg),
+      ('snack bar text', snack.contentTextStyle!.color!, snack.backgroundColor!),
+      ('snack bar action', snack.actionTextColor!, snack.backgroundColor!),
+      ('tooltip', theme.tooltipTheme.textStyle!.color!, tooltip),
+      ('dialog title', theme.dialogTheme.titleTextStyle!.color!, dialogBg),
+      ('dialog text', theme.dialogTheme.contentTextStyle!.color!, dialogBg),
+      ('sheet text', s.onSurfaceVariant, sheetBg),
+      ('menu item', theme.popupMenuTheme.labelTextStyle!.resolve(_none)!.color!, menuBg),
+      ('field label', input.labelStyle!.color!, inputBg),
+      ('field hint', input.hintStyle!.color!, inputBg),
+      ('tab label', tab.labelColor!, page),
+      ('tab label, unselected', tab.unselectedLabelColor!, page),
+      ('list trailing value', theme.listTileTheme.leadingAndTrailingTextStyle!.color!, page),
+      ('slider value label', slider.valueIndicatorTextStyle!.color!, slider.valueIndicatorColor!),
+    ],
+    nonText: [
+      // A state must read without colour alone, but where colour marks it,
+      // it must show (WCAG 1.4.11): on against off, thumb against track.
+      ('switch on: track on page', onTrack, page),
+      ('switch on: thumb on track', onThumb, onTrack),
+      ('switch off: thumb on track', offThumb, offTrack),
+      ('switch off: track edge on page', offOutline, page),
+      ('switch on track against off track', onTrack, offTrack),
+      ('checkbox: fill on page', checkFill, page),
+      ('checkbox: check on fill', check, checkFill),
+      ('checkbox: empty box on page', checkEdge, page),
+      ('radio: selected on page', radio, page),
+      ('outlined button edge', outlinedSide, page),
+      ('FAB icon', fabFg, fabBg),
+      ('navigation icon, selected', navIcon, nav.indicatorColor!),
+      ('navigation icon', navIdleIcon, navBg),
+      ('text field edge', input.enabledBorder!.borderSide.color, inputBg),
+      ('text field focus', input.focusedBorder!.borderSide.color, inputBg),
+      ('tab indicator', tabLine, page),
+      ('progress on its track', progress.color!, progress.linearTrackColor ?? s.secondaryContainer),
+      ('slider value on its track', slider.activeTrackColor!, slider.inactiveTrackColor ?? s.secondaryContainer),
+    ],
+  );
+}
 
 void main() {
   test('contrast of a known pair matches the WCAG formula', () {
@@ -133,6 +248,15 @@ void main() {
       if (tk.button == ButtonTreatment.ink) ('ink button label', s.surface, s.onSurface),
       if (tk.button == ButtonTreatment.outlined) ('outlined button label', s.primary, s.surface),
     ]);
+
+    // The stock components as each style draws them (StyleComponents),
+    // read from the theme itself so a change there is checked here. v2
+    // keeps the Material defaults, which M3 already guarantees.
+    if (tk.direction != DesignDirection.v2) {
+      final c = _components(theme);
+      text.addAll(c.text);
+      nonText.addAll(c.nonText);
+    }
 
     // Not a WCAG pair: pins the choice of TileGroup segment colour on the
     // page, so they stay visibly apart (surfaceContainerLow was 1.05:1 and

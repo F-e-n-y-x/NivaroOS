@@ -47,7 +47,7 @@ class StatusChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: outlined ? null : tone.container,
             border: outlined ? Border.all(color: scheme.outline.withValues(alpha: .55)) : null,
-            borderRadius: BorderRadius.circular(Corners.small),
+            borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),

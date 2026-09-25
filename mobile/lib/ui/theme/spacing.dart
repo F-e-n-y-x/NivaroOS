@@ -45,9 +45,11 @@ class ContentGutter extends InheritedWidget {
   bool updateShouldNotify(ContentGutter oldWidget) => gutter != oldWidget.gutter;
 }
 
-/// Corner radii for the M3 shape scale. Components already use these by
-/// default; reach for them only when building something M3 has no widget
-/// for (the usage bar, skeleton rows, grouped list segments).
+/// Corner radii for the M3 shape scale, which v2 and bare themes keep.
+/// Screens and widgets read the style's own scale instead,
+/// `DesignTokens.of(context).radii` (same five steps), so their corners
+/// follow Rack, Tonal or Console; stock components get theirs from the
+/// theme.
 abstract final class Corners {
   static const double extraSmall = 4;
   static const double small = 8;

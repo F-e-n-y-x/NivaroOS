@@ -619,7 +619,7 @@ class _DownloadProgress extends StatelessWidget {
                   const SizedBox(height: Space.lg),
                   Text(file.name, style: theme.textTheme.titleMedium, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: Space.lg),
-                  LinearProgressIndicator(value: fraction, borderRadius: BorderRadius.circular(Corners.extraSmall)),
+                  LinearProgressIndicator(value: fraction),
                   const SizedBox(height: Space.sm),
                   Text(
                     total > 0 ? '${formatSize(received)} of ${formatSize(total)}' : formatSize(received),
@@ -759,7 +759,7 @@ class _LinesView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final style = theme.textTheme.bodyMedium!.copyWith(fontFamily: 'monospace', color: scheme.onSurface);
+    final style = DesignTokens.of(context).mono(theme.textTheme.bodyMedium).copyWith(color: scheme.onSurface);
     final numberStyle = style.copyWith(color: scheme.onSurfaceVariant);
     final q = query.toLowerCase();
     final digits = '${lines.length}'.length;
@@ -831,7 +831,7 @@ class _Editor extends StatelessWidget {
         autofocus: true,
         keyboardType: TextInputType.multiline,
         textAlignVertical: TextAlignVertical.top,
-        style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+        style: DesignTokens.of(context).mono(theme.textTheme.bodyMedium),
         decoration: InputDecoration(
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
@@ -862,10 +862,10 @@ class _MarkdownView extends StatelessWidget {
           selectable: true,
           padding: EdgeInsets.fromLTRB(Space.gutter(context), Space.lg, Space.gutter(context), Space.xxl),
           styleSheet: base.copyWith(
-            code: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace', backgroundColor: scheme.surfaceContainerHighest),
+            code: DesignTokens.of(context).mono(theme.textTheme.bodyMedium).copyWith(backgroundColor: scheme.surfaceContainerHighest),
             codeblockDecoration: BoxDecoration(
               color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(Corners.small),
+              borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm),
             ),
             codeblockPadding: const EdgeInsets.all(Space.md),
             blockquoteDecoration: BoxDecoration(
@@ -1059,7 +1059,10 @@ class _PdfViewState extends State<_PdfView> {
             child: Center(
               child: Material(
                 color: scheme.surfaceContainerHigh,
-                shape: const StadiumBorder(),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.xl),
+                  side: DesignTokens.of(context).cardBorder == null ? BorderSide.none : BorderSide(color: DesignTokens.of(context).cardBorder!),
+                ),
                 elevation: 2,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1570,7 +1573,7 @@ class _AudioControls extends StatelessWidget {
                 child: Container(
                   width: 160,
                   height: 160,
-                  decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(Corners.extraLarge)),
+                  decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.xl)),
                   child: Icon(Icons.music_note_outlined, size: 64, color: scheme.onSurfaceVariant),
                 ),
               ),

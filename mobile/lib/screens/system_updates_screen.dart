@@ -713,7 +713,7 @@ class _UpgradeSheetState extends State<_UpgradeSheet> {
                         itemCount: _logs.length,
                         itemBuilder: (context, i) => Text(
                           _logs[i],
-                          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: scheme.onSurface),
+                          style: DesignTokens.of(context).mono(theme.textTheme.bodySmall).copyWith(color: scheme.onSurface),
                         ),
                       ),
                     ),

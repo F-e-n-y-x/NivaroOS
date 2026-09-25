@@ -601,7 +601,7 @@ class _VmThumbnailState extends State<VmThumbnail> {
       button: widget.onTap != null,
       label: widget.onTap != null ? 'Screen of ${widget.vm.name}. Opens the console' : 'Screen of ${widget.vm.name}',
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(Corners.small),
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm),
         child: AspectRatio(
           aspectRatio: widget.vm.displayAspect,
           child: Material(
@@ -649,7 +649,7 @@ class _SkeletonCards extends StatelessWidget {
                         Row(children: [
                           SkeletonBox(width: [120.0, 90.0, 140.0][i], height: scaler.scale(18)),
                           const Spacer(),
-                          SkeletonBox(width: 72, height: scaler.scale(24), radius: Corners.small),
+                          SkeletonBox(width: 72, height: scaler.scale(24), corner: Corner.sm),
                         ]),
                         const SizedBox(height: Space.sm),
                         SkeletonBox(width: 220, height: scaler.scale(14)),
@@ -657,7 +657,7 @@ class _SkeletonCards extends StatelessWidget {
                         // shows its screen.
                         if (i == 0) ...[
                           const SizedBox(height: Space.lg),
-                          const AspectRatio(aspectRatio: 16 / 9, child: SkeletonBox(height: double.infinity, radius: Corners.small)),
+                          const AspectRatio(aspectRatio: 16 / 9, child: SkeletonBox(height: double.infinity, corner: Corner.sm)),
                         ],
                         const SizedBox(height: Space.lg),
                         SkeletonBox(width: 104, height: 40, radius: 20),

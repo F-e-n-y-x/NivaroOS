@@ -39,6 +39,16 @@ void main() {
     await c.set(const Appearance());
   });
 
+  test('Monochrome is saved and read back like any accent', () async {
+    final c = ThemeController();
+    await c.set(const Appearance(accent: AccentColor.mono));
+    final d = ThemeController();
+    await d.load();
+    expect(d.value.accent, AccentColor.mono);
+    expect(d.value.summary(), 'Rack · System default · Monochrome');
+    await c.set(const Appearance());
+  });
+
   test('true black is a dark theme for MaterialApp', () {
     expect(AppThemeMode.black.themeMode.name, 'dark');
     expect(AppThemeMode.system.themeMode.name, 'system');

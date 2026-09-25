@@ -675,7 +675,7 @@ class AppRow extends StatelessWidget {
         child: ListTile(
           onTap: onTap,
           onLongPress: onLongPress,
-          leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: Corners.medium, customRadiusPercent: app.iconRadius),
+          leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: DesignTokens.of(context).radii.md, customRadiusPercent: app.iconRadius),
           title: Text(app.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: below.isEmpty
               ? sub
@@ -718,7 +718,7 @@ class _SliverAppRowsSkeleton extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.md),
               child: Row(children: [
-                const SkeletonBox(width: 40, height: 40, radius: Corners.medium),
+                const SkeletonBox(width: 40, height: 40, corner: Corner.md),
                 const SizedBox(width: Space.lg),
                 Expanded(
                   child: Column(
@@ -731,7 +731,7 @@ class _SliverAppRowsSkeleton extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: Space.lg),
-                SkeletonBox(width: scaler.scale(72), height: scaler.scale(24), radius: Corners.small),
+                SkeletonBox(width: scaler.scale(72), height: scaler.scale(24), corner: Corner.sm),
               ]),
             ),
           ),
@@ -768,7 +768,7 @@ Future<void> showAppActionsSheet(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ListTile(
-              leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: Corners.medium, customRadiusPercent: app.iconRadius),
+              leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: DesignTokens.of(context).radii.md, customRadiusPercent: app.iconRadius),
               title: Text(app.title, style: Theme.of(sheet).textTheme.titleMedium),
               subtitle: Text(AppRow.supporting(app), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -1025,7 +1025,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 64, radius: Corners.large, customRadiusPercent: app.iconRadius),
+                        NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 64, radius: DesignTokens.of(context).radii.lg, customRadiusPercent: app.iconRadius),
                         const SizedBox(width: Space.lg),
                         Expanded(
                           child: Column(

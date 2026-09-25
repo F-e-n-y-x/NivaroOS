@@ -62,6 +62,7 @@ class AppearanceScreen extends StatelessWidget {
           slivers: [
             SliverList.list(children: [
               Padding(padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0), child: const _Preview()),
+              Padding(padding: EdgeInsets.fromLTRB(gutter, Space.md, gutter, 0), child: const _Controls()),
               const SectionHeader(title: 'Design preview'),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
@@ -81,7 +82,7 @@ class AppearanceScreen extends StatelessWidget {
                 child: Text(
                   switch (a.mode) {
                     AppThemeMode.system => "Light or dark, following this phone's dark theme setting.",
-                    AppThemeMode.black => 'Pure black behind everything, for OLED screens. Cards keep a faint edge so they stay visible.',
+                    AppThemeMode.black => 'Pure black behind everything, for OLED screens. ${_blackNote(a.direction)}',
                     _ => 'Always ${a.mode.label.toLowerCase()}, whatever the phone is set to.',
                   },
                   style: note,
@@ -113,6 +114,14 @@ class AppearanceScreen extends StatelessWidget {
       },
     );
   }
+
+  /// What true black keeps of each style: it is that style on #000, not
+  /// a generic dark theme.
+  static String _blackNote(DesignDirection d) => switch (d) {
+        DesignDirection.tonal => 'Cards keep their tonal colour, dimmed.',
+        DesignDirection.console => 'Panels are ruled off by hairlines, like a terminal.',
+        _ => 'Cards keep their graphite fill and hairline edge.',
+      };
 
   static List<Color> _wallpaperColors(Color seed, Brightness b) {
     final s = ColorScheme.fromSeed(seedColor: seed, brightness: b);
@@ -163,6 +172,35 @@ class _Preview extends StatelessWidget {
   }
 }
 
+/// The stock controls under the preview cards - the primary and a quiet
+/// button, a selected chip, a switch that is on - so a style or colour
+/// shows on the whole app at once, not only on Home's cards (Monochrome's
+/// ink switch and chip included). A picture, not controls: TalkBack skips
+/// it and taps pass through.
+class _Controls extends StatelessWidget {
+  const _Controls();
+
+  @override
+  Widget build(BuildContext context) {
+    void nothing([Object? _]) {}
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: Wrap(
+          spacing: Space.sm,
+          runSpacing: Space.sm,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton(onPressed: nothing, child: const Text('Start')),
+            OutlinedButton(onPressed: nothing, child: const Text('Logs')),
+            FilterChip(label: const Text('Running'), selected: true, onSelected: nothing),
+            Switch(value: true, onChanged: nothing),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The directions side by side, each drawn in its own theme: a small card
 /// with its type, number and line. Selection is an outline plus a check.
 class _StyleRow extends StatelessWidget {
@@ -189,7 +227,7 @@ class _StyleRow extends StatelessWidget {
               excludeSemantics: true,
               child: InkWell(
                 onTap: () => onPick(d),
-                borderRadius: BorderRadius.circular(Corners.large),
+                borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: Space.xs),
                   child: Column(
@@ -224,8 +262,10 @@ class _StyleRow extends StatelessWidget {
   }
 }
 
-/// The eight accents as a 4 × 2 grid of 48dp swatches, each named under
-/// it, so none is left alone on a second row and each can be read.
+/// The accents - Monochrome first, then the eight colours - as a 3 × 3
+/// grid of 48dp swatches, each named under it, so none is left alone on a
+/// row and each name has room at large text. A swatch shows the accent as
+/// it draws in this theme (Monochrome is dark ink on light, light on dark).
 class _SwatchGrid extends StatelessWidget {
   const _SwatchGrid({required this.selected, required this.onPick});
 
@@ -236,7 +276,8 @@ class _SwatchGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
-    const perRow = 4;
+    const perRow = 3;
+    final brightness = Theme.of(context).brightness;
     final rows = [for (var i = 0; i < AccentColor.values.length; i += perRow) AccentColor.values.sublist(i, (i + perRow).clamp(0, AccentColor.values.length))];
     return Column(
       children: [
@@ -248,7 +289,7 @@ class _SwatchGrid extends StatelessWidget {
                 Expanded(
                   child: Column(
                     children: [
-                      _Swatch(label: accent.label, colors: [accent.seed], selected: selected == accent, onTap: () => onPick(accent)),
+                      _Swatch(label: accent.label, colors: [accent.swatch(brightness)], selected: selected == accent, onTap: () => onPick(accent)),
                       ExcludeSemantics(
                         child: Text(
                           accent.label,
@@ -326,7 +367,7 @@ class _ModeTile extends StatelessWidget {
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Corners.large),
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
         child: Padding(
           padding: const EdgeInsets.only(bottom: Space.xs),
           child: Column(
@@ -334,11 +375,11 @@ class _ModeTile extends StatelessWidget {
               DecoratedBox(
                 position: DecorationPosition.foreground,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(Corners.large),
+                  borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
                   border: Border.all(color: selected ? scheme.primary : scheme.outlineVariant, width: selected ? 2.5 : 1),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(Corners.large),
+                  borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
                   child: AspectRatio(aspectRatio: .62, child: _MiniApp(theme: theme)),
                 ),
               ),
@@ -385,6 +426,9 @@ class _MiniApp extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Container(height: h, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(h / 2))),
         );
+    // The navigation indicator's corner, scaled down: a pill in Tonal (and
+    // v2), the style's small corner elsewhere.
+    final indicator = t.direction == DesignDirection.tonal || t.direction == DesignDirection.v2 ? 3.5 : t.radii.sm / 3;
     final card = BoxDecoration(
       color: t.cardColor,
       borderRadius: BorderRadius.circular(t.cardRadius / 2.5),
@@ -426,11 +470,11 @@ class _MiniApp extends StatelessWidget {
             const Spacer(),
             Container(
               height: 18,
-              color: t.direction == DesignDirection.v2 && s.surface != Colors.black ? s.surfaceContainer : s.surfaceContainerLow,
+              color: theme.navigationBarTheme.backgroundColor ?? s.surfaceContainer,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Container(width: 14, height: 7, decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(4))),
+                  Container(width: 14, height: 7, decoration: BoxDecoration(color: s.secondaryContainer, borderRadius: BorderRadius.circular(indicator))),
                   for (var i = 0; i < 3; i++)
                     Container(width: 5, height: 5, decoration: BoxDecoration(color: s.onSurfaceVariant, shape: BoxShape.circle)),
                 ],
@@ -528,7 +572,7 @@ class _StyleSample extends StatelessWidget {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: s.surface,
-            borderRadius: BorderRadius.circular(Corners.large),
+            borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
             border: Border.all(color: selected ? outer.primary : outer.outlineVariant, width: selected ? 2.5 : 1),
           ),
           child: Material(

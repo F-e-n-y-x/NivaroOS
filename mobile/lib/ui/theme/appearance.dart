@@ -30,7 +30,14 @@ enum AppThemeMode {
 ///
 /// Lime, amber and rose sit near the status hues; status never relies on
 /// colour alone (always icon plus word), so they stay usable.
+///
+/// [mono] is first on purpose (owner request, 2026-09-26): no hue at all.
+/// It builds a monochrome scheme whose accent is the style's own ink -
+/// near-black in light, near-white in dark and true black - with grey
+/// containers; only the status colours keep their hues. Its [seed] is just
+/// the light swatch; use [swatch] to draw it.
 enum AccentColor {
+  mono('Monochrome', Color(0xFF1C1B1A)),
   blue('NivaroOS blue', Color(0xFF2563EB)),
   teal('Teal', Color(0xFF0F9488)),
   lime('Lime', Color(0xFFA3D12E)),
@@ -44,6 +51,13 @@ enum AccentColor {
 
   final String label;
   final Color seed;
+
+  bool get isMono => this == AccentColor.mono;
+
+  /// The colour a swatch shows in a [brightness] theme: the seed, except
+  /// that Monochrome is ink - dark on a light page, light on a dark one -
+  /// as its accent is.
+  Color swatch(Brightness brightness) => isMono && brightness == Brightness.dark ? const Color(0xFFECEAE6) : seed;
 }
 
 /// The design direction the app is drawn in (design brief "Design system

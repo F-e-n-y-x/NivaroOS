@@ -167,7 +167,7 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
             keyboardType: TextInputType.multiline,
             autocorrect: false,
             enableSuggestions: false,
-            style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+            style: DesignTokens.of(context).mono(theme.textTheme.bodyMedium),
             decoration: InputDecoration(
               labelText: 'Compose file',
               // The label stays above the box, so the example below it
@@ -175,7 +175,7 @@ class _CustomInstallScreenState extends State<CustomInstallScreen> {
               floatingLabelBehavior: FloatingLabelBehavior.always,
               alignLabelWithHint: true,
               hintText: 'services:\n  app:\n    image: …',
-              hintStyle: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace', color: scheme.onSurfaceVariant),
+              hintStyle: DesignTokens.of(context).mono(theme.textTheme.bodyMedium).copyWith(color: scheme.onSurfaceVariant),
               errorText: result is String ? result : null,
               errorMaxLines: 6,
               helperText: result == true ? 'The server accepted this file.' : null,

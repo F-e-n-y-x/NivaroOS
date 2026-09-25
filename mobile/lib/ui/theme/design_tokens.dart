@@ -50,6 +50,46 @@ class ChartTokens {
   final bool accentTick;
 }
 
+/// A direction's corner scale, in the same five steps as [Corners] (which
+/// v2 keeps): Rack precise, Tonal soft, Console tight. Screens and widgets
+/// read these instead of fixed radii, so a panel, a thumbnail or a skeleton
+/// takes the corners of the style it's drawn in.
+@immutable
+class Radii {
+  const Radii({required this.xs, required this.sm, required this.md, required this.lg, required this.xl});
+
+  /// Small marks: progress tracks, tooltips, skeleton lines.
+  final double xs;
+
+  /// Chips, text fields in Rack and Console, thumbnails in lists.
+  final double sm;
+
+  /// Buttons (except Tonal's stadium), menus, snack bars, app icons.
+  final double md;
+
+  /// Cards, panels, notices.
+  final double lg;
+
+  /// Dialogs and large surfaces.
+  final double xl;
+
+  /// The M3 shape scale (`Corners`), for v2 and bare themes.
+  static const material = Radii(xs: 4, sm: 8, md: 12, lg: 16, xl: 28);
+
+  double operator [](Corner c) => switch (c) {
+        Corner.xs => xs,
+        Corner.sm => sm,
+        Corner.md => md,
+        Corner.lg => lg,
+        Corner.xl => xl,
+      };
+}
+
+/// A step on the [Radii] scale, for widgets that take their corner as a
+/// constructor argument (`SkeletonBox(corner: Corner.md)`) and resolve it
+/// against the style when they build.
+enum Corner { xs, sm, md, lg, xl }
+
 /// How a direction draws a primary (filled) button.
 enum ButtonTreatment {
   /// The M3 default: filled in the primary colour.
@@ -96,6 +136,9 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
     required this.button,
     required this.statusPanel,
     required this.chart,
+    this.radii = Radii.material,
+    this.segmentBorder,
+    this.monoFamily,
     this.emphasisCard,
     this.onEmphasisCard,
   });
@@ -171,6 +214,25 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
 
   final ChartTokens chart;
 
+  /// Corners for everything that isn't a card or a stock component.
+  final Radii radii;
+
+  /// A hairline around TileGroup's separate segments (v2 on true black,
+  /// where a near-black fill alone barely registers), or null for none.
+  final Color? segmentBorder;
+
+  /// The direction's monospace face (Geist Mono, Plex Mono), or null for
+  /// the platform's. Read it through [mono].
+  final String? monoFamily;
+
+  /// [base] in the direction's monospace face, for paths, logs, commands
+  /// and code. Characters the bundled Latin cuts lack fall back to the
+  /// platform's monospace font.
+  TextStyle mono(TextStyle? base) => (base ?? const TextStyle()).copyWith(
+        fontFamily: monoFamily ?? 'monospace',
+        fontFamilyFallback: const ['monospace', 'Roboto'],
+      );
+
   /// The busiest metric's card (Tonal): primary container, so the one
   /// thing working hardest stands out. Null: all cards alike.
   final Color? emphasisCard;
@@ -213,6 +275,9 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
       button: button,
       statusPanel: statusPanel,
       chart: chart,
+      radii: radii,
+      segmentBorder: segmentBorder,
+      monoFamily: monoFamily,
     );
   }
 

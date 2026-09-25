@@ -288,15 +288,15 @@ class _LogLineView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final mono = theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: scheme.onSurface);
+    final mono = DesignTokens.of(context).mono(theme.textTheme.bodySmall).copyWith(color: scheme.onSurface);
     final color = switch (line.level) {
       LogLevel.error => scheme.error,
       LogLevel.warning => StatusColors.of(context).warning.color,
       LogLevel.normal => scheme.onSurface,
     };
     final time = line.time;
-    final text = Text(line.text, style: mono?.copyWith(color: color));
-    final stamp = time == null ? null : Text(_time.format(time.toLocal()), style: mono?.tabular.copyWith(color: scheme.onSurfaceVariant));
+    final text = Text(line.text, style: mono.copyWith(color: color));
+    final stamp = time == null ? null : Text(_time.format(time.toLocal()), style: mono.tabular.copyWith(color: scheme.onSurfaceVariant));
     // At large text a time column leaves a few words per line, so the
     // time goes above its line instead.
     final above = MediaQuery.textScalerOf(context).scale(10) > 13;

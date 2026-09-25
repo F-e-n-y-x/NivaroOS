@@ -308,7 +308,7 @@ class _LogTile extends StatelessWidget {
   void _showDetails(BuildContext context) {
     final theme = Theme.of(context);
     final (icon, color, levelName) = look(context, entry.level);
-    final mono = theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: theme.colorScheme.onSurfaceVariant);
+    final mono = DesignTokens.of(context).mono(theme.textTheme.bodySmall).copyWith(color: theme.colorScheme.onSurfaceVariant);
     final t = entry.time;
     showModalBottomSheet<void>(
       context: context,

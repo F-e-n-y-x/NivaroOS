@@ -1250,7 +1250,7 @@ class ConsolePlaceholder extends StatelessWidget {
         child: SkeletonPulse(
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const SkeletonBox(width: 48, height: 48, radius: Corners.medium),
+              const SkeletonBox(width: 48, height: 48, corner: Corner.md),
               const SizedBox(height: Space.lg),
               const SkeletonBox(width: 180, height: 22),
               const SizedBox(height: Space.sm),

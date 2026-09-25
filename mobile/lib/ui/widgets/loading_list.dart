@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/design_tokens.dart';
 import '../theme/motion.dart';
 import '../theme/spacing.dart';
 
@@ -152,9 +153,9 @@ class SkeletonRow extends StatelessWidget {
 
     final Widget? lead = switch (leading) {
       SkeletonLeading.none => null,
-      SkeletonLeading.icon => const SkeletonBox(width: 24, height: 24, radius: Corners.extraSmall),
+      SkeletonLeading.icon => const SkeletonBox(width: 24, height: 24, corner: Corner.xs),
       SkeletonLeading.avatar => const SkeletonBox(width: 40, height: 40, radius: 20),
-      SkeletonLeading.thumbnail => const SkeletonBox(width: 56, height: 56, radius: Corners.medium),
+      SkeletonLeading.thumbnail => const SkeletonBox(width: 56, height: 56, corner: Corner.md),
     };
 
     return ConstrainedBox(
@@ -202,13 +203,16 @@ class SkeletonRow extends StatelessWidget {
 
 /// A placeholder block in the colour of a filled but empty surface: the
 /// highest container tone in dark, and the dim surface tone in light,
-/// where the highest container is too close to the page to read.
+/// where the highest container is too close to the page to read. Its
+/// corners are a step on the style's scale ([corner]) unless [radius] fixes
+/// them (a circle).
 class SkeletonBox extends StatelessWidget {
-  const SkeletonBox({super.key, this.width, required this.height, this.radius = Corners.extraSmall});
+  const SkeletonBox({super.key, this.width, required this.height, this.radius, this.corner = Corner.xs});
 
   final double? width;
   final double height;
-  final double radius;
+  final double? radius;
+  final Corner corner;
 
   @override
   Widget build(BuildContext context) {
@@ -218,7 +222,7 @@ class SkeletonBox extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: scheme.brightness == Brightness.light ? scheme.surfaceDim : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(radius ?? DesignTokens.of(context).radii[corner]),
       ),
     );
   }

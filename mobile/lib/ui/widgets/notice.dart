@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 import '../theme/status_colors.dart';
 
@@ -33,7 +34,7 @@ class Notice extends StatelessWidget {
         liveRegion: true,
         child: Material(
           color: tone.container,
-          borderRadius: BorderRadius.circular(Corners.large),
+          borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.lg),
           child: Padding(
             padding: EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, hasAction ? Space.xs : Space.md),
             child: Column(
