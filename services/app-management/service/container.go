@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -57,7 +58,8 @@ type DockerService interface {
 	// container
 	CheckContainerHealth(id string) (bool, error)
 	CreateContainer(m model.CustomizationPostData, id string) (containerID string, err error)
-	CreateContainerShellSession(containerID string, cols, rows uint16) (*ContainerShellSession, error)
+	CreateContainerShellSession(containerID, shell string, cols, rows uint16) (*ContainerShellSession, error)
+	ListContainerShells(containerID string) ([]ContainerShell, error)
 	DescribeContainer(ctx context.Context, name string) (*types.ContainerJSON, error)
 	GetContainer(id string) (types.Container, error)
 	GetContainerAppList(name, image, state *string) (*[]model.MyAppList, *[]model.MyAppList)
@@ -432,20 +434,109 @@ func pidInContainer(pid int, containerID string) bool {
 	return err == nil && strings.Contains(string(b), containerID)
 }
 
-// pickContainerShell prefers bash and falls back to sh, checked with a
-// stat on the container filesystem (no extra exec, works for any image).
-func pickContainerShell(ctx context.Context, cli *client2.Client, containerID string) string {
-	for _, sh := range []string{"/bin/bash", "/usr/bin/bash"} {
-		if st, err := cli.ContainerStatPath(ctx, containerID, sh); err == nil && (st.Mode.IsRegular() || st.Mode&os.ModeSymlink != 0) {
-			return sh
-		}
-	}
-	return "/bin/sh"
+// ContainerShell is a shell an interactive container terminal can run.
+type ContainerShell struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
-// CreateContainerShellSession starts an interactive TTY shell (bash if the
-// image has it, else sh) in containerID at the given size.
-func (ds *dockerService) CreateContainerShellSession(containerID string, cols, rows uint16) (*ContainerShellSession, error) {
+// knownShells are the shells a container terminal may start, most wanted
+// first (the first one present is the default). Only these can be asked
+// for by name: the terminal never runs an arbitrary path from a request.
+var knownShells = []ContainerShell{
+	{"bash", "/bin/bash"}, {"bash", "/usr/bin/bash"},
+	{"zsh", "/bin/zsh"}, {"zsh", "/usr/bin/zsh"},
+	{"fish", "/usr/bin/fish"}, {"fish", "/bin/fish"},
+	{"ash", "/bin/ash"},
+	{"dash", "/bin/dash"}, {"dash", "/usr/bin/dash"},
+	{"sh", "/bin/sh"},
+}
+
+// containerHasFile stats path inside the container (no exec, so it works for
+// any image). A symlink counts only if its target exists too - /bin/sh is
+// often a link to busybox or dash.
+func containerHasFile(ctx context.Context, cli *client2.Client, containerID, path string) bool {
+	st, err := cli.ContainerStatPath(ctx, containerID, path)
+	if err != nil {
+		return false
+	}
+	if st.Mode&os.ModeSymlink == 0 {
+		return st.Mode.IsRegular()
+	}
+	target := st.LinkTarget
+	if target == "" {
+		return false
+	}
+	if !strings.HasPrefix(target, "/") {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	t, err := cli.ContainerStatPath(ctx, containerID, target)
+	return err == nil && (t.Mode.IsRegular() || t.Mode&os.ModeSymlink != 0)
+}
+
+// availableShells lists the known shells present in the container.
+func availableShells(ctx context.Context, cli *client2.Client, containerID string) []ContainerShell {
+	return shellsPresent(func(path string) bool { return containerHasFile(ctx, cli, containerID, path) })
+}
+
+// shellsPresent keeps one entry per known shell name (the first path that
+// exists), in knownShells order.
+func shellsPresent(has func(path string) bool) []ContainerShell {
+	var out []ContainerShell
+	seen := map[string]bool{}
+	for _, sh := range knownShells {
+		if !seen[sh.Name] && has(sh.Path) {
+			out = append(out, sh)
+			seen[sh.Name] = true
+		}
+	}
+	return out
+}
+
+// ErrShellNotAvailable is returned when a terminal asks for a shell the
+// container doesn't have (or one that isn't a known shell at all).
+var ErrShellNotAvailable = errors.New("that shell isn't available in this container")
+
+// pickContainerShell returns the path of the shell named want ("" = the
+// default: the first known shell present, falling back to /bin/sh).
+func pickContainerShell(ctx context.Context, cli *client2.Client, containerID, want string) (string, error) {
+	return chooseShell(availableShells(ctx, cli, containerID), want)
+}
+
+func chooseShell(shells []ContainerShell, want string) (string, error) {
+	if want == "" {
+		if len(shells) > 0 {
+			return shells[0].Path, nil
+		}
+		return "/bin/sh", nil
+	}
+	for _, sh := range shells {
+		if sh.Name == want {
+			return sh.Path, nil
+		}
+	}
+	return "", ErrShellNotAvailable
+}
+
+// ListContainerShells lists the shells a terminal can start in containerID.
+func (ds *dockerService) ListContainerShells(containerID string) ([]ContainerShell, error) {
+	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := cli.ContainerInspect(ctx, containerID); err != nil {
+		return nil, err
+	}
+	return availableShells(ctx, cli, containerID), nil
+}
+
+// CreateContainerShellSession starts an interactive TTY shell in containerID
+// at the given size: the shell named shell (see knownShells), or the
+// default one when shell is "".
+func (ds *dockerService) CreateContainerShellSession(containerID, shell string, cols, rows uint16) (*ContainerShellSession, error) {
 	cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -454,14 +545,18 @@ func (ds *dockerService) CreateContainerShellSession(containerID string, cols, r
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	shell := pickContainerShell(ctx, cli, containerID)
+	shellPath, err := pickContainerShell(ctx, cli, containerID, shell)
+	if err != nil {
+		cli.Close()
+		return nil, err
+	}
 	size := &[2]uint{uint(rows), uint(cols)}
 	ir, err := cli.ContainerExecCreate(ctx, containerID, types.ExecConfig{
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
 		Env:          []string{"TERM=xterm-256color", "COLUMNS=" + strconv.Itoa(int(cols)), "LINES=" + strconv.Itoa(int(rows))},
-		Cmd:          []string{shell},
+		Cmd:          []string{shellPath},
 		Tty:          true,
 		ConsoleSize:  size,
 	})
@@ -477,7 +572,7 @@ func (ds *dockerService) CreateContainerShellSession(containerID string, cols, r
 		return nil, err
 	}
 
-	s := &ContainerShellSession{Conn: hr, Shell: shell, cli: cli, execID: ir.ID}
+	s := &ContainerShellSession{Conn: hr, Shell: shellPath, cli: cli, execID: ir.ID}
 	// Daemons older than API 1.42 ignore ConsoleSize.
 	_ = s.Resize(cols, rows)
 	return s, nil

@@ -6,6 +6,11 @@ const PREFIX2COMPOSE = "/v2/app_management/compose"
 
 const container = {
 	// get container networks
+	// Shells the container terminal can start here ([{name, path}], first =
+	// the default), for the terminal's shell picker.
+	getShells(id) {
+		return api.get(`${PREFIX}/${id}/shells`);
+	},
 	getNetworks() {
 		return api.get(`${PREFIX}/networks`);
 	},

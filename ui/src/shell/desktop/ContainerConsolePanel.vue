@@ -40,6 +40,15 @@
 					</button>
 				</div>
 
+				<!-- Shell picker: images ship different shells (bash, sh, ash...);
+				     shown only when there's a choice. -->
+				<label v-if="activeTab === 'terminal' && isContainerRunning && shells.length > 1" class="shell-picker mr-3">
+					<i class="mdi mdi-console-line" aria-hidden="true"></i>
+					<select :value="selectedShell || shells[0].name" :title="$t('Shell to open')" :aria-label="$t('Shell to open')" @change="setShell($event.target.value)">
+						<option v-for="sh in shells" :key="sh.name" :value="sh.name">{{ sh.name }}</option>
+					</select>
+				</label>
+
 				<button
 					v-if="activeTab === 'logs'"
 					type="button"
@@ -71,8 +80,10 @@
 						{{ $t('Start Container') }}
 					</b-button>
 				</div>
+				<!-- Keyed by shell: picking another one opens a fresh session. -->
 				<terminal-card
 					v-else
+					:key="containerId + '|' + selectedShell"
 					ref="terminalCard"
 					:id="containerId"
 					:init-ws-url="terminalWsUrl"
@@ -193,6 +204,16 @@ const STATUS_POLL_MS = 10000
 // Within this many px of the bottom counts as "following" the log.
 const FOLLOW_SLACK_PX = 48
 
+// The shell picked for a container's terminal, remembered per container.
+const SHELL_KEY_PREFIX = 'nvos_container_shell_'
+function readShell(id) {
+	try {
+		return localStorage.getItem(SHELL_KEY_PREFIX + id) || ''
+	} catch (e) {
+		return ''
+	}
+}
+
 export default {
 	name: 'container-console-panel',
 	components: {
@@ -247,7 +268,10 @@ export default {
 			statusTimer: null,
 			restarting: false,
 			starting: false,
-			currentStatus: this.status || 'running'
+			currentStatus: this.status || 'running',
+			// [{name, path}] from the server; '' until loaded.
+			shells: [],
+			shell: readShell(this.containerId)
 		}
 	},
 	computed: {
@@ -277,12 +301,17 @@ export default {
 		},
 		// cols/rows are placeholders: TerminalCard replaces them with the
 		// fitted size of the terminal when it connects.
+		// The saved shell if the image still has it, else the default ('').
+		selectedShell() {
+			return this.shells.some(sh => sh.name === this.shell) ? this.shell : ''
+		},
 		terminalWsUrl() {
 			const query = {
 				token: this.$store.state.access_token,
 				cols: 120,
 				rows: 32
 			}
+			if (this.selectedShell) query.shell = this.selectedShell
 			return `${this.$wsProtocol}//${this.$baseURL}/v1/container/${this.containerId}/terminal?${qs.stringify(query)}`
 		},
 		// Lines after the "Clear view" marker.
@@ -302,6 +331,7 @@ export default {
 		}
 		this.startLogPolling()
 		this.statusTimer = setInterval(this.refreshStatus, STATUS_POLL_MS)
+		if (this.isContainerRunning) this.loadShells()
 		document.addEventListener('visibilitychange', this.onVisibility)
 	},
 	beforeDestroy() {
@@ -329,12 +359,35 @@ export default {
 		status(val) {
 			if (val) this.currentStatus = val
 		},
+		isContainerRunning(running) {
+			if (running && !this.shells.length) this.loadShells()
+		},
 		currentStatus(val, old) {
 			// Came back up / went down: pick up the new log lines at once.
 			if (val !== old && this.activeTab === 'logs') this.fetchLogs(true)
 		}
 	},
 	methods: {
+		loadShells() {
+			const id = this.containerId
+			this.$api.container.getShells(id).then(res => {
+				if (id !== this.containerId) return
+				const list = res && res.data && res.data.data
+				this.shells = Array.isArray(list) ? list : []
+			}).catch(() => {
+				// Older server or container gone: no picker, default shell.
+				this.shells = []
+			})
+		},
+		setShell(name) {
+			// The first entry is the default; storing '' keeps following it.
+			this.shell = this.shells.length && name === this.shells[0].name ? '' : name
+			try {
+				const key = SHELL_KEY_PREFIX + this.containerId
+				if (this.shell) localStorage.setItem(key, this.shell)
+				else localStorage.removeItem(key)
+			} catch (e) { /* private mode */ }
+		},
 		// On screen = page visible and this window not minimised
 		// (a minimised window is display:none -> no client rects).
 		isOnScreen() {
@@ -708,6 +761,37 @@ export default {
 			color: #ffffff;
 			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 		}
+	}
+}
+
+.shell-picker {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	height: 28px;
+	padding: 0 var(--space-2);
+	border-radius: var(--radius-sm);
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	color: #e4e4e7;
+
+	select {
+		appearance: auto;
+		background: transparent;
+		border: none;
+		color: inherit;
+		font: inherit;
+		font-size: var(--font-sm);
+		cursor: pointer;
+
+		option {
+			color: #111;
+		}
+	}
+
+	&:focus-within {
+		outline: 2px solid #60a5fa;
+		outline-offset: 1px;
 	}
 }
 

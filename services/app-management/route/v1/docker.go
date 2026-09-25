@@ -51,7 +51,20 @@ var upgrader = websocket.Upgrader{
 	HandshakeTimeout: time.Duration(time.Second * 5),
 }
 
-// DockerTerminal opens an interactive shell (bash, else sh) in a container
+// ContainerShells lists the shells the container terminal can start in
+// this container (first = the default), for the terminal's shell picker.
+func ContainerShells(ctx echo.Context) error {
+	shells, err := service.MyService.Docker().ListContainerShells(ctx.Param("id"))
+	if err != nil {
+		return ctx.JSON(http.StatusNotFound, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+	}
+	if shells == nil {
+		shells = []service.ContainerShell{}
+	}
+	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shells})
+}
+
+// DockerTerminal opens an interactive shell (?shell=, else the default) in a container
 // over the wsterm protocol (services/common/utils/wsterm):
 //   - initial size: ?cols=N&rows=N
 //   - client BINARY frames = raw input; client TEXT frames starting with
@@ -68,7 +81,8 @@ func DockerTerminal(ctx echo.Context) error {
 	}
 	defer conn.Close()
 
-	sess, err := service.MyService.Docker().CreateContainerShellSession(ctx.Param("id"), cols, rows)
+	// ?shell=bash|zsh|fish|ash|dash|sh picks the shell; empty = the default.
+	sess, err := service.MyService.Docker().CreateContainerShellSession(ctx.Param("id"), ctx.QueryParam("shell"), cols, rows)
 	if err != nil {
 		// ctx.JSON would be lost on the hijacked connection.
 		wsterm.SendError(conn, "failed to open container shell: "+err.Error())
