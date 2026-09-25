@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,10 +10,12 @@ import '../models/dashboard_stats.dart';
 import '../models/gpu_stats.dart';
 import '../services/api_client.dart';
 import '../services/vm_client.dart';
+import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
+import '../widgets/vm_console_preview.dart';
 import 'system_updates_screen.dart';
 import 'vm_console_screen.dart';
 import 'vm_list_screen.dart' show VmStateChip;
@@ -21,9 +24,10 @@ export '../widgets/monitor_modals.dart' show LiveHistory;
 
 /// Loads everything Home shows and keeps the live part fresh.
 ///
-/// Two speeds: utilization every few seconds (and drives every 30 s) while
-/// someone is looking, and the slow checks - updates, backups, apps, VMs,
-/// host facts - once on open and on pull-to-refresh. Each slow check fails
+/// Two speeds: utilization at the phone's [WidgetRefresh] interval (drives
+/// no more than every 30 s, the VM list no more than every 5 s) while
+/// someone is looking, and the slow checks - updates, backups, apps, host
+/// facts - once on open and on pull-to-refresh. Each slow check fails
 /// on its own and just leaves its part out; only the live reading decides
 /// whether Home shows an error or the offline banner.
 class HomeController extends ChangeNotifier {
@@ -70,10 +74,16 @@ class HomeController extends ChangeNotifier {
   DateTime? _disksAt;
   NetSample? _lastNet;
   DateTime? _lastNetAt;
+  DateTime? _vmsAt;
   bool _liveBusy = false;
+  bool _vmsBusy = false;
   bool _disposed = false;
 
-  static const disksEvery = Duration(seconds: 30);
+  static const disksEvery = WidgetRefresh.drivesEvery;
+
+  /// How many times everything was loaded (open, pull-to-refresh), so the
+  /// console preview can take a new picture with it.
+  int refreshes = 0;
 
   List<AttentionItem> get attention => buildAttention(
         updates: updates,
@@ -160,6 +170,31 @@ class HomeController extends ChangeNotifier {
     }
   }
 
+  /// The VM list again, between pull-to-refreshes: no more often than
+  /// every [WidgetRefresh.previewFloor], and a failed poll keeps the last
+  /// list rather than dropping the section.
+  Future<void> pollVms() async {
+    final now = clock.now();
+    if (_vmsBusy || (_vmsAt != null && now.difference(_vmsAt!) < WidgetRefresh.previewFloor)) return;
+    _vmsBusy = true;
+    try {
+      await _loadVms(keepOnError: true);
+    } finally {
+      _vmsBusy = false;
+    }
+    _notify();
+  }
+
+  /// The running VM's screen as PNG bytes, for Home's console preview;
+  /// null when the VM has no picture to give (not running, no display).
+  /// Throws when the server can't be reached, so the preview can back off.
+  Future<Uint8List?> vmScreenshot(String name) async {
+    final res = await _api.getRaw('/v1/vm-sidecar/vms/${Uri.encodeComponent(name)}/screenshot');
+    if (res.statusCode == 400 || res.statusCode == 404) return null;
+    if (res.statusCode != 200) throw ApiException('Screenshot failed (${res.statusCode})', statusCode: res.statusCode);
+    return pngSize(res.bodyBytes) == null ? null : res.bodyBytes;
+  }
+
   /// Asks a VM to shut down (like pressing its power button), then reads
   /// the list again a little later.
   Future<void> shutdownVm(String name) async {
@@ -171,6 +206,7 @@ class HomeController extends ChangeNotifier {
   /// Everything, as on open and pull-to-refresh.
   Future<void> refreshAll() async {
     _noGpu = false;
+    refreshes++;
     if (live.value == null) {
       liveError = null;
       _notify();
@@ -258,18 +294,19 @@ class HomeController extends ChangeNotifier {
   // Through the gateway's same-origin route, so it works behind a tunnel
   // or reverse proxy too (plan M-01). The sidecar answers a bare list, so
   // it can't go through the JSON-envelope helper.
-  Future<void> _loadVms() async {
+  Future<void> _loadVms({bool keepOnError = false}) async {
+    _vmsAt = clock.now();
     try {
       final res = await _api.getRaw('/v1/vm-sidecar/vms');
       if (res.statusCode != 200) {
-        vmList = null;
+        if (!keepOnError) vmList = null;
         return;
       }
       final list = jsonDecode(res.body);
       if (list is! List) return;
       vmList = list.whereType<Map<String, dynamic>>().map(Vm.fromJson).toList();
     } catch (_) {
-      vmList = null;
+      if (!keepOnError) vmList = null;
     }
   }
 }
@@ -287,8 +324,8 @@ class DashboardScreen extends StatefulWidget {
   /// Tests pass their own; the app makes one per screen.
   final HomeController? controller;
 
-  /// How often the live reading refreshes.
-  final Duration pollEvery;
+  /// How often the live widgets refresh; the phone's setting by default.
+  final ValueListenable<WidgetRefresh>? refresh;
 
   const DashboardScreen({
     super.key,
@@ -296,7 +333,7 @@ class DashboardScreen extends StatefulWidget {
     this.onOpenVms,
     this.onOpenApps,
     this.controller,
-    this.pollEvery = const Duration(seconds: 3),
+    this.refresh,
   });
 
   @override
@@ -305,6 +342,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   late final HomeController _c = widget.controller ?? HomeController();
+  late final ValueListenable<WidgetRefresh> _refresh = widget.refresh ?? WidgetRefreshController.instance;
   Timer? _timer;
 
   // Detail screens pushed from here that still want live numbers while
@@ -316,13 +354,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _c.addListener(_changed);
     _c.gpu.addListener(_changed);
+    _refresh.addListener(_retime);
     _c.refreshAll();
-    _timer = Timer.periodic(widget.pollEvery, (_) => _tick());
+    _startPolling();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _refresh.removeListener(_retime);
     _c.removeListener(_changed);
     _c.gpu.removeListener(_changed);
     if (widget.controller == null) _c.dispose();
@@ -333,6 +373,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) setState(() {});
   }
 
+  // A new refresh interval applies at once: the poll timer restarts (or
+  // stops, for pull-to-refresh only) and the charts re-time to keep
+  // their span.
+  void _retime() {
+    _startPolling();
+    _changed();
+  }
+
+  void _startPolling() {
+    final every = _refresh.value.every;
+    _timer?.cancel();
+    _timer = every == null ? null : Timer.periodic(every, (_) => _tick());
+    _c.history.retime(every);
+  }
+
   // Poll only while someone can see the numbers: Home is the visible tab
   // (a hidden IndexedStack child and a covered route have their tickers
   // off) or one of its detail screens is open, and the app is in front.
@@ -340,8 +395,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
-    if (!TickerMode.valuesOf(context).enabled && _detailsOpen == 0) return;
+    final visible = TickerMode.valuesOf(context).enabled;
+    if (!visible && _detailsOpen == 0) return;
     _c.refreshLive();
+    // The VM rows (and whether there is one to preview) only matter on
+    // Home itself.
+    if (visible) _c.pollVms();
   }
 
   Future<void> _openDetail(Widget screen) async {
@@ -350,11 +409,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _detailsOpen--;
   }
 
-  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
-  void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
+  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
+  void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
   void _openStorage() => _openDetail(StorageDetailScreen(live: _c.live, onRetry: _c.refreshLive, onOpenFiles: widget.onOpenFiles));
-  void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, pollEvery: widget.pollEvery));
-  void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history, pollEvery: widget.pollEvery));
+  void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
+  void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history));
 
   Future<void> _openUpdates(UpdatesPage page) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SystemUpdatesScreen(page: page)));
@@ -458,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       live: live,
       history: _c.history,
       gpu: _c.gpu.value,
-      window: _c.history.window(widget.pollEvery),
+      window: _c.history.window,
       onOpenCpu: _openCpu,
       onOpenMemory: _openMemory,
       onOpenNetwork: _openNetwork,
@@ -505,11 +564,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// Running and paused VMs, each with its console and a stop button, like
-  /// the apps; the rest are one row that opens the VMs tab.
+  /// the apps; the rest are one row that opens the VMs tab. When exactly
+  /// one VM is running its screen leads the group, live; with two or more
+  /// there are only the rows.
   Widget _vmGroup(BuildContext context, List<Vm> vms) {
     final active = vms.where((v) => v.isActive).toList();
     final idle = vms.length - active.length;
+    final running = vms.where((v) => v.isRunning).toList();
+    final only = running.length == 1 ? running.single : null;
     return TileGroup(title: 'Virtual machines', children: [
+      if (only != null)
+        VmConsolePreview(
+          // A different VM starts from a blank picture.
+          key: ValueKey('preview:${only.name}'),
+          name: only.name,
+          aspectRatio: only.displayAspect,
+          every: _refresh.value.previewEvery,
+          refreshToken: _c.refreshes,
+          fetch: () => _c.vmScreenshot(only.name),
+          onOpen: () => _openConsole(only),
+        ),
       for (final vm in active.take(4)) _vmTile(context, vm),
       ListTile(
         leading: const Icon(Icons.computer_outlined),

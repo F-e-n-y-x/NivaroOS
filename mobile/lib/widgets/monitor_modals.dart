@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -18,10 +20,19 @@ import '../utils/format.dart';
 /// no history endpoint, so the lines start when Home opens and say so
 /// until there are two points.
 class LiveHistory {
-  LiveHistory({this.capacity = 40});
+  LiveHistory({this.capacity = 31});
 
-  /// 40 readings at the 3 s poll: the last two minutes.
-  final int capacity;
+  /// The span the charts cover, whatever the refresh interval: at the
+  /// default 4 s that is 31 readings.
+  static const span = Duration(minutes: 2);
+
+  /// How many readings the charts hold; [retime] keeps it at [span].
+  int capacity;
+
+  /// The time between two readings; null when Home only refreshes on
+  /// pull-to-refresh (then [capacity] stays as it was).
+  Duration? every = const Duration(seconds: 4);
+
   final List<double> cpu = [];
   final List<double> memory = [];
 
@@ -32,9 +43,24 @@ class LiveHistory {
   /// GPU load in percent, while the server reports a GPU.
   final List<double> gpu = [];
 
-  /// What the charts span, for their labels: "2 min".
-  String window(Duration every) {
-    final s = every.inMilliseconds * (capacity - 1) / 1000;
+  /// Follows a new refresh interval: the charts keep covering [span], so
+  /// the number of readings changes (61 at 2 s, 3 at 1 min), and the
+  /// oldest readings beyond it are dropped.
+  void retime(Duration? every) {
+    this.every = every;
+    if (every == null) return;
+    capacity = math.max(span.inMilliseconds ~/ every.inMilliseconds + 1, 3);
+    for (final list in [cpu, memory, netDown, netUp, gpu]) {
+      if (list.length > capacity) list.removeRange(0, list.length - capacity);
+    }
+  }
+
+  /// What the charts span, for their labels: "2 min"; "30 refreshes" when
+  /// readings only come on pull-to-refresh.
+  String get window {
+    final e = every;
+    if (e == null) return '${capacity - 1} refreshes';
+    final s = e.inMilliseconds * (capacity - 1) / 1000;
     return s >= 90 ? '${(s / 60).round()} min' : '${s.round()} s';
   }
 
@@ -377,14 +403,13 @@ String _cores(DashboardStats s) {
 
 /// Processor: load, model, cores, clock, temperature, and each thread.
 class CpuDetailScreen extends StatelessWidget {
-  const CpuDetailScreen({super.key, required this.live, required this.onRetry, this.history, this.pollEvery = const Duration(seconds: 3)});
+  const CpuDetailScreen({super.key, required this.live, required this.onRetry, this.history});
 
   final ValueListenable<LiveStats?> live;
   final VoidCallback onRetry;
 
   /// Home's readings so far, for the chart; null leaves the chart out.
   final LiveHistory? history;
-  final Duration pollEvery;
 
   @override
   Widget build(BuildContext context) {
@@ -405,7 +430,7 @@ class CpuDetailScreen extends StatelessWidget {
               level: loadLevel(s.cpuPercent),
               series: [ChartSeries(h.cpu)],
               capacity: h.capacity,
-              window: h.window(pollEvery),
+              window: h.window,
               max: 100,
               threshold: 90,
               format: _pct,
@@ -458,12 +483,11 @@ class CpuDetailScreen extends StatelessWidget {
 /// by itself, and the one the app used to have started a system update
 /// instead (plan M-28).
 class MemoryDetailScreen extends StatelessWidget {
-  const MemoryDetailScreen({super.key, required this.live, required this.onRetry, this.history, this.pollEvery = const Duration(seconds: 3)});
+  const MemoryDetailScreen({super.key, required this.live, required this.onRetry, this.history});
 
   final ValueListenable<LiveStats?> live;
   final VoidCallback onRetry;
   final LiveHistory? history;
-  final Duration pollEvery;
 
   @override
   Widget build(BuildContext context) {
@@ -485,7 +509,7 @@ class MemoryDetailScreen extends StatelessWidget {
               detail: '${formatBytes(s.memUsed)} of ${formatBytes(s.memTotal)}',
               series: [ChartSeries(h.memory)],
               capacity: h.capacity,
-              window: h.window(pollEvery),
+              window: h.window,
               max: 100,
               threshold: 90,
               format: _pct,
@@ -635,12 +659,11 @@ class StorageDetailScreen extends StatelessWidget {
 /// Network: traffic right now, and the three speed tests, each saying
 /// plainly what it measures.
 class NetworkDetailScreen extends StatefulWidget {
-  const NetworkDetailScreen({super.key, required this.live, required this.onRetry, this.service, this.history, this.pollEvery = const Duration(seconds: 3)});
+  const NetworkDetailScreen({super.key, required this.live, required this.onRetry, this.service, this.history});
 
   final ValueListenable<LiveStats?> live;
   final VoidCallback onRetry;
   final LiveHistory? history;
-  final Duration pollEvery;
 
   /// Tests pass their own; the app uses [SpeedtestService.instance].
   final SpeedtestService? service;
@@ -738,7 +761,7 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
               unit: down?.$2 == null ? null : '${down!.$2}/s',
               series: [ChartSeries(h.netDown)],
               capacity: h.capacity,
-              window: h.window(widget.pollEvery),
+              window: h.window,
               format: (v) => formatSpeed(v),
               second: ('Upload', up?.$1 ?? '—', up?.$2 == null ? null : '${up!.$2}/s', h.netUp),
             ),
@@ -839,11 +862,10 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
 /// Graphics: the GPU's load, video memory, temperature and power, and what
 /// is using it - the facts the web UI's GPU widget shows.
 class GpuDetailScreen extends StatelessWidget {
-  const GpuDetailScreen({super.key, required this.gpu, this.history, this.pollEvery = const Duration(seconds: 3)});
+  const GpuDetailScreen({super.key, required this.gpu, this.history});
 
   final ValueListenable<GpuStats?> gpu;
   final LiveHistory? history;
-  final Duration pollEvery;
 
   @override
   Widget build(BuildContext context) {
@@ -864,7 +886,7 @@ class GpuDetailScreen extends StatelessWidget {
                       level: loadLevel(g.utilizationPercent, gpu: true),
                       series: [ChartSeries(h.gpu)],
                       capacity: h.capacity,
-                      window: h.window(pollEvery),
+                      window: h.window,
                       max: 100,
                       format: _pct,
                     ),

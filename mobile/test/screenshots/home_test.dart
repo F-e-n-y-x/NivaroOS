@@ -39,7 +39,8 @@ class HistoryController extends HomeController {
   }
 }
 
-/// Two minutes of plausible readings behind the charts (40 polls).
+/// Two minutes of plausible readings behind the charts, cut to what
+/// [history] holds at its refresh interval (31 at the default 4 s).
 void fillHistory(LiveHistory history) {
   const cpu = <double>[4, 6, 5, 9, 14, 11, 7, 6, 8, 12, 18, 22, 16, 10, 8, 7, 9, 6, 5, 4, 6, 8, 5, 3, 2, 3, 2, 1, 2, 1, 3, 5, 9, 7, 4, 3, 2, 2, 1, 1];
   history.cpu
@@ -57,6 +58,9 @@ void fillHistory(LiveHistory history) {
   history.gpu
     ..clear()
     ..addAll([for (var i = 0; i < 40; i++) i < 18 ? 2.0 + i % 3 : (i < 30 ? 38 + (i % 4) * 6 : 6.0 - i % 3)]);
+  for (final list in [history.cpu, history.memory, history.netDown, history.netUp, history.gpu]) {
+    if (list.length > history.capacity) list.removeRange(0, list.length - history.capacity);
+  }
 }
 
 /// The fixture's VMs with two of them on, so Home shows its VM rows.
@@ -67,6 +71,26 @@ Map<String, Object> get runningVms {
       for (final v in list) {...v, 'state': v['name'] == 'Ghost-Windows-11' ? 'running' : v['name'] == 'mint' ? 'paused' : v['state']},
     ],
   };
+}
+
+/// The fixture's VMs with [running] on: one gives Home its console
+/// preview, two or more only the rows.
+Map<String, Object> vmsRunning(Set<String> running) {
+  final list = (jsonDecode(File('test/screenshots/fixtures/v1/vm-sidecar/vms.json').readAsStringSync()) as List).cast<Map<String, dynamic>>();
+  return {
+    'GET /v1/vm-sidecar/vms': [
+      for (final v in list) {...v, 'state': running.contains(v['name']) ? 'running' : v['state']},
+    ],
+  };
+}
+
+/// Scrolls Home down so its virtual machines group starts near the top.
+Future<void> scrollToVms(WidgetTester tester) async {
+  final header = find.text('Virtual machines');
+  await tester.scrollUntilVisible(header, 300, scrollable: find.byType(Scrollable).first);
+  await tester.pump();
+  await Scrollable.ensureVisible(tester.element(header), alignment: .05);
+  await tester.pump(const Duration(seconds: 1));
 }
 
 /// Home that never finishes its first load: the skeleton.
@@ -210,6 +234,25 @@ final Map<String, _Shot> _shots = {
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -900));
       await tester.pump(const Duration(seconds: 1));
     },
+  ),
+  // Exactly one VM running: its live console preview leads the group.
+  'home_vm_preview': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, dense: true, overrides: runningVms, before: scrollToVms),
+  // The running VM has no picture to give yet: the quiet placeholder.
+  'home_vm_preview_no_picture': _Shot(
+    () => DashboardScreen(controller: HistoryController()),
+    tab: true,
+    overrides: {
+      ...runningVms,
+      'GET /v1/vm-sidecar/vms/Ghost-Windows-11/screenshot': const FakeResponse({'error': 'domain has no graphics'}, status: 400),
+    },
+    before: scrollToVms,
+  ),
+  // Two running: no previews, only the rows.
+  'home_vms_two_running': _Shot(
+    () => DashboardScreen(controller: HistoryController()),
+    tab: true,
+    overrides: vmsRunning({'Ghost-Windows-11', 'mint'}),
+    before: scrollToVms,
   ),
   'home_gpu': _Shot(() => GpuDetailScreen(gpu: ValueNotifier(GpuStats.tryParse(fixture('v1/gpu/gpu-stats'))), history: _filled()), dense: true),
   'home_all_clear': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, overrides: _allClear),

@@ -46,6 +46,7 @@ class StorageService {
   static const _keyThemeAccent = 'theme_accent';
   static const _keyThemeWallpaper = 'theme_wallpaper';
   static const _keyDesignDirection = 'design_direction';
+  static const _keyWidgetRefresh = 'widget_refresh';
   // Per server: the secret the server gave this phone, keyed by server URL
   // ("companion_secret@http://nas.local"), so switching servers never sends
   // one server's secret to another (plan M-17).
@@ -57,7 +58,7 @@ class StorageService {
   static const _keyUpdateCheck = 'app_update_check';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyNotificationsAsked};
+  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyNotificationsAsked};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -285,6 +286,18 @@ class StorageService {
   Future<void> setDesignDirection(String direction) async {
     if (!_initialized) await init();
     await _set(_keyDesignDirection, direction);
+  }
+
+  /// How often Home's widgets refresh (WidgetRefresh's name); null for the
+  /// default.
+  Future<String?> getWidgetRefresh() async {
+    if (!_initialized) await init();
+    return _cache[_keyWidgetRefresh];
+  }
+
+  Future<void> setWidgetRefresh(String refresh) async {
+    if (!_initialized) await init();
+    await _set(_keyWidgetRefresh, refresh);
   }
 
   Future<String?> getServerUrl() async {

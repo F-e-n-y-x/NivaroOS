@@ -167,6 +167,16 @@ final Map<String, _Shot> _shots = {
   'server_profiles': _Shot(() => const ServerProfilesScreen()),
   'server_profile_form': _Shot(() => const ServerProfileForm(), dense: false),
   'settings': _Shot(() => const SettingsScreen(), tablet: true),
+  // Settings > Home > Refresh widgets: the interval choices.
+  'settings_refresh_sheet': _Shot(
+    () => const SettingsScreen(),
+    dense: false,
+    before: (tester) async {
+      await tester.tap(find.text('Refresh widgets'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    },
+  ),
   'settings_update': _Shot(() => const SettingsScreen(), dense: false, setup: () => _signIn(updateAvailable: true)),
   'companion_devices': _Shot(() => const CompanionDevicesScreen()),
   'companion_devices_loading': _Shot(

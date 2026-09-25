@@ -8,6 +8,7 @@ import 'ui/theme/scaled_icons.dart';
 import 'ui/theme/theme_controller.dart';
 import 'services/api_client.dart';
 import 'services/storage_service.dart';
+import 'services/widget_refresh.dart';
 import 'screens/discovery_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
@@ -44,6 +45,7 @@ Future<Widget> startScreen() async {
   try {
     await StorageService.instance.init();
     await ThemeController.instance.load();
+    await WidgetRefreshController.instance.load();
     await ApiClient.instance.init();
     final serverUrl = await StorageService.instance.getServerUrl();
     if (serverUrl != null && serverUrl.trim().isNotEmpty) {

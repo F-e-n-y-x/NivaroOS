@@ -9,16 +9,20 @@ import '../services/background_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
+import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
 import '../widgets/server_power.dart';
 import 'login_screen.dart';
 import 'system_updates_screen.dart';
 
-/// The app's own settings: this phone's permissions, server power, about,
-/// and sign out. The account and the theme live on More (one home each);
+/// The app's own settings: how often Home refreshes, this phone's
+/// permissions, server power, about, and sign out. The account and the theme live on More (one home each);
 /// the app's own update lives on Updates, which About links to.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.refresh});
+
+  /// The refresh setting to show and change; the phone's by default.
+  final WidgetRefreshController? refresh;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -34,6 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool _isSamsung = false;
 
   UpdateCheck? _update;
+
+  WidgetRefreshController get _refresh => widget.refresh ?? WidgetRefreshController.instance;
 
   @override
   void initState() {
@@ -141,6 +147,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     } catch (_) {}
   }
 
+  Future<void> _pickRefresh() async {
+    final picked = await showRefreshSheet(context, _refresh.value);
+    if (picked != null) await _refresh.set(picked);
+  }
+
   String _versionLine() => _build.isEmpty ? _version : '$_version (build $_build)';
 
   @override
@@ -153,6 +164,22 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       title: 'Settings',
       slivers: [
         SliverList.list(children: [
+          TileGroup(
+            title: 'Home',
+            footer: 'Faster refreshes use more battery and data. Drive usage refreshes at most every 30 seconds and the VM preview at most every 5 seconds.',
+            children: [
+              ValueListenableBuilder<WidgetRefresh>(
+                valueListenable: _refresh,
+                builder: (context, value, _) => ListTile(
+                  leading: const Icon(Icons.update_outlined),
+                  title: const Text('Refresh widgets'),
+                  subtitle: Text(value.summary),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _pickRefresh,
+                ),
+              ),
+            ],
+          ),
           if (BackgroundService.isAndroid)
             TileGroup(
               title: 'This phone',
@@ -243,3 +270,56 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     );
   }
 }
+
+/// Asks how often Home's widgets refresh; null when dismissed.
+Future<WidgetRefresh?> showRefreshSheet(BuildContext context, WidgetRefresh current) => showModalBottomSheet<WidgetRefresh>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return ListTileTheme.merge(
+          contentPadding: const EdgeInsets.symmetric(horizontal: Space.xl),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.sm),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Semantics(header: true, child: Text('Refresh widgets', style: theme.textTheme.titleLarge)),
+                        const SizedBox(height: Space.xs),
+                        Text(
+                          'How often Home and its detail pages ask the server for new readings while you look at them.',
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  RadioGroup<WidgetRefresh>(
+                    groupValue: current,
+                    onChanged: (r) => Navigator.of(context).pop(r),
+                    child: Column(
+                      children: [
+                        for (final r in WidgetRefresh.values)
+                          RadioListTile<WidgetRefresh>(
+                            value: r,
+                            title: Text(r == WidgetRefresh.defaultValue ? '${r.summary} (default)' : r.summary),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Space.sm),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );

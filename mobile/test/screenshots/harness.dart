@@ -11,8 +11,8 @@
 //
 // The fake server answers from test/screenshots/fixtures/, laid out by
 // URL: GET /v1/sys/utilization reads fixtures/v1/sys/utilization.json,
-// the VM sidecar (port 28641) reads fixtures/vm/<path>.json, and a .txt
-// fixture is served as a plain body. See fixtures/README.md.
+// the VM sidecar (port 28641) reads fixtures/vm/<path>.json, a .txt
+// fixture is served as a plain body and a .png one as an image. See fixtures/README.md.
 //
 // Every shot runs at the same frozen time ([shotTime], through
 // package:clock), so "12 min ago" and friends render identically on every
@@ -162,6 +162,8 @@ class FakeServer {
       }
       final text = File('$_fixtures$path.txt');
       if (text.existsSync()) return http.Response(text.readAsStringSync(), 200);
+      final png = File('$_fixtures$path.png');
+      if (png.existsSync()) return http.Response.bytes(png.readAsBytesSync(), 200, headers: {'content-type': 'image/png'});
     }
     misses.add(key);
     return _json({'success': 404, 'message': 'not found'}, 404);

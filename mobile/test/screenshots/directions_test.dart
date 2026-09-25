@@ -23,7 +23,7 @@ import 'package:nivaroos_mobile/ui/ui.dart';
 import 'package:nivaroos_mobile/widgets/monitor_modals.dart';
 
 import 'harness.dart';
-import 'home_test.dart' show HistoryController, fillHistory, runningVms;
+import 'home_test.dart' show HistoryController, fillHistory, runningVms, scrollToVms;
 
 const _jellyfin = InstalledApp(
   id: 'jellyfin',
@@ -90,6 +90,14 @@ final Map<String, _Screen> _screens = {
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -760));
       await tester.pump(const Duration(seconds: 1));
     },
+  ),
+  // The one running VM's console preview, in every mode.
+  'home_vm_preview': _Screen(
+    () => DashboardScreen(controller: HistoryController()),
+    tab: true,
+    overrides: runningVms,
+    modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black],
+    before: scrollToVms,
   ),
   'cpu': _Screen(() {
     final h = LiveHistory();
