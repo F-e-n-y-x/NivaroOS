@@ -1,0 +1,14 @@
+{
+    "data": [
+        {
+            "id": 0,
+            "store_root": "/var/lib/nivaroos/appstore/casaos.app/4e6bf64b187e30664ab8e6ed48331e96/build/sysroot/var/lib/casaos/appstore/default.new",
+            "url": "https://casaos.app/store/main.zip"
+        },
+        {
+            "id": 1,
+            "store_root": "/var/lib/nivaroos/appstore/github.com/2a1238d53212bfce4e8f861dcb8ef3fe/big-bear-casaos-master",
+            "url": "https://github.com/bigbeartechworld/big-bear-casaos/archive/refs/heads/master.zip"
+        }
+    ]
+}

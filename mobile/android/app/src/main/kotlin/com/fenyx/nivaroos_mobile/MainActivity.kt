@@ -7,6 +7,7 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.app.NotificationManager
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -23,6 +24,19 @@ class MainActivity : FlutterActivity() {
         multicastLock = wifi?.createMulticastLock("nivaroos-mdns-discovery")?.apply {
             setReferenceCounted(true)
             acquire()
+        }
+        removeLegacyNotificationChannel()
+    }
+
+    // Builds up to 1.2.x ran an always-on service through
+    // flutter_background_service, whose notification channel
+    // ("FOREGROUND_DEFAULT") would otherwise stay in the app's
+    // notification settings forever.
+    private fun removeLegacyNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        try {
+            getSystemService(NotificationManager::class.java)?.deleteNotificationChannel("FOREGROUND_DEFAULT")
+        } catch (_: Exception) {
         }
     }
 
@@ -45,15 +59,93 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Background Service & Unattended Execution channel. Starting/
-        // stopping the actual sync service itself is handled entirely by
-        // flutter_background_service now (see background_service.dart) -
-        // this channel only covers OEM/system settings a headless Dart
-        // isolate has no Activity to drive: the Doze whitelist dialog,
-        // Samsung's separate battery manager, and the auto-start-on-boot
-        // preference flutter_background_service's own boot receiver reads.
+        // Storage sharing sessions and the heartbeat job (see
+        // CompanionShareService, HeartbeatJobService and
+        // lib/services/background_service.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/companion_share").setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "start" -> {
+                        val endAt = (call.argument<Number>("endAt") ?: 0).toLong()
+                        CompanionShareService.start(this, endAt, call.argument<String>("server") ?: "")
+                        result.success(true)
+                    }
+                    "stop" -> {
+                        CompanionShareService.stop(this)
+                        result.success(true)
+                    }
+                    "status" -> {
+                        val prefs = getSharedPreferences(CompanionShareService.PREFS, Context.MODE_PRIVATE)
+                        result.success(mapOf(
+                            "running" to CompanionShareService.running,
+                            "endsAt" to CompanionShareService.endsAt,
+                            "lastStopReason" to prefs.getString(CompanionShareService.KEY_REASON, null),
+                        ))
+                    }
+                    "scheduleHeartbeat" -> {
+                        HeartbeatJobService.schedule(this)
+                        result.success(true)
+                    }
+                    "cancelHeartbeat" -> {
+                        HeartbeatJobService.cancel(this)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("SHARE_ERROR", e.message, null)
+            }
+        }
+
+        // Self-update (see AppUpdateInstaller and lib/services/app_update_service.dart).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/app_update").setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "installedSigners" -> result.success(AppUpdateInstaller.installedSigners(this))
+                    // Hashing a 60 MB APK takes a moment: off the main thread.
+                    "sha256" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        Thread {
+                            val hash = try { AppUpdateInstaller.fileSha256(path) } catch (e: Exception) { null }
+                            runOnUiThread { result.success(hash) }
+                        }.start()
+                    }
+                    "apkInfo" -> result.success(AppUpdateInstaller.apkInfo(this, call.argument<String>("path") ?: ""))
+                    "canRequestInstalls" -> result.success(AppUpdateInstaller.canRequestInstalls(this))
+                    "openInstallSettings" -> {
+                        AppUpdateInstaller.openInstallSettings(this)
+                        result.success(true)
+                    }
+                    "install" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        Thread {
+                            val error = try {
+                                AppUpdateInstaller.install(this, path)
+                                null
+                            } catch (e: Exception) {
+                                e.message ?: e.javaClass.simpleName
+                            }
+                            runOnUiThread {
+                                if (error == null) result.success(true) else result.error("INSTALL_ERROR", error, null)
+                            }
+                        }.start()
+                    }
+                    "lastInstallError" -> {
+                        val prefs = getSharedPreferences("nivaroos_update", Context.MODE_PRIVATE)
+                        val error = prefs.getString("last_install_error", null)
+                        prefs.edit().remove("last_install_error").apply()
+                        result.success(error)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("UPDATE_ERROR", e.message, null)
+            }
+        }
+
+        // Battery settings a headless engine has no Activity to open: the
+        // Doze exemption dialog and Samsung's separate battery manager.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/background_service").setMethodCallHandler { call, result ->
-            val prefs = getSharedPreferences("nivaroos_bg_prefs", Context.MODE_PRIVATE)
             when (call.method) {
                 "isIgnoringBatteryOptimizations" -> {
                     val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
@@ -95,15 +187,6 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         result.error("INTENT_ERROR", e.message, null)
                     }
-                }
-                "isAutoStartOnBoot" -> {
-                    val autoStart = prefs.getBoolean("auto_start_boot", true)
-                    result.success(autoStart)
-                }
-                "setAutoStartOnBoot" -> {
-                    val enabled = call.argument<Boolean>("enabled") ?: true
-                    prefs.edit().putBoolean("auto_start_boot", enabled).apply()
-                    result.success(true)
                 }
                 "isSamsungDevice" -> {
                     result.success(Build.MANUFACTURER.equals("samsung", ignoreCase = true))

@@ -70,6 +70,34 @@ screen, before it's done:
   independent second opinion from the `agy` CLI (Gemini) on the same
   screenshots. Fix what they agree on; record decisions where they disagree.
 
+## 1b. Owner feedback on a device (2026-09-26): "promising, but basic"
+
+The owner installed a build: it works and looks promising, but reads as a
+generic app that gets the job done. Calm must not mean plain. Stage-2
+reviewers and the fix step: flag every screen that looks like a default
+template and fix the cheap, high-impact gaps now:
+- **One expressive moment per screen.** Home gets a real "server card":
+  name, a health state you read at a glance (arc/ring or a large tonal status
+  panel), uptime and live sparklines; Files shows the current location with
+  storage usage; an app/VM detail leads with its icon, state and one primary
+  action. Everything else stays quiet around it.
+- **Richer lists without rainbow:** leading icons in one-tone 40dp tonal
+  containers (primaryContainer / secondaryContainer / surfaceContainerHighest
+  by role, never a colour per item), real app icons and file thumbnails,
+  trailing values in tabular figures.
+- **Data you can see:** sparklines for CPU/RAM/network history, usage bars
+  with clear thresholds, relative times.
+- **Emphasised type for key numbers** (M3 Expressive "emphasized" styles:
+  heavier weight, larger size on the one number that matters), and section
+  containment with tonal surfaces instead of flat white.
+- **Motion that explains:** shared-axis / container-transform transitions
+  into details, spring-like state changes, animated counters - short and
+  honouring reduced motion.
+A dedicated stage 3 will then explore 2-3 visual directions on Home and
+Files as real screenshots (e.g. a brand display typeface such as Inter or
+Manrope for headlines, stronger shape language) for the owner to choose,
+and roll the winner out everywhere.
+
 ## 2. Banned (these are what made it look "AI-made")
 
 - Gradients, glows, neon, `BoxShadow` glows, blurred/glass surfaces,
@@ -248,9 +276,12 @@ Layout rules:
 - `TileGroup` segments are `surfaceContainer` on the `surface` page;
   `theme_contrast_test.dart` pins that they stay ≥1.1:1 apart.
 
-### The compatibility layer (until every screen is migrated)
+### The compatibility layer (removed 2026-09-26)
 
-`lib/theme.dart` is deprecated. Its `NivaroColors.*` names are now getters
+Every screen is migrated; `lib/theme.dart` and `LegacyThemeBridge` are
+deleted. What follows is kept for history.
+
+`lib/theme.dart` was deprecated. Its `NivaroColors.*` names are now getters
 that read the active theme (via `LegacyThemeBridge` in `MaterialApp.builder`,
 which rebuilds the tree once when the brightness flips), so un-migrated
 screens follow light and dark. Old name → new role:
@@ -384,3 +415,81 @@ critique and a second opinion from `agy`/Gemini).
   (the per-tile `groupValue` is deprecated), and the gallery already uses
   `Icons.apps_outlined`. Its Dashboard and Apps findings are the next
   stages' migration work.
+
+### Stage-2 review (2026-09-26): design critique, agy/Gemini, code review
+
+Applied, and now rules for every screen:
+- **Bar size follows depth.** `AppScaffold.slivers` picks the bar itself
+  (`collapsingTitle` null): medium collapsing bar for the five tabs and the
+  first screens, small bar with a back arrow for every pushed screen. The
+  screenshot harness pumps pushed screens over a blank first route
+  (`shoot(pushed: true)`) so the back arrow shows in the goldens.
+- **One expressive moment per screen**: Home's `ServerPanel` (tonal
+  `surfaceContainerHigh`, 28dp corners, host name in `headlineSmall
+  .emphasized`, the verdict, OS and uptime, then Processor / Memory /
+  Network-in with two-minute `Sparkline`s from the 4 s polls kept in
+  `HomeController.history`); Files home's "Server storage · 5.2 TB free"
+  panel; App info's header panel (64dp icon, category · version, state,
+  one primary action on its own line). The sparklines live in the panel
+  only; Home's Health group became "Storage" (a capacity, so a usage bar)
+  instead of repeating the same numbers as rows. On windows ≥720dp of
+  content Home is two columns (panel + needs attention | storage + running).
+- **Exclusive choices**: `SegmentedButton` (with its check) for 2-3 short
+  options (VM form Start from, Firmware, Disk type, share length); chips
+  with the check mark for longer or scrolling sets (Apps filters, store
+  categories, log levels). Log levels stay chips because "Warnings and
+  errors" breaks inside a segment at 200% text.
+- **Both log viewers share `LogFilterBar`** (one search bar, one scrolling
+  chip row with the same three levels, copy in the app bar). Container logs
+  put the time above the line above 1.3× text.
+- **A group's one action is a tonal button in its own segment**, not a row
+  that looks like the facts (Updates: Install 112 updates, Install
+  NivaroOS x, Update to 1.3.0).
+- **One self-update path**: Updates → This app, through `AppUpdateService`
+  and `UpdateSheet` (checksum and signing checks). Settings → About only
+  says whether an update waits and links there. One fixture release (24.1
+  MB) and one size format (`formatBytes`) everywhere.
+- **One home per row**: account and theme on More; Settings has phone
+  permissions, server power (shared `confirmServerPower`), about, sign out.
+- **Icons grow with text** (`ScaledIcons` around every screen, 1.0-1.4×,
+  and `StatusChip`), so 200% text doesn't leave specks.
+- **Fading edges** (`FadingEdges`) on horizontal rows that scroll past the
+  edge (console and terminal key bars, log chips): Android's own fading
+  edge, a mask on content - not a decorative gradient, so it doesn't break
+  §2.
+- **Form fields**: leading icons only on the sign-in flow (discovery
+  address, username, password); every other form has bare fields with
+  helper text. **Brand**: the NivaroOS mark leads the first screens'
+  bars; "Not encrypted" is a warning chip with an open lock.
+- **Notices**: an inline `Notice` (status container, icon, action) for
+  things worth noticing with a next step (sharing stopped → Share again);
+  `GroupNote` for free-standing footnotes on a TileGroup page.
+- **Dark status disc**: an 18% wash of the status colour with the colour as
+  icon, instead of the full container tone (the heaviest thing on the
+  page); contrast pinned in `theme_contrast_test.dart`.
+- **Console goldens** are named `*_fixed_dark_*` (they are dark in every
+  theme); the terminal is shot once.
+
+Not changed, on purpose:
+- **Console sheets stay dark** in light mode (agy #2): the console is
+  always dark and its sheets match it.
+- **`DeleteVmDialog` stays its own dialog** (agy #5): it needs the "Also
+  delete its disks" checkbox; it already has ConfirmDialog's order,
+  colours, Cancel focus and haptic.
+- **FABs over the last rows in a still screenshot** (critique #6, agy #3):
+  every list ends with padding of FAB height + 16dp + the text scale, so
+  the last row scrolls clear; a static golden always shows something under
+  a FAB. The Files FAB is now extended ("New", "New folder"). Shrinking
+  FABs on scroll is left for stage 3.
+- **The tablet width cap** (critique #2): both AppScaffold forms already
+  cap content at 840dp (the tablet shots are 3072px wide at 3×, the
+  content column is ~790dp); Home now uses the room for two columns.
+- agy findings checked and rejected: the key bar is 56dp with 48dp chip
+  targets; Servers already uses TileGroups; Tailscale uses `StatusChip`;
+  the VM form has no q35/host-passthrough choice; a disabled ListTile is
+  already not clickable for TalkBack; the "rule at line 38" about
+  apostrophes does not exist (a copy pass on quote style is still open).
+- The storage-sharing row keeps its switch at 200% text (Pixel Settings
+  does the same); its subtitle got shorter instead.
+- App store details keep their flat header (icon, name, Install): the store
+  page is a catalogue entry, not a running thing with a state.

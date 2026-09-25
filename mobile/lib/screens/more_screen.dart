@@ -31,6 +31,11 @@ class _MoreScreenState extends State<MoreScreen> {
   int? _updateCount;
   int _securityCount = 0;
 
+  // NivaroOS itself, for its own row: the installed version and, when one
+  // is out, the new one. Null until known.
+  String? _serverVersion;
+  String? _serverLatest;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,7 @@ class _MoreScreenState extends State<MoreScreen> {
   }
 
   Future<void> _loadUpdates() async {
+    _loadServerVersion();
     try {
       final res = await ApiClient.instance.get('/sys/packages/check');
       final data = res['data'];
@@ -58,6 +64,23 @@ class _MoreScreenState extends State<MoreScreen> {
         _securityCount = (data['security_count'] as num?)?.toInt() ?? 0;
       });
     } catch (_) {}
+  }
+
+  Future<void> _loadServerVersion() async {
+    try {
+      final res = await ApiClient.instance.get('/sys/version/check');
+      final data = res['data'];
+      if (data is! Map || !mounted) return;
+      final latest = data['version'] is Map ? (data['version'] as Map)['version']?.toString() : null;
+      setState(() {
+        _serverVersion = data['current_version']?.toString();
+        _serverLatest = data['need_update'] == true && latest != null && latest.isNotEmpty ? latest : null;
+      });
+    } catch (_) {}
+  }
+
+  void _openUpdates(UpdatesPage page) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SystemUpdatesScreen(page: page))).then((_) => _loadUpdates());
   }
 
   void _push(Widget screen) {
@@ -92,8 +115,19 @@ class _MoreScreenState extends State<MoreScreen> {
           ]),
           TileGroup(title: 'Server', children: [
             ListTile(
-              leading: const Icon(Icons.update_outlined),
-              title: const Text('Updates'),
+              leading: const Icon(Icons.system_update_alt_outlined),
+              title: const Text('NivaroOS update'),
+              subtitle: Text(_serverLatest != null
+                  ? 'Version $_serverLatest is available'
+                  : _serverVersion != null && _serverVersion!.isNotEmpty
+                      ? 'Up to date · $_serverVersion'
+                      : 'NivaroOS and this app'),
+              trailing: _serverLatest != null ? const StatusChip(label: 'New', status: Status.info) : null,
+              onTap: () => _openUpdates(UpdatesPage.nivaroos),
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: const Text('System packages'),
               // The security count sits under the summary rather than in
               // the trailing slot, where at large text sizes it squeezed the
               // summary into a narrow column. It deserves attention, not
@@ -102,7 +136,13 @@ class _MoreScreenState extends State<MoreScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(updates == null || updates == 0 ? 'NivaroOS and system packages' : '$updates updates available'),
+                  Text(updates == null
+                      ? 'The server\'s Linux packages'
+                      : updates == 0
+                          ? 'Up to date'
+                          : updates == 1
+                              ? '1 update available'
+                              : '$updates updates available'),
                   if (_securityCount > 0) ...[
                     const SizedBox(height: Space.xs),
                     StatusChip(label: '$_securityCount security', status: Status.warning, icon: Icons.shield_outlined),
@@ -110,9 +150,7 @@ class _MoreScreenState extends State<MoreScreen> {
                 ],
               ),
               isThreeLine: _securityCount > 0,
-              onTap: () => Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const SystemUpdatesScreen()))
-                  .then((_) => _loadUpdates()),
+              onTap: () => _openUpdates(UpdatesPage.packages),
             ),
             ListTile(
               leading: const Icon(Icons.receipt_long_outlined),
@@ -143,7 +181,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ListTile(
               leading: const Icon(Icons.devices_outlined),
               title: const Text('Companion devices'),
-              subtitle: const Text('Phones and tablets sharing storage with the server'),
+              subtitle: const Text('This phone, storage sharing and your other devices'),
               onTap: () => _push(const CompanionDevicesScreen()),
             ),
           ]),
@@ -152,7 +190,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ListTile(
               leading: const Icon(Icons.settings_outlined),
               title: const Text('Settings'),
-              subtitle: const Text('Background service, power, sign out'),
+              subtitle: const Text('Notifications, battery, server power, sign out'),
               onTap: () => _push(const SettingsScreen()),
             ),
           ]),

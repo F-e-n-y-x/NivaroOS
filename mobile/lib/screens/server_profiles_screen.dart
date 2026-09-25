@@ -1,15 +1,18 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import '../theme.dart';
+
 import '../models/server_profile.dart';
-import '../services/storage_service.dart';
 import '../services/api_client.dart';
-import '../widgets/common.dart';
+import '../services/session_service.dart';
+import '../services/storage_service.dart';
+import '../ui/ui.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
 
+/// Saved servers: the one in use, and the others to switch to. Switching
+/// stops everything the phone does in the background for the old server
+/// (storage sharing, the heartbeat) before the new one takes over, and
+/// restarts the app's screens on it (plan M-17).
 class ServerProfilesScreen extends StatefulWidget {
   const ServerProfilesScreen({super.key});
 
@@ -20,7 +23,9 @@ class ServerProfilesScreen extends StatefulWidget {
 class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   List<ServerProfile> _profiles = [];
   String? _activeUrl;
+  String? _activeId;
   bool _loading = true;
+  String? _switching;
 
   @override
   void initState() {
@@ -29,538 +34,334 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final profiles = await StorageService.instance.getProfiles();
-      final activeUrl = await StorageService.instance.getServerUrl();
-      if (mounted) {
-        setState(() {
-          _profiles = profiles;
-          _activeUrl = activeUrl;
-          _loading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _switchToProfile(ServerProfile profile) async {
-
-    await StorageService.instance.switchProfile(profile);
-    ApiClient.instance.setBaseUrl(profile.url);
-    if (profile.accessToken != null && profile.refreshToken != null && profile.accessToken!.isNotEmpty) {
-      ApiClient.instance.setSession(profile.accessToken!, profile.refreshToken!);
-    } else {
-      ApiClient.instance.clearSession();
-    }
-
-    if (!ApiClient.instance.hasSession) {
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => LoginScreen(initialUsername: profile.username)),
-        );
-      }
-      return;
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Switched active server to "${profile.name}"'),
-          backgroundColor: NivaroColors.success,
-        ),
-      );
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeShell()),
-        (route) => false,
-      );
-    }
-  }
-
-  Future<void> _reauthProfile(ServerProfile profile) async {
-    await StorageService.instance.setServerUrl(profile.url);
-    ApiClient.instance.setBaseUrl(profile.url);
+    final profiles = await StorageService.instance.getProfiles();
+    final activeUrl = await StorageService.instance.getServerUrl();
+    final activeId = await StorageService.instance.getActiveProfileId();
     if (!mounted) return;
-    final success = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(
-          isReauth: true,
-          initialUsername: profile.username,
-        ),
-      ),
-    );
-    if (success == true && mounted) {
-      _load();
+    setState(() {
+      _profiles = profiles;
+      _activeUrl = activeUrl;
+      _activeId = activeId;
+      _loading = false;
+    });
+  }
+
+  bool _isActive(ServerProfile p) {
+    if (_activeUrl == null) return false;
+    final same = ApiClient.normalizeServerUrl(p.url) == ApiClient.normalizeServerUrl(_activeUrl!);
+    if (!same) return false;
+    // Two profiles for one server: the active id decides.
+    final twins = _profiles.where((o) => ApiClient.normalizeServerUrl(o.url) == ApiClient.normalizeServerUrl(_activeUrl!)).length;
+    return twins < 2 || p.id == _activeId;
+  }
+
+  Future<void> _switchTo(ServerProfile profile) async {
+    if (_switching != null) return;
+    setState(() => _switching = profile.id);
+    try {
+      final hasSession = await SessionService.switchTo(profile);
+      if (!mounted) return;
+      final nav = Navigator.of(context);
+      if (!hasSession) {
+        // Replace the whole stack: the Home under it still shows the old
+        // server's data, and back must not lead there (review finding 12).
+        nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => LoginScreen(initialUsername: profile.username)), (_) => false);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Switched to ${profile.displayName}')));
+      nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (_) => false);
+    } finally {
+      if (mounted) setState(() => _switching = null);
     }
   }
 
-  Future<void> _addOrEditProfile([ServerProfile? existing]) async {
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final urlCtrl = TextEditingController(text: existing?.url ?? '');
-    final userCtrl = TextEditingController(text: existing?.username ?? 'admin');
-    final passCtrl = TextEditingController();
-    bool isSaving = false;
-    String? errorText;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: NivaroColors.surfaceContainerLowest,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: NivaroColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(Icons.add_to_photos_rounded, color: NivaroColors.primaryLight, size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            existing == null ? 'Add Server Profile' : 'Edit Server Profile',
-                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16.5, color: NivaroColors.textPrimary),
-                          ),
-                          Text('Configure host address and login credentials', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
-                        ],
-                      ),
-                    ),
-                    RoundIconButton(icon: Icons.close_rounded, size: 34, onPressed: () => Navigator.pop(ctx)),
-                  ],
-                ),
-                const SizedBox(height: 18),
-
-                if (errorText != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: NivaroColors.danger.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: NivaroColors.danger.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(errorText!, style: TextStyle(color: NivaroColors.dangerLight, fontSize: 12))),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                TextField(
-                  controller: nameCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Server Nickname',
-                    hintText: 'e.g. Home Server, Office Lab',
-                    filled: true,
-                    fillColor: NivaroColors.surfaceRaised,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                TextField(
-                  controller: urlCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Server URL or IP',
-                    hintText: 'http://192.168.1.100:8080 or https://...',
-                    filled: true,
-                    fillColor: NivaroColors.surfaceRaised,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: userCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'Username',
-                          hintText: 'admin',
-                          filled: true,
-                          fillColor: NivaroColors.surfaceRaised,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: passCtrl,
-                        obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          hintText: '••••••••',
-                          filled: true,
-                          fillColor: NivaroColors.surfaceRaised,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: NivaroColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: isSaving
-                        ? null
-                        : () async {
-                            final rawUrl = urlCtrl.text.trim();
-                            final name = nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : 'Nivaro Server';
-                            final username = userCtrl.text.trim();
-                            final password = passCtrl.text;
-
-                            if (rawUrl.isEmpty) {
-                              setSheetState(() => errorText = 'Please provide a valid server URL or IP address.');
-                              return;
-                            }
-
-                            String cleanUrl = rawUrl;
-                            if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-                              cleanUrl = 'http://$cleanUrl';
-                            }
-                            cleanUrl = cleanUrl.replaceAll(RegExp(r'/+$'), '');
-
-                            setSheetState(() {
-                              isSaving = true;
-                              errorText = null;
-                            });
-
-                            String? accessToken = existing?.accessToken;
-                            String? refreshToken = existing?.refreshToken;
-
-                            // Attempt authentication if password provided
-                            if (password.isNotEmpty) {
-                              try {
-                                final loginUri = Uri.parse('$cleanUrl/v1/users/login');
-                                final res = await http.post(
-                                  loginUri,
-                                  headers: {'Content-Type': 'application/json'},
-                                  body: jsonEncode({'username': username, 'password': password}),
-                                ).timeout(const Duration(seconds: 4));
-
-                                if (res.statusCode == 200) {
-                                  final body = jsonDecode(res.body) as Map<String, dynamic>;
-                                  final data = body['data'] as Map<String, dynamic>? ?? body;
-                                  final token = data['token'] as Map<String, dynamic>? ?? data;
-                                  accessToken = token['access_token']?.toString();
-                                  refreshToken = token['refresh_token']?.toString();
-                                } else {
-                                  setSheetState(() {
-                                    isSaving = false;
-                                    errorText = 'Authentication failed (HTTP ${res.statusCode}). Check username/password.';
-                                  });
-                                  return;
-                                }
-                              } catch (e) {
-                                setSheetState(() {
-                                  isSaving = false;
-                                  errorText = 'Could not reach server: $e';
-                                });
-                                return;
-                              }
-                            }
-
-                            final profile = ServerProfile(
-                              id: existing?.id ?? 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                              name: name,
-                              url: cleanUrl,
-                              username: username,
-                              accessToken: accessToken,
-                              refreshToken: refreshToken,
-                              lastConnected: clock.now(),
-                            );
-
-                            await StorageService.instance.saveProfile(profile);
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                            }
-                            if (mounted) {
-                              _load();
-                            }
-                          },
-                    child: isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(existing == null ? 'Save Server Profile' : 'Update Profile', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _deleteProfile(ServerProfile profile) async {
-    if (_profiles.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete the only configured server profile.')),
+  Future<void> _signInAgain(ServerProfile profile) async {
+    if (_isActive(profile)) {
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => LoginScreen(isReauth: true, initialUsername: profile.username)),
       );
+      if (ok == true) await _load();
       return;
     }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: Text('Delete "${profile.name}"?'),
-        content: Text('Remove saved connection to ${profile.url}?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await StorageService.instance.deleteProfile(profile.id);
-      _load();
-    }
+    await _switchTo(profile.withoutTokens());
   }
 
-  Widget _buildProfileCard(ServerProfile profile) {
-    final isActive = profile.url == _activeUrl;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => _switchToProfile(profile),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isActive ? NivaroColors.primary.withValues(alpha: 0.08) : NivaroColors.surfaceRaised,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
-            width: isActive ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: isActive ? NivaroColors.primary.withValues(alpha: 0.2) : NivaroColors.surfaceContainerHighest,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.dns_rounded,
-                color: isActive ? NivaroColors.primaryLight : NivaroColors.textMuted,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          profile.name,
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: NivaroColors.textPrimary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (isActive) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: NivaroColors.success.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            'ACTIVE',
-                            style: TextStyle(color: NivaroColors.successLight, fontSize: 9.5, fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    profile.url,
-                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'User: ${profile.username}',
-                    style: TextStyle(color: NivaroColors.textFaint, fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert_rounded, size: 20, color: NivaroColors.textSecondary),
-                onSelected: (val) {
-                  if (val == 'switch') {
-                    _switchToProfile(profile);
-                  } else if (val == 'relogin') {
-                    _reauthProfile(profile);
-                  } else if (val == 'edit') {
-                    _addOrEditProfile(profile);
-                  } else if (val == 'delete') {
-                    _deleteProfile(profile);
-                  }
+  Future<void> _edit([ServerProfile? existing]) async {
+    final saved = await Navigator.of(context).push<ServerProfile>(
+      MaterialPageRoute(fullscreenDialog: true, builder: (_) => ServerProfileForm(existing: existing)),
+    );
+    if (saved == null || !mounted) return;
+    await StorageService.instance.saveProfile(saved);
+    if (existing != null && _isActive(existing) &&
+        (saved.url != existing.url || saved.accessToken != existing.accessToken || saved.username != existing.username)) {
+      // The server in use changed its address or account: start over on it.
+      await _switchTo(saved);
+      return;
+    }
+    await _load();
+  }
+
+  Future<void> _remove(ServerProfile profile) async {
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: 'Remove “${profile.displayName}”?',
+      message: 'Its address and sign-in are removed from this phone. Nothing changes on the server.',
+      confirmLabel: 'Remove',
+    );
+    if (!ok) return;
+    await StorageService.instance.deleteProfile(profile.id);
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Removed ${profile.displayName}')));
+  }
+
+  Widget _row(ServerProfile p, {required bool active}) {
+    final host = ApiClient.displayHost(p.url);
+    // The name is often the host itself; don't say it twice.
+    final where = p.displayName == host ? null : host;
+    final parts = [
+      if (p.username.isNotEmpty) p.username,
+      ?where,
+      if (!active && !p.hasSession) 'Signed out',
+    ];
+    final subtitle = parts.isEmpty ? host : parts.join(' · ');
+    return MergeSemantics(
+      child: ListTile(
+        // Outlined like every other row icon; the "In use" group already says
+        // which server this is.
+        leading: const Icon(Icons.dns_outlined),
+        title: Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(subtitle),
+        onTap: active || _switching != null ? null : () => _switchTo(p),
+        trailing: _switching == p.id
+            ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+            : PopupMenuButton<String>(
+                tooltip: 'Options for ${p.displayName}',
+                onSelected: (v) => switch (v) {
+                  'switch' => _switchTo(p),
+                  'signin' => _signInAgain(p),
+                  'edit' => _edit(p),
+                  'remove' => _remove(p),
+                  _ => null,
                 },
                 itemBuilder: (context) => [
-                  if (!isActive)
-                    PopupMenuItem(
-                      value: 'switch',
-                      child: Row(
-                        children: [
-                          Icon(Icons.swap_horiz_rounded, color: NivaroColors.successLight, size: 18),
-                          SizedBox(width: 8),
-                          Text('Switch to Server'),
-                        ],
-                      ),
-                    ),
-                  PopupMenuItem(
-                    value: 'relogin',
-                    child: Row(
-                      children: [
-                        Icon(Icons.lock_open_rounded, color: NivaroColors.primaryLight, size: 18),
-                        SizedBox(width: 8),
-                        Text('Sign In / Re-authenticate'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_rounded, color: NivaroColors.primaryLight, size: 18),
-                        SizedBox(width: 8),
-                        Text('Edit Profile'),
-                      ],
-                    ),
-                  ),
-                  if (_profiles.length > 1)
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight, size: 18),
-                          SizedBox(width: 8),
-                          Text('Delete Profile'),
-                        ],
-                      ),
-                    ),
+                  if (!active) const PopupMenuItem(value: 'switch', child: Text('Switch to this server')),
+                  PopupMenuItem(value: 'signin', child: Text(active || p.hasSession ? 'Sign in again' : 'Sign in')),
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  if (!active) const PopupMenuItem(value: 'remove', child: Text('Remove')),
                 ],
               ),
-          ],
-        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: NivaroColors.background,
-      appBar: AppBar(
-        title: const Text('Server Profiles', style: TextStyle(fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add_rounded, size: 24, color: NivaroColors.primaryLight),
-            tooltip: 'Add Server',
-            onPressed: () => _addOrEditProfile(),
-          ),
-        ],
+    final active = _profiles.where(_isActive).toList();
+    final others = _profiles.where((p) => !_isActive(p)).toList();
+
+    return AppScaffold.slivers(
+      title: 'Servers',
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _edit(),
+        icon: const Icon(Icons.add_outlined),
+        label: const Text('Add server'),
       ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: NivaroColors.primaryLight))
-          : Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1050),
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    const LegacySectionHeader(
-                      title: 'Saved NivaroOS Servers',
-                      subtitle: 'Tap any server profile to switch active connection',
-                    ),
-                    Builder(builder: (context) {
-                      final width = MediaQuery.of(context).size.width;
-                      final cols = width >= 750 ? 2 : 1;
+      slivers: [
+        if (_loading)
+          const SliverLoadingList(rows: 3)
+        else if (_profiles.isEmpty)
+          EmptyState(
+            sliver: true,
+            icon: Icons.dns_outlined,
+            title: 'No servers saved',
+            message: 'Add a NivaroOS server to switch between servers without typing their address again.',
+            actionLabel: 'Add server',
+            onAction: () => _edit(),
+          )
+        else
+          SliverList.list(children: [
+            if (active.isNotEmpty) TileGroup(title: 'In use', children: [for (final p in active) _row(p, active: true)]),
+            if (others.isNotEmpty)
+              TileGroup(
+                title: 'Other servers',
+                footer: 'Tap a server to switch to it. Storage sharing and check-ins with the current server stop first.',
+                children: [for (final p in others) _row(p, active: false)],
+              ),
+            // Room for the FAB over the last row.
+            const SizedBox(height: 88),
+          ]),
+      ],
+    );
+  }
+}
 
-                      if (cols > 1) {
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                            childAspectRatio: 3.5,
-                          ),
-                          itemCount: _profiles.length,
-                          itemBuilder: (context, index) => _buildProfileCard(_profiles[index]),
-                        );
-                      }
+/// Add or edit a saved server: a full-screen form (more than three
+/// fields). The address is checked before saving; with a password it also
+/// signs in, so switching to the server later needs no sign-in.
+class ServerProfileForm extends StatefulWidget {
+  const ServerProfileForm({super.key, this.existing});
 
-                      return Column(
-                        children: _profiles.map((profile) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _buildProfileCard(profile),
-                            )).toList(),
-                      );
-                    }),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.add_rounded, size: 20),
-                      label: const Text('Add Another Server Profile'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => _addOrEditProfile(),
-                    ),
-                  ],
+  final ServerProfile? existing;
+
+  @override
+  State<ServerProfileForm> createState() => _ServerProfileFormState();
+}
+
+class _ServerProfileFormState extends State<ServerProfileForm> {
+  late final _name = TextEditingController(text: widget.existing?.name ?? '');
+  late final _url = TextEditingController(text: widget.existing?.url ?? '');
+  late final _user = TextEditingController(text: widget.existing?.username ?? '');
+  final _pass = TextEditingController();
+  bool _saving = false;
+  bool _obscure = true;
+  String? _urlError;
+  String? _passError;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _url.dispose();
+    _user.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _urlError = _url.text.trim().isEmpty ? 'Enter the server address' : null;
+      _passError = null;
+      _error = null;
+    });
+    if (_urlError != null) return;
+    setState(() => _saving = true);
+    try {
+      final String url;
+      try {
+        url = (await ApiClient.probe(_url.text)).url;
+      } on ApiException catch (e) {
+        setState(() => _urlError = e.message);
+        return;
+      }
+      final existing = widget.existing;
+      String? access;
+      String? refresh;
+      final username = _user.text.trim();
+      if (_pass.text.isNotEmpty) {
+        try {
+          final t = await ApiClient.requestTokens(url, username, _pass.text);
+          access = t.accessToken;
+          refresh = t.refreshToken;
+        } on ApiException catch (e) {
+          setState(() => e.kind == ApiErrorKind.auth ? _passError = e.message : _error = e.message);
+          return;
+        }
+      } else if (existing != null && existing.url == url && existing.username == username) {
+        access = existing.accessToken;
+        refresh = existing.refreshToken;
+      }
+      final name = _name.text.trim();
+      final profile = ServerProfile(
+        id: existing?.id ?? 'srv_${clock.now().millisecondsSinceEpoch}',
+        name: name.isEmpty ? ServerProfile.defaultName(url) : name,
+        url: url,
+        username: username,
+        accessToken: access,
+        refreshToken: refresh,
+        lastConnected: existing?.lastConnected,
+      );
+      if (mounted) Navigator.of(context).pop(profile);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.existing != null;
+    final gutter = Space.gutter(context);
+    final scheme = Theme.of(context).colorScheme;
+    return AppScaffold(
+      title: editing ? 'Edit server' : 'Add server',
+      leading: IconButton(
+        tooltip: 'Close',
+        icon: const Icon(Icons.close_outlined),
+        onPressed: _saving ? null : () => Navigator.of(context).pop(),
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: Space.sm),
+          child: TextButton(onPressed: _saving ? null : _save, child: Text(_saving ? 'Checking…' : 'Save')),
+        ),
+      ],
+      body: AutofillGroup(
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.xl),
+          children: [
+            if (_saving) const Padding(padding: EdgeInsets.only(bottom: Space.lg), child: LinearProgressIndicator()),
+            TextField(
+              controller: _url,
+              enabled: !_saving,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              enableSuggestions: false,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                labelText: 'Address',
+                helperText: 'For example 192.168.1.20 or https://nas.example.com',
+                helperMaxLines: 2,
+                errorText: _urlError,
+                errorMaxLines: 5,
+              ),
+            ),
+            const SizedBox(height: Space.lg),
+            TextField(
+              controller: _name,
+              enabled: !_saving,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Name (optional)', helperText: 'Shown in the server list, like “Home” or “Office”'),
+            ),
+            const SizedBox(height: Space.xl),
+            TextField(
+              controller: _user,
+              enabled: !_saving,
+              autofillHints: const [AutofillHints.username],
+              autocorrect: false,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Username'),
+            ),
+            const SizedBox(height: Space.lg),
+            TextField(
+              controller: _pass,
+              enabled: !_saving,
+              obscureText: _obscure,
+              autofillHints: const [AutofillHints.password],
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _save(),
+              decoration: InputDecoration(
+                labelText: 'Password (optional)',
+                helperText: editing ? 'Leave empty to keep the current sign-in' : 'With a password, switching to this server needs no sign-in',
+                helperMaxLines: 2,
+                errorText: _passError,
+                suffixIcon: IconButton(
+                  tooltip: _obscure ? 'Show password' : 'Hide password',
+                  icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                  onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: Space.lg),
+              Semantics(
+                liveRegion: true,
+                child: Text(_error!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.error)),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

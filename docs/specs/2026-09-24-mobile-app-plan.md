@@ -2044,6 +2044,11 @@ otherwise.
 4. **Keep "browse my phone from the server".** The companion feature stays,
    with its security fixes (S-01 done, S-02 to S-04) and the scoped device
    credential.
+5. **NivaroOS updates and system package updates are separate pages**
+   (2026-09-25), as in the web UI's settings: "NivaroOS update" (version,
+   what's new, update NivaroOS; the phone app's own update lives here too)
+   and "System packages" (Debian package updates, security first, upgrade).
+   Two rows in More; Home's attention rows link to the right one.
 
 ---
 

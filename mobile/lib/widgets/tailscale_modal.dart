@@ -1,31 +1,39 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../theme.dart';
+
+import '../services/api_client.dart';
 import '../services/tailscale_service.dart';
-import '../screens/terminal_screen.dart';
-import 'common.dart';
+import '../ui/ui.dart';
 
-class TailscaleModal extends StatefulWidget {
-  const TailscaleModal({super.key});
-
-  static Future<void> show(BuildContext context) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const TailscaleModal(),
-    );
-  }
-
-  @override
-  State<TailscaleModal> createState() => _TailscaleModalState();
+/// Entry point kept for the screens that open Tailscale
+/// (`TailscaleModal.show(context)`); it is a full page now, because status,
+/// addresses and the device list don't fit a sheet.
+abstract final class TailscaleModal {
+  static Future<void> show(BuildContext context) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TailscaleScreen()));
 }
 
-class _TailscaleModalState extends State<TailscaleModal> {
+/// The server's Tailscale (plan M-10, WP1-12): connect or disconnect, sign
+/// the server in with Tailscale's own login link (opened in the browser,
+/// then the page waits for the approval), its tailnet address and name,
+/// and the other devices on the tailnet. No auth keys are typed or stored.
+class TailscaleScreen extends StatefulWidget {
+  const TailscaleScreen({super.key});
+
+  @override
+  State<TailscaleScreen> createState() => _TailscaleScreenState();
+}
+
+class _TailscaleScreenState extends State<TailscaleScreen> {
   TailscaleStatus? _status;
-  bool _loading = true;
-  bool _toggling = false;
+  ApiException? _error;
+  bool _busy = false;
+  bool _waitingForLogin = false;
+  String? _loginUrl;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -33,475 +41,284 @@ class _TailscaleModalState extends State<TailscaleModal> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-    });
     try {
       final status = await TailscaleService.instance.getStatus();
-
       if (!mounted) return;
       setState(() {
         _status = status;
-        _loading = false;
+        _error = null;
+        if (status.authUrl.isNotEmpty) _loginUrl = status.authUrl;
+        if (status.isRunning) _loginUrl = null;
       });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _connect() async {
+    setState(() => _busy = true);
+    try {
+      final result = await TailscaleService.instance.connect();
+      if (result.needsLogin) {
+        setState(() => _loginUrl = result.loginUrl);
+        await _openLogin();
+      } else {
+        await TailscaleService.instance.waitFor((s) => s.isRunning, timeout: const Duration(seconds: 20), cancelled: () => _disposed);
+      }
+      await _load();
+    } on ApiException catch (e) {
+      _snack("Couldn't connect Tailscale. ${e.message}");
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _openLogin() async {
+    final url = _loginUrl;
+    if (url == null) return;
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      _snack("Couldn't open the browser. Copy the link and open it on any device.");
     }
+    if (!mounted || _waitingForLogin) return;
+    setState(() => _waitingForLogin = true);
+    final status = await TailscaleService.instance.waitFor((s) => s.isRunning, cancelled: () => _disposed);
+    if (!mounted) return;
+    setState(() {
+      _waitingForLogin = false;
+      if (status != null) _status = status;
+      if (status?.isRunning ?? false) _loginUrl = null;
+    });
+    if (status?.isRunning ?? false) _snack('The server is on your tailnet');
   }
 
-  Future<void> _toggleState(bool target) async {
-    setState(() => _toggling = true);
-    try {
-      await TailscaleService.instance.setState(target);
-      await Future.delayed(const Duration(milliseconds: 1200));
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update Tailscale: $e'), backgroundColor: NivaroColors.danger),
-      );
-    } finally {
-      if (mounted) setState(() => _toggling = false);
-    }
-  }
-
-  Future<void> _connectWithAuthKey() async {
-    final ctrl = TextEditingController();
-    bool obscure = true;
-    final key = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: NivaroColors.surfaceContainerHighest,
-          title: const Text('Connect to Tailscale'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Enter your Tailscale Auth Key (tskey-auth-...) from admin.tailscale.com/keys:',
-                style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                obscureText: obscure,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'tskey-auth-kXXXXX...',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
-                    onPressed: () => setDialogState(() => obscure = !obscure),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-              onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-              child: const Text('Connect'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _disconnect() async {
+    final viaTailscale = TailscaleService.isTailscaleAddress(ApiClient.instance.baseUrl);
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: 'Disconnect Tailscale?',
+      message: viaTailscale
+          ? 'This phone reaches the server through Tailscale right now, so the app loses its connection until Tailscale is back on.'
+          : "Devices that reach the server through Tailscale can't until you connect again.",
+      confirmLabel: 'Disconnect',
+      permanent: false,
     );
-
-    if (key == null || key.isEmpty) return;
-
-    setState(() => _toggling = true);
+    if (!ok) return;
+    setState(() => _busy = true);
     try {
-      await TailscaleService.instance.connectWithAuthKey(key);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tailscale connection initiated.')),
-        );
-      }
-      await Future.delayed(const Duration(seconds: 2));
+      await TailscaleService.instance.disconnect();
       await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to connect: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
+    } on ApiException catch (e) {
+      _snack("Couldn't disconnect Tailscale. ${e.message}");
     } finally {
-      if (mounted) setState(() => _toggling = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _openLoginUrl(String url) async {
-    if (url.isNotEmpty) {
-      final uri = Uri.tryParse(url);
-      if (uri != null && await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _install() async {
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Install Tailscale on the server?',
+      message: "The server downloads Tailscale's official install script and runs it. It takes a minute or two.",
+      confirmLabel: 'Install',
+    );
+    if (!ok) return;
+    setState(() => _busy = true);
+    try {
+      final result = await TailscaleService.instance.install();
+      await _load();
+      if (result.needsLogin) {
+        setState(() => _loginUrl = result.loginUrl);
+        await _openLogin();
       }
+    } on ApiException catch (e) {
+      _snack("Couldn't install Tailscale. ${e.message}");
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _copyToClipboard(String text, String label) {
+  void _copy(String text, String what) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label copied to clipboard'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    _snack('$what copied');
   }
 
   @override
   Widget build(BuildContext context) {
     final status = _status;
-    final isRunning = status?.isRunning ?? false;
+    final error = _error;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.90,
-      ),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
+    return AppScaffold.slivers(
+      title: 'Tailscale',
+      onRefresh: _load,
+      banner: error != null && status != null && error.isUnreachable ? OfflineBanner(onRetry: _load) : null,
+      slivers: [
+        if (status == null && error != null)
+          error.isUnreachable
+              ? ErrorState.offline(sliver: true, onRetry: _load, details: error.details)
+              : ErrorState(sliver: true, title: "Couldn't load Tailscale", message: error.message, onRetry: _load, details: error.details)
+        else if (status == null)
+          const SliverLoadingList(rows: 5)
+        else if (status.state == TailscaleState.notInstalled)
+          EmptyState(
+            sliver: true,
+            icon: Icons.vpn_key_outlined,
+            title: "Tailscale isn't on the server",
+            message: 'Tailscale lets your devices reach the server from anywhere, without opening ports on your router.',
+            actionLabel: _busy ? null : 'Install Tailscale',
+            onAction: _busy ? null : _install,
+          )
+        else
+          SliverList.list(children: _content(context, status)),
+      ],
+    );
+  }
+
+  List<Widget> _content(BuildContext context, TailscaleStatus s) {
+    final theme = Theme.of(context);
+    final state = s.state;
+    final (title, subtitle, chip) = switch (state) {
+      TailscaleState.running => ('Connected', s.magicDns.isEmpty ? 'On your tailnet' : s.magicDns, Status.success),
+      TailscaleState.starting => ('Connecting', 'Tailscale is starting', Status.info),
+      TailscaleState.needsLogin => ('Needs sign-in', 'Sign the server in to your tailnet', Status.warning),
+      TailscaleState.stopped => ('Off', 'Signed in, but disconnected', Status.neutral),
+      TailscaleState.noDaemon => ('Off', "Tailscale's service isn't running on the server", Status.neutral),
+      TailscaleState.notInstalled => ('Not installed', '', Status.neutral),
+    };
+    final on = state == TailscaleState.running || state == TailscaleState.starting;
+    final needsLogin = state == TailscaleState.needsLogin || (_loginUrl != null && !s.isRunning);
+
+    return [
+      TileGroup(
+        footer: 'To use it from this phone, install the Tailscale app and sign in to the same tailnet.',
         children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NivaroColors.borderSubtle,
-                borderRadius: BorderRadius.circular(2),
+          ListTile(
+            leading: const Icon(Icons.vpn_key_outlined),
+            title: Text('Tailscale on the server', style: theme.textTheme.bodyLarge),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: Space.xs),
+              child: Align(alignment: AlignmentDirectional.centerStart, child: StatusChip(label: title, status: chip)),
+            ),
+            // Signing in is the only way forward here, so it is a button,
+            // not an off switch next to "Needs sign-in" (is it running or
+            // not?). Otherwise the switch says and changes on/off.
+            trailing: _busy
+                ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+                : needsLogin
+                    ? null
+                    : Semantics(
+                        label: on ? 'Disconnect Tailscale' : 'Connect Tailscale',
+                        child: Switch(
+                          value: on,
+                          onChanged: (v) => v ? _connect() : _disconnect(),
+                        ),
+                      ),
+            onTap: _busy || needsLogin ? null : () => on ? _disconnect() : _connect(),
+          ),
+          if (subtitle.isNotEmpty && state != TailscaleState.running && !needsLogin)
+            ListTile(leading: const Icon(Icons.info_outline), title: Text(subtitle)),
+          if (needsLogin)
+            Padding(
+              padding: const EdgeInsets.all(Space.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _waitingForLogin
+                        ? 'Approve the server in the browser; this page updates by itself.'
+                        : 'Sign the server in to your tailnet. Tailscale’s sign-in page opens in the browser.',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: Space.md),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    onPressed: _busy || _waitingForLogin ? null : (_loginUrl != null ? _openLogin : _connect),
+                    onLongPress: _loginUrl == null ? null : () => _copy(_loginUrl!, 'Sign-in link'),
+                    icon: const Icon(Icons.login_outlined),
+                    label: Text(_waitingForLogin ? 'Waiting for the approval…' : 'Sign in to Tailscale'),
+                  ),
+                ],
               ),
             ),
-          ),
-
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.3)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(Icons.vpn_lock_rounded, color: NivaroColors.primaryLight, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Tailscale VPN Manager',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          PulsingStatusDot(
-                            color: isRunning ? NivaroColors.success : NivaroColors.textMuted,
-                            size: 6.5,
-                            animate: isRunning,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isRunning ? 'Tailnet Connected' : (status?.backendState ?? 'Offline / Standby'),
-                            style: TextStyle(
-                              color: isRunning ? NivaroColors.successLight : NivaroColors.textMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.refresh_rounded,
-                  tooltip: 'Refresh Tailscale',
-                  onPressed: _loading ? null : _load,
-                ),
-                const SizedBox(width: 6),
-                RoundIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: NivaroColors.borderSubtle),
-
-          // Content
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    children: [
-                      // Master Connect / Disconnect Card
-                      DarkCard(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Tailscale Mesh Network',
-                                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        isRunning
-                                            ? 'Server is accessible securely from any device in your tailnet.'
-                                            : 'Connect this server to your Tailscale mesh network for zero-config remote access.',
-                                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                _toggling
-                                    ? const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5))
-                                    : Switch(
-                                        value: isRunning,
-                                        activeThumbColor: NivaroColors.primaryLight,
-                                        onChanged: (val) => _toggleState(val),
-                                      ),
-                              ],
-                            ),
-                            if (!isRunning) ...[
-                              const SizedBox(height: 14),
-                              Divider(height: 1, color: NivaroColors.borderSubtle),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: FilledButton.icon(
-                                      onPressed: _toggling ? null : _connectWithAuthKey,
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: NivaroColors.primary,
-                                        padding: const EdgeInsets.symmetric(vertical: 10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      ),
-                                      icon: const Icon(Icons.key_rounded, size: 18),
-                                      label: const Text('Connect with Auth Key', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => const TerminalScreen(initCommand: 'tailscale up', title: 'Tailscale Connect'),
-                                        ),
-                                      );
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                    icon: const Icon(Icons.terminal_rounded, size: 18),
-                                    label: const Text('Terminal Up'),
-                                  ),
-                                ],
-                              ),
-                              if (status?.authUrl.isNotEmpty == true) ...[
-                                const SizedBox(height: 10),
-                                OutlinedButton.icon(
-                                  onPressed: () => _openLoginUrl(status!.authUrl),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: NivaroColors.infoLight,
-                                    minimumSize: const Size(double.infinity, 40),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                  icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                                  label: const Text('Open Tailscale Auth Web Page'),
-                                ),
-                              ],
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Server Node Details Card
-                      if (status != null && (status.selfIp.isNotEmpty || isRunning)) ...[
-                        DarkCard(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.computer_rounded, color: NivaroColors.primaryLight, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    status.hostName,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                                  ),
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: NivaroColors.success.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text('Host Node', style: TextStyle(color: NivaroColors.successLight, fontSize: 11, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              if (status.selfIp.isNotEmpty)
-                                InkWell(
-                                  onTap: () => _copyToClipboard(status.selfIp, 'Tailscale IP'),
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: NivaroColors.surfaceRaised,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: NivaroColors.borderSubtle),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Text('Tailscale IP: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                        Expanded(
-                                          child: Text(status.selfIp, style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13, color: NivaroColors.primaryLight)),
-                                        ),
-                                        Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              if (status.magicDns.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                InkWell(
-                                  onTap: () => _copyToClipboard('${status.hostName}.${status.magicDns}', 'MagicDNS Domain'),
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: NivaroColors.surfaceRaised,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: NivaroColors.borderSubtle),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Text('Domain: ', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                        Expanded(
-                                          child: Text('${status.hostName}.${status.magicDns}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
-                                        ),
-                                        Icon(Icons.copy_rounded, size: 16, color: NivaroColors.textFaint),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-
-                      // Tailnet Peers List
-                      LegacySectionHeader(
-                        title: 'Tailnet Devices (${status?.peers.length ?? 0})',
-                        subtitle: 'Connected nodes on this secure mesh network',
-                      ),
-                      if (status == null || status.peers.isEmpty)
-                        DarkCard(
-                          padding: EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Icon(Icons.devices_other_rounded, color: NivaroColors.textMuted, size: 20),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text('No other tailnet devices connected yet.', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        ...status.peers.map((peer) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: DarkCard(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      peer.os.toLowerCase().contains('android') || peer.os.toLowerCase().contains('ios')
-                                          ? Icons.phone_android_rounded
-                                          : Icons.laptop_mac_rounded,
-                                      size: 20,
-                                      color: peer.online ? NivaroColors.primaryLight : NivaroColors.textFaint,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            peer.hostName,
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '${peer.ip.isNotEmpty ? peer.ip : "No IP"} · ${peer.os}',
-                                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: peer.online ? NivaroColors.success.withValues(alpha: 0.12) : NivaroColors.surfaceMuted,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        peer.online ? 'Online' : 'Offline',
-                                        style: TextStyle(
-                                          color: peer.online ? NivaroColors.successLight : NivaroColors.textFaint,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )),
-                    ],
-                  ),
+          ListTile(
+            leading: const Icon(Icons.phone_android_outlined),
+            title: const Text('Get Tailscale for this phone'),
+            trailing: const Icon(Icons.open_in_new_outlined),
+            onTap: () => launchUrl(Uri.parse('https://tailscale.com/download/android'), mode: LaunchMode.externalApplication),
           ),
         ],
       ),
-    );
+      if (s.selfIp.isNotEmpty || s.dnsName.isNotEmpty)
+        TileGroup(title: 'This server', children: [
+          if (s.selfIp.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.lan_outlined),
+              title: const Text('Tailscale address'),
+              subtitle: Text(s.selfIp, style: theme.textTheme.bodyMedium?.tabular),
+              trailing: IconButton(tooltip: 'Copy address', icon: const Icon(Icons.content_copy_outlined), onPressed: () => _copy(s.selfIp, 'Address')),
+            ),
+          if (s.dnsName.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Name'),
+              subtitle: Text(s.dnsName),
+              trailing: IconButton(tooltip: 'Copy name', icon: const Icon(Icons.content_copy_outlined), onPressed: () => _copy(s.dnsName, 'Name')),
+            ),
+          if (s.primaryRoutes.isNotEmpty)
+            ListTile(
+              leading: const Icon(Icons.alt_route_outlined),
+              title: const Text('Shares these networks'),
+              subtitle: Text(s.primaryRoutes.join(', ')),
+            ),
+          if (s.hasExitNodeOption)
+            const ListTile(
+              leading: Icon(Icons.public_outlined),
+              title: Text('Exit node'),
+              subtitle: Text('Other devices can send their internet traffic through this server'),
+            ),
+        ]),
+      TileGroup(
+        title: s.peers.isEmpty ? 'Devices on your tailnet' : 'Devices on your tailnet (${s.peers.length})',
+        children: s.peers.isEmpty
+            ? [
+                const ListTile(
+                  leading: Icon(Icons.devices_other_outlined),
+                  title: Text('No other devices yet'),
+                  subtitle: Text('Devices signed in to the same tailnet show up here.'),
+                ),
+              ]
+            : [
+                for (final p in s.peers)
+                  ListTile(
+                    leading: Icon(p.isMobile ? Icons.phone_android_outlined : Icons.computer_outlined),
+                    title: Text(p.hostName.isEmpty ? p.dnsName : p.hostName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text([
+                      p.online ? 'Online' : (p.lastSeen == null ? 'Offline' : 'Offline · seen ${seenPhrase(p.lastSeen!)}'),
+                      if (p.ip.isNotEmpty) p.ip,
+                    ].join(' · ')),
+                    onLongPress: p.ip.isEmpty ? null : () => _copy(p.ip, 'Address'),
+                  ),
+              ],
+      ),
+    ];
   }
+}
+
+/// "2 h ago", "yesterday", "Sep 5": a relative time for use mid-sentence.
+String seenPhrase(DateTime t) {
+  final r = formatRelative(t);
+  return r == 'Just now' || r == 'Yesterday' ? r.toLowerCase() : r;
 }

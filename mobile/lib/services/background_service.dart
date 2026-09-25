@@ -1,130 +1,158 @@
 import 'dart:io';
+
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
+
+// The Dart entry points the native side starts (shareServiceMain,
+// heartbeatMain) must be part of the app's code for release builds.
+// ignore: unused_import
 import 'background_sync_isolate.dart';
 
-/// Controls the app's TRUE background execution: a headless Dart isolate
-/// (flutter_background_service) that keeps running independently of the
-/// Activity/UI, so companion file sharing and device sync keep working after
-/// the screen turns off or the app is swiped away from recents - not just
-/// while the app is open.
+/// Where a sharing session stands, as the native service reports it.
+@immutable
+class ShareStatus {
+  const ShareStatus({required this.running, this.endsAt, this.lastStopReason});
+
+  static const off = ShareStatus(running: false);
+
+  final bool running;
+
+  /// When the running session ends by itself.
+  final DateTime? endsAt;
+
+  /// Why the last session ended: `stopped` (by the user), `ended` (its
+  /// time was up), `timeout` (Android's daily limit for this kind of
+  /// service), `not_allowed` (Android refused to start it), `signed_out`,
+  /// `error`. Null when nothing ended yet.
+  final String? lastStopReason;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ShareStatus && other.running == running && other.endsAt == endsAt && other.lastStopReason == lastStopReason;
+
+  @override
+  int get hashCode => Object.hash(running, endsAt, lastStopReason);
+}
+
+/// The app's background work on Android (plan M-18, M-33):
 ///
-/// This used to be a hand-rolled native Android Service
-/// (BackgroundCompanionService.kt) that only held a wakelock and posted a
-/// notification, with no Dart code running inside it at all - every actual
-/// piece of sync logic (DeviceSyncService's 30s timer, CompanionFileServer's
-/// HTTP server, the WebSocket tunnel) lived in the main UI isolate and died
-/// the moment Android tore down the Activity/FlutterEngine. Restarting that
-/// bare service after task-removal (its onTaskRemoved handler) just brought
-/// back an empty shell showing "Companion Active" while doing nothing -
-/// which is exactly the bug this class now fixes: flutter_background_service
-/// runs onBackgroundServiceStart (background_sync_isolate.dart) in a real,
-/// independent Dart isolate hosted by its own native service, so the sync
-/// loop and file server actually keep executing.
+/// - **Heartbeat**: a JobScheduler job about every 15 minutes (network
+///   required) that tells the server this phone is still there. Scheduled
+///   while signed in, cancelled on sign-out and on a server switch.
+/// - **Storage sharing**: a foreground service the user starts for a set
+///   time (at most [maxShare]), which lets the server browse this phone's
+///   shared storage and ends by itself. Nothing runs all the time, and
+///   nothing starts at boot.
+///
+/// Both run the app's own Dart code in a headless engine
+/// (background_sync_isolate.dart); the native side is CompanionShareService
+/// and HeartbeatJobService.
 class BackgroundService {
   BackgroundService._();
   static final BackgroundService instance = BackgroundService._();
 
-  static const MethodChannel _channel = MethodChannel('com.fenyx.nivaroos/background_service');
-  static bool _configured = false;
+  static const MethodChannel _share = MethodChannel('com.fenyx.nivaroos/companion_share');
+  static const MethodChannel _battery = MethodChannel('com.fenyx.nivaroos/background_service');
 
-  Future<void> _ensureConfigured() async {
-    if (_configured) return;
-    _configured = true;
-    // Reboot-survival needs a real BOOT_COMPLETED path - flutter_background_service's
-    // own autoStartOnBoot config bundles that (its plugin registers the actual
-    // receiver), driven by the same user-facing toggle settings_screen.dart
-    // already exposes via setAutoStartOnBoot(). Read once here rather than
-    // reinventing boot handling with a custom native receiver that would have
-    // to guess this plugin's internal service class name to restart it.
-    final autoStartOnBoot = await isAutoStartOnBoot();
-    final service = FlutterBackgroundService();
-    await service.configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: onBackgroundServiceStart,
-        autoStart: false,
-        autoStartOnBoot: autoStartOnBoot,
-        isForegroundMode: true,
-        // Deliberately NOT setting notificationChannelId - confirmed via a
-        // real on-device crash log (android.app.RemoteServiceException
-        // $CannotPostForegroundServiceNotificationException: Bad
-        // notification for startForeground) that this plugin's native
-        // BackgroundService.onCreate() only calls createNotificationChannel()
-        // when notificationChannelId is left null; give it a custom one and
-        // that channel is never registered with NotificationManager at all,
-        // so posting the foreground notification against a channel that
-        // doesn't exist crashes the app the moment the service starts -
-        // exactly the "after I enter my credentials the app just stops"
-        // report this was chasing. Leaving this unset lets the plugin use
-        // and auto-create its own default channel ("FOREGROUND_DEFAULT").
-        initialNotificationTitle: 'NivaroOS Companion Active',
-        initialNotificationContent: 'Storage sharing & device sync running unattended',
-        foregroundServiceNotificationId: 42843,
-        foregroundServiceTypes: [AndroidForegroundType.dataSync],
-      ),
-      iosConfiguration: IosConfiguration(
-        onForeground: onBackgroundServiceStart,
-        onBackground: onBackgroundServiceIosBackground,
-      ),
-    );
-  }
+  /// The longest sharing session offered. Android 15 gives this kind of
+  /// service 6 hours a day, so a session always fits with room to spare.
+  static const maxShare = Duration(hours: 3);
 
-  /// Starts the headless background isolate (idempotent - flutter_background_service
-  /// no-ops if it's already running).
-  Future<bool> startService() async {
-    if (!Platform.isAndroid) return false;
+  /// Session lengths offered when sharing is turned on.
+  static const shareChoices = [Duration(minutes: 30), Duration(hours: 1), Duration(hours: 3)];
+
+  /// Lets tests and screenshots render the Android-only parts of a screen
+  /// on the machine running them.
+  @visibleForTesting
+  static bool? debugIsAndroid;
+
+  static bool get isAndroid => debugIsAndroid ?? Platform.isAndroid;
+
+  /// Starts sharing until now + [length] (capped at [maxShare]). [server]
+  /// names the server in the notification. Returns false when it could not
+  /// be started.
+  Future<bool> startSharing(Duration length, {required String server}) async {
+    if (!isAndroid) return false;
+    final capped = length > maxShare ? maxShare : length;
+    final endAt = clock.now().add(capped);
     try {
-      await _ensureConfigured();
-      await FlutterBackgroundService().startService();
+      await _share.invokeMethod('start', {'endAt': endAt.millisecondsSinceEpoch, 'server': server});
       return true;
     } catch (e) {
-      debugPrint('[BackgroundService] Failed to start service: $e');
+      debugPrint('[BackgroundService] Could not start sharing: $e');
       return false;
     }
   }
 
-  /// Signals the background isolate to stop itself (see background_sync_isolate.dart's
-  /// 'stopService' listener, which calls DeviceSyncService.stopAutoSync() first).
-  Future<bool> stopService() async {
-    if (!Platform.isAndroid) return false;
+  Future<void> stopSharing() async {
+    if (!isAndroid) return;
     try {
-      await _ensureConfigured();
-      FlutterBackgroundService().invoke('stopService');
-      return true;
+      await _share.invokeMethod('stop');
     } catch (e) {
-      debugPrint('[BackgroundService] Failed to stop service: $e');
-      return false;
+      debugPrint('[BackgroundService] Could not stop sharing: $e');
     }
   }
 
-  Future<bool> isServiceRunning() async {
-    if (!Platform.isAndroid) return false;
+  Future<ShareStatus> sharingStatus() async {
+    if (!isAndroid) return ShareStatus.off;
     try {
-      await _ensureConfigured();
-      return await FlutterBackgroundService().isRunning();
-    } catch (e) {
-      debugPrint('[BackgroundService] Failed to query service state: $e');
-      return false;
+      final res = await _share.invokeMethod<Object?>('status');
+      if (res is! Map) return ShareStatus.off;
+      final running = res['running'] == true;
+      final endsAt = (res['endsAt'] as num?)?.toInt() ?? 0;
+      return ShareStatus(
+        running: running,
+        endsAt: running && endsAt > 0 ? DateTime.fromMillisecondsSinceEpoch(endsAt) : null,
+        lastStopReason: res['lastStopReason'] as String?,
+      );
+    } catch (_) {
+      return ShareStatus.off;
     }
+  }
+
+  /// Schedules the 15-minute heartbeat (a no-op when it already is).
+  Future<void> scheduleHeartbeat() async {
+    if (!isAndroid) return;
+    try {
+      await _share.invokeMethod('scheduleHeartbeat');
+    } catch (e) {
+      debugPrint('[BackgroundService] Could not schedule the heartbeat: $e');
+    }
+  }
+
+  Future<void> cancelHeartbeat() async {
+    if (!isAndroid) return;
+    try {
+      await _share.invokeMethod('cancelHeartbeat');
+    } catch (e) {
+      debugPrint('[BackgroundService] Could not cancel the heartbeat: $e');
+    }
+  }
+
+  /// Stops everything that runs for the current server: the sharing
+  /// session and the heartbeat. Before signing out or switching servers
+  /// (plan M-17), so nothing keeps talking to the old one.
+  Future<void> stopAll() async {
+    await stopSharing();
+    await cancelHeartbeat();
   }
 
   /// Checks if the app is exempt from battery optimizations (Doze mode)
   Future<bool> isIgnoringBatteryOptimizations() async {
-    if (!Platform.isAndroid) return true;
+    if (!isAndroid) return true;
     try {
-      return await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? false;
+      return await _battery.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? false;
     } catch (e) {
-      debugPrint('[BackgroundService] Error checking battery optimizations: $e');
       return false;
     }
   }
 
   /// Requests the system dialog to whitelist the app from battery optimizations
   Future<bool> requestIgnoreBatteryOptimizations() async {
-    if (!Platform.isAndroid) return true;
+    if (!isAndroid) return true;
     try {
-      return await _channel.invokeMethod<bool>('requestIgnoreBatteryOptimizations') ?? false;
+      return await _battery.invokeMethod<bool>('requestIgnoreBatteryOptimizations') ?? false;
     } catch (e) {
       debugPrint('[BackgroundService] Error requesting battery optimizations exemption: $e');
       return false;
@@ -133,11 +161,10 @@ class BackgroundService {
 
   /// Opens the system Battery Optimization Settings list
   Future<bool> openBatteryOptimizationSettings() async {
-    if (!Platform.isAndroid) return false;
+    if (!isAndroid) return false;
     try {
-      return await _channel.invokeMethod<bool>('openBatteryOptimizationSettings') ?? false;
+      return await _battery.invokeMethod<bool>('openBatteryOptimizationSettings') ?? false;
     } catch (e) {
-      debugPrint('[BackgroundService] Error opening battery optimization settings: $e');
       return false;
     }
   }
@@ -149,46 +176,21 @@ class BackgroundService {
   /// from the stock optimization, unless also excluded from this OEM-specific
   /// list, so a Samsung device needs both prompts, not just one.
   Future<bool> isSamsungDevice() async {
-    if (!Platform.isAndroid) return false;
+    if (!isAndroid) return false;
     try {
-      return await _channel.invokeMethod<bool>('isSamsungDevice') ?? false;
+      return await _battery.invokeMethod<bool>('isSamsungDevice') ?? false;
     } catch (e) {
       return false;
     }
   }
 
-  /// Opens Samsung's device-care battery settings screen so the user can
-  /// manually add this app to "Never sleeping apps" - there's no public,
-  /// reliable Intent action to deep-link straight into that specific list
-  /// (it's not part of AOSP), so this opens the closest documented entry
-  /// point (device care) and the app's own battery settings page.
+  /// Opens this app's battery page, one tap from Samsung's "Never sleeping
+  /// apps" list (there's no public intent for the list itself).
   Future<bool> openSamsungBatterySettings() async {
-    if (!Platform.isAndroid) return false;
+    if (!isAndroid) return false;
     try {
-      return await _channel.invokeMethod<bool>('openSamsungBatterySettings') ?? false;
+      return await _battery.invokeMethod<bool>('openSamsungBatterySettings') ?? false;
     } catch (e) {
-      debugPrint('[BackgroundService] Error opening Samsung battery settings: $e');
-      return false;
-    }
-  }
-
-  /// Checks whether auto-start on boot is enabled
-  Future<bool> isAutoStartOnBoot() async {
-    if (!Platform.isAndroid) return false;
-    try {
-      return await _channel.invokeMethod<bool>('isAutoStartOnBoot') ?? true;
-    } catch (e) {
-      return true;
-    }
-  }
-
-  /// Sets whether auto-start on boot is enabled
-  Future<bool> setAutoStartOnBoot(bool enabled) async {
-    if (!Platform.isAndroid) return false;
-    try {
-      return await _channel.invokeMethod<bool>('setAutoStartOnBoot', {'enabled': enabled}) ?? false;
-    } catch (e) {
-      debugPrint('[BackgroundService] Error setting auto-start on boot: $e');
       return false;
     }
   }

@@ -1,43 +1,10 @@
 // Screenshots of every screen in light and dark at 412x915, plus the
 // extra sizes each screen asks for. See harness.dart, and brief §7-§8.
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nivaroos_mobile/models/file_entry.dart';
-import 'package:nivaroos_mobile/screens/app_store_screen.dart';
-import 'package:nivaroos_mobile/screens/apps_screen.dart';
-import 'package:nivaroos_mobile/screens/companion_devices_screen.dart';
-import 'package:nivaroos_mobile/screens/container_logs_screen.dart';
-import 'package:nivaroos_mobile/screens/custom_install_screen.dart';
-import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
-import 'package:nivaroos_mobile/screens/discovery_screen.dart';
-import 'package:nivaroos_mobile/screens/file_viewer_screen.dart';
-import 'package:nivaroos_mobile/screens/files_screen.dart';
 import 'package:nivaroos_mobile/screens/home_shell.dart';
-import 'package:nivaroos_mobile/screens/host_desktop_screen.dart';
-import 'package:nivaroos_mobile/screens/login_screen.dart';
-import 'package:nivaroos_mobile/screens/more_screen.dart';
-import 'package:nivaroos_mobile/screens/server_profiles_screen.dart';
-import 'package:nivaroos_mobile/screens/settings_screen.dart';
-import 'package:nivaroos_mobile/screens/system_logs_screen.dart';
-import 'package:nivaroos_mobile/screens/system_updates_screen.dart';
-import 'package:nivaroos_mobile/screens/terminal_screen.dart';
-import 'package:nivaroos_mobile/screens/vm_console_screen.dart';
-import 'package:nivaroos_mobile/screens/vm_form_screen.dart';
-import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
-import 'package:nivaroos_mobile/services/vm_client.dart';
 
 import 'harness.dart';
-
-/// A Markdown file on the test machine for the file viewer to open.
-final _readme = () {
-  final dir = Directory.systemTemp.createTempSync('nivaro_shots');
-  final f = File('${dir.path}/notes.md')
-    ..writeAsStringSync('# Notes\n\nThings to do on the server this week:\n\n'
-        '- Move the photo library to **tank**\n- Update Jellyfin\n- Check the backup of `/DATA/Documents`\n');
-  return f;
-}();
 
 /// Extra shots beyond light and dark at 412x915.
 enum Extra {
@@ -68,38 +35,17 @@ class ScreenShots {
   final Set<Extra> extra;
 }
 
-/// Every screen, by golden name.
+/// Every screen, by golden name. Home, its detail screens, Updates and Logs
+/// are in home_test.dart.
+// The Apps area (apps, app store, custom install, logs, terminal) has its
+// own file with its states and detail pages: apps_screens_test.dart.
+// The VMs area (list, form, VM console, host desktop) is in vms_test.dart.
+// Onboarding, servers, settings, companion devices, Tailscale and More
+// are in platform_screens_test.dart (goldens/platform/).
 final Map<String, ScreenShots> screens = {
-  'discovery': ScreenShots(() => const DiscoveryScreen()),
-  'login': ScreenShots(() => const LoginScreen()),
-  'server_profiles': ScreenShots(() => const ServerProfilesScreen()),
-  'home_shell': ScreenShots(() => const HomeShell(), extra: {Extra.smallPhone, Extra.text2x, Extra.tablet}),
-  'dashboard': ScreenShots(() => const DashboardScreen(), tab: true),
-  'files': ScreenShots(() => const FilesScreen(), tab: true),
-  'file_viewer_markdown': ScreenShots(() => FileViewerScreen(
-        file: FileEntry(name: 'notes.md', path: _readme.path, isDir: false, size: _readme.lengthSync()),
-        path: _readme.path,
-        isLocal: true,
-      )),
-  'apps': ScreenShots(() => const AppsScreen(), tab: true),
-  'app_store': ScreenShots(() => const AppStoreScreen()),
-  'custom_install': ScreenShots(() => const CustomInstallScreen()),
-  'container_logs': ScreenShots(() => const ContainerLogsScreen(appId: 'jellyfin', appTitle: 'Jellyfin')),
-  'vm_list': ScreenShots(() => const VmListScreen(), tab: true),
-  'vm_form_new': ScreenShots(() => VmFormScreen(client: VmClient('nivaro.test'))),
-  'vm_console': ScreenShots(() => const VmConsoleScreen(vmName: 'mint')),
-  'host_desktop': ScreenShots(() => const HostDesktopScreen()),
-  'terminal': ScreenShots(() => const TerminalScreen()),
-  'system_updates': ScreenShots(() => const SystemUpdatesScreen()),
-  'system_logs': ScreenShots(() => const SystemLogsScreen()),
-  'settings': ScreenShots(() => const SettingsScreen()),
-  'companion_devices': ScreenShots(() => const CompanionDevicesScreen()),
-  'more': ScreenShots(
-    () => const MoreScreen(),
-    migrated: true,
-    tab: true,
-    extra: {Extra.smallPhone, Extra.text2x, Extra.tablet},
-  ),
+  'home_shell': ScreenShots(() => const HomeShell(), migrated: true, extra: {Extra.smallPhone, Extra.text2x, Extra.tablet}),
+  // Files and the file viewer have their own, fuller set of shots in
+  // files_screens_test.dart (goldens/files/).
 };
 
 void main() {

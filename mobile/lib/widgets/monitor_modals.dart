@@ -1,1239 +1,578 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
-import '../services/speedtest_service.dart';
+
 import '../models/dashboard_stats.dart';
+import '../services/speedtest_service.dart';
+import '../ui/ui.dart';
 import '../utils/format.dart';
-import 'common.dart';
 
-/// Interactive Network Speedtest Modal with WAN Server Speed and Local Device Link Speed
-class NetworkSpeedTestModal extends StatefulWidget {
-  final NetSample? primaryNet;
-  final double netUpRate;
-  final double netDownRate;
+// The detail screens behind Home's health rows: processor, memory, storage
+// and network. Each one follows the same live reading Home polls (a
+// [ValueListenable] of [LiveStats]), so its numbers keep moving while it's
+// open, and shows the offline banner over the last reading when the server
+// stops answering.
 
-  const NetworkSpeedTestModal({
-    super.key,
-    this.primaryNet,
-    this.netUpRate = 0,
-    this.netDownRate = 0,
-  });
+/// "13.1 GB" -> ("13.1", "GB"), for MetricRow's value and unit.
+(String, String?) splitUnit(String formatted) {
+  final i = formatted.lastIndexOf(' ');
+  if (i <= 0) return (formatted, null);
+  return (formatted.substring(0, i), formatted.substring(i + 1));
+}
 
-  static Future<void> show(
-    BuildContext context, {
-    NetSample? primaryNet,
-    double netUpRate = 0,
-    double netDownRate = 0,
-  }) {
-    return showModalBottomSheet(
+/// A MetricRow for a byte count ("13.1 GB").
+MetricRow bytesRow({required IconData icon, required String label, required int bytes, String? supporting}) {
+  final (value, unit) = splitUnit(formatBytes(bytes));
+  return MetricRow(icon: icon, label: label, value: value, unit: unit, supporting: supporting);
+}
+
+/// A MetricRow for a rate in bytes per second; "—" while unknown.
+MetricRow rateRow({required IconData icon, required String label, required double? bytesPerSec, String? supporting}) {
+  if (bytesPerSec == null) {
+    return MetricRow(icon: icon, label: label, value: '—', supporting: supporting ?? 'Measuring');
+  }
+  final (value, unit) = splitUnit(formatBytes(bytesPerSec));
+  return MetricRow(icon: icon, label: label, value: value, unit: '${unit ?? 'B'}/s', supporting: supporting);
+}
+
+/// "289" / "41.5" / "3.2" - fewer decimals as numbers grow.
+String formatMbps(double v) => v >= 100 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+String formatMs(double v) => v >= 10 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
+/// A [UsageBar] as a list row, lined up with ListTile rows: a leading
+/// icon on the same 16dp column, the bar where a title would start, and a
+/// chevron when it opens something.
+class UsageTile extends StatelessWidget {
+  const UsageTile({super.key, this.icon, required this.bar, this.onTap});
+
+  /// Null for rows in a group of like items (per-thread load), where one
+  /// icon repeated on every row would only add noise.
+  final IconData? icon;
+  final UsageBar bar;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final padding = ListTileTheme.of(context).contentPadding?.resolve(Directionality.of(context)) ??
+        const EdgeInsets.symmetric(horizontal: Space.lg);
+    return MergeSemantics(
+      child: Semantics(
+        button: onTap != null,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(padding.left, Space.md, onTap == null ? padding.right : Space.sm, Space.md),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    ExcludeSemantics(child: Icon(icon, color: scheme.onSurfaceVariant)),
+                    const SizedBox(width: Space.lg),
+                  ],
+                  Expanded(child: bar),
+                  if (onTap != null) ...[
+                    const SizedBox(width: Space.xs),
+                    ExcludeSemantics(child: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A fact as a settings-style row: what it is, and its value under it.
+class FactTile extends StatelessWidget {
+  const FactTile({super.key, required this.icon, required this.label, required this.value});
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => MergeSemantics(
+        child: ListTile(
+          leading: Icon(icon),
+          title: Text(label),
+          subtitle: Text(value.isEmpty ? 'Unknown' : value),
+        ),
+      );
+}
+
+/// The frame every detail screen shares: the live reading, the offline
+/// banner, and "waiting for the first reading".
+class _LiveScaffold extends StatelessWidget {
+  const _LiveScaffold({required this.title, required this.live, required this.onRetry, required this.builder});
+
+  final String title;
+  final ValueListenable<LiveStats?> live;
+  final VoidCallback onRetry;
+  /// The content as slivers.
+  final List<Widget> Function(BuildContext context, LiveStats live) builder;
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<LiveStats?>(
+      valueListenable: live,
+      builder: (context, value, _) => AppScaffold.slivers(
+        title: title,
+        banner: value != null && value.stale ? OfflineBanner(lastUpdated: value.updatedAt, onRetry: onRetry) : null,
+        slivers: value == null
+            ? const [SliverLoadingList(rows: 5, trailing: true)]
+            : builder(context, value),
+      ),
+    );
+  }
+}
+
+List<Widget> _list(List<Widget> children) => [SliverList.list(children: children)];
+
+String _cores(DashboardStats s) {
+  final parts = <String>[
+    if (s.cpuCores > 0) s.cpuCores == 1 ? '1 core' : '${s.cpuCores} cores',
+    if (s.cpuThreads > 0 && s.cpuThreads != s.cpuCores) '${s.cpuThreads} threads',
+  ];
+  return parts.join(' · ');
+}
+
+/// Processor: load, model, cores, clock, temperature, and each thread.
+class CpuDetailScreen extends StatelessWidget {
+  const CpuDetailScreen({super.key, required this.live, required this.onRetry});
+
+  final ValueListenable<LiveStats?> live;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _LiveScaffold(
+      title: 'Processor',
+      live: live,
+      onRetry: onRetry,
+      builder: (context, l) {
+        final s = l.stats;
+        final cores = _cores(s);
+        return _list([
+          TileGroup(children: [
+            UsageTile(
+              icon: Icons.speed_outlined,
+              bar: UsageBar(value: s.cpuPercent, max: 100, label: 'Load', detail: cores.isEmpty ? null : cores),
+            ),
+            FactTile(icon: Icons.memory_outlined, label: 'Model', value: s.cpuModelName),
+            MetricRow(
+              icon: Icons.av_timer_outlined,
+              label: 'Clock speed',
+              value: s.cpuMhz > 0 ? (s.cpuMhz / 1000).toStringAsFixed(2) : '—',
+              unit: s.cpuMhz > 0 ? 'GHz' : null,
+              supporting: s.cpuMhz > 0 ? null : 'Not reported by the server',
+            ),
+            MetricRow(
+              icon: Icons.thermostat_outlined,
+              label: 'Temperature',
+              value: s.cpuTemperature == null ? '—' : s.cpuTemperature!.toStringAsFixed(0),
+              unit: s.cpuTemperature == null ? null : '°C',
+              supporting: s.cpuTemperature == null ? 'No temperature sensor found' : null,
+            ),
+          ]),
+          if (s.cpuPerCore.isNotEmpty)
+            TileGroup(
+              title: 'Load per thread',
+              children: [
+                for (var i = 0; i < s.cpuPerCore.length; i++)
+                  UsageTile(bar: UsageBar(value: s.cpuPerCore[i], max: 100, label: 'Thread ${i + 1}')),
+              ],
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+/// Memory: how much is in use, what the rest is doing, and the modules.
+/// There is deliberately no "free up memory" button: Linux gives cache back
+/// by itself, and the one the app used to have started a system update
+/// instead (plan M-28).
+class MemoryDetailScreen extends StatelessWidget {
+  const MemoryDetailScreen({super.key, required this.live, required this.onRetry});
+
+  final ValueListenable<LiveStats?> live;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return _LiveScaffold(
+      title: 'Memory',
+      live: live,
+      onRetry: onRetry,
+      builder: (context, l) {
+        final s = l.stats;
+        return _list([
+          TileGroup(
+            footer: "Linux keeps recently used files in spare memory and frees it by itself when apps need it, so there's nothing to clear.",
+            children: [
+              UsageTile(
+                icon: Icons.developer_board_outlined,
+                bar: UsageBar(
+                  value: s.memUsed.toDouble(),
+                  max: s.memTotal.toDouble(),
+                  label: 'In use',
+                  detail: s.memTotal > 0 ? '${formatBytes(s.memUsed)} of ${formatBytes(s.memTotal)}' : null,
+                ),
+              ),
+              if (s.memAvailable > 0)
+                bytesRow(icon: Icons.task_alt_outlined, label: 'Available', bytes: s.memAvailable, supporting: 'What apps can still use'),
+              bytesRow(icon: Icons.cached_outlined, label: 'Cache and buffers', bytes: s.memCache, supporting: 'Given back when needed'),
+              bytesRow(icon: Icons.check_box_outline_blank, label: 'Free', bytes: s.memFree),
+            ],
+          ),
+          if (s.memModules.isNotEmpty)
+            TileGroup(
+              title: 'Modules',
+              children: [
+                for (final m in s.memModules)
+                  MergeSemantics(
+                    child: ListTile(
+                      leading: const Icon(Icons.developer_board_outlined),
+                      title: Text([m.size, m.type].where((e) => e.isNotEmpty).join(' ')),
+                      subtitle: Text([m.speed, m.locator, m.partNumber].where((e) => e.isNotEmpty).join(' · ')),
+                    ),
+                  ),
+              ],
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+String _driveKind(DiskUsage d) => switch (d.kind.toLowerCase()) {
+      'ssd' => 'SSD',
+      'hdd' => 'Hard drive',
+      'nvme' => 'NVMe SSD',
+      'usb' => 'USB drive',
+      _ => d.isUsb ? 'USB drive' : '',
+    };
+
+/// "317 GB of 1.8 TB · Hard drive".
+String driveDetail(DiskUsage d) {
+  final kind = _driveKind(d);
+  final size = d.sizeKnown ? '${formatBytes(d.usedBytes)} of ${formatBytes(d.sizeBytes)}' : 'Size unknown';
+  return kind.isEmpty ? size : '$size · $kind';
+}
+
+/// Storage: every data drive with how full it is.
+class StorageDetailScreen extends StatelessWidget {
+  const StorageDetailScreen({super.key, required this.live, required this.onRetry, this.onOpenFiles});
+
+  final ValueListenable<LiveStats?> live;
+  final VoidCallback onRetry;
+  final VoidCallback? onOpenFiles;
+
+  void _showDrive(BuildContext context, DiskUsage d) {
+    showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
+      useSafeArea: true,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => NetworkSpeedTestModal(
-        primaryNet: primaryNet,
-        netUpRate: netUpRate,
-        netDownRate: netDownRate,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.sm),
+                child: Semantics(header: true, child: Text(d.label, style: Theme.of(sheet).textTheme.titleLarge)),
+              ),
+              bytesRow(icon: Icons.pie_chart_outline, label: 'Used', bytes: d.usedBytes),
+              bytesRow(icon: Icons.check_box_outline_blank, label: 'Free', bytes: d.freeBytes),
+              bytesRow(icon: Icons.storage_outlined, label: 'Size', bytes: d.sizeBytes),
+              FactTile(icon: Icons.folder_outlined, label: 'Mounted at', value: d.mountPoint),
+              FactTile(icon: Icons.description_outlined, label: 'File system', value: d.filesystem),
+              if (d.model.isNotEmpty) FactTile(icon: Icons.album_outlined, label: 'Drive', value: d.model),
+              if (onOpenFiles != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.lg),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.of(sheet).pop();
+                      Navigator.of(context).pop();
+                      onOpenFiles!();
+                    },
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: const Text('Open Files'),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   @override
-  State<NetworkSpeedTestModal> createState() => _NetworkSpeedTestModalState();
+  Widget build(BuildContext context) {
+    return _LiveScaffold(
+      title: 'Storage',
+      live: live,
+      onRetry: onRetry,
+      builder: (context, l) {
+        final s = l.stats;
+        final drives = s.dataDisks;
+        if (drives.isEmpty) {
+          return const [
+            EmptyState(
+              sliver: true,
+              icon: Icons.storage_outlined,
+              title: 'No drives found',
+              message: "The server didn't report any mounted drives.",
+            ),
+          ];
+        }
+        return _list([
+          TileGroup(children: [
+            UsageTile(
+              icon: Icons.pie_chart_outline,
+              bar: UsageBar(
+                value: s.storageUsed.toDouble(),
+                max: s.storageTotal.toDouble(),
+                label: drives.length == 1 ? 'All storage' : 'All ${drives.length} drives',
+                detail: '${formatBytes(s.storageUsed)} of ${formatBytes(s.storageTotal)}',
+              ),
+            ),
+          ]),
+          TileGroup(
+            title: 'Drives',
+            children: [
+              for (final d in drives)
+                UsageTile(
+                  icon: d.isUsb ? Icons.usb_outlined : Icons.storage_outlined,
+                  bar: UsageBar(
+                    value: d.usedBytes.toDouble(),
+                    max: d.sizeBytes.toDouble(),
+                    label: d.label,
+                    detail: driveDetail(d),
+                    warnAt: diskWarnAt,
+                    criticalAt: diskCriticalAt,
+                  ),
+                  onTap: () => _showDrive(context, d),
+                ),
+            ],
+          ),
+        ]);
+      },
+    );
+  }
 }
 
-class _NetworkSpeedTestModalState extends State<NetworkSpeedTestModal> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+/// Network: traffic right now, and the three speed tests, each saying
+/// plainly what it measures.
+class NetworkDetailScreen extends StatefulWidget {
+  const NetworkDetailScreen({super.key, required this.live, required this.onRetry, this.service});
 
-  // WAN Speedtest State
-  bool _wanTesting = false;
-  SpeedtestPhase _wanPhase = SpeedtestPhase.idle;
-  double _wanLiveSpeed = 0;
-  double _wanProgress = 0;
-  int? _wanPing;
-  double? _wanDown;
-  double? _wanUp;
-  WanSpeedtestResult? _wanResult;
-  String? _wanError;
+  final ValueListenable<LiveStats?> live;
+  final VoidCallback onRetry;
 
-  // Link Speedtest State
-  bool _linkTesting = false;
-  SpeedtestPhase _linkPhase = SpeedtestPhase.idle;
-  double _linkLiveSpeed = 0;
-  double _linkProgress = 0;
-  int? _linkPing;
-  double? _linkDown;
-  double? _linkUp;
-  LinkSpeedResult? _linkResult;
-  String? _linkError;
+  /// Tests pass their own; the app uses [SpeedtestService.instance].
+  final SpeedtestService? service;
+
+  @override
+  State<NetworkDetailScreen> createState() => _NetworkDetailScreenState();
+}
+
+class _TestState {
+  SpeedResult? result;
+  SpeedtestProgress? progress;
+  String? error;
+  bool get running => progress != null;
+}
+
+class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
+  final Map<SpeedtestKind, _TestState> _tests = {for (final k in SpeedtestKind.values) k: _TestState()};
+
+  SpeedtestService get _service => widget.service ?? SpeedtestService.instance;
+  bool get _anyRunning => _tests.values.any((t) => t.running);
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _loadLastServerResult();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _startWanTest() async {
-    if (_wanTesting) return;
-    setState(() {
-      _wanTesting = true;
-      _wanPhase = SpeedtestPhase.connecting;
-      _wanLiveSpeed = 0;
-      _wanProgress = 0;
-      _wanPing = null;
-      _wanDown = null;
-      _wanUp = null;
-      _wanResult = null;
-      _wanError = null;
-    });
-
+  Future<void> _loadLastServerResult() async {
     try {
-      final res = await SpeedtestService.instance.runWanSpeedtest(
-        onProgress: ({
-          required phase,
-          required currentSpeed,
-          required progress,
-          pingMs,
-          downloadMbps,
-          uploadMbps,
-        }) {
-          if (!mounted) return;
-          setState(() {
-            _wanPhase = phase;
-            _wanLiveSpeed = currentSpeed;
-            _wanProgress = progress;
-            if (pingMs != null) _wanPing = pingMs;
-            if (downloadMbps != null) _wanDown = downloadMbps;
-            if (uploadMbps != null) _wanUp = uploadMbps;
-          });
-        },
-      );
-      if (!mounted) return;
-      setState(() {
-        _wanResult = res;
-        _wanTesting = false;
-        _wanPhase = SpeedtestPhase.completed;
-        _wanLiveSpeed = res.downloadMbps;
-        _wanPing = res.pingMs;
-        _wanDown = res.downloadMbps;
-        _wanUp = res.uploadMbps;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _wanTesting = false;
-        _wanPhase = SpeedtestPhase.error;
-        _wanError = e.toString().replaceFirst('Exception: ', '');
-      });
+      final r = await _service.lastServerResult();
+      if (!mounted || r == null) return;
+      setState(() => _tests[SpeedtestKind.server]!.result ??= r);
+    } catch (_) {
+      // No earlier result to show; the test can still be run.
     }
   }
 
-  Future<void> _startLinkTest() async {
-    if (_linkTesting) return;
+  Future<void> _run(SpeedtestKind kind) async {
+    if (_anyRunning) return;
+    if (kind == SpeedtestKind.phoneInternet) {
+      final ok = await ConfirmDialog.confirm(
+        context,
+        title: "Test this phone's internet?",
+        message: 'The test downloads and uploads a few hundred MB. On mobile data, that counts against your plan.',
+        confirmLabel: 'Run test',
+      );
+      if (!ok || !mounted) return;
+    }
+    final t = _tests[kind]!;
     setState(() {
-      _linkTesting = true;
-      _linkPhase = SpeedtestPhase.connecting;
-      _linkLiveSpeed = 0;
-      _linkProgress = 0;
-      _linkPing = null;
-      _linkDown = null;
-      _linkUp = null;
-      _linkResult = null;
-      _linkError = null;
+      t.error = null;
+      t.progress = const SpeedtestProgress(phase: SpeedtestPhase.connecting);
     });
+    void onProgress(SpeedtestProgress p) {
+      if (mounted) setState(() => t.progress = p);
+    }
 
     try {
-      final res = await SpeedtestService.instance.runLocalLinkSpeedTest(
-        onProgress: ({
-          required phase,
-          required currentSpeed,
-          required progress,
-          pingMs,
-          downloadMbps,
-          uploadMbps,
-        }) {
-          if (!mounted) return;
-          setState(() {
-            _linkPhase = phase;
-            _linkLiveSpeed = currentSpeed;
-            _linkProgress = progress;
-            if (pingMs != null) _linkPing = pingMs;
-            if (downloadMbps != null) _linkDown = downloadMbps;
-            if (uploadMbps != null) _linkUp = uploadMbps;
-          });
-        },
-      );
+      final r = switch (kind) {
+        SpeedtestKind.server => await _service.runServerSpeedtest(onProgress: onProgress),
+        SpeedtestKind.phoneToServer => await _service.runPhoneToServerTest(onProgress: onProgress),
+        SpeedtestKind.phoneInternet => await _service.runPhoneInternetTest(onProgress: onProgress),
+      };
       if (!mounted) return;
       setState(() {
-        _linkResult = res;
-        _linkTesting = false;
-        _linkPhase = SpeedtestPhase.completed;
-        _linkLiveSpeed = res.downloadMbps;
-        _linkPing = res.pingAvgMs;
-        _linkDown = res.downloadMbps;
-        _linkUp = res.uploadMbps;
+        t.result = r;
+        t.progress = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _linkTesting = false;
-        _linkPhase = SpeedtestPhase.error;
-        _linkError = e.toString().replaceFirst('Exception: ', '');
+        t.progress = null;
+        t.error = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.90,
-      ),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          // Drag Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NivaroColors.borderSubtle,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.infoLight.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.infoLight.withValues(alpha: 0.3)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(Icons.speed_rounded, color: NivaroColors.infoLight, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Network Diagnostics & Speed',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'WAN Internet & Local Device Link Benchmarks',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-
-          // TabBar
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: NivaroColors.surfaceRaised,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: NivaroColors.borderSubtle),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                color: NivaroColors.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: NivaroColors.borderHighlight),
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              labelColor: NivaroColors.textPrimary,
-              unselectedLabelColor: NivaroColors.textMuted,
-              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              tabs: const [
-                Tab(
-                  iconMargin: EdgeInsets.only(bottom: 2),
-                  icon: Icon(Icons.public_rounded, size: 16),
-                  text: 'Server Internet (WAN)',
-                ),
-                Tab(
-                  iconMargin: EdgeInsets.only(bottom: 2),
-                  icon: Icon(Icons.phonelink_ring_rounded, size: 16),
-                  text: 'Local Link Speed',
-                ),
-              ],
-            ),
-          ),
-
-          // Tab Views
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildWanTab(),
-                _buildLinkTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWanTab() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-      children: [
-        // Speedometer Gauge Card
-        DarkCard(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-          child: Column(
+    return _LiveScaffold(
+      title: 'Network',
+      live: widget.live,
+      onRetry: widget.onRetry,
+      builder: (context, l) {
+        final net = l.stats.primaryNet;
+        final state = net?.state ?? '';
+        return _list([
+          TileGroup(
+            title: net == null || net.name.isEmpty ? 'Traffic' : 'Traffic on ${net.name}',
             children: [
-              Text(
-                _wanTesting
-                    ? (_wanPhase == SpeedtestPhase.ping
-                        ? 'MEASURING PING & JITTER...'
-                        : _wanPhase == SpeedtestPhase.download
-                            ? 'TESTING DOWNLOAD THROUGHPUT...'
-                            : _wanPhase == SpeedtestPhase.upload
-                                ? 'TESTING UPLOAD THROUGHPUT...'
-                                : 'CONNECTING TO CLOUDFLARE CDN...')
-                    : _wanPhase == SpeedtestPhase.error
-                        ? 'TEST FAILED'
-                        : _wanResult != null
-                            ? 'SERVER WAN BENCHMARK COMPLETE'
-                            : 'READY FOR BENCHMARK',
-                style: TextStyle(
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11.5,
-                  color: _wanPhase == SpeedtestPhase.error ? NivaroColors.dangerLight : NivaroColors.textMuted,
-                ),
-              ),
-              if (_wanPhase == SpeedtestPhase.error && _wanError != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _wanError!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: NivaroColors.textMuted),
-                ),
+              rateRow(icon: Icons.arrow_downward, label: 'Download', bytesPerSec: l.rate?.downBytesPerSec),
+              rateRow(icon: Icons.arrow_upward, label: 'Upload', bytesPerSec: l.rate?.upBytesPerSec),
+              if (net != null) ...[
+                bytesRow(icon: Icons.south_outlined, label: 'Received', bytes: net.bytesRecv, supporting: 'Since the server started'),
+                bytesRow(icon: Icons.north_outlined, label: 'Sent', bytes: net.bytesSent, supporting: 'Since the server started'),
               ],
-              const SizedBox(height: 16),
-
-              // Digital Speed Meter with Smooth Easing
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(
-                  begin: 0,
-                  end: _wanTesting
-                      ? _wanLiveSpeed
-                      : (_wanResult != null ? _wanResult!.downloadMbps : 0),
-                ),
-                duration: const Duration(milliseconds: 120),
-                curve: Curves.easeOutCubic,
-                builder: (context, val, _) {
-                  final text = (_wanTesting || _wanResult != null) ? val.toStringAsFixed(1) : '--';
-                  return Text(
-                    text,
-                    style: TextStyle(
-                      fontSize: 54,
-                      fontWeight: FontWeight.w900,
-                      color: NivaroColors.textPrimary,
-                      letterSpacing: -1,
-                    ),
-                  );
-                },
-              ),
-              Text(
-                'Mbps (Megabits / second)',
-                style: TextStyle(color: NivaroColors.infoLight, fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 18),
-
-              // Progress Bar during testing
-              if (_wanTesting)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: _wanProgress,
-                    backgroundColor: NivaroColors.surfaceRaised,
-                    valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.infoLight),
-                    minHeight: 6,
-                  ),
-                ),
-
-              const SizedBox(height: 20),
-
-              // Metrics Row: Ping, Download, Upload
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _MetricPill(
-                    icon: Icons.network_ping_rounded,
-                    label: 'Ping (Latency)',
-                    value: _wanPing != null
-                        ? '$_wanPing ms'
-                        : (_wanResult != null ? '${_wanResult!.pingMs} ms' : '--'),
-                    color: NivaroColors.warningLight,
-                  ),
-                  _MetricPill(
-                    icon: Icons.arrow_downward_rounded,
-                    label: 'Download',
-                    value: _wanDown != null
-                        ? '${_wanDown!.toStringAsFixed(1)} Mbps'
-                        : (_wanResult != null ? '${_wanResult!.downloadMbps.toStringAsFixed(1)} Mbps' : '--'),
-                    color: NivaroColors.infoLight,
-                  ),
-                  _MetricPill(
-                    icon: Icons.arrow_upward_rounded,
-                    label: 'Upload',
-                    value: _wanUp != null
-                        ? '${_wanUp!.toStringAsFixed(1)} Mbps'
-                        : (_wanResult != null ? '${_wanResult!.uploadMbps.toStringAsFixed(1)} Mbps' : '--'),
-                    color: NivaroColors.purpleLight,
-                  ),
-                ],
-              ),
+              if (state.isNotEmpty)
+                FactTile(icon: Icons.settings_ethernet_outlined, label: 'Link', value: state == 'up' ? 'Connected' : 'Disconnected ($state)'),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-
-        // Action Button
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: NivaroColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: _wanTesting ? null : _startWanTest,
-            icon: _wanTesting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.play_arrow_rounded, size: 22),
-            label: Text(
-              _wanTesting ? 'Testing Server WAN...' : (_wanResult != null ? 'Run Speedtest Again' : 'Start Server WAN Speedtest'),
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            ),
+          _speedGroup(
+            SpeedtestKind.server,
+            title: "Server's internet",
+            about: 'The server tests its own internet connection against the nearest speedtest.net server.',
           ),
-        ),
-        const SizedBox(height: 16),
-
-        // Gateway & Interface Info
-        DarkCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.router_rounded, color: NivaroColors.primaryLight, size: 18),
-                  SizedBox(width: 8),
-                  Text('Server WAN Gateway Info', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _InfoRow(label: 'Host Interface', value: widget.primaryNet?.name ?? 'eth0 (Auto)'),
-              _InfoRow(label: 'Live Upload Rate', value: '${formatBytes(widget.netUpRate)}/s'),
-              _InfoRow(label: 'Live Download Rate', value: '${formatBytes(widget.netDownRate)}/s'),
-              if (_wanResult != null) ...[
-                _InfoRow(label: 'ISP / Provider', value: _wanResult!.ispName),
-                _InfoRow(label: 'Edge Location', value: _wanResult!.serverLocation),
-                _InfoRow(label: 'Public IP', value: _wanResult!.ipAddress),
-                _InfoRow(label: 'Peak Download', value: '${_wanResult!.peakDownloadMbps} Mbps'),
-                _InfoRow(label: 'Peak Upload', value: '${_wanResult!.peakUploadMbps} Mbps'),
-                _InfoRow(label: 'Jitter', value: '± ${_wanResult!.jitterMs} ms'),
-              ] else ...[
-                _InfoRow(label: 'Server Host', value: Uri.parse(ApiClient.instance.baseUrl).host),
-              ],
-            ],
+          _speedGroup(
+            SpeedtestKind.phoneToServer,
+            title: 'This phone to the server',
+            about: 'How fast this phone reaches the server over its current connection. No internet involved.',
           ),
-        ),
-      ],
+          _speedGroup(
+            SpeedtestKind.phoneInternet,
+            title: "This phone's internet",
+            about: "Runs on this phone against public test servers. It says nothing about the server's connection.",
+          ),
+        ]);
+      },
     );
   }
 
-  Widget _buildLinkTab() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-      children: [
-        // Link Speedmeter Gauge Card
-        DarkCard(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-          child: Column(
-            children: [
-              Text(
-                _linkTesting
-                    ? (_linkPhase == SpeedtestPhase.ping
-                        ? 'MEASURING DEVICE ROUNDTRIP...'
-                        : _linkPhase == SpeedtestPhase.download
-                            ? 'TRANSFERRING CLIENT DOWNLOAD (RX)...'
-                            : _linkPhase == SpeedtestPhase.upload
-                                ? 'TRANSFERRING CLIENT UPLOAD (TX)...'
-                                : 'CONNECTING TO SERVER...')
-                    : _linkPhase == SpeedtestPhase.error
-                        ? 'TEST FAILED'
-                        : _linkResult != null
-                            ? 'PHONE <-> SERVER LINK BENCHMARK COMPLETE'
-                            : 'DIRECT LINK BENCHMARK',
-                style: TextStyle(
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11.5,
-                  color: _linkPhase == SpeedtestPhase.error ? NivaroColors.dangerLight : NivaroColors.textMuted,
-                ),
-              ),
-              if (_linkPhase == SpeedtestPhase.error && _linkError != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _linkError!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: NivaroColors.textMuted),
-                ),
-              ],
-              const SizedBox(height: 16),
-
-              // Digital Speed Meter
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(
-                  begin: 0,
-                  end: _linkTesting
-                      ? _linkLiveSpeed
-                      : (_linkResult != null ? _linkResult!.downloadMbps : 0),
-                ),
-                duration: const Duration(milliseconds: 120),
-                curve: Curves.easeOutCubic,
-                builder: (context, val, _) {
-                  final text = (_linkTesting || _linkResult != null) ? val.toStringAsFixed(1) : '--';
-                  return Text(
-                    text,
-                    style: TextStyle(
-                      fontSize: 54,
-                      fontWeight: FontWeight.w900,
-                      color: NivaroColors.textPrimary,
-                      letterSpacing: -1,
-                    ),
-                  );
-                },
-              ),
-              Text(
-                'Mbps Direct Throughput',
-                style: TextStyle(color: NivaroColors.successLight, fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 18),
-
-              // Progress Bar during testing
-              if (_linkTesting)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: _linkProgress,
-                    backgroundColor: NivaroColors.surfaceRaised,
-                    valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
-                    minHeight: 6,
-                  ),
-                ),
-
-              const SizedBox(height: 20),
-
-              // Metrics Row: Ping, Download, Upload
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _MetricPill(
-                    icon: Icons.timer_outlined,
-                    label: 'RTT Latency',
-                    value: _linkPing != null
-                        ? '$_linkPing ms'
-                        : (_linkResult != null ? '${_linkResult!.pingAvgMs} ms' : '--'),
-                    color: NivaroColors.warningLight,
-                  ),
-                  _MetricPill(
-                    icon: Icons.download_rounded,
-                    label: 'Client Rx',
-                    value: _linkDown != null
-                        ? '${_linkDown!.toStringAsFixed(1)} Mbps'
-                        : (_linkResult != null ? '${_linkResult!.downloadMbps} Mbps' : '--'),
-                    color: NivaroColors.successLight,
-                  ),
-                  _MetricPill(
-                    icon: Icons.upload_rounded,
-                    label: 'Client Tx',
-                    value: _linkUp != null
-                        ? '${_linkUp!.toStringAsFixed(1)} Mbps'
-                        : (_linkResult != null ? '${_linkResult!.uploadMbps} Mbps' : '--'),
-                    color: NivaroColors.primaryLight,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Action Button
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: NivaroColors.success,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: _linkTesting ? null : _startLinkTest,
-            icon: _linkTesting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                : const Icon(Icons.sync_alt_rounded, size: 22),
-            label: Text(
-              _linkTesting ? 'Benchmarking Local Link...' : (_linkResult != null ? 'Re-run Link Benchmark' : 'Run Local Device Link Test'),
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Link Diagnostics
-        DarkCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.wifi_tethering_rounded, color: NivaroColors.successLight, size: 18),
-                  SizedBox(width: 8),
-                  Text('Connection Quality & Diagnostics', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _InfoRow(label: 'Connection Type', value: _linkResult?.connectionType ?? 'Direct Local Network (LAN)'),
-              _InfoRow(label: 'Link Quality', value: _linkResult?.qualityRating ?? 'Ultra Low Latency'),
-              if (_linkResult != null) ...[
-                _InfoRow(label: 'Peak Download Speed', value: '${_linkResult!.peakDownloadMbps} Mbps'),
-                _InfoRow(label: 'Min / Max Latency', value: '${_linkResult!.pingMinMs} ms / ${_linkResult!.pingMaxMs} ms'),
-                _InfoRow(label: 'Jitter', value: '± ${_linkResult!.jitterMs} ms'),
-                _InfoRow(label: 'Data Transferred', value: formatBytes(_linkResult!.bytesTransferred)),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: NivaroColors.success.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: NivaroColors.success.withValues(alpha: 0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle_outline_rounded, color: NivaroColors.successLight, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _linkResult!.realWorldSpeedText,
-                          style: TextStyle(color: NivaroColors.successLight, fontSize: 11.5, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                const _InfoRow(label: 'Min / Max Latency', value: '-- / --'),
-                const _InfoRow(label: 'Jitter', value: '--'),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MetricPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _MetricPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(height: 4),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: NivaroColors.textPrimary)),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 11, color: NivaroColors.textMuted)),
-      ],
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _InfoRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5, color: NivaroColors.textPrimary)),
-        ],
-      ),
-    );
-  }
-}
-
-/// CPU Hardware & Per-Core Utilization Breakdown Modal
-class CpuDetailModal extends StatelessWidget {
-  final DashboardStats stats;
-
-  const CpuDetailModal({super.key, required this.stats});
-
-  static Future<void> show(BuildContext context, DashboardStats stats) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => CpuDetailModal(stats: stats),
-    );
+  // "Just now" and "Yesterday" read lower case mid-sentence.
+  static String _relativeTail(DateTime t) {
+    final r = formatRelative(t);
+    return r == 'Just now' || r == 'Yesterday' ? r.toLowerCase() : r;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NivaroColors.borderSubtle,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.3)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(Icons.memory_rounded, color: NivaroColors.primaryLight, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Processor & Cores',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${stats.cpuCores} Cores · ${stats.cpuPercent.toStringAsFixed(0)}% Total Load',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: NivaroColors.borderSubtle),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              children: [
-                DarkCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        stats.cpuModelName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          if (stats.cpuTemperature != null) ...[
-                            _Chip(
-                              icon: Icons.thermostat_rounded,
-                              label: '${stats.cpuTemperature!.toStringAsFixed(0)}°C',
-                              color: NivaroColors.warningLight,
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          if (stats.cpuMhz > 0) ...[
-                            _Chip(
-                              icon: Icons.bolt_rounded,
-                              label: '${(stats.cpuMhz / 1000).toStringAsFixed(2)} GHz',
-                              color: NivaroColors.primaryLight,
-                            ),
-                            const SizedBox(width: 8),
-                          ],
-                          _Chip(
-                            icon: Icons.grid_view_rounded,
-                            label: '${stats.cpuCores} Physical/Virtual Cores',
-                            color: NivaroColors.infoLight,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const LegacySectionHeader(title: 'Per-Core Utilization'),
-                if (stats.cpuPerCore.isEmpty)
-                  Text('Per-core statistics unavailable', style: TextStyle(color: NivaroColors.textMuted))
-                else
-                  ...List.generate(stats.cpuPerCore.length, (idx) {
-                    final pct = stats.cpuPerCore[idx];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: DarkCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Core $idx',
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: (pct / 100).clamp(0, 1),
-                                  backgroundColor: NivaroColors.surfaceRaised,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    pct > 80 ? NivaroColors.dangerLight : (pct > 50 ? NivaroColors.warningLight : NivaroColors.primaryLight),
-                                  ),
-                                  minHeight: 8,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            SizedBox(
-                              width: 45,
-                              child: Text(
-                                '${pct.toStringAsFixed(0)}%',
-                                textAlign: TextAlign.right,
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+  static String _phaseText(SpeedtestPhase p) => switch (p) {
+        SpeedtestPhase.ping => 'Measuring latency',
+        SpeedtestPhase.download => 'Testing download',
+        SpeedtestPhase.upload => 'Testing upload',
+        _ => 'Starting',
+      };
 
-/// Memory (RAM) Breakdown and Optimization Modal
-class RamDetailModal extends StatelessWidget {
-  final DashboardStats stats;
+  Widget _speedGroup(SpeedtestKind kind, {required String title, required String about}) {
+    final t = _tests[kind]!;
+    final p = t.progress;
+    final shown = p?.partial ?? t.result;
+    final live = p?.liveMbps;
 
-  const RamDetailModal({super.key, required this.stats});
+    double? down = shown?.downloadMbps;
+    double? up = shown?.uploadMbps;
+    if (p != null && live != null) {
+      if (p.phase == SpeedtestPhase.download) down = live;
+      if (p.phase == SpeedtestPhase.upload) up = live;
+    }
 
-  static Future<void> show(BuildContext context, DashboardStats stats) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => RamDetailModal(stats: stats),
-    );
-  }
+    final testedAt = t.result?.testedAt;
+    final server = t.result?.server;
+    final footer = [
+      about,
+      if (p == null && testedAt != null) 'Tested ${_relativeTail(testedAt)}${server == null ? '' : ' · $server'}.',
+    ].join(' ');
 
-  Future<void> _flushCache(BuildContext context) async {
-    try {
-      await ApiClient.instance.post('/sys/update'); // trigger background sync
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Memory sync and caches flushed successfully.')),
+    MetricRow mbps(IconData icon, String label, double? v, {bool measuring = false}) => MetricRow(
+          icon: icon,
+          label: label,
+          value: v == null ? '—' : formatMbps(v),
+          unit: v == null ? null : 'Mbps',
+          supporting: measuring ? 'Measuring' : null,
         );
-      }
-    } catch (_) {}
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.80,
-      ),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NivaroColors.borderSubtle,
-                borderRadius: BorderRadius.circular(2),
+    final hasNumbers = p != null || t.result != null;
+    return TileGroup(
+      title: title,
+      footer: footer,
+      children: [
+        if (hasNumbers) ...[
+          mbps(Icons.arrow_downward, 'Download', down, measuring: p?.phase == SpeedtestPhase.download),
+          mbps(Icons.arrow_upward, 'Upload', up, measuring: p?.phase == SpeedtestPhase.upload),
+          MetricRow(
+            icon: Icons.timer_outlined,
+            label: 'Latency',
+            value: shown?.pingMs == null ? '—' : formatMs(shown!.pingMs!),
+            unit: shown?.pingMs == null ? null : 'ms',
+            supporting: shown?.jitterMs == null ? null : 'Jitter ${formatMs(shown!.jitterMs!)} ms',
+          ),
+        ],
+        if (p != null)
+          Semantics(
+            liveRegion: true,
+            child: ListTile(
+              leading: const Icon(Icons.hourglass_empty_outlined),
+              title: Text(_phaseText(p.phase)),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: Space.sm),
+                child: LinearProgressIndicator(value: p.fraction),
               ),
             ),
+          )
+        else
+          ListTile(
+            leading: Icon(t.error != null ? Icons.error_outline : Icons.play_arrow_outlined,
+                color: t.error != null ? Theme.of(context).colorScheme.error : null),
+            title: Text(t.result == null && t.error == null ? 'Run test' : 'Run again'),
+            subtitle: t.error == null ? null : Text(t.error!),
+            enabled: !_anyRunning,
+            onTap: () => _run(kind),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.purpleLight.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.purpleLight.withValues(alpha: 0.3)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(Icons.developer_board_rounded, color: NivaroColors.purpleLight, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Memory Breakdown',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)} in use (${stats.memUsedPercent.toStringAsFixed(0)}%)',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: NivaroColors.borderSubtle),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              children: [
-                DarkCard(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Total Installed RAM', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
-                          Text(formatBytes(stats.memTotal), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: (stats.memUsedPercent / 100).clamp(0, 1),
-                          backgroundColor: NivaroColors.surfaceRaised,
-                          valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.purpleLight),
-                          minHeight: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _InfoRow(label: 'Used Memory', value: formatBytes(stats.memUsed)),
-                      _InfoRow(label: 'Free Memory', value: formatBytes(stats.memFree > 0 ? stats.memFree : stats.memTotal - stats.memUsed)),
-                      _InfoRow(label: 'Available Memory', value: formatBytes(stats.memAvailable > 0 ? stats.memAvailable : stats.memTotal - stats.memUsed)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: NivaroColors.textPrimary,
-                      side: BorderSide(color: NivaroColors.borderHighlight),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () => _flushCache(context),
-                    icon: const Icon(Icons.cleaning_services_rounded, size: 18),
-                    label: const Text('Flush Cached Memory & Buffers', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Storage Pools and Mounts Detail Modal
-class StorageDetailModal extends StatelessWidget {
-  final DashboardStats stats;
-  final VoidCallback? onOpenFiles;
-
-  const StorageDetailModal({super.key, required this.stats, this.onOpenFiles});
-
-  static Future<void> show(BuildContext context, DashboardStats stats, {VoidCallback? onOpenFiles}) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StorageDetailModal(stats: stats, onOpenFiles: onOpenFiles),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: NivaroColors.borderSubtle,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.success.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NivaroColors.success.withValues(alpha: 0.3)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(Icons.pie_chart_rounded, color: NivaroColors.successLight, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Storage Pools & Disks',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${formatBytes(stats.storageUsed)} of ${formatBytes(stats.storageTotal)} used (${stats.storagePercentText})',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.close_rounded,
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: NivaroColors.borderSubtle),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              children: [
-                if (stats.disks.isEmpty)
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(child: Text('No storage disks detected.', style: TextStyle(color: NivaroColors.textMuted))),
-                  )
-                else
-                  ...stats.disks.map((d) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: DarkCard(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.storage_rounded, color: NivaroColors.primaryLight, size: 20),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      d.label.isNotEmpty ? d.label : d.mountPoint,
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                                    ),
-                                  ),
-                                  Text(
-                                    d.percent,
-                                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: NivaroColors.textPrimary),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${d.mountPoint} · ${d.filesystem.isNotEmpty ? d.filesystem.toUpperCase() : "EXT4"}',
-                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                              ),
-                              const SizedBox(height: 10),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: d.fraction,
-                                  backgroundColor: NivaroColors.surfaceRaised,
-                                  valueColor: AlwaysStoppedAnimation<Color>(NivaroColors.successLight),
-                                  minHeight: 7,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('${formatBytes(d.usedBytes)} used', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
-                                  Text('${formatBytes(d.freeBytes)} available', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      )),
-                const SizedBox(height: 10),
-                if (onOpenFiles != null)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: NivaroColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onOpenFiles!();
-                      },
-                      icon: const Icon(Icons.folder_open_rounded, size: 20),
-                      label: const Text('Open Storage in Files', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _Chip({required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: color, fontSize: 11.5, fontWeight: FontWeight.bold)),
-        ],
-      ),
+      ],
     );
   }
 }

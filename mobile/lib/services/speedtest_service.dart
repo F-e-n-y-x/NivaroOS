@@ -1,8 +1,22 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+
+import 'package:clock/clock.dart';
 import 'package:http/http.dart' as http;
+
 import 'api_client.dart';
+
+/// Three different measurements, never mixed up (plan M-32):
+///
+/// - [SpeedtestKind.server]: the server's own internet connection, measured
+///   by the server (`POST /v1/sys/speedtest`, then `GET …/status`), the
+///   same test as the web UI's Network widget.
+/// - [SpeedtestKind.phoneToServer]: the link between this phone and the
+///   server, against the gateway's `/speedtest/{ping,download,upload}`.
+/// - [SpeedtestKind.phoneInternet]: this phone's internet connection,
+///   against public test servers. It has nothing to do with the server.
+enum SpeedtestKind { server, phoneToServer, phoneInternet }
 
 enum SpeedtestPhase {
   idle,
@@ -14,76 +28,78 @@ enum SpeedtestPhase {
   error,
 }
 
-typedef SpeedtestProgressCallback = void Function({
-  required SpeedtestPhase phase,
-  required double currentSpeed,
-  required double progress,
-  int? pingMs,
-  double? downloadMbps,
-  double? uploadMbps,
-});
+/// A running test's progress. [liveMbps] is the rate of the phase in
+/// progress; the finished parts are in [partial].
+class SpeedtestProgress {
+  const SpeedtestProgress({required this.phase, this.liveMbps, this.fraction, this.partial = const SpeedResult()});
 
-class WanSpeedtestResult {
-  final int pingMs;
-  final int jitterMs;
-  final double downloadMbps;
-  final double uploadMbps;
-  final double peakDownloadMbps;
-  final double peakUploadMbps;
-  final String serverLocation;
-  final String ispName;
-  final String ipAddress;
-  final DateTime timestamp;
+  final SpeedtestPhase phase;
+  final double? liveMbps;
 
-  WanSpeedtestResult({
-    required this.pingMs,
-    required this.jitterMs,
-    required this.downloadMbps,
-    required this.uploadMbps,
-    required this.peakDownloadMbps,
-    required this.peakUploadMbps,
-    required this.serverLocation,
-    required this.ispName,
-    required this.ipAddress,
-    required this.timestamp,
-  });
+  /// 0..1 when the test knows how far along it is; null otherwise.
+  final double? fraction;
+  final SpeedResult partial;
 }
 
-class LinkSpeedResult {
-  final int pingMinMs;
-  final int pingAvgMs;
-  final int pingMaxMs;
-  final int jitterMs;
-  final double downloadMbps;
-  final double uploadMbps;
-  final double peakDownloadMbps;
-  final int bytesTransferred;
-  final String connectionType;
-  final String qualityRating;
-  final String realWorldSpeedText;
-  final DateTime timestamp;
+typedef SpeedtestProgressCallback = void Function(SpeedtestProgress progress);
 
-  LinkSpeedResult({
-    required this.pingMinMs,
-    required this.pingAvgMs,
-    required this.pingMaxMs,
-    required this.jitterMs,
-    required this.downloadMbps,
-    required this.uploadMbps,
-    required this.peakDownloadMbps,
-    required this.bytesTransferred,
-    required this.connectionType,
-    required this.qualityRating,
-    required this.realWorldSpeedText,
-    required this.timestamp,
-  });
+/// A result. Any value is null until it has actually been measured.
+class SpeedResult {
+  const SpeedResult({this.downloadMbps, this.uploadMbps, this.pingMs, this.jitterMs, this.server, this.testedAt});
+
+  final double? downloadMbps;
+  final double? uploadMbps;
+  final double? pingMs;
+  final double? jitterMs;
+
+  /// Who the test ran against ("Example ISP (Frankfurt)"), when known.
+  final String? server;
+  final DateTime? testedAt;
+
+  SpeedResult copyWith({double? downloadMbps, double? uploadMbps, double? pingMs, double? jitterMs, String? server, DateTime? testedAt}) =>
+      SpeedResult(
+        downloadMbps: downloadMbps ?? this.downloadMbps,
+        uploadMbps: uploadMbps ?? this.uploadMbps,
+        pingMs: pingMs ?? this.pingMs,
+        jitterMs: jitterMs ?? this.jitterMs,
+        server: server ?? this.server,
+        testedAt: testedAt ?? this.testedAt,
+      );
+
+  /// The `result` object of `/v1/sys/speedtest/status`.
+  static SpeedResult? fromServerJson(Object? raw) {
+    if (raw is! Map) return null;
+    double? n(Object? v) => v is num ? v.toDouble() : null;
+    final ts = raw['timestamp'];
+    return SpeedResult(
+      downloadMbps: n(raw['download_mbps']),
+      uploadMbps: n(raw['upload_mbps']),
+      pingMs: n(raw['ping_ms']),
+      jitterMs: n(raw['jitter_ms']),
+      server: (raw['server']?.toString().isNotEmpty ?? false) ? raw['server'].toString() : null,
+      testedAt: ts is num && ts > 0 ? DateTime.fromMillisecondsSinceEpoch(ts.toInt() * 1000) : null,
+    );
+  }
+}
+
+class SpeedtestException implements Exception {
+  SpeedtestException(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }
 
 class SpeedtestService {
   SpeedtestService._();
   static final SpeedtestService instance = SpeedtestService._();
 
-  // Multi-CDN global test payload endpoints
+  /// How often the server test's status is polled. Tests shorten it.
+  static Duration serverPollInterval = const Duration(milliseconds: 700);
+
+  /// The server gives up after a minute; stop waiting a little later.
+  static Duration serverTimeout = const Duration(seconds: 75);
+
+  // Public download files for the phone's internet test.
   static const List<String> _cdnEndpoints = [
     'https://proof.ovh.net/files/100Mb.dat',
     'https://cachefly.cachefly.net/100mb.test',
@@ -92,612 +108,300 @@ class SpeedtestService {
     'https://fsn1-speed.hetzner.com/100MB.bin',
   ];
 
-  /// Runs smooth, high-bandwidth WAN Internet Speedtest with multi-CDN parallel streams and no speed limits.
-  Future<WanSpeedtestResult> runWanSpeedtest({
-    SpeedtestProgressCallback? onProgress,
-  }) async {
-    onProgress?.call(
-      phase: SpeedtestPhase.connecting,
-      currentSpeed: 0,
-      progress: 0.05,
-    );
+  static SpeedtestPhase _serverPhase(String? p) => switch (p) {
+        'ping' => SpeedtestPhase.ping,
+        'download' => SpeedtestPhase.download,
+        'upload' => SpeedtestPhase.upload,
+        'done' => SpeedtestPhase.completed,
+        'error' => SpeedtestPhase.error,
+        _ => SpeedtestPhase.connecting,
+      };
 
-    String ipAddress = Uri.parse(ApiClient.instance.baseUrl).host;
-    String ispName = 'Global Anycast CDN';
-    String location = 'Fast Edge Gateway';
-
-    // 1. Resolve real public IP and Edge Region
-    try {
-      final traceRes = await http
-          .get(Uri.parse('https://1.1.1.1/cdn-cgi/trace'))
-          .timeout(const Duration(seconds: 3));
-      if (traceRes.statusCode == 200) {
-        final lines = traceRes.body.split('\n');
-        for (final line in lines) {
-          if (line.startsWith('ip=')) ipAddress = line.substring(3).trim();
-          if (line.startsWith('loc=')) location = 'Region ${line.substring(4).trim()}';
-          if (line.startsWith('colo=')) ispName = 'Cloudflare (${line.substring(5).trim()}) Anycast';
-        }
-      }
-    } catch (_) {}
-
-    // 2. High-precision Ping & Jitter Probes
-    onProgress?.call(
-      phase: SpeedtestPhase.ping,
-      currentSpeed: 0,
-      progress: 0.10,
-    );
-
-    final pings = <int>[];
-    for (int i = 0; i < 8; i++) {
-      final sw = Stopwatch()..start();
-      try {
-        final res = await http
-            .head(Uri.parse('https://1.1.1.1'))
-            .timeout(const Duration(seconds: 2));
-        sw.stop();
-        if (res.statusCode == 200 || res.statusCode == 301 || res.statusCode == 302) {
-          pings.add(max(2, sw.elapsedMilliseconds));
-        }
-      } catch (_) {
-        // Real failure, not counted - this used to fabricate a plausible-
-        // looking "14 + i*2"ms value per failed probe instead of skipping
-        // it, so a completely offline device still showed a smooth, real-
-        // looking ping graph. Only genuinely measured probes count now; if
-        // every single one fails, that's a real connectivity failure (see
-        // the check right after this loop), not something to paper over.
-      }
-      final curAvg = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 15;
-      onProgress?.call(
-        phase: SpeedtestPhase.ping,
-        currentSpeed: 0,
-        progress: 0.10 + (i / 8) * 0.10,
-        pingMs: curAvg,
-      );
-      await Future.delayed(const Duration(milliseconds: 25));
-    }
-
-    if (pings.isEmpty) {
-      throw Exception('Could not reach the internet - every ping probe failed. Check your connection and try again.');
-    }
-    final avgPing = (pings.reduce((a, b) => a + b) / pings.length).round();
-    final jitter = (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round();
-
-    // 3. Multi-threaded Download Throughput Stream with Smooth Ticker
-    final downWatch = Stopwatch()..start();
-    int totalDownBytes = 0;
-    double smoothedDownSpeed = 0.0;
-    final downSamples = <double>[];
-    bool stopDown = false;
-    const downDurationMs = 5500;
-
-    int lastDownTickTime = 0;
-    int lastDownTickBytes = 0;
-
-    final downTicker = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (stopDown) {
-        timer.cancel();
-        return;
-      }
-      final now = downWatch.elapsedMilliseconds;
-      final dt = now - lastDownTickTime;
-      if (dt > 15) {
-        final currentTotal = totalDownBytes;
-        final db = currentTotal - lastDownTickBytes;
-        final instantMbps = (db * 8.0) / (dt * 1000.0);
-        lastDownTickTime = now;
-        lastDownTickBytes = currentTotal;
-
-        if (instantMbps > 0.5) {
-          if (smoothedDownSpeed < 0.5) {
-            smoothedDownSpeed = instantMbps;
-          } else {
-            smoothedDownSpeed = (0.35 * instantMbps) + (0.65 * smoothedDownSpeed);
-          }
-          downSamples.add(smoothedDownSpeed);
-        } else if (smoothedDownSpeed > 1.0) {
-          smoothedDownSpeed = max(1.0, smoothedDownSpeed * 0.96);
-        }
-
-        final p = (0.20 + (now / downDurationMs) * 0.40).clamp(0.20, 0.60);
-        onProgress?.call(
-          phase: SpeedtestPhase.download,
-          currentSpeed: smoothedDownSpeed,
-          progress: p,
-          pingMs: avgPing,
-          downloadMbps: smoothedDownSpeed > 0 ? smoothedDownSpeed : null,
-        );
-      }
-    });
-
-    final client = http.Client();
-
-    Future<void> workerDown(String url) async {
-      while (!stopDown && downWatch.elapsedMilliseconds < downDurationMs) {
-        try {
-          final req = http.Request('GET', Uri.parse(url));
-          req.headers['User-Agent'] = 'NivaroOS-Speedtest/2.0';
-          req.headers['Cache-Control'] = 'no-cache';
-          final res = await client.send(req).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200 || res.statusCode == 206) {
-            await for (final chunk in res.stream) {
-              totalDownBytes += chunk.length;
-              if (stopDown || downWatch.elapsedMilliseconds >= downDurationMs) break;
-            }
-          }
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 40));
-        }
-      }
-    }
-
-    try {
-      final futures = <Future<void>>[];
-      for (int i = 0; i < 8; i++) {
-        final url = _cdnEndpoints[i % _cdnEndpoints.length];
-        futures.add(workerDown(url));
-      }
-      await Future.wait(futures).timeout(const Duration(milliseconds: downDurationMs + 800), onTimeout: () => []);
-    } finally {
-      stopDown = true;
-      downTicker.cancel();
-      downWatch.stop();
-      client.close();
-    }
-
-    downSamples.sort();
-    double finalDown = 0.0;
-    double peakDown = 0.0;
-    if (downSamples.isNotEmpty) {
-      peakDown = downSamples.last;
-      final idx = (downSamples.length * 0.85).floor().clamp(0, downSamples.length - 1);
-      finalDown = downSamples[idx];
-    } else if (downWatch.elapsedMilliseconds > 0 && totalDownBytes > 0) {
-      finalDown = (totalDownBytes * 8.0) / (downWatch.elapsedMilliseconds * 1000.0);
-      peakDown = finalDown;
-    } else {
-      // Every download worker failed to transfer a single byte - used to
-      // silently report a fabricated "115.0 Mbps" here instead of surfacing
-      // that the test itself never actually worked.
-      throw Exception('Download test failed - no data could be transferred. Check your internet connection.');
-    }
-
-    // 4. Multi-stream Upload Throughput Stream with Smooth Ticker
-    final upWatch = Stopwatch()..start();
-    int totalUpBytes = 0;
-    double smoothedUpSpeed = 0.0;
-    final upSamples = <double>[];
-    bool stopUp = false;
-    const upDurationMs = 4500;
-
-    int lastUpTickTime = 0;
-    int lastUpTickBytes = 0;
-
-    final upTicker = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (stopUp) {
-        timer.cancel();
-        return;
-      }
-      final now = upWatch.elapsedMilliseconds;
-      final dt = now - lastUpTickTime;
-      if (dt > 15) {
-        final currentTotal = totalUpBytes;
-        final db = currentTotal - lastUpTickBytes;
-        final instantMbps = (db * 8.0) / (dt * 1000.0);
-        lastUpTickTime = now;
-        lastUpTickBytes = currentTotal;
-
-        if (instantMbps > 0.5) {
-          if (smoothedUpSpeed < 0.5) {
-            smoothedUpSpeed = instantMbps;
-          } else {
-            smoothedUpSpeed = (0.35 * instantMbps) + (0.65 * smoothedUpSpeed);
-          }
-          upSamples.add(smoothedUpSpeed);
-        } else if (smoothedUpSpeed > 1.0) {
-          smoothedUpSpeed = max(1.0, smoothedUpSpeed * 0.96);
-        }
-
-        final p = (0.60 + (now / upDurationMs) * 0.38).clamp(0.60, 0.98);
-        onProgress?.call(
-          phase: SpeedtestPhase.upload,
-          currentSpeed: smoothedUpSpeed,
-          progress: p,
-          pingMs: avgPing,
-          downloadMbps: finalDown,
-          uploadMbps: smoothedUpSpeed > 0 ? smoothedUpSpeed : null,
-        );
-      }
-    });
-
-    final uploadPayload = Uint8List.fromList(List<int>.generate(2 * 1024 * 1024, (i) => (i * 31) & 0xFF));
-
-    Future<void> workerUp() async {
-      while (!stopUp && upWatch.elapsedMilliseconds < upDurationMs) {
-        try {
-          final res = await http.post(
-            Uri.parse('https://speed.cloudflare.com/__up'),
-            body: uploadPayload,
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'User-Agent': 'NivaroOS-Speedtest/2.0',
-            },
-          ).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200 || res.statusCode == 204) {
-            totalUpBytes += uploadPayload.length;
-          }
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 40));
-        }
-      }
-    }
-
-    try {
-      await Future.wait([
-        workerUp(),
-        workerUp(),
-        workerUp(),
-        workerUp(),
-      ]).timeout(const Duration(milliseconds: upDurationMs + 800), onTimeout: () => []);
-    } finally {
-      stopUp = true;
-      upTicker.cancel();
-      upWatch.stop();
-    }
-
-    upSamples.sort();
-    double finalUp = 0.0;
-    double peakUp = 0.0;
-    if (upSamples.isNotEmpty) {
-      peakUp = upSamples.last;
-      final idx = (upSamples.length * 0.85).floor().clamp(0, upSamples.length - 1);
-      finalUp = upSamples[idx];
-    } else if (upWatch.elapsedMilliseconds > 0 && totalUpBytes > 0) {
-      finalUp = (totalUpBytes * 8.0) / (upWatch.elapsedMilliseconds * 1000.0);
-      peakUp = finalUp;
-    } else {
-      // Used to derive a fake upload number from the (real) download result
-      // (finalDown * 0.75) instead of reporting that upload specifically
-      // failed - misleading even when download genuinely worked.
-      throw Exception('Upload test failed - no data could be transferred, though download measured ${finalDown.toStringAsFixed(1)} Mbps.');
-    }
-
-    onProgress?.call(
-      phase: SpeedtestPhase.completed,
-      currentSpeed: finalDown,
-      progress: 1.0,
-      pingMs: avgPing,
-      downloadMbps: finalDown,
-      uploadMbps: finalUp,
-    );
-
-    return WanSpeedtestResult(
-      pingMs: max(2, avgPing),
-      jitterMs: max(1, jitter),
-      downloadMbps: double.parse(max(1.0, finalDown).toStringAsFixed(1)),
-      uploadMbps: double.parse(max(1.0, finalUp).toStringAsFixed(1)),
-      peakDownloadMbps: double.parse(max(1.0, peakDown).toStringAsFixed(1)),
-      peakUploadMbps: double.parse(max(1.0, peakUp).toStringAsFixed(1)),
-      serverLocation: location,
-      ispName: ispName,
-      ipAddress: ipAddress,
-      timestamp: DateTime.now(),
-    );
+  /// The server's last finished test, if it has one (it keeps it in memory
+  /// until it restarts). Null when there is none or the server can't say.
+  Future<SpeedResult?> lastServerResult() async {
+    final res = await ApiClient.instance.get('/sys/speedtest/status');
+    final data = res['data'];
+    if (data is! Map || data['phase'] != 'done') return null;
+    return SpeedResult.fromServerJson(data['result']);
   }
 
-  /// Runs 100% self-contained local link speed benchmark directly against NivaroOS host server API (no external containers needed).
-  Future<LinkSpeedResult> runLocalLinkSpeedTest({
-    SpeedtestProgressCallback? onProgress,
-  }) async {
-    onProgress?.call(
-      phase: SpeedtestPhase.connecting,
-      currentSpeed: 0,
-      progress: 0.05,
-    );
+  /// Runs the server's internet speed test and reports its progress. If a
+  /// test is already running (started from the web UI, say), follows that
+  /// one instead of failing.
+  Future<SpeedResult> runServerSpeedtest({SpeedtestProgressCallback? onProgress}) async {
+    onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting));
+    try {
+      await ApiClient.instance.post('/sys/speedtest');
+    } on ApiException catch (e) {
+      // 409: one is already running - watch it.
+      if (e.statusCode != 409) rethrow;
+    }
+    final deadline = clock.now().add(serverTimeout);
+    while (true) {
+      await Future<void>.delayed(serverPollInterval);
+      final res = await ApiClient.instance.get('/sys/speedtest/status');
+      final data = res['data'];
+      if (data is! Map) throw SpeedtestException('The server sent an unexpected answer.');
+      final phase = _serverPhase(data['phase']?.toString());
+      final partial = SpeedResult.fromServerJson(data['result']) ?? const SpeedResult();
+      final running = data['running'] == true;
+      if (!running) {
+        if (phase == SpeedtestPhase.error) {
+          final msg = data['error']?.toString() ?? '';
+          throw SpeedtestException(msg.isEmpty ? 'The server could not finish the test.' : _sentence(msg));
+        }
+        if (phase == SpeedtestPhase.completed && partial.downloadMbps != null) return partial;
+        throw SpeedtestException('The server stopped the test before it finished.');
+      }
+      final live = data['live_mbps'];
+      onProgress?.call(SpeedtestProgress(
+        phase: phase,
+        liveMbps: live is num && live > 0 ? live.toDouble() : null,
+        partial: partial,
+      ));
+      if (clock.now().isAfter(deadline)) {
+        throw SpeedtestException('The server took too long to answer.');
+      }
+    }
+  }
 
-    final baseUrl = ApiClient.instance.baseUrl;
-    final pingUrl = Uri.parse('$baseUrl/speedtest/ping');
-    final downUrl = Uri.parse('$baseUrl/speedtest/download');
-    final upUrl = Uri.parse('$baseUrl/speedtest/upload');
+  static String _sentence(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}${s.endsWith('.') ? '' : '.'}';
 
-    // 1. High-precision Local Ping & Jitter Probes directly to NivaroOS Gateway
-    onProgress?.call(
-      phase: SpeedtestPhase.ping,
-      currentSpeed: 0,
-      progress: 0.10,
-    );
+  /// Measures this phone's internet connection against public test
+  /// servers. Uses mobile data when the phone is not on Wi-Fi.
+  Future<SpeedResult> runPhoneInternetTest({SpeedtestProgressCallback? onProgress}) async {
+    onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting, fraction: 0.02));
+
+    String? location;
+    try {
+      final traceRes = await http.get(Uri.parse('https://1.1.1.1/cdn-cgi/trace')).timeout(const Duration(seconds: 3));
+      if (traceRes.statusCode == 200) {
+        for (final line in traceRes.body.split('\n')) {
+          if (line.startsWith('colo=')) location = 'Cloudflare ${line.substring(5).trim()}';
+        }
+      }
+    } catch (_) {
+      // Only a label; the test itself decides whether the internet works.
+    }
 
     final pings = <int>[];
-    for (int i = 0; i < 15; i++) {
+    for (var i = 0; i < 8; i++) {
+      final sw = Stopwatch()..start();
+      try {
+        final res = await http.head(Uri.parse('https://1.1.1.1')).timeout(const Duration(seconds: 2));
+        sw.stop();
+        if (res.statusCode < 400) pings.add(max(1, sw.elapsedMilliseconds));
+      } catch (_) {
+        // A failed probe is not counted.
+      }
+      onProgress?.call(SpeedtestProgress(
+        phase: SpeedtestPhase.ping,
+        fraction: 0.02 + (i + 1) / 8 * 0.1,
+        partial: SpeedResult(pingMs: pings.isEmpty ? null : _avg(pings)),
+      ));
+    }
+    if (pings.isEmpty) {
+      throw SpeedtestException("This phone can't reach the internet. Check its connection and try again.");
+    }
+    final ping = _avg(pings);
+    final jitter = _jitter(pings, ping);
+    var partial = SpeedResult(pingMs: ping, jitterMs: jitter, server: location);
+
+    final down = await _measure(
+      durationMs: 5500,
+      workers: 8,
+      phase: SpeedtestPhase.download,
+      fractionStart: 0.12,
+      fractionSpan: 0.48,
+      partial: partial,
+      onProgress: onProgress,
+      work: (client, count, stop) => _downloadLoop(client, Uri.parse(_cdnEndpoints[count.id % _cdnEndpoints.length]), count, stop),
+    );
+    if (down == null) throw SpeedtestException('The download test failed: no data arrived.');
+    partial = partial.copyWith(downloadMbps: down);
+
+    final payload = _payload(2 * 1024 * 1024, 31);
+    final up = await _measure(
+      durationMs: 4500,
+      workers: 4,
+      phase: SpeedtestPhase.upload,
+      fractionStart: 0.6,
+      fractionSpan: 0.38,
+      partial: partial,
+      onProgress: onProgress,
+      work: (client, count, stop) => _uploadLoop(client, Uri.parse('https://speed.cloudflare.com/__up'), payload, count, stop),
+    );
+    if (up == null) throw SpeedtestException('The upload test failed: no data could be sent.');
+    return partial.copyWith(uploadMbps: up, testedAt: clock.now());
+  }
+
+  /// Measures the link between this phone and the server through the
+  /// gateway's speed-test routes (no internet involved).
+  Future<SpeedResult> runPhoneToServerTest({SpeedtestProgressCallback? onProgress}) async {
+    onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting, fraction: 0.02));
+    final api = ApiClient.instance;
+    final pingUrl = api.buildUri('/speedtest/ping');
+    final downUrl = api.buildUri('/speedtest/download');
+    final upUrl = api.buildUri('/speedtest/upload');
+
+    final pings = <int>[];
+    for (var i = 0; i < 15; i++) {
       final sw = Stopwatch()..start();
       try {
         final res = await http.get(pingUrl).timeout(const Duration(milliseconds: 1500));
         sw.stop();
-        if (res.statusCode == 200) {
-          pings.add(max(1, sw.elapsedMilliseconds));
-        }
-        // A non-200 isn't a real round-trip measurement - used to fake one
-        // ("pings.add(2)") instead of just not counting it.
+        if (res.statusCode == 200) pings.add(max(1, sw.elapsedMilliseconds));
       } catch (_) {
-        try {
-          final swFallback = Stopwatch()..start();
-          await ApiClient.instance.get('/sys/version/current');
-          swFallback.stop();
-          pings.add(max(1, swFallback.elapsedMilliseconds));
-        } catch (_) {
-          // Both the primary ping endpoint and this fallback failed - a
-          // real miss, not counted (was faked as "2ms" here too).
-        }
+        // A failed probe is not counted.
       }
-      final curAvg = pings.isNotEmpty ? (pings.reduce((a, b) => a + b) / pings.length).round() : 2;
-      onProgress?.call(
+      onProgress?.call(SpeedtestProgress(
         phase: SpeedtestPhase.ping,
-        currentSpeed: 0,
-        progress: 0.10 + (i / 15) * 0.10,
-        pingMs: curAvg,
-      );
-      await Future.delayed(const Duration(milliseconds: 15));
+        fraction: 0.02 + (i + 1) / 15 * 0.1,
+        partial: SpeedResult(pingMs: pings.isEmpty ? null : _avg(pings)),
+      ));
     }
-
     if (pings.isEmpty) {
-      throw Exception('Could not reach the NivaroOS server for the link test - every probe failed.');
+      throw SpeedtestException("Couldn't reach the server's speed test. Check the connection and try again.");
     }
-    final minPing = pings.reduce(min);
-    final maxPing = pings.reduce(max);
-    final avgPing = (pings.reduce((a, b) => a + b) / pings.length).round();
-    final jitter = (pings.map((p) => (p - avgPing).abs()).reduce((a, b) => a + b) / pings.length).round();
+    final ping = _avg(pings);
+    var partial = SpeedResult(pingMs: ping, jitterMs: _jitter(pings, ping), server: api.buildUri('/').host);
 
-    // 2. Parallel Local Download (Rx) Multi-stream Saturation Test
-    final linkDownWatch = Stopwatch()..start();
-    int totalTransferred = 0;
-    double smoothedLinkDown = 0.0;
-    final linkDownSamples = <double>[];
-    const linkDurationMs = 5000;
-    bool stopLinkDown = false;
-
-    int lastLinkDownTickTime = 0;
-    int lastLinkDownTickBytes = 0;
-
-    final linkDownTicker = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (stopLinkDown) {
-        timer.cancel();
-        return;
-      }
-      final now = linkDownWatch.elapsedMilliseconds;
-      final dt = now - lastLinkDownTickTime;
-      if (dt > 15) {
-        final currentTotal = totalTransferred;
-        final db = currentTotal - lastLinkDownTickBytes;
-        final instantMbps = (db * 8.0) / (dt * 1000.0);
-
-        lastLinkDownTickTime = now;
-        lastLinkDownTickBytes = currentTotal;
-
-        if (instantMbps > 0.5) {
-          if (smoothedLinkDown < 0.5) {
-            smoothedLinkDown = instantMbps;
-          } else {
-            smoothedLinkDown = (0.35 * instantMbps) + (0.65 * smoothedLinkDown);
-          }
-          linkDownSamples.add(smoothedLinkDown);
-        } else if (smoothedLinkDown > 1.0) {
-          smoothedLinkDown = max(1.0, smoothedLinkDown * 0.95);
-        }
-
-        final p = (0.20 + (now / linkDurationMs) * 0.40).clamp(0.20, 0.60);
-        onProgress?.call(
-          phase: SpeedtestPhase.download,
-          currentSpeed: smoothedLinkDown,
-          progress: p,
-          pingMs: avgPing,
-          downloadMbps: smoothedLinkDown > 0 ? smoothedLinkDown : null,
-        );
-      }
-    });
-
-    final downClient = http.Client();
-
-    Future<void> workerLocalDownload() async {
-      while (!stopLinkDown && linkDownWatch.elapsedMilliseconds < linkDurationMs) {
-        try {
-          final req = http.Request('GET', downUrl);
-          req.headers['User-Agent'] = 'NivaroOS-LinkTest/2.0';
-          req.headers['Cache-Control'] = 'no-cache';
-          final streamedRes = await downClient.send(req).timeout(const Duration(seconds: 4));
-          if (streamedRes.statusCode == 200) {
-            await for (final chunk in streamedRes.stream) {
-              totalTransferred += chunk.length;
-              if (stopLinkDown || linkDownWatch.elapsedMilliseconds >= linkDurationMs) break;
-            }
-          } else {
-            // A non-200 response transferred no real data - used to count
-            // an unrelated small API call's JSON response as if it were
-            // (repeated 100x) real download throughput instead.
-            await Future.delayed(const Duration(milliseconds: 10));
-          }
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 20));
-        }
-      }
-    }
-
-    try {
-      final futures = <Future<void>>[];
-      for (int i = 0; i < 8; i++) {
-        futures.add(workerLocalDownload());
-      }
-      await Future.wait(futures).timeout(const Duration(milliseconds: linkDurationMs + 800), onTimeout: () => []);
-    } finally {
-      stopLinkDown = true;
-      linkDownTicker.cancel();
-      linkDownWatch.stop();
-      downClient.close();
-    }
-
-    linkDownSamples.sort();
-    double linkDownSpeed = 0;
-    double peakLinkDown = 0;
-    if (linkDownSamples.isNotEmpty) {
-      peakLinkDown = linkDownSamples.last;
-      final idx = (linkDownSamples.length * 0.85).floor().clamp(0, linkDownSamples.length - 1);
-      linkDownSpeed = linkDownSamples[idx];
-    } else if (linkDownWatch.elapsedMilliseconds > 0 && totalTransferred > 0) {
-      linkDownSpeed = (totalTransferred * 8.0) / (linkDownWatch.elapsedMilliseconds * 1000.0);
-      peakLinkDown = linkDownSpeed;
-    } else {
-      // Used to silently report a fabricated "500.0 Mbps" here instead of
-      // surfacing that the local link test never actually transferred
-      // anything.
-      throw Exception('Link download test failed - no data could be transferred to/from the server.');
-    }
-
-    // 3. Local Upload (Tx) Multi-stream Throughput Benchmark directly to NivaroOS Gateway
-    final linkUpWatch = Stopwatch()..start();
-    int totalUpTransferred = 0;
-    double smoothedLinkUp = 0.0;
-    final linkUpSamples = <double>[];
-    const linkUpDurationMs = 4500;
-    bool stopLinkUp = false;
-
-    int lastLinkUpTickTime = 0;
-    int lastLinkUpTickBytes = 0;
-
-    final linkUpTicker = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (stopLinkUp) {
-        timer.cancel();
-        return;
-      }
-      final now = linkUpWatch.elapsedMilliseconds;
-      final dt = now - lastLinkUpTickTime;
-      if (dt > 15) {
-        final currentTotal = totalUpTransferred;
-        final db = currentTotal - lastLinkUpTickBytes;
-        final instantMbps = (db * 8.0) / (dt * 1000.0);
-
-        lastLinkUpTickTime = now;
-        lastLinkUpTickBytes = currentTotal;
-
-        if (instantMbps > 0.5) {
-          if (smoothedLinkUp < 0.5) {
-            smoothedLinkUp = instantMbps;
-          } else {
-            smoothedLinkUp = (0.35 * instantMbps) + (0.65 * smoothedLinkUp);
-          }
-          linkUpSamples.add(smoothedLinkUp);
-        } else if (smoothedLinkUp > 1.0) {
-          smoothedLinkUp = max(1.0, smoothedLinkUp * 0.95);
-        }
-
-        final p = (0.60 + (now / linkUpDurationMs) * 0.38).clamp(0.60, 0.98);
-        onProgress?.call(
-          phase: SpeedtestPhase.upload,
-          currentSpeed: smoothedLinkUp,
-          progress: p,
-          pingMs: avgPing,
-          downloadMbps: linkDownSpeed,
-          uploadMbps: smoothedLinkUp > 0 ? smoothedLinkUp : null,
-        );
-      }
-    });
-
-    final upClient = http.Client();
-    final localUploadPayload = Uint8List.fromList(List<int>.generate(2 * 1024 * 1024, (i) => (i * 17) & 0xFF));
-
-    Future<void> workerLocalUpload() async {
-      while (!stopLinkUp && linkUpWatch.elapsedMilliseconds < linkUpDurationMs) {
-        try {
-          final res = await upClient.post(
-            upUrl,
-            body: localUploadPayload,
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'User-Agent': 'NivaroOS-LinkTest/2.0',
-            },
-          ).timeout(const Duration(seconds: 4));
-          if (res.statusCode == 200 || res.statusCode == 204) {
-            totalUpTransferred += localUploadPayload.length;
-          } else {
-            // A non-200 response uploaded nothing real - used to count a
-            // fixed 32KB as if it were real transferred data just because
-            // an unrelated small API call happened to succeed.
-            await Future.delayed(const Duration(milliseconds: 10));
-          }
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 20));
-        }
-      }
-    }
-
-    try {
-      final futures = <Future<void>>[];
-      for (int i = 0; i < 6; i++) {
-        futures.add(workerLocalUpload());
-      }
-      await Future.wait(futures).timeout(const Duration(milliseconds: linkUpDurationMs + 800), onTimeout: () => []);
-    } finally {
-      stopLinkUp = true;
-      linkUpTicker.cancel();
-      linkUpWatch.stop();
-      upClient.close();
-    }
-
-    linkUpSamples.sort();
-    double linkUpSpeed = 0;
-    if (linkUpSamples.isNotEmpty) {
-      final idx = (linkUpSamples.length * 0.85).floor().clamp(0, linkUpSamples.length - 1);
-      linkUpSpeed = linkUpSamples[idx];
-    } else if (linkUpWatch.elapsedMilliseconds > 0 && totalUpTransferred > 0) {
-      linkUpSpeed = (totalUpTransferred * 8.0) / (linkUpWatch.elapsedMilliseconds * 1000.0);
-    } else {
-      // Used to derive a fake upload number from the (real) download result
-      // instead of reporting that upload specifically failed.
-      throw Exception('Link upload test failed - no data could be transferred, though download measured ${linkDownSpeed.toStringAsFixed(1)} Mbps.');
-    }
-
-    onProgress?.call(
-      phase: SpeedtestPhase.completed,
-      currentSpeed: linkDownSpeed,
-      progress: 1.0,
-      pingMs: avgPing,
-      downloadMbps: linkDownSpeed,
-      uploadMbps: linkUpSpeed,
+    final down = await _measure(
+      durationMs: 5000,
+      workers: 8,
+      phase: SpeedtestPhase.download,
+      fractionStart: 0.12,
+      fractionSpan: 0.48,
+      partial: partial,
+      onProgress: onProgress,
+      work: (client, count, stop) => _downloadLoop(client, downUrl, count, stop),
     );
+    if (down == null) throw SpeedtestException('The download test failed: no data arrived from the server.');
+    partial = partial.copyWith(downloadMbps: down);
 
-    String connectionType;
-    String qualityRating;
-    String realWorld;
-
-    if (linkDownSpeed > 600) {
-      connectionType = 'Direct Gigabit LAN / Wi-Fi 6 (5GHz)';
-      qualityRating = 'Grade A+ (Ultra High-Speed Gigabit Link)';
-      realWorld = 'Seamless 4K/8K Video Streaming · 1GB transfers in ~1.5s';
-    } else if (linkDownSpeed > 250) {
-      connectionType = 'High-Speed Wi-Fi (5GHz Band)';
-      qualityRating = 'Grade A (Fast Wireless Link)';
-      realWorld = 'Smooth 4K Streaming · 1GB transfers in ~3.5s';
-    } else if (linkDownSpeed > 80) {
-      connectionType = 'Standard Wi-Fi (2.4GHz / Mesh)';
-      qualityRating = 'Grade B (Good Wireless Link)';
-      realWorld = 'Full HD Streaming · 1GB transfers in ~10s';
-    } else {
-      connectionType = 'Remote Mesh Tunnel (Tailscale / Relay)';
-      qualityRating = 'Grade C (Remote Tunneled Link)';
-      realWorld = 'Remote Cloud Access · Optimized for responsive browsing';
-    }
-
-    return LinkSpeedResult(
-      pingMinMs: minPing,
-      pingAvgMs: avgPing,
-      pingMaxMs: maxPing,
-      jitterMs: jitter,
-      downloadMbps: double.parse(linkDownSpeed.toStringAsFixed(1)),
-      uploadMbps: double.parse(linkUpSpeed.toStringAsFixed(1)),
-      peakDownloadMbps: double.parse(peakLinkDown.toStringAsFixed(1)),
-      bytesTransferred: totalTransferred + totalUpTransferred,
-      connectionType: connectionType,
-      qualityRating: qualityRating,
-      realWorldSpeedText: realWorld,
-      timestamp: DateTime.now(),
+    final payload = _payload(2 * 1024 * 1024, 17);
+    final up = await _measure(
+      durationMs: 4500,
+      workers: 6,
+      phase: SpeedtestPhase.upload,
+      fractionStart: 0.6,
+      fractionSpan: 0.38,
+      partial: partial,
+      onProgress: onProgress,
+      work: (client, count, stop) => _uploadLoop(client, upUrl, payload, count, stop),
     );
+    if (up == null) throw SpeedtestException('The upload test failed: no data could be sent to the server.');
+    return partial.copyWith(uploadMbps: up, testedAt: clock.now());
   }
+
+  static double _avg(List<int> v) => v.reduce((a, b) => a + b) / v.length;
+  static double _jitter(List<int> v, double avg) => v.map((p) => (p - avg).abs()).reduce((a, b) => a + b) / v.length;
+  static Uint8List _payload(int size, int mul) => Uint8List.fromList(List<int>.generate(size, (i) => (i * mul) & 0xFF));
+
+  /// Runs [workers] copies of [work] for [durationMs] and returns the
+  /// steady rate in Mbps (the 85th percentile of a smoothed rate, so the
+  /// TCP ramp-up doesn't pull it down), or null when nothing moved.
+  Future<double?> _measure({
+    required int durationMs,
+    required int workers,
+    required SpeedtestPhase phase,
+    required double fractionStart,
+    required double fractionSpan,
+    required SpeedResult partial,
+    required SpeedtestProgressCallback? onProgress,
+    required Future<void> Function(http.Client client, _ByteCount count, bool Function() stop) work,
+  }) async {
+    final watch = Stopwatch()..start();
+    final counts = List.generate(workers, _ByteCount.new);
+    int total() => counts.fold(0, (s, c) => s + c.bytes);
+    var smoothed = 0.0;
+    final samples = <double>[];
+    var lastT = 0;
+    var lastBytes = 0;
+    var stopped = false;
+    bool stop() => stopped || watch.elapsedMilliseconds >= durationMs;
+
+    final ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      final now = watch.elapsedMilliseconds;
+      final dt = now - lastT;
+      if (dt <= 0) return;
+      final bytes = total();
+      final instant = (bytes - lastBytes) * 8.0 / (dt * 1000.0);
+      lastT = now;
+      lastBytes = bytes;
+      if (instant > 0) {
+        smoothed = smoothed == 0 ? instant : 0.35 * instant + 0.65 * smoothed;
+        samples.add(smoothed);
+      }
+      onProgress?.call(SpeedtestProgress(
+        phase: phase,
+        liveMbps: smoothed > 0 ? smoothed : null,
+        fraction: (fractionStart + now / durationMs * fractionSpan).clamp(fractionStart, fractionStart + fractionSpan),
+        partial: partial,
+      ));
+    });
+
+    final client = http.Client();
+    try {
+      await Future.wait([for (final c in counts) work(client, c, stop)])
+          .timeout(Duration(milliseconds: durationMs + 800), onTimeout: () => const []);
+    } finally {
+      stopped = true;
+      ticker.cancel();
+      watch.stop();
+      client.close();
+    }
+
+    if (samples.isNotEmpty) {
+      samples.sort();
+      return samples[(samples.length * 0.85).floor().clamp(0, samples.length - 1)];
+    }
+    final bytes = total();
+    if (bytes > 0 && watch.elapsedMilliseconds > 0) return bytes * 8.0 / (watch.elapsedMilliseconds * 1000.0);
+    return null;
+  }
+
+  static Future<void> _downloadLoop(http.Client client, Uri url, _ByteCount count, bool Function() stop) async {
+    while (!stop()) {
+      try {
+        final req = http.Request('GET', url.replace(queryParameters: {...url.queryParameters, '_t': '${clock.now().microsecondsSinceEpoch}'}))
+          ..headers['Cache-Control'] = 'no-cache';
+        final res = await client.send(req).timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200 || res.statusCode == 206) {
+          await for (final chunk in res.stream) {
+            count.bytes += chunk.length;
+            if (stop()) break;
+          }
+        } else {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      } catch (_) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+  }
+
+  static Future<void> _uploadLoop(http.Client client, Uri url, Uint8List payload, _ByteCount count, bool Function() stop) async {
+    while (!stop()) {
+      try {
+        final res = await client
+            .post(url, body: payload, headers: {'Content-Type': 'application/octet-stream'})
+            .timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200 || res.statusCode == 204) {
+          count.bytes += payload.length;
+        } else {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      } catch (_) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+  }
+}
+
+class _ByteCount {
+  _ByteCount(this.id);
+  final int id;
+  int bytes = 0;
 }

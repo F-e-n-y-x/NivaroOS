@@ -1,0 +1,72 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "id": "bk_1",
+   "name": "Photos to Sandisk",
+   "type": "mirror",
+   "enabled": true,
+   "revision": 1,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "vol-1",
+     "sub_path": "photos",
+     "label": "tower"
+    }
+   ],
+   "dest": {
+    "kind": "usb",
+    "ref_id": "usb-1",
+    "sub_path": "NivaroOS Backups",
+    "label": "Sandisk 128G"
+   },
+   "needs_attention": "",
+   "health": "problem",
+   "last_run": {
+    "id": "run_bk_1",
+    "kind": "backup",
+    "status": "failed",
+    "ended_at": "2026-09-25T03:12:40+05:30",
+    "summary": null
+   },
+   "active_run": null,
+   "next_run": "2026-09-26T03:00:00+05:30",
+   "dest_online": true
+  },
+  {
+   "id": "bk_2",
+   "name": "Documents to tank",
+   "type": "mirror",
+   "enabled": true,
+   "revision": 1,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "vol-1",
+     "sub_path": "photos",
+     "label": "tower"
+    }
+   ],
+   "dest": {
+    "kind": "usb",
+    "ref_id": "usb-1",
+    "sub_path": "NivaroOS Backups",
+    "label": "tank"
+   },
+   "needs_attention": "",
+   "health": "ok",
+   "last_run": {
+    "id": "run_bk_2",
+    "kind": "backup",
+    "status": "success",
+    "ended_at": "2026-09-25T03:12:40+05:30",
+    "summary": null
+   },
+   "active_run": null,
+   "next_run": "2026-09-26T03:00:00+05:30",
+   "dest_online": true
+  }
+ ]
+}

@@ -33,8 +33,9 @@ import 'package:nivaroos_mobile/services/api_client.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
-import 'package:nivaroos_mobile/theme.dart';
 import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
+import 'package:nivaroos_mobile/ui/theme/scaled_icons.dart';
+import 'package:nivaroos_mobile/utils/app_icons.dart';
 
 const fakeServer = 'http://nivaro.test';
 
@@ -241,14 +242,52 @@ Future<void> signIn() async {
 }
 
 /// The golden file name for a shot: `name_light|dark_WxH[_text2x].png`.
-String goldenName(String name, Brightness brightness, Size size, double textScale) {
+/// [themeName] replaces the brightness for screens that draw their own
+/// fixed theme (the always-dark consoles: `fixed_dark`).
+String goldenName(String name, Brightness brightness, Size size, double textScale, {String? themeName}) {
   final scale = textScale == 1 ? '' : '_text${textScale.toStringAsFixed(textScale % 1 == 0 ? 0 : 1)}x';
-  return '${name}_${brightness.name}_${size.width.toInt()}x${size.height.toInt()}$scale';
+  return '${name}_${themeName ?? brightness.name}_${size.width.toInt()}x${size.height.toInt()}$scale';
+}
+
+/// Bundled stand-ins for app icons from the internet, one per app (picked
+/// by the URL), so headers and lists show a real picture.
+final List<Uint8List> _appIcons = [
+  for (var i = 0; i < 8; i++) File('$_fixtures/icons/app_$i.png').readAsBytesSync(),
+];
+
+Widget _fakeNetworkIcon(String url, double size) {
+  final i = url.codeUnits.fold<int>(0, (h, c) => (h * 31 + c) & 0x7fffffff) % _appIcons.length;
+  return Image.memory(_appIcons[i], width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true);
+}
+
+/// Pushes [child] over a blank first route once, so it renders the way it
+/// does in the app - as a pushed screen, with a back arrow.
+class _PushedHost extends StatefulWidget {
+  const _PushedHost({required this.child});
+  final Widget child;
+
+  @override
+  State<_PushedHost> createState() => _PushedHostState();
+}
+
+class _PushedHostState extends State<_PushedHost> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).push(PageRouteBuilder<void>(pageBuilder: (_, _, _) => widget.child));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Scaffold();
 }
 
 /// Wraps [child] the way `NivaroApp` does: both themes, system bar
-/// styling, the legacy colour bridge, and an optional text scale.
-Widget testApp(Widget child, {Brightness brightness = Brightness.light, double textScale = 1}) {
+/// styling, icons scaled with the text, and an optional text scale. With
+/// [pushed], [child] is pushed over a blank first route, as a detail
+/// screen is in the app.
+Widget testApp(Widget child, {Brightness brightness = Brightness.light, double textScale = 1, bool pushed = false}) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: AppTheme.light(),
@@ -258,10 +297,10 @@ Widget testApp(Widget child, {Brightness brightness = Brightness.light, double t
       value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
       child: MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
-        child: LegacyThemeBridge(child: app!),
+        child: ScaledIcons(child: app!),
       ),
     ),
-    home: child,
+    home: pushed ? _PushedHost(child: child) : child,
   );
 }
 
@@ -295,6 +334,8 @@ Future<void> shoot(
   Future<void> Function(WidgetTester tester)? before,
   bool strict = true,
   bool tab = false,
+  bool pushed = false,
+  String? themeName,
 }) async {
   await loadRealFonts();
   final findings = <String>[];
@@ -311,6 +352,7 @@ Future<void> shoot(
   final uncaught = <Object>[];
   addTearDown(() => FlutterError.onError = testHandler);
   stubPlatformChannels();
+  NivaroAppIcon.debugNetworkIcon = _fakeNetworkIcon;
   tester.view.physicalSize = size * 3;
   tester.view.devicePixelRatio = 3;
   // A phone's status bar and gesture bar, so edge-to-edge insets show.
@@ -322,7 +364,7 @@ Future<void> shoot(
   final done = Completer<void>();
   final page = tab ? Scaffold(body: screen) : screen;
   runZonedGuarded(() => withClock(Clock.fixed(shotTime), () => http.runWithClient(() async {
-    await tester.pumpWidget(testApp(page, brightness: brightness, textScale: textScale));
+    await tester.pumpWidget(testApp(page, brightness: brightness, textScale: textScale, pushed: pushed));
     // Real file IO (fixtures, temp files) only completes outside the fake
     // clock, so alternate a little real time with fake frames.
     for (var i = 0; i < 10; i++) {
@@ -332,7 +374,7 @@ Future<void> shoot(
     if (before != null) await before(tester);
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile('goldens/$dir/${goldenName(name, brightness, size, textScale)}.png'),
+      matchesGoldenFile('goldens/$dir/${goldenName(name, brightness, size, textScale, themeName: themeName)}.png'),
     );
     // Dispose the tree so periodic timers are cancelled, then run out any
     // one-shot timers the screen left behind.

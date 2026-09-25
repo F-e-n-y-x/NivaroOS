@@ -7,7 +7,7 @@ by URL:
 |---|---|
 | `GET /v1/sys/utilization` | `v1/sys/utilization.json` |
 | `GET /v2/app_management/web/appgrid` | `v2/app_management/web/appgrid.json` |
-| `GET http://<host>:28641/vms/mint` (VM sidecar) | `vm/vms/mint.json` |
+| `GET /v1/vm-sidecar/vms/mint` (VM sidecar, through the gateway) | `v1/vm-sidecar/vms/mint.json` |
 | a plain-text answer (`/v1/sys/version/current`) | `v1/sys/version/current.txt` |
 
 The query string is ignored (`/v1/folder?path=…` always reads
@@ -36,7 +36,15 @@ Captured 2026-09-25 with read-only `curl` GETs against a real NivaroOS box
 Written by hand, in the shape the server returns, because they need a
 session token or this box has no data for them: `v1/cloud`, `v1/disks/usb`,
 `v1/storage`, `v1/users/current/custom/{shortcut,link,legacy_app_overrides}`,
-`vm/host/display` and `v2/app_management/compose/jellyfin/logs`.
+`v1/vm-sidecar/host/display`, `v1/vm-sidecar/host/desktop/installed` and `v2/app_management/compose/jellyfin/logs`.
 
 Never put real tokens, keys, e-mail addresses or public IPs here: the
 goldens and fixtures are committed.
+
+Added for the Apps area (2026-09-25): `v2/app_management/{categories,appstore,info}`,
+`v2/app_management/apps/upgradable` and `v2/app_management/apps/jellyfin`
+(trimmed to English) are read-only GETs from the same box; the app store
+sources are the public casaos.app and bigbeartechworld URLs.
+`v1/container/jellyfin/logs` is written by hand in the shape of
+`GET /v1/container/{id}/logs?timestamps=true` (Docker RFC 3339 timestamps
+with nanoseconds, one line each).

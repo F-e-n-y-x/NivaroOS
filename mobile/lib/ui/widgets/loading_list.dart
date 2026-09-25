@@ -58,7 +58,7 @@ class LoadingList extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: Space.sm),
           physics: const AlwaysScrollableScrollPhysics(),
           itemCount: rows,
-          itemBuilder: (context, i) => _SkeletonTile(leading: leading, subtitle: subtitle, trailing: trailing, index: i),
+          itemBuilder: (context, i) => SkeletonRow(leading: leading, subtitle: subtitle, trailing: trailing, index: i),
         ),
       ),
     );
@@ -92,7 +92,7 @@ class SliverLoadingList extends StatelessWidget {
           child: SliverList.builder(
             itemCount: rows,
             itemBuilder: (context, i) => ExcludeSemantics(
-              child: _SkeletonTile(leading: leading, subtitle: subtitle, trailing: trailing, index: i),
+              child: SkeletonRow(leading: leading, subtitle: subtitle, trailing: trailing, index: i),
             ),
           ),
         ),
@@ -112,8 +112,21 @@ class _LoadingSemantics extends StatelessWidget {
       Semantics(label: 'Loading', liveRegion: true, child: ExcludeSemantics(child: child));
 }
 
-class _SkeletonTile extends StatelessWidget {
-  const _SkeletonTile({required this.leading, required this.subtitle, required this.trailing, required this.index});
+/// One skeleton row, shaped like the ListTile it stands in for. Lists of
+/// them come from [LoadingList] / [SliverLoadingList]; use it on its own
+/// for rows inside a TileGroup, so the placeholder sits in the same
+/// rounded segments as the real rows.
+class SkeletonRow extends StatelessWidget {
+  const SkeletonRow({super.key, this.leading = SkeletonLeading.icon, this.subtitle = true, this.trailing = false, this.index = 0});
+
+  /// Placeholder rows for a TileGroup's children: [rows] of them, pulsing,
+  /// announced as "Loading".
+  static List<Widget> group({int rows = 3, SkeletonLeading leading = SkeletonLeading.icon, bool subtitle = true, bool trailing = false}) => [
+        for (var i = 0; i < rows; i++)
+          _LoadingSemantics(
+            child: SkeletonPulse(child: SkeletonRow(leading: leading, subtitle: subtitle, trailing: trailing, index: i)),
+          ),
+      ];
 
   final SkeletonLeading leading;
   final bool subtitle;
@@ -149,7 +162,10 @@ class _SkeletonTile extends StatelessWidget {
       // 88 when a 56dp thumbnail leads.
       constraints: BoxConstraints(minHeight: leading == SkeletonLeading.thumbnail ? 88 : (subtitle ? 72 : 56)),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.sm),
+        // The ListTile padding in force here: the screen gutter in a list,
+        // 16dp inside a TileGroup.
+        padding: (ListTileTheme.of(context).contentPadding ?? EdgeInsets.symmetric(horizontal: Space.gutter(context)))
+            .add(const EdgeInsets.symmetric(vertical: Space.sm)),
         child: Row(
           children: [
             if (lead != null) ...[lead, const SizedBox(width: Space.lg)],

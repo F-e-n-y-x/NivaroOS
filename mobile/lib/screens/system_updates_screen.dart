@@ -1,1530 +1,727 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'package:clock/clock.dart';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:open_filex/open_filex.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
-import '../widgets/common.dart';
 
-/// Updates Center - deliberately TWO independent tracks, never mixed:
+import 'package:flutter/material.dart';
+
+import '../models/dashboard_stats.dart';
+import '../services/api_client.dart';
+import '../services/app_update_service.dart';
+import '../ui/ui.dart';
+import '../utils/format.dart';
+import '../widgets/monitor_modals.dart' show FactTile;
+import 'app_update_sheet.dart';
+
+/// One upgradable package from `/sys/packages/check`.
+@immutable
+class PackageUpdate {
+  const PackageUpdate({required this.name, required this.currentVersion, required this.newVersion, required this.isSecurity});
+
+  final String name;
+  final String currentVersion;
+  final String newVersion;
+  final bool isSecurity;
+
+  factory PackageUpdate.fromJson(Map<String, dynamic> j) => PackageUpdate(
+        name: j['name']?.toString() ?? '',
+        currentVersion: j['current_version']?.toString() ?? '',
+        newVersion: j['new_version']?.toString() ?? '',
+        isSecurity: j['is_security'] == true,
+      );
+}
+
+class _Packages {
+  _Packages(this.list, this.security, this.lastChecked);
+  final List<PackageUpdate> list;
+  final int security;
+  final DateTime? lastChecked;
+
+  static _Packages fromJson(Map<String, dynamic> d) => _Packages(
+        (d['packages'] as List<dynamic>? ?? const []).whereType<Map>().map((e) => PackageUpdate.fromJson(Map<String, dynamic>.from(e))).toList(),
+        (d['security_count'] as num?)?.toInt() ?? 0,
+        DateTime.tryParse(d['last_checked']?.toString() ?? ''),
+      );
+}
+
+class _ServerVersion {
+  _ServerVersion(this.current, this.needUpdate, this.latest, this.changeLog);
+  final String current;
+  final bool needUpdate;
+  final String latest;
+  final String changeLog;
+}
+
+/// Updates, in three separate tracks that are never mixed:
 ///
-/// - Server: this NivaroOS box's own backend/services, checked via
-///   GET /v1/sys/version/check and applied via POST /v1/sys/update - both
-///   real, server-authoritative endpoints (services/core/route/v1/system.go),
-///   nothing to do with GitHub or this app.
-/// - App: this Flutter app's own installed version (PackageInfo, the actual
-///   build you're running) vs. the latest GitHub Release's tag + attached
-///   APK - entirely separate from the server's version.
+/// - NivaroOS itself: `GET /v1/sys/version/check`, installed with
+///   `POST /v1/sys/update`.
+/// - The server's Debian packages: `/v1/sys/packages/*`.
+/// - This app: [AppUpdateService], the one self-update path (sideload
+///   builds only, owner decision §7.1): the same release pick, checksum
+///   and signing-key checks as everywhere; Settings links here.
+/// The two update pages (owner decision, plan §7.5): NivaroOS itself (with
+/// this app's own update and the server facts), and the server's Debian
+/// packages - different jobs with different risks, kept apart as in the
+/// web UI's settings.
+enum UpdatesPage { nivaroos, packages }
+
 class SystemUpdatesScreen extends StatefulWidget {
-  const SystemUpdatesScreen({super.key});
+  const SystemUpdatesScreen({super.key, this.page = UpdatesPage.nivaroos});
+
+  final UpdatesPage page;
 
   @override
   State<SystemUpdatesScreen> createState() => _SystemUpdatesScreenState();
 }
 
 class _SystemUpdatesScreenState extends State<SystemUpdatesScreen> {
-  // --- Server track ---
-  String _serverCurrentVersion = '';
-  String _serverLatestVersion = '';
-  String _serverChangeLog = '';
-  bool _serverChecking = true;
-  bool _serverNeedUpdate = false;
-  bool _serverUpdating = false;
-  int _upgradablePackages = 0;
-  int _securityCount = 0;
-  List<Map<String, dynamic>> _packageList = [];
-  bool _refreshingRepos = false;
-  bool _upgradingApt = false;
-  String? _serverStatusMessage;
-  String _lastServerCheckedTime = '';
+  _ServerVersion? _version;
+  Object? _versionError;
+  _Packages? _packages;
+  Object? _packagesError;
+  HostInfo? _host;
+  bool _loaded = false;
 
-  // --- App track ---
-  String _appInstalledVersion = '';
-  String _appLatestVersion = '';
-  String _appReleaseNotes = '';
-  String? _appApkUrl;
-  int _appApkSizeBytes = 0;
+  bool _checkingPackages = false;
+  bool _upgradeRunning = false;
+  bool _installingServer = false;
+
+  String _appInstalled = '';
+  String _appBuild = '';
+  UpdateCheck? _app;
   bool _appChecking = true;
-  bool _appHasUpdate = false;
-  bool _appDownloading = false;
-  double _appDownloadProgress = 0.0;
-
-  Map<String, dynamic>? _latestCommit;
+  String? _appCheckError;
 
   @override
   void initState() {
     super.initState();
-    _checkServerUpdate();
-    _checkAppUpdate();
+    _refresh();
   }
 
-  static String _cleanVersion(String v) {
-    return v.trim().replaceFirst(RegExp(r'^[vV]'), '');
+  Future<void> _refresh() => Future.wait([_loadServer(), _checkApp()]);
+
+  Future<void> _loadServer() async {
+    final api = ApiClient.instance;
+    await Future.wait([
+      () async {
+        try {
+          final res = await api.get('/sys/version/check');
+          final d = res['data'];
+          if (d is! Map) throw ApiException('Unexpected answer from the server.');
+          final v = d['version'];
+          final latest = v is Map ? v['version']?.toString() ?? '' : '';
+          _version = _ServerVersion(d['current_version']?.toString() ?? '', d['need_update'] == true, latest,
+              v is Map ? v['change_log']?.toString().trim() ?? '' : '');
+          _versionError = null;
+        } catch (e) {
+          _versionError = e;
+        }
+      }(),
+      () async {
+        try {
+          final res = await api.get('/sys/packages/check');
+          final d = res['data'];
+          if (d is! Map) throw ApiException('Unexpected answer from the server.');
+          _packages = _Packages.fromJson(Map<String, dynamic>.from(d));
+          _packagesError = null;
+        } catch (e) {
+          _packagesError = e;
+        }
+      }(),
+      () async {
+        try {
+          final res = await api.get('/sys/packages/upgrade/status');
+          final d = res['data'];
+          _upgradeRunning = d is Map && d['running'] == true;
+        } catch (_) {}
+      }(),
+      () async {
+        try {
+          final res = await api.get('/sys/hardware');
+          final d = res['data'];
+          if (d is Map) _host = HostInfo.fromJson(Map<String, dynamic>.from(d));
+        } catch (_) {}
+      }(),
+    ]);
+    if (mounted) setState(() => _loaded = true);
   }
 
-  static bool _isNewer(String latest, String current) {
-    final l = _cleanVersion(latest);
-    final c = _cleanVersion(current);
-    if (l.isEmpty || c.isEmpty) return false;
-    final lParts = l.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-    final cParts = c.split('.').map((p) => int.tryParse(p) ?? 0).toList();
-    while (lParts.length < 3) {
-      lParts.add(0);
-    }
-    while (cParts.length < 3) {
-      cParts.add(0);
-    }
-    for (int i = 0; i < 3; i++) {
-      if (lParts[i] > cParts[i]) return true;
-      if (lParts[i] < cParts[i]) return false;
-    }
-    return false;
-  }
-
-  Future<void> _checkServerUpdate() async {
+  // The saved check first, so the row fills at once, then a fresh one:
+  // someone who opened Updates wants the current answer.
+  Future<void> _checkApp() async {
+    final svc = AppUpdateService.instance;
     setState(() {
-      _serverChecking = true;
-      _serverStatusMessage = null;
+      _appChecking = true;
+      _appCheckError = null;
     });
-
-    String currVer = _serverCurrentVersion;
-    String latVer = _serverCurrentVersion;
-    bool needUpdate = false;
-    String changeLog = '';
-
     try {
-      final res = await ApiClient.instance.get('/sys/version/check');
-      if (res['data'] is Map) {
-        final d = res['data'] as Map<String, dynamic>;
-        if (d['current_version'] != null &&
-            d['current_version'].toString().isNotEmpty) {
-          currVer = d['current_version'].toString();
-          if (!currVer.startsWith('v')) currVer = 'v$currVer';
-        }
-        needUpdate = d['need_update'] == true;
-        if (d['version'] is Map) {
-          final vMap = d['version'] as Map<String, dynamic>;
-          if (vMap['version'] != null &&
-              vMap['version'].toString().isNotEmpty) {
-            latVer = vMap['version'].toString();
-            if (!latVer.startsWith('v')) latVer = 'v$latVer';
-          }
-          // The real field is "change_log" (services/core/model/version.go) -
-          // this used to check "release_notes"/"changelog", neither of which
-          // ever matched, so real server changelog text was silently dropped.
-          if (vMap['change_log'] != null) {
-            changeLog = vMap['change_log'].toString();
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[SystemUpdates] Server version check error: $e');
-    }
-
-    int pkgUpgrades = 0;
-    int secUpgrades = 0;
-    List<Map<String, dynamic>> pkgs = [];
-    try {
-      final pkgRes = await ApiClient.instance.get('/sys/packages/check');
-      if (pkgRes['data'] is Map) {
-        final d = pkgRes['data'] as Map<String, dynamic>;
-        pkgUpgrades = d['count'] as int? ?? 0;
-        secUpgrades = d['security_count'] as int? ?? 0;
-        if (d['packages'] is List) {
-          pkgs = (d['packages'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-        }
-      }
-    } catch (_) {
-      try {
-        final pkgRes = await ApiClient.instance.get('/sys/packages/upgrades');
-        if (pkgRes['data'] is Map) {
-          final d = pkgRes['data'] as Map<String, dynamic>;
-          pkgUpgrades = d['count'] as int? ?? (d['packages'] is List ? (d['packages'] as List).length : 0);
-          secUpgrades = d['security_count'] as int? ?? 0;
-          if (d['packages'] is List) {
-            pkgs = (d['packages'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          }
-        }
-      } catch (_) {}
-    }
-
-    final now = clock.now();
-    final timeStr =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-
-    if (mounted) {
-      setState(() {
-        _serverCurrentVersion = currVer;
-        _serverLatestVersion = needUpdate ? latVer : currVer;
-        _serverNeedUpdate = needUpdate;
-        _serverChangeLog = changeLog;
-        _upgradablePackages = pkgUpgrades;
-        _securityCount = secUpgrades;
-        _packageList = pkgs;
-        _lastServerCheckedTime = timeStr;
-        _serverChecking = false;
-      });
-    }
-
-    // Informational only - never feeds server-update decisions.
-    try {
-      final commitUri = Uri.parse(
-          'https://api.github.com/repos/F-e-n-y-x/NivaroOS/commits/master');
-      final cResp = await http.get(commitUri, headers: {
-        'User-Agent': 'NivaroOS-Mobile'
-      }).timeout(const Duration(seconds: 4));
-      if (cResp.statusCode == 200) {
-        final cBody = jsonDecode(cResp.body);
-        if (cBody is Map<String, dynamic> && mounted) {
-          setState(() => _latestCommit = cBody);
-        }
-      }
+      final v = await svc.installedVersion();
+      _appInstalled = v.version;
+      _appBuild = v.build;
     } catch (_) {}
-  }
-
-  Future<void> _checkAppUpdate() async {
-    setState(() => _appChecking = true);
-
-    String installed = _appInstalledVersion;
+    final cached = await svc.cached();
+    if (mounted && cached != null) setState(() => _app = cached);
+    String? error;
+    UpdateCheck? fresh;
     try {
-      final info = await PackageInfo.fromPlatform();
-      installed = 'v${info.version}';
-    } catch (e) {
-      debugPrint('[SystemUpdates] PackageInfo error: $e');
+      fresh = await svc.check(force: true);
+    } on UpdateException catch (e) {
+      error = e.message;
     }
-
-    String latest = installed;
-    String notes = '';
-    String? apkUrl;
-    int apkSize = 0;
-
-    try {
-      final releaseUri = Uri.parse(
-          'https://api.github.com/repos/F-e-n-y-x/NivaroOS/releases/latest');
-      final resp = await http.get(releaseUri, headers: {
-        'User-Agent': 'NivaroOS-Mobile'
-      }).timeout(const Duration(seconds: 4));
-      if (resp.statusCode == 200) {
-        final body = jsonDecode(resp.body);
-        final tag = body['tag_name'] ?? body['name'];
-        if (tag != null && tag.toString().isNotEmpty) {
-          latest = tag.toString();
-          if (!latest.startsWith('v')) latest = 'v$latest';
-        }
-        if (body['body'] != null && body['body'].toString().isNotEmpty) {
-          notes = body['body'].toString();
-        }
-        if (body['assets'] is List) {
-          for (final asset in body['assets']) {
-            final name = asset['name']?.toString() ?? '';
-            if (name.toLowerCase().endsWith('.apk')) {
-              apkUrl = asset['browser_download_url']?.toString();
-              apkSize = asset['size'] as int? ?? 0;
-              break;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[SystemUpdates] GitHub release check error: $e');
-    }
-
-    if (mounted) {
-      setState(() {
-        _appInstalledVersion = installed;
-        _appLatestVersion = latest;
-        _appHasUpdate = _isNewer(latest, installed);
-        _appReleaseNotes = notes;
-        _appApkUrl = apkUrl;
-        _appApkSizeBytes = apkSize;
-        _appChecking = false;
-      });
-    }
-  }
-
-  Future<void> _startSystemUpdate() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceRaised,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(NivaroShape.large)),
-        title: Row(
-          children: [
-            Icon(Icons.system_security_update_rounded,
-                color: NivaroColors.primaryLight, size: 24),
-            SizedBox(width: 10),
-            Text('Confirm Server Update',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          ],
-        ),
-        content: Text(
-          'Are you sure you want to trigger the NivaroOS server update pipeline to $_serverLatestVersion?\n\nCore services will apply latest components and restart automatically.',
-          style: TextStyle(
-              color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel',
-                style: TextStyle(color: NivaroColors.textMuted)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style:
-                FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-            child: const Text('Update Now',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
+    if (!mounted) return;
     setState(() {
-      _serverUpdating = true;
-      _serverStatusMessage = 'Triggering NivaroOS server update pipeline...';
+      if (fresh != null) _app = fresh;
+      _appChecking = false;
+      _appCheckError = error;
     });
+  }
 
+  bool get _appHasUpdate => _app?.updateAvailable ?? false;
+
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  static String _msg(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  Future<void> _installServerUpdate() async {
+    final v = _version!;
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: 'Install NivaroOS ${v.latest}?',
+      message: 'NivaroOS services restart while it installs, so this app and the web UI lose the connection for a few minutes.',
+      confirmLabel: 'Install',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _installingServer = true);
     try {
-      final res = await ApiClient.instance.post('/sys/update');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res['message']?.toString() ??
-                'Server update triggered successfully!'),
-            backgroundColor: NivaroColors.success,
-          ),
-        );
-        setState(() {
-          _serverStatusMessage =
-              'Server update triggered. Applying changes in background...';
-        });
-      }
+      await ApiClient.instance.post('/sys/update');
+      _snack('Installing NivaroOS ${v.latest}');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to trigger update: $e'),
-            backgroundColor: NivaroColors.danger,
-          ),
-        );
-      }
+      _snack("Couldn't start the update. ${_msg(e)}");
     } finally {
-      if (mounted) {
-        setState(() => _serverUpdating = false);
-        Future.delayed(const Duration(seconds: 4), () {
-          if (mounted) _checkServerUpdate();
-        });
-      }
+      if (mounted) setState(() => _installingServer = false);
     }
   }
 
-  Future<void> _refreshAptRepositories() async {
-    setState(() => _refreshingRepos = true);
+  Future<void> _checkPackages() async {
+    setState(() => _checkingPackages = true);
     try {
       final res = await ApiClient.instance.post('/sys/packages/refresh');
-      if (res['data'] is Map && mounted) {
-        final d = res['data'] as Map<String, dynamic>;
-        final count = d['count'] as int? ?? 0;
-        final secCount = d['security_count'] as int? ?? 0;
-        List<Map<String, dynamic>> pkgs = [];
-        if (d['packages'] is List) {
-          pkgs = (d['packages'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-        }
+      final d = res['data'];
+      if (d is Map && mounted) {
         setState(() {
-          _upgradablePackages = count;
-          _securityCount = secCount;
-          _packageList = pkgs;
+          _packages = _Packages.fromJson(Map<String, dynamic>.from(d));
+          _packagesError = null;
         });
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('APT repositories refreshed. $_upgradablePackages packages upgradable.'),
-            backgroundColor: NivaroColors.success,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to refresh repositories: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
+      _snack("Couldn't check for updates. ${_msg(e)}");
     } finally {
-      if (mounted) setState(() => _refreshingRepos = false);
+      if (mounted) setState(() => _checkingPackages = false);
     }
   }
 
-  Future<void> _upgradeLinuxPackages() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceRaised,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
-        title: Row(
-          children: [
-            Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 24),
-            SizedBox(width: 10),
-            Text('Upgrade System Packages', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          ],
-        ),
-        content: Text(
-          'This will execute `apt-get dist-upgrade` on the host server to upgrade $_upgradablePackages packages${_securityCount > 0 ? " (including $_securityCount security updates)" : ""}.\n\nYou can watch live execution logs as packages are configured.',
-          style: TextStyle(color: NivaroColors.textSecondary, fontSize: 13.5, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel', style: TextStyle(color: NivaroColors.textMuted)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.info),
-            child: const Text('Start Upgrade', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+  Future<void> _installPackages() async {
+    final p = _packages!;
+    final n = p.list.length;
+    final ok = await ConfirmDialog.confirm(
+      context,
+      title: n == 1 ? 'Install 1 update?' : 'Install $n updates?',
+      message: 'The server upgrades its Debian packages (apt-get dist-upgrade). Some services may restart while it runs.',
+      confirmLabel: 'Install',
     );
-
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _upgradingApt = true);
-
+    if (!ok || !mounted) return;
     try {
       await ApiClient.instance.post('/sys/packages/upgrade');
-      if (mounted) {
-        _showUpgradeLogsModal();
-      }
+      if (!mounted) return;
+      setState(() => _upgradeRunning = true);
+      _showUpgrade();
     } catch (e) {
-      if (mounted) {
-        setState(() => _upgradingApt = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start package upgrade: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
+      _snack("Couldn't start the upgrade. ${_msg(e)}");
     }
   }
 
-  void _showUpgradeLogsModal() {
-    showModalBottomSheet(
+  void _showUpgrade() {
+    showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
+      useSafeArea: true,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _UpgradeLogsSheet(
-        onFinished: () {
-          if (mounted) {
-            setState(() => _upgradingApt = false);
-            _checkServerUpdate();
-          }
-        },
-      ),
+      builder: (_) => const _UpgradeSheet(),
     ).then((_) {
-      if (mounted) _checkServerUpdate();
+      if (mounted) _loadServer();
     });
   }
 
-  void _showPackagesListSheet() {
-    showModalBottomSheet(
+  void _openPackages() {
+    Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => PackagesScreen(packages: _packages!.list, busy: _upgradeRunning)))
+        .then((install) {
+      if (install == true && mounted) _installPackages();
+    });
+  }
+
+  void _showNotes(String title, String text) {
+    showModalBottomSheet<void>(
       context: context,
+      showDragHandle: true,
+      useSafeArea: true,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _PackagesListSheet(
-        packages: _packageList,
-        securityCount: _securityCount,
-        onUpgradeRequested: () {
-          Navigator.of(ctx).pop();
-          _upgradeLinuxPackages();
-        },
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(header: true, child: Text(title, style: Theme.of(sheet).textTheme.titleLarge)),
+              const SizedBox(height: Space.md),
+              SelectableText(text, style: Theme.of(sheet).textTheme.bodyMedium),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // Downloads the APK to a local temp file with progress, then hands it to
-  // the OS package installer (OpenFilex) - the same download-then-open
-  // pattern file_viewer_screen.dart already uses for any file, just pointed
-  // at a public GitHub release asset instead of this server's own API (no
-  // auth token needed - it's a public URL). Falls back to opening the
-  // browser download if anything about the local flow fails, rather than
-  // leaving the user stuck.
-  Future<void> _downloadAndInstallApp() async {
-    final url = _appApkUrl;
-    if (url == null) {
-      _openReleasePage();
-      return;
-    }
-    setState(() {
-      _appDownloading = true;
-      _appDownloadProgress = 0.0;
-    });
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/NivaroOS-$_appLatestVersion.apk');
-      final client = http.Client();
-      try {
-        final req = http.Request('GET', Uri.parse(url));
-        final streamedRes = await client.send(req);
-        if (streamedRes.statusCode != 200) {
-          throw Exception('Download failed (HTTP ${streamedRes.statusCode})');
-        }
-        final total = streamedRes.contentLength ?? _appApkSizeBytes;
-        final sink = tempFile.openWrite();
-        int received = 0;
-        await for (final chunk in streamedRes.stream) {
-          sink.add(chunk);
-          received += chunk.length;
-          if (mounted && total > 0) {
-            setState(() =>
-                _appDownloadProgress = (received / total).clamp(0.0, 1.0));
-          }
-        }
-        await sink.flush();
-        await sink.close();
-      } finally {
-        client.close();
-      }
-      if (mounted) setState(() => _appDownloading = false);
-      await OpenFilex.open(tempFile.path);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _appDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Download failed, opening browser instead: $e'),
-              backgroundColor: NivaroColors.warning),
-        );
-      }
-      _openReleasePage();
-    }
-  }
-
-  Future<void> _openReleasePage() async {
-    final urlStr =
-        _appApkUrl ?? 'https://github.com/F-e-n-y-x/NivaroOS/releases/latest';
-    try {
-      await launchUrl(Uri.parse(urlStr), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not launch download URL: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _refreshAll() async {
-    await Future.wait([_checkServerUpdate(), _checkAppUpdate()]);
+  Future<void> _openAppUpdate() async {
+    final release = _app?.latest;
+    if (release == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (_) => UpdateSheet(release: release, installed: _appInstalled),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final checking = _serverChecking || _appChecking;
-    return Scaffold(
-      backgroundColor: NivaroColors.background,
-      appBar: AppBar(
-        title: const Text('Updates Center',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh',
-            onPressed: (checking || _serverUpdating) ? null : _refreshAll,
-          ),
+    final List<Widget> slivers;
+    final isPackages = widget.page == UpdatesPage.packages;
+    final pageError = isPackages ? _packagesError : _versionError;
+    if (!_loaded) {
+      slivers = const [SliverLoadingList(rows: 7)];
+    } else if (pageError != null && (isPackages || _host == null)) {
+      final e = pageError;
+      void retry() {
+        setState(() => _loaded = false);
+        _loadServer();
+      }
+      slivers = [
+        e is ApiException && e.statusCode == null
+            ? ErrorState.offline(onRetry: retry, sliver: true)
+            : ErrorState(
+                title: "Couldn't check for updates",
+                message: _msg(e),
+                onRetry: retry,
+                details: isPackages ? 'GET /v1/sys/packages/check: $e' : 'GET /v1/sys/version/check: $e',
+                sliver: true),
+      ];
+    } else {
+      slivers = [
+        SliverList.list(children: [
+          if (isPackages)
+            _packagesGroup(context)
+          else ...[
+            _nivaroGroup(context),
+            _appGroup(context),
+            if (_host != null) _aboutGroup(_host!),
+          ],
+          const SizedBox(height: Space.lg),
+        ]),
+      ];
+    }
+    return AppScaffold.slivers(title: isPackages ? 'System packages' : 'NivaroOS update', onRefresh: _refresh, slivers: slivers);
+  }
+
+  Widget _stateIcon(BuildContext context, {required bool upToDate, IconData pending = Icons.new_releases_outlined}) {
+    final scheme = Theme.of(context).colorScheme;
+    return upToDate
+        ? Icon(Icons.check_circle_outline, color: StatusColors.of(context).success.color)
+        : Icon(pending, color: scheme.primary);
+  }
+
+  Widget _progressSubtitle(String text, [double? value]) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text),
+          const SizedBox(height: Space.sm),
+          LinearProgressIndicator(value: value),
         ],
+      );
+
+  Widget _nivaroGroup(BuildContext context) {
+    final v = _version;
+    if (v == null) {
+      return TileGroup(title: 'NivaroOS', children: [
+        ListTile(
+          leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+          title: const Text("Couldn't check for a NivaroOS update"),
+          subtitle: Text(_msg(_versionError ?? '')),
+        ),
+      ]);
+    }
+    final current = v.current.isEmpty ? 'NivaroOS' : 'NivaroOS ${v.current}';
+    return TileGroup(title: 'NivaroOS', children: [
+      MergeSemantics(
+        child: ListTile(
+          leading: _stateIcon(context, upToDate: !v.needUpdate),
+          title: Text(current),
+          subtitle: _installingServer
+              ? _progressSubtitle('Starting the update')
+              : Text(v.needUpdate ? (v.latest.isEmpty ? 'A newer version is available' : 'Version ${v.latest} is available') : 'Up to date'),
+        ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshAll,
-        color: NivaroColors.primaryLight,
-        backgroundColor: NivaroColors.surfaceRaised,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 860),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-              children: [
-                // 1. Server Hero State Card
-                _buildHeroCard(),
-                const SizedBox(height: 18),
+      if (v.changeLog.isNotEmpty)
+        ListTile(
+          leading: const Icon(Icons.notes_outlined),
+          title: const Text("What's new"),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showNotes(v.needUpdate && v.latest.isNotEmpty ? 'NivaroOS ${v.latest}' : current, v.changeLog),
+        ),
+      if (v.needUpdate) _action(v.latest.isEmpty ? 'Install the update' : 'Install ${v.latest}', _installingServer ? null : _installServerUpdate),
+    ]);
+  }
 
-                // 2. Mobile App Update Card (fully independent track)
-                _buildMobileAppCard(),
-                const SizedBox(height: 18),
+  Widget _packagesGroup(BuildContext context) {
+    final p = _packages;
+    final checked = p?.lastChecked;
+    final footer = checked == null ? null : 'Package list checked ${_tail(formatRelative(checked))}.';
+    if (p == null) {
+      // No group title: the page itself is "System packages".
+      return TileGroup(children: [
+        ListTile(
+          leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+          title: const Text("Couldn't list package updates"),
+          subtitle: Text(_msg(_packagesError ?? '')),
+        ),
+        _checkTile(),
+      ]);
+    }
+    final n = p.list.length;
+    return TileGroup(footer: footer, children: [
+      MergeSemantics(
+        child: ListTile(
+          leading: _stateIcon(context, upToDate: n == 0, pending: Icons.update_outlined),
+          title: Text(n == 0 ? 'Up to date' : (n == 1 ? '1 update available' : '$n updates available')),
+          subtitle: n == 0
+              ? const Text('Debian packages on the server')
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Debian packages on the server'),
+                    if (p.security > 0) ...[
+                      const SizedBox(height: Space.xs),
+                      StatusChip(label: '${p.security} security', status: Status.warning, icon: Icons.shield_outlined),
+                    ],
+                  ],
+                ),
+          isThreeLine: p.security > 0,
+          trailing: n == 0 ? null : const Icon(Icons.chevron_right),
+          onTap: n == 0 ? null : _openPackages,
+        ),
+      ),
+      if (_upgradeRunning)
+        ListTile(
+          leading: const Icon(Icons.downloading_outlined),
+          title: const Text('Installing updates'),
+          subtitle: _progressSubtitle('Tap to see the progress'),
+          onTap: _showUpgrade,
+        ),
+      _checkTile(),
+      if (!_upgradeRunning && n > 0)
+        _action(n == 1 ? 'Install 1 update' : 'Install $n updates', _checkingPackages ? null : _installPackages),
+    ]);
+  }
 
-                // 3. Server Version Details
-                _buildVersionInfoCard(),
-                const SizedBox(height: 18),
+  /// A group's one action: a button in its own segment, so it doesn't
+  /// read as another fact row. The same shape in every group.
+  Widget _action(String label, VoidCallback? onPressed) => Padding(
+        padding: const EdgeInsets.all(Space.md),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: FilledButton.tonalIcon(onPressed: onPressed, icon: const Icon(Icons.download_outlined), label: Text(label)),
+        ),
+      );
 
-                // 4. Linux Packages (APT) Status Card
-                _buildLinuxPackagesCard(),
-                const SizedBox(height: 18),
+  Widget _checkTile() => ListTile(
+        leading: const Icon(Icons.refresh),
+        title: const Text('Check again'),
+        subtitle: _checkingPackages ? _progressSubtitle('This can take up to a minute') : const Text('Asks the package servers for new updates'),
+        enabled: !_checkingPackages && !_upgradeRunning,
+        onTap: _checkPackages,
+      );
 
-                // 5. Server Release Notes
-                _buildHighlightsCard(),
-                const SizedBox(height: 18),
+  static String _tail(String relative) => relative == 'Just now' || relative == 'Yesterday' ? relative.toLowerCase() : relative;
 
-                // 6. Master Branch Latest Commit (informational only)
-                if (_latestCommit != null) ...[
-                  _buildCommitCard(),
-                  const SizedBox(height: 18),
+  Widget _appGroup(BuildContext context) {
+    final installed = _appInstalled.isEmpty ? '' : (_appBuild.isEmpty ? _appInstalled : '$_appInstalled (build $_appBuild)');
+    final latest = _app?.latest;
+    final error = _appCheckError;
+    final String subtitle;
+    if (_appHasUpdate) {
+      final size = latest!.apkSize > 0 ? ' · ${formatBytes(latest.apkSize)}' : '';
+      subtitle = 'Version ${latest.version} is available$size';
+    } else if (_appChecking && _app == null) {
+      subtitle = 'Checking for a newer version';
+    } else if (error != null && _app == null) {
+      subtitle = "Couldn't check for a newer version";
+    } else {
+      subtitle = 'Up to date';
+    }
+    final checked = _app?.checkedAt;
+    final footer = [
+      if (error != null) error else if (checked != null) 'Checked ${_tail(formatRelative(checked))}.',
+      'Updates come from the project’s GitHub releases and are checked against this app’s signing key before they install.',
+    ].join(' ');
+    final failed = error != null && _app == null;
+    return TileGroup(title: 'This app', footer: footer, children: [
+      MergeSemantics(
+        child: ListTile(
+          leading: failed
+              ? Icon(Icons.cloud_off_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant)
+              : _stateIcon(context, upToDate: !_appHasUpdate && !(_appChecking && _app == null), pending: Icons.system_update_outlined),
+          title: Text(installed.isEmpty ? 'NivaroOS for Android' : 'NivaroOS for Android $installed'),
+          subtitle: Text(subtitle),
+          // One action, as a button beside the facts it acts on (the sheet
+          // has the notes, the progress and the checks).
+          trailing: _appHasUpdate
+              ? null
+              : failed
+                  ? TextButton(onPressed: _checkApp, child: const Text('Retry'))
+                  : (_appChecking ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5)) : null),
+        ),
+      ),
+      if (_appHasUpdate) _action('Update to ${latest!.version}', _openAppUpdate),
+    ]);
+  }
+
+  Widget _aboutGroup(HostInfo h) => TileGroup(title: 'About the server', children: [
+        FactTile(icon: Icons.dns_outlined, label: 'Operating system', value: h.osName),
+        FactTile(icon: Icons.memory_outlined, label: 'Kernel', value: h.kernel),
+        FactTile(icon: Icons.developer_board_outlined, label: 'Architecture', value: h.arch),
+        if (h.dockerVersion.isNotEmpty) FactTile(icon: Icons.inventory_2_outlined, label: 'Docker', value: h.dockerVersion),
+      ]);
+}
+
+/// Every upgradable package, security updates first.
+class PackagesScreen extends StatefulWidget {
+  const PackagesScreen({super.key, required this.packages, this.busy = false});
+
+  final List<PackageUpdate> packages;
+
+  /// An upgrade is already running, so "Install all" is off.
+  final bool busy;
+
+  @override
+  State<PackagesScreen> createState() => _PackagesScreenState();
+}
+
+class _PackagesScreenState extends State<PackagesScreen> {
+  final _search = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Widget _tile(BuildContext context, PackageUpdate p) {
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return MergeSemantics(
+      child: ListTile(
+        leading: Icon(p.isSecurity ? Icons.shield_outlined : Icons.inventory_2_outlined),
+        title: Text(p.name),
+        subtitle: Text('${p.currentVersion} to ${p.newVersion}', style: style),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _search.text.trim().toLowerCase();
+    final shown = widget.packages.where((p) => q.isEmpty || p.name.toLowerCase().contains(q)).toList();
+    final security = shown.where((p) => p.isSecurity).toList();
+    final other = shown.where((p) => !p.isSecurity).toList();
+    final gutter = Space.gutter(context);
+    final n = widget.packages.length;
+
+    return AppScaffold.slivers(
+      title: 'Package updates',
+      collapsingTitle: false,
+      floatingActionButton: widget.busy
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.download_outlined),
+              label: Text(n == 1 ? 'Install 1 update' : 'Install $n updates'),
+            ),
+      slivers: [
+        PinnedHeaderSliver(
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.surface,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
+              child: SearchBar(
+                controller: _search,
+                hintText: 'Search packages',
+                leading: const Icon(Icons.search),
+                elevation: const WidgetStatePropertyAll(0),
+                trailing: [
+                  if (_search.text.isNotEmpty) IconButton(onPressed: _search.clear, tooltip: 'Clear search', icon: const Icon(Icons.close)),
                 ],
-
-                if (_serverStatusMessage != null)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: NivaroColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: NivaroColors.primaryLight.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline_rounded,
-                            color: NivaroColors.primaryLight, size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _serverStatusMessage!,
-                            style: TextStyle(
-                                color: NivaroColors.textPrimary,
-                                fontSize: 12.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Server Update Action Button
-                if (_serverNeedUpdate)
-                  FilledButton.icon(
-                    onPressed: _serverUpdating ? null : _startSystemUpdate,
-                    icon: _serverUpdating
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.system_security_update_rounded),
-                    label: Text(
-                      _serverUpdating
-                          ? 'Installing Server Update...'
-                          : 'Install Server Update ($_serverLatestVersion)',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 15),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: NivaroColors.primary,
-                      minimumSize: const Size(double.infinity, 52),
-                      shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(NivaroShape.large)),
-                    ),
-                  )
-                else
-                  FilledButton.icon(
-                    onPressed: checking ? null : _refreshAll,
-                    icon: checking
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.check_circle_outline_rounded),
-                    label: Text(
-                      checking
-                          ? 'Checking for Updates...'
-                          : 'Check for Updates',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14.5),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: NivaroColors.surfaceRaised,
-                      foregroundColor: NivaroColors.textPrimary,
-                      side: BorderSide(color: NivaroColors.borderSubtle),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(NivaroShape.large)),
-                    ),
-                  ),
-
-                if (_lastServerCheckedTime.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Text(
-                      'Last checked today at $_lastServerCheckedTime',
-                      style: TextStyle(
-                          color: NivaroColors.textMuted, fontSize: 11.5),
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeroCard() {
-    final isUpToDate = !_serverNeedUpdate;
-
-    return DarkCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: Column(
-        children: [
-          Container(
-            width: 74,
-            height: 74,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isUpToDate
-                  ? NivaroColors.success.withValues(alpha: 0.15)
-                  : NivaroColors.warning.withValues(alpha: 0.15),
-              border: Border.all(
-                color: isUpToDate
-                    ? NivaroColors.successLight.withValues(alpha: 0.5)
-                    : NivaroColors.warning.withValues(alpha: 0.5),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isUpToDate
-                      ? NivaroColors.success.withValues(alpha: 0.2)
-                      : NivaroColors.warning.withValues(alpha: 0.2),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              isUpToDate ? Icons.verified_rounded : Icons.new_releases_rounded,
-              size: 38,
-              color:
-                  isUpToDate ? NivaroColors.successLight : NivaroColors.warning,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            isUpToDate
-                ? 'NivaroOS Server is Up to Date'
-                : 'New Server Update Available',
-            style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 19,
-                color: NivaroColors.textPrimary),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            isUpToDate
-                ? 'Your server is running the latest stable build ($_serverCurrentVersion)'
-                : 'A new server release ($_serverLatestVersion) is available',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: NivaroColors.textSecondary, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMobileAppCard() {
-    final sizeMb = _appApkSizeBytes > 0
-        ? ' (${(_appApkSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB)'
-        : '';
-
-    return DarkCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: (_appHasUpdate
-                          ? NivaroColors.warning
-                          : NivaroColors.primary)
-                      .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.android_rounded,
-                    color: _appHasUpdate
-                        ? NivaroColors.warning
-                        : NivaroColors.primaryLight,
-                    size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('NivaroOS Mobile App',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(
-                      _appChecking
-                          ? 'Checking...'
-                          : (_appHasUpdate
-                              ? 'Installed: $_appInstalledVersion · Latest: $_appLatestVersion$sizeMb'
-                              : 'Installed: $_appInstalledVersion · Up to date'),
-                      style: TextStyle(
-                          color: NivaroColors.textMuted, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              if (!_appChecking && !_appHasUpdate)
-                Icon(Icons.check_circle_rounded,
-                    color: NivaroColors.successLight, size: 20),
-            ],
-          ),
-          if (_appHasUpdate) ...[
-            const SizedBox(height: 14),
-            if (_appDownloading)
-              Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _appDownloadProgress > 0
-                          ? _appDownloadProgress
-                          : null,
-                      minHeight: 6,
-                      backgroundColor: NivaroColors.surfaceRaised,
-                      color: NivaroColors.primaryLight,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                      '${(_appDownloadProgress * 100).toStringAsFixed(0)}% downloaded',
-                      style: TextStyle(
-                          color: NivaroColors.textMuted, fontSize: 11.5)),
-                ],
-              )
-            else
-              FilledButton.icon(
-                onPressed: _downloadAndInstallApp,
-                icon: const Icon(Icons.system_update_alt_rounded, size: 18),
-                label: Text('Update App$sizeMb',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13.5)),
-                style: FilledButton.styleFrom(
-                  backgroundColor: NivaroColors.primary,
-                  minimumSize: const Size(double.infinity, 44),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            if (_appReleaseNotes.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(_appReleaseNotes,
-                  style: TextStyle(
-                      color: NivaroColors.textSecondary,
-                      fontSize: 12.5,
-                      height: 1.4)),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVersionInfoCard() {
-    return DarkCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const LegacySectionHeader(
-            title: 'Server Version Information',
-            subtitle: 'Release channel & system binaries',
-          ),
-          const SizedBox(height: 6),
-          _infoRow('Installed Version', _serverCurrentVersion,
-              isBadge: true, badgeColor: NivaroColors.primary),
-          Divider(height: 20, color: NivaroColors.borderSubtle),
-          _infoRow('Latest Release', _serverLatestVersion,
-              isBadge: true,
-              badgeColor: _serverNeedUpdate
-                  ? NivaroColors.warning
-                  : NivaroColors.success),
-          Divider(height: 20, color: NivaroColors.borderSubtle),
-          _infoRow('Release Channel', 'Stable (Production)', isBadge: false),
-          Divider(height: 20, color: NivaroColors.borderSubtle),
-          _infoRow('Kernel Hypervisor', 'KVM Sidecar Active', isBadge: false),
-          Divider(height: 20, color: NivaroColors.borderSubtle),
-          _infoRow('Host Architecture', 'x86_64 / Linux 6.x', isBadge: false),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHighlightsCard() {
-    return DarkCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.star_rounded,
-                  color: NivaroColors.warning, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                _serverNeedUpdate
-                    ? 'Server Release Notes ($_serverLatestVersion)'
-                    : 'Server Release Highlights ($_serverCurrentVersion)',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14.5,
-                    color: NivaroColors.textPrimary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_serverChangeLog.isNotEmpty)
-            Text(
-              _serverChangeLog,
-              style: TextStyle(
-                  color: NivaroColors.textSecondary, fontSize: 13, height: 1.5),
-            )
-          else
-            Text(
-              '• Native Hypervisor KVM Sidecar for seamless Virtual Machine management\n• High-FPS Real-time Video Stream & VNC Remote Console\n• Native Terminal Emulator with VT100/ANSI PTY engine & xterm.dart\n• Zero-dependency Go Speedtest Engine (Internal & Local Link)\n• Unified Multi-Drive File Explorer with Companion Device Storage Sharing',
-              style: TextStyle(
-                  color: NivaroColors.textSecondary, fontSize: 13, height: 1.5),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCommitCard() {
-    final commit = _latestCommit!['commit'] as Map<String, dynamic>? ?? {};
-    final sha = (_latestCommit!['sha']?.toString() ?? '').take(7);
-    final rawMessage =
-        commit['message']?.toString() ?? 'Latest repository commit';
-    final message = rawMessage.split('\n').first;
-    final author = commit['author']?['name']?.toString() ?? 'Nivaro Team';
-
-    return DarkCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.code_rounded,
-                  color: NivaroColors.primaryLight, size: 20),
-              const SizedBox(width: 8),
-              const Text('Latest Git Commit (master)',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: NivaroColors.surfaceRaised,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: NivaroColors.borderSubtle),
-                ),
-                child: Text(
-                  sha,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: NivaroColors.primaryLight,
-                      fontFamily: 'monospace'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            message,
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: NivaroColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Committed by $author',
-            style:
-                TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLinuxPackagesCard() {
-    return DarkCard(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: (_securityCount > 0
-                          ? NivaroColors.danger
-                          : (_upgradablePackages > 0 ? NivaroColors.warning : NivaroColors.info))
-                      .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _securityCount > 0
-                      ? Icons.security_rounded
-                      : Icons.inventory_2_rounded,
-                  color: _securityCount > 0
-                      ? NivaroColors.dangerLight
-                      : (_upgradablePackages > 0 ? NivaroColors.warningLight : NivaroColors.infoLight),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Linux Packages (APT)',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      _upgradablePackages > 0
-                          ? '$_upgradablePackages package updates available${_securityCount > 0 ? " ($_securityCount security)" : ""}'
-                          : 'Host OS repositories synced & up to date',
-                      style: TextStyle(
-                        color: _securityCount > 0
-                            ? NivaroColors.dangerLight
-                            : (_upgradablePackages > 0
-                                ? NivaroColors.warning
-                                : NivaroColors.textMuted),
-                        fontSize: 12,
-                        fontWeight: _upgradablePackages > 0 ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_upgradingApt)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
-                )
-              else
-                Icon(
-                  _upgradablePackages > 0
-                      ? Icons.system_update_rounded
-                      : Icons.check_circle_rounded,
-                  color: _securityCount > 0
-                      ? NivaroColors.dangerLight
-                      : (_upgradablePackages > 0
-                          ? NivaroColors.warning
-                          : NivaroColors.successLight),
-                  size: 20,
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          // Actions Row: Refresh and View All
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _refreshingRepos ? null : _refreshAptRepositories,
-                  icon: _refreshingRepos
-                      ? SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 1.5, color: NivaroColors.textPrimary))
-                      : const Icon(Icons.sync_rounded, size: 16),
-                  label: Text(_refreshingRepos ? 'Refreshing...' : 'Refresh Index',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: NivaroColors.textPrimary,
-                    side: BorderSide(color: NivaroColors.borderSubtle),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
-              if (_packageList.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _showPackagesListSheet,
-                    icon: const Icon(Icons.list_alt_rounded, size: 16),
-                    label: Text('View (${_packageList.length})',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: NivaroColors.primaryLight,
-                      side: BorderSide(color: NivaroColors.borderHighlight),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (_upgradingApt) ...[
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: _showUpgradeLogsModal,
-              icon: const Icon(Icons.terminal_rounded, size: 18),
-              label: const Text('Upgrade in Progress · View Live Logs',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              style: FilledButton.styleFrom(
-                backgroundColor: NivaroColors.info,
-                minimumSize: const Size(double.infinity, 42),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ] else if (_upgradablePackages > 0) ...[
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: _serverUpdating ? null : _upgradeLinuxPackages,
-              icon: const Icon(Icons.upgrade_rounded, size: 18),
-              label: Text('Upgrade All $_upgradablePackages Packages',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              style: FilledButton.styleFrom(
-                backgroundColor: _securityCount > 0 ? NivaroColors.danger : NivaroColors.primary,
-                minimumSize: const Size(double.infinity, 42),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value,
-      {bool isBadge = false, Color? badgeColor}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: TextStyle(
-                color: NivaroColors.textSecondary, fontSize: 13)),
-        if (isBadge)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-              color: (badgeColor ?? NivaroColors.primary).withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: (badgeColor ?? NivaroColors.primary).withValues(alpha: 0.4)),
-            ),
-            child: Text(
-              value,
-              style: TextStyle(
-                color: badgeColor ?? NivaroColors.primaryLight,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
+        if (shown.isEmpty)
+          EmptyState(
+            sliver: true,
+            icon: Icons.search_off_outlined,
+            title: 'Nothing matches',
+            message: 'No package update is called “${_search.text.trim()}”.',
+            actionLabel: 'Clear search',
+            onAction: _search.clear,
           )
         else
-          Text(
-            value,
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: NivaroColors.textPrimary),
-          ),
+          SliverList.list(children: [
+            if (security.isNotEmpty) ...[
+              SectionHeader(title: security.length == 1 ? '1 security update' : '${security.length} security updates'),
+              for (final p in security) _tile(context, p),
+            ],
+            if (other.isNotEmpty) ...[
+              SectionHeader(title: security.isEmpty ? 'Updates' : 'Other updates'),
+              for (final p in other) _tile(context, p),
+            ],
+            // Room for the extended FAB over the last row.
+            const SizedBox(height: 88),
+          ]),
       ],
     );
   }
 }
 
-class _UpgradeLogsSheet extends StatefulWidget {
-  final VoidCallback onFinished;
-  const _UpgradeLogsSheet({required this.onFinished});
+/// The package upgrade's live log, polled from the server once a second.
+class _UpgradeSheet extends StatefulWidget {
+  const _UpgradeSheet();
 
   @override
-  State<_UpgradeLogsSheet> createState() => _UpgradeLogsSheetState();
+  State<_UpgradeSheet> createState() => _UpgradeSheetState();
 }
 
-class _UpgradeLogsSheetState extends State<_UpgradeLogsSheet> {
+class _UpgradeSheetState extends State<_UpgradeSheet> {
   Timer? _timer;
-  List<String> _logs = [];
-  bool _isRunning = true;
+  List<String> _logs = const [];
+  bool _running = true;
   int _exitCode = 0;
-  final ScrollController _scrollController = ScrollController();
+  bool _unreachable = false;
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _pollStatus();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _pollStatus());
+    _poll();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _scrollController.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _pollStatus() async {
+  Future<void> _poll() async {
     try {
       final res = await ApiClient.instance.get('/sys/packages/upgrade/status');
-      if (res['data'] is Map && mounted) {
-        final d = res['data'] as Map<String, dynamic>;
-        final running = d['running'] == true;
-        final rawLogs = d['logs'] as List<dynamic>? ?? [];
-        final logs = rawLogs.map((e) => e.toString()).toList();
-        final exitCode = d['exit_code'] as int? ?? 0;
-
-        setState(() {
-          _isRunning = running;
-          _logs = logs;
-          _exitCode = exitCode;
-        });
-
-        if (!running) {
-          _timer?.cancel();
-          widget.onFinished();
-        }
-
+      final d = res['data'];
+      if (d is! Map || !mounted) return;
+      final atEnd = !_scroll.hasClients || _scroll.position.pixels >= _scroll.position.maxScrollExtent - 24;
+      setState(() {
+        _unreachable = false;
+        _running = d['running'] == true;
+        _logs = (d['logs'] as List<dynamic>? ?? const []).map((e) => e.toString()).toList();
+        _exitCode = (d['exit_code'] as num?)?.toInt() ?? 0;
+      });
+      if (!_running) _timer?.cancel();
+      // Follow the output only while the reader is at the bottom.
+      if (atEnd) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-          }
+          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      // Services restart during an upgrade; keep polling.
+      if (mounted) setState(() => _unreachable = true);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final failed = !_running && _exitCode != 0;
+    final title = _running ? 'Installing updates' : (failed ? "The upgrade didn't finish" : 'Updates installed');
+    final sub = _running
+        ? (_unreachable ? 'Waiting for the server to answer again' : 'You can close this; the upgrade keeps running on the server.')
+        : (failed ? 'apt-get stopped with exit code $_exitCode. The log below says why.' : 'All packages were upgraded.');
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.75,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
-            ),
-            child: Row(
-              children: [
-                if (_isRunning)
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.infoLight),
-                  )
-                else
-                  Icon(
-                    _exitCode == 0 ? Icons.check_circle_rounded : Icons.error_rounded,
-                    color: _exitCode == 0 ? NivaroColors.successLight : NivaroColors.dangerLight,
-                    size: 20,
-                  ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _isRunning
-                            ? 'Upgrading System Packages...'
-                            : (_exitCode == 0 ? 'Package Upgrade Finished' : 'Upgrade Finished With Code $_exitCode'),
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                      ),
-                      Text(
-                        _isRunning ? 'Running apt-get dist-upgrade in background' : '${_logs.length} log lines recorded',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
-                      ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
+            child: Semantics(
+              liveRegion: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    if (!_running) ...[
+                      Icon(failed ? Icons.error_outline : Icons.check_circle_outline,
+                          color: failed ? scheme.error : StatusColors.of(context).success.color),
+                      const SizedBox(width: Space.sm),
                     ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(
-              color: const Color(0xFF0D1117),
-              padding: const EdgeInsets.all(14),
-              child: _logs.isEmpty
-                  ? Center(
-                      child: Text('Waiting for output from apt...',
-                          style: TextStyle(color: NivaroColors.textMuted, fontFamily: 'monospace')),
-                    )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      itemCount: _logs.length,
-                      itemBuilder: (context, i) {
-                        final line = _logs[i];
-                        Color color = const Color(0xFFC9D1D9);
-                        if (line.toLowerCase().contains('error') || line.toLowerCase().contains('failed')) {
-                          color = NivaroColors.dangerLight;
-                        } else if (line.toLowerCase().contains('setting up') ||
-                            line.toLowerCase().contains('unpacking')) {
-                          color = NivaroColors.infoLight;
-                        } else if (line.toLowerCase().contains('success') ||
-                            line.toLowerCase().contains('completed')) {
-                          color = NivaroColors.successLight;
-                        }
-                        return Text(
-                          line,
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11.5,
-                            height: 1.35,
-                            color: color,
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PackagesListSheet extends StatefulWidget {
-  final List<Map<String, dynamic>> packages;
-  final int securityCount;
-  final VoidCallback onUpgradeRequested;
-
-  const _PackagesListSheet({
-    required this.packages,
-    required this.securityCount,
-    required this.onUpgradeRequested,
-  });
-
-  @override
-  State<_PackagesListSheet> createState() => _PackagesListSheetState();
-}
-
-class _PackagesListSheetState extends State<_PackagesListSheet> {
-  String _filter = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = widget.packages.where((p) {
-      final name = p['name']?.toString().toLowerCase() ?? '';
-      return _filter.isEmpty || name.contains(_filter.toLowerCase());
-    }).toList();
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: NivaroColors.borderHighlight,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Icon(Icons.inventory_2_rounded, color: NivaroColors.infoLight, size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Upgradable APT Packages (${widget.packages.length})',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-                      ),
-                    ),
-                    if (widget.securityCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: NivaroColors.danger.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: NivaroColors.dangerLight.withValues(alpha: 0.4)),
-                        ),
-                        child: Text(
-                          '${widget.securityCount} Security',
-                          style: TextStyle(
-                              color: NivaroColors.dangerLight, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  onChanged: (val) => setState(() => _filter = val),
-                  decoration: InputDecoration(
-                    hintText: 'Search packages...',
-                    hintStyle: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: NivaroColors.textMuted),
-                    filled: true,
-                    fillColor: NivaroColors.surfaceRaised,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: NivaroColors.borderSubtle),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: NivaroColors.borderSubtle),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text('No matching packages found.', style: TextStyle(color: NivaroColors.textMuted)),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
-                    itemBuilder: (context, i) {
-                      final p = filtered[i];
-                      final isSec = p['is_security'] == true;
-                      return ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                        title: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                p['name']?.toString() ?? '',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                              ),
-                            ),
-                            if (isSec)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: NivaroColors.danger.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.security_rounded, color: NivaroColors.dangerLight, size: 12),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Security',
-                                      style: TextStyle(
-                                          color: NivaroColors.dangerLight,
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Row(
-                            children: [
-                              Text(
-                                p['current_version']?.toString() ?? '',
-                                style: TextStyle(
-                                    color: NivaroColors.textMuted, fontSize: 11.5, fontFamily: 'monospace'),
-                              ),
-                              const SizedBox(width: 6),
-                              Icon(Icons.arrow_forward_rounded, size: 12, color: NivaroColors.primaryLight),
-                              const SizedBox(width: 6),
-                              Text(
-                                p['new_version']?.toString() ?? '',
-                                style: TextStyle(
-                                    color: NivaroColors.successLight,
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'monospace'),
-                              ),
-                              const Spacer(),
-                              Text(
-                                p['arch']?.toString() ?? '',
-                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: NivaroColors.borderSubtle)),
-            ),
-            child: FilledButton.icon(
-              onPressed: widget.onUpgradeRequested,
-              icon: const Icon(Icons.upgrade_rounded),
-              label: Text('Upgrade All (${widget.packages.length} Packages)'),
-              style: FilledButton.styleFrom(
-                backgroundColor: NivaroColors.primary,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    Expanded(child: Text(title, style: theme.textTheme.titleLarge)),
+                  ]),
+                  const SizedBox(height: Space.xs),
+                  Text(sub, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                  if (_running) ...[const SizedBox(height: Space.md), const LinearProgressIndicator()],
+                ],
               ),
             ),
           ),
+          Expanded(
+            child: ColoredBox(
+              color: scheme.surfaceContainerLow,
+              child: _logs.isEmpty
+                  ? Center(child: Text('Waiting for output', style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)))
+                  : SelectionArea(
+                      child: ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.all(Space.lg),
+                        itemCount: _logs.length,
+                        itemBuilder: (context, i) => Text(
+                          _logs[i],
+                          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', color: scheme.onSurface),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-extension StringExt on String {
-  String take(int n) => length <= n ? this : substring(0, n);
-}

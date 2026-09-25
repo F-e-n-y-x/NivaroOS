@@ -5,9 +5,104 @@ import 'package:flutter/foundation.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
 
-/// Embedded HTTP and WebSocket server running inside the Android/iOS companion app.
-/// Exposes whole phone storage (/storage/emulated/0) to the NivaroOS server,
-/// WebUI Files app, and other companion devices.
+/// Why a path from the server was refused.
+class PathRefused implements Exception {
+  const PathRefused(this.reason);
+  final String reason;
+  @override
+  String toString() => reason;
+}
+
+/// Which paths on this phone the server may touch: the shared storage
+/// volumes only (`/storage/emulated/<user>` and SD cards,
+/// `/storage/XXXX-XXXX`), never the app's private files, other apps' data
+/// folders or the rest of the system (plan M-20). Paths are normalised and
+/// symlinks resolved before the check, so `..` and links can't step out.
+abstract final class SharedStoragePolicy {
+  static final _root = RegExp(r'^/storage/(emulated/\d+|[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4})$');
+
+  /// Other apps' private folders on shared storage. Case-insensitive:
+  /// Android's shared storage and FAT/exFAT SD cards ignore case, so
+  /// `android/DATA` is the same folder as `Android/data`.
+  static final _private = RegExp(
+    r'^/storage/(emulated/\d+|[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4})/Android/(data|obb)(/|$)',
+    caseSensitive: false,
+  );
+
+  /// `/a/./b/../c` → `/a/c`; null for a relative path or one that climbs
+  /// above `/`.
+  static String? normalize(String path) {
+    if (!path.startsWith('/')) return null;
+    final out = <String>[];
+    for (final part in path.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (out.isEmpty) return null;
+        out.removeLast();
+      } else {
+        out.add(part);
+      }
+    }
+    return '/${out.join('/')}';
+  }
+
+  /// The volume root [path] lies in, or null when it lies outside every
+  /// shared volume.
+  static String? rootOf(String path) {
+    final parts = path.split('/');
+    // /storage/emulated/0/... or /storage/ABCD-1234/...
+    for (final n in [4, 3]) {
+      if (parts.length >= n) {
+        final candidate = parts.take(n).join('/');
+        if (_root.hasMatch(candidate)) return candidate;
+      }
+    }
+    return null;
+  }
+
+  /// Checks a normalised, symlink-free path.
+  static bool allowsResolved(String path) => rootOf(path) != null && !_private.hasMatch(path);
+
+  /// Resolves [path] for use: normalised, symlinks resolved (for a path
+  /// that doesn't exist yet, its nearest existing parent's), then checked.
+  /// Throws [PathRefused] when it is outside shared storage. With
+  /// [allowRoot] false the volume root itself is refused too (deleting or
+  /// renaming `/storage/emulated/0`).
+  static String resolve(String path, {bool allowRoot = true}) {
+    final normalized = normalize(path);
+    if (normalized == null) throw const PathRefused('Only absolute paths inside shared storage are allowed');
+    var resolved = normalized;
+    try {
+      if (FileSystemEntity.typeSync(normalized, followLinks: false) != FileSystemEntityType.notFound) {
+        resolved = File(normalized).resolveSymbolicLinksSync();
+      } else {
+        // Resolve the nearest existing parent, then add the rest back.
+        var parent = normalized;
+        final rest = <String>[];
+        while (parent != '/' && FileSystemEntity.typeSync(parent, followLinks: false) == FileSystemEntityType.notFound) {
+          final i = parent.lastIndexOf('/');
+          rest.insert(0, parent.substring(i + 1));
+          parent = i == 0 ? '/' : parent.substring(0, i);
+        }
+        final base = parent == '/' ? '' : File(parent).resolveSymbolicLinksSync();
+        resolved = normalize('$base/${rest.join('/')}') ?? normalized;
+      }
+    } on FileSystemException {
+      throw const PathRefused('Path not accessible');
+    }
+    if (!allowsResolved(resolved)) throw const PathRefused('Path is outside the shared storage');
+    if (!allowRoot && rootOf(resolved) == resolved) throw const PathRefused('The storage root itself cannot be changed');
+    return resolved;
+  }
+}
+
+/// The phone's file server for its server (plan M-20): runs only during a
+/// storage-sharing session (CompanionShareService), serves shared storage
+/// only ([SharedStoragePolicy]), requires the X-Companion-Secret the server
+/// was given at registration (compared in constant time), listens on the
+/// Wi-Fi address only, and keeps a reverse WebSocket tunnel to the server
+/// for listing when the server can't reach the phone directly. Tokens never
+/// go into a URL or a log line.
 class CompanionFileServer {
   CompanionFileServer._();
   static final CompanionFileServer instance = CompanionFileServer._();
@@ -32,30 +127,43 @@ class CompanionFileServer {
 
     try {
       _localIp = await _detectLocalIp();
-      _server = await HttpServer.bind(InternetAddress.anyIPv4, _port);
+      // The Wi-Fi address only, not every interface (mobile data, VPNs).
+      // With no Wi-Fi address the server can't reach the phone directly;
+      // listing still works through the tunnel.
+      final address = _localIp != null ? InternetAddress(_localIp!) : InternetAddress.loopbackIPv4;
+      _server = await HttpServer.bind(address, _port);
       _isRunning = true;
-      debugPrint('[CompanionFileServer] HTTP server running on port $_port (LAN IP: $_localIp)');
+      debugPrint('[CompanionFileServer] Listening on port $_port');
 
       _server!.listen(_handleRequest, onError: (e) {
-        debugPrint('[CompanionFileServer] Server error: $e');
+        debugPrint('[CompanionFileServer] Server error: ${e.runtimeType}');
       });
 
-      // Connect reverse WebSocket tunnel to NivaroOS server
       connectWebSocketTunnel();
     } catch (e) {
-      debugPrint('[CompanionFileServer] Failed to start HTTP server: $e');
+      debugPrint('[CompanionFileServer] Failed to start HTTP server: ${e.runtimeType}');
     }
   }
 
   Future<void> stop() async {
+    _isRunning = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     await _ws?.close();
     _ws = null;
     await _server?.close(force: true);
     _server = null;
-    _isRunning = false;
     debugPrint('[CompanionFileServer] Server stopped');
+  }
+
+  /// Restarts the listener when the phone's Wi-Fi address changed (a new
+  /// network, a new lease) during a session.
+  Future<void> refreshAddress() async {
+    if (!_isRunning) return;
+    final ip = await _detectLocalIp();
+    if (ip == _localIp) return;
+    await stop();
+    await start(port: _port);
   }
 
   Future<String?> _detectLocalIp() async {
@@ -65,197 +173,170 @@ class CompanionFileServer {
         includeLinkLocal: false,
       );
       for (final iface in interfaces) {
-        final isWifi = iface.name.toLowerCase().contains('wlan') ||
-            iface.name.toLowerCase().contains('wifi') ||
-            iface.name.toLowerCase().contains('en');
+        final name = iface.name.toLowerCase();
+        final isWifi = name.contains('wlan') || name.contains('wifi') || name.startsWith('en') || name.startsWith('eth');
+        if (!isWifi) continue;
         for (final addr in iface.addresses) {
-          if (!addr.isLoopback && !addr.address.startsWith('172.') && !addr.address.startsWith('10.0.2.')) {
-            if (isWifi) return addr.address;
-          }
-        }
-      }
-      for (final iface in interfaces) {
-        for (final addr in iface.addresses) {
-          if (!addr.isLoopback) return addr.address;
+          if (!addr.isLoopback && !addr.address.startsWith('10.0.2.')) return addr.address;
         }
       }
     } catch (e) {
-      debugPrint('[CompanionFileServer] Error detecting LAN IP: $e');
+      debugPrint('[CompanionFileServer] Error detecting LAN IP: ${e.runtimeType}');
     }
     return null;
   }
 
-  void _addCorsHeaders(HttpResponse res) {
-    res.headers.set('Access-Control-Allow-Origin', '*');
-    res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.headers.set('Access-Control-Allow-Headers', '*');
+  /// Constant-time string comparison, so response timing says nothing about
+  /// how much of a guessed secret was right.
+  @visibleForTesting
+  static bool secretsMatch(String? provided, String expected) {
+    if (provided == null) return false;
+    final a = utf8.encode(provided);
+    final b = utf8.encode(expected);
+    var diff = a.length ^ b.length;
+    for (var i = 0; i < b.length; i++) {
+      diff |= (i < a.length ? a[i] : 0) ^ b[i];
+    }
+    return diff == 0;
   }
 
   // The NivaroOS server sends this back as X-Companion-Secret on every
   // /download, /upload, /delete, /files call once it's registered this
   // device (PostRegisterCompanionDevice generates it over the phone's own
-  // authenticated session and hands it back exactly once). Without this
-  // check, this HTTP server is a fully open LAN file server - any device on
-  // the same network could read/write/delete anywhere this app can reach.
+  // authenticated session and hands it back). Without this check, this
+  // HTTP server is an open LAN file server.
   Future<bool> _checkAuth(HttpRequest req) async {
     final expected = await StorageService.instance.getCompanionSecret();
     if (expected == null || expected.isEmpty) {
-      // No secret yet (app just installed, hasn't completed its first
-      // heartbeat registration) - fail closed rather than silently allowing
-      // every request through.
-      req.response.statusCode = HttpStatus.serviceUnavailable;
-      req.response.write(jsonEncode({'success': false, 'message': 'Device not yet registered with server'}));
-      await req.response.close();
+      // Not registered yet: fail closed.
+      await _reply(req, HttpStatus.serviceUnavailable, {'success': false, 'message': 'Device not yet registered with server'});
       return false;
     }
-    final provided = req.headers.value('x-companion-secret');
-    if (provided == null || provided != expected) {
-      req.response.statusCode = HttpStatus.unauthorized;
-      req.response.write(jsonEncode({'success': false, 'message': 'Unauthorized'}));
-      await req.response.close();
+    if (!secretsMatch(req.headers.value('x-companion-secret'), expected)) {
+      await _reply(req, HttpStatus.unauthorized, {'success': false, 'message': 'Unauthorized'});
       return false;
     }
     return true;
   }
 
-  Future<void> _handleRequest(HttpRequest req) async {
-    _addCorsHeaders(req.response);
-    if (req.method == 'OPTIONS') {
-      req.response.statusCode = HttpStatus.ok;
-      await req.response.close();
-      return;
-    }
+  Future<void> _reply(HttpRequest req, int status, Map<String, Object?> body) async {
+    req.response.statusCode = status;
+    req.response.headers.contentType = ContentType.json;
+    req.response.write(jsonEncode(body));
+    await req.response.close();
+  }
 
+  /// A path parameter, resolved inside shared storage; answers the request
+  /// with 400/403 and returns null when it is missing or refused.
+  Future<String?> _pathParam(HttpRequest req, String name, {bool allowRoot = true, String? fallback}) async {
+    final raw = req.uri.queryParameters[name];
+    final value = (raw == null || raw.isEmpty || raw == '/') ? fallback : raw;
+    if (value == null) {
+      await _reply(req, HttpStatus.badRequest, {'success': false, 'message': '$name required'});
+      return null;
+    }
+    try {
+      return SharedStoragePolicy.resolve(value, allowRoot: allowRoot);
+    } on PathRefused catch (e) {
+      await _reply(req, HttpStatus.forbidden, {'success': false, 'message': e.reason});
+      return null;
+    }
+  }
+
+  Future<void> _handleRequest(HttpRequest req) async {
     final path = req.uri.path;
     try {
       if (path == '/status' || path == '/') {
-        // Deliberately unauthenticated - a liveness/identity probe only
-        // (probeCompanionOnline on the server side), no file access.
-        await _handleStatus(req);
-      } else if (path == '/files') {
-        if (!await _checkAuth(req)) return;
-        await _handleListFiles(req);
-      } else if (path == '/download') {
-        if (!await _checkAuth(req)) return;
-        await _handleDownload(req);
-      } else if (path == '/upload') {
-        if (!await _checkAuth(req)) return;
-        await _handleUpload(req);
-      } else if (path == '/delete') {
-        if (!await _checkAuth(req)) return;
-        await _handleDelete(req);
-      } else if (path == '/rename') {
-        if (!await _checkAuth(req)) return;
-        await _handleRename(req);
-      } else if (path == '/mkdir') {
-        if (!await _checkAuth(req)) return;
-        await _handleMkdir(req);
-      } else {
-        req.response.statusCode = HttpStatus.notFound;
-        req.response.write(jsonEncode({'success': false, 'message': 'Not found'}));
-        await req.response.close();
+        // Unauthenticated liveness probe for the server
+        // (probeCompanionLAN); says nothing about the phone.
+        await _reply(req, HttpStatus.ok, {'success': true, 'shares_storage': true});
+        return;
+      }
+      if (!await _checkAuth(req)) return;
+      switch (path) {
+        case '/files':
+          await _handleListFiles(req);
+        case '/download':
+          await _handleDownload(req);
+        case '/upload':
+          await _handleUpload(req);
+        case '/delete':
+          await _handleDelete(req);
+        case '/rename':
+          await _handleRename(req);
+        case '/mkdir':
+          await _handleMkdir(req);
+        default:
+          await _reply(req, HttpStatus.notFound, {'success': false, 'message': 'Not found'});
       }
     } catch (e) {
-      debugPrint('[CompanionFileServer] Request handler error: $e');
+      debugPrint('[CompanionFileServer] Request handler error: ${e.runtimeType}');
       try {
-        req.response.statusCode = HttpStatus.internalServerError;
-        req.response.write(jsonEncode({'success': false, 'error': e.toString()}));
-        await req.response.close();
+        await _reply(req, HttpStatus.internalServerError, {'success': false, 'message': 'The phone could not complete the request'});
       } catch (_) {}
     }
   }
 
-  Future<void> _handleStatus(HttpRequest req) async {
-    final customName = await StorageService.instance.getCompanionDeviceName();
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode({
-      'success': true,
-      'name': customName ?? 'Companion Device',
-      'shares_storage': true,
-      'root': defaultRootPath,
-      'port': _port,
-      'ip': _localIp,
-    }));
-    await req.response.close();
+  static List<Map<String, dynamic>> _listDir(Directory dir) {
+    final List<Map<String, dynamic>> items = [];
+    for (final entity in dir.listSync(followLinks: false)) {
+      try {
+        // Links are not followed, so a link can't show what lies behind it.
+        if (entity is Link) continue;
+        // Uploads in progress (see [uploadTempPath]).
+        if (entity.path.split('/').last.startsWith('.nvupload-')) continue;
+        final isDir = entity is Directory;
+        final stat = entity.statSync();
+        final name = entity.path.split('/').where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
+        items.add({
+          'name': name,
+          'path': entity.path,
+          'is_dir': isDir,
+          'size': isDir ? 0 : stat.size,
+          'modified': stat.modified.toUtc().toIso8601String(),
+        });
+      } catch (_) {}
+    }
+    items.sort((a, b) {
+      final aDir = a['is_dir'] as bool;
+      final bDir = b['is_dir'] as bool;
+      if (aDir && !bDir) return -1;
+      if (!aDir && bDir) return 1;
+      return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
+    });
+    return items;
   }
 
   Future<void> _handleListFiles(HttpRequest req) async {
-    String queryPath = req.uri.queryParameters['path'] ?? defaultRootPath;
-    if (queryPath.isEmpty || queryPath == '/') {
-      queryPath = defaultRootPath;
-    }
-
+    final queryPath = await _pathParam(req, 'path', fallback: defaultRootPath);
+    if (queryPath == null) return;
     final dir = Directory(queryPath);
     if (!dir.existsSync()) {
-      req.response.statusCode = HttpStatus.notFound;
-      req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({
-        'success': false,
-        'message': 'Directory not found: $queryPath',
-        'files': [],
-      }));
-      await req.response.close();
+      await _reply(req, HttpStatus.notFound, {'success': false, 'message': 'Directory not found', 'files': []});
       return;
     }
-
-    final List<Map<String, dynamic>> items = [];
+    List<Map<String, dynamic>> items = [];
     try {
-      final entities = dir.listSync(followLinks: false);
-      for (final entity in entities) {
-        try {
-          final isDir = entity is Directory;
-          final stat = entity.statSync();
-          final name = entity.path.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
-          items.add({
-            'name': name,
-            'path': entity.path,
-            'is_dir': isDir,
-            'size': isDir ? 0 : stat.size,
-            'modified': stat.modified.toUtc().toIso8601String(),
-          });
-        } catch (_) {}
-      }
-
-      items.sort((a, b) {
-        final aDir = a['is_dir'] as bool;
-        final bDir = b['is_dir'] as bool;
-        if (aDir && !bDir) return -1;
-        if (!aDir && bDir) return 1;
-        return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
-      });
+      items = _listDir(dir);
     } catch (e) {
-      debugPrint('[CompanionFileServer] List dir error: $e');
+      debugPrint('[CompanionFileServer] List dir error: ${e.runtimeType}');
     }
-
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode({
-      'success': true,
-      'path': queryPath,
-      'files': items,
-    }));
-    await req.response.close();
+    await _reply(req, HttpStatus.ok, {'success': true, 'path': queryPath, 'files': items});
   }
 
   Future<void> _handleDownload(HttpRequest req) async {
-    final filePath = req.uri.queryParameters['path'];
-    if (filePath == null || filePath.isEmpty) {
-      req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'success': false, 'message': 'path required'}));
-      await req.response.close();
-      return;
-    }
+    final filePath = await _pathParam(req, 'path');
+    if (filePath == null) return;
 
     final file = File(filePath);
     if (!file.existsSync()) {
-      req.response.statusCode = HttpStatus.notFound;
-      req.response.write(jsonEncode({'success': false, 'message': 'File not found'}));
-      await req.response.close();
+      await _reply(req, HttpStatus.notFound, {'success': false, 'message': 'File not found'});
       return;
     }
 
     final isDownload = req.uri.queryParameters['download'] == '1' || req.uri.queryParameters['download'] == 'true';
     final stat = file.statSync();
-    final fileName = filePath.split(Platform.pathSeparator).last;
+    final fileName = filePath.split('/').last.replaceAll('"', '');
     final totalSize = stat.size;
     final disposition = isDownload ? 'attachment; filename="$fileName"' : 'inline; filename="$fileName"';
 
@@ -305,90 +386,103 @@ class CompanionFileServer {
     await file.openRead().pipe(req.response);
   }
 
+  /// Writes the body to a hidden temporary file next to the target and
+  /// renames it over the target only once every byte arrived (and the
+  /// length matches Content-Length, when the server sent one). A dropped
+  /// connection then leaves the original file as it was, not a truncated
+  /// copy.
   Future<void> _handleUpload(HttpRequest req) async {
-    final destPath = req.uri.queryParameters['path'];
-    if (destPath == null || destPath.isEmpty) {
-      req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'success': false, 'message': 'destination path required'}));
-      await req.response.close();
+    final destPath = await _pathParam(req, 'path', allowRoot: false);
+    if (destPath == null) return;
+    if (FileSystemEntity.isDirectorySync(destPath)) {
+      await _reply(req, HttpStatus.conflict, {'success': false, 'message': 'A folder has that name'});
       return;
     }
-
     final targetFile = File(destPath);
     await targetFile.parent.create(recursive: true);
-    final sink = targetFile.openWrite();
-    await sink.addStream(req);
-    await sink.close();
+    final temp = File(uploadTempPath(destPath));
+    try {
+      final sink = temp.openWrite();
+      try {
+        await sink.addStream(req);
+      } finally {
+        await sink.close();
+      }
+      final expected = req.contentLength;
+      if (expected >= 0 && await temp.length() != expected) {
+        await _deleteQuietly(temp);
+        await _reply(req, HttpStatus.badRequest, {'success': false, 'message': 'The upload was incomplete'});
+        return;
+      }
+      await temp.rename(destPath);
+    } catch (_) {
+      await _deleteQuietly(temp);
+      rethrow;
+    }
+    await _reply(req, HttpStatus.ok, {'success': true, 'path': destPath});
+  }
 
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode({'success': true, 'path': destPath}));
-    await req.response.close();
+  /// The hidden temporary file an upload to [destPath] is written to: in
+  /// the same folder (so the final rename stays on one volume) and short,
+  /// so a 255-byte file name still fits.
+  @visibleForTesting
+  static String uploadTempPath(String destPath) {
+    final dir = destPath.substring(0, destPath.lastIndexOf('/'));
+    final stamp = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    return '$dir/.nvupload-$stamp';
+  }
+
+  static Future<void> _deleteQuietly(File f) async {
+    try {
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 
   Future<void> _handleDelete(HttpRequest req) async {
-    final targetPath = req.uri.queryParameters['path'];
-    if (targetPath == null || targetPath.isEmpty) {
-      req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'success': false, 'message': 'path required'}));
-      await req.response.close();
-      return;
-    }
-
+    final targetPath = await _pathParam(req, 'path', allowRoot: false);
+    if (targetPath == null) return;
     if (FileSystemEntity.isDirectorySync(targetPath)) {
       await Directory(targetPath).delete(recursive: true);
     } else if (FileSystemEntity.isFileSync(targetPath)) {
       await File(targetPath).delete();
     }
-
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode({'success': true, 'path': targetPath}));
-    await req.response.close();
+    await _reply(req, HttpStatus.ok, {'success': true, 'path': targetPath});
   }
 
   Future<void> _handleRename(HttpRequest req) async {
-    final oldPath = req.uri.queryParameters['old_path'];
-    final newPath = req.uri.queryParameters['new_path'];
-    if (oldPath == null || oldPath.isEmpty || newPath == null || newPath.isEmpty) {
-      req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'success': false, 'message': 'old_path and new_path required'}));
-      await req.response.close();
+    final oldPath = await _pathParam(req, 'old_path', allowRoot: false);
+    if (oldPath == null) return;
+    final newPath = await _pathParam(req, 'new_path', allowRoot: false);
+    if (newPath == null) return;
+    // File.rename and Directory.rename replace what is there; never let a
+    // rename destroy another file.
+    // (A change of letter case only is the same file on a case-insensitive
+    // volume, so that is allowed.)
+    if (newPath.toLowerCase() != oldPath.toLowerCase() && FileSystemEntity.typeSync(newPath, followLinks: false) != FileSystemEntityType.notFound) {
+      await _reply(req, HttpStatus.conflict, {'success': false, 'message': 'Something with that name already exists'});
       return;
     }
     final file = File(oldPath);
     if (file.existsSync()) {
-      await file.parent.create(recursive: true);
+      await File(newPath).parent.create(recursive: true);
       await file.rename(newPath);
-      req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({'success': true, 'old_path': oldPath, 'new_path': newPath}));
-      await req.response.close();
+      await _reply(req, HttpStatus.ok, {'success': true, 'old_path': oldPath, 'new_path': newPath});
       return;
     }
     final dir = Directory(oldPath);
     if (dir.existsSync()) {
       await dir.rename(newPath);
-      req.response.headers.contentType = ContentType.json;
-      req.response.write(jsonEncode({'success': true, 'old_path': oldPath, 'new_path': newPath}));
-      await req.response.close();
+      await _reply(req, HttpStatus.ok, {'success': true, 'old_path': oldPath, 'new_path': newPath});
       return;
     }
-    req.response.statusCode = HttpStatus.notFound;
-    req.response.write(jsonEncode({'success': false, 'message': 'path not found: $oldPath'}));
-    await req.response.close();
+    await _reply(req, HttpStatus.notFound, {'success': false, 'message': 'Path not found'});
   }
 
   Future<void> _handleMkdir(HttpRequest req) async {
-    final dirPath = req.uri.queryParameters['path'];
-    if (dirPath == null || dirPath.isEmpty) {
-      req.response.statusCode = HttpStatus.badRequest;
-      req.response.write(jsonEncode({'success': false, 'message': 'path required'}));
-      await req.response.close();
-      return;
-    }
-    final dir = Directory(dirPath);
-    await dir.create(recursive: true);
-    req.response.headers.contentType = ContentType.json;
-    req.response.write(jsonEncode({'success': true, 'path': dirPath}));
-    await req.response.close();
+    final dirPath = await _pathParam(req, 'path', allowRoot: false);
+    if (dirPath == null) return;
+    await Directory(dirPath).create(recursive: true);
+    await _reply(req, HttpStatus.ok, {'success': true, 'path': dirPath});
   }
 
   ContentType _getContentTypeForFile(String name) {
@@ -484,64 +578,50 @@ class CompanionFileServer {
     }
   }
 
-  /// Connects reverse WebSocket tunnel to NivaroOS server
+  /// Connects the reverse WebSocket tunnel to the server. The token goes
+  /// in the Authorization header only - never in the URL, where proxies
+  /// log it - and is refreshed first when it is about to expire.
   Future<void> connectWebSocketTunnel() async {
     _reconnectTimer?.cancel();
+    if (!_isRunning) return;
     if (!ApiClient.instance.hasSession) {
       _scheduleReconnect();
       return;
     }
+    if (_ws != null) return;
 
     try {
-      final base = ApiClient.instance.baseUrl;
-      if (base.isEmpty) {
+      if (ApiClient.instance.baseUrl.isEmpty) {
         _scheduleReconnect();
         return;
       }
-      final uri = Uri.parse(base);
-      final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
       final devId = await StorageService.instance.getCompanionDeviceId();
       if (devId == null || devId.isEmpty) {
         _scheduleReconnect();
         return;
       }
-
-      final token = ApiClient.instance.accessToken ?? (await StorageService.instance.getAccessToken());
-      if (token == null || token.isEmpty) {
+      final headers = await ApiClient.instance.authHeaders();
+      if (!headers.containsKey('Authorization')) {
         _scheduleReconnect();
         return;
       }
+      final wsUri = ApiClient.instance.webSocketUri('/v1/companion/devices/$devId/ws');
+      debugPrint('[CompanionFileServer] Connecting the tunnel to ${wsUri.host}');
+      final ws = await WebSocket.connect(wsUri.toString(), headers: headers).timeout(const Duration(seconds: 10));
+      ws.pingInterval = const Duration(seconds: 15);
+      _ws = ws;
 
-      final wsUri = uri.replace(
-        scheme: wsScheme,
-        path: '/v1/companion/devices/$devId/ws',
-        queryParameters: {
-          'token': token,
-        },
-      );
-
-      debugPrint('[CompanionFileServer] Connecting WebSocket tunnel to $wsUri');
-      _ws = await WebSocket.connect(
-        wsUri.toString(),
-        headers: {
-          'Authorization': token,
-        },
-      ).timeout(const Duration(seconds: 10));
-      _ws!.pingInterval = const Duration(seconds: 15);
-
-      _ws!.listen((message) {
-        _handleWebSocketMessage(message);
-      }, onDone: () {
-        debugPrint('[CompanionFileServer] WebSocket tunnel closed');
+      ws.listen(_handleWebSocketMessage, onDone: () {
+        debugPrint('[CompanionFileServer] Tunnel closed (${ws.closeCode ?? '-'})');
         _ws = null;
         _scheduleReconnect();
       }, onError: (e) {
-        debugPrint('[CompanionFileServer] WebSocket tunnel error: $e');
+        debugPrint('[CompanionFileServer] Tunnel error: ${e.runtimeType}');
         _ws = null;
         _scheduleReconnect();
       });
 
-      _ws!.add(jsonEncode({
+      ws.add(jsonEncode({
         'action': 'register',
         'port': _port,
         'ip': _localIp,
@@ -549,17 +629,17 @@ class CompanionFileServer {
         'root': defaultRootPath,
       }));
     } catch (e) {
-      debugPrint('[CompanionFileServer] WebSocket tunnel connection failed: $e');
+      debugPrint('[CompanionFileServer] Tunnel connection failed: ${e.runtimeType}');
+      _ws = null;
       _scheduleReconnect();
     }
   }
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
+    if (!_isRunning) return;
     _reconnectTimer = Timer(const Duration(seconds: 15), () {
-      if (_isRunning) {
-        connectWebSocketTunnel();
-      }
+      if (_isRunning) connectWebSocketTunnel();
     });
   }
 
@@ -569,69 +649,34 @@ class CompanionFileServer {
       final data = jsonDecode(message) as Map<String, dynamic>;
       final reqId = data['id'];
       final action = data['action'];
-
       if (action == 'list') {
-        final queryPath = data['path'] as String? ?? defaultRootPath;
-        final fileEntity = File(queryPath);
-        if (fileEntity.existsSync()) {
-          _ws?.add(jsonEncode({
-            'id': reqId,
-            'action': 'list_response',
-            'success': false,
-            'is_file': true,
-            'message': 'Path is a file: $queryPath',
-            'files': [],
-          }));
-          return;
-        }
-        final dir = Directory(queryPath);
-        if (!dir.existsSync()) {
-          _ws?.add(jsonEncode({
-            'id': reqId,
-            'action': 'list_response',
-            'success': false,
-            'is_file': false,
-            'message': 'Directory not found: $queryPath',
-            'files': [],
-          }));
-          return;
-        }
-        final List<Map<String, dynamic>> items = [];
-        final entities = dir.listSync(followLinks: false);
-        for (final entity in entities) {
-          try {
-            final isDir = entity is Directory;
-            final stat = entity.statSync();
-            final name = entity.path.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
-            items.add({
-              'name': name,
-              'path': entity.path,
-              'is_dir': isDir,
-              'size': isDir ? 0 : stat.size,
-              'modified': stat.modified.toUtc().toIso8601String(),
-            });
-          } catch (_) {}
-        }
-        items.sort((a, b) {
-          final aDir = a['is_dir'] as bool;
-          final bDir = b['is_dir'] as bool;
-          if (aDir && !bDir) return -1;
-          if (!aDir && bDir) return 1;
-          return (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase());
-        });
-
-        _ws?.add(jsonEncode({
-          'id': reqId,
-          'action': 'list_response',
-          'success': true,
-          'path': queryPath,
-          'files': items,
-        }));
+        _ws?.add(jsonEncode({'id': reqId, 'action': 'list_response', ...listForTunnel(data['path'] as String?)}));
       } else if (action == 'ping') {
         _ws?.add(jsonEncode({'action': 'pong', 'id': reqId}));
       }
     } catch (e) {
-      debugPrint('[CompanionFileServer] WS message error: $e');
+      debugPrint('[CompanionFileServer] Tunnel message error: ${e.runtimeType}');
     }
+  }
+
+  /// The answer to a tunnel `list` request for [path], under the same
+  /// shared-storage rules as the HTTP server.
+  @visibleForTesting
+  static Map<String, dynamic> listForTunnel(String? path) {
+    final requested = (path == null || path.isEmpty || path == '/') ? defaultRootPath : path;
+    final String queryPath;
+    try {
+      queryPath = SharedStoragePolicy.resolve(requested);
+    } on PathRefused catch (e) {
+      return {'success': false, 'is_file': false, 'message': e.reason, 'files': []};
+    }
+    if (FileSystemEntity.isFileSync(queryPath)) {
+      return {'success': false, 'is_file': true, 'message': 'Path is a file', 'files': []};
+    }
+    final dir = Directory(queryPath);
+    if (!dir.existsSync()) {
+      return {'success': false, 'is_file': false, 'message': 'Directory not found', 'files': []};
+    }
+    return {'success': true, 'path': queryPath, 'files': _listDir(dir)};
   }
 }

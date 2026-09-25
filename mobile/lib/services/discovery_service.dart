@@ -29,7 +29,17 @@ class DiscoveryService {
   @visibleForTesting
   static MDnsClient Function() clientFactory = MDnsClient.new;
 
+  /// Replaces the whole scan in tests (servers found, or a scan that is
+  /// still running).
+  @visibleForTesting
+  static Stream<DiscoveredServer> Function()? debugDiscover;
+
   Stream<DiscoveredServer> discover({Duration timeout = const Duration(seconds: 5)}) async* {
+    final fake = debugDiscover;
+    if (fake != null) {
+      yield* fake();
+      return;
+    }
     final client = clientFactory();
     try {
       await client.start();

@@ -1,0 +1,81 @@
+{
+    "data": [
+        {
+            "count": 613,
+            "description": "All apps",
+            "font": "apps",
+            "id": 0,
+            "name": "All"
+        },
+        {
+            "count": 43,
+            "description": "AI Apps",
+            "font": "chat-processing-outline",
+            "id": 1,
+            "name": "AI"
+        },
+        {
+            "count": 0,
+            "description": "",
+            "font": "bigbear",
+            "id": 2,
+            "name": "BigBearCasaOS"
+        },
+        {
+            "count": 58,
+            "description": "Developer Apps",
+            "font": "code-greater-than-or-equal",
+            "id": 3,
+            "name": "Developer"
+        },
+        {
+            "count": 9,
+            "description": "Finance Apps",
+            "font": "currency-usd",
+            "id": 4,
+            "name": "Finance"
+        },
+        {
+            "count": 165,
+            "description": "Home Apps",
+            "font": "home-automation",
+            "id": 5,
+            "name": "Home"
+        },
+        {
+            "count": 89,
+            "description": "Media Apps",
+            "font": "play-circle-outline",
+            "id": 6,
+            "name": "Media"
+        },
+        {
+            "count": 56,
+            "description": "Networking Apps",
+            "font": "lan",
+            "id": 7,
+            "name": "Networking"
+        },
+        {
+            "count": 120,
+            "description": "Other Apps",
+            "font": "apps",
+            "id": 8,
+            "name": "Others"
+        },
+        {
+            "count": 60,
+            "description": "Productivity Apps",
+            "font": "toolbox-outline",
+            "id": 9,
+            "name": "Productivity"
+        },
+        {
+            "count": 13,
+            "description": "Social Apps",
+            "font": "account-box-outline",
+            "id": 10,
+            "name": "Social"
+        }
+    ]
+}

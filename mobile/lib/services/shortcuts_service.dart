@@ -8,22 +8,31 @@ class ShortcutsService {
   static final ShortcutsService instance = ShortcutsService._();
 
   /// Fetches custom user shortcuts from WebUI backend (/v1/users/current/custom/shortcut).
+  /// An empty list when they can't be loaded - for display only; changes go
+  /// through [_fetchCustomShortcuts], which fails instead.
   Future<List<FavoriteFolder>> getCustomShortcuts() async {
     try {
-      final res = await ApiClient.instance.get('/users/current/custom/shortcut');
-      dynamic data = res['data'];
-      if (data is String && data.isNotEmpty) {
-        try {
-          data = jsonDecode(data);
-        } catch (_) {}
-      }
-      if (data is List) {
-        return data
-            .whereType<Map<String, dynamic>>()
-            .map((e) => FavoriteFolder.fromCustomJson(e))
-            .toList();
-      }
-    } catch (_) {}
+      return await _fetchCustomShortcuts();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// The saved shortcuts, or an exception when the server couldn't be
+  /// asked. A user with no shortcuts yet has no custom key, which the server
+  /// answers with an empty value, not an error.
+  Future<List<FavoriteFolder>> _fetchCustomShortcuts() async {
+    final res = await ApiClient.instance.get('/users/current/custom/shortcut');
+    dynamic data = res['data'];
+    if (data is String && data.isNotEmpty) {
+      data = jsonDecode(data);
+    }
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((e) => FavoriteFolder.fromCustomJson(Map<String, dynamic>.from(e)))
+          .toList();
+    }
     return [];
   }
 
@@ -47,9 +56,17 @@ class ShortcutsService {
     }
   }
 
-  /// Toggles whether a path is in the custom shortcuts list.
+  /// Toggles whether a path is in the custom shortcuts list. Returns false,
+  /// changing nothing, when the current list can't be read: saving over a
+  /// list that failed to load used to replace every saved shortcut with just
+  /// this one.
   Future<bool> toggleFavorite(String name, String path) async {
-    final current = await getCustomShortcuts();
+    final List<FavoriteFolder> current;
+    try {
+      current = await _fetchCustomShortcuts();
+    } catch (_) {
+      return false;
+    }
     final exists = current.any((s) => s.path == path);
     List<FavoriteFolder> updated;
     if (exists) {

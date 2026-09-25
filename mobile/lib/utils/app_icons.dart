@@ -2,11 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_client.dart';
-import '../theme.dart';
-
-/// WebUI Default App Icon SVG (The official NivaroOS cube/box icon when no icon is set)
-const String kWebUiDefaultAppSvg =
-    '<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="12" fill="url(#paint0_linear)"/><path d="M32 50.1882C31.5747 50.1882 31.1494 50.0782 30.7683 49.8582L17.2317 42.0428C16.4695 41.6028 16 40.7896 16 39.9095V24.2787C16 23.8407 16.1163 23.4192 16.3271 23.0521L32 32.0941V50.1882Z" fill="url(#paint1_linear)"/><path d="M47.6729 23.0521C47.8837 23.4192 48 23.8407 48 24.2787V39.9095C48 40.7896 47.5305 41.6028 46.7683 42.0428L33.2317 49.8582C32.8506 50.0782 32.4253 50.1882 32 50.1882V32.0941L47.6729 23.0521Z" fill="url(#paint2_linear)"/><path d="M47.6729 23.0521C47.4601 22.6816 47.1511 22.3664 46.7683 22.1454L33.2317 14.33C32.4695 13.89 31.5305 13.89 30.7683 14.33L17.2317 22.1454C16.8489 22.3664 16.5399 22.6816 16.3271 23.0521L32 32.0941L47.6729 23.0521Z" fill="url(#paint3_linear)"/><path d="M30 8.1547C31.2376 7.44017 32.7624 7.44017 34 8.1547L51.6506 18.3453C52.8882 19.0598 53.6506 20.3803 53.6506 21.8094V42.1906C53.6506 43.6197 52.8882 44.9402 51.6506 45.6547L34 55.8453C32.7624 56.5598 31.2376 56.5598 30 55.8453L12.3494 45.6547C11.1118 44.9402 10.3494 43.6197 10.3494 42.1906V21.8094C10.3494 20.3803 11.1118 19.0598 12.3494 18.3453L30 8.1547Z" stroke="#389FFA" stroke-width="1.5"/><defs><linearGradient id="paint0_linear" x1="32" y1="0" x2="32" y2="64" gradientUnits="userSpaceOnUse"><stop stop-color="#F7FAFC"/><stop offset="0.88" stop-color="#E7ECF2"/><stop offset="1" stop-color="#DADFE6"/></linearGradient><linearGradient id="paint1_linear" x1="24" y1="27" x2="23" y2="44" gradientUnits="userSpaceOnUse"><stop stop-color="#299BFF"/><stop offset="1" stop-color="#1A94FF"/></linearGradient><linearGradient id="paint2_linear" x1="39" y1="27.5" x2="41" y2="45.5" gradientUnits="userSpaceOnUse"><stop stop-color="#2486F9"/><stop offset="1" stop-color="#047FF1"/></linearGradient><linearGradient id="paint3_linear" x1="32" y1="14" x2="31.4" y2="32" gradientUnits="userSpaceOnUse"><stop stop-color="#80CAFF"/><stop offset="1" stop-color="#3DABFF"/></linearGradient></defs></svg>';
 
 class AppIconHelper {
   AppIconHelper._();
@@ -78,10 +73,13 @@ class AppIconHelper {
   }
 }
 
-/// Official NivaroOS WebUI App Icon Widget
-/// Displays:
-/// 1. The exact set icon from WebUI (Custom Base64, URL, Server Path, or Built-in Asset).
-/// 2. If no icon is set or loading fails, displays the official WebUI "not set" default SVG icon.
+/// An app's icon: the one set on the server (a bundled asset, a data URI,
+/// a server path or a URL), on a neutral rounded square. Without an icon,
+/// or while it loads or when it fails, it shows the app's initial in the
+/// same tone - never colour-coded per app.
+///
+/// Decorative: the row next to it already names the app, so it is
+/// excluded from semantics.
 class NivaroAppIcon extends StatelessWidget {
   final String iconUrl;
   final String name;
@@ -89,6 +87,8 @@ class NivaroAppIcon extends StatelessWidget {
   final double size;
   final double? radius;
   final double? customRadiusPercent;
+
+  /// No longer drawn (glows are banned); kept so older callers compile.
   final bool showRunningGlow;
   final bool isRunning;
 
@@ -104,78 +104,53 @@ class NivaroAppIcon extends StatelessWidget {
     this.isRunning = false,
   });
 
+  /// Tests only: draws network icons from bundled pictures instead of the
+  /// internet (widget tests can't load them), so screenshots show real
+  /// icons in the headers instead of placeholders.
+  @visibleForTesting
+  static Widget Function(String url, double size)? debugNetworkIcon;
+
   double get _effectiveRadius {
     if (customRadiusPercent != null && customRadiusPercent! > 0) {
       return (size * (customRadiusPercent! / 100)).clamp(0.0, size / 2);
     }
-    return radius ?? (size * 0.24);
+    return radius ?? (size * 0.25);
+  }
+
+  /// The letter shown when there is no picture: the first letter or digit
+  /// of the name, upper case.
+  static String monogram(String name) {
+    final m = RegExp(r'[A-Za-z0-9]').firstMatch(name);
+    return m == null ? '?' : m.group(0)!.toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
-    // 1. Check direct built-in match
+    final scheme = Theme.of(context).colorScheme;
     final builtIn = AppIconHelper.getBuiltInAsset(name);
     final resolved = builtIn ?? AppIconHelper.resolve(iconUrl, name);
-    final effectiveR = _effectiveRadius;
+    final fallback = _Monogram(letter: monogram(name), size: size);
 
     Widget content;
     if (resolved.isEmpty) {
-      content = _defaultWebUiIcon();
+      content = fallback;
     } else if (resolved.startsWith('assets/')) {
-      if (resolved.endsWith('.svg')) {
-        content = SvgPicture.asset(
-          resolved,
-          width: size,
-          height: size,
-          fit: BoxFit.contain,
-          placeholderBuilder: (_) => _defaultWebUiIcon(),
-        );
-      } else {
-        content = Image.asset(
-          resolved,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _defaultWebUiIcon(),
-        );
-      }
+      content = resolved.endsWith('.svg')
+          ? SvgPicture.asset(resolved, width: size, height: size, fit: BoxFit.contain, placeholderBuilder: (_) => fallback)
+          : Image.asset(resolved, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
+    } else if (debugNetworkIcon != null && resolved.startsWith('http')) {
+      content = debugNetworkIcon!(resolved, size);
     } else if (resolved.startsWith('data:image/')) {
-      final comma = resolved.indexOf(',');
-      if (comma != -1) {
-        try {
-          final bytes = base64Decode(resolved.substring(comma + 1));
-          if (resolved.contains('svg')) {
-            content = SvgPicture.memory(
-              bytes,
-              width: size,
-              height: size,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => _defaultWebUiIcon(),
-            );
-          } else {
-            content = Image.memory(
-              bytes,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _defaultWebUiIcon(),
-            );
-          }
-        } catch (_) {
-          content = _defaultWebUiIcon();
-        }
-      } else {
-        content = _defaultWebUiIcon();
-      }
-    } else if (resolved.toLowerCase().contains('.svg') ||
-        resolved.toLowerCase().endsWith('.svg')) {
+      content = _fromDataUri(resolved, fallback);
+    } else if (resolved.toLowerCase().contains('.svg')) {
       content = SvgPicture.network(
         resolved,
         width: size,
         height: size,
         fit: BoxFit.contain,
         headers: _authHeadersFor(resolved),
-        placeholderBuilder: (_) => _defaultWebUiIcon(),
+        placeholderBuilder: (_) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     } else {
       content = Image.network(
@@ -184,56 +159,41 @@ class NivaroAppIcon extends StatelessWidget {
         height: size,
         fit: BoxFit.cover,
         headers: _authHeadersFor(resolved),
-        errorBuilder: (_, _, _) => _defaultWebUiIcon(),
+        errorBuilder: (_, _, _) => fallback,
+        frameBuilder: (_, child, frame, sync) => sync || frame != null ? child : fallback,
       );
     }
 
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceRaised,
-        borderRadius: BorderRadius.circular(effectiveR),
-        border: Border.all(
-          color: isRunning && showRunningGlow
-              ? NivaroColors.success.withValues(alpha: 0.4)
-              : NivaroColors.borderSubtle,
-          width: 1,
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(_effectiveRadius),
         ),
-        boxShadow: isRunning && showRunningGlow
-            ? [
-                BoxShadow(
-                  color: NivaroColors.success.withValues(alpha: 0.2),
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                ),
-              ]
-            : const [
-                BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 8,
-                  offset: Offset(0, 3),
-                ),
-              ],
-      ),
-      child: ClipRRect(
-        borderRadius:
-            BorderRadius.circular(effectiveR > 0 ? effectiveR - 1 : 0),
         child: content,
       ),
     );
   }
 
-  // App icons hosted on this NivaroOS server (the common case - most apps'
-  // icons come from the server's own app store metadata, not an external
-  // URL) need the same Authorization header every other API call sends, or
-  // an icon behind auth just fails silently and falls back to the default
-  // glyph - every icon looked "missing" for any app whose icon URL wasn't
-  // one of the hardcoded built-in assets above. Only attaches the token
-  // when the resolved URL's host actually matches this server's own host -
-  // never to a genuinely external image URL (e.g. a custom app's icon
-  // field pointing at some other site), which would leak the token to a
-  // third party.
+  Widget _fromDataUri(String uri, Widget fallback) {
+    final comma = uri.indexOf(',');
+    if (comma == -1) return fallback;
+    try {
+      final bytes = base64Decode(uri.substring(comma + 1));
+      return uri.substring(0, comma).contains('svg')
+          ? SvgPicture.memory(bytes, width: size, height: size, fit: BoxFit.contain, placeholderBuilder: (_) => fallback)
+          : Image.memory(bytes, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  // Icons served by this NivaroOS server need the same Authorization
+  // header as every other call. The token goes only to this server's own
+  // host, never to an external icon URL.
   static Map<String, String>? _authHeadersFor(String url) {
     final token = ApiClient.instance.accessToken;
     if (token == null || token.isEmpty) return null;
@@ -246,13 +206,27 @@ class NivaroAppIcon extends StatelessWidget {
     }
     return {'Authorization': token};
   }
+}
 
-  Widget _defaultWebUiIcon() {
-    return SvgPicture.string(
-      kWebUiDefaultAppSvg,
+class _Monogram extends StatelessWidget {
+  const _Monogram({required this.letter, required this.size});
+
+  final String letter;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // The letter scales with the tile, not with the text setting: it is a
+    // picture, and the app's name is always written next to it.
+    final style = (size >= 48 ? theme.textTheme.headlineSmall : theme.textTheme.titleMedium)
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    return SizedBox(
       width: size,
       height: size,
-      fit: BoxFit.contain,
+      child: Center(
+        child: MediaQuery.withNoTextScaling(child: Text(letter, style: style)),
+      ),
     );
   }
 }

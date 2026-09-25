@@ -77,6 +77,13 @@ void main() {
       for (final t in tones.entries) ('${t.key} on surfaceContainer', t.value.color, s.surfaceContainer),
       // The offline banner's icon on its fill (its text is in the text list).
       ('onSurfaceVariant icon on surfaceContainerHighest', s.onSurfaceVariant, s.surfaceContainerHighest),
+      // Home's status disc in dark theme: the status colour on an 18% wash
+      // of itself over the tonal panel (StatusDisc).
+      if (theme.brightness == Brightness.dark)
+        for (final t in tones.entries)
+          ('${t.key} disc icon on its wash', t.value.color, Color.alphaBlend(t.value.color.withValues(alpha: 0.18), s.surfaceContainerHigh)),
+      // Sparklines on the tonal panels.
+      ('primary line on surfaceContainerHigh', s.primary, s.surfaceContainerHigh),
     ];
 
     // Not a WCAG pair: pins the choice of TileGroup segment colour on the

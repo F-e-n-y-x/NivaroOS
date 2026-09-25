@@ -43,9 +43,17 @@ class StorageService {
   static const _keyCompanionDeviceId = 'companion_device_id';
   static const _keyCompanionSecret = 'companion_secret';
   static const _keyThemeMode = 'theme_mode';
+  // Per server: the secret the server gave this phone, keyed by server URL
+  // ("companion_secret@http://nas.local"), so switching servers never sends
+  // one server's secret to another (plan M-17).
+  static const _keyCompanionSecretPrefix = 'companion_secret@';
+  static const _keyNotificationsAsked = 'notifications_asked';
+  static const _keyShareMinutes = 'share_minutes';
+  static const _keyDoneMigrations = 'done_migrations';
+  static const _keyUpdateCheck = 'app_update_check';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode};
+  static const _preservedKeys = {_keyThemeMode, _keyNotificationsAsked};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -117,19 +125,89 @@ class StorageService {
     await _set(_keyCompanionDeviceId, id);
   }
 
-  // Shared secret established once, over the already-JWT-authenticated
+  // Shared secret established over the already-JWT-authenticated
   // registration call (see PostRegisterCompanionDevice on the server) - sent
   // as the X-Companion-Secret header on every request the server makes
   // directly to this device's embedded file server (CompanionFileServer),
-  // which has no other way to authenticate a LAN caller.
+  // which has no other way to authenticate a LAN caller. One per server.
   Future<String?> getCompanionSecret() async {
     if (!_initialized) await init();
-    return _cache[_keyCompanionSecret];
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return null;
+    final key = '$_keyCompanionSecretPrefix${_serverKey(url)}';
+    final own = _cache[key];
+    if (own != null && own.isNotEmpty) return own;
+    // Builds before 1.3 kept one secret for whichever server was active;
+    // it belongs to the current one.
+    final legacy = _cache[_keyCompanionSecret];
+    if (legacy != null && legacy.isNotEmpty) {
+      await _set(key, legacy);
+      await _remove(_keyCompanionSecret);
+      return legacy;
+    }
+    return null;
   }
 
   Future<void> setCompanionSecret(String secret) async {
     if (!_initialized) await init();
-    await _set(_keyCompanionSecret, secret);
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    await _set('$_keyCompanionSecretPrefix${_serverKey(url)}', secret);
+  }
+
+  static String _serverKey(String url) {
+    var s = url.trim().toLowerCase();
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
+  /// Whether the app has already asked for the notification permission
+  /// (it asks once, when a feature needs it, never at launch).
+  Future<bool> getNotificationsAsked() async {
+    if (!_initialized) await init();
+    return _cache[_keyNotificationsAsked] == 'true';
+  }
+
+  Future<void> setNotificationsAsked() async {
+    if (!_initialized) await init();
+    await _set(_keyNotificationsAsked, 'true');
+  }
+
+  /// How long the last storage-sharing session was, in minutes.
+  Future<int?> getShareMinutes() async {
+    if (!_initialized) await init();
+    return int.tryParse(_cache[_keyShareMinutes] ?? '');
+  }
+
+  Future<void> setShareMinutes(int minutes) async {
+    if (!_initialized) await init();
+    await _set(_keyShareMinutes, '$minutes');
+  }
+
+  /// One-time clean-ups already done, by name (a server-specific one
+  /// includes the server URL in its name).
+  Future<bool> isMigrationDone(String name) async {
+    if (!_initialized) await init();
+    return (_cache[_keyDoneMigrations] ?? '').split('\n').contains(name);
+  }
+
+  Future<void> markMigrationDone(String name) async {
+    if (!_initialized) await init();
+    final done = (_cache[_keyDoneMigrations] ?? '').split('\n').where((e) => e.isNotEmpty).toSet()..add(name);
+    await _set(_keyDoneMigrations, done.join('\n'));
+  }
+
+  /// The last app-update check (JSON written by AppUpdateService).
+  Future<String?> getUpdateCheck() async {
+    if (!_initialized) await init();
+    return _cache[_keyUpdateCheck];
+  }
+
+  Future<void> setUpdateCheck(String json) async {
+    if (!_initialized) await init();
+    await _set(_keyUpdateCheck, json);
   }
 
   /// 'system', 'light' or 'dark'; null until the user picks one.
@@ -168,6 +246,59 @@ class StorageService {
     return _cache[_keyUsername];
   }
 
+  /// Reads the tokens again from secure storage, bypassing this isolate's
+  /// cache: the UI, the sharing service and the heartbeat job each run
+  /// their own copy of this class, and one of them may have refreshed the
+  /// session since this one loaded it.
+  Future<({String accessToken, String refreshToken})?> reloadSession() async {
+    if (!_initialized) await init();
+    try {
+      final access = await _secureStorage.read(key: _keyAccessToken);
+      final refresh = await _secureStorage.read(key: _keyRefreshToken);
+      if (access == null || refresh == null) return null;
+      _cache[_keyAccessToken] = access;
+      _cache[_keyRefreshToken] = refresh;
+      return (accessToken: access, refreshToken: refresh);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether secure storage still holds a session, read fresh (not from
+  /// this engine's cache): false once the user signed out in another
+  /// engine. A read error counts as "still there", so a flaky Keystore
+  /// never drops a session.
+  Future<bool> hasStoredSession() async {
+    try {
+      final refresh = await _secureStorage.read(key: _keyRefreshToken);
+      return refresh != null && refresh.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// The saved server list as secure storage has it now. The UI, the
+  /// sharing service and the heartbeat job each keep their own cache, and
+  /// the sharing engine can run for hours, so a change is always made to
+  /// the stored list, never to a stale in-memory copy (review finding 8).
+  Future<String?> _freshProfilesRaw() async {
+    try {
+      final raw = await _secureStorage.read(key: _keyServerProfiles);
+      if (raw == null) {
+        _cache.remove(_keyServerProfiles);
+      } else {
+        _cache[_keyServerProfiles] = raw;
+      }
+      final active = await _secureStorage.read(key: _keyActiveProfileId);
+      if (active == null) {
+        _cache.remove(_keyActiveProfileId);
+      } else {
+        _cache[_keyActiveProfileId] = active;
+      }
+    } catch (_) {}
+    return _cache[_keyServerProfiles];
+  }
+
   Future<void> setSession({
     required String accessToken,
     required String refreshToken,
@@ -178,12 +309,16 @@ class StorageService {
     await _set(_keyRefreshToken, refreshToken);
     await _set(_keyUsername, username);
 
-    // Keep active server profile in sync
+    // Keep the active server profile in sync, so switching away and back
+    // later uses the newest tokens, not the ones from sign-in (plan M-17).
     try {
       final currentUrl = await getServerUrl();
       if (currentUrl != null && currentUrl.isNotEmpty) {
+        await _freshProfilesRaw();
         final profiles = await getProfiles();
-        final idx = profiles.indexWhere((p) => p.url.trim() == currentUrl.trim() || p.id == 'default');
+        final activeId = _cache[_keyActiveProfileId];
+        var idx = activeId == null ? -1 : profiles.indexWhere((p) => p.id == activeId && _sameUrl(p.url, currentUrl));
+        if (idx < 0) idx = profiles.indexWhere((p) => _sameUrl(p.url, currentUrl));
         if (idx >= 0) {
           final updated = profiles[idx].copyWith(
             accessToken: accessToken,
@@ -192,10 +327,11 @@ class StorageService {
             lastConnected: clock.now(),
           );
           await saveProfile(updated);
+          await _set(_keyActiveProfileId, updated.id);
         } else {
           final newProfile = ServerProfile(
-            id: currentUrl,
-            name: 'Primary Server',
+            id: 'srv_${clock.now().millisecondsSinceEpoch}',
+            name: ServerProfile.defaultName(currentUrl),
             url: currentUrl,
             username: username,
             accessToken: accessToken,
@@ -203,15 +339,40 @@ class StorageService {
             lastConnected: clock.now(),
           );
           await saveProfile(newProfile);
+          await _set(_keyActiveProfileId, newProfile.id);
         }
       }
     } catch (_) {}
   }
 
+  static bool _sameUrl(String a, String b) => _serverKey(a) == _serverKey(b);
+
+  /// Drops the current tokens only, leaving the saved profiles as they
+  /// are - for pointing the app at another server while the old one's
+  /// profile keeps its session for switching back.
+  Future<void> clearSessionTokensOnly() async {
+    if (!_initialized) await init();
+    await _remove(_keyAccessToken);
+    await _remove(_keyRefreshToken);
+  }
+
+  /// Ends the session: the tokens go, from the active server profile too
+  /// (they no longer work, and switching back must ask to sign in).
   Future<void> clearSession() async {
     if (!_initialized) await init();
     await _remove(_keyAccessToken);
     await _remove(_keyRefreshToken);
+    try {
+      final currentUrl = _cache[_keyServerUrl];
+      if (currentUrl == null) return;
+      await _freshProfilesRaw();
+      final profiles = await getProfiles();
+      for (final p in profiles) {
+        if (_sameUrl(p.url, currentUrl) && (p.accessToken != null || p.refreshToken != null)) {
+          await saveProfile(p.withoutTokens());
+        }
+      }
+    } catch (_) {}
   }
 
   // --- Multi-Server Profiles Management ---
@@ -234,9 +395,9 @@ class StorageService {
       if (currentUrl != null && currentUrl.isNotEmpty) {
         final defaultProfile = ServerProfile(
           id: 'default',
-          name: 'Primary Server',
+          name: ServerProfile.defaultName(currentUrl),
           url: currentUrl,
-          username: currentUsername ?? 'Admin',
+          username: currentUsername ?? '',
           accessToken: await getAccessToken(),
           refreshToken: await getRefreshToken(),
           lastConnected: clock.now(),
@@ -253,14 +414,17 @@ class StorageService {
     if (!_initialized) await init();
     List<ServerProfile> profiles = [];
     try {
-      final raw = _cache[_keyServerProfiles];
+      final raw = await _freshProfilesRaw();
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> list = jsonDecode(raw);
         profiles = list.map((e) => ServerProfile.fromJson(e as Map<String, dynamic>)).toList();
       }
     } catch (_) {}
 
-    final idx = profiles.indexWhere((p) => p.id == profile.id || p.url.trim() == profile.url.trim());
+    // One profile per id; a new profile for a server already saved
+    // replaces that one rather than adding a twin.
+    var idx = profiles.indexWhere((p) => p.id == profile.id);
+    if (idx < 0) idx = profiles.indexWhere((p) => _sameUrl(p.url, profile.url));
     if (idx >= 0) {
       profiles[idx] = profile;
     } else {
@@ -275,7 +439,7 @@ class StorageService {
     if (!_initialized) await init();
     List<ServerProfile> profiles = [];
     try {
-      final raw = _cache[_keyServerProfiles];
+      final raw = await _freshProfilesRaw();
       if (raw != null && raw.isNotEmpty) {
         final List<dynamic> list = jsonDecode(raw);
         profiles = list.map((e) => ServerProfile.fromJson(e as Map<String, dynamic>)).toList();
@@ -297,19 +461,32 @@ class StorageService {
     await _set(_keyActiveProfileId, id);
   }
 
+  /// Makes [profile] the active server: its URL and its saved session (or
+  /// none, so the app asks to sign in). Background work must be stopped
+  /// before and started again after - see SessionController.switchTo.
   Future<void> switchProfile(ServerProfile profile) async {
     if (!_initialized) await init();
     await _set(_keyActiveProfileId, profile.id);
     await setServerUrl(profile.url);
-    if (profile.accessToken != null && profile.refreshToken != null) {
-      await setSession(
-        accessToken: profile.accessToken!,
-        refreshToken: profile.refreshToken!,
-        username: profile.username,
-      );
+    final access = profile.accessToken;
+    final refresh = profile.refreshToken;
+    if (access != null && access.isNotEmpty && refresh != null && refresh.isNotEmpty) {
+      await setSession(accessToken: access, refreshToken: refresh, username: profile.username);
+    } else {
+      await _remove(_keyAccessToken);
+      await _remove(_keyRefreshToken);
+      await _set(_keyUsername, profile.username);
     }
-    final updated = profile.copyWith(lastConnected: clock.now());
-    await saveProfile(updated);
+    final updated = (await getProfiles()).where((p) => p.id == profile.id).firstOrNull ?? profile;
+    await saveProfile(updated.copyWith(lastConnected: clock.now()));
+  }
+
+  /// Forgets everything loaded, so the next call reads the platform
+  /// storage again. Tests only.
+  @visibleForTesting
+  void resetForTest() {
+    _cache.clear();
+    _initialized = false;
   }
 
   Future<void> clearAll() async {

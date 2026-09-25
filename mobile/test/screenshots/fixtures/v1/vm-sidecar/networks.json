@@ -1,0 +1,13 @@
+[
+ {
+  "name": "default",
+  "mode": "nat",
+  "active": true
+ },
+ {
+  "name": "br0",
+  "mode": "bridge",
+  "host_nic": "enp7s0",
+  "active": true
+ }
+]

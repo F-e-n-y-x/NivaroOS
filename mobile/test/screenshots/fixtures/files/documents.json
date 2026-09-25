@@ -1,0 +1,167 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "content": [
+   {
+    "name": "Invoices",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-24T18:12:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Invoices",
+    "date": "2026-09-24T18:12:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Taxes 2025",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-08-02T10:40:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Taxes 2025",
+    "date": "2026-08-02T10:40:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Work",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-25T13:20:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Work",
+    "date": "2026-09-25T13:20:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": ".obsidian",
+    "size": 4096,
+    "is_dir": true,
+    "modified": "2026-09-20T09:00:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/.obsidian",
+    "date": "2026-09-20T09:00:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Budget 2026.xlsx",
+    "size": 48213,
+    "is_dir": false,
+    "modified": "2026-09-25T13:51:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Budget 2026.xlsx",
+    "date": "2026-09-25T13:51:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Contract - flat lease.pdf",
+    "size": 1843220,
+    "is_dir": false,
+    "modified": "2026-09-18T16:05:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Contract - flat lease.pdf",
+    "date": "2026-09-18T16:05:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Holiday.jpg",
+    "size": 3811201,
+    "is_dir": false,
+    "modified": "2026-09-21T19:44:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Holiday.jpg",
+    "date": "2026-09-21T19:44:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "notes.md",
+    "size": 2210,
+    "is_dir": false,
+    "modified": "2026-09-25T11:02:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/notes.md",
+    "date": "2026-09-25T11:02:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Quarterly review.pptx",
+    "size": 5242880,
+    "is_dir": false,
+    "modified": "2026-09-10T12:00:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Quarterly review.pptx",
+    "date": "2026-09-10T12:00:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "backup-2026-09.tar.gz",
+    "size": 734003200,
+    "is_dir": false,
+    "modified": "2026-09-01T02:00:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/backup-2026-09.tar.gz",
+    "date": "2026-09-01T02:00:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Talk recording.mp4",
+    "size": 1288490188,
+    "is_dir": false,
+    "modified": "2026-07-14T20:30:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Talk recording.mp4",
+    "date": "2026-07-14T20:30:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "Voice memo.m4a",
+    "size": 912384,
+    "is_dir": false,
+    "modified": "2026-09-23T08:15:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/Voice memo.m4a",
+    "date": "2026-09-23T08:15:00+05:30",
+    "extensions": null
+   },
+   {
+    "name": "docker-compose.yml",
+    "size": 1830,
+    "is_dir": false,
+    "modified": "2026-09-12T22:10:00+05:30",
+    "sign": "",
+    "thumb": "",
+    "type": 0,
+    "path": "/DATA/Documents/docker-compose.yml",
+    "date": "2026-09-12T22:10:00+05:30",
+    "extensions": null
+   }
+  ],
+  "total": 13,
+  "index": 1,
+  "size": 100000
+ }
+}

@@ -1,1060 +1,1087 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
+
+import 'package:chewie/chewie.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
+import 'package:video_player/video_player.dart';
+
 import '../models/file_entry.dart';
+import '../services/api_client.dart';
+import '../ui/ui.dart';
 import '../utils/format.dart';
-import '../widgets/common.dart';
+import 'files/file_ops.dart';
+import 'files/file_sheets.dart';
+import 'files/file_widgets.dart';
 
+/// Text files larger than this open in another app rather than here.
+const _maxTextPreview = 5 * 1024 * 1024;
+
+/// Opens one file: pictures (with swiping through the folder's other
+/// pictures and pinch zoom), video and audio (streamed, not downloaded
+/// first), PDF, Markdown, text and code (with find and editing), CSV
+/// tables. Anything else gets "Open with another app" and "Save to phone".
+///
+/// Pops with `true` when the file was edited and saved, so the folder
+/// reloads.
 class FileViewerScreen extends StatefulWidget {
-  final FileEntry file;
-  final String path;
-  final bool isLocal;
-
   const FileViewerScreen({
     super.key,
     required this.file,
     required this.path,
     this.isLocal = false,
+    this.gallery,
   });
+
+  final FileEntry file;
+  final String path;
+
+  /// On this phone rather than on the server.
+  final bool isLocal;
+
+  /// The folder's pictures, in the folder's order, to swipe through when
+  /// [file] is a picture.
+  final List<FileEntry>? gallery;
 
   @override
   State<FileViewerScreen> createState() => _FileViewerScreenState();
 }
 
-class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerProviderStateMixin {
-  Uint8List? _bytes;
+enum _Mode { image, video, audio, pdf, markdown, text, csv, none }
+
+_Mode _modeFor(FileEntry f) {
+  if (f.isImage) return _Mode.image;
+  if (f.isVideo) return _Mode.video;
+  if (f.isAudio) return _Mode.audio;
+  if (f.isPdf) return _Mode.pdf;
+  if (f.isMarkdown) return _Mode.markdown;
+  if (f.isCsv) return _Mode.csv;
+  if (f.isText) return _Mode.text;
+  return _Mode.none;
+}
+
+class _FileViewerScreenState extends State<FileViewerScreen> {
+  late final _Mode _mode = _modeFor(widget.file);
+
+  // Download (PDF, text) state
+  bool _downloading = false;
+  int _received = 0;
+  int _total = 0;
+  Object? _error;
+  String? _localPath;
+  http.Client? _client;
+
+  // Text
   String? _text;
-  bool _loading = true;
-  double _downloadProgress = 0.0;
-  int _downloadedBytes = 0;
-  int _totalBytes = 0;
-  String _downloadSpeed = '';
-  String? _error;
-  bool _savingToDevice = false;
-  String? _cachedLocalPath;
+  bool _tooLarge = false;
+  bool _showSource = false;
+  bool _wrap = true;
+  bool _finding = false;
+  final _find = TextEditingController();
 
-  // Editor state
-  bool _isEditing = false;
-  bool _isSaving = false;
-  final TextEditingController _textController = TextEditingController();
+  // Editing
+  bool _editing = false;
+  bool _saving = false;
+  bool _changed = false;
+  final _editor = TextEditingController();
 
-  // Mode toggles
-  bool _wrapCode = true;
-  bool _showFormattedJson = true;
-  bool _showMarkdownPreview = true;
-  bool _showCsvTable = true;
-  String _codeSearchQuery = '';
-  final TextEditingController _codeSearchController = TextEditingController();
-  bool _isSearchingCode = false;
-
-  // Image viewer state
-  int _imageBgMode = 0; // 0: Dark Obsidian, 1: Pure Black, 2: Pure White, 3: Checkerboard
-  final TransformationController _imageTransformController = TransformationController();
-
-  // Video Player state
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
-  bool _videoLoading = false;
-  String? _videoError;
-
-  // PDF Viewer state
-  PDFViewController? _pdfViewController;
-  int _pdfTotalPages = 0;
-  int _pdfCurrentPage = 1;
-  bool _pdfReady = false;
-  String? _pdfError;
-
-  // Audio Player state
-  VideoPlayerController? _audioPlayerController;
-  bool _audioPlaying = false;
-  Duration _audioPosition = Duration.zero;
-  Duration _audioDuration = Duration.zero;
-  double _audioSpeed = 1.0;
-  bool _audioLooping = false;
-  late AnimationController _discAnimController;
-
-  // CSV parsed data
-  List<List<String>> _csvRows = [];
-  String _csvFilter = '';
-  final TextEditingController _csvFilterController = TextEditingController();
+  // Busy with "Open with" / "Save to phone"
+  bool _exporting = false;
 
   @override
   void initState() {
     super.initState();
-    _discAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    );
-    _loadFile();
+    _find.addListener(() => setState(() {}));
+    if (_mode == _Mode.pdf || _mode == _Mode.markdown || _mode == _Mode.text || _mode == _Mode.csv) _prepare();
   }
 
   @override
   void dispose() {
-    _discAnimController.dispose();
-    _textController.dispose();
-    _codeSearchController.dispose();
-    _csvFilterController.dispose();
-    _imageTransformController.dispose();
-    _chewieController?.dispose();
-    _videoPlayerController?.dispose();
-    _audioPlayerController?.dispose();
+    _client?.close();
+    _find.dispose();
+    _editor.dispose();
     super.dispose();
   }
 
-  Future<void> _loadFile() async {
-    setState(() {
-      _loading = true;
-      _downloadProgress = 0.0;
-      _downloadedBytes = 0;
-      _totalBytes = widget.file.size > 0 ? widget.file.size : 0;
-      _downloadSpeed = '';
-      _error = null;
-    });
+  // -------------------------------------------------------------------------
+  // Getting the file
 
-    try {
-      String localPath;
-      Uint8List? bytes;
-
-      if (widget.isLocal) {
-        final localFile = File(widget.path);
-        if (!await localFile.exists()) {
-          throw Exception('File not found at ${widget.path}');
-        }
-        localPath = widget.path;
-        final len = await localFile.length();
-        _totalBytes = len;
-        if (len < 25 * 1024 * 1024) {
-          bytes = await localFile.readAsBytes();
-        }
-      } else {
-        // Stream download with progress to temporary cached file
-        final tempDir = await getTemporaryDirectory();
-        final safeName = widget.file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final tempFile = File('${tempDir.path}/$safeName');
-
-        // Check if valid cache exists matching size
-        if (await tempFile.exists() && widget.file.size > 0 && await tempFile.length() == widget.file.size) {
-          localPath = tempFile.path;
-          if (widget.file.size < 25 * 1024 * 1024) {
-            bytes = await tempFile.readAsBytes();
-          }
-        } else {
-          await ApiClient.instance.downloadFileStream(
-            widget.path,
-            tempFile,
-            onProgress: (received, total, speed) {
-              if (mounted) {
-                setState(() {
-                  _downloadedBytes = received;
-                  _totalBytes = total > 0 ? total : widget.file.size;
-                  _downloadProgress = _totalBytes > 0 ? (received / _totalBytes).clamp(0.0, 1.0) : 0.0;
-                  _downloadSpeed = speed > 1024 * 1024
-                      ? '${(speed / (1024 * 1024)).toStringAsFixed(1)} MB/s'
-                      : '${(speed / 1024).toStringAsFixed(0)} KB/s';
-                });
-              }
-            },
-          );
-          localPath = tempFile.path;
-          if (await tempFile.length() < 25 * 1024 * 1024) {
-            bytes = await tempFile.readAsBytes();
-          }
-        }
-      }
-
-      String? text;
-      if (widget.file.isText || widget.file.isMarkdown || widget.file.isJson || widget.file.isCsv || widget.file.isCode) {
-        if (bytes != null) {
-          try {
-            text = utf8.decode(bytes);
-          } catch (_) {
-            try {
-              text = latin1.decode(bytes);
-            } catch (_) {}
-          }
-        } else {
-          try {
-            final f = File(localPath);
-            text = await f.readAsString();
-          } catch (_) {}
-        }
-      }
-
-      if (text != null) {
-        _textController.text = text;
-        if (widget.file.isCsv) {
-          _parseCsv(text);
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _bytes = bytes;
-          _text = text;
-          _cachedLocalPath = localPath;
-          _loading = false;
-        });
-
-        // Initialize dedicated players
-        if (widget.file.isVideo) {
-          _initVideoPlayer(localPath);
-        } else if (widget.file.isAudio) {
-          _initAudioPlayer(localPath);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  void _parseCsv(String content) {
-    try {
-      final lines = const LineSplitter().convert(content);
-      final rows = <List<String>>[];
-      for (final line in lines) {
-        if (line.trim().isEmpty) continue;
-        final row = <String>[];
-        var insideQuotes = false;
-        var current = StringBuffer();
-        final delimiter = widget.file.extension == 'tsv' ? '	' : ',';
-
-        for (int i = 0; i < line.length; i++) {
-          final char = line[i];
-          if (char == '"') {
-            insideQuotes = !insideQuotes;
-          } else if (char == delimiter && !insideQuotes) {
-            row.add(current.toString().trim());
-            current = StringBuffer();
-          } else {
-            current.write(char);
-          }
-        }
-        row.add(current.toString().trim());
-        rows.add(row);
-      }
-      _csvRows = rows;
-    } catch (_) {
-      _csvRows = [];
-    }
-  }
-
-  Future<void> _initVideoPlayer(String filePath) async {
-    try {
-      setState(() {
-        _videoLoading = true;
-        _videoError = null;
-      });
-
-      final vController = VideoPlayerController.file(File(filePath));
-      await vController.initialize();
-
-      final double aspect = (vController.value.aspectRatio > 0 &&
-              !vController.value.aspectRatio.isInfinite &&
-              !vController.value.aspectRatio.isNaN)
-          ? vController.value.aspectRatio
-          : 16 / 9;
-
-      final cController = ChewieController(
-        videoPlayerController: vController,
-        autoPlay: true,
-        looping: false,
-        aspectRatio: aspect,
-        allowFullScreen: true,
-        allowMuting: true,
-        allowPlaybackSpeedChanging: true,
-        playbackSpeeds: const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
-        materialProgressColors: ChewieProgressColors(
-          playedColor: NivaroColors.primaryLight,
-          handleColor: NivaroColors.primaryLight,
-          backgroundColor: Colors.white24,
-          bufferedColor: Colors.white38,
-        ),
-        errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.movie_filter_rounded, color: NivaroColors.dangerLight, size: 44),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Built-in video decoder notice: $errorMessage',
-                    style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _openWithExternalApp,
-                    style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                    label: const Text('Play with VLC / MX Player'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+  Future<String> _localCopy({void Function(int received, int total)? onProgress}) => downloadToCache(
+        widget.file,
+        isLocal: widget.isLocal,
+        onProgress: onProgress,
+        onClient: (c) => _client = c,
       );
 
-      if (mounted) {
-        setState(() {
-          _videoPlayerController = vController;
-          _chewieController = cController;
-          _videoLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _videoError = e.toString().replaceFirst('Exception: ', '');
-          _videoLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _initAudioPlayer(String filePath) async {
+  Future<void> _prepare() async {
+    setState(() {
+      _downloading = true;
+      _received = 0;
+      _total = widget.file.size;
+      _error = null;
+    });
     try {
-      final aController = VideoPlayerController.file(File(filePath));
-      await aController.initialize();
-      aController.addListener(() {
-        if (mounted && _audioPlayerController != null) {
-          final isPlaying = _audioPlayerController!.value.isPlaying;
-          if (isPlaying && !_discAnimController.isAnimating) {
-            _discAnimController.repeat();
-          } else if (!isPlaying && _discAnimController.isAnimating) {
-            _discAnimController.stop();
-          }
-
+      if (_mode != _Mode.pdf && widget.file.size > _maxTextPreview) {
+        setState(() {
+          _tooLarge = true;
+          _downloading = false;
+        });
+        return;
+      }
+      final path = await _localCopy(onProgress: (r, t) {
+        if (mounted) {
           setState(() {
-            _audioPosition = _audioPlayerController!.value.position;
-            _audioDuration = _audioPlayerController!.value.duration;
-            _audioPlaying = isPlaying;
+            _received = r;
+            _total = t;
           });
         }
       });
-
-      if (mounted) {
-        setState(() {
-          _audioPlayerController = aController;
-          _audioDuration = aController.value.duration;
-        });
+      String? text;
+      if (_mode != _Mode.pdf) {
+        final bytes = await File(path).readAsBytes();
+        if (bytes.length > _maxTextPreview) {
+          _tooLarge = true;
+        } else {
+          try {
+            text = utf8.decode(bytes);
+          } on FormatException {
+            text = latin1.decode(bytes);
+          }
+          if (widget.file.isJson) text = _prettyJson(text);
+        }
       }
-    } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _localPath = path;
+        _text = text;
+        _downloading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _downloading = false;
+      });
+    }
   }
 
-  Future<void> _saveFile() async {
-    if (_isSaving) return;
-    setState(() => _isSaving = true);
+  static String _prettyJson(String text) {
     try {
-      final newText = _textController.text;
+      return const JsonEncoder.withIndent('  ').convert(jsonDecode(text));
+    } catch (_) {
+      return text;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Actions
+
+  void _snack(String message) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _plain(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  Future<void> _openWith() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    await openWithAnotherApp(context, widget.file, isLocal: widget.isLocal, cached: _localPath);
+    if (mounted) setState(() => _exporting = false);
+  }
+
+  Future<void> _saveToPhone() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    await saveToPhone(context, widget.file, cached: _localPath);
+    if (mounted) setState(() => _exporting = false);
+  }
+
+  Future<void> _copyPath() async {
+    await Clipboard.setData(ClipboardData(text: widget.path));
+    _snack('Path copied');
+  }
+
+  void _details([FileEntry? entry]) => showInfoSheet(context, entry: entry ?? widget.file, isLocal: widget.isLocal);
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final text = _editor.text;
+    try {
       if (widget.isLocal) {
-        final localFile = File(widget.path);
-        await localFile.writeAsString(newText);
-        if (mounted) {
-          setState(() {
-            _text = newText;
-            _bytes = Uint8List.fromList(utf8.encode(newText));
-            _isEditing = false;
-            if (widget.file.isCsv) _parseCsv(newText);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Local file saved successfully!'),
-              backgroundColor: NivaroColors.success,
-            ),
-          );
-        }
+        await File(widget.path).writeAsString(text);
       } else {
-        await ApiClient.instance.put('/file', body: {
-          'path': widget.path,
-          'content': newText,
-        });
-        if (mounted) {
-          setState(() {
-            _text = newText;
-            _bytes = Uint8List.fromList(utf8.encode(newText));
-            _isEditing = false;
-            if (widget.file.isCsv) _parseCsv(newText);
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('File saved successfully on server!'),
-              backgroundColor: NivaroColors.success,
-            ),
-          );
-        }
+        final res = await ApiClient.instance.put('/file', body: {'path': widget.path, 'content': text});
+        final code = res['success'];
+        if (code is num && code != 200) throw Exception(res['message'] ?? 'The server refused ($code).');
+        // The cached copy is stale now.
+        final cached = _localPath;
+        if (cached != null && cached != widget.path) await File(cached).writeAsString(text);
       }
+      if (!mounted) return;
+      setState(() {
+        _text = text;
+        _editing = false;
+        _changed = true;
+      });
+      _snack('Saved');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save file: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
+      _snack("Couldn't save: ${_plain(e)}");
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _saveToDeviceDownloads() async {
-    if (_savingToDevice) return;
-    setState(() => _savingToDevice = true);
-    try {
-      Directory? dir;
-      if (Platform.isAndroid) {
-        dir = Directory('/storage/emulated/0/Download');
-        if (!await dir.exists()) {
-          dir = await getExternalStorageDirectory();
-        }
-      } else {
-        dir = await getApplicationDocumentsDirectory();
-      }
+  bool get _dirty => _editing && _editor.text != (_text ?? '');
 
-      if (dir == null) throw Exception('Unable to access device storage');
-      final targetFile = File('${dir.path}/${widget.file.name}');
-
-      if (_cachedLocalPath != null) {
-        await File(_cachedLocalPath!).copy(targetFile.path);
-      } else if (_bytes != null) {
-        await targetFile.writeAsBytes(_bytes!);
-      } else {
-        throw Exception('No file data to export');
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Saved "${widget.file.name}" to Downloads'),
-            action: SnackBarAction(
-              label: 'Open',
-              textColor: NivaroColors.primaryLight,
-              onPressed: () => OpenFilex.open(targetFile.path),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _savingToDevice = false);
+  Future<void> _stopEditing() async {
+    if (_dirty) {
+      final discard = await ConfirmDialog.destructive(
+        context,
+        title: 'Discard your changes?',
+        message: 'What you typed since the last save is lost.',
+        confirmLabel: 'Discard',
+        permanent: false,
+      );
+      if (!discard || !mounted) return;
     }
+    setState(() => _editing = false);
   }
 
-  Future<void> _openWithExternalApp() async {
-    if (_cachedLocalPath != null) {
-      final res = await OpenFilex.open(_cachedLocalPath!);
-      if (res.type != ResultType.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('External App: ${res.message}')),
-        );
-      }
-    } else {
-      await _saveToDeviceDownloads();
+  // -------------------------------------------------------------------------
+  // Building
+
+  @override
+  Widget build(BuildContext context) {
+    if (_mode == _Mode.image) {
+      return _ImageGallery(
+        files: widget.gallery?.any((g) => g.path == widget.file.path) == true ? widget.gallery! : [widget.file],
+        initial: widget.file,
+        isLocal: widget.isLocal,
+        onDetails: _details,
+      );
     }
+    if (_mode == _Mode.video || _mode == _Mode.audio) {
+      return _MediaPlayer(
+        file: widget.file,
+        isLocal: widget.isLocal,
+        audio: _mode == _Mode.audio,
+        onOpenWith: _openWith,
+        onSave: widget.isLocal ? null : _saveToPhone,
+        onDetails: _details,
+      );
+    }
+    return PopScope(
+      canPop: !_editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _stopEditing();
+      },
+      child: _buildDocument(context),
+    );
   }
 
-  void _showJumpToPageDialog() {
-    if (_pdfTotalPages <= 1 || _pdfViewController == null) return;
-    final textEdit = TextEditingController(text: '$_pdfCurrentPage');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceDim,
-        title: const Text('Jump to Page', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Enter page number (1 - $_pdfTotalPages):', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: textEdit,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: NivaroColors.surfaceContainerLowest,
-                border: OutlineInputBorder(),
-                isDense: true,
+  Widget _buildDocument(BuildContext context) {
+    final isText = _mode == _Mode.text || _mode == _Mode.markdown || _mode == _Mode.csv;
+    final ready = _text != null && !_downloading && _error == null;
+    return AppScaffold(
+      title: widget.file.name,
+      maxContentWidth: null,
+      leading: _editing
+          ? IconButton(icon: const Icon(Icons.close), tooltip: 'Stop editing', onPressed: _stopEditing)
+          : BackButton(onPressed: () => Navigator.of(context).pop(_changed)),
+      actions: _editing
+          ? [
+              Padding(
+                padding: const EdgeInsets.only(right: Space.sm),
+                child: _saving
+                    ? const Padding(
+                        padding: EdgeInsets.all(Space.md),
+                        child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3)),
+                      )
+                    : TextButton(onPressed: _save, child: const Text('Save')),
               ),
+            ]
+          : [
+              if (isText && ready && _mode != _Mode.text)
+                IconButton(
+                  icon: Icon(_showSource ? (_mode == _Mode.csv ? Icons.table_chart_outlined : Icons.visibility_outlined) : Icons.code),
+                  tooltip: _showSource ? (_mode == _Mode.csv ? 'Show as table' : 'Show preview') : 'Show source',
+                  onPressed: () => setState(() => _showSource = !_showSource),
+                ),
+              if (isText && ready && _showsLines)
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Find in file',
+                  onPressed: () => setState(() => _finding = !_finding),
+                ),
+              _overflowMenu(isText && ready),
+            ],
+      bottom: _finding && _showsLines && !_editing ? _findBar(context) : null,
+      body: _documentBody(context),
+    );
+  }
+
+  bool get _showsLines => _mode == _Mode.text || _showSource;
+
+  Widget _overflowMenu(bool editable) {
+    return PopupMenuButton<String>(
+      tooltip: 'More options',
+      onSelected: (v) {
+        switch (v) {
+          case 'edit':
+            _editor.text = _text ?? '';
+            setState(() {
+              _editing = true;
+              _finding = false;
+            });
+          case 'wrap':
+            setState(() => _wrap = !_wrap);
+          case 'open':
+            _openWith();
+          case 'save':
+            _saveToPhone();
+          case 'path':
+            _copyPath();
+          case 'info':
+            _details();
+        }
+      },
+      itemBuilder: (context) => [
+        if (editable) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+        if (editable && _showsLines) CheckedPopupMenuItem(value: 'wrap', checked: _wrap, child: const Text('Wrap lines')),
+        const PopupMenuItem(value: 'open', child: Text('Open with another app')),
+        if (!widget.isLocal) const PopupMenuItem(value: 'save', child: Text('Save to phone')),
+        const PopupMenuItem(value: 'path', child: Text('Copy path')),
+        const PopupMenuItem(value: 'info', child: Text('Details')),
+      ],
+    );
+  }
+
+  PreferredSizeWidget _findBar(BuildContext context) {
+    final h = (MediaQuery.textScalerOf(context).scale(24) + 40).clamp(64.0, 112.0);
+    final query = _find.text;
+    final matches = query.isEmpty ? 0 : _lines.where((l) => l.toLowerCase().contains(query.toLowerCase())).length;
+    return PreferredSize(
+      preferredSize: Size.fromHeight(h),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(Space.gutter(context), 0, Space.gutter(context), Space.sm),
+        child: TextField(
+          controller: _find,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Find in file',
+            prefixIcon: const Icon(Icons.search),
+            suffixText: query.isEmpty ? null : formatCount(matches, 'line'),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Close find',
+              onPressed: () => setState(() {
+                _finding = false;
+                _find.clear();
+              }),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final page = int.tryParse(textEdit.text.trim());
-              if (page != null && page >= 1 && page <= _pdfTotalPages) {
-                _pdfViewController?.setPage(page - 1);
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Go'),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Color _getCategoryColor() {
-    if (widget.file.isVideo) return NivaroColors.purple;
-    if (widget.file.isAudio) return NivaroColors.cyan;
-    if (widget.file.isPdf) return NivaroColors.danger;
-    if (widget.file.isImage) return NivaroColors.info;
-    if (widget.file.isMarkdown) return NivaroColors.primary;
-    if (widget.file.isJson) return NivaroColors.warning;
-    if (widget.file.isCsv) return NivaroColors.success;
-    if (widget.file.isArchive) return const Color(0xFFF97316);
-    if (widget.file.isOffice) return const Color(0xFF2563EB);
-    return NivaroColors.primary;
+  List<String>? _linesCache;
+  String? _linesFor;
+  List<String> get _lines {
+    final text = _text ?? '';
+    if (_linesFor != text) {
+      _linesCache = const LineSplitter().convert(text);
+      _linesFor = text;
+    }
+    return _linesCache!;
   }
 
-  IconData _getCategoryIcon() {
-    if (widget.file.isVideo) return Icons.movie_rounded;
-    if (widget.file.isAudio) return Icons.music_note_rounded;
-    if (widget.file.isPdf) return Icons.picture_as_pdf_rounded;
-    if (widget.file.isImage) return widget.file.isSvg ? Icons.polyline_rounded : Icons.image_rounded;
-    if (widget.file.isMarkdown) return Icons.article_rounded;
-    if (widget.file.isJson) return Icons.data_object_rounded;
-    if (widget.file.isCsv) return Icons.table_chart_rounded;
-    if (widget.file.isCode) return Icons.code_rounded;
-    if (widget.file.isArchive) return Icons.folder_zip_rounded;
-    if (widget.file.isOffice) return Icons.description_rounded;
-    return Icons.insert_drive_file_rounded;
+  Widget _documentBody(BuildContext context) {
+    final error = _error;
+    if (error != null) {
+      if (error is ApiException && error.isUnreachable) return ErrorState.offline(onRetry: _prepare, details: error.details);
+      return ErrorState(
+        title: "Couldn't open “${widget.file.name}”",
+        message: _plain(error),
+        onRetry: _prepare,
+        details: error is ApiException ? error.details : null,
+      );
+    }
+    if (_downloading) {
+      return _DownloadProgress(file: widget.file, isLocal: widget.isLocal, received: _received, total: _total, onCancel: () => Navigator.of(context).pop());
+    }
+    if (_mode == _Mode.none || _tooLarge) {
+      return _NoPreview(
+        file: widget.file,
+        isLocal: widget.isLocal,
+        reason: _tooLarge ? 'This file is too large to show here.' : null,
+        busy: _exporting,
+        onOpenWith: _openWith,
+        onSave: widget.isLocal ? null : _saveToPhone,
+      );
+    }
+    if (_mode == _Mode.pdf) return _PdfView(path: _localPath!, onOpenWith: _openWith);
+    if (_editing) return _Editor(controller: _editor);
+    final text = _text ?? '';
+    if (text.isEmpty) {
+      return EmptyState(
+        icon: fileKindIcon(widget.file.kind),
+        title: 'This file is empty',
+        message: 'There is nothing in “${widget.file.name}” yet.',
+        actionLabel: 'Edit',
+        onAction: () => setState(() {
+          _editor.text = '';
+          _editing = true;
+        }),
+      );
+    }
+    if (_mode == _Mode.markdown && !_showSource) return _MarkdownView(text: text);
+    if (_mode == _Mode.csv && !_showSource) return _CsvView(text: text, tsv: widget.file.extension == 'tsv');
+    return _LinesView(lines: _lines, wrap: _wrap, query: _finding ? _find.text : '');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Local copies, "Open with another app" and "Save to phone"
+
+/// A local copy of [file]: the file itself on this phone, otherwise a
+/// download into the app's cache (reused while its size matches). The
+/// client doing the download goes to [onClient], so closing it cancels.
+Future<String> downloadToCache(
+  FileEntry file, {
+  required bool isLocal,
+  void Function(int received, int total)? onProgress,
+  void Function(http.Client client)? onClient,
+}) async {
+  if (isLocal) return file.path;
+  final dir = Directory('${(await getTemporaryDirectory()).path}/viewer');
+  await dir.create(recursive: true);
+  final safe = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._ ()-]'), '_');
+  final target = File('${dir.path}/${file.path.hashCode.toUnsigned(32)}_$safe');
+  if (await target.exists() && await target.length() == file.size) return target.path;
+  final part = File('${target.path}.part');
+  final client = http.Client();
+  onClient?.call(client);
+  IOSink? sink;
+  try {
+    final uri = ApiClient.instance.buildUri('/file', {'path': file.path});
+    final res = await ApiClient.instance.send(() => http.Request('GET', uri), client: client);
+    if (res.statusCode != 200) {
+      await res.stream.drain<void>();
+      throw ApiException(
+        res.statusCode == 404
+            ? "It isn't on the server any more. It may have been moved or deleted."
+            : "The server couldn't send this file.",
+        statusCode: res.statusCode,
+        details: 'GET /v1/file → HTTP ${res.statusCode}',
+      );
+    }
+    final total = res.contentLength ?? file.size;
+    sink = part.openWrite();
+    var received = 0;
+    await for (final chunk in res.stream) {
+      sink.add(chunk);
+      received += chunk.length;
+      onProgress?.call(received, total);
+    }
+    await sink.close();
+    sink = null;
+    if (file.size > 0 && received != file.size) {
+      throw ApiException('The download stopped early (${formatSize(received)} of ${formatSize(file.size)}). Try again.');
+    }
+    await part.rename(target.path);
+    return target.path;
+  } finally {
+    await sink?.close();
+    client.close();
+  }
+}
+
+/// Downloads [file] with a progress dialog (Cancel stops it); null when it
+/// was cancelled or failed (the failure is shown in a snackbar).
+Future<String?> _fetchWithDialog(BuildContext context, FileEntry file, {required bool isLocal, String? cached}) async {
+  if (cached != null) return cached;
+  if (isLocal) return file.path;
+  final progress = ValueNotifier<(int, int)>((0, file.size));
+  http.Client? client;
+  var cancelled = false;
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final dialog = showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => _DownloadDialog(
+      name: file.name,
+      progress: progress,
+      onCancel: () {
+        cancelled = true;
+        client?.close();
+        Navigator.of(context).pop();
+      },
+    ),
+  );
+  try {
+    final path = await downloadToCache(file, isLocal: false, onProgress: (r, t) => progress.value = (r, t), onClient: (c) => client = c);
+    if (!cancelled) navigator.pop();
+    await dialog;
+    return cancelled ? null : path;
+  } catch (e) {
+    if (!cancelled) {
+      navigator.pop();
+      messenger?.showSnackBar(SnackBar(content: Text("Couldn't download “${file.name}”: ${e.toString().replaceFirst('Exception: ', '')}")));
+    }
+    await dialog;
+    return null;
+  } finally {
+    progress.dispose();
+  }
+}
+
+/// Hands [file] to another app on the phone (downloading it first when it
+/// is on the server).
+Future<void> openWithAnotherApp(BuildContext context, FileEntry file, {required bool isLocal, String? cached}) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final path = await _fetchWithDialog(context, file, isLocal: isLocal, cached: cached);
+  if (path == null) return;
+  final res = await OpenFilex.open(path);
+  if (res.type != ResultType.done) {
+    messenger?.showSnackBar(SnackBar(
+      content: Text(res.type == ResultType.noAppToOpen ? 'No app on this phone opens this kind of file.' : res.message),
+    ));
+  }
+}
+
+/// Copies [file] from the server into the phone's Downloads folder, under
+/// a new name when one is taken.
+Future<void> saveToPhone(BuildContext context, FileEntry file, {String? cached}) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final path = await _fetchWithDialog(context, file, isLocal: false, cached: cached);
+  if (path == null) return;
+  try {
+    var dir = Directory('/storage/emulated/0/Download');
+    if (!await dir.exists()) dir = await getApplicationDocumentsDirectory();
+    final taken = {for (final e in dir.listSync()) baseName(e.path)};
+    final name = uniqueName(file.name, taken);
+    final target = await File(path).copy('${dir.path}/$name');
+    messenger?.showSnackBar(SnackBar(
+      content: Text('Saved “$name” to Downloads'),
+      persist: false,
+      action: SnackBarAction(label: 'Open', onPressed: () => OpenFilex.open(target.path)),
+    ));
+  } catch (e) {
+    messenger?.showSnackBar(SnackBar(content: Text("Couldn't save to this phone: ${e.toString().replaceFirst('Exception: ', '')}")));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Download progress and "no preview"
+
+class _DownloadProgress extends StatelessWidget {
+  const _DownloadProgress({required this.file, required this.isLocal, required this.received, required this.total, required this.onCancel});
+
+  final FileEntry file;
+  final bool isLocal;
+  final int received;
+  final int total;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final fraction = total > 0 ? (received / total).clamp(0.0, 1.0) : null;
+    return Center(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(Space.gutter(context)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Semantics(
+            liveRegion: true,
+            label: 'Downloading ${file.name}',
+            value: fraction == null ? null : '${(fraction * 100).round()}%',
+            child: ExcludeSemantics(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(fileKindIcon(file.kind), size: 48, color: scheme.onSurfaceVariant),
+                  const SizedBox(height: Space.lg),
+                  Text(file.name, style: theme.textTheme.titleMedium, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: Space.lg),
+                  LinearProgressIndicator(value: fraction, borderRadius: BorderRadius.circular(Corners.extraSmall)),
+                  const SizedBox(height: Space.sm),
+                  Text(
+                    total > 0 ? '${formatSize(received)} of ${formatSize(total)}' : formatSize(received),
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant).tabular,
+                  ),
+                  const SizedBox(height: Space.xl),
+                  TextButton(onPressed: onCancel, child: const Text('Cancel')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoPreview extends StatelessWidget {
+  const _NoPreview({required this.file, required this.isLocal, required this.onOpenWith, this.onSave, this.reason, this.busy = false});
+
+  final FileEntry file;
+  final bool isLocal;
+  final String? reason;
+  final bool busy;
+  final VoidCallback onOpenWith;
+  final VoidCallback? onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final message = reason ??
+        (file.isArchive
+            ? 'Archives can’t be opened here. Extract it in Files, or open it with another app.'
+            : 'NivaroOS can’t show ${file.categoryLabel.toLowerCase().startsWith(RegExp('[aeiou]')) ? 'an' : 'a'} ${file.categoryLabel.toLowerCase()} here.');
+    return LayoutBuilder(
+      builder: (context, c) => SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: (c.maxHeight - Space.xl * 2).clamp(0, double.infinity)),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(fileKindIcon(file.kind), size: 48, color: scheme.onSurfaceVariant),
+                  const SizedBox(height: Space.lg),
+                  Semantics(
+                    header: true,
+                    child: Text(file.name, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+                  ),
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    '${file.categoryLabel} · ${formatSize(file.size)}',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: Space.lg),
+                  Text(message, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                  const SizedBox(height: Space.xl),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: busy ? null : onOpenWith,
+                        icon: const Icon(Icons.open_in_new_outlined),
+                        label: const Text('Open with another app'),
+                      ),
+                      if (onSave != null)
+                        OutlinedButton.icon(
+                          onPressed: busy ? null : onSave,
+                          icon: const Icon(Icons.download_outlined),
+                          label: const Text('Save to phone'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadDialog extends StatelessWidget {
+  const _DownloadDialog({required this.name, required this.progress, required this.onCancel});
+
+  final String name;
+  final ValueListenable<(int, int)> progress;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('Downloading'),
+      content: ValueListenableBuilder<(int, int)>(
+        valueListenable: progress,
+        builder: (context, p, _) {
+          final (received, total) = p;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: Space.lg),
+              LinearProgressIndicator(value: total > 0 ? (received / total).clamp(0.0, 1.0) : null),
+              const SizedBox(height: Space.sm),
+              Text(
+                total > 0 ? '${formatSize(received)} of ${formatSize(total)}' : formatSize(received),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant).tabular,
+              ),
+            ],
+          );
+        },
+      ),
+      actions: [TextButton(onPressed: onCancel, child: const Text('Cancel'))],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Text
+
+class _LinesView extends StatelessWidget {
+  const _LinesView({required this.lines, required this.wrap, required this.query});
+
+  final List<String> lines;
+  final bool wrap;
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final style = theme.textTheme.bodyMedium!.copyWith(fontFamily: 'monospace', color: scheme.onSurface);
+    final numberStyle = style.copyWith(color: scheme.onSurfaceVariant);
+    final q = query.toLowerCase();
+    final digits = '${lines.length}'.length;
+    final painter = TextPainter(text: TextSpan(text: '0' * digits, style: numberStyle), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout();
+    final numberWidth = painter.width;
+    final gutter = Space.gutter(context);
+
+    Widget line(int i) {
+      final matched = q.isNotEmpty && lines[i].toLowerCase().contains(q);
+      return Container(
+        color: matched ? scheme.tertiaryContainer : null,
+        padding: EdgeInsets.fromLTRB(gutter, 1, gutter, 1),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: numberWidth,
+              child: ExcludeSemantics(child: Text('${i + 1}', style: numberStyle, textAlign: TextAlign.right)),
+            ),
+            const SizedBox(width: Space.lg),
+            if (wrap)
+              Expanded(child: Text(lines[i].isEmpty ? ' ' : lines[i], style: matched ? style.copyWith(color: scheme.onTertiaryContainer) : style))
+            else
+              Text(lines[i].isEmpty ? ' ' : lines[i], style: matched ? style.copyWith(color: scheme.onTertiaryContainer) : style, softWrap: false),
+          ],
+        ),
+      );
+    }
+
+    final list = SelectionArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: Space.sm),
+        itemCount: lines.length,
+        itemBuilder: (context, i) => line(i),
+      ),
+    );
+    if (wrap) return ColoredBox(color: scheme.surfaceContainerLowest, child: list);
+    // Unwrapped: as wide as the longest line, scrolling sideways.
+    final longest = lines.fold<int>(0, (m, l) => l.length > m ? l.length : m);
+    final charPainter = TextPainter(text: TextSpan(text: 'M', style: style), textDirection: TextDirection.ltr, textScaler: MediaQuery.textScalerOf(context))..layout();
+    return ColoredBox(
+      color: scheme.surfaceContainerLowest,
+      child: LayoutBuilder(
+        builder: (context, c) => SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: (gutter * 2 + numberWidth + Space.lg + charPainter.width * (longest + 1)).clamp(c.maxWidth, double.infinity),
+            child: list,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Editor extends StatelessWidget {
+  const _Editor({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ColoredBox(
+      color: theme.colorScheme.surfaceContainerLowest,
+      child: TextField(
+        controller: controller,
+        maxLines: null,
+        expands: true,
+        autofocus: true,
+        keyboardType: TextInputType.multiline,
+        textAlignVertical: TextAlignVertical.top,
+        style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.all(Space.gutter(context)),
+          hintText: 'Start typing',
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkdownView extends StatelessWidget {
+  const _MarkdownView({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final base = MarkdownStyleSheet.fromTheme(theme);
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: Space.readingMaxWidth),
+        child: Markdown(
+          data: text,
+          selectable: true,
+          padding: EdgeInsets.fromLTRB(Space.gutter(context), Space.lg, Space.gutter(context), Space.xxl),
+          styleSheet: base.copyWith(
+            code: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace', backgroundColor: scheme.surfaceContainerHighest),
+            codeblockDecoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(Corners.small),
+            ),
+            codeblockPadding: const EdgeInsets.all(Space.md),
+            blockquoteDecoration: BoxDecoration(
+              color: scheme.surfaceContainer,
+              border: Border(left: BorderSide(color: scheme.outlineVariant, width: 4)),
+            ),
+            blockSpacing: Space.md,
+          ),
+          onTapLink: (text, href, title) {
+            final uri = href == null ? null : Uri.tryParse(href);
+            if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+              launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Parses CSV/TSV with quoted fields (commas and doubled quotes inside
+/// quotes). Newlines inside quotes are kept within the field.
+List<List<String>> parseDelimited(String text, {String delimiter = ','}) {
+  final rows = <List<String>>[];
+  var row = <String>[];
+  final field = StringBuffer();
+  var quoted = false;
+  for (var i = 0; i < text.length; i++) {
+    final c = text[i];
+    if (quoted) {
+      if (c == '"') {
+        if (i + 1 < text.length && text[i + 1] == '"') {
+          field.write('"');
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field.write(c);
+      }
+    } else if (c == '"') {
+      quoted = true;
+    } else if (c == delimiter) {
+      row.add(field.toString());
+      field.clear();
+    } else if (c == '\n' || c == '\r') {
+      if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++;
+      row.add(field.toString());
+      field.clear();
+      if (row.any((f) => f.isNotEmpty) || row.length > 1) rows.add(row);
+      row = <String>[];
+    } else {
+      field.write(c);
+    }
+  }
+  if (field.isNotEmpty || row.isNotEmpty) {
+    row.add(field.toString());
+    rows.add(row);
+  }
+  return rows;
+}
+
+class _CsvView extends StatelessWidget {
+  const _CsvView({required this.text, required this.tsv});
+  final String text;
+  final bool tsv;
+
+  static const _maxRows = 500;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final rows = parseDelimited(text, delimiter: tsv ? '\t' : ',');
+    if (rows.isEmpty) {
+      return const EmptyState(icon: Icons.table_chart_outlined, title: 'No rows', message: 'This table has nothing in it.');
+    }
+    final header = rows.first;
+    final body = rows.skip(1).take(_maxRows).toList();
+    final width = rows.fold<int>(0, (m, r) => r.length > m ? r.length : m);
+    String cell(List<String> r, int i) => i < r.length ? r[i] : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(Space.gutter(context), Space.sm, Space.gutter(context), Space.sm),
+          child: Text(
+            '${formatCount(rows.length - 1, 'row')} · ${formatCount(width, 'column')}${rows.length - 1 > _maxRows ? ' · showing the first $_maxRows' : ''}',
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant).tabular,
+          ),
+        ),
+        Expanded(
+          child: SelectionArea(
+            child: SingleChildScrollView(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.symmetric(horizontal: Space.gutter(context) - Space.sm),
+                child: DataTable(
+                  headingRowColor: WidgetStatePropertyAll(scheme.surfaceContainer),
+                  columns: [for (var i = 0; i < width; i++) DataColumn(label: Text(cell(header, i)))],
+                  rows: [
+                    for (final r in body) DataRow(cells: [for (var i = 0; i < width; i++) DataCell(Text(cell(r, i)))]),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PDF
+
+class _PdfView extends StatefulWidget {
+  const _PdfView({required this.path, required this.onOpenWith});
+  final String path;
+  final VoidCallback onOpenWith;
+
+  @override
+  State<_PdfView> createState() => _PdfViewState();
+}
+
+class _PdfViewState extends State<_PdfView> {
+  PDFViewController? _controller;
+  int _pages = 0;
+  int _page = 0;
+  String? _error;
+
+  Future<void> _jump() async {
+    final controller = TextEditingController(text: '${_page + 1}');
+    final page = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Go to page'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: 'Page (1 to $_pages)'),
+          onSubmitted: (v) => Navigator.of(context).pop(int.tryParse(v.trim())),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(int.tryParse(controller.text.trim())), child: const Text('Go')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (page != null && page >= 1 && page <= _pages) await _controller?.setPage(page - 1);
   }
 
   @override
   Widget build(BuildContext context) {
-    final catColor = _getCategoryColor();
-
-    return Scaffold(
-      backgroundColor: NivaroColors.background,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.file.name,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              '${widget.isLocal ? "Device Storage" : "NivaroOS Server"} · ${formatBytes(widget.file.size)} · ${widget.file.categoryLabel}',
-              style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-            ),
-          ],
-        ),
-        actions: [
-          // Text / Code Edit Mode Toggle
-          if (_text != null) ...[
-            if (!_isEditing) ...[
-              if (widget.file.isMarkdown)
-                IconButton(
-                  icon: Icon(_showMarkdownPreview ? Icons.code_rounded : Icons.preview_rounded, size: 22),
-                  tooltip: _showMarkdownPreview ? 'View Raw Markdown' : 'Preview Rendered Markdown',
-                  onPressed: () => setState(() => _showMarkdownPreview = !_showMarkdownPreview),
-                ),
-              if (widget.file.isJson)
-                IconButton(
-                  icon: Icon(_showFormattedJson ? Icons.raw_on_rounded : Icons.data_object_rounded, size: 22),
-                  tooltip: _showFormattedJson ? 'View Raw JSON' : 'View Formatted JSON',
-                  onPressed: () => setState(() => _showFormattedJson = !_showFormattedJson),
-                ),
-              if (widget.file.isCsv)
-                IconButton(
-                  icon: Icon(_showCsvTable ? Icons.notes_rounded : Icons.table_chart_rounded, size: 22),
-                  tooltip: _showCsvTable ? 'View Raw Text' : 'View Data Table',
-                  onPressed: () => setState(() => _showCsvTable = !_showCsvTable),
-                ),
-              if (widget.file.isCode || widget.file.isText) ...[
-                IconButton(
-                  icon: Icon(_isSearchingCode ? Icons.search_off_rounded : Icons.search_rounded, size: 22),
-                  tooltip: _isSearchingCode ? 'Close search' : 'Search in code',
-                  onPressed: () => setState(() {
-                    _isSearchingCode = !_isSearchingCode;
-                    if (!_isSearchingCode) {
-                      _codeSearchController.clear();
-                      _codeSearchQuery = '';
-                    }
-                  }),
-                ),
-                IconButton(
-                  icon: Icon(_wrapCode ? Icons.wrap_text_rounded : Icons.menu_open_rounded, size: 22),
-                  tooltip: _wrapCode ? 'Disable Word Wrap' : 'Enable Word Wrap',
-                  onPressed: () => setState(() => _wrapCode = !_wrapCode),
-                ),
-              ],
-              IconButton(
-                icon: Icon(Icons.edit_note_rounded, size: 24, color: NivaroColors.primaryLight),
-                tooltip: 'Edit text file',
-                onPressed: () => setState(() {
-                  _isEditing = true;
-                  _textController.text = _text ?? '';
-                }),
-              ),
-            ] else ...[
-              IconButton(
-                icon: _isSaving
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(Icons.save_rounded, size: 22, color: NivaroColors.successLight),
-                tooltip: 'Save changes',
-                onPressed: _isSaving ? null : _saveFile,
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 22),
-                tooltip: 'Cancel editing',
-                onPressed: () => setState(() {
-                  _isEditing = false;
-                  _textController.text = _text ?? '';
-                }),
-              ),
-            ],
-          ],
-
-          // Image Background switcher
-          if (widget.file.isImage)
-            IconButton(
-              icon: const Icon(Icons.palette_outlined, size: 22),
-              tooltip: 'Switch background',
-              onPressed: () => setState(() => _imageBgMode = (_imageBgMode + 1) % 4),
-            ),
-
-          // PDF Jump To Page
-          if (widget.file.isPdf && _pdfTotalPages > 1)
-            IconButton(
-              icon: const Icon(Icons.find_in_page_rounded, size: 22),
-              tooltip: 'Jump to Page',
-              onPressed: _showJumpToPageDialog,
-            ),
-
-          // Save to device downloads
-          if (!widget.isLocal)
-            IconButton(
-              icon: const Icon(Icons.download_rounded, size: 22),
-              tooltip: 'Save to Downloads',
-              onPressed: _savingToDevice ? null : _saveToDeviceDownloads,
-            ),
-
-          // Open with native app
-          IconButton(
-            icon: const Icon(Icons.open_in_new_rounded, size: 20),
-            tooltip: 'Open with native app',
-            onPressed: _openWithExternalApp,
-          ),
-
-          // Copy path
-          IconButton(
-            icon: const Icon(Icons.copy_rounded, size: 20),
-            tooltip: 'Copy path',
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: widget.path));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File path copied to clipboard.')));
-            },
-          ),
-        ],
-      ),
-      body: _loading
-          ? _buildLoadingScreen(catColor)
-          : _error != null
-              ? _buildErrorScreen()
-              : _buildViewerContent(),
-    );
-  }
-
-  /// Modern animated loading screen with progress bar, download speed, and glowing badge
-  Widget _buildLoadingScreen(Color catColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: DarkCard(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Glowing Animated Icon Badge
-                PulsingStatusDot(
-                  color: catColor,
-                  size: 14,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: catColor.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: catColor.withValues(alpha: 0.3), width: 1.5),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    _getCategoryIcon(),
-                    color: catColor,
-                    size: 40,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  widget.file.name,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  widget.isLocal
-                      ? 'Reading from device storage...'
-                      : 'Streaming from NivaroOS Server...',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                ),
-                const SizedBox(height: 24),
-
-                // Progress Bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: _totalBytes > 0
-                      ? LinearProgressIndicator(
-                          value: _downloadProgress > 0 ? _downloadProgress : null,
-                          minHeight: 8,
-                          backgroundColor: Colors.white10,
-                          valueColor: AlwaysStoppedAnimation<Color>(catColor),
-                        )
-                      : LinearProgressIndicator(
-                          minHeight: 8,
-                          backgroundColor: Colors.white10,
-                          valueColor: AlwaysStoppedAnimation<Color>(catColor),
-                        ),
-                ),
-                const SizedBox(height: 12),
-
-                // Stats row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _totalBytes > 0
-                          ? '${formatBytes(_downloadedBytes)} / ${formatBytes(_totalBytes)}'
-                          : formatBytes(_downloadedBytes),
-                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      _downloadSpeed.isNotEmpty
-                          ? '${(_downloadProgress * 100).toStringAsFixed(0)}% · $_downloadSpeed'
-                          : '${(_downloadProgress * 100).toStringAsFixed(0)}%',
-                      style: TextStyle(color: catColor, fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Cancel Button
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  label: const Text('Cancel'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorScreen() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: DarkCard(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 48),
-                const SizedBox(height: 16),
-                Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
-                const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    OutlinedButton(onPressed: _loadFile, child: const Text('Retry')),
-                    const SizedBox(width: 12),
-                    FilledButton.icon(
-                      onPressed: _openWithExternalApp,
-                      style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                      label: const Text('Open External App'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildViewerContent() {
-    // 1. Video Player
-    if (widget.file.isVideo) {
-      return _buildVideoPlayer();
-    }
-
-    // 2. PDF Viewer
-    if (widget.file.isPdf) {
-      return _buildPdfViewer();
-    }
-
-    // 3. Image Viewer
-    if (widget.file.isImage) {
-      return _buildImageViewer();
-    }
-
-    // 4. Audio Player
-    if (widget.file.isAudio) {
-      return _buildAudioPlayer();
-    }
-
-    // 5. Markdown Preview
-    if (widget.file.isMarkdown && _showMarkdownPreview && !_isEditing && _text != null) {
-      return _buildMarkdownViewer();
-    }
-
-    // 6. JSON Viewer
-    if (widget.file.isJson && _showFormattedJson && !_isEditing && _text != null) {
-      return _buildJsonViewer();
-    }
-
-    // 7. CSV / TSV Spreadsheet Viewer
-    if (widget.file.isCsv && _showCsvTable && !_isEditing && _csvRows.isNotEmpty) {
-      return _buildCsvViewer();
-    }
-
-    // 8. Text / Code Editor & Viewer
-    if (_text != null) {
-      return _buildCodeViewer();
-    }
-
-    // 9. Archive Inspector Card
-    if (widget.file.isArchive) {
-      return _buildArchiveCard();
-    }
-
-    // 10. Office / Document Card
-    return _buildDocumentCard();
-  }
-
-  Widget _buildVideoPlayer() {
-    if (_videoLoading) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 12),
-            Text('Initializing video player...', style: TextStyle(color: NivaroColors.textMuted)),
-          ],
-        ),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    if (_error != null) {
+      return EmptyState(
+        icon: Icons.picture_as_pdf_outlined,
+        title: "Couldn't show this PDF",
+        message: _error!,
+        actionLabel: 'Open with another app',
+        onAction: widget.onOpenWith,
       );
     }
-
-    if (_videoError != null || _chewieController == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: DarkCard(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.movie_filter_rounded, color: NivaroColors.purpleLight, size: 48),
-                const SizedBox(height: 14),
-                Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
-                const SizedBox(height: 8),
-                Text(
-                  _videoError ?? 'Built-in video decoder does not support this stream.',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: _openWithExternalApp,
-                  style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                  label: const Text('Open in VLC / MX Player'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      color: Colors.black,
-      child: SafeArea(
-        child: Center(
-          child: Chewie(controller: _chewieController!),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPdfViewer() {
-    if (_cachedLocalPath == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    if (_pdfError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: DarkCard(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.picture_as_pdf_rounded, color: NivaroColors.dangerLight, size: 48),
-                const SizedBox(height: 14),
-                Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center),
-                const SizedBox(height: 8),
-                Text('PDF error: $_pdfError', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: _openWithExternalApp,
-                  style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                  label: const Text('Open in External PDF App'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return Stack(
       children: [
         PDFView(
-          filePath: _cachedLocalPath!,
-          enableSwipe: true,
-          swipeHorizontal: false,
+          filePath: widget.path,
           autoSpacing: true,
-          pageFling: true,
-          pageSnap: true,
-          defaultPage: 0,
-          fitPolicy: FitPolicy.BOTH,
-          preventLinkNavigation: false,
-          backgroundColor: NivaroColors.background,
-          onRender: (pages) {
-            if (mounted) {
-              setState(() {
-                _pdfTotalPages = pages ?? 0;
-                _pdfReady = true;
-              });
-            }
-          },
-          onError: (error) {
-            if (mounted) setState(() => _pdfError = error.toString());
-          },
-          onPageError: (page, error) {
-            if (mounted) setState(() => _pdfError = 'Page $page: ${error.toString()}');
-          },
-          onViewCreated: (PDFViewController controller) {
-            _pdfViewController = controller;
-          },
-          onPageChanged: (int? page, int? total) {
-            if (mounted) {
-              setState(() {
-                _pdfCurrentPage = (page ?? 0) + 1;
-                if (total != null && total > 0) _pdfTotalPages = total;
-              });
-            }
-          },
+          pageSnap: false,
+          pageFling: false,
+          fitPolicy: FitPolicy.WIDTH,
+          backgroundColor: scheme.surfaceContainerHighest,
+          onRender: (pages) => setState(() => _pages = pages ?? 0),
+          onViewCreated: (c) => _controller = c,
+          onPageChanged: (page, total) => setState(() {
+            _page = page ?? 0;
+            if (total != null && total > 0) _pages = total;
+          }),
+          onError: (e) => setState(() => _error = e.toString()),
+          onPageError: (page, e) => setState(() => _error = 'Page ${(page ?? 0) + 1}: $e'),
         ),
-        if (_pdfReady && _pdfTotalPages > 0)
+        if (_pages > 1)
           Positioned(
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: Space.lg + MediaQuery.paddingOf(context).bottom,
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.82),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white12),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 8, spreadRadius: 2),
-                  ],
-                ),
+              child: Material(
+                color: scheme.surfaceContainerHigh,
+                shape: const StadiumBorder(),
+                elevation: 2,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.white),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                      tooltip: 'Previous Page',
-                      onPressed: _pdfCurrentPage > 1
-                          ? () => _pdfViewController?.setPage(_pdfCurrentPage - 2)
-                          : null,
+                      icon: const Icon(Icons.chevron_left),
+                      tooltip: 'Previous page',
+                      onPressed: _page > 0 ? () => _controller?.setPage(_page - 1) : null,
                     ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: _showJumpToPageDialog,
-                      child: Text(
-                        '$_pdfCurrentPage / $_pdfTotalPages',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    Semantics(
+                      button: true,
+                      label: 'Page ${_page + 1} of $_pages. Go to page',
+                      excludeSemantics: true,
+                      child: TextButton(
+                        onPressed: _jump,
+                        child: Text('${_page + 1} of $_pages', style: theme.textTheme.labelLarge?.tabular),
                       ),
                     ),
-                    const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.white),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                      tooltip: 'Next Page',
-                      onPressed: _pdfCurrentPage < _pdfTotalPages
-                          ? () => _pdfViewController?.setPage(_pdfCurrentPage)
-                          : null,
+                      icon: const Icon(Icons.chevron_right),
+                      tooltip: 'Next page',
+                      onPressed: _page < _pages - 1 ? () => _controller?.setPage(_page + 1) : null,
                     ),
                   ],
                 ),
@@ -1064,715 +1091,539 @@ class _FileViewerScreenState extends State<FileViewerScreen> with SingleTickerPr
       ],
     );
   }
+}
 
-  Widget _buildImageViewer() {
-    Color bgColor;
-    switch (_imageBgMode) {
-      case 1:
-        bgColor = Colors.black;
-        break;
-      case 2:
-        bgColor = Colors.white;
-        break;
-      case 3:
-        bgColor = const Color(0xFF1E2332);
-        break;
-      default:
-        bgColor = NivaroColors.surfaceDim;
-    }
+// ---------------------------------------------------------------------------
+// Pictures
 
-    Widget imageWidget;
-    if (widget.file.isSvg && _cachedLocalPath != null) {
-      imageWidget = SvgPicture.file(
-        File(_cachedLocalPath!),
-        fit: BoxFit.contain,
-        placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-    } else if (_cachedLocalPath != null) {
-      imageWidget = Image.file(
-        File(_cachedLocalPath!),
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.broken_image_rounded, color: NivaroColors.dangerLight, size: 48),
-                const SizedBox(height: 12),
-                Text('Could not decode image format ($error)', style: TextStyle(color: NivaroColors.textMuted)),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _openWithExternalApp,
-                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                  label: const Text('Open in Gallery'),
+/// Full-screen pictures on a dark page (media is judged on dark, whatever
+/// the app's theme), swiping through the folder's pictures, pinch and
+/// double-tap zoom.
+class _ImageGallery extends StatefulWidget {
+  const _ImageGallery({required this.files, required this.initial, required this.isLocal, required this.onDetails});
+
+  final List<FileEntry> files;
+  final FileEntry initial;
+  final bool isLocal;
+  final void Function(FileEntry) onDetails;
+
+  @override
+  State<_ImageGallery> createState() => _ImageGalleryState();
+}
+
+class _ImageGalleryState extends State<_ImageGallery> {
+  late int _index = widget.files.indexWhere((f) => f.path == widget.initial.path).clamp(0, widget.files.length - 1);
+  late final _pages = PageController(initialPage: _index);
+  bool _zoomed = false;
+  String? _token = ApiClient.instance.accessToken;
+  int _retry = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pictures load with a header, not through ApiClient, so start with a
+    // token that won't expire mid-swipe.
+    ApiClient.instance.freshToken().then((t) {
+      if (mounted && t != _token) setState(() => _token = t);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  FileEntry get _current => widget.files[_index];
+
+  Future<void> _reload() async {
+    final t = await ApiClient.instance.freshToken();
+    if (!mounted) return;
+    PaintingBinding.instance.imageCache.clear();
+    setState(() {
+      _token = t;
+      _retry++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppTheme.dark();
+    final multiple = widget.files.length > 1;
+    return Theme(
+      data: dark,
+      child: Builder(
+        builder: (context) {
+          final scheme = Theme.of(context).colorScheme;
+          return Scaffold(
+            backgroundColor: scheme.surfaceContainerLowest,
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
+              backgroundColor: scheme.surfaceContainerLowest.withValues(alpha: 0.7),
+              systemOverlayStyle: AppTheme.systemBarsStyle(Brightness.dark),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_current.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (multiple)
+                    Text(
+                      '${_index + 1} of ${widget.files.length}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant).tabular,
+                    ),
+                ],
+              ),
+              actions: [
+                IconButton(icon: const Icon(Icons.info_outline), tooltip: 'Details', onPressed: () => widget.onDetails(_current)),
+                PopupMenuButton<String>(
+                  tooltip: 'More options',
+                  onSelected: (v) {
+                    if (v == 'open') openWithAnotherApp(context, _current, isLocal: widget.isLocal);
+                    if (v == 'save') saveToPhone(context, _current);
+                    if (v == 'path') {
+                      Clipboard.setData(ClipboardData(text: _current.path));
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Path copied')));
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'open', child: Text('Open with another app')),
+                    if (!widget.isLocal) const PopupMenuItem(value: 'save', child: Text('Save to phone')),
+                    const PopupMenuItem(value: 'path', child: Text('Copy path')),
+                  ],
                 ),
               ],
+            ),
+            body: PageView.builder(
+              controller: _pages,
+              physics: _zoomed ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+              itemCount: widget.files.length,
+              onPageChanged: (i) => setState(() {
+                _index = i;
+                _zoomed = false;
+              }),
+              itemBuilder: (context, i) => _ZoomableImage(
+                key: ValueKey('${widget.files[i].path}#$_retry'),
+                file: widget.files[i],
+                isLocal: widget.isLocal,
+                token: _token,
+                onZoomChanged: (z) {
+                  if (z != _zoomed) setState(() => _zoomed = z);
+                },
+                onRetry: _reload,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ZoomableImage extends StatefulWidget {
+  const _ZoomableImage({super.key, required this.file, required this.isLocal, required this.token, required this.onZoomChanged, required this.onRetry});
+
+  final FileEntry file;
+  final bool isLocal;
+  final String? token;
+  final ValueChanged<bool> onZoomChanged;
+  final VoidCallback onRetry;
+
+  @override
+  State<_ZoomableImage> createState() => _ZoomableImageState();
+}
+
+class _ZoomableImageState extends State<_ZoomableImage> with SingleTickerProviderStateMixin {
+  final _transform = TransformationController();
+  late final _animation = AnimationController(vsync: this, duration: Motion.medium);
+  Offset _tap = Offset.zero;
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    _animation.dispose();
+    super.dispose();
+  }
+
+  void _animateTo(Matrix4 target) {
+    final tween = Matrix4Tween(begin: _transform.value, end: target);
+    final curved = CurvedAnimation(parent: _animation, curve: Motion.standard);
+    void tick() => _transform.value = tween.evaluate(curved);
+    _animation
+      ..duration = Motion.of(context).medium
+      ..reset();
+    _animation.addListener(tick);
+    _animation.forward().whenCompleteOrCancel(() => _animation.removeListener(tick));
+  }
+
+  void _doubleTap() {
+    HapticFeedback.selectionClick();
+    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed) {
+      _animateTo(Matrix4.identity());
+      widget.onZoomChanged(false);
+    } else {
+      const s = 2.5;
+      _animateTo(Matrix4.identity()
+        ..translateByDouble(-_tap.dx * (s - 1), -_tap.dy * (s - 1), 0, 1)
+        ..scaleByDouble(s, s, 1, 1));
+      widget.onZoomChanged(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final f = widget.file;
+    Widget error(BuildContext context, Object e, StackTrace? _) => _ImageError(file: f, onRetry: widget.isLocal ? null : widget.onRetry);
+    Widget loading() => Center(child: CircularProgressIndicator(color: scheme.onSurfaceVariant));
+    final Widget image;
+    if (f.isSvg) {
+      image = widget.isLocal
+          ? SvgPicture.file(File(f.path), fit: BoxFit.contain, placeholderBuilder: (_) => loading())
+          : SvgPicture.network(
+              ApiClient.instance.buildUri('/file', {'path': f.path}).toString(),
+              headers: {if (widget.token != null) 'Authorization': widget.token!},
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) => loading(),
+              errorBuilder: error,
+            );
+    } else if (widget.isLocal) {
+      image = Image.file(File(f.path), fit: BoxFit.contain, errorBuilder: error);
+    } else {
+      image = Image.network(
+        ApiClient.instance.buildUri('/file', {'path': f.path}).toString(),
+        headers: {if (widget.token != null) 'Authorization': widget.token!},
+        fit: BoxFit.contain,
+        errorBuilder: error,
+        loadingBuilder: (context, child, p) {
+          if (p == null) return child;
+          final total = p.expectedTotalBytes;
+          return Center(
+            child: CircularProgressIndicator(
+              value: total == null ? null : p.cumulativeBytesLoaded / total,
+              color: scheme.onSurfaceVariant,
             ),
           );
         },
       );
-    } else if (_bytes != null) {
-      imageWidget = Image.memory(_bytes!, fit: BoxFit.contain);
-    } else {
-      imageWidget = const Center(child: CircularProgressIndicator());
     }
-
-    return Container(
-      color: bgColor,
-      alignment: Alignment.center,
+    return Semantics(
+      image: true,
+      label: f.name,
       child: GestureDetector(
-        onDoubleTap: () {
-          if (_imageTransformController.value != Matrix4.identity()) {
-            _imageTransformController.value = Matrix4.identity();
-          } else {
-            _imageTransformController.value = Matrix4.identity()..scaleByDouble(2.5, 2.5, 2.5, 1.0);
-          }
-        },
+        onDoubleTapDown: (d) => _tap = d.localPosition,
+        onDoubleTap: _doubleTap,
         child: InteractiveViewer(
-          transformationController: _imageTransformController,
-          minScale: 0.1,
-          maxScale: 10.0,
-          child: Center(child: imageWidget),
+          transformationController: _transform,
+          minScale: 1,
+          maxScale: 8,
+          onInteractionEnd: (_) => widget.onZoomChanged(_transform.value.getMaxScaleOnAxis() > 1.01),
+          child: SizedBox.expand(child: image),
         ),
       ),
     );
   }
+}
 
-  Widget _buildAudioPlayer() {
-    final posStr = _formatDuration(_audioPosition);
-    final durStr = _formatDuration(_audioDuration);
-    final double progress = (_audioDuration.inMilliseconds > 0)
-        ? (_audioPosition.inMilliseconds / _audioDuration.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
+class _ImageError extends StatelessWidget {
+  const _ImageError({required this.file, this.onRetry});
+  final FileEntry file;
+  final VoidCallback? onRetry;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: DarkCard(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Animated Disc with Sound waves
-                AnimatedBuilder(
-                  animation: _discAnimController,
-                  builder: (context, child) {
-                    return Transform.rotate(
-                      angle: _discAnimController.value * 2 * math.pi,
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    width: 110,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      color: NivaroColors.cyan.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: NivaroColors.cyan.withValues(alpha: 0.4), width: 3),
-                      boxShadow: _audioPlaying
-                          ? [
-                              BoxShadow(
-                                color: NivaroColors.cyan.withValues(alpha: 0.35),
-                                blurRadius: 24,
-                                spreadRadius: 6,
-                              ),
-                            ]
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: NivaroColors.surfaceContainerHigh,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.music_note_rounded, color: NivaroColors.cyanLight, size: 24),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  widget.file.name,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${formatBytes(widget.file.size)} · Audio Stream',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                ),
-                const SizedBox(height: 24),
-
-                // Audio Slider
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: NivaroColors.cyanLight,
-                    inactiveTrackColor: Colors.white12,
-                    thumbColor: NivaroColors.cyanLight,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                  ),
-                  child: Slider(
-                    value: progress,
-                    onChanged: (val) {
-                      if (_audioPlayerController != null && _audioDuration.inMilliseconds > 0) {
-                        final targetMs = (val * _audioDuration.inMilliseconds).toInt();
-                        _audioPlayerController!.seekTo(Duration(milliseconds: targetMs));
-                      }
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(posStr, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                      Text(durStr, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Primary Controls
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.replay_10_rounded, size: 30),
-                      tooltip: 'Seek back 10s',
-                      onPressed: () {
-                        if (_audioPlayerController != null) {
-                          final newPos = _audioPosition - const Duration(seconds: 10);
-                          _audioPlayerController!.seekTo(newPos < Duration.zero ? Duration.zero : newPos);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: 20),
-                    FloatingActionButton(
-                      mini: false,
-                      backgroundColor: NivaroColors.cyan,
-                      foregroundColor: Colors.black,
-                      elevation: 2,
-                      onPressed: () {
-                        if (_audioPlayerController != null) {
-                          if (_audioPlaying) {
-                            _audioPlayerController!.pause();
-                          } else {
-                            _audioPlayerController!.play();
-                          }
-                        }
-                      },
-                      child: Icon(_audioPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 32),
-                    ),
-                    const SizedBox(width: 20),
-                    IconButton(
-                      icon: const Icon(Icons.forward_10_rounded, size: 30),
-                      tooltip: 'Seek forward 10s',
-                      onPressed: () {
-                        if (_audioPlayerController != null) {
-                          final newPos = _audioPosition + const Duration(seconds: 10);
-                          _audioPlayerController!.seekTo(newPos > _audioDuration ? _audioDuration : newPos);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // Secondary audio speed & loop options
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ActionChip(
-                      label: Text('${_audioSpeed}x', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      backgroundColor: NivaroColors.surfaceContainerLowest,
-                      onPressed: () {
-                        final speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
-                        final nextIndex = (speeds.indexOf(_audioSpeed) + 1) % speeds.length;
-                        final newSpeed = speeds[nextIndex];
-                        _audioPlayerController?.setPlaybackSpeed(newSpeed);
-                        setState(() => _audioSpeed = newSpeed);
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                    ActionChip(
-                      avatar: Icon(_audioLooping ? Icons.repeat_one_rounded : Icons.repeat_rounded, size: 16, color: _audioLooping ? NivaroColors.cyanLight : Colors.white60),
-                      label: Text(_audioLooping ? 'Looping' : 'Repeat', style: TextStyle(fontSize: 12, color: _audioLooping ? NivaroColors.cyanLight : Colors.white70)),
-                      backgroundColor: NivaroColors.surfaceContainerLowest,
-                      onPressed: () {
-                        final newLoop = !_audioLooping;
-                        _audioPlayerController?.setLooping(newLoop);
-                        setState(() => _audioLooping = newLoop);
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+  @override
+  Widget build(BuildContext context) {
+    final decodable = file.hasThumbnail || file.isSvg;
+    return EmptyState(
+      icon: Icons.broken_image_outlined,
+      title: decodable ? "Couldn't load this picture" : 'This picture can’t be shown here',
+      message: decodable
+          ? 'Check the connection to the server and try again.'
+          : '${file.extension.toUpperCase()} pictures open in another app. Use More options.',
+      actionLabel: decodable && onRetry != null ? 'Retry' : null,
+      onAction: onRetry,
     );
   }
+}
 
-  Widget _buildMarkdownViewer() {
-    return Container(
-      color: NivaroColors.surfaceDim,
-      child: Markdown(
-        data: _text!,
-        selectable: true,
-        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-          p: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 14, height: 1.5),
-          h1: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
-          h2: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
-          h3: TextStyle(color: NivaroColors.primaryLight, fontSize: 16, fontWeight: FontWeight.w600),
-          code: TextStyle(fontFamily: 'monospace', backgroundColor: Color(0xFF161B22), color: NivaroColors.cyanLight, fontSize: 12.5),
-          codeblockDecoration: BoxDecoration(
-            color: const Color(0xFF0D1117),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white12),
-          ),
-          blockquoteDecoration: BoxDecoration(
-            color: NivaroColors.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border(left: BorderSide(color: NivaroColors.primary, width: 4)),
-          ),
-        ),
-        onTapLink: (text, href, title) {
-          if (href != null) launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-        },
-      ),
-    );
+// ---------------------------------------------------------------------------
+// Video and audio
+
+/// Plays straight from the server (the file route supports ranges, so it
+/// streams and seeks) or from this phone. When the phone can't decode the
+/// file, it offers the server's compatible stream (`/v1/file/stream`
+/// remuxes MKV and friends) and another app.
+class _MediaPlayer extends StatefulWidget {
+  const _MediaPlayer({
+    required this.file,
+    required this.isLocal,
+    required this.audio,
+    required this.onOpenWith,
+    required this.onDetails,
+    this.onSave,
+  });
+
+  final FileEntry file;
+  final bool isLocal;
+  final bool audio;
+  final VoidCallback onOpenWith;
+  final VoidCallback? onSave;
+  final VoidCallback onDetails;
+
+  @override
+  State<_MediaPlayer> createState() => _MediaPlayerState();
+}
+
+class _MediaPlayerState extends State<_MediaPlayer> {
+  VideoPlayerController? _video;
+  ChewieController? _chewie;
+  Object? _error;
+  bool _compatible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
   }
 
-  Widget _buildJsonViewer() {
-    String formatted;
+  Future<void> _start() async {
+    _chewie?.dispose();
+    await _video?.dispose();
+    setState(() {
+      _video = null;
+      _chewie = null;
+      _error = null;
+    });
     try {
-      final parsed = jsonDecode(_text!);
-      formatted = const JsonEncoder.withIndent('  ').convert(parsed);
-    } catch (_) {
-      formatted = _text!;
+      final VideoPlayerController controller;
+      if (widget.isLocal) {
+        controller = VideoPlayerController.file(File(widget.file.path));
+      } else {
+        final token = await ApiClient.instance.freshToken();
+        final uri = ApiClient.instance.buildUri(_compatible ? '/file/stream' : '/file', {'path': widget.file.path});
+        controller = VideoPlayerController.networkUrl(uri, httpHeaders: {'Authorization': ?token});
+      }
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      controller.addListener(_onTick);
+      final scheme = AppTheme.dark().colorScheme;
+      final aspect = controller.value.aspectRatio;
+      setState(() {
+        _video = controller;
+        if (!widget.audio) {
+          _chewie = ChewieController(
+            videoPlayerController: controller,
+            autoPlay: true,
+            aspectRatio: aspect.isFinite && aspect > 0 ? aspect : 16 / 9,
+            allowPlaybackSpeedChanging: true,
+            materialProgressColors: ChewieProgressColors(
+              playedColor: scheme.primary,
+              handleColor: scheme.primary,
+              bufferedColor: scheme.onSurfaceVariant,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
     }
-
-    final lines = const LineSplitter().convert(formatted);
-
-    return Container(
-      color: const Color(0xFF0D1117),
-      child: SelectionArea(
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          itemCount: lines.length,
-          itemBuilder: (context, index) {
-            final line = lines[index];
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 36,
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.white24),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    line,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12.5,
-                      color: _getJsonLineColor(line),
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
   }
 
-  Color _getJsonLineColor(String line) {
-    final trimmed = line.trim();
-    if (trimmed.startsWith('"') && trimmed.contains('":')) {
-      return const Color(0xFF7EE787); // Key emerald
-    }
-    if (trimmed.endsWith(':') || trimmed == '{' || trimmed == '}' || trimmed == '[' || trimmed == ']') {
-      return const Color(0xFF79C0FF); // Structure blue
-    }
-    if (trimmed.contains('true') || trimmed.contains('false') || trimmed.contains('null')) {
-      return const Color(0xFFD2A8FF); // Keyword purple
-    }
-    return const Color(0xFFE6EDF3);
+  void _onTick() {
+    if (mounted && widget.audio) setState(() {});
   }
 
-  Widget _buildCsvViewer() {
-    final filter = _csvFilter.toLowerCase();
-    final header = _csvRows.isNotEmpty ? _csvRows.first : <String>[];
-    final rows = _csvRows.length > 1
-        ? _csvRows.skip(1).where((r) => filter.isEmpty || r.any((c) => c.toLowerCase().contains(filter))).toList()
-        : <List<String>>[];
+  @override
+  void dispose() {
+    _video?.removeListener(_onTick);
+    _chewie?.dispose();
+    _video?.dispose();
+    super.dispose();
+  }
 
-    return Column(
-      children: [
-        // Filter Bar & Row count
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: NivaroColors.surfaceContainerLowest,
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _csvFilterController,
-                  onChanged: (val) => setState(() => _csvFilter = val),
-                  decoration: InputDecoration(
-                    hintText: 'Search in table...',
-                    hintStyle: const TextStyle(fontSize: 13, color: Colors.white38),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                    suffixIcon: _csvFilter.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 16),
-                            onPressed: () {
-                              _csvFilterController.clear();
-                              setState(() => _csvFilter = '');
-                            },
-                          )
-                        : null,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    filled: true,
-                    fillColor: NivaroColors.surfaceContainerLow,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${rows.length} of ${_csvRows.length - 1} rows · ${header.length} cols',
-                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5, fontWeight: FontWeight.bold),
+  @override
+  Widget build(BuildContext context) {
+    final page = widget.audio ? Theme.of(context) : AppTheme.dark();
+    return Theme(
+      data: page,
+      child: Builder(builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return Scaffold(
+          backgroundColor: widget.audio ? scheme.surface : scheme.surfaceContainerLowest,
+          appBar: AppBar(
+            backgroundColor: widget.audio ? null : scheme.surfaceContainerLowest,
+            systemOverlayStyle: widget.audio ? null : AppTheme.systemBarsStyle(Brightness.dark),
+            title: Text(widget.file.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            actions: [
+              IconButton(icon: const Icon(Icons.info_outline), tooltip: 'Details', onPressed: widget.onDetails),
+              PopupMenuButton<String>(
+                tooltip: 'More options',
+                onSelected: (v) {
+                  if (v == 'open') widget.onOpenWith();
+                  if (v == 'save') widget.onSave?.call();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'open', child: Text('Open with another app')),
+                  if (widget.onSave != null) const PopupMenuItem(value: 'save', child: Text('Save to phone')),
+                ],
               ),
             ],
           ),
-        ),
+          body: SafeArea(top: false, child: _body(context)),
+        );
+      }),
+    );
+  }
 
-        // Interactive Data Table
-        Expanded(
-          child: SelectionArea(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(NivaroColors.surfaceContainerHigh),
-                  dataRowColor: WidgetStateProperty.resolveWith((states) {
-                    return states.contains(WidgetState.hovered)
-                        ? NivaroColors.primary.withValues(alpha: 0.12)
-                        : NivaroColors.surfaceDim;
-                  }),
-                  headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: NivaroColors.cyanLight, fontSize: 13),
-                  dataTextStyle: const TextStyle(color: Color(0xFFE6EDF3), fontSize: 12.5),
-                  columns: [
-                    const DataColumn(label: Text('#')),
-                    for (final col in header) DataColumn(label: Text(col)),
-                  ],
-                  rows: [
-                    for (int i = 0; i < rows.length; i++)
-                      DataRow(
-                        cells: [
-                          DataCell(Text('${i + 1}', style: const TextStyle(color: Colors.white30, fontSize: 11))),
-                          for (final cell in rows[i]) DataCell(Text(cell)),
-                        ],
-                      ),
+  Widget _body(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    if (_error != null) {
+      final canRemux = !widget.isLocal && !widget.audio && !_compatible;
+      return LayoutBuilder(
+        builder: (context, c) => SingleChildScrollView(
+          padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: (c.maxHeight - Space.xl * 2).clamp(0, double.infinity)),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(widget.audio ? Icons.audio_file_outlined : Icons.movie_outlined, size: 48, color: scheme.onSurfaceVariant),
+                    const SizedBox(height: Space.lg),
+                    Text("This phone can't play it", style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+                    const SizedBox(height: Space.sm),
+                    Text(
+                      canRemux
+                          ? 'The server can convert it to a format this phone plays. It may take a moment to start.'
+                          : 'Try another app, like VLC.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: Space.xl),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: Space.sm,
+                      runSpacing: Space.sm,
+                      children: [
+                        if (canRemux)
+                          FilledButton(
+                            onPressed: () {
+                              _compatible = true;
+                              _start();
+                            },
+                            child: const Text('Play converted'),
+                          ),
+                        OutlinedButton.icon(
+                          onPressed: widget.onOpenWith,
+                          icon: const Icon(Icons.open_in_new_outlined),
+                          label: const Text('Open with another app'),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCodeViewer() {
-    if (_isEditing) {
-      return Container(
-        color: const Color(0xFF0D1117),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: TextField(
-          controller: _textController,
-          maxLines: null,
-          keyboardType: TextInputType.multiline,
-          autofocus: true,
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 13,
-            color: Color(0xFFE6EDF3),
-            height: 1.45,
-          ),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            hintText: 'Enter text here...',
-            hintStyle: TextStyle(color: Colors.white24),
           ),
         ),
       );
     }
-
-    final lines = const LineSplitter().convert(_text!);
-
-    return Column(
-      children: [
-        if (_isSearchingCode)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            color: NivaroColors.surfaceContainerLowest,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _codeSearchController,
-                    autofocus: true,
-                    onChanged: (val) => setState(() => _codeSearchQuery = val),
-                    style: const TextStyle(fontSize: 13, color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Find in text...',
-                      hintStyle: const TextStyle(fontSize: 12.5, color: Colors.white30),
-                      prefixIcon: Icon(Icons.search_rounded, size: 16, color: NivaroColors.primaryLight),
-                      suffixIcon: _codeSearchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 16),
-                              onPressed: () {
-                                _codeSearchController.clear();
-                                setState(() => _codeSearchQuery = '');
-                              },
-                            )
-                          : null,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      filled: true,
-                      fillColor: NivaroColors.surfaceContainerLow,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  tooltip: 'Close search',
-                  onPressed: () => setState(() {
-                    _isSearchingCode = false;
-                    _codeSearchController.clear();
-                    _codeSearchQuery = '';
-                  }),
-                ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: Container(
-            color: const Color(0xFF0D1117),
-            child: SelectionArea(
-              child: SingleChildScrollView(
-                scrollDirection: _wrapCode ? Axis.vertical : Axis.horizontal,
-                child: SingleChildScrollView(
-                  scrollDirection: _wrapCode ? Axis.horizontal : Axis.vertical,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (int i = 0; i < lines.length; i++)
-                          _buildCodeLine(i + 1, lines[i]),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCodeLine(int lineNum, String lineText) {
-    final query = _codeSearchQuery.toLowerCase();
-    final isMatched = query.isNotEmpty && lineText.toLowerCase().contains(query);
-
-    return Container(
-      color: isMatched ? NivaroColors.warning.withValues(alpha: 0.18) : Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 38,
-            child: Text(
-              '$lineNum',
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-                color: isMatched ? NivaroColors.warningLight : Colors.white24,
-                fontWeight: isMatched ? FontWeight.bold : FontWeight.normal,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Text(
-            lineText.isEmpty ? ' ' : lineText,
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12.5,
-              color: isMatched ? NivaroColors.warningLight : const Color(0xFFE6EDF3),
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildArchiveCard() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: DarkCard(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF97316).withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.folder_zip_rounded, color: Color(0xFFFB923C), size: 42),
-                ),
-                const SizedBox(height: 18),
-                Text(widget.file.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16), textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Text(
-                  '${formatBytes(widget.file.size)} · ${widget.file.extension.toUpperCase()} Compressed Archive',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _openWithExternalApp,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: NivaroColors.primary,
-                    minimumSize: const Size(double.infinity, 46),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                  label: const Text('Open with Native Archiver', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                if (!widget.isLocal) ...[
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _savingToDevice ? null : _saveToDeviceDownloads,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.download_rounded, size: 20),
-                    label: const Text('Save to Device Downloads'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDocumentCard() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: DarkCard(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.infoLight.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    _getCategoryIcon(),
-                    color: NivaroColors.infoLight,
-                    size: 42,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  widget.file.name,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${formatBytes(widget.file.size)} · ${widget.file.categoryLabel}',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5),
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _openWithExternalApp,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: NivaroColors.primary,
-                    minimumSize: const Size(double.infinity, 46),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                  label: const Text('Open with Native App', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                if (!widget.isLocal) ...[
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _savingToDevice ? null : _saveToDeviceDownloads,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.download_rounded, size: 20),
-                    label: const Text('Save to Device Downloads'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _formatDuration(Duration d) {
-    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    if (d.inHours > 0) {
-      final hours = d.inHours.toString().padLeft(2, '0');
-      return '$hours:$minutes:$seconds';
+    final video = _video;
+    if (video == null) {
+      return Semantics(
+        label: 'Loading',
+        liveRegion: true,
+        child: Center(child: CircularProgressIndicator(color: scheme.onSurfaceVariant)),
+      );
     }
-    return '$minutes:$seconds';
+    if (!widget.audio) return Center(child: Chewie(controller: _chewie!));
+    return _AudioControls(file: widget.file, controller: video);
+  }
+}
+
+class _AudioControls extends StatelessWidget {
+  const _AudioControls({required this.file, required this.controller});
+  final FileEntry file;
+  final VideoPlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final v = controller.value;
+    final duration = v.duration;
+    final position = v.position > duration ? duration : v.position;
+    void seek(Duration d) => controller.seekTo(d < Duration.zero ? Duration.zero : (d > duration ? duration : d));
+    return Center(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(Space.gutter(context)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ExcludeSemantics(
+                child: Container(
+                  width: 160,
+                  height: 160,
+                  decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(Corners.extraLarge)),
+                  child: Icon(Icons.music_note_outlined, size: 64, color: scheme.onSurfaceVariant),
+                ),
+              ),
+              const SizedBox(height: Space.xl),
+              Text(file.name, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+              const SizedBox(height: Space.xs),
+              Text(formatSize(file.size), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+              const SizedBox(height: Space.xl),
+              Slider(
+                value: duration.inMilliseconds > 0 ? position.inMilliseconds / duration.inMilliseconds : 0,
+                onChanged: duration.inMilliseconds > 0 ? (x) => seek(duration * x) : null,
+                semanticFormatterCallback: (_) => '${formatDuration(position)} of ${formatDuration(duration)}',
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.xl),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(formatDuration(position), style: theme.textTheme.bodySmall?.tabular),
+                    Text(formatDuration(duration), style: theme.textTheme.bodySmall?.tabular),
+                  ],
+                ),
+              ),
+              const SizedBox(height: Space.lg),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(icon: const Icon(Icons.replay_10), tooltip: 'Back 10 seconds', onPressed: () => seek(position - const Duration(seconds: 10))),
+                  const SizedBox(width: Space.lg),
+                  IconButton.filled(
+                    iconSize: 40,
+                    padding: const EdgeInsets.all(Space.md),
+                    icon: Icon(v.isPlaying ? Icons.pause : Icons.play_arrow),
+                    tooltip: v.isPlaying ? 'Pause' : 'Play',
+                    onPressed: () => v.isPlaying ? controller.pause() : controller.play(),
+                  ),
+                  const SizedBox(width: Space.lg),
+                  IconButton(icon: const Icon(Icons.forward_10), tooltip: 'Forward 10 seconds', onPressed: () => seek(position + const Duration(seconds: 10))),
+                ],
+              ),
+              const SizedBox(height: Space.sm),
+              TextButton(
+                onPressed: () {
+                  const speeds = [1.0, 1.25, 1.5, 2.0, 0.75];
+                  final i = speeds.indexOf(v.playbackSpeed);
+                  controller.setPlaybackSpeed(speeds[(i + 1) % speeds.length]);
+                },
+                child: Text('Speed ${v.playbackSpeed == v.playbackSpeed.roundToDouble() ? v.playbackSpeed.toStringAsFixed(0) : v.playbackSpeed}×'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

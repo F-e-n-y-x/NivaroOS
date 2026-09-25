@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/scaled_icons.dart';
 import '../theme/spacing.dart';
 import '../theme/status_colors.dart';
 
@@ -27,6 +28,9 @@ class StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tone = StatusColors.toneOf(context, status);
     final style = Theme.of(context).textTheme.labelMedium?.copyWith(color: tone.onContainer);
+    // The icon grows with the text (up to 1.4×), so at 200% text it
+    // doesn't shrink to a speck next to the label.
+    final iconSize = 16 * iconScaleFor(context);
     return Semantics(
       container: true,
       label: label,
@@ -41,7 +45,7 @@ class StatusChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon ?? defaultIcon(status), size: 16, color: tone.onContainer),
+                Icon(icon ?? defaultIcon(status), size: iconSize, color: tone.onContainer),
                 const SizedBox(width: Space.xs),
                 Flexible(child: Text(label, style: style, maxLines: 1, overflow: TextOverflow.ellipsis)),
               ],

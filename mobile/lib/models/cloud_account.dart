@@ -1,3 +1,4 @@
+/// A cloud drive the server has mounted with rclone (`GET /v1/cloud`).
 class CloudAccount {
   final String name;
   final String fs;
@@ -7,7 +8,7 @@ class CloudAccount {
   final double? uploadMbps;
   final double? downloadMbps;
 
-  CloudAccount({
+  const CloudAccount({
     required this.name,
     required this.fs,
     required this.mountPoint,
@@ -20,48 +21,56 @@ class CloudAccount {
   factory CloudAccount.fromJson(Map<String, dynamic> j) {
     double? up;
     double? down;
-    final speed = j['speed_results'] as Map<String, dynamic>?;
-    if (speed != null) {
+    final speed = j['speed_results'];
+    if (speed is Map) {
       if (speed['upload_mbps'] is num) up = (speed['upload_mbps'] as num).toDouble();
       if (speed['download_mbps'] is num) down = (speed['download_mbps'] as num).toDouble();
     }
+    final name = j['name'] as String? ?? '';
     return CloudAccount(
-      name: j['name'] as String? ?? j['fs'] as String? ?? 'Cloud Account',
+      name: name,
       fs: j['fs'] as String? ?? '',
       mountPoint: j['mount_point'] as String? ?? '',
-      type: j['type'] as String? ?? 'cloud',
+      type: j['type'] as String? ?? '',
       icon: j['icon'] as String? ?? '',
       uploadMbps: up,
       downloadMbps: down,
     );
   }
 
+  /// Mounted, so its files can be browsed.
+  bool get isMounted => mountPoint.isNotEmpty;
+
   String get displayName {
     if (name.isNotEmpty) return name;
     if (fs.isNotEmpty) return fs.replaceAll(':', '');
-    return type.toUpperCase();
+    return providerTitle;
   }
 
+  /// The service's own name ("Google Drive"), or "Cloud drive" when the
+  /// type is unknown.
   String get providerTitle {
     switch (type.toLowerCase()) {
       case 'drive':
         return 'Google Drive';
       case 'onedrive':
-        return 'Microsoft OneDrive';
+        return 'OneDrive';
       case 'dropbox':
         return 'Dropbox';
       case 'icloud':
-        return 'Apple iCloud';
+        return 'iCloud';
       case 'nextcloud':
         return 'Nextcloud';
       case 's3':
-        return 'Amazon S3 / MinIO';
+        return 'S3 storage';
       case 'webdav':
-        return 'WebDAV Storage';
+        return 'WebDAV';
       case 'mega':
-        return 'MEGA Cloud';
+        return 'MEGA';
+      case '':
+        return 'Cloud drive';
       default:
-        return '${type[0].toUpperCase()}${type.substring(1)} Cloud';
+        return type;
     }
   }
 }

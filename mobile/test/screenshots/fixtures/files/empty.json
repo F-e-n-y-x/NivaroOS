@@ -1,0 +1,10 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "content": [],
+  "total": 0,
+  "index": 1,
+  "size": 100000
+ }
+}

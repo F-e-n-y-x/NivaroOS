@@ -1,1438 +1,1295 @@
 import 'dart:async';
 import 'dart:ui' as ui;
+
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import '../theme.dart';
-import '../services/rfb_client.dart';
-import '../services/vm_client.dart';
 
-enum InputControlMode {
+import '../services/rfb_client.dart';
+import '../ui/ui.dart';
+
+// The remote console UI shared by the VM console and the host desktop:
+// the framebuffer view with touch and trackpad input, the frame around it
+// (app bar, special keys, mouse buttons, full screen), and the clipboard
+// sheet with its history. The two screens only add their own menu items
+// and the state to show before a connection makes sense.
+
+/// How touches on the remote screen become pointer input.
+enum RfbInputMode {
+  /// Like a laptop trackpad: drag moves the pointer, tap clicks where it is.
   trackpad,
+
+  /// Tap where you want to click; drag pans a zoomed screen.
   touch,
 }
 
-enum ConsoleDisplayMode {
-  vnc,
-  stream,
+/// X11 keysyms the key bar and a hardware keyboard send.
+abstract final class Keysym {
+  static const backspace = 0xff08;
+  static const tab = 0xff09;
+  static const enter = 0xff0d;
+  static const escape = 0xff1b;
+  static const delete = 0xffff;
+  static const home = 0xff50;
+  static const left = 0xff51;
+  static const up = 0xff52;
+  static const right = 0xff53;
+  static const down = 0xff54;
+  static const pageUp = 0xff55;
+  static const pageDown = 0xff56;
+  static const end = 0xff57;
+  static const insert = 0xff63;
+  static const f1 = 0xffbe;
+  static const shift = 0xffe1;
+  static const control = 0xffe3;
+  static const alt = 0xffe9;
+  static const superKey = 0xffeb;
+
+  static int f(int n) => f1 + n - 1;
+
+  /// Keys a hardware keyboard sends that don't arrive as text.
+  static final Map<LogicalKeyboardKey, int> hardware = {
+    LogicalKeyboardKey.escape: escape,
+    LogicalKeyboardKey.tab: tab,
+    LogicalKeyboardKey.delete: delete,
+    LogicalKeyboardKey.home: home,
+    LogicalKeyboardKey.end: end,
+    LogicalKeyboardKey.pageUp: pageUp,
+    LogicalKeyboardKey.pageDown: pageDown,
+    LogicalKeyboardKey.insert: insert,
+    LogicalKeyboardKey.arrowLeft: left,
+    LogicalKeyboardKey.arrowUp: up,
+    LogicalKeyboardKey.arrowRight: right,
+    LogicalKeyboardKey.arrowDown: down,
+    for (var i = 1; i <= 12; i++) LogicalKeyboardKey(LogicalKeyboardKey.f1.keyId + i - 1): f(i),
+  };
 }
 
-final Map<LogicalKeyboardKey, int> _keysymTable = {
-  LogicalKeyboardKey.backspace: 0xFF08,
-  LogicalKeyboardKey.tab: 0xFF09,
-  LogicalKeyboardKey.enter: 0xFF0D,
-  LogicalKeyboardKey.escape: 0xFF1B,
-  LogicalKeyboardKey.delete: 0xFFFF,
-  LogicalKeyboardKey.home: 0xFF50,
-  LogicalKeyboardKey.end: 0xFF57,
-  LogicalKeyboardKey.pageUp: 0xFF55,
-  LogicalKeyboardKey.pageDown: 0xFF56,
-  LogicalKeyboardKey.arrowLeft: 0xFF51,
-  LogicalKeyboardKey.arrowUp: 0xFF52,
-  LogicalKeyboardKey.arrowRight: 0xFF53,
-  LogicalKeyboardKey.arrowDown: 0xFF54,
-  LogicalKeyboardKey.shiftLeft: 0xFFE1,
-  LogicalKeyboardKey.shiftRight: 0xFFE2,
-  LogicalKeyboardKey.controlLeft: 0xFFE3,
-  LogicalKeyboardKey.controlRight: 0xFFE4,
-  LogicalKeyboardKey.altLeft: 0xFFE9,
-  LogicalKeyboardKey.altRight: 0xFFEA,
-  LogicalKeyboardKey.metaLeft: 0xFFEB,
-  LogicalKeyboardKey.metaRight: 0xFFEC,
-  LogicalKeyboardKey.space: 0x0020,
-  LogicalKeyboardKey.f1: 0xFFBE,
-  LogicalKeyboardKey.f2: 0xFFBF,
-  LogicalKeyboardKey.f3: 0xFFC0,
-  LogicalKeyboardKey.f4: 0xFFC1,
-  LogicalKeyboardKey.f5: 0xFFC2,
-  LogicalKeyboardKey.f6: 0xFFC3,
-  LogicalKeyboardKey.f7: 0xFFC4,
-  LogicalKeyboardKey.f8: 0xFFC5,
-  LogicalKeyboardKey.f9: 0xFFC6,
-  LogicalKeyboardKey.f10: 0xFFC7,
-  LogicalKeyboardKey.f11: 0xFFC8,
-  LogicalKeyboardKey.f12: 0xFFC9,
-};
+// ---------------------------------------------------------------------------
+// Clipboard history
+// ---------------------------------------------------------------------------
 
-const int _keysymCtrlL = 0xFFE3;
-const int _keysymAltL = 0xFFE9;
-const int _keysymShiftL = 0xFFE1;
-const int _keysymSuperL = 0xFFEB;
-const int _keysymDelete = 0xFFFF;
-const int _keysymEscape = 0xFF1B;
-const int _keysymTab = 0xFF09;
-const int _keysymEnter = 0xFF0D;
-const int _keysymBackspace = 0xFF08;
+/// Text sent to a remote machine ("sent") or copied on it ("copied").
+enum ClipDirection { sent, copied }
 
-class RfbView extends StatefulWidget {
+@immutable
+class RemoteClipItem {
+  const RemoteClipItem({required this.text, required this.direction, required this.target, required this.at});
+  final String text;
+  final ClipDirection direction;
+
+  /// Which machine: a VM's name, or [RemoteClipboardHistory.hostTarget].
+  final String target;
+  final DateTime at;
+}
+
+/// The clipboard history shared by every console, newest first: the last
+/// [maxItems] texts, kept in memory only - clipboards hold passwords often
+/// enough that writing them to disk isn't a sane default (plan WP1-5).
+class RemoteClipboardHistory extends ChangeNotifier {
+  RemoteClipboardHistory();
+
+  static final RemoteClipboardHistory instance = RemoteClipboardHistory();
+
+  static const maxItems = 10;
+  static const maxStoredChars = 100000;
+  static const hostTarget = 'the server';
+
+  /// Sending text makes the remote report the same text straight back as
+  /// a copy; within this window that echo isn't a new entry.
+  static const echoWindow = Duration(seconds: 5);
+
+  final List<RemoteClipItem> _items = [];
+  List<RemoteClipItem> get items => List.unmodifiable(_items);
+
+  /// Adds one entry; returns false when nothing was added (empty, or an
+  /// echo of what was just sent).
+  bool record(String text, ClipDirection direction, String target, {DateTime? now}) {
+    if (text.isEmpty) return false;
+    final at = now ?? clock.now();
+    final stored = text.length > maxStoredChars ? text.substring(0, maxStoredChars) : text;
+    if (direction == ClipDirection.copied &&
+        _items.any((i) =>
+            i.direction == ClipDirection.sent && i.target == target && i.text == stored && at.difference(i.at) < echoWindow)) {
+      return false;
+    }
+    _items.removeWhere((i) => i.direction == direction && i.target == target && i.text == stored);
+    _items.insert(0, RemoteClipItem(text: stored, direction: direction, target: target, at: at));
+    if (_items.length > maxItems) _items.removeRange(maxItems, _items.length);
+    notifyListeners();
+    return true;
+  }
+
+  void clear() {
+    if (_items.isEmpty) return;
+    _items.clear();
+    notifyListeners();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard sheet
+// ---------------------------------------------------------------------------
+
+/// The clipboard sheet: paste the phone's clipboard into the remote
+/// machine, send or type any text, and the history. Same actions and
+/// words as the web console's clipboard panel.
+class RemoteClipboardSheet extends StatefulWidget {
+  const RemoteClipboardSheet({super.key, required this.client, required this.target, this.hint, this.history});
+
   final RfbClient client;
-  final VmClient vmClient;
-  final String vmName;
-  final ConsoleDisplayMode initialMode;
-  final VoidCallback? onPower;
-  final VoidCallback? onSnapshots;
-  final VoidCallback? onIso;
-  final VoidCallback? onHardware;
-  final bool isFullscreen;
-  final VoidCallback? onToggleFullscreen;
-  final bool isLandscape;
-  final VoidCallback? onToggleOrientation;
 
-  const RfbView({
-    super.key,
-    required this.client,
-    required this.vmClient,
-    required this.vmName,
-    this.initialMode = ConsoleDisplayMode.vnc,
-    this.onPower,
-    this.onSnapshots,
-    this.onIso,
-    this.onHardware,
-    this.isFullscreen = false,
-    this.onToggleFullscreen,
-    this.isLandscape = false,
-    this.onToggleOrientation,
-  });
+  /// Who gets the text: a VM name, or [RemoteClipboardHistory.hostTarget].
+  final String target;
+
+  /// When copy and paste may not work, why and what to do instead.
+  final String? hint;
+  final RemoteClipboardHistory? history;
+
+  static Future<void> show(BuildContext context,
+      {required RfbClient client, required String target, String? hint, RemoteClipboardHistory? history}) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (_) => RemoteClipboardSheet(client: client, target: target, hint: hint, history: history),
+    );
+  }
 
   @override
-  State<RfbView> createState() => _RfbViewState();
+  State<RemoteClipboardSheet> createState() => _RemoteClipboardSheetState();
 }
 
-class _RfbViewState extends State<RfbView> {
-  final _keyboardFocus = FocusNode();
-  final _keyboardController = TextEditingController();
-  final TransformationController _transformController = TransformationController();
-  String _lastText = '';
+class _RemoteClipboardSheetState extends State<RemoteClipboardSheet> {
+  final _draft = TextEditingController();
+  late final RemoteClipboardHistory _history = widget.history ?? RemoteClipboardHistory.instance;
 
-  InputControlMode _inputMode = InputControlMode.trackpad;
-  late ConsoleDisplayMode _mode;
-  bool _keyboardOpen = false;
-  bool _showExtendedKeys = false;
-  bool _showHudControls = true;
-  bool _showTrackpadDock = true;
-  double _trackpadSensitivity = 1.35;
-
-  Offset _hudOffset = const Offset(16, 16);
-
-  bool _ctrlLatched = false;
-  bool _altLatched = false;
-  bool _shiftLatched = false;
-  bool _superLatched = false;
-  bool _dragLocked = false;
-
-  double _cursorX = 512;
-  double _cursorY = 384;
-  int _vmWidth = 1024;
-  int _vmHeight = 768;
-
-  Timer? _streamTimer;
-  Uint8List? _currentFrameBytes;
-  bool _isFetchingFrame = false;
-  int _fpsCount = 0;
-  int _fpsDisplay = 0;
-  Timer? _fpsTimer;
-  String? _streamError;
-
-  final Map<int, Offset> _pointerPositions = {};
-  DateTime? _lastTapTime;
-  Offset? _firstPointerStart;
-  DateTime? _firstPointerStartTime;
-  double _twoFingerScrollAccumulator = 0;
+  bool get _connected => widget.client.isConnected;
 
   @override
   void initState() {
     super.initState();
-    _mode = widget.initialMode;
-
-    widget.client.connect().catchError((e) {
-      if (mounted) setState(() => _streamError = e.toString());
-    });
-
-    if (_mode == ConsoleDisplayMode.stream) {
-      _startStream();
-    }
-
-    widget.client.connected.addListener(_onVncConnected);
-    widget.client.frameCount.addListener(_onNewVncFrame);
-
-    _fpsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() {
-          _fpsDisplay = _fpsCount;
-          _fpsCount = 0;
-        });
-      }
-    });
+    _draft.addListener(() => setState(() {}));
+    widget.client.status.addListener(_changed);
   }
 
   @override
   void dispose() {
-    _stopStream();
-    _fpsTimer?.cancel();
-    widget.client.connected.removeListener(_onVncConnected);
-    widget.client.frameCount.removeListener(_onNewVncFrame);
-    _keyboardFocus.dispose();
-    _keyboardController.dispose();
-    _transformController.dispose();
+    widget.client.status.removeListener(_changed);
+    _draft.dispose();
     super.dispose();
   }
 
-  void _onNewVncFrame() {
-    _fpsCount++;
+  void _changed() => setState(() {});
+
+  void _done(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    Navigator.of(context).pop();
+    messenger?.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _onVncConnected() {
-    if (mounted && widget.client.width > 0 && widget.client.height > 0) {
-      setState(() {
-        _vmWidth = widget.client.width;
-        _vmHeight = widget.client.height;
-      });
+  void _send(String text) {
+    if (text.isEmpty) return;
+    final lossless = widget.client.sendClipboard(text);
+    _history.record(text, ClipDirection.sent, widget.target);
+    _done(lossless
+        ? 'Sent to the clipboard on ${widget.target}'
+        : "Sent, but some characters can't go this way. Use Type it for them.");
+  }
+
+  Future<void> _type(String text) async {
+    if (text.isEmpty) return;
+    _history.record(text, ClipDirection.sent, widget.target);
+    final future = widget.client.typeText(text);
+    final long = text.runes.length > RfbClient.maxTypedChars;
+    _done(long ? 'Typing the first ${RfbClient.maxTypedChars} characters' : 'Typing it on ${widget.target}');
+    await future;
+  }
+
+  Future<void> _pastePhoneClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text ?? '';
+    if (!mounted) return;
+    if (text.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text("This phone's clipboard has no text")));
+      return;
     }
+    _send(text);
   }
 
-  void _startStream() {
-    _streamTimer?.cancel();
-    _streamTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
-      _fetchStreamFrame();
-    });
-    _fetchStreamFrame();
-  }
-
-  void _stopStream() {
-    _streamTimer?.cancel();
-  }
-
-  Future<void> _fetchStreamFrame() async {
-    if (_isFetchingFrame) return;
-    _isFetchingFrame = true;
-    try {
-      final url = widget.vmClient.screenshotUrl(widget.vmName);
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(milliseconds: 600));
-      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
-        if (!mounted) return;
-        setState(() {
-          _currentFrameBytes = res.bodyBytes;
-          _streamError = null;
-          _fpsCount++;
-        });
-      }
-    } catch (_) {
-      if (mounted && _currentFrameBytes == null) {
-        setState(() => _streamError = 'Connecting to VM display...');
-      }
-    } finally {
-      _isFetchingFrame = false;
-    }
-  }
-
-  void setMode(ConsoleDisplayMode mode) {
-    if (_mode == mode) return;
-    setState(() => _mode = mode);
-    if (mode == ConsoleDisplayMode.stream) {
-      _startStream();
-    } else {
-      _stopStream();
-      widget.client.connect().catchError((_) {});
-    }
-  }
-
-  void _toggleKeyboard() {
-    setState(() {
-      _keyboardOpen = !_keyboardOpen;
-      if (_keyboardOpen) {
-        _showExtendedKeys = true;
-      }
-    });
-    if (_keyboardOpen) {
-      FocusScope.of(context).requestFocus(_keyboardFocus);
-    } else {
-      _keyboardFocus.unfocus();
-    }
-  }
-
-  void _onTextChanged(String text) {
-    if (text.length > _lastText.length) {
-      final added = text.substring(_lastText.length);
-      for (final rune in added.runes) {
-        _sendRuneKey(rune);
-      }
-    } else if (text.length < _lastText.length) {
-      _sendSingleKey(_keysymBackspace);
-    }
-    _lastText = text;
-  }
-
-  void _sendRuneKey(int rune) {
-    widget.client.sendKey(rune, true);
-    widget.client.sendKey(rune, false);
-  }
-
-  void _sendSingleKey(int key) {
-    widget.client.sendKey(key, true);
-    widget.client.sendKey(key, false);
-  }
-
-  void _sendKeyCombination(List<int> keys) {
-    for (final k in keys) {
-      widget.client.sendKey(k, true);
-    }
-    for (final k in keys.reversed) {
-      widget.client.sendKey(k, false);
-    }
-    _clearLatches();
-  }
-
-  void _toggleLatch(String mod) {
-    setState(() {
-      if (mod == 'ctrl') _ctrlLatched = !_ctrlLatched;
-      if (mod == 'alt') _altLatched = !_altLatched;
-      if (mod == 'shift') _shiftLatched = !_shiftLatched;
-      if (mod == 'super') _superLatched = !_superLatched;
-    });
-    if (mod == 'ctrl') widget.client.sendKey(_keysymCtrlL, _ctrlLatched);
-    if (mod == 'alt') widget.client.sendKey(_keysymAltL, _altLatched);
-    if (mod == 'shift') widget.client.sendKey(_keysymShiftL, _shiftLatched);
-    if (mod == 'super') widget.client.sendKey(_keysymSuperL, _superLatched);
-  }
-
-  void _clearLatches() {
-    if (_ctrlLatched) widget.client.sendKey(_keysymCtrlL, false);
-    if (_altLatched) widget.client.sendKey(_keysymAltL, false);
-    if (_shiftLatched) widget.client.sendKey(_keysymShiftL, false);
-    if (_superLatched) widget.client.sendKey(_keysymSuperL, false);
-    setState(() {
-      _ctrlLatched = false;
-      _altLatched = false;
-      _shiftLatched = false;
-      _superLatched = false;
-    });
-  }
-
-  void _sendMouseClick(int button) {
-    final x = _cursorX.round().clamp(0, _vmWidth - 1);
-    final y = _cursorY.round().clamp(0, _vmHeight - 1);
-    widget.client.sendPointer(x, y, button);
-    Future.delayed(const Duration(milliseconds: 40), () {
-      widget.client.sendPointer(x, y, _dragLocked ? 1 : 0);
-    });
-  }
-
-  void _sendDoubleClick() {
-    final x = _cursorX.round().clamp(0, _vmWidth - 1);
-    final y = _cursorY.round().clamp(0, _vmHeight - 1);
-    widget.client.sendPointer(x, y, 1);
-    Future.delayed(const Duration(milliseconds: 30), () {
-      widget.client.sendPointer(x, y, 0);
-      Future.delayed(const Duration(milliseconds: 50), () {
-        widget.client.sendPointer(x, y, 1);
-        Future.delayed(const Duration(milliseconds: 30), () {
-          widget.client.sendPointer(x, y, _dragLocked ? 1 : 0);
-        });
-      });
-    });
-  }
-
-  void _sendWheel(bool up) {
-    final x = _cursorX.round().clamp(0, _vmWidth - 1);
-    final y = _cursorY.round().clamp(0, _vmHeight - 1);
-    widget.client.sendPointer(x, y, up ? 8 : 16);
-    Future.delayed(const Duration(milliseconds: 40), () {
-      widget.client.sendPointer(x, y, _dragLocked ? 1 : 0);
-    });
-  }
-
-  void _toggleDragLock() {
-    setState(() => _dragLocked = !_dragLocked);
-    final x = _cursorX.round().clamp(0, _vmWidth - 1);
-    final y = _cursorY.round().clamp(0, _vmHeight - 1);
-    widget.client.sendPointer(x, y, _dragLocked ? 1 : 0);
-  }
-
-  void _cycleSensitivity() {
-    setState(() {
-      if (_trackpadSensitivity < 1.4) {
-        _trackpadSensitivity = 1.75;
-      } else if (_trackpadSensitivity < 2.0) {
-        _trackpadSensitivity = 2.4;
-      } else {
-        _trackpadSensitivity = 1.15;
-      }
-    });
-  }
-
-  void _onPointerDown(PointerDownEvent event, Size canvasSize) {
-    _pointerPositions[event.pointer] = event.localPosition;
-    if (_pointerPositions.length == 1) {
-      _firstPointerStart = event.localPosition;
-      _firstPointerStartTime = DateTime.now();
-      _twoFingerScrollAccumulator = 0;
-    }
-  }
-
-  void _onPointerMove(PointerMoveEvent event, Size canvasSize) {
-    _pointerPositions[event.pointer] = event.localPosition;
-
-    if (_inputMode == InputControlMode.trackpad) {
-      if (_pointerPositions.length == 1) {
-        final currentScale = _transformController.value.getMaxScaleOnAxis();
-        final effectiveScale = currentScale > 0 ? currentScale : 1.0;
-        final rect = _calculateVmDisplayRect(canvasSize);
-        final scaleX = (_vmWidth / (rect.width > 0 ? rect.width : 1)) / effectiveScale;
-        final scaleY = (_vmHeight / (rect.height > 0 ? rect.height : 1)) / effectiveScale;
-        final avgScale = (scaleX + scaleY) / 2;
-
-        setState(() {
-          _cursorX = (_cursorX + event.delta.dx * avgScale * _trackpadSensitivity).clamp(0.0, _vmWidth - 1.0);
-          _cursorY = (_cursorY + event.delta.dy * avgScale * _trackpadSensitivity).clamp(0.0, _vmHeight - 1.0);
-        });
-
-        widget.client.sendPointer(_cursorX.round(), _cursorY.round(), _dragLocked ? 1 : 0);
-      } else if (_pointerPositions.length == 2) {
-        _twoFingerScrollAccumulator += event.delta.dy;
-        if (_twoFingerScrollAccumulator <= -20) {
-          _sendWheel(false);
-          _twoFingerScrollAccumulator = 0;
-        } else if (_twoFingerScrollAccumulator >= 20) {
-          _sendWheel(true);
-          _twoFingerScrollAccumulator = 0;
-        }
-      }
-    }
-  }
-
-  void _onPointerUp(PointerUpEvent event, Size canvasSize) {
-    final pointerCount = _pointerPositions.length;
-    final startPos = _firstPointerStart;
-    final startTime = _firstPointerStartTime;
-
-    if (startPos != null && startTime != null) {
-      final duration = DateTime.now().difference(startTime);
-      final dist = (event.localPosition - startPos).distance;
-
-      if (_inputMode == InputControlMode.touch) {
-        // Direct touch mode: tap maps accurately through zoom matrix to VM coordinates
-        if (dist < 14 && duration < const Duration(milliseconds: 320)) {
-          final scenePos = _transformController.toScene(event.localPosition);
-          final rect = _calculateVmDisplayRect(canvasSize);
-          if (rect.contains(scenePos)) {
-            final x = ((scenePos.dx - rect.left) / rect.width * _vmWidth).clamp(0.0, _vmWidth - 1.0);
-            final y = ((scenePos.dy - rect.top) / rect.height * _vmHeight).clamp(0.0, _vmHeight - 1.0);
-            setState(() {
-              _cursorX = x;
-              _cursorY = y;
-            });
-            if (pointerCount == 2) {
-              _sendMouseClick(4); // 2-finger tap = right click
-            } else {
-              final now = DateTime.now();
-              if (_lastTapTime != null && now.difference(_lastTapTime!) < const Duration(milliseconds: 320)) {
-                _sendDoubleClick();
-                _lastTapTime = null;
-              } else {
-                _sendMouseClick(1);
-                _lastTapTime = now;
-              }
-            }
-          }
-        }
-      } else {
-        // Trackpad mode: tap anywhere dispatches click at virtual cursor position
-        if (dist < 12 && duration < const Duration(milliseconds: 280)) {
-          if (pointerCount == 2) {
-            _sendMouseClick(4); // Right click
-          } else if (pointerCount == 1) {
-            final now = DateTime.now();
-            if (_lastTapTime != null && now.difference(_lastTapTime!) < const Duration(milliseconds: 320)) {
-              _sendDoubleClick();
-              _lastTapTime = null;
-            } else {
-              _sendMouseClick(1);
-              _lastTapTime = now;
-            }
-          }
-        }
-      }
-    }
-
-    _pointerPositions.remove(event.pointer);
-    if (_pointerPositions.isEmpty) {
-      _firstPointerStart = null;
-      _firstPointerStartTime = null;
-      _twoFingerScrollAccumulator = 0;
-    }
-  }
-
-  void _onPointerCancel(PointerCancelEvent event) {
-    _pointerPositions.remove(event.pointer);
-    if (_pointerPositions.isEmpty) {
-      _firstPointerStart = null;
-      _firstPointerStartTime = null;
-      _twoFingerScrollAccumulator = 0;
-    }
-  }
-
-  Rect _calculateVmDisplayRect(Size viewport) {
-    final vmAspect = _vmWidth / (_vmHeight > 0 ? _vmHeight : 1);
-    final viewAspect = viewport.width / (viewport.height > 0 ? viewport.height : 1);
-
-    if (viewAspect > vmAspect) {
-      final h = viewport.height;
-      final w = h * vmAspect;
-      final x = (viewport.width - w) / 2;
-      return Rect.fromLTWH(x, 0, w, h);
-    } else {
-      final w = viewport.width;
-      final h = w / vmAspect;
-      final y = (viewport.height - h) / 2;
-      return Rect.fromLTWH(0, y, w, h);
-    }
-  }
-
-  Future<void> _openTextInputDialog() async {
-    final ctrl = TextEditingController();
-    final text = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: const Text('Send Text / String to VM'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Type or paste clipboard text...'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-            onPressed: () => Navigator.pop(context, ctrl.text),
-            child: const Text('Send String'),
-          ),
-        ],
-      ),
-    );
-    if (text != null && text.isNotEmpty) {
-      for (final rune in text.runes) {
-        _sendRuneKey(rune);
-        await Future.delayed(const Duration(milliseconds: 8));
-      }
-    }
+  Future<void> _copyToPhone(RemoteClipItem item) async {
+    await Clipboard.setData(ClipboardData(text: item.text));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Copied to this phone')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-
-    return Container(
-      color: Colors.black,
-      width: double.infinity,
-      height: double.infinity,
-      child: Stack(
-        children: [
-          Offstage(
-            offstage: !_keyboardOpen,
-            child: SizedBox(
-              width: 1,
-              height: 1,
-              child: TextField(
-                controller: _keyboardController,
-                focusNode: _keyboardFocus,
-                autocorrect: false,
-                enableSuggestions: false,
-                onChanged: _onTextChanged,
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final gutter = Space.gutter(context);
+    final draft = _draft.text;
+    final large = MediaQuery.textScalerOf(context).scale(10) > 13;
+    return AnimatedPadding(
+      duration: Motion.of(context).short,
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: ListenableBuilder(
+        listenable: _history,
+        builder: (context, _) {
+          final items = _history.items;
+          return ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: Space.lg),
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: gutter),
+                child: Semantics(header: true, child: Text('Clipboard', style: theme.textTheme.titleLarge)),
               ),
-            ),
-          ),
-
-          // Edge-to-Edge Remote VM Canvas Viewport with multi-touch gestural surface
-          Positioned.fill(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final canvasSize = Size(constraints.maxWidth, constraints.maxHeight);
-
-                return Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: (e) => _onPointerDown(e, canvasSize),
-                  onPointerMove: (e) => _onPointerMove(e, canvasSize),
-                  onPointerUp: (e) => _onPointerUp(e, canvasSize),
-                  onPointerCancel: _onPointerCancel,
-                  child: InteractiveViewer(
-                    transformationController: _transformController,
-                    minScale: 1.0,
-                    maxScale: 6.0,
-                    panEnabled: _inputMode == InputControlMode.touch,
-                    scaleEnabled: true,
-                    clipBehavior: Clip.none,
-                    child: Center(
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: _vmWidth.toDouble(),
-                          height: _vmHeight.toDouble(),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (_mode == ConsoleDisplayMode.vnc)
-                                _buildVncCanvas()
-                              else
-                                _buildStreamCanvas(),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // Draggable Floating Setting / HUD Pill (Directly draggable via setting icon when collapsed)
-          Positioned(
-            left: _hudOffset.dx,
-            top: _hudOffset.dy,
-            child: GestureDetector(
-              onPanUpdate: (d) {
-                setState(() {
-                  _hudOffset = Offset(
-                    (_hudOffset.dx + d.delta.dx).clamp(4.0, (screenSize.width - 240.0).clamp(4.0, double.infinity)),
-                    (_hudOffset.dy + d.delta.dy).clamp(4.0, (screenSize.height - 70.0).clamp(4.0, double.infinity)),
-                  );
-                });
-              },
-              child: _showHudControls ? _buildFullHud() : _buildMiniHud(),
-            ),
-          ),
-
-          // Floating Responsive Trackpad Controls Dock
-          if (_inputMode == InputControlMode.trackpad && _showTrackpadDock)
-            Positioned(
-              left: widget.isLandscape ? 60 : 12,
-              right: widget.isLandscape ? 60 : 12,
-              bottom: _showExtendedKeys ? 52 : (widget.isLandscape ? 10 : 14),
-              child: _buildTrackpadDock(),
-            ),
-
-          // Mini Toggle to expand Trackpad dock if collapsed
-          if (_inputMode == InputControlMode.trackpad && !_showTrackpadDock)
-            Positioned(
-              right: 16,
-              bottom: _showExtendedKeys ? 54 : 16,
-              child: InkWell(
-                onTap: () {
-                  setState(() => _showTrackpadDock = true);
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xDD121622),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: NivaroColors.borderSubtle),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.mouse_rounded, size: 14, color: NivaroColors.primaryLight),
-                      SizedBox(width: 4),
-                      Text('Trackpad', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-          // Collapsible Extended Keys Toolbar
-          if (_showExtendedKeys)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Color(0xF20D0F16),
-                  border: Border(top: BorderSide(color: NivaroColors.borderSubtle)),
-                ),
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  children: [
-                    _KeyBtn(label: 'Ctrl', active: _ctrlLatched, onTap: () => _toggleLatch('ctrl')),
-                    _KeyBtn(label: 'Alt', active: _altLatched, onTap: () => _toggleLatch('alt')),
-                    _KeyBtn(label: 'Shift', active: _shiftLatched, onTap: () => _toggleLatch('shift')),
-                    _KeyBtn(label: 'Win', active: _superLatched, onTap: () => _toggleLatch('super')),
-                    _KeyBtn(label: 'Esc', onTap: () => _sendSingleKey(_keysymEscape)),
-                    _KeyBtn(label: 'Tab', onTap: () => _sendSingleKey(_keysymTab)),
-                    _KeyBtn(label: 'Enter', onTap: () => _sendSingleKey(_keysymEnter)),
-                    _KeyBtn(label: 'Del', onTap: () => _sendSingleKey(_keysymDelete)),
-                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
-                    _KeyBtn(label: 'Ctrl+Alt+Del', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, _keysymAltL, _keysymDelete])),
-                    _KeyBtn(label: 'Alt+Tab', isMacro: true, onTap: () => _sendKeyCombination([_keysymAltL, _keysymTab])),
-                    _KeyBtn(label: 'Alt+F4', isMacro: true, onTap: () => _sendKeyCombination([_keysymAltL, _keysymTable[LogicalKeyboardKey.f4]!])),
-                    _KeyBtn(label: 'Win+D', isMacro: true, onTap: () => _sendKeyCombination([_keysymSuperL, 0x0064])),
-                    _KeyBtn(label: 'Win+E', isMacro: true, onTap: () => _sendKeyCombination([_keysymSuperL, 0x0065])),
-                    _KeyBtn(label: 'Ctrl+C', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x0063])),
-                    _KeyBtn(label: 'Ctrl+V', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x0076])),
-                    _KeyBtn(label: 'Ctrl+Z', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x007A])),
-                    _KeyBtn(label: 'Ctrl+A', isMacro: true, onTap: () => _sendKeyCombination([_keysymCtrlL, 0x0061])),
-                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
-                    _KeyBtn(label: 'F1', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f1]!)),
-                    _KeyBtn(label: 'F2', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f2]!)),
-                    _KeyBtn(label: 'F5', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f5]!)),
-                    _KeyBtn(label: 'F11', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f11]!)),
-                    _KeyBtn(label: 'F12', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.f12]!)),
-                    VerticalDivider(width: 10, color: NivaroColors.borderSubtle),
-                    _KeyBtn(label: '▲', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowUp]!)),
-                    _KeyBtn(label: '▼', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowDown]!)),
-                    _KeyBtn(label: '◄', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowLeft]!)),
-                    _KeyBtn(label: '►', onTap: () => _sendSingleKey(_keysymTable[LogicalKeyboardKey.arrowRight]!)),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTrackpadDock() {
-    final sensText = _trackpadSensitivity > 2.0 ? '2.4x' : (_trackpadSensitivity > 1.4 ? '1.8x' : '1.2x');
-
-    if (!widget.isLandscape) {
-      // Clean, ergonomic dual-row portrait layout with wide click pads
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xF2111520),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: NivaroColors.borderSubtle),
-          boxShadow: const [
-            BoxShadow(color: Color(0xAA000000), blurRadius: 16, offset: Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                _TrackpadBtn(
-                  label: 'LEFT CLICK',
-                  icon: Icons.mouse_rounded,
-                  flex: 3,
-                  onTap: () => _sendMouseClick(1),
-                ),
-                const SizedBox(width: 8),
-                _TrackpadBtn(
-                  label: 'RIGHT CLICK',
-                  icon: Icons.menu_open_rounded,
-                  flex: 3,
-                  onTap: () => _sendMouseClick(4),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                _TrackpadBtn(
-                  label: 'MID',
-                  flex: 2,
-                  onTap: () => _sendMouseClick(2),
-                ),
-                const SizedBox(width: 5),
-                _TrackpadBtn(
-                  label: _dragLocked ? 'LOCKED' : 'DRAG',
-                  icon: Icons.pan_tool_rounded,
-                  active: _dragLocked,
-                  flex: 2,
-                  activeColor: NivaroColors.warning,
-                  onTap: _toggleDragLock,
-                ),
-                const SizedBox(width: 5),
-                Container(
-                  decoration: BoxDecoration(
-                    color: NivaroColors.surfaceRaised,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: NivaroColors.borderSubtle),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      InkWell(
-                        onTap: () => _sendWheel(true),
-                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                          child: Icon(Icons.arrow_drop_up_rounded, size: 20, color: Colors.white70),
-                        ),
-                      ),
-                      Container(width: 1, height: 16, color: NivaroColors.borderSubtle),
-                      InkWell(
-                        onTap: () => _sendWheel(false),
-                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                          child: Icon(Icons.arrow_drop_down_rounded, size: 20, color: Colors.white70),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 5),
-                InkWell(
-                  onTap: _cycleSensitivity,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: NivaroColors.surfaceRaised,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: NivaroColors.borderSubtle),
-                    ),
-                    child: Text(
-                      sensText,
-                      style: TextStyle(color: NivaroColors.primaryLight, fontSize: 11, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Colors.white60),
-                  tooltip: 'Collapse Dock',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  onPressed: () {
-                    setState(() => _showTrackpadDock = false);
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Landscape layout: Sleek single row
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xEE111520),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: NivaroColors.borderSubtle),
-        boxShadow: const [
-          BoxShadow(color: Color(0xAA000000), blurRadius: 16, offset: Offset(0, 4)),
-        ],
-      ),
-      child: Row(
-        children: [
-          _TrackpadBtn(
-            label: 'LEFT',
-            icon: Icons.mouse_rounded,
-            flex: 3,
-            onTap: () => _sendMouseClick(1),
-          ),
-          const SizedBox(width: 5),
-          _TrackpadBtn(
-            label: 'RIGHT',
-            icon: Icons.menu_open_rounded,
-            flex: 3,
-            onTap: () => _sendMouseClick(4),
-          ),
-          const SizedBox(width: 5),
-          _TrackpadBtn(
-            label: 'MID',
-            flex: 2,
-            onTap: () => _sendMouseClick(2),
-          ),
-          const SizedBox(width: 5),
-          _TrackpadBtn(
-            label: _dragLocked ? 'LOCKED' : 'DRAG',
-            icon: Icons.pan_tool_rounded,
-            active: _dragLocked,
-            flex: 2,
-            activeColor: NivaroColors.warning,
-            onTap: _toggleDragLock,
-          ),
-          const SizedBox(width: 6),
-          Container(
-            decoration: BoxDecoration(
-              color: NivaroColors.surfaceRaised,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: NivaroColors.borderSubtle),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InkWell(
-                  onTap: () => _sendWheel(true),
-                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                    child: Icon(Icons.arrow_drop_up_rounded, size: 20, color: Colors.white70),
-                  ),
-                ),
-                Container(width: 1, height: 18, color: NivaroColors.borderSubtle),
-                InkWell(
-                  onTap: () => _sendWheel(false),
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                    child: Icon(Icons.arrow_drop_down_rounded, size: 20, color: Colors.white70),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 5),
-          InkWell(
-            onTap: _cycleSensitivity,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-              decoration: BoxDecoration(
-                color: NivaroColors.surfaceRaised,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: NivaroColors.borderSubtle),
-              ),
-              child: Text(
-                sensText,
-                style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10.5, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-          const SizedBox(width: 2),
-          IconButton(
-            icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white60),
-            tooltip: 'Collapse Dock',
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            onPressed: () {
-              setState(() => _showTrackpadDock = false);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFullHud() {
-    final isPortrait = !widget.isLandscape && MediaQuery.of(context).size.width < 500;
-
-    if (isPortrait) {
-      // Clean, non-clipping 2-row layout in portrait
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xF212151E),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: NivaroColors.borderSubtle),
-          boxShadow: const [
-            BoxShadow(color: Color(0xAA000000), blurRadius: 16, offset: Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Row 1: Mode, Touch/Trackpad, Keyboard, Hide
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+              if (widget.hint != null)
                 Padding(
-                  padding: EdgeInsets.only(right: 6),
-                  child: Icon(Icons.drag_indicator_rounded, size: 16, color: NivaroColors.textMuted),
-                ),
-                InkWell(
-                  onTap: () {
-                    setMode(_mode == ConsoleDisplayMode.vnc ? ConsoleDisplayMode.stream : ConsoleDisplayMode.vnc);
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _mode == ConsoleDisplayMode.vnc ? Icons.bolt_rounded : Icons.photo_camera_rounded,
-                          size: 11,
-                          color: _mode == ConsoleDisplayMode.vnc ? NivaroColors.successLight : NivaroColors.infoLight,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '$_fpsDisplay FPS',
-                          style: TextStyle(
-                            color: _mode == ConsoleDisplayMode.vnc ? NivaroColors.successLight : NivaroColors.infoLight,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
+                  padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(Icons.info_outline, size: 20, color: scheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(width: Space.md),
+                      Expanded(
+                        child: Text(widget.hint!,
+                            style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: () {
-                    setState(() {
-                      _inputMode = _inputMode == InputControlMode.trackpad ? InputControlMode.touch : InputControlMode.trackpad;
-                    });
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: NivaroColors.surfaceRaised,
-                      borderRadius: BorderRadius.circular(10),
+              const SizedBox(height: Space.sm),
+              // A row rather than a pill: the label is a sentence, and at
+              // large text a pill wraps it around a tiny icon.
+              ListTile(
+                leading: const Icon(Icons.content_paste_outlined),
+                title: Text("Paste this phone's clipboard into ${widget.target}"),
+                enabled: _connected,
+                onTap: _pastePhoneClipboard,
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(gutter, Space.lg, gutter, 0),
+                child: TextField(
+                  controller: _draft,
+                  minLines: 2,
+                  maxLines: 5,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(labelText: 'Or type the text to send'),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+                child: Builder(builder: (context) {
+                  final type = Tooltip(
+                    message: 'Types the text as key presses. Works on login screens and without guest tools.',
+                    child: OutlinedButton.icon(
+                      onPressed: _connected && draft.isNotEmpty ? () => _type(draft) : null,
+                      icon: const Icon(Icons.keyboard_outlined),
+                      label: const Text('Type it'),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _inputMode == InputControlMode.trackpad ? Icons.mouse_rounded : Icons.touch_app_rounded,
-                          size: 13,
-                          color: NivaroColors.primaryLight,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _inputMode == InputControlMode.trackpad ? 'Trackpad' : 'Touch',
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Colors.white),
-                        ),
-                      ],
-                    ),
+                  );
+                  final send = FilledButton.icon(
+                    onPressed: _connected && draft.isNotEmpty ? () => _send(draft) : null,
+                    icon: const Icon(Icons.send_outlined),
+                    label: const Text('Send to clipboard'),
+                  );
+                  // At large text the two don't fit side by side: full
+                  // width, the main one first.
+                  if (large) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [send, const SizedBox(height: Space.sm), type],
+                    );
+                  }
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [type, const SizedBox(width: Space.sm), send],
+                  );
+                }),
+              ),
+              SectionHeader(
+                title: 'History',
+                actionLabel: items.isEmpty ? null : 'Clear',
+                onAction: items.isEmpty ? null : _history.clear,
+              ),
+              if (items.isEmpty)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.sm),
+                  child: Text(
+                    'Nothing yet. Text you send, and text copied on ${widget.target}, shows up here.',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                   ),
+                )
+              else
+                for (final item in items) _historyTile(context, item),
+              Padding(
+                padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+                child: Text(
+                  'Kept only until you close the app.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                 ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: Icon(
-                    _keyboardOpen ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
-                    size: 17,
-                    color: _keyboardOpen ? NivaroColors.primaryLight : Colors.white70,
-                  ),
-                  tooltip: 'Keyboard',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                  onPressed: _toggleKeyboard,
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: Icon(
-                    Icons.keyboard_option_key_rounded,
-                    size: 17,
-                    color: _showExtendedKeys ? NivaroColors.primaryLight : Colors.white70,
-                  ),
-                  tooltip: 'Extra Keys',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                  onPressed: () => setState(() => _showExtendedKeys = !_showExtendedKeys),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.visibility_off_outlined, size: 16, color: Colors.white60),
-                  tooltip: 'Hide Controls',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    setState(() => _showHudControls = false);
-                  },
-                ),
-              ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _historyTile(BuildContext context, RemoteClipItem item) {
+    final sent = item.direction == ClipDirection.sent;
+    final where = sent ? 'Sent to ${item.target}' : 'Copied on ${item.target}';
+    final preview = item.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return ListTile(
+      leading: Icon(sent ? Icons.north_east : Icons.south_west, semanticLabel: sent ? 'Sent' : 'Copied'),
+      title: Text(
+        preview.isEmpty ? '(spaces only)' : preview,
+        maxLines: MediaQuery.textScalerOf(context).scale(10) > 13 ? 4 : 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text('$where · ${formatRelative(item.at)}'),
+      onTap: () {
+        _draft.text = item.text;
+        _draft.selection = TextSelection.collapsed(offset: item.text.length);
+      },
+      trailing: IconButton(
+        tooltip: 'Copy to this phone',
+        icon: const Icon(Icons.content_copy_outlined),
+        onPressed: () => _copyToPhone(item),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The framebuffer view
+// ---------------------------------------------------------------------------
+
+/// The remote screen, fitted to the space it gets, with pinch zoom and
+/// touch or trackpad pointer input.
+class RfbView extends StatefulWidget {
+  const RfbView({super.key, required this.client, required this.inputMode, this.dragLocked = false, this.label});
+
+  final RfbClient client;
+  final RfbInputMode inputMode;
+
+  /// Trackpad mode: the left button is held down while the pointer moves.
+  final bool dragLocked;
+
+  /// What TalkBack calls the screen ("Screen of mint").
+  final String? label;
+
+  @override
+  State<RfbView> createState() => RfbViewState();
+}
+
+class RfbViewState extends State<RfbView> {
+  final _transform = TransformationController();
+  final Map<int, Offset> _pointers = {};
+  double _cursorX = 0;
+  double _cursorY = 0;
+  Offset? _downAt;
+  DateTime? _downTime;
+  int _maxPointers = 0;
+  bool _moved = false;
+  double _scrollAccumulator = 0;
+  Timer? _longPress;
+
+  RfbClient get _c => widget.client;
+  int get _w => _c.width > 0 ? _c.width : 1280;
+  int get _h => _c.height > 0 ? _c.height : 720;
+
+  static const _trackpadSpeed = 1.6;
+
+  @override
+  void dispose() {
+    _longPress?.cancel();
+    _transform.dispose();
+    super.dispose();
+  }
+
+  void resetZoom() => _transform.value = Matrix4.identity();
+
+  int get _held => widget.dragLocked ? 1 : 0;
+
+  /// Presses and releases [button] (1 left, 2 middle, 4 right) where the
+  /// pointer is. Two taps in quick succession arrive as two clicks, which
+  /// the remote system reads as a double-click.
+  void click(int button) {
+    final x = _cursorX.round(), y = _cursorY.round();
+    _c.sendPointer(x, y, button | _held);
+    _c.sendPointer(x, y, _held);
+  }
+
+  void scroll({required bool up}) {
+    final x = _cursorX.round(), y = _cursorY.round();
+    _c.sendPointer(x, y, (up ? 8 : 16) | _held);
+    _c.sendPointer(x, y, _held);
+  }
+
+  /// Presses or releases the left button where the pointer is.
+  void setDrag(bool down) => _c.sendPointer(_cursorX.round(), _cursorY.round(), down ? 1 : 0);
+
+  Rect _screenRect(Size box) {
+    final aspect = _w / _h;
+    final boxAspect = box.width / (box.height > 0 ? box.height : 1);
+    if (boxAspect > aspect) {
+      final w = box.height * aspect;
+      return Rect.fromLTWH((box.width - w) / 2, 0, w, box.height);
+    }
+    final h = box.width / aspect;
+    return Rect.fromLTWH(0, (box.height - h) / 2, box.width, h);
+  }
+
+  bool _moveToTouch(Offset local, Size box) {
+    final scene = _transform.toScene(local);
+    final rect = _screenRect(box);
+    if (!rect.contains(scene)) return false;
+    _cursorX = ((scene.dx - rect.left) / rect.width * _w).clamp(0, _w - 1).toDouble();
+    _cursorY = ((scene.dy - rect.top) / rect.height * _h).clamp(0, _h - 1).toDouble();
+    return true;
+  }
+
+  void _down(PointerDownEvent e, Size box) {
+    _pointers[e.pointer] = e.localPosition;
+    if (_pointers.length == 1) {
+      _downAt = e.localPosition;
+      _downTime = DateTime.now();
+      _maxPointers = 1;
+      _moved = false;
+      _scrollAccumulator = 0;
+      if (widget.inputMode == RfbInputMode.touch) {
+        _longPress = Timer(const Duration(milliseconds: 550), () {
+          if (_moved || _pointers.length != 1) return;
+          if (_moveToTouch(e.localPosition, box)) {
+            HapticFeedback.mediumImpact();
+            click(4);
+            _downAt = null; // consumed
+          }
+        });
+      }
+    } else {
+      _maxPointers = _pointers.length > _maxPointers ? _pointers.length : _maxPointers;
+      _longPress?.cancel();
+    }
+  }
+
+  void _move(PointerMoveEvent e, Size box) {
+    _pointers[e.pointer] = e.localPosition;
+    final start = _downAt;
+    if (start != null && (e.localPosition - start).distance > 12) {
+      _moved = true;
+      _longPress?.cancel();
+    }
+    if (widget.inputMode != RfbInputMode.trackpad) return;
+    if (_pointers.length == 1) {
+      final rect = _screenRect(box);
+      final zoom = _transform.value.getMaxScaleOnAxis();
+      final perPixel = (_w / (rect.width > 0 ? rect.width : 1)) / (zoom > 0 ? zoom : 1);
+      _cursorX = (_cursorX + e.delta.dx * perPixel * _trackpadSpeed).clamp(0, _w - 1).toDouble();
+      _cursorY = (_cursorY + e.delta.dy * perPixel * _trackpadSpeed).clamp(0, _h - 1).toDouble();
+      _c.sendPointer(_cursorX.round(), _cursorY.round(), _held);
+    } else if (_pointers.length == 2) {
+      _scrollAccumulator += e.delta.dy / 2;
+      if (_scrollAccumulator.abs() >= 24) {
+        scroll(up: _scrollAccumulator > 0);
+        _scrollAccumulator = 0;
+      }
+    }
+  }
+
+  void _up(PointerUpEvent e, Size box) {
+    _pointers.remove(e.pointer);
+    if (_pointers.isNotEmpty) return;
+    _longPress?.cancel();
+    final start = _downAt, time = _downTime;
+    _downAt = null;
+    if (start == null || time == null || _moved) return;
+    if (DateTime.now().difference(time) > const Duration(milliseconds: 350)) return;
+    if (_maxPointers >= 2) {
+      click(4); // two-finger tap: right click
+      return;
+    }
+    if (widget.inputMode == RfbInputMode.touch && !_moveToTouch(e.localPosition, box)) return;
+    click(1);
+  }
+
+  void _cancel(PointerCancelEvent e) {
+    _pointers.remove(e.pointer);
+    _longPress?.cancel();
+    if (_pointers.isEmpty) _downAt = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final box = constraints.biggest;
+      return Semantics(
+        label: widget.label,
+        hint: widget.inputMode == RfbInputMode.trackpad
+            ? 'Drag to move the pointer, tap to click, tap with two fingers to right-click'
+            : 'Tap to click, hold to right-click, pinch to zoom',
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) => _down(e, box),
+          onPointerMove: (e) => _move(e, box),
+          onPointerUp: (e) => _up(e, box),
+          onPointerCancel: _cancel,
+          child: InteractiveViewer(
+            transformationController: _transform,
+            minScale: 1,
+            maxScale: 6,
+            panEnabled: widget.inputMode == RfbInputMode.touch,
+            child: SizedBox.fromSize(
+              size: box,
+              child: ValueListenableBuilder<ui.Image?>(
+                valueListenable: _c.frame,
+                builder: (context, image, _) => image == null
+                    ? const SizedBox.expand()
+                    : RawImage(image: image, fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+              ),
             ),
-            const SizedBox(height: 4),
-            // Row 2: Actions (Paste, Reset Zoom, Orientation, Snapshots, ISO, Power)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.paste_rounded, size: 16, color: Colors.white70),
-                  tooltip: 'Paste Text',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                  onPressed: _openTextInputDialog,
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(Icons.center_focus_strong_rounded, size: 16, color: Colors.white70),
-                  tooltip: 'Reset Zoom (1:1)',
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    _transformController.value = Matrix4.identity();
-                  },
-                ),
-                if (widget.onToggleOrientation != null) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(
-                      widget.isLandscape ? Icons.stay_current_portrait_rounded : Icons.stay_current_landscape_rounded,
-                      size: 16,
-                      color: widget.isLandscape ? NivaroColors.primaryLight : Colors.white70,
-                    ),
-                    tooltip: widget.isLandscape ? 'Switch to Portrait' : 'Switch to Landscape',
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
-                    onPressed: widget.onToggleOrientation,
-                  ),
-                ],
-                if (widget.onSnapshots != null) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white70),
-                    tooltip: 'Snapshots',
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
-                    onPressed: widget.onSnapshots,
-                  ),
-                ],
-                if (widget.onIso != null) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.album_rounded, size: 16, color: Colors.white70),
-                    tooltip: 'ISO / CD-ROM',
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
-                    onPressed: widget.onIso,
-                  ),
-                ],
-                if (widget.onPower != null) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
-                    tooltip: 'Power Menu',
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
-                    onPressed: widget.onPower,
-                  ),
-                ],
-              ],
-            ),
-          ],
+          ),
         ),
       );
-    }
+    });
+  }
+}
 
-    // Landscape single row layout
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xEE12151E),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: NivaroColors.borderSubtle),
-        boxShadow: const [
-          BoxShadow(color: Color(0x99000000), blurRadius: 14, offset: Offset(0, 3)),
-        ],
-      ),
-      child: Row(
+// ---------------------------------------------------------------------------
+// The console frame
+// ---------------------------------------------------------------------------
+
+/// An item for the console's overflow menu.
+@immutable
+class ConsoleMenuItem {
+  const ConsoleMenuItem({required this.icon, required this.label, required this.onPressed});
+  final IconData icon;
+  final String label;
+
+  /// Gets a context inside the console's dark theme, so sheets and
+  /// dialogs opened from it match the console.
+  final void Function(BuildContext context)? onPressed;
+}
+
+/// The page around a remote screen: app bar with keyboard, clipboard and
+/// menu; the screen; and, below it, mouse buttons and special keys. It is
+/// always drawn in the dark theme, like a video player, so the remote
+/// picture keeps its own colours whatever the app's theme.
+///
+/// The screen that owns it connects [client]; until it wants a connection
+/// (a stopped VM, a desktop that isn't installed) it passes [placeholder].
+class RemoteConsoleFrame extends StatefulWidget {
+  const RemoteConsoleFrame({
+    super.key,
+    required this.client,
+    required this.title,
+    required this.clipboardTarget,
+    this.clipboardHint,
+    this.menuItems = const [],
+    this.placeholder,
+    this.placeholderStatus,
+    this.screenLabel,
+    this.history,
+  });
+
+  final RfbClient client;
+  final String title;
+
+  /// Who the clipboard sheet sends to ("mint", "the server").
+  final String clipboardTarget;
+  final String? clipboardHint;
+
+  /// The screen's own items, shown first in the menu.
+  final List<ConsoleMenuItem> menuItems;
+
+  /// Shown instead of the console while there is nothing to connect to.
+  final Widget? placeholder;
+
+  /// The app bar's status line while [placeholder] shows ("Off").
+  final String? placeholderStatus;
+  final String? screenLabel;
+  final RemoteClipboardHistory? history;
+
+  @override
+  State<RemoteConsoleFrame> createState() => RemoteConsoleFrameState();
+}
+
+class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
+  final _viewKey = GlobalKey<RfbViewState>();
+  final _keyboardFocus = FocusNode(debugLabel: 'remote keyboard');
+  final _keyboardText = TextEditingController(text: _sentinel);
+  final _keyScroll = ScrollController();
+  StreamSubscription<String>? _clipSub;
+
+  RfbInputMode _inputMode = RfbInputMode.trackpad;
+  bool _showKeys = false;
+  bool _fullscreen = false;
+  bool _landscapeLocked = false;
+  bool _dragLocked = false;
+  final Set<int> _latched = {};
+
+  // The hidden field always holds this, so a backspace on an "empty"
+  // field still arrives as a change.
+  static const _sentinel = '​​';
+
+  RfbClient get _client => widget.client;
+  RemoteClipboardHistory get _history => widget.history ?? RemoteClipboardHistory.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _client.status.addListener(_statusChanged);
+    _clipSub = _client.remoteClipboard.listen(_remoteCopied);
+    _keyboardFocus.addListener(() => setState(() {}));
+  }
+
+  @override
+  void didUpdateWidget(RemoteConsoleFrame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.client != widget.client) {
+      oldWidget.client.status.removeListener(_statusChanged);
+      _clipSub?.cancel();
+      _client.status.addListener(_statusChanged);
+      _clipSub = _client.remoteClipboard.listen(_remoteCopied);
+    }
+  }
+
+  @override
+  void dispose() {
+    _client.status.removeListener(_statusChanged);
+    _clipSub?.cancel();
+    _keyboardFocus.dispose();
+    _keyboardText.dispose();
+    _keyScroll.dispose();
+    if (_fullscreen || _landscapeLocked) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setPreferredOrientations(const []);
+    }
+    super.dispose();
+  }
+
+  void _statusChanged() {
+    if (!mounted) return;
+    if (!_client.isConnected) {
+      _latched.clear();
+      _dragLocked = false;
+    }
+    setState(() {});
+  }
+
+  void _remoteCopied(String text) {
+    if (!mounted || !_history.record(text, ClipDirection.copied, widget.clipboardTarget)) return;
+    final who = widget.clipboardTarget == RemoteClipboardHistory.hostTarget ? 'The server' : widget.clipboardTarget;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text('$who copied text'),
+      action: SnackBarAction(label: 'Copy here', onPressed: () => Clipboard.setData(ClipboardData(text: text))),
+    ));
+  }
+
+  // --- keyboard ---
+
+  void _toggleKeyboard() {
+    final open = _keyboardFocus.hasFocus;
+    if (open && MediaQuery.viewInsetsOf(context).bottom == 0) {
+      // Focused, but the system hid the keyboard (back): show it again.
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      return;
+    }
+    if (open) {
+      _keyboardFocus.unfocus();
+    } else {
+      _keyboardFocus.requestFocus();
+      setState(() => _showKeys = true);
+    }
+  }
+
+  void _key(int keysym) {
+    _client.tapKey(keysym);
+    _releaseLatches();
+  }
+
+  void _onKeyboardText(String value) {
+    if (value.length < _sentinel.length) {
+      for (var i = value.length; i < _sentinel.length; i++) {
+        _key(Keysym.backspace);
+      }
+    } else {
+      final added = value.startsWith(_sentinel) ? value.substring(_sentinel.length) : value.replaceAll('​', '');
+      for (final rune in added.runes) {
+        _key(RfbClient.keysymForRune(rune));
+      }
+    }
+    _keyboardText.value = const TextEditingValue(text: _sentinel, selection: TextSelection.collapsed(offset: 2));
+  }
+
+  KeyEventResult _onHardwareKey(FocusNode node, KeyEvent event) {
+    final keysym = Keysym.hardware[event.logicalKey];
+    if (keysym == null) return KeyEventResult.ignored;
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      _client.sendKey(keysym, true);
+    } else if (event is KeyUpEvent) {
+      _client.sendKey(keysym, false);
+      _releaseLatches();
+    }
+    return KeyEventResult.handled;
+  }
+
+  void _toggleLatch(int keysym) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_latched.remove(keysym)) {
+        _client.sendKey(keysym, false);
+      } else {
+        _latched.add(keysym);
+        _client.sendKey(keysym, true);
+      }
+    });
+  }
+
+  void _releaseLatches() {
+    if (_latched.isEmpty) return;
+    for (final k in _latched) {
+      _client.sendKey(k, false);
+    }
+    setState(_latched.clear);
+  }
+
+  // --- modes ---
+
+  void _setFullscreen(bool on) {
+    setState(() => _fullscreen = on);
+    SystemChrome.setEnabledSystemUIMode(on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+  }
+
+  void _setLandscape(bool on) {
+    setState(() => _landscapeLocked = on);
+    SystemChrome.setPreferredOrientations(
+        on ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : const []);
+  }
+
+  void _toggleDrag() {
+    HapticFeedback.selectionClick();
+    setState(() => _dragLocked = !_dragLocked);
+    _viewKey.currentState?.setDrag(_dragLocked);
+  }
+
+  Future<void> _openClipboard(BuildContext context) => RemoteClipboardSheet.show(context,
+      client: _client, target: widget.clipboardTarget, hint: widget.clipboardHint, history: widget.history);
+
+  Future<void> _onBack(bool didPop, Object? result) async {
+    if (didPop) return;
+    if (_fullscreen) {
+      _setFullscreen(false);
+      return;
+    }
+    final close = await ConfirmDialog.confirm(
+      context,
+      title: 'Close the console?',
+      message: widget.clipboardTarget == RemoteClipboardHistory.hostTarget
+          ? 'The server keeps running. You can open it again from More.'
+          : '${widget.clipboardTarget} keeps running. You can open the console again from the VM list.',
+      confirmLabel: 'Close',
+    );
+    if (close && mounted) Navigator.of(context).pop();
+  }
+
+  String _statusText() => widget.placeholder != null && widget.placeholderStatus != null
+      ? widget.placeholderStatus!
+      : switch (_client.status.value) {
+        RfbStatus.connected => 'Connected · ${_client.width} × ${_client.height}',
+        RfbStatus.connecting => 'Connecting…',
+        RfbStatus.disconnected => 'Disconnected',
+        RfbStatus.failed => 'Not connected',
+        RfbStatus.idle => widget.placeholder != null ? 'Not connected' : 'Connecting…',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AppTheme.dark();
+    return Theme(
+      data: dark,
+      child: Builder(builder: (context) {
+        final connected = _client.isConnected && widget.placeholder == null;
+        return PopScope(
+          canPop: !connected && !_fullscreen,
+          onPopInvokedWithResult: _onBack,
+          child: Scaffold(
+            backgroundColor: dark.colorScheme.surfaceContainerLowest,
+            appBar: _fullscreen ? null : _appBar(context, connected),
+            body: Column(
+              children: [
+                Expanded(child: _screen(context, connected)),
+                if (connected && !_fullscreen) _controls(context),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  PreferredSizeWidget _appBar(BuildContext context, bool connected) {
+    final theme = Theme.of(context);
+    return AppBar(
+      backgroundColor: theme.colorScheme.surfaceContainer,
+      systemOverlayStyle: AppTheme.systemBarsStyle(Brightness.dark),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: EdgeInsets.only(left: 2, right: 6),
-            child: Icon(Icons.drag_indicator_rounded, size: 16, color: NivaroColors.textMuted),
-          ),
-          InkWell(
-            onTap: () {
-              setMode(_mode == ConsoleDisplayMode.vnc ? ConsoleDisplayMode.stream : ConsoleDisplayMode.vnc);
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              margin: const EdgeInsets.only(right: 6),
-              decoration: BoxDecoration(
-                color: Colors.black45,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _mode == ConsoleDisplayMode.vnc ? Icons.bolt_rounded : Icons.photo_camera_rounded,
-                    size: 11,
-                    color: _mode == ConsoleDisplayMode.vnc ? NivaroColors.successLight : NivaroColors.infoLight,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '$_fpsDisplay FPS',
-                    style: TextStyle(
-                      color: _mode == ConsoleDisplayMode.vnc ? NivaroColors.successLight : NivaroColors.infoLight,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
+          Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _statusText(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.tabular.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-          InkWell(
-            onTap: () {
-              setState(() {
-                _inputMode = _inputMode == InputControlMode.trackpad ? InputControlMode.touch : InputControlMode.trackpad;
-              });
-            },
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: NivaroColors.surfaceRaised,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _inputMode == InputControlMode.trackpad ? Icons.mouse_rounded : Icons.touch_app_rounded,
-                    size: 14,
-                    color: NivaroColors.primaryLight,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _inputMode == InputControlMode.trackpad ? 'Trackpad' : 'Touch',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
+        ],
+      ),
+      actions: [
+        if (connected) ...[
           IconButton(
-            icon: Icon(
-              _keyboardOpen ? Icons.keyboard_hide_rounded : Icons.keyboard_rounded,
-              size: 18,
-              color: _keyboardOpen ? NivaroColors.primaryLight : Colors.white70,
-            ),
-            tooltip: 'Keyboard',
-            visualDensity: VisualDensity.compact,
+            tooltip: _keyboardFocus.hasFocus ? 'Hide keyboard' : 'Show keyboard',
+            isSelected: _keyboardFocus.hasFocus,
+            icon: const Icon(Icons.keyboard_outlined),
+            selectedIcon: const Icon(Icons.keyboard_hide_outlined),
             onPressed: _toggleKeyboard,
           ),
           IconButton(
-            icon: Icon(
-              Icons.keyboard_option_key_rounded,
-              size: 18,
-              color: _showExtendedKeys ? NivaroColors.primaryLight : Colors.white70,
-            ),
-            tooltip: 'Extra Keys',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => setState(() => _showExtendedKeys = !_showExtendedKeys),
-          ),
-          IconButton(
-            icon: const Icon(Icons.paste_rounded, size: 16, color: Colors.white70),
-            tooltip: 'Paste Text',
-            visualDensity: VisualDensity.compact,
-            onPressed: _openTextInputDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.center_focus_strong_rounded, size: 16, color: Colors.white70),
-            tooltip: 'Reset Zoom (1:1)',
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              _transformController.value = Matrix4.identity();
-            },
-          ),
-          if (widget.onToggleOrientation != null)
-            IconButton(
-              icon: Icon(
-                widget.isLandscape ? Icons.stay_current_portrait_rounded : Icons.stay_current_landscape_rounded,
-                size: 16,
-                color: widget.isLandscape ? NivaroColors.primaryLight : Colors.white70,
-              ),
-              tooltip: widget.isLandscape ? 'Switch to Portrait' : 'Switch to Landscape',
-              visualDensity: VisualDensity.compact,
-              onPressed: widget.onToggleOrientation,
-            ),
-          if (widget.onSnapshots != null)
-            IconButton(
-              icon: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white70),
-              tooltip: 'Snapshots',
-              visualDensity: VisualDensity.compact,
-              onPressed: widget.onSnapshots,
-            ),
-          if (widget.onIso != null)
-            IconButton(
-              icon: const Icon(Icons.album_rounded, size: 16, color: Colors.white70),
-              tooltip: 'ISO / CD-ROM',
-              visualDensity: VisualDensity.compact,
-              onPressed: widget.onIso,
-            ),
-          if (widget.onPower != null)
-            IconButton(
-              icon: Icon(Icons.power_settings_new_rounded, size: 16, color: NivaroColors.dangerLight),
-              tooltip: 'Power Menu',
-              visualDensity: VisualDensity.compact,
-              onPressed: widget.onPower,
-            ),
-          IconButton(
-            icon: const Icon(Icons.visibility_off_outlined, size: 16, color: Colors.white60),
-            tooltip: 'Hide Controls',
-            visualDensity: VisualDensity.compact,
-            onPressed: () {
-              setState(() => _showHudControls = false);
-            },
+            tooltip: 'Clipboard',
+            icon: const Icon(Icons.content_paste_outlined),
+            onPressed: () => _openClipboard(context),
           ),
         ],
-      ),
+        _menu(context, connected),
+      ],
     );
   }
 
-  // Collapsed setting pill: only shows the setting icon with zero drag clutter, user drags directly by the icon
-  Widget _buildMiniHud() {
-    return InkWell(
-      onTap: () {
-        setState(() => _showHudControls = true);
-      },
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xF212151E),
-          shape: BoxShape.circle,
-          border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.6), width: 1.5),
-          boxShadow: const [
-            BoxShadow(color: Color(0xAA000000), blurRadius: 12, offset: Offset(0, 3)),
-          ],
+  Widget _menu(BuildContext context, bool connected) {
+    return MenuAnchor(
+      builder: (context, controller, _) => IconButton(
+        tooltip: 'More options',
+        icon: const Icon(Icons.more_vert),
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+      menuChildren: [
+        for (final item in widget.menuItems)
+          MenuItemButton(
+            leadingIcon: Icon(item.icon),
+            onPressed: item.onPressed == null ? null : () => item.onPressed!(context),
+            child: Text(item.label),
+          ),
+        if (widget.menuItems.isNotEmpty) const Divider(),
+        if (connected) ...[
+          MenuItemButton(
+            leadingIcon: Icon(_inputMode == RfbInputMode.trackpad ? Icons.touch_app_outlined : Icons.mouse_outlined),
+            onPressed: () => setState(() {
+              _inputMode = _inputMode == RfbInputMode.trackpad ? RfbInputMode.touch : RfbInputMode.trackpad;
+              if (_dragLocked) _toggleDrag();
+            }),
+            child: Text(_inputMode == RfbInputMode.trackpad ? 'Use touch mode' : 'Use trackpad mode'),
+          ),
+          CheckboxMenuButton(
+            value: _showKeys,
+            onChanged: (v) => setState(() => _showKeys = v ?? false),
+            child: const Text('Special keys'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.zoom_out_map_outlined),
+            onPressed: () => _viewKey.currentState?.resetZoom(),
+            child: const Text('Fit to screen'),
+          ),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.fullscreen),
+            onPressed: () => _setFullscreen(true),
+            child: const Text('Full screen'),
+          ),
+        ],
+        CheckboxMenuButton(
+          value: _landscapeLocked,
+          onChanged: (v) => _setLandscape(v ?? false),
+          child: const Text('Stay in landscape'),
         ),
-        alignment: Alignment.center,
-        child: Icon(Icons.tune_rounded, size: 22, color: NivaroColors.primaryLight),
-      ),
+        if (widget.placeholder == null)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.refresh),
+            onPressed: _client.status.value == RfbStatus.connecting
+                ? null
+                : () {
+                    _client.close();
+                    _client.connect();
+                  },
+            child: const Text('Reconnect'),
+          ),
+      ],
     );
   }
 
-  Widget _buildStreamCanvas() {
-    if (_currentFrameBytes != null) {
-      return Image.memory(
-        _currentFrameBytes!,
-        fit: BoxFit.contain,
-        gaplessPlayback: true,
-      );
-    }
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(color: NivaroColors.primaryLight, strokeWidth: 2.5),
-          const SizedBox(height: 12),
-          Text(_streamError ?? 'Connecting to VM display feed...', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVncCanvas() {
-    return ValueListenableBuilder<ui.Image?>(
-      valueListenable: widget.client.frame,
-      builder: (context, frame, _) {
-        if (frame != null) {
-          return RawImage(
-            image: frame,
-            fit: BoxFit.contain,
-          );
-        }
-        return ValueListenableBuilder<String?>(
-          valueListenable: widget.client.error,
-          builder: (context, err, _) {
-            if (err != null) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.videocam_off_rounded, size: 40, color: NivaroColors.warningLight),
-                    const SizedBox(height: 10),
-                    Text(err, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: () {
-                        widget.client.connect();
-                      },
-                      child: const Text('Reconnect'),
-                    ),
-                  ],
+  Widget _screen(BuildContext context, bool connected) {
+    final scheme = Theme.of(context).colorScheme;
+    final placeholder = widget.placeholder;
+    if (placeholder != null) return placeholder;
+    final status = _client.status.value;
+    final hasFrame = _client.frame.value != null;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RfbView(
+          key: _viewKey,
+          client: _client,
+          inputMode: _inputMode,
+          dragLocked: _dragLocked,
+          label: widget.screenLabel ?? 'Screen of ${widget.title}',
+        ),
+        // The hidden field that brings up the soft keyboard and receives
+        // its text. It must be on screen (1x1) for the IME to attach.
+        Positioned(
+          left: 0,
+          top: 0,
+          width: 1,
+          height: 1,
+          child: ExcludeSemantics(
+            child: Opacity(
+              opacity: 0,
+              child: Focus(
+                onKeyEvent: _onHardwareKey,
+                skipTraversal: true,
+                child: TextField(
+                  focusNode: _keyboardFocus,
+                  controller: _keyboardText,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  keyboardType: TextInputType.visiblePassword,
+                  textInputAction: TextInputAction.send,
+                  onChanged: _onKeyboardText,
+                  onSubmitted: (_) => _key(Keysym.enter),
+                  onEditingComplete: () {},
                 ),
-              );
-            }
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: NivaroColors.primaryLight, strokeWidth: 2.5),
-                  SizedBox(height: 12),
-                  Text('Connecting to High-Speed VNC Display...', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                ],
               ),
-            );
-          },
+            ),
+          ),
+        ),
+        if (status == RfbStatus.connecting)
+          const Align(alignment: Alignment.topCenter, child: LinearProgressIndicator()),
+        if (!connected)
+          ColoredBox(
+            color: hasFrame ? scheme.scrim.withValues(alpha: 0.7) : scheme.surfaceContainerLowest,
+            child: _ConsoleMessage(
+              status: status,
+              title: widget.title,
+              error: _client.error.value,
+              onRetry: () => _client.connect(),
+            ),
+          ),
+        if (_fullscreen)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + Space.sm,
+            right: Space.sm,
+            child: FloatingActionButton.small(
+              heroTag: null,
+              tooltip: 'Exit full screen',
+              backgroundColor: scheme.secondaryContainer.withValues(alpha: 0.85),
+              foregroundColor: scheme.onSecondaryContainer,
+              elevation: 0,
+              onPressed: () => _setFullscreen(false),
+              child: const Icon(Icons.fullscreen_exit),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _controls(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final gutter = Space.gutter(context);
+    return Material(
+      color: scheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: Space.xs),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_showKeys) _keyBar(context),
+              if (_inputMode == RfbInputMode.trackpad) ...[
+                // A caption, so "Left", "Right", the arrows and the hand
+                // read as one set of mouse controls.
+                Padding(
+                  padding: EdgeInsets.fromLTRB(gutter, Space.xs, gutter, 0),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text('Mouse', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: gutter),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _viewKey.currentState?.click(1),
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.md)),
+                          child: const Tooltip(message: 'Left click', child: Text('Left', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        ),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _viewKey.currentState?.click(4),
+                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.md)),
+                          child: const Tooltip(message: 'Right click', child: Text('Right', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        ),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      IconButton(
+                        tooltip: 'Scroll up',
+                        icon: const Icon(Icons.keyboard_arrow_up),
+                        onPressed: () => _viewKey.currentState?.scroll(up: true),
+                      ),
+                      IconButton(
+                        tooltip: 'Scroll down',
+                        icon: const Icon(Icons.keyboard_arrow_down),
+                        onPressed: () => _viewKey.currentState?.scroll(up: false),
+                      ),
+                      IconButton(
+                        tooltip: _dragLocked ? 'Release the held button' : 'Hold the left button to drag',
+                        isSelected: _dragLocked,
+                        icon: const Icon(Icons.pan_tool_outlined),
+                        selectedIcon: const Icon(Icons.pan_tool),
+                        style: IconButton.styleFrom(
+                          backgroundColor: _dragLocked ? scheme.secondaryContainer : null,
+                          foregroundColor: _dragLocked ? scheme.onSecondaryContainer : null,
+                        ),
+                        onPressed: _toggleDrag,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _keyBar(BuildContext context) {
+    final gutter = Space.gutter(context);
+    Widget key(String label, int keysym, {String? semantics}) => Padding(
+          padding: const EdgeInsets.only(right: Space.sm),
+          child: Semantics(
+            label: semantics,
+            button: true,
+            child: ActionChip(label: Text(label), onPressed: () => _key(keysym)),
+          ),
         );
-      },
+    Widget iconKey(IconData icon, String semantics, int keysym) => Padding(
+          padding: const EdgeInsets.only(right: Space.sm),
+          child: ActionChip(
+            label: Icon(icon, size: 18, semanticLabel: semantics),
+            tooltip: semantics,
+            onPressed: () => _key(keysym),
+          ),
+        );
+    Widget latch(String label, int keysym) => Padding(
+          padding: const EdgeInsets.only(right: Space.sm),
+          child: FilterChip(
+            label: Text(label),
+            showCheckmark: false,
+            selected: _latched.contains(keysym),
+            tooltip: '$label stays down for the next key',
+            onSelected: (_) => _toggleLatch(keysym),
+          ),
+        );
+    Widget combo(String label, List<int> keys) => Padding(
+          padding: const EdgeInsets.only(right: Space.sm),
+          child: ActionChip(
+            label: Text(label),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              _client.sendCombo(keys);
+              _releaseLatches();
+            },
+          ),
+        );
+    return SizedBox(
+      height: 56,
+      child: FadingEdges(
+        controller: _keyScroll,
+        child: ListView(
+        controller: _keyScroll,
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: gutter),
+        children: [
+          key('Esc', Keysym.escape, semantics: 'Escape'),
+          key('Tab', Keysym.tab),
+          latch('Ctrl', Keysym.control),
+          latch('Alt', Keysym.alt),
+          latch('Shift', Keysym.shift),
+          latch('Win', Keysym.superKey),
+          iconKey(Icons.arrow_back, 'Left arrow', Keysym.left),
+          iconKey(Icons.arrow_upward, 'Up arrow', Keysym.up),
+          iconKey(Icons.arrow_downward, 'Down arrow', Keysym.down),
+          iconKey(Icons.arrow_forward, 'Right arrow', Keysym.right),
+          key('Del', Keysym.delete, semantics: 'Delete'),
+          key('Home', Keysym.home),
+          key('End', Keysym.end),
+          key('PgUp', Keysym.pageUp, semantics: 'Page up'),
+          key('PgDn', Keysym.pageDown, semantics: 'Page down'),
+          combo('Ctrl+Alt+Del', const [Keysym.control, Keysym.alt, Keysym.delete]),
+          for (var i = 1; i <= 12; i++) key('F$i', Keysym.f(i)),
+        ],
+        ),
+      ),
     );
   }
 }
 
-class _TrackpadBtn extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool active;
-  final int flex;
-  final Color? activeColor;
-  final VoidCallback onTap;
+/// Connecting, failed or lost, over the console area.
+class _ConsoleMessage extends StatelessWidget {
+  const _ConsoleMessage({required this.status, required this.title, required this.error, required this.onRetry});
 
-  const _TrackpadBtn({
-    required this.label,
-    this.icon,
-    this.active = false,
-    this.flex = 1,
-    this.activeColor,
-    required this.onTap,
-  });
+  final RfbStatus status;
+  final String title;
+  final String? error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveActiveColor = activeColor ?? NivaroColors.primary;
-    return Expanded(
-      flex: flex,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            onTap();
-          },
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: active ? effectiveActiveColor : NivaroColors.surfaceRaised,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: active ? effectiveActiveColor : NivaroColors.borderSubtle,
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final connecting = status == RfbStatus.connecting || status == RfbStatus.idle;
+    final heading = switch (status) {
+      RfbStatus.disconnected => 'Connection lost',
+      RfbStatus.failed => "Couldn't connect",
+      _ => 'Connecting to $title',
+    };
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height / 2),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Semantics(
+              liveRegion: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(connecting ? Icons.desktop_windows_outlined : Icons.desktop_access_disabled_outlined,
+                      size: 48, color: scheme.onSurfaceVariant),
+                  const SizedBox(height: Space.lg),
+                  Text(heading, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+                  if (!connecting && error != null) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(error!,
+                        style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                        textAlign: TextAlign.center),
+                  ],
+                  if (!connecting) ...[
+                    const SizedBox(height: Space.xl),
+                    FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reconnect')),
+                  ],
+                ],
               ),
             ),
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A state in the console area before any connection: "mint is turned
+/// off / Start it to use the console. / [Start]". Drawn in the console's
+/// dark theme.
+class ConsolePlaceholder extends StatelessWidget {
+  const ConsolePlaceholder({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.busy = false,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  /// The action is running: its button shows progress.
+  final bool busy;
+
+  /// Nothing known yet: a skeleton of the message instead.
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    if (loading) {
+      return Semantics(
+        label: 'Loading',
+        child: SkeletonPulse(
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SkeletonBox(width: 48, height: 48, radius: Corners.medium),
+              const SizedBox(height: Space.lg),
+              const SkeletonBox(width: 180, height: 22),
+              const SizedBox(height: Space.sm),
+              const SkeletonBox(width: 240, height: 16),
+            ]),
+          ),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height / 2),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 13, color: active ? Colors.black : Colors.white),
-                  const SizedBox(width: 4),
-                ],
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: active ? Colors.black : Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 10.5,
+                Icon(icon, size: 48, color: scheme.onSurfaceVariant),
+                const SizedBox(height: Space.lg),
+                Semantics(
+                    header: true, child: Text(title, style: theme.textTheme.titleLarge, textAlign: TextAlign.center)),
+                const SizedBox(height: Space.sm),
+                Text(message,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                    textAlign: TextAlign.center),
+                if (actionLabel != null) ...[
+                  const SizedBox(height: Space.xl),
+                  FilledButton.tonal(
+                    onPressed: busy ? null : onAction,
+                    child: busy
+                        ? Semantics(
+                            label: 'Working',
+                            child: const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : Text(actionLabel!),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -1441,56 +1298,3 @@ class _TrackpadBtn extends StatelessWidget {
     );
   }
 }
-
-class _KeyBtn extends StatelessWidget {
-  final String label;
-  final bool active;
-  final bool isMacro;
-  final VoidCallback onTap;
-
-  const _KeyBtn({
-    required this.label,
-    this.active = false,
-    this.isMacro = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 5),
-      child: InkWell(
-        onTap: () {
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-          decoration: BoxDecoration(
-            color: active
-                ? NivaroColors.primary
-                : (isMacro ? NivaroColors.primary.withValues(alpha: 0.15) : NivaroColors.surfaceRaised),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: active
-                  ? NivaroColors.primaryLight
-                  : (isMacro ? NivaroColors.primary.withValues(alpha: 0.4) : NivaroColors.borderSubtle),
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active
-                  ? Colors.white
-                  : (isMacro ? NivaroColors.primaryLight : NivaroColors.textPrimary),
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-

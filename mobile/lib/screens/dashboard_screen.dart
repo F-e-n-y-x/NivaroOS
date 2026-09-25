@@ -1,32 +1,274 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
-import '../services/storage_service.dart';
-import '../services/vm_client.dart';
-import '../models/dashboard_stats.dart';
-import '../utils/format.dart';
-import '../widgets/common.dart';
-import '../widgets/monitor_modals.dart';
-import '../widgets/tailscale_modal.dart';
-import 'vm_console_screen.dart';
-import 'system_updates_screen.dart';
-import 'system_logs_screen.dart';
-import 'terminal_screen.dart';
-import 'host_desktop_screen.dart';
-import 'login_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../models/dashboard_stats.dart';
+import '../services/api_client.dart';
+import '../ui/ui.dart';
+import '../utils/format.dart';
+import '../widgets/monitor_modals.dart';
+import '../widgets/server_power.dart';
+import 'system_updates_screen.dart';
+
+/// The last few minutes of live readings (one per poll), for Home's
+/// sparklines. Kept in memory only: the server has no history endpoint, so
+/// the lines start when Home opens and say so until there are two points.
+class LiveHistory {
+  LiveHistory({this.capacity = 30});
+
+  /// 30 readings at the 4 s poll: the last two minutes.
+  final int capacity;
+  final List<double> cpu = [];
+  final List<double> memory = [];
+
+  /// Download rate in bytes per second.
+  final List<double> netDown = [];
+
+  void _push(List<double> list, double v) {
+    list.add(v);
+    if (list.length > capacity) list.removeAt(0);
+  }
+
+  void add(LiveStats live) {
+    final s = live.stats;
+    _push(cpu, s.cpuPercent);
+    _push(memory, s.memTotal > 0 ? s.memUsed / s.memTotal * 100 : 0);
+    final rate = live.rate;
+    if (rate != null) _push(netDown, rate.downBytesPerSec);
+  }
+}
+
+/// Loads everything Home shows and keeps the live part fresh.
+///
+/// Two speeds: utilization every few seconds (and drives every 30 s) while
+/// someone is looking, and the slow checks - updates, backups, apps, VMs,
+/// host facts - once on open and on pull-to-refresh. Each slow check fails
+/// on its own and just leaves its part out; only the live reading decides
+/// whether Home shows an error or the offline banner.
+class HomeController extends ChangeNotifier {
+  HomeController({ApiClient? api}) : _api = api ?? ApiClient.instance;
+
+  final ApiClient _api;
+
+  /// The latest utilization reading, shared with the detail screens.
+  final ValueNotifier<LiveStats?> live = ValueNotifier(null);
+
+  /// Recent readings, for the sparklines.
+  final LiveHistory history = LiveHistory();
+
+  /// Why the first reading failed; null once there is data.
+  Object? liveError;
+
+  HostInfo? host;
+  UpdateSummary? updates;
+  List<BackupJobBrief> backups = const [];
+  AppCounts? apps;
+
+  /// Running and total VMs; null when the VM manager didn't answer.
+  ({int running, int total})? vms;
+
+  List<DiskUsage> _disks = const [];
+  DateTime? _disksAt;
+  NetSample? _lastNet;
+  DateTime? _lastNetAt;
+  bool _liveBusy = false;
+  bool _disposed = false;
+
+  static const disksEvery = Duration(seconds: 30);
+
+  List<AttentionItem> get attention => buildAttention(
+        updates: updates,
+        disks: live.value?.stats.disks ?? const [],
+        backups: backups,
+        apps: apps,
+      );
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    live.dispose();
+    super.dispose();
+  }
+
+  /// One utilization reading (plus drives when they're due).
+  Future<void> refreshLive({bool forceDisks = false}) async {
+    if (_liveBusy) return;
+    _liveBusy = true;
+    try {
+      final util = await _api.get('/sys/utilization');
+      var stats = DashboardStats.fromUtilization(util['data'] as Map<String, dynamic>? ?? const {});
+      final now = clock.now();
+      if (forceDisks || _disksAt == null || now.difference(_disksAt!) >= disksEvery) {
+        try {
+          final res = await _api.get('/sys/disks-usage');
+          _disks = (res['data'] as List<dynamic>? ?? const [])
+              .whereType<Map>()
+              .map((e) => DiskUsage.fromJson(Map<String, dynamic>.from(e)))
+              .where((d) => d.mountPoint.isNotEmpty)
+              .toList();
+          _disksAt = now;
+        } catch (_) {
+          // Keep the last drive list; the next reading tries again.
+        }
+      }
+      stats = stats.withDisks(_disks);
+      final net = stats.primaryNet;
+      final rate = NetRate.between(_lastNet, _lastNetAt, net, now) ?? (net?.name == _lastNet?.name ? live.value?.rate : null);
+      _lastNet = net;
+      _lastNetAt = now;
+      if (_disposed) return;
+      final reading = LiveStats(stats: stats, rate: rate, updatedAt: now);
+      live.value = reading;
+      history.add(reading);
+      liveError = null;
+    } catch (e) {
+      if (_disposed) return;
+      final last = live.value;
+      if (last != null) {
+        if (!last.stale) live.value = last.copyWith(stale: true);
+      } else {
+        liveError = e;
+      }
+    } finally {
+      _liveBusy = false;
+    }
+    _notify();
+  }
+
+  /// Everything, as on open and pull-to-refresh.
+  Future<void> refreshAll() async {
+    if (live.value == null) {
+      liveError = null;
+      _notify();
+    }
+    await Future.wait([
+      refreshLive(forceDisks: true),
+      _loadHost(),
+      loadUpdates(),
+      _loadBackups(),
+      _loadApps(),
+      _loadVms(),
+    ]);
+    _notify();
+  }
+
+  Future<void> _loadHost() async {
+    try {
+      final res = await _api.get('/sys/hardware');
+      final d = res['data'];
+      if (d is Map) host = HostInfo.fromJson(Map<String, dynamic>.from(d));
+    } catch (_) {}
+  }
+
+  /// Pending NivaroOS and package updates. Public so Home can recheck after
+  /// the Updates screen closes.
+  Future<void> loadUpdates() async {
+    bool? serverUpdate;
+    String? serverVersion;
+    int? packages;
+    var security = 0;
+    await Future.wait([
+      () async {
+        try {
+          final res = await _api.get('/sys/version/check');
+          final d = res['data'];
+          if (d is Map) {
+            serverUpdate = d['need_update'] == true;
+            final v = d['version'];
+            if (v is Map) serverVersion = v['version']?.toString();
+          }
+        } catch (_) {}
+      }(),
+      () async {
+        try {
+          final res = await _api.get('/sys/packages/check');
+          final d = res['data'];
+          if (d is Map) {
+            packages = (d['count'] as num?)?.toInt();
+            security = (d['security_count'] as num?)?.toInt() ?? 0;
+          }
+        } catch (_) {}
+      }(),
+    ]);
+    updates = UpdateSummary(serverUpdate: serverUpdate, serverVersion: serverVersion, packages: packages, security: security);
+    _notify();
+  }
+
+  // Backup & Sync is optional: ask its health route first and show nothing
+  // about backups when it doesn't answer (plan M-26).
+  Future<void> _loadBackups() async {
+    try {
+      final health = await _api.get('/backup/health');
+      if (health['installed'] == false) {
+        backups = const [];
+        return;
+      }
+      final res = await _api.get('/backup/jobs');
+      backups = (res['data'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => BackupJobBrief.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      backups = const [];
+    }
+  }
+
+  Future<void> _loadApps() async {
+    try {
+      final res = await _api.get('/v2/app_management/web/appgrid');
+      final d = res['data'];
+      if (d is List) apps = AppCounts.fromAppGrid(d);
+    } catch (_) {}
+  }
+
+  // Through the gateway's same-origin route, so it works behind a tunnel
+  // or reverse proxy too (plan M-01). The sidecar answers a bare list, so
+  // it can't go through the JSON-envelope helper.
+  Future<void> _loadVms() async {
+    try {
+      final res = await _api.getRaw('/v1/vm-sidecar/vms');
+      if (res.statusCode != 200) {
+        vms = null;
+        return;
+      }
+      final list = jsonDecode(res.body);
+      if (list is! List) return;
+      final all = list.whereType<Map>().toList();
+      vms = (running: all.where((v) => v['state'] == 'running').length, total: all.length);
+    } catch (_) {
+      vms = null;
+    }
+  }
+}
+
+/// Home: the server at a glance. What state it's in first, then what needs
+/// the owner, then the health meters. Tabs and tools live in the
+/// navigation bar and More, so none are repeated here.
 class DashboardScreen extends StatefulWidget {
   final VoidCallback? onOpenFiles;
   final VoidCallback? onOpenVms;
   final VoidCallback? onOpenApps;
+
+  /// Tests pass their own; the app makes one per screen.
+  final HomeController? controller;
+
+  /// How often the live reading refreshes.
+  final Duration pollEvery;
 
   const DashboardScreen({
     super.key,
     this.onOpenFiles,
     this.onOpenVms,
     this.onOpenApps,
+    this.controller,
+    this.pollEvery = const Duration(seconds: 4),
   });
 
   @override
@@ -34,891 +276,567 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  DashboardStats? _stats;
-  List<Vm> _runningVms = [];
-  String? _error;
+  late final HomeController _c = widget.controller ?? HomeController();
   Timer? _timer;
-  String _username = '';
-  int _vmThumbTick = 0;
 
-  NetSample? _lastNet;
-  DateTime? _lastNetAt;
-  double _netUpRate = 0;
-  double _netDownRate = 0;
-
-  VmClient get _vmClient {
-    final uri = Uri.parse(ApiClient.instance.baseUrl);
-    return VmClient(uri.host);
-  }
+  // Detail screens pushed from here that still want live numbers while
+  // Home itself is covered.
+  int _detailsOpen = 0;
 
   @override
   void initState() {
     super.initState();
-    StorageService.instance.getUsername().then((u) {
-      if (mounted && u != null) setState(() => _username = u);
-    });
-    _load();
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) => _loadSilently());
+    _c.addListener(_changed);
+    _c.refreshAll();
+    _timer = Timer.periodic(widget.pollEvery, (_) => _tick());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _c.removeListener(_changed);
+    if (widget.controller == null) _c.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _error = null);
-    await _fetchStats();
+  void _changed() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _loadSilently() async {
-    await _fetchStats();
-  }
-
-  Future<void> _promptReauth() async {
-    final username = await StorageService.instance.getUsername();
+  // Poll only while someone can see the numbers: Home is the visible tab
+  // (a hidden IndexedStack child and a covered route have their tickers
+  // off) or one of its detail screens is open, and the app is in front.
+  void _tick() {
     if (!mounted) return;
-    final success = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(
-          isReauth: true,
-          initialUsername: username,
-        ),
-      ),
-    );
-    if (success == true && mounted) {
-      _load();
-    }
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (!TickerMode.valuesOf(context).enabled && _detailsOpen == 0) return;
+    _c.refreshLive();
   }
 
-  Future<void> _fetchStats() async {
+  Future<void> _openDetail(Widget screen) async {
+    _detailsOpen++;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    _detailsOpen--;
+  }
+
+  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive));
+  void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive));
+  void _openStorage() => _openDetail(StorageDetailScreen(live: _c.live, onRetry: _c.refreshLive, onOpenFiles: widget.onOpenFiles));
+  void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive));
+
+  Future<void> _openUpdates(UpdatesPage page) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SystemUpdatesScreen(page: page)));
+    _c.loadUpdates();
+  }
+
+  Future<void> _power(String state) => confirmServerPower(context, restart: state == 'restart');
+
+  // Backups are managed in the web UI (the app has no backup screen yet),
+  // so the row opens it in the browser rather than doing nothing.
+  Future<void> _openWebUi() async {
+    final url = ApiClient.instance.baseUrl;
+    if (url.isEmpty) return;
     try {
-      final utilRes = await ApiClient.instance.get('/sys/utilization');
-      var stats = DashboardStats.fromUtilization(utilRes['data'] as Map<String, dynamic>? ?? {});
-
-      final disksRes = await ApiClient.instance.get('/sys/disks-usage');
-      final disksData = disksRes['data'] as List<dynamic>? ?? [];
-      final disks = disksData
-          .map((e) => DiskUsage.fromJson(e as Map<String, dynamic>))
-          .where((d) => d.mountPoint.isNotEmpty && !d.isSystemPartition)
-          .toList();
-      stats = stats.withDisks(disks);
-
-      final net = stats.primaryNet;
-      final now = clock.now();
-      if (net != null && _lastNet != null && _lastNetAt != null) {
-        final elapsed = now.difference(_lastNetAt!).inMilliseconds / 1000;
-        if (elapsed > 0) {
-          final upDelta = net.bytesSent - _lastNet!.bytesSent;
-          final downDelta = net.bytesRecv - _lastNet!.bytesRecv;
-          _netUpRate = upDelta > 0 ? upDelta / elapsed : 0;
-          _netDownRate = downDelta > 0 ? downDelta / elapsed : 0;
-        }
-      }
-      if (net != null) {
-        _lastNet = net;
-        _lastNetAt = now;
-      }
-
-      // Fetch running VMs for live mini card
-      try {
-        final vms = await _vmClient.listVms();
-        _runningVms = vms.where((v) => v.isRunning).toList();
-      } catch (_) {}
-
-      if (!mounted) return;
-      setState(() {
-        _stats = stats;
-        _error = null;
-        _vmThumbTick++;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      if (_stats == null) {
-        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-      }
-    }
-  }
-
-  Future<void> _confirmAndSetState(String state, String title, String body) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.largeIncreased)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        content: Text(body, style: TextStyle(color: NivaroColors.textMuted)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(title, style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await ApiClient.instance.put('/sys/state/$state');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Server $state command sent successfully.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
-        );
-      }
-    }
-  }
-
-
-  String get _host {
-    final base = ApiClient.instance.baseUrl;
-    try {
-      return Uri.parse(base).host;
-    } catch (_) {
-      return base;
-    }
-  }
-
-  Color _cpuColor(double pct) {
-    if (pct > 85) return NivaroColors.dangerLight;
-    if (pct > 65) return NivaroColors.warningLight;
-    return NivaroColors.primaryLight;
-  }
-
-  Color _memColor(double pct) {
-    if (pct > 85) return NivaroColors.dangerLight;
-    if (pct > 70) return NivaroColors.purpleLight;
-    return NivaroColors.successLight;
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final stats = _stats;
-    return SafeArea(
-      bottom: false,
-      child: RefreshIndicator(
-        onRefresh: _load,
-        color: NivaroColors.primaryLight,
-        backgroundColor: NivaroColors.surfaceRaised,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1100),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
-          children: [
-            // Top App Bar / Server Header
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: NivaroColors.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: NivaroColors.primary.withValues(alpha: 0.35)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _username.isEmpty ? 'N' : _username.substring(0, 1).toUpperCase(),
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.primaryLight),
-                  ),
+    final live = _c.live.value;
+    final error = _c.liveError;
+
+    final List<Widget> slivers;
+    if (live == null && error == null) {
+      slivers = const [SliverToBoxAdapter(child: _SummarySkeleton())];
+    } else if (live == null) {
+      final offline = error is ApiException && error.statusCode == null;
+      slivers = [
+        offline
+            ? ErrorState.offline(onRetry: _c.refreshAll, sliver: true)
+            : ErrorState(
+                title: "Couldn't load the server's status",
+                message: error.toString(),
+                onRetry: _c.refreshAll,
+                details: 'GET /v1/sys/utilization: $error',
+                sliver: true,
+              ),
+      ];
+    } else {
+      slivers = [SliverList.list(children: _content(context, live))];
+    }
+
+    return AppScaffold.slivers(
+      title: 'Home',
+      onRefresh: _c.refreshAll,
+      banner: live != null && live.stale ? OfflineBanner(lastUpdated: live.updatedAt, onRetry: _c.refreshLive) : null,
+      actions: [
+        // Power only once the server has answered; before that it would
+        // just fail.
+        if (live != null) PopupMenuButton<String>(
+          tooltip: 'Server power',
+          icon: const Icon(Icons.power_settings_new_outlined),
+          onSelected: _power,
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'restart', child: ListTile(leading: Icon(Icons.restart_alt_outlined), title: Text('Restart server'))),
+            PopupMenuItem(value: 'off', child: ListTile(leading: Icon(Icons.power_settings_new_outlined), title: Text('Shut down server'))),
+          ],
+        ),
+      ],
+      slivers: slivers,
+    );
+  }
+
+  List<Widget> _content(BuildContext context, LiveStats live) {
+    final s = live.stats;
+    final attention = _c.attention;
+    final drives = s.dataDisks;
+    final apps = _c.apps;
+    final vms = _c.vms;
+
+    final panel = ServerPanel(
+      attention: attention,
+      host: _c.host,
+      fallbackName: Uri.tryParse(ApiClient.instance.baseUrl)?.host ?? '',
+      live: live,
+      history: _c.history,
+      onOpenCpu: _openCpu,
+      onOpenMemory: _openMemory,
+      onOpenNetwork: _openNetwork,
+    );
+    final needs = attention.isEmpty
+        ? null
+        : TileGroup(title: 'Needs attention', children: [for (final a in attention) _attentionTile(context, a)]);
+    final storage = TileGroup(title: 'Storage', children: [
+      UsageTile(
+        icon: Icons.storage_outlined,
+        bar: UsageBar(
+          value: s.storageUsed.toDouble(),
+          max: s.storageTotal.toDouble(),
+          label: drives.length == 1 ? '1 drive' : '${drives.length} drives',
+          detail: drives.isEmpty ? 'No drives reported' : '${formatBytes(s.storageUsed)} of ${formatBytes(s.storageTotal)} used',
+          warnAt: diskWarnAt,
+          criticalAt: diskCriticalAt,
+        ),
+        onTap: _openStorage,
+      ),
+    ]);
+    final running = apps == null && vms == null
+        ? null
+        : TileGroup(title: 'Running', children: [
+            if (apps != null)
+              ListTile(
+                leading: const Icon(Icons.apps_outlined),
+                title: const Text('Apps'),
+                subtitle: Text(apps.total == 0 ? 'None installed' : '${apps.running} of ${apps.total} running'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: widget.onOpenApps,
+              ),
+            if (vms != null)
+              ListTile(
+                leading: const Icon(Icons.computer_outlined),
+                title: const Text('Virtual machines'),
+                subtitle: Text(vms.total == 0
+                    ? 'None set up'
+                    : vms.running == 0
+                        ? 'None running · ${vms.total} in total'
+                        : '${vms.running} of ${vms.total} running'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: widget.onOpenVms,
+              ),
+          ]);
+
+    return [
+      LayoutBuilder(builder: (context, constraints) {
+        // Wide windows: the server and what needs attention on the left,
+        // storage and what's running on the right, instead of one long
+        // column of stretched rows.
+        if (constraints.maxWidth >= 720) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Column(children: [panel, ?needs])),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: Space.sm),
+                  child: Column(children: [storage, ?running]),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _username.isEmpty ? 'Nivaro Administrator' : _username,
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
+              ),
+            ],
+          );
+        }
+        return Column(children: [panel, ?needs, storage, ?running]);
+      }),
+      const SizedBox(height: Space.lg),
+    ];
+  }
+
+  Widget _attentionTile(BuildContext context, AttentionItem a) {
+    final scheme = Theme.of(context).colorScheme;
+    final status = switch (a.severity) {
+      AttentionSeverity.error => Status.error,
+      AttentionSeverity.warning => Status.warning,
+      AttentionSeverity.info => Status.neutral,
+    };
+    final icon = switch (a.kind) {
+      AttentionKind.serverUpdate => Icons.update_outlined,
+      AttentionKind.packages => Icons.update_outlined,
+      AttentionKind.disk => Icons.storage_outlined,
+      AttentionKind.backup => Icons.backup_outlined,
+      AttentionKind.apps => Icons.apps_outlined,
+    };
+    final VoidCallback? onTap = switch (a.kind) {
+      AttentionKind.serverUpdate => () => _openUpdates(UpdatesPage.nivaroos),
+      AttentionKind.packages => () => _openUpdates(UpdatesPage.packages),
+      AttentionKind.disk => _openStorage,
+      AttentionKind.apps => widget.onOpenApps,
+      // The app has no backup screen yet: the web UI fixes it.
+      AttentionKind.backup => _openWebUi,
+    };
+    final security = a.kind == AttentionKind.packages ? (_c.updates?.security ?? 0) : 0;
+    final color = status == Status.neutral ? scheme.onSurfaceVariant : StatusColors.toneOf(context, status).color;
+
+    return MergeSemantics(
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(a.title),
+        subtitle: security > 0
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Debian packages'),
+                  const SizedBox(height: Space.xs),
+                  StatusChip(label: '$security security', status: Status.warning, icon: Icons.shield_outlined),
+                ],
+              )
+            : Text(a.detail),
+        isThreeLine: security > 0,
+        trailing: onTap == null
+            ? null
+            : Icon(a.kind == AttentionKind.backup ? Icons.open_in_new_outlined : Icons.chevron_right),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+/// The one-second answer, and Home's one expressive moment: which server
+/// this is, whether it is fine, how long it has been up, and its live
+/// processor, memory and network readings with the last two minutes as
+/// sparklines. A tonal panel, so it reads as the thing the screen is about.
+class ServerPanel extends StatelessWidget {
+  const ServerPanel({
+    super.key,
+    required this.attention,
+    required this.host,
+    required this.fallbackName,
+    required this.live,
+    required this.history,
+    this.onOpenCpu,
+    this.onOpenMemory,
+    this.onOpenNetwork,
+  });
+
+  final List<AttentionItem> attention;
+  final HostInfo? host;
+  final String fallbackName;
+  final LiveStats live;
+  final LiveHistory history;
+  final VoidCallback? onOpenCpu;
+  final VoidCallback? onOpenMemory;
+  final VoidCallback? onOpenNetwork;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final worst = attention.isEmpty ? null : attention.first.severity;
+    final status = switch (worst) {
+      null => Status.success,
+      AttentionSeverity.error => Status.error,
+      AttentionSeverity.warning => Status.warning,
+      AttentionSeverity.info => Status.info,
+    };
+    final n = attention.length;
+    final verdict = switch (worst) {
+      null => 'Everything looks fine',
+      AttentionSeverity.info => n == 1 ? '1 thing to look at' : '$n things to look at',
+      _ => n == 1 ? '1 thing needs attention' : '$n things need attention',
+    };
+    final icon = switch (status) {
+      Status.success => Icons.check_circle_outline,
+      Status.error => Icons.error_outline,
+      Status.warning => Icons.warning_amber_outlined,
+      _ => Icons.info_outline,
+    };
+    final h = host;
+    final name = (h?.hostname.isNotEmpty ?? false) ? h!.hostname : fallbackName;
+    final facts = [
+      if (h != null && h.osName.isNotEmpty) h.osName,
+      if (h != null && h.uptime.isNotEmpty) 'Up ${h.uptime}',
+    ];
+    final s = live.stats;
+    final rate = live.rate;
+    final (netValue, netUnit) = rate == null ? ('—', null) : splitUnit(formatBytes(rate.downBytesPerSec));
+    final gutter = Space.gutter(context);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
+      child: Card.filled(
+        color: scheme.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                container: true,
+                liveRegion: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    StatusDisc(status: status, icon: icon),
+                    const SizedBox(width: Space.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          PulsingStatusDot(color: NivaroColors.success, size: 6.5),
-                          SizedBox(width: 6),
-                          Text('NivaroOS Server Online', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                  icon: Icons.refresh_rounded,
-                  tooltip: 'Refresh metrics',
-                  onPressed: _load,
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted),
-                  color: NivaroColors.surfaceContainerHighest,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.large)),
-                  onSelected: (v) {
-                    if (v == 'restart') {
-                      _confirmAndSetState('restart', 'Restart Server', 'This restarts the server hardware. All running apps and VMs will be temporarily interrupted.');
-                    } else if (v == 'off') {
-                      _confirmAndSetState('off', 'Power Off Server', 'This completely powers off the server hardware.');
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'restart',
-                      child: Row(
-                        children: [
-                          Icon(Icons.restart_alt_rounded, size: 18, color: NivaroColors.textPrimary),
-                          SizedBox(width: 10),
-                          Text('Restart Host Server'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'off',
-                      child: Row(
-                        children: [
-                          Icon(Icons.power_settings_new_rounded, size: 18, color: NivaroColors.dangerLight),
-                          SizedBox(width: 10),
-                          Text('Power Off Server', style: TextStyle(color: NivaroColors.dangerLight)),
+                          Semantics(
+                            header: true,
+                            child: Text(name, style: theme.textTheme.headlineSmall?.emphasized, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(height: 2),
+                          AnimatedSwitcher(
+                            duration: Motion.of(context).short,
+                            child: Text(verdict, key: ValueKey(verdict), style: theme.textTheme.titleSmall?.copyWith(color: scheme.onSurface)),
+                          ),
+                          for (final f in facts) ...[
+                            const SizedBox(height: 2),
+                            Text(f, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                          ],
                         ],
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            // Connection Address Pill (Clickable for network test)
-            LanBadge(
-              address: _host,
-              label: 'LAN',
-              pingMs: 14,
-              onTap: () {
-                if (stats != null) {
-                  NetworkSpeedTestModal.show(
-                    context,
-                    primaryNet: stats.primaryNet,
-                    netUpRate: _netUpRate,
-                    netDownRate: _netDownRate,
-                  );
-                }
-              },
-            ),
-            const SizedBox(height: 18),
-
-            // Live Virtual Machine Feeds (if any running)
-            if (_runningVms.isNotEmpty) ...[
-              LegacySectionHeader(
-                title: 'Live Virtual Machines',
-                subtitle: '${_runningVms.length} running with real-time screen stream',
-                trailing: TextButton(
-                  onPressed: widget.onOpenVms,
-                  child: const Text('View All', style: TextStyle(fontSize: 12.5)),
-                ),
               ),
-              Builder(builder: (context) {
-                final width = MediaQuery.of(context).size.width;
-                final isWide = width >= 650;
-                final cols = width >= 1050 ? 3 : (isWide ? 2 : 1);
-
-                if (cols > 1) {
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cols,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.45,
-                    ),
-                    itemCount: _runningVms.length,
-                    itemBuilder: (context, i) => _buildLiveVmCard(_runningVms[i]),
-                  );
-                }
-
-                return Column(
-                  children: _runningVms.map((vm) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildLiveVmCard(vm),
-                  )).toList(),
-                );
-              }),
-              const SizedBox(height: 10),
+              const SizedBox(height: Space.md),
+              _Vitals(children: [
+                _Vital(
+                  label: 'Processor',
+                  value: '${s.cpuPercent.round()}',
+                  unit: '%',
+                  values: history.cpu,
+                  max: 100,
+                  onTap: onOpenCpu,
+                ),
+                _Vital(
+                  label: 'Memory',
+                  value: s.memTotal > 0 ? '${(s.memUsed / s.memTotal * 100).round()}' : '—',
+                  unit: s.memTotal > 0 ? '%' : null,
+                  values: history.memory,
+                  max: 100,
+                  onTap: onOpenMemory,
+                ),
+                _Vital(
+                  label: 'Network in',
+                  value: netValue,
+                  unit: netUnit == null ? null : '$netUnit/s',
+                  values: history.netDown,
+                  onTap: onOpenNetwork,
+                ),
+              ]),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-            // Real-Time System Monitor (Clickable Tiles)
-            const LegacySectionHeader(
-              title: 'System Health & Metrics',
-              subtitle: 'Tap any metric for hardware diagnostics & speedtests',
-            ),
-            if (stats == null)
-              _error != null
-                  ? DarkCard(
-                      padding: const EdgeInsets.all(24),
-                      child: Center(
-                        child: Column(
+/// A status as a 48dp tonal disc with its icon: the colour says the
+/// state, the icon says it again for anyone who can't see colour.
+class StatusDisc extends StatelessWidget {
+  const StatusDisc({super.key, required this.status, required this.icon, this.size = 48});
+
+  final Status status;
+  final IconData icon;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = StatusColors.toneOf(context, status);
+    // In dark theme the full container tones (a deep red, a deep amber)
+    // are the heaviest thing on the page; a light wash of the status colour
+    // says the same with less weight.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: dark ? tone.color.withValues(alpha: 0.18) : tone.container, shape: BoxShape.circle),
+        child: Icon(icon, color: dark ? tone.color : tone.onContainer),
+      ),
+    );
+  }
+}
+
+/// Three readings side by side, or stacked one per row when the text is
+/// large (a column at 200% text holds about four characters).
+class _Vitals extends StatelessWidget {
+  const _Vitals({required this.children});
+
+  final List<_Vital> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final stacked = MediaQuery.textScalerOf(context).scale(10) > 13;
+    if (stacked) {
+      return Column(children: [for (final c in children) c.asRow()]);
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [for (final c in children) Expanded(child: c)],
+    );
+  }
+}
+
+class _Vital extends StatelessWidget {
+  const _Vital({required this.label, required this.value, this.unit, required this.values, this.max, this.onTap, this.row = false});
+
+  final String label;
+  final String value;
+  final String? unit;
+  final List<double> values;
+  final double? max;
+  final VoidCallback? onTap;
+  final bool row;
+
+  _Vital asRow() => _Vital(label: label, value: value, unit: unit, values: values, max: max, onTap: onTap, row: true);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final reading = Text.rich(
+      TextSpan(children: [
+        TextSpan(text: value, style: theme.textTheme.titleLarge?.emphasized.tabular),
+        if (unit != null) TextSpan(text: unit == '%' ? unit : ' $unit', style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+      ]),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    final name = Text(label, style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis);
+    final spark = Sparkline(values: values, max: max, height: 28, width: double.infinity);
+    final Widget content = row
+        ? Row(
+            children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [name, reading])),
+              const SizedBox(width: Space.md),
+              SizedBox(width: 96, child: spark),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [name, const SizedBox(height: 2), reading, const SizedBox(height: Space.sm), spark],
+          );
+    return Semantics(
+      button: onTap != null,
+      label: '$label, $value${unit == null ? '' : ' $unit'}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Corners.medium),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.sm), child: content),
+        ),
+      ),
+    );
+  }
+}
+
+/// The panel's shape while Home loads for the first time.
+class _SummarySkeleton extends StatelessWidget {
+  const _SummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final gutter = Space.gutter(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      label: 'Loading',
+      liveRegion: true,
+      child: ExcludeSemantics(
+        child: SkeletonPulse(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
+                child: Card.filled(
+                  color: scheme.surfaceContainerHigh,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
+                  child: const Padding(
+                    padding: EdgeInsets.all(Space.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(Icons.error_outline_rounded, color: NivaroColors.dangerLight, size: 36),
-                            const SizedBox(height: 10),
-                            Text(_error!, style: TextStyle(color: NivaroColors.textMuted, fontSize: 13), textAlign: TextAlign.center),
-                            const SizedBox(height: 14),
-                            if (ApiClient.isAuthError(_error)) ...[
-                              FilledButton.icon(
-                                onPressed: _promptReauth,
-                                icon: const Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
-                                label: const Text('Sign In Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: NivaroColors.primary,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              TextButton(
-                                onPressed: _load,
-                                child: Text('Retry Connection', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
-                              ),
-                            ] else
-                              OutlinedButton(onPressed: _load, child: const Text('Retry Connection')),
-                          ],
-                        ),
-                      ),
-                    )
-                  : const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 36),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-            else ...[
-              Builder(builder: (context) {
-                final width = MediaQuery.of(context).size.width;
-                final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-                final cols = width >= 850 ? 4 : (width >= 600 || isLandscape ? 4 : 2);
-                final ratio = width >= 850 ? 1.55 : (width >= 600 || isLandscape ? 1.40 : 1.12);
-
-                return GridView.count(
-                  crossAxisCount: cols,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: ratio,
-                  children: [
-                    // CPU Card
-                    MonitorCard(
-                      label: 'CPU Utilization',
-                      icon: Icons.memory_rounded,
-                      color: _cpuColor(stats.cpuPercent),
-                      percent: stats.cpuPercent / 100,
-                      onTap: () => CpuDetailModal.show(context, stats),
-                      value: Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '${stats.cpuPercent.toStringAsFixed(0)}%',
-                            style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
-                          ),
-                          if (stats.cpuTemperature != null) ...[
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: NivaroColors.warning.withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(NivaroShape.small),
-                              ),
-                              child: Text(
-                                '${stats.cpuTemperature!.toStringAsFixed(0)}°C',
-                                style: TextStyle(color: NivaroColors.warningLight, fontSize: 10.5, fontWeight: FontWeight.w700),
+                            SkeletonBox(width: 48, height: 48, radius: 24),
+                            SizedBox(width: Space.lg),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  FractionallySizedBox(widthFactor: 0.5, child: SkeletonBox(height: 24)),
+                                  SizedBox(height: Space.sm),
+                                  FractionallySizedBox(widthFactor: 0.7, child: SkeletonBox(height: 14)),
+                                ],
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                      subtitle: '${stats.cpuCores} Cores · Hardware specs',
-                    ),
-
-                    // Memory Card
-                    MonitorCard(
-                      label: 'Memory (RAM)',
-                      icon: Icons.developer_board_rounded,
-                      color: _memColor(stats.memUsedPercent),
-                      percent: stats.memUsedPercent / 100,
-                      onTap: () => RamDetailModal.show(context, stats),
-                      value: Text(
-                        '${stats.memUsedPercent.toStringAsFixed(0)}%',
-                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
-                      ),
-                      subtitle: '${formatBytes(stats.memUsed)} of ${formatBytes(stats.memTotal)}',
-                    ),
-
-                    // Network Card (WAN Speedtest & Link Speed)
-                    MonitorCard(
-                      label: stats.primaryNet?.name.isNotEmpty == true ? 'Network (${stats.primaryNet!.name})' : 'Network Speed',
-                      icon: Icons.swap_vert_rounded,
-                      color: NivaroColors.infoLight,
-                      onTap: () => NetworkSpeedTestModal.show(
-                        context,
-                        primaryNet: stats.primaryNet,
-                        netUpRate: _netUpRate,
-                        netDownRate: _netDownRate,
-                      ),
-                      value: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _NetSpeedRow(icon: Icons.arrow_upward_rounded, rate: _netUpRate, label: 'Up'),
-                          const SizedBox(height: 3),
-                          _NetSpeedRow(icon: Icons.arrow_downward_rounded, rate: _netDownRate, label: 'Down'),
-                        ],
-                      ),
-                      subtitle: 'Speedtest & Link test',
-                    ),
-
-                    // Storage Card
-                    MonitorCard(
-                      label: 'Storage Pools',
-                      icon: Icons.pie_chart_rounded,
-                      color: NivaroColors.successLight,
-                      percent: stats.storageFraction,
-                      onTap: () => StorageDetailModal.show(context, stats, onOpenFiles: widget.onOpenFiles),
-                      value: Text(
-                        stats.storagePercentText,
-                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: NivaroColors.textPrimary),
-                      ),
-                      subtitle: '${formatBytes(stats.storageUsed)} of ${formatBytes(stats.storageTotal)}',
-                    ),
-                  ],
-                );
-              }),
-              const SizedBox(height: 18),
-
-              // Quick Access Section (Adaptive columns on tablets)
-              const LegacySectionHeader(
-                title: 'Quick Access',
-                subtitle: 'Server management shortcuts & utilities',
-              ),
-              Builder(builder: (context) {
-                final width = MediaQuery.of(context).size.width;
-                final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-                final cols = width >= 900 ? 8 : (width >= 600 || isLandscape ? 6 : 4);
-                final ratio = width >= 900 ? 1.20 : (width >= 600 || isLandscape ? 1.15 : 0.92);
-
-                return GridView.count(
-                  crossAxisCount: cols,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: ratio,
-                  children: [
-                    _QuickButton(
-                      icon: Icons.vpn_lock_rounded,
-                      label: 'Tailscale',
-                      onTap: () => TailscaleModal.show(context),
-                    ),
-                    _QuickButton(
-                      icon: Icons.folder_rounded,
-                      label: 'Files',
-                      onTap: widget.onOpenFiles,
-                    ),
-                    _QuickButton(
-                      icon: Icons.monitor_rounded,
-                      label: 'VMs',
-                      onTap: widget.onOpenVms,
-                    ),
-                    _QuickButton(
-                      icon: Icons.grid_view_rounded,
-                      label: 'Apps',
-                      onTap: widget.onOpenApps,
-                    ),
-                    _QuickButton(
-                      icon: Icons.terminal_rounded,
-                      label: 'Terminal',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const TerminalScreen()),
-                        );
-                      },
-                    ),
-                    _QuickButton(
-                      icon: Icons.system_update_rounded,
-                      label: 'Updates',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const SystemUpdatesScreen()),
-                        );
-                      },
-                    ),
-                    _QuickButton(
-                      icon: Icons.article_rounded,
-                      label: 'Logs',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const SystemLogsScreen()),
-                        );
-                      },
-                    ),
-                    _QuickButton(
-                      icon: Icons.desktop_windows_rounded,
-                      label: 'Host Desktop',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const HostDesktopScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                );
-              }),
-              const SizedBox(height: 20),
-
-              // Storage Drives List (Adaptive responsive grid on tablet)
-              const LegacySectionHeader(title: 'Storage Devices & Disks'),
-              if (stats.disks.isEmpty)
-                Text('No storage devices detected.', style: TextStyle(color: NivaroColors.textMuted))
-              else
-                Builder(builder: (context) {
-                  final width = MediaQuery.of(context).size.width;
-                  final cols = width >= 1050 ? 3 : (width >= 650 ? 2 : 1);
-
-                  if (cols > 1) {
-                    return GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: cols,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: 3.2,
-                      ),
-                      itemCount: stats.disks.length,
-                      itemBuilder: (context, i) {
-                        final d = stats.disks[i];
-                        return DriveCard(
-                          label: d.label.isNotEmpty ? d.label : d.mountPoint,
-                          percentText: d.percent,
-                          fraction: d.fraction,
-                          usedBytes: d.usedBytes,
-                          sizeBytes: d.sizeBytes,
-                          onTap: () => _showDriveDetails(context, d),
-                        );
-                      },
-                    );
-                  }
-
-                  return Column(
-                    children: stats.disks.map((d) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: DriveCard(
-                            label: d.label.isNotEmpty ? d.label : d.mountPoint,
-                            percentText: d.percent,
-                            fraction: d.fraction,
-                            usedBytes: d.usedBytes,
-                            sizeBytes: d.sizeBytes,
-                            onTap: () => _showDriveDetails(context, d),
-                          ),
-                        )).toList(),
-                  );
-                }),
-            ],
-          ],
-        ),
-      ),
-    ),
-  ),
-);
-}
-
-  void _showDriveDetails(BuildContext context, DiskUsage d) {
-    final freeBytes = (d.sizeBytes > d.usedBytes) ? d.sizeBytes - d.usedBytes : 0;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: NivaroColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: d.isUsb ? NivaroColors.accent.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    d.isUsb ? Icons.usb_rounded : Icons.storage_rounded,
-                    color: d.isUsb ? NivaroColors.accentLight : NivaroColors.primaryLight,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        d.label.isNotEmpty ? d.label : d.mountPoint,
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Mount point: ${d.mountPoint}',
-                        style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: NivaroColors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    d.percent,
-                    style: TextStyle(color: NivaroColors.primaryLight, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: d.fraction,
-                minHeight: 8,
-                backgroundColor: NivaroColors.surfaceRaised,
-                color: d.fraction > 0.9 ? NivaroColors.dangerLight : (d.fraction > 0.75 ? NivaroColors.warningLight : NivaroColors.primaryLight),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _statColumn('Used Space', formatBytes(d.usedBytes), NivaroColors.textPrimary),
-                _statColumn('Free Space', formatBytes(freeBytes), NivaroColors.successLight),
-                _statColumn('Total Capacity', formatBytes(d.sizeBytes), NivaroColors.textPrimary),
-              ],
-            ),
-            if (d.filesystem.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('Filesystem: ${d.filesystem}', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-            ],
-            const SizedBox(height: 22),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                widget.onOpenFiles?.call();
-              },
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('Open in Files Explorer'),
-              style: FilledButton.styleFrom(
-                backgroundColor: NivaroColors.primary,
-                minimumSize: const Size(double.infinity, 46),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _statColumn(String label, String value, Color valueColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
-        const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: valueColor)),
-      ],
-    );
-  }
-
-  Widget _buildLiveVmCard(Vm vm) {
-    return DarkCard(
-      padding: EdgeInsets.zero,
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => VmConsoleScreen(vmName: vm.name)),
-        );
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            height: 135,
-            decoration: const BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(NivaroShape.largeIncreased)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                Image.network(
-                  _vmClient.screenshotUrl(vm.name, _vmThumbTick),
-                  fit: BoxFit.contain,
-                  width: double.infinity,
-                  height: double.infinity,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, _, _) => Center(
-                    child: Icon(Icons.monitor_rounded, color: NivaroColors.textFaint, size: 36),
-                  ),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.75),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: NivaroColors.success.withValues(alpha: 0.4)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PulsingStatusDot(color: NivaroColors.success, size: 5),
-                        SizedBox(width: 4),
-                        Text('LIVE', style: TextStyle(color: NivaroColors.successLight, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                        ),
+                        SizedBox(height: Space.xl),
+                        Row(
+                          children: [
+                            Expanded(child: _SkeletonVital()),
+                            SizedBox(width: Space.lg),
+                            Expanded(child: _SkeletonVital()),
+                            SizedBox(width: Space.lg),
+                            Expanded(child: _SkeletonVital()),
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              TileGroup(title: 'Storage', children: [SkeletonRow(subtitle: true)]),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Icon(Icons.monitor_rounded, color: NivaroColors.primaryLight, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    vm.name,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(
-                  '${vm.vcpus} vCPU · ${(vm.memoryMib / 1024).toStringAsFixed(1)} GB',
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-                ),
-                const SizedBox(width: 6),
-                Icon(Icons.chevron_right_rounded, size: 18, color: NivaroColors.textFaint),
-              ],
-            ),
-          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonVital extends StatelessWidget {
+  const _SkeletonVital();
+
+  @override
+  Widget build(BuildContext context) => const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FractionallySizedBox(widthFactor: 0.6, child: SkeletonBox(height: 12)),
+          SizedBox(height: Space.sm),
+          FractionallySizedBox(widthFactor: 0.4, child: SkeletonBox(height: 20)),
+          SizedBox(height: Space.sm),
+          SkeletonBox(height: 28),
         ],
-      ),
-    );
-  }
-}
-
-class _QuickButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  const _QuickButton({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          if (onTap != null) onTap!();
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: NivaroColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: NivaroColors.borderSubtle),
-            boxShadow: const [
-              BoxShadow(color: Color(0x2B000000), blurRadius: 8, offset: Offset(0, 2)),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: NivaroColors.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(icon, color: NivaroColors.primaryLight, size: 19),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: NivaroColors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NetSpeedRow extends StatelessWidget {
-  final IconData icon;
-  final double rate;
-  final String label;
-
-  const _NetSpeedRow({
-    required this.icon,
-    required this.rate,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: NivaroColors.infoLight),
-        const SizedBox(width: 4),
-        Text(
-          '${formatBytes(rate)}/s',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NivaroColors.textPrimary),
-        ),
-      ],
-    );
-  }
+      );
 }

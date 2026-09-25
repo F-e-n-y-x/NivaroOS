@@ -94,3 +94,10 @@ abstract final class AppTheme {
 extension TabularFigures on TextStyle {
   TextStyle get tabular => copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
 }
+
+/// The M3 Expressive "emphasized" weight for the one number or name that
+/// matters on a screen (the server's name on Home, a key value): the same
+/// role, heavier. Use it once per screen, not for every label.
+extension EmphasizedType on TextStyle {
+  TextStyle get emphasized => copyWith(fontWeight: FontWeight.w600);
+}

@@ -1,2759 +1,1421 @@
+import 'dart:async';
 import 'dart:io';
-import 'dart:math';
+
+import 'package:clock/clock.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import '../services/device_sync_service.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
-import '../services/shortcuts_service.dart';
-import '../services/permission_service.dart';
-import '../services/storage_service.dart';
-import '../models/file_entry.dart';
-import '../models/dashboard_stats.dart';
+import 'package:open_filex/open_filex.dart';
+
 import '../models/cloud_account.dart';
 import '../models/favorite_folder.dart';
+import '../models/file_entry.dart';
+import '../services/api_client.dart';
+import '../services/device_sync_service.dart';
+import '../services/permission_service.dart';
+import '../services/shortcuts_service.dart';
+import '../ui/ui.dart';
 import '../utils/format.dart';
 import 'file_viewer_screen.dart';
-import 'login_screen.dart';
+import 'files/file_ops.dart';
+import 'files/file_sheets.dart';
+import 'files/file_widgets.dart';
+import 'files/transfers.dart';
 
-enum FileCategoryFilter {
-  all,
-  folders,
-  images,
-  videos,
-  documents,
-  archives,
-  code,
+/// Where this phone's own files start.
+const phoneStorageRoot = '/storage/emulated/0';
+
+/// One folder's listing and when it was fetched.
+class _Listing {
+  const _Listing(this.entries, this.fetched);
+  final List<FileEntry> entries;
+  final DateTime fetched;
 }
 
-class FileTab {
-  String id;
-  String name;
-  String path;
-  String? locationRoot;
-  bool atHome;
-  bool isLocalDevice;
-  List<String> history;
-  int historyIndex;
-  List<FileEntry> entries;
-  final Set<String> selectedPaths = {};
-  bool isSelectionMode = false;
-  String searchQuery;
-  bool isSearching;
-  String viewMode; // 'compact' (default thumbnail grid), 'grid', 'list'
-  String sortBy; // 'name', 'date', 'size', 'type'
-  bool sortAscending;
-  bool showHidden;
-  FileCategoryFilter categoryFilter;
-
-  FileTab({
-    required this.id,
-    required this.name,
-    required this.path,
-    this.locationRoot,
-    this.atHome = true,
-    this.isLocalDevice = false,
-    List<String>? history,
-    this.historyIndex = 0,
-    List<FileEntry>? entries,
-    this.searchQuery = '',
-    this.isSearching = false,
-    this.viewMode = 'compact',
-    this.sortBy = 'name',
-    this.sortAscending = true,
-    this.showHidden = false,
-    this.categoryFilter = FileCategoryFilter.all,
-  })  : history = history ?? (path.isNotEmpty ? [path] : ['/DATA']),
-        entries = entries ?? [];
-
-  static FileTab initial() {
-    return FileTab(
-      id: 'tab_${DateTime.now().millisecondsSinceEpoch}',
-      name: 'Storage',
-      path: '/DATA',
-      locationRoot: null,
-      atHome: true,
-      isLocalDevice: false,
-      viewMode: 'compact',
-    );
-  }
+/// What is on the Files clipboard: items picked with Copy or Move, waiting
+/// for "Copy here" / "Move here" in another folder.
+class _Clip {
+  const _Clip(this.entries, this.isLocal, this.kind);
+  final List<FileEntry> entries;
+  final bool isLocal;
+  final TransferKind kind;
 }
 
+/// The Files tab (design brief §1a, plan WP1-15/WP1-26), modelled on Google
+/// Files: a home page of locations (server storage, favourites, phones,
+/// cloud drives), then folders with the current folder as the title, a
+/// breadcrumb trail, sort and view controls, long-press multi-select with
+/// a contextual bar, and copy / move by picking the items and then the
+/// destination. Copies and moves with name conflicts ask first.
 class FilesScreen extends StatefulWidget {
-  const FilesScreen({super.key});
+  const FilesScreen({super.key, this.initialPath, this.initialIsLocal = false});
+
+  /// Opens straight into this folder instead of the locations page
+  /// (screenshots, deep links).
+  final String? initialPath;
+  final bool initialIsLocal;
 
   @override
   State<FilesScreen> createState() => FilesScreenState();
 }
 
 class FilesScreenState extends State<FilesScreen> {
-  static const _defaultHomePath = '/DATA';
-  static const _defaultLocalDevicePath = '/storage/emulated/0';
+  // Where we are; null path = the locations page.
+  String? _path;
+  bool _isLocal = false;
 
-  final List<FileTab> _tabs = [FileTab.initial()];
-  int _activeTabIndex = 0;
-  bool _showTabsStrip = false;
-
-  FileTab get _currentTab => _tabs[_activeTabIndex];
-
-  final List<String> _clipboardPaths = [];
-  String _clipboardOp = 'copy'; // 'copy' or 'move'
-  bool _clipboardIsLocal = false;
-
-  List<FavoriteFolder> _favorites = [];
-  bool _favoritesLoading = true;
-
-  List<DiskUsage> _disks = [];
-  bool _disksLoading = true;
-
-  List<CloudAccount> _cloudAccounts = [];
-  List<CompanionDevice> _companionDevices = [];
-  bool _companionLoading = false;
-
-  bool _cloudLoading = true;
-
-  final Map<String, List<FileEntry>> _folderCache = {};
+  final _cache = <String, _Listing>{};
   bool _loading = false;
-  String? _error;
-  final _searchController = TextEditingController();
-  bool _isCurrentPathFavorited = false;
+  Object? _error;
 
-  // Live Copy / Paste Progress state
-  bool _isTransferring = false;
-  String _transferTitle = '';
-  String _transferCurrentFile = '';
-  int _transferCurrentIndex = 0;
-  int _transferTotalCount = 0;
-  double _transferProgress = 0.0;
-  bool _transferCancelled = false;
+  /// The last refresh of the folder on screen failed to reach the server;
+  /// what's shown is the cached listing.
+  bool _stale = false;
 
+  // View
+  FileSort _sort = FileSort.name;
+  bool _ascending = true;
+  bool _grid = false;
+  bool _showHidden = false;
+  bool _searching = false;
+  final _search = TextEditingController();
+
+  final _selected = <String>{};
+  _Clip? _clip;
+
+  // The locations page
+  List<FileLocation> _storage = const [];
+  bool _storageLoading = true;
+  Object? _storageError;
+  List<FileLocation> _phones = const [];
+  FileLocation? _thisPhone;
+  bool _phonesLoading = true;
+  List<FileLocation> _cloud = const [];
+  bool _cloudLoading = true;
+  Object? _cloudError;
+  List<FileLocation> _favorites = const [];
+  Set<String> _customFavorites = const {};
+  bool _favoritesLoading = true;
+  DateTime? _homeUpdated;
+  bool _homeStale = false;
+
+  late final TransferQueue _transfers = TransferQueue(onFinished: _onTransferFinished);
+
+  String _key(String path, bool isLocal) => '${isLocal ? 'phone' : 'server'}:$path';
+  _Listing? get _listing => _path == null ? null : _cache[_key(_path!, _isLocal)];
+
+  List<FileLocation> get _allLocations => [..._storage, ?_thisPhone, ..._phones, ..._cloud];
+
+  FileLocation? get _location => _path == null ? null : locationFor(_path!, _allLocations, isLocal: _isLocal);
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(() => setState(() {}));
+    _loadHome();
+    final initial = widget.initialPath;
+    if (initial != null) {
+      _path = initial;
+      _isLocal = widget.initialIsLocal;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _transfers.dispose();
+    super.dispose();
+  }
+
+  /// Back steps out of selection, then search, then up a folder, then to
+  /// the locations page. False when there is nothing left to step out of
+  /// (the shell then goes to Home).
   bool handleBack() {
-    final tab = _currentTab;
-    if (tab.isSelectionMode) {
-      setState(() {
-        tab.isSelectionMode = false;
-        tab.selectedPaths.clear();
-      });
+    if (_selected.isNotEmpty) {
+      setState(_selected.clear);
       return true;
     }
-    if (tab.isSearching) {
-      setState(() {
-        tab.isSearching = false;
-        tab.searchQuery = '';
-        _searchController.clear();
-      });
+    if (_searching) {
+      _closeSearch();
       return true;
     }
-    if (!tab.atHome) {
-      _navigateUp();
-      return true;
-    }
-    if (_tabs.length > 1) {
-      _closeTab(_activeTabIndex);
+    if (_path != null) {
+      _up();
       return true;
     }
     return false;
   }
 
-  List<FileEntry> get _filteredEntries {
-    final tab = _currentTab;
-    final query = tab.searchQuery.trim().toLowerCase();
-    var list = tab.entries;
+  // -------------------------------------------------------------------------
+  // Loading
 
-    if (!tab.showHidden) {
-      list = list.where((e) => !e.name.startsWith('.')).toList();
+  Future<void> _loadHome() async {
+    await Future.wait([_loadStorage(), _loadPhones(), _loadCloud(), _loadFavorites()]);
+    if (!mounted) return;
+    final offline = _storageError is ApiException && (_storageError as ApiException).isUnreachable;
+    setState(() {
+      if (offline && _storage.isNotEmpty) {
+        _homeStale = true;
+      } else if (_storageError == null) {
+        _homeStale = false;
+        _homeUpdated = clock.now();
+      }
+    });
+  }
+
+  Future<void> _loadStorage() async {
+    List<dynamic>? disks;
+    Object? error;
+    try {
+      final res = await ApiClient.instance.get('/sys/disks-usage');
+      disks = res['data'] as List? ?? const [];
+    } catch (e) {
+      error = e;
+      // Older servers: the storage manager's list has the same children.
+      try {
+        final res = await ApiClient.instance.get('/storage');
+        disks = [
+          for (final d in (res['data'] as List? ?? const []).whereType<Map>())
+            for (final c in (d['children'] as List? ?? const []).whereType<Map>())
+              {...c, 'is_system': c['mount_point'] == '/DATA'},
+        ];
+        error = null;
+      } catch (_) {}
     }
-
-    if (tab.categoryFilter != FileCategoryFilter.all) {
-      list = list.where((e) {
-        switch (tab.categoryFilter) {
-          case FileCategoryFilter.folders:
-            return e.isDir;
-          case FileCategoryFilter.images:
-            return !e.isDir && e.isImage;
-          case FileCategoryFilter.videos:
-            return !e.isDir && e.isVideo;
-          case FileCategoryFilter.documents:
-            return !e.isDir && (e.isPdf || e.isText || e.extension == 'doc' || e.extension == 'docx' || e.extension == 'xls' || e.extension == 'xlsx' || e.extension == 'ppt' || e.extension == 'pptx' || e.extension == 'md');
-          case FileCategoryFilter.archives:
-            return !e.isDir && (e.extension == 'zip' || e.extension == 'tar' || e.extension == 'gz' || e.extension == 'tgz' || e.extension == 'bz2' || e.extension == '7z' || e.extension == 'rar' || e.extension == 'iso');
-          case FileCategoryFilter.code:
-            return !e.isDir && (e.extension == 'json' || e.extension == 'yaml' || e.extension == 'yml' || e.extension == 'sh' || e.extension == 'py' || e.extension == 'js' || e.extension == 'ts' || e.extension == 'go' || e.extension == 'dart' || e.extension == 'html' || e.extension == 'css' || e.extension == 'conf');
-          case FileCategoryFilter.all:
-            return true;
+    List<dynamic> usb = const [];
+    if (disks != null) {
+      try {
+        final res = await ApiClient.instance.get('/disks/usb');
+        usb = res['data'] as List? ?? const [];
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _storageLoading = false;
+      _storageError = error;
+      if (disks != null) {
+        final list = storageLocations(disks, usb: usb);
+        if (!list.any((l) => l.path == '/DATA')) {
+          list.insert(0, const FileLocation(label: 'DATA', path: '/DATA', kind: LocationKind.storage));
         }
-      }).toList();
-    }
-
-    if (query.isNotEmpty) {
-      list = list.where((e) => e.name.toLowerCase().contains(query)).toList();
-    }
-
-    final sorted = List<FileEntry>.from(list);
-    sorted.sort((a, b) {
-      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-
-      int cmp = 0;
-      switch (tab.sortBy) {
-        case 'size':
-          cmp = a.size.compareTo(b.size);
-          break;
-        case 'type':
-          cmp = a.extension.compareTo(b.extension);
-          break;
-        case 'date':
-          cmp = (a.modified ?? DateTime(1970)).compareTo(b.modified ?? DateTime(1970));
-          break;
-        case 'name':
-        default:
-          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-          break;
+        _storage = list;
       }
-      return tab.sortAscending ? cmp : -cmp;
     });
-
-    return sorted;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadFavorites();
-    _loadDisks();
-    _loadCloudAccounts();
-    _loadCompanionDevices();
-    _searchController.addListener(() {
+  Future<void> _loadPhones() async {
+    List<FileLocation> phones = const [];
+    FileLocation? me;
+    try {
+      final devices = await DeviceSyncService.instance.listCompanionDevices();
+      phones = [
+        for (final d in devices)
+          if (!d.isCurrentDevice)
+            FileLocation(
+              label: d.name,
+              path: d.storagePath.isNotEmpty ? d.storagePath : '/DATA/Companion/${d.name}',
+              kind: LocationKind.phone,
+              detail: d.model.isEmpty ? null : d.model,
+              online: d.isOnline,
+            ),
+      ];
+      final current = devices.where((d) => d.isCurrentDevice).firstOrNull;
+      me = FileLocation(
+        label: 'This phone',
+        path: phoneStorageRoot,
+        kind: LocationKind.thisPhone,
+        usedBytes: current != null && current.totalStorageBytes > 0 ? current.usedStorageBytes : null,
+        totalBytes: current != null && current.totalStorageBytes > 0 ? current.totalStorageBytes : null,
+      );
+    } catch (_) {
+      me = const FileLocation(label: 'This phone', path: phoneStorageRoot, kind: LocationKind.thisPhone);
+    }
+    if (!mounted) return;
+    setState(() {
+      _phones = phones;
+      _thisPhone = me;
+      _phonesLoading = false;
+    });
+  }
+
+  Future<void> _loadCloud() async {
+    try {
+      final res = await ApiClient.instance.get('/cloud');
+      final accounts = [
+        for (final e in (res['data'] as List? ?? const []))
+          if (e is Map<String, dynamic>) CloudAccount.fromJson(e),
+      ];
+      if (!mounted) return;
       setState(() {
-        _currentTab.searchQuery = _searchController.text;
+        _cloudLoading = false;
+        _cloudError = null;
+        _cloud = [
+          for (final a in accounts)
+            FileLocation(
+              label: a.displayName,
+              path: a.mountPoint.isNotEmpty ? a.mountPoint : '/DATA/Cloud/${a.displayName}',
+              kind: LocationKind.cloud,
+              detail: a.isMounted ? a.providerTitle : '${a.providerTitle} · Not connected',
+              online: a.isMounted,
+            ),
+        ];
       });
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _addNewTab([String path = _defaultHomePath, String? name, bool isLocal = false]) {
-    final tabName = name ?? (path == _defaultHomePath ? 'Storage' : path.split('/').where((s) => s.isNotEmpty).lastOrNull ?? 'Folder');
-    final newTab = FileTab(
-      id: 'tab_${DateTime.now().millisecondsSinceEpoch}',
-      name: tabName,
-      path: path,
-      atHome: path == _defaultHomePath && !isLocal,
-      isLocalDevice: isLocal,
-      viewMode: 'compact',
-    );
-    setState(() {
-      _tabs.add(newTab);
-      _activeTabIndex = _tabs.length - 1;
-      _showTabsStrip = true;
-      _searchController.text = newTab.searchQuery;
-    });
-    if (!newTab.atHome) {
-      _load();
-    }
-  }
-
-  void _closeTab(int index) {
-    if (_tabs.length <= 1) {
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _tabs[0] = FileTab.initial();
-        _activeTabIndex = 0;
-        _showTabsStrip = false;
-        _searchController.clear();
+        _cloudLoading = false;
+        _cloudError = e;
       });
-      return;
-    }
-    setState(() {
-      _tabs.removeAt(index);
-      if (_activeTabIndex >= _tabs.length) {
-        _activeTabIndex = _tabs.length - 1;
-      }
-      if (_tabs.length <= 1) {
-        _showTabsStrip = false;
-      }
-      _searchController.text = _currentTab.searchQuery;
-    });
-  }
-
-  void _switchTab(int index) {
-    if (index == _activeTabIndex) return;
-    setState(() {
-      _activeTabIndex = index;
-      _searchController.text = _currentTab.searchQuery;
-    });
-    if (!_currentTab.atHome && _currentTab.entries.isEmpty) {
-      _load();
     }
   }
 
   Future<void> _loadFavorites() async {
-    setState(() => _favoritesLoading = true);
+    List<FavoriteFolder> all;
+    Set<String> custom = const {};
     try {
-      final favs = await ShortcutsService.instance.getAllFavorites();
-      if (!mounted) return;
-      setState(() {
-        _favorites = favs;
-        _favoritesLoading = false;
-      });
+      all = await ShortcutsService.instance.getAllFavorites();
+      custom = {for (final f in await ShortcutsService.instance.getCustomShortcuts()) f.path};
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _favorites = FavoriteFolder.defaultWebUiFavorites;
-        _favoritesLoading = false;
-      });
+      all = FavoriteFolder.defaultWebUiFavorites;
     }
-  }
-
-  Future<void> _loadDisks() async {
-    setState(() => _disksLoading = true);
-    try {
-      final List<DiskUsage> allDisks = [];
-      try {
-        final res = await ApiClient.instance.get('/sys/disks-usage');
-        final data = res['data'] as List<dynamic>? ?? [];
-        for (final item in data) {
-          if (item is Map<String, dynamic>) {
-            final du = DiskUsage.fromJson(item);
-            allDisks.add(du);
-          }
-        }
-      } catch (e) {
-        debugPrint('[FilesScreen] Error loading sys disks-usage: $e');
-      }
-
-      if (allDisks.isEmpty) {
-        try {
-          final res = await ApiClient.instance.get('/storage');
-          final data = res['data'] ?? res;
-          final list = DiskUsage.fromStorageApi(data);
-          allDisks.addAll(list);
-        } catch (_) {}
-      }
-
-      try {
-        final usbRes = await ApiClient.instance.get('/disks/usb');
-        final usbData = usbRes['data'] ?? usbRes;
-        final usbDisks = DiskUsage.fromStorageApi(usbData);
-        for (final ud in usbDisks) {
-          if (!allDisks.any((d) => d.mountPoint == ud.mountPoint)) {
-            allDisks.add(ud);
-          }
-        }
-      } catch (_) {}
-
-      final seen = <String>{};
-      final uniqueDisks = <DiskUsage>[];
-      for (final d in allDisks) {
-        final mp = d.mountPoint.toLowerCase();
-        // Skip internal VM pass-through mounts and phone local storage (shown in companion section)
-        if (mp.startsWith('/data/vm-shares') || mp == '/storage/emulated/0' || mp.startsWith('/storage/emulated')) {
-          continue;
-        }
-        if (!seen.contains(d.mountPoint) && d.mountPoint.isNotEmpty && !d.isSystemPartition) {
-          seen.add(d.mountPoint);
-          uniqueDisks.add(d);
-        }
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _disks = uniqueDisks;
-        _disksLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _disksLoading = false);
-    }
-  }
-
-
-  Future<void> _loadCompanionDevices() async {
-    setState(() => _companionLoading = true);
-    try {
-      final list = await DeviceSyncService.instance.listCompanionDevices();
-      if (!mounted) return;
-      setState(() {
-        _companionDevices = list;
-        _companionLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _companionLoading = false);
-    }
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    final i = (log(bytes) / log(1024)).floor().clamp(0, suffixes.length - 1);
-    final size = bytes / pow(1024, i);
-    return '${size.toStringAsFixed(size >= 10 || i == 0 ? 0 : 1)} ${suffixes[i]}';
-  }
-
-  Future<void> _loadCloudAccounts() async {
-    setState(() => _cloudLoading = true);
-    try {
-      final res = await ApiClient.instance.get('/cloud');
-      final data = res['data'] as List<dynamic>? ?? [];
-      final accounts = data.map((e) => CloudAccount.fromJson(e as Map<String, dynamic>)).toList();
-      if (!mounted) return;
-      setState(() {
-        _cloudAccounts = accounts;
-        _cloudLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _cloudLoading = false);
-    }
-  }
-
-  Future<void> _promptReauth() async {
-    final username = await StorageService.instance.getUsername();
     if (!mounted) return;
-    final success = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(
-          isReauth: true,
-          initialUsername: username,
-        ),
-      ),
-    );
-    if (success == true && mounted) {
-      _load();
-    }
+    setState(() {
+      _favoritesLoading = false;
+      _customFavorites = custom;
+      // DATA is already under storage; the whole-disk root is the least
+      // likely place to want, so it goes last.
+      _favorites = [
+        for (final f in all)
+          if (f.path != '/DATA' && f.path != '/') FileLocation(label: f.name, path: f.path, kind: LocationKind.favorite),
+        for (final f in all)
+          if (f.path == '/') FileLocation(label: f.name, path: f.path, kind: LocationKind.favorite),
+      ];
+    });
   }
 
-  Future<void> _load({bool silent = false}) async {
-    final tab = _currentTab;
-    if (!silent) {
-      setState(() {
-        _loading = true;
-        _error = null;
-        tab.selectedPaths.clear();
-        tab.isSelectionMode = false;
-      });
-    }
+  Future<List<FileEntry>> _listServer(String path) async {
+    // Thumbnails load with the token as it is (Image.network can't retry a
+    // 401), so make sure it won't run out while they do (plan M-16).
+    await ApiClient.instance.freshToken();
+    final res = await ApiClient.instance.get('/folder', query: {'path': path});
+    final data = res['data'];
+    final content = data is Map ? (data['content'] as List? ?? const []) : const [];
+    return [for (final e in content) if (e is Map<String, dynamic>) FileEntry.fromJson(e)];
+  }
 
-    if (tab.isLocalDevice) {
+  Future<List<FileEntry>> _listLocal(String path) async {
+    final entries = <FileEntry>[];
+    await for (final entity in Directory(path).list(followLinks: false)) {
       try {
-        final dir = Directory(tab.path);
-        if (!dir.existsSync()) {
-          throw Exception('Local directory not found.');
-        }
-        final entities = dir.listSync(followLinks: false);
-        final entries = <FileEntry>[];
-        for (final entity in entities) {
-          try {
-            final stat = entity.statSync();
-            final name = entity.path.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? entity.path;
-            final isDir = entity is Directory;
-            entries.add(FileEntry(
-              name: name,
-              path: entity.path,
-              isDir: isDir,
-              size: isDir ? 0 : stat.size,
-              modified: stat.modified,
-            ));
-          } catch (_) {}
-        }
-        _folderCache[tab.path] = entries;
-        if (!mounted) return;
-        setState(() {
-          tab.entries = entries;
-          _isCurrentPathFavorited = false;
-          _loading = false;
-        });
-      } catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _error = 'Local storage access error: $e';
-          _loading = false;
-        });
-      }
-      return;
+        final stat = await entity.stat();
+        final isDir = stat.type == FileSystemEntityType.directory;
+        entries.add(FileEntry(
+          name: baseName(entity.path),
+          path: entity.path,
+          isDir: isDir,
+          size: isDir ? 0 : stat.size,
+          modified: stat.modified,
+        ));
+      } catch (_) {}
     }
+    return entries;
+  }
 
+  /// Loads the folder on screen: the cached listing shows at once, then
+  /// the fresh one replaces it.
+  Future<void> _load() async {
+    final path = _path;
+    if (path == null) return;
+    final isLocal = _isLocal;
+    final key = _key(path, isLocal);
+    setState(() {
+      _loading = _cache[key] == null;
+      _error = null;
+    });
     try {
-      final res = await ApiClient.instance.get('/folder', query: {'path': tab.path});
-      final data = res['data'] as Map<String, dynamic>? ?? {};
-      final content = (data['content'] as List<dynamic>? ?? []);
-      final entries = content.map((e) => FileEntry.fromJson(e as Map<String, dynamic>)).toList();
-      _folderCache[tab.path] = entries;
-      final isFav = await ShortcutsService.instance.isFavorited(tab.path);
+      final entries = isLocal ? await _listLocal(path) : await _listServer(path);
       if (!mounted) return;
       setState(() {
-        tab.entries = entries;
-        _isCurrentPathFavorited = isFav;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      if (!silent || tab.entries.isEmpty) {
-        setState(() {
-          _error = e.toString().replaceFirst('Exception: ', '');
+        _cache[key] = _Listing(entries, clock.now());
+        if (_path == path && _isLocal == isLocal) {
           _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _openLocalDeviceStorage() async {
-    final granted = await PermissionService.requestManageStorage();
-    if (!granted && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Storage permission is required to browse phone files.'), backgroundColor: NivaroColors.warning),
-      );
-    }
-    _openPath(_defaultLocalDevicePath, isLocal: true);
-  }
-
-  void _goToHome() {
-    final tab = _currentTab;
-    setState(() {
-      tab.atHome = true;
-      tab.isLocalDevice = false;
-      tab.locationRoot = null;
-      tab.path = _defaultHomePath;
-      tab.name = 'Storage';
-      tab.history = [_defaultHomePath];
-      tab.historyIndex = 0;
-      tab.isSearching = false;
-      tab.searchQuery = '';
-      tab.isSelectionMode = false;
-      tab.selectedPaths.clear();
-      _searchController.clear();
-    });
-    _loadFavorites();
-    _loadDisks();
-    _loadCloudAccounts();
-    _loadCompanionDevices();
-  }
-
-  void _openPath(String target, {bool newTab = false, bool isLocal = false, bool fromHome = false}) {
-    if (newTab) {
-      _addNewTab(target, null, isLocal);
-      return;
-    }
-
-    final tab = _currentTab;
-    final cached = _folderCache[target];
-    final wasAtHome = tab.atHome || fromHome;
-
-    setState(() {
-      tab.path = target;
-      tab.name = isLocal ? 'Phone (${target.split("/").lastOrNull ?? "Storage"})' : (target.split('/').where((s) => s.isNotEmpty).lastOrNull ?? 'Folder');
-      tab.atHome = false;
-      tab.isLocalDevice = isLocal;
-      if (wasAtHome) {
-        tab.locationRoot = target;
-        tab.history = [target];
-        tab.historyIndex = 0;
-      } else {
-        if (tab.historyIndex < tab.history.length - 1) {
-          tab.history = tab.history.sublist(0, tab.historyIndex + 1);
+          _stale = false;
         }
-        tab.history.add(target);
-        tab.historyIndex = tab.history.length - 1;
-      }
-      tab.isSearching = false;
-      tab.searchQuery = '';
-      tab.isSelectionMode = false;
-      tab.selectedPaths.clear();
-      _searchController.clear();
-
-      if (cached != null) {
-        tab.entries = cached;
-        _loading = false;
-      }
-    });
-    _load(silent: cached != null);
-  }
-
-  void _navigateUp() {
-    final tab = _currentTab;
-    if (tab.atHome) return;
-    if (tab.isSelectionMode) {
-      setState(() {
-        tab.isSelectionMode = false;
-        tab.selectedPaths.clear();
       });
-    }
-
-    // If we are at the location root (or opened directly from Home), go straight to Home!
-    if (tab.locationRoot != null && tab.path == tab.locationRoot) {
-      _goToHome();
-      return;
-    }
-
-    if (tab.isLocalDevice) {
-      if (tab.path == _defaultLocalDevicePath || tab.path == '/' || tab.path.isEmpty) {
-        _goToHome();
-        return;
-      }
-      final parent = Directory(tab.path).parent.path;
-      if (tab.locationRoot != null && (!parent.startsWith(tab.locationRoot!) && parent != tab.locationRoot)) {
-        _goToHome();
-        return;
-      }
-      _openPath(parent, isLocal: true);
-      return;
-    }
-
-    if (tab.path == _defaultHomePath || tab.path == '/' || tab.path.isEmpty) {
-      _goToHome();
-      return;
-    }
-
-    final segments = tab.path.split('/').where((s) => s.isNotEmpty).toList();
-    if (segments.length <= 1) {
-      _goToHome();
-    } else {
-      segments.removeLast();
-      final parent = '/${segments.join('/')}';
-      if (tab.locationRoot != null && (tab.path == tab.locationRoot || (!parent.startsWith(tab.locationRoot!) && parent != tab.locationRoot))) {
-        _goToHome();
-      } else if (parent == '/DATA' || parent == '/DATA/Companion') {
-        _goToHome();
-      } else {
-        _openPath(parent);
-      }
-    }
-  }
-
-  void _toggleFavorite() async {
-    final tab = _currentTab;
-    if (tab.atHome || tab.isLocalDevice) return;
-    final path = tab.path;
-    final name = tab.name;
-
-    await ShortcutsService.instance.toggleFavorite(name, path);
-    final isFav = await ShortcutsService.instance.isFavorited(path);
-    if (mounted) {
-      setState(() => _isCurrentPathFavorited = isFav);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(isFav ? 'Bookmarked "$name" to favorites.' : 'Removed "$name" from favorites.')),
-      );
-    }
-    _loadFavorites();
-  }
-
-  void _showFavoritesSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Icon(Icons.star_rounded, color: NivaroColors.warningLight, size: 22),
-                  SizedBox(width: 10),
-                  Text('Favorites & Bookmarks', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (_favorites.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(child: Text('No favorite folders yet.', style: TextStyle(color: NivaroColors.textMuted))),
-                )
-              else
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _favorites.length,
-                    separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
-                    itemBuilder: (context, index) {
-                      final fav = _favorites[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: NivaroColors.warning.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(Icons.folder_special_rounded, color: NivaroColors.warningLight, size: 20),
-                        ),
-                        title: Text(fav.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-                        subtitle: Text(fav.path, style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _openPath(fav.path);
-                        },
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _toggleSelection(String path) {
-    final tab = _currentTab;
-    setState(() {
-      if (tab.selectedPaths.contains(path)) {
-        tab.selectedPaths.remove(path);
-        if (tab.selectedPaths.isEmpty) {
-          tab.isSelectionMode = false;
-        }
-      } else {
-        tab.selectedPaths.add(path);
-        tab.isSelectionMode = true;
-      }
-    });
-  }
-
-  void _selectAll() {
-    final tab = _currentTab;
-    setState(() {
-      tab.selectedPaths.addAll(_filteredEntries.map((e) => e.path));
-      tab.isSelectionMode = true;
-    });
-  }
-
-  void _clearSelection() {
-    final tab = _currentTab;
-    setState(() {
-      tab.selectedPaths.clear();
-      tab.isSelectionMode = false;
-    });
-  }
-
-  void _copySelected() {
-    final tab = _currentTab;
-    setState(() {
-      _clipboardPaths.clear();
-      _clipboardPaths.addAll(tab.selectedPaths);
-      _clipboardOp = 'copy';
-      _clipboardIsLocal = tab.isLocalDevice;
-      tab.isSelectionMode = false;
-      tab.selectedPaths.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied ${_clipboardPaths.length} items to clipboard.')));
-  }
-
-  void _cutSelected() {
-    final tab = _currentTab;
-    setState(() {
-      _clipboardPaths.clear();
-      _clipboardPaths.addAll(tab.selectedPaths);
-      _clipboardOp = 'move';
-      _clipboardIsLocal = tab.isLocalDevice;
-      tab.isSelectionMode = false;
-      tab.selectedPaths.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cut ${_clipboardPaths.length} items to clipboard.')));
-  }
-
-  Future<void> _uploadLocalEntity(String srcPath, String destDirPath) async {
-    final isDir = FileSystemEntity.isDirectorySync(srcPath);
-    final auth = await ApiClient.instance.currentAuthHeader();
-    final uri = Uri.parse('${ApiClient.instance.baseUrl}/v1/file/upload');
-
-    if (!isDir) {
-      final fileName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'file';
-      final req = http.MultipartRequest('POST', uri);
-      if (auth.isNotEmpty) req.headers['Authorization'] = auth;
-      req.fields['path'] = destDirPath;
-      req.fields['filename'] = fileName;
-      req.fields['relativePath'] = fileName;
-      req.fields['totalChunks'] = '1';
-      req.fields['chunkNumber'] = '1';
-      req.files.add(await http.MultipartFile.fromPath('file', srcPath, filename: fileName));
-      final streamed = await req.send();
-      if (streamed.statusCode >= 400) {
-        final respStr = await streamed.stream.bytesToString();
-        throw Exception('Upload of $fileName failed (HTTP ${streamed.statusCode}): $respStr');
-      }
-    } else {
-      final baseDir = Directory(srcPath);
-      final baseDirName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'folder';
-      final entities = baseDir.listSync(recursive: true, followLinks: false);
-      for (final entity in entities) {
-        if (_transferCancelled) break;
-        if (entity is File) {
-          final rel = entity.path.substring(baseDir.path.length).replaceAll(r'\', '/');
-          final targetRel = '$baseDirName${rel.startsWith('/') ? rel : '/$rel'}';
-          final fileName = entity.path.split(Platform.pathSeparator).last;
-          final req = http.MultipartRequest('POST', uri);
-          if (auth.isNotEmpty) req.headers['Authorization'] = auth;
-          req.fields['path'] = destDirPath;
-          req.fields['filename'] = fileName;
-          req.fields['relativePath'] = targetRel;
-          req.fields['totalChunks'] = '1';
-          req.fields['chunkNumber'] = '1';
-          req.files.add(await http.MultipartFile.fromPath('file', entity.path, filename: fileName));
-          final streamed = await req.send();
-          if (streamed.statusCode >= 400) {
-            final respStr = await streamed.stream.bytesToString();
-            throw Exception('Upload of $targetRel failed (HTTP ${streamed.statusCode}): $respStr');
-          }
-        }
-      }
-    }
-  }
-
-  Future<void> _copyDirectory(Directory source, Directory destination) async {
-    await destination.create(recursive: true);
-    await for (final entity in source.list(recursive: false)) {
-      final name = entity.path.split(Platform.pathSeparator).last;
-      final destPath = '${destination.path}/$name';
-      if (entity is Directory) {
-        await _copyDirectory(entity, Directory(destPath));
-      } else if (entity is File) {
-        await entity.copy(destPath);
-      }
-    }
-  }
-
-  Future<void> _pasteClipboard() async {
-    if (_clipboardPaths.isEmpty) return;
-    final tab = _currentTab;
-    final total = _clipboardPaths.length;
-
-    setState(() {
-      _isTransferring = true;
-      _transferTitle = _clipboardOp == 'move' ? 'Moving items...' : 'Copying items...';
-      _transferTotalCount = total;
-      _transferCurrentIndex = 0;
-      _transferProgress = 0.0;
-      _transferCancelled = false;
-    });
-
-    try {
-      if (!_clipboardIsLocal && !tab.isLocalDevice) {
-        // Remote to Remote (Server <-> Companion <-> Server)
-        // Submit all items to the backend batch task engine
-        setState(() {
-          _transferCurrentIndex = 1;
-          _transferCurrentFile = '${_clipboardPaths.length} remote items';
-          _transferProgress = 0.5;
-        });
-
-        final items = _clipboardPaths.map((p) => {'from': p}).toList();
-        try {
-          await ApiClient.instance.post('/batch/task', body: {
-            'type': _clipboardOp,
-            'item': items,
-            'to': tab.path,
-            'style': 'overwrite',
-          });
-        } catch (_) {
-          // Fallback to direct copy/move endpoint
-          for (int i = 0; i < total; i++) {
-            if (_transferCancelled) break;
-            final srcPath = _clipboardPaths[i];
-            final fileName = srcPath.split('/').where((s) => s.isNotEmpty).lastOrNull ?? 'file';
-            setState(() {
-              _transferCurrentIndex = i + 1;
-              _transferCurrentFile = fileName;
-              _transferProgress = (i + 1) / total;
-            });
-            final endpoint = _clipboardOp == 'move' ? '/file/move' : '/file/copy';
-            await ApiClient.instance.post(endpoint, body: {
-              'from': srcPath,
-              'to': '${tab.path}/$fileName',
-            });
-          }
-        }
-        await Future.delayed(const Duration(milliseconds: 600));
-      } else {
-        // Local to Remote, Remote to Local, or Local to Local
-        for (int i = 0; i < total; i++) {
-          if (_transferCancelled) break;
-          final srcPath = _clipboardPaths[i];
-          final fileName = srcPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).lastOrNull ?? 'file';
-
-          setState(() {
-            _transferCurrentIndex = i + 1;
-            _transferCurrentFile = fileName;
-            _transferProgress = (i + 1) / total;
-          });
-
-          if (_clipboardIsLocal && !tab.isLocalDevice) {
-            // Upload local phone file/folder to server or companion mount
-            await _uploadLocalEntity(srcPath, tab.path);
-            if (_clipboardOp == 'move') {
-              if (FileSystemEntity.isDirectorySync(srcPath)) {
-                await Directory(srcPath).delete(recursive: true);
-              } else {
-                await File(srcPath).delete();
-              }
-            }
-          } else if (!_clipboardIsLocal && tab.isLocalDevice) {
-            // Download server or companion file to local phone storage
-            final destFile = File('${tab.path}/$fileName');
-            await ApiClient.instance.downloadFileStream(srcPath, destFile);
-            if (_clipboardOp == 'move') {
-              try {
-                await ApiClient.instance.deleteWithBody('/file/delete', [srcPath]);
-              } catch (_) {}
-            }
-          } else {
-            // Local-to-local copy/move
-            final isDir = FileSystemEntity.isDirectorySync(srcPath);
-            final destPath = '${tab.path}/$fileName';
-            if (_clipboardOp == 'move') {
-              if (isDir) {
-                await Directory(srcPath).rename(destPath);
-              } else {
-                await File(srcPath).rename(destPath);
-              }
-            } else {
-              if (isDir) {
-                await _copyDirectory(Directory(srcPath), Directory(destPath));
-              } else {
-                await File(srcPath).copy(destPath);
-              }
-            }
-          }
-        }
-      }
-
-      if (_clipboardOp == 'move') {
-        _clipboardPaths.clear();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Completed transfer of $total items successfully.')),
-        );
-        _load();
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Transfer failed: $e'), backgroundColor: NivaroColors.danger),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isTransferring = false);
-      }
-    }
-  }
-
-  Future<void> _deleteSelected() async {
-    final tab = _currentTab;
-    final count = tab.selectedPaths.length;
-    if (count == 0) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: Text('Delete $count ${count == 1 ? "item" : "items"}?'),
-        content: const Text('These files and folders will be permanently deleted.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    try {
-      if (tab.isLocalDevice) {
-        for (final p in tab.selectedPaths) {
-          final f = File(p);
-          if (f.existsSync()) {
-            f.deleteSync(recursive: true);
-          } else {
-            final d = Directory(p);
-            if (d.existsSync()) d.deleteSync(recursive: true);
-          }
-        }
-      } else {
-        final list = tab.selectedPaths.map((p) => {'path': p}).toList();
-        try {
-          await ApiClient.instance.deleteWithBody('/batch', list);
-        } catch (_) {
-          await ApiClient.instance.deleteWithBody('/file', list);
-        }
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted $count ${count == 1 ? "item" : "items"}.'), backgroundColor: NivaroColors.success));
-        tab.selectedPaths.clear();
-        tab.isSelectionMode = false;
-        _load();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  Future<void> _deleteSingleEntry(FileEntry entry) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: Text('Delete "${entry.name}"?'),
-        content: Text('Are you sure you want to delete this ${entry.isDir ? "folder" : "file"}? This cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    try {
-      if (_currentTab.isLocalDevice) {
-        final f = File(entry.path);
-        if (f.existsSync()) {
-          f.deleteSync(recursive: true);
+      if (!mounted || _path != path || _isLocal != isLocal) return;
+      setState(() {
+        _loading = false;
+        final unreachable = e is ApiException && e.isUnreachable;
+        if (_cache[key] != null && unreachable) {
+          _stale = true;
         } else {
-          final d = Directory(entry.path);
-          if (d.existsSync()) d.deleteSync(recursive: true);
+          _cache.remove(key);
+          _error = e;
+          _stale = false;
         }
-      } else {
-        final list = [{'path': entry.path}];
-        try {
-          await ApiClient.instance.deleteWithBody('/batch', list);
-        } catch (_) {
-          await ApiClient.instance.deleteWithBody('/file', list);
-        }
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted "${entry.name}".'), backgroundColor: NivaroColors.success));
-        _load();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: NivaroColors.danger));
-      }
+      });
     }
   }
 
-  void _showEntryActions(FileEntry entry) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    entry.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                    color: entry.isDir ? NivaroColors.warningLight : NivaroColors.primaryLight,
-                    size: 22,
-                  ),
-                ),
-                title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                subtitle: Text(entry.isDir ? 'Folder' : formatBytes(entry.size), style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-              ),
-              const Divider(height: 16),
-              ListTile(
-                leading: Icon(Icons.check_circle_outline_rounded, color: NivaroColors.primaryLight),
-                title: const Text('Select Item'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _toggleSelection(entry.path);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.copy_rounded, color: NivaroColors.textSecondary),
-                title: const Text('Copy Item'),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _clipboardPaths.clear();
-                    _clipboardPaths.add(entry.path);
-                    _clipboardOp = 'copy';
-                    _clipboardIsLocal = _currentTab.isLocalDevice;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copied "${entry.name}". Navigate to target folder to paste.')));
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.cut_rounded, color: NivaroColors.textSecondary),
-                title: const Text('Cut / Move Item'),
-                onTap: () {
-                  Navigator.pop(context);
-                  setState(() {
-                    _clipboardPaths.clear();
-                    _clipboardPaths.add(entry.path);
-                    _clipboardOp = 'move';
-                    _clipboardIsLocal = _currentTab.isLocalDevice;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cut "${entry.name}". Navigate to target folder to paste.')));
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
-                title: Text('Delete', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w700)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _deleteSingleEntry(entry);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  Future<void> _refresh() async {
+    if (_path == null) {
+      await _loadHome();
+    } else {
+      await _load();
+    }
   }
 
-  void _onEntryTap(FileEntry entry) {
-    final tab = _currentTab;
-    if (tab.isSelectionMode) {
-      _toggleSelection(entry.path);
+  // -------------------------------------------------------------------------
+  // Navigation
+
+  void _open(String path, {required bool isLocal}) {
+    setState(() {
+      _path = path;
+      _isLocal = isLocal;
+      _selected.clear();
+      _searching = false;
+      _search.clear();
+      _error = null;
+      _stale = false;
+    });
+    _load();
+  }
+
+  Future<void> _openLocation(FileLocation l) async {
+    if (l.isLocal) {
+      final granted = await PermissionService.requestManageStorage();
+      if (!granted && mounted) {
+        _snack('Allow NivaroOS to access all files to browse this phone.');
+      }
+    }
+    if (!mounted) return;
+    _open(l.path, isLocal: l.isLocal);
+  }
+
+  void _goHome() {
+    setState(() {
+      _path = null;
+      _selected.clear();
+      _searching = false;
+      _search.clear();
+      _error = null;
+    });
+  }
+
+  void _up() {
+    final path = _path;
+    if (path == null) return;
+    final root = _location?.path;
+    if (path == root || path == '/' || (root == null && parentOf(path) == path)) {
+      _goHome();
       return;
     }
-    if (entry.isDir) {
-      _openPath(entry.path, isLocal: tab.isLocalDevice);
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => FileViewerScreen(file: entry, path: entry.path, isLocal: tab.isLocalDevice),
-        ),
+    _open(parentOf(path), isLocal: _isLocal);
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _searching = false;
+      _search.clear();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Entries
+
+  List<FileEntry> get _allEntries => _listing?.entries ?? const [];
+
+  List<FileEntry> get _visible => sortEntries(
+        visibleEntries(_allEntries, showHidden: _showHidden, query: _searching ? _search.text : ''),
+        _sort,
+        ascending: _ascending,
       );
+
+  void _toggle(FileEntry e) {
+    setState(() {
+      if (!_selected.remove(e.path)) _selected.add(e.path);
+    });
+  }
+
+  void _onTap(FileEntry e) {
+    if (_selected.isNotEmpty) {
+      _toggle(e);
+      return;
     }
+    if (e.isDir) {
+      _open(e.path, isLocal: _isLocal);
+      return;
+    }
+    final gallery = e.hasThumbnail ? _visible.where((x) => x.hasThumbnail).toList() : null;
+    Navigator.of(context)
+        .push<bool>(MaterialPageRoute(
+          builder: (_) => FileViewerScreen(file: e, path: e.path, isLocal: _isLocal, gallery: gallery),
+        ))
+        .then((changed) {
+      if (changed == true && mounted) _load();
+    });
+  }
+
+  List<FileEntry> get _selectedEntries => [for (final e in _allEntries) if (_selected.contains(e.path)) e];
+
+  Set<String> get _names => {for (final e in _allEntries) e.name};
+
+  // -------------------------------------------------------------------------
+  // Actions
+
+  void _snack(String message, {SnackBarAction? action, bool error = false}) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(SnackBar(
+      content: Text(message),
+      action: action,
+      // An Undo stays long enough to reach, then goes by itself.
+      persist: action == null ? null : false,
+      duration: action == null ? const Duration(seconds: 4) : const Duration(seconds: 8),
+    ));
+  }
+
+  String _plain(Object e) => e.toString().replaceFirst('Exception: ', '');
+
+  /// The server's envelope says whether it worked even on HTTP 200.
+  void _checkEnvelope(Map<String, dynamic> res) {
+    final code = res['success'];
+    if (code is num && code != 200) {
+      final data = res['data'];
+      throw Exception(data is String && data.isNotEmpty ? data : (res['message']?.toString() ?? 'The server refused ($code).'));
+    }
+  }
+
+  void _clipSelected(TransferKind kind, [List<FileEntry>? items]) {
+    final entries = items ?? _selectedEntries;
+    if (entries.isEmpty) return;
+    setState(() {
+      _clip = _Clip(entries, _isLocal, kind);
+      _selected.clear();
+    });
+  }
+
+  Future<void> _paste() async {
+    final clip = _clip;
+    final dest = _path;
+    if (clip == null || dest == null) return;
+    final destLocal = _isLocal;
+    final sameSide = clip.isLocal == destLocal;
+    final sources = [for (final e in clip.entries) e.path];
+
+    if (sameSide && clip.kind == TransferKind.move && sources.every((s) => parentOf(s) == dest)) {
+      _snack('Already in this folder. Pick another folder to move to.');
+      return;
+    }
+    if (sameSide && sources.any((s) => isWithin(dest, s))) {
+      _snack("A folder can't go inside itself.");
+      return;
+    }
+
+    // What's already here, freshly listed.
+    Set<String> names;
+    try {
+      names = {for (final e in destLocal ? await _listLocal(dest) : await _listServer(dest)) e.name};
+    } catch (e) {
+      _snack("Couldn't check this folder: ${_plain(e)}", error: true);
+      return;
+    }
+    if (!mounted) return;
+    final conflicts = [
+      for (final s in sources)
+        if ((!sameSide || parentOf(s) != dest) && names.contains(baseName(s))) s,
+    ];
+    var choices = <String, ConflictChoice>{};
+    if (conflicts.isNotEmpty) {
+      final answer = await showConflictSheet(
+        context,
+        conflicts: conflicts,
+        destName: _title,
+        kind: clip.kind,
+      );
+      if (answer == null || !mounted) return;
+      choices = answer;
+    }
+
+    final move = clip.kind == TransferKind.move;
+    TransferTask task;
+    if (!clip.isLocal && !destLocal) {
+      final batches = planTransfer(sources, choices);
+      if (batches.isEmpty) return _skippedAll();
+      task = ServerTransferTask(kind: clip.kind, batches: batches, destDir: dest);
+    } else {
+      final taken = {...names};
+      final uploads = <UploadItem>[];
+      final downloads = <DownloadItem>[];
+      for (final e in clip.entries) {
+        final choice = choices[e.path];
+        String? name;
+        if (sameSide && parentOf(e.path) == dest) {
+          name = uniqueName(e.name, taken, isDir: e.isDir); // a copy next to itself
+        } else {
+          name = resolveLocalName(e.name, taken, choice, isDir: e.isDir);
+        }
+        if (name == null) continue;
+        taken.add(name);
+        if (clip.isLocal) {
+          uploads.add(UploadItem(e.path, name));
+        } else {
+          downloads.add(DownloadItem(e, name, replace: choice == ConflictChoice.replace));
+        }
+      }
+      if (uploads.isEmpty && downloads.isEmpty) return _skippedAll();
+      if (clip.isLocal && destLocal) {
+        task = LocalTransferTask(items: uploads, destDir: dest, move: move);
+      } else if (clip.isLocal) {
+        task = UploadTask(items: uploads, destDir: dest, move: move);
+      } else {
+        task = DownloadTask(items: downloads, destDir: dest, move: move);
+      }
+    }
+    setState(() => _clip = null);
+    _transfers.add(task);
+  }
+
+  void _skippedAll() {
+    setState(() => _clip = null);
+    _snack('Nothing to do: every item was skipped.');
+  }
+
+  void _onTransferFinished(TransferOutcome outcome) {
+    if (!mounted) return;
+    for (final dir in outcome.affectedDirs) {
+      // Invalidate both sides; a path only exists on one.
+      if (_path != dir) {
+        _cache.remove(_key(dir, true));
+        _cache.remove(_key(dir, false));
+      }
+    }
+    if (_path != null && outcome.affectedDirs.contains(_path)) _load();
+    _loadStorage();
+    _snack(outcome.message, error: outcome.failed);
+    setState(() {});
+  }
+
+  Future<void> _upload() async {
+    final dest = _path;
+    if (dest == null || _isLocal) return;
+    List<String> files;
+    try {
+      final picked = await FilePicker.pickFiles(dialogTitle: 'Upload to $_title');
+      files = picked.map((f) => f.path).whereType<String>().toList();
+    } catch (e) {
+      _snack("Couldn't open the file picker: ${_plain(e)}", error: true);
+      return;
+    }
+    if (files.isEmpty || !mounted) return;
+    final names = _names;
+    final conflicts = [for (final f in files) if (names.contains(baseName(f))) f];
+    var choices = <String, ConflictChoice>{};
+    if (conflicts.isNotEmpty) {
+      final answer = await showConflictSheet(context, conflicts: conflicts, destName: _title, kind: TransferKind.copy);
+      if (answer == null || !mounted) return;
+      choices = answer;
+    }
+    final taken = {...names};
+    final items = <UploadItem>[];
+    for (final f in files) {
+      final name = resolveLocalName(baseName(f), taken, choices[f]);
+      if (name == null) continue;
+      taken.add(name);
+      items.add(UploadItem(f, name));
+    }
+    if (items.isEmpty) return _skippedAll();
+    _transfers.add(UploadTask(items: items, destDir: dest));
+  }
+
+  Future<void> _newFolder() async {
+    final dest = _path;
+    if (dest == null) return;
+    final name = await showNameDialog(
+      context,
+      title: 'New folder',
+      confirmLabel: 'Create',
+      initial: uniqueName('New folder', _names, isDir: true),
+      taken: _names,
+    );
+    if (name == null) return;
+    final path = joinPath(dest, name);
+    try {
+      if (_isLocal) {
+        await Directory(path).create();
+      } else {
+        _checkEnvelope(await ApiClient.instance.post('/folder', body: {'path': path}));
+      }
+      await _load();
+    } catch (e) {
+      _snack("Couldn't create “$name”: ${_plain(e)}", error: true);
+    }
+  }
+
+  Future<void> _rename(FileEntry e) async {
+    final taken = _names..remove(e.name);
+    final name = await showNameDialog(
+      context,
+      title: e.isDir ? 'Rename folder' : 'Rename file',
+      confirmLabel: 'Rename',
+      initial: e.name,
+      taken: taken,
+      selectStem: !e.isDir,
+    );
+    if (name == null || name == e.name) return;
+    final target = joinPath(parentOf(e.path), name);
+    try {
+      if (_isLocal) {
+        e.isDir ? await Directory(e.path).rename(target) : await File(e.path).rename(target);
+      } else {
+        _checkEnvelope(await ApiClient.instance.put('/file/name', body: {'old_path': e.path, 'new_path': target}));
+      }
+      setState(_selected.clear);
+      await _load();
+    } catch (err) {
+      _snack("Couldn't rename “${e.name}”: ${_plain(err)}", error: true);
+    }
+  }
+
+  Future<void> _delete(List<FileEntry> items) async {
+    if (items.isEmpty) return;
+    final dir = _path!;
+    var toTrash = false;
+    if (!_isLocal) {
+      try {
+        final res = await ApiClient.instance.get('/trash/support', query: {'path': dir});
+        final data = res['data'];
+        toTrash = data is Map && data['supported'] == true;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    final what = items.length == 1 ? '“${items.first.name}”' : '${items.length} items';
+    final confirmed = toTrash
+        ? await ConfirmDialog.destructive(
+            context,
+            title: 'Move $what to trash?',
+            message: 'You can undo this right away, or restore ${items.length == 1 ? 'it' : 'them'} later from the trash in the web UI.',
+            confirmLabel: 'Move to trash',
+            permanent: false,
+          )
+        : await ConfirmDialog.destructive(
+            context,
+            title: 'Delete $what?',
+            message: _isLocal
+                ? '${items.length == 1 ? 'It is' : 'They are'} deleted from this phone.'
+                : '${_location?.label ?? 'This location'} has no trash, so ${items.length == 1 ? 'it is' : 'they are'} deleted for good.',
+            confirmLabel: 'Delete',
+          );
+    if (!confirmed || !mounted) return;
+    try {
+      if (_isLocal) {
+        for (final e in items) {
+          e.isDir ? await Directory(e.path).delete(recursive: true) : await File(e.path).delete();
+        }
+        setState(_selected.clear);
+        await _load();
+        _snack('Deleted $what');
+        return;
+      }
+      final res = await ApiClient.instance.deleteWithBody('/batch', [for (final e in items) {'path': e.path}]);
+      _checkEnvelope(res);
+      final data = res['data'];
+      final trashed = data is Map ? (data['trashed'] as List? ?? const []) : const [];
+      final ids = [for (final t in trashed) if (t is Map && t['id'] != null) t['id'].toString()];
+      final protected = data is Map ? (data['protected'] as List? ?? const []) : const [];
+      setState(_selected.clear);
+      await _load();
+      if (protected.isNotEmpty) {
+        _snack(res['message']?.toString() ?? 'Some items are drives or system folders and were left alone.');
+      } else if (ids.isNotEmpty) {
+        _snack('Moved $what to trash', action: SnackBarAction(label: 'Undo', onPressed: () => _restore(ids)));
+      } else {
+        _snack('Deleted $what');
+      }
+    } catch (e) {
+      _snack("Couldn't delete $what: ${_plain(e)}", error: true);
+      await _load();
+    }
+  }
+
+  Future<void> _restore(List<String> ids) async {
+    try {
+      await ApiClient.instance.post('/trash/restore', body: {'ids': ids});
+      await _load();
+      _snack('Restored');
+    } catch (e) {
+      _snack("Couldn't restore: ${_plain(e)}", error: true);
+    }
+  }
+
+  void _compress(List<FileEntry> items) {
+    final dir = _path;
+    if (dir == null || items.isEmpty) return;
+    final name = defaultArchiveName([for (final e in items) e.path], _names);
+    final dest = joinPath(dir, name);
+    setState(_selected.clear);
+    _transfers.add(ServerCallTask(
+      title: 'Compressing ${describeItems([for (final e in items) e.path])}',
+      call: () async {
+        try {
+          _checkEnvelope(await ApiClient.instance.post('/file/archive', body: {
+            'files': [for (final e in items) e.path],
+            'destination': dest,
+          }));
+          return TransferOutcome(message: 'Made “$name”', affectedDirs: {dir});
+        } catch (e) {
+          return TransferOutcome(message: "Couldn't compress: ${_plain(e)}", failed: true, affectedDirs: {dir});
+        }
+      },
+    ));
+  }
+
+  void _extract(FileEntry archive) {
+    final dir = _path;
+    if (dir == null) return;
+    final folder = defaultExtractFolder(archive.name, _names);
+    final dest = joinPath(dir, folder);
+    setState(_selected.clear);
+    _transfers.add(ServerCallTask(
+      title: 'Extracting “${archive.name}”',
+      call: () async {
+        try {
+          _checkEnvelope(await ApiClient.instance.post('/file/unarchive', body: {'path': archive.path, 'destination': dest}));
+          return TransferOutcome(message: 'Extracted to “$folder”', affectedDirs: {dir});
+        } catch (e) {
+          return TransferOutcome(message: "Couldn't extract “${archive.name}”: ${_plain(e)}", failed: true, affectedDirs: {dir});
+        }
+      },
+    ));
+  }
+
+  Future<void> _toggleFavorite(FileEntry folder) async {
+    try {
+      await ShortcutsService.instance.toggleFavorite(folder.name, folder.path);
+      final wasFavorite = _customFavorites.contains(folder.path);
+      await _loadFavorites();
+      _snack(wasFavorite ? 'Removed “${folder.name}” from favorites' : 'Added “${folder.name}” to favorites');
+    } catch (e) {
+      _snack("Couldn't update favorites: ${_plain(e)}", error: true);
+    }
+  }
+
+  Future<void> _openWith(FileEntry e) async {
+    if (_isLocal) {
+      final res = await OpenFilex.open(e.path);
+      if (res.type != ResultType.done) _snack(res.message.isEmpty ? 'No app on this phone opens this file.' : res.message);
+      return;
+    }
+    // Opens the viewer, which downloads it and offers "Open with".
+    _onTap(e);
+  }
+
+  bool _isFavoriteFolder(FileEntry e) => _favorites.any((f) => f.path == e.path);
+
+  Future<void> _showActions(FileEntry e) async {
+    final server = !_isLocal;
+    final actions = <EntryAction>{
+      EntryAction.select,
+      if (!e.isDir && _isLocal) EntryAction.openWith,
+      EntryAction.copy,
+      EntryAction.move,
+      EntryAction.rename,
+      if (server) EntryAction.compress,
+      if (server && e.isExtractable) EntryAction.extract,
+      if (server && e.isDir && !_isFavoriteFolder(e)) EntryAction.favorite,
+      if (server && e.isDir && _customFavorites.contains(e.path)) EntryAction.unfavorite,
+      EntryAction.info,
+      EntryAction.delete,
+    };
+    final action = await showEntryActions(context, entry: e, isLocal: _isLocal, actions: actions, deleteIsPermanent: _isLocal);
+    if (action == null || !mounted) return;
+    switch (action) {
+      case EntryAction.open:
+        _onTap(e);
+      case EntryAction.select:
+        _toggle(e);
+      case EntryAction.copy:
+        _clipSelected(TransferKind.copy, [e]);
+      case EntryAction.move:
+        _clipSelected(TransferKind.move, [e]);
+      case EntryAction.rename:
+        await _rename(e);
+      case EntryAction.compress:
+        _compress([e]);
+      case EntryAction.extract:
+        _extract(e);
+      case EntryAction.favorite || EntryAction.unfavorite:
+        await _toggleFavorite(e);
+      case EntryAction.info:
+        await showInfoSheet(context, entry: e, isLocal: _isLocal, locationLabel: _location?.label);
+      case EntryAction.openWith:
+        await _openWith(e);
+      case EntryAction.delete:
+        await _delete([e]);
+    }
+  }
+
+  Future<void> _showAdd() async {
+    final action = await showAddSheet(context, canUpload: !_isLocal);
+    if (!mounted) return;
+    switch (action) {
+      case AddAction.upload:
+        await _upload();
+      case AddAction.newFolder:
+        await _newFolder();
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _showSort() async {
+    final result = await showSortSheet(context, sort: _sort, ascending: _ascending);
+    if (result == null) return;
+    setState(() {
+      _sort = result.$1;
+      _ascending = result.$2;
+    });
+  }
+
+  Future<void> _showLocations() async {
+    final l = await showLocationsSheet(context, locations: [..._allLocations, ..._favorites], current: _location);
+    if (l != null) await _openLocation(l);
+  }
+
+  // -------------------------------------------------------------------------
+  // Building
+
+  /// The folder's name, or its location's for a location root.
+  String get _title {
+    final path = _path;
+    if (path == null) return 'Files';
+    final l = _location;
+    if (l != null && l.path == path) return l.label;
+    if (path == '/') return 'Root';
+    return baseName(path);
   }
 
   @override
   Widget build(BuildContext context) {
-    final tab = _currentTab;
-    final entries = _filteredEntries;
+    final banner = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_path == null ? _homeStale : _stale)
+          OfflineBanner(lastUpdated: _path == null ? _homeUpdated : _listing?.fetched, onRetry: _refresh),
+        TransferStrip(progress: _transfers.current, onCancel: _transfers.cancelCurrent, queued: _transfers.queued),
+      ],
+    );
+    return _path == null ? _buildHome(banner) : _buildFolder(banner);
+  }
 
-    return Scaffold(
-      backgroundColor: NivaroColors.background,
-      appBar: AppBar(
-        backgroundColor: NivaroColors.surfaceDim,
-        foregroundColor: NivaroColors.textPrimary,
-        elevation: 0,
-        leading: tab.atHome
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'Back',
-                onPressed: _navigateUp,
-              ),
-        title: tab.isSearching
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                style: TextStyle(color: NivaroColors.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Search files & folders...',
-                  border: InputBorder.none,
-                ),
-              )
-            : Row(
-                children: [
-                  Icon(
-                    tab.isLocalDevice ? Icons.phone_android_rounded : (tab.atHome ? Icons.dns_rounded : Icons.folder_rounded),
-                    color: tab.isLocalDevice ? NivaroColors.primaryLight : (tab.atHome ? NivaroColors.primaryLight : NivaroColors.warningLight),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      tab.name,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-        actions: [
-          IconButton(
-            icon: Icon(tab.isSearching ? Icons.close_rounded : Icons.search_rounded),
-            tooltip: tab.isSearching ? 'Close Search' : 'Search',
-            onPressed: () {
-              setState(() {
-                tab.isSearching = !tab.isSearching;
-                if (!tab.isSearching) {
-                  tab.searchQuery = '';
-                  _searchController.clear();
-                }
-              });
-            },
-          ),
-          IconButton(
-            icon: Badge(
-              label: Text('${_tabs.length}'),
-              isLabelVisible: _tabs.length > 1,
-              child: const Icon(Icons.tab_rounded),
-            ),
-            tooltip: 'Tabs',
-            onPressed: () => setState(() => _showTabsStrip = !_showTabsStrip),
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded),
-            tooltip: 'More Options',
-            color: NivaroColors.surfaceContainerHighest,
-            onSelected: (val) {
-              switch (val) {
-                case 'view_compact':
-                  setState(() => tab.viewMode = 'compact');
-                  break;
-                case 'view_grid':
-                  setState(() => tab.viewMode = 'grid');
-                  break;
-                case 'view_list':
-                  setState(() => tab.viewMode = 'list');
-                  break;
-                case 'bookmark':
-                  _toggleFavorite();
-                  break;
-                case 'all_favorites':
-                  _showFavoritesSheet();
-                  break;
-                case 'local_storage':
-                  _openLocalDeviceStorage();
-                  break;
-                case 'new_tab':
-                  _addNewTab();
-                  break;
-                case 'refresh':
-                  _load();
-                  break;
-                case 'hidden':
-                  setState(() => tab.showHidden = !tab.showHidden);
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text('VIEW STYLE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10, fontWeight: FontWeight.w800)),
-              ),
-              PopupMenuItem(
-                value: 'view_compact',
-                child: Row(
-                  children: [
-                    Icon(Icons.grid_view_rounded, size: 18, color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Text('Thumbnail Grid (Compact)', style: TextStyle(color: tab.viewMode == 'compact' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'compact' ? FontWeight.w700 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'view_grid',
-                child: Row(
-                  children: [
-                    Icon(Icons.view_module_rounded, size: 18, color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Text('Large Cards Grid', style: TextStyle(color: tab.viewMode == 'grid' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'grid' ? FontWeight.w700 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'view_list',
-                child: Row(
-                  children: [
-                    Icon(Icons.view_list_rounded, size: 18, color: tab.viewMode == 'list' ? NivaroColors.primaryLight : NivaroColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Text('Detailed List', style: TextStyle(color: tab.viewMode == 'list' ? NivaroColors.primaryLight : NivaroColors.textPrimary, fontWeight: tab.viewMode == 'list' ? FontWeight.w700 : FontWeight.normal)),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                enabled: false,
-                child: Text('BOOKMARKS & STORAGE', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 10, fontWeight: FontWeight.w800)),
-              ),
-              if (!tab.atHome && !tab.isLocalDevice)
-                PopupMenuItem(
-                  value: 'bookmark',
-                  child: Row(
-                    children: [
-                      Icon(_isCurrentPathFavorited ? Icons.star_rounded : Icons.star_border_rounded, size: 18, color: NivaroColors.warningLight),
-                      const SizedBox(width: 10),
-                      Text(_isCurrentPathFavorited ? 'Remove Bookmark' : 'Bookmark Folder'),
-                    ],
-                  ),
-                ),
-              PopupMenuItem(
-                value: 'all_favorites',
-                child: Row(
-                  children: [
-                    Icon(Icons.bookmarks_rounded, size: 18, color: NivaroColors.warningLight),
-                    SizedBox(width: 10),
-                    Text('Favorites & Bookmarks'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'local_storage',
-                child: Row(
-                  children: [
-                    Icon(Icons.phone_android_rounded, size: 18, color: NivaroColors.primaryLight),
-                    SizedBox(width: 10),
-                    Text('Browse Phone Storage'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'hidden',
-                child: Row(
-                  children: [
-                    Icon(tab.showHidden ? Icons.visibility_off_rounded : Icons.visibility_rounded, size: 18),
-                    const SizedBox(width: 10),
-                    Text(tab.showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'new_tab',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_to_photos_rounded, size: 18),
-                    SizedBox(width: 10),
-                    Text('Open New Tab'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'refresh',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh_rounded, size: 18),
-                    SizedBox(width: 10),
-                    Text('Refresh Directory'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 6),
-        ],
-      ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              if (_showTabsStrip || _tabs.length > 1) _buildTabsStrip(),
-              if (_isTransferring) _buildTransferProgressBanner(),
-              if (!tab.atHome) _buildCategoryFilterChips(),
-              if (!tab.atHome) _buildBreadcrumbBar(),
-              if (!tab.atHome && _findCompanionDeviceForPath(tab.path) != null)
-                _buildCompanionBanner(_findCompanionDeviceForPath(tab.path)!),
-              Expanded(
-                child: tab.atHome
-                    ? _buildStorageDashboard()
-                    : (_loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : (_error != null
-                            ? _buildErrorView()
-                            : (entries.isEmpty
-                                ? _buildEmptyView()
-                                : _buildEntriesView(entries)))),
-              ),
-            ],
-          ),
-          if (tab.isSelectionMode)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 84,
-              child: _buildSelectionDock(),
-            ),
-          if (_clipboardPaths.isNotEmpty && !tab.isSelectionMode && !tab.atHome)
-            Positioned(
-              right: 16,
-              bottom: 84,
-              child: FloatingActionButton.extended(
-                backgroundColor: NivaroColors.primary,
-                foregroundColor: Colors.white,
-                icon: const Icon(Icons.paste_rounded),
-                label: Text('Paste (${_clipboardPaths.length})'),
-                onPressed: _pasteClipboard,
-              ),
-            ),
-        ],
-      ),
+  Widget? _pasteBar() {
+    final clip = _clip;
+    if (clip == null) return null;
+    final move = clip.kind == TransferKind.move;
+    final what = clip.entries.length == 1 ? '“${clip.entries.first.name}”' : '${clip.entries.length} items';
+    final canPaste = _path != null && _error == null && !_loading;
+    return PasteBar(
+      label: _path == null ? '${move ? 'Moving' : 'Copying'} $what. Open a folder to put ${clip.entries.length == 1 ? 'it' : 'them'} in.' : '${move ? 'Moving' : 'Copying'} $what',
+      actionLabel: move ? 'Move here' : 'Copy here',
+      onPaste: canPaste ? _paste : null,
+      onCancel: () => setState(() => _clip = null),
     );
   }
 
-  Widget _buildTransferProgressBanner() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: NivaroColors.surfaceContainerLowest,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.primaryLight),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(_transferTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: NivaroColors.textPrimary)),
-                ],
-              ),
-              Text('$_transferCurrentIndex of $_transferTotalCount', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: NivaroColors.primaryLight)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: _transferProgress,
-              minHeight: 5,
-              backgroundColor: NivaroColors.surfaceRaised,
-              color: NivaroColors.primary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _transferCurrentFile,
-            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+  // The locations page -------------------------------------------------------
+
+  Widget _buildHome(Widget banner) {
+    final offline = _storageError is ApiException && (_storageError as ApiException).isUnreachable;
+    final nothing = _storage.isEmpty && !_storageLoading;
+    return AppScaffold.slivers(
+      title: 'Files',
+      banner: banner,
+      onRefresh: _loadHome,
+      floatingActionButton: _pasteBar(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      slivers: [
+        if (nothing && offline)
+          ErrorState.offline(onRetry: _loadHome, sliver: true)
+        else
+          SliverList.list(children: [
+            ?_summaryPanel(),
+            _storageGroup(),
+            _phonesGroup(),
+            _cloudGroup(),
+            _favoritesGroup(),
+            if (_clip != null) const SizedBox(height: 96),
+          ]),
+      ],
     );
   }
 
-  Widget _buildTabsStrip() {
-    return Container(
-      height: 42,
-      color: NivaroColors.surfaceDim,
-      child: Row(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              itemCount: _tabs.length,
-              itemBuilder: (context, index) {
-                final t = _tabs[index];
-                final isSelected = index == _activeTabIndex;
-                return Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: isSelected ? NivaroColors.surfaceRaised : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isSelected ? NivaroColors.primary.withValues(alpha: 0.5) : NivaroColors.borderSubtle,
-                    ),
-                  ),
-                  child: InkWell(
-                    onTap: () => _switchTab(index),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            t.isLocalDevice ? Icons.phone_android_rounded : (t.atHome ? Icons.dns_rounded : Icons.folder_rounded),
-                            size: 14,
-                            color: isSelected ? NivaroColors.primaryLight : NivaroColors.textMuted,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            t.name,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : NivaroColors.textSecondary,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
-                              fontSize: 12,
-                            ),
-                          ),
-                          if (_tabs.length > 1) ...[
-                            const SizedBox(width: 6),
-                            InkWell(
-                              onTap: () => _closeTab(index),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(Icons.close_rounded, size: 13, color: NivaroColors.textMuted),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_rounded, size: 18),
-            tooltip: 'New Tab',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _addNewTab(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryFilterChips() {
-    final tab = _currentTab;
-    final categories = [
-      (FileCategoryFilter.all, 'All Files', Icons.dashboard_rounded),
-      (FileCategoryFilter.folders, 'Folders', Icons.folder_rounded),
-      (FileCategoryFilter.images, 'Images', Icons.image_rounded),
-      (FileCategoryFilter.videos, 'Videos', Icons.videocam_rounded),
-      (FileCategoryFilter.documents, 'Documents', Icons.description_rounded),
-      (FileCategoryFilter.archives, 'Archives', Icons.archive_rounded),
-      (FileCategoryFilter.code, 'Code', Icons.code_rounded),
-    ];
-
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final cat = categories[index];
-          final isSelected = tab.categoryFilter == cat.$1;
-          return Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(
-              avatar: Icon(cat.$3, size: 13, color: isSelected ? Colors.white : NivaroColors.textMuted),
-              label: Text(cat.$2, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600)),
-              selected: isSelected,
-              showCheckmark: false,
-              selectedColor: NivaroColors.primary,
-              backgroundColor: NivaroColors.surfaceRaised,
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-              visualDensity: VisualDensity.compact,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle)),
-              onSelected: (_) {
-                setState(() => tab.categoryFilter = cat.$1);
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildBreadcrumbBar() {
-    final tab = _currentTab;
-    final parts = tab.path.split('/').where((s) => s.isNotEmpty).toList();
-
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceDim,
-        border: Border(bottom: BorderSide(color: NivaroColors.borderSubtle)),
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: () => _openPath(_defaultHomePath),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.dns_rounded, size: 14, color: NivaroColors.primaryLight),
-                SizedBox(width: 4),
-                Text('Root', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: NivaroColors.primaryLight)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 4),
-          Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
-          const SizedBox(width: 4),
-          Expanded(
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: parts.length,
-              itemBuilder: (context, i) {
-                final isLast = i == parts.length - 1;
-                final subPath = '/${parts.sublist(0, i + 1).join('/')}';
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      onTap: isLast ? null : () => _openPath(subPath, isLocal: tab.isLocalDevice),
-                      child: Text(
-                        parts[i],
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isLast ? FontWeight.w800 : FontWeight.w600,
-                          color: isLast ? Colors.white : NivaroColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    if (!isLast) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.chevron_right_rounded, size: 14, color: NivaroColors.textMuted),
-                      const SizedBox(width: 4),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStorageDashboard() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    final isTablet = screenWidth >= 600;
-    final gridColumns = screenWidth >= 1200 ? 5 : (screenWidth >= 900 ? 4 : (isLandscape || isTablet ? 3 : 2));
-    final gridRatio = screenWidth >= 900 ? 2.50 : 2.25;
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadFavorites();
-        await _loadDisks();
-        await _loadCloudAccounts();
-        await _loadCompanionDevices();
-      },
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1150),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 130),
-            children: [
-              // Section 1: Storage Devices & Drives
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12, top: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Storage Devices & Drives',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
-                    ),
-                    if (_disksLoading)
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: NivaroColors.primaryLight),
-                      ),
-                  ],
-                ),
-              ),
-              if (_disks.isEmpty && !_disksLoading)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: NivaroColors.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: NivaroColors.borderSubtle),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.dns_outlined, color: NivaroColors.textMuted, size: 22),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'No server disks or storage pools connected',
-                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                GridView(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: gridColumns,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: gridRatio,
-                  ),
-                  children: [
-                    for (final disk in _disks)
-                      _buildTileCard(
-                        icon: disk.isUsb ? Icons.usb_rounded : Icons.dns_rounded,
-                        iconBgColor: disk.isUsb ? NivaroColors.accent.withValues(alpha: 0.15) : NivaroColors.primary.withValues(alpha: 0.15),
-                        iconColor: disk.isUsb ? NivaroColors.accentLight : NivaroColors.primaryLight,
-                        title: disk.label.isNotEmpty ? disk.label : disk.mountPoint,
-                        subtitle: '${_formatBytes(disk.usedBytes)} / ${_formatBytes(disk.sizeBytes)}',
-                        progress: disk.sizeBytes > 0 ? (disk.usedBytes / disk.sizeBytes).clamp(0.0, 1.0) : 0.0,
-                        onTap: () => _openPath(disk.mountPoint),
-                      ),
-                  ],
-                ),
-
-              // Section 2: Connected Companion Devices (1 Column)
-              if (_companionDevices.isNotEmpty || _companionLoading) ...[
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Companion Devices',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
-                      ),
-                      if (_companionDevices.isNotEmpty)
-                        Text(
-                          '${_companionDevices.length} Connected',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
-                        ),
-                    ],
-                  ),
-                ),
-                if (_companionLoading)
-                  const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: EdgeInsets.zero,
-                    itemCount: _companionDevices.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final dev = _companionDevices[index];
-                      return _buildCompanionCard1Col(dev);
-                    },
-                  ),
-              ],
-
-              const SizedBox(height: 24),
-
-              // Section 3: Cloud Storage Accounts
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Cloud Storage',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
-                    ),
-                    if (_cloudAccounts.isNotEmpty)
-                      Text(
-                        '${_cloudAccounts.length} Connected',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: NivaroColors.textMuted),
-                      ),
-                  ],
-                ),
-              ),
-              if (_cloudLoading)
-                const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-              else if (_cloudAccounts.isEmpty)
-                _buildEmptyCloudCard()
-              else
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: gridColumns,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: gridRatio,
-                  ),
-                  itemCount: _cloudAccounts.length,
-                  itemBuilder: (context, index) {
-                    final account = _cloudAccounts[index];
-                    final iconData = _getCloudIcon(account.type);
-                    final iconColor = _getCloudColor(account.type);
-
-                    return _buildTileCard(
-                      icon: iconData,
-                      iconBgColor: iconColor.withValues(alpha: 0.15),
-                      iconColor: iconColor,
-                      title: account.displayName,
-                      subtitle: account.mountPoint.isNotEmpty ? account.mountPoint : account.providerTitle,
-                      badgeText: account.downloadMbps != null ? '${account.downloadMbps!.toStringAsFixed(0)}M' : null,
-                      badgeColor: NivaroColors.success.withValues(alpha: 0.15),
-                      badgeTextColor: NivaroColors.successLight,
-                      onTap: () {
-                        if (account.mountPoint.isNotEmpty) {
-                          _openPath(account.mountPoint);
-                        } else {
-                          _showCloudAccountDetails(account);
-                        }
-                      },
-                    );
-                  },
-                ),
-
-              const SizedBox(height: 24),
-
-              // Section 4: Favorite Folders
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Favorite Folders',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2, color: NivaroColors.textPrimary),
-                    ),
-                    if (_favorites.isNotEmpty)
-                      InkWell(
-                        onTap: _showFavoritesSheet,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          child: Text('View All', style: TextStyle(color: NivaroColors.primaryLight, fontSize: 12, fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (_favoritesLoading)
-                const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-              else if (_favorites.isEmpty)
-                Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('No favorite folders yet. Use the 3-dot menu in any folder to bookmark.', style: TextStyle(color: NivaroColors.textMuted, fontSize: 13)),
-                )
-              else
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: gridColumns,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: gridRatio,
-                  ),
-                  itemCount: _favorites.length.clamp(0, 6),
-                  itemBuilder: (context, index) {
-                    final fav = _favorites[index];
-                    return _buildTileCard(
-                      icon: Icons.folder_special_rounded,
-                      iconBgColor: NivaroColors.warning.withValues(alpha: 0.15),
-                      iconColor: NivaroColors.warningLight,
-                      title: fav.name,
-                      subtitle: fav.path,
-                      onTap: () => _openPath(fav.path),
-                    );
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTileCard({
-    required IconData icon,
-    required Color iconBgColor,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    String? badgeText,
-    Color? badgeColor,
-    Color? badgeTextColor,
-    double? progress,
-    VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          onTap?.call();
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: NivaroColors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: NivaroColors.borderSubtle),
-            boxShadow: const [
-              BoxShadow(color: Color(0x1F000000), blurRadius: 6, offset: Offset(0, 2)),
-            ],
-          ),
+  Widget _skeletonRows(int n) => SkeletonPulse(
+        child: ExcludeSemantics(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: iconBgColor,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, color: iconColor, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+              for (var i = 0; i < n; i++)
+                SizedBox(
+                  height: 72,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                title,
-                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (badgeText != null) ...[
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: badgeColor ?? NivaroColors.primary.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  badgeText,
-                                  style: TextStyle(
-                                    color: badgeTextColor ?? NivaroColors.primaryLight,
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
+                        const SkeletonBox(width: 24, height: 24),
+                        const SizedBox(width: Space.lg),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              FractionallySizedBox(widthFactor: i.isEven ? 0.4 : 0.55, child: const SkeletonBox(height: 14)),
+                              const SizedBox(height: Space.sm),
+                              const SkeletonBox(height: 8),
                             ],
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              if (progress != null) ...[
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: progress.clamp(0.0, 1.0),
-                    backgroundColor: NivaroColors.surfaceRaised,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress > 0.90 ? NivaroColors.dangerLight : (progress > 0.80 ? NivaroColors.warningLight : NivaroColors.primaryLight),
-                    ),
-                    minHeight: 3,
-                  ),
                 ),
-              ],
             ],
           ),
         ),
-      ),
+      );
+
+  Widget _usageTile(FileLocation l, {VoidCallback? onTap}) {
+    final used = l.usedBytes, total = l.totalBytes;
+    final hasUsage = used != null && total != null && total > 0;
+    return ListTile(
+      leading: Icon(locationIcon(l.kind)),
+      title: hasUsage
+          ? UsageBar(
+              value: used.toDouble(),
+              max: total.toDouble(),
+              label: l.label,
+              detail: [
+                if (l.detail != null) l.detail!,
+                '${formatSize(l.availableBytes ?? 0)} free of ${formatSize(total)}',
+              ].join(' · '),
+            )
+          : Text(l.label),
+      subtitle: hasUsage ? null : Text(locationSubtitle(l)),
+      contentPadding: const EdgeInsetsDirectional.only(start: Space.lg, end: Space.lg, top: Space.xs, bottom: Space.xs),
+      onTap: onTap ?? () => _openLocation(l),
     );
   }
 
-  Widget _buildEmptyCloudCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: NivaroColors.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: NivaroColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            alignment: Alignment.center,
-            child: Icon(Icons.cloud_queue_rounded, color: NivaroColors.primaryLight, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('No Cloud Drives Connected', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary)),
-                SizedBox(height: 2),
-                Text('Sync Google Drive, OneDrive, Nextcloud or S3 via Web UI / Cloud settings.', style: TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _getCloudIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'drive':
-        return Icons.add_to_drive_rounded;
-      case 'onedrive':
-        return Icons.cloud_queue_rounded;
-      case 'dropbox':
-        return Icons.folder_shared_rounded;
-      case 'nextcloud':
-        return Icons.cloud_sync_rounded;
-      case 's3':
-        return Icons.storage_rounded;
-      default:
-        return Icons.cloud_rounded;
-    }
-  }
-
-  Color _getCloudColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'drive':
-        return NivaroColors.warningLight;
-      case 'onedrive':
-        return NivaroColors.primaryLight;
-      case 'dropbox':
-        return NivaroColors.infoLight;
-      case 'nextcloud':
-        return NivaroColors.cyanLight;
-      case 's3':
-        return NivaroColors.warningLight;
-      default:
-        return NivaroColors.primaryLight;
-    }
-  }
-
-  void _showCloudAccountDetails(CloudAccount account) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
+  /// The page's one expressive moment: how much room the server has left,
+  /// in all its drives together.
+  Widget? _summaryPanel() {
+    final drives = _storage.where((l) => (l.totalBytes ?? 0) > 0).toList();
+    if (drives.isEmpty) return null;
+    final total = drives.fold<int>(0, (s, l) => s + l.totalBytes!);
+    final used = drives.fold<int>(0, (s, l) => s + (l.usedBytes ?? 0));
+    final free = drives.fold<int>(0, (s, l) => s + (l.availableBytes ?? 0));
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final gutter = Space.gutter(context);
+    final (value, unit) = _splitSize(formatSize(free));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+      child: Card.filled(
+        color: scheme.surfaceContainerHigh,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Icon(_getCloudIcon(account.type), color: _getCloudColor(account.type), size: 24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(account.displayName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: NivaroColors.textPrimary)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Provider Type', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                subtitle: Text(account.providerTitle, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textPrimary)),
-              ),
-              if (account.mountPoint.isNotEmpty)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Mount Path', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                  subtitle: Text(account.mountPoint, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.primaryLight)),
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: NivaroColors.textMuted),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openPath(account.mountPoint);
-                  },
+          padding: const EdgeInsets.all(Space.lg),
+          child: Semantics(
+            container: true,
+            label: 'Server storage: ${formatSize(free)} free of ${formatSize(total)} on ${formatCount(drives.length, 'drive')}',
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Server storage', style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant)),
+                const SizedBox(height: Space.xs),
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: value, style: theme.textTheme.headlineMedium?.emphasized.tabular),
+                    TextSpan(text: ' $unit free', style: theme.textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                  ]),
                 ),
-              if (account.downloadMbps != null)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Transfer Speed', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                  subtitle: Text('Download: ${account.downloadMbps!.toStringAsFixed(1)} Mbps | Upload: ${account.uploadMbps?.toStringAsFixed(1) ?? "--"} Mbps', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textPrimary)),
+                Text(
+                  'of ${formatSize(total)} on ${formatCount(drives.length, 'drive')}',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                 ),
-            ],
+                const SizedBox(height: Space.md),
+                UsageBar(value: used.toDouble(), max: total.toDouble(), label: 'Used', warnAt: 0.85, criticalAt: 0.95),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEntriesView(List<FileEntry> entries) {
-    final mode = _currentTab.viewMode;
-    if (mode == 'compact') {
-      return _buildCompactThumbnailGrid(entries);
-    } else if (mode == 'grid') {
-      return _buildLargeCardsGrid(entries);
-    } else {
-      return _buildDetailedListView(entries);
+  static (String, String) _splitSize(String formatted) {
+    final i = formatted.lastIndexOf(' ');
+    return i <= 0 ? (formatted, '') : (formatted.substring(0, i), formatted.substring(i + 1));
+  }
+
+  Widget _storageGroup() {
+    if (_storageLoading && _storage.isEmpty) {
+      return TileGroup(title: 'Server storage', children: [_skeletonRows(2)]);
     }
+    if (_storage.isEmpty) {
+      return TileGroup(title: 'Server storage', children: [
+        ListTile(
+          leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+          title: const Text("Couldn't load storage"),
+          subtitle: Text(_storageError == null ? 'The server listed no drives.' : _plain(_storageError!)),
+          trailing: TextButton(onPressed: _loadHome, child: const Text('Retry')),
+        ),
+      ]);
+    }
+    return TileGroup(title: 'Drives', children: [for (final l in _storage) _usageTile(l)]);
   }
 
-  Widget _buildCompactThumbnailGrid(List<FileEntry> entries) {
-    final width = MediaQuery.of(context).size.width;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    final cols = width >= 1200 ? 10 : (width >= 900 ? 8 : (width >= 600 || isLandscape ? 6 : (width >= 400 ? 4 : 3)));
-    final ratio = width >= 600 ? 0.90 : 0.82;
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 130),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: cols,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: ratio,
-      ),
-      itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        final isSelected = _currentTab.selectedPaths.contains(entry.path);
-
-        return InkWell(
-          onTap: () => _onEntryTap(entry),
-          onLongPress: () => _toggleSelection(entry.path),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isSelected ? NivaroColors.primary.withValues(alpha: 0.18) : NivaroColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
-                width: isSelected ? 1.5 : 1.0,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Stack(
-                  alignment: Alignment.topRight,
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.12) : NivaroColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        entry.isDir ? Icons.folder_rounded : (entry.isImage ? Icons.image_rounded : (entry.isVideo ? Icons.videocam_rounded : Icons.insert_drive_file_rounded)),
-                        color: entry.isDir ? NivaroColors.warningLight : (entry.isImage ? NivaroColors.infoLight : NivaroColors.primaryLight),
-                        size: 28,
-                      ),
-                    ),
-                    if (isSelected)
-                      CircleAvatar(
-                        radius: 8,
-                        backgroundColor: NivaroColors.primary,
-                        child: Icon(Icons.check, size: 11, color: Colors.white),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  entry.name,
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: NivaroColors.textPrimary),
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  entry.isDir ? 'Folder' : formatBytes(entry.size),
-                  style: TextStyle(color: NivaroColors.textMuted, fontSize: 10),
-                ),
-              ],
-            ),
+  Widget _favoritesGroup() {
+    if (_favoritesLoading) return TileGroup(title: 'Favorites', children: [_skeletonRows(2)]);
+    if (_favorites.isEmpty) return const SizedBox.shrink();
+    return TileGroup(
+      title: 'Favorites',
+      children: [
+        for (final f in _favorites)
+          ListTile(
+            leading: Icon(FavoriteFolder.resolveIcon('', f.label)),
+            title: Text(f.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(f.path, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => _openLocation(f),
           ),
-        );
-      },
+      ],
     );
   }
 
-  Widget _buildLargeCardsGrid(List<FileEntry> entries) {
-    final width = MediaQuery.of(context).size.width;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    final cols = width >= 1200 ? 8 : (width >= 900 ? 6 : (width >= 600 || isLandscape ? 4 : 2));
-    final ratio = width >= 900 ? 1.38 : (width >= 600 || isLandscape ? 1.32 : 1.25);
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 130),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: cols,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: ratio,
-      ),
-      itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        final isSelected = _currentTab.selectedPaths.contains(entry.path);
-
-        return InkWell(
-          onTap: () => _onEntryTap(entry),
-          onLongPress: () => _toggleSelection(entry.path),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isSelected ? NivaroColors.primary.withValues(alpha: 0.18) : NivaroColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? NivaroColors.primaryLight : NivaroColors.borderSubtle,
-                width: isSelected ? 1.5 : 1.0,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(
-                      entry.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-                      color: entry.isDir ? NivaroColors.warningLight : NivaroColors.primaryLight,
-                      size: 32,
-                    ),
-                    if (isSelected)
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundColor: NivaroColors.primary,
-                        child: Icon(Icons.check, size: 12, color: Colors.white),
-                      ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.name,
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: NivaroColors.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.isDir ? 'Folder' : formatBytes(entry.size),
-                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+  Widget _phonesGroup() {
+    final me = _thisPhone;
+    if (_phonesLoading && me == null) return TileGroup(title: 'Phones', children: [_skeletonRows(1)]);
+    return TileGroup(
+      title: 'Phones',
+      footer: _phones.isEmpty ? 'Other phones with the NivaroOS app appear here when they share their storage.' : null,
+      children: [
+        if (me != null) _usageTile(me),
+        for (final p in _phones)
+          ListTile(
+            leading: const Icon(Icons.smartphone_outlined),
+            title: Text(p.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(locationSubtitle(p).isEmpty ? 'Connected' : [if (p.detail != null) p.detail!, p.online ? 'Connected' : 'Offline'].join(' · ')),
+            enabled: p.online,
+            onTap: () => _openLocation(p),
           ),
-        );
-      },
+      ],
     );
   }
 
-  Widget _buildDetailedListView(List<FileEntry> entries) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1100),
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 130),
-      itemCount: entries.length,
-      separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        final isSelected = _currentTab.selectedPaths.contains(entry.path);
-
-        return ListTile(
-          onTap: () => _onEntryTap(entry),
-          onLongPress: () => _toggleSelection(entry.path),
-          selected: isSelected,
-          selectedTileColor: NivaroColors.primary.withValues(alpha: 0.15),
-          leading: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: entry.isDir ? NivaroColors.warning.withValues(alpha: 0.12) : NivaroColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              entry.isDir ? Icons.folder_rounded : Icons.insert_drive_file_rounded,
-              color: entry.isDir ? NivaroColors.warningLight : NivaroColors.primaryLight,
-              size: 20,
-            ),
-          ),
-          title: Text(entry.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-          subtitle: Text(
-            entry.isDir ? 'Folder' : formatBytes(entry.size),
-            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11.5),
-          ),
-          trailing: isSelected
-              ? Icon(Icons.check_circle_rounded, color: NivaroColors.primaryLight)
-              : IconButton(
-                  icon: Icon(Icons.more_vert_rounded, color: NivaroColors.textMuted, size: 20),
-                  tooltip: 'Options',
-                  onPressed: () => _showEntryActions(entry),
-                ),
-        );
-      },
-    ),
-  ),
-);
-}
-
-  Widget _buildSelectionDock() {
-    final count = _currentTab.selectedPaths.length;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: NivaroColors.primaryLight.withValues(alpha: 0.6), width: 1.5),
-        boxShadow: const [
-          BoxShadow(color: Color(0xAA000000), blurRadius: 16, offset: Offset(0, 4)),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _cloudGroup() {
+    if (_cloudLoading) return TileGroup(title: 'Cloud drives', children: [_skeletonRows(1)]);
+    if (_cloudError != null && _cloud.isEmpty) return const SizedBox.shrink();
+    if (_cloud.isEmpty) {
+      return const TileGroup(
+        title: 'Cloud drives',
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 20),
-                onPressed: _clearSelection,
-                visualDensity: VisualDensity.compact,
-              ),
-              const SizedBox(width: 4),
-              Text('$count Selected', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: NivaroColors.textPrimary)),
-            ],
-          ),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.select_all_rounded, size: 20),
-                tooltip: 'Select All',
-                onPressed: _selectAll,
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy_rounded, size: 20),
-                tooltip: 'Copy',
-                onPressed: _copySelected,
-              ),
-              IconButton(
-                icon: const Icon(Icons.cut_rounded, size: 20),
-                tooltip: 'Cut / Move',
-                onPressed: _cutSelected,
-              ),
-              IconButton(
-                icon: Icon(Icons.delete_rounded, size: 20, color: NivaroColors.dangerLight),
-                tooltip: 'Delete',
-                onPressed: _deleteSelected,
-              ),
-            ],
+          ListTile(
+            leading: Icon(Icons.cloud_outlined),
+            title: Text('No cloud drives'),
+            subtitle: Text('Connect Google Drive, OneDrive, Dropbox and others in the web UI.'),
           ),
         ],
-      ),
+      );
+    }
+    return TileGroup(
+      title: 'Cloud drives',
+      children: [
+        for (final c in _cloud)
+          ListTile(
+            leading: const Icon(Icons.cloud_outlined),
+            title: Text(c.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(c.detail ?? c.path, maxLines: 1, overflow: TextOverflow.ellipsis),
+            enabled: c.online,
+            onTap: () => _openLocation(c),
+          ),
+      ],
     );
   }
 
-  IconData _getCompanionIcon(CompanionDevice dev) {
-    final modelLower = dev.model.toLowerCase();
-    final nameLower = dev.name.toLowerCase();
-    final platformLower = dev.platform.toLowerCase();
-    final isTablet = modelLower.contains('tablet') ||
-        modelLower.contains('pad') ||
-        modelLower.contains('tab') ||
-        modelLower.contains('ruan') ||
-        nameLower.contains('tablet') ||
-        nameLower.contains('pad') ||
-        nameLower.contains('tab') ||
-        platformLower.contains('ipad');
-    final isIos = platformLower.contains('ios') ||
-        platformLower.contains('iphone') ||
-        nameLower.contains('iphone');
-    return isIos ? Icons.phone_iphone_rounded : (isTablet ? Icons.tablet_android_rounded : Icons.phone_android_rounded);
+  // A folder -----------------------------------------------------------------
+
+  PreferredSizeWidget _folderBottom(BuildContext context) {
+    if (_searching) {
+      final h = (MediaQuery.textScalerOf(context).scale(24) + 40).clamp(64.0, 112.0);
+      return PreferredSize(
+        preferredSize: Size.fromHeight(h),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(Space.gutter(context), 0, Space.gutter(context), Space.sm),
+          child: TextField(
+            controller: _search,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search in $_title',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(icon: const Icon(Icons.close), tooltip: 'Close search', onPressed: _closeSearch),
+            ),
+          ),
+        ),
+      );
+    }
+    final l = _location;
+    final crumbs = breadcrumbs(_path!, root: l?.path ?? '/', rootLabel: l?.label ?? 'Root');
+    return BreadcrumbBar(
+      // The folders above this one: the current folder is the title
+      // already, so the trail doesn't repeat it.
+      crumbs: crumbs.length > 1 ? crumbs.sublist(0, crumbs.length - 1) : crumbs,
+      locationIcon: locationIcon(l?.kind ?? LocationKind.root),
+      height: BreadcrumbBar.heightFor(context),
+      onLocations: _showLocations,
+      onCrumb: (c) => _open(c.path, isLocal: _isLocal),
+    );
   }
 
-  IconData _getBatteryIcon(int level) {
-    if (level >= 90) return Icons.battery_full_rounded;
-    if (level >= 75) return Icons.battery_6_bar_rounded;
-    if (level >= 50) return Icons.battery_5_bar_rounded;
-    if (level >= 30) return Icons.battery_3_bar_rounded;
-    if (level >= 15) return Icons.battery_2_bar_rounded;
-    return Icons.battery_alert_rounded;
+  PreferredSizeWidget? _selectionBar() {
+    if (_selected.isEmpty) return null;
+    final items = _selectedEntries;
+    final single = items.length == 1 ? items.first : null;
+    final server = !_isLocal;
+    return AppBar(
+      leading: IconButton(icon: const Icon(Icons.close), tooltip: 'Clear selection', onPressed: () => setState(_selected.clear)),
+      // Just the count, as in Google Photos: "12 selected" doesn't fit next
+      // to four actions at 360dp.
+      title: Semantics(
+        liveRegion: true,
+        label: '${_selected.length} selected',
+        excludeSemantics: true,
+        child: Text('${_selected.length}'),
+      ),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      actions: [
+        IconButton(icon: const Icon(Icons.content_copy_outlined), tooltip: 'Copy', onPressed: () => _clipSelected(TransferKind.copy)),
+        IconButton(icon: const Icon(Icons.drive_file_move_outlined), tooltip: 'Move', onPressed: () => _clipSelected(TransferKind.move)),
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          tooltip: _isLocal ? 'Delete' : 'Move to trash',
+          onPressed: () => _delete(items),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'More actions',
+          onSelected: (v) {
+            switch (v) {
+              case 'all':
+                setState(() => _selected.addAll(_visible.map((e) => e.path)));
+              case 'rename':
+                if (single != null) _rename(single);
+              case 'compress':
+                _compress(items);
+              case 'extract':
+                if (single != null) _extract(single);
+              case 'info':
+                if (single != null) showInfoSheet(context, entry: single, isLocal: _isLocal, locationLabel: _location?.label);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'all', child: Text('Select all')),
+            if (single != null) const PopupMenuItem(value: 'rename', child: Text('Rename')),
+            if (server) const PopupMenuItem(value: 'compress', child: Text('Compress to ZIP')),
+            if (server && single != null && single.isExtractable) const PopupMenuItem(value: 'extract', child: Text('Extract here')),
+            if (single != null) const PopupMenuItem(value: 'info', child: Text('Details')),
+          ],
+        ),
+      ],
+    );
   }
 
-  Widget _buildCompanionCard1Col(CompanionDevice dev) {
-    final devIcon = _getCompanionIcon(dev);
-    final usedStr = _formatBytes(dev.usedStorageBytes);
-    final totalStr = _formatBytes(dev.totalStorageBytes);
-    final pctStr = dev.totalStorageBytes > 0 ? '${(dev.storageUsagePercent * 100).round()}%' : '0%';
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          if (dev.isCurrentDevice) {
-            _openLocalDeviceStorage();
-          } else {
-            final targetPath = dev.storagePath.isNotEmpty ? dev.storagePath : '/DATA/Companion/${dev.name}';
-            _openPath(targetPath);
+  List<Widget> _folderActions() {
+    final path = _path!;
+    final isFav = _favorites.any((f) => f.path == path);
+    final canUnfav = _customFavorites.contains(path);
+    return [
+      IconButton(icon: const Icon(Icons.search), tooltip: 'Search in this folder', onPressed: () => setState(() => _searching = true)),
+      PopupMenuButton<String>(
+        tooltip: 'More options',
+        onSelected: (v) {
+          switch (v) {
+            case 'hidden':
+              setState(() => _showHidden = !_showHidden);
+            case 'fav':
+              _toggleFavorite(FileEntry(name: _title, path: path, isDir: true, size: 0));
+            case 'folder':
+              _newFolder();
+            case 'refresh':
+              _load();
           }
         },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: NivaroColors.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: dev.isCurrentDevice ? NivaroColors.primary.withValues(alpha: 0.4) : NivaroColors.borderSubtle,
-              width: dev.isCurrentDevice ? 1.2 : 1.0,
-            ),
-            boxShadow: const [
-              BoxShadow(color: Color(0x1F000000), blurRadius: 6, offset: Offset(0, 2)),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: dev.isCurrentDevice
-                          ? NivaroColors.primary.withValues(alpha: 0.15)
-                          : NivaroColors.purple.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      devIcon,
-                      color: dev.isCurrentDevice ? NivaroColors.primaryLight : NivaroColors.purpleLight,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                dev.name,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13.5,
-                                  color: NivaroColors.textPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: dev.isCurrentDevice
-                                    ? NivaroColors.primary.withValues(alpha: 0.15)
-                                    : (dev.isOnline ? NivaroColors.success.withValues(alpha: 0.15) : Colors.white10),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                dev.isCurrentDevice ? 'This Device' : (dev.isOnline ? 'Online' : 'Offline'),
-                                style: TextStyle(
-                                  color: dev.isCurrentDevice
-                                      ? NivaroColors.primaryLight
-                                      : (dev.isOnline ? NivaroColors.successLight : NivaroColors.textMuted),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            if (dev.batteryLevel > 0) ...[
-                              const SizedBox(width: 6),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _getBatteryIcon(dev.batteryLevel),
-                                    size: 13,
-                                    color: dev.batteryLevel <= 20 ? NivaroColors.dangerLight : NivaroColors.textMuted,
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '${dev.batteryLevel}%',
-                                    style: TextStyle(
-                                      color: dev.batteryLevel <= 20 ? NivaroColors.dangerLight : NivaroColors.textMuted,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Text(
-                              '$usedStr / $totalStr ($pctStr)',
-                              style: TextStyle(
-                                color: NivaroColors.textMuted,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (dev.serverStorageUsed > 0) ...[
-                              const SizedBox(width: 6),
-                              Text(
-                                '· ${_formatBytes(dev.serverStorageUsed)} synced',
-                                style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: NivaroColors.textMuted, size: 20),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: dev.storageUsagePercent,
-                  backgroundColor: NivaroColors.surfaceRaised,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    dev.storageUsagePercent > 0.90
-                        ? NivaroColors.dangerLight
-                        : (dev.storageUsagePercent > 0.80
-                            ? NivaroColors.warningLight
-                            : (dev.isCurrentDevice ? NivaroColors.primaryLight : NivaroColors.purpleLight)),
-                  ),
-                  minHeight: 3.5,
-                ),
-              ),
-            ],
-          ),
-        ),
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'folder', child: Text('New folder')),
+          CheckedPopupMenuItem(value: 'hidden', checked: _showHidden, child: const Text('Show hidden files')),
+          if (!_isLocal && (!isFav || canUnfav))
+            PopupMenuItem(value: 'fav', child: Text(isFav ? 'Remove from favorites' : 'Add to favorites')),
+          const PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+        ],
       ),
-    );
+    ];
   }
 
-  CompanionDevice? _findCompanionDeviceForPath(String path) {
-    for (final dev in _companionDevices) {
-      if (dev.storagePath.isNotEmpty && path.startsWith(dev.storagePath)) {
-        return dev;
-      }
-      final cleanName = dev.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
-      if (path.toLowerCase().contains(cleanName) || path.toLowerCase().contains(dev.name.toLowerCase())) {
-        return dev;
-      }
+  Widget _buildFolder(Widget banner) {
+    final entries = _visible;
+    final selecting = _selected.isNotEmpty;
+    Widget? fab;
+    if (_clip != null) {
+      fab = _pasteBar();
+    } else if (!selecting && _error == null && !_loading) {
+      // Labelled: a bare "+" doesn't say whether it uploads or makes a
+      // folder.
+      fab = _isLocal
+          ? FloatingActionButton.extended(onPressed: _showAdd, icon: const Icon(Icons.create_new_folder_outlined), label: const Text('New folder'))
+          : FloatingActionButton.extended(onPressed: _showAdd, icon: const Icon(Icons.add), label: const Text('New'), tooltip: 'Upload or new folder');
     }
-    return null;
-  }
-
-  Widget _buildCompanionBanner(CompanionDevice dev) {
-    final usedStr = _formatBytes(dev.usedStorageBytes);
-    final totalStr = _formatBytes(dev.totalStorageBytes);
-    final storageRatio = dev.storageUsagePercent;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: NivaroColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: NivaroColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: NivaroColors.purple.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(_getCompanionIcon(dev), color: NivaroColors.purpleLight, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            dev.name,
-                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: NivaroColors.textPrimary),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: dev.isOnline ? NivaroColors.success.withValues(alpha: 0.15) : Colors.white10,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            dev.isOnline ? 'ONLINE' : 'OFFLINE',
-                            style: TextStyle(
-                              color: dev.isOnline ? NivaroColors.successLight : NivaroColors.textMuted,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        if (dev.batteryLevel > 0) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '${dev.batteryLevel}%',
-                            style: TextStyle(color: NivaroColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${dev.model} · ${dev.platform} · Companion Sync Folder',
-                      style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Device Storage', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11.5, color: NivaroColors.textSecondary)),
-              Text('$usedStr / $totalStr', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: NivaroColors.primaryLight)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: storageRatio,
-              minHeight: 5,
-              backgroundColor: NivaroColors.surfaceRaised,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                storageRatio > 0.90 ? NivaroColors.dangerLight : (storageRatio > 0.80 ? NivaroColors.warningLight : NivaroColors.primaryLight),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AppScaffold.slivers(
+      title: _title,
+      collapsingTitle: false,
+      leading: IconButton(icon: const Icon(Icons.arrow_back), tooltip: 'Up', onPressed: _up),
+      actions: _folderActions(),
+      bottom: _folderBottom(context),
+      appBar: _selectionBar(),
+      banner: banner,
+      onRefresh: _load,
+      maxContentWidth: _grid ? null : Space.readingMaxWidth,
+      floatingActionButton: fab,
+      floatingActionButtonLocation: _clip != null ? FloatingActionButtonLocation.centerFloat : null,
+      slivers: _folderSlivers(entries, selecting),
     );
   }
 
-  Widget _buildEmptyView() {
-    final compDev = _findCompanionDeviceForPath(_currentTab.path);
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(compDev != null ? _getCompanionIcon(compDev) : Icons.folder_open_rounded, size: 48, color: NivaroColors.textMuted),
-          const SizedBox(height: 12),
-          Text(
-            compDev != null ? 'No files shared yet with ${compDev.name}.' : 'This folder is empty.',
-            style: TextStyle(color: NivaroColors.textMuted, fontSize: 14),
+  List<Widget> _folderSlivers(List<FileEntry> entries, bool selecting) {
+    if (_loading && _listing == null) return [const FolderSkeleton()];
+    final error = _error;
+    if (error != null) {
+      if (error is ApiException && error.isUnreachable) return [ErrorState.offline(onRetry: _load, sliver: true, details: error.details)];
+      return [
+        ErrorState(
+          title: "Couldn't open “$_title”",
+          message: _errorMessage(error),
+          onRetry: _load,
+          details: error is ApiException ? error.details : error.toString(),
+          sliver: true,
+        ),
+      ];
+    }
+    final all = _allEntries;
+    if (entries.isEmpty) {
+      if (_searching && _search.text.trim().isNotEmpty) {
+        return [
+          EmptyState(
+            icon: Icons.search_off,
+            title: 'No matches',
+            message: 'Nothing in $_title matches “${_search.text.trim()}”.',
+            actionLabel: 'Clear search',
+            onAction: _search.clear,
+            sliver: true,
           ),
-          if (compDev != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Files placed in this folder will sync with this companion device.',
-              style: TextStyle(color: NivaroColors.textMuted, fontSize: 12),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline_rounded, size: 44, color: NivaroColors.dangerLight),
-            const SizedBox(height: 12),
-            Text(_error ?? 'Could not load folder contents.', style: TextStyle(color: NivaroColors.textPrimary, fontSize: 14), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            if (ApiClient.isAuthError(_error)) ...[
-              FilledButton.icon(
-                onPressed: _promptReauth,
-                icon: const Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
-                label: const Text('Sign In Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                style: FilledButton.styleFrom(
-                  backgroundColor: NivaroColors.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(NivaroShape.medium)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => _load(),
-                child: Text('Try Again', style: TextStyle(color: NivaroColors.textMuted, fontSize: 12.5)),
-              ),
-            ] else
-              ElevatedButton(
-                onPressed: () => _load(),
-                child: const Text('Try Again'),
-              ),
-          ],
+        ];
+      }
+      if (all.isNotEmpty && !_showHidden) {
+        return [
+          EmptyState(
+            icon: Icons.visibility_off_outlined,
+            title: 'Only hidden files here',
+            message: 'Everything in this folder starts with a dot.',
+            actionLabel: 'Show hidden files',
+            onAction: () => setState(() => _showHidden = true),
+            sliver: true,
+          ),
+        ];
+      }
+      return [
+        EmptyState(
+          icon: Icons.folder_open_outlined,
+          title: 'This folder is empty',
+          message: _isLocal ? 'Copy files here from the server, or make a folder.' : 'Upload files from this phone, or make a folder.',
+          actionLabel: _isLocal ? 'New folder' : 'Upload files',
+          onAction: _isLocal ? _newFolder : _upload,
+          sliver: true,
+        ),
+      ];
+    }
+    final folders = entries.where((e) => e.isDir).length;
+    final files = entries.length - folders;
+    final free = _location?.availableBytes;
+    final count = [
+      [if (folders > 0) formatCount(folders, 'folder'), if (files > 0) formatCount(files, 'file')].join(', '),
+      // Where it all lives, and how much room is left there.
+      if (free != null) '${formatSize(free)} free',
+    ].where((e) => e.isNotEmpty).join(' · ');
+    return [
+      SliverToBoxAdapter(
+        child: SortHeader(
+          sort: _sort,
+          ascending: _ascending,
+          grid: _grid,
+          count: count,
+          onSort: _showSort,
+          onToggleView: () => setState(() => _grid = !_grid),
         ),
       ),
-    );
+      if (_grid)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(Space.gutter(context), Space.sm, Space.gutter(context), 0),
+          sliver: SliverGrid.builder(
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 200,
+              mainAxisExtent: FileGridTile.extentFor(context),
+              crossAxisSpacing: Space.sm,
+              mainAxisSpacing: Space.sm,
+            ),
+            itemCount: entries.length,
+            itemBuilder: (context, i) {
+              final e = entries[i];
+              return FileGridTile(
+                key: ValueKey(e.path),
+                entry: e,
+                isLocal: _isLocal,
+                selected: _selected.contains(e.path),
+                selecting: selecting,
+                onTap: () => _onTap(e),
+                onLongPress: () => selecting ? _toggle(e) : _showActionsOrSelect(e),
+              );
+            },
+          ),
+        )
+      else
+        SliverList.builder(
+          itemCount: entries.length,
+          itemBuilder: (context, i) {
+            final e = entries[i];
+            return FileRow(
+              key: ValueKey(e.path),
+              entry: e,
+              isLocal: _isLocal,
+              selected: _selected.contains(e.path),
+              selecting: selecting,
+              onTap: () => _onTap(e),
+              onLongPress: () => _toggle(e),
+              onMore: () => _showActions(e),
+            );
+          },
+        ),
+      // Room for the FAB or the paste bar over the last row (it grows
+      // with the text), so the last row's menu can scroll clear of it.
+      SliverToBoxAdapter(child: SizedBox(height: Space.xl + MediaQuery.textScalerOf(context).scale(56))),
+    ];
+  }
+
+  /// Long-press in the grid starts selection, like in the list.
+  void _showActionsOrSelect(FileEntry e) => _toggle(e);
+
+  String _errorMessage(Object e) {
+    if (e is FileSystemException) {
+      return _isLocal ? "This phone didn't allow reading this folder. Check that NivaroOS may access all files." : e.message;
+    }
+    if (e is PathNotFoundException) return 'This folder no longer exists.';
+    return _plain(e);
   }
 }

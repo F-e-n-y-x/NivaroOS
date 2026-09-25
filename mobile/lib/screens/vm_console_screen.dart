@@ -1,293 +1,568 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../services/api_client.dart';
+
+import '../models/vm_snapshot.dart';
 import '../services/rfb_client.dart';
 import '../services/vm_client.dart';
-import '../models/vm_snapshot.dart';
-import '../theme.dart';
+import '../ui/ui.dart';
 import '../widgets/rfb_view.dart';
-import '../widgets/common.dart';
 
+/// A VM's screen (VNC through the gateway), with power, snapshots, the
+/// disc drive and the clipboard. A VM that is off shows that, with Start,
+/// instead of a failing connection.
 class VmConsoleScreen extends StatefulWidget {
+  const VmConsoleScreen({super.key, required this.vmName, this.client, this.rfb, this.history});
+
   final String vmName;
-  const VmConsoleScreen({super.key, required this.vmName});
+
+  /// For tests; the app uses the session's gateway clients.
+  final VmClient? client;
+  final RfbClient? rfb;
+  final RemoteClipboardHistory? history;
 
   @override
   State<VmConsoleScreen> createState() => _VmConsoleScreenState();
 }
 
-class _VmConsoleScreenState extends State<VmConsoleScreen> with WidgetsBindingObserver {
-  late final RfbClient _client;
-  late final VmClient _vmClient;
+class _VmConsoleScreenState extends State<VmConsoleScreen> {
+  late final VmClient _client = widget.client ?? VmClient();
+  late final RfbClient _rfb = widget.rfb ?? RfbClient(vmName: widget.vmName);
   Vm? _vm;
-  bool _isFullscreen = false;
-  bool _manualLandscape = false;
-  bool _lastAppliedLandscape = false;
+  VmException? _loadError;
+  bool _loading = true;
+  bool _starting = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    // Allow dynamic sensor auto-rotation for seamless landscape switching
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    final host = Uri.parse(ApiClient.instance.baseUrl).host;
-    _vmClient = VmClient(host);
-    _client = RfbClient(host: host, port: 28641, vmName: widget.vmName);
-    _loadVm();
+    _rfb.status.addListener(_onStatus);
+    _load();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _client.close();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _rfb.status.removeListener(_onStatus);
+    if (widget.rfb == null) _rfb.dispose();
+    if (widget.client == null) _client.close();
     super.dispose();
   }
 
-  void _syncSystemUI(bool isLandscape) {
-    if (isLandscape != _lastAppliedLandscape || _isFullscreen) {
-      _lastAppliedLandscape = isLandscape;
-      if (isLandscape || _isFullscreen) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      } else {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      }
-    }
-  }
-
-  void _toggleOrientation() {
-    setState(() => _manualLandscape = !_manualLandscape);
-    if (_manualLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
-  }
-
-  Future<void> _loadVm() async {
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
-      final vm = await _vmClient.getVm(widget.vmName);
+      final vm = await _client.getVm(widget.vmName);
+      if (!mounted) return;
+      setState(() {
+        _vm = vm;
+        _loading = false;
+      });
+      if (vm.isActive) unawaited(_rfb.connect());
+    } on VmException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e;
+        _loading = false;
+      });
+    }
+  }
+
+  // When the connection ends, find out whether the VM simply went off
+  // (shut down from inside, or from here) - that is "off", not an error.
+  Future<void> _onStatus() async {
+    final s = _rfb.status.value;
+    if (s != RfbStatus.disconnected && s != RfbStatus.failed) return;
+    try {
+      final vm = await _client.getVm(widget.vmName);
       if (mounted) setState(() => _vm = vm);
-    } catch (_) {}
-  }
-
-  void _toggleFullscreen() {
-    setState(() => _isFullscreen = !_isFullscreen);
-    if (_isFullscreen) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape || _manualLandscape;
-      if (!isLandscape) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      }
+    } on VmException {
+      // Keep showing the connection error.
     }
   }
 
-  Future<void> _powerMenu() async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: Icon(Icons.power_settings_new_rounded, color: NivaroColors.primaryLight),
-                title: const Text('Graceful ACPI Shutdown', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Send ACPI power button signal to guest OS'),
-                onTap: () => Navigator.pop(context, 'shutdown'),
-              ),
-              ListTile(
-                leading: Icon(Icons.restart_alt_rounded, color: NivaroColors.warningLight),
-                title: const Text('Reset / Reboot', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Hard reset virtual machine processor'),
-                onTap: () => Navigator.pop(context, 'reset'),
-              ),
-              ListTile(
-                leading: Icon(Icons.stop_circle_rounded, color: NivaroColors.dangerLight),
-                title: Text('Force Power Off', style: TextStyle(color: NivaroColors.dangerLight, fontWeight: FontWeight.w600)),
-                subtitle: const Text('Instantly cut power to VM'),
-                onTap: () => Navigator.pop(context, 'force-off'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (action == null) return;
+  void _snack(String text) => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _start() async {
+    setState(() => _starting = true);
     try {
-      switch (action) {
-        case 'shutdown':
-          await _vmClient.shutdown(widget.vmName);
-          break;
-        case 'force-off':
-          await _vmClient.forceOff(widget.vmName);
-          break;
-        case 'reset':
-          await _vmClient.reset(widget.vmName);
-          break;
+      await _client.start(widget.vmName);
+      final vm = await _client.waitForState(widget.vmName, (s) => s == VmPowerState.running);
+      if (!mounted) return;
+      setState(() => _vm = vm ?? _vm);
+      if (vm?.isRunning ?? false) {
+        await _rfb.connect();
+      } else {
+        _snack("${widget.vmName} didn't start. Check it on the web dashboard.");
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Dispatched $action successfully.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: NivaroColors.danger),
-        );
-      }
+    } on VmException catch (e) {
+      if (mounted) _snack(e.message);
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
   }
 
-  Future<void> _snapshotsMenu() async {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => _SnapshotsSheet(vmName: widget.vmName, vmClient: _vmClient),
+  Future<void> _power(BuildContext sheetContext) async {
+    final vm = _vm;
+    if (vm == null) return;
+    final action = await showModalBottomSheet<_Power>(
+      context: sheetContext,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => _PowerSheet(vm: vm),
     );
+    if (action == null || !mounted || !sheetContext.mounted) return;
+    final name = widget.vmName;
+    switch (action) {
+      case _Power.shutdown:
+        await _do(() => _client.shutdown(name), 'Asked $name to shut down');
+      case _Power.pause:
+        await _do(() => _client.pause(name), 'Paused $name');
+      case _Power.resume:
+        await _do(() => _client.resume(name), 'Resumed $name');
+      case _Power.reset:
+        if (await ConfirmDialog.destructive(sheetContext,
+            title: 'Reset “$name”?',
+            message: 'It restarts at once, without shutting down. Anything not saved in the VM is lost.',
+            confirmLabel: 'Reset',
+            permanent: false)) {
+          await _do(() => _client.reset(name), 'Reset $name');
+        }
+      case _Power.forceStop:
+        if (await ConfirmDialog.destructive(sheetContext,
+            title: 'Force stop “$name”?',
+            message: 'This cuts the power, like pulling the plug. Anything not saved in the VM is lost.',
+            confirmLabel: 'Force stop',
+            permanent: false)) {
+          await _do(() => _client.forceOff(name), 'Stopped $name');
+        }
+    }
+    try {
+      final fresh = await _client.getVm(name);
+      if (mounted) setState(() => _vm = fresh);
+    } on VmException {
+      // The next status change reads it again.
+    }
   }
 
-  Future<void> _isoMenu() async {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => _IsoSheet(vmName: widget.vmName, vmClient: _vmClient, onUpdated: _loadVm),
+  Future<void> _do(Future<void> Function() action, String done) async {
+    try {
+      await action();
+      if (mounted) _snack(done);
+    } on VmException catch (e) {
+      if (mounted) _snack(e.message);
+    }
+  }
+
+  Future<void> _snapshots(BuildContext sheetContext) => showModalBottomSheet<void>(
+        context: sheetContext,
+        showDragHandle: true,
+        useSafeArea: true,
+        isScrollControlled: true,
+        builder: (_) => SnapshotsSheet(client: _client, vmName: widget.vmName),
+      );
+
+  Future<void> _disc(BuildContext sheetContext) async {
+    final vm = _vm;
+    if (vm == null) return;
+    await showModalBottomSheet<void>(
+      context: sheetContext,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (_) => DiscSheet(client: _client, vm: vm),
     );
+    try {
+      final fresh = await _client.getVm(widget.vmName);
+      if (mounted) setState(() => _vm = fresh);
+    } on VmException {
+      // Shown next time.
+    }
+  }
+
+  Widget? _placeholder() {
+    if (_loading && _vm == null) {
+      return const ConsolePlaceholder(icon: Icons.desktop_windows_outlined, title: '', message: '', loading: true);
+    }
+    final error = _loadError;
+    if (error != null && _vm == null) {
+      return ConsolePlaceholder(
+        icon: error.kind == VmErrorKind.offline ? Icons.cloud_off_outlined : Icons.error_outline,
+        title: error.kind == VmErrorKind.offline ? "Can't reach the server" : "Couldn't open ${widget.vmName}",
+        message: error.message,
+        actionLabel: 'Retry',
+        onAction: _load,
+      );
+    }
+    final vm = _vm;
+    if (vm != null && !vm.isActive && _rfb.status.value != RfbStatus.connecting) {
+      final crashed = vm.powerState == VmPowerState.crashed;
+      return ConsolePlaceholder(
+        icon: Icons.power_settings_new_outlined,
+        title: crashed ? '${vm.name} crashed' : '${vm.name} is off',
+        message: 'Start it to use its screen here.',
+        actionLabel: 'Start',
+        busy: _starting,
+        onAction: _start,
+      );
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDeviceLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    final isLandscape = isDeviceLandscape || _manualLandscape;
-    final hideAppBar = _isFullscreen || isLandscape;
-
-    _syncSystemUI(isLandscape);
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: hideAppBar
+    final vm = _vm;
+    final active = vm?.isActive ?? false;
+    return RemoteConsoleFrame(
+      client: _rfb,
+      title: widget.vmName,
+      clipboardTarget: widget.vmName,
+      history: widget.history,
+      clipboardHint: vm == null
           ? null
-          : AppBar(
-              backgroundColor: NivaroColors.surface,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              title: Row(
-                children: [
-                  PulsingStatusDot(color: NivaroColors.success, size: 7),
-                  const SizedBox(width: 10),
+          : vm.clipboardChannel
+              ? 'Copy and paste needs NivaroOS Guest Tools installed in the VM. If nothing arrives, use Type it.'
+              : 'Clipboard sharing turns on the next time this VM starts. Until then, use Type it.',
+      placeholder: _placeholder(),
+      placeholderStatus: vm == null
+          ? null
+          : vm.powerState == VmPowerState.crashed
+              ? 'Crashed'
+              : vm.isActive
+                  ? null
+                  : 'Off',
+      menuItems: [
+        if (active) ConsoleMenuItem(icon: Icons.power_settings_new_outlined, label: 'Power', onPressed: _power),
+        if (vm != null) ConsoleMenuItem(icon: Icons.history_outlined, label: 'Snapshots', onPressed: _snapshots),
+        if (vm != null) ConsoleMenuItem(icon: Icons.album_outlined, label: 'Disc drive', onPressed: _disc),
+      ],
+    );
+  }
+}
+
+enum _Power { shutdown, pause, resume, reset, forceStop }
+
+class _PowerSheet extends StatelessWidget {
+  const _PowerSheet({required this.vm});
+
+  final Vm vm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final paused = vm.powerState == VmPowerState.paused;
+    void pick(_Power p) => Navigator.of(context).pop(p);
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: Space.lg),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(Space.gutter(context), 0, Space.gutter(context), Space.sm),
+          child: Semantics(header: true, child: Text('Power', style: theme.textTheme.titleLarge)),
+        ),
+        if (!paused) ...[
+          ListTile(
+            leading: const Icon(Icons.power_settings_new_outlined),
+            title: const Text('Shut down'),
+            subtitle: const Text('Asks the VM to shut down, like pressing its power button'),
+            onTap: () => pick(_Power.shutdown),
+          ),
+          ListTile(
+            leading: const Icon(Icons.pause_circle_outline),
+            title: const Text('Pause'),
+            subtitle: const Text('Freezes it where it is, until you resume it'),
+            onTap: () => pick(_Power.pause),
+          ),
+          ListTile(
+            leading: const Icon(Icons.restart_alt_outlined),
+            title: const Text('Reset'),
+            subtitle: const Text('Restarts it at once, without shutting down'),
+            onTap: () => pick(_Power.reset),
+          ),
+        ] else
+          ListTile(
+            leading: const Icon(Icons.play_arrow_outlined),
+            title: const Text('Resume'),
+            onTap: () => pick(_Power.resume),
+          ),
+        ListTile(
+          leading: const Icon(Icons.power_off_outlined),
+          title: const Text('Force stop'),
+          subtitle: const Text('Cuts the power. Unsaved work in the VM is lost'),
+          onTap: () => pick(_Power.forceStop),
+        ),
+      ],
+    );
+  }
+}
+
+/// A few skeleton rows for a sheet that is loading.
+class _SheetSkeleton extends StatelessWidget {
+  const _SheetSkeleton();
+
+  static const rows = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final gutter = Space.gutter(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    return Semantics(
+      label: 'Loading',
+      child: ExcludeSemantics(
+        child: SkeletonPulse(
+          child: Column(children: [
+            for (var i = 0; i < rows; i++)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.md),
+                child: Row(children: [
+                  const SkeletonBox(width: 24, height: 24, radius: 12),
+                  const SizedBox(width: Space.lg),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.vmName,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          _vm != null ? '${_vm!.vcpus} vCPU · ${(_vm!.memoryMib / 1024).toStringAsFixed(1)} GB' : 'Virtual Machine Console',
-                          style: TextStyle(color: NivaroColors.textMuted, fontSize: 11),
-                        ),
-                      ],
-                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      FractionallySizedBox(widthFactor: [0.6, 0.45, 0.7][i % 3], child: SkeletonBox(height: scaler.scale(16))),
+                      const SizedBox(height: Space.sm),
+                      FractionallySizedBox(widthFactor: 0.35, child: SkeletonBox(height: scaler.scale(12))),
+                    ]),
+                  ),
+                ]),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// A short message with an optional Retry, inside a sheet.
+class _SheetMessage extends StatelessWidget {
+  const _SheetMessage({required this.text, this.onRetry, this.error = false});
+
+  final String text;
+  final VoidCallback? onRetry;
+  final bool error;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter - Space.md, Space.sm),
+      child: Row(children: [
+        Expanded(
+          child: Text(text,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: error ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant)),
+        ),
+        if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('Retry')),
+      ]),
+    );
+  }
+}
+
+/// A VM's snapshots: take one, go back to one, delete one.
+class SnapshotsSheet extends StatefulWidget {
+  const SnapshotsSheet({super.key, required this.client, required this.vmName});
+
+  final VmClient client;
+  final String vmName;
+
+  @override
+  State<SnapshotsSheet> createState() => _SnapshotsSheetState();
+}
+
+class _SnapshotsSheetState extends State<SnapshotsSheet> {
+  List<VmSnapshot>? _snapshots;
+  VmException? _error;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = null);
+    try {
+      final list = await widget.client.listSnapshots(widget.vmName);
+      list.sort((a, b) => (b.creationTime ?? DateTime(0)).compareTo(a.creationTime ?? DateTime(0)));
+      if (mounted) setState(() => _snapshots = list);
+    } on VmException catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  void _snack(String text) => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _run(Future<void> Function() action, String done) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (mounted) _snack(done);
+      await _load();
+    } on VmException catch (e) {
+      if (mounted) _snack(e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _take() async {
+    final name = await showDialog<String>(context: context, builder: (_) => const _SnapshotNameDialog());
+    if (name == null || !mounted) return;
+    await _run(() => widget.client.createSnapshot(widget.vmName, snapName: name), 'Snapshot taken');
+  }
+
+  Future<void> _revert(VmSnapshot s) async {
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: 'Go back to “${s.name}”?',
+      message: '${widget.vmName} returns to how it was when this snapshot was taken. Changes made since then are lost.',
+      confirmLabel: 'Go back',
+    );
+    if (ok && mounted) await _run(() => widget.client.revertSnapshot(widget.vmName, s.name), 'Went back to ${s.name}');
+  }
+
+  Future<void> _delete(VmSnapshot s) async {
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: 'Delete snapshot “${s.name}”?',
+      message: "The VM itself doesn't change; you just can't go back to this point any more.",
+      confirmLabel: 'Delete',
+    );
+    if (ok && mounted) await _run(() => widget.client.deleteSnapshot(widget.vmName, s.name), 'Deleted ${s.name}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final list = _snapshots;
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: Space.lg),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.sm),
+          child: Row(children: [
+            Expanded(child: Semantics(header: true, child: Text('Snapshots', style: theme.textTheme.titleLarge))),
+            const SizedBox(width: Space.md),
+            FilledButton.tonalIcon(
+              onPressed: _busy || list == null ? null : _take,
+              icon: const Icon(Icons.add),
+              label: const Text('Take snapshot'),
+            ),
+          ]),
+        ),
+        if (_busy) const LinearProgressIndicator(),
+        if (_error != null)
+          _SheetMessage(text: "Couldn't load snapshots. ${_error!.message}", onRetry: _load, error: true)
+        else if (list == null)
+          const _SheetSkeleton()
+        else if (list.isEmpty)
+          const _SheetMessage(text: 'No snapshots yet. Take one before a risky change, so you can go back to it.')
+        else
+          for (final s in list)
+            ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text([
+                s.creationTime == null ? 'Date unknown' : formatExact(s.creationTime!),
+                s.includesMemory ? 'with memory' : 'disks only',
+                if (s.current) 'current',
+              ].join(' · ')),
+              trailing: MenuAnchor(
+                builder: (context, controller, _) => IconButton(
+                  tooltip: 'Actions for ${s.name}',
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: _busy ? null : () => controller.isOpen ? controller.close() : controller.open(),
+                ),
+                menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.restore_outlined),
+                    onPressed: () => _revert(s),
+                    child: const Text('Go back to this'),
+                  ),
+                  MenuItemButton(
+                    leadingIcon: Icon(Icons.delete_outline, color: theme.colorScheme.error),
+                    onPressed: () => _delete(s),
+                    child: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
                   ),
                 ],
               ),
-              actions: [
-                RoundIconButton(
-                  icon: Icons.stay_current_landscape_rounded,
-                  tooltip: 'Switch to Landscape',
-                  onPressed: _toggleOrientation,
-                ),
-                const SizedBox(width: 6),
-                RoundIconButton(
-                  icon: Icons.camera_alt_rounded,
-                  tooltip: 'Snapshots',
-                  onPressed: _snapshotsMenu,
-                ),
-                const SizedBox(width: 6),
-                RoundIconButton(
-                  icon: Icons.album_rounded,
-                  tooltip: 'ISO / CD-ROM',
-                  onPressed: _isoMenu,
-                ),
-                const SizedBox(width: 6),
-                RoundIconButton(
-                  icon: Icons.power_settings_new_rounded,
-                  tooltip: 'Power Menu',
-                  color: NivaroColors.danger.withValues(alpha: 0.15),
-                  iconColor: NivaroColors.dangerLight,
-                  onPressed: _powerMenu,
-                ),
-                const SizedBox(width: 12),
-              ],
             ),
-      body: SafeArea(
-        top: !hideAppBar,
-        bottom: false,
-        left: false,
-        right: false,
-        child: RfbView(
-          client: _client,
-          vmClient: _vmClient,
-          vmName: widget.vmName,
-          onPower: _powerMenu,
-          onSnapshots: _snapshotsMenu,
-          onIso: _isoMenu,
-          isFullscreen: _isFullscreen,
-          onToggleFullscreen: _toggleFullscreen,
-          isLandscape: isLandscape,
-          onToggleOrientation: _toggleOrientation,
-        ),
-      ),
+      ],
     );
   }
 }
 
-class _SnapshotsSheet extends StatefulWidget {
-  final String vmName;
-  final VmClient vmClient;
-  const _SnapshotsSheet({required this.vmName, required this.vmClient});
+class _SnapshotNameDialog extends StatefulWidget {
+  const _SnapshotNameDialog();
 
   @override
-  State<_SnapshotsSheet> createState() => _SnapshotsSheetState();
+  State<_SnapshotNameDialog> createState() => _SnapshotNameDialogState();
 }
 
-class _SnapshotsSheetState extends State<_SnapshotsSheet> {
-  List<VmSnapshot> _snapshots = [];
-  bool _loading = true;
+class _SnapshotNameDialogState extends State<_SnapshotNameDialog> {
+  final _name = TextEditingController();
   String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _name.text.trim();
+    if (name.contains('/')) {
+      setState(() => _error = 'A name can’t contain “/”');
+      return;
+    }
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Take a snapshot'),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+        decoration: InputDecoration(
+          labelText: 'Name',
+          helperText: 'Leave it empty to name it by date and time',
+          errorText: _error,
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(onPressed: _submit, child: const Text('Take snapshot')),
+      ],
+    );
+  }
+}
+
+/// The VM's virtual disc drive: what's in it, eject, and insert an ISO.
+class DiscSheet extends StatefulWidget {
+  const DiscSheet({super.key, required this.client, required this.vm});
+
+  final VmClient client;
+  final Vm vm;
+
+  @override
+  State<DiscSheet> createState() => _DiscSheetState();
+}
+
+class _DiscSheetState extends State<DiscSheet> {
+  List<VmIso>? _isos;
+  VmException? _error;
+  late String? _inserted = widget.vm.isoPath;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -296,365 +571,79 @@ class _SnapshotsSheetState extends State<_SnapshotsSheet> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() => _error = null);
     try {
-      final list = await widget.vmClient.listSnapshots(widget.vmName);
+      final isos = await widget.client.listIsos();
+      if (mounted) setState(() => _isos = isos);
+    } on VmException catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action, String? inserted, String done) async {
+    setState(() => _busy = true);
+    try {
+      await action();
       if (!mounted) return;
-      setState(() {
-        _snapshots = list;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      setState(() => _inserted = inserted);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(done)));
+    } on VmException catch (e) {
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _createSnapshot() async {
-    final ctrl = TextEditingController(text: 'snap-${DateTime.now().millisecondsSinceEpoch ~/ 1000}');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: const Text('Create VM Snapshot'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(labelText: 'Snapshot Name'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-    if (name == null || name.isEmpty) return;
-    try {
-      await widget.vmClient.createSnapshot(widget.vmName, snapName: name);
-      _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  Future<void> _restoreSnapshot(String name) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: Text('Revert to $name?'),
-        content: const Text('Current VM disk state will be replaced with this snapshot state.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.warning),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Revert State'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await widget.vmClient.revertSnapshot(widget.vmName, name);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reverted to snapshot $name')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  Future<void> _deleteSnapshot(String name) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: NivaroColors.surfaceContainerHighest,
-        title: Text('Delete $name?'),
-        content: const Text('This snapshot point will be deleted.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NivaroColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await widget.vmClient.deleteSnapshot(widget.vmName, name);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Deleted snapshot $name')));
-      }
-      _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
+  static String _size(int mib) => mib >= 1024 ? '${(mib / 1024).toStringAsFixed(1)} GB' : '$mib MB';
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text('VM Snapshots', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.textPrimary)),
-                ),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: NivaroColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  icon: const Icon(Icons.add_a_photo_rounded, size: 16),
-                  label: const Text('Create'),
-                  onPressed: _createSnapshot,
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (_loading)
-              const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
-            else if (_error != null)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(_error!, style: TextStyle(color: NivaroColors.dangerLight)),
-                ),
-              )
-            else if (_snapshots.isEmpty)
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text('No snapshots created yet.', style: TextStyle(color: NivaroColors.textMuted)),
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _snapshots.length,
-                  separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
-                  itemBuilder: (context, index) {
-                    final snap = _snapshots[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(color: NivaroColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(Icons.camera_alt_rounded, color: NivaroColors.primaryLight, size: 20),
-                      ),
-                      title: Text(snap.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(snap.state, style: TextStyle(color: NivaroColors.textMuted, fontSize: 12)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.restore_rounded, color: NivaroColors.warningLight),
-                            tooltip: 'Revert to snapshot',
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _restoreSnapshot(snap.name);
-                            },
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.delete_outline_rounded, color: NivaroColors.dangerLight),
-                            tooltip: 'Delete snapshot',
-                            onPressed: () => _deleteSnapshot(snap.name),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final name = widget.vm.name;
+    final inserted = _inserted;
+    final isos = _isos;
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: Space.lg),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.sm),
+          child: Semantics(header: true, child: Text('Disc drive', style: theme.textTheme.titleLarge)),
         ),
-      ),
-    );
-  }
-}
-
-class _IsoSheet extends StatefulWidget {
-  final String vmName;
-  final VmClient vmClient;
-  final VoidCallback onUpdated;
-  const _IsoSheet({required this.vmName, required this.vmClient, required this.onUpdated});
-
-  @override
-  State<_IsoSheet> createState() => _IsoSheetState();
-}
-
-class _IsoSheetState extends State<_IsoSheet> {
-  List<VmIso> _isos = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final list = await widget.vmClient.listIsos();
-      if (!mounted) return;
-      setState(() {
-        _isos = list;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _insertIso(String path) async {
-    try {
-      await widget.vmClient.insertCDROM(widget.vmName, path);
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inserted ISO into CD-ROM drive')));
-      }
-      widget.onUpdated();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  Future<void> _ejectIso() async {
-    try {
-      await widget.vmClient.ejectCDROM(widget.vmName);
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ejected CD-ROM')));
-      }
-      widget.onUpdated();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  Future<void> _insertVirtioWin() async {
-    try {
-      await widget.vmClient.insertVirtioWin(widget.vmName);
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inserted NivaroOS Guest Tools ISO')));
-      }
-      widget.onUpdated();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: NivaroColors.borderHighlight, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Text('Virtual CD-ROM / ISO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: NivaroColors.textPrimary)),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.eject_rounded, size: 18),
-                    label: const Text('Eject CD-ROM'),
-                    onPressed: _ejectIso,
-                  ),
+        if (_busy) const LinearProgressIndicator(),
+        ListTile(
+          leading: const Icon(Icons.album_outlined),
+          title: Text(inserted == null ? 'Empty' : inserted.split('/').last, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: Text(inserted == null ? 'No disc inserted' : 'In the drive now'),
+          trailing: inserted == null
+              ? null
+              : TextButton(
+                  onPressed: _busy ? null : () => _run(() => widget.client.ejectCDROM(name), null, 'Ejected the disc'),
+                  child: const Text('Eject'),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: NivaroColors.primary),
-                    icon: const Icon(Icons.album_rounded, size: 18),
-                    label: const Text('Guest Tools'),
-                    onPressed: _insertVirtioWin,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text('Available Host ISOs', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: NivaroColors.textSecondary)),
-            const SizedBox(height: 8),
-            if (_loading)
-              const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
-            else if (_error != null)
-              Text(_error!, style: TextStyle(color: NivaroColors.dangerLight))
-            else if (_isos.isEmpty)
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('No ISO images found in /DATA/ISOs', style: TextStyle(color: NivaroColors.textMuted)),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _isos.length,
-                  separatorBuilder: (_, _) => Divider(height: 1, color: NivaroColors.borderSubtle),
-                  itemBuilder: (context, index) {
-                    final iso = _isos[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.disc_full_rounded, color: NivaroColors.primaryLight),
-                      title: Text(iso.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                      trailing: TextButton(
-                        onPressed: () => _insertIso(iso.path),
-                        child: const Text('Mount', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
         ),
-      ),
+        const SectionHeader(title: 'Insert a disc'),
+        if (_error != null)
+          _SheetMessage(text: "Couldn't load the ISO list. ${_error!.message}", onRetry: _load, error: true)
+        else if (isos == null)
+          const _SheetSkeleton()
+        else if (isos.isEmpty)
+          const _SheetMessage(text: 'No ISO files on the server yet. Upload them in the web dashboard, to ${VmIso.folder}.')
+        else
+          for (final iso in isos)
+            ListTile(
+              enabled: !_busy,
+              leading: const Icon(Icons.album_outlined),
+              title: Text(iso.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: iso.sizeMib > 0 ? Text(_size(iso.sizeMib)) : null,
+              selected: iso.path == inserted,
+              trailing: iso.path == inserted ? const Icon(Icons.check, semanticLabel: 'In the drive') : null,
+              onTap: iso.path == inserted
+                  ? null
+                  : () => _run(() => widget.client.insertCDROM(name, iso.path), iso.path, 'Inserted ${iso.name}'),
+            ),
+      ],
     );
   }
 }

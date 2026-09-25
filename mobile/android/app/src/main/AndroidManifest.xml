@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -13,30 +14,61 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Only so the heartbeat job (JobScheduler, persisted) survives a
+         reboot. Nothing in the app starts on boot any more. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Sideload-only single build (plan section 7.1), so the permissions
+         Play restricts (REQUEST_INSTALL_PACKAGES for self-update,
+         MANAGE_EXTERNAL_STORAGE for sharing the phone's storage) stay.
+         Cleartext stays allowed app-wide: LAN servers are usually plain
+         http by IP (plan WP0-6); https servers are used as https. -->
+    <!-- allowBackup off: the session lives in Keystore-backed secure
+         storage, which a backup restored to another phone can't decrypt. -->
     <application
         android:label="NivaroOS"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
-        android:icon="@mipmap/ic_launcher">
-        <!-- The actual background sync service (headless Dart isolate) and
-             its boot-restart receiver are registered by the
-             flutter_background_service plugin's own manifest merge - see
-             lib/services/background_service.dart / background_sync_isolate.dart.
-             That plugin manifest deliberately ships its <service> with no
-             foregroundServiceType (it's configurable per app) - Android 14+
-             throws MissingForegroundServiceTypeException and kills the whole
-             app the instant startForeground() is called with a type that
-             isn't declared here, so this override (merged onto the same
-             component by matching android:name) is required, not optional.
-             Must match AndroidConfiguration's foregroundServiceTypes in
-             background_service.dart ([AndroidForegroundType.dataSync]). -->
+        android:icon="@mipmap/ic_launcher"
+        tools:replace="android:allowBackup">
+        <!-- Builds up to 1.2.x ran an always-on dataSync service through
+             flutter_background_service. Android 15 limits dataSync to 6 h a
+             day and forbids starting it at boot, and that plugin exports its
+             service and receivers, restarts itself from an alarm and starts
+             from BOOT_COMPLETED. Its components are removed here (the Dart
+             package stays in pubspec for now but is not used), replaced by
+             the app's own, all private to the app (plan M-18, M-19, M-33). -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
+            tools:node="remove" />
+        <receiver
+            android:name="id.flutter.flutter_background_service.WatchdogReceiver"
+            tools:node="remove" />
+        <receiver
+            android:name="id.flutter.flutter_background_service.BootReceiver"
+            tools:node="remove" />
+
+        <!-- "Share this phone's storage": a user-started session with an end
+             time, handling Android 15's dataSync timeout. -->
+        <service
+            android:name=".CompanionShareService"
             android:foregroundServiceType="dataSync"
-            android:exported="true" />
+            android:exported="false" />
+
+        <!-- The 15-minute heartbeat. JobScheduler binds it from the system
+             process; BIND_JOB_SERVICE is a system-only permission, so no app
+             can reach it. -->
+        <service
+            android:name=".HeartbeatJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+
+        <!-- Result of a self-update install session. -->
+        <receiver
+            android:name=".AppUpdateInstaller$InstallStatusReceiver"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

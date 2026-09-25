@@ -1,1162 +1,1213 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../theme.dart';
-import '../services/api_client.dart';
-import '../services/storage_service.dart';
+
 import '../models/container_entry.dart';
-import '../widgets/common.dart';
+import '../services/api_client.dart';
+import '../ui/ui.dart';
 import '../utils/app_icons.dart';
 import 'app_store_screen.dart';
 import 'container_logs_screen.dart';
+import 'custom_install_screen.dart';
 import 'terminal_screen.dart';
-import 'login_screen.dart';
-import 'host_desktop_screen.dart';
-import '../widgets/tailscale_modal.dart';
 
+// ---------------------------------------------------------------------------
+// Data: what the Apps tab loads and the calls it makes
+// ---------------------------------------------------------------------------
+
+/// The installed-apps API in one place, so the screens stay about layout
+/// and the routes can be tested against a fake server.
+abstract final class AppsApi {
+  /// Everything the Apps tab shows. The app grid is required; containers,
+  /// links, overrides and the compose update list only add detail, so
+  /// their failures are ignored.
+  static Future<List<InstalledApp>> load() async {
+    final gridRes = await ApiClient.instance.get('/v2/app_management/web/appgrid');
+    final results = await Future.wait([
+      _optional(() => ApiClient.instance.get('/v1/container/all')),
+      _optional(() => ApiClient.instance.get('/v1/users/current/custom/link')),
+      _optional(() => ApiClient.instance.get('/v1/users/current/custom/legacy_app_overrides')),
+      _optional(() => ApiClient.instance.get('/v2/app_management/apps/upgradable')),
+    ]);
+    List<dynamic> list(Object? v) => v is List ? v : const [];
+    final links = _decoded(results[1]?['data']);
+    final overrides = _decoded(results[2]?['data']);
+    final upgradable = <String>{
+      for (final u in list(results[3]?['data']).whereType<Map>())
+        if (u['store_app_id'] != null) u['store_app_id'].toString(),
+    };
+    final apps = buildInstalledApps(
+      grid: list(gridRes['data']),
+      containers: list(results[0]?['data']),
+      links: list(links),
+      overrides: overrides is Map<String, dynamic> ? overrides : const {},
+    );
+    if (upgradable.isEmpty) return apps;
+    return [
+      for (final a in apps)
+        a.kind == AppKind.compose && (upgradable.contains(a.storeAppId) || upgradable.contains(a.id)) ? a.copyWith(hasUpdate: true) : a,
+    ];
+  }
+
+  static Future<Map<String, dynamic>?> _optional(Future<Map<String, dynamic>> Function() call) async {
+    try {
+      return await call();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // The dashboard stores its custom settings as JSON text inside `data`.
+  static Object? _decoded(Object? data) {
+    if (data is String && data.isNotEmpty) {
+      try {
+        return jsonDecode(data);
+      } catch (_) {
+        return null;
+      }
+    }
+    return data;
+  }
+
+  /// Starts, stops or restarts [app] (plan M-08: compose apps use
+  /// `PUT …/compose/{id}/status` with a bare string body), then waits until
+  /// the server reports the new state, or [timeout]. Returns the state it
+  /// saw last.
+  static Future<String> setStatus(
+    InstalledApp app,
+    AppAction action, {
+    Duration timeout = const Duration(seconds: 30),
+    Duration interval = const Duration(seconds: 1),
+  }) async {
+    final req = app.statusRequest(action);
+    final res = await ApiClient.instance.put(req.path, body: req.body);
+    final want = action == AppAction.stop ? AppRunState.stopped : AppRunState.running;
+    // The v1 container route is synchronous and answers with the state.
+    final immediate = res['data'];
+    if (app.kind != AppKind.compose && immediate is String && immediate.isNotEmpty) return immediate;
+    // Compose apps change asynchronously: poll until they get there.
+    final deadline = clock.now().add(timeout);
+    var last = app.status;
+    while (clock.now().isBefore(deadline)) {
+      await Future<void>.delayed(interval);
+      final s = await status(app);
+      if (s != null) {
+        last = s;
+        if (app.copyWith(status: s).runState == want) break;
+      }
+    }
+    return last;
+  }
+
+  /// The app's current raw state, or null when it can't be read.
+  static Future<String?> status(InstalledApp app) async {
+    try {
+      if (app.kind == AppKind.compose) {
+        final res = await ApiClient.instance.get('/v2/app_management/compose/${Uri.encodeComponent(app.id)}');
+        final data = res['data'];
+        return data is Map ? data['status']?.toString() : null;
+      }
+      final res = await ApiClient.instance.get('/v2/app_management/web/appgrid');
+      final data = res['data'];
+      if (data is! List) return null;
+      for (final item in data.whereType<Map>()) {
+        if (item['name']?.toString() == app.id) return item['status']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// A compose app's store facts: its notes ("tips": default passwords,
+  /// first steps) and its store category ("Media"). Both null when the
+  /// store doesn't say.
+  static Future<({String? tips, String? category})> storeInfo(InstalledApp app) async {
+    if (app.kind != AppKind.compose) return (tips: null, category: null);
+    try {
+      final res = await ApiClient.instance.get('/v2/app_management/compose/${Uri.encodeComponent(app.id)}');
+      final info = (res['data'] as Map?)?['store_info'];
+      if (info is! Map) return (tips: null, category: null);
+      final tips = info['tips'];
+      final text = tips is Map ? (pickLocale(tips['custom']) ?? pickLocale(tips['before_install'])) : null;
+      final category = info['category']?.toString().trim();
+      return (
+        tips: text == null || text.trim().isEmpty ? null : text.trim(),
+        category: category == null || category.isEmpty ? null : category,
+      );
+    } catch (_) {
+      return (tips: null, category: null);
+    }
+  }
+
+  /// The container a compose app's shell should open in: its main
+  /// service's container, else the first one.
+  static Future<String?> mainContainer(InstalledApp app) async {
+    if (app.kind != AppKind.compose) return app.containerId ?? app.id;
+    final res = await ApiClient.instance.get('/v2/app_management/compose/${Uri.encodeComponent(app.id)}/containers');
+    final data = res['data'];
+    if (data is! Map) return null;
+    final main = data['main']?.toString();
+    final containers = data['containers'];
+    if (containers is! Map || containers.isEmpty) return null;
+    for (final e in containers.entries) {
+      final c = e.value;
+      if (c is Map && main != null && (c['Service'] == main || c['service'] == main)) return (c['ID'] ?? c['Name'] ?? e.key).toString();
+    }
+    final first = containers.entries.first;
+    final c = first.value;
+    return c is Map ? (c['ID'] ?? c['Name'] ?? first.key).toString() : first.key.toString();
+  }
+
+  /// Starts updating [app]: a compose app to the store's version
+  /// (`PATCH /compose/{id}`), a container by pulling its image and
+  /// recreating it (`POST /v1/container/{id}/update`).
+  static Future<void> startUpdate(InstalledApp app) async {
+    if (app.kind == AppKind.compose) {
+      await ApiClient.instance.patch('/v2/app_management/compose/${Uri.encodeComponent(app.id)}');
+    } else {
+      await ApiClient.instance.post('/v1/container/${Uri.encodeComponent(app.id)}/update');
+    }
+  }
+
+  /// A container update's job state: "running", "done" or "failed" (with
+  /// its error), "none" when the server has no job for it (404), or null
+  /// when the check itself failed and is worth repeating.
+  static Future<({String state, String? error})?> updateStatus(InstalledApp app) async {
+    try {
+      final res = await ApiClient.instance.get('/v1/container/${Uri.encodeComponent(app.id)}/update/status');
+      final data = res['data'];
+      if (data is! Map) return (state: 'none', error: null);
+      return (state: data['state']?.toString() ?? 'running', error: data['error']?.toString());
+    } on ApiException catch (e) {
+      return e.statusCode == 404 ? (state: 'none', error: null) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Removes [app], and its data folder with [deleteData].
+  static Future<void> uninstall(InstalledApp app, {required bool deleteData}) async {
+    if (app.kind == AppKind.compose) {
+      await ApiClient.instance.delete('/v2/app_management/compose/${Uri.encodeComponent(app.id)}', query: {'delete_config_folder': '$deleteData'});
+    } else {
+      await ApiClient.instance.deleteWithBody('/v1/container/${Uri.encodeComponent(app.id)}', {'delete_config_folder': deleteData});
+    }
+  }
+}
+
+/// A short plain-words label for [app]'s state, for chips and TalkBack.
+String appStateLabel(InstalledApp app) => switch (app.runState) {
+      AppRunState.running => app.isLink ? 'Link' : 'Running',
+      AppRunState.stopped => 'Stopped',
+      AppRunState.starting => 'Starting',
+      AppRunState.stopping => 'Stopping',
+      AppRunState.restarting => 'Restarting',
+      AppRunState.paused => 'Paused',
+      AppRunState.unknown => app.status.isEmpty ? 'Unknown' : '${app.status[0].toUpperCase()}${app.status.substring(1)}',
+    };
+
+Status _stateStatus(AppRunState s) => switch (s) {
+      AppRunState.running => Status.success,
+      AppRunState.stopped => Status.neutral,
+      AppRunState.paused || AppRunState.unknown => Status.warning,
+      _ => Status.info,
+    };
+
+IconData _stateIcon(AppRunState s) => switch (s) {
+      AppRunState.running => Icons.check_circle_outline,
+      AppRunState.stopped => Icons.stop_circle_outlined,
+      AppRunState.paused => Icons.pause_circle_outline,
+      AppRunState.unknown => Icons.help_outline,
+      _ => Icons.hourglass_empty_outlined,
+    };
+
+/// The state chip for an app, or for an action in progress on it.
+class AppStateChip extends StatelessWidget {
+  const AppStateChip({super.key, required this.app, this.pending});
+
+  final InstalledApp app;
+
+  /// The action running right now, which the chip shows instead.
+  final AppAction? pending;
+
+  @override
+  Widget build(BuildContext context) {
+    if (app.isLink) return const StatusChip(label: 'Link', status: Status.neutral, icon: Icons.link_outlined);
+    final p = pending;
+    if (p != null) {
+      final label = switch (p) { AppAction.start => 'Starting', AppAction.stop => 'Stopping', AppAction.restart => 'Restarting' };
+      return StatusChip(label: label, status: Status.info, icon: Icons.hourglass_empty_outlined);
+    }
+    final s = app.runState;
+    return StatusChip(label: appStateLabel(app), status: _stateStatus(s), icon: _stateIcon(s));
+  }
+}
+
+/// Opens [url] in a Custom Tab; says so when it can't.
+Future<void> openAppUrl(BuildContext context, Uri url) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  var ok = false;
+  try {
+    ok = await launchUrl(url, mode: LaunchMode.inAppBrowserView);
+    if (!ok) ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!ok) messenger?.showSnackBar(SnackBar(content: Text("Couldn't open $url")));
+}
+
+/// Opens [app]'s web interface, after a word of warning when the address
+/// only works on the server's own network (plan M-13).
+Future<void> openApp(BuildContext context, InstalledApp app) async {
+  final address = app.address(ApiClient.instance.baseUrl);
+  if (address == null) return;
+  if (address.lanOnly) {
+    final go = await ConfirmDialog.confirm(
+      context,
+      title: 'Only on your network',
+      message: '${app.title} is on port ${address.url.port} of the server. You reach the server over the internet, '
+          'where that port is usually closed. It opens on your home network or over Tailscale.',
+      confirmLabel: 'Open anyway',
+    );
+    if (!go || !context.mounted) return;
+  }
+  await openAppUrl(context, address.url);
+}
+
+// ---------------------------------------------------------------------------
+// The Apps tab
+// ---------------------------------------------------------------------------
+
+enum _Filter { all, running, stopped, updates }
+
+/// The Apps tab: installed apps with their state, search and a state
+/// filter; tap for the app's page, long-press for quick actions. The app
+/// store and custom install are in the top bar.
 class AppsScreen extends StatefulWidget {
-  // Tapping the Files/VMs tiles below switches HomeShell's own tab instead
-  // of pushing a second copy of that screen - null when this screen is
-  // opened standalone (e.g. a future deep link), in which case those tiles
-  // fall back to the same "not available here" message the Settings tile
-  // used to always show before this callback wiring existed.
+  // The Files/VMs/Settings callbacks date from when this tab also listed
+  // the built-in "system apps"; those now live in the navigation and More,
+  // so the callbacks are unused but kept for HomeShell.
   final VoidCallback? onOpenFiles;
   final VoidCallback? onOpenVms;
   final VoidCallback? onOpenSettings;
 
-  const AppsScreen(
-      {super.key, this.onOpenFiles, this.onOpenVms, this.onOpenSettings});
+  const AppsScreen({super.key, this.onOpenFiles, this.onOpenVms, this.onOpenSettings});
+
+  /// Forgets the list kept between visits (tests, sign-out).
+  @visibleForTesting
+  static void clearCache() => _AppsScreenState._clearCache();
 
   @override
   State<AppsScreen> createState() => _AppsScreenState();
 }
 
 class _AppsScreenState extends State<AppsScreen> {
-  List<ComposeApp> _apps = [];
-  List<RawContainer> _others = [];
-  bool _loading = true;
-  String? _error;
-  bool _isGridView = true;
-  String _filter = 'all';
-  final Set<String> _busy = {};
-  final _searchController = TextEditingController();
+  // The last list, kept across visits so the tab opens instantly and can
+  // stay useful offline.
+  static List<InstalledApp>? _cache;
+  static DateTime? _cachedAt;
+  static String? _cacheServer;
 
-  static List<ComposeApp> get _builtInApps => [
-        ComposeApp(
-          id: 'appstore',
-          title: 'App Store',
-          icon: 'assets/app/appstore.png',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'files',
-          title: 'Files',
-          icon: 'assets/app/files.svg',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'settings',
-          title: 'Settings',
-          icon: 'assets/app/settings.png',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'terminal',
-          title: 'Terminal',
-          icon: 'assets/app/terminal.png',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'vms',
-          title: 'VMs',
-          icon: 'assets/app/vm-manager.png',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'host_desktop',
-          title: 'Host Desktop',
-          icon: 'assets/app/host_desktop.svg',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-        ComposeApp(
-          id: 'tailscale',
-          title: 'Tailscale',
-          icon: 'assets/app/tailscale.svg',
-          status: 'running',
-          updateAvailable: false,
-          isUncontrolled: false,
-          appType: 'system',
-        ),
-      ];
+  static void _clearCache() {
+    _cache = null;
+    _cachedAt = null;
+    _cacheServer = null;
+  }
+
+  List<InstalledApp>? _apps;
+  DateTime? _loadedAt;
+  Object? _error;
+  bool _loading = false;
+  _Filter _filter = _Filter.all;
+  final Map<String, AppAction> _pending = {};
+  final _search = TextEditingController();
+  bool _updatingAll = false;
 
   @override
   void initState() {
     super.initState();
+    if (_cacheServer == ApiClient.instance.baseUrl) {
+      _apps = _cache;
+      _loadedAt = _cachedAt;
+    }
+    _search.addListener(() => setState(() {}));
     _load();
-    _searchController.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _search.dispose();
     super.dispose();
   }
 
-  List<ComposeApp> get _filteredApps {
-    final query = _searchController.text.trim().toLowerCase();
-    var list = _apps;
-    if (_filter == 'running') {
-      list = list.where((a) => a.isRunning).toList();
-    } else if (_filter == 'stopped') {
-      list = list.where((a) => !a.isRunning).toList();
-    } else if (_filter == 'system') {
-      list = list.where((a) => a.appType == 'system').toList();
-    }
-
-    if (query.isNotEmpty) {
-      list = list
-          .where((a) =>
-              a.title.toLowerCase().contains(query) ||
-              a.id.toLowerCase().contains(query))
-          .toList();
-    }
-    return list;
-  }
-
-  List<RawContainer> get _filteredOthers {
-    if (_filter == 'running') {
-      return _others.where((c) => c.isRunning).toList();
-    } else if (_filter == 'stopped') {
-      return _others.where((c) => !c.isRunning).toList();
-    } else if (_filter == 'system') {
-      return [];
-    } else if (_filter == 'all') {
-      final query = _searchController.text.trim().toLowerCase();
-      if (query.isEmpty) return _others;
-      return _others
-          .where((c) => c.name.toLowerCase().contains(query))
-          .toList();
-    }
-    return [];
-  }
-
-  Future<void> _promptReauth() async {
-    final username = await StorageService.instance.getUsername();
-    if (!mounted) return;
-    final success = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(
-          isReauth: true,
-          initialUsername: username,
-        ),
-      ),
-    );
-    if (success == true && mounted) {
-      _load();
-    }
-  }
-
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_loading) return;
+    setState(() => _loading = true);
     try {
-      List<ComposeApp> apps = [];
-
-      // 1. Fetch WebAppGrid / Compose Apps (same as WebUI AppSection.vue)
-      try {
-        final gridRes =
-            await ApiClient.instance.get('/v2/app_management/web/appgrid');
-        final gridData = gridRes['data'] as List<dynamic>? ?? [];
-        apps = gridData
-            .map((e) => ComposeApp.fromGridItem(e as Map<String, dynamic>))
-            .toList();
-      } catch (_) {
-        try {
-          final composeRes =
-              await ApiClient.instance.get('/v2/app_management/compose');
-          final composeData = composeRes['data'] as Map<String, dynamic>? ?? {};
-          apps = composeData.entries
-              .map((e) =>
-                  ComposeApp.fromJson(e.key, e.value as Map<String, dynamic>))
-              .toList();
-        } catch (_) {}
-      }
-
-      // 2. Fetch WebUI custom display overrides (e.g. custom icon/title/radius set in WebUI "Edit App")
-      Map<String, dynamic> overrides = {};
-      try {
-        final overRes = await ApiClient.instance
-            .get('/users/current/custom/legacy_app_overrides');
-        dynamic overData = overRes['data'];
-        if (overData is String && overData.isNotEmpty) {
-          overData = jsonDecode(overData);
-        }
-        if (overData is Map<String, dynamic>) {
-          overrides = overData;
-        }
-      } catch (_) {}
-
-      // 3. Fetch custom WebUI link apps
-      List<ComposeApp> linkApps = [];
-      try {
-        final linkRes =
-            await ApiClient.instance.get('/users/current/custom/link');
-        dynamic linkData = linkRes['data'];
-        if (linkData is String && linkData.isNotEmpty) {
-          linkData = jsonDecode(linkData);
-        }
-        if (linkData is List) {
-          linkApps = linkData.whereType<Map<String, dynamic>>().map((item) {
-            final name = item['name'] as String? ?? 'Link App';
-            return ComposeApp(
-              id: name,
-              title: name,
-              icon: item['icon'] as String? ?? '',
-              status: 'running',
-              updateAvailable: false,
-              isUncontrolled: false,
-              appType: 'link',
-              scheme: item['url'] as String?,
-            );
-          }).toList();
-        }
-      } catch (_) {}
-
-      // 4. Combine Built-in + Installed + Links
-      final allApps = <ComposeApp>[
-        ..._builtInApps,
-        ...apps,
-        ...linkApps,
-      ];
-
-      // 5. Apply WebUI overrides (exact parity with WebUI AppSection.vue)
-      final resolvedApps = allApps.map((app) {
-        final over = overrides[app.id] ?? overrides[app.title];
-        if (over is Map<String, dynamic>) {
-          final customIcon = over['icon'] as String?;
-          final customTitle = over['title'] as String?;
-          final customUrl = over['url'] as String?;
-          final customRadius = over['iconRadius'] != null
-              ? (over['iconRadius'] as num).toDouble()
-              : null;
-          return ComposeApp(
-            id: app.id,
-            title: customTitle != null && customTitle.isNotEmpty
-                ? customTitle
-                : app.title,
-            icon: customIcon != null && customIcon.isNotEmpty
-                ? customIcon
-                : app.icon,
-            status: app.status,
-            updateAvailable: app.updateAvailable,
-            isUncontrolled: app.isUncontrolled,
-            appType: app.appType,
-            image: app.image,
-            port: app.port,
-            scheme: app.scheme,
-            iconRadius: customRadius ?? app.iconRadius,
-            overrideUrl: customUrl ?? app.overrideUrl,
-          );
-        }
-        return app;
-      }).toList();
-
-      resolvedApps.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-
-      // 6. Fetch raw standalone containers
-      var others = <RawContainer>[];
-      try {
-        final containerRes = await ApiClient.instance.get('/container/all');
-        final containerData = containerRes['data'] as List<dynamic>? ?? [];
-        final containers = containerData
-            .map((e) => RawContainer.fromJson(e as Map<String, dynamic>))
-            .toList();
-        final composeIds = resolvedApps.map((a) => a.id.toLowerCase()).toList();
-        others = containers.where((c) {
-          final name = c.name.toLowerCase();
-          return !composeIds.contains(name) &&
-              !composeIds.contains(c.id.toLowerCase());
-        }).map((c) {
-          final over = overrides[c.name] ?? overrides[c.id];
-          if (over is Map<String, dynamic>) {
-            final customIcon = over['icon'] as String?;
-            final customRadius = over['iconRadius'] != null
-                ? (over['iconRadius'] as num).toDouble()
-                : null;
-            return RawContainer(
-              id: c.id,
-              name: over['title'] as String? ?? c.name,
-              image: c.image,
-              state: c.state,
-              icon: customIcon ?? c.icon,
-              iconRadius: customRadius,
-            );
-          }
-          return c;
-        }).toList();
-      } catch (_) {}
-
+      final apps = await AppsApi.load();
       if (!mounted) return;
       setState(() {
-        _apps = resolvedApps;
-        _others = others;
-        _loading = false;
+        _apps = apps;
+        _loadedAt = clock.now();
         _error = null;
       });
+      _cache = apps;
+      _cachedAt = _loadedAt;
+      _cacheServer = ApiClient.instance.baseUrl;
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
-      });
+      setState(() => _error = e);
+      // With a list on screen, a server error (not being offline, which
+      // the banner covers) is said once instead of hiding the list.
+      final offline = e is ApiException && e.isUnreachable;
+      if (_apps != null && !offline && !ApiClient.isAuthError(e)) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text("Couldn't refresh apps. ${_reason(e)}")));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  String _getAppBrowserUrl(ComposeApp app) {
-    if (app.overrideUrl != null && app.overrideUrl!.isNotEmpty) {
-      return app.overrideUrl!;
-    }
-    if (app.scheme != null && app.scheme!.isNotEmpty) {
-      return app.scheme!;
-    }
-    if (app.port != null && app.port!.isNotEmpty) {
-      final host = Uri.parse(ApiClient.instance.baseUrl).host;
-      return 'http://$host:${app.port}';
-    }
-    return '';
+  void _openStore() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppStoreScreen())).then((_) => _load());
   }
 
-  Future<void> _launchInBrowser(String urlStr) async {
-    if (urlStr.isEmpty) return;
+  void _openCustomInstall() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CustomInstallScreen())).then((_) => _load());
+  }
+
+  void _openDetail(InstalledApp app) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => AppDetailScreen(app: app))).then((_) => _load());
+  }
+
+  Future<void> _run(InstalledApp app, AppAction action) async {
+    if (_pending.containsKey(app.id)) return;
+    setState(() => _pending[app.id] = action);
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      final uri = Uri.parse(urlStr);
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final state = await AppsApi.setStatus(app, action);
+      _replace(app.copyWith(status: state));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Could not open browser: $e'),
-              backgroundColor: NivaroColors.danger),
-        );
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't ${action.name} ${app.title}. ${_reason(e)}")));
+    } finally {
+      if (mounted) setState(() => _pending.remove(app.id));
+    }
+    _load();
+  }
+
+  /// Starts the update of every app that has one (plan WP1-9 "Update
+  /// all"). Each update runs on the server; the list refreshes after.
+  Future<void> _updateAll(List<InstalledApp> apps) async {
+    final todo = apps.where((a) => a.hasUpdate).toList();
+    if (todo.isEmpty || _updatingAll) return;
+    setState(() => _updatingAll = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final failed = <String>[];
+    for (final a in todo) {
+      try {
+        await AppsApi.startUpdate(a);
+      } catch (_) {
+        failed.add(a.title);
       }
     }
+    if (!mounted) return;
+    setState(() => _updatingAll = false);
+    final started = todo.length - failed.length;
+    messenger.showSnackBar(SnackBar(
+      content: Text(failed.isEmpty
+          ? (started == 1 ? 'Updating 1 app. It restarts when the new version is ready.' : 'Updating $started apps. Each restarts when its new version is ready.')
+          : "Couldn't start the update of ${failed.join(', ')}."),
+    ));
+    _load();
   }
 
-  Future<void> _openApp(ComposeApp app) async {
-    if (app.appType == 'system') {
-      _openSystemApp(app.id);
-      return;
-    }
-
-    final browserUrl = _getAppBrowserUrl(app);
-    if (browserUrl.isNotEmpty) {
-      _showAppActionsModal(app);
-    } else {
-      _showAppDetails(app);
-    }
+  void _replace(InstalledApp app) {
+    final apps = _apps;
+    if (apps == null || !mounted) return;
+    setState(() => _apps = [for (final a in apps) a.id == app.id && a.kind == app.kind ? app : a]);
   }
 
-  void _showAppActionsModal(ComposeApp app) {
-    final browserUrl = _getAppBrowserUrl(app);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: NivaroColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                NivaroAppIcon(
-                  iconUrl: app.icon,
-                  name: app.title,
-                  size: 48,
-                  radius: 12,
-                  customRadiusPercent: app.iconRadius,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(app.title,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 16.5,
-                              color: NivaroColors.textPrimary)),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          PulsingStatusDot(
-                              color: app.isRunning
-                                  ? NivaroColors.success
-                                  : NivaroColors.textMuted,
-                              size: 6),
-                          const SizedBox(width: 6),
-                          Text(
-                            app.isRunning ? 'RUNNING' : 'STOPPED',
-                            style: TextStyle(
-                              color: app.isRunning
-                                  ? NivaroColors.successLight
-                                  : NivaroColors.textMuted,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (app.port != null && app.port!.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Text('· Port ${app.port}',
-                                style: TextStyle(
-                                    color: NivaroColors.textMuted,
-                                    fontSize: 11)),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                    icon: Icons.close_rounded,
-                    size: 34,
-                    onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Divider(height: 1, color: NivaroColors.borderSubtle),
-            const SizedBox(height: 8),
-            if (browserUrl.isNotEmpty)
-              ListTile(
-                leading: Icon(Icons.open_in_browser_rounded,
-                    color: NivaroColors.primaryLight),
-                title: const Text('Open in Browser',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(browserUrl,
-                    style: TextStyle(
-                        color: NivaroColors.textMuted, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                trailing: Icon(Icons.arrow_outward_rounded,
-                    size: 18, color: NivaroColors.textFaint),
-                onTap: () {
-                  Navigator.pop(context);
-                  _launchInBrowser(browserUrl);
-                },
-              ),
-            if (app.appType != 'system') ...[
-              ListTile(
-                leading: Icon(Icons.terminal_rounded,
-                    color: NivaroColors.warningLight),
-                title: const Text('Open Container Terminal',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('Interactive root shell inside container',
-                    style:
-                        TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => TerminalScreen(
-                        initCommand:
-                            'docker exec -it ${app.id} /bin/sh || docker exec -it ${app.id} /bin/bash',
-                        title: '${app.title} Shell',
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.article_rounded,
-                    color: NivaroColors.infoLight),
-                title: const Text('Container Logs',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('Stream real-time STDOUT & STDERR logs',
-                    style:
-                        TextStyle(color: NivaroColors.textMuted, fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => ContainerLogsScreen(
-                          appId: app.id, appTitle: app.title)));
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                    app.isRunning
-                        ? Icons.stop_circle_outlined
-                        : Icons.play_circle_outline_rounded,
-                    color: app.isRunning
-                        ? NivaroColors.dangerLight
-                        : NivaroColors.successLight),
-                title: Text(app.isRunning ? 'Stop App' : 'Start App',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _toggleApp(app);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.restart_alt_rounded,
-                    color: NivaroColors.purpleLight),
-                title: const Text('Restart App Container',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _restartApp(app);
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
+  void _showActions(InstalledApp app) {
+    HapticFeedback.mediumImpact();
+    showAppActionsSheet(
+      context,
+      app: app,
+      onAction: (action) => _run(app, action),
+      onDetails: () => _openDetail(app),
     );
   }
 
-  void _openSystemApp(String id) {
-    if (id == 'appstore') {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const AppStoreScreen()))
-          .then((_) => _load());
-    } else if (id == 'terminal') {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const TerminalScreen()));
-    } else if (id == 'host_desktop') {
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const HostDesktopScreen()));
-    } else if (id == 'tailscale') {
-      TailscaleModal.show(context);
-    } else if (id == 'files' && widget.onOpenFiles != null) {
-      widget.onOpenFiles!();
-    } else if (id == 'vms' && widget.onOpenVms != null) {
-      widget.onOpenVms!();
-    } else if (id == 'settings' && widget.onOpenSettings != null) {
-      widget.onOpenSettings!();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Access ${id.toUpperCase()} from main navigation.')),
-      );
-    }
-  }
-
-  Future<void> _toggleApp(ComposeApp app) async {
-    if (_busy.contains(app.id)) return;
-    setState(() => _busy.add(app.id));
-    final action = app.isRunning ? 'stop' : 'start';
-    try {
-      await ApiClient.instance.put('/v2/app_management/compose/${app.id}/state',
-          body: {'state': action});
-      await Future.delayed(const Duration(milliseconds: 600));
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    } finally {
-      if (mounted) setState(() => _busy.remove(app.id));
-    }
-  }
-
-  Future<void> _restartApp(ComposeApp app) async {
-    if (_busy.contains(app.id)) return;
-    setState(() => _busy.add(app.id));
-    try {
-      await ApiClient.instance.put('/v2/app_management/compose/${app.id}/state',
-          body: {'state': 'restart'});
-      await Future.delayed(const Duration(milliseconds: 600));
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Failed: $e'), backgroundColor: NivaroColors.danger));
-      }
-    } finally {
-      if (mounted) setState(() => _busy.remove(app.id));
-    }
-  }
-
-  void _showAppDetails(ComposeApp app) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: NivaroColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                NivaroAppIcon(
-                  iconUrl: app.icon,
-                  name: app.title,
-                  size: 52,
-                  radius: 14,
-                  customRadiusPercent: app.iconRadius,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(app.title,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 17,
-                              color: NivaroColors.textPrimary)),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          PulsingStatusDot(
-                              color: app.isRunning
-                                  ? NivaroColors.success
-                                  : NivaroColors.textMuted,
-                              size: 6),
-                          const SizedBox(width: 6),
-                          Text(
-                            app.isRunning ? 'RUNNING' : 'STOPPED',
-                            style: TextStyle(
-                              color: app.isRunning
-                                  ? NivaroColors.successLight
-                                  : NivaroColors.textMuted,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (app.port != null && app.port!.isNotEmpty) ...[
-                            const SizedBox(width: 8),
-                            Text('· Port ${app.port}',
-                                style: TextStyle(
-                                    color: NivaroColors.textMuted,
-                                    fontSize: 11)),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                RoundIconButton(
-                    icon: Icons.close_rounded,
-                    size: 36,
-                    onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                if (app.appType != 'system') ...[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: Icon(app.isRunning
-                          ? Icons.stop_rounded
-                          : Icons.play_arrow_rounded),
-                      label: Text(app.isRunning ? 'Stop' : 'Start'),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _toggleApp(app);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.restart_alt_rounded),
-                      label: const Text('Restart'),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _restartApp(app);
-                      },
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            if (app.appType != 'system') ...[
-              const SizedBox(height: 10),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.article_rounded,
-                    color: NivaroColors.primaryLight),
-                title: const Text('Container Logs',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                trailing: Icon(Icons.chevron_right_rounded,
-                    color: NivaroColors.textFaint),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => ContainerLogsScreen(
-                          appId: app.id, appTitle: app.title)));
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
+  List<InstalledApp> _visible(List<InstalledApp> apps) {
+    final q = _search.text.trim().toLowerCase();
+    return apps.where((a) {
+      final keep = switch (_filter) {
+        _Filter.all => true,
+        _Filter.running => a.isRunning && !a.isLink,
+        _Filter.stopped => a.runState == AppRunState.stopped,
+        _Filter.updates => a.hasUpdate,
+      };
+      if (!keep) return false;
+      if (q.isEmpty) return true;
+      return a.title.toLowerCase().contains(q) || a.id.toLowerCase().contains(q) || a.image.toLowerCase().contains(q);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: RefreshIndicator(
-          onRefresh: _load,
-          color: NivaroColors.primaryLight,
-          backgroundColor: NivaroColors.surfaceRaised,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1150),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
-                children: [
-                  // Header
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Applications',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 22,
-                              color: NivaroColors.textPrimary),
-                        ),
-                      ),
-                      RoundIconButton(
-                        icon: _isGridView
-                            ? Icons.view_list_rounded
-                            : Icons.grid_view_rounded,
-                        tooltip: _isGridView ? 'List View' : 'Grid View',
-                        onPressed: () =>
-                            setState(() => _isGridView = !_isGridView),
-                      ),
-                      const SizedBox(width: 8),
-                      RoundIconButton(
-                        icon: Icons.storefront_rounded,
-                        tooltip: 'App Store',
-                        color: NivaroColors.primary,
-                        iconColor: Colors.white,
-                        onPressed: () {
-                          Navigator.of(context)
-                              .push(MaterialPageRoute(
-                                  builder: (_) => const AppStoreScreen()))
-                              .then((_) => _load());
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
+    final apps = _apps;
+    final error = _error;
+    final offline = error is ApiException && error.isUnreachable;
+    final auth = error != null && ApiClient.isAuthError(error);
 
-                  // Search Bar
-                  TextField(
-                    controller: _searchController,
-                    style: const TextStyle(fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'Search installed applications...',
-                      prefixIcon: Icon(Icons.search_rounded,
-                          size: 20, color: NivaroColors.textMuted),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18),
-                              onPressed: () => _searchController.clear(),
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+    final actions = [
+      IconButton(tooltip: 'App store', icon: const Icon(Icons.storefront_outlined), onPressed: _openStore),
+      PopupMenuButton<String>(
+        tooltip: 'More options',
+        onSelected: (v) => v == 'custom' ? _openCustomInstall() : _load(),
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'custom', child: Text('Install from compose file')),
+          PopupMenuItem(value: 'refresh', child: Text('Refresh')),
+        ],
+      ),
+    ];
 
-                  // Filter Chips
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _FilterChip(
-                            label: 'All (${_apps.length})',
-                            selected: _filter == 'all',
-                            onSelected: () => setState(() => _filter = 'all')),
-                        const SizedBox(width: 8),
-                        _FilterChip(
-                            label:
-                                'Running (${_apps.where((a) => a.isRunning).length})',
-                            selected: _filter == 'running',
-                            onSelected: () =>
-                                setState(() => _filter = 'running')),
-                        const SizedBox(width: 8),
-                        _FilterChip(
-                            label:
-                                'Stopped (${_apps.where((a) => !a.isRunning).length})',
-                            selected: _filter == 'stopped',
-                            onSelected: () =>
-                                setState(() => _filter = 'stopped')),
-                        const SizedBox(width: 8),
-                        _FilterChip(
-                            label:
-                                'System (${_apps.where((a) => a.appType == 'system').length})',
-                            selected: _filter == 'system',
-                            onSelected: () =>
-                                setState(() => _filter = 'system')),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+    final List<Widget> slivers;
+    if (apps == null) {
+      if (error == null) {
+        slivers = [const _SliverAppRowsSkeleton()];
+      } else if (auth) {
+        slivers = [
+          EmptyState(
+            sliver: true,
+            icon: Icons.lock_outline,
+            title: 'Signed out',
+            message: 'Your session on this server ended. Sign in again, then try once more.',
+            actionLabel: 'Try again',
+            onAction: _load,
+          ),
+        ];
+      } else if (offline) {
+        slivers = [ErrorState.offline(sliver: true, onRetry: _load, details: error.details)];
+      } else {
+        slivers = [
+          ErrorState(
+            sliver: true,
+            title: "Couldn't load apps",
+            message: _reason(error),
+            onRetry: _load,
+            details: error is ApiException ? error.details : error.toString(),
+          ),
+        ];
+      }
+    } else if (apps.isEmpty) {
+      slivers = [
+        EmptyState(
+          sliver: true,
+          icon: Icons.apps_outlined,
+          title: 'No apps yet',
+          message: 'Apps you install from the app store appear here.',
+          actionLabel: 'Open app store',
+          onAction: _openStore,
+        ),
+      ];
+    } else {
+      final visible = _visible(apps);
+      slivers = [
+        SliverToBoxAdapter(child: _controls(apps)),
+        if (_filter == _Filter.updates && visible.isNotEmpty) SliverToBoxAdapter(child: _updateAllRow(visible)),
+        if (visible.isEmpty)
+          EmptyState(
+            sliver: true,
+            icon: Icons.search_off_outlined,
+            title: _search.text.trim().isEmpty ? 'Nothing here' : 'No apps match “${_search.text.trim()}”',
+            message: _search.text.trim().isEmpty ? 'No app is in this state right now.' : 'Try another name, or clear the search.',
+            actionLabel: 'Show all apps',
+            onAction: () => setState(() {
+              _search.clear();
+              _filter = _Filter.all;
+            }),
+          )
+        else
+          SliverList.builder(
+            itemCount: visible.length,
+            itemBuilder: (context, i) {
+              final app = visible[i];
+              return AppRow(
+                app: app,
+                pending: _pending[app.id],
+                onTap: () => _openDetail(app),
+                onLongPress: () => _showActions(app),
+              );
+            },
+          ),
+      ];
+    }
 
-                  if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (_error != null)
-                    DarkCard(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        children: [
-                          Icon(Icons.error_outline_rounded,
-                              color: NivaroColors.dangerLight, size: 36),
-                          const SizedBox(height: 10),
-                          Text(_error!,
-                              style: TextStyle(
-                                  color: NivaroColors.textMuted, fontSize: 13),
-                              textAlign: TextAlign.center),
-                          const SizedBox(height: 14),
-                          if (ApiClient.isAuthError(_error)) ...[
-                            FilledButton.icon(
-                              onPressed: _promptReauth,
-                              icon: const Icon(Icons.lock_open_rounded,
-                                  size: 18, color: Colors.white),
-                              label: const Text('Sign In Again',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700)),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: NivaroColors.primary,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                        NivaroShape.medium)),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: _load,
-                              child: Text('Retry Connection',
-                                  style: TextStyle(
-                                      color: NivaroColors.textMuted,
-                                      fontSize: 12.5)),
-                            ),
-                          ] else
-                            OutlinedButton(
-                                onPressed: _load, child: const Text('Retry')),
-                        ],
-                      ),
-                    )
-                  else if (_filteredApps.isEmpty && _filteredOthers.isEmpty)
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(
-                          child: Text('No applications found.',
-                              style: TextStyle(color: NivaroColors.textMuted))),
-                    )
-                  else ...[
-                    Builder(builder: (context) {
-                      final width = MediaQuery.of(context).size.width;
-                      final isLandscape = MediaQuery.of(context).orientation ==
-                          Orientation.landscape;
+    return AppScaffold.slivers(
+      title: 'Apps',
+      actions: actions,
+      onRefresh: _load,
+      banner: apps != null && offline ? OfflineBanner(lastUpdated: _loadedAt, onRetry: _load) : null,
+      slivers: slivers,
+    );
+  }
 
-                      if (_isGridView) {
-                        final cols = width >= 1200
-                            ? 9
-                            : (width >= 900
-                                ? 7
-                                : (width >= 600 || isLandscape
-                                    ? 6
-                                    : (width >= 400 ? 4 : 3)));
-                        final ratio = width >= 600 ? 0.92 : 0.80;
+  Widget _updateAllRow(List<InstalledApp> visible) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final n = visible.where((a) => a.hasUpdate).length;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, 0, gutter - Space.sm, 0),
+      child: Row(children: [
+        Expanded(
+          child: Text(
+            n == 1 ? 'A new version is ready for 1 app' : 'New versions are ready for $n apps',
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        const SizedBox(width: Space.sm),
+        _updatingAll
+            ? const Padding(
+                padding: EdgeInsets.all(Space.md),
+                child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3)),
+              )
+            : TextButton.icon(onPressed: () => _updateAll(visible), icon: const Icon(Icons.upgrade_outlined), label: const Text('Update all')),
+      ]),
+    );
+  }
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: cols,
-                            mainAxisSpacing: 14,
-                            crossAxisSpacing: 10,
-                            childAspectRatio: ratio,
-                          ),
-                          itemCount: _filteredApps.length,
-                          itemBuilder: (context, index) {
-                            final app = _filteredApps[index];
-                            return AppTile(
-                              name: app.title,
-                              iconUrl: app.icon,
-                              imageName: app.image,
-                              running: app.isRunning,
-                              customRadiusPercent: app.iconRadius,
-                              onTap: () => _openApp(app),
-                              onLongPress: () => _showAppDetails(app),
-                            );
-                          },
-                        );
-                      }
+  Widget _controls(List<InstalledApp> apps) {
+    final running = apps.where((a) => a.isRunning && !a.isLink).length;
+    final stopped = apps.where((a) => a.runState == AppRunState.stopped).length;
+    final updates = apps.where((a) => a.hasUpdate).length;
+    final gutter = Space.gutter(context);
+    Widget chip(_Filter f, String label) => ChoiceChip(
+          label: Text(label),
+          selected: _filter == f,
+          onSelected: (_) => setState(() => _filter = f),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.sm),
+          child: SearchBar(
+            controller: _search,
+            hintText: 'Search apps',
+            leading: const Icon(Icons.search),
+            elevation: const WidgetStatePropertyAll(0),
+            trailing: [
+              if (_search.text.isNotEmpty)
+                IconButton(tooltip: 'Clear search', icon: const Icon(Icons.close), onPressed: _search.clear),
+            ],
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: gutter),
+          child: Row(
+            children: [
+              chip(_Filter.all, 'All ${apps.length}'),
+              const SizedBox(width: Space.sm),
+              chip(_Filter.running, 'Running $running'),
+              const SizedBox(width: Space.sm),
+              chip(_Filter.stopped, 'Stopped $stopped'),
+              if (updates > 0) ...[
+                const SizedBox(width: Space.sm),
+                chip(_Filter.updates, updates == 1 ? '1 update' : '$updates updates'),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: Space.sm),
+      ],
+    );
+  }
+}
 
-                      // List View Mode (2 columns on tablet)
-                      final cols = width >= 750 ? 2 : 1;
-                      if (cols > 1) {
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                            childAspectRatio: 3.8,
-                          ),
-                          itemCount: _filteredApps.length,
-                          itemBuilder: (context, index) =>
-                              _buildAppListItem(_filteredApps[index]),
-                        );
-                      }
+String _reason(Object e) {
+  final s = e is ApiException ? e.message : e.toString().replaceFirst('Exception: ', '');
+  return s.endsWith('.') ? s : '$s.';
+}
 
-                      return Column(
-                        children: _filteredApps
-                            .map((app) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _buildAppListItem(app),
-                                ))
-                            .toList(),
-                      );
-                    }),
+/// One installed app as a list row: icon, name, what it runs, and its state.
+class AppRow extends StatelessWidget {
+  const AppRow({super.key, required this.app, this.pending, this.onTap, this.onLongPress});
 
-                    // Standalone Containers Section (if any)
-                    if (_filteredOthers.isNotEmpty) ...[
-                      const SizedBox(height: 24),
-                      const LegacySectionHeader(
-                        title: 'Standalone Containers',
-                        subtitle: 'Docker containers running outside compose',
-                      ),
-                      Builder(builder: (context) {
-                        final width = MediaQuery.of(context).size.width;
-                        final cols = width >= 750 ? 2 : 1;
-                        if (cols > 1) {
-                          return GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                              childAspectRatio: 3.8,
-                            ),
-                            itemCount: _filteredOthers.length,
-                            itemBuilder: (context, index) =>
-                                _buildContainerListItem(_filteredOthers[index]),
-                          );
-                        }
+  final InstalledApp app;
+  final AppAction? pending;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
-                        return Column(
-                          children: _filteredOthers
-                              .map((c) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _buildContainerListItem(c),
-                                  ))
-                              .toList(),
-                        );
-                      }),
-                    ],
+  static String supporting(InstalledApp app) {
+    if (app.isLink) {
+      final u = app.address(ApiClient.instance.baseUrl)?.url;
+      return u == null ? 'Web link' : ApiClient.displayHost(u.toString());
+    }
+    return app.image.isNotEmpty ? app.image : 'Container';
+  }
+
+  /// Running is the normal state, so a running app gets no chip (a column
+  /// of green "Running" chips drowns out the ones that matter) and says
+  /// how long it has been up instead. Anything else - stopped, starting,
+  /// an update - gets a chip, which always carries its word and icon.
+  static bool showsChip(InstalledApp app, AppAction? pending) => pending != null || (!app.isRunning && !app.isLink);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // At large text sizes the chip moves under the name, where it has the
+    // whole width, instead of squeezing the name into a narrow column.
+    final large = MediaQuery.textScalerOf(context).scale(14) > 21;
+    final hasChip = showsChip(app, pending);
+    final chip = AppStateChip(app: app, pending: pending);
+    final upText = app.isRunning && !app.isLink && app.statusText != null ? app.statusText! : supporting(app);
+    final sub = Text(upText, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final below = [
+      if (large && hasChip) chip,
+      if (app.hasUpdate) const StatusChip(label: 'Update', status: Status.info, icon: Icons.upgrade_outlined),
+    ];
+    return Semantics(
+      // The state is always spoken, even where it isn't drawn as a chip.
+      value: hasChip ? null : appStateLabel(app),
+      child: MergeSemantics(
+        child: ListTile(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: Corners.medium, customRadiusPercent: app.iconRadius),
+          title: Text(app.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: below.isEmpty
+              ? sub
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    sub,
+                    const SizedBox(height: Space.xs),
+                    Wrap(spacing: Space.sm, runSpacing: Space.xs, children: below),
                   ],
-                ],
-              ),
+                ),
+          isThreeLine: below.isNotEmpty,
+          trailing: large || !hasChip ? null : chip,
+          titleTextStyle: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skeleton rows shaped like [AppRow]: a 40dp rounded icon, two lines and
+/// a chip.
+class _SliverAppRowsSkeleton extends StatelessWidget {
+  const _SliverAppRowsSkeleton();
+
+  static const _widths = [0.42, 0.3, 0.5, 0.36, 0.46, 0.28, 0.4, 0.34];
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final gutter = Space.gutter(context);
+    return SliverSemantics(
+      label: 'Loading',
+      liveRegion: true,
+      sliver: SkeletonPulse.sliver(
+        child: SliverList.builder(
+          itemCount: 8,
+          itemBuilder: (context, i) => ExcludeSemantics(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.md),
+              child: Row(children: [
+                const SkeletonBox(width: 40, height: 40, radius: Corners.medium),
+                const SizedBox(width: Space.lg),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      FractionallySizedBox(widthFactor: _widths[i % _widths.length], child: SkeletonBox(height: scaler.scale(14))),
+                      const SizedBox(height: Space.sm),
+                      FractionallySizedBox(widthFactor: _widths[(i + 3) % _widths.length] + 0.2, child: SkeletonBox(height: scaler.scale(12))),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: Space.lg),
+                SkeletonBox(width: scaler.scale(72), height: scaler.scale(24), radius: Corners.small),
+              ]),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildAppListItem(ComposeApp app) {
-    return DarkCard(
-      onTap: () => _openApp(app),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          NivaroAppIcon(
-            iconUrl: app.icon,
-            name: app.title,
-            imageName: app.image,
-            size: 42,
-            radius: 11,
-            customRadiusPercent: app.iconRadius,
-            isRunning: app.isRunning,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(app.title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: NivaroColors.textPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  app.appType == 'system'
-                      ? 'System Application'
-                      : (app.isRunning ? 'Active and Running' : 'Stopped'),
-                  style: TextStyle(
-                    color: app.isRunning
-                        ? NivaroColors.successLight
-                        : NivaroColors.textMuted,
-                    fontSize: 11.5,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+/// Quick actions for [app] (long-press on a row): open, start or stop,
+/// restart, and the app's page.
+Future<void> showAppActionsSheet(
+  BuildContext context, {
+  required InstalledApp app,
+  required void Function(AppAction action) onAction,
+  required VoidCallback onDetails,
+}) {
+  final address = app.address(ApiClient.instance.baseUrl);
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    useSafeArea: true,
+    isScrollControlled: true,
+    builder: (sheet) {
+      void close(VoidCallback then) {
+        Navigator.of(sheet).pop();
+        then();
+      }
+
+      return SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: Space.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              leading: NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 40, radius: Corners.medium, customRadiusPercent: app.iconRadius),
+              title: Text(app.title, style: Theme.of(sheet).textTheme.titleMedium),
+              subtitle: Text(AppRow.supporting(app), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-          ),
-          if (app.appType != 'system')
-            IconButton(
-              icon: Icon(
-                  app.isRunning
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  size: 20),
-              color: app.isRunning
-                  ? NivaroColors.warningLight
-                  : NivaroColors.successLight,
-              onPressed: () => _toggleApp(app),
+            const Divider(),
+            if (address != null)
+              ListTile(
+                leading: const Icon(Icons.open_in_new),
+                title: const Text('Open'),
+                subtitle: Text(ApiClient.displayHost(address.url.toString())),
+                onTap: () => close(() => openApp(context, app)),
+              ),
+            if (app.canControl && !app.isRunning)
+              ListTile(
+                leading: const Icon(Icons.play_arrow_outlined),
+                title: const Text('Start'),
+                onTap: () => close(() => onAction(AppAction.start)),
+              ),
+            if (app.canControl && app.isRunning) ...[
+              ListTile(
+                leading: const Icon(Icons.stop_outlined),
+                title: const Text('Stop'),
+                onTap: () => close(() => onAction(AppAction.stop)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.restart_alt),
+                title: const Text('Restart'),
+                onTap: () => close(() => onAction(AppAction.restart)),
+              ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('App info'),
+              onTap: () => close(onDetails),
             ),
-          Icon(Icons.chevron_right_rounded,
-              size: 18, color: NivaroColors.textFaint),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// App info
+// ---------------------------------------------------------------------------
+
+/// One app's page: state and the main actions up top, then its address,
+/// image, updates, logs, shell, notes from the store, and uninstall.
+class AppDetailScreen extends StatefulWidget {
+  const AppDetailScreen({super.key, required this.app});
+
+  final InstalledApp app;
+
+  @override
+  State<AppDetailScreen> createState() => _AppDetailScreenState();
+}
+
+class _AppDetailScreenState extends State<AppDetailScreen> {
+  late InstalledApp _app = widget.app;
+  AppAction? _pending;
+  String? _tips;
+  String? _category;
+  bool _updating = false;
+  String? _updateError;
+  Timer? _updatePoll;
+  static const _updateDeadline = Duration(minutes: 15);
+
+  @override
+  void initState() {
+    super.initState();
+    AppsApi.storeInfo(_app).then((i) {
+      if (!mounted || (i.tips == null && i.category == null)) return;
+      setState(() {
+        _tips = i.tips;
+        _category = i.category;
+      });
+    });
   }
 
-  Widget _buildContainerListItem(RawContainer c) {
-    return DarkCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
+  @override
+  void dispose() {
+    _updatePoll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _run(AppAction action) async {
+    if (_pending != null) return;
+    setState(() => _pending = action);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final state = await AppsApi.setStatus(_app, action);
+      if (mounted) setState(() => _app = _app.copyWith(status: state));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't ${action.name} ${_app.title}. ${_reason(e)}")));
+    } finally {
+      if (mounted) setState(() => _pending = null);
+    }
+  }
+
+  Future<void> _stop() async {
+    final ok = await ConfirmDialog.destructive(
+      context,
+      title: 'Stop “${_app.title}”?',
+      message: 'It stops answering until you start it again.',
+      confirmLabel: 'Stop',
+      permanent: false,
+    );
+    if (ok) _run(AppAction.stop);
+  }
+
+  Future<void> _update() async {
+    setState(() {
+      _updating = true;
+      _updateError = null;
+    });
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AppsApi.startUpdate(_app);
+    } catch (e) {
+      if (mounted) setState(() => _updating = false);
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't update ${_app.title}. ${_reason(e)}")));
+      return;
+    }
+    if (_app.kind == AppKind.compose) {
+      // Compose updates report through events; say it started and let the
+      // list refresh show the result.
+      messenger.showSnackBar(SnackBar(content: Text('Updating ${_app.title}. It restarts when the new version is ready.')));
+      if (mounted) setState(() => _updating = false);
+      return;
+    }
+    // One check at a time, and not forever: a job that never reports
+    // back stops the spinner after [_updateDeadline].
+    final deadline = clock.now().add(_updateDeadline);
+    var busy = false;
+    _updatePoll = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (busy) return;
+      busy = true;
+      final ({String state, String? error})? s;
+      try {
+        s = await AppsApi.updateStatus(_app);
+      } finally {
+        busy = false;
+      }
+      if (!mounted) return;
+      final timedOut = clock.now().isAfter(deadline);
+      if (!timedOut && (s == null || s.state == 'running')) return;
+      _updatePoll?.cancel();
+      setState(() {
+        _updating = false;
+        if (s?.state == 'failed') {
+          _updateError = s?.error ?? 'The update failed.';
+        } else if (timedOut && (s == null || s.state == 'running')) {
+          _updateError = 'The update is taking longer than usual. Check this app again in a few minutes.';
+        } else if (s?.state == 'done') {
+          _app = _app.copyWith(hasUpdate: false);
+        }
+      });
+      if (s?.state == 'done') messenger.showSnackBar(SnackBar(content: Text('${_app.title} is up to date')));
+      if (s?.state == 'none') messenger.showSnackBar(SnackBar(content: Text('The update of ${_app.title} has finished')));
+    });
+  }
+
+  Future<void> _uninstall() async {
+    final deleteData = await showDialog<bool>(
+      context: context,
+      builder: (_) => _UninstallDialog(title: _app.title),
+    );
+    if (deleteData == null || !mounted) return;
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AppsApi.uninstall(_app, deleteData: deleteData);
+      messenger.showSnackBar(SnackBar(content: Text('Removing ${_app.title}')));
+      nav.pop();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't remove ${_app.title}. ${_reason(e)}")));
+    }
+  }
+
+  Future<void> _openTerminal() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    String? container;
+    try {
+      container = await AppsApi.mainContainer(_app);
+    } catch (_) {}
+    if (container == null) {
+      messenger.showSnackBar(SnackBar(content: Text("${_app.title} has no running container to open a shell in")));
+      return;
+    }
+    nav.push(MaterialPageRoute(
+      builder: (_) => TerminalScreen(title: _app.title, path: _app.terminalPath(container), subtitle: 'Shell in the app’s container'),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final app = _app;
+    final address = app.address(ApiClient.instance.baseUrl);
+    final busy = _pending != null;
+    final gutter = Space.gutter(context);
+
+    // One primary action: Open while it runs (or for a link), Start while
+    // it's stopped. Stop and Restart are secondary.
+    final Widget? main = address != null && (app.isRunning || !app.canControl)
+        ? FilledButton.icon(onPressed: () => openApp(context, app), icon: const Icon(Icons.open_in_new), label: const Text('Open'))
+        : app.canControl && !app.isRunning
+            ? FilledButton.icon(
+                onPressed: busy ? null : () => _run(AppAction.start),
+                icon: const Icon(Icons.play_arrow_outlined),
+                label: const Text('Start'),
+              )
+            : null;
+    final secondary = <Widget>[
+      if (app.canControl && app.isRunning) ...[
+        OutlinedButton.icon(onPressed: busy ? null : _stop, icon: const Icon(Icons.stop_outlined), label: const Text('Stop')),
+        OutlinedButton.icon(
+          onPressed: busy ? null : () => _run(AppAction.restart),
+          icon: const Icon(Icons.restart_alt_outlined),
+          label: const Text('Restart'),
+        ),
+      ],
+    ];
+
+    final version = appVersion(app.image);
+    final kindLabel = [
+      switch (app.kind) {
+        AppKind.compose => _category ?? 'App',
+        AppKind.legacy => 'App',
+        AppKind.container => 'Docker container',
+        AppKind.link => 'Web link',
+      },
+      if (version != null) 'Version $version',
+    ].join(' · ');
+    final large = MediaQuery.textScalerOf(context).scale(10) > 13;
+    return AppScaffold(
+      title: 'App info',
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: Space.xl),
         children: [
-          NivaroAppIcon(
-            iconUrl: c.icon,
-            name: c.name,
-            imageName: c.image,
-            size: 38,
-            radius: 10,
-            isRunning: c.isRunning,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(c.name,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13.5,
-                        color: NivaroColors.textPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  '${c.image} · ${c.state.toUpperCase()}',
-                  style: TextStyle(
-                      color: c.isRunning
-                          ? NivaroColors.successLight
-                          : NivaroColors.textMuted,
-                      fontSize: 11.5),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          // The page leads with the app itself: its icon, name, state and
+          // the one thing to do next, on a tonal panel.
+          Padding(
+            padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
+            child: Card.filled(
+              color: scheme.surfaceContainerHigh,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.extraLarge)),
+              child: Padding(
+                padding: const EdgeInsets.all(Space.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        NivaroAppIcon(iconUrl: app.icon, name: app.title, size: 64, radius: Corners.large, customRadiusPercent: app.iconRadius),
+                        const SizedBox(width: Space.lg),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Semantics(header: true, child: Text(app.title, style: theme.textTheme.headlineSmall?.emphasized)),
+                              const SizedBox(height: 2),
+                              Text(kindLabel, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                              const SizedBox(height: Space.sm),
+                              AnimatedSwitcher(
+                                duration: Motion.of(context).short,
+                                child: AppStateChip(key: ValueKey('${app.status}$_pending'), app: app, pending: _pending),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (main != null || secondary.isNotEmpty) ...[
+                      const SizedBox(height: Space.lg),
+                      // The primary action on its own line, the others
+                      // sharing the one below, so no label is squeezed.
+                      ?main,
+                      if (secondary.isNotEmpty) ...[
+                        if (main != null) const SizedBox(height: Space.sm),
+                        if (large)
+                          for (final (i, b) in secondary.indexed) ...[if (i > 0) const SizedBox(height: Space.sm), b]
+                        else
+                          Row(children: [
+                            for (final (i, b) in secondary.indexed) ...[if (i > 0) const SizedBox(width: Space.sm), Expanded(child: b)],
+                          ]),
+                      ],
+                    ],
+                    if (address != null && address.lanOnly) ...[
+                      const SizedBox(height: Space.md),
+                      Text(
+                        'Only reachable on your home network or over Tailscale.',
+                        style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
+          TileGroup(title: 'About', children: [
+            ListTile(
+              leading: const Icon(Icons.link_outlined),
+              title: const Text('Web address'),
+              subtitle: Text(address == null
+                  ? (app.kind == AppKind.container ? 'Not set. Add one with Edit app in the web dashboard.' : 'This app has no web page')
+                  : address.url.toString()),
+              onTap: address == null ? null : () => openApp(context, app),
+            ),
+            if (!app.isLink) ...[
+              ListTile(
+                leading: const Icon(Icons.schedule_outlined),
+                title: const Text('Status'),
+                subtitle: Text(app.statusText ?? appStateLabel(app)),
+              ),
+              if (app.image.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.layers_outlined),
+                  title: const Text('Image'),
+                  subtitle: Text(app.image),
+                  onLongPress: () {
+                    HapticFeedback.mediumImpact();
+                    Clipboard.setData(ClipboardData(text: app.image));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image name copied')));
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.upgrade_outlined),
+                title: const Text('Updates'),
+                subtitle: Text(_updating
+                    ? 'Updating…'
+                    : _updateError ??
+                        (app.hasUpdate
+                            ? 'A new version is available'
+                            : [
+                                'Up to date',
+                                if (app.autoUpdate != null) app.autoUpdate! ? 'automatic updates on' : 'automatic updates off',
+                              ].join(' · '))),
+                trailing: _updating
+                    ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3))
+                    : app.hasUpdate || _updateError != null
+                        ? TextButton(onPressed: _update, child: Text(_updateError != null ? 'Retry' : 'Update'))
+                        : null,
+              ),
+            ],
+          ]),
+          if (app.hasContainer)
+            TileGroup(title: 'Tools', children: [
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('Logs'),
+                subtitle: const Text('What the app has printed lately'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ContainerLogsScreen.forApp(app))),
+              ),
+              ListTile(
+                leading: const Icon(Icons.terminal_outlined),
+                title: const Text('Terminal'),
+                subtitle: Text(app.isRunning ? 'A shell inside the app’s container' : 'Start the app to open a shell'),
+                trailing: const Icon(Icons.chevron_right),
+                enabled: app.isRunning,
+                onTap: _openTerminal,
+              ),
+            ]),
+          if (_tips != null) TileGroup(title: 'Notes from the app store', children: [ListTile(title: SelectableText(_tips!))]),
+          if (!app.isLink)
+            TileGroup(children: [
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: scheme.error),
+                title: Text('Uninstall', style: TextStyle(color: scheme.error)),
+                onTap: _uninstall,
+              ),
+            ]),
         ],
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onSelected;
+/// Uninstall confirmation with the web's "delete app data too" question.
+/// Pops true/false for the checkbox when confirmed, null when cancelled.
+class _UninstallDialog extends StatefulWidget {
+  const _UninstallDialog({required this.title});
 
-  const _FilterChip(
-      {required this.label, required this.selected, required this.onSelected});
+  final String title;
+
+  @override
+  State<_UninstallDialog> createState() => _UninstallDialogState();
+}
+
+class _UninstallDialogState extends State<_UninstallDialog> {
+  bool _deleteData = false;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        onSelected();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? NivaroColors.primary.withValues(alpha: 0.18)
-              : NivaroColors.surfaceRaised,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected
-                ? NivaroColors.primaryLight.withValues(alpha: 0.4)
-                : NivaroColors.borderSubtle,
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text('Uninstall “${widget.title}”?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('The app and its containers are removed.'),
+          const SizedBox(height: Space.sm),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _deleteData,
+            onChanged: (v) => setState(() => _deleteData = v ?? false),
+            title: const Text('Also delete its data'),
+            subtitle: const Text("Settings and files in the app's folder. This can't be undone."),
           ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color:
-                selected ? NivaroColors.primaryLight : NivaroColors.textMuted,
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
+        ],
       ),
+      actions: [
+        TextButton(autofocus: true, onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
+          onPressed: () {
+            HapticFeedback.heavyImpact();
+            Navigator.of(context).pop(_deleteData);
+          },
+          child: const Text('Uninstall'),
+        ),
+      ],
     );
   }
+}
+
+/// The version in a Docker image reference ("linuxserver/jellyfin:10.11.10"
+/// gives "10.11.10"); null for "latest", a digest or no tag.
+String? appVersion(String image) {
+  final at = image.indexOf('@');
+  final ref = at >= 0 ? image.substring(0, at) : image;
+  final colon = ref.lastIndexOf(':');
+  if (colon < 0 || colon < ref.lastIndexOf('/')) return null;
+  final tag = ref.substring(colon + 1).replaceFirst(RegExp('^v'), '');
+  if (tag.isEmpty || tag == 'latest' || !RegExp(r'^\d').hasMatch(tag)) return null;
+  return tag;
 }

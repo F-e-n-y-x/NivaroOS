@@ -7,8 +7,7 @@ import 'more_screen.dart';
 import 'settings_screen.dart';
 import 'login_screen.dart';
 import '../services/storage_service.dart';
-import '../services/permission_service.dart';
-import '../services/device_sync_service.dart';
+import '../services/session_service.dart';
 import '../services/api_client.dart';
 import '../ui/theme/spacing.dart';
 
@@ -69,33 +68,11 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
-    _startBackgroundSync();
-  }
-
-  // The single place background sync gets started (previously also fired
-  // from main.dart on a cold start with an existing session, and from
-  // login_screen.dart right after a fresh login - HomeShell.initState()
-  // runs in both of those cases too, since it's the very next screen either
-  // way, so those were redundant, near-simultaneous duplicate calls firing
-  // exactly when the Navigator was mid-transition. Confirmed via a real
-  // on-device crash log (android.app.RemoteServiceException
-  // $ForegroundServiceDidNotStartInTimeException) that the native foreground
-  // service's startForeground() call was never reached within Android's
-  // window when that happened.
-  //
-  // Requests the notification permission FIRST and waits for it - the
-  // background service's whole visible purpose is its persistent
-  // notification, and starting it before Android has decided whether
-  // notifications are even allowed is asking for exactly the kind of
-  // platform-level foreground-service edge case that got us here - then
-  // defers the actual native service start to after this screen's first
-  // frame (addPostFrameCallback) instead of doing it mid-build/transition.
-  Future<void> _startBackgroundSync() async {
-    await PermissionService.requestInitialPermissions();
-    if (!mounted) return;
+    // After the first frame, not during the route transition: registers
+    // the phone and schedules the 15-minute heartbeat. Nothing here asks
+    // for a permission; features ask when they need one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      DeviceSyncService.instance.enableBackgroundSync();
+      if (mounted && ApiClient.instance.hasSession) SessionService.started();
     });
   }
 
@@ -105,26 +82,21 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
+  // Only a real 401 from /users/refresh gets here (ApiClient keeps the
+  // session through proxy errors and outages). Sign-in opens over the
+  // current tab, so the user carries on where they were.
   void _onSessionExpired() {
-    if (!mounted || _showingReauth) return;
-    if (ApiClient.sessionExpiredNotifier.value) {
-      _showingReauth = true;
-      StorageService.instance.getUsername().then((username) {
-        if (!mounted) return;
-        Navigator.of(context)
-            .push<bool>(
-          MaterialPageRoute(
-            builder: (_) => LoginScreen(
-              isReauth: true,
-              initialUsername: username,
-            ),
-          ),
-        )
-            .then((_) {
-          _showingReauth = false;
-        });
+    if (!mounted || _showingReauth || !ApiClient.sessionExpiredNotifier.value) return;
+    _showingReauth = true;
+    StorageService.instance.getUsername().then((username) {
+      if (!mounted) return;
+      Navigator.of(context)
+          .push<bool>(MaterialPageRoute(builder: (_) => LoginScreen(isReauth: true, initialUsername: username)))
+          .then((ok) {
+        _showingReauth = false;
+        if (ok == true) SessionService.started();
       });
-    }
+    });
   }
 
   void _openSettings() {

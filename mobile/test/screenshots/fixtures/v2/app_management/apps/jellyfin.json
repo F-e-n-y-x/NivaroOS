@@ -1,0 +1,112 @@
+{
+ "data": {
+  "apps": {
+   "jellyfin": {
+    "devices": null,
+    "envs": [
+     {
+      "container": "TZ",
+      "description": {
+       "en_US": "TimeZone"
+      }
+     },
+     {
+      "container": "PUID",
+      "description": {
+       "en_US": "Run Jellyfin as specified uid."
+      }
+     },
+     {
+      "container": "PGID",
+      "description": {
+       "en_US": "Run Jellyfin as specified gid."
+      }
+     },
+     {
+      "container": "JELLYFIN_PublishedServerUrl",
+      "description": {
+       "en_US": "The autodiscovery response domain or IP address."
+      }
+     }
+    ],
+    "image": "linuxserver/jellyfin:10.11.10",
+    "ports": [
+     {
+      "container": "8096",
+      "description": {
+       "en_US": "WebUI HTTP Port"
+      }
+     },
+     {
+      "container": "8920",
+      "description": {
+       "en_US": "WebUI HTTPS Port"
+      }
+     },
+     {
+      "container": "7359",
+      "description": {
+       "en_US": "Jellyfin auto-discovery Port"
+      }
+     },
+     {
+      "container": "1900",
+      "description": {
+       "en_US": "Jellyfin DLNA Port"
+      }
+     }
+    ],
+    "volumes": [
+     {
+      "container": "/config",
+      "description": {
+       "en_US": "Jellyfin config directory."
+      }
+     },
+     {
+      "container": "/Media",
+      "description": {
+       "en_US": "Jellyfin Media directory."
+      }
+     },
+     {
+      "container": "/opt/vc/lib",
+      "description": {
+       "en_US": "OpenMax libs"
+      }
+     }
+    ]
+   }
+  },
+  "architectures": [
+   "amd64",
+   "arm64"
+  ],
+  "author": "ZimaOS Team",
+  "category": "Media",
+  "description": {
+   "en_US": "Jellyfin stands out among media server applications for its fully open-source, free, and privacy-focused design. Unlike Emby and Plex, Jellyfin delivers robust media management, real-time transcoding, and granular multi-user permissions without subscription costs, operating independently of cloud services to ensure full user control over data. Its community-driven development and efficient resource usage enable smooth performance on low-end devices, making it the go-to choice for privacy-conscious and budget-savvy users.\n\nPicture your movies, TV shows, and music at your fingertips, accessible on any device. Jellyfin transforms your media collection into a personalized entertainment hub, surpassing traditional photo albums with a seamless browsing and playback experience.\nJellyfin offers high-quality streaming, automatic metadata fetching, and personalized recommendations, all at no cost. It supports multiple users, each with their own media library, catering to the diverse needs of families or teams.\nDeploying Jellyfin on private cloud devices like Zima provides near-unlimited storage, smooth streaming, and secure multi-device access. For NAS enthusiasts or anyone looking to elevate their home media setup, Jellyfin is the perfect solution.\n"
+  },
+  "developer": "Jellyfin",
+  "icon": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.svg",
+  "index": "/",
+  "main": "jellyfin",
+  "port_map": "8097",
+  "scheme": "http",
+  "screenshot_link": [
+   "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-1.png",
+   "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-2.png",
+   "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-3.png"
+  ],
+  "tagline": {
+   "en_US": "The personal Media System"
+  },
+  "thumbnail": "https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/thumbnail.png",
+  "tips": {
+   "before_install": null
+  },
+  "title": {
+   "en_US": "Jellyfin"
+  }
+ }
+}

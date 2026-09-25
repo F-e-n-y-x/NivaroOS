@@ -1,293 +1,206 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../services/api_client.dart';
+
 import '../services/rfb_client.dart';
 import '../services/vm_client.dart';
-import '../theme.dart';
+import '../ui/ui.dart';
 import '../widgets/rfb_view.dart';
-import '../widgets/common.dart';
 
-/// Remote-controls the NivaroOS server's OWN desktop session (x11vnc on
-/// display :0) - a different console from any per-VM one. Deliberately
-/// mirrors VmConsoleScreen's structure (fullscreen/rotation handling, the
-/// same RfbClient/RfbView stack) since it's the same underlying RFB
-/// protocol either way, just pointed at /host/console instead of
-/// /vms/{name}/console (see RfbClient's vmName == null case) - the only
-/// host-specific feature is changing the host's actual display resolution,
-/// which has no per-VM equivalent.
+/// The NivaroOS server's own desktop (x11vnc on its display), through the
+/// same console as a VM (`/v1/vm-sidecar/host/console`). The one thing
+/// only the host has is its display resolution.
 class HostDesktopScreen extends StatefulWidget {
-  const HostDesktopScreen({super.key});
+  const HostDesktopScreen({super.key, this.client, this.rfb, this.history});
+
+  /// For tests; the app uses the session's gateway clients.
+  final VmClient? client;
+  final RfbClient? rfb;
+  final RemoteClipboardHistory? history;
 
   @override
   State<HostDesktopScreen> createState() => _HostDesktopScreenState();
 }
 
-class _HostDesktopScreenState extends State<HostDesktopScreen>
-    with WidgetsBindingObserver {
-  late final RfbClient _client;
-  late final VmClient _vmClient;
-  bool _isFullscreen = false;
-  bool _manualLandscape = false;
-  bool _lastAppliedLandscape = false;
+class _HostDesktopScreenState extends State<HostDesktopScreen> {
+  late final VmClient _client = widget.client ?? VmClient();
+  late final RfbClient _rfb = widget.rfb ?? RfbClient();
+  bool _checking = true;
+  bool? _installed;
+  VmException? _error;
   HostDisplay? _display;
-  bool _resizing = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    final host = Uri.parse(ApiClient.instance.baseUrl).host;
-    _vmClient = VmClient(host);
-    _client = RfbClient(host: host, port: 28641);
-    _loadDisplay();
+    _check();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _client.close();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (widget.rfb == null) _rfb.dispose();
+    if (widget.client == null) _client.close();
     super.dispose();
   }
 
-  void _syncSystemUI(bool isLandscape) {
-    if (isLandscape != _lastAppliedLandscape || _isFullscreen) {
-      _lastAppliedLandscape = isLandscape;
-      if (isLandscape || _isFullscreen) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      } else {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
+    try {
+      final installed = await _client.hostDesktopInstalled();
+      if (!mounted) return;
+      setState(() {
+        _installed = installed;
+        _checking = false;
+      });
+      if (installed) {
+        unawaited(_rfb.connect());
+        unawaited(_loadDisplay());
       }
-    }
-  }
-
-  void _toggleOrientation() {
-    setState(() => _manualLandscape = !_manualLandscape);
-    if (_manualLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
-  }
-
-  void _toggleFullscreen() {
-    setState(() => _isFullscreen = !_isFullscreen);
-    if (_isFullscreen) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      final isLandscape =
-          MediaQuery.of(context).orientation == Orientation.landscape ||
-              _manualLandscape;
-      if (!isLandscape) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      }
+    } on VmException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _checking = false;
+      });
     }
   }
 
   Future<void> _loadDisplay() async {
     try {
-      final d = await _vmClient.getHostDisplay();
+      final d = await _client.getHostDisplay();
       if (mounted) setState(() => _display = d);
-    } catch (_) {}
+    } on VmException {
+      // The resolution menu says it couldn't read them.
+    }
   }
 
-  Future<void> _resolutionMenu() async {
-    final resolutions = _display?.resolutions ?? [];
+  Future<void> _resolution(BuildContext sheetContext) async {
+    final display = _display;
     final choice = await showModalBottomSheet<DisplayResolution>(
-      context: context,
-      backgroundColor: NivaroColors.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: NivaroColors.borderHighlight,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 16),
-              Text('Host Display Resolution',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                      color: NivaroColors.textPrimary)),
-              if (_display != null) ...[
-                const SizedBox(height: 4),
-                Text('Current: ${_display!.current}',
-                    style: TextStyle(
-                        color: NivaroColors.textMuted, fontSize: 12)),
-              ],
-              const SizedBox(height: 14),
-              if (resolutions.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                      'No alternate resolutions detected for this display.',
-                      style: TextStyle(color: NivaroColors.textMuted)),
-                )
-              else
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: resolutions.length,
-                    separatorBuilder: (_, _) => Divider(
-                        height: 1, color: NivaroColors.borderSubtle),
-                    itemBuilder: (context, index) {
-                      final r = resolutions[index];
-                      final isCurrent = _display != null &&
-                          r.width == _display!.width &&
-                          r.height == _display!.height;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.desktop_windows_rounded,
-                            color: isCurrent
-                                ? NivaroColors.primaryLight
-                                : NivaroColors.textMuted),
-                        title: Text(
-                            r.label.isNotEmpty
-                                ? r.label
-                                : '${r.width}x${r.height}',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: isCurrent
-                            ? Icon(Icons.check_circle_rounded,
-                                color: NivaroColors.successLight)
-                            : null,
-                        onTap:
-                            isCurrent ? null : () => Navigator.pop(context, r),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      context: sheetContext,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => _ResolutionSheet(display: display, onRetry: _loadDisplay),
     );
-    if (choice == null || _resizing) return;
-    setState(() => _resizing = true);
+    if (choice == null || !mounted) return;
     try {
-      final d = await _vmClient.setHostDisplay(choice.width, choice.height);
-      if (mounted) {
-        setState(() => _display = d);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  'Host display resolution: ${choice.width}x${choice.height}')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(e.toString().replaceFirst('Exception: ', '')),
-              backgroundColor: NivaroColors.danger),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _resizing = false);
+      final d = await _client.setHostDisplay(choice.width, choice.height);
+      if (!mounted) return;
+      setState(() => _display = d);
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text('The server screen is now ${choice.width} × ${choice.height}')));
+    } on VmException catch (e) {
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  Widget? _placeholder() {
+    if (_checking && _installed == null) {
+      return const ConsolePlaceholder(icon: Icons.screen_share_outlined, title: '', message: '', loading: true);
+    }
+    final error = _error;
+    if (error != null) {
+      return ConsolePlaceholder(
+        icon: error.kind == VmErrorKind.offline ? Icons.cloud_off_outlined : Icons.error_outline,
+        title: error.kind == VmErrorKind.offline ? "Can't reach the server" : "Couldn't open the host desktop",
+        message: error.message,
+        actionLabel: 'Retry',
+        onAction: _check,
+      );
+    }
+    if (_installed == false) {
+      return ConsolePlaceholder(
+        icon: Icons.screen_share_outlined,
+        title: "Host desktop isn't set up",
+        message: "Turn on host desktop streaming in the NivaroOS web dashboard. Then you can use the server's own screen from here.",
+        actionLabel: 'Check again',
+        onAction: _check,
+      );
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDeviceLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
-    final isLandscape = isDeviceLandscape || _manualLandscape;
-    final hideAppBar = _isFullscreen || isLandscape;
+    return RemoteConsoleFrame(
+      client: _rfb,
+      title: 'Host desktop',
+      screenLabel: "The server's screen",
+      clipboardTarget: RemoteClipboardHistory.hostTarget,
+      history: widget.history,
+      placeholder: _placeholder(),
+      menuItems: [
+        if (_installed == true)
+          ConsoleMenuItem(icon: Icons.aspect_ratio_outlined, label: 'Screen resolution', onPressed: _resolution),
+      ],
+    );
+  }
+}
 
-    _syncSystemUI(isLandscape);
+class _ResolutionSheet extends StatelessWidget {
+  const _ResolutionSheet({required this.display, required this.onRetry});
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: hideAppBar
-          ? null
-          : AppBar(
-              backgroundColor: NivaroColors.surface,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              title: Row(
-                children: [
-                  PulsingStatusDot(color: NivaroColors.success, size: 7),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Host Desktop',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 16)),
-                        Text(
-                          _display != null
-                              ? 'NivaroOS Server · ${_display!.current}'
-                              : 'NivaroOS Server Display',
-                          style: TextStyle(
-                              color: NivaroColors.textMuted, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                RoundIconButton(
-                  icon: Icons.stay_current_landscape_rounded,
-                  tooltip: 'Switch to Landscape',
-                  onPressed: _toggleOrientation,
-                ),
-                const SizedBox(width: 6),
-                RoundIconButton(
-                  icon: Icons.aspect_ratio_rounded,
-                  tooltip: 'Display Resolution',
-                  onPressed: _resizing ? null : _resolutionMenu,
-                ),
-                const SizedBox(width: 12),
-              ],
-            ),
-      body: SafeArea(
-        top: !hideAppBar,
-        bottom: false,
-        left: false,
-        right: false,
-        child: RfbView(
-          client: _client,
-          vmClient: _vmClient,
-          vmName: '',
-          isFullscreen: _isFullscreen,
-          onToggleFullscreen: _toggleFullscreen,
-          isLandscape: isLandscape,
-          onToggleOrientation: _toggleOrientation,
+  final HostDisplay? display;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final d = display;
+    final options = d?.resolutions ?? const <DisplayResolution>[];
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(bottom: Space.lg),
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.xs),
+          child: Semantics(header: true, child: Text('Screen resolution', style: theme.textTheme.titleLarge)),
         ),
-      ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.sm),
+          child: Text(
+            d == null ? "Couldn't read the server's screen modes." : 'The size of the server’s own screen. Now ${d.width} × ${d.height}.',
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        if (d == null)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: gutter),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onRetry();
+                },
+                child: const Text('Retry'),
+              ),
+            ),
+          )
+        else if (options.isEmpty)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.sm),
+            child: Text('This screen offers no other sizes.', style: theme.textTheme.bodyMedium),
+          )
+        else
+          for (final r in options)
+            Builder(builder: (context) {
+              final current = r.width == d.width && r.height == d.height;
+              return ListTile(
+                leading: const Icon(Icons.desktop_windows_outlined),
+                title: Text('${r.width} × ${r.height}'),
+                subtitle: r.label.isNotEmpty && r.label != '${r.width} × ${r.height}' ? Text(r.label) : null,
+                selected: current,
+                trailing: current ? const Icon(Icons.check, semanticLabel: 'Current') : null,
+                onTap: current ? null : () => Navigator.of(context).pop(r),
+              );
+            }),
+      ],
     );
   }
 }

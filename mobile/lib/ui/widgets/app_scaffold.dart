@@ -57,7 +57,7 @@ class AppScaffold extends StatelessWidget {
     this.floatingActionButton,
     this.floatingActionButtonLocation,
     this.maxContentWidth = Space.readingMaxWidth,
-    this.collapsingTitle = true,
+    this.collapsingTitle,
   }) : body = null;
 
   /// Heights of the M3 small app bar and of the medium one while expanded,
@@ -95,8 +95,14 @@ class AppScaffold extends StatelessWidget {
   final double? maxContentWidth;
 
   /// Sliver form only: a medium app bar whose large title collapses into
-  /// the bar on scroll. False gives a small pinned bar.
-  final bool collapsingTitle;
+  /// the bar on scroll. False gives a small pinned bar. Null (the default)
+  /// follows the app's rule: medium for a top-level screen (the five tabs,
+  /// the first screens), small for every screen pushed on top, which has
+  /// a back arrow.
+  final bool? collapsingTitle;
+
+  bool _collapsing(BuildContext context) =>
+      collapsingTitle ?? (leading == null && !(ModalRoute.of(context)?.impliesAppBarDismissal ?? false));
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +166,8 @@ class AppScaffold extends StatelessWidget {
   Widget _sliverBody(BuildContext context, Widget titleWidget) {
     final padding = MediaQuery.paddingOf(context);
     final ownBar = appBar == null;
-    final Widget bar = collapsingTitle
+    final collapsing = _collapsing(context);
+    final Widget bar = collapsing
         ? SliverAppBar.medium(title: titleWidget, leading: leading, actions: actions, bottom: bottom)
         : SliverAppBar(pinned: true, title: titleWidget, leading: leading, actions: actions, bottom: bottom);
 
@@ -185,7 +192,7 @@ class AppScaffold extends StatelessWidget {
       },
     );
     if (onRefresh != null) {
-      final barHeight = (collapsingTitle ? _mediumBarExpandedHeight : _smallBarHeight) + (bottom?.preferredSize.height ?? 0);
+      final barHeight = (collapsing ? _mediumBarExpandedHeight : _smallBarHeight) + (bottom?.preferredSize.height ?? 0);
       scroll = RefreshIndicator(
         onRefresh: onRefresh!,
         // Start the indicator below the expanded app bar rather than on top

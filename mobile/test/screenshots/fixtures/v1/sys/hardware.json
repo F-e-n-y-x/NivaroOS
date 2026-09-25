@@ -1,0 +1,17 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "arch": "amd64",
+  "docker_update_available": "true",
+  "docker_version": "29.8.0",
+  "drive_model": "",
+  "hostname": "nivaro",
+  "kernel": "7.1.13-x64v3-xanmod1",
+  "locale": "en_US",
+  "os_name": "Debian GNU/Linux 13 (trixie)",
+  "packages": "2039",
+  "shell": "/bin/bash",
+  "uptime": "up 4 days, 23 hours, 4 minutes"
+ }
+}

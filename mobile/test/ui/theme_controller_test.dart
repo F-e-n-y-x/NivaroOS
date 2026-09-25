@@ -1,14 +1,13 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
-import 'package:nivaroos_mobile/theme.dart';
-import 'package:nivaroos_mobile/ui/theme/app_theme.dart';
 import 'package:nivaroos_mobile/ui/theme/theme_controller.dart';
 
-import '../screenshots/harness.dart' show stubPlatformChannels, testApp;
+import '../screenshots/harness.dart' show stubPlatformChannels;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(stubPlatformChannels);
 
   // StorageService is a process-wide singleton that reads the mock store
@@ -35,19 +34,5 @@ void main() {
     await StorageService.instance.clearAll();
     expect(await StorageService.instance.getThemeMode(), 'dark');
     expect(await StorageService.instance.getAccessToken(), isNull);
-  });
-
-  testWidgets('legacy NivaroColors follow the active theme', (tester) async {
-    Color? seen;
-    final probe = Builder(builder: (context) {
-      seen = NivaroColors.textPrimary;
-      return const SizedBox();
-    });
-    await tester.pumpWidget(testApp(probe));
-    expect(seen, AppTheme.light().colorScheme.onSurface);
-
-    await tester.pumpWidget(testApp(probe, brightness: Brightness.dark));
-    await tester.pumpAndSettle();
-    expect(seen, AppTheme.dark().colorScheme.onSurface);
   });
 }

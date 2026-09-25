@@ -1,0 +1,7 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "supported": true
+ }
+}
