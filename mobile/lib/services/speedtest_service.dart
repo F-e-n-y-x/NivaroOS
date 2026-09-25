@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
-import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
+import 'speed/speed_engine.dart';
 
 /// Three different measurements, never mixed up (plan M-32):
 ///
@@ -99,15 +97,6 @@ class SpeedtestService {
   /// The server gives up after a minute; stop waiting a little later.
   static Duration serverTimeout = const Duration(seconds: 75);
 
-  // Public download files for the phone's internet test.
-  static const List<String> _cdnEndpoints = [
-    'https://proof.ovh.net/files/100Mb.dat',
-    'https://cachefly.cachefly.net/100mb.test',
-    'https://speedtest.selectel.ru/100MB',
-    'https://ash-speed.hetzner.com/100MB.bin',
-    'https://fsn1-speed.hetzner.com/100MB.bin',
-  ];
-
   static SpeedtestPhase _serverPhase(String? p) => switch (p) {
         'ping' => SpeedtestPhase.ping,
         'download' => SpeedtestPhase.download,
@@ -168,240 +157,85 @@ class SpeedtestService {
 
   static String _sentence(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}${s.endsWith('.') ? '' : '.'}';
 
-  /// Measures this phone's internet connection against public test
-  /// servers. Uses mobile data when the phone is not on Wi-Fi.
+  /// This phone's internet connection, against the speedtest.net server
+  /// nearest the phone (lowest ping of the ones speedtest.net suggests for
+  /// its IP) - the same method as the server's own test. It has nothing to
+  /// do with the NivaroOS server.
   Future<SpeedResult> runPhoneInternetTest({SpeedtestProgressCallback? onProgress}) async {
     onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting, fraction: 0.02));
-
-    String? location;
-    try {
-      final traceRes = await http.get(Uri.parse('https://1.1.1.1/cdn-cgi/trace')).timeout(const Duration(seconds: 3));
-      if (traceRes.statusCode == 200) {
-        for (final line in traceRes.body.split('\n')) {
-          if (line.startsWith('colo=')) location = 'Cloudflare ${line.substring(5).trim()}';
-        }
-      }
-    } catch (_) {
-      // Only a label; the test itself decides whether the internet works.
+    final pick = await nearestSpeedTarget();
+    if (pick == null) {
+      throw SpeedtestException("Couldn't reach a speedtest.net server. Check this phone's internet connection and try again.");
     }
-
-    final pings = <int>[];
-    for (var i = 0; i < 8; i++) {
-      final sw = Stopwatch()..start();
-      try {
-        final res = await http.head(Uri.parse('https://1.1.1.1')).timeout(const Duration(seconds: 2));
-        sw.stop();
-        if (res.statusCode < 400) pings.add(max(1, sw.elapsedMilliseconds));
-      } catch (_) {
-        // A failed probe is not counted.
-      }
-      onProgress?.call(SpeedtestProgress(
-        phase: SpeedtestPhase.ping,
-        fraction: 0.02 + (i + 1) / 8 * 0.1,
-        partial: SpeedResult(pingMs: pings.isEmpty ? null : _avg(pings)),
-      ));
-    }
-    if (pings.isEmpty) {
-      throw SpeedtestException("This phone can't reach the internet. Check its connection and try again.");
-    }
-    final ping = _avg(pings);
-    final jitter = _jitter(pings, ping);
-    var partial = SpeedResult(pingMs: ping, jitterMs: jitter, server: location);
-
-    final down = await _measure(
-      durationMs: 5500,
-      workers: 8,
-      phase: SpeedtestPhase.download,
-      fractionStart: 0.12,
-      fractionSpan: 0.48,
-      partial: partial,
+    final t = pick.target;
+    return _runPhoneTest(
+      name: t.name,
+      ping: t.ping,
+      download: (_) => t.download(),
+      upload: (_) => t.upload,
+      // Test servers end each request at their own limit; 25 MB bodies are
+      // re-sent until time is up.
+      uploadBodyBytes: 25 * 1000 * 1000,
+      unreachable: "Couldn't reach an internet speed test server. Check this phone's internet connection.",
       onProgress: onProgress,
-      work: (client, count, stop) => _downloadLoop(client, Uri.parse(_cdnEndpoints[count.id % _cdnEndpoints.length]), count, stop),
     );
-    if (down == null) throw SpeedtestException('The download test failed: no data arrived.');
-    partial = partial.copyWith(downloadMbps: down);
-
-    final payload = _payload(2 * 1024 * 1024, 31);
-    final up = await _measure(
-      durationMs: 4500,
-      workers: 4,
-      phase: SpeedtestPhase.upload,
-      fractionStart: 0.6,
-      fractionSpan: 0.38,
-      partial: partial,
-      onProgress: onProgress,
-      work: (client, count, stop) => _uploadLoop(client, Uri.parse('https://speed.cloudflare.com/__up'), payload, count, stop),
-    );
-    if (up == null) throw SpeedtestException('The upload test failed: no data could be sent.');
-    return partial.copyWith(uploadMbps: up, testedAt: clock.now());
   }
 
-  /// Measures the link between this phone and the server through the
-  /// gateway's speed-test routes (no internet involved).
+  /// The link between this phone and the NivaroOS server, against the
+  /// gateway's `/speedtest/{ping,download,upload}` (no size limit there).
   Future<SpeedResult> runPhoneToServerTest({SpeedtestProgressCallback? onProgress}) async {
     onProgress?.call(const SpeedtestProgress(phase: SpeedtestPhase.connecting, fraction: 0.02));
     final api = ApiClient.instance;
-    final pingUrl = api.buildUri('/speedtest/ping');
-    final downUrl = api.buildUri('/speedtest/download');
-    final upUrl = api.buildUri('/speedtest/upload');
-
-    final pings = <int>[];
-    for (var i = 0; i < 15; i++) {
-      final sw = Stopwatch()..start();
-      try {
-        final res = await http.get(pingUrl).timeout(const Duration(milliseconds: 1500));
-        sw.stop();
-        if (res.statusCode == 200) pings.add(max(1, sw.elapsedMilliseconds));
-      } catch (_) {
-        // A failed probe is not counted.
-      }
-      onProgress?.call(SpeedtestProgress(
-        phase: SpeedtestPhase.ping,
-        fraction: 0.02 + (i + 1) / 15 * 0.1,
-        partial: SpeedResult(pingMs: pings.isEmpty ? null : _avg(pings)),
-      ));
-    }
-    if (pings.isEmpty) {
-      throw SpeedtestException("Couldn't reach the server's speed test. Check the connection and try again.");
-    }
-    final ping = _avg(pings);
-    var partial = SpeedResult(pingMs: ping, jitterMs: _jitter(pings, ping), server: api.buildUri('/').host);
-
-    final down = await _measure(
-      durationMs: 5000,
-      workers: 8,
-      phase: SpeedtestPhase.download,
-      fractionStart: 0.12,
-      fractionSpan: 0.48,
-      partial: partial,
+    return _runPhoneTest(
+      name: api.buildUri('/').host,
+      ping: api.buildUri('/speedtest/ping'),
+      download: (_) => api.buildUri('/speedtest/download'),
+      upload: (_) => api.buildUri('/speedtest/upload'),
+      uploadBodyBytes: 200 * 1000 * 1000,
+      unreachable: "Couldn't reach the server's speed test. Check the connection and try again.",
       onProgress: onProgress,
-      work: (client, count, stop) => _downloadLoop(client, downUrl, count, stop),
     );
-    if (down == null) throw SpeedtestException('The download test failed: no data arrived from the server.');
-    partial = partial.copyWith(downloadMbps: down);
-
-    final payload = _payload(2 * 1024 * 1024, 17);
-    final up = await _measure(
-      durationMs: 4500,
-      workers: 6,
-      phase: SpeedtestPhase.upload,
-      fractionStart: 0.6,
-      fractionSpan: 0.38,
-      partial: partial,
-      onProgress: onProgress,
-      work: (client, count, stop) => _uploadLoop(client, upUrl, payload, count, stop),
-    );
-    if (up == null) throw SpeedtestException('The upload test failed: no data could be sent to the server.');
-    return partial.copyWith(uploadMbps: up, testedAt: clock.now());
   }
 
-  static double _avg(List<int> v) => v.reduce((a, b) => a + b) / v.length;
-  static double _jitter(List<int> v, double avg) => v.map((p) => (p - avg).abs()).reduce((a, b) => a + b) / v.length;
-  static Uint8List _payload(int size, int mul) => Uint8List.fromList(List<int>.generate(size, (i) => (i * mul) & 0xFF));
-
-  /// Runs [workers] copies of [work] for [durationMs] and returns the
-  /// steady rate in Mbps (the 85th percentile of a smoothed rate, so the
-  /// TCP ramp-up doesn't pull it down), or null when nothing moved.
-  Future<double?> _measure({
-    required int durationMs,
-    required int workers,
-    required SpeedtestPhase phase,
-    required double fractionStart,
-    required double fractionSpan,
-    required SpeedResult partial,
-    required SpeedtestProgressCallback? onProgress,
-    required Future<void> Function(http.Client client, _ByteCount count, bool Function() stop) work,
+  /// Latency, then download, then upload with [SpeedEngine] (see there for
+  /// how each is measured), reporting progress as it goes.
+  Future<SpeedResult> _runPhoneTest({
+    required String name,
+    required Uri ping,
+    required Uri Function(int stream) download,
+    required Uri Function(int stream) upload,
+    required int uploadBodyBytes,
+    required String unreachable,
+    SpeedtestProgressCallback? onProgress,
   }) async {
-    final watch = Stopwatch()..start();
-    final counts = List.generate(workers, _ByteCount.new);
-    int total() => counts.fold(0, (s, c) => s + c.bytes);
-    var smoothed = 0.0;
-    final samples = <double>[];
-    var lastT = 0;
-    var lastBytes = 0;
-    var stopped = false;
-    bool stop() => stopped || watch.elapsedMilliseconds >= durationMs;
+    final engine = SpeedEngine();
+    onProgress?.call(SpeedtestProgress(phase: SpeedtestPhase.ping, fraction: 0.05, partial: SpeedResult(server: name)));
+    final lat = await engine.latency(ping);
+    if (lat == null) throw SpeedtestException(unreachable);
+    var partial = SpeedResult(pingMs: _round(lat.pingMs), jitterMs: _round(lat.jitterMs), server: name);
+    onProgress?.call(SpeedtestProgress(phase: SpeedtestPhase.ping, fraction: 0.12, partial: partial));
 
-    final ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      final now = watch.elapsedMilliseconds;
-      final dt = now - lastT;
-      if (dt <= 0) return;
-      final bytes = total();
-      final instant = (bytes - lastBytes) * 8.0 / (dt * 1000.0);
-      lastT = now;
-      lastBytes = bytes;
-      if (instant > 0) {
-        smoothed = smoothed == 0 ? instant : 0.35 * instant + 0.65 * smoothed;
-        samples.add(smoothed);
-      }
-      onProgress?.call(SpeedtestProgress(
-        phase: phase,
-        liveMbps: smoothed > 0 ? smoothed : null,
-        fraction: (fractionStart + now / durationMs * fractionSpan).clamp(fractionStart, fractionStart + fractionSpan),
-        partial: partial,
-      ));
-    });
+    final down = await engine.download(download,
+        onLive: (mbps, f) => onProgress?.call(SpeedtestProgress(
+              phase: SpeedtestPhase.download,
+              liveMbps: mbps > 0 ? mbps : null,
+              fraction: 0.12 + f * 0.46,
+              partial: partial,
+            )));
+    if (down == null) throw SpeedtestException('The download test failed: no data arrived.');
+    partial = partial.copyWith(downloadMbps: _round(down));
 
-    final client = http.Client();
-    try {
-      await Future.wait([for (final c in counts) work(client, c, stop)])
-          .timeout(Duration(milliseconds: durationMs + 800), onTimeout: () => const []);
-    } finally {
-      stopped = true;
-      ticker.cancel();
-      watch.stop();
-      client.close();
-    }
-
-    if (samples.isNotEmpty) {
-      samples.sort();
-      return samples[(samples.length * 0.85).floor().clamp(0, samples.length - 1)];
-    }
-    final bytes = total();
-    if (bytes > 0 && watch.elapsedMilliseconds > 0) return bytes * 8.0 / (watch.elapsedMilliseconds * 1000.0);
-    return null;
+    final up = await engine.upload(upload,
+        bodyBytes: uploadBodyBytes,
+        onLive: (mbps, f) => onProgress?.call(SpeedtestProgress(
+              phase: SpeedtestPhase.upload,
+              liveMbps: mbps > 0 ? mbps : null,
+              fraction: 0.58 + f * 0.4,
+              partial: partial,
+            )));
+    if (up == null) throw SpeedtestException('The upload test failed: no data could be sent.');
+    return partial.copyWith(uploadMbps: _round(up), testedAt: clock.now());
   }
 
-  static Future<void> _downloadLoop(http.Client client, Uri url, _ByteCount count, bool Function() stop) async {
-    while (!stop()) {
-      try {
-        final req = http.Request('GET', url.replace(queryParameters: {...url.queryParameters, '_t': '${clock.now().microsecondsSinceEpoch}'}))
-          ..headers['Cache-Control'] = 'no-cache';
-        final res = await client.send(req).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200 || res.statusCode == 206) {
-          await for (final chunk in res.stream) {
-            count.bytes += chunk.length;
-            if (stop()) break;
-          }
-        } else {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      } catch (_) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-    }
-  }
-
-  static Future<void> _uploadLoop(http.Client client, Uri url, Uint8List payload, _ByteCount count, bool Function() stop) async {
-    while (!stop()) {
-      try {
-        final res = await client
-            .post(url, body: payload, headers: {'Content-Type': 'application/octet-stream'})
-            .timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200 || res.statusCode == 204) {
-          count.bytes += payload.length;
-        } else {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      } catch (_) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-    }
-  }
-}
-
-class _ByteCount {
-  _ByteCount(this.id);
-  final int id;
-  int bytes = 0;
+  static double _round(double v) => (v * 10).roundToDouble() / 10;
 }

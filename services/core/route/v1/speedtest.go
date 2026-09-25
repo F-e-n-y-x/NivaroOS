@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,8 @@ import (
 )
 
 // Internet speed test against the nearest speedtest.net (Ookla) server -
-// the same servers speedtest.net itself picks - with Cloudflare as fallback. The old test gave numbers far below
+// the same servers speedtest.net itself picks. Cloudflare is not used: its
+// numbers were well off real line speed. The old test gave numbers far below
 // the real line speed because it used ONE connection, a fixed 4 MB (1 MB up)
 // transfer and counted DNS + TLS setup and TCP slow start as transfer time;
 // it also reported a made-up 45 ms ping when the ping failed.
@@ -37,45 +39,107 @@ type speedTarget struct {
 	UpURL   string
 }
 
-var cloudflareTarget = speedTarget{
-	Name:    "Cloudflare",
-	PingURL: "https://speed.cloudflare.com/__down?bytes=0",
-	DownURL: func(n int) string { return fmt.Sprintf("https://speed.cloudflare.com/__down?bytes=%d", n) },
-	UpURL:   "https://speed.cloudflare.com/__up",
-}
-
-func ooklaTarget(host, name string) speedTarget {
+// ooklaTarget: a speedtest.net server's endpoints. scheme is "https" for
+// the JSON list's hosts and "http" for the XML list's host:8080 entries.
+func ooklaTarget(scheme, host, name string) speedTarget {
+	base := scheme + "://" + host
 	return speedTarget{
 		Name:    name,
-		PingURL: "https://" + host + "/hello",
-		DownURL: func(n int) string { return fmt.Sprintf("https://%s/download?nocache=%d&size=%d", host, time.Now().UnixNano(), n) },
-		UpURL:   "https://" + host + "/upload",
+		PingURL: base + "/hello",
+		DownURL: func(n int) string {
+			return fmt.Sprintf("%s/download?nocache=%d&size=%d", base, time.Now().UnixNano(), n)
+		},
+		UpURL: base + "/upload",
 	}
+}
+
+type ooklaServer struct {
+	Scheme, Host, Name, Sponsor string
+}
+
+// ooklaServerList: the servers speedtest.net suggests for this IP, nearest
+// first - from its JSON API, else its older XML list.
+func ooklaServerList(ctx context.Context, c *http.Client) ([]ooklaServer, error) {
+	get := func(url string) ([]byte, error) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		resp, err := c.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	}
+	var jsonErr error
+	if b, err := get("https://www.speedtest.net/api/js/servers?engine=js&https_functional=true&limit=10"); err == nil {
+		var list []struct {
+			Host    string `json:"host"`
+			Name    string `json:"name"`
+			Sponsor string `json:"sponsor"`
+		}
+		if err := json.Unmarshal(b, &list); err == nil && len(list) > 0 {
+			out := make([]ooklaServer, 0, len(list))
+			for _, s := range list {
+				if s.Host != "" {
+					out = append(out, ooklaServer{"https", s.Host, s.Name, s.Sponsor})
+				}
+			}
+			if len(out) > 0 {
+				return out, nil
+			}
+		}
+		jsonErr = errors.New("empty server list")
+	} else {
+		jsonErr = err
+	}
+	b, err := get("https://www.speedtest.net/speedtest-servers-static.php")
+	if err != nil {
+		return nil, fmt.Errorf("speedtest.net server list: %v; %v", jsonErr, err)
+	}
+	out := parseOoklaXML(b)
+	if len(out) == 0 {
+		return nil, fmt.Errorf("speedtest.net server list: %v; no servers in the XML list", jsonErr)
+	}
+	return out, nil
+}
+
+// parseOoklaXML reads speedtest-servers-static.php (<server host="h:8080"
+// name="City" sponsor="ISP" .../>), in the order given (nearest first).
+func parseOoklaXML(b []byte) []ooklaServer {
+	var doc struct {
+		Servers []struct {
+			Host    string `xml:"host,attr"`
+			Name    string `xml:"name,attr"`
+			Sponsor string `xml:"sponsor,attr"`
+		} `xml:"servers>server"`
+	}
+	if xml.Unmarshal(b, &doc) != nil {
+		return nil
+	}
+	var out []ooklaServer
+	for _, s := range doc.Servers {
+		if s.Host != "" {
+			out = append(out, ooklaServer{"http", s.Host, s.Name, s.Sponsor})
+		}
+	}
+	return out
 }
 
 // nearestOokla asks speedtest.net for the servers nearest this IP and
 // returns the one with the lowest measured latency.
 func nearestOokla(ctx context.Context, c *http.Client) (speedTarget, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.speedtest.net/api/js/servers?engine=js&https_functional=true&limit=10", nil)
-	resp, err := c.Do(req)
+	servers, err := ooklaServerList(ctx, c)
 	if err != nil {
 		return speedTarget{}, err
-	}
-	defer resp.Body.Close()
-	var servers []struct {
-		Host    string `json:"host"`
-		Name    string `json:"name"`
-		Sponsor string `json:"sponsor"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil || len(servers) == 0 {
-		return speedTarget{}, fmt.Errorf("speedtest.net server list: %v", err)
 	}
 	if len(servers) > 5 {
 		servers = servers[:5]
 	}
 	best, bestMs := speedTarget{}, math.MaxFloat64
 	for _, s := range servers {
-		t := ooklaTarget(s.Host, fmt.Sprintf("%s (%s)", s.Sponsor, s.Name))
+		t := ooklaTarget(s.Scheme, s.Host, fmt.Sprintf("%s (%s)", s.Sponsor, s.Name))
 		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		ms, _, err := measureLatency(pctx, c, t, 3)
 		cancel()
@@ -93,7 +157,7 @@ var (
 	stStreams    = 8
 	stDuration   = 10 * time.Second
 	stSampleTick = 250 * time.Millisecond
-	stDownChunk  = 25 * 1000 * 1000 // per request (Cloudflare refuses >= 100 MB); streams re-request until time is up
+	stDownChunk  = 25 * 1000 * 1000 // per request; streams re-request until time is up
 	stUpChunk    = 8 * 1000 * 1000
 )
 
@@ -103,7 +167,7 @@ type speedResult struct {
 	DownloadMbps float64 `json:"download_mbps"`
 	UploadMbps   float64 `json:"upload_mbps"`
 	Server       string  `json:"server"`
-	Provider     string  `json:"provider"` // speedtest.net | cloudflare
+	Provider     string  `json:"provider"` // speedtest.net
 	Timestamp    int64   `json:"timestamp"`
 }
 
@@ -351,7 +415,7 @@ func currentProgress() speedProgress {
 	return progress
 }
 
-// errRateLimited: servers (Cloudflare especially) answer 429 after several
+// errRateLimited: test servers may answer 429 after several
 // back-to-back runs.
 var errRateLimited = errors.New("the test server is rate-limiting speed tests from this IP - wait a few minutes and try again")
 
@@ -377,10 +441,11 @@ func runSpeedTestLocked(ctx context.Context) (speedResult, error) {
 	c := speedClient()
 	defer c.CloseIdleConnections()
 
-	target, provider := cloudflareTarget, "cloudflare"
-	if t, err := nearestOokla(ctx, c); err == nil {
-		target, provider = t, "speedtest.net"
+	target, err := nearestOokla(ctx, c)
+	if err != nil {
+		return speedResult{}, fmt.Errorf("no speedtest.net server available: %w", err)
 	}
+	provider := "speedtest.net"
 	ping, jitter, err := measureLatency(ctx, c, target, 10)
 	if errors.Is(err, errRateLimited) {
 		return speedResult{}, err
@@ -388,12 +453,19 @@ func runSpeedTestLocked(ctx context.Context) (speedResult, error) {
 	if err != nil {
 		return speedResult{}, fmt.Errorf("cannot reach %s: %w", target.Name, err)
 	}
-	setProgress(func(p *speedProgress) { p.Phase = "download"; p.Result = &speedResult{PingMs: math.Round(ping*10) / 10, JitterMs: math.Round(jitter*10) / 10, Server: target.Name, Provider: provider} })
+	setProgress(func(p *speedProgress) {
+		p.Phase = "download"
+		p.Result = &speedResult{PingMs: math.Round(ping*10) / 10, JitterMs: math.Round(jitter*10) / 10, Server: target.Name, Provider: provider}
+	})
 	down, err := steadyMbps(ctx, downloadWorker(c, target))
 	if err != nil {
 		return speedResult{}, fmt.Errorf("download test: %w", err)
 	}
-	setProgress(func(p *speedProgress) { p.Phase = "upload"; p.LiveMbps = 0; p.Result.DownloadMbps = math.Round(down*10) / 10 })
+	setProgress(func(p *speedProgress) {
+		p.Phase = "upload"
+		p.LiveMbps = 0
+		p.Result.DownloadMbps = math.Round(down*10) / 10
+	})
 	// Random payload so no compression anywhere on the path inflates it.
 	payload := make([]byte, stUpChunk)
 	rand.Read(payload)
