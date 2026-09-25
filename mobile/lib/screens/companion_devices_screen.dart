@@ -161,16 +161,25 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
                 const SizedBox(height: Space.xl),
                 Text('Stop sharing after', style: theme.textTheme.titleSmall),
                 const SizedBox(height: Space.sm),
-                SegmentedButton<Duration>(
-                  segments: [
-                    for (final d in BackgroundService.shareChoices) ButtonSegment(value: d, label: Text(_lengthLabel(d))),
+                // Chips wrap to a second row instead of breaking a label in
+                // two, as four segments did on small screens and large text.
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.sm,
+                  children: [
+                    for (final d in BackgroundService.shareChoices)
+                      ChoiceChip(
+                        label: Text(_lengthLabel(d)),
+                        selected: choice == d,
+                        onSelected: (_) => setSheet(() => choice = d),
+                      ),
                   ],
-                  selected: {choice},
-                  onSelectionChanged: (s) => setSheet(() => choice = s.first),
                 ),
                 const SizedBox(height: Space.md),
                 Text(
-                  'You can stop it earlier from here or from its notification.',
+                  choice == BackgroundService.shareNever
+                      ? 'It stays on until you turn it off here or from its notification. Keeping it on uses a little battery.'
+                      : 'You can stop it earlier from here or from its notification.',
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: Space.xl),
@@ -193,7 +202,11 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
     );
   }
 
-  static String _lengthLabel(Duration d) => d.inMinutes < 60 ? '${d.inMinutes} min' : (d.inHours == 1 ? '1 hour' : '${d.inHours} hours');
+  static String _lengthLabel(Duration d) => d == BackgroundService.shareNever
+      ? 'Never'
+      : d.inMinutes < 60
+          ? '${d.inMinutes} min'
+          : (d.inHours == 1 ? '1 hour' : '${d.inHours} hours');
 
   void _snack(String text) {
     if (!mounted) return;
@@ -392,7 +405,9 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
           SwitchListTile(
             secondary: Icon(running ? Icons.folder_shared_outlined : Icons.folder_off_outlined),
             title: const Text('Share storage with the server'),
-            subtitle: Text(running ? 'On until $until' : 'Off · Lets the server browse this phone’s files'),
+            subtitle: Text(running
+                ? (until == null ? 'On · until you turn it off' : 'On until $until')
+                : 'Off · Lets the server browse this phone’s files'),
             value: running,
             onChanged: _shareBusy ? null : _toggleSharing,
           ),

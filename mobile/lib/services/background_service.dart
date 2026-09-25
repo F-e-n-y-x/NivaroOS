@@ -60,7 +60,10 @@ class BackgroundService {
   static const maxShare = Duration(hours: 3);
 
   /// Session lengths offered when sharing is turned on.
-  static const shareChoices = [Duration(minutes: 30), Duration(hours: 1), Duration(hours: 3)];
+  /// "Never": sharing stays on until the user turns it off.
+  static const shareNever = Duration.zero;
+
+  static const shareChoices = [Duration(minutes: 30), Duration(hours: 1), Duration(hours: 3), shareNever];
 
   /// Lets tests and screenshots render the Android-only parts of a screen
   /// on the machine running them.
@@ -74,10 +77,16 @@ class BackgroundService {
   /// be started.
   Future<bool> startSharing(Duration length, {required String server}) async {
     if (!isAndroid) return false;
-    final capped = length > maxShare ? maxShare : length;
-    final endAt = clock.now().add(capped);
+    // End time 0 = no end time (Never).
+    final int endAt;
+    if (length == shareNever) {
+      endAt = 0;
+    } else {
+      final capped = length > maxShare ? maxShare : length;
+      endAt = clock.now().add(capped).millisecondsSinceEpoch;
+    }
     try {
-      await _share.invokeMethod('start', {'endAt': endAt.millisecondsSinceEpoch, 'server': server});
+      await _share.invokeMethod('start', {'endAt': endAt, 'server': server});
       return true;
     } catch (e) {
       debugPrint('[BackgroundService] Could not start sharing: $e');

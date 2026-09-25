@@ -30,6 +30,10 @@ import java.util.Date
  * Android 15 rules it follows:
  * - dataSync services get 6 hours per 24; [onTimeout] stops the service at
  *   once when the system says the budget is used up.
+ * - "Never" (no end time, endAt = 0) runs as a specialUse service on
+ *   Android 14+, which has no daily limit - the user asked for it to stay
+ *   on until they turn it off. (The app is sideloaded, so Play's review of
+ *   specialUse doesn't apply.) Older Androids have no dataSync limit.
  * - It is never started from BOOT_COMPLETED or from the background; only
  *   from the app on screen.
  * - Not exported: nothing outside the app can start or bind it.
@@ -104,7 +108,9 @@ class CompanionShareService : Service() {
                 endsAt = endAt
                 prefs().edit().putLong(KEY_ENDS_AT, endAt).remove(KEY_REASON).apply()
                 handler.removeCallbacks(endRunnable)
-                handler.postDelayed(endRunnable, (endAt - System.currentTimeMillis()).coerceAtLeast(0L))
+                if (endAt > 0L) {
+                    handler.postDelayed(endRunnable, (endAt - System.currentTimeMillis()).coerceAtLeast(0L))
+                }
                 if (engine == null) startEngine()
             }
             ACTION_STOP -> stopSharing("stopped")
@@ -119,7 +125,9 @@ class CompanionShareService : Service() {
         ensureChannel(this)
         val notification = buildNotification(endAt, server)
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (endAt <= 0L && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -141,7 +149,7 @@ class CompanionShareService : Service() {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
         }
-        val until = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(endAt))
+        val until = if (endAt > 0L) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(endAt)) else null
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, CompanionShareService::class.java).setAction(ACTION_STOP),
@@ -150,7 +158,12 @@ class CompanionShareService : Service() {
         val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(this, 2, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
-        val text = if (server.isNotEmpty()) "$server can browse this phone until $until" else "Until $until"
+        val text = when {
+            until == null && server.isNotEmpty() -> "$server can browse this phone until you turn sharing off"
+            until == null -> "Until you turn sharing off"
+            server.isNotEmpty() -> "$server can browse this phone until $until"
+            else -> "Until $until"
+        }
         builder
             .setSmallIcon(smallIcon())
             .setContentTitle("Sharing this phone's storage")
@@ -158,11 +171,13 @@ class CompanionShareService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
-            .setWhen(endAt)
+            // Counts down to the end time; with no end time it shows how
+            // long sharing has been on.
+            .setWhen(if (endAt > 0L) endAt else System.currentTimeMillis())
             .setUsesChronometer(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(Notification.Action.Builder(null, "Stop sharing", stopIntent).build())
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) builder.setChronometerCountDown(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) builder.setChronometerCountDown(endAt > 0L)
         if (open != null) builder.setContentIntent(open)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)

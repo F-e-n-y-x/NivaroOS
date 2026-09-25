@@ -68,13 +68,13 @@ Future<void> _signIn({bool updateAvailable = false}) async {
 }
 
 /// The native sharing channel: sharing on until 15:03, or off.
-void _stubSharing({bool running = false, String? lastStopReason}) {
+void _stubSharing({bool running = false, bool forever = false, String? lastStopReason}) {
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   messenger.setMockMethodCallHandler(const MethodChannel('com.fenyx.nivaroos/companion_share'), (call) async {
     if (call.method == 'status') {
       return {
         'running': running,
-        'endsAt': running ? shotTime.add(const Duration(hours: 1)).millisecondsSinceEpoch : 0,
+        'endsAt': running && !forever ? shotTime.add(const Duration(hours: 1)).millisecondsSinceEpoch : 0,
         'lastStopReason': lastStopReason,
       };
     }
@@ -175,6 +175,23 @@ final Map<String, _Shot> _shots = {
     setup: () async => DeviceSyncService.debugFetchDevices = () => Completer<List<CompanionDevice>>().future,
   ),
   'companion_devices_sharing': _Shot(() => const CompanionDevicesScreen(), setup: () async => _stubSharing(running: true)),
+  // Sharing set to Never: on, with no end time.
+  'companion_devices_sharing_never': _Shot(() => const CompanionDevicesScreen(), dense: false, setup: () async => _stubSharing(running: true, forever: true)),
+  // The share sheet with its time limits, Never chosen.
+  'companion_share_sheet': _Shot(
+    () => const CompanionDevicesScreen(),
+    setup: () async => _stubSharing(),
+    before: (tester) async {
+      await tester.tap(find.text('Share storage with the server'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Never'));
+      // Let the chips' check-mark animation finish.
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    },
+  ),
   'companion_devices_stopped': _Shot(() => const CompanionDevicesScreen(), dense: false, setup: () async => _stubSharing(lastStopReason: 'timeout')),
   'companion_devices_offline': _Shot(
     () => const CompanionDevicesScreen(),

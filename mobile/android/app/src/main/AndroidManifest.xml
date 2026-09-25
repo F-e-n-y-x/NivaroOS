@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Storage sharing set to "Never" stop (see CompanionShareService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
@@ -50,12 +52,17 @@
             android:name="id.flutter.flutter_background_service.BootReceiver"
             tools:node="remove" />
 
-        <!-- "Share this phone's storage": a user-started session with an end
-             time, handling Android 15's dataSync timeout. -->
+        <!-- "Share this phone's storage": a user-started session, with an end
+             time (dataSync, handling Android 15's timeout) or none (specialUse,
+             Android 14+, no daily limit). -->
         <service
             android:name=".CompanionShareService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
+            android:foregroundServiceType="dataSync|specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Lets the user's own NivaroOS home server browse this phone's shared storage, for as long as the user leaves sharing on." />
+        </service>
 
         <!-- The 15-minute heartbeat. JobScheduler binds it from the system
              process; BIND_JOB_SERVICE is a system-only permission, so no app
