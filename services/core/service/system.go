@@ -381,6 +381,11 @@ func (c *systemService) GetMemInfo() map[string]interface{} {
 	memData["used"] = memInfo.Used
 	memData["free"] = memInfo.Free
 	memData["usedPercent"] = memInfo.UsedPercent
+	// Swap, so "Free up memory" can offer to empty it only when it's in use.
+	if swap, err := mem.SwapMemory(); err == nil {
+		memData["swapTotal"] = swap.Total
+		memData["swapUsed"] = swap.Used
+	}
 	return memData
 }
 
