@@ -232,6 +232,17 @@ final Map<String, _Shot> _shots = {
       await _wait(t);
     },
   ),
+  // Companion phones show their storage like the server's drives.
+  'files_home_phones': _Shot(
+    () => const FilesScreen(),
+    tab: true,
+    text2x: true,
+    before: (t) async {
+      await t.scrollUntilVisible(find.text("Alex's phone"), 200, scrollable: find.byType(Scrollable).first);
+      await t.drag(find.byType(Scrollable).first, const Offset(0, -200));
+      await _wait(t);
+    },
+  ),
   'files_sort': _Shot(
     () => const FilesScreen(initialPath: _documents),
     overrides: _docs,

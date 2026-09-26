@@ -1073,7 +1073,8 @@ class _NetValues extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: half('Download', down, downUnit, downSeries, first: true)),
-        VerticalDivider(width: 1, thickness: 1, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: .6)),
+        // A plain gap keeps the two charts apart; a rule between them read as clutter.
+        const SizedBox(width: Space.md),
         Expanded(child: half('Upload', up, upUnit, upSeries, first: false)),
       ],
     );

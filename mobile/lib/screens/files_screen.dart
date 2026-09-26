@@ -275,6 +275,9 @@ class FilesScreenState extends State<FilesScreen> {
               kind: LocationKind.phone,
               detail: d.model.isEmpty ? null : d.model,
               online: d.isOnline,
+              // What the phone last reported, so an offline phone still shows it.
+              usedBytes: d.totalStorageBytes > 0 ? d.usedStorageBytes : null,
+              totalBytes: d.totalStorageBytes > 0 ? d.totalStorageBytes : null,
             ),
       ];
       final current = devices.where((d) => d.isCurrentDevice).firstOrNull;
@@ -1243,7 +1246,8 @@ class FilesScreenState extends State<FilesScreen> {
         ),
       );
 
-  Widget _usageTile(FileLocation l, {VoidCallback? onTap}) {
+  /// [detail] replaces the location's own second-line facts.
+  Widget _usageTile(FileLocation l, {VoidCallback? onTap, bool enabled = true, List<String>? detail}) {
     final used = l.usedBytes, total = l.totalBytes;
     final hasUsage = used != null && total != null && total > 0;
     return ListTile(
@@ -1254,13 +1258,14 @@ class FilesScreenState extends State<FilesScreen> {
               max: total.toDouble(),
               label: l.label,
               detail: [
-                if (l.detail != null) l.detail!,
+                ...detail ?? [?l.detail],
                 '${formatSize(l.availableBytes ?? 0)} free of ${formatSize(total)}',
               ].join(' · '),
             )
           : Text(l.label),
       subtitle: hasUsage ? null : Text(locationSubtitle(l)),
       contentPadding: const EdgeInsetsDirectional.only(start: Space.lg, end: Space.lg, top: Space.xs, bottom: Space.xs),
+      enabled: enabled,
       onTap: onTap ?? () => _openLocation(l),
     );
   }
@@ -1374,13 +1379,16 @@ class FilesScreenState extends State<FilesScreen> {
       children: [
         if (me != null) _usageTile(me),
         for (final p in _phones)
-          ListTile(
-            leading: const Icon(Icons.smartphone_outlined),
-            title: Text(p.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(locationSubtitle(p).isEmpty ? 'Connected' : [if (p.detail != null) p.detail!, p.online ? 'Connected' : 'Offline'].join(' · ')),
-            enabled: p.online,
-            onTap: () => _openLocation(p),
-          ),
+          if ((p.totalBytes ?? 0) > 0)
+            _usageTile(p, detail: [?p.detail, if (!p.online) 'Offline'], enabled: p.online)
+          else
+            ListTile(
+              leading: const Icon(Icons.smartphone_outlined),
+              title: Text(p.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(locationSubtitle(p).isEmpty ? 'Connected' : [?p.detail, p.online ? 'Connected' : 'Offline'].join(' · ')),
+              enabled: p.online,
+              onTap: () => _openLocation(p),
+            ),
       ],
     );
   }
