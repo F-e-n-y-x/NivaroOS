@@ -530,7 +530,7 @@
 							</div>
 						</div>
 
-						<div v-if="formState.webUI.enabled" class="form-grid-3 mt-3">
+						<div v-if="formState.webUI.enabled" class="form-grid-2 mt-3">
 							<div class="form-group">
 								<label class="form-label">{{ $t('Protocol') }}</label>
 								<select :aria-label="$t('Protocol')" v-model="formState.webUI.scheme" class="form-select">
@@ -539,13 +539,27 @@
 								</select>
 							</div>
 							<div class="form-group">
+								<label class="form-label">{{ $t('Host [Optional]') }}</label>
+								<input :aria-label="$t('Host [Optional]')" v-model="formState.webUI.hostname" type="text" class="form-input" :placeholder="serverHost" />
+								<span class="form-hint">{{ $t('Leave blank for this server') }}</span>
+							</div>
+							<div class="form-group">
 								<label class="form-label">{{ $t('Port') }}</label>
-								<input :aria-label="$t('Port')" v-model="formState.webUI.port" type="text" class="form-input" :placeholder="$t('e.g., 80 or 8080')" />
+								<input :aria-label="$t('Port')" v-model="formState.webUI.port" type="text" class="form-input" :list="publishedPorts.length ? 'webui-port-options' : null" :placeholder="$t('e.g., 80 or 8080')" />
+								<datalist id="webui-port-options">
+									<option v-for="p in publishedPorts" :key="p" :value="p" />
+								</datalist>
 							</div>
 							<div class="form-group">
 								<label class="form-label">{{ $t('Index Path [Optional]') }}</label>
 								<input :aria-label="$t('Index Path [Optional]')" v-model="formState.webUI.index" type="text" class="form-input" :placeholder="$t('/index.html or /login')" />
 							</div>
+						</div>
+						<div v-if="formState.webUI.enabled" class="webui-preview mt-3">
+							<i class="mdi mdi-link-variant" aria-hidden="true"></i>
+							<code v-if="webUILinkPreview">{{ webUILinkPreview }}</code>
+							<span v-else class="form-hint">{{ $t('No link: add a port or a host') }}</span>
+							<a v-if="webUILinkPreview" :href="webUILinkPreview" target="_blank" rel="noopener noreferrer" class="quick-tag-btn webui-test">{{ $t('Test') }}</a>
 						</div>
 					</div>
 
@@ -950,7 +964,7 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import StoreAppCard from './StoreAppCard.vue'
-import { applyFormToDoc, docToFormState, parsePortSpec } from './composeForm'
+import { applyFormToDoc, docToFormState, parsePortSpec, webUILink } from './composeForm'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
@@ -1144,10 +1158,27 @@ export default {
 			for (const v of f.volumes || []) {
 				if (v.container && !String(v.container).startsWith('/')) errs.push(this.$t('Container path {path} must start with /.', { path: v.container }))
 			}
+			const web = f.webUI || {}
+			if (web.enabled) {
+				if (web.hostname && !/^[A-Za-z0-9.\-[\]:]+$/.test(String(web.hostname).trim())) errs.push(this.$t('Web UI host: only the host name, like media.example.com, without http:// or a path.'))
+				if (web.port && (!/^\d+$/.test(String(web.port).trim()) || +web.port < 1 || +web.port > 65535)) errs.push(this.$t('Web UI port {port} is not valid (1-65535).', { port: web.port }))
+				if (web.index && !String(web.index).trim().startsWith('/')) errs.push(this.$t('Web UI path must start with /.'))
+			}
 			return [...new Set(errs)]
 		},
 		totalAppCount() {
 			return this.allAppsList.length
+		},
+		// The Web UI link as the dashboard will open it (a blank host is this
+		// server), for the preview and its Test link.
+		serverHost() {
+			return window.location.hostname
+		},
+		webUILinkPreview() {
+			return webUILink(this.formState.webUI, this.serverHost)
+		},
+		publishedPorts() {
+			return [...new Set((this.formState.ports || []).filter((p) => p.host && (p.protocol || 'TCP').toUpperCase() === 'TCP').map((p) => String(p.host)))]
 		},
 		networkOptions() {
 			return (this.networks || []).map(n => n.name).filter(n => n && n !== 'bridge' && n !== 'host')
@@ -3190,6 +3221,35 @@ export default {
 	&:hover {
 		background: var(--theme-card-border, #e2e8f0);
 		color: var(--theme-text-primary, #0f172a);
+	}
+}
+
+.form-hint {
+	font-size: var(--font-2xs);
+	color: var(--theme-text-muted, #64748b);
+}
+
+.webui-preview {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-width: 0;
+	color: var(--theme-text-muted, #64748b);
+
+	code {
+		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		background: transparent;
+		color: var(--theme-text-secondary, #334155);
+		padding: 0;
+	}
+
+	.webui-test {
+		text-decoration: none;
+		font-family: inherit;
+		font-size: var(--font-xs);
+		padding: var(--space-1) var(--space-2);
 	}
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { applyFormToDoc, docToFormState, parsePortSpec } from './composeForm'
+import { applyFormToDoc, docToFormState, parsePortSpec, webUILink } from './composeForm'
 
 // A store app the way the server returns it: two services, labels,
 // healthcheck, an array command, a byte memory limit, store metadata.
@@ -70,5 +70,27 @@ describe('App Store form <-> compose', () => {
 		expect(out.services.app.ports).toEqual(['8080:80'])
 		expect(out['x-casaos'].port_map).toBe('8080')
 		expect(out['x-casaos'].main).toBe('app')
+	})
+
+	test('the Web UI link: host, port and path, and clearing them', () => {
+		const doc = storeDoc()
+		doc['x-casaos'].hostname = ''
+		doc['x-casaos'].index = '/admin'
+		const form = docToFormState(doc)
+		expect(form.webUI).toEqual({ enabled: true, scheme: 'http', hostname: '', port: '2283', index: '/admin' })
+		expect(applyFormToDoc(doc, form)).toEqual(doc)
+		expect(webUILink(form.webUI, 'nas.local')).toBe('http://nas.local:2283/admin')
+
+		form.webUI = { enabled: true, scheme: 'https', hostname: 'photos.example.com', port: '', index: '' }
+		const x = applyFormToDoc(doc, form)['x-casaos']
+		expect([x.scheme, x.hostname, x.port_map, x.index]).toEqual(['https', 'photos.example.com', '', ''])
+		expect(x.store_app_id).toBe('immich')
+		expect(webUILink(form.webUI, 'nas.local')).toBe('https://photos.example.com/')
+
+		const back = docToFormState(applyFormToDoc(doc, form))
+		back.webUI.hostname = ''
+		back.webUI.port = '2283'
+		expect(applyFormToDoc(doc, back)['x-casaos'].hostname).toBe('')
+		expect(webUILink({ enabled: true, scheme: 'http', hostname: '', port: '', index: '' }, 'nas.local')).toBe('')
 	})
 })

@@ -88,6 +88,18 @@ function firstNetwork(service) {
 	return 'bridge'
 }
 
+// The Web UI link the form describes, with serverHost for a blank host;
+// '' when there is nothing to open.
+export function webUILink(webUI, serverHost) {
+	if (!webUI || !webUI.enabled) return ''
+	const host = String(webUI.hostname || '').trim() || serverHost
+	const port = String(webUI.port || '').trim()
+	if (!host || (!port && !String(webUI.hostname || '').trim())) return ''
+	let path = String(webUI.index || '').trim() || '/'
+	if (!path.startsWith('/')) path = '/' + path
+	return `${webUI.scheme || 'http'}://${host}${port ? ':' + port : ''}${path}`
+}
+
 export function mainServiceKey(doc) {
 	const services = (doc && doc.services) || {}
 	const main = doc && doc['x-casaos'] && doc['x-casaos'].main
@@ -144,7 +156,7 @@ export function docToFormState(doc) {
 		description: localized(x.description),
 		image: service.image || '',
 		containerName: service.container_name || doc.name || mainKey,
-		webUI: { enabled: Boolean(portMap), scheme: x.scheme || 'http', port: portMap, index: x.index || '' },
+		webUI: { enabled: Boolean(portMap || x.hostname), scheme: x.scheme || 'http', hostname: x.hostname || '', port: portMap, index: x.index || '' },
 		ports,
 		volumes,
 		envs,
@@ -267,9 +279,14 @@ export function applyFormToDoc(baseDoc, form) {
 	if (changed('description')) x.description = setLocalized(x.description, form.description || '')
 	if (changed('category')) x.category = form.category || 'Others'
 	if (JSON.stringify(form.webUI) !== JSON.stringify(original.webUI) || !baseDoc) {
-		x.port_map = form.webUI && form.webUI.enabled ? String(form.webUI.port || '') : ''
-		x.scheme = (form.webUI && form.webUI.scheme) || x.scheme || 'http'
-		x.index = (form.webUI && form.webUI.index) || x.index || ''
+		const web = form.webUI || {}
+		x.port_map = web.enabled ? String(web.port || '') : ''
+		x.scheme = web.scheme || x.scheme || 'http'
+		// Blank host = this server (the dashboard and the mobile app fill
+		// in the server's address). A cleared host or path is cleared.
+		if (web.enabled && web.hostname) x.hostname = String(web.hostname).trim()
+		else if ('hostname' in x) x.hostname = ''
+		x.index = web.enabled ? String(web.index || '').trim() : x.index || ''
 	}
 	return doc
 }
