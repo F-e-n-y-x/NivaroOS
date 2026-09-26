@@ -2984,5 +2984,20 @@
   "Pick a test": "Pick a test",
   "Shell to open": "Shell to open",
   "Fit this window, lower resolution": "Fit this window, lower resolution",
-  "{percent}% of the window": "{percent}% of the window"
+  "{percent}% of the window": "{percent}% of the window",
+  "Free up memory": "Free up memory",
+  "Free up memory?": "Free up memory?",
+  "Linux uses spare memory as a cache to speed things up; clearing it frees memory now, but things may be slower for a moment while the cache refills.": "Linux uses spare memory as a cache to speed things up; clearing it frees memory now, but things may be slower for a moment while the cache refills.",
+  "Also empty swap": "Also empty swap",
+  "Moves {size} from swap back into memory. The server skips it if there isn't enough room. It can take a minute or two.": "Moves {size} from swap back into memory. The server skips it if there isn't enough room. It can take a minute or two.",
+  "Freeing memory and emptying swap…": "Freeing memory and emptying swap…",
+  "Freeing memory…": "Freeing memory…",
+  "Memory was already clear": "Memory was already clear",
+  "Freed {size}": "Freed {size}",
+  "The cache fills up again as the server reads files.": "The cache fills up again as the server reads files.",
+  "Cache and buffers": "Cache and buffers",
+  "Swap in use": "Swap in use",
+  "Memory could not be freed": "Memory could not be freed",
+  "to": "to",
+  "Free": "Free"
 }

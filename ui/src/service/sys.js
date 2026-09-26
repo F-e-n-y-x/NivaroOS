@@ -121,6 +121,12 @@ const sys = {
 		return api.post(`${PREFIX}/update`);
 	},
 
+	// Free up the server's memory (drop caches; optionally empty swap,
+	// which can take minutes - hence the longer wait).
+	clearMemory({ swap = false } = {}) {
+		return api.post(`${PREFIX}/memory/clear`, { swap }, { timeout: swap ? 12 * 60 * 1000 : 60000 });
+	},
+
 	// stop nivaroos
 	stopNivaroOS() {
 		return api.post(`${PREFIX}/stop`);

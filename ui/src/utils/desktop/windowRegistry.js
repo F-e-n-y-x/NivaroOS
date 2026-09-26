@@ -55,6 +55,7 @@ import FeedbackPanel from '@/shared/feedback/FeedbackPanel.vue'
 import NotificationList from '@/shell/desktop/NotificationList.vue'
 import FilePanel from '@/apps/files/fileList/FilePanel.vue'
 import TransferConflictWindow from '@/apps/files/dialogs/TransferConflictWindow.vue'
+import FreeMemoryWindow from '@/shell/desktop/FreeMemoryWindow.vue'
 
 export const COMPONENT_REGISTRY = {
 	FilesApp,
@@ -106,7 +107,8 @@ export const COMPONENT_REGISTRY = {
 	FeedbackPanel,
 	NotificationList,
 	FilePanel,
-	TransferConflictWindow
+	TransferConflictWindow,
+	FreeMemoryWindow
 }
 
 // These components' own top row IS the window's titlebar (draggable, with

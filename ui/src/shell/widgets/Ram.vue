@@ -19,6 +19,16 @@
 					<button
 						type="button"
 						class="widget-icon-btn"
+						:title="$t('Free up memory')"
+						:aria-label="$t('Free up memory')"
+						:disabled="!totalMemory"
+						@click="openFreeMemory"
+					>
+						<i class="mdi mdi-broom" aria-hidden="true"></i>
+					</button>
+					<button
+						type="button"
+						class="widget-icon-btn"
 						:title="$t('Processes')"
 						:aria-label="$t('Processes')"
 						:aria-expanded="showMore ? 'true' : 'false'"
@@ -121,6 +131,7 @@ export default {
 			// swapping, page cache included) - NOT total-used.
 			availableMemory: null,
 			ramSeries: 0,
+			swapUsed: 0,
 			containerRamList: [],
 			dimms: [],
 		};
@@ -184,6 +195,20 @@ export default {
 			this.ramSeries = mem.usedPercent || 0;
 			this.usedMemory = mem.used || 0;
 			this.availableMemory = typeof mem.available === "number" ? mem.available : null;
+			this.swapUsed = typeof mem.swapUsed === "number" ? mem.swapUsed : 0;
+		},
+
+		// The server's RAM, not this browser's: drop its file cache and,
+		// if asked and safe, empty swap (POST /v1/sys/memory/clear).
+		openFreeMemory() {
+			this.$store.commit("OPEN_WINDOW", {
+				id: "free-memory",
+				title: this.$t("Free up memory"),
+				component: "FreeMemoryWindow",
+				props: { isDialog: true, swapUsed: this.swapUsed },
+				width: 440,
+				height: this.swapUsed > 0 ? 340 : 280,
+			});
 		},
 		applyUsage(res) {
 			this.containerRamList = res.data.data.map((item) => {
