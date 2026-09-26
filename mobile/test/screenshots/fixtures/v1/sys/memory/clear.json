@@ -1,0 +1,31 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "before": {
+   "mem_total": 33572569088,
+   "mem_free": 1446326272,
+   "mem_available": 16640380928,
+   "buffers": 536870912,
+   "cached": 15032385536,
+   "swap_total": 17100173312,
+   "swap_free": 14952689664,
+   "swap_used": 2147483648
+  },
+  "after": {
+   "mem_total": 33572569088,
+   "mem_free": 3701617664,
+   "mem_available": 16851369984,
+   "buffers": 104857600,
+   "cached": 12884901888,
+   "swap_total": 17100173312,
+   "swap_free": 14952689664,
+   "swap_used": 2147483648
+  },
+  "freed": 2255291392,
+  "level": 3,
+  "compacted": true,
+  "swap_reclaimed": false,
+  "duration_ms": 1840
+ }
+}

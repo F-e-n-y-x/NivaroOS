@@ -82,6 +82,7 @@ class MetricCard extends StatelessWidget {
     this.padBody = false,
     this.emphasized = false,
     this.onTap,
+    this.action,
     required this.semanticLabel,
   });
 
@@ -105,6 +106,12 @@ class MetricCard extends StatelessWidget {
   final bool padBody;
   final bool emphasized;
   final VoidCallback? onTap;
+
+  /// A small action at the header's end (Memory's "Free up"), usually a
+  /// [MetricCardAction]. It is drawn over the card with its own 48dp
+  /// target and its own semantics, so it isn't folded into the card's
+  /// label and a tap on it doesn't open the card.
+  final Widget? action;
 
   /// What TalkBack reads for the whole card.
   final String semanticLabel;
@@ -153,6 +160,8 @@ class MetricCard extends StatelessWidget {
           const SizedBox(width: Space.sm),
           Flexible(child: Text(meta!, style: t.data, maxLines: 1, overflow: TextOverflow.ellipsis)),
         ],
+        // Room for [action]'s icon, which sits over this end of the row.
+        if (action != null) const SizedBox(width: MetricCardAction.iconSize + Space.sm),
       ],
     );
 
@@ -186,7 +195,7 @@ class MetricCard extends StatelessWidget {
           )
         : header;
 
-    return Semantics(
+    final card = Semantics(
       button: onTap != null,
       label: semanticLabel,
       excludeSemantics: true,
@@ -215,7 +224,53 @@ class MetricCard extends StatelessWidget {
         ),
       ),
     );
+    final a = action;
+    if (a == null) return card;
+
+    // The 48dp target is centred on the header row: as tall as its
+    // tallest part (the badge, the icon or the label's line).
+    final labelStyle = t.cardLabel;
+    final lineHeight = MediaQuery.textScalerOf(context).scale(labelStyle.fontSize ?? 14) * (labelStyle.height ?? 1.43);
+    final glyphHeight = t.cardIcons ? (t.iconBadge ? 32.0 : 20.0) : 0.0;
+    final rowHeight = lineHeight > glyphHeight ? lineHeight : glyphHeight;
+    const target = MetricCardAction.target;
+    final actionTop = pad.top + rowHeight / 2 - target / 2;
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        card,
+        PositionedDirectional(
+          top: actionTop < 0 ? 0 : actionTop,
+          end: pad.right - (target - MetricCardAction.iconSize) / 2,
+          child: a,
+        ),
+      ],
+    );
   }
+}
+
+/// A [MetricCard] header action: a quiet icon in the card's secondary ink
+/// with a tooltip, on a 48dp target.
+class MetricCardAction extends StatelessWidget {
+  const MetricCardAction({super.key, required this.icon, required this.tooltip, required this.onPressed});
+
+  static const double iconSize = 20;
+  static const double target = 48;
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        icon: Icon(icon, size: iconSize),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: target, height: target),
+        style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.padded),
+      );
 }
 
 /// Cards in a responsive grid: [columns] across, each card spanning one or

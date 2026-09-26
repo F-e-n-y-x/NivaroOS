@@ -67,3 +67,10 @@ sample file) - long-form ports and volumes, bytes for the memory limit,
 4-space indent, keys sorted. The tests pass it as an override (the fake
 server only serves .json/.txt/.png by URL).
 
+
+Free up memory (2026-09-26): `v1/sys/memory/clear.json` is written by hand
+in the shape of `POST /v1/sys/memory/clear` (services/core
+route/v1/memclear.go) - it isn't a GET, so the shots pass it as an
+override; it is never called against the real box. `swapTotal`/`swapUsed`
+in `v1/sys/utilization.json` were added by hand (2 GB of a 16 GB swap in
+use) so the sheet offers "Also empty swap".

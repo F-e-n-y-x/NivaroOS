@@ -303,7 +303,9 @@ func (m *memClearer) Clear(ctx context.Context, opt memClearOptions) (*memClearR
 		if err != nil {
 			notes = append(notes, strings.TrimPrefix(err.Error(), errSwapUnsafe.Error()+": "))
 		} else {
-			sctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			// Not the request's context: a client that gives up waiting
+			// must not kill swapoff halfway.
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			offErr := m.env.run(sctx, "swapoff", "-a")
 			cancel()
 			// Always turn swap back on, even if swapoff stopped halfway.
@@ -413,7 +415,9 @@ func PostSystemMemoryClear(ctx echo.Context) error {
 			return memClearFail(ctx, http.StatusBadRequest, "invalid body", nil)
 		}
 	}
-	res, err := sysMemClearer.Clear(ctx.Request().Context(), opt)
+	// Detached from the request: a client giving up mustn't stop sync or
+	// swapoff halfway (swapon -a always runs after swapoff anyway).
+	res, err := sysMemClearer.Clear(context.Background(), opt)
 	if err != nil {
 		var mce *memClearError
 		if errors.As(err, &mce) {

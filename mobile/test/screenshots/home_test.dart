@@ -63,6 +63,15 @@ void fillHistory(LiveHistory history) {
   }
 }
 
+/// Opens the Memory page's "Free up memory" sheet.
+Future<void> openFreeMemory(WidgetTester tester) async {
+  final row = find.text('Free up memory');
+  await tester.scrollUntilVisible(row, 300, scrollable: find.byType(Scrollable).first);
+  await tester.tap(row);
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 1));
+}
+
 /// The fixture's VMs with two of them on, so Home shows its VM rows.
 Map<String, Object> get runningVms {
   final list = (jsonDecode(File('test/screenshots/fixtures/v1/vm-sidecar/vms.json').readAsStringSync()) as List).cast<Map<String, dynamic>>();
@@ -266,6 +275,34 @@ final Map<String, _Shot> _shots = {
   ),
   'home_cpu': _Shot(() => CpuDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), dense: true),
   'home_memory': _Shot(() => MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), dense: true),
+  // Free up memory: the honest confirm sheet (with swap in use, so it
+  // offers to empty it), then what the clear freed.
+  'home_memory_free': _Shot(
+    () => MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()),
+    before: openFreeMemory,
+  ),
+  'home_memory_freed': _Shot(
+    () => MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()),
+    overrides: {'POST /v1/sys/memory/clear': fixture('v1/sys/memory/clear')},
+    before: (tester) async {
+      await openFreeMemory(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Free up memory'));
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump(const Duration(seconds: 1));
+    },
+  ),
+  // The same sheet straight from Home's Memory card.
+  'home_memory_free_from_card': _Shot(
+    () => DashboardScreen(controller: HistoryController()),
+    tab: true,
+    overrides: runningVms,
+    before: (tester) async {
+      await tester.tap(find.byTooltip('Free up memory'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    },
+  ),
   'home_storage': _Shot(() => StorageDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, onOpenFiles: () {}), dense: true),
   'home_network': _Shot(() => NetworkDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: _filled()), overrides: _speedtest, dense: true),
   'updates': _Shot(() => const SystemUpdatesScreen(), overrides: {'GET /v1/sys/packages/check': _packages(), ..._releases()}, dense: true),

@@ -13,6 +13,7 @@ import '../services/vm_client.dart';
 import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
+import '../widgets/free_memory_sheet.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
 import '../widgets/vm_console_preview.dart';
@@ -420,6 +421,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
   void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
+  void _freeMemory() => showFreeMemorySheet(context, swapUsed: _c.live.value?.stats.swapUsed ?? 0, onDone: _c.refreshLive);
   void _openStorage() => _openDetail(StorageDetailScreen(live: _c.live, onRetry: _c.refreshLive, onOpenFiles: widget.onOpenFiles));
   void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
   void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history));
@@ -529,6 +531,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       window: _c.history.window,
       onOpenCpu: _openCpu,
       onOpenMemory: _openMemory,
+      onFreeMemory: _freeMemory,
       onOpenNetwork: _openNetwork,
       onOpenStorage: _openStorage,
       onOpenGpu: _openGpu,
@@ -844,6 +847,7 @@ class MetricCards extends StatelessWidget {
     required this.window,
     this.onOpenCpu,
     this.onOpenMemory,
+    this.onFreeMemory,
     this.onOpenNetwork,
     this.onOpenStorage,
     this.onOpenGpu,
@@ -855,6 +859,9 @@ class MetricCards extends StatelessWidget {
   final String window;
   final VoidCallback? onOpenCpu;
   final VoidCallback? onOpenMemory;
+
+  /// The Memory card's "Free up" button; null leaves it out.
+  final VoidCallback? onFreeMemory;
   final VoidCallback? onOpenNetwork;
   final VoidCallback? onOpenStorage;
   final VoidCallback? onOpenGpu;
@@ -910,6 +917,9 @@ class MetricCards extends StatelessWidget {
       level: memLevel,
       detail: s.memTotal > 0 ? usedOf(s.memUsed, s.memTotal) : 'Not reported',
       onTap: onOpenMemory,
+      action: onFreeMemory == null || s.memTotal <= 0
+          ? null
+          : MetricCardAction(icon: Icons.cleaning_services_outlined, tooltip: 'Free up memory', onPressed: onFreeMemory!),
       emphasized: busiest == 'memory' && !(memLevel?.alerting ?? false),
       semanticLabel: 'Memory, ${pct(memPct)} in use${memLevel == null ? '' : ', ${memLevel.word.toLowerCase()}'}. ${_range(history.memory, pct)}',
       body: chart(history.memory, memLevel),

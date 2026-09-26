@@ -322,9 +322,11 @@ class ApiClient {
     return _send('GET', uri, () => http.get(uri, headers: _headers()));
   }
 
-  Future<Map<String, dynamic>> post(String path, {Object? body, Map<String, String>? headers}) async {
+  /// [timeout] replaces [requestTimeout] for a request the server takes
+  /// long over (freeing memory while swap is emptied).
+  Future<Map<String, dynamic>> post(String path, {Object? body, Map<String, String>? headers, Duration? timeout}) async {
     final uri = _uri(path);
-    return _send('POST', uri, () => http.post(uri, headers: {..._headers(), ...?headers}, body: jsonEncode(body ?? {})));
+    return _send('POST', uri, () => http.post(uri, headers: {..._headers(), ...?headers}, body: jsonEncode(body ?? {})), timeout: timeout);
   }
 
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
@@ -469,21 +471,21 @@ class ApiClient {
     return res;
   }
 
-  Future<http.Response> _attempt(String method, Uri uri, Future<http.Response> Function() request) async {
+  Future<http.Response> _attempt(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
     try {
-      return await request().timeout(requestTimeout);
+      return await request().timeout(timeout ?? requestTimeout);
     } catch (e) {
       throw describeError(e, uri, method: method);
     }
   }
 
-  Future<Map<String, dynamic>> _send(String method, Uri uri, Future<http.Response> Function() request) async {
-    var res = await _attempt(method, uri, request);
+  Future<Map<String, dynamic>> _send(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
+    var res = await _attempt(method, uri, request, timeout: timeout);
 
     if (res.statusCode == 401) {
       final result = await refresh();
       if (result != RefreshResult.refreshed) throw _refreshFailure(result);
-      res = await _attempt(method, uri, request);
+      res = await _attempt(method, uri, request, timeout: timeout);
       // Still 401 with a token the server just issued: this route refuses
       // the request for its own reasons. Report it, but the session stays -
       // only /users/refresh decides that.

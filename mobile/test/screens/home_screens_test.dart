@@ -73,6 +73,36 @@ void main() {
       expect(server.requests.where((r) => r.contains('/sys/update')), isEmpty);
     });
 
+    testWidgets("the Memory card's Free up button asks first, then POSTs /v1/sys/memory/clear", (tester) async {
+      final server = await _run(tester, const DashboardScreen(), () async {
+        await tester.tap(find.byTooltip('Free up memory'));
+        await _settle(tester);
+        // The sheet, not the Memory page.
+        expect(find.text('Free up memory?'), findsOneWidget);
+        expect(find.text('Cache and buffers'), findsNothing);
+        expect(find.text('Also empty swap'), findsOneWidget, reason: 'the fixture has 2 GB in swap');
+        await tester.tap(find.widgetWithText(FilledButton, 'Free up memory'));
+        await _settle(tester);
+        expect(find.text('Freed 2.1 GB'), findsOneWidget);
+        expect(find.textContaining('3.4 GB', findRichText: true), findsOneWidget);
+      }, overrides: {'POST /v1/sys/memory/clear': fixture('v1/sys/memory/clear')});
+      expect(server.requests.where((r) => r == 'POST /v1/sys/memory/clear'), hasLength(1));
+    });
+
+    testWidgets('the Memory page offers Free up memory too', (tester) async {
+      final server = await _run(tester, const DashboardScreen(), () async {
+        await tester.tap(find.text('Memory'));
+        await _settle(tester);
+        await tester.scrollUntilVisible(find.text('Free up memory'), 300, scrollable: find.byType(Scrollable).first);
+        expect(find.text('Swap'), findsOneWidget);
+        await tester.tap(find.text('Free up memory'));
+        await _settle(tester);
+        await tester.tap(find.text('Cancel'));
+        await _settle(tester);
+      });
+      expect(server.requests.where((r) => r.startsWith('POST')), isEmpty);
+    });
+
     testWidgets('restart asks first, then sends PUT /v1/sys/state/restart', (tester) async {
       final server = await _run(tester, const DashboardScreen(), () async {
         await tester.tap(find.byTooltip('Server power'));

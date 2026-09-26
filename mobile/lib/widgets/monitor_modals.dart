@@ -8,6 +8,7 @@ import '../models/gpu_stats.dart';
 import '../services/speedtest_service.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
+import 'free_memory_sheet.dart';
 
 // The detail screens behind Home's health rows: processor, memory, storage
 // and network. Each one follows the same live reading Home polls (a
@@ -487,16 +488,18 @@ class CpuDetailScreen extends StatelessWidget {
   }
 }
 
-/// Memory: how much is in use, what the rest is doing, and the modules.
-/// There is deliberately no "free up memory" button: Linux gives cache back
-/// by itself, and the one the app used to have started a system update
-/// instead (plan M-28).
+/// Memory: how much is in use, what the rest is doing, the modules, and
+/// "Free up memory" - a real POST /v1/sys/memory/clear behind an honest
+/// confirm sheet (the old button started a system update, plan M-28).
 class MemoryDetailScreen extends StatelessWidget {
-  const MemoryDetailScreen({super.key, required this.live, required this.onRetry, this.history});
+  const MemoryDetailScreen({super.key, required this.live, required this.onRetry, this.history, this.freeMemory});
 
   final ValueListenable<LiveStats?> live;
   final VoidCallback onRetry;
   final LiveHistory? history;
+
+  /// Runs the clear; null asks the server.
+  final FreeMemoryRunner? freeMemory;
 
   @override
   Widget build(BuildContext context) {
@@ -524,7 +527,7 @@ class MemoryDetailScreen extends StatelessWidget {
               format: _pct,
             ),
           TileGroup(
-            footer: "Linux keeps recently used files in spare memory and frees it by itself when apps need it, so there's nothing to clear.",
+            footer: 'Linux keeps recently used files in spare memory and gives it back by itself when apps need it.',
             children: [
               if (h == null || s.memTotal <= 0)
                 UsageTile(
@@ -534,8 +537,24 @@ class MemoryDetailScreen extends StatelessWidget {
               if (s.memAvailable > 0) bytesRow(icon: Icons.task_alt_outlined, label: 'Available', bytes: s.memAvailable, supporting: 'What apps can still use'),
               bytesRow(icon: Icons.cached_outlined, label: 'Cache and buffers', bytes: s.memCache, supporting: 'Given back when needed'),
               bytesRow(icon: Icons.check_box_outline_blank, label: 'Free', bytes: s.memFree),
+              if (s.swapTotal > 0)
+                UsageTile(
+                  icon: Icons.swap_vert,
+                  bar: UsageBar(value: s.swapUsed.toDouble(), max: s.swapTotal.toDouble(), label: 'Swap', detail: usedOf(s.swapUsed, s.swapTotal)),
+                ),
             ],
           ),
+          if (s.memTotal > 0)
+            TileGroup(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.cleaning_services_outlined),
+                  title: const Text('Free up memory'),
+                  subtitle: Text(s.swapUsed > 0 ? 'Clear the cache now, and optionally empty swap' : 'Clear the cache now'),
+                  onTap: () => showFreeMemorySheet(context, swapUsed: s.swapUsed, onDone: onRetry, run: freeMemory),
+                ),
+              ],
+            ),
           if (s.memModules.isNotEmpty)
             TileGroup(
               title: 'Modules',

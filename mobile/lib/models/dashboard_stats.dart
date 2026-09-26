@@ -276,6 +276,11 @@ class DashboardStats {
   final double memUsedPercent;
   final List<MemoryModule> memModules;
 
+  /// Swap size and how much of it is in use; 0 when the server has none
+  /// or doesn't report it.
+  final int swapTotal;
+  final int swapUsed;
+
   final List<NetSample> netSamples;
   final List<DiskUsage> disks;
 
@@ -292,6 +297,8 @@ class DashboardStats {
     required this.memAvailable,
     required this.memUsedPercent,
     this.memModules = const [],
+    this.swapTotal = 0,
+    this.swapUsed = 0,
     required this.netSamples,
     required this.disks,
   });
@@ -349,6 +356,8 @@ class DashboardStats {
           .whereType<Map>()
           .map((e) => MemoryModule.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
+      swapTotal: _safeInt(mem['swapTotal']),
+      swapUsed: _safeInt(mem['swapUsed']),
       netSamples: netRaw.map((e) => NetSample.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
       disks: const [],
     );
@@ -384,6 +393,8 @@ class DashboardStats {
         memAvailable: memAvailable,
         memUsedPercent: memUsedPercent,
         memModules: memModules,
+        swapTotal: swapTotal,
+        swapUsed: swapUsed,
         netSamples: netSamples,
         disks: disks,
       );

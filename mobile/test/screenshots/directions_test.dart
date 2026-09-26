@@ -25,7 +25,7 @@ import 'package:nivaroos_mobile/widgets/monitor_modals.dart';
 
 import 'files_screens_test.dart' show copyThenWorkTab, docsAndWork;
 import 'harness.dart';
-import 'home_test.dart' show HistoryController, fillHistory, runningVms, scrollToVms;
+import 'home_test.dart' show HistoryController, fillHistory, openFreeMemory, runningVms, scrollToVms;
 
 const _jellyfin = InstalledApp(
   id: 'jellyfin',
@@ -104,6 +104,12 @@ final Map<String, _Screen> _screens = {
     fillHistory(h);
     return CpuDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: h);
   }, pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark]),
+  // Memory > Free up memory: the confirm sheet in every style and mode.
+  'memory_free': _Screen(() {
+    final h = LiveHistory();
+    fillHistory(h);
+    return MemoryDetailScreen(live: ValueNotifier(_live()), onRetry: () {}, history: h);
+  }, pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black], before: openFreeMemory),
   'files': _Screen(() => const FilesScreen(), tab: true, modes: const [AppThemeMode.light, AppThemeMode.dark]),
   // Two tabs sharing a clipboard: the strip and the paste bar.
   'files_tabs': _Screen(() => const FilesScreen(initialPath: '/DATA/Documents'),
