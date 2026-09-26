@@ -103,36 +103,27 @@ class Appearance {
   const Appearance({
     this.mode = AppThemeMode.system,
     this.accent = AccentColor.blue,
-    this.wallpaper = false,
     this.direction = DesignDirection.defaultDirection,
   });
 
   final AppThemeMode mode;
   final AccentColor accent;
-
-  /// Take the accent from the phone's wallpaper (Android 12+). Falls back
-  /// to [accent] wherever the phone gives no wallpaper colours.
-  final bool wallpaper;
   final DesignDirection direction;
 
-  Appearance copyWith({AppThemeMode? mode, AccentColor? accent, bool? wallpaper, DesignDirection? direction}) => Appearance(
+  Appearance copyWith({AppThemeMode? mode, AccentColor? accent, DesignDirection? direction}) => Appearance(
         mode: mode ?? this.mode,
         accent: accent ?? this.accent,
-        wallpaper: wallpaper ?? this.wallpaper,
         direction: direction ?? this.direction,
       );
 
   /// "Rack · Dark · Teal", for the settings row. The design comes first
   /// while the directions are being tried on the phone.
-  String summary({bool wallpaperAvailable = true}) {
-    final colour = wallpaper && wallpaperAvailable ? 'Wallpaper colours' : accent.label;
-    return [direction.label, mode.label, colour].join(' · ');
-  }
+  String summary() => [direction.label, mode.label, accent.label].join(' · ');
 
   @override
   bool operator ==(Object other) =>
-      other is Appearance && other.mode == mode && other.accent == accent && other.wallpaper == wallpaper && other.direction == direction;
+      other is Appearance && other.mode == mode && other.accent == accent && other.direction == direction;
 
   @override
-  int get hashCode => Object.hash(mode, accent, wallpaper, direction);
+  int get hashCode => Object.hash(mode, accent, direction);
 }

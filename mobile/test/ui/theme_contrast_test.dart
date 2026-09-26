@@ -143,8 +143,7 @@ void main() {
   });
 
   // Every theme the app can show: each design direction, each accent, in
-  // light, dark and true black. (Wallpaper colours can't be listed; they
-  // go through the same fromSeed path as the accents.)
+  // light, dark and true black.
   final themes = <String, ThemeData>{
     for (final d in DesignDirection.values)
       for (final a in AccentColor.values)

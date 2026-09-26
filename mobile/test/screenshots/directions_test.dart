@@ -62,15 +62,13 @@ LiveStats _live() {
 
 class _Screen {
   const _Screen(this.build,
-      {this.modes = const [AppThemeMode.light], this.extra = const [], this.tab = false, this.pushed = false, this.overrides = const {}, this.before, this.wallpaper = false});
+      {this.modes = const [AppThemeMode.light], this.extra = const [], this.tab = false, this.pushed = false, this.overrides = const {}, this.before});
   final Widget Function() build;
   final List<AppThemeMode> modes;
 
   /// More sizes and text scales, shot in the first mode only.
   final List<(Size, double)> extra;
 
-  /// Appearance only: the phone offers wallpaper colours and they are on.
-  final bool wallpaper;
   final bool tab;
   final bool pushed;
   final Map<String, Object> overrides;
@@ -128,7 +126,6 @@ final Map<String, _Screen> _screens = {
     await tester.pump(const Duration(seconds: 1));
   }),
   'appearance': _Screen(() => const SizedBox(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black], extra: const [(phone, 2)]),
-  'appearance_wallpaper': _Screen(() => const SizedBox(), pushed: true, wallpaper: true),
   'app_info': _Screen(() => const AppDetailScreen(app: _jellyfin), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark], overrides: {
     'GET /v2/app_management/compose/jellyfin': {
       'data': {
@@ -151,7 +148,7 @@ void main() {
   for (final d in DesignDirection.values) {
     for (final MapEntry(key: name, value: s) in _screens.entries) {
       for (final m in s.modes) {
-        final a = Appearance(mode: m, direction: d, wallpaper: s.wallpaper);
+        final a = Appearance(mode: m, direction: d);
         testWidgets('${d.name} $name ${m.name}', (tester) => _shoot(tester, d, name, s, a));
       }
       for (final (size, scale) in s.extra) {
@@ -195,13 +192,7 @@ void main() {
 
 Future<void> _shoot(WidgetTester tester, DesignDirection d, String name, _Screen s, Appearance a, {String suffix = '', Size size = phone, double textScale = 1}) {
   final dark = a.mode != AppThemeMode.light;
-  Widget appearance() {
-    final c = ThemeController(a);
-    if (s.wallpaper) c.wallpaperSeed.value = const Color(0xFF6B8E4E);
-    return AppearanceScreen(controller: c);
-  }
-
-  final screen = name.startsWith('appearance') ? appearance() : s.build();
+  final screen = name == 'appearance' ? AppearanceScreen(controller: ThemeController(a)) : s.build();
   return shoot(
     tester,
     dir: 'directions/${d.name}',

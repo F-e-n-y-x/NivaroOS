@@ -4,6 +4,7 @@
 // back (asking first when the name has been taken again), Delete forever
 // and Empty Trash remove them for good.
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ class TrashScreen extends StatefulWidget {
     this.actions = const [],
     this.header,
     this.floatingActionButton,
+    this.floatingActionButtonRoom = 0,
     this.controller,
   });
 
@@ -60,6 +62,10 @@ class TrashScreen extends StatefulWidget {
   final List<Widget> actions;
   final Widget? header;
   final Widget? floatingActionButton;
+
+  /// Room to keep clear under [floatingActionButton] (the paste bar's
+  /// reported height plus its margin), so it never covers the last row.
+  final double floatingActionButtonRoom;
   final ScrollController? controller;
 
   /// The last listing, shown at once the next time the Trash opens.
@@ -406,7 +412,7 @@ class _TrashScreenState extends State<TrashScreen> {
     if (_loading && listing == null) return [const FolderSkeleton(rows: 6)];
     final error = _error;
     if (error != null && listing == null) {
-      if (error is ApiException && error.isUnreachable) return [ErrorState.offline(onRetry: _load, sliver: true, details: error.details)];
+      if (error is ApiException && error.isUnreachable) return [ErrorState.offline(onRetry: _load, sliver: true, details: error.details, bottomInset: widget.floatingActionButtonRoom)];
       return [
         ErrorState(
           title: "Couldn't load the Trash",
@@ -414,6 +420,7 @@ class _TrashScreenState extends State<TrashScreen> {
           onRetry: _load,
           details: error is ApiException ? error.details : error.toString(),
           sliver: true,
+          bottomInset: widget.floatingActionButtonRoom,
         ),
       ];
     }
@@ -424,6 +431,7 @@ class _TrashScreenState extends State<TrashScreen> {
           title: 'Trash is empty',
           message: 'Files and folders you delete on the server stay here for ${listing?.retentionDays ?? 30} days, so you can restore them.',
           sliver: true,
+          bottomInset: widget.floatingActionButtonRoom,
         ),
       ];
     }
@@ -457,7 +465,7 @@ class _TrashScreenState extends State<TrashScreen> {
         ),
       ],
       // Room for the paste bar over the last row, when there is one.
-      SliverToBoxAdapter(child: SizedBox(height: Space.xl + (widget.floatingActionButton == null ? 0 : MediaQuery.textScalerOf(context).scale(56)))),
+      SliverToBoxAdapter(child: SizedBox(height: math.max(Space.xl, widget.floatingActionButtonRoom))),
     ];
   }
 

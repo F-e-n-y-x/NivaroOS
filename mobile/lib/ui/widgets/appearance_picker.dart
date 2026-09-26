@@ -5,7 +5,6 @@ import '../theme/appearance.dart';
 import '../theme/design_tokens.dart';
 import '../theme/spacing.dart';
 import '../theme/theme_controller.dart';
-import '../theme/motion.dart';
 import 'metric_card.dart';
 import 'app_scaffold.dart';
 import 'live_chart.dart';
@@ -23,11 +22,11 @@ class AppearanceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller ?? ThemeController.instance;
     return ListenableBuilder(
-      listenable: Listenable.merge([c, c.wallpaperSeed]),
+      listenable: c,
       builder: (context, _) => ListTile(
         leading: const Icon(Icons.palette_outlined),
         title: const Text('Appearance'),
-        subtitle: Text(c.value.summary(wallpaperAvailable: c.wallpaperSeed.value != null)),
+        subtitle: Text(c.value.summary()),
         onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AppearanceScreen(controller: c))),
       ),
     );
@@ -49,12 +48,10 @@ class AppearanceScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller ?? ThemeController.instance;
     return ListenableBuilder(
-      listenable: Listenable.merge([c, c.wallpaperSeed]),
+      listenable: c,
       builder: (context, _) {
         final a = c.value;
-        final seed = c.wallpaperSeed.value;
         final gutter = Space.gutter(context);
-        final wallpaperOn = a.wallpaper && seed != null;
         final theme = Theme.of(context);
         final note = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
         return AppScaffold.slivers(
@@ -66,7 +63,7 @@ class AppearanceScreen extends StatelessWidget {
               const SectionHeader(title: 'Design preview'),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
-                child: _StyleRow(appearance: a, seed: seed, onPick: (d) => c.set(a.copyWith(direction: d))),
+                child: _StyleRow(appearance: a, onPick: (d) => c.set(a.copyWith(direction: d))),
               ),
               Padding(
                 padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
@@ -75,7 +72,7 @@ class AppearanceScreen extends StatelessWidget {
               const SectionHeader(title: 'Mode'),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: gutter),
-                child: _ModeRow(appearance: a, seed: seed, onPick: (m) => c.set(a.copyWith(mode: m))),
+                child: _ModeRow(appearance: a, onPick: (m) => c.set(a.copyWith(mode: m))),
               ),
               Padding(
                 padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
@@ -89,24 +86,9 @@ class AppearanceScreen extends StatelessWidget {
                 ),
               ),
               const SectionHeader(title: 'Colour'),
-              if (seed != null)
-                SwitchListTile(
-                  secondary: _Swatch(label: 'Wallpaper colours', colors: _wallpaperColors(seed, theme.brightness), selected: false, size: 36),
-                  title: const Text('Match wallpaper'),
-                  subtitle: const Text("Colours from this phone's wallpaper"),
-                  value: wallpaperOn,
-                  onChanged: (on) => c.set(a.copyWith(wallpaper: on)),
-                ),
               Padding(
                 padding: EdgeInsets.fromLTRB(gutter - Space.xs, Space.xs, gutter - Space.xs, Space.xl),
-                child: AnimatedOpacity(
-                  opacity: wallpaperOn ? .5 : 1,
-                  duration: Motion.of(context).short,
-                  child: _SwatchGrid(
-                    selected: wallpaperOn ? null : a.accent,
-                    onPick: (accent) => c.set(a.copyWith(accent: accent, wallpaper: false)),
-                  ),
-                ),
+                child: _SwatchGrid(selected: a.accent, onPick: (accent) => c.set(a.copyWith(accent: accent))),
               ),
             ]),
           ],
@@ -122,11 +104,6 @@ class AppearanceScreen extends StatelessWidget {
         DesignDirection.console => 'Panels are ruled off by hairlines, like a terminal.',
         _ => 'Cards keep their graphite fill and hairline edge.',
       };
-
-  static List<Color> _wallpaperColors(Color seed, Brightness b) {
-    final s = ColorScheme.fromSeed(seedColor: seed, brightness: b);
-    return [s.primary, s.secondary, s.tertiary];
-  }
 }
 
 /// Two Home cards drawn in the current appearance, so every choice below
@@ -204,10 +181,9 @@ class _Controls extends StatelessWidget {
 /// The directions side by side, each drawn in its own theme: a small card
 /// with its type, number and line. Selection is an outline plus a check.
 class _StyleRow extends StatelessWidget {
-  const _StyleRow({required this.appearance, required this.seed, required this.onPick});
+  const _StyleRow({required this.appearance, required this.onPick});
 
   final Appearance appearance;
-  final Color? seed;
   final ValueChanged<DesignDirection> onPick;
 
   @override
@@ -232,7 +208,7 @@ class _StyleRow extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: Space.xs),
                   child: Column(
                     children: [
-                      _StyleSample(direction: d, appearance: appearance, seed: seed, selected: appearance.direction == d),
+                      _StyleSample(direction: d, appearance: appearance, selected: appearance.direction == d),
                       const SizedBox(height: Space.sm),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -289,7 +265,7 @@ class _SwatchGrid extends StatelessWidget {
                 Expanded(
                   child: Column(
                     children: [
-                      _Swatch(label: accent.label, colors: [accent.swatch(brightness)], selected: selected == accent, onTap: () => onPick(accent)),
+                      _Swatch(label: accent.label, color: accent.swatch(brightness), selected: selected == accent, onTap: () => onPick(accent)),
                       ExcludeSemantics(
                         child: Text(
                           accent.label,
@@ -312,15 +288,14 @@ class _SwatchGrid extends StatelessWidget {
 /// The four modes as small pictures of the app, each drawn with that
 /// mode's real colours. Selection is an outline plus a check, not colour.
 class _ModeRow extends StatelessWidget {
-  const _ModeRow({required this.appearance, required this.seed, required this.onPick});
+  const _ModeRow({required this.appearance, required this.onPick});
 
   final Appearance appearance;
-  final Color? seed;
   final ValueChanged<AppThemeMode> onPick;
 
   @override
   Widget build(BuildContext context) {
-    ThemeData theme(AppThemeMode m, Brightness b) => AppTheme.forAppearance(appearance.copyWith(mode: m), b, wallpaperSeed: seed);
+    ThemeData theme(AppThemeMode m, Brightness b) => AppTheme.forAppearance(appearance.copyWith(mode: m), b);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -509,22 +484,21 @@ class _MiniApp extends StatelessWidget {
   }
 }
 
-/// A 48dp colour swatch; the selected one carries a check. Without
-/// [onTap] it is a picture only (the wallpaper switch's icon).
+/// A 48dp colour swatch; the selected one carries a check.
 class _Swatch extends StatelessWidget {
-  const _Swatch({required this.label, required this.colors, required this.selected, this.onTap, this.size = 44});
+  const _Swatch({required this.label, required this.color, required this.selected, required this.onTap});
+
+  static const size = 44.0;
 
   final String label;
-  final List<Color> colors;
+  final Color color;
   final bool selected;
-  final VoidCallback? onTap;
-  final double size;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final main = colors.first;
-    final check = ThemeData.estimateBrightnessForColor(main) == Brightness.dark ? Colors.white : Colors.black;
+    final check = ThemeData.estimateBrightnessForColor(color) == Brightness.dark ? Colors.white : Colors.black;
     final dot = Container(
       width: size,
       height: size,
@@ -535,29 +509,17 @@ class _Swatch extends StatelessWidget {
       ),
       child: ClipOval(
         child: Stack(fit: StackFit.expand, children: [
-          if (colors.length == 1)
-            ColoredBox(color: main)
-          else
-            Row(children: [
-              Expanded(child: ColoredBox(color: colors[0])),
-              Expanded(
-                child: Column(children: [
-                  Expanded(child: ColoredBox(color: colors[1])),
-                  Expanded(child: ColoredBox(color: colors[2])),
-                ]),
-              ),
-            ]),
+          ColoredBox(color: color),
           if (selected) Icon(Icons.check, size: 20, color: check),
         ]),
       ),
     );
-    if (onTap == null) return ExcludeSemantics(child: dot);
     return Tooltip(
       message: label,
       child: Semantics(
         button: true,
         selected: selected,
-        label: '$label${colors.length > 1 ? '' : ' accent'}',
+        label: '$label accent',
         excludeSemantics: true,
         child: InkResponse(
           onTap: onTap,
@@ -572,16 +534,15 @@ class _Swatch extends StatelessWidget {
 /// A style as a sample of itself, in its own theme: its card, corner and
 /// edge, its name type, its number type and its line.
 class _StyleSample extends StatelessWidget {
-  const _StyleSample({required this.direction, required this.appearance, required this.seed, required this.selected});
+  const _StyleSample({required this.direction, required this.appearance, required this.selected});
 
   final DesignDirection direction;
   final Appearance appearance;
-  final Color? seed;
   final bool selected;
 
   @override
   Widget build(BuildContext context) {
-    final theme = AppTheme.forAppearance(appearance.copyWith(direction: direction), Theme.of(context).brightness, wallpaperSeed: seed);
+    final theme = AppTheme.forAppearance(appearance.copyWith(direction: direction), Theme.of(context).brightness);
     final t = theme.extension<DesignTokens>()!;
     final s = theme.colorScheme;
     final outer = Theme.of(context).colorScheme;

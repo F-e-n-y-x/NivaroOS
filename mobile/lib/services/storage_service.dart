@@ -290,15 +290,24 @@ class StorageService {
     await _set(_keyThemeAccent, accent);
   }
 
-  /// 'true' when the accent follows the phone's wallpaper.
+  /// Legacy: 'true' when the user had "Match wallpaper" on. The option was
+  /// removed (2026-09-26); ThemeController.load reads this once to move
+  /// those users to Monochrome, then clears it.
   Future<String?> getThemeWallpaper() async {
     if (!_initialized) await init();
     return _cache[_keyThemeWallpaper];
   }
 
-  Future<void> setThemeWallpaper(bool on) async {
+  /// Seeds the legacy key so tests can exercise that migration.
+  @visibleForTesting
+  Future<void> setLegacyThemeWallpaper(String value) async {
     if (!_initialized) await init();
-    await _set(_keyThemeWallpaper, on.toString());
+    await _set(_keyThemeWallpaper, value);
+  }
+
+  Future<void> clearThemeWallpaper() async {
+    if (!_initialized) await init();
+    await _remove(_keyThemeWallpaper);
   }
 
   /// The design direction's name (DesignDirection); null for the default.

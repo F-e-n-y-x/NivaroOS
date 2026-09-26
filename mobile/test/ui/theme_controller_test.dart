@@ -28,14 +28,41 @@ void main() {
     expect(c.value.mode, AppThemeMode.system);
   });
 
-  test('saves mode, accent, wallpaper and style, and reads them back', () async {
+  test('saves mode, accent and style, and reads them back', () async {
     final c = ThemeController();
-    await c.set(const Appearance(mode: AppThemeMode.black, accent: AccentColor.teal, wallpaper: true, direction: DesignDirection.console));
+    await c.set(const Appearance(mode: AppThemeMode.black, accent: AccentColor.teal, direction: DesignDirection.console));
     final d = ThemeController();
     await d.load();
-    expect(d.value, const Appearance(mode: AppThemeMode.black, accent: AccentColor.teal, wallpaper: true, direction: DesignDirection.console));
-    // No dynamic colour in tests: the wallpaper option falls back to the accent.
-    expect(d.wallpaperSeed.value, isNull);
+    expect(d.value, const Appearance(mode: AppThemeMode.black, accent: AccentColor.teal, direction: DesignDirection.console));
+    await c.set(const Appearance());
+  });
+
+  test('a saved "Match wallpaper" moves to Monochrome once, and the old key is cleared', () async {
+    final st = StorageService.instance;
+    await st.setThemeAccent('teal');
+    await st.setLegacyThemeWallpaper('true');
+    final c = ThemeController();
+    await c.load();
+    expect(c.value.accent, AccentColor.mono);
+    expect(await st.getThemeAccent(), 'mono');
+    expect(await st.getThemeWallpaper(), isNull);
+
+    // Later launches keep Monochrome, and a new pick sticks.
+    await c.set(c.value.copyWith(accent: AccentColor.rose));
+    final d = ThemeController();
+    await d.load();
+    expect(d.value.accent, AccentColor.rose);
+    await c.set(const Appearance());
+  });
+
+  test('a saved wallpaper "false" keeps the accent and is cleared', () async {
+    final st = StorageService.instance;
+    await st.setThemeAccent('violet');
+    await st.setLegacyThemeWallpaper('false');
+    final c = ThemeController();
+    await c.load();
+    expect(c.value.accent, AccentColor.violet);
+    expect(await st.getThemeWallpaper(), isNull);
     await c.set(const Appearance());
   });
 

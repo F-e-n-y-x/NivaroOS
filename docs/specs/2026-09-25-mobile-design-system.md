@@ -843,3 +843,7 @@ are saved per server and come back after a restart.
   conflict sheet names the folder Paste was pressed in.
 - **Appearance:** the System mode picture is split light / dark on the
   diagonal. **Refresh widgets:** the radios line up with the sheet's title.
+
+## Owner decision (2026-09-26): Match wallpaper removed
+
+Match wallpaper removed (2026-09-26); Monochrome is the monotone choice; old wallpaper users migrate to Monochrome.

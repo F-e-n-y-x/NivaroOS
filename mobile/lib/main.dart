@@ -87,13 +87,12 @@ class NivaroApp extends StatefulWidget {
   State<NivaroApp> createState() => _NivaroAppState();
 }
 
-class _NivaroAppState extends State<NivaroApp> with WidgetsBindingObserver {
+class _NivaroAppState extends State<NivaroApp> {
   final _theme = ThemeController.instance;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     // The bundled typefaces' licences, next to the packages' in About.
     LicenseRegistry.addLicense(() async* {
       for (final (name, file) in const [
@@ -107,30 +106,17 @@ class _NivaroAppState extends State<NivaroApp> with WidgetsBindingObserver {
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  // The wallpaper may have changed while the app was in the background.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _theme.refreshWallpaper();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_theme, _theme.wallpaperSeed]),
+      listenable: _theme,
       builder: (context, _) {
         final a = _theme.value;
-        final wallpaper = _theme.wallpaperSeed.value;
         final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
         return MaterialApp(
           title: 'NivaroOS',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.forAppearance(a, Brightness.light, wallpaperSeed: wallpaper),
-          darkTheme: AppTheme.forAppearance(a, Brightness.dark, wallpaperSeed: wallpaper),
+          theme: AppTheme.forAppearance(a, Brightness.light),
+          darkTheme: AppTheme.forAppearance(a, Brightness.dark),
           themeMode: a.mode.themeMode,
           themeAnimationDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
           // System bar icons follow the app's theme on every screen, not only

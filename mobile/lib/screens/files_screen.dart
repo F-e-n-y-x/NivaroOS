@@ -1168,6 +1168,7 @@ class FilesScreenState extends State<FilesScreen> {
         actions: [_tabsButton()],
         header: banner,
         floatingActionButton: _pasteBar(),
+        floatingActionButtonRoom: _pasteBarRoom,
         controller: _scroll,
         onRestored: (folders) {
           for (final f in folders) {
@@ -1203,7 +1204,7 @@ class FilesScreenState extends State<FilesScreen> {
             _phonesGroup(),
             _cloudGroup(),
             _favoritesGroup(),
-            if (_clip != null) const SizedBox(height: 96),
+            if (_clip != null) SizedBox(height: _pasteBarRoom),
           ]),
       ],
     );

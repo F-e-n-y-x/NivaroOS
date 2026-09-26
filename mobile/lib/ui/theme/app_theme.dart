@@ -31,32 +31,27 @@ abstract final class AppTheme {
       brightness == Brightness.dark ? dark() : light();
 
   /// The theme for [appearance] at [brightness]: the black variant when
-  /// the user chose true black and the theme is dark, the wallpaper's
-  /// colour when they chose it and the phone has one.
-  static ThemeData forAppearance(Appearance appearance, Brightness brightness, {Color? wallpaperSeed}) => build(
+  /// the user chose true black and the theme is dark.
+  static ThemeData forAppearance(Appearance appearance, Brightness brightness) => build(
         brightness: brightness,
         black: brightness == Brightness.dark && appearance.mode == AppThemeMode.black,
         accent: appearance.accent,
-        seedOverride: appearance.wallpaper ? wallpaperSeed : null,
         direction: appearance.direction,
       );
 
-  /// One theme. [seedOverride] (the wallpaper's key colour) replaces the
-  /// [accent]'s seed and is used as the system uses it: plain tonal spot.
+  /// One theme.
   static ThemeData build({
     required Brightness brightness,
     bool black = false,
     AccentColor accent = AccentColor.blue,
-    Color? seedOverride,
     DesignDirection direction = DesignDirection.defaultDirection,
   }) {
     final isBlack = black && brightness == Brightness.dark;
-    final key = '${brightness.name}|$isBlack|${seedOverride?.toARGB32() ?? accent.name}|${direction.name}';
+    final key = '${brightness.name}|$isBlack|${accent.name}|${direction.name}';
     // Console draws lime as a thin signal line on graphite; the raw seed
     // is close to neon there, so it gets a slightly deeper, calmer lime.
-    final seed = seedOverride ?? (direction == DesignDirection.console && accent == AccentColor.lime ? const Color(0xFFB5D334) : accent.seed);
-    return _cache[key] ??= _build(brightness, isBlack, seed, seedOverride == null && accent == AccentColor.blue, direction,
-        mono: seedOverride == null && accent.isMono);
+    final seed = direction == DesignDirection.console && accent == AccentColor.lime ? const Color(0xFFB5D334) : accent.seed;
+    return _cache[key] ??= _build(brightness, isBlack, seed, accent == AccentColor.blue, direction, mono: accent.isMono);
   }
 
   /// The same theme built with another scheme variant, so the owner can
@@ -92,8 +87,8 @@ abstract final class AppTheme {
     // Owner decision (2026-09-25): with the brand blue, actions carry the
     // exact NivaroOS blue the web UI uses, while containers, the navigation
     // indicator and surfaces keep the calm tonal-spot palette. So
-    // primary/onPrimary come from the fidelity scheme. Other accents and
-    // the wallpaper use plain tonal spot, as the system does.
+    // primary/onPrimary come from the fidelity scheme. Other accents use
+    // plain tonal spot, as the system does.
     if (brand && !mono && variant == DynamicSchemeVariant.tonalSpot) {
       final fidelity = ColorScheme.fromSeed(seedColor: seed, brightness: brightness, dynamicSchemeVariant: DynamicSchemeVariant.fidelity);
       s = s.copyWith(primary: fidelity.primary, onPrimary: fidelity.onPrimary, surfaceTint: fidelity.primary);
