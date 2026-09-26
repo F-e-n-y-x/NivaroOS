@@ -1528,7 +1528,7 @@ class FilesScreenState extends State<FilesScreen> {
         },
         itemBuilder: (context) => [
           const PopupMenuItem(value: 'folder', child: Text('New folder')),
-          CheckedPopupMenuItem(value: 'hidden', checked: _showHidden, child: const Text('Show hidden files')),
+          checkMenuItem(value: 'hidden', checked: _showHidden, label: 'Show hidden files'),
           if (!_isLocal && (!isFav || canUnfav))
             PopupMenuItem(value: 'fav', child: Text(isFav ? 'Remove from favorites' : 'Add to favorites')),
           const PopupMenuItem(value: 'refresh', child: Text('Refresh')),

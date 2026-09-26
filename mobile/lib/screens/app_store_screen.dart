@@ -421,7 +421,7 @@ class _AppStoreScreenState extends State<AppStoreScreen> {
             }
           },
           itemBuilder: (_) => [
-            CheckedPopupMenuItem(value: 'cpu', checked: _allCpus, child: const Text('Show apps for other CPUs')),
+            checkMenuItem(value: 'cpu', checked: _allCpus, label: 'Show apps for other CPUs'),
             const PopupMenuItem(value: 'sources', child: Text('Store sources')),
             const PopupMenuItem(value: 'custom', child: Text('Install from compose file')),
             const PopupMenuItem(value: 'refresh', child: Text('Refresh')),

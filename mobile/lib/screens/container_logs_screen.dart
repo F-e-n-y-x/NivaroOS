@@ -257,10 +257,10 @@ class _ContainerLogsScreenState extends State<ContainerLogsScreen> {
             }
           },
           itemBuilder: (_) => [
-            CheckedPopupMenuItem(value: 'time', checked: _timestamps, child: const Text('Show times')),
+            checkMenuItem(value: 'time', checked: _timestamps, label: 'Show times'),
             const PopupMenuDivider(),
             for (final n in ContainerLogsScreen.lineChoices)
-              CheckedPopupMenuItem(value: n, checked: _count == n, child: Text('Last ${NumberFormat.decimalPattern().format(n)} lines')),
+              checkMenuItem(value: n, checked: _count == n, label: 'Last ${NumberFormat.decimalPattern().format(n)} lines'),
           ],
         ),
       ],

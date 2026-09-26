@@ -14,6 +14,7 @@ export 'theme/status_colors.dart';
 export 'theme/theme_controller.dart';
 export 'widgets/app_scaffold.dart';
 export 'widgets/brand_mark.dart';
+export 'widgets/check_menu_item.dart';
 export 'widgets/fact_line.dart';
 export 'widgets/confirm_dialog.dart';
 export 'widgets/fading_edges.dart';

@@ -359,7 +359,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
       },
       itemBuilder: (context) => [
         if (editable) const PopupMenuItem(value: 'edit', child: Text('Edit')),
-        if (editable && _showsLines) CheckedPopupMenuItem(value: 'wrap', checked: _wrap, child: const Text('Wrap lines')),
+        if (editable && _showsLines) checkMenuItem(value: 'wrap', checked: _wrap, label: 'Wrap lines'),
         const PopupMenuItem(value: 'open', child: Text('Open with another app')),
         if (!widget.isLocal) const PopupMenuItem(value: 'save', child: Text('Save to phone')),
         const PopupMenuItem(value: 'path', child: Text('Copy path')),
