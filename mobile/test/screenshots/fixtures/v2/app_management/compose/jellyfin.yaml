@@ -1,0 +1,97 @@
+name: jellyfin
+services:
+    db:
+        environment:
+            POSTGRES_PASSWORD: change-me
+            POSTGRES_USER: jellyfin
+        image: postgres:16
+        networks:
+            default: null
+        restart: unless-stopped
+        volumes:
+            - type: bind
+              source: /DATA/AppData/jellyfin/db
+              target: /var/lib/postgresql/data
+              bind:
+                create_host_path: true
+    jellyfin:
+        cap_add:
+            - SYS_ADMIN
+        container_name: jellyfin
+        cpu_shares: 90
+        deploy:
+            resources:
+                limits:
+                    memory: "2147483648"
+        depends_on:
+            db:
+                condition: service_started
+                required: true
+        devices:
+            - /dev/dri:/dev/dri
+        environment:
+            PGID: "1000"
+            PUID: "1000"
+            TZ: Europe/London
+        healthcheck:
+            test:
+                - CMD
+                - curl
+                - -f
+                - http://localhost:8096/health
+        image: linuxserver/jellyfin:10.11.10
+        labels:
+            icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.svg
+        network_mode: bridge
+        ports:
+            - mode: ingress
+              target: 8096
+              published: "8097"
+              protocol: tcp
+            - mode: ingress
+              target: 7359
+              published: "7359"
+              protocol: udp
+        restart: unless-stopped
+        volumes:
+            - type: bind
+              source: /DATA/AppData/jellyfin/config
+              target: /config
+              bind:
+                create_host_path: true
+            - type: bind
+              source: /DATA/Media
+              target: /media
+              read_only: true
+              bind:
+                create_host_path: true
+        x-casaos:
+            envs:
+                - container: TZ
+                  description:
+                    en_us: Your timezone, like Europe/London
+                - container: PUID
+                  description:
+                    en_us: The user the app runs as
+networks:
+    default:
+        name: jellyfin_default
+x-casaos:
+    architectures:
+        - amd64
+        - arm64
+    author: self
+    category: Media
+    developer: Jellyfin
+    hostname: ""
+    icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.svg
+    index: /
+    main: jellyfin
+    port_map: "8097"
+    scheme: http
+    store_app_id: jellyfin
+    tagline:
+        en_us: Stream your media anywhere
+    title:
+        custom: ""
+        en_us: Jellyfin

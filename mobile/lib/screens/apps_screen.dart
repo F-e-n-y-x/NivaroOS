@@ -10,6 +10,7 @@ import '../models/container_entry.dart';
 import '../services/api_client.dart';
 import '../ui/ui.dart';
 import '../utils/app_icons.dart';
+import 'app_edit_screen.dart';
 import 'app_store_screen.dart';
 import 'container_logs_screen.dart';
 import 'custom_install_screen.dart';
@@ -188,6 +189,37 @@ abstract final class AppsApi {
     }
   }
 
+  /// A compose app's compose file, as YAML (what the web's app settings
+  /// form reads: `GET …/compose/{id}` with `Accept: application/yaml`).
+  static Future<String> composeFile(InstalledApp app) async {
+    final path = '/v2/app_management/compose/${Uri.encodeComponent(app.id)}';
+    final res = await ApiClient.instance.getWithAccept(path, 'application/yaml');
+    if (res.statusCode == 200 && res.body.trim().isNotEmpty) return res.body;
+    String? message;
+    try {
+      final j = jsonDecode(res.body);
+      if (j is Map) message = j['message']?.toString();
+    } catch (_) {}
+    throw ApiException(
+      message ?? "The server didn't send the app's settings (HTTP ${res.statusCode}).",
+      statusCode: res.statusCode,
+      details: 'GET $path → HTTP ${res.statusCode}',
+    );
+  }
+
+  /// Saves [yaml] as [app]'s compose file, like the web's "Save & Apply
+  /// Settings" (`PUT …/compose/{id}`, raw YAML). The server checks it and
+  /// the ports, answers, then pulls the images and recreates the app in
+  /// the background.
+  static Future<void> saveComposeFile(InstalledApp app, String yaml) async {
+    await ApiClient.instance.putBody(
+      '/v2/app_management/compose/${Uri.encodeComponent(app.id)}',
+      yaml.endsWith('\n') ? yaml : '$yaml\n',
+      'application/yaml',
+      query: {'check_port_conflict': 'true'},
+    );
+  }
+
   /// Removes [app], and its data folder with [deleteData].
   static Future<void> uninstall(InstalledApp app, {required bool deleteData}) async {
     if (app.kind == AppKind.compose) {
@@ -197,6 +229,9 @@ abstract final class AppsApi {
     }
   }
 }
+
+/// The snack bar after Edit app saved [app]'s settings.
+String appSavedMessage(InstalledApp app) => 'Saved. ${app.title} restarts with the new settings once the server has them ready.';
 
 /// A short plain-words label for [app]'s state, for chips and TalkBack.
 String appStateLabel(InstalledApp app) => switch (app.runState) {
@@ -381,6 +416,13 @@ class _AppsScreenState extends State<AppsScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => AppDetailScreen(app: app))).then((_) => _load());
   }
 
+  Future<void> _openEdit(InstalledApp app) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => AppEditScreen(app: app)));
+    if (saved == true) messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(app))));
+    if (mounted) _load();
+  }
+
   Future<void> _run(InstalledApp app, AppAction action) async {
     if (_pending.containsKey(app.id)) return;
     setState(() => _pending[app.id] = action);
@@ -435,6 +477,7 @@ class _AppsScreenState extends State<AppsScreen> {
       app: app,
       onAction: (action) => _run(app, action),
       onDetails: () => _openDetail(app),
+      onEdit: () => _openEdit(app),
     );
   }
 
@@ -748,6 +791,7 @@ Future<void> showAppActionsSheet(
   required InstalledApp app,
   required void Function(AppAction action) onAction,
   required VoidCallback onDetails,
+  VoidCallback? onEdit,
 }) {
   final address = app.address(ApiClient.instance.baseUrl);
   return showModalBottomSheet<void>(
@@ -798,6 +842,13 @@ Future<void> showAppActionsSheet(
                 onTap: () => close(() => onAction(AppAction.restart)),
               ),
             ],
+            if (onEdit != null && app.canEdit)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit app'),
+                subtitle: const Text('Name, icon, web link, image and settings'),
+                onTap: () => close(onEdit),
+              ),
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('App info'),
@@ -835,6 +886,11 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
   Timer? _updatePoll;
   static const _updateDeadline = Duration(minutes: 15);
 
+  /// After Edit app saved: the server is pulling and recreating the app.
+  bool _applying = false;
+  Timer? _applyPoll;
+  static const _applyDeadline = Duration(minutes: 3);
+
   @override
   void initState() {
     super.initState();
@@ -850,7 +906,59 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
   @override
   void dispose() {
     _updatePoll?.cancel();
+    _applyPoll?.cancel();
     super.dispose();
+  }
+
+  Future<void> _openEdit() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => AppEditScreen(app: _app)));
+    if (saved != true || !mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(_app))));
+    _watchApply();
+  }
+
+  /// Follows the app while the server recreates it: done once it has gone
+  /// down and come back, or after [_applyDeadline]. The page picks up the
+  /// new name, icon and link early (a change to those alone doesn't
+  /// restart anything) and again at the end.
+  void _watchApply() {
+    _applyPoll?.cancel();
+    setState(() => _applying = true);
+    final deadline = clock.now().add(_applyDeadline);
+    var sawDown = false;
+    var busy = false;
+    var ticks = 0;
+    _applyPoll = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (busy) return;
+      busy = true;
+      try {
+        ticks++;
+        final s = await AppsApi.status(_app);
+        final running = s != null && _app.copyWith(status: s).runState == AppRunState.running;
+        if (s != null && !running) sawDown = true;
+        final done = (sawDown && running) || clock.now().isAfter(deadline);
+        if (done) _applyPoll?.cancel();
+        if (done || ticks == 3) await _reloadApp(stillApplying: !done);
+      } finally {
+        busy = false;
+      }
+    });
+  }
+
+  Future<void> _reloadApp({required bool stillApplying}) async {
+    InstalledApp? fresh;
+    try {
+      final apps = await AppsApi.load();
+      for (final a in apps) {
+        if (a.id == _app.id && a.kind == _app.kind) fresh = a;
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      if (fresh != null) _app = fresh;
+      _applying = stillApplying;
+    });
   }
 
   Future<void> _run(AppAction action) async {
@@ -1007,6 +1115,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
     final large = MediaQuery.textScalerOf(context).scale(10) > 13;
     return AppScaffold(
       title: 'App info',
+      actions: [
+        if (app.canEdit) IconButton(tooltip: 'Edit app', icon: const Icon(Icons.edit_outlined), onPressed: _openEdit),
+      ],
       body: ListView(
         padding: const EdgeInsets.only(bottom: Space.xl),
         children: [
@@ -1037,7 +1148,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
                               const SizedBox(height: Space.sm),
                               AnimatedSwitcher(
                                 duration: Motion.of(context).short,
-                                child: AppStateChip(key: ValueKey('${app.status}$_pending'), app: app, pending: _pending),
+                                child: _applying
+                                    ? const StatusChip(key: ValueKey('applying'), label: 'Applying changes', status: Status.info, icon: Icons.hourglass_empty_outlined)
+                                    : AppStateChip(key: ValueKey('${app.status}$_pending'), app: app, pending: _pending),
                               ),
                             ],
                           ),
@@ -1119,6 +1232,14 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
           ]),
           if (app.hasContainer)
             TileGroup(title: 'Tools', children: [
+              if (app.canEdit)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit app'),
+                  subtitle: const Text('Name, icon, web link, image and settings'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _openEdit,
+                ),
               ListTile(
                 leading: const Icon(Icons.receipt_long_outlined),
                 title: const Text('Logs'),

@@ -38,7 +38,7 @@ enum ApiErrorKind {
 }
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode, ApiErrorKind? kind, this.details})
+  ApiException(this.message, {this.statusCode, ApiErrorKind? kind, this.details, this.data})
       : kind = kind ?? (statusCode == 401 ? ApiErrorKind.auth : ApiErrorKind.server);
 
   /// A plain sentence for the user.
@@ -49,6 +49,10 @@ class ApiException implements Exception {
   /// Technical detail for "Copy details" (route, status, error text). Never
   /// contains tokens.
   final String? details;
+
+  /// The `data` of the server's error answer, when it sent one (a compose
+  /// app's validation errors: the ports already in use).
+  final Object? data;
 
   /// True for the failures that mean "can't reach the server right now" -
   /// the offline state, not an error in the request itself.
@@ -349,6 +353,13 @@ class ApiClient {
     return _send('POST', uri, () => http.post(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
   }
 
+  /// PUT with a raw non-JSON body - saving an installed compose app's
+  /// settings, which the backend reads as raw YAML (Edit app).
+  Future<Map<String, dynamic>> putBody(String path, String body, String contentType, {Map<String, dynamic>? query}) async {
+    final uri = _uri(path, query);
+    return _send('PUT', uri, () => http.put(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
+  }
+
   Future<http.Response> getRaw(String path, {Map<String, dynamic>? query}) async {
     final uri = _uri(path, query);
     return _sendRaw('GET', uri, () => http.get(uri, headers: _headers(json: false)));
@@ -518,7 +529,7 @@ class ApiClient {
       throw ApiException(serverMessage ?? "The server isn't answering right now (HTTP ${res.statusCode}). Try again in a moment.",
           statusCode: res.statusCode, kind: ApiErrorKind.network, details: details);
     }
-    throw ApiException(serverMessage ?? 'Request failed (HTTP ${res.statusCode}).', statusCode: res.statusCode, details: details);
+    throw ApiException(serverMessage ?? 'Request failed (HTTP ${res.statusCode}).', statusCode: res.statusCode, details: details, data: decoded['data']);
   }
 
   ApiException _refreshFailure(RefreshResult result) => result == RefreshResult.rejected

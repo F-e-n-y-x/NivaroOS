@@ -251,6 +251,10 @@ class InstalledApp {
   /// Logs and a shell exist for anything backed by containers.
   bool get hasContainer => !isLink;
 
+  /// Edit app works on compose apps: their compose file is what the
+  /// server edits (`PUT /v2/app_management/compose/{id}`).
+  bool get canEdit => kind == AppKind.compose;
+
   /// The app's web interface, built the way the web dashboard builds it
   /// (`mixins/app/Business_OpenThirdApp.js`): the user's own address first,
   /// then `scheme://host:port/index` from the app's store info, where host

@@ -57,3 +57,13 @@ real `GET /v1/trash` from this box (its Trash was empty, and the server
 sends `"items": null` then); the full one is written by hand in the same
 shape (services/core service/trash `Item`), with `deleted_at` in local
 time without an offset so the relative times match the frozen shot time.
+
+Edit app (2026-09-26): `v2/app_management/compose/jellyfin.yaml` is the
+compose file as `GET /v2/app_management/compose/{id}` with
+`Accept: application/yaml` returns it, written by hand: this box has no
+compose apps, so the shape comes from the server's own code path
+(compose-go's loader + `GenerateYAMLFromComposeApp`, run locally on a
+sample file) - long-form ports and volumes, bytes for the memory limit,
+4-space indent, keys sorted. The tests pass it as an override (the fake
+server only serves .json/.txt/.png by URL).
+
