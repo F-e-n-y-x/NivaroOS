@@ -21,8 +21,9 @@ const _path = '/v2/app_management/compose/jellyfin';
 final String _yaml = File('test/screenshots/fixtures/v2/app_management/compose/jellyfin.yaml').readAsStringSync();
 
 class _Server {
-  _Server({this.putStatus = 200, this.putBody});
+  _Server({this.putStatus = 200, this.putBody, this.getBody});
 
+  final String? getBody;
   final int putStatus;
   final Object? putBody;
   final puts = <http.Request>[];
@@ -31,7 +32,7 @@ class _Server {
   late final client = MockClient((req) async {
     if (req.url.path == _path && req.method == 'GET') {
       gets.add(req);
-      return http.Response(_yaml, 200, headers: {'content-type': 'application/yaml'});
+      return http.Response(getBody ?? _yaml, 200, headers: {'content-type': 'application/yaml'});
     }
     if (req.url.path == _path && req.method == 'PUT') {
       puts.add(req);
@@ -48,6 +49,13 @@ class _Server {
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 6; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// A few frames, for a scroll animation to run to its end.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
@@ -73,12 +81,12 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
   await tester.pump();
 }
 
-Future<void> _saveAndConfirm(WidgetTester tester) async {
+Future<void> _saveAndConfirm(WidgetTester tester, {bool restarts = true}) async {
   await tester.tap(find.widgetWithText(TextButton, 'Save'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  expect(find.text('Save and restart Movies?'), findsOneWidget);
-  await tester.tap(find.widgetWithText(TextButton, 'Save and restart'));
+  expect(find.text(restarts ? 'Save and restart Movies?' : 'Save the changes to Movies?'), findsOneWidget);
+  await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(TextButton, restarts ? 'Save and restart' : 'Save')));
   await _settle(tester);
 }
 
@@ -186,14 +194,91 @@ void main() {
       },
     );
     await _open(tester, server, () async {
-      await _type(tester, 'Port', '8098');
+      await _type(tester, 'Server', '8098');
       await tester.tap(find.widgetWithText(TextButton, 'Save'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.widgetWithText(TextButton, 'Save and restart'));
       await _settle(tester);
       await tester.pump(const Duration(seconds: 1));
       expect(find.byType(AppEditScreen), findsOneWidget);
-      expect(find.text('Server port 8098 is already used by something else. Pick another server port.'), findsOneWidget);
+      const inUse = 'Server port 8098 is already used by something else. Pick another server port.';
+      expect(find.text(inUse), findsOneWidget);
+      // Another field doesn't settle it; a new server port might.
+      await _type(tester, 'Name', 'Movies');
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text(inUse), findsOneWidget);
+      await _type(tester, 'Server', '8099');
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text(inUse), findsNothing);
     });
+  });
+
+  testWidgets('Save is off until something changes', (tester) async {
+    final server = _Server();
+    await _open(tester, server, () async {
+      Finder save() => find.widgetWithText(TextButton, 'Save');
+      expect(tester.widget<TextButton>(save()).onPressed, isNull);
+      await _type(tester, 'Name', 'Movies');
+      expect(tester.widget<TextButton>(save()).onPressed, isNotNull);
+      await _type(tester, 'Name', 'Jellyfin');
+      expect(tester.widget<TextButton>(save()).onPressed, isNull, reason: 'back as it was');
+    });
+    expect(server.puts, isEmpty);
+  });
+
+  testWidgets('the problem banner goes once the problem is fixed', (tester) async {
+    final server = _Server();
+    await _open(tester, server, () async {
+      await _type(tester, 'Port', '99999');
+      await tester.tap(find.widgetWithText(TextButton, 'Save'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text("Couldn't save"), findsOneWidget);
+      await _type(tester, 'Port', '8096');
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text("Couldn't save"), findsNothing);
+    });
+  });
+
+  testWidgets('Save goes to the first field to fix, and each problem leads to its field', (tester) async {
+    final server = _Server();
+    await _open(tester, server, () async {
+      // Far down, in the database's variables.
+      await _type(tester, 'Name', 'Movies');
+      final list = find.byType(Scrollable).first;
+      final dbKey = find.widgetWithText(TextFormField, 'POSTGRES_USER');
+      await tester.scrollUntilVisible(dbKey, 300, scrollable: list);
+      await tester.enterText(dbKey, '1BAD');
+      await tester.pump();
+      final memory = find.widgetWithText(TextFormField, 'Memory (MB)').first;
+      await tester.scrollUntilVisible(memory, 300, scrollable: list);
+      await tester.enterText(memory, 'lots');
+      await tester.pump();
+      // Back to the top, and Save.
+      await tester.scrollUntilVisible(find.text('General'), -400, scrollable: list);
+      await tester.tap(find.widgetWithText(TextButton, 'Save'));
+      await _frames(tester);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('2 settings need fixing. Tap one to go to it.'), findsOneWidget);
+      // The first from the top is the memory limit (jellyfin's service comes first).
+      final view = tester.getRect(list);
+      bool inView(Finder f) => view.contains(tester.getCenter(f));
+      expect(inView(memory), isTrue);
+      await tester.tap(find.text('db, variable: Letters, numbers and _ only, not starting with a number'));
+      await _frames(tester);
+      expect(inView(find.widgetWithText(TextFormField, '1BAD')), isTrue);
+    });
+    expect(server.puts, isEmpty);
+  });
+
+  testWidgets(r'a literal $ in a variable survives an unrelated edit', (tester) async {
+    final yaml = _yaml.replaceFirst('POSTGRES_PASSWORD: change-me', r'POSTGRES_PASSWORD: pa$$word');
+    final server = _Server(getBody: yaml);
+    await _open(tester, server, () async {
+      await _type(tester, 'Name', 'Movies');
+      await _saveAndConfirm(tester, restarts: false);
+    });
+    final sent = parseComposeYaml(server.puts.single.body);
+    expect((((sent['services'] as Map)['db'] as Map)['environment'] as Map)['POSTGRES_PASSWORD'], r'pa$$word');
   });
 }

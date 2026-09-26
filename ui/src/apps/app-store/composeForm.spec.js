@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { applyFormToDoc, docToFormState, parsePortSpec, webUILink } from './composeForm'
+import { applyFormToDoc, docToFormState, isValidWebUIHost, parsePortSpec, webUILink } from './composeForm'
 
 // A store app the way the server returns it: two services, labels,
 // healthcheck, an array command, a byte memory limit, store metadata.
@@ -92,5 +92,23 @@ describe('App Store form <-> compose', () => {
 		back.webUI.port = '2283'
 		expect(applyFormToDoc(doc, back)['x-casaos'].hostname).toBe('')
 		expect(webUILink({ enabled: true, scheme: 'http', hostname: '', port: '', index: '' }, 'nas.local')).toBe('')
+	})
+
+	test('a literal $ in a variable shows once and is written escaped', () => {
+		const doc = storeDoc()
+		doc.services.server.environment = { PASS: 'pa$$word', HASH: '$$2y$$10$$abc', TZ: 'UTC' }
+		const form = docToFormState(doc)
+		expect(form.envs.find((e) => e.key === 'PASS').value).toBe('pa$word')
+		expect(form.envs.find((e) => e.key === 'HASH').value).toBe('$2y$10$abc')
+		// Untouched: exactly as it came.
+		expect(applyFormToDoc(doc, docToFormState(doc)).services.server.environment).toEqual(doc.services.server.environment)
+		// Another variable changed: the others keep their escapes, a new $ is escaped.
+		form.envs.find((e) => e.key === 'TZ').value = 'a$b'
+		expect(applyFormToDoc(doc, form).services.server.environment).toEqual({ PASS: 'pa$$word', HASH: '$$2y$$10$$abc', TZ: 'a$$b' })
+	})
+
+	test('the Web UI host takes a name or an address, not a port', () => {
+		for (const ok of ['', 'nas', 'media.example.com', '192.168.1.20', '[fd00::1]']) expect(isValidWebUIHost(ok)).toBe(true)
+		for (const bad of ['nas:8080', 'http://nas', 'nas/web', 'fd00::1', 'a b']) expect(isValidWebUIHost(bad)).toBe(false)
 	})
 })

@@ -250,6 +250,13 @@ services:
       expect(validateHost('media.example.com'), isNull);
       expect(validateHost('http://media'), isNotNull);
       expect(validateHost('a/b'), isNotNull);
+      expect(validateHost('nas:8080'), isNotNull, reason: 'the port has its own field');
+      expect(validateHost('fd00::1'), isNotNull);
+      expect(validateHost('[fd00::1]'), isNull);
+      expect(validateHost('192.168.1.20'), isNull);
+      expect(validateWebUiPort('8097'), isNull);
+      expect(validateWebUiPort('8000-8010'), isNotNull, reason: 'the link takes one port');
+      expect(validateWebUiPort('0'), isNotNull);
       expect(validatePort('', required: false), isNull);
       expect(validatePort('', required: true), isNotNull);
       expect(validatePort('8000-8010', required: true), isNull);
@@ -263,11 +270,15 @@ services:
       expect(validateTag('10.11.10'), isNull);
       expect(validateTag('bad tag'), isNotNull);
       expect(validateVolumeSource('data'), isNotNull);
-      expect(validateVolumeSource('data', named: true), isNull);
+      expect(validateVolumeSource('data', type: 'volume'), isNull);
+      expect(validateVolumeSource('', type: 'volume'), isNotNull, reason: 'a new volume row needs a name');
+      expect(validateVolumeSource('', type: 'volume', isNew: false), isNull, reason: 'an anonymous volume');
+      expect(validateVolumeSource('', type: 'tmpfs'), isNull);
       expect(validateContainerPath('config'), isNotNull);
       expect(validateEnvKey('1A'), isNotNull);
       expect(validateEnvKey('TZ'), isNull);
       expect(validateDevice('dri'), isNotNull);
+      expect(validateDevice('nvidia.com/gpu=all'), isNull, reason: 'a CDI device name');
       expect(validateCpus('1.5'), isNull);
       expect(validateCpus('lots'), isNotNull);
       expect(validateMemory('512'), isNull);
@@ -294,6 +305,59 @@ services:
       expect(isSecretName('POSTGRES_PASSWORD'), isTrue);
       expect(isSecretName('API_TOKEN'), isTrue);
       expect(isSecretName('TZ'), isFalse);
+    });
+
+    test('rows the user left alone are not checked', () {
+      final doc = serverDoc();
+      final db = svc(doc, 'db') as Map<String, Object?>;
+      (db['volumes'] as List).addAll([
+        {'type': 'tmpfs', 'target': '/tmp'},
+        {'type': 'volume', 'target': '/anon'},
+      ]);
+      db['devices'] = ['nvidia.com/gpu=all'];
+      final f = ComposeForm.fromDoc(doc);
+      expect(f.problems(), isEmpty);
+      f.title = 'Movies';
+      expect(f.problems(), isEmpty, reason: 'a rename saves');
+      // Typed into: checked.
+      final vol = f.service('db')!.volumes.last..target = '/anon2';
+      expect(vol.sourceProblem(), isNull, reason: 'still an anonymous volume');
+      f.service('db')!.volumes.add(VolumeRow(target: '/new'));
+      expect(f.problems(), ['db, folder on the server: Enter a folder on the server']);
+    });
+  });
+
+  group(r'a literal $ in a variable', () {
+    Map<String, Object?> dollarDoc() {
+      final doc = serverDoc();
+      (svc(doc, 'db') as Map<String, Object?>)['environment'] = {'POSTGRES_PASSWORD': r'pa$$word', 'HASH': r'$$2y$$10$$abc', 'POSTGRES_USER': 'jellyfin'};
+      return doc;
+    }
+
+    test('shows once in the form', () {
+      final envs = ComposeForm.fromDoc(dollarDoc()).service('db')!.envs;
+      expect(envs.map((e) => e.value), [r'pa$word', r'$2y$10$abc', 'jellyfin']);
+    });
+
+    test('round trips unchanged, and an edit is written escaped', () {
+      final doc = dollarDoc();
+      final f = ComposeForm.fromDoc(doc);
+      expect(deepEquals(f.applyTo(doc), doc), isTrue);
+      f.title = 'Movies';
+      expect(svc(f.applyTo(doc), 'db')['environment'], svc(doc, 'db')['environment'], reason: 'an unrelated edit leaves them alone');
+      f.service('db')!.envs.last.value = r'a$b';
+      expect(svc(f.applyTo(doc), 'db')['environment'], {'POSTGRES_PASSWORD': r'pa$$word', 'HASH': r'$$2y$$10$$abc', 'POSTGRES_USER': r'a$$b'});
+      f.service('db')!.envs.first.value = r'new$pw';
+      expect((svc(f.applyTo(doc), 'db')['environment'] as Map)['POSTGRES_PASSWORD'], r'new$$pw');
+    });
+
+    test('list-style variables too', () {
+      final doc = serverDoc();
+      (svc(doc, 'db') as Map<String, Object?>)['environment'] = [r'PASS=pa$$word', 'USER=x'];
+      final f = ComposeForm.fromDoc(doc);
+      expect(f.service('db')!.envs.first.value, r'pa$word');
+      f.service('db')!.envs.last.value = r'y$';
+      expect(svc(f.applyTo(doc), 'db')['environment'], [r'PASS=pa$$word', r'USER=y$$']);
     });
   });
 }

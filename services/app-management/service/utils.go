@@ -30,6 +30,14 @@ func Standardize(text string) string {
 	return result
 }
 
+// GenerateYAMLFromComposeApp writes a compose app that was loaded WITH
+// interpolation (so a literal `$` in the file, written `$$`, now reads `$`)
+// back as a compose file, escaping `$` in environment values again.
+//
+// Only for an interpolated app, such as the installed one MyComposeApp
+// hands out. A file parsed with interpolation skipped (the body of
+// ApplyComposeAppSettings) still holds its `$$` escapes: write that with
+// MarshalUninterpolatedComposeApp, or every save doubles them.
 func GenerateYAMLFromComposeApp(compose ComposeApp) ([]byte, error) {
 	// to duplicate Specify Chars
 	for _, service := range compose.Services {
@@ -40,5 +48,14 @@ func GenerateYAMLFromComposeApp(compose ComposeApp) ([]byte, error) {
 			}
 		}
 	}
+	return yaml.Marshal(compose)
+}
+
+// MarshalUninterpolatedComposeApp writes a compose app parsed with
+// interpolation skipped back as it came: its `$$` escapes are still in
+// place, so nothing is escaped again. GET compose/{id} (YAML) → PUT the
+// same text is then the identity, and `pa$$word` in the file stays
+// `pa$word` in the container however often the app's settings are saved.
+func MarshalUninterpolatedComposeApp(compose ComposeApp) ([]byte, error) {
 	return yaml.Marshal(compose)
 }

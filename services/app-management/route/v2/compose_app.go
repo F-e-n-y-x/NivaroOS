@@ -185,7 +185,9 @@ func (a *AppManagement) ApplyComposeAppSettings(ctx echo.Context, id codegen.Com
 	}
 
 	_ = newComposeApp.SetUncontrolled(uncontrolled)
-	buf, err = service.GenerateYAMLFromComposeApp(*newComposeApp)
+	// The body was parsed without interpolation, so its `$$` escapes are
+	// intact: escaping again would turn `$$` into `$$$$` on every save.
+	buf, err = service.MarshalUninterpolatedComposeApp(*newComposeApp)
 	if err != nil {
 		message := err.Error()
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{

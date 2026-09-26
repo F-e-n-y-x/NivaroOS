@@ -231,7 +231,8 @@ abstract final class AppsApi {
 }
 
 /// The snack bar after Edit app saved [app]'s settings.
-String appSavedMessage(InstalledApp app) => 'Saved. ${app.title} restarts with the new settings once the server has them ready.';
+String appSavedMessage(InstalledApp app, {bool recreates = true}) =>
+    recreates ? 'Saved. ${app.title} restarts with the new settings once the server has them ready.' : 'Saved. ${app.title} keeps running.';
 
 /// A short plain-words label for [app]'s state, for chips and TalkBack.
 String appStateLabel(InstalledApp app) => switch (app.runState) {
@@ -418,8 +419,8 @@ class _AppsScreenState extends State<AppsScreen> {
 
   Future<void> _openEdit(InstalledApp app) async {
     final messenger = ScaffoldMessenger.of(context);
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => AppEditScreen(app: app)));
-    if (saved == true) messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(app))));
+    final saved = await Navigator.of(context).push<AppEditSaved>(MaterialPageRoute(builder: (_) => AppEditScreen(app: app)));
+    if (saved != null) messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(app, recreates: saved.recreates))));
     if (mounted) _load();
   }
 
@@ -912,17 +913,18 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
 
   Future<void> _openEdit() async {
     final messenger = ScaffoldMessenger.of(context);
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => AppEditScreen(app: _app)));
-    if (saved != true || !mounted) return;
-    messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(_app))));
-    _watchApply();
+    final saved = await Navigator.of(context).push<AppEditSaved>(MaterialPageRoute(builder: (_) => AppEditScreen(app: _app)));
+    if (saved == null || !mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(appSavedMessage(_app, recreates: saved.recreates))));
+    _watchApply(recreates: saved.recreates);
   }
 
   /// Follows the app while the server recreates it: done once it has gone
   /// down and come back, or after [_applyDeadline]. The page picks up the
-  /// new name, icon and link early (a change to those alone doesn't
-  /// restart anything) and again at the end.
-  void _watchApply() {
+  /// new name, icon and link early and again at the end. When only those
+  /// changed ([recreates] false) nothing restarts, so it is done at the
+  /// first poll that finds the app running.
+  void _watchApply({required bool recreates}) {
     _applyPoll?.cancel();
     setState(() => _applying = true);
     final deadline = clock.now().add(_applyDeadline);
@@ -937,7 +939,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
         final s = await AppsApi.status(_app);
         final running = s != null && _app.copyWith(status: s).runState == AppRunState.running;
         if (s != null && !running) sawDown = true;
-        final done = (sawDown && running) || clock.now().isAfter(deadline);
+        final done = (running && (sawDown || !recreates)) || clock.now().isAfter(deadline);
         if (done) _applyPoll?.cancel();
         if (done || ticks == 3) await _reloadApp(stillApplying: !done);
       } finally {

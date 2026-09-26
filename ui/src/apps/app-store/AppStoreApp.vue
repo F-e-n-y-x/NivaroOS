@@ -964,7 +964,7 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import StoreAppCard from './StoreAppCard.vue'
-import { applyFormToDoc, docToFormState, parsePortSpec, webUILink } from './composeForm'
+import { applyFormToDoc, docToFormState, isValidWebUIHost, parsePortSpec, webUILink } from './composeForm'
 
 const ARCH_MAP = {
 	x86_64: 'amd64',
@@ -1160,7 +1160,7 @@ export default {
 			}
 			const web = f.webUI || {}
 			if (web.enabled) {
-				if (web.hostname && !/^[A-Za-z0-9.\-[\]:]+$/.test(String(web.hostname).trim())) errs.push(this.$t('Web UI host: only the host name, like media.example.com, without http:// or a path.'))
+				if (web.hostname && !isValidWebUIHost(web.hostname)) errs.push(this.$t('Web UI host: only the host name, like media.example.com, without http:// or a path.'))
 				if (web.port && (!/^\d+$/.test(String(web.port).trim()) || +web.port < 1 || +web.port > 65535)) errs.push(this.$t('Web UI port {port} is not valid (1-65535).', { port: web.port }))
 				if (web.index && !String(web.index).trim().startsWith('/')) errs.push(this.$t('Web UI path must start with /.'))
 			}

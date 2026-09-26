@@ -9,6 +9,19 @@ import 'apps_screen.dart';
 
 enum _Mode { form, yaml }
 
+/// What Edit app pops once the server has taken the new settings.
+class AppEditSaved {
+  const AppEditSaved({required this.recreates});
+
+  /// False when only the app's name, icon or Web UI link changed (the
+  /// project's x-casaos): the server saves them without recreating the
+  /// containers, so the app never goes down.
+  final bool recreates;
+}
+
+/// Why Save didn't go through.
+enum _SaveErrorKind { form, server }
+
 /// Edit app (owner request, 2026-09-26): an installed compose app's
 /// settings - name, icon, the Web UI link, and each service's image, tag,
 /// restart policy, ports, folders, variables, devices, network and limits -
@@ -17,7 +30,7 @@ enum _Mode { form, yaml }
 /// `GET …/compose/{id}` as YAML, saved with `PUT …/compose/{id}`, after
 /// which the server pulls the images and recreates the app.
 ///
-/// Pops true once the server has taken the new settings.
+/// Pops an [AppEditSaved] once the server has taken the new settings.
 class AppEditScreen extends StatefulWidget {
   const AppEditScreen({super.key, required this.app});
 
@@ -56,7 +69,16 @@ class _AppEditScreenState extends State<AppEditScreen> {
   String? _yamlError;
   bool _saving = false;
   String? _saveError;
+  _SaveErrorKind _saveErrorKind = _SaveErrorKind.server;
+
+  /// The form's problems when Save was refused, each a tap target.
+  List<FormIssue> _saveIssues = const [];
   final Set<EnvRow> _revealed = {};
+
+  /// Each text field's state and focus, by `$_generation/fieldId`, so a
+  /// problem can scroll to its field.
+  final _fields = <String, GlobalKey<FormFieldState<String>>>{};
+  final _focus = <String, FocusNode>{};
 
   @override
   void initState() {
@@ -70,6 +92,9 @@ class _AppEditScreenState extends State<AppEditScreen> {
     _yaml.dispose();
     _yamlFocus.dispose();
     _port.dispose();
+    for (final f in _focus.values) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -128,7 +153,78 @@ class _AppEditScreenState extends State<AppEditScreen> {
     return cur != null && !deepEquals(cur, base);
   }
 
-  void _edit(VoidCallback change) => setState(change);
+  void _edit(VoidCallback change) => setState(() {
+    change();
+    _refreshSaveError();
+  });
+
+  /// After Save was refused for the form's problems, the banner follows the
+  /// edits: it lists what is still wrong and goes once nothing is.
+  void _refreshSaveError() {
+    if (_saveError == null || _saveErrorKind != _SaveErrorKind.form || _form == null) return;
+    // The fields' validators are the same checks as issues(), so this is
+    // what they show once they have rebuilt.
+    final issues = _form!.issues();
+    if (issues.isEmpty) {
+      _saveError = null;
+      _saveIssues = const [];
+    } else {
+      _saveError = _formErrorText(issues);
+      _saveIssues = issues;
+    }
+  }
+
+  /// A change to a published port may settle "ports in use" from the
+  /// server, so that message goes with it.
+  void _portEdited() {
+    if (_saveErrorKind == _SaveErrorKind.server) _saveError = null;
+  }
+
+  static String _formErrorText(List<FormIssue> issues) => issues.isEmpty
+      ? 'Some settings need fixing. They are marked below.'
+      : issues.length == 1
+      ? issues.first.message
+      : '${issues.length} settings need fixing. Tap one to go to it.';
+
+  /// Scrolls to [field] (a [fieldId]) and puts the cursor in it.
+  Future<void> _goTo(String field) async {
+    final key = _fields['$_generation/$field'];
+    final ctx = key?.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(ctx, alignment: .3, duration: Motion.of(context).medium, curve: Curves.easeOutCubic);
+    _focus['$_generation/$field']?.requestFocus();
+  }
+
+  /// The first field (from the top) that shows an error or has a problem.
+  String? _firstBadField(List<FormIssue> issues) {
+    final prefix = '$_generation/';
+    final bad = <String>{
+      for (final i in issues) i.field,
+      for (final e in _fields.entries)
+        if (e.key.startsWith(prefix) && (e.value.currentState?.hasError ?? false)) e.key.substring(prefix.length),
+    };
+    String? best;
+    var bestY = double.infinity;
+    for (final id in bad) {
+      final box = _fields['$prefix$id']?.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.attached) continue;
+      final y = box.localToGlobal(Offset.zero).dy;
+      if (y < bestY) {
+        bestY = y;
+        best = id;
+      }
+    }
+    return best;
+  }
+
+  /// The document as saved: does it change more than the project's
+  /// x-casaos (name, icon, Web UI link)?
+  bool _recreates(Map<String, Object?>? saved) {
+    final base = _base;
+    if (saved == null || base == null) return true;
+    Map<String, Object?> rest(Map<String, Object?> d) => Map.of(d)..remove('x-casaos');
+    return !deepEquals(rest(saved), rest(base));
+  }
 
   void _switchMode(_Mode to) {
     if (to == _mode) return;
@@ -161,7 +257,6 @@ class _AppEditScreenState extends State<AppEditScreen> {
 
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
-    final messenger = ScaffoldMessenger.of(context);
     final String text;
     if (_mode == _Mode.yaml) {
       final error = validateComposeText(_yaml.text, _form?.appName ?? widget.app.id);
@@ -172,31 +267,44 @@ class _AppEditScreenState extends State<AppEditScreen> {
       text = _yaml.text;
     } else {
       final valid = _formKey.currentState?.validate() ?? false;
-      final problems = _form!.problems();
-      if (!valid || problems.isNotEmpty) {
-        setState(
-          () => _saveError = problems.isEmpty
-              ? 'Some settings need fixing. They are marked below.'
-              : problems.length == 1
-              ? problems.first
-              : '${problems.length} settings need fixing: ${problems.take(3).join(' ')}${problems.length > 3 ? ' …' : ''}',
-        );
+      final issues = _form!.issues();
+      if (!valid || issues.isNotEmpty) {
+        setState(() {
+          _saveError = _formErrorText(issues);
+          _saveErrorKind = _SaveErrorKind.form;
+          _saveIssues = issues;
+        });
+        // Save is in the top bar and the form is long: go to the first
+        // field to fix, wherever it is.
+        final first = _firstBadField(issues);
+        if (first != null) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? _goTo(first) : null);
         return;
       }
       text = emitYaml(_current());
     }
-    if (!_dirty) {
-      messenger.showSnackBar(const SnackBar(content: Text('Nothing has changed')));
-      return;
+    if (!_dirty) return;
+    Map<String, Object?>? saved;
+    try {
+      saved = parseComposeYaml(text);
+    } on FormatException {
+      saved = null;
     }
-    final go = await ConfirmDialog.confirm(
-      context,
-      title: 'Save and restart $_title?',
-      message:
-          '$_title is recreated with the new settings, so it is offline for a moment - longer if the server has to '
-          'download a new image first. Its data folders are kept.',
-      confirmLabel: 'Save and restart',
-    );
+    final recreates = _recreates(saved);
+    final go = recreates
+        ? await ConfirmDialog.confirm(
+            context,
+            title: 'Save and restart $_title?',
+            message:
+                '$_title is recreated with the new settings, so it is offline for a moment - longer if the server has to '
+                'download a new image first. Its data folders are kept.',
+            confirmLabel: 'Save and restart',
+          )
+        : await ConfirmDialog.confirm(
+            context,
+            title: 'Save the changes to $_title?',
+            message: 'Only its name, icon or Web UI link changed, so $_title keeps running.',
+            confirmLabel: 'Save',
+          );
     if (!go || !mounted) return;
     // Closing the dialog gives the focus back to the last field, which
     // would scroll the page to it rather than to an error at the top.
@@ -204,18 +312,20 @@ class _AppEditScreenState extends State<AppEditScreen> {
     setState(() {
       _saving = true;
       _saveError = null;
+      _saveIssues = const [];
     });
     final nav = Navigator.of(context);
     try {
       await AppsApi.saveComposeFile(widget.app, text);
       if (!mounted) return;
       setState(() => _saving = false);
-      nav.pop(true);
+      nav.pop(AppEditSaved(recreates: recreates));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
         _saveError = saveErrorText(e);
+        _saveErrorKind = _SaveErrorKind.server;
       });
     }
   }
@@ -229,7 +339,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
       confirmLabel: 'Discard',
       permanent: false,
     );
-    if (discard && mounted) Navigator.of(context).pop(false);
+    if (discard && mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -252,7 +362,9 @@ class _AppEditScreenState extends State<AppEditScreen> {
                       child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
                     ),
                   )
-                : TextButton(onPressed: ready ? _save : null, child: const Text('Save')),
+                // Only once something changed: an untouched form has
+                // nothing to save.
+                : TextButton(onPressed: ready && _dirty ? _save : null, child: const Text('Save')),
           ),
         ],
         body: _body(context),
@@ -282,17 +394,21 @@ class _AppEditScreenState extends State<AppEditScreen> {
         AnimatedSize(
           duration: Motion.of(context).short,
           alignment: Alignment.topCenter,
-          child: _saveError == null ? const SizedBox(width: double.infinity) : Notice(title: "Couldn't save", message: _saveError!, status: Status.error),
+          child: _saveError == null ? const SizedBox(width: double.infinity) : _saveBanner(context),
         ),
         Expanded(
           child: AbsorbPointer(
             absorbing: _saving,
             child: Form(
               key: _formKey,
-              child: ListView(
+              // Every field is built, not only those in view: Save
+              // validates them all and can scroll to the first bad one.
+              child: SingleChildScrollView(
                 controller: _scroll,
                 padding: const EdgeInsets.only(bottom: Space.xxl),
-                children: [
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   Padding(
                     padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, 0),
                     child: SegmentedButton<_Mode>(
@@ -306,12 +422,54 @@ class _AppEditScreenState extends State<AppEditScreen> {
                     ),
                   ),
                   if (_mode == _Mode.form) ..._formChildren(context) else ..._yamlChildren(context),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _saveBanner(BuildContext context) {
+    final issues = _saveErrorKind == _SaveErrorKind.form ? _saveIssues : const <FormIssue>[];
+    if (issues.length == 1) {
+      return Notice(
+        title: "Couldn't save",
+        message: _saveError!,
+        status: Status.error,
+        actionLabel: 'Show',
+        onAction: () => _goTo(issues.first.field),
+      );
+    }
+    final style = Notice.detailStyle(context, Status.error);
+    const shown = 3;
+    return Notice(
+      title: "Couldn't save",
+      message: _saveError!,
+      status: Status.error,
+      details: issues.isEmpty
+          ? null
+          : [
+              const SizedBox(height: Space.xs),
+              for (final i in issues.take(shown))
+                InkWell(
+                  onTap: () => _goTo(i.field),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 44),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(i.message, style: style, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ),
+                        Icon(Icons.chevron_right, color: style?.color),
+                      ],
+                    ),
+                  ),
+                ),
+              if (issues.length > shown) Text('and ${issues.length - shown} more, marked below', style: style),
+            ],
     );
   }
 
@@ -333,8 +491,11 @@ class _AppEditScreenState extends State<AppEditScreen> {
     final width = painter.width * (longest + 2);
     painter.dispose();
     return [
+      // The Settings tab hides secret values; this one can't.
+      if (_hasSecrets)
+        const Notice(status: Status.warning, icon: Icons.visibility_outlined, message: 'Secret values, like passwords, show in plain text here.'),
       Padding(
-        padding: EdgeInsets.fromLTRB(gutter, Space.lg, gutter, 0),
+        padding: EdgeInsets.fromLTRB(gutter, _hasSecrets ? Space.sm : Space.lg, gutter, 0),
         child: ListenableBuilder(
           listenable: _yamlFocus,
           builder: (context, _) => InputDecorator(
@@ -342,7 +503,9 @@ class _AppEditScreenState extends State<AppEditScreen> {
             decoration: InputDecoration(
               labelText: 'Compose file',
               floatingLabelBehavior: FloatingLabelBehavior.always,
-              helperText: 'Everything about the app, including what the settings don’t show. Keep “name: ${_form?.appName ?? widget.app.id}”.',
+              helperText:
+                  'Everything about the app, including what the settings don’t show. Keep “name: ${_form?.appName ?? widget.app.id}”.'
+                  ' Write a \$ in a value as \$\$.',
               helperMaxLines: 3,
               errorText: _yamlError,
               errorMaxLines: 6,
@@ -384,6 +547,9 @@ class _AppEditScreenState extends State<AppEditScreen> {
       ),
     ];
   }
+
+  /// Whether any variable holds a secret, which the compose file shows.
+  bool get _hasSecrets => _form?.services.any((s) => s.envs.any((e) => isSecretName(e.key) && e.value.isNotEmpty)) ?? false;
 
   // --- The form -------------------------------------------------------------
 
@@ -442,11 +608,14 @@ class _AppEditScreenState extends State<AppEditScreen> {
     Widget? suffix,
     Widget? prefix,
     bool padded = true,
+    bool floatLabel = false,
     TextEditingController? controller,
   }) {
     final theme = Theme.of(context);
+    final slot = '$_generation/$id';
     final field = TextFormField(
-      key: ValueKey('$_generation/$id'),
+      key: _fields.putIfAbsent(slot, () => GlobalKey<FormFieldState<String>>(debugLabel: slot)),
+      focusNode: _focus.putIfAbsent(slot, () => FocusNode(debugLabel: slot)),
       controller: controller,
       initialValue: controller == null ? value : null,
       keyboardType: keyboard,
@@ -464,6 +633,8 @@ class _AppEditScreenState extends State<AppEditScreen> {
         helperMaxLines: 3,
         errorMaxLines: 3,
         hintText: hint,
+        // A hint that says what blank means ("No limit") shows at rest.
+        floatingLabelBehavior: floatLabel ? FloatingLabelBehavior.always : null,
         suffixIcon: suffix,
         prefixIcon: prefix,
       ),
@@ -475,13 +646,14 @@ class _AppEditScreenState extends State<AppEditScreen> {
     final theme = Theme.of(context);
     final gutter = Space.gutter(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, Space.xl, gutter, 0),
+      padding: EdgeInsets.fromLTRB(gutter, Space.lg, gutter, 0),
       child: Semantics(
         header: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(text, style: theme.textTheme.titleSmall),
+            // Below the service headings: a part of one service.
+            Text(text, style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             if (caption != null) ...[
               const SizedBox(height: 2),
               Text(caption, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -515,7 +687,8 @@ class _AppEditScreenState extends State<AppEditScreen> {
         color: tokens.cardColor,
         shape: tokens.cardShape(tokens.radii.md),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.xs, Space.md),
+          // Room above for the outlined fields' floating labels.
+          padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.xs, Space.md),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -576,8 +749,49 @@ class _AppEditScreenState extends State<AppEditScreen> {
     final ports = form.publishedPorts;
     final link = form.link(serverHost);
     final gutter = Space.gutter(context);
+    final testable = link != null && !form.problems().any((p) => p.startsWith('Web UI'));
+    final url = Semantics(
+      label: link == null ? 'No link' : 'Link: $link',
+      child: ExcludeSemantics(
+        child: Text(
+          link?.toString() ?? 'No link: add a port or a host',
+          style: link == null ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant) : DesignTokens.of(context).mono(theme.textTheme.bodyMedium),
+        ),
+      ),
+    );
+    final test = TextButton.icon(onPressed: testable ? () => openAppUrl(context, link) : null, icon: const Icon(Icons.open_in_new), label: const Text('Test'));
+    // Large text: the button goes under the link rather than squeezing it.
+    final stacked = MediaQuery.textScalerOf(context).scale(10) > 13;
     return [
       const SectionHeader(title: 'Web UI link'),
+      // The link first, so it stays in view while its parts are edited.
+      Padding(
+        padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 0),
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.link, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: Space.md),
+                      Expanded(child: url),
+                    ],
+                  ),
+                  Align(alignment: AlignmentDirectional.centerEnd, child: test),
+                ],
+              )
+            : Row(
+                children: [
+                  Icon(Icons.link, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: Space.md),
+                  Expanded(child: url),
+                  const SizedBox(width: Space.sm),
+                  test,
+                ],
+              ),
+      ),
       _pad(
         SegmentedButton<String>(
           segments: const [
@@ -594,6 +808,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
         label: 'Host',
         value: form.hostname,
         hint: serverHost,
+        floatLabel: serverHost.isNotEmpty,
         helper: serverHost.isEmpty ? 'Leave blank for this server' : 'Leave blank for this server ($serverHost)',
         keyboard: TextInputType.url,
         validator: validateHost,
@@ -607,7 +822,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
         controller: _port,
         helper: ports.isEmpty ? 'The server port the app answers on' : 'Published: ${ports.join(', ')}',
         keyboard: TextInputType.number,
-        validator: (v) => validatePort(v, required: false),
+        validator: validateWebUiPort,
         onChanged: (v) => form.port = v,
         action: TextInputAction.next,
         suffix: ports.isEmpty
@@ -632,34 +847,6 @@ class _AppEditScreenState extends State<AppEditScreen> {
         validator: validatePath,
         onChanged: (v) => form.index = v,
       ),
-      Padding(
-        padding: EdgeInsets.fromLTRB(gutter, Space.md, gutter - Space.sm, 0),
-        child: Row(
-          children: [
-            Icon(Icons.link, color: scheme.onSurfaceVariant),
-            const SizedBox(width: Space.md),
-            Expanded(
-              child: Semantics(
-                label: link == null ? 'No link' : 'Link: $link',
-                child: ExcludeSemantics(
-                  child: Text(
-                    link?.toString() ?? 'No link: add a port or a host',
-                    style: link == null
-                        ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)
-                        : DesignTokens.of(context).mono(theme.textTheme.bodyMedium),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: Space.sm),
-            TextButton.icon(
-              onPressed: link == null || form.problems().any((p) => p.startsWith('Web UI')) ? null : () => openAppUrl(context, link),
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Test'),
-            ),
-          ],
-        ),
-      ),
     ];
   }
 
@@ -673,7 +860,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
     final restart = {..._restartLabels, if (!_restartLabels.containsKey(s.restart)) s.restart: s.restart};
     final networks = {..._networkLabels, if (!_networkLabels.containsKey(s.networkMode)) s.networkMode: s.networkMode};
     return [
-      SectionHeader(title: many ? (s.name == form.mainService ? 'Service: ${s.name} (main)' : 'Service: ${s.name}') : 'Container'),
+      _serviceHeader(many ? (s.name == form.mainService ? 'Service: ${s.name} (main)' : 'Service: ${s.name}') : 'Container', s),
       _text(
         id: '$key/repo',
         label: 'Image',
@@ -742,6 +929,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
                 label: 'CPU cores',
                 value: s.cpus,
                 hint: 'No limit',
+                floatLabel: true,
                 keyboard: const TextInputType.numberWithOptions(decimal: true),
                 validator: validateCpus,
                 onChanged: (v) => s.cpus = v,
@@ -755,6 +943,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
                 label: 'Memory (MB)',
                 value: s.memoryMb,
                 hint: 'No limit',
+                floatLabel: true,
                 keyboard: TextInputType.number,
                 validator: validateMemory,
                 onChanged: (v) => s.memoryMb = v,
@@ -795,36 +984,77 @@ class _AppEditScreenState extends State<AppEditScreen> {
     ];
   }
 
+  /// Where a service starts: a rule, its heading and its image, so it
+  /// stands out from the parts under it (Ports, Folders, …).
+  Widget _serviceHeader(String title, ServiceForm s) {
+    final tokens = DesignTokens.of(context);
+    final theme = Theme.of(context);
+    final gutter = Space.gutter(context);
+    final image = s.image.trim();
+    return Padding(
+      padding: const EdgeInsets.only(top: Space.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Divider(height: 1, indent: gutter, endIndent: gutter),
+          Padding(
+            padding: EdgeInsets.fromLTRB(gutter, Space.lg, gutter, 0),
+            child: Semantics(
+              header: true,
+              child: Text(title, style: tokens.sectionLabel),
+            ),
+          ),
+          if (image.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.fromLTRB(gutter, 2, gutter, 0),
+              child: Text(
+                image,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: tokens.mono(theme.textTheme.bodySmall).copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _ports(ServiceForm s) => [
     _subhead('Ports', caption: 'A port on the server, and the app’s port inside its container'),
     for (final p in s.ports)
       _rowPanel(
         key: ObjectKey(p),
         removeTooltip: 'Remove port ${p.published.isEmpty ? p.target : p.published}',
-        onRemove: () => _edit(() => s.ports.remove(p)),
+        onRemove: () => _edit(() {
+          s.ports.remove(p);
+          _portEdited();
+        }),
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _text(
-                  id: '${s.name}/port/${identityHashCode(p)}/published',
+                  id: fieldId('published', service: s, row: p),
                   label: 'Server',
                   value: p.published,
                   keyboard: TextInputType.number,
-                  validator: (v) => validatePort(v, required: false),
-                  onChanged: (v) => p.published = v,
+                  validator: (v) => p.changed ? validatePort(v, required: false) : null,
+                  onChanged: (v) {
+                    p.published = v;
+                    _portEdited();
+                  },
                   padded: false,
                 ),
               ),
               const SizedBox(width: Space.sm),
               Expanded(
                 child: _text(
-                  id: '${s.name}/port/${identityHashCode(p)}/target',
+                  id: fieldId('target', service: s, row: p),
                   label: 'App',
                   value: p.target,
                   keyboard: TextInputType.number,
-                  validator: (v) => validatePort(v, required: true),
+                  validator: (v) => p.changed && (v.trim().isNotEmpty || p.published.trim().isNotEmpty) ? validatePort(v, required: true) : null,
                   onChanged: (v) => p.target = v,
                   padded: false,
                 ),
@@ -854,42 +1084,60 @@ class _AppEditScreenState extends State<AppEditScreen> {
         removeTooltip: 'Remove folder ${v.target}',
         onRemove: () => _edit(() => s.volumes.remove(v)),
         children: [
+          // A tmpfs lives in memory: there is no folder on the server.
+          if (v.type != 'tmpfs') ...[
+            _text(
+              id: fieldId('source', service: s, row: v),
+              label: v.type == 'volume' ? 'Docker volume' : 'On the server',
+              value: v.source,
+              hint: v.type == 'volume' ? (v.raw == null ? 'Volume name' : 'Anonymous') : '/DATA/AppData/${widget.app.id}/config',
+              mono: true,
+              validator: (_) => v.target.trim().isEmpty && v.source.trim().isEmpty ? null : v.sourceProblem(),
+              onChanged: (x) => v.source = x,
+              padded: false,
+            ),
+            const SizedBox(height: Space.sm),
+          ],
           _text(
-            id: '${s.name}/vol/${identityHashCode(v)}/source',
-            label: v.type == 'volume' ? 'Docker volume' : 'On the server',
-            value: v.source,
-            hint: '/DATA/AppData/${widget.app.id}/config',
-            mono: true,
-            validator: (x) => validateVolumeSource(x, named: v.type == 'volume'),
-            onChanged: (x) => v.source = x,
-            padded: false,
-          ),
-          const SizedBox(height: Space.sm),
-          _text(
-            id: '${s.name}/vol/${identityHashCode(v)}/target',
-            label: 'In the app',
+            id: fieldId('target', service: s, row: v),
+            label: v.type == 'tmpfs' ? 'In the app (in memory)' : 'In the app',
             value: v.target,
             hint: '/config',
             mono: true,
-            validator: validateContainerPath,
+            validator: (x) => !v.changed || (x.trim().isEmpty && v.source.trim().isEmpty) ? null : validateContainerPath(x),
             onChanged: (x) => v.target = x,
             padded: false,
           ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
-            value: v.readOnly,
-            onChanged: (x) => _edit(() => v.readOnly = x ?? false),
-            title: const Text('Read-only'),
-          ),
+          const SizedBox(height: Space.xs),
+          _readOnlySwitch(v),
         ],
       ),
     _addButton('Add folder', () => _edit(() => s.volumes.add(VolumeRow(source: '/DATA/AppData/${widget.app.id}/')))),
   ];
 
+  /// Read-only for a folder: the label on the fields' left edge and a
+  /// switch like Privileged's, the whole row one tap target.
+  Widget _readOnlySwitch(VolumeRow v) {
+    final theme = Theme.of(context);
+    return MergeSemantics(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignTokens.of(context).radii.sm),
+        onTap: () => _edit(() => v.readOnly = !v.readOnly),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: [
+              Expanded(child: Text('Read-only', style: theme.textTheme.bodyLarge)),
+              Switch(value: v.readOnly, onChanged: (x) => _edit(() => v.readOnly = x)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _envs(ServiceForm s) => [
-    _subhead('Environment variables'),
+    _subhead('Environment variables', caption: 'Settings the app reads when it starts. Values marked secret stay hidden until you tap the eye.'),
     for (final e in s.envs)
       _rowPanel(
         key: ObjectKey(e),
@@ -897,11 +1145,11 @@ class _AppEditScreenState extends State<AppEditScreen> {
         onRemove: () => _edit(() => s.envs.remove(e)),
         children: [
           _text(
-            id: '${s.name}/env/${identityHashCode(e)}/key',
+            id: fieldId('key', service: s, row: e),
             label: 'Name',
             value: e.key,
             mono: true,
-            validator: (v) => v.trim().isEmpty && e.value.isEmpty ? null : validateEnvKey(v),
+            validator: (v) => !e.changed || (v.trim().isEmpty && e.value.isEmpty) ? null : validateEnvKey(v),
             onChanged: (v) => e.key = v,
             padded: false,
           ),
@@ -910,7 +1158,7 @@ class _AppEditScreenState extends State<AppEditScreen> {
             final secret = isSecretName(e.key);
             final shown = !secret || _revealed.contains(e);
             return _text(
-              id: '${s.name}/env/${identityHashCode(e)}/value',
+              id: fieldId('value', service: s, row: e),
               label: 'Value',
               value: e.value,
               mono: true,
@@ -941,18 +1189,18 @@ class _AppEditScreenState extends State<AppEditScreen> {
         onRemove: () => _edit(() => s.devices.remove(d)),
         children: [
           _text(
-            id: '${s.name}/dev/${identityHashCode(d)}/host',
+            id: fieldId('host', service: s, row: d),
             label: 'On the server',
             value: d.host,
             hint: '/dev/dri',
             mono: true,
-            validator: validateDevice,
+            validator: (v) => !d.changed || (v.trim().isEmpty && d.container.trim().isEmpty) ? null : validateDevice(v),
             onChanged: (v) => d.host = v,
             padded: false,
           ),
           const SizedBox(height: Space.sm),
           _text(
-            id: '${s.name}/dev/${identityHashCode(d)}/container',
+            id: fieldId('container', service: s, row: d),
             label: 'In the app',
             value: d.container,
             hint: 'Same as on the server',

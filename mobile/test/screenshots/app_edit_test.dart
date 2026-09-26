@@ -102,4 +102,18 @@ void main() {
       before: (tester) => _scrollTo(tester, find.text('Service: jellyfin (main)')),
     ),
   );
+  // Large text: the link's Test button goes under the link.
+  testWidgets(
+    'app_edit link 200% text light',
+    (tester) => shoot(
+      tester,
+      dir: 'apps/edit',
+      name: 'app_edit_link',
+      screen: const AppEditScreen(app: _jellyfin),
+      pushed: true,
+      textScale: 2,
+      overrides: _compose,
+      before: (tester) => _scrollTo(tester, find.text('Web UI link'), lead: 40),
+    ),
+  );
 }

@@ -12,7 +12,7 @@ import '../theme/status_colors.dart';
 ///
 /// It sits on the same edge as TileGroup rows (the screen gutter).
 class Notice extends StatelessWidget {
-  const Notice({super.key, required this.message, this.status = Status.warning, this.icon, this.actionLabel, this.onAction, this.title});
+  const Notice({super.key, required this.message, this.status = Status.warning, this.icon, this.actionLabel, this.onAction, this.title, this.details});
 
   final String? title;
   final String message;
@@ -20,6 +20,14 @@ class Notice extends StatelessWidget {
   final IconData? icon;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// Extra lines under the message (such as one tap target per problem),
+  /// in the notice's text colour: see [Notice.detailStyle].
+  final List<Widget>? details;
+
+  /// The text style for [details] lines.
+  static TextStyle? detailStyle(BuildContext context, Status status) =>
+      Theme.of(context).textTheme.bodyMedium?.copyWith(color: StatusColors.toneOf(context, status).onContainer);
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +65,7 @@ class Notice extends StatelessWidget {
                             const SizedBox(height: 2),
                           ],
                           Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: tone.onContainer)),
+                          ...?details,
                         ],
                       ),
                     ),

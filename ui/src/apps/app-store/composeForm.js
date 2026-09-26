@@ -106,6 +106,25 @@ export function mainServiceKey(doc) {
 	return main && services[main] ? main : Object.keys(services)[0] || 'app'
 }
 
+// In a compose file a literal `$` is written `$$` (a lone `$` starts a
+// variable). The form shows and takes the value itself; the document
+// holds it escaped, as the server hands it out and saves it.
+export function unescapeEnvValue(v) {
+	return String(v).replace(/\$\$/g, '$')
+}
+
+export function escapeEnvValue(v) {
+	return String(v).replace(/\$/g, '$$$$')
+}
+
+// A Web UI host: a name or IPv4 address, or a bracketed IPv6 address.
+// No port (that has its own field), scheme or path.
+export function isValidWebUIHost(v) {
+	const s = String(v || '').trim()
+	if (!s) return true
+	return /^[A-Za-z0-9.-]+$/.test(s) || /^\[[0-9A-Fa-f:.]+\]$/.test(s)
+}
+
 export function docToFormState(doc) {
 	doc = doc || {}
 	const x = doc['x-casaos'] || {}
@@ -128,10 +147,10 @@ export function docToFormState(doc) {
 	if (Array.isArray(rawEnv)) {
 		for (const e of rawEnv) {
 			const eq = String(e).indexOf('=')
-			envs.push(eq > -1 ? { key: e.slice(0, eq), value: e.slice(eq + 1) } : { key: e, value: '' })
+			envs.push(eq > -1 ? { key: e.slice(0, eq), value: unescapeEnvValue(e.slice(eq + 1)) } : { key: e, value: '' })
 		}
 	} else if (rawEnv && typeof rawEnv === 'object') {
-		for (const [k, v] of Object.entries(rawEnv)) envs.push({ key: k, value: v === null || v === undefined ? '' : String(v) })
+		for (const [k, v] of Object.entries(rawEnv)) envs.push({ key: k, value: v === null || v === undefined ? '' : unescapeEnvValue(String(v)) })
 	}
 	const devices = (service.devices || [])
 		.map((d) => {
@@ -232,8 +251,8 @@ export function applyFormToDoc(baseDoc, form) {
 		const list = (form.envs || []).filter((e) => e.key)
 		if (!list.length) delete service.environment
 		else if (service.environment && !Array.isArray(service.environment)) {
-			service.environment = Object.fromEntries(list.map((e) => [e.key, e.value || '']))
-		} else service.environment = list.map((e) => `${e.key}=${e.value || ''}`)
+			service.environment = Object.fromEntries(list.map((e) => [e.key, escapeEnvValue(e.value || '')]))
+		} else service.environment = list.map((e) => `${e.key}=${escapeEnvValue(e.value || '')}`)
 	}
 
 	const sameDevices = JSON.stringify(form.devices) === JSON.stringify(original.devices)

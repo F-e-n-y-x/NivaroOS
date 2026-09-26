@@ -225,6 +225,14 @@ String commandToText(Object? c) {
       .join(' ');
 }
 
+/// In a compose file a literal `$` is written `$$` (a lone `$` starts a
+/// variable), and the server hands out every `$` of a variable's value
+/// that way. The form shows the value itself and writes an edited one
+/// escaped again; an untouched row goes back exactly as it came.
+String unescapeEnvValue(String v) => v.replaceAll(r'$$', r'$');
+
+String escapeEnvValue(String v) => v.replaceAll(r'$', r'$$');
+
 /// Environment variable names that hold a secret, whose values the form
 /// hides until revealed.
 bool isSecretName(String key) => RegExp(r'PASS|PWD|SECRET|TOKEN|KEY|PRIVATE|CREDENTIAL|AUTH', caseSensitive: false).hasMatch(key);
@@ -240,6 +248,9 @@ abstract class EditRow {
 
   /// The row's values in one string, for "did it change".
   String get signature;
+
+  /// What kind of row, in the ids of its fields ([fieldId]).
+  String get kind;
 
   bool get changed => raw == null || signature != _original;
 
@@ -287,6 +298,9 @@ class PortRow extends EditRow {
 
   @override
   String get signature => '$hostIp|$published|$target|$protocol';
+
+  @override
+  String get kind => 'port';
 
   Object? write({required bool asMap}) {
     if (!changed) return raw;
@@ -342,12 +356,20 @@ class VolumeRow extends EditRow {
   String target;
   bool readOnly;
 
-  /// bind (a folder on the server) or volume (a named Docker volume).
+  /// bind (a folder on the server), volume (a Docker volume: named, or
+  /// anonymous with no source) or tmpfs (memory, no source).
   final String type;
+
+  /// What's wrong with [source] as typed, or null. A row read from the
+  /// file that wasn't touched is taken as it is.
+  String? sourceProblem() => changed ? validateVolumeSource(source, type: type, isNew: raw == null) : null;
   final List<String> options;
 
   @override
   String get signature => '$source|$target|$readOnly';
+
+  @override
+  String get kind => 'vol';
 
   Object? write({required bool asMap}) {
     if (!changed) return raw;
@@ -380,6 +402,9 @@ class EnvRow extends EditRow {
 
   @override
   String get signature => '$key=$value';
+
+  @override
+  String get kind => 'env';
 }
 
 class DeviceRow extends EditRow {
@@ -396,6 +421,9 @@ class DeviceRow extends EditRow {
 
   @override
   String get signature => '$host|$container';
+
+  @override
+  String get kind => 'dev';
 
   Object? write() {
     if (!changed) return raw;
@@ -477,7 +505,7 @@ class ServiceForm {
     }
     final env = s['environment'];
     if (env is Map) {
-      f.envs = [for (final e in env.entries) EnvRow(key: '${e.key}', value: e.value == null ? '' : '${e.value}', wasNull: e.value == null, raw: e)..seal()];
+      f.envs = [for (final e in env.entries) EnvRow(key: '${e.key}', value: e.value == null ? '' : unescapeEnvValue('${e.value}'), wasNull: e.value == null, raw: e)..seal()];
     } else if (env is List) {
       f._envAsMap = false;
       f.envs = [
@@ -485,7 +513,7 @@ class ServiceForm {
           () {
             final s = '$e';
             final eq = s.indexOf('=');
-            return EnvRow(key: eq < 0 ? s : s.substring(0, eq), value: eq < 0 ? '' : s.substring(eq + 1), wasNull: eq < 0, raw: e)..seal();
+            return EnvRow(key: eq < 0 ? s : s.substring(0, eq), value: eq < 0 ? '' : unescapeEnvValue(s.substring(eq + 1)), wasNull: eq < 0, raw: e)..seal();
           }(),
       ];
     }
@@ -562,9 +590,9 @@ class ServiceForm {
       if (rows.isEmpty) {
         s.remove('environment');
       } else if (_envAsMap) {
-        s['environment'] = <String, Object?>{for (final e in rows) e.key.trim(): e.changed ? e.value : (e.raw as MapEntry).value};
+        s['environment'] = <String, Object?>{for (final e in rows) e.key.trim(): e.changed ? escapeEnvValue(e.value) : (e.raw as MapEntry).value};
       } else {
-        s['environment'] = [for (final e in rows) e.changed ? '${e.key.trim()}=${e.value}' : e.raw];
+        s['environment'] = [for (final e in rows) e.changed ? '${e.key.trim()}=${escapeEnvValue(e.value)}' : e.raw];
       }
     }
     if (_rowsSig(devices) != _rowsSig(o.devices)) {
@@ -600,6 +628,28 @@ List<String> splitCaps(String text) => [
   for (final c in text.split(RegExp(r'[\s,]+')))
     if (c.trim().isNotEmpty) c.trim().toUpperCase(),
 ];
+
+/// The id of one field of the form: [part] of the app ("title", "port"),
+/// of a [service] ("image", "tag"), or of one of its rows. The screen keys
+/// its fields with it, so a problem can point at the field to fix.
+String fieldId(String part, {ServiceForm? service, EditRow? row}) {
+  if (service == null) return part;
+  if (row == null) return '${service.name}/$part';
+  return '${service.name}/${row.kind}/${identityHashCode(row)}/$part';
+}
+
+/// Something to fix before the form can be saved, and the field it is in.
+class FormIssue {
+  const FormIssue(this.message, this.field);
+
+  final String message;
+
+  /// The [fieldId] of the field to fix.
+  final String field;
+
+  @override
+  String toString() => message;
+}
 
 /// A compose app's settings as the Edit app form shows them.
 class ComposeForm {
@@ -712,48 +762,59 @@ class ComposeForm {
 
   /// Everything wrong with the form, as sentences, for the summary above
   /// the form and to block Save. The fields show the same messages inline.
-  List<String> problems() {
-    final out = <String>[];
-    void add(String? e, [String? where]) {
-      if (e != null) out.add(where == null ? e : '$where: $e');
+  List<String> problems() => [for (final i in issues()) i.message];
+
+  /// [problems], each with the field it is in, in the form's order.
+  List<FormIssue> issues() {
+    final out = <FormIssue>[];
+    void add(String? e, String? where, String field) {
+      if (e != null) out.add(FormIssue(where == null ? e : '$where: $e', field));
     }
 
-    add(validateTitle(title), 'Name');
-    add(validateIconUrl(icon), 'Icon');
-    add(validateHost(hostname), 'Web UI host');
-    add(validatePort(port, required: false), 'Web UI port');
-    add(validatePath(index), 'Web UI path');
+    add(validateTitle(title), 'Name', 'title');
+    add(validateIconUrl(icon), 'Icon', 'icon');
+    add(validateHost(hostname), 'Web UI host', 'hostname');
+    add(validateWebUiPort(port), 'Web UI port', 'port');
+    add(validatePath(index), 'Web UI path', 'index');
     final seen = <String>{};
     for (final s in services) {
       final where = services.length > 1 ? s.name : null;
       String label(String l) => where == null ? l : '$where, ${l.toLowerCase()}';
-      if (s.hadImage || s.repo.trim().isNotEmpty || s.tag.trim().isNotEmpty) add(validateImageRepo(s.repo), label('Image'));
-      add(validateTag(s.tag), label('Tag'));
+      String id(String part, [EditRow? row]) => fieldId(part, service: s, row: row);
+      if (s.hadImage || s.repo.trim().isNotEmpty || s.tag.trim().isNotEmpty) add(validateImageRepo(s.repo), label('Image'), id('repo'));
+      add(validateTag(s.tag), label('Tag'), id('tag'));
+      // Rows read from the file and left alone are taken as they are: the
+      // server runs them today, even in shapes the form doesn't check
+      // for (a tmpfs, a CDI device). Only what the user typed is checked.
       for (final p in s.ports) {
         if (p.target.trim().isEmpty && p.published.trim().isEmpty) continue;
-        add(validatePort(p.target, required: true), label('Container port'));
-        add(validatePort(p.published, required: false), label('Server port'));
-        final k = '${p.published.trim()}/${p.protocol}';
-        if (p.published.trim().isNotEmpty && !seen.add(k)) out.add('Server port ${p.published.trim()}/${p.protocol.toUpperCase()} is used twice.');
+        if (p.changed) {
+          add(validatePort(p.published, required: false), label('Server port'), id('published', p));
+          add(validatePort(p.target, required: true), label('Container port'), id('target', p));
+        }
+        final k = '${p.hostIp.trim()}|${p.published.trim()}/${p.protocol}';
+        if (p.published.trim().isNotEmpty && !seen.add(k)) {
+          out.add(FormIssue('Server port ${p.published.trim()}/${p.protocol.toUpperCase()} is used twice.', id('published', p)));
+        }
       }
       for (final v in s.volumes) {
-        if (v.source.trim().isEmpty && v.target.trim().isEmpty) continue;
-        add(validateVolumeSource(v.source, named: v.type == 'volume'), label('Folder on the server'));
-        add(validateContainerPath(v.target), label('Path in the app'));
+        if (!v.changed || (v.source.trim().isEmpty && v.target.trim().isEmpty)) continue;
+        add(v.sourceProblem(), label('Folder on the server'), id('source', v));
+        add(validateContainerPath(v.target), label('Path in the app'), id('target', v));
       }
       final keys = <String>{};
       for (final e in s.envs) {
         if (e.key.trim().isEmpty && e.value.isEmpty) continue;
-        add(validateEnvKey(e.key), label('Variable'));
-        if (e.key.trim().isNotEmpty && !keys.add(e.key.trim())) out.add('${where == null ? '' : '$where: '}${e.key.trim()} is set twice.');
+        if (e.changed) add(validateEnvKey(e.key), label('Variable'), id('key', e));
+        if (e.key.trim().isNotEmpty && !keys.add(e.key.trim())) out.add(FormIssue('${where == null ? '' : '$where: '}${e.key.trim()} is set twice.', id('key', e)));
       }
       for (final d in s.devices) {
-        if (d.host.trim().isEmpty && d.container.trim().isEmpty) continue;
-        add(validateDevice(d.host), label('Device'));
+        if (!d.changed || (d.host.trim().isEmpty && d.container.trim().isEmpty)) continue;
+        add(validateDevice(d.host), label('Device'), id('host', d));
       }
-      add(validateCpus(s.cpus), label('CPU limit'));
-      add(validateMemory(s.memoryMb), label('Memory limit'));
-      add(validateCaps(s.caps), label('Capabilities'));
+      add(validateCpus(s.cpus), label('CPU limit'), id('cpus'));
+      add(validateMemory(s.memoryMb), label('Memory limit'), id('memory'));
+      add(validateCaps(s.caps), label('Capabilities'), id('caps'));
     }
     return out;
   }
@@ -773,12 +834,17 @@ String? validateIconUrl(String v) {
   return null;
 }
 
+/// The Web UI host: a name or IPv4 address, or an IPv6 address in
+/// brackets. The port has its own field, so `nas:8080` is refused (it would
+/// make `http://nas:8080:8097/`).
 String? validateHost(String v) {
   final s = v.trim();
   if (s.isEmpty) return null;
   if (s.contains('://')) return 'Only the host name, without http://';
-  if (!RegExp(r'^[A-Za-z0-9.\-\[\]:]+$').hasMatch(s) || s.contains('/')) return 'Use a host name like media.example.com or an IP address';
-  return null;
+  if (RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(s) || RegExp(r'^\[[0-9A-Fa-f:.]+\]$').hasMatch(s)) return null;
+  if (RegExp(r'^[A-Za-z0-9.\-]+:\d*$').hasMatch(s)) return 'Only the host name: put the port in Port below';
+  if (!s.startsWith('[') && s.contains(':') && RegExp(r'^[0-9A-Fa-f:.]+$').hasMatch(s)) return 'Put an IPv6 address in brackets, like [fd00::1]';
+  return 'Use a host name like media.example.com or an IP address';
 }
 
 final _portRe = RegExp(r'^\d+(-\d+)?$');
@@ -787,6 +853,15 @@ String? validatePort(String v, {required bool required}) {
   final s = v.trim();
   if (s.isEmpty) return required ? 'Enter a port' : null;
   if (!_portRe.hasMatch(s) || s.split('-').any((n) => int.parse(n) < 1 || int.parse(n) > 65535)) return 'Use a port from 1 to 65535';
+  return null;
+}
+
+/// The Web UI port: one port, not a range - it goes into the link.
+String? validateWebUiPort(String v) {
+  final s = v.trim();
+  if (s.isEmpty) return null;
+  final n = int.tryParse(s);
+  if (!RegExp(r'^\d+$').hasMatch(s) || n == null || n < 1 || n > 65535) return 'Use a port from 1 to 65535';
   return null;
 }
 
@@ -813,10 +888,15 @@ String? validateTag(String v) {
   return null;
 }
 
-String? validateVolumeSource(String v, {bool named = false}) {
+/// The source of a folder row of [type] (bind, volume or tmpfs). A tmpfs
+/// has none, and a volume without one is anonymous - only a new volume
+/// row, or a bind, needs it.
+String? validateVolumeSource(String v, {String type = 'bind', bool isNew = true}) {
   final s = v.trim();
+  if (type == 'tmpfs') return null;
+  if (type == 'volume') return s.isEmpty && isNew ? 'Enter the volume name' : null;
   if (s.isEmpty) return 'Enter a folder on the server';
-  if (!named && !s.startsWith('/')) return 'Use a full path, starting with /';
+  if (!s.startsWith('/')) return 'Use a full path, starting with /';
   return null;
 }
 
@@ -837,7 +917,8 @@ String? validateEnvKey(String v) {
 String? validateDevice(String v) {
   final s = v.trim();
   if (s.isEmpty) return 'Enter a device, like /dev/dri';
-  if (!s.startsWith('/')) return 'Use a full path, like /dev/dri';
+  // A CDI name (vendor.com/class=name, like nvidia.com/gpu=all) is fine.
+  if (!s.startsWith('/') && !s.contains('=')) return 'Use a full path, like /dev/dri';
   return null;
 }
 
