@@ -847,3 +847,30 @@ are saved per server and come back after a restart.
 ## Owner decision (2026-09-26): Match wallpaper removed
 
 Match wallpaper removed (2026-09-26); Monochrome is the monotone choice; old wallpaper users migrate to Monochrome.
+
+## Owner request (2026-09-26): a floating bottom bar
+
+"Make the bottom bar a floating bar in mobile." On phones the navigation
+bar is a rounded surface a gutter in from the sides and a gap above the
+gesture bar (`FloatingNavigationBar`, `lib/ui/widgets/floating_nav_bar.dart`),
+still a stock `NavigationBar` inside (labels, indicator, 48dp targets,
+semantics). Its look is `DesignTokens.navBar` (`StyleComponents.navBar`):
+Rack a paper / graphite panel with the card hairline and 14dp corners (a
+soft shadow in light); Tonal a tonal pill (stadium, shadow in light, a step
+above the cards in dark); Console a ruled panel with 8dp corners and no
+shadow; v2 the M3 pill. On true black every style draws its edge (Console's
+bar is #000 inside its hairline). It is always shown (no hide on scroll).
+Tablets and landscape keep the NavigationRail.
+
+Content scrolls behind the bar. `FloatingBarScaffold` (the shell's
+Scaffold, `extendBody`) hands the bar's room (height + gap + inset) to the
+tabs as their MediaQuery bottom padding **and** view padding, so the one
+mechanism covers every screen: `AppScaffold` ends its slivers above the
+bar, and a tab's FAB (Files' New and paste bar, VMs' New VM) floats above
+it. Snack bars show on the shell's Scaffold, above the bar; sheets and
+dialogs open over it. With the keyboard up the room is zero. The contrast
+test checks the bar's labels and icons on its fill and pins that it stands
+apart from the page and the cards in every style × mode × accent; the
+screenshot harness draws tabs in the real shell frame (`ShellFrame`).
+**Open:** a snack bar shown while a tab's FAB is up can overlap the FAB (the
+two live on different Scaffolds; it did before too).

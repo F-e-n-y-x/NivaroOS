@@ -18,6 +18,7 @@ export 'widgets/check_menu_item.dart';
 export 'widgets/fact_line.dart';
 export 'widgets/confirm_dialog.dart';
 export 'widgets/fading_edges.dart';
+export 'widgets/floating_nav_bar.dart';
 export 'widgets/loading_list.dart';
 export 'widgets/metric_row.dart';
 export 'widgets/notice.dart';

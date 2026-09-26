@@ -45,7 +45,7 @@ class _ComponentsState extends State<_Components> {
         );
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
+      child: FloatingBarScaffold(
         appBar: AppBar(
           title: const Text('Components'),
           actions: [
@@ -62,14 +62,15 @@ class _ComponentsState extends State<_Components> {
           bottom: const TabBar(tabs: [Tab(text: 'Overview'), Tab(text: 'Logs'), Tab(text: 'Settings')]),
         ),
         floatingActionButton: FloatingActionButton.extended(onPressed: () {}, icon: const Icon(Icons.add), label: const Text('New VM')),
-        bottomNavigationBar: NavigationBar(selectedIndex: 0, destinations: const [
+        bar: FloatingNavigationBar(selectedIndex: 0, onDestinationSelected: (_) {}, destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.apps_outlined), label: 'Apps'),
           NavigationDestination(icon: Icon(Icons.folder_outlined), label: 'Files'),
           NavigationDestination(icon: Icon(Icons.more_horiz), label: 'More'),
         ]),
-        body: ListView(
-          padding: const EdgeInsets.only(bottom: 96),
+        // Under the bar: its room comes in as the bottom padding.
+        body: Builder(builder: (context) => ListView(
+          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom + 96),
           children: [
             TileGroup(title: 'List rows and toggles', children: [
               const ListTile(leading: Icon(Icons.dns_outlined), title: Text('nas'), subtitle: Text('192.168.1.20 · Ubuntu 24.04'), trailing: Text('12.4 GB')),
@@ -137,7 +138,7 @@ class _ComponentsState extends State<_Components> {
               ]),
             ),
           ],
-        ),
+        )),
       ),
     );
   }

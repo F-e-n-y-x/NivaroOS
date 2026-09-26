@@ -28,13 +28,23 @@ final docsAndWork = {..._docs, 'GET /v1/folder?path=$_documents/Work': fixture('
 
 /// Copies Budget 2026.xlsx, then opens Work in a new tab from its menu.
 Future<void> copyThenWorkTab(WidgetTester t) async {
+  await _reveal(t, find.byTooltip('More options for Budget 2026.xlsx'));
   await t.tap(find.byTooltip('More options for Budget 2026.xlsx'));
   await _wait(t);
   await t.tap(find.text('Copy'));
   await _wait(t);
+  await _reveal(t, find.byTooltip('More options for Work'));
   await t.tap(find.byTooltip('More options for Work'));
   await _wait(t);
   await t.tap(find.text('Open in new tab'));
+  await _wait(t);
+}
+
+/// Scrolls [target] to the middle of the list when it is under the
+/// floating bar (at 200% text), as a person would before tapping it.
+Future<void> _reveal(WidgetTester t, Finder target) async {
+  if (target.hitTestable().evaluate().isNotEmpty) return;
+  await Scrollable.ensureVisible(t.element(target), alignment: .5);
   await _wait(t);
 }
 

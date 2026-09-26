@@ -79,8 +79,9 @@ Widget _gallery() => AppScaffold.slivers(
           builder: (context) => MediaQuery.removePadding(
             context: context,
             removeBottom: true,
-            child: NavigationBar(
+            child: FloatingNavigationBar(
               selectedIndex: 0,
+              onDestinationSelected: (_) {},
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
                 NavigationDestination(

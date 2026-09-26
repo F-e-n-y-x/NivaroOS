@@ -10,14 +10,15 @@ import '../services/storage_service.dart';
 import '../services/session_service.dart';
 import '../services/api_client.dart';
 import '../ui/theme/spacing.dart';
+import '../ui/widgets/floating_nav_bar.dart';
 
 /// One top-level destination: its label and its outlined / filled icon
 /// pair (filled only while selected, per the design brief).
-typedef _Destination = ({String label, IconData icon, IconData selectedIcon});
+typedef ShellDestination = ({String label, IconData icon, IconData selectedIcon});
 
-/// The app shell (design brief §5): five destinations in a NavigationBar
-/// on phones, or a NavigationRail from 600dp, with each tab kept alive in
-/// an IndexedStack so switching doesn't reload it.
+/// The app shell (design brief §5): five destinations in a floating
+/// NavigationBar on phones, or a NavigationRail from 600dp, with each tab
+/// kept alive in an IndexedStack so switching doesn't reload it.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -30,15 +31,6 @@ class _HomeShellState extends State<HomeShell> {
   static const _filesIndex = 1;
   static const _appsIndex = 2;
   static const _vmsIndex = 3;
-
-  static const List<_Destination> _destinations = [
-    (label: 'Home', icon: Icons.home_outlined, selectedIcon: Icons.home),
-    (label: 'Files', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
-    (label: 'Apps', icon: Icons.apps_outlined, selectedIcon: Icons.apps),
-    (label: 'VMs', icon: Icons.computer_outlined, selectedIcon: Icons.computer),
-    // No filled "more" glyph exists; the indicator pill marks selection.
-    (label: 'More', icon: Icons.more_horiz, selectedIcon: Icons.more_horiz),
-  ];
 
   int _index = _homeIndex;
   bool _showingReauth = false;
@@ -121,57 +113,86 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final useRail = MediaQuery.sizeOf(context).width >= Space.mediumWidth;
-    final body = IndexedStack(index: _index, children: _screens);
-
     return PopScope(
       canPop: _index == _homeIndex,
       onPopInvokedWithResult: _onPopInvoked,
-      child: useRail
-          ? Scaffold(
-              body: Row(
-                children: [
-                  // The rail sits on the leading edge, so it takes the
-                  // status bar, cutout and gesture insets on that side; the
-                  // tab's own Scaffold handles the rest.
-                  SafeArea(
-                    right: false,
-                    child: NavigationRail(
-                      selectedIndex: _index,
-                      onDestinationSelected: _switchToTab,
-                      labelType: NavigationRailLabelType.all,
-                      groupAlignment: -0.85,
-                      destinations: [
-                        for (final d in _destinations)
-                          NavigationRailDestination(
-                            icon: Icon(d.icon),
-                            selectedIcon: Icon(d.selectedIcon),
-                            label: Text(d.label),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: MediaQuery.removePadding(context: context, removeLeft: true, child: body),
-                  ),
-                ],
-              ),
-            )
-          : Scaffold(
-              body: body,
-              bottomNavigationBar: NavigationBar(
-                selectedIndex: _index,
-                onDestinationSelected: _switchToTab,
+      child: ShellFrame(
+        selectedIndex: _index,
+        onDestinationSelected: _switchToTab,
+        body: IndexedStack(index: _index, children: _screens),
+      ),
+    );
+  }
+}
+
+/// The shell's navigation around [body] (one tab, or the stack of them):
+/// on phones the floating bar with the content scrolling behind it, from
+/// 600dp a NavigationRail on the leading edge. The screenshot tests draw
+/// tabs in it too, so they show as they do in the app.
+class ShellFrame extends StatelessWidget {
+  const ShellFrame({super.key, required this.selectedIndex, required this.onDestinationSelected, required this.body});
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+  final Widget body;
+
+  static const List<ShellDestination> destinations = [
+    (label: 'Home', icon: Icons.home_outlined, selectedIcon: Icons.home),
+    (label: 'Files', icon: Icons.folder_outlined, selectedIcon: Icons.folder),
+    (label: 'Apps', icon: Icons.apps_outlined, selectedIcon: Icons.apps),
+    (label: 'VMs', icon: Icons.computer_outlined, selectedIcon: Icons.computer),
+    // No filled "more" glyph exists; the indicator pill marks selection.
+    (label: 'More', icon: Icons.more_horiz, selectedIcon: Icons.more_horiz),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final useRail = MediaQuery.sizeOf(context).width >= Space.mediumWidth;
+    if (useRail) {
+      return Scaffold(
+        body: Row(
+          children: [
+            // The rail sits on the leading edge, so it takes the status
+            // bar, cutout and gesture insets on that side; the tab's own
+            // Scaffold handles the rest.
+            SafeArea(
+              right: false,
+              child: NavigationRail(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: onDestinationSelected,
+                labelType: NavigationRailLabelType.all,
+                groupAlignment: -0.85,
                 destinations: [
-                  for (final d in _destinations)
-                    NavigationDestination(
+                  for (final d in destinations)
+                    NavigationRailDestination(
                       icon: Icon(d.icon),
                       selectedIcon: Icon(d.selectedIcon),
-                      label: d.label,
+                      label: Text(d.label),
                     ),
                 ],
               ),
             ),
+            Expanded(
+              child: MediaQuery.removePadding(context: context, removeLeft: true, child: body),
+            ),
+          ],
+        ),
+      );
+    }
+    return FloatingBarScaffold(
+      body: body,
+      bar: FloatingNavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onDestinationSelected,
+        destinations: [
+          for (final d in destinations)
+            NavigationDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: d.label,
+            ),
+        ],
+      ),
     );
   }
 }

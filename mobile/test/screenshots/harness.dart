@@ -29,6 +29,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:multicast_dns/multicast_dns.dart';
+import 'package:nivaroos_mobile/screens/apps_screen.dart';
+import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
+import 'package:nivaroos_mobile/screens/files_screen.dart';
+import 'package:nivaroos_mobile/screens/home_shell.dart';
+import 'package:nivaroos_mobile/screens/more_screen.dart';
+import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
@@ -323,12 +329,23 @@ Widget testApp(Widget child, {Brightness brightness = Brightness.light, double t
   );
 }
 
+/// The HomeShell destination [screen] is drawn under.
+int shellIndexOf(Widget screen) => switch (screen) {
+      DashboardScreen() => 0,
+      FilesScreen() => 1,
+      AppsScreen() => 2,
+      VmListScreen() => 3,
+      MoreScreen() => 4,
+      _ => 0,
+    };
+
 /// Pumps [screen] at [size] in [brightness], serves all HTTP from a
 /// [FakeServer], lets it load, and compares with `goldens/<dir>/<name>.png`.
 ///
-/// With [tab], the screen is one of HomeShell's tabs, which draw on the
-/// shell's Scaffold rather than their own; it is rendered on a Scaffold the
-/// same way, so it shows on the page colour instead of a bare canvas.
+/// With [tab], the screen is one of HomeShell's tabs; it is drawn in the
+/// shell's frame ([ShellFrame]) with its own destination selected, so the
+/// shot shows the floating bar (or the rail from 600dp) and the content
+/// scrolling behind it, as in the app.
 ///
 /// Periodic refresh timers are left running while the screen loads
 /// (pumpAndSettle would never return with them) and cancelled when the
@@ -414,7 +431,7 @@ Future<void> _shoot(
 
   final server = FakeServer(overrides: overrides);
   final done = Completer<void>();
-  final page = tab ? Scaffold(body: screen) : screen;
+  final page = tab ? ShellFrame(selectedIndex: shellIndexOf(screen), onDestinationSelected: (_) {}, body: screen) : screen;
   runZonedGuarded(() => withClock(Clock.fixed(shotTime), () => http.runWithClient(() async {
     await tester.pumpWidget(testApp(page, brightness: brightness, textScale: textScale, pushed: pushed, appearance: appearance));
     // Real file IO (fixtures, temp files) only completes outside the fake

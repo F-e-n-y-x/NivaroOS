@@ -34,6 +34,39 @@ abstract final class StyleComponents {
         DesignDirection.console => const Radii(xs: 2, sm: 6, md: 8, lg: 10, xl: 14),
       };
 
+  /// The floating navigation bar of [d] on [s] (see [NavBarTokens]).
+  /// Light themes float on a soft shadow (not Console, which is drawn by
+  /// lines alone); dark ones on their edge or a tonal step, where a shadow
+  /// wouldn't show. True black draws the style's edge in every style: the
+  /// bar is a near-black panel on the #000 page, and Tonal's cards (the
+  /// same tonal step as its bar) scroll under it.
+  static NavBarTokens navBar(DesignDirection d, ColorScheme s, {required bool black}) {
+    final light = s.brightness == Brightness.light;
+    return switch (d) {
+      // v2 floats too, as the M3 pill: one shell for every style.
+      DesignDirection.v2 => NavBarTokens(
+          height: 68,
+          radius: 28,
+          color: light ? s.surfaceContainer : (black ? s.surfaceContainerLow : s.surfaceContainerHigh),
+          edge: black ? s.outlineVariant : null,
+          elevation: light ? 3 : 0,
+        ),
+      // Paper or graphite, like the cards, with their hairline.
+      DesignDirection.rack => NavBarTokens(height: 64, radius: radii(d).lg, color: s.surfaceContainer, edge: s.outlineVariant, elevation: light ? 2 : 0),
+      // A soft tonal pill: a step above the cards in dark, so it still
+      // reads over them.
+      DesignDirection.tonal => NavBarTokens(
+          height: 68,
+          radius: 34,
+          color: light ? s.surfaceContainer : (black ? s.surfaceContainerHigh : s.surfaceContainerHighest),
+          edge: black ? s.outlineVariant : null,
+          elevation: light ? 3 : 0,
+        ),
+      // A ruled panel: black on true black, like Console's cards.
+      DesignDirection.console => NavBarTokens(height: 60, radius: radii(d).md, color: black ? s.surface : s.surfaceContainer, edge: s.outlineVariant, elevation: 0),
+    };
+  }
+
   /// The component themes of [d] on [base], whose [ThemeData.textTheme]
   /// carries the style's faces; [text] is that theme with real sizes.
   static ThemeData apply(ThemeData base, DesignDirection d, TextTheme text, {required bool black, required String? mono}) {
@@ -152,11 +185,14 @@ abstract final class StyleComponents {
 
     final navLabel = (console ? text.labelSmall! : text.labelMedium!);
     final navIndicator = tonal ? const StadiumBorder() : rounded(r.sm);
+    // The rail (tablets, landscape) keeps its edge-to-edge fill; the bar
+    // on phones floats on its own surface.
     final navBackground = switch (d) {
       DesignDirection.tonal => black ? s.surfaceContainer : null,
       DesignDirection.console => black ? s.surface : s.surfaceContainerLow,
       _ => s.surfaceContainerLow,
     };
+    final bar = navBar(d, s, black: black);
 
     final fieldBorder = tonal
         // Expressive filled fields: a tonal fill with rounded top corners
@@ -183,10 +219,10 @@ abstract final class StyleComponents {
         shape: console ? Border(bottom: hairline) : null,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: navBackground,
-        surfaceTintColor: flat ? Colors.transparent : null,
-        elevation: flat ? 0 : null,
-        height: console ? 68 : null,
+        backgroundColor: bar.color,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: bar.height,
         indicatorShape: navIndicator,
         indicatorColor: s.secondaryContainer,
         labelTextStyle: WidgetStateProperty.resolveWith((st) => navLabel.copyWith(

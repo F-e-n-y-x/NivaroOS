@@ -353,7 +353,13 @@ abstract final class AppTheme {
         bottomSheetTheme: black
             ? BottomSheetThemeData(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))), backgroundColor: s.surfaceContainerLow)
             : null,
-        navigationBarTheme: black ? NavigationBarThemeData(backgroundColor: s.surfaceContainerLow, surfaceTintColor: Colors.transparent, elevation: 0) : null,
+        // The floating bar (StyleComponents.navBar) on its own surface.
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: StyleComponents.navBar(DesignDirection.v2, s, black: black).color,
+          height: StyleComponents.navBar(DesignDirection.v2, s, black: black).height,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
         // The current M3 look for progress and sliders; see StyleComponents.
         // ignore: deprecated_member_use
         progressIndicatorTheme: const ProgressIndicatorThemeData(year2023: false),
@@ -417,6 +423,7 @@ abstract final class AppTheme {
     // Rack and Console already draw hairlines; Tonal keeps its edge-free
     // tonal cards on dimmed tonal steps; only v2 falls back to a hairline.
     final radii = StyleComponents.radii(d);
+    final navBar = StyleComponents.navBar(d, s, black: black);
     return switch (d) {
       DesignDirection.v2 => DesignTokens(
           direction: d,
@@ -444,6 +451,7 @@ abstract final class AppTheme {
           button: ButtonTreatment.accent,
           statusPanel: false,
           chart: const ChartTokens(lineWidth: 2, fillAlpha: .14, inkLine: false, grid: false, dotRadius: 3, dotRing: true, height: 56, timeLabels: false),
+          navBar: navBar,
         ),
       DesignDirection.rack => DesignTokens(
           direction: d,
@@ -472,6 +480,7 @@ abstract final class AppTheme {
           button: ButtonTreatment.ink,
           statusPanel: false,
           chart: const ChartTokens(lineWidth: 1.5, fillAlpha: 0, inkLine: true, grid: false, dotRadius: 3.5, dotRing: true, height: 64, timeLabels: false, accentTick: true),
+          navBar: navBar,
         ),
       DesignDirection.tonal => DesignTokens(
           direction: d,
@@ -499,6 +508,7 @@ abstract final class AppTheme {
           button: ButtonTreatment.tonal,
           statusPanel: true,
           chart: const ChartTokens(lineWidth: 2.5, fillAlpha: .12, inkLine: false, grid: false, dotRadius: 4.5, dotRing: true, height: 60, timeLabels: false),
+          navBar: navBar,
           emphasisCard: s.primaryContainer,
           onEmphasisCard: s.onPrimaryContainer,
         ),
@@ -533,6 +543,7 @@ abstract final class AppTheme {
           button: ButtonTreatment.outlined,
           statusPanel: false,
           chart: const ChartTokens(lineWidth: 1.5, fillAlpha: 0, inkLine: false, grid: true, dotRadius: 2.5, dotRing: false, height: 60, timeLabels: true),
+          navBar: navBar,
         ),
     };
   }

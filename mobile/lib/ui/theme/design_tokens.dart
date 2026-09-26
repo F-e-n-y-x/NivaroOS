@@ -50,6 +50,41 @@ class ChartTokens {
   final bool accentTick;
 }
 
+/// How a direction draws the floating navigation bar (owner request,
+/// 2026-09-26: "make the bottom bar a floating bar"): a rounded surface
+/// that floats a gutter in from the sides and a gap above the gesture
+/// bar, with content scrolling behind it. Rack: a paper or graphite panel
+/// with a hairline and precise corners. Tonal: a soft tonal pill with a
+/// shadow in light. Console: tight corners drawn by a hairline. On true
+/// black every style draws an edge, so the bar never melts into the page
+/// or the cards passing under it. `FloatingNavigationBar` reads these;
+/// the bar's fill is also the theme's `navigationBarTheme.backgroundColor`,
+/// so the contrast test checks the labels on it.
+@immutable
+class NavBarTokens {
+  const NavBarTokens({required this.height, required this.radius, required this.color, required this.edge, required this.elevation});
+
+  /// The bar's own height, without the margins around it.
+  final double height;
+
+  /// Its corners; anything past half the height draws a stadium.
+  final double radius;
+
+  /// The bar's fill.
+  final Color color;
+
+  /// A hairline round the bar, or null for a tonal bar with no edge.
+  final Color? edge;
+
+  /// The shadow under the bar (light themes only; 0 for none).
+  final double elevation;
+
+  ShapeBorder get shape => RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radius.clamp(0, height / 2)),
+        side: edge == null ? BorderSide.none : BorderSide(color: edge!),
+      );
+}
+
 /// A direction's corner scale, in the same five steps as [Corners] (which
 /// v2 keeps): Rack precise, Tonal soft, Console tight. Screens and widgets
 /// read these instead of fixed radii, so a panel, a thumbnail or a skeleton
@@ -136,6 +171,7 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
     required this.button,
     required this.statusPanel,
     required this.chart,
+    required this.navBar,
     this.radii = Radii.material,
     this.segmentBorder,
     this.monoFamily,
@@ -214,6 +250,9 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
 
   final ChartTokens chart;
 
+  /// The floating navigation bar on phones.
+  final NavBarTokens navBar;
+
   /// Corners for everything that isn't a card or a stock component.
   final Radii radii;
 
@@ -275,6 +314,7 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
       button: button,
       statusPanel: statusPanel,
       chart: chart,
+      navBar: navBar,
       radii: radii,
       segmentBorder: segmentBorder,
       monoFamily: monoFamily,
@@ -314,6 +354,9 @@ class DesignTokens extends ThemeExtension<DesignTokens> {
         button: ButtonTreatment.accent,
         statusPanel: false,
         chart: const ChartTokens(lineWidth: 2, fillAlpha: .14, inkLine: false, grid: false, dotRadius: 3, dotRing: true, height: 56, timeLabels: false),
+        navBar: t.brightness == Brightness.light
+            ? NavBarTokens(height: 68, radius: 28, color: t.colorScheme.surfaceContainer, edge: null, elevation: 3)
+            : NavBarTokens(height: 68, radius: 28, color: t.colorScheme.surfaceContainerHigh, edge: null, elevation: 0),
       );
 
   @override

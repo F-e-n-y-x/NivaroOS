@@ -257,6 +257,43 @@ void main() {
       nonText.addAll(c.nonText);
     }
 
+    // The floating navigation bar in every style, v2 included: its labels
+    // and icons on its own fill (the theme's navigation bar colour is the
+    // bar's), and the selected icon on its indicator.
+    final bar = tk.navBar;
+    final nav = theme.navigationBarTheme;
+    final navIndicator = nav.indicatorColor ?? s.secondaryContainer;
+    text.addAll([
+      ('floating bar label, selected', nav.labelTextStyle?.resolve(_selected)?.color ?? s.onSurface, bar.color),
+      ('floating bar label', nav.labelTextStyle?.resolve(_none)?.color ?? s.onSurfaceVariant, bar.color),
+    ]);
+    nonText.addAll([
+      ('floating bar icon', nav.iconTheme?.resolve(_none)?.color ?? s.onSurfaceVariant, bar.color),
+      ('floating bar icon, selected', nav.iconTheme?.resolve(_selected)?.color ?? s.onSecondaryContainer, navIndicator),
+    ]);
+
+    // Not a WCAG pair (the bar is a container, not a control): pins that
+    // the floating bar stays visibly apart from the page and from the
+    // cards scrolling under it - by its edge, a tonal step or, in light,
+    // its shadow - and that true black always draws an edge.
+    test('$name: the floating bar stands apart from the page and the cards', () {
+      expect(nav.backgroundColor, bar.color, reason: 'the bar and its theme disagree on the fill');
+      final light = theme.brightness == Brightness.light;
+      final black = s.surface == Colors.black;
+      final edge = bar.edge;
+      if (edge != null) {
+        final r = contrast(edge, s.surface);
+        expect(r, greaterThanOrEqualTo(1.2), reason: 'bar edge on the page is ${r.toStringAsFixed(3)}:1');
+      } else {
+        final r = contrast(bar.color, s.surface);
+        expect(r, greaterThanOrEqualTo(1.1), reason: 'bar fill on the page is ${r.toStringAsFixed(3)}:1');
+      }
+      final overCards = edge != null || (light && bar.elevation > 0) || contrast(bar.color, tk.cardColor) >= 1.1;
+      expect(overCards, isTrue, reason: 'nothing sets the bar apart from the cards under it');
+      if (black) expect(edge, isNotNull, reason: 'true black draws the bar\'s edge');
+      if (!light) expect(bar.elevation, 0, reason: 'no shadow in dark, where it would not show');
+    });
+
     // Not a WCAG pair: pins the choice of TileGroup segment colour on the
     // page, so they stay visibly apart (surfaceContainerLow was 1.05:1 and
     // read as one flat sheet).
