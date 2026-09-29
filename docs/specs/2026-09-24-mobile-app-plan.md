@@ -2038,6 +2038,12 @@ otherwise.
    into its own folder under `/DATA/Backup/`. The device name is sanitised
    and made unique the same way companion folders are (a second phone with
    the same name gets `<name> (2)`); renaming the phone moves the folder.
+   That folder is only the default: the user can pick another location per
+   phone (any server folder or drive, chosen with the server folder
+   picker), in the app and in the web UI. Changing it offers to move the
+   existing backups there or to start fresh, and the backup refuses to run
+   if the chosen drive is missing instead of writing to the system disk
+   (owner, 2026-09-29).
 3. **SMS and call log are not encrypted by default.** They are stored as
    plain snapshot files like the other categories. Encryption stays an
    opt-in setting, off by default.
