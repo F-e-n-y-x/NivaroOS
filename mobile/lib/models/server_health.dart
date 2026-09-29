@@ -18,7 +18,7 @@ enum AttentionKind { serverUpdate, packages, disk, driveHealth, backup, apps, te
 
 /// One row of "Needs attention" (Home and the Server health page).
 class AttentionItem {
-  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk});
+  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk, this.backupJobId = '', this.backupRunId = ''});
 
   final AttentionKind kind;
   final AttentionSeverity severity;
@@ -29,6 +29,11 @@ class AttentionItem {
 
   /// For [AttentionKind.disk]: the drive.
   final DiskUsage? disk;
+
+  /// For [AttentionKind.backup]: the job, and the run waiting for a
+  /// decision when one is.
+  final String backupJobId;
+  final String backupRunId;
 }
 
 /// What a check is about; picks its icon.
@@ -276,8 +281,10 @@ ServerHealth buildHealth({
           items.add(AttentionItem(
             kind: AttentionKind.backup,
             severity: AttentionSeverity.error,
-            title: b.lastStatus == 'waiting_user' ? '${b.name} is waiting for you' : "${b.name} didn't finish",
-            detail: b.lastStatus == 'waiting_user' ? 'Backup · A decision is needed' : 'Backup · The last run failed',
+            title: b.lastStatus == 'waiting_user' || b.waitingRunId.isNotEmpty ? '${b.name} is waiting for you' : "${b.name} didn't finish",
+            detail: b.lastStatus == 'waiting_user' || b.waitingRunId.isNotEmpty ? 'Backup · A decision is needed' : 'Backup · The last run failed',
+            backupJobId: b.id,
+            backupRunId: b.waitingRunId,
           ));
         case 'offline':
           items.add(AttentionItem(
@@ -285,6 +292,7 @@ ServerHealth buildHealth({
             severity: AttentionSeverity.warning,
             title: '${b.name} is paused',
             detail: b.destLabel.isEmpty ? 'Backup · The destination is not connected' : 'Backup · ${b.destLabel} is not connected',
+            backupJobId: b.id,
           ));
         case 'warning':
           items.add(AttentionItem(
@@ -292,6 +300,7 @@ ServerHealth buildHealth({
             severity: AttentionSeverity.warning,
             title: '${b.name} needs a look',
             detail: 'Backup · Partly done or overdue',
+            backupJobId: b.id,
           ));
         case 'ok':
           final done = b.lastStatus == 'success' ? b.lastEndedAt : null;

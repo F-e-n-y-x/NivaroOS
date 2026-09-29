@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/dashboard_stats.dart';
 import '../services/api_client.dart';
+import 'backup/backup_decide_screen.dart';
+import 'backup/backup_job_screen.dart';
+import 'backup/backup_screen.dart';
 import '../ui/ui.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/tailscale_modal.dart';
@@ -52,8 +54,8 @@ IconData _kindIcon(AttentionKind kind) => switch (kind) {
     };
 
 /// Where each thing that needs attention is fixed, the same from Home and
-/// from the Server health page: the backup job (the web UI, where backups
-/// are managed), the Updates page, the drive, the processor or memory
+/// from the Server health page: the backup job (or the decision it waits
+/// for), the Updates page, the drive, the processor or memory
 /// page, the Apps tab, Tailscale, companion sharing.
 class HealthActions {
   const HealthActions({required this.controller, this.pushDetail, this.onOpenApps, this.onOpenFiles});
@@ -67,13 +69,14 @@ class HealthActions {
   final VoidCallback? onOpenFiles;
 
   /// Opens something outside the app (the web UI) rather than a page.
-  static bool opensOutside(AttentionKind kind) => kind == AttentionKind.backup;
+  /// Nothing does since backups got their own screens.
+  static bool opensOutside(AttentionKind kind) => false;
 
   /// The action a screen reader announces for the row.
   static String hint(AttentionKind kind) => switch (kind) {
         AttentionKind.serverUpdate || AttentionKind.packages => 'open updates',
         AttentionKind.disk || AttentionKind.driveHealth => 'open storage',
-        AttentionKind.backup => 'open backups in the web interface',
+        AttentionKind.backup => 'open the backup',
         AttentionKind.apps => 'open apps',
         AttentionKind.temperature => 'open processor',
         AttentionKind.memory => 'open memory',
@@ -107,12 +110,13 @@ class HealthActions {
         Navigator.of(context).popUntil((r) => r.isFirst);
         onOpenApps?.call();
       case AttentionKind.backup:
-        // The app has no backup screen yet: the web UI fixes it.
-        final url = ApiClient.instance.baseUrl;
-        if (url.isEmpty) return;
-        try {
-          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-        } catch (_) {}
+        final Widget screen = a.backupRunId.isNotEmpty
+            ? BackupDecideScreen(runId: a.backupRunId, jobId: a.backupJobId)
+            : a.backupJobId.isNotEmpty
+                ? BackupJobScreen(jobId: a.backupJobId)
+                : const BackupScreen();
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+        await c.refreshAll();
       case AttentionKind.tailscale:
         await TailscaleModal.show(context);
         await c.recheckTailscale();

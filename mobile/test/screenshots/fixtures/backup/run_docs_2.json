@@ -1,0 +1,68 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "id": "run_docs_2",
+  "job_id": "bk_docs",
+  "job_name": "Documents to tank",
+  "kind": "backup",
+  "trigger": "manual",
+  "status": "running",
+  "phase": "transfer",
+  "attempt": 1,
+  "error_code": "",
+  "summary": null,
+  "queued_at": "2026-09-25T13:51:58+05:30",
+  "started_at": "2026-09-25T13:52:00+05:30",
+  "ended_at": null,
+  "counts": {
+   "added": 0,
+   "changed": 0,
+   "deleted": 0,
+   "skipped": 0,
+   "errored": 0,
+   "bytes_transferred": 0,
+   "bytes_total": 0
+  },
+  "coalesced": 0,
+  "guard": null,
+  "steps": [
+   {
+    "phase": "precheck",
+    "key": "backup.run.step.precheck",
+    "args": {
+     "dest": "tank"
+    },
+    "state": "done"
+   },
+   {
+    "phase": "transfer",
+    "key": "backup.run.step.transfer",
+    "state": "active"
+   },
+   {
+    "phase": "post_hooks",
+    "key": "backup.run.step.start_apps",
+    "args": {
+     "apps": [
+      "paperless"
+     ]
+    },
+    "state": "pending"
+   }
+  ],
+  "restore": null,
+  "file_errors": [],
+  "has_log": true,
+  "live": {
+   "bytes": 8100000000,
+   "total_bytes": 11900000000,
+   "files": 3210,
+   "total_files": 4700,
+   "speed_bps": 12300000,
+   "eta_sec": 360,
+   "errors": 0,
+   "current_file": "DATA/Documents/Taxes/2025/receipts.pdf"
+  }
+ }
+}

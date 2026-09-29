@@ -476,8 +476,9 @@ class UpdateSummary {
 
 /// One backup job as Home needs it (`GET /v1/backup/jobs`).
 class BackupJobBrief {
-  const BackupJobBrief({required this.name, required this.health, this.lastStatus, this.lastEndedAt, this.destLabel = '', this.destOnline = true});
+  const BackupJobBrief({this.id = '', required this.name, required this.health, this.lastStatus, this.lastEndedAt, this.destLabel = '', this.destOnline = true, this.waitingRunId = ''});
 
+  final String id;
   final String name;
 
   /// problem | offline | warning | ok | disabled
@@ -489,7 +490,12 @@ class BackupJobBrief {
   final String destLabel;
   final bool destOnline;
 
+  /// The run waiting for a decision, if one is.
+  final String waitingRunId;
+
   factory BackupJobBrief.fromJson(Map<String, dynamic> j) => BackupJobBrief(
+        id: j['id']?.toString() ?? '',
+        waitingRunId: (j['active_run'] as Map?)?['status'] == 'waiting_user' ? (j['active_run'] as Map)['id']?.toString() ?? '' : '',
         name: j['name']?.toString() ?? '',
         health: j['health']?.toString() ?? '',
         lastStatus: (j['last_run'] as Map?)?['status']?.toString(),

@@ -1,0 +1,421 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "id": "bk_photos",
+   "name": "Photos to Sandisk",
+   "type": "mirror",
+   "enabled": true,
+   "revision": 3,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+     "sub_path": "photos",
+     "label": "tower"
+    }
+   ],
+   "dest": {
+    "kind": "usb",
+    "ref_id": "3A4F-1C22",
+    "match": {
+     "serial": "4C530001230914117281",
+     "size_bytes": 128035676160
+    },
+    "sub_path": "NivaroOS Backups/Photos",
+    "label": "Sandisk 128G"
+   },
+   "triggers": [
+    {
+     "kind": "volume_mounted",
+     "min_gap_hours": 24,
+     "catch_up": true
+    },
+    {
+     "kind": "schedule",
+     "cron": "0 3 * * 0",
+     "catch_up": true
+    }
+   ],
+   "conditions": {
+    "dest_available": true,
+    "when_unmet": "skip"
+   },
+   "filters": {
+    "exclude_presets": [
+     "caches",
+     "trash"
+    ],
+    "exclude": []
+   },
+   "options": {
+    "verify": false,
+    "preview_first": true,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": false
+   },
+   "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+   },
+   "retention": {
+    "versions_days": 30
+   },
+   "hooks": [],
+   "retry": {
+    "max": 3,
+    "backoff_sec": [
+     60,
+     600,
+     3600
+    ]
+   },
+   "notify": {
+    "on_success": false,
+    "on_failure": true,
+    "stale_after_hours": 336
+   },
+   "needs_attention": "",
+   "migrated_from": null,
+   "created_at": "2026-09-01T10:00:00+05:30",
+   "updated_at": "2026-09-20T18:30:00+05:30",
+   "health": "ok",
+   "last_run": {
+    "id": "run_photos_1",
+    "kind": "backup",
+    "status": "success",
+    "ended_at": "2026-09-25T03:12:40+05:30",
+    "summary": {
+     "key": "backup.run.summary.ok",
+     "args": {
+      "added": 4120,
+      "changed": 12,
+      "deleted": 318,
+      "bytes": 11200000000
+     }
+    }
+   },
+   "active_run": null,
+   "next_run": "2026-09-27T03:00:00+05:30",
+   "dest_online": true
+  },
+  {
+   "id": "bk_immich",
+   "name": "Immich to Google Drive",
+   "type": "archive",
+   "enabled": true,
+   "revision": 1,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+     "sub_path": "DATA/AppData/immich",
+     "label": "System disk",
+     "preset": "appdata:immich"
+    }
+   ],
+   "dest": {
+    "kind": "cloud",
+    "ref_id": "gdrive",
+    "sub_path": "NivaroOS Backups/AppData",
+    "label": "Google Drive"
+   },
+   "triggers": [
+    {
+     "kind": "schedule",
+     "cron": "0 3 * * *",
+     "catch_up": true
+    }
+   ],
+   "conditions": {
+    "dest_available": true,
+    "window": {
+     "start": "22:00",
+     "end": "07:00"
+    },
+    "when_unmet": "wait",
+    "wait_max_min": 360
+   },
+   "filters": {
+    "exclude_presets": [
+     "caches"
+    ],
+    "exclude": []
+   },
+   "options": {
+    "verify": true,
+    "preview_first": false,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": true
+   },
+   "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+   },
+   "retention": {
+    "keep_last": 8
+   },
+   "hooks": [
+    {
+     "phase": "pre",
+     "action": "stop_apps",
+     "apps": [
+      "immich"
+     ],
+     "app_mode": "together",
+     "timeout_sec": 300,
+     "fail_policy": "abort"
+    },
+    {
+     "phase": "post",
+     "action": "start_apps",
+     "apps": [
+      "immich"
+     ],
+     "app_mode": "together",
+     "timeout_sec": 300,
+     "fail_policy": "continue"
+    }
+   ],
+   "retry": {
+    "max": 3,
+    "backoff_sec": [
+     60,
+     600,
+     3600
+    ]
+   },
+   "notify": {
+    "on_success": false,
+    "on_failure": true,
+    "stale_after_hours": 48
+   },
+   "needs_attention": "imported",
+   "migrated_from": "4b1f0c9e-2d3a-4e5f-8a7b-6c5d4e3f2a10",
+   "created_at": "2026-09-24T09:00:00+05:30",
+   "updated_at": "2026-09-24T09:00:00+05:30",
+   "health": "problem",
+   "last_run": {
+    "id": "run_immich_1",
+    "kind": "backup",
+    "status": "failed",
+    "ended_at": "2026-09-25T03:01:00+05:30",
+    "summary": {
+     "key": "backup.run.summary.failed",
+     "args": {
+      "reason_key": "backup.err.cloud_auth.title"
+     }
+    }
+   },
+   "active_run": null,
+   "next_run": "2026-09-26T03:00:00+05:30",
+   "dest_online": true
+  },
+  {
+   "id": "bk_docs",
+   "name": "Documents to tank",
+   "type": "copy",
+   "enabled": true,
+   "revision": 2,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "0b7c5e8e-1111-4a2b-9c3d-5e6f7a8b9c0d",
+     "sub_path": "DATA/Documents",
+     "label": "System disk",
+     "preset": "data:Documents"
+    }
+   ],
+   "dest": {
+    "kind": "volume",
+    "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+    "sub_path": "NivaroOS Backups/Documents",
+    "label": "tank"
+   },
+   "triggers": [
+    {
+     "kind": "schedule",
+     "cron": "30 1 * * *",
+     "catch_up": true
+    }
+   ],
+   "conditions": {
+    "dest_available": true,
+    "when_unmet": "skip"
+   },
+   "filters": {
+    "exclude_presets": [
+     "caches",
+     "trash"
+    ],
+    "exclude": []
+   },
+   "options": {
+    "verify": false,
+    "preview_first": false,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": false
+   },
+   "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+   },
+   "retention": {},
+   "hooks": [],
+   "retry": {
+    "max": 3,
+    "backoff_sec": [
+     60,
+     600,
+     3600
+    ]
+   },
+   "notify": {
+    "on_success": false,
+    "on_failure": true,
+    "stale_after_hours": 336
+   },
+   "needs_attention": "",
+   "migrated_from": null,
+   "created_at": "2026-09-01T10:00:00+05:30",
+   "updated_at": "2026-09-20T18:30:00+05:30",
+   "health": "ok",
+   "last_run": {
+    "id": "run_docs_1",
+    "kind": "backup",
+    "status": "success",
+    "ended_at": "2026-09-24T01:34:10+05:30",
+    "summary": {
+     "key": "backup.run.summary.ok",
+     "args": {
+      "added": 36,
+      "changed": 4,
+      "deleted": 0,
+      "bytes": 412000000
+     }
+    }
+   },
+   "active_run": {
+    "id": "run_docs_2",
+    "kind": "backup",
+    "status": "running",
+    "ended_at": null,
+    "summary": null
+   },
+   "next_run": "2026-09-26T01:30:00+05:30",
+   "dest_online": true
+  },
+  {
+   "id": "bk_phone",
+   "name": "Old phone to Sandisk",
+   "type": "mirror",
+   "enabled": true,
+   "revision": 5,
+   "sources": [
+    {
+     "kind": "volume",
+     "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+     "sub_path": "old-phone",
+     "label": "tank"
+    }
+   ],
+   "dest": {
+    "kind": "usb",
+    "ref_id": "3A4F-1C22",
+    "match": {
+     "serial": "4C530001230914117281",
+     "size_bytes": 128035676160
+    },
+    "sub_path": "NivaroOS Backups/Photos",
+    "label": "Sandisk 128G"
+   },
+   "triggers": [
+    {
+     "kind": "volume_mounted",
+     "min_gap_hours": 24,
+     "catch_up": true
+    }
+   ],
+   "conditions": {
+    "dest_available": true,
+    "when_unmet": "skip"
+   },
+   "filters": {
+    "exclude_presets": [
+     "caches",
+     "trash"
+    ],
+    "exclude": []
+   },
+   "options": {
+    "verify": false,
+    "preview_first": true,
+    "low_priority": true,
+    "max_duration_sec": 86400,
+    "copy_empty_dirs": false
+   },
+   "guards": {
+    "empty_source_pct": 50,
+    "delete_pct": 10,
+    "change_pct": 30,
+    "allow_empty_source": false
+   },
+   "retention": {
+    "versions_days": 30
+   },
+   "hooks": [],
+   "retry": {
+    "max": 3,
+    "backoff_sec": [
+     60,
+     600,
+     3600
+    ]
+   },
+   "notify": {
+    "on_success": false,
+    "on_failure": true,
+    "stale_after_hours": 336
+   },
+   "needs_attention": "",
+   "migrated_from": null,
+   "created_at": "2026-09-01T10:00:00+05:30",
+   "updated_at": "2026-09-20T18:30:00+05:30",
+   "health": "problem",
+   "last_run": {
+    "id": "run_phone_1",
+    "kind": "backup",
+    "status": "success",
+    "ended_at": "2026-09-18T19:02:00+05:30",
+    "summary": {
+     "key": "backup.run.summary.ok_nothing"
+    }
+   },
+   "active_run": {
+    "id": "run_phone_2",
+    "kind": "backup",
+    "status": "waiting_user",
+    "ended_at": null,
+    "summary": {
+     "key": "backup.run.summary.waiting",
+     "args": {
+      "guard_key": "backup.guard.delete",
+      "pct": 50
+     }
+    }
+   },
+   "next_run": null,
+   "dest_online": true
+  }
+ ]
+}

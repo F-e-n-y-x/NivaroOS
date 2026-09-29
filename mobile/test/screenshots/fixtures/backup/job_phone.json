@@ -1,0 +1,111 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "id": "bk_phone",
+  "name": "Old phone to Sandisk",
+  "type": "mirror",
+  "enabled": true,
+  "revision": 5,
+  "sources": [
+   {
+    "kind": "volume",
+    "ref_id": "6c1e2f0a-9b1d-4c1e-8f3a-2b7d9e0c4a11",
+    "sub_path": "old-phone",
+    "label": "tank"
+   }
+  ],
+  "dest": {
+   "kind": "usb",
+   "ref_id": "3A4F-1C22",
+   "match": {
+    "serial": "4C530001230914117281",
+    "size_bytes": 128035676160
+   },
+   "sub_path": "NivaroOS Backups/Photos",
+   "label": "Sandisk 128G"
+  },
+  "triggers": [
+   {
+    "kind": "volume_mounted",
+    "min_gap_hours": 24,
+    "catch_up": true
+   }
+  ],
+  "conditions": {
+   "dest_available": true,
+   "when_unmet": "skip"
+  },
+  "filters": {
+   "exclude_presets": [
+    "caches",
+    "trash"
+   ],
+   "exclude": []
+  },
+  "options": {
+   "verify": false,
+   "preview_first": true,
+   "low_priority": true,
+   "max_duration_sec": 86400,
+   "copy_empty_dirs": false
+  },
+  "guards": {
+   "empty_source_pct": 50,
+   "delete_pct": 10,
+   "change_pct": 30,
+   "allow_empty_source": false
+  },
+  "retention": {
+   "versions_days": 30
+  },
+  "hooks": [],
+  "retry": {
+   "max": 3,
+   "backoff_sec": [
+    60,
+    600,
+    3600
+   ]
+  },
+  "notify": {
+   "on_success": false,
+   "on_failure": true,
+   "stale_after_hours": 336
+  },
+  "needs_attention": "",
+  "migrated_from": null,
+  "created_at": "2026-09-01T10:00:00+05:30",
+  "updated_at": "2026-09-20T18:30:00+05:30",
+  "health": "problem",
+  "last_run": {
+   "id": "run_phone_1",
+   "kind": "backup",
+   "status": "success",
+   "ended_at": "2026-09-18T19:02:00+05:30",
+   "summary": {
+    "key": "backup.run.summary.ok_nothing"
+   }
+  },
+  "active_run": {
+   "id": "run_phone_2",
+   "kind": "backup",
+   "status": "waiting_user",
+   "ended_at": null,
+   "summary": {
+    "key": "backup.run.summary.waiting",
+    "args": {
+     "guard_key": "backup.guard.delete",
+     "pct": 50
+    }
+   }
+  },
+  "next_run": null,
+  "dest_online": true,
+  "stats": {
+   "size_bytes": 96000000000,
+   "versions_count": 3,
+   "last_success": "2026-09-18T19:02:00+05:30"
+  }
+ }
+}

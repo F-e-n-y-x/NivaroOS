@@ -75,3 +75,13 @@ route/v1/memclear.go) - it isn't a GET, so the shots pass it as an
 override; it is never called against the real box. `swapTotal`/`swapUsed`
 in `v1/sys/utilization.json` were added by hand (2 GB of a 16 GB swap in
 use) so the sheet offers "Also empty swap".
+
+Backup & Sync (2026-09-30): `backup/*.json` are not served by URL; the
+Backup shots and widget tests pass them as overrides (`backupServer` in
+`../backup_test.dart`). They are built from the examples in
+`docs/specs/backup-api.json` - the frozen REST contract, whose examples
+`services/backup/jobs/contract_test.go` decodes strictly into the Go
+types - with ids, names and times moved to this shot's day (+05:30) and a
+longer run history, version list and plan written in the same shapes. This
+box has no backup jobs, so there was nothing real to capture beyond
+`GET /v1/backup/health` and an empty `GET /v1/backup/jobs`.

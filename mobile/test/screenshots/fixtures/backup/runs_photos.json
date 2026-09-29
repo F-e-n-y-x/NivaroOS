@@ -1,0 +1,335 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "runs": [
+   {
+    "id": "run_photos_1",
+    "job_id": "bk_photos",
+    "job_name": "Photos to Sandisk",
+    "kind": "backup",
+    "trigger": "schedule",
+    "status": "success",
+    "phase": "post_hooks",
+    "attempt": 1,
+    "error_code": "",
+    "summary": {
+     "key": "backup.run.summary.ok",
+     "args": {
+      "added": 4120,
+      "changed": 12,
+      "deleted": 318,
+      "bytes": 11200000000
+     }
+    },
+    "queued_at": "2026-09-25T02:59:58+05:30",
+    "started_at": "2026-09-25T03:00:00+05:30",
+    "ended_at": "2026-09-25T03:12:40+05:30",
+    "counts": {
+     "added": 4120,
+     "changed": 12,
+     "deleted": 318,
+     "skipped": 250,
+     "errored": 1,
+     "bytes_transferred": 11200000000,
+     "bytes_total": 11900000000
+    },
+    "coalesced": 0,
+    "guard": null,
+    "steps": [
+     {
+      "phase": "precheck",
+      "key": "backup.run.step.precheck",
+      "args": {
+       "dest": "Sandisk 128G"
+      },
+      "state": "done"
+     },
+     {
+      "phase": "transfer",
+      "key": "backup.run.step.transfer",
+      "state": "done"
+     },
+     {
+      "phase": "prune",
+      "key": "backup.run.step.prune",
+      "args": {
+       "days": 30
+      },
+      "state": "done"
+     }
+    ],
+    "restore": null,
+    "file_errors": [
+     {
+      "path": "photos/locked.db",
+      "code": "io_error",
+      "detail": "permission denied"
+     }
+    ],
+    "has_log": true
+   },
+   {
+    "id": "run_photos_2",
+    "job_id": "bk_photos",
+    "job_name": "Photos to Sandisk",
+    "kind": "backup",
+    "trigger": "schedule",
+    "status": "success",
+    "phase": "post_hooks",
+    "attempt": 1,
+    "error_code": "",
+    "summary": {
+     "key": "backup.run.summary.ok",
+     "args": {
+      "added": 4120,
+      "changed": 12,
+      "deleted": 318,
+      "bytes": 11200000000
+     }
+    },
+    "queued_at": "2026-09-24T02:59:58+05:30",
+    "started_at": "2026-09-24T03:00:00+05:30",
+    "ended_at": "2026-09-24T03:04:10+05:30",
+    "counts": {
+     "added": 4120,
+     "changed": 12,
+     "deleted": 318,
+     "skipped": 250,
+     "errored": 1,
+     "bytes_transferred": 820000000,
+     "bytes_total": 11900000000
+    },
+    "coalesced": 0,
+    "guard": null,
+    "steps": [
+     {
+      "phase": "precheck",
+      "key": "backup.run.step.precheck",
+      "args": {
+       "dest": "Sandisk 128G"
+      },
+      "state": "done"
+     },
+     {
+      "phase": "transfer",
+      "key": "backup.run.step.transfer",
+      "state": "done"
+     },
+     {
+      "phase": "prune",
+      "key": "backup.run.step.prune",
+      "args": {
+       "days": 30
+      },
+      "state": "done"
+     }
+    ],
+    "restore": null,
+    "file_errors": [
+     {
+      "path": "photos/locked.db",
+      "code": "io_error",
+      "detail": "permission denied"
+     }
+    ],
+    "has_log": true
+   },
+   {
+    "id": "run_photos_3",
+    "job_id": "bk_photos",
+    "job_name": "Photos to Sandisk",
+    "kind": "backup",
+    "trigger": "schedule",
+    "status": "partial",
+    "phase": "post_hooks",
+    "attempt": 1,
+    "error_code": "",
+    "summary": {
+     "key": "backup.run.summary.partial",
+     "args": {
+      "added": 210,
+      "changed": 3,
+      "errors": 1
+     }
+    },
+    "queued_at": "2026-09-23T02:59:58+05:30",
+    "started_at": "2026-09-23T03:00:00+05:30",
+    "ended_at": "2026-09-23T03:05:10+05:30",
+    "counts": {
+     "added": 4120,
+     "changed": 12,
+     "deleted": 318,
+     "skipped": 250,
+     "errored": 1,
+     "bytes_transferred": 1200000000,
+     "bytes_total": 11900000000
+    },
+    "coalesced": 0,
+    "guard": null,
+    "steps": [
+     {
+      "phase": "precheck",
+      "key": "backup.run.step.precheck",
+      "args": {
+       "dest": "Sandisk 128G"
+      },
+      "state": "done"
+     },
+     {
+      "phase": "transfer",
+      "key": "backup.run.step.transfer",
+      "state": "done"
+     },
+     {
+      "phase": "prune",
+      "key": "backup.run.step.prune",
+      "args": {
+       "days": 30
+      },
+      "state": "done"
+     }
+    ],
+    "restore": null,
+    "file_errors": [
+     {
+      "path": "photos/locked.db",
+      "code": "io_error",
+      "detail": "permission denied"
+     }
+    ],
+    "has_log": true
+   },
+   {
+    "id": "run_photos_4",
+    "job_id": "bk_photos",
+    "job_name": "Photos to Sandisk",
+    "kind": "backup",
+    "trigger": "schedule",
+    "status": "success",
+    "phase": "post_hooks",
+    "attempt": 1,
+    "error_code": "",
+    "summary": {
+     "key": "backup.run.summary.ok",
+     "args": {
+      "added": 4120,
+      "changed": 12,
+      "deleted": 318,
+      "bytes": 11200000000
+     }
+    },
+    "queued_at": "2026-09-22T02:59:58+05:30",
+    "started_at": "2026-09-22T03:00:00+05:30",
+    "ended_at": "2026-09-22T03:06:10+05:30",
+    "counts": {
+     "added": 4120,
+     "changed": 12,
+     "deleted": 318,
+     "skipped": 250,
+     "errored": 1,
+     "bytes_transferred": 64000000,
+     "bytes_total": 11900000000
+    },
+    "coalesced": 0,
+    "guard": null,
+    "steps": [
+     {
+      "phase": "precheck",
+      "key": "backup.run.step.precheck",
+      "args": {
+       "dest": "Sandisk 128G"
+      },
+      "state": "done"
+     },
+     {
+      "phase": "transfer",
+      "key": "backup.run.step.transfer",
+      "state": "done"
+     },
+     {
+      "phase": "prune",
+      "key": "backup.run.step.prune",
+      "args": {
+       "days": 30
+      },
+      "state": "done"
+     }
+    ],
+    "restore": null,
+    "file_errors": [
+     {
+      "path": "photos/locked.db",
+      "code": "io_error",
+      "detail": "permission denied"
+     }
+    ],
+    "has_log": true
+   },
+   {
+    "id": "run_photos_5",
+    "job_id": "bk_photos",
+    "job_name": "Photos to Sandisk",
+    "kind": "backup",
+    "trigger": "schedule",
+    "status": "skipped",
+    "phase": "post_hooks",
+    "attempt": 1,
+    "error_code": "",
+    "summary": {
+     "key": "backup.run.summary.skipped",
+     "args": {
+      "reason_key": "backup.err.dest_offline.title"
+     }
+    },
+    "queued_at": "2026-09-21T02:59:58+05:30",
+    "started_at": null,
+    "ended_at": "2026-09-21T03:07:10+05:30",
+    "counts": {
+     "added": 0,
+     "changed": 0,
+     "deleted": 0,
+     "skipped": 0,
+     "errored": 0,
+     "bytes_transferred": 0,
+     "bytes_total": 0
+    },
+    "coalesced": 0,
+    "guard": null,
+    "steps": [
+     {
+      "phase": "precheck",
+      "key": "backup.run.step.precheck",
+      "args": {
+       "dest": "Sandisk 128G"
+      },
+      "state": "done"
+     },
+     {
+      "phase": "transfer",
+      "key": "backup.run.step.transfer",
+      "state": "done"
+     },
+     {
+      "phase": "prune",
+      "key": "backup.run.step.prune",
+      "args": {
+       "days": 30
+      },
+      "state": "done"
+     }
+    ],
+    "restore": null,
+    "file_errors": [
+     {
+      "path": "photos/locked.db",
+      "code": "io_error",
+      "detail": "permission denied"
+     }
+    ],
+    "has_log": true
+   }
+  ],
+  "next_before": "run_photos_6"
+ }
+}

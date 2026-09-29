@@ -1,0 +1,28 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": [
+  {
+   "id": "current",
+   "kind": "current",
+   "time": null,
+   "label_key": "backup.ver.current"
+  },
+  {
+   "id": "v_20260924T213000Z",
+   "kind": "recycle",
+   "time": "2026-09-24T21:30:00Z",
+   "label_key": "backup.ver.recycle",
+   "files": 14,
+   "bytes": 80000000
+  },
+  {
+   "id": "v_20260917T213000Z",
+   "kind": "recycle",
+   "time": "2026-09-17T21:30:00Z",
+   "label_key": "backup.ver.recycle",
+   "files": 162,
+   "bytes": 1400000000
+  }
+ ]
+}

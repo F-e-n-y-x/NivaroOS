@@ -1,0 +1,60 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "id": "run_phone_2",
+  "job_id": "bk_phone",
+  "job_name": "Old phone to Sandisk",
+  "kind": "backup",
+  "trigger": "schedule",
+  "status": "waiting_user",
+  "phase": "transfer",
+  "attempt": 1,
+  "error_code": "delete_guard",
+  "summary": {
+   "key": "backup.run.summary.waiting",
+   "args": {
+    "guard_key": "backup.guard.delete",
+    "pct": 50
+   }
+  },
+  "queued_at": "2026-09-25T12:40:00+05:30",
+  "started_at": "2026-09-25T12:40:02+05:30",
+  "ended_at": null,
+  "counts": {
+   "added": 0,
+   "changed": 0,
+   "deleted": 0,
+   "skipped": 0,
+   "errored": 0,
+   "bytes_transferred": 0,
+   "bytes_total": 0
+  },
+  "coalesced": 0,
+  "guard": {
+   "guard": "delete",
+   "pct": 50,
+   "limit": 10,
+   "count": 24090,
+   "total": 48190,
+   "sample": [
+    "photos/2019/IMG_0001.JPG",
+    "photos/2019/IMG_0002.JPG"
+   ]
+  },
+  "steps": [
+   {
+    "phase": "precheck",
+    "key": "backup.run.step.precheck",
+    "args": {
+     "dest": "Sandisk 128G"
+    },
+    "state": "done"
+   }
+  ],
+  "restore": null,
+  "file_errors": [],
+  "has_log": true,
+  "live": null
+ }
+}

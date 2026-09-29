@@ -1,0 +1,136 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "counts": {
+   "add": 12,
+   "update": 3,
+   "delete": 24090,
+   "bytes_add": 48000000
+  },
+  "items": [
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190301_0113.jpg",
+    "size": 1912000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190302_0213.jpg",
+    "size": 2003000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190303_0313.jpg",
+    "size": 2094000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190304_0413.jpg",
+    "size": 2185000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190305_0513.jpg",
+    "size": 2276000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190306_0613.jpg",
+    "size": 2367000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190307_0713.jpg",
+    "size": 2458000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190308_0813.jpg",
+    "size": 2549000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190309_0013.jpg",
+    "size": 2640000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190310_0113.jpg",
+    "size": 2731000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190311_0213.jpg",
+    "size": 2822000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190312_0313.jpg",
+    "size": 2913000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190401_0114.jpg",
+    "size": 1919000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190402_0214.jpg",
+    "size": 2010000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190403_0314.jpg",
+    "size": 2101000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190404_0414.jpg",
+    "size": 2192000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190405_0514.jpg",
+    "size": 2283000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190406_0614.jpg",
+    "size": 2374000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190407_0714.jpg",
+    "size": 2465000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190408_0814.jpg",
+    "size": 2556000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190409_0014.jpg",
+    "size": 2647000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190410_0114.jpg",
+    "size": 2738000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190411_0214.jpg",
+    "size": 2829000
+   },
+   {
+    "op": "delete",
+    "path": "old-phone/DCIM/Camera/IMG_20190412_0314.jpg",
+    "size": 2920000
+   }
+  ],
+  "total": 24090,
+  "next_offset": 200
+ }
+}

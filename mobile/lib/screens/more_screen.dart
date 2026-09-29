@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../backup/backup_api.dart';
+import '../backup/backup_state.dart';
+import '../backup/backup_strings.dart';
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
 import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
 import '../widgets/tailscale_modal.dart';
+import 'backup/backup_screen.dart';
 import 'companion_devices_screen.dart';
 import 'host_desktop_screen.dart';
 import 'server_profiles_screen.dart';
@@ -39,11 +43,16 @@ class _MoreScreenState extends State<MoreScreen> {
   String? _serverVersion;
   String? _serverLatest;
 
+  // Backup & Sync, for its row: null until known; installed false when
+  // the optional module doesn't answer.
+  ({bool installed, String summary})? _backup;
+
   @override
   void initState() {
     super.initState();
     _loadAccount();
     _loadUpdates();
+    _loadBackup();
     unawaited(TerminalSessionsApi.instance.refreshCount());
   }
 
@@ -81,6 +90,26 @@ class _MoreScreenState extends State<MoreScreen> {
         _serverLatest = data['need_update'] == true && latest != null && latest.isNotEmpty ? latest : null;
       });
     } catch (_) {}
+  }
+
+  Future<void> _loadBackup() async {
+    final api = BackupApi();
+    final health = await api.health();
+    String summary;
+    if (!health.installed) {
+      summary = 'Not installed on this server';
+    } else {
+      try {
+        final jobs = await api.jobs();
+        final o = overallState(jobs);
+        summary = o.state == 'empty'
+            ? bt('backup.overview.state.empty')
+            : [btc('backup.overview.jobs_count', o.jobs), if (o.attention > 0) btc('backup.overview.attention_count', o.attention) else o.title].join(' · ');
+      } catch (_) {
+        summary = 'Copies of your files on other drives and clouds';
+      }
+    }
+    if (mounted) setState(() => _backup = (installed: health.installed, summary: summary));
   }
 
   void _openUpdates(UpdatesPage page) {
@@ -155,6 +184,12 @@ class _MoreScreenState extends State<MoreScreen> {
               ),
               isThreeLine: _securityCount > 0,
               onTap: () => _openUpdates(UpdatesPage.packages),
+            ),
+            ListTile(
+              leading: const Icon(Icons.backup_outlined),
+              title: const Text('Backup & Sync'),
+              subtitle: Text(_backup?.summary ?? 'Copies of your files on other drives and clouds'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BackupScreen())).then((_) => _loadBackup()),
             ),
             ListTile(
               leading: const Icon(Icons.receipt_long_outlined),
