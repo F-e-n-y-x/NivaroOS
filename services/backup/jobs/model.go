@@ -294,6 +294,8 @@ const (
 	KindRestore RunKind = "restore"
 	KindVerify  RunKind = "verify"
 	KindPrune   RunKind = "prune"
+	// KindDevice is a phone backup session (job_id = the device id).
+	KindDevice RunKind = "device"
 )
 
 // RunTrigger is why a run was queued. Also the queue priority, highest
@@ -306,6 +308,7 @@ const (
 	RunByCatchUp       RunTrigger = "catch_up"
 	RunByManual        RunTrigger = "manual"
 	RunByRetry         RunTrigger = "retry"
+	RunByDevice        RunTrigger = "device" // the phone started it
 )
 
 // RunStatus is where a run is in the §5 state machine.

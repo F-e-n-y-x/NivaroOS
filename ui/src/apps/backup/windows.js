@@ -13,10 +13,11 @@
 export const BACKUP_APP_ID = 'backup'
 
 // Sections of BackupApp, in nav order (props.section).
-export const BACKUP_SECTIONS = Object.freeze(['overview', 'jobs', 'restore', 'activity', 'settings'])
+export const BACKUP_SECTIONS = Object.freeze(['overview', 'jobs', 'phones', 'restore', 'activity', 'settings'])
 
 export const BACKUP_WINDOWS = Object.freeze({
-	// props: { section, jobId, runId, wizard, preset, sourcePath, destRef, destPath, requestedAt }
+	// props: { section, jobId, runId, deviceId, wizard, preset, sourcePath, destRef, destPath, requestedAt }
+	//   deviceId    selects a phone (Phones)
 	//   section     one of BACKUP_SECTIONS (default 'overview')
 	//   jobId/runId select a job (Jobs) or run (Activity)
 	//   wizard      true opens the new-job wizard on arrival, with preset

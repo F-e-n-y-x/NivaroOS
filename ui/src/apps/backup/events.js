@@ -10,7 +10,8 @@ export const BACKUP_EVENTS = Object.freeze({
 	RUN_END: 'nivaroos:backup:run-end',
 	RUN_WAITING: 'nivaroos:backup:run-waiting',
 	JOB_CHANGED: 'nivaroos:backup:job-changed',
-	NOTIFY: 'nivaroos:backup:notify'
+	NOTIFY: 'nivaroos:backup:notify',
+	DEVICE_CHANGED: 'nivaroos:backup:device-changed'
 })
 
 // Properties sent with each event.
@@ -20,7 +21,8 @@ export const EVENT_PROPERTIES = Object.freeze({
 	'nivaroos:backup:run-end': Object.freeze(['run_id', 'job_id', 'kind', 'status', 'phase', 'bytes', 'total_bytes', 'files', 'total_files', 'speed_bps', 'eta_sec', 'errors', 'current_file', 'error_code', 'summary']),
 	'nivaroos:backup:run-waiting': Object.freeze(['run_id', 'job_id', 'kind', 'status', 'phase', 'error_code']),
 	'nivaroos:backup:job-changed': Object.freeze(['job_id', 'change', 'revision']),
-	'nivaroos:backup:notify': Object.freeze(['key', 'args', 'title', 'message', 'level', 'job_id', 'run_id', 'window'])
+	'nivaroos:backup:notify': Object.freeze(['key', 'args', 'title', 'message', 'level', 'job_id', 'run_id', 'window']),
+	'nivaroos:backup:device-changed': Object.freeze(['device_id', 'change'])
 })
 
 export const JOB_CHANGE = Object.freeze({ CREATED: 'created', UPDATED: 'updated', DELETED: 'deleted', TOGGLED: 'toggled' })

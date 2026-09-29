@@ -79,6 +79,7 @@ type Service struct {
 	downloads *downloadTokens
 	limiter   *rateLimiter
 	publicKey func() (*ecdsa.PublicKey, error)
+	phone     *phoneState
 
 	liveMu sync.Mutex
 	lives  map[string]LiveStats
@@ -107,7 +108,7 @@ func New(cfg Config) (*Service, error) {
 		cfg: cfg, engine: cfg.Engine, clock: cfg.Clock, apps: cfg.Apps, vms: cfg.VMs, sched: cfg.Schedules,
 		schedBusy: cfg.ScheduleBusy, smb: cfg.SMB, publicKey: cfg.PublicKey,
 		lives: map[string]LiveStats{}, downloads: newDownloadTokens(), limiter: newRateLimiter(30, time.Minute),
-		ctx: context.Background(), restartKick: make(chan struct{}, 1),
+		ctx: context.Background(), restartKick: make(chan struct{}, 1), phone: newPhoneState(),
 	}
 	if s.clock == nil {
 		s.clock = NewRealClock(time.Local)
@@ -205,6 +206,7 @@ func (s *Service) Start(ctx context.Context) error {
 	s.goRun(func() { s.maintenance(ctx) })
 	s.goRun(func() { s.restartLoop(ctx) })
 	s.goRun(func() { s.migrationLoop(ctx) })
+	s.goRun(func() { s.phoneLoop(ctx) })
 	return nil
 }
 
@@ -238,6 +240,11 @@ func (s *Service) recoverRuns() error {
 		return err
 	}
 	for _, r := range rows {
+		if RunKind(r.Kind) == KindDevice {
+			// A phone session outlives a restart: the phone resumes it,
+			// or the idle sweep ends it as interrupted.
+			continue
+		}
 		job, jerr := s.loadRunJob(r)
 		if jerr == nil {
 			if code := s.replayHooks(&r, job); code != "" {

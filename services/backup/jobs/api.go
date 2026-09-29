@@ -35,6 +35,10 @@ func (s *Service) Handler() http.Handler {
 	api := http.NewServeMux()
 	s.routes(api)
 	authed := s.requireAuth(api)
+	// Owner routes under /devices/{id}/ (admin JWT), told apart from the
+	// device-token routes by the mux itself.
+	ownerDevice := http.NewServeMux()
+	s.ownerDeviceRoutes(ownerDevice)
 	devMux := http.NewServeMux()
 	s.deviceRoutes(devMux)
 	return withCORS(stripPrefix(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -50,11 +54,19 @@ func (s *Service) Handler() http.Handler {
 			writeError(w, http.StatusServiceUnavailable, ErrorBody{ErrorCode: ErrStoreUnavailable, Detail: describeErr(s.storeErr)})
 			return
 		}
-		// /devices/{id}/* take the device token only (devices.go).
+		// /devices/{id}/* take the device token (devices.go); the owner's
+		// routes there (and the reads both may use) take the JWT when the
+		// bearer isn't a device token.
 		if id, scoped, bad := deviceScope(r.URL.Path); bad {
 			writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
 			return
 		} else if scoped {
+			if !bearerIsDeviceToken(r) {
+				if _, pat := ownerDevice.Handler(r); pat != "" {
+					authed.ServeHTTP(w, r)
+					return
+				}
+			}
 			s.serveDevice(devMux, w, r, id)
 			return
 		}
@@ -97,7 +109,17 @@ func (s *Service) routes(m *http.ServeMux) {
 	m.HandleFunc("GET /busy", s.handleBusy)
 	m.HandleFunc("GET /devices", s.handleDevicesList)
 	m.HandleFunc("POST /devices", s.handleDeviceEnroll)
-	m.HandleFunc("DELETE /devices/{id}", s.handleDeviceRevoke)
+	m.HandleFunc("GET /devices/{id}", s.handleDeviceGet)
+	m.HandleFunc("PUT /devices/{id}", s.handleDeviceUpdate)
+	m.HandleFunc("DELETE /devices/{id}", s.handleDeviceRemove)
+	m.HandleFunc("POST /devices/{id}/destination", s.handleDeviceDestination)
+	m.HandleFunc("POST /devices/{id}/revoke", s.handleDeviceRevokeToken)
+	m.HandleFunc("POST /devices/{id}/token", s.handleDeviceNewToken)
+	m.HandleFunc("POST /devices/{id}/excluded", s.handleDeviceExcludedUpdate)
+	m.HandleFunc("DELETE /devices/{id}/files", s.handleDeviceFilesDelete)
+	m.HandleFunc("POST /devices/{id}/downloads", s.handleDeviceDownloadCreate)
+	m.HandleFunc("POST /devices/{id}/exports/import", s.handleExportImport)
+	s.deviceReadRoutes(m)
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
 	})
@@ -136,8 +158,16 @@ func engineStatus(c ErrorCode) int {
 		return http.StatusServiceUnavailable
 	case ErrPathNotAllowed, ErrEndpointUnknown, ErrInvalidFilter, ErrAmbiguousDevice, ErrDestInsideSource:
 		return http.StatusBadRequest
-	case ErrDestOffline, ErrSourceOffline, ErrCloudAuth, ErrDestMarkerMismatch:
+	case ErrDestOffline, ErrSourceOffline, ErrCloudAuth, ErrDestMarkerMismatch, ErrOffsetMismatch, ErrSessionClosed:
 		return http.StatusConflict
+	case ErrNoSpace:
+		return http.StatusInsufficientStorage
+	case ErrChecksumMismatch:
+		return http.StatusUnprocessableEntity
+	case ErrTooLarge:
+		return http.StatusRequestEntityTooLarge
+	case ErrValidation:
+		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
 }
@@ -1079,11 +1109,16 @@ func (s *Service) handleDownload(w http.ResponseWriter, r *http.Request, token s
 		writeError(w, http.StatusServiceUnavailable, ErrorBody{ErrorCode: ErrStoreUnavailable})
 		return
 	}
-	req, ok := s.downloads.redeem(token, clientIP(r), s.now())
+	g, ok := s.downloads.redeem(token, clientIP(r), s.now())
 	if !ok {
 		writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrTokenInvalid})
 		return
 	}
+	if g.deviceID != "" {
+		s.serveDeviceDownload(w, r, g.deviceID, g.dev)
+		return
+	}
+	req := g.req
 	j, err := s.store.GetJob(req.JobID)
 	if err != nil {
 		s.fail(w, err)

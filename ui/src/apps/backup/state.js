@@ -237,7 +237,7 @@ export function groupRunsByDay(runs, fmt) {
 
 // Activity filters (§12.8), persisted per browser.
 export const ACTIVITY_RESULTS = Object.freeze(['all', 'ok', 'problems', 'skipped', 'active'])
-export const ACTIVITY_KINDS = Object.freeze(['all', 'backup', 'restore', 'preview', 'verify', 'prune'])
+export const ACTIVITY_KINDS = Object.freeze(['all', 'backup', 'device', 'restore', 'preview', 'verify', 'prune'])
 export const ACTIVITY_RANGES = Object.freeze(['all', '1d', '7d', '30d'])
 export const DEFAULT_ACTIVITY_FILTERS = Object.freeze({ jobId: '', result: 'all', kind: 'all', range: '7d' })
 

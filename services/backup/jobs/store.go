@@ -116,7 +116,7 @@ var schemaSteps = map[int]func(tx *gorm.DB) error{
 }
 
 func (s *Store) migrate() error {
-	if err := s.db.AutoMigrate(&JobRow{}, &RunRow{}, &MetaRow{}, &DeviceRow{}); err != nil {
+	if err := s.db.AutoMigrate(append([]interface{}{&JobRow{}, &RunRow{}, &MetaRow{}, &DeviceRow{}}, phoneTables()...)...); err != nil {
 		return fmt.Errorf("store: schema: %w", err)
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {

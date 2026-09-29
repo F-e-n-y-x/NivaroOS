@@ -36,6 +36,7 @@
 					:selected-job-id="selectedJobId"
 					:narrow="contentNarrow"
 				></jobs-section>
+				<phones-section v-else-if="activeSection === 'phones'" :initial-device-id="phoneDeviceId" :narrow="contentNarrow"></phones-section>
 				<restore-section v-else-if="activeSection === 'restore'" :jobs="jobs" :initial-job-id="restoreJobId"></restore-section>
 				<activity-section v-else-if="activeSection === 'activity'" :jobs="jobs" :initial-job-id="activityJobId" :version="runVersion"></activity-section>
 				<backup-settings-section v-else-if="activeSection === 'settings'" :jobs="jobs"></backup-settings-section>
@@ -62,6 +63,7 @@ import BackupNav from './BackupNav.vue'
 import OverviewSection from './sections/OverviewSection.vue'
 import JobsSection from './sections/JobsSection.vue'
 import RestoreSection from './sections/RestoreSection.vue'
+import PhonesSection from './sections/PhonesSection.vue'
 import ActivitySection from './sections/ActivitySection.vue'
 import BackupSettingsSection from './sections/BackupSettingsSection.vue'
 import { backupMixin, loadCapabilities } from './backupMixin'
@@ -94,7 +96,7 @@ const SHORTCUTS = [
 
 export default {
 	name: 'BackupApp',
-	components: { BackupNav, OverviewSection, JobsSection, RestoreSection, ActivitySection, BackupSettingsSection },
+	components: { BackupNav, OverviewSection, JobsSection, PhonesSection, RestoreSection, ActivitySection, BackupSettingsSection },
 	mixins: [backupMixin, confirmWindowMixin],
 	provide() {
 		return { backupApp: this }
@@ -105,6 +107,7 @@ export default {
 		section: { type: String, default: '' },
 		jobId: { type: String, default: '' },
 		runId: { type: String, default: '' },
+		deviceId: { type: String, default: '' },
 		wizard: { type: Boolean, default: false },
 		preset: { type: String, default: '' },
 		sourcePath: { type: String, default: '' },
@@ -127,6 +130,7 @@ export default {
 			selectedJobId: '',
 			restoreJobId: '',
 			activityJobId: '',
+			phoneDeviceId: '',
 			busyJobId: '',
 			// Bumped on changes, so open panes can refetch their own data.
 			jobVersion: 0,
@@ -304,6 +308,10 @@ export default {
 				target.focus()
 			}
 		},
+		showPhone(id) {
+			this.activeSection = 'phones'
+			this.phoneDeviceId = id || ''
+		},
 		showJob(id) {
 			this.activeSection = 'jobs'
 			this.selectedJobId = id || ''
@@ -313,10 +321,14 @@ export default {
 			// request is consumed: OPEN_WINDOW merges props, so a later deep
 			// link would otherwise replay this one's wizard or run.
 			const p = { ...this.$props }
-			if (p.jobId || p.runId || p.wizard || p.section) {
-				this.$store.commit('UPDATE_WINDOW_PROPS', { id: BACKUP_APP_ID, props: { section: '', jobId: '', runId: '', wizard: false, preset: '', sourcePath: '', destRef: null, destPath: '' } })
+			if (p.jobId || p.runId || p.wizard || p.section || p.deviceId) {
+				this.$store.commit('UPDATE_WINDOW_PROPS', { id: BACKUP_APP_ID, props: { section: '', jobId: '', runId: '', deviceId: '', wizard: false, preset: '', sourcePath: '', destRef: null, destPath: '' } })
 			}
 			if (p.section && BACKUP_SECTIONS.includes(p.section)) this.activeSection = p.section
+			if (p.deviceId) {
+				this.activeSection = 'phones'
+				this.phoneDeviceId = p.deviceId
+			}
 			if (p.jobId) {
 				if (this.activeSection === 'restore') this.restoreJobId = p.jobId
 				else if (this.activeSection === 'activity') this.activityJobId = p.jobId

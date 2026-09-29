@@ -53,13 +53,20 @@ describe('backup client against the WP-0 fixtures', () => {
 			c.createDownload({ jobId: 'bk_1', versionId: 'current', paths: [] }),
 			c.getSettings(), c.putSettings(fixture('GET', '/settings').response), c.getMigration(), c.rerunMigration(),
 			c.listDrives(), c.renameDrive('3A4F-1C22', 'Stick'), c.forgetDrive('3A4F-1C22'), c.busy('app', 'immich'),
-			c.listDevices(), c.enrollDevice({ name: 'Pixel 8', platform: 'android' }), c.revokeDevice('dev_1')
+			c.listDevices(), c.enrollDevice({ name: 'Pixel 8', platform: 'android' }), c.revokeDevice('dev_1'),
+			c.getDevice('dev_1'), c.updateDevice('dev_1', { name: 'P' }), c.setDeviceLocation('dev_1', { location: null, mode: 'fresh' }),
+			c.revokeDeviceAccess('dev_1'), c.newDeviceToken('dev_1'), c.deviceConfig('dev_1'), c.deviceSnapshots('dev_1'),
+			c.browseDevice('dev_1', 'latest', { category: 'media', path: 'DCIM' }), c.deviceExports('dev_1', { all: true }),
+			c.deviceRestoreManifest('dev_1', { snapshot: 'latest' }), c.deviceExcluded('dev_1'), c.updateDeviceExcluded('dev_1', { remove: ['x'] }),
+			c.verifyDevice('dev_1'), c.deleteDeviceFiles('dev_1', { category: 'media', path: 'a.jpg' }),
+			c.createDeviceDownload('dev_1', { exportId: 'exp_1' }), c.importDeviceExport('dev_1', 'sms', '<smses/>')
 		])
 		// The token download is a plain same-origin link (downloadUrl), not
 		// an API call; device routes take the phone's own token, never the
-		// web UI's session.
+		// web UI's session; file contents stream (the web UI downloads them
+		// through POST /devices/:id/downloads).
 		const expected = doc.endpoints
-			.filter(e => e.auth !== 'device')
+			.filter(e => e.auth !== 'device' && e.response_type !== 'binary')
 			.map(e => `${e.method} ${e.path}`)
 			.filter(k => k !== 'GET /downloads/:token')
 		expect(expected.filter(k => !hit.has(k))).toEqual([])
@@ -76,6 +83,10 @@ describe('backup client against the WP-0 fixtures', () => {
 		await c.decideRun('run_9', { proceed: true, mode: 'copy_once' })
 		await c.createDownload({ jobId: 'bk_1', versionId: 'current', paths: ['a.txt'] })
 		await c.browseLocation({ kind: 'usb', ref_id: '3A4F-1C22', path: '', dirsOnly: true })
+		await c.browseDevice('dev_1', 'snap_1', { category: 'media', path: 'DCIM', includeDeleted: true })
+		await c.setDeviceLocation('dev_1', { location: { kind: 'usb', ref_id: 'u', sub_path: 'P' }, mode: 'move' })
+		await c.createDeviceDownload('dev_1', { category: 'media', path: 'a.jpg', snapshot: 'latest' })
+		await c.revokeDevice('dev_1', { purgeData: true })
 		expect(t.calls.map(x => [x.method, x.path, x.params, x.data])).toEqual([
 			['GET', '/runs', { job_id: 'bk_1', status: 'running,queued', limit: 20 }, undefined],
 			['GET', '/runs/run_1/log', { after: 4096 }, undefined],
@@ -84,7 +95,11 @@ describe('backup client against the WP-0 fixtures', () => {
 			['POST', '/jobs/bk_1/toggle', {}, { enabled: false }],
 			['POST', '/runs/run_9/decide', {}, { proceed: true, mode: 'copy_once' }],
 			['POST', '/downloads', {}, { job_id: 'bk_1', version_id: 'current', paths: ['a.txt'] }],
-			['GET', '/locations/browse', { kind: 'usb', ref_id: '3A4F-1C22', dirs_only: 1 }, undefined]
+			['GET', '/locations/browse', { kind: 'usb', ref_id: '3A4F-1C22', dirs_only: 1 }, undefined],
+			['GET', '/devices/dev_1/snapshots/snap_1/browse', { category: 'media', path: 'DCIM', include_deleted: 1 }, undefined],
+			['POST', '/devices/dev_1/destination', {}, { location: { kind: 'usb', ref_id: 'u', sub_path: 'P' }, mode: 'move' }],
+			['POST', '/devices/dev_1/downloads', {}, { category: 'media', path: 'a.jpg', snapshot: 'latest', export_id: '', full: false }],
+			['DELETE', '/devices/dev_1', { purge_data: 'true' }, undefined]
 		])
 	})
 

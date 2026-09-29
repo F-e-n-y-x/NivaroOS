@@ -17,9 +17,12 @@ import (
 const downloadTokenTTL = 60 * time.Second
 
 type downloadGrant struct {
-	req     DownloadRequest
-	ip      string
-	expires time.Time
+	req DownloadRequest
+	// deviceID / dev: a phone backup download (POST /devices/:id/downloads).
+	deviceID string
+	dev      DeviceDownloadRequest
+	ip       string
+	expires  time.Time
 }
 
 type downloadTokens struct {
@@ -39,20 +42,29 @@ func (d *downloadTokens) issue(req DownloadRequest, ip string, now time.Time) Do
 	return DownloadToken{Token: tok, ExpiresIn: int(downloadTokenTTL / time.Second)}
 }
 
+// issueDevice hands out a token for a file of a phone's backup.
+func (d *downloadTokens) issueDevice(deviceID string, req DeviceDownloadRequest, ip string, now time.Time) DownloadToken {
+	tok := "dl_" + randomHex(16)
+	d.mu.Lock()
+	d.grants[tok] = downloadGrant{deviceID: deviceID, dev: req, ip: ip, expires: now.Add(downloadTokenTTL)}
+	d.mu.Unlock()
+	return DownloadToken{Token: tok, ExpiresIn: int(downloadTokenTTL / time.Second)}
+}
+
 // redeem consumes a token. It is gone after the first attempt, even a
 // wrong-IP one: a leaked link must not stay usable.
-func (d *downloadTokens) redeem(tok, ip string, now time.Time) (DownloadRequest, bool) {
+func (d *downloadTokens) redeem(tok, ip string, now time.Time) (downloadGrant, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	g, ok := d.grants[tok]
 	if !ok {
-		return DownloadRequest{}, false
+		return downloadGrant{}, false
 	}
 	delete(d.grants, tok)
 	if now.After(g.expires) || g.ip != ip {
-		return DownloadRequest{}, false
+		return downloadGrant{}, false
 	}
-	return g.req, true
+	return g, true
 }
 
 func (d *downloadTokens) gc(now time.Time) {

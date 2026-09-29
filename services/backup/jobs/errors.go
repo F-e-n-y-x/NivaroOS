@@ -90,6 +90,14 @@ const (
 	ErrStoreUnavailable ErrorCode = "store_unavailable"
 	ErrInvalidState     ErrorCode = "invalid_state" // e.g. decide on a run that isn't waiting_user
 	ErrTokenInvalid     ErrorCode = "token_invalid" // download token unknown, used or expired
+	// phone uploads (docs/specs/2026-09-30-phone-backup-device-api.md)
+	ErrChecksumMismatch ErrorCode = "checksum_mismatch" // the uploaded bytes don't hash to the announced SHA-256
+	ErrOffsetMismatch   ErrorCode = "offset_mismatch"   // PATCH Upload-Offset isn't where the upload is
+	ErrTooLarge         ErrorCode = "too_large"         // a PATCH body, file or import over the limit
+	ErrSessionClosed    ErrorCode = "session_closed"    // the session ended (finished, idle 30 min, cancelled)
+	// ErrDeviceFailed: the phone reported that its backup failed (the
+	// run's file errors say what).
+	ErrDeviceFailed ErrorCode = "device_failed"
 )
 
 // Action is a one-click fix the UI offers next to an error (spec §12.2).
@@ -158,6 +166,7 @@ var codeTable = map[ErrorCode]CodeInfo{
 	ErrMaxDuration:        {ClassLifecycle, []Action{ActEditJob, ActViewLog}},
 	ErrDecisionTimeout:    {ClassLifecycle, []Action{ActRetry}},
 	ErrInternal:           {ClassLifecycle, []Action{ActViewLog}},
+	ErrDeviceFailed:       {ClassLifecycle, []Action{ActViewLog}},
 
 	ErrValidation:       {ClassAPI, nil},
 	ErrRevisionConflict: {ClassAPI, nil},
@@ -168,6 +177,10 @@ var codeTable = map[ErrorCode]CodeInfo{
 	ErrStoreUnavailable: {ClassAPI, nil},
 	ErrInvalidState:     {ClassAPI, nil},
 	ErrTokenInvalid:     {ClassAPI, nil},
+	ErrChecksumMismatch: {ClassAPI, nil},
+	ErrOffsetMismatch:   {ClassAPI, nil},
+	ErrTooLarge:         {ClassAPI, nil},
+	ErrSessionClosed:    {ClassAPI, nil},
 }
 
 // Info returns a code's class and actions. Unknown codes are treated as

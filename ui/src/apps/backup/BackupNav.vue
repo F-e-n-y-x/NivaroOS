@@ -39,7 +39,7 @@
 <script>
 import { BACKUP_SECTIONS } from './windows'
 
-const ICONS = { overview: 'view-dashboard-outline', jobs: 'format-list-checks', restore: 'backup-restore', activity: 'history', settings: 'cog-outline' }
+const ICONS = { overview: 'view-dashboard-outline', jobs: 'format-list-checks', phones: 'cellphone-arrow-down', restore: 'backup-restore', activity: 'history', settings: 'cog-outline' }
 
 // What a section's badge counts: jobs that need the user (red), or runs
 // in progress (Activity: informational, not a problem).

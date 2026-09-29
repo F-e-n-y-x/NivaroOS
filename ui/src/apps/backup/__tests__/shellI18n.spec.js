@@ -9,6 +9,7 @@ vi.mock('../../../service/service.js', () => ({ instance: { request: vi.fn() } }
 import { ERROR_CODES, ACTIONS, FIELD_CODES } from '../errorCodes'
 import { BACKUP_SECTIONS } from '../windows'
 import { HEALTH_ORDER, STATUS_VIEW, JOB_FILTERS, JOB_SORTS, ACTIVITY_RESULTS, ACTIVITY_KINDS, ACTIVITY_RANGES } from '../state'
+import { PHONE_CATEGORIES, PHONE_CONDITIONS, SETTINGS_LIMITS } from '../phones'
 
 // The app shell's side of spec §12.12 (wizardI18n.spec.js covers the
 // wizard, the Preview window, the shared pickers and Scheduled Tasks):
@@ -24,18 +25,19 @@ const COMPONENTS = ['ActivityList', 'AttentionList', 'BackupVsSyncExplainer', 'E
 const FILES = [
 	'apps/backup/BackupApp.vue',
 	'apps/backup/BackupNav.vue',
-	...['OverviewSection', 'JobsSection', 'RestoreSection', 'ActivitySection', 'BackupSettingsSection'].map(s => `apps/backup/sections/${s}.vue`),
+	...['OverviewSection', 'JobsSection', 'PhonesSection', 'RestoreSection', 'ActivitySection', 'BackupSettingsSection'].map(s => `apps/backup/sections/${s}.vue`),
 	...['BackupRunWindow', 'BackupBrowseWindow', 'BackupRestoreWindow'].map(w => `apps/backup/windows/${w}.vue`),
 	...COMPONENTS.map(c => `apps/backup/components/${c}.vue`),
 	'apps/backup/state.js',
 	'apps/backup/messages.js',
 	'apps/backup/format.js',
 	'apps/backup/backupMixin.js',
-	'apps/backup/windows.js'
+	'apps/backup/windows.js',
+	'apps/backup/phones.js'
 ]
 
 const RUN_KINDS = ACTIVITY_KINDS.filter(k => k !== 'all')
-const TRIGGERS = ['schedule', 'volume_mounted', 'catch_up', 'manual', 'retry']
+const TRIGGERS = ['schedule', 'volume_mounted', 'catch_up', 'manual', 'retry', 'device']
 const JOB_TYPES = ['copy', 'mirror', 'archive']
 
 // prefix -> every suffix the code can append ($t('prefix' + x ...) and
@@ -54,6 +56,11 @@ const DYNAMIC = {
 	'backup.kind.': RUN_KINDS,
 	'backup.log.lvl_': ['info', 'warn', 'error'],
 	'backup.nav.': BACKUP_SECTIONS,
+	'backup.phones.cat.': PHONE_CATEGORIES,
+	'backup.phones.condition.': PHONE_CONDITIONS,
+	'backup.phones.settings.': Object.keys(SETTINGS_LIMITS).flatMap(k => [k, `${k}_hint`]),
+	'backup.phones.state.': ['never', 'revoked', 'moving', 'dest_problem', 'dest_offline', 'failed', 'partial', 'stale', 'ok'],
+	'backup.settings.device_platform_': ['android', 'ios', 'other'],
 	'backup.overview.state.': ['empty', 'ok', 'attention', 'problem'],
 	'backup.phase.': ['precheck', 'pre_hooks', 'transfer', 'verify', 'prune', 'post_hooks'],
 	'backup.restore.conflict_': ['keep_both', 'overwrite', 'skip'].flatMap(c => [c, `${c}_hint`]),

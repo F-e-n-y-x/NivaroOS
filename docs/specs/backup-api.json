@@ -13,7 +13,8 @@
     "none": "no credentials",
     "jwt": "ES256 JWT in Authorization: Bearer or ?token=; every non-GET route also needs the admin role (403 forbidden). Loopback automation (no Origin, no Sec-Fetch-Site, not via the gateway, no X-Forwarded-For) skips the JWT.",
     "token": "single-use download token in the path",
-    "device": "device token (POST /devices, shown once) in Authorization: Bearer only - never ?token=. Accepted ONLY on /devices/:id/* for that device; no JWT and no loopback shortcut there, and a device token is rejected (401) everywhere else. Survives password changes; revoked by DELETE /devices/:id. Rotated by the server every 30 days: the answer carries the new token in X-NivaroOS-Device-Token and the old one's end in X-NivaroOS-Device-Token-Old-Valid-Until (RFC 3339, 24 h later)."
+    "device": "device token (POST /devices, shown once) in Authorization: Bearer only - never ?token=. Accepted ONLY on /devices/:id/* for that device; no JWT and no loopback shortcut there, and a device token is rejected (401) everywhere else. Survives password changes; revoked by POST /devices/:id/revoke (backups kept) or DELETE /devices/:id. Rotated by the server every 30 days: the answer carries the new token in X-NivaroOS-Device-Token and the old one's end in X-NivaroOS-Device-Token-Old-Valid-Until (RFC 3339, 24 h later).",
+    "device_or_jwt": "either the device's own token (as for device, only for that device) or the owner's admin JWT (403 for a non-admin JWT). A device token is recognised by its shape (nvd_ + 43 characters) and never falls back to the JWT."
   },
   "envelope": {
     "shape": {
@@ -206,6 +207,10 @@
         "job_id",
         "run_id",
         "window"
+      ],
+      "nivaroos:backup:device-changed": [
+        "device_id",
+        "change"
       ]
     }
   },
@@ -2539,11 +2544,19 @@
           "platform": "android",
           "default_dest": "/DATA/Backup/Pixel 8",
           "created_at": "2026-09-24T10:15:00Z",
-          "last_seen": "2026-09-24T18:02:11Z",
-          "token_rotated_at": "2026-09-24T10:15:00Z"
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
         }
       ],
-      "notes": "Enrolled phones, oldest first, for Settings > Devices. Admin only (403 forbidden otherwise), also for GET. Never includes tokens or their hashes."
+      "notes": "Enrolled phones, oldest first, for Settings > Devices. Admin only (403 forbidden otherwise), also for GET. Never includes tokens or their hashes. Each device carries its backup summary (last_backup_at, last_status, size_bytes), its folder, dest (null = the default location) and revoked_at."
     },
     {
       "id": "devices_enroll",
@@ -2566,7 +2579,15 @@
           "default_dest": "/DATA/Backup/Pixel 8",
           "created_at": "2026-09-24T10:15:00Z",
           "last_seen": null,
-          "token_rotated_at": "2026-09-24T10:15:00Z"
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": null,
+          "last_status": "",
+          "size_bytes": 0,
+          "moving": false
         },
         "token": "nvd_q3Zp9m1W0yXcVb7aL2kR5tNe8fHs4dJu6gOi1PwQxYc"
       },
@@ -2589,9 +2610,11 @@
       "response_type": "Empty",
       "response": {},
       "errors": [
-        "not_found"
+        "not_found",
+        "invalid_state (its backups are being moved)",
+        "dest_offline (purge_data while the drive is missing)"
       ],
-      "notes": "Admin only. Revokes at once: every token of the device stops working. Backups already in its folder are kept."
+      "notes": "Admin only. Removes the phone: its record, every token and its backup index. ?purge_data=1 also deletes its backup folder (409 dest_offline while that drive is missing). Without it the files stay on disk. To keep the backups browsable and only stop the phone, use POST /devices/:id/revoke."
     },
     {
       "id": "device_ping",
@@ -2610,8 +2633,16 @@
           "platform": "android",
           "default_dest": "/DATA/Backup/Pixel 8",
           "created_at": "2026-09-24T10:15:00Z",
-          "last_seen": "2026-09-24T18:02:11Z",
-          "token_rotated_at": "2026-09-24T10:15:00Z"
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
         },
         "server_time": "2026-09-24T18:02:11Z",
         "rotates_at": "2026-10-24T10:15:00Z"
@@ -2620,6 +2651,1613 @@
         "unauthorized (no, wrong, revoked or expired device token, or another device's)"
       ],
       "notes": "For the phone to check its credential. May carry X-NivaroOS-Device-Token (see auth.device): store it at once; if the answer is lost, the next request with the old token (within 24 h) gets another new one."
+    },
+    {
+      "id": "device_get",
+      "method": "GET",
+      "path": "/devices/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "DeviceDetail",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
+        },
+        "destination": {
+          "location": null,
+          "default": true,
+          "path": "/DATA/Backup/Pixel 8",
+          "online": true,
+          "free_bytes": 812345098240,
+          "reserve_bytes": 50000000000,
+          "quirks": []
+        },
+        "settings": {
+          "keep_last": 10,
+          "keep_days": 30,
+          "deleted_purge_days": 0,
+          "stale_days": 7
+        },
+        "phone": {
+          "app_version": "1.2.0",
+          "os_version": "Android 15",
+          "model": "Google Pixel 8",
+          "categories": {
+            "contacts": {
+              "enabled": true,
+              "schedule": "daily 03:00",
+              "conditions": [
+                "wifi",
+                "charging"
+              ],
+              "encrypted": false
+            },
+            "media": {
+              "enabled": true,
+              "schedule": "on new photos",
+              "conditions": [
+                "wifi"
+              ],
+              "encrypted": false
+            }
+          },
+          "paused": false,
+          "reported_at": "2026-09-30T03:00:02Z"
+        },
+        "categories": [
+          {
+            "category": "media",
+            "kind": "files",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 18275,
+            "deleted_files": 12,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 48210000000
+          },
+          {
+            "category": "files",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "contacts",
+            "kind": "export",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 9,
+            "items": 412,
+            "size_bytes": 1830000
+          },
+          {
+            "category": "calendar",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "sms",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "calllog",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apps",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apks",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "settings",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          }
+        ],
+        "open_sessions": [],
+        "move": null,
+        "snapshots": 14,
+        "excluded": 1,
+        "last_verify": {
+          "deep": false,
+          "running": false,
+          "checked": 18287,
+          "missing": 0,
+          "damaged": 0,
+          "started_at": "2026-09-29T02:00:00Z",
+          "ended_at": "2026-09-29T02:00:04Z",
+          "error": ""
+        }
+      },
+      "errors": [
+        "not_found"
+      ],
+      "notes": "Admin only. The web UI's phone page: where its backups go (destination: location null = the default /DATA/Backup, online, free space, error_code when unusable), the owner's settings (retention, stale warning), what the phone reports about its own schedule (phone, display only), per-category status, open sessions, a location change in progress (move) and the newest check (last_verify)."
+    },
+    {
+      "id": "device_update",
+      "method": "PUT",
+      "path": "/devices/:id",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DeviceUpdateRequest",
+      "request": {
+        "settings": {
+          "keep_last": 10,
+          "keep_days": 60,
+          "deleted_purge_days": 0,
+          "stale_days": 7
+        }
+      },
+      "response_type": "DeviceDetail",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
+        },
+        "destination": {
+          "location": null,
+          "default": true,
+          "path": "/DATA/Backup/Pixel 8",
+          "online": true,
+          "free_bytes": 812345098240,
+          "reserve_bytes": 50000000000,
+          "quirks": []
+        },
+        "settings": {
+          "keep_last": 10,
+          "keep_days": 30,
+          "deleted_purge_days": 0,
+          "stale_days": 7
+        },
+        "phone": {
+          "app_version": "1.2.0",
+          "os_version": "Android 15",
+          "model": "Google Pixel 8",
+          "categories": {
+            "contacts": {
+              "enabled": true,
+              "schedule": "daily 03:00",
+              "conditions": [
+                "wifi",
+                "charging"
+              ],
+              "encrypted": false
+            },
+            "media": {
+              "enabled": true,
+              "schedule": "on new photos",
+              "conditions": [
+                "wifi"
+              ],
+              "encrypted": false
+            }
+          },
+          "paused": false,
+          "reported_at": "2026-09-30T03:00:02Z"
+        },
+        "categories": [
+          {
+            "category": "media",
+            "kind": "files",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 18275,
+            "deleted_files": 12,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 48210000000
+          },
+          {
+            "category": "files",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "contacts",
+            "kind": "export",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 9,
+            "items": 412,
+            "size_bytes": 1830000
+          },
+          {
+            "category": "calendar",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "sms",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "calllog",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apps",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apks",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "settings",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          }
+        ],
+        "open_sessions": [],
+        "move": null,
+        "snapshots": 14,
+        "excluded": 1,
+        "last_verify": {
+          "deep": false,
+          "running": false,
+          "checked": 18287,
+          "missing": 0,
+          "damaged": 0,
+          "started_at": "2026-09-29T02:00:00Z",
+          "ended_at": "2026-09-29T02:00:04Z",
+          "error": ""
+        }
+      },
+      "errors": [
+        "validation",
+        "invalid_state (a session is open)",
+        "dest_offline"
+      ],
+      "notes": "Admin only. Absent fields are unchanged. settings: keep_last 1..1000 snapshots, keep_days 0..3650 (newest snapshot of each day), deleted_purge_days 0..3650 (0 = files deleted on the phone are kept for ever), stale_days 0..365 (0 = no warning). Retention is applied at once. name renames the phone and its folder in the same location (refused while a session is open, or while its drive is missing and it has backups)."
+    },
+    {
+      "id": "device_destination",
+      "method": "POST",
+      "path": "/devices/:id/destination",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DeviceDestRequest",
+      "request": {
+        "location": {
+          "kind": "usb",
+          "ref_id": "3A4F-1C22",
+          "match": {
+            "serial": "4C530001",
+            "size_bytes": 512110190592
+          },
+          "sub_path": "Phones",
+          "label": "Backup Stick"
+        },
+        "mode": "move"
+      },
+      "response_type": "DeviceDetail",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": true
+        },
+        "destination": {
+          "location": null,
+          "default": true,
+          "path": "/DATA/Backup/Pixel 8",
+          "online": true,
+          "free_bytes": 812345098240,
+          "reserve_bytes": 50000000000,
+          "quirks": []
+        },
+        "settings": {
+          "keep_last": 10,
+          "keep_days": 30,
+          "deleted_purge_days": 0,
+          "stale_days": 7
+        },
+        "phone": {
+          "app_version": "1.2.0",
+          "os_version": "Android 15",
+          "model": "Google Pixel 8",
+          "categories": {
+            "contacts": {
+              "enabled": true,
+              "schedule": "daily 03:00",
+              "conditions": [
+                "wifi",
+                "charging"
+              ],
+              "encrypted": false
+            },
+            "media": {
+              "enabled": true,
+              "schedule": "on new photos",
+              "conditions": [
+                "wifi"
+              ],
+              "encrypted": false
+            }
+          },
+          "paused": false,
+          "reported_at": "2026-09-30T03:00:02Z"
+        },
+        "categories": [
+          {
+            "category": "media",
+            "kind": "files",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 18275,
+            "deleted_files": 12,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 48210000000
+          },
+          {
+            "category": "files",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "contacts",
+            "kind": "export",
+            "last_backup_at": "2026-09-30T03:04:51Z",
+            "last_status": "success",
+            "last_run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 9,
+            "items": 412,
+            "size_bytes": 1830000
+          },
+          {
+            "category": "calendar",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "sms",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "calllog",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apps",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "apks",
+            "kind": "files",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          },
+          {
+            "category": "settings",
+            "kind": "export",
+            "last_backup_at": null,
+            "last_status": "",
+            "last_run_id": "",
+            "files": 0,
+            "deleted_files": 0,
+            "exports": 0,
+            "items": 0,
+            "size_bytes": 0
+          }
+        ],
+        "open_sessions": [],
+        "move": {
+          "state": "moving",
+          "target": {
+            "kind": "usb",
+            "ref_id": "3A4F-1C22",
+            "match": {
+              "serial": "4C530001",
+              "size_bytes": 512110190592
+            },
+            "sub_path": "Phones",
+            "label": "Backup Stick"
+          },
+          "target_path": "/media/usb-3A4F/Phones/Pixel 8",
+          "files": 1200,
+          "total_files": 18287,
+          "bytes": 3100000000,
+          "total_bytes": 48318382080,
+          "error": "",
+          "started_at": "2026-09-30T09:00:00Z"
+        },
+        "snapshots": 14,
+        "excluded": 1,
+        "last_verify": {
+          "deep": false,
+          "running": false,
+          "checked": 18287,
+          "missing": 0,
+          "damaged": 0,
+          "started_at": "2026-09-29T02:00:00Z",
+          "ended_at": "2026-09-29T02:00:04Z",
+          "error": ""
+        }
+      },
+      "errors": [
+        "validation (location.kind: invalid, mode: required|invalid)",
+        "dest_offline",
+        "dest_inside_source",
+        "invalid_state (session open, moving, overlap, target not empty)",
+        "no_space (move to another drive)"
+      ],
+      "notes": "Admin only. Change location...: location is the folder that will hold the phone's folder (a volume, usb or merge endpoint from the folder picker; null = back to the default). mode move: the backups go along - a rename on the same drive (200), otherwise a background copy (202, detail.move shows progress; the old folder is removed once the copy is complete; a failed or interrupted copy leaves everything where it was and move.state failed). mode fresh: the new place starts empty, the old files stay on disk, the index (snapshots, versions) is dropped; the excluded list stays. mode is required when the phone has backups. Refused while a session is open, when the new folder is inside the current one (or holds it), overlaps another phone's folder or a job's destination, or already exists and is not empty. The new location must be online (a missing drive is refused, never replaced)."
+    },
+    {
+      "id": "device_revoke_token",
+      "method": "POST",
+      "path": "/devices/:id/revoke",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "Device",
+      "response": {
+        "id": "dev_4f1c9a2b7e3d5a60",
+        "name": "Pixel 8",
+        "platform": "android",
+        "default_dest": "/DATA/Backup/Pixel 8",
+        "created_at": "2026-09-24T10:15:00Z",
+        "last_seen": "2026-09-30T03:10:00Z",
+        "token_rotated_at": "2026-09-24T10:15:00Z",
+        "revoked_at": "2026-09-30T08:00:00Z",
+        "folder": "Pixel 8",
+        "dest": null,
+        "dest_path": "/DATA/Backup/Pixel 8",
+        "last_backup_at": "2026-09-30T03:04:51Z",
+        "last_status": "success",
+        "size_bytes": 48318382080,
+        "moving": false
+      },
+      "errors": [
+        "not_found"
+      ],
+      "notes": "Admin only. Stops the phone at once (every token of it: 401 afterwards) and cancels its open sessions. Its backups stay browsable and downloadable; revoked_at is set. POST /devices/:id/token links it again."
+    },
+    {
+      "id": "device_new_token",
+      "method": "POST",
+      "path": "/devices/:id/token",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "DeviceEnrollment",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
+        },
+        "token": "nvd_Xc7aL2kR5tNe8fHs4dJu6gOi1PwQq3Zp9m1W0yXcVb7"
+      },
+      "errors": [
+        "not_found",
+        "rate_limited"
+      ],
+      "notes": "Admin only. A new token for the same device (a reinstalled phone, or after a revoke): the old ones stop working, revoked_at is cleared, the backups and their index stay. token is shown only here."
+    },
+    {
+      "id": "device_excluded_update",
+      "method": "POST",
+      "path": "/devices/:id/excluded",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "ExcludedUpdate",
+      "request": {
+        "add": [
+          {
+            "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02",
+            "path": "DCIM/Camera/PXL_20260901_101010.jpg",
+            "added_at": "0001-01-01T00:00:00Z"
+          }
+        ],
+        "remove": []
+      },
+      "response_type": "[]PhoneExcluded",
+      "response": [
+        {
+          "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02",
+          "path": "DCIM/Camera/PXL_20260901_101010.jpg",
+          "added_at": "2026-09-30T09:12:00Z"
+        }
+      ],
+      "errors": [
+        "validation"
+      ],
+      "notes": "Admin only. Adds content hashes the phone must never upload again (check answers excluded) or removes them. Answers the whole list."
+    },
+    {
+      "id": "device_files_delete",
+      "method": "DELETE",
+      "path": "/devices/:id/files",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "FilesRemoved",
+      "response": {
+        "files": 1,
+        "versions": 0,
+        "bytes": 3811234
+      },
+      "errors": [
+        "validation",
+        "not_found",
+        "dest_offline"
+      ],
+      "notes": "Admin only. ?category=<files category>&path=<file or folder>. Removes the file (or everything below the folder) from the backup, with its versions, and adds its contents to the excluded list so the phone doesn't send them again."
+    },
+    {
+      "id": "device_downloads",
+      "method": "POST",
+      "path": "/devices/:id/downloads",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DeviceDownloadRequest",
+      "request": {
+        "category": "media",
+        "path": "DCIM/Camera/PXL_20260901_101010.jpg",
+        "snapshot": "latest",
+        "export_id": "",
+        "full": false
+      },
+      "response_type": "DownloadToken",
+      "response": {
+        "token": "dl_4b1f0c2d9e8a7b6c5d4e3f2a1b0c9d8e",
+        "expires_in": 60
+      },
+      "errors": [
+        "validation",
+        "not_found"
+      ],
+      "notes": "Admin only. A single-use link (GET /downloads/:token, 60 s, same IP) for one file of a snapshot (category + path, snapshot id or latest), one export (export_id), or the complete messages or call log file (full + category sms|calllog, at snapshot)."
+    },
+    {
+      "id": "device_export_import",
+      "method": "POST",
+      "path": "/devices/:id/exports/import",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "ImportResult",
+      "response": {
+        "result": "stored",
+        "export": {
+          "id": "exp_3c4d5e6f7a8b9c0d",
+          "category": "sms",
+          "name": "",
+          "taken_at": "2026-09-30T09:20:00Z",
+          "size": 5512093,
+          "sha256": "2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e",
+          "items": 14210,
+          "encrypted": false,
+          "imported": true
+        }
+      },
+      "errors": [
+        "validation",
+        "too_large",
+        "dest_offline",
+        "no_space"
+      ],
+      "notes": "Admin only. ?category=sms|calllog, body: an SMS Backup & Restore XML file made elsewhere (at most 1 GiB, any Content-Type). Stored as an imported export when it holds messages or calls the backup lacks (result stored), otherwise not stored (result no_new_items)."
+    },
+    {
+      "id": "device_config",
+      "method": "GET",
+      "path": "/devices/:id/config",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "DeviceConfig",
+      "response": {
+        "device": {
+          "id": "dev_4f1c9a2b7e3d5a60",
+          "name": "Pixel 8",
+          "platform": "android",
+          "default_dest": "/DATA/Backup/Pixel 8",
+          "created_at": "2026-09-24T10:15:00Z",
+          "last_seen": "2026-09-30T03:10:00Z",
+          "token_rotated_at": "2026-09-24T10:15:00Z",
+          "revoked_at": null,
+          "folder": "Pixel 8",
+          "dest": null,
+          "dest_path": "/DATA/Backup/Pixel 8",
+          "last_backup_at": "2026-09-30T03:04:51Z",
+          "last_status": "success",
+          "size_bytes": 48318382080,
+          "moving": false
+        },
+        "destination": {
+          "location": null,
+          "default": true,
+          "path": "/DATA/Backup/Pixel 8",
+          "online": true,
+          "free_bytes": 812345098240,
+          "reserve_bytes": 50000000000,
+          "quirks": []
+        },
+        "settings": {
+          "keep_last": 10,
+          "keep_days": 30,
+          "deleted_purge_days": 0,
+          "stale_days": 7
+        },
+        "limits": {
+          "chunk_size": 8388608,
+          "max_upload_size": 68719476736,
+          "check_batch": 500,
+          "deleted_batch": 1000,
+          "item_keys_batch": 1000,
+          "max_open_uploads": 64,
+          "max_open_sessions": 8,
+          "max_finish_errors": 200,
+          "session_idle_sec": 1800,
+          "upload_expiry_sec": 604800,
+          "check_per_minute": 240
+        },
+        "categories": [
+          {
+            "category": "media",
+            "kind": "files",
+            "incremental": false,
+            "named": false
+          },
+          {
+            "category": "files",
+            "kind": "files",
+            "incremental": false,
+            "named": false
+          },
+          {
+            "category": "contacts",
+            "kind": "export",
+            "incremental": false,
+            "named": false,
+            "extension": ".vcf"
+          },
+          {
+            "category": "calendar",
+            "kind": "export",
+            "incremental": false,
+            "named": true,
+            "extension": ".ics"
+          },
+          {
+            "category": "sms",
+            "kind": "export",
+            "incremental": true,
+            "named": false,
+            "extension": ".xml"
+          },
+          {
+            "category": "calllog",
+            "kind": "export",
+            "incremental": true,
+            "named": false,
+            "extension": ".xml"
+          },
+          {
+            "category": "apps",
+            "kind": "export",
+            "incremental": false,
+            "named": false,
+            "extension": ".json"
+          },
+          {
+            "category": "apks",
+            "kind": "files",
+            "incremental": false,
+            "named": false
+          },
+          {
+            "category": "settings",
+            "kind": "export",
+            "incremental": false,
+            "named": false,
+            "extension": ".json"
+          }
+        ],
+        "excluded": 1,
+        "server_time": "2026-09-30T03:00:01Z"
+      },
+      "notes": "The phone reads this at every backup start: its device record, where its backups go and whether that is usable now (destination.error_code), the owner's settings, the server limits (chunk size, batch sizes, idle and expiry times) and the categories. See docs/specs/2026-09-30-phone-backup-device-api.md."
+    },
+    {
+      "id": "device_phone_settings",
+      "method": "PUT",
+      "path": "/devices/:id/phone-settings",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": "PhoneSettings",
+      "request": {
+        "app_version": "1.2.0",
+        "os_version": "Android 15",
+        "model": "Google Pixel 8",
+        "categories": {
+          "contacts": {
+            "enabled": true,
+            "schedule": "daily 03:00",
+            "conditions": [
+              "wifi",
+              "charging"
+            ],
+            "encrypted": false
+          },
+          "media": {
+            "enabled": true,
+            "schedule": "on new photos",
+            "conditions": [
+              "wifi"
+            ],
+            "encrypted": false
+          }
+        },
+        "paused": false,
+        "reported_at": null
+      },
+      "response_type": "PhoneSettings",
+      "response": {
+        "app_version": "1.2.0",
+        "os_version": "Android 15",
+        "model": "Google Pixel 8",
+        "categories": {
+          "contacts": {
+            "enabled": true,
+            "schedule": "daily 03:00",
+            "conditions": [
+              "wifi",
+              "charging"
+            ],
+            "encrypted": false
+          },
+          "media": {
+            "enabled": true,
+            "schedule": "on new photos",
+            "conditions": [
+              "wifi"
+            ],
+            "encrypted": false
+          }
+        },
+        "paused": false,
+        "reported_at": "2026-09-30T03:00:02Z"
+      },
+      "errors": [
+        "validation"
+      ],
+      "notes": "The phone reports its own schedule and conditions per category (display only in the web UI; the server never enforces them). reported_at is set by the server."
+    },
+    {
+      "id": "device_session_start",
+      "method": "POST",
+      "path": "/devices/:id/sessions",
+      "auth": "device",
+      "envelope": true,
+      "status": 201,
+      "request_type": "SessionStartRequest",
+      "request": {
+        "categories": [
+          "media",
+          "contacts"
+        ],
+        "reason": "schedule",
+        "expect_bytes": 350000000
+      },
+      "response_type": "PhoneSession",
+      "response": {
+        "id": "ses_9c1d2e3f4a5b6c7d",
+        "run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+        "categories": [
+          "contacts",
+          "media"
+        ],
+        "reason": "schedule",
+        "status": "open",
+        "started_at": "2026-09-30T03:00:05Z",
+        "last_activity": "2026-09-30T03:00:05Z",
+        "ended_at": null,
+        "counts": {
+          "uploaded": 0,
+          "linked": 0,
+          "unchanged": 0,
+          "deleted": 0,
+          "exports": 0,
+          "bytes": 0,
+          "errors": 0
+        },
+        "snapshot_id": "",
+        "resumed": false
+      },
+      "errors": [
+        "validation",
+        "dest_offline",
+        "dest_marker_mismatch",
+        "no_space",
+        "invalid_state"
+      ],
+      "notes": "Starts a backup session: a run of kind device (job_id = the device id) shows in Activity. An open session with the same categories is handed back (200, resumed true). Refused when the destination is missing (dest_offline, never another folder), unusable (dest_marker_mismatch, path_not_allowed), too full for expect_bytes plus the 5 % reserve (507 no_space), being moved, or with 8 sessions open. Sessions idle for 30 minutes end as interrupted. See docs/specs/2026-09-30-phone-backup-device-api.md."
+    },
+    {
+      "id": "device_session_check",
+      "method": "POST",
+      "path": "/devices/:id/sessions/:sid/check",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": "CheckRequest",
+      "request": {
+        "category": "media",
+        "items": [
+          {
+            "path": "DCIM/Camera/PXL_20260930_070102.jpg",
+            "size": 3811234,
+            "mtime": 1790751662000,
+            "sha256": ""
+          },
+          {
+            "path": "DCIM/Camera/PXL_20260930_070102.jpg",
+            "size": 3811234,
+            "mtime": 1790751662000,
+            "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02"
+          },
+          {
+            "path": "Pictures/Saved/PXL_20260901_101010.jpg",
+            "size": 2710033,
+            "mtime": 1788250210000,
+            "sha256": "0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e"
+          },
+          {
+            "path": "DCIM/Camera/PXL_20260929_183000.mp4",
+            "size": 104857600,
+            "mtime": 1790706600000,
+            "sha256": "3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a"
+          }
+        ]
+      },
+      "response_type": "CheckResult",
+      "response": {
+        "items": [
+          {
+            "path": "DCIM/Camera/PXL_20260930_070102.jpg",
+            "status": "need_hash"
+          },
+          {
+            "path": "DCIM/Camera/PXL_20260930_070102.jpg",
+            "status": "need"
+          },
+          {
+            "path": "Pictures/Saved/PXL_20260901_101010.jpg",
+            "status": "have_elsewhere"
+          },
+          {
+            "path": "DCIM/Camera/PXL_20260929_183000.mp4",
+            "status": "need",
+            "upload_id": "up_7d8e9f0a1b2c3d4e5f6a7b8c",
+            "offset": 41943040
+          }
+        ]
+      },
+      "errors": [
+        "validation",
+        "session_closed",
+        "rate_limited",
+        "dest_offline"
+      ],
+      "notes": "Up to 500 files of one files category (media, files, apks): which to send. Answers per item, in order: have, have_elsewhere (placed from a copy already in the backup, nothing to send), need (upload it; upload_id/offset when an unfinished upload of it exists), need_hash (size or mtime changed, or no sha256: send it again with sha256), excluded, invalid (bad path). 240 checks a minute per phone (429)."
+    },
+    {
+      "id": "device_session_check_items",
+      "method": "POST",
+      "path": "/devices/:id/sessions/:sid/check-items",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": "ItemKeysRequest",
+      "request": {
+        "category": "sms",
+        "keys": [
+          "5a0e8c3f2b1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f",
+          "8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c"
+        ]
+      },
+      "response_type": "ItemKeysResult",
+      "response": {
+        "new": [
+          "8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c"
+        ]
+      },
+      "errors": [
+        "validation",
+        "session_closed"
+      ],
+      "notes": "Up to 1000 item keys of sms or calllog: new lists the keys the backup lacks. The phone exports only those. Key formula in docs/specs/2026-09-30-phone-backup-device-api.md."
+    },
+    {
+      "id": "device_session_deleted",
+      "method": "POST",
+      "path": "/devices/:id/sessions/:sid/deleted",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": "DeletedRequest",
+      "request": {
+        "category": "media",
+        "paths": [
+          "DCIM/Camera/PXL_20260801_090000.jpg",
+          "DCIM/Camera/PXL_20260801_090001.jpg"
+        ]
+      },
+      "response_type": "DeletedResult",
+      "response": {
+        "marked": 2,
+        "unknown": 0
+      },
+      "errors": [
+        "validation",
+        "session_closed"
+      ],
+      "notes": "Up to 1000 paths of one files category that are gone from the phone: they stay in the backup, marked deleted_on_device_at (hidden when browsing unless include_deleted). A path that comes back clears its mark."
+    },
+    {
+      "id": "device_session_finish",
+      "method": "POST",
+      "path": "/devices/:id/sessions/:sid/finish",
+      "auth": "device",
+      "envelope": true,
+      "status": 200,
+      "request_type": "FinishRequest",
+      "request": {
+        "status": "success",
+        "errors": []
+      },
+      "response_type": "FinishResult",
+      "response": {
+        "session": {
+          "id": "ses_9c1d2e3f4a5b6c7d",
+          "run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+          "categories": [
+            "contacts",
+            "media"
+          ],
+          "reason": "schedule",
+          "status": "finished",
+          "started_at": "2026-09-30T03:00:05Z",
+          "last_activity": "2026-09-30T03:04:51Z",
+          "ended_at": "2026-09-30T03:04:51Z",
+          "counts": {
+            "uploaded": 42,
+            "linked": 3,
+            "unchanged": 18230,
+            "deleted": 2,
+            "exports": 2,
+            "bytes": 312456789,
+            "errors": 0
+          },
+          "snapshot_id": "snap_5e6f7a8b9c0d1e2f",
+          "resumed": false
+        },
+        "snapshot": {
+          "id": "snap_5e6f7a8b9c0d1e2f",
+          "session_id": "ses_9c1d2e3f4a5b6c7d",
+          "run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+          "taken_at": "2026-09-30T03:04:51Z",
+          "categories": [
+            "contacts",
+            "media"
+          ],
+          "status": "success",
+          "counts": {
+            "uploaded": 42,
+            "linked": 3,
+            "unchanged": 18230,
+            "deleted": 2,
+            "exports": 2,
+            "bytes": 312456789,
+            "errors": 0
+          }
+        },
+        "pending_uploads": 0
+      },
+      "errors": [
+        "validation",
+        "session_closed",
+        "not_found"
+      ],
+      "notes": "Ends the session: status success, partial, failed or cancelled; errors (at most 200) become the run's file errors. success/partial makes a snapshot (success with errors becomes partial). Retention runs afterwards. pending_uploads counts unfinished uploads of the session (they stay resumable for 7 days)."
+    },
+    {
+      "id": "device_upload_create",
+      "method": "POST",
+      "path": "/devices/:id/uploads",
+      "auth": "device",
+      "envelope": true,
+      "status": 201,
+      "request_type": null,
+      "request": null,
+      "response_type": "UploadCreated",
+      "response": {
+        "upload_id": "up_7d8e9f0a1b2c3d4e5f6a7b8c",
+        "location": "/v1/backup/devices/dev_4f1c9a2b7e3d5a60/uploads/up_7d8e9f0a1b2c3d4e5f6a7b8c",
+        "offset": 0,
+        "length": 3811234,
+        "expires_at": "2026-10-07T03:00:07Z",
+        "status": "created"
+      },
+      "errors": [
+        "validation",
+        "session_closed",
+        "too_large",
+        "no_space",
+        "dest_offline",
+        "rate_limited"
+      ],
+      "notes": "tus 1.0 creation. Headers: Tus-Resumable: 1.0.0, Upload-Length, Upload-Metadata (session, category, path or name, sha256, mtime, taken_at, media_id, encrypted; values base64). 201 + Location + Upload-Offset. 200 when nothing is to be sent (status have/excluded) or an unfinished upload of the same file is resumed (status resumed, offset). A 0-byte file is stored at once (status stored). 507 no_space counts every unfinished upload; 413 too_large above 64 GiB; 429 with 64 unfinished uploads."
+    },
+    {
+      "id": "device_upload_head",
+      "method": "HEAD",
+      "path": "/devices/:id/uploads/:uid",
+      "auth": "device",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "none",
+      "response": null,
+      "notes": "tus offset: Upload-Offset and Upload-Length headers, no body. 404 when the upload is unknown, finished, expired or void (the location changed)."
+    },
+    {
+      "id": "device_upload_patch",
+      "method": "PATCH",
+      "path": "/devices/:id/uploads/:uid",
+      "auth": "device",
+      "envelope": false,
+      "status": 204,
+      "request_type": null,
+      "request": null,
+      "response_type": "none",
+      "response": null,
+      "errors": [
+        "offset_mismatch",
+        "too_large",
+        "checksum_mismatch",
+        "session_closed",
+        "dest_offline",
+        "not_found",
+        "invalid_state"
+      ],
+      "notes": "tus PATCH: Content-Type application/offset+octet-stream, Upload-Offset = the current offset (409 offset_mismatch with the right Upload-Offset otherwise), body at most 8 MiB (413 too_large) and never past Upload-Length. 204 + Upload-Offset. The last chunk checks the SHA-256 (422 checksum_mismatch: the upload is dropped) and places the file; its answer carries X-NivaroOS-Upload-Result: stored, unchanged (an export equal to the newest) or no_new_items (sms/calllog with nothing new). A cut-short body keeps what arrived (400 io_error + Upload-Offset). One PATCH at a time per upload (409 invalid_state). Error answers are enveloped."
+    },
+    {
+      "id": "device_upload_delete",
+      "method": "DELETE",
+      "path": "/devices/:id/uploads/:uid",
+      "auth": "device",
+      "envelope": false,
+      "status": 204,
+      "request_type": null,
+      "request": null,
+      "response_type": "none",
+      "response": null,
+      "errors": [
+        "not_found"
+      ],
+      "notes": "tus termination: abandons an upload and frees its space."
+    },
+    {
+      "id": "device_snapshots",
+      "method": "GET",
+      "path": "/devices/:id/snapshots",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]PhoneSnapshot",
+      "response": [
+        {
+          "id": "snap_5e6f7a8b9c0d1e2f",
+          "session_id": "ses_9c1d2e3f4a5b6c7d",
+          "run_id": "run_01J8Y2A3B4C5D6E7F8G9H0JKMN",
+          "taken_at": "2026-09-30T03:04:51Z",
+          "categories": [
+            "contacts",
+            "media"
+          ],
+          "status": "success",
+          "counts": {
+            "uploaded": 42,
+            "linked": 3,
+            "unchanged": 18230,
+            "deleted": 2,
+            "exports": 2,
+            "bytes": 312456789,
+            "errors": 0
+          }
+        }
+      ],
+      "notes": "Finished sessions (success or partial), newest first, at most 1000: the points in time a phone's backup can be browsed and restored at."
+    },
+    {
+      "id": "device_browse",
+      "method": "GET",
+      "path": "/devices/:id/snapshots/:snap/browse",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "PhoneBrowseResult",
+      "response": {
+        "snapshot": "snap_5e6f7a8b9c0d1e2f",
+        "taken_at": "2026-09-30T03:04:51Z",
+        "category": "media",
+        "path": "DCIM",
+        "entries": [
+          {
+            "name": "Camera",
+            "path": "DCIM/Camera",
+            "dir": true,
+            "size": 0,
+            "mtime": 0,
+            "sha256": "",
+            "taken_at": 0,
+            "media_id": 0,
+            "deleted_on_device_at": null,
+            "version": false
+          },
+          {
+            "name": "IMG_0001.jpg",
+            "path": "DCIM/IMG_0001.jpg",
+            "dir": false,
+            "size": 2201931,
+            "mtime": 1700000000000,
+            "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02",
+            "taken_at": 1699999990000,
+            "media_id": 1001,
+            "deleted_on_device_at": "2026-09-12T08:00:00Z",
+            "version": false
+          }
+        ],
+        "truncated": false
+      },
+      "errors": [
+        "validation",
+        "not_found"
+      ],
+      "notes": ":snap is a snapshot id or latest (the backup as it is now). ?category=media|files|apks&path=<folder>&include_deleted=1. Folders first, then files as they were at that snapshot (version true: an older content than the current one). At most 2000 entries (truncated)."
+    },
+    {
+      "id": "device_file_content",
+      "method": "GET",
+      "path": "/devices/:id/files/content",
+      "auth": "device_or_jwt",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "binary",
+      "response": null,
+      "errors": [
+        "validation",
+        "not_found",
+        "dest_offline"
+      ],
+      "notes": "?category=&path=&snapshot=<id|latest>. The file's bytes as they were at the snapshot; Range requests work (206). Headers: ETag and X-NivaroOS-SHA256 (hex), X-NivaroOS-MTime (unix ms). 409 dest_offline while the drive is missing."
+    },
+    {
+      "id": "device_exports",
+      "method": "GET",
+      "path": "/devices/:id/exports",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]PhoneExport",
+      "response": [
+        {
+          "id": "exp_1a2b3c4d5e6f7a8b",
+          "category": "contacts",
+          "name": "",
+          "taken_at": "2026-09-30T03:02:10Z",
+          "size": 203344,
+          "sha256": "9f2c4b1d7e8a6f5c3b2a1908d7e6f5c4b3a29180f7e6d5c4b3a2918f0e7d6c5b",
+          "items": 412,
+          "encrypted": false,
+          "imported": false
+        },
+        {
+          "id": "exp_2b3c4d5e6f7a8b9c",
+          "category": "sms",
+          "name": "",
+          "taken_at": "2026-09-30T03:03:30Z",
+          "size": 18840,
+          "sha256": "1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+          "items": 37,
+          "encrypted": false,
+          "imported": false
+        }
+      ],
+      "errors": [
+        "validation",
+        "not_found"
+      ],
+      "notes": "?category=<export category>&snapshot=<id|latest>: the exports in effect then - the newest of each full category (and calendar name), every export of sms and calllog. ?all=1 lists every export kept, newest first."
+    },
+    {
+      "id": "device_export_content",
+      "method": "GET",
+      "path": "/devices/:id/exports/:eid/content",
+      "auth": "device_or_jwt",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "binary",
+      "response": null,
+      "errors": [
+        "not_found",
+        "dest_offline"
+      ],
+      "notes": "One export file as stored (vCard, iCalendar, SMS Backup & Restore XML, JSON; application/octet-stream when encrypted)."
+    },
+    {
+      "id": "device_export_full",
+      "method": "GET",
+      "path": "/devices/:id/exports/full",
+      "auth": "device_or_jwt",
+      "envelope": false,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "binary",
+      "response": null,
+      "errors": [
+        "validation",
+        "not_found",
+        "dest_offline"
+      ],
+      "notes": "?category=sms|calllog&snapshot=: one SMS Backup & Restore file with every message (or call) of every export up to the snapshot, each once (by item key), oldest export first. Encrypted exports are left out."
+    },
+    {
+      "id": "device_restore_manifest",
+      "method": "GET",
+      "path": "/devices/:id/restore-manifest",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "RestoreManifest",
+      "response": {
+        "snapshot": "snap_5e6f7a8b9c0d1e2f",
+        "taken_at": "2026-09-30T03:04:51Z",
+        "items": [
+          {
+            "category": "media",
+            "path": "DCIM/Camera/PXL_20260930_070102.jpg",
+            "size": 3811234,
+            "mtime": 1790751662000,
+            "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02",
+            "taken_at": 1790751660000,
+            "media_id": 5520,
+            "deleted_on_device_at": null,
+            "content": "/devices/dev_4f1c9a2b7e3d5a60/files/content?category=media&path=DCIM%2FCamera%2FPXL_20260930_070102.jpg&snapshot=snap_5e6f7a8b9c0d1e2f"
+          }
+        ],
+        "exports": [
+          {
+            "id": "exp_1a2b3c4d5e6f7a8b",
+            "category": "contacts",
+            "name": "",
+            "taken_at": "2026-09-30T03:02:10Z",
+            "size": 203344,
+            "sha256": "9f2c4b1d7e8a6f5c3b2a1908d7e6f5c4b3a29180f7e6d5c4b3a2918f0e7d6c5b",
+            "items": 412,
+            "encrypted": false,
+            "imported": false
+          },
+          {
+            "id": "exp_2b3c4d5e6f7a8b9c",
+            "category": "sms",
+            "name": "",
+            "taken_at": "2026-09-30T03:03:30Z",
+            "size": 18840,
+            "sha256": "1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+            "items": 37,
+            "encrypted": false,
+            "imported": false
+          }
+        ],
+        "next_after": "media:DCIM/Camera/PXL_20260930_070102.jpg"
+      },
+      "errors": [
+        "validation",
+        "not_found"
+      ],
+      "notes": "?snapshot=<id|latest>&category=<files category, optional>&after=<next_after>&limit=1..5000 (1000). Every file of the snapshot, including ones deleted on the phone (deleted_on_device_at set), ordered by category then path, each with its content path (GET under /v1/backup). The first page of an all-category listing also lists the exports in effect. Continue with ?after=next_after until it is empty."
+    },
+    {
+      "id": "device_excluded_list",
+      "method": "GET",
+      "path": "/devices/:id/excluded",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": null,
+      "request": null,
+      "response_type": "[]PhoneExcluded",
+      "response": [
+        {
+          "sha256": "6505141ed3281e680933cf2a6b479f387675f7a37be9095cc72b45508eb6eb02",
+          "path": "DCIM/Camera/PXL_20260901_101010.jpg",
+          "added_at": "2026-09-30T09:12:00Z"
+        }
+      ],
+      "notes": "Content hashes the owner removed from the backup; the phone must not upload them again."
+    },
+    {
+      "id": "device_verify",
+      "method": "POST",
+      "path": "/devices/:id/verify",
+      "auth": "device_or_jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "VerifyRequest",
+      "request": {
+        "deep": false
+      },
+      "response_type": "VerifyResult",
+      "response": {
+        "deep": false,
+        "running": false,
+        "checked": 18287,
+        "missing": 1,
+        "damaged": 0,
+        "started_at": "2026-09-30T09:30:00Z",
+        "ended_at": "2026-09-30T09:30:04Z",
+        "error": ""
+      },
+      "errors": [
+        "invalid_state (a check is running)",
+        "dest_offline"
+      ],
+      "notes": "Checks the stored files against the index: missing or wrong size (deep: wrong SHA-256) marks them damaged, and the next check answers need for them so the phone sends them again. deep runs in the background (202, running true; the result lands in GET /devices/:id last_verify and a device-changed event verified)."
     }
   ]
 }

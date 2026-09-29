@@ -276,6 +276,11 @@ type Resolved struct {
 	// Marker is the destination identity marker found at Root/SubPath
 	// (spec §6.2), or null when there is none.
 	Marker *Marker `json:"marker"`
+	// LocalPath is the absolute, symlink-free folder of an online local
+	// endpoint (volume, usb, merge), checked against the allowed roots
+	// - the one path the job side may write into directly (phone
+	// backups). Empty for offline and network endpoints.
+	LocalPath string `json:"local_path,omitempty"`
 }
 
 // MarkerFile is the destination identity marker's name, relative to the

@@ -38,6 +38,10 @@ func (s *Service) toRun(r RunRow, job *Job) Run {
 	if job != nil {
 		out.JobName = job.Name
 		out.Steps = runSteps(*job, r)
+	} else if RunKind(r.Kind) == KindDevice {
+		if d, err := s.store.GetDevice(r.JobID); err == nil {
+			out.JobName = d.Name
+		}
 	} else if RunKind(r.Kind) == KindPrune {
 		if pj, err := s.loadRunJob(r); err == nil {
 			out.JobName = pj.Name
@@ -344,7 +348,11 @@ func (s *Service) handleRunCancel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, ErrorBody{ErrorCode: ErrInvalidState, Detail: "the run already ended"})
 		return
 	}
-	row, err = s.queue.Cancel(id, ErrCancelledByUser)
+	if RunKind(row.Kind) == KindDevice {
+		row, err = s.cancelDeviceRun(row)
+	} else {
+		row, err = s.queue.Cancel(id, ErrCancelledByUser)
+	}
 	if err != nil {
 		s.fail(w, err)
 		return

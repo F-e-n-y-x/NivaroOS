@@ -21,6 +21,9 @@ const (
 	// (spec §10.4). NotificationCenter keeps history in the browser, so
 	// the service can only hand notifications to the UI over the bus.
 	EventNotify = "nivaroos:backup:notify"
+	// EventDeviceChanged: something about an enrolled phone changed (a
+	// session started or ended, settings, location, revoked...).
+	EventDeviceChanged = "nivaroos:backup:device-changed"
 )
 
 // Event properties. All values are strings: numbers in decimal, times
@@ -43,6 +46,7 @@ const (
 	PropSummary     = "summary" // EncodeMessage form, run-end only
 	PropChange      = "change"  // job-changed: JobChange*
 	PropRevision    = "revision"
+	PropDeviceID    = "device_id" // device-changed
 	// notify
 	PropNotifyKey  = "key"     // a NotifyKeys key
 	PropNotifyArgs = "args"    // its args, a JSON object (Message conventions)
@@ -105,5 +109,6 @@ func EventTypes() []EventType {
 		mk(EventRunWaiting, runProps),
 		mk(EventJobChanged, []string{PropJobID, PropChange, PropRevision}),
 		mk(EventNotify, []string{PropNotifyKey, PropNotifyArgs, PropTitle, PropMessage, PropLevel, PropJobID, PropRunID, PropWindow}),
+		mk(EventDeviceChanged, []string{PropDeviceID, PropChange}),
 	}
 }

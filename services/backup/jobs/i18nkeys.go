@@ -104,6 +104,7 @@ var NotifyKeys = map[string][]string{
 	"backup.notify.partial":          {"job", "errors"},
 	"backup.notify.preview_ready":    {"job"},            // a scheduled first run waits for its preview to be approved
 	"backup.notify.restart_gave_up":  {"job", "targets"}, // targets: comma-separated apps / VMs still off
+	"backup.notify.device_stale":     {"device", "days"}, // a phone hasn't finished a backup for days
 }
 
 // MigrationNoteKeys are MigrationItem.Notes keys.
@@ -150,8 +151,8 @@ var CheckMessageKeys = map[string][]string{
 var (
 	RunStatuses   = []RunStatus{StatusQueued, StatusRunning, StatusWaitingUser, StatusSuccess, StatusPartial, StatusFailed, StatusCancelled, StatusSkipped, StatusInterrupted}
 	RunPhases     = []RunPhase{PhasePrecheck, PhasePreHooks, PhaseTransfer, PhaseVerify, PhasePrune, PhasePostHooks}
-	RunKinds      = []RunKind{KindBackup, KindPreview, KindRestore, KindVerify, KindPrune}
-	RunTriggers   = []RunTrigger{RunBySchedule, RunByVolumeMounted, RunByCatchUp, RunByManual, RunByRetry}
+	RunKinds      = []RunKind{KindBackup, KindPreview, KindRestore, KindVerify, KindPrune, KindDevice}
+	RunTriggers   = []RunTrigger{RunBySchedule, RunByVolumeMounted, RunByCatchUp, RunByManual, RunByRetry, RunByDevice}
 	JobTypes      = []JobType{TypeCopy, TypeMirror, TypeArchive}
 	JobHealths    = []string{HealthProblem, HealthOffline, HealthWarning, HealthOK, HealthDisabled}
 	Quirks        = []engine.Quirk{engine.QuirkCaseInsensitive, engine.QuirkNTFSChars, engine.QuirkMtime2s, engine.QuirkMaxFile4G, engine.QuirkNoModTime, engine.QuirkNoHash, engine.QuirkNoMetadata, engine.QuirkPerBranchFree, engine.QuirkDailyQuota}

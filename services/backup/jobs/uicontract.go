@@ -119,6 +119,7 @@ export const BACKUP_EVENTS = Object.freeze({
 	for _, e := range []struct{ name, value string }{
 		{"RUN_BEGIN", EventRunBegin}, {"RUN_PROGRESS", EventRunProgress}, {"RUN_END", EventRunEnd},
 		{"RUN_WAITING", EventRunWaiting}, {"JOB_CHANGED", EventJobChanged}, {"NOTIFY", EventNotify},
+		{"DEVICE_CHANGED", EventDeviceChanged},
 	} {
 		rows = append(rows, fmt.Sprintf("\t%s: %s", e.name, jsString(e.value)))
 	}

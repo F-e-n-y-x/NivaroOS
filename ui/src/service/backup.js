@@ -179,7 +179,38 @@ export function createBackupClient(transport = axiosTransport) {
 		// method here.
 		listDevices: opts => get('/devices', undefined, opts),
 		enrollDevice: ({ name, platform } = {}, opts) => post('/devices', { name, platform }, opts),
-		revokeDevice: (id, opts) => del(`/devices/${enc(id)}`, undefined, opts)
+		// Removes the phone (record, tokens, backup index); purgeData also
+		// deletes its backup folder.
+		revokeDevice: (id, { purgeData = false } = {}, opts) => del(`/devices/${enc(id)}`, { purge_data: purgeData ? 'true' : undefined }, opts),
+
+		// Phone backups (docs/specs/2026-09-30-phone-backup-device-api.md).
+		// The phone's own routes (sessions, uploads, phone-settings) take
+		// its device token and have no method here.
+		getDevice: (id, opts) => get(`/devices/${enc(id)}`, undefined, opts),
+		updateDevice: (id, { name, settings } = {}, opts) => put(`/devices/${enc(id)}`, { name, settings }, opts),
+		// location null = back to the default; mode 'move' | 'fresh'.
+		setDeviceLocation: (id, { location = null, mode = '' } = {}, opts) => post(`/devices/${enc(id)}/destination`, { location, mode }, opts),
+		// Stops the phone, keeps its backups browsable.
+		revokeDeviceAccess: (id, opts) => post(`/devices/${enc(id)}/revoke`, {}, opts),
+		newDeviceToken: (id, opts) => post(`/devices/${enc(id)}/token`, {}, opts),
+		deviceConfig: (id, opts) => get(`/devices/${enc(id)}/config`, undefined, opts),
+		deviceSnapshots: (id, opts) => get(`/devices/${enc(id)}/snapshots`, undefined, opts),
+		browseDevice: (id, snapshot = 'latest', { category, path, includeDeleted } = {}, opts) =>
+			get(`/devices/${enc(id)}/snapshots/${enc(snapshot || 'latest')}/browse`, { category, path, include_deleted: includeDeleted ? 1 : undefined }, opts),
+		deviceExports: (id, { category, snapshot, all } = {}, opts) => get(`/devices/${enc(id)}/exports`, { category, snapshot, all: all ? 1 : undefined }, opts),
+		deviceRestoreManifest: (id, { snapshot, category, after, limit } = {}, opts) => get(`/devices/${enc(id)}/restore-manifest`, { snapshot, category, after, limit }, opts),
+		deviceExcluded: (id, opts) => get(`/devices/${enc(id)}/excluded`, undefined, opts),
+		updateDeviceExcluded: (id, { add = [], remove = [] } = {}, opts) => post(`/devices/${enc(id)}/excluded`, { add, remove }, opts),
+		verifyDevice: (id, { deep = false } = {}, opts) => post(`/devices/${enc(id)}/verify`, { deep: !!deep }, opts),
+		deleteDeviceFiles: (id, { category, path } = {}, opts) => del(`/devices/${enc(id)}/files`, { category, path }, opts),
+		// One file (category + path at snapshot), one export (exportId), or
+		// the whole sms/calllog file (full + category): a token for
+		// downloadUrl().
+		createDeviceDownload: (id, { category, path, snapshot, exportId, full } = {}, opts) =>
+			post(`/devices/${enc(id)}/downloads`, { category: category || '', path: path || '', snapshot: snapshot || '', export_id: exportId || '', full: !!full }, opts),
+		// file: a File/Blob with an SMS Backup & Restore XML file.
+		importDeviceExport: (id, category, file, opts) =>
+			call('post', `/devices/${enc(id)}/exports/import`, { ...opts, params: { category }, data: file })
 	}
 }
 

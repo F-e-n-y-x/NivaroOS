@@ -260,6 +260,7 @@ func (e *Engine) Resolve(ctx context.Context, req ResolveRequest) (Resolved, err
 	}
 	if t.local {
 		out.MountID = t.mv.m.ID
+		out.LocalPath = t.path
 	}
 	out.Free = e.freeSpace(ctx, t)
 	m, err := e.readMarker(ctx, t)

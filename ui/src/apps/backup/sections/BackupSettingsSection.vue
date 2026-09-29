@@ -84,6 +84,9 @@
 						<span class="bk-drive-meta">{{ deviceMeta(d) }}</span>
 						<span class="bk-drive-meta">{{ $t('backup.settings.device_folder', { path: d.default_dest }) }}</span>
 					</div>
+					<button type="button" class="bk-btn is-small" :aria-label="$t('backup.settings.device_open_label', { name: d.name })" @click="app.showPhone(d.id)">
+						{{ $t('backup.settings.device_open') }}
+					</button>
 					<button
 						type="button"
 						class="bk-btn is-small"

@@ -69,6 +69,34 @@ var apiTypes = map[string]func() interface{}{
 	"DeviceEnrollRequest":   func() interface{} { return new(DeviceEnrollRequest) },
 	"DeviceEnrollment":      func() interface{} { return new(DeviceEnrollment) },
 	"DevicePing":            func() interface{} { return new(DevicePing) },
+	// phone backup
+	"DeviceDetail":          func() interface{} { return new(DeviceDetail) },
+	"DeviceUpdateRequest":   func() interface{} { return new(DeviceUpdateRequest) },
+	"DeviceDestRequest":     func() interface{} { return new(DeviceDestRequest) },
+	"DeviceConfig":          func() interface{} { return new(DeviceConfig) },
+	"PhoneSettings":         func() interface{} { return new(PhoneSettings) },
+	"SessionStartRequest":   func() interface{} { return new(SessionStartRequest) },
+	"PhoneSession":          func() interface{} { return new(PhoneSession) },
+	"CheckRequest":          func() interface{} { return new(CheckRequest) },
+	"CheckResult":           func() interface{} { return new(CheckResult) },
+	"ItemKeysRequest":       func() interface{} { return new(ItemKeysRequest) },
+	"ItemKeysResult":        func() interface{} { return new(ItemKeysResult) },
+	"DeletedRequest":        func() interface{} { return new(DeletedRequest) },
+	"DeletedResult":         func() interface{} { return new(DeletedResult) },
+	"FinishRequest":         func() interface{} { return new(FinishRequest) },
+	"FinishResult":          func() interface{} { return new(FinishResult) },
+	"UploadCreated":         func() interface{} { return new(UploadCreated) },
+	"PhoneSnapshot":         func() interface{} { return new(PhoneSnapshot) },
+	"PhoneBrowseResult":     func() interface{} { return new(PhoneBrowseResult) },
+	"PhoneExport":           func() interface{} { return new(PhoneExport) },
+	"RestoreManifest":       func() interface{} { return new(RestoreManifest) },
+	"PhoneExcluded":         func() interface{} { return new(PhoneExcluded) },
+	"ExcludedUpdate":        func() interface{} { return new(ExcludedUpdate) },
+	"FilesRemoved":          func() interface{} { return new(FilesRemoved) },
+	"DeviceDownloadRequest": func() interface{} { return new(DeviceDownloadRequest) },
+	"ImportResult":          func() interface{} { return new(ImportResult) },
+	"VerifyRequest":         func() interface{} { return new(VerifyRequest) },
+	"VerifyResult":          func() interface{} { return new(VerifyResult) },
 }
 
 func newAPIValue(t *testing.T, name string) interface{} {
@@ -141,7 +169,7 @@ func TestAPIFixtures(t *testing.T) {
 		}
 		ids[ep.ID], routes[route] = true, true
 		switch ep.Auth {
-		case "none", "jwt", "token", "device":
+		case "none", "jwt", "token", "device", "device_or_jwt":
 		default:
 			t.Errorf("%s: auth %q", ep.ID, ep.Auth)
 		}
@@ -153,7 +181,10 @@ func TestAPIFixtures(t *testing.T) {
 			} else if string(ep.Request) != "null" {
 				t.Errorf("request example without request_type")
 			}
-			if ep.ResponseType == "binary" {
+			if ep.ResponseType == "binary" || ep.ResponseType == "none" {
+				if string(ep.Response) != "null" {
+					t.Errorf("%s response without a JSON type", ep.ResponseType)
+				}
 				return
 			}
 			if err := fixturetest.CheckJSON(ep.Response, newAPIValue(t, ep.ResponseType)); err != nil {
@@ -161,7 +192,10 @@ func TestAPIFixtures(t *testing.T) {
 			}
 		})
 	}
-	for _, must := range []string{"GET /health", "GET /capabilities", "GET /jobs", "POST /jobs", "PUT /jobs/:id", "GET /runs", "POST /runs/:id/decide", "POST /jobs/:id/restore", "GET /devices", "POST /devices", "DELETE /devices/:id", "GET /devices/:id/ping"} {
+	for _, must := range []string{"GET /health", "GET /capabilities", "GET /jobs", "POST /jobs", "PUT /jobs/:id", "GET /runs", "POST /runs/:id/decide", "POST /jobs/:id/restore", "GET /devices", "POST /devices", "DELETE /devices/:id", "GET /devices/:id/ping",
+		"GET /devices/:id/config", "POST /devices/:id/sessions", "POST /devices/:id/sessions/:sid/check", "POST /devices/:id/uploads",
+		"PATCH /devices/:id/uploads/:uid", "HEAD /devices/:id/uploads/:uid", "POST /devices/:id/sessions/:sid/finish",
+		"GET /devices/:id/restore-manifest", "GET /devices/:id", "POST /devices/:id/destination"} {
 		if !routes[must] {
 			t.Errorf("missing route %s", must)
 		}

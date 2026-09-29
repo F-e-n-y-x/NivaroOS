@@ -58,6 +58,9 @@ func TestResolveVolumeByUUID(t *testing.T) {
 	if r.Marker != nil {
 		t.Errorf("marker = %+v on a new folder", r.Marker)
 	}
+	if real, _ := filepath.EvalSymlinks(filepath.Join(m.MountPoint, "Backups")); r.LocalPath != real {
+		t.Errorf("local_path = %q, want %q", r.LocalPath, real)
+	}
 	want := []Quirk{QuirkCaseInsensitive, QuirkNTFSChars}
 	if strings.Join(quirkStrings(r.Quirks), ",") != strings.Join(quirkStrings(want), ",") {
 		t.Errorf("quirks = %v, want %v", r.Quirks, want)
@@ -70,8 +73,8 @@ func TestResolveVolumeByUUID(t *testing.T) {
 	}
 	// Unmounted: offline, not an error.
 	s.unmount(m)
-	if r := resolveOK(t, e, ep(m, "Backups")); r.Online {
-		t.Fatal("an unmounted volume resolved online")
+	if r := resolveOK(t, e, ep(m, "Backups")); r.Online || r.LocalPath != "" {
+		t.Fatalf("an unmounted volume resolved online: %+v", r)
 	}
 	// Mounted again (new mount ID): found again.
 	s.remount(m)

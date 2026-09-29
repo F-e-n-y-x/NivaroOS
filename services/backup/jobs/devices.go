@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -63,10 +64,10 @@ const (
 	// per device (owner decision, mobile plan §7).
 	DefaultDeviceBackupRoot = "/DATA/Backup"
 
-	deviceTokenPrefix  = "nvd_"
-	deviceTokenBytes   = 32 // 256 bits
-	maxDevices         = 32
-	maxDeviceNameLen   = 64
+	deviceTokenPrefix = "nvd_"
+	deviceTokenBytes  = 32 // 256 bits
+	maxDevices        = 32
+	maxDeviceNameLen  = 64
 	// lastSeenEvery limits last_seen writes to one a minute per device.
 	lastSeenEvery = time.Minute
 )
@@ -84,13 +85,29 @@ type Device struct {
 	Name     string `json:"name"`
 	Platform string `json:"platform"`
 	// DefaultDest is the folder the phone's backups go to by default,
-	// DefaultDeviceBackupRoot/<device name>, unique per device. Uploads
-	// arrive in Phase 2; nothing creates the folder yet.
+	// DefaultDeviceBackupRoot/<device folder>, unique per device.
 	DefaultDest string     `json:"default_dest"`
 	CreatedAt   time.Time  `json:"created_at"`
 	LastSeen    *time.Time `json:"last_seen"`
 	// TokenRotatedAt is when the current credential was issued.
 	TokenRotatedAt time.Time `json:"token_rotated_at"`
+	// RevokedAt is set when the owner revoked the phone's credential
+	// (POST /devices/:id/revoke): its backups stay browsable.
+	RevokedAt *time.Time `json:"revoked_at"`
+	// Folder is the phone's own folder name under its location.
+	Folder string `json:"folder"`
+	// Dest is the location the owner picked for this phone (the folder
+	// that holds Folder); null means the default, DefaultDeviceBackupRoot.
+	Dest *Endpoint `json:"dest"`
+	// DestPath is the phone's backup folder as last seen online.
+	DestPath string `json:"dest_path"`
+	// LastBackupAt / LastStatus: the newest finished session.
+	LastBackupAt *time.Time `json:"last_backup_at"`
+	LastStatus   RunStatus  `json:"last_status"`
+	// SizeBytes is everything kept for the phone (versions included).
+	SizeBytes int64 `json:"size_bytes"`
+	// Moving: the backups are being moved to a new location.
+	Moving bool `json:"moving"`
 }
 
 // DeviceEnrollRequest is POST /devices.
@@ -137,13 +154,43 @@ type DeviceRow struct {
 	// RotationNonce derives the current token from the old one (see
 	// deriveRotatedToken) while the old one is still valid.
 	RotationNonce string
+
+	// Phone backup (phone_dest.go). Dest is the JSON Endpoint of the
+	// location holding Folder, pinned on first use; DestDefault says it
+	// is the default (/DATA/Backup). DestGen counts location changes
+	// (uploads of an older generation are void). DestPath is the last
+	// path seen online.
+	Dest        string
+	DestDefault bool
+	DestGen     int
+	DestPath    string
+	RevokedAt   *time.Time
+	// Settings / PhoneSettings are JSON DeviceSettings / PhoneSettings.
+	Settings        string
+	PhoneSettings   string
+	StaleNotifiedAt *time.Time
+	// A location change in progress (MoveState moving) or failed.
+	MoveState      string
+	MoveError      string
+	MoveTarget     string // JSON Endpoint
+	MoveTargetPath string
+	MoveStartedAt  *time.Time
+	// LastVerify is the JSON VerifyResult of the newest verify.
+	LastVerify string
 }
 
 func (r DeviceRow) toDevice() Device {
-	return Device{
+	d := Device{
 		ID: r.ID, Name: r.Name, Platform: r.Platform, DefaultDest: r.DefaultDest,
 		CreatedAt: r.CreatedAt, LastSeen: r.LastSeen, TokenRotatedAt: r.TokenIssuedAt,
+		RevokedAt: r.RevokedAt, Folder: r.Folder, DestPath: r.DestPath, Moving: r.MoveState == MoveStateMoving,
 	}
+	if !r.DestDefault {
+		if ep, ok := r.destEndpoint(); ok {
+			d.Dest = &ep
+		}
+	}
+	return d
 }
 
 // ---------------------------------------------------------------------
@@ -463,6 +510,19 @@ func deviceScope(p string) (id string, scoped, bad bool) {
 // deviceRoutes are the routes a device token opens.
 func (s *Service) deviceRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /devices/{id}/ping", s.handleDevicePing)
+	// Phone backup (phone_*.go; device API contract in
+	// docs/specs/2026-09-30-phone-backup-device-api.md).
+	m.HandleFunc("PUT /devices/{id}/phone-settings", s.handleDevicePhoneSettings)
+	m.HandleFunc("POST /devices/{id}/sessions", s.handleDeviceSessionStart)
+	m.HandleFunc("POST /devices/{id}/sessions/{sid}/check", s.handleDeviceCheck)
+	m.HandleFunc("POST /devices/{id}/sessions/{sid}/check-items", s.handleDeviceCheckItems)
+	m.HandleFunc("POST /devices/{id}/sessions/{sid}/deleted", s.handleDeviceDeleted)
+	m.HandleFunc("POST /devices/{id}/sessions/{sid}/finish", s.handleDeviceFinish)
+	m.HandleFunc("POST /devices/{id}/uploads", s.handleUploadCreate)
+	m.HandleFunc("HEAD /devices/{id}/uploads/{uid}", s.handleUploadHead)
+	m.HandleFunc("PATCH /devices/{id}/uploads/{uid}", s.handleUploadPatch)
+	m.HandleFunc("DELETE /devices/{id}/uploads/{uid}", s.handleUploadDelete)
+	s.deviceReadRoutes(m)
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, ErrorBody{ErrorCode: ErrNotFound, Detail: r.Method + " " + r.URL.Path})
 	})
@@ -535,7 +595,7 @@ func (s *Service) handleDevicesList(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]Device, len(rows))
 	for i, row := range rows {
-		out[i] = row.toDevice()
+		out[i] = s.deviceView(row)
 	}
 	writeOK(w, http.StatusOK, out)
 }
@@ -575,18 +635,50 @@ func (s *Service) handleDeviceEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "device_enroll", "", fmt.Sprintf("device=%s name=%q", row.ID, row.Name))
-	writeOK(w, http.StatusCreated, DeviceEnrollment{Device: row.toDevice(), Token: token})
+	// Pin the default location now, while the data drive is surely there.
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	if err := s.pinDest(ctx, &row); err != nil {
+		log.Printf("backup: device %s: default location: %v (pinned on first use)", row.ID, err)
+	}
+	cancel()
+	s.deviceChanged(row.ID, DeviceChangeEnrolled)
+	writeOK(w, http.StatusCreated, DeviceEnrollment{Device: s.deviceView(row), Token: token})
 }
 
-func (s *Service) handleDeviceRevoke(w http.ResponseWriter, r *http.Request) {
-	if !requireAdmin(w, r) {
-		return
+// deviceReadRoutes are the phone backup reads a device token and an
+// admin JWT both open (a phone restoring another phone's backup signs
+// in as the owner once).
+func (s *Service) deviceReadRoutes(m *http.ServeMux) {
+	m.HandleFunc("GET /devices/{id}/config", s.handleDeviceConfig)
+	m.HandleFunc("GET /devices/{id}/snapshots", s.handleDeviceSnapshots)
+	m.HandleFunc("GET /devices/{id}/snapshots/{snap}/browse", s.handleDeviceBrowse)
+	m.HandleFunc("GET /devices/{id}/files/content", s.handleDeviceFileContent)
+	m.HandleFunc("GET /devices/{id}/exports", s.handleDeviceExports)
+	m.HandleFunc("GET /devices/{id}/exports/full", s.handleDeviceExportFull)
+	m.HandleFunc("GET /devices/{id}/exports/{eid}/content", s.handleDeviceExportContent)
+	m.HandleFunc("GET /devices/{id}/restore-manifest", s.handleDeviceRestoreManifest)
+	m.HandleFunc("GET /devices/{id}/excluded", s.handleDeviceExcludedList)
+	m.HandleFunc("POST /devices/{id}/verify", s.handleDeviceVerify)
+}
+
+// ownerDeviceRoutes lists (for routing only) the /devices/{id}/* routes
+// the owner's JWT opens: the reads above and the admin ones in routes().
+func (s *Service) ownerDeviceRoutes(m *http.ServeMux) {
+	nop := func(http.ResponseWriter, *http.Request) {}
+	for _, p := range []string{
+		"GET /devices/{id}/config", "GET /devices/{id}/snapshots", "GET /devices/{id}/snapshots/{snap}/browse",
+		"GET /devices/{id}/files/content", "GET /devices/{id}/exports", "GET /devices/{id}/exports/full",
+		"GET /devices/{id}/exports/{eid}/content", "GET /devices/{id}/restore-manifest", "GET /devices/{id}/excluded",
+		"POST /devices/{id}/verify", "POST /devices/{id}/destination", "POST /devices/{id}/revoke",
+		"POST /devices/{id}/token", "POST /devices/{id}/excluded", "DELETE /devices/{id}/files",
+		"POST /devices/{id}/downloads", "POST /devices/{id}/exports/import",
+	} {
+		m.HandleFunc(p, nop)
 	}
-	id := r.PathValue("id")
-	if err := s.store.DeleteDevice(id); err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.audit(r, "device_revoke", "", "device="+id)
-	writeOK(w, http.StatusOK, struct{}{})
+}
+
+// bearerIsDeviceToken: the request carries a device token.
+func bearerIsDeviceToken(r *http.Request) bool {
+	tok, ok := strings.CutPrefix(strings.TrimSpace(r.Header.Get("Authorization")), "Bearer ")
+	return ok && looksLikeDeviceToken(strings.TrimSpace(tok))
 }
