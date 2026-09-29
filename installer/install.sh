@@ -1648,7 +1648,11 @@ install_core_services() {
 			fi
 		done
 
-		# Write GPU Sidecar service unit
+		# Write GPU Sidecar service unit. This whole step is one double-quoted
+		# run_step string: no backticks, \$(...) or bare double quotes in the
+		# unit text below - they run or end the string before the quoted
+		# heredoc ever sees them (a backticked nvidia-smi once pasted its
+		# output table into the unit).
 		cat > /usr/lib/systemd/system/nivaroos-gpu-sidecar.service <<'GPUEOF'
 [Unit]
 Description=NivaroOS GPU Sidecar
@@ -1658,12 +1662,12 @@ After=network.target
 ExecStart=/usr/bin/nivaroos-gpu-sidecar
 Restart=always
 # ProtectSystem=full (read-only /usr, /boot, /etc) was fine when this
-# service only ever ran `nvidia-smi` - it now also runs
+# service only ever ran nvidia-smi - it now also runs
 # gpu-driver-install.sh on request, which does a real apt-get install of a
 # driver package and so unavoidably writes new files under /usr, like any
 # package install does. Read-only /usr made every such install fail
 # silently (permission/read-only-filesystem errors from inside apt),
-# which is exactly what made the GPU widget's "Install Driver" button not
+# which is exactly what made the GPU widget's Install Driver button not
 # work.
 # NoNewPrivileges/ProtectHome stay - neither blocks a package install and
 # both are still free hardening for the far more common nvidia-smi-only
