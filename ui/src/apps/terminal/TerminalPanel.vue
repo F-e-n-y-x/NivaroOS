@@ -710,14 +710,14 @@ export default {
 	padding: 0 var(--space-3);
 	border: none;
 	border-radius: var(--radius-sm);
-	background: #1d4ed8;
-	color: #fff;
+	background: var(--console-accent);
+	color: #0f1115;
 	font-size: var(--font-xs);
 	font-weight: 600;
 	cursor: pointer;
 
 	&:hover {
-		background: #1e40af;
+		background: #5fe8b0;
 	}
 
 	&.is-quiet {
@@ -730,7 +730,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 2px;
 	}
 }
@@ -857,10 +857,10 @@ export default {
 	width: 9rem;
 	height: 1.35rem;
 	padding: 0 var(--space-1);
-	border: 1px solid #38bdf8;
+	border: 1px solid var(--console-accent);
 	border-radius: var(--radius-xs);
 	outline: none;
-	background: #18181b;
+	background: var(--console-bg);
 	color: #fff;
 	font: inherit;
 }
@@ -871,7 +871,7 @@ export default {
 .logs-button,
 .window-btn {
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 1px;
 	}
 }
@@ -924,8 +924,8 @@ export default {
 	height: 0.95rem;
 	padding: 0 3px;
 	border-radius: 999px;
-	background: #1d4ed8;
-	color: #fff;
+	background: var(--console-accent);
+	color: #0f1115;
 	font-size: 0.6rem;
 	font-weight: 700;
 	line-height: 0.95rem;

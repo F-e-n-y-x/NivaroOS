@@ -1171,8 +1171,8 @@ export default {
 }
 
 .terminal-output {
-	background: #0f172a;
-	color: #f8fafc;
+	background: var(--console-bg);
+	color: var(--console-fg);
 	padding: var(--space-4);
 	font-family: $family-monospace;
 	font-size: var(--font-xs);

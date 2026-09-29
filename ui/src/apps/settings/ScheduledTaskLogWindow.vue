@@ -122,8 +122,8 @@ export default {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	background: #18181b;
-	color: #e4e4e7;
+	background: var(--console-bg);
+	color: var(--console-fg);
 	user-select: text;
 }
 
@@ -133,7 +133,7 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--space-3) var(--space-4);
-	background: #202024;
+	background: var(--console-surface);
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	gap: var(--space-2);
 	flex-wrap: wrap;
@@ -186,7 +186,7 @@ export default {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	background: #121214;
+	background: var(--console-bg);
 	padding: var(--space-4);
 }
 
@@ -194,7 +194,7 @@ export default {
 	margin: 0;
 	padding: 0;
 	background: transparent;
-	color: #d4d4d8;
+	color: var(--console-fg);
 	font-family: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 	font-size: 0.8rem;
 	line-height: 1.5;
@@ -208,7 +208,7 @@ export default {
 	align-items: center;
 	justify-content: flex-end;
 	padding: var(--space-2) var(--space-4);
-	background: #202024;
+	background: var(--console-surface);
 	border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 </style>

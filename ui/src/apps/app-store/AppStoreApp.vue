@@ -3374,7 +3374,7 @@ export default {
 	flex-direction: column;
 	border-radius: var(--radius-card);
 	overflow: hidden;
-	border: 1px solid #1e293b;
+	border: 1px solid var(--console-edge);
 }
 
 .yaml-studio-bar {
@@ -3382,8 +3382,8 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--space-2) var(--space-4);
-	background: #090d16;
-	border-bottom: 1px solid #1e293b;
+	background: var(--console-surface);
+	border-bottom: 1px solid var(--console-edge);
 }
 
 .yaml-stat {
@@ -3392,7 +3392,7 @@ export default {
 	gap: var(--space-2);
 	font-size: var(--font-xs);
 	font-family: monospace;
-	color: var(--theme-text-muted, #94a3b8);
+	color: var(--console-muted);
 }
 
 .copy-yaml-btn {
@@ -3401,14 +3401,14 @@ export default {
 	gap: var(--space-1);
 	padding: var(--space-1) var(--space-2);
 	border-radius: var(--radius-xs);
-	border: 1px solid #334155;
-	background: #1e293b;
-	color: var(--theme-text-muted, #cbd5e1);
+	border: 1px solid var(--console-edge);
+	background: var(--console-raised);
+	color: var(--console-fg);
 	font-size: var(--font-2xs);
 	cursor: pointer;
 
 	&:hover {
-		background: #334155;
+		background: var(--console-edge);
 		color: #ffffff;
 	}
 }
@@ -3418,11 +3418,10 @@ export default {
 	min-height: 480px;
 	width: 100%;
 	padding: var(--space-5);
-	/* Fixed dark code-editor bg (not theme-reactive): must match the
-	   always-dark .yaml-studio-bar/border chrome above and the light
-	   cyan text color, in both light and dark mode. */
-	background: #0f172a;
-	color: #38bdf8;
+	/* Always dark, like every console surface (see --console-* in _root). */
+	background: var(--console-bg);
+	color: var(--console-fg);
+	caret-color: var(--console-accent);
 	font-family: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
 	font-size: var(--font-sm);
 	line-height: 1.6;

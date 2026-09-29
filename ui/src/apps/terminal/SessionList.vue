@@ -252,7 +252,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 1px;
 	}
 }
@@ -282,7 +282,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 1px;
 	}
 }
@@ -334,7 +334,7 @@ export default {
 	}
 
 	&.is-current {
-		background: rgba(56, 189, 248, 0.14);
+		background: rgba(125, 249, 197, 0.14);
 	}
 
 	&.is-exited .sl-title {
@@ -358,7 +358,7 @@ export default {
 	cursor: pointer;
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: -2px;
 	}
 }
@@ -375,7 +375,7 @@ export default {
 
 	&.is-detached {
 		background: transparent;
-		border: 2px solid #38bdf8;
+		border: 2px solid var(--console-accent);
 	}
 
 	&.is-exited {
@@ -471,7 +471,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 1px;
 	}
 }
@@ -481,10 +481,10 @@ export default {
 	min-width: 0;
 	height: 1.8rem;
 	padding: 0 var(--space-2);
-	border: 1px solid #38bdf8;
+	border: 1px solid var(--console-accent);
 	border-radius: var(--radius-sm);
 	outline: none;
-	background: #18181b;
+	background: var(--console-bg);
 	color: #f4f4f5;
 	font: inherit;
 }

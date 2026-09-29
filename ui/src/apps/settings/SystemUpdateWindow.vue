@@ -288,15 +288,15 @@ export default {
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	background: #1e1e1e;
+	background: var(--console-bg);
 	box-sizing: border-box;
 	position: relative;
 }
 
 .updater-status-bar {
 	padding: var(--space-3) var(--space-5);
-	background: #262626;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	background: var(--console-surface);
+	border-bottom: 1px solid var(--console-edge);
 	flex-shrink: 0;
 }
 
@@ -311,8 +311,8 @@ export default {
 	flex-shrink: 0;
 
 	&.is-running {
-		background: rgba(51, 136, 255, 0.15);
-		color: var(--color-primary-fg);
+		background: rgba(125, 249, 197, 0.12);
+		color: var(--console-accent);
 	}
 
 	&.is-success {
@@ -386,14 +386,14 @@ export default {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
-	background: #1e1e1e;
+	background: var(--console-bg);
 	min-height: 0;
 }
 
 .terminal-top-bar {
 	padding: var(--space-1) var(--space-3);
-	background: #222222;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	background: var(--console-surface);
+	border-bottom: 1px solid var(--console-edge);
 	flex-shrink: 0;
 }
 

@@ -55,15 +55,15 @@ export default {
 .logs {
 	width: 100%;
 	height: 100%;
-	color: #f4f4f5;
+	color: var(--console-fg);
 	padding: var(--space-2) var(--space-3);
 	overflow-y: auto;
 	overflow-x: hidden;
 	box-sizing: border-box;
-	background: #1e1e1e;
+	background: var(--console-bg);
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: -2px;
 	}
 }

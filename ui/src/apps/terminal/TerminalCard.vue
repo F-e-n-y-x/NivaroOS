@@ -362,12 +362,12 @@ export default {
 				tabStopWidth: 4,
 				windowsMode: false,
 				theme: {
-					background: '#18181b',
+					background: '#0f1115',
 					foreground: '#f4f4f5',
-					cursor: '#38bdf8',
-					cursorAccent: '#18181b',
-					selection: 'rgba(56, 189, 248, 0.35)',
-					black: '#18181b',
+					cursor: '#7df9c5',
+					cursorAccent: '#0f1115',
+					selection: 'rgba(214, 219, 228, 0.28)',
+					black: '#0f1115',
 					red: '#ef4444',
 					green: '#22c55e',
 					yellow: '#eab308',
@@ -808,9 +808,9 @@ export default {
 					matchBackground: '#3f3f46',
 					matchBorder: '#71717a',
 					matchOverviewRuler: '#a1a1aa',
-					activeMatchBackground: '#1d4ed8',
-					activeMatchBorder: '#93c5fd',
-					activeMatchColorOverviewRuler: '#38bdf8'
+					activeMatchBackground: '#1f5c4a',
+					activeMatchBorder: '#7df9c5',
+					activeMatchColorOverviewRuler: '#7df9c5'
 				}
 			}
 			const found = dir < 0 ? this.searchAddon.findPrevious(this.findQuery, opts) : this.searchAddon.findNext(this.findQuery, opts)
@@ -988,7 +988,7 @@ export default {
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	background: #18181b;
+	background: var(--console-bg);
 	padding: var(--space-1) var(--space-2);
 	box-sizing: border-box;
 	overflow: hidden;
@@ -1052,7 +1052,7 @@ export default {
 	max-width: calc(100% - 2 * var(--space-3));
 	padding: 3px 4px 3px var(--space-2);
 	border-radius: var(--radius-control);
-	background: #27272a;
+	background: var(--console-raised);
 	border: 1px solid rgba(255, 255, 255, 0.16);
 	box-shadow: var(--shadow-xl);
 	z-index: 7;
@@ -1115,7 +1115,7 @@ export default {
 	}
 
 	&.is-on {
-		background: rgba(56, 189, 248, 0.22);
+		background: rgba(125, 249, 197, 0.22);
 		color: #fff;
 	}
 
@@ -1125,7 +1125,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 1px;
 	}
 }
@@ -1141,7 +1141,7 @@ export default {
 	max-width: calc(100% - 2 * var(--space-4));
 	padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
 	border-radius: var(--radius-control);
-	background: #27272a;
+	background: var(--console-raised);
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	box-shadow: var(--shadow-xl);
 	color: #f4f4f5;
@@ -1187,15 +1187,15 @@ export default {
 	padding: 0 var(--space-3);
 	border: none;
 	border-radius: var(--radius-sm);
-	background: #1d4ed8;
-	color: #fff;
+	background: var(--console-accent);
+	color: #0f1115;
 	font-size: var(--font-xs);
 	font-weight: 600;
 	cursor: pointer;
 	white-space: nowrap;
 
 	&:hover {
-		background: #1e40af;
+		background: #5fe8b0;
 	}
 
 	&.is-quiet {
@@ -1213,7 +1213,7 @@ export default {
 	}
 
 	&:focus-visible {
-		outline: 2px solid #93c5fd;
+		outline: 2px solid var(--console-accent);
 		outline-offset: 2px;
 	}
 }
@@ -1234,7 +1234,7 @@ export default {
 	max-width: 30rem;
 	padding: var(--space-4);
 	border-radius: var(--radius-card, 12px);
-	background: #27272a;
+	background: var(--console-raised);
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	box-shadow: var(--shadow-xl);
 	color: #f4f4f5;
@@ -1259,7 +1259,7 @@ export default {
 	padding: var(--space-2) var(--space-3);
 	border: 1px solid rgba(255, 255, 255, 0.16);
 	border-radius: var(--radius-sm);
-	background: #18181b;
+	background: var(--console-bg);
 	color: #e4e4e7;
 	font-family: "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
 	font-size: 16px; /* 16px: iOS doesn't zoom the page on focus */
@@ -1272,7 +1272,7 @@ export default {
 	margin: 0 0 var(--space-3);
 	padding: var(--space-2) var(--space-3);
 	border-radius: var(--radius-sm);
-	background: #18181b;
+	background: var(--console-bg);
 	color: #e4e4e7;
 	font-family: "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
 	font-size: var(--font-xs);
@@ -1301,7 +1301,7 @@ export default {
 	min-width: 14rem;
 	padding: var(--space-1);
 	border-radius: var(--radius-control);
-	background: #27272a;
+	background: var(--console-raised);
 	border: 1px solid rgba(255, 255, 255, 0.14);
 	box-shadow: var(--shadow-xl);
 	color: #f4f4f5;
@@ -1350,7 +1350,7 @@ export default {
 
 	&:hover:not(:disabled),
 	&:focus-visible {
-		background: rgba(56, 189, 248, 0.16);
+		background: rgba(125, 249, 197, 0.16);
 		outline: none;
 	}
 
@@ -1400,18 +1400,19 @@ export default {
 		min-height: 2.25rem;
 		border: 1px solid rgba(255, 255, 255, 0.14);
 		border-radius: var(--radius-sm);
-		background: #27272a;
+		background: var(--console-raised);
 		color: #f4f4f5;
 		font-size: var(--font-xs);
 		cursor: pointer;
 
 		&.is-on {
-			background: #1d4ed8;
-			border-color: #1d4ed8;
+			background: var(--console-accent);
+			border-color: var(--console-accent);
+			color: #0f1115;
 		}
 
 		&:focus-visible {
-			outline: 2px solid #93c5fd;
+			outline: 2px solid var(--console-accent);
 			outline-offset: 1px;
 		}
 	}

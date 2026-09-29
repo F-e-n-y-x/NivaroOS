@@ -12,6 +12,19 @@
 :root {
     --background: $main-background-color;
 
+    // ── Console surfaces ────────────────────────────────────
+    // Terminals, logs and code editors: always dark, in both themes, in
+    // the brand's neutral graphite (the logo's ink) - not navy, and with
+    // no blue in the text. Mint is the cursor, like the logo's dot.
+    --console-bg:        #0f1115;
+    --console-surface:   #171a20;
+    --console-raised:    #1f232b;
+    --console-edge:      #2a2f39;
+    --console-fg:        #d6dbe4;
+    --console-muted:     #8a909c;
+    --console-accent:    #7df9c5;
+    --console-selection: rgba(214, 219, 228, 0.24);
+
     // ── Semantic Status Colors ──────────────────────────────
     // These are accent/status colors that adjust for dark mode in _dark.scss
     --color-primary:        #2563eb;
