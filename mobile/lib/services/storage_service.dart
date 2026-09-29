@@ -59,9 +59,13 @@ class StorageService {
   static const _keyUpdateCheck = 'app_update_check';
   // Per server, like the secret: the tabs open in Files there.
   static const _keyFilesTabsPrefix = 'files_tabs@';
+  // "Back up this phone": the device credential (server, device id and
+  // token, shown once at enrolment). Kept on sign out: the phone keeps
+  // backing up with its own token until it is unlinked.
+  static const _keyPhoneBackup = 'phone_backup_credential';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked};
+  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked, _keyPhoneBackup};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -111,6 +115,34 @@ class StorageService {
   Future<void> _remove(String key) async {
     _cache.remove(key);
     await _secureStorage.delete(key: key);
+  }
+
+  /// The phone backup credential as JSON, read from secure storage itself
+  /// (the background job may have rotated the token since this isolate
+  /// loaded its cache).
+  Future<String?> getPhoneBackupCredential() async {
+    if (!_initialized) await init();
+    try {
+      final v = await _secureStorage.read(key: _keyPhoneBackup);
+      if (v == null) {
+        _cache.remove(_keyPhoneBackup);
+      } else {
+        _cache[_keyPhoneBackup] = v;
+      }
+      return v;
+    } catch (_) {
+      return _cache[_keyPhoneBackup];
+    }
+  }
+
+  /// Stores (or, with null, forgets) the phone backup credential.
+  Future<void> setPhoneBackupCredential(String? json) async {
+    if (!_initialized) await init();
+    if (json == null) {
+      await _remove(_keyPhoneBackup);
+    } else {
+      await _set(_keyPhoneBackup, json);
+    }
   }
 
   Future<String?> getCompanionDeviceName() async {
