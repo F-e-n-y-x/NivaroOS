@@ -1,69 +1,92 @@
-
 <template>
-	<div class="terminal-window">
-		<!-- This bar IS the window's titlebar now (draggable, own minimize/
-		     close, no maximize) - same treatment as Files' TabBar.vue. It
-		     stays visible regardless of the Terminal/Logs toggle below, for
-		     the same reason Files' tab bar stays visible in Shared/Drop: as
-		     the only titlebar, hiding it would remove drag/minimize/close
-		     entirely whenever Logs is showing. -->
+	<div ref="win" class="terminal-window" :class="{ 'is-narrow': narrow }">
+		<!-- This bar IS the window's titlebar (draggable, own minimize/close,
+		     no maximize) - same treatment as Files' TabBar.vue. It stays
+		     visible with the Logs tab too: as the only titlebar, hiding it
+		     would remove drag/minimize/close. -->
 		<div class="terminal-tabs" @pointerdown="$emit('drag-start', $event)">
-			<div v-for="tab in terminalTabs" :key="tab.id" class="terminal-tab"
-				:class="{ active: tab.id === activeTerminalTabId }">
-				<button type="button" class="terminal-tab-label" :aria-pressed="tab.id === activeTerminalTabId ? 'true' : 'false'"
-					@click="activateTerminalTab(tab.id)">
-					<span class="one-line">{{ tab.title }}</span>
+			<div v-for="tab in tabs" :key="tab.key" class="terminal-tab"
+				:class="{ active: tab.key === activeKey, 'is-exited': tabExited(tab) }"
+				@auxclick.middle.prevent="closeTab(tab.key)">
+				<form v-if="renamingKey === tab.key" class="terminal-tab-rename" @submit.prevent="commitTabRename(tab)" @pointerdown.stop>
+					<input ref="tabRenameInput" v-model="renameValue" type="text" maxlength="80" :aria-label="$t('Session name')"
+						@keydown.esc.prevent.stop="cancelTabRename" @blur="commitTabRename(tab)">
+				</form>
+				<button v-else type="button" class="terminal-tab-label" :aria-pressed="tab.key === activeKey ? 'true' : 'false'"
+					:title="tabTooltip(tab)" @click="activate(tab.key)" @dblclick="startTabRename(tab)">
+					<i v-if="tab.type === 'logs'" class="mdi mdi-text-box-outline terminal-tab-icon" aria-hidden="true"></i>
+					<i v-else-if="tabKind(tab) === 'container'" class="mdi mdi-docker terminal-tab-icon" aria-hidden="true"></i>
+					<span v-if="tab.type === 'shell'" class="terminal-tab-dot" :class="tabDotClass(tab)" aria-hidden="true"></span>
+					<span class="one-line">{{ tabTitle(tab) }}</span>
 				</button>
-				<button v-if="canCloseTab(tab)" type="button" class="terminal-tab-close"
-					:title="$t('Close {name}', { name: tab.title })" :aria-label="$t('Close {name}', { name: tab.title })"
-					@click.stop="closeTerminalTab(tab.id)">
+				<button type="button" class="terminal-tab-close"
+					:title="closeTabTitle(tab)" :aria-label="closeTabTitle(tab)"
+					@click.stop="closeTab(tab.key)">
 					<b-icon icon="close" size="is-small"></b-icon>
 				</button>
 			</div>
-			<button type="button" class="terminal-tab-add" :title="$t('New tab')" :aria-label="$t('New tab')" @click="addTerminalTab">
+			<button type="button" class="terminal-tab-add" :title="$t('New terminal')" :aria-label="$t('New terminal')" @click="newTab()">
 				<b-icon icon="plus" size="is-small"></b-icon>
+			</button>
+			<div class="terminal-tabs-spacer"></div>
+			<button type="button" class="terminal-tab-add has-badge" :class="{ active: sidebarOpen }"
+				:title="$t('Sessions')" :aria-label="$t('Sessions')" :aria-pressed="sidebarOpen ? 'true' : 'false'"
+				@click="toggleSidebar">
+				<i class="mdi mdi-format-list-bulleted-square" aria-hidden="true"></i>
+				<span v-if="backgroundCount" class="terminal-badge">{{ backgroundCount }}</span>
 			</button>
 			<button type="button" class="terminal-tab-add" :title="$t('New Window')" :aria-label="$t('New Window')" @click="openNewWindow">
 				<b-icon icon="open-in-new" size="is-small"></b-icon>
 			</button>
-			<div class="terminal-tabs-spacer"></div>
-			<template v-if="activeTerminalTabId !== 'logs'">
-				<button type="button" class="terminal-tab-add" :title="$t('Smaller text (Ctrl+-)')" :aria-label="$t('Smaller text (Ctrl+-)')" @click="zoomActive(-1)">
-					<b-icon icon="magnify-minus-outline" size="is-small"></b-icon>
-				</button>
-				<button type="button" class="terminal-tab-add" :title="$t('Larger text (Ctrl+=)')" :aria-label="$t('Larger text (Ctrl+=)')" @click="zoomActive(1)">
-					<b-icon icon="magnify-plus-outline" size="is-small"></b-icon>
-				</button>
-				<button type="button" class="terminal-tab-add" :class="{ active: copyOnSelect }"
-					:title="$t('Copy on select (Ctrl+Shift+C / Ctrl+Shift+V always work)')"
-					:aria-label="$t('Copy on select')" :aria-pressed="copyOnSelect ? 'true' : 'false'"
-					@click="toggleCopyOnSelect">
-					<b-icon icon="content-copy" size="is-small"></b-icon>
-				</button>
-			</template>
 			<button type="button" class="logs-button" :class="{ active: hasLogsTab }" @click="openLogsTab">
 				<b-icon icon="history-records-outline" pack="casa" custom-size="casa-14px" />
 				<span>{{ $t('Logs') }}</span>
 			</button>
 			<div class="window-controls">
 				<button type="button" class="window-btn window-btn-minimize" :title="$t('Minimize')" :aria-label="$t('Minimize')" @click.stop="$emit('minimize')"></button>
-				<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="$emit('close')"></button>
+				<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="requestClose"></button>
 			</div>
 		</div>
 
-		<div class="terminal-body">
-			<div v-for="tab in shellTabs" :key="tab.id" v-show="tab.id === activeTerminalTabId" class="terminal-body-layer">
-				<terminal-card :ref="'terminal-' + tab.id" :init-command="tab.id === 1 ? initCommand : ''"></terminal-card>
+		<div class="terminal-main">
+			<div class="terminal-body">
+				<div v-for="tab in shellTabs" :key="tab.key" v-show="tab.key === activeKey" class="terminal-body-layer">
+					<terminal-card :ref="'terminal-' + tab.key" :session="tab.initialSession"
+						:create-spec="tab.initialSession ? null : tab.createSpec" :init-command="tab.initCommand" closable
+						@session="onTabSession(tab, $event)" @exit="onTabExit(tab, $event)" @gone="onTabGone(tab)"
+						@state="onTabState(tab, $event)" @close="closeTab(tab.key)" @rename="startTabRename(tab)"
+						@end="endTabSession(tab)" @show-sessions="openSidebar"></terminal-card>
+				</div>
+				<!-- Outside the v-for above: a static ref inside a v-for is
+				     always an array in Vue 2. -->
+				<div v-if="hasLogsTab" v-show="activeKey === 'logs'" class="terminal-body-layer">
+					<logs-card ref="logs" :data="logData" :error="logError"></logs-card>
+				</div>
+
+				<div v-if="!tabs.length" class="terminal-empty">
+					<i class="mdi mdi-console terminal-empty-icon" aria-hidden="true"></i>
+					<p class="terminal-empty-title">{{ $t('No terminal open') }}</p>
+					<p v-if="backgroundCount" class="terminal-empty-text">
+						{{ $t('{n} session(s) still running in the background.', { n: backgroundCount }) }}
+					</p>
+					<div class="terminal-empty-actions">
+						<button type="button" class="terminal-empty-btn" @click="newTab()">
+							<i class="mdi mdi-plus mr-1" aria-hidden="true"></i>{{ $t('New terminal') }}
+						</button>
+						<button v-if="backgroundCount && !sidebarOpen" type="button" class="terminal-empty-btn is-quiet" @click="openSidebar">
+							{{ $t('Show sessions') }}
+						</button>
+					</div>
+				</div>
 			</div>
-			<!-- Deliberately outside the v-for above, not a type-branch inside
-			     it: a static ref (needed since there's only ever one Logs
-			     pane, unlike the per-id dynamic refs shell tabs use) INSIDE a
-			     v-for is always collected as an array in Vue 2, regardless of
-			     how many elements actually end up using it - that silently
-			     broke every this.$refs.logs.active(...) call below. -->
-			<div v-if="hasLogsTab" v-show="activeTerminalTabId === 'logs'" class="terminal-body-layer">
-				<logs-card ref="logs" :data="logData" :error="logError"></logs-card>
-			</div>
+
+			<aside v-if="sidebarOpen" class="terminal-sidebar" :aria-label="$t('Terminal sessions')">
+				<session-list show-close :sessions="allSessions" :loading="listLoading" :error="listError"
+					:open-keys="openKeys" :current-key="currentSessionKey" :new-label="$t('New terminal')"
+					:footnote="sidebarFootnote"
+					@refresh="refreshSessions" @close="sidebarOpen = false" @open="openSession" @new="newTab()"
+					@rename="renameSession" @kill="killSession"></session-list>
+			</aside>
 		</div>
 
 		<b-loading v-model="isLoading" :is-full-page="false"></b-loading>
@@ -71,77 +94,199 @@
 </template>
 
 <script>
-import TerminalCard from './TerminalCard.vue';
-import LogsCard from './LogsCard.vue';
+import TerminalCard from './TerminalCard.vue'
+import LogsCard from './LogsCard.vue'
+import SessionList from './SessionList.vue'
+import terminalSessions from '@/service/terminalSessions.js'
+import { apiError } from '@/utils/apiError'
+import {
+	sessionKey, familyOf, isIdleShell, loadWindowLayout, saveWindowLayout, forgetWindowLayout,
+	saveLastClosed, takeLastClosed, restorableTabs,
+} from './termSessions.js'
+
+const LIST_POLL_MS = 5000
+
+function escapeHtml(s) {
+	return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+let tabSeq = 0
+function nextTabKey() {
+	tabSeq += 1
+	return 't' + Date.now().toString(36) + tabSeq
+}
 
 export default {
 	name: 'terminal-panel',
 	components: {
 		TerminalCard,
-		LogsCard
+		LogsCard,
+		SessionList,
 	},
 	props: {
-		// A command to type and run automatically in this window's first
-		// shell tab as soon as it connects - e.g. Settings' "Open Terminal"
-		// for connecting an rclone-authorize-based cloud account.
-		initCommand: { type: String, default: '' }
+		// A command to type and run in a new shell as soon as it is live -
+		// e.g. Settings' "Open Terminal" for an rclone-authorize cloud account.
+		initCommand: { type: String, default: '' },
+		// Stamped by OPEN_WINDOW when this window is asked for again.
+		requestedAt: { type: Number, default: 0 },
+		// A window opened with "New Window" starts with a new shell instead
+		// of picking up the sessions of the last closed window.
+		fresh: { type: Boolean, default: false },
 	},
 	data() {
 		return {
 			isLoading: false,
-			wsUrl: ``,
-			logData: "",
-			logError: "",
+			logData: '',
+			logError: '',
 			logsInFlight: false,
 			timer: null,
-			copyOnSelect: (() => { try { return localStorage.getItem('terminalCopyOnSelect') === '1' } catch (e) { return false } })(),
-			// Each tab is either a `type: 'shell'` (its own independent pty
-			// session - own TerminalCard, own WebSocket) or the single
-			// `type: 'logs'` tab (fixed id 'logs', toggled via the logs
-			// button rather than freely duplicated like shell tabs). All
-			// currently-open tabs stay mounted (v-show, not v-if) so
-			// switching never disconnects a shell or loses log scroll
-			// position. Closing a tab removes it from this array, which lets
-			// Vue actually unmount that one TerminalCard so its socket closes.
-			terminalTabs: [{ id: 1, title: `${this.$t('Shell')} 1`, type: 'shell' }],
-			activeTerminalTabId: 1,
-			nextTerminalTabId: 2
+			// { key, type: 'shell'|'logs', session, createSpec, initCommand,
+			//   state, exit, gone }. All open tabs stay mounted (v-show), so
+			// switching never disconnects a shell.
+			tabs: [],
+			activeKey: null,
+			sidebarOpen: false,
+			allSessions: [],
+			listLoading: false,
+			listError: '',
+			renamingKey: '',
+			renameValue: '',
+			narrow: false,
 		}
 	},
 	computed: {
+		windowId() {
+			const w = this.$parent && this.$parent.win
+			return (w && w.id) || 'terminal'
+		},
 		hasLogsTab() {
-			return this.terminalTabs.some(t => t.id === 'logs')
+			return this.tabs.some(t => t.type === 'logs')
 		},
 		shellTabs() {
-			return this.terminalTabs.filter(t => t.type === 'shell')
-		}
+			return this.tabs.filter(t => t.type === 'shell')
+		},
+		openKeys() {
+			return this.shellTabs.filter(t => t.session).map(t => sessionKey(t.session))
+		},
+		currentSessionKey() {
+			const tab = this.tabs.find(t => t.key === this.activeKey)
+			return tab && tab.session ? sessionKey(tab.session) : ''
+		},
+		// Running sessions not shown in this window.
+		backgroundCount() {
+			const open = new Set(this.openKeys)
+			return this.allSessions.filter(s => s.state === 'running' && !open.has(sessionKey(s))).length
+		},
+		sidebarFootnote() {
+			return this.$t('Sessions keep running when you close a tab or this window. They end if the server restarts.')
+		},
+		layout() {
+			const tabs = this.shellTabs.filter(t => t.session && t.session.id && !this.tabExited(t) && !t.gone)
+				.map(t => ({ id: t.session.id, kind: familyOf(t.session) }))
+			const active = this.tabs.find(t => t.key === this.activeKey)
+			return { tabs, active: active && active.session ? active.session.id : null }
+		},
+	},
+	watch: {
+		layout: {
+			deep: true,
+			handler(l) {
+				if (this.initialised) saveWindowLayout(this.windowId, l)
+			},
+		},
+		requestedAt() {
+			if (this.initCommand) this.newTab({ initCommand: this.initCommand })
+		},
+		sidebarOpen(open) {
+			if (open) this.refreshSessions()
+			this.$nextTick(() => {
+				const ref = this.activeShellRef()
+				if (ref) ref.active(true)
+			})
+		},
 	},
 	mounted() {
-		// 500 log lines are only fetched while the Logs tab is actually on
-		// screen (not merely open, not while this window is minimised or the
-		// browser tab is hidden) - see logsVisible().
+		// Logs are only fetched while the Logs tab is on screen.
 		this.timer = setInterval(() => {
-			if (this.logsVisible()) this.getLogs();
-		}, 1000 * 5);
-		document.addEventListener('visibilitychange', this.onVisibility);
+			if (this.logsVisible()) this.getLogs()
+			if (this.sidebarOpen && this.onScreen()) this.refreshSessions(true)
+		}, LIST_POLL_MS)
+		document.addEventListener('visibilitychange', this.onVisibility)
+		this.resizeObserver = new ResizeObserver(() => {
+			const w = this.$refs.win
+			if (w) this.narrow = w.clientWidth < 620
+		})
+		this.resizeObserver.observe(this.$refs.win)
+		this.init()
+	},
+	beforeDestroy() {
+		clearInterval(this.timer)
+		document.removeEventListener('visibilitychange', this.onVisibility)
+		if (this.resizeObserver) this.resizeObserver.disconnect()
+		// The window is being closed (a page reload doesn't destroy it):
+		// its sessions keep running, and the next Terminal picks them up.
+		const layout = this.layout
+		if (layout.tabs.length) saveLastClosed(layout)
+		forgetWindowLayout(this.windowId)
 	},
 	methods: {
+		async init() {
+			if (this.initCommand) {
+				this.newTab({ initCommand: this.initCommand })
+				this.initialised = true
+				this.refreshSessions(true)
+				return
+			}
+			const saved = loadWindowLayout(this.windowId) || (this.fresh ? null : takeLastClosed())
+			if (saved) {
+				this.isLoading = true
+				try {
+					const { sessions, errors } = await terminalSessions.listAll()
+					this.allSessions = sessions
+					const failedKinds = Object.keys(errors || {})
+					const { tabs, active } = restorableTabs(saved, sessions)
+					tabs.forEach(s => this.addTab({ session: s }, false))
+					// A family whose list failed: try its saved tabs anyway, the
+					// card finds out whether they still exist.
+					saved.tabs.filter(t => failedKinds.includes(t.kind)).forEach(t => this.addTab({ session: { id: t.id, kind: t.kind, title: '' } }, false))
+					if (this.tabs.length) {
+						const tab = this.tabs.find(t => t.session && t.session.id === active) || this.tabs[0]
+						this.activate(tab.key)
+					} else {
+						this.$buefy.toast.open({
+							message: this.$t('Your previous terminal session has ended.'),
+							type: 'is-dark',
+							position: 'is-bottom',
+							duration: 3500,
+						})
+					}
+				} catch (e) {
+					saved.tabs.forEach(t => this.addTab({ session: { id: t.id, kind: t.kind, title: '' } }, false))
+					if (this.tabs.length) this.activate(this.tabs[0].key)
+				} finally {
+					this.isLoading = false
+				}
+			}
+			if (!this.tabs.length) this.newTab()
+			this.initialised = true
+			saveWindowLayout(this.windowId, this.layout)
+		},
+
+		onScreen() {
+			return !document.hidden && !!this.$el && this.$el.getClientRects().length > 0
+		},
 		logsVisible() {
-			if (document.hidden || this.activeTerminalTabId !== 'logs' || !this.$el) return false
-			// A minimised window is display:none -> no client rects.
-			return this.$el.getClientRects().length > 0
+			return this.activeKey === 'logs' && this.onScreen()
 		},
 		onVisibility() {
 			if (this.logsVisible()) this.getLogs()
+			if (this.sidebarOpen && this.onScreen()) this.refreshSessions(true)
 		},
 		getLogs() {
 			if (this.logsInFlight) return
 			this.logsInFlight = true
 			this.$api.sys.getLogs(500).then(res => {
 				const data = (res.data && res.data.data) || ''
-				// Lines are shown whole (the old code cut the first 8
-				// characters of every line - the "YYYY-MM-" of the timestamp);
-				// only the trailing newline is dropped.
 				this.logData = typeof data === 'string' ? data.replace(/\n+$/, '') : String(data)
 				this.logError = ''
 			}).catch(err => {
@@ -152,99 +297,310 @@ export default {
 				this.logsInFlight = false
 			})
 		},
-		activeShellRef() {
-			const tab = this.terminalTabs.find(t => t.id === this.activeTerminalTabId && t.type === 'shell')
-			return tab ? this.getTabRef(tab) : null
-		},
-		zoomActive(delta) {
-			const ref = this.activeShellRef()
-			if (ref) {
-				ref.zoom(delta)
-				this.$nextTick(() => ref.active(true))
+
+		// --- sessions list ---------------------------------------------------
+		async refreshSessions(silent) {
+			if (this.listInFlight) return
+			this.listInFlight = true
+			if (!silent) this.listLoading = true
+			try {
+				const { sessions, errors } = await terminalSessions.listAll()
+				this.allSessions = sessions
+				const failed = Object.keys(errors || {})
+				this.listError = failed.length === 2
+					? apiError(errors.host, this.$t("Couldn't load the session list"))
+					: ''
+			} catch (err) {
+				this.listError = apiError(err, this.$t("Couldn't load the session list"))
+			} finally {
+				this.listInFlight = false
+				this.listLoading = false
 			}
 		},
-		toggleCopyOnSelect() {
-			this.copyOnSelect = !this.copyOnSelect
-			this.shellTabs.forEach(tab => {
-				const ref = this.getTabRef(tab)
-				if (ref) ref.setCopyOnSelect(this.copyOnSelect)
-			})
+		toggleSidebar() {
+			this.sidebarOpen = !this.sidebarOpen
 		},
-		// Any ref used lexically inside a v-for is collected into an array by
-		// Vue 2, regardless of whether the ref key is unique per iteration -
-		// this is decided at compile time (is the ref inside a v-for at all),
-		// not at runtime by how many elements actually end up sharing a key.
-		// The shell refs below (:ref="'terminal-' + tab.id") looked safe
-		// because each key really is unique, but they're still wrapped in a
-		// single-element array - unwrapped here so callers always get the
-		// component instance directly.
+		openSidebar() {
+			this.sidebarOpen = true
+		},
+		openSession(s) {
+			const key = sessionKey(s)
+			const tab = this.shellTabs.find(t => t.session && sessionKey(t.session) === key)
+			if (tab) {
+				this.activate(tab.key)
+			} else {
+				this.addTab({ session: s })
+			}
+			if (this.narrow) this.sidebarOpen = false
+		},
+		async renameSession(s, title) {
+			try {
+				const updated = await terminalSessions.rename(s, title)
+				if (updated) this.applySessionUpdate(updated)
+			} catch (err) {
+				this.toastError(apiError(err, this.$t("Couldn't rename the session")))
+			}
+			this.refreshSessions(true)
+		},
+		async killSession(s) {
+			const key = sessionKey(s)
+			try {
+				await terminalSessions.kill(s)
+			} catch (err) {
+				if (!err || !err.response || err.response.status !== 404) {
+					this.toastError(apiError(err, this.$t("Couldn't end the session")))
+					return
+				}
+			}
+			// Its tab (if any) goes too: ending it here was the point.
+			this.shellTabs.filter(t => t.session && sessionKey(t.session) === key).forEach(t => this.removeTab(t.key))
+			this.allSessions = this.allSessions.filter(x => sessionKey(x) !== key)
+			this.refreshSessions(true)
+		},
+		applySessionUpdate(s) {
+			const key = sessionKey(s)
+			this.shellTabs.forEach(t => {
+				if (t.session && sessionKey(t.session) === key) t.session = Object.assign({}, t.session, s)
+			})
+			this.allSessions = this.allSessions.map(x => (sessionKey(x) === key ? s : x))
+		},
+
+		// --- tabs --------------------------------------------------------------
+		addTab(opts, activate = true) {
+			const tab = {
+				key: nextTabKey(),
+				type: 'shell',
+				session: opts.session || null,
+				// What the card mounts with; `session` then follows the server.
+				initialSession: opts.session || null,
+				createSpec: opts.session ? null : (opts.createSpec || { kind: 'host' }),
+				initCommand: opts.initCommand || '',
+				state: 'idle',
+				exit: null,
+				gone: false,
+				wasLive: false,
+			}
+			this.tabs.push(tab)
+			if (activate) this.activate(tab.key)
+			return tab
+		},
+		newTab(opts = {}) {
+			return this.addTab({ createSpec: { kind: 'host' }, initCommand: opts.initCommand })
+		},
+		tabKind(tab) {
+			if (tab.session) return familyOf(tab.session)
+			return (tab.createSpec && tab.createSpec.kind) || 'host'
+		},
+		tabTitle(tab) {
+			if (tab.type === 'logs') return this.$t('Logs')
+			if (tab.session && tab.session.title) return tab.session.title
+			return tab.session ? this.$t('Terminal') : this.$t('New terminal')
+		},
+		tabTooltip(tab) {
+			if (tab.type !== 'shell' || !tab.session) return this.tabTitle(tab)
+			const bits = [this.tabTitle(tab)]
+			if (tab.session.cwd) bits.push(tab.session.cwd)
+			bits.push(this.$t('Double-click to rename'))
+			return bits.join('\n')
+		},
+		tabExited(tab) {
+			return tab.type === 'shell' && (!!tab.exit || (tab.session && tab.session.state === 'exited'))
+		},
+		tabDotClass(tab) {
+			if (this.tabExited(tab) || tab.gone) return 'is-exited'
+			if (tab.state === 'reconnecting' || (tab.state === 'connecting' && tab.wasLive)) return 'is-warn'
+			if (tab.state === 'live') return 'is-live'
+			return 'is-pending'
+		},
+		closeTabTitle(tab) {
+			if (tab.type === 'logs' || this.tabExited(tab) || tab.gone || !tab.session) return this.$t('Close {name}', { name: this.tabTitle(tab) })
+			return this.$t('Close tab (the session keeps running)')
+		},
+		onTabSession(tab, s) {
+			tab.session = s
+			this.applySessionUpdate(s)
+			if (!this.allSessions.some(x => sessionKey(x) === sessionKey(s))) this.allSessions = [s, ...this.allSessions]
+		},
+		onTabExit(tab, detail) {
+			tab.exit = detail
+		},
+		onTabGone(tab) {
+			tab.gone = true
+		},
+		onTabState(tab, state) {
+			tab.state = state
+			if (state === 'live') {
+				tab.wasLive = true
+				tab.exit = null
+				tab.gone = false
+			}
+		},
+		activeShellRef() {
+			const tab = this.tabs.find(t => t.key === this.activeKey && t.type === 'shell')
+			return tab ? this.getTabRef(tab) : null
+		},
+		// Refs used inside a v-for are arrays in Vue 2 even when unique.
 		getTabRef(tab) {
-			const ref = tab.type === 'logs' ? this.$refs.logs : this.$refs['terminal-' + tab.id]
+			const ref = tab.type === 'logs' ? this.$refs.logs : this.$refs['terminal-' + tab.key]
 			return Array.isArray(ref) ? ref[0] : ref
 		},
-		// A shell tab can always be closed as long as at least one other
-		// shell remains open (Logs doesn't count - closing/reopening it via
-		// the logs button is always allowed regardless of shell count).
-		canCloseTab(tab) {
-			if (tab.type === 'logs') return true
-			return this.terminalTabs.filter(t => t.type === 'shell').length > 1
-		},
-		activateTerminalTab(id) {
-			if (id === this.activeTerminalTabId) return
-			const previous = this.terminalTabs.find(t => t.id === this.activeTerminalTabId)
+		activate(key) {
+			if (key === this.activeKey) {
+				this.$nextTick(() => {
+					const ref = this.activeShellRef()
+					if (ref) ref.active(true)
+				})
+				return
+			}
+			const previous = this.tabs.find(t => t.key === this.activeKey)
 			const previousRef = previous && this.getTabRef(previous)
 			if (previousRef) previousRef.active(false)
-			this.activeTerminalTabId = id
-			// The newly active tab may have been sized/scrolled while hidden
-			// (v-show gives it zero width), so it needs a fresh fit/scroll -
-			// same resize path used when switching between shells.
+			this.activeKey = key
+			// The newly active tab was sized while hidden (v-show = zero
+			// width), so it needs a fresh fit.
 			this.$nextTick(() => {
-				const tab = this.terminalTabs.find(t => t.id === id)
+				const tab = this.tabs.find(t => t.key === key)
 				const ref = tab && this.getTabRef(tab)
 				if (ref) ref.active(true)
 			})
 		},
+		removeTab(key) {
+			const idx = this.tabs.findIndex(t => t.key === key)
+			if (idx < 0) return
+			this.tabs.splice(idx, 1)
+			if (this.activeKey === key) {
+				const fallback = this.tabs[idx] || this.tabs[idx - 1]
+				this.activeKey = null
+				if (fallback) this.activate(fallback.key)
+			}
+		},
+		// Closing a tab only detaches: the shell keeps running and is one
+		// click away in Sessions. An ended session is dismissed for good.
+		closeTab(key) {
+			const tab = this.tabs.find(t => t.key === key)
+			if (!tab) return
+			if (tab.type === 'shell' && tab.session && tab.session.id) {
+				if (this.tabExited(tab)) {
+					terminalSessions.kill(tab.session).catch(() => {})
+				} else if (!tab.gone) {
+					const s = tab.session
+					this.removeTab(key)
+					this.$buefy.snackbar.open({
+						message: this.$t('<b>{name}</b> keeps running in the background.', { name: escapeHtml(s.title || this.$t('Terminal')) }),
+						type: 'is-dark',
+						position: 'is-bottom-right',
+						actionText: this.$t('End it'),
+						queue: false,
+						duration: 5000,
+						onAction: () => this.killSession(s),
+					})
+					this.refreshSessions(true)
+					return
+				}
+			}
+			this.removeTab(key)
+		},
+		async endTabSession(tab) {
+			const s = tab.session
+			if (!s || !s.id) {
+				this.removeTab(tab.key)
+				return
+			}
+			if (this.tabExited(tab) || tab.gone) {
+				this.closeTab(tab.key)
+				return
+			}
+			let fresh = s
+			try {
+				fresh = (await terminalSessions.get(familyOf(s), s.id)) || s
+			} catch (e) { /* use what we have */ }
+			const proceed = () => this.killSession(fresh)
+			if (isIdleShell(fresh)) {
+				proceed()
+				return
+			}
+			this.$buefy.dialog.confirm({
+				title: this.$t('End session?'),
+				message: this.$t('<b>{cmd}</b> is still running in {name}. Ending the session stops it.', {
+					cmd: escapeHtml(String(fresh.command).split('/').pop()),
+					name: escapeHtml(fresh.title),
+				}),
+				confirmText: this.$t('End session'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: proceed,
+			})
+		},
+		startTabRename(tab) {
+			if (tab.type !== 'shell' || !tab.session || !tab.session.id || this.tabExited(tab)) return
+			this.renamingKey = tab.key
+			this.renameValue = tab.session.title || ''
+			this.$nextTick(() => {
+				const r = this.$refs.tabRenameInput
+				const el = Array.isArray(r) ? r[0] : r
+				if (el) {
+					el.focus()
+					el.select()
+				}
+			})
+		},
+		cancelTabRename() {
+			const tab = this.tabs.find(t => t.key === this.renamingKey)
+			this.renamingKey = ''
+			if (tab) this.activate(tab.key)
+		},
+		commitTabRename(tab) {
+			if (this.renamingKey !== tab.key) return
+			this.renamingKey = ''
+			const title = this.renameValue.trim()
+			if (title && tab.session && title !== tab.session.title) this.renameSession(tab.session, title)
+			this.activate(tab.key)
+		},
+
 		openNewWindow() {
 			this.$store.commit('OPEN_WINDOW', {
 				id: 'terminal-' + Date.now(),
 				title: this.$t('Terminal'),
 				component: 'TerminalPanel',
 				width: 720,
-				height: 480
+				height: 480,
+				props: { fresh: true },
 			})
 		},
-		addTerminalTab() {
-			const id = this.nextTerminalTabId++
-			this.terminalTabs.push({ id, title: `${this.$t('Shell')} ${id}`, type: 'shell' })
-			this.activateTerminalTab(id)
-		},
-		// The logs button opens (or just re-focuses, if already open) a
-		// single Logs tab in the strip - it's a real tab like any other,
-		// closed via its own tab's close (x), not toggled off by this
-		// button.
+		// The logs button opens (or re-focuses) the single Logs tab.
 		openLogsTab() {
 			if (!this.hasLogsTab) {
-				this.terminalTabs.push({ id: 'logs', title: this.$t('Logs'), type: 'logs' })
+				this.tabs.push({ key: 'logs', type: 'logs' })
 			}
-			this.activateTerminalTab('logs')
-			// Fresh content right away instead of waiting for the next 5s tick.
+			this.activate('logs')
 			this.getLogs()
 		},
-		closeTerminalTab(id) {
-			const tab = this.terminalTabs.find(t => t.id === id)
-			if (!tab || !this.canCloseTab(tab)) return
-			const idx = this.terminalTabs.findIndex(t => t.id === id)
-			this.terminalTabs.splice(idx, 1)
-			if (this.activeTerminalTabId === id) {
-				const fallback = this.terminalTabs[idx] || this.terminalTabs[idx - 1]
-				this.activateTerminalTab(fallback.id)
-			}
+
+		// Closing the window detaches every tab; say so, and offer to end them.
+		requestClose() {
+			const running = this.shellTabs.filter(t => t.session && t.session.id && !this.tabExited(t) && !t.gone).map(t => t.session)
+			this.$emit('close')
+			if (!running.length) return
+			const msg = running.length === 1
+				? this.$t('<b>{name}</b> keeps running. Open Terminal again to continue.', { name: escapeHtml(running[0].title || this.$t('Terminal')) })
+				: this.$t('{n} terminal sessions keep running. Open Terminal again to continue.', { n: running.length })
+			this.$buefy.snackbar.open({
+				message: msg,
+				type: 'is-dark',
+				position: 'is-bottom-right',
+				actionText: running.length === 1 ? this.$t('End session') : this.$t('End all'),
+				queue: false,
+				duration: 6000,
+				onAction: () => {
+					running.forEach(s => terminalSessions.kill(s).catch(() => {}))
+				},
+			})
+		},
+
+		toastError(message) {
+			this.$buefy.toast.open({ message, type: 'is-danger', position: 'is-top', duration: 3500 })
 		},
 	},
-	destroyed() {
-		clearInterval(this.timer);
-		document.removeEventListener('visibilitychange', this.onVisibility);
-	}
 }
 </script>
 
@@ -256,8 +612,16 @@ export default {
 	background: #1e1e1e;
 }
 
+.terminal-main {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+}
+
 .terminal-body {
 	flex: 1 1 auto;
+	min-width: 0;
 	min-height: 0;
 	position: relative;
 }
@@ -278,6 +642,96 @@ export default {
 	::v-deep .terminal-instance {
 		height: 100%;
 		min-height: 0;
+	}
+}
+
+.terminal-sidebar {
+	flex: 0 0 17rem;
+	width: 17rem;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-3);
+	background: #202023;
+	border-left: 1px solid rgba(255, 255, 255, 0.08);
+	display: flex;
+	flex-direction: column;
+
+	> .session-list {
+		flex: 1 1 auto;
+	}
+
+	// A narrow window can't spare the width: the list floats over the
+	// terminal instead of squeezing it.
+	.is-narrow & {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: min(17rem, 90%);
+		z-index: 12;
+		box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+	}
+}
+
+.terminal-empty {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-4);
+	color: #a1a1aa;
+	text-align: center;
+	font-size: var(--font-sm);
+}
+
+.terminal-empty-icon {
+	font-size: 2.5rem;
+	color: #52525b;
+}
+
+.terminal-empty-title {
+	color: #f4f4f5;
+	font-weight: 600;
+}
+
+.terminal-empty-actions {
+	display: flex;
+	gap: var(--space-2);
+	margin-top: var(--space-2);
+}
+
+.terminal-empty-btn {
+	display: inline-flex;
+	align-items: center;
+	height: 2rem;
+	padding: 0 var(--space-3);
+	border: none;
+	border-radius: var(--radius-sm);
+	background: #1d4ed8;
+	color: #fff;
+	font-size: var(--font-xs);
+	font-weight: 600;
+	cursor: pointer;
+
+	&:hover {
+		background: #1e40af;
+	}
+
+	&.is-quiet {
+		background: rgba(255, 255, 255, 0.08);
+		color: #e4e4e7;
+
+		&:hover {
+			background: rgba(255, 255, 255, 0.16);
+		}
+	}
+
+	&:focus-visible {
+		outline: 2px solid #93c5fd;
+		outline-offset: 2px;
 	}
 }
 
@@ -303,10 +757,8 @@ export default {
 	align-items: center;
 	gap: var(--space-2);
 	margin-left: var(--space-3);
-	// .terminal-tabs scrolls horizontally once there are enough tabs to
-	// overflow - without this, Close/Minimize (the only way to close this
-	// window, since it doubles as the titlebar) would scroll out of view
-	// along with everything else instead of staying reachable.
+	// The tab strip scrolls horizontally with many tabs; the window's only
+	// Close/Minimize must stay reachable.
 	position: sticky;
 	right: 0;
 	padding-left: var(--space-2);
@@ -334,34 +786,34 @@ export default {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	max-width: 10rem;
+	max-width: 12rem;
 	border: none;
 	background: rgba(255, 255, 255, 0.05);
 	color: rgba(255, 255, 255, 0.55);
 	font-size: var(--font-xs);
 	padding: var(--space-1) var(--space-2);
-	// Fully rounded by default (inactive tabs) - the active tab overrides
-	// this to a flat bottom below, since it's meant to read as flush with
-	// the content area directly beneath it, not as a separate chip.
+	// Inactive tabs are fully rounded; the active one is flush with the
+	// content below it.
 	border-radius: var(--radius-sm);
 	cursor: pointer;
 	flex-shrink: 0;
 
 	&.active {
 		border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-		// Flat #1e1e1e, matching the content area it sits flush above -
-		// a gradient starting at #292929 was tried and reverted, since
-		// that's actually the inactive tab's own color (rgba(255,255,255,0.05)
-		// over #1e1e1e), making the selected tab's top edge indistinguishable
-		// from an unselected one.
 		background: #1e1e1e;
 		color: #fff;
+	}
+
+	&.is-exited .one-line {
+		text-decoration: line-through;
+		text-decoration-color: rgba(255, 255, 255, 0.3);
 	}
 }
 
 .terminal-tab-label {
 	display: flex;
 	align-items: center;
+	gap: 0.35rem;
 	min-width: 0;
 	border: none;
 	background: transparent;
@@ -369,6 +821,48 @@ export default {
 	font: inherit;
 	padding: 0;
 	cursor: pointer;
+}
+
+.terminal-tab-icon {
+	font-size: 0.85rem;
+	opacity: 0.8;
+}
+
+.terminal-tab-dot {
+	flex-shrink: 0;
+	width: 0.4rem;
+	height: 0.4rem;
+	border-radius: 50%;
+	background: #52525b;
+
+	&.is-live {
+		background: #22c55e;
+	}
+
+	&.is-warn {
+		background: #eab308;
+	}
+
+	&.is-pending {
+		background: #71717a;
+	}
+
+	&.is-exited {
+		background: transparent;
+		border: 1px solid #71717a;
+	}
+}
+
+.terminal-tab-rename input {
+	width: 9rem;
+	height: 1.35rem;
+	padding: 0 var(--space-1);
+	border: 1px solid #38bdf8;
+	border-radius: var(--radius-xs);
+	outline: none;
+	background: #18181b;
+	color: #fff;
+	font: inherit;
 }
 
 .terminal-tab-label,
@@ -398,6 +892,7 @@ export default {
 }
 
 .terminal-tab-add {
+	position: relative;
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
@@ -421,6 +916,22 @@ export default {
 	}
 }
 
+.terminal-badge {
+	position: absolute;
+	top: -2px;
+	right: -3px;
+	min-width: 0.95rem;
+	height: 0.95rem;
+	padding: 0 3px;
+	border-radius: 999px;
+	background: #1d4ed8;
+	color: #fff;
+	font-size: 0.6rem;
+	font-weight: 700;
+	line-height: 0.95rem;
+	text-align: center;
+}
+
 .logs-button {
 	flex-shrink: 0;
 	display: flex;
@@ -436,10 +947,7 @@ export default {
 	border-radius: var(--radius-sm);
 	cursor: pointer;
 
-	// Buefy's b-icon ships its own default margin, which stacked
-	// asymmetrically with this button's own `gap`/`padding` - zeroed out
-	// so the icon+label group is actually centered in the equal
-	// left/right padding above.
+	// Buefy's b-icon ships its own margin, which stacked with the gap.
 	::v-deep .icon {
 		margin: 0 !important;
 	}

@@ -269,6 +269,9 @@ importers:
       xterm-addon-fit:
         specifier: ^0.5.0
         version: 0.5.0(xterm@4.19.0)
+      xterm-addon-search:
+        specifier: 0.9.0
+        version: 0.9.0(xterm@4.19.0)
       xterm-addon-web-links:
         specifier: 0.6.0
         version: 0.6.0(xterm@4.19.0)
@@ -8962,6 +8965,12 @@ packages:
   xterm-addon-fit@0.5.0:
     resolution: {integrity: sha512-DsS9fqhXHacEmsPxBJZvfj2la30Iz9xk+UKjhQgnYNkrUIN5CYLbw7WEfz117c7+S86S/tpHPfvNxJsF5/G8wQ==}
     deprecated: This package is now deprecated. Move to @xterm/addon-fit instead.
+    peerDependencies:
+      xterm: ^4.0.0
+
+  xterm-addon-search@0.9.0:
+    resolution: {integrity: sha512-aoolI8YuHvdGw+Qjg8g2M4kst0v86GtB7WeBm4F0jNXA005/6QbWWy9eCsvnIDLJOFI5JSSrZnD6CaOkvBQYPA==}
+    deprecated: This package is now deprecated. Move to @xterm/addon-search instead.
     peerDependencies:
       xterm: ^4.0.0
 
@@ -18762,6 +18771,10 @@ snapshots:
       xterm: 4.19.0
 
   xterm-addon-fit@0.5.0(xterm@4.19.0):
+    dependencies:
+      xterm: 4.19.0
+
+  xterm-addon-search@0.9.0(xterm@4.19.0):
     dependencies:
       xterm: 4.19.0
 

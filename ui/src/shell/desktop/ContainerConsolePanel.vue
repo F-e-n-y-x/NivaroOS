@@ -42,12 +42,34 @@
 
 				<!-- Shell picker: images ship different shells (bash, sh, ash...);
 				     shown only when there's a choice. -->
-				<label v-if="activeTab === 'terminal' && isContainerRunning && shells.length > 1" class="shell-picker mr-3">
+				<label v-if="activeTab === 'terminal' && isContainerRunning && shells.length > 1" class="shell-picker mr-3" @pointerdown.stop>
 					<i class="mdi mdi-console-line" aria-hidden="true"></i>
-					<select :value="selectedShell || shells[0].name" :title="$t('Shell to open')" :aria-label="$t('Shell to open')" @change="setShell($event.target.value)">
+					<select :value="selectedShell || shells[0].name" :title="$t('Open a new shell with...')" :aria-label="$t('Open a new shell with...')" @change="pickShell($event.target.value)">
 						<option v-for="sh in shells" :key="sh.name" :value="sh.name">{{ sh.name }}</option>
 					</select>
 				</label>
+
+				<!-- The container's shell sessions: they keep running when this
+				     window closes, and come back here when it reopens. -->
+				<div v-if="activeTab === 'terminal' && isContainerRunning" ref="sessionPicker" class="session-picker mr-3" @pointerdown.stop>
+					<button type="button" class="header-tool-btn session-btn" :class="{ active: sessionsOpen }"
+						:aria-expanded="sessionsOpen ? 'true' : 'false'" aria-haspopup="dialog"
+						:title="$t('Shell sessions in this container')" @click="toggleSessions">
+						<i class="mdi mdi-format-list-bulleted-square" aria-hidden="true"></i>
+						<span class="session-btn-label">{{ currentSessionTitle }}</span>
+						<span v-if="otherSessionCount" class="session-count">{{ otherSessionCount }}</span>
+						<i class="mdi mdi-chevron-down" aria-hidden="true"></i>
+					</button>
+					<div v-if="sessionsOpen" class="session-popover" role="dialog" :aria-label="$t('Shell sessions in this container')" @keydown.esc.stop="sessionsOpen = false">
+						<session-list ref="sessionList" show-close :sessions="consoleSessions" :loading="sessionsLoading" :error="sessionsError"
+							:open-keys="currentKey ? [currentKey] : []" :current-key="currentKey" :group-by-container="false"
+							:heading="$t('Shells in this container')" :new-label="newShellLabel"
+							:empty-text="$t('No shells are running in this container.')"
+							:footnote="$t('Shells keep running when you close this window. They end if the container or server restarts.')"
+							@refresh="refreshConsoleSessions" @close="sessionsOpen = false" @open="switchConsoleSession"
+							@new="newConsoleSession()" @rename="renameConsoleSession" @kill="killConsoleSession"></session-list>
+					</div>
+				</div>
 
 				<button
 					v-if="activeTab === 'logs'"
@@ -63,7 +85,7 @@
 
 				<div class="window-controls">
 					<button type="button" class="window-btn window-btn-minimize" :title="$t('Minimize')" :aria-label="$t('Minimize')" @click.stop="$emit('minimize')"></button>
-					<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="$emit('close')"></button>
+					<button type="button" class="window-btn window-btn-close" :title="$t('Close')" :aria-label="$t('Close')" @click.stop="requestClose"></button>
 				</div>
 			</div>
 		</div>
@@ -80,14 +102,22 @@
 						{{ $t('Start Container') }}
 					</b-button>
 				</div>
-				<!-- Keyed by shell: picking another one opens a fresh session. -->
+				<!-- Re-keyed to switch sessions or start a new one. -->
 				<terminal-card
-					v-else
-					:key="containerId + '|' + selectedShell"
+					v-else-if="consoleReady"
+					:key="cardKey"
 					ref="terminalCard"
-					:id="containerId"
-					:init-ws-url="terminalWsUrl"
+					:session="cardSession"
+					:create-spec="cardSession ? null : cardSpec"
+					@session="onConsoleSession"
+					@end="endConsoleSession"
+					@rename="renameFromTerminal"
+					@show-sessions="openSessions"
 				></terminal-card>
+				<div v-else class="console-preparing" role="status">
+					<b-icon icon="loading" pack="mdi" size="is-small" custom-class="mdi-spin mr-2"></b-icon>
+					<span>{{ $t('Opening shell...') }}</span>
+				</div>
 			</div>
 
 			<!-- Tab 2: Logs Viewer -->
@@ -196,8 +226,12 @@
 </template>
 
 <script>
-import qs from 'qs'
 import TerminalCard from '@/apps/terminal/TerminalCard.vue'
+import SessionList from '@/apps/terminal/SessionList.vue'
+import terminalSessions from '@/service/terminalSessions.js'
+import { apiError } from '@/utils/apiError'
+import { copyText } from '@/apps/terminal/termClipboard.js'
+import { sessionKey, isIdleShell, loadContainerSession, saveContainerSession, pickContainerSession } from '@/apps/terminal/termSessions.js'
 
 const LOG_POLL_MS = 3000
 const STATUS_POLL_MS = 10000
@@ -217,7 +251,8 @@ function readShell(id) {
 export default {
 	name: 'container-console-panel',
 	components: {
-		TerminalCard
+		TerminalCard,
+		SessionList
 	},
 	props: {
 		containerId: {
@@ -271,7 +306,18 @@ export default {
 			currentStatus: this.status || 'running',
 			// [{name, path}] from the server; '' until loaded.
 			shells: [],
-			shell: readShell(this.containerId)
+			shellsLoaded: false,
+			shell: readShell(this.containerId),
+			// Shell sessions (docs/specs/2026-09-29-terminal-sessions.md).
+			consoleReady: false,
+			cardKey: 0,
+			cardSession: null,
+			cardSpec: null,
+			currentSession: null,
+			consoleSessions: [],
+			sessionsOpen: false,
+			sessionsLoading: false,
+			sessionsError: ''
 		}
 	},
 	computed: {
@@ -299,20 +345,24 @@ export default {
 			const parts = this.containerImage.split('/')
 			return parts[parts.length - 1]
 		},
-		// cols/rows are placeholders: TerminalCard replaces them with the
-		// fitted size of the terminal when it connects.
 		// The saved shell if the image still has it, else the default ('').
 		selectedShell() {
 			return this.shells.some(sh => sh.name === this.shell) ? this.shell : ''
 		},
-		terminalWsUrl() {
-			const query = {
-				token: this.$store.state.access_token,
-				cols: 120,
-				rows: 32
-			}
-			if (this.selectedShell) query.shell = this.selectedShell
-			return `${this.$wsProtocol}//${this.$baseURL}/v1/container/${this.containerId}/terminal?${qs.stringify(query)}`
+		currentKey() {
+			return this.currentSession ? sessionKey(this.currentSession) : ''
+		},
+		currentSessionTitle() {
+			if (this.currentSession && this.currentSession.title) return this.currentSession.title
+			return this.$t('Shell')
+		},
+		otherSessionCount() {
+			const cur = this.currentKey
+			return this.consoleSessions.filter(s => s.state === 'running' && sessionKey(s) !== cur).length
+		},
+		newShellLabel() {
+			const name = this.selectedShell || (this.shells[0] && this.shells[0].name)
+			return name ? this.$t('New {shell} shell', { shell: name }) : this.$t('New shell')
 		},
 		// Lines after the "Clear view" marker.
 		visibleLines() {
@@ -331,13 +381,19 @@ export default {
 		}
 		this.startLogPolling()
 		this.statusTimer = setInterval(this.refreshStatus, STATUS_POLL_MS)
-		if (this.isContainerRunning) this.loadShells()
+		if (this.isContainerRunning) {
+			this.loadShells()
+			if (this.activeTab === 'terminal') this.prepareConsole()
+		}
 		document.addEventListener('visibilitychange', this.onVisibility)
+		document.addEventListener('pointerdown', this.onDocPointer, true)
 	},
 	beforeDestroy() {
 		this.stopLogPolling()
 		clearInterval(this.statusTimer)
+		clearInterval(this.sessionsTimer)
 		document.removeEventListener('visibilitychange', this.onVisibility)
+		document.removeEventListener('pointerdown', this.onDocPointer, true)
 	},
 	watch: {
 		autoRefresh(val) {
@@ -361,6 +417,24 @@ export default {
 		},
 		isContainerRunning(running) {
 			if (running && !this.shells.length) this.loadShells()
+			if (running) {
+				if (this.activeTab === 'terminal') this.prepareConsole()
+			} else {
+				// Its shells died with it; pick again when it is back.
+				this.consoleReady = false
+				this.cardSession = null
+				this.currentSession = null
+				this.sessionsOpen = false
+			}
+		},
+		sessionsOpen(open) {
+			clearInterval(this.sessionsTimer)
+			if (open) {
+				this.refreshConsoleSessions()
+				this.sessionsTimer = setInterval(() => {
+					if (this.isOnScreen()) this.refreshConsoleSessions(true)
+				}, 5000)
+			}
 		},
 		currentStatus(val, old) {
 			// Came back up / went down: pick up the new log lines at once.
@@ -370,14 +444,185 @@ export default {
 	methods: {
 		loadShells() {
 			const id = this.containerId
-			this.$api.container.getShells(id).then(res => {
+			this.shellsPromise = this.$api.container.getShells(id).then(res => {
 				if (id !== this.containerId) return
 				const list = res && res.data && res.data.data
 				this.shells = Array.isArray(list) ? list : []
 			}).catch(() => {
 				// Older server or container gone: no picker, default shell.
 				this.shells = []
+			}).finally(() => {
+				this.shellsLoaded = true
 			})
+			return this.shellsPromise
+		},
+		// --- shell sessions --------------------------------------------------
+		// On open: the session this console showed last if it still runs,
+		// else one no one is looking at, else a new shell.
+		async prepareConsole() {
+			if (this.consoleReady || this.preparing || !this.isContainerRunning) return
+			this.preparing = true
+			try {
+				let pick = null
+				try {
+					const { sessions } = await terminalSessions.listContainer(this.containerId)
+					this.consoleSessions = sessions
+					pick = pickContainerSession(sessions, loadContainerSession(this.containerId))
+				} catch (e) {
+					/* no list: just open a new shell */
+				}
+				if (pick) {
+					this.cardSession = pick
+					this.currentSession = pick
+				} else {
+					if (this.shellsPromise) await this.shellsPromise
+					this.cardSession = null
+					this.cardSpec = this.newSpec()
+				}
+				this.cardKey++
+				this.consoleReady = true
+			} finally {
+				this.preparing = false
+			}
+		},
+		newSpec() {
+			return { kind: 'container', container: this.containerId, shell: this.selectedShell || undefined }
+		},
+		newConsoleSession() {
+			this.sessionsOpen = false
+			this.cardSession = null
+			this.currentSession = null
+			this.cardSpec = this.newSpec()
+			this.cardKey++
+			this.consoleReady = true
+		},
+		switchConsoleSession(s) {
+			this.sessionsOpen = false
+			if (this.currentSession && sessionKey(s) === this.currentKey) {
+				this.focusTerminal()
+				return
+			}
+			this.cardSession = s
+			this.cardSpec = null
+			this.currentSession = s
+			this.cardKey++
+			this.consoleReady = true
+		},
+		onConsoleSession(s) {
+			this.currentSession = s
+			saveContainerSession(this.containerId, s.id)
+			const key = sessionKey(s)
+			if (this.consoleSessions.some(x => sessionKey(x) === key)) {
+				this.consoleSessions = this.consoleSessions.map(x => (sessionKey(x) === key ? s : x))
+			} else {
+				this.consoleSessions = [s, ...this.consoleSessions]
+			}
+		},
+		async refreshConsoleSessions(silent) {
+			if (this.sessionsInFlight) return
+			this.sessionsInFlight = true
+			if (!silent) this.sessionsLoading = true
+			try {
+				const { sessions } = await terminalSessions.listContainer(this.containerId)
+				this.consoleSessions = sessions
+				this.sessionsError = ''
+			} catch (err) {
+				this.sessionsError = apiError(err, this.$t("Couldn't load the session list"))
+			} finally {
+				this.sessionsInFlight = false
+				this.sessionsLoading = false
+			}
+		},
+		toggleSessions() {
+			this.sessionsOpen = !this.sessionsOpen
+		},
+		openSessions() {
+			this.sessionsOpen = true
+		},
+		onDocPointer(e) {
+			if (this.sessionsOpen && this.$refs.sessionPicker && !this.$refs.sessionPicker.contains(e.target)) this.sessionsOpen = false
+		},
+		focusTerminal() {
+			this.$nextTick(() => {
+				const card = this.$refs.terminalCard
+				if (card && typeof card.active === 'function') card.active(true)
+			})
+		},
+		renameFromTerminal(s) {
+			if (!s) return
+			this.sessionsOpen = true
+			this.$nextTick(() => {
+				const list = this.$refs.sessionList
+				if (list) list.startRename(s)
+			})
+		},
+		async renameConsoleSession(s, title) {
+			try {
+				const updated = await terminalSessions.rename(s, title)
+				if (updated && sessionKey(updated) === this.currentKey) this.currentSession = updated
+			} catch (err) {
+				this.$buefy.toast.open({ message: apiError(err, this.$t("Couldn't rename the session")), type: 'is-danger', position: 'is-top', duration: 3500 })
+			}
+			this.refreshConsoleSessions(true)
+		},
+		async killConsoleSession(s) {
+			try {
+				await terminalSessions.kill(s)
+			} catch (err) {
+				if (!err || !err.response || err.response.status !== 404) {
+					this.$buefy.toast.open({ message: apiError(err, this.$t("Couldn't end the session")), type: 'is-danger', position: 'is-top', duration: 3500 })
+					return
+				}
+			}
+			// The terminal showing it gets `exit` and offers a new shell.
+			this.consoleSessions = this.consoleSessions.filter(x => sessionKey(x) !== sessionKey(s))
+			this.refreshConsoleSessions(true)
+		},
+		// "End session" from the terminal's own menu.
+		async endConsoleSession(s) {
+			if (!s || !s.id) return
+			let fresh = s
+			try {
+				fresh = (await terminalSessions.get('container', s.id)) || s
+			} catch (e) { /* use what we have */ }
+			if (fresh.state === 'exited' || isIdleShell(fresh)) {
+				this.killConsoleSession(fresh)
+				return
+			}
+			const esc = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+			this.$buefy.dialog.confirm({
+				title: this.$t('End session?'),
+				message: this.$t('<b>{cmd}</b> is still running in {name}. Ending the session stops it.', {
+					cmd: esc(String(fresh.command).split('/').pop()),
+					name: esc(fresh.title)
+				}),
+				confirmText: this.$t('End session'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: () => this.killConsoleSession(fresh)
+			})
+		},
+		// Closing only detaches the shell; say so and offer to end it.
+		requestClose() {
+			const s = this.currentSession
+			const card = this.$refs.terminalCard
+			const running = s && s.state === 'running' && !(card && card.exitInfo)
+			this.$emit('close')
+			if (!running) return
+			const esc = String(s.title || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+			this.$buefy.snackbar.open({
+				message: this.$t('<b>{name}</b> keeps running. Open the console again to continue.', { name: esc }),
+				type: 'is-dark',
+				position: 'is-bottom-right',
+				actionText: this.$t('End session'),
+				queue: false,
+				duration: 6000,
+				onAction: () => { terminalSessions.kill(s).catch(() => {}) }
+			})
+		},
+		pickShell(name) {
+			this.setShell(name)
+			this.newConsoleSession()
 		},
 		setShell(name) {
 			// The first entry is the default; storing '' keeps following it.
@@ -403,6 +648,7 @@ export default {
 			if (tab === 'logs') {
 				this.fetchLogs()
 			} else if (tab === 'terminal') {
+				this.prepareConsole()
 				this.$nextTick(() => {
 					if (this.$refs.terminalCard && typeof this.$refs.terminalCard.active === 'function') {
 						this.$refs.terminalCard.active(true)
@@ -560,11 +806,8 @@ export default {
 				position: 'is-top',
 				duration: 2000
 			})
-			if (!navigator.clipboard || !navigator.clipboard.writeText) {
-				fail()
-				return
-			}
-			navigator.clipboard.writeText(text).then(done).catch(fail)
+			// Works over plain http too (execCommand fallback).
+			copyText(text).then(ok => (ok ? done() : fail()))
 		},
 		downloadLogs() {
 			const text = this.visibleText()
@@ -793,6 +1036,70 @@ export default {
 		outline: 2px solid #60a5fa;
 		outline-offset: 1px;
 	}
+}
+
+.session-picker {
+	position: relative;
+}
+
+.header-tool-btn.session-btn {
+	width: auto;
+	max-width: 14rem;
+	gap: var(--space-1);
+	padding: 0 var(--space-2);
+	font-size: var(--font-sm);
+
+	&.active {
+		background: rgba(255, 255, 255, 0.16);
+		border-color: rgba(255, 255, 255, 0.24);
+	}
+
+	.session-btn-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+
+.session-count {
+	flex-shrink: 0;
+	min-width: 1.1rem;
+	height: 1.1rem;
+	padding: 0 4px;
+	border-radius: 999px;
+	background: #1d4ed8;
+	color: #fff;
+	font-size: 0.65rem;
+	font-weight: 700;
+	line-height: 1.1rem;
+	text-align: center;
+}
+
+.session-popover {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	width: 19rem;
+	max-width: calc(100vw - 2rem);
+	max-height: 24rem;
+	overflow-y: auto;
+	padding: var(--space-3);
+	border-radius: var(--radius-control);
+	background: #202023;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	box-shadow: var(--shadow-xl);
+	z-index: 30;
+	cursor: default;
+}
+
+.console-preparing {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: #a1a1aa;
+	font-size: var(--font-sm);
 }
 
 .header-tool-btn {
