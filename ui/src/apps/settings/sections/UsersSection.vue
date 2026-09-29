@@ -52,6 +52,14 @@
 				<p v-if="passwordError" class="error-note">{{ passwordError }}</p>
 			</div>
 
+			<div class="sessions-row">
+				<div class="sessions-text">
+					<div class="sessions-title">{{ $t('Other sessions') }}</div>
+					<div class="profile-sub">{{ $t('Signs out every other browser, phone and app signed in to this account. This one stays signed in.') }}</div>
+				</div>
+				<b-button rounded size="is-small" :loading="signingOutOthers" @click="confirmSignOutOthers">{{ $t('Sign out other devices') }}</b-button>
+			</div>
+
 			<div v-if="cropping" class="avatar-crop">
 				<div class="cropper-wrap">
 					<cropper :src="cropImage" :stencil-props="{ aspectRatio: 1 }" :canvas="{ width: 200, height: 200 }" @change="onCropChange"></cropper>
@@ -109,6 +117,7 @@ export default {
 			newPassword1: '',
 			newPassword2: '',
 			savingPassword: false,
+			signingOutOthers: false,
 			passwordError: '',
 			cropping: false,
 			cropImage: null,
@@ -164,20 +173,45 @@ export default {
 			this.$api.users.changePassword({ old_password: this.oriPassword, password: this.newPassword1 }).then(res => {
 				// Other sessions end on a password change; this one continues
 				// with the fresh tokens the server returns.
-				const t = res.data && res.data.data && res.data.data.token
-				if (t && t.access_token) {
-					localStorage.setItem('access_token', t.access_token)
-					localStorage.setItem('refresh_token', t.refresh_token)
-					localStorage.setItem('expires_at', t.expires_at)
-					this.$store.commit('SET_ACCESS_TOKEN', t.access_token)
-					this.$store.commit('SET_REFRESH_TOKEN', t.refresh_token)
-				}
+				this.adoptTokens(res.data && res.data.data && res.data.data.token)
 				this.cancelPassword()
 				this.$buefy.toast.open({ message: this.$t('Password changed - other devices have to sign in again'), type: 'is-success', duration: 4000 })
 			}).catch(e => {
 				this.passwordError = e.response && e.response.data ? e.response.data.message : this.$t('Failed to change password')
 			}).finally(() => {
 				this.savingPassword = false
+			})
+		},
+		// The server ended every other session and handed this one fresh
+		// tokens (the old ones no longer work anywhere).
+		adoptTokens(t) {
+			if (!t || !t.access_token) return
+			localStorage.setItem('access_token', t.access_token)
+			localStorage.setItem('refresh_token', t.refresh_token)
+			localStorage.setItem('expires_at', t.expires_at)
+			this.$store.commit('SET_ACCESS_TOKEN', t.access_token)
+			this.$store.commit('SET_REFRESH_TOKEN', t.refresh_token)
+		},
+		confirmSignOutOthers() {
+			this.$buefy.dialog.confirm({
+				title: this.$t('Sign out other devices?'),
+				message: this.$t('Every other browser, the phone app and anything else signed in to this account will have to sign in again.'),
+				confirmText: this.$t('Sign out other devices'),
+				cancelText: this.$t('Cancel'),
+				type: 'is-danger',
+				onConfirm: () => this.signOutOthers()
+			})
+		},
+		signOutOthers() {
+			this.signingOutOthers = true
+			this.$api.users.signOutOtherSessions().then(res => {
+				this.adoptTokens(res.data && res.data.data && res.data.data.token)
+				this.$buefy.toast.open({ message: this.$t('Other devices were signed out'), type: 'is-success', duration: 4000 })
+			}).catch(e => {
+				const msg = e.response && e.response.data && e.response.data.message
+				this.$buefy.toast.open({ message: msg || this.$t('Could not sign out other devices'), type: 'is-danger', duration: 5000 })
+			}).finally(() => {
+				this.signingOutOthers = false
 			})
 		},
 		triggerAvatarPick() {
@@ -328,6 +362,24 @@ export default {
 		background: hsla(140, 60%, 45%, 0.15);
 		color: hsla(140, 60%, 32%, 1);
 	}
+}
+
+.sessions-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+	padding: 0 var(--space-5) var(--space-5);
+}
+
+.sessions-text {
+	min-width: 0;
+	flex: 1 1 14rem;
+}
+
+.sessions-title {
+	font-weight: 500;
 }
 
 .password-form,

@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -42,6 +43,13 @@ type UserService interface {
 	GetAllUserName() (list []model.UserDBModel)
 
 	GetKeyPair() (*ecdsa.PrivateKey, *ecdsa.PublicKey)
+
+	// RevokeSessions ends every session of the account (in every service)
+	// and returns its new token generation.
+	RevokeSessions(id int, reason string) (int64, error)
+	// PublishSessions writes every account's session rule for the other
+	// services (see common/utils/jwt/sessions.go).
+	PublishSessions() error
 }
 
 var UserRegisterHash = make(map[string]string)
@@ -55,10 +63,14 @@ type userService struct {
 
 func (u *userService) DeleteAllUser() {
 	u.db.Where("1=1").Delete(&model.UserDBModel{})
+	u.publishSessions()
 }
 
+// DeleteUserById: the account's tokens stop working in every service at
+// once (it is no longer in the published session state).
 func (u *userService) DeleteUserById(id string) {
 	u.db.Where("id= ?", id).Delete(&model.UserDBModel{})
+	u.publishSessions()
 }
 
 func (u *userService) GetAllUserName() (list []model.UserDBModel) {
@@ -67,7 +79,13 @@ func (u *userService) GetAllUserName() (list []model.UserDBModel) {
 }
 
 func (u *userService) CreateUser(m model.UserDBModel) model.UserDBModel {
+	// SQLite can hand a deleted account's id to the next new one: tokens
+	// issued before this account existed are never its tokens.
+	if m.TokensValidAfter == 0 {
+		m.TokensValidAfter = time.Now().Unix()
+	}
 	u.db.Create(&m)
+	u.publishSessions()
 	return m
 }
 
@@ -82,6 +100,7 @@ func (u *userService) UpdateUser(m model.UserDBModel) {
 
 func (u *userService) SetTokensValidAfter(id int, unix int64) {
 	u.db.Model(&model.UserDBModel{}).Where("id = ?", id).Update("tokens_valid_after", unix)
+	u.publishSessions()
 }
 
 func (u *userService) UpdateUserPassword(m model.UserDBModel) {
