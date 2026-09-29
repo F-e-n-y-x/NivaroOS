@@ -276,12 +276,19 @@ func (s *Session) finish(p Process, readDone chan struct{}) {
 		s.exitReason = s.killReason
 	}
 	s.exitedAt = s.m.now()
+	// An ended session is only kept to be looked at: keep its last screens,
+	// not the whole scrollback.
+	s.ring.Shrink(exitedScrollbackBytes)
 	for c := range s.clients {
 		c.enqueue(frame{kind: frameExit, code: code, reason: s.exitReason})
 	}
 	s.mu.Unlock()
 	close(s.done)
+	s.m.pruneExited()
 }
+
+// exitedScrollbackBytes is how much output an exited session keeps.
+const exitedScrollbackBytes = 256 << 10
 
 // kill ends the process (no-op once exited).
 func (s *Session) kill(reason string) {

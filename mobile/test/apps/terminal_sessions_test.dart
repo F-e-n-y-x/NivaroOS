@@ -249,6 +249,8 @@ void main() {
       expect(ws.last.resizes, isNotEmpty);
 
       // A latched Alt applies to the next key: Alt + "/" sends ESC "/".
+      await tester.ensureVisible(find.bySemanticsLabel('Alt'));
+      await tester.pump();
       await tester.tap(find.bySemanticsLabel('Alt'));
       await tester.pump();
       await tester.ensureVisible(find.bySemanticsLabel('Slash'));
@@ -259,6 +261,22 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Slash'));
       await tester.pump();
       expect(ws.last.input, '\x1b//', reason: 'the latch releases after one key');
+      // ...and a latched Ctrl applies to an arrow key (Ctrl+Left = word
+      // left), then releases instead of hitting the next letter.
+      await tester.ensureVisible(find.bySemanticsLabel('Control'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Control'));
+      await tester.pump();
+      await tester.ensureVisible(find.bySemanticsLabel('Left'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Left'));
+      await tester.pump();
+      expect(ws.last.input, '\x1b//\x1b[1;5D');
+      await tester.ensureVisible(find.bySemanticsLabel('Slash'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Slash'));
+      await tester.pump();
+      expect(ws.last.input, '\x1b//\x1b[1;5D/', reason: 'Ctrl was used up by the arrow');
       ws.last.code = 1011;
       ws.last.reason = 'failed to start terminal';
       await ws.last.drop(1011);

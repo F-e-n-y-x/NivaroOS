@@ -111,7 +111,9 @@ Replace `{base}` with a base path from the table above.
 ### `GET {base}` lists your sessions
 
 The newest session comes first. Exited sessions stay in the list for the
-retention period (10 min).
+retention period (10 min), at most as many per user as the session limit
+(and as many overall as the total limit); the oldest go first. An exited
+session keeps the last 256 KiB of its output for replay.
 
 Container family only: `?container=<name|id|id-prefix of 12 or more
 characters>` filters the list to one container. The web container console

@@ -850,7 +850,11 @@ class _TerminalScreenState extends State<TerminalScreen> with WidgetsBindingObse
                         default:
                           final key = _KeyBarState.terminalKeys[k];
                           if (key != null) {
-                            _terminal.keyInput(key);
+                            // A latched Ctrl/Alt applies to this key (Ctrl+Left
+                            // jumps a word) and is used up by it.
+                            final ctrl = _ctrl, alt = _alt;
+                            if (ctrl || alt) setState(() => _ctrl = _alt = false);
+                            _terminal.keyInput(key, ctrl: ctrl, alt: alt);
                           } else {
                             _onInput(k);
                           }
@@ -960,14 +964,16 @@ class _KeyBarState extends State<_KeyBar> {
 
   static const _keys = <(String, String, String?)>[
     // (value sent to onKey, label, spoken label); arrows are icons.
-    ('esc', 'Esc', 'Escape'),
+    // Tab and the four arrows come first: all five fit on a 360dp phone
+    // without scrolling the row (Up is history, Right accepts a suggestion).
     ('tab', 'Tab', 'Tab'),
+    ('left', '', 'Left'),
+    ('up', '', 'Up'),
+    ('down', '', 'Down'),
+    ('right', '', 'Right'),
+    ('esc', 'Esc', 'Escape'),
     ('ctrl', 'Ctrl', 'Control'),
     ('alt', 'Alt', 'Alt'),
-    ('left', '', 'Left'),
-    ('down', '', 'Down'),
-    ('up', '', 'Up'),
-    ('right', '', 'Right'),
     ('|', '|', 'Pipe'),
     ('~', '~', 'Tilde'),
     ('/', '/', 'Slash'),

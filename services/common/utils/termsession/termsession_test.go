@@ -6,8 +6,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -719,5 +719,77 @@ func TestContainerSessionTitleUsesTheShellItStarted(t *testing.T) {
 	in := s.Info()
 	if in.Title != "jellyfin (ash)" || in.Shell != "/bin/ash" || in.ContainerID != "abc" || in.Kind != KindContainer {
 		t.Fatalf("%+v", in)
+	}
+}
+
+func TestRingGrowsWithItsOutputAndShrinks(t *testing.T) {
+	r := NewRing(1 << 20)
+	if r.Footprint() != 0 || r.Cap() != 1<<20 {
+		t.Fatalf("empty ring holds %d bytes (cap %d)", r.Footprint(), r.Cap())
+	}
+	r.Write([]byte("hello\n"))
+	if f := r.Footprint(); f > 8<<10 {
+		t.Fatalf("a quiet ring holds %d bytes", f)
+	}
+	big := bytes.Repeat([]byte("0123456789abcde\n"), 100<<10) // 1.6 MiB
+	r.Write(big)
+	if r.Len() != 1<<20 || r.Footprint() != 1<<20 || !r.Wrapped() {
+		t.Fatalf("len=%d footprint=%d wrapped=%v", r.Len(), r.Footprint(), r.Wrapped())
+	}
+	want := big[len(big)-1000:]
+	r.Shrink(1000)
+	if got := r.Bytes(); !bytes.Equal(got, want) || r.Footprint() != 1000 {
+		t.Fatalf("after shrink: %d bytes, footprint %d", len(got), r.Footprint())
+	}
+	if s := r.Snapshot(); len(s) == 0 || s[0] == '\n' {
+		t.Fatalf("snapshot after shrink %q", s)
+	}
+}
+
+func TestExitedSessionsAreBounded(t *testing.T) {
+	m := NewManager(Options{MaxPerUser: 3, MaxTotal: 5, ReapInterval: time.Hour})
+	defer m.Shutdown()
+	big := strings.Repeat("x", 600<<10) + "\n"
+	for i := 0; i < 20; i++ {
+		owner := "1"
+		if i%2 == 1 {
+			owner = "2"
+		}
+		if i >= 16 {
+			owner = "3"
+		}
+		p := newFakeProc()
+		s, err := m.Create(Spec{Owner: owner, Kind: KindHost}, 80, 24, func(c, r uint16) (Process, error) { return p, nil })
+		if err != nil {
+			t.Fatalf("create %d: %v", i, err)
+		}
+		go p.emit(big)
+		time.Sleep(5 * time.Millisecond)
+		p.exit(0)
+		<-s.Done()
+	}
+	m.mu.Lock()
+	total, perUser, held := 0, map[string]int{}, 0
+	for _, s := range m.sessions {
+		total++
+		perUser[s.owner]++
+		s.mu.Lock()
+		held += s.ring.Footprint()
+		s.mu.Unlock()
+	}
+	m.mu.Unlock()
+	if total > 5 {
+		t.Fatalf("%d exited sessions kept", total)
+	}
+	for u, n := range perUser {
+		if n > 3 {
+			t.Fatalf("user %s keeps %d exited sessions", u, n)
+		}
+	}
+	if held > 5*exitedScrollbackBytes {
+		t.Fatalf("exited sessions hold %d bytes", held)
+	}
+	if n := len(m.List("3")); n != 3 {
+		t.Fatalf("newest user keeps %d exited sessions, want 3", n)
 	}
 }

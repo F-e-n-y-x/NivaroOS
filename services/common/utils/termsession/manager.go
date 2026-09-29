@@ -94,7 +94,7 @@ type Options struct {
 	ScrollbackBytes       int           // ring size per session (2 MiB)
 	DetachedTimeout       time.Duration // kill after this long detached+idle (24h); <0 = never
 	LegacyDetachedTimeout time.Duration // same, for Legacy sessions (1h)
-	ExitedRetention       time.Duration // keep an exited session listed (10m)
+	ExitedRetention       time.Duration // keep an exited session listed (10m); at most MaxPerUser per user and MaxTotal overall, oldest dropped first
 	ReapInterval          time.Duration // housekeeping period (30s)
 	ClientQueue           int           // output frames buffered per viewer (512)
 	// AttachBase is the route prefix sessions are served under (e.g.
@@ -255,6 +255,7 @@ func (m *Manager) Create(spec Spec, cols, rows uint16, start func(cols, rows uin
 	}
 	var evict *Session
 	m.mu.Lock()
+	m.pruneExitedLocked()
 	running, total := 0, 0
 	var oldestLegacy *Session
 	for _, s := range m.sessions {
@@ -391,6 +392,47 @@ func (m *Manager) Kill(owner, id string) error {
 	return nil
 }
 
+// pruneExited forgets the oldest exited sessions beyond MaxPerUser per user
+// and MaxTotal overall, so shells that keep ending by themselves can't pile
+// up for the whole retention period.
+func (m *Manager) pruneExited() {
+	m.mu.Lock()
+	m.pruneExitedLocked()
+	m.mu.Unlock()
+}
+
+func (m *Manager) pruneExitedLocked() {
+	type ended struct {
+		id, owner string
+		at        time.Time
+	}
+	var all []ended
+	for id, s := range m.sessions {
+		if st := s.status(); st.state == StateExited {
+			all = append(all, ended{id, s.owner, st.exitedAt})
+		}
+	}
+	if len(all) <= m.opts.MaxPerUser && len(all) <= m.opts.MaxTotal {
+		return
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if !all[i].at.Equal(all[j].at) {
+			return all[i].at.After(all[j].at) // newest first
+		}
+		return all[i].id < all[j].id
+	})
+	perUser := map[string]int{}
+	kept := 0
+	for _, e := range all {
+		if perUser[e.owner] >= m.opts.MaxPerUser || kept >= m.opts.MaxTotal {
+			delete(m.sessions, e.id)
+			continue
+		}
+		perUser[e.owner]++
+		kept++
+	}
+}
+
 func (m *Manager) reapLoop() {
 	t := time.NewTicker(m.opts.ReapInterval)
 	defer t.Stop()
@@ -435,6 +477,7 @@ func (m *Manager) Reap() {
 			timedOut = append(timedOut, s)
 		}
 	}
+	m.pruneExitedLocked()
 	m.mu.Unlock()
 	for _, s := range timedOut {
 		s.kill(ReasonTimeout)

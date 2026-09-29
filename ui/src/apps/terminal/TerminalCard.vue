@@ -63,6 +63,22 @@
 			</div>
 		</div>
 
+		<!-- Paste on a phone over plain http: the page can't read the
+		     clipboard, and a phone has no Ctrl+Shift+V - so the user pastes
+		     into a text box (long-press > Paste) and sends it from there. -->
+		<div v-if="pasteSheet" class="term-scrim" @keydown.stop @mousedown.self="closePasteSheet">
+			<div class="term-dialog" role="dialog" aria-modal="true" :aria-label="$t('Paste into terminal')" @keydown.esc.prevent="closePasteSheet">
+				<p class="term-dialog-title">{{ $t('Paste into terminal') }}</p>
+				<p class="term-dialog-text">{{ $t('Long-press the box and choose Paste, then send it.') }}</p>
+				<textarea ref="pasteSheetInput" v-model="pasteSheet.text" class="term-paste-input" rows="4" spellcheck="false" autocomplete="off"
+					autocapitalize="off" :aria-label="$t('Text to paste')"></textarea>
+				<div class="term-dialog-actions">
+					<button type="button" class="terminal-ended-btn is-quiet" @click="closePasteSheet">{{ $t('Cancel') }}</button>
+					<button type="button" class="terminal-ended-btn" :disabled="!pasteSheet.text" @click="submitPasteSheet">{{ $t('Paste into terminal') }}</button>
+				</div>
+			</div>
+		</div>
+
 		<!-- Right-click menu. Shift+right-click still opens the browser's own. -->
 		<div v-if="menu" ref="menu" class="term-menu" role="menu" :aria-label="$t('Terminal menu')" :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
 			@keydown.stop="onMenuKey" @mousedown.stop @contextmenu.prevent.stop>
@@ -194,6 +210,7 @@ export default {
 			copyOnSelect: readNumber(COPY_ON_SELECT_KEY, 0) === 1,
 			pasteWarnOff: readNumber(PASTE_WARN_KEY, 0) === 1,
 			ctrlArmed: false,
+			pasteSheet: null,
 			coarsePointer: typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false,
 			sessionInfo: this.session || null,
 			creating: false,
@@ -693,6 +710,7 @@ export default {
 		menuPaste() {
 			readClipboard().then((text) => {
 				if (text === null) {
+					if (this.showKeyBar) return this.openPasteSheet()
 					this.showPill(this.$t('The browser only lets this page paste from the keyboard: press {key}', { key: shortcutLabel('paste') }), 'mdi-keyboard-outline', 4000)
 					return
 				}
@@ -715,6 +733,22 @@ export default {
 			}
 			this.term.paste(text)
 			this.term.focus()
+		},
+
+		openPasteSheet() {
+			this.pasteSheet = { text: '' }
+			this.$nextTick(() => this.$refs.pasteSheetInput && this.$refs.pasteSheetInput.focus())
+		},
+
+		closePasteSheet() {
+			this.pasteSheet = null
+			if (this.term) this.term.focus()
+		},
+
+		submitPasteSheet() {
+			const text = this.pasteSheet ? this.pasteSheet.text : ''
+			this.pasteSheet = null
+			this.pasteText(text)
 		},
 
 		confirmPaste() {
@@ -897,6 +931,10 @@ export default {
 
 		applyCtrl(data) {
 			this.ctrlArmed = false
+			// Ctrl + an arrow / Home / End from the key bar: the xterm modifier
+			// form (Ctrl+Left = ESC[1;5D, word left in most shells).
+			const m = /^\u001b[[O]([A-DHF])$/.exec(data)
+			if (m) return '\u001b[1;5' + m[1]
 			if (data.length !== 1) return data
 			const c = data.toUpperCase().charCodeAt(0)
 			// Ctrl+@..Ctrl+_ (A-Z, [, \, ], ^, _) map to 0x00-0x1f.
@@ -1212,6 +1250,20 @@ export default {
 	color: #a1a1aa;
 	font-size: var(--font-xs);
 	margin-bottom: var(--space-3);
+}
+
+.term-paste-input {
+	display: block;
+	width: 100%;
+	margin: 0 0 var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-radius: var(--radius-sm);
+	background: #18181b;
+	color: #e4e4e7;
+	font-family: "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+	font-size: 16px; /* 16px: iOS doesn't zoom the page on focus */
+	resize: vertical;
 }
 
 .term-dialog-preview {
