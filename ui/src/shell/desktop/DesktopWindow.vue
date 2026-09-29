@@ -54,6 +54,7 @@
 </template>
 
 <script>
+import { rememberSize } from '@/utils/windowSizing'
 import { COMPONENT_REGISTRY, OWN_TITLEBAR_COMPONENTS, DARK_WINDOW_COMPONENTS, NO_SCROLL_COMPONENTS } from '@/utils/desktop/windowRegistry'
 
 const MIN_WIDTH = 360
@@ -297,6 +298,8 @@ export default {
 				if (frame) cancelAnimationFrame(frame)
 				if (pending) this.$store.commit('UPDATE_WINDOW_RECT', pending)
 				this.$store.commit('PERSIST_WINDOWS')
+				// The next window of this app opens at this size.
+				if (pending && (pending.width || pending.height)) rememberSize(this.win.component, this.win.width, this.win.height)
 				document.body.style.userSelect = ''
 			}
 			window.addEventListener('pointermove', onMove)

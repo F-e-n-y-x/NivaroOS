@@ -1,3 +1,5 @@
+import { openRect, rememberedSize } from '../utils/windowSizing'
+
 // require() of an image can give { default: url }; callers need the URL.
 const __assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
 const WINDOWS_STORAGE_KEY = 'nivaroos_open_windows'
@@ -231,14 +233,12 @@ const mutations = {
 			persistWindows(state)
 			return
 		}
-		// Stagger new windows so they don't stack exactly on top of each other.
-		const offset = (state.windows.length % 6) * 24
-		let rect = {
-			x: x !== undefined ? x : 80 + offset,
-			y: y !== undefined ? y : 60 + offset,
-			width: width || 900,
-			height: height || 600
-		}
+		// Remembered size for this app, else a large default for main apps
+		// (see utils/windowSizing), staggered so windows don't stack exactly.
+		const viewport = typeof window !== 'undefined' && window.innerWidth
+			? { width: window.innerWidth, height: window.innerHeight }
+			: { width: 1280, height: 800 }
+		let rect = openRect(component, { width, height, x, y }, viewport, state.windows.length, rememberedSize(component))
 		// On a phone/tablet-sized viewport, every one of this app's ~40
 		// OPEN_WINDOW call sites still passes its own fixed desktop pixel
 		// size (e.g. 760x540) - on a 375px-wide screen that's unusable
