@@ -32,6 +32,12 @@ const users = {
 		return api.put(`${PREFIX}/current/password`, data);
 	},
 
+	// Signs out every other session of this account (other browsers, the
+	// phone app, scripts) in every service; returns fresh tokens for this one.
+	signOutOtherSessions() {
+		return api.delete(`${PREFIX}/current/sessions`);
+	},
+
 	getLinkAppDetail() {
 		return api.get(`${PREFIX}/current/custom/link`);
 	},
