@@ -2,7 +2,9 @@ package v2
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/common"
@@ -140,6 +142,18 @@ func WebAppGridItemAdapterV2(composeAppWithStoreInfo *codegen.ComposeAppWithStor
 		item.Title = &composeAppStoreInfo.Title
 		item.IsUncontrolled = composeAppStoreInfo.IsUncontrolled
 
+		// A Web UI port published on one specific address (e.g.
+		// "192.168.1.10:2283:2283") isn't reachable at whatever name the
+		// dashboard was opened with - over Tailscale that's the node's
+		// 100.x address or MagicDNS name, and the app link would be
+		// refused. Point the link at the bound address instead (reachable
+		// remotely through the node's subnet route).
+		if item.Hostname == nil || strings.TrimSpace(*item.Hostname) == "" {
+			if ip := webUIBoundHostIP(composeApp, composeAppStoreInfo.Main, composeAppStoreInfo.PortMap); ip != "" {
+				item.Hostname = &ip
+			}
+		}
+
 		if composeAppStoreInfo.Main != nil {
 			for i, service := range composeApp.Services {
 				if service.Name == *composeAppStoreInfo.Main {
@@ -203,4 +217,34 @@ func WebAppGridItemAdapterContainer(container *model.MyAppList) (*codegen.WebApp
 	}
 
 	return item, nil
+}
+
+// webUIBoundHostIP returns the specific host address the Web UI port
+// (portMap, published by the main service - or any service when main is
+// unset) is bound to, or "" when it listens on every address.
+func webUIBoundHostIP(app *service.ComposeApp, main *string, portMap string) string {
+	portMap = strings.TrimSpace(portMap)
+	if app == nil || portMap == "" {
+		return ""
+	}
+	for _, svc := range app.Services {
+		if main != nil && *main != "" && svc.Name != *main {
+			continue
+		}
+		for _, p := range svc.Ports {
+			if strings.TrimSpace(p.Published) != portMap {
+				continue
+			}
+			host := strings.Trim(strings.TrimSpace(p.HostIP), "[]")
+			ip := net.ParseIP(host)
+			if ip == nil || ip.IsUnspecified() || ip.IsLoopback() {
+				return ""
+			}
+			if ip.To4() == nil {
+				return "[" + ip.String() + "]"
+			}
+			return ip.String()
+		}
+	}
+	return ""
 }

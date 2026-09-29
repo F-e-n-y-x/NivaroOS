@@ -36,8 +36,29 @@ func hasBrowserMarks(r *http.Request) bool {
 	return r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != ""
 }
 
+// proxyHeaders: any of these means the request was relayed on behalf of
+// someone else - the local gateway (X-Forwarded-For), cloudflared
+// (Cf-Connecting-Ip, plus X-Forwarded-For from Cloudflare's edge),
+// `tailscale serve` (Tailscale-User-*, X-Forwarded-For) or any other
+// reverse proxy on this box. Loopback is only "local" when none are present.
+var proxyHeaders = []string{
+	"X-Forwarded-For", "X-Real-IP", "Forwarded", "X-Forwarded-Host",
+	"Cf-Connecting-Ip", "True-Client-Ip", "Cf-Ray",
+	"Tailscale-User-Login", "Tailscale-User-Name", "Tailscale-Headers-Info",
+	"Via",
+}
+
+// HasProxyMarks reports whether r carries any header a relay adds (see
+// proxyHeaders) - for services that keep their own loopback checks.
+func HasProxyMarks(r *http.Request) bool { return hasProxyMarks(r) }
+
 func hasProxyMarks(r *http.Request) bool {
-	return r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" || r.Header.Get("Forwarded") != ""
+	for _, h := range proxyHeaders {
+		if len(r.Header.Values(h)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // IsDirectLocalAutomation reports whether r arrived straight from a
@@ -45,7 +66,7 @@ func hasProxyMarks(r *http.Request) bool {
 // no browser headers. This is what the gateway checks before marking a
 // request with LocalAutomationHeader.
 func IsDirectLocalAutomation(r *http.Request) bool {
-	return IsLoopbackAddr(r.RemoteAddr) && !hasProxyMarks(r) && !hasBrowserMarks(r)
+	return !LoopbackUntrusted() && IsLoopbackAddr(r.RemoteAddr) && !hasProxyMarks(r) && !hasBrowserMarks(r)
 }
 
 // IsLocalAutomation reports whether r may skip JWT auth as same-host
@@ -60,8 +81,14 @@ func IsDirectLocalAutomation(r *http.Request) bool {
 //   - either no X-Forwarded-For / X-Real-IP at all (a direct local call
 //     between services or from a script), or the local gateway vouched
 //     for it with LocalAutomationHeader.
+//
+// Tailscale peers (100.64.0.0/10, fd7a:115c:a1e0::/48) are never loopback
+// with tailscaled's normal kernel TUN, so they always need a token. With
+// tailscaled in userspace-networking mode, though, inbound tailnet
+// connections are re-dialled from 127.0.0.1 and would look local - see
+// LoopbackUntrusted, which switches loopback trust off entirely then.
 func IsLocalAutomation(r *http.Request) bool {
-	if !IsLoopbackAddr(r.RemoteAddr) || hasBrowserMarks(r) {
+	if LoopbackUntrusted() || !IsLoopbackAddr(r.RemoteAddr) || hasBrowserMarks(r) {
 		return false
 	}
 	if !hasProxyMarks(r) {
