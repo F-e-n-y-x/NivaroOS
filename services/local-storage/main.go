@@ -26,6 +26,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/oauthproxy"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/sqlite"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/utils/merge"
+	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/vfscachedir"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/route"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	"github.com/coreos/go-systemd/daemon"
@@ -103,6 +104,12 @@ func init() {
 	ensureDefaultDirectories()
 	service.MountLists = make(map[string]*mountlib.MountPoint)
 	configfile.Install()
+	// Cloud mounts cache on disk, not in /tmp (RAM on most installs).
+	if moved, err := vfscachedir.Setup(vfscachedir.Dir, vfscachedir.Legacy()); err != nil {
+		logger.Error("cloud cache: couldn't move to disk; mounts keep the old cache place", zap.Error(err), zap.Strings("moved", moved))
+	} else if len(moved) > 0 {
+		logger.Info("cloud cache moved to disk", zap.String("dir", vfscachedir.Dir), zap.Strings("from", moved))
+	}
 	oauthproxy.Start()
 	if err := service.MyService.Storage().CheckAndMountAll(); err != nil {
 		logger.Error("failed to remount previously configured cloud accounts", zap.Error(err))
