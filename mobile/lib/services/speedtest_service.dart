@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 
 import 'api_client.dart';
+import 'server_routes.dart';
 import 'speed/speed_engine.dart';
 
 /// Three different measurements, never mixed up (plan M-32):
@@ -208,6 +209,12 @@ class SpeedtestService {
   Future<({Uri base, String label})> _serverPath() async {
     final api = ApiClient.instance;
     final saved = api.buildUri('/').replace(path: '', query: null);
+    // How the phone reaches the address in use: a home address can be
+    // reached through Tailscale away from home (the server's subnet
+    // route), which is not a home-network link.
+    await ServerRoutes.instance.refreshNetwork();
+    final savedKind = ServerRoutes.instance.describe(saved.toString());
+    if (savedKind == RouteKind.tailscale) return (base: saved, label: 'Through Tailscale · ${saved.host}');
     if (isHomeNetworkHost(saved.host)) return (base: saved, label: 'Home network · ${saved.host}');
 
     final lan = <Uri>[];
@@ -234,7 +241,11 @@ class SpeedtestService {
           probe.latency(base.replace(path: '/speedtest/ping'), samples: 2, timeout: const Duration(milliseconds: 900)).then((l) => l == null ? null : base),
       ]);
       for (final base in reachable) {
-        if (base != null) return (base: base, label: 'Home network · ${base.host}');
+        if (base == null) continue;
+        if (ServerRoutes.instance.describe(base.toString()) == RouteKind.tailscale) {
+          return (base: base, label: 'Through Tailscale · ${base.host}');
+        }
+        return (base: base, label: 'Home network · ${base.host}');
       }
     }
     return (base: saved, label: 'Through ${saved.host} · not a direct home-network link');
