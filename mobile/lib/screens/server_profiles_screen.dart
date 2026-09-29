@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 
 import '../models/server_profile.dart';
 import '../services/api_client.dart';
+import '../services/server_routes.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../ui/ui.dart';
 import 'home_shell.dart';
 import 'login_screen.dart';
+import 'server_addresses_screen.dart';
 
 /// Saved servers: the one in use, and the others to switch to. Switching
 /// stops everything the phone does in the background for the old server
@@ -101,6 +103,11 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
     await _load();
   }
 
+  Future<void> _openAddresses() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ServerAddressesScreen()));
+    await _load();
+  }
+
   Future<void> _remove(ServerProfile profile) async {
     final ok = await ConfirmDialog.destructive(
       context,
@@ -119,9 +126,14 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
     final host = ApiClient.displayHost(p.url);
     // The name is often the host itself; don't say it twice.
     final where = p.displayName == host ? null : host;
+    final addresses = p.effectiveAddresses.length;
+    final route = ServerRoutes.instance.state.value;
     final parts = [
       if (p.username.isNotEmpty) p.username,
       ?where,
+      // The server in use: how the phone reaches it now.
+      if (active && addresses > 1 && route.status == RouteStatus.connected && route.kind != null) route.kind!.label,
+      if (!active && addresses > 1) '$addresses addresses',
       if (!active && !p.hasSession) 'Signed out',
     ];
     final subtitle = parts.isEmpty ? host : parts.join(' · ');
@@ -141,6 +153,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                   'switch' => _switchTo(p),
                   'signin' => _signInAgain(p),
                   'edit' => _edit(p),
+                  'addresses' => _openAddresses(),
                   'remove' => _remove(p),
                   _ => null,
                 },
@@ -148,6 +161,7 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
                   if (!active) const PopupMenuItem(value: 'switch', child: Text('Switch to this server')),
                   PopupMenuItem(value: 'signin', child: Text(active || p.hasSession ? 'Sign in again' : 'Sign in')),
                   const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  if (active) const PopupMenuItem(value: 'addresses', child: Text('Addresses')),
                   if (!active) const PopupMenuItem(value: 'remove', child: Text('Remove')),
                 ],
               ),
@@ -237,14 +251,20 @@ class _ServerProfileFormState extends State<ServerProfileForm> {
     if (_urlError != null) return;
     setState(() => _saving = true);
     try {
-      final String url;
-      try {
-        url = (await ApiClient.probe(_url.text)).url;
-      } on ApiException catch (e) {
-        setState(() => _urlError = e.message);
-        return;
-      }
       final existing = widget.existing;
+      String url;
+      if (existing != null && ApiClient.normalizeServerUrl(_url.text) == ApiClient.normalizeServerUrl(existing.url)) {
+        // The address didn't change: no need to reach it (away from home,
+        // the home address doesn't answer, and renaming must still work).
+        url = existing.url;
+      } else {
+        try {
+          url = (await ApiClient.probe(_url.text)).url;
+        } on ApiException catch (e) {
+          setState(() => _urlError = e.message);
+          return;
+        }
+      }
       String? access;
       String? refresh;
       final username = _user.text.trim();
@@ -262,6 +282,16 @@ class _ServerProfileFormState extends State<ServerProfileForm> {
         refresh = existing.refreshToken;
       }
       final name = _name.text.trim();
+      // Its other addresses stay; a changed main address takes the old
+      // one's place in the list.
+      var addresses = existing?.addresses ?? const <ServerAddress>[];
+      if (existing != null && existing.url != url && addresses.isNotEmpty) {
+        addresses = [
+          for (final a in addresses)
+            if (a.url == existing.url) ServerAddress(url) else if (a.url != url) a,
+        ];
+        if (!addresses.any((a) => a.url == url)) addresses = [ServerAddress(url), ...addresses];
+      }
       final profile = ServerProfile(
         id: existing?.id ?? 'srv_${clock.now().millisecondsSinceEpoch}',
         name: name.isEmpty ? ServerProfile.defaultName(url) : name,
@@ -270,6 +300,11 @@ class _ServerProfileFormState extends State<ServerProfileForm> {
         accessToken: access,
         refreshToken: refresh,
         lastConnected: existing?.lastConnected,
+        addresses: addresses,
+        ignoredAddresses: existing?.ignoredAddresses ?? const [],
+        subnetRoutes: existing?.subnetRoutes ?? const [],
+        hostName: existing?.hostName,
+        learnedAt: existing?.learnedAt,
       );
       if (mounted) Navigator.of(context).pop(profile);
     } finally {

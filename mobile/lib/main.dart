@@ -7,11 +7,13 @@ import 'ui/theme/app_theme.dart';
 import 'ui/theme/scaled_icons.dart';
 import 'ui/theme/theme_controller.dart';
 import 'services/api_client.dart';
+import 'services/server_routes.dart';
 import 'services/storage_service.dart';
 import 'services/widget_refresh.dart';
 import 'screens/discovery_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_shell.dart';
+import 'widgets/connection_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +49,11 @@ Future<Widget> startScreen() async {
     await ThemeController.instance.load();
     await WidgetRefreshController.instance.load();
     await ApiClient.instance.init();
+    // Which of the server's addresses answers from here (home, Tailscale,
+    // public), checked in the background and again on resume and network
+    // changes; the app starts on the one that worked last.
+    ServerRoutes.instance.startWatching();
+    unawaited(ServerRoutes.instance.select());
     final serverUrl = await StorageService.instance.getServerUrl();
     if (serverUrl != null && serverUrl.trim().isNotEmpty) {
       // HomeShell starts this server's background work (the heartbeat)
@@ -124,7 +131,8 @@ class _NivaroAppState extends State<NivaroApp> {
           // Dark choice on a light phone still gets light status icons.
           builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
             value: AppTheme.systemBarsStyle(Theme.of(context).brightness),
-            child: ScaledIcons(child: child ?? const SizedBox.shrink()),
+            // "Can't reach atom - turn on Tailscale" over every screen.
+            child: ScaledIcons(child: ConnectionBannerHost(child: child ?? const SizedBox.shrink())),
           ),
           home: widget.initialScreen,
         );
