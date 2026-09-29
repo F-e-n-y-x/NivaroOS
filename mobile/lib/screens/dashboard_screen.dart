@@ -50,9 +50,8 @@ class HomeController extends ChangeNotifier {
   /// (or its sidecar isn't answering), and then Home shows no GPU card.
   final ValueNotifier<GpuStats?> gpu = ValueNotifier(null);
 
-  // Set once the GPU sidecar said there is no GPU, so the live polls stop
-  // asking; pull-to-refresh asks again.
-  bool _noGpu = false;
+  // Whether the server has a GPU worth polling; pull-to-refresh asks again.
+  final GpuPresence _gpuPresence = GpuPresence();
 
   /// Why the first reading failed; null once there is data.
   Object? liveError;
@@ -112,7 +111,7 @@ class HomeController extends ChangeNotifier {
   Future<void> refreshLive({bool forceDisks = false}) async {
     if (_liveBusy) return;
     _liveBusy = true;
-    if (!_noGpu) unawaited(_loadGpu());
+    if (_gpuPresence.worthPolling) unawaited(_loadGpu());
     try {
       final util = await _api.get('/sys/utilization');
       var stats = DashboardStats.fromUtilization(util['data'] as Map<String, dynamic>? ?? const {});
@@ -162,13 +161,9 @@ class HomeController extends ChangeNotifier {
       final res = await _api.getRaw('/v1/gpu/gpu-stats');
       final g = res.statusCode == 200 ? GpuStats.tryParse(jsonDecode(res.body)) : null;
       if (_disposed) return;
-      if (g == null) {
-        _noGpu = true;
-        gpu.value = null;
-        return;
-      }
-      gpu.value = g;
-      history.addGpu(g);
+      gpu.value = _gpuPresence.record(g, gpu.value);
+      // A stale reading repeats old numbers; the chart shouldn't draw them as new.
+      if (g != null && !g.stale) history.addGpu(g);
     } catch (_) {
       // Keep the last reading; the next poll asks again.
     }
@@ -209,7 +204,7 @@ class HomeController extends ChangeNotifier {
 
   /// Everything, as on open and pull-to-refresh.
   Future<void> refreshAll() async {
-    _noGpu = false;
+    _gpuPresence.reset();
     refreshes++;
     if (live.value == null) {
       liveError = null;

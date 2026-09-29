@@ -14,7 +14,7 @@ import (
 
 // nvidiaSMITimeout bounds each nvidia-smi invocation so a hung/slow driver
 // can't block an HTTP request (and the goroutine serving it) indefinitely.
-const nvidiaSMITimeout = 3 * time.Second
+const nvidiaSMITimeout = 5 * time.Second
 
 const nvidiaQueryFields = "index,name,driver_version,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit"
 

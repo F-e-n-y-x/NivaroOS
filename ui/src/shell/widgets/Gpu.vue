@@ -253,8 +253,12 @@ export default {
 					this.processes = slice(orderBy(procs, ["usage"], ["desc"]), 0, 8);
 				})
 				.catch(() => {
-					this.unavailable = true;
 					this.failures++;
+					// A GPU already shown stays on screen through a few failed
+					// readings: an idle card can make nvidia-smi fail for a
+					// moment, and flipping to "Integrated Display" then back
+					// read as the GPU disappearing.
+					if (!this.gpuName || this.failures >= 3) this.unavailable = true;
 					// Once per failure streak, not on every backed-off retry.
 					if (!this.driverChecked) this.checkDriverStatus();
 				})

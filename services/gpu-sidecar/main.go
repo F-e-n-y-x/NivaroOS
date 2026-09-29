@@ -29,6 +29,13 @@ import (
 // of nvidia-smi subprocesses.
 const cacheTTL = 1 * time.Second
 
+// staleGrace keeps answering with the last good reading, marked stale, when
+// a query fails soon after one worked. An idle card that has dropped to its
+// lowest power state can make nvidia-smi slow or fail for a moment; that is
+// not "this machine has no GPU", and clients used to hide the GPU for good
+// on the first such error.
+const staleGrace = 2 * time.Minute
+
 var (
 	cacheMu   sync.Mutex
 	cached    gpuStats
@@ -54,6 +61,10 @@ type gpuStats struct {
 	GPUCount           int          `json:"gpu_count,omitempty"`
 	GPUs               []gpuStats   `json:"gpus,omitempty"`
 	Error              string       `json:"error,omitempty"`
+	// Stale: the query failed; these are the last good numbers, from
+	// StaleSeconds ago.
+	Stale        bool `json:"stale,omitempty"`
+	StaleSeconds int  `json:"stale_seconds,omitempty"`
 }
 
 type gpuProcess struct {
@@ -62,6 +73,9 @@ type gpuProcess struct {
 	Command            string  `json:"command"`
 	UtilizationPercent float64 `json:"utilization_percent"`
 }
+
+// queryGPUFn is queryGPU; tests swap it.
+var queryGPUFn = queryGPU
 
 // queryGPU tries each vendor in turn and returns the first one that
 // actually has a device present. nvidia-smi returning "command not found"
@@ -106,8 +120,14 @@ func handleGPUStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := queryGPU()
+	stats, err := queryGPUFn()
 	if err != nil {
+		if age := time.Since(cachedAt); !cachedAt.IsZero() && age < staleGrace {
+			last := cached
+			last.Stale, last.StaleSeconds = true, int(age.Seconds())
+			writeJSON(w, http.StatusOK, last)
+			return
+		}
 		cacheGood = false
 		writeJSON(w, http.StatusServiceUnavailable, gpuStats{Error: err.Error()})
 		return
