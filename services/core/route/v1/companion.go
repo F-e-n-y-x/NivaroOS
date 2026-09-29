@@ -10,7 +10,6 @@ import (
 	"fmt"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
@@ -69,10 +69,19 @@ type CompanionDevice struct {
 	// as before, so an old phone that never comes back can still be removed.
 	OwnerUserID string `json:"owner_user_id,omitempty"`
 	// Connection is how the server can reach the phone right now, filled
-	// by GetCompanionDevices: "lan" (direct - files open and copy), "remote"
-	// (online through the tunnel/heartbeat only - files can be listed, not
-	// opened) or "offline". Not meaningful once persisted; reset on load.
+	// by GetCompanionDevices: "lan" (on the home network), "remote" (away
+	// from home - see Route) or "offline". Not meaningful once persisted;
+	// reset on load.
 	Connection string `json:"connection,omitempty"`
+	// Route says how files travel right now (S-04): "lan" and "tailscale"
+	// are direct connections, "tunnel" goes through the phone's connection
+	// to the server (slower), "tunnel_list" is an older app's tunnel that
+	// only lists folders, "" not reachable. Reset on load.
+	Route string `json:"route,omitempty"`
+	// Addresses are every address the phone reported it can be reached on
+	// (Wi-Fi LAN, Tailscale IPv4/IPv6, MagicDNS name), filtered to the
+	// allowed ranges - see companionCandidates.
+	Addresses []string `json:"addresses,omitempty"`
 	// Secret authenticates every direct server->phone HTTP call this device's
 	// embedded CompanionFileServer receives (download/upload/delete/files) -
 	// that server has no other way to verify a LAN caller. Generated once at
@@ -98,6 +107,7 @@ type CompanionRegistrationDTO struct {
 	OSVersion     string                 `json:"os_version"`
 	AppVersion    string                 `json:"app_version"`
 	IP            string                 `json:"ip"`
+	Addresses     []string               `json:"addresses,omitempty"` // every address the file server listens on (S-04)
 	Port          int                    `json:"port,omitempty"`
 	SharesStorage bool                   `json:"shares_storage,omitempty"`
 	RootPath      string                 `json:"root_path,omitempty"`
@@ -160,14 +170,35 @@ var (
 type companionTunnel struct {
 	conn *websocket.Conn
 	wmu  sync.Mutex
+	// mux carries file streams (companion_tunnel_mux.go); set once the
+	// phone's register message says its app supports them, nil for an
+	// older app (listing only).
+	mux atomic.Pointer[tunnelMux]
 }
 
 func (t *companionTunnel) send(v interface{}) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return t.sendRaw(false, data)
+}
+
+// sendRaw writes one text (JSON) or binary (stream frame) message.
+func (t *companionTunnel) sendRaw(binary bool, data []byte) error {
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
-	_ = t.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	return t.conn.WriteJSON(v)
+	_ = t.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	kind := websocket.TextMessage
+	if binary {
+		kind = websocket.BinaryMessage
+	}
+	return t.conn.WriteMessage(kind, data)
 }
+
+// streams returns the tunnel's stream mux, or nil when the phone's app
+// can only list folders through the tunnel.
+func (t *companionTunnel) streams() *tunnelMux { return t.mux.Load() }
 
 func companionPendingKey(deviceID, reqID string) string {
 	return deviceID + "\x00" + reqID
@@ -209,81 +240,19 @@ func companionHasLANIP(ip string) bool {
 	return ip != "" && ip != "Local Device" && ip != "Local" && !strings.HasPrefix(ip, "127.")
 }
 
-// Direct server->phone calls go to a private LAN address the server may not
-// be able to route to at all (phone on mobile data or another Wi-Fi). The
-// default dialer waits for the kernel's TCP connect timeout (~2 minutes);
-// a few seconds is plenty on a LAN.
-var companionTransport = &http.Transport{
-	DialContext:         (&net.Dialer{Timeout: 4 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-	TLSHandshakeTimeout: 10 * time.Second,
-	MaxIdleConnsPerHost: 4,
-	IdleConnTimeout:     90 * time.Second,
-}
-
-func companionClient(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout, Transport: companionTransport}
-}
-
-// errCompanionNotOnLAN: the phone is online (tunnel up or heartbeat within
-// the last 75 s) but the server can't open a connection to it - it isn't on
-// the same network. The reverse tunnel only carries directory listings (the
-// app implements "list" and "ping" only), so opening, downloading or
-// uploading a file needs the direct connection.
-type errCompanionNotOnLAN struct {
-	name  string
-	cause error
-}
-
-func (e *errCompanionNotOnLAN) Error() string {
-	return companionNotOnLANMessage(e.name)
-}
-
-func (e *errCompanionNotOnLAN) Unwrap() error { return e.cause }
-
-func companionNotOnLANMessage(name string) string {
-	if strings.TrimSpace(name) == "" {
-		name = "The phone"
-	}
-	return name + " isn't on the same network as the server - open it from the phone, or when both are on the same network"
-}
-
 // companionOnlineRemotely: the phone is talking to the server (reverse
 // tunnel connected, or a heartbeat in the last two sync intervals).
 func companionOnlineRemotely(dev *CompanionDevice) bool {
 	return companionTunnelFor(dev.ID) != nil || time.Since(dev.LastSeen) <= 75*time.Second
 }
 
-// companionDirectErr turns a failed direct connection to the phone into
-// errCompanionNotOnLAN when the phone is otherwise online, so every caller
-// can tell the user why instead of a raw "dial tcp ... i/o timeout".
-// Errors the phone itself answered with (HTTP status) are not passed here.
-func companionDirectErr(dev *CompanionDevice, err error) error {
-	if err == nil || errors.Is(err, context.Canceled) {
-		return err
-	}
-	var nl *errCompanionNotOnLAN
-	if errors.As(err, &nl) {
-		return err
-	}
-	if companionOnlineRemotely(dev) {
-		return &errCompanionNotOnLAN{name: dev.Name, cause: err}
-	}
-	return err
-}
-
-// companionNoLANIPErr is returned when the device never reported a LAN
-// address at all.
-func companionNoLANIPErr(dev *CompanionDevice) error {
-	return companionDirectErr(dev, errors.New("companion device has no direct LAN IP"))
-}
-
-// companionUnreachableMessage is what a failed phone download shows the user.
+// companionUnreachableMessage is what a failed phone request shows the user.
 func companionUnreachableMessage(dev *CompanionDevice, err error) string {
-	var nl *errCompanionNotOnLAN
-	if errors.As(err, &nl) {
-		return nl.Error()
+	var ue *errCompanionUnreachable
+	if errors.As(err, &ue) {
+		return ue.Error()
 	}
-	return dev.Name + " can't be reached right now - make sure the NivaroOS app is open on it and it's on the same network"
+	return companionDisplayName(dev) + " can't be reached right now - make sure the NivaroOS app is open on it with file sharing on"
 }
 
 // Where companion state lives. Variables only so tests can point them at a
@@ -503,6 +472,7 @@ func loadCompanionDevicesLocked() {
 			}
 			dev.SharesStorage = true
 			dev.Connection = ""
+			dev.Route = ""
 			migrateCompanionNameSource(dev)
 			companionDevices[dev.ID] = dev
 		}
@@ -815,147 +785,187 @@ func GetCompanionDeviceByStoragePath(p string) (*CompanionDevice, string) {
 	return nil, ""
 }
 
-// FetchCompanionFilesFromDevice fetches live file listing from companion device via direct HTTP or WebSocket
+// FetchCompanionFilesFromDevice fetches the live file listing from the
+// phone: directly (LAN or Tailscale) or streamed through its tunnel
+// (companionDo), else - an older app's tunnel - with the tunnel's "list"
+// message.
 func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]CompanionFileItem, error) {
 	if phonePath == "" {
 		phonePath = "/storage/emulated/0"
 	}
 
-	// 1. Try direct HTTP if device has a reachable LAN IP
-	devIP := dev.IP
-	if companionHasLANIP(devIP) {
-		port := dev.Port
-		if port <= 0 {
-			port = 8765
+	// A large folder (DCIM) can take seconds to list on the phone.
+	resp, err := companionDo(context.Background(), dev, companionRequest{
+		Method: http.MethodGet, Path: "/files", Query: url.Values{"path": {phonePath}}, Timeout: 30 * time.Second,
+	})
+	if err == nil {
+		defer resp.Body.Close()
+		var body struct {
+			Success bool                `json:"success"`
+			Files   []CompanionFileItem `json:"files"`
+			Message string              `json:"message"`
 		}
-		urlStr := fmt.Sprintf("http://%s:%d/files?path=%s", devIP, port, url.QueryEscape(phonePath))
-		req, err := http.NewRequest("GET", urlStr, nil)
-		if err == nil {
-			req.Header.Set("X-Companion-Secret", dev.Secret)
-			client := companionClient(15 * time.Second) // a large folder (DCIM) can take seconds to list on the phone
-			resp, err := client.Do(req)
-			if err == nil && resp.StatusCode == http.StatusOK {
-				defer resp.Body.Close()
-				var body struct {
-					Success bool                `json:"success"`
-					Files   []CompanionFileItem `json:"files"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&body); err == nil && body.Success {
-					markCompanionSeen(dev)
-					return body.Files, nil
-				}
+		derr := json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(&body)
+		if resp.StatusCode == http.StatusOK && derr == nil && body.Success {
+			return body.Files, nil
+		}
+		if derr == nil && !body.Success {
+			// The phone answered: a file, a missing folder, a refused path
+			// - not an empty folder.
+			if body.Message == "" {
+				body.Message = "the device couldn't list " + phonePath
 			}
+			return nil, errors.New(body.Message)
 		}
+		return nil, fmt.Errorf("the device couldn't list %s (status %d)", phonePath, resp.StatusCode)
 	}
 
-	// 2. Try WebSocket reverse tunnel
-	if ws := companionTunnelFor(dev.ID); ws != nil {
-		reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
-		ch := make(chan map[string]interface{}, 1)
-		// Keyed by device too: only this phone's tunnel can answer it.
-		pendingKey := companionPendingKey(dev.ID, reqID)
-
-		companionPendingMu.Lock()
-		companionPendingReqs[pendingKey] = ch
-		companionPendingMu.Unlock()
-
-		defer func() {
-			companionPendingMu.Lock()
-			delete(companionPendingReqs, pendingKey)
-			companionPendingMu.Unlock()
-		}()
-
-		msg := map[string]interface{}{
-			"id":     reqID,
-			"action": "list",
-			"path":   phonePath,
-		}
-		if err := ws.send(msg); err == nil {
-			select {
-			case res := <-ch:
-				// The phone answers success:false for a file or a missing
-				// folder - that is not an empty folder (a copy of a file
-				// through the tunnel used to "succeed" with nothing copied).
-				if ok, isBool := res["success"].(bool); isBool && !ok {
-					m, _ := res["message"].(string)
-					if m == "" {
-						m = "the device couldn't list " + phonePath
-					}
-					return nil, errors.New(m)
-				}
-				if filesRaw, ok := res["files"].([]interface{}); ok {
-					var items []CompanionFileItem
-					data, _ := json.Marshal(filesRaw)
-					json.Unmarshal(data, &items)
-					markCompanionSeen(dev)
-					return items, nil
-				}
-			case <-time.After(15 * time.Second):
-				logger.Info("WS list request timed out", zap.String("dev_id", dev.ID))
-			}
+	// An app from before tunnel streams: its tunnel still lists folders.
+	if ws := companionTunnelFor(dev.ID); ws != nil && ws.streams() == nil {
+		if items, lerr := companionTunnelList(ws, dev, phonePath); lerr == nil || !errors.Is(lerr, errTunnelListTimeout) {
+			return items, lerr
 		}
 	}
-
-	return nil, fmt.Errorf("device %s (%s) is unreachable", dev.Name, dev.IP)
+	return nil, err
 }
 
-// ProxyCompanionStream streams a file from the companion device to http.ResponseWriter with Range and inline preview support
-func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.ResponseWriter, r *http.Request) error {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return companionNoLANIPErr(dev)
-	}
+var errTunnelListTimeout = errors.New("the phone didn't answer in time")
 
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
-	if r != nil && r.URL.Query().Get("download") == "1" {
-		urlStr += "&download=1"
-	}
+// companionTunnelList is the legacy tunnel "list" request.
+func companionTunnelList(ws *companionTunnel, dev *CompanionDevice, phonePath string) ([]CompanionFileItem, error) {
+	reqID := fmt.Sprintf("req_%d", time.Now().UnixNano())
+	ch := make(chan map[string]interface{}, 1)
+	// Keyed by device too: only this phone's tunnel can answer it.
+	pendingKey := companionPendingKey(dev.ID, reqID)
 
-	var req *http.Request
-	var err error
-	if r != nil {
-		req, err = http.NewRequestWithContext(r.Context(), "GET", urlStr, nil)
-	} else {
-		req, err = http.NewRequest("GET", urlStr, nil)
+	companionPendingMu.Lock()
+	companionPendingReqs[pendingKey] = ch
+	companionPendingMu.Unlock()
+	defer func() {
+		companionPendingMu.Lock()
+		delete(companionPendingReqs, pendingKey)
+		companionPendingMu.Unlock()
+	}()
+
+	if err := ws.send(map[string]interface{}{"id": reqID, "action": "list", "path": phonePath}); err != nil {
+		return nil, err
 	}
+	select {
+	case res := <-ch:
+		// The phone answers success:false for a file or a missing
+		// folder - that is not an empty folder (a copy of a file
+		// through the tunnel used to "succeed" with nothing copied).
+		if ok, isBool := res["success"].(bool); isBool && !ok {
+			m, _ := res["message"].(string)
+			if m == "" {
+				m = "the device couldn't list " + phonePath
+			}
+			return nil, errors.New(m)
+		}
+		var items []CompanionFileItem
+		if filesRaw, ok := res["files"].([]interface{}); ok {
+			data, _ := json.Marshal(filesRaw)
+			json.Unmarshal(data, &items)
+		}
+		markCompanionSeen(dev)
+		return items, nil
+	case <-time.After(15 * time.Second):
+		logger.Info("WS list request timed out", zap.String("dev_id", dev.ID))
+		return nil, errTunnelListTimeout
+	}
+}
+
+// companionAck reads the phone's {"success": false, "error"/"message"}
+// answer, if it is one.
+func companionAck(r io.Reader) error {
+	var ack struct {
+		Success *bool  `json:"success"`
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if body, _ := io.ReadAll(io.LimitReader(r, 64<<10)); len(body) > 0 && json.Unmarshal(body, &ack) == nil && ack.Success != nil && !*ack.Success {
+		if ack.Error == "" {
+			ack.Error = ack.Message
+		}
+		if ack.Error == "" {
+			ack.Error = "the device rejected the request"
+		}
+		return errors.New(ack.Error)
+	}
+	return nil
+}
+
+// companionSimple sends a body-less request and checks the phone's answer.
+func companionSimple(dev *CompanionDevice, method, path string, q url.Values, timeout time.Duration) error {
+	resp, err := companionDo(context.Background(), dev, companionRequest{Method: method, Path: path, Query: q, Timeout: timeout})
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
+	defer resp.Body.Close()
+	if ackErr := companionAck(resp.Body); ackErr != nil {
+		return ackErr
+	}
+	if resp.StatusCode != http.StatusOK {
+		return &companionStatusErr{status: resp.StatusCode}
+	}
+	return nil
+}
 
-	// Forward Range header for video/media seeking and partial content
+// companionStatusErr: the phone answered with an HTTP error status.
+type companionStatusErr struct{ status int }
+
+func (e *companionStatusErr) Error() string {
+	return fmt.Sprintf("companion device returned status %d", e.status)
+}
+
+// ProxyCompanionStream streams a file from the companion device to
+// http.ResponseWriter with Range and inline preview support - over any
+// route (LAN, Tailscale, tunnel).
+func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.ResponseWriter, r *http.Request) error {
+	q := url.Values{"path": {phonePath}}
+	download := r != nil && r.URL.Query().Get("download") == "1"
+	if download {
+		q.Set("download", "1")
+	}
+	ctx := context.Background()
+	h := http.Header{}
 	if r != nil {
-		if rangeH := r.Header.Get("Range"); rangeH != "" {
-			req.Header.Set("Range", rangeH)
+		ctx = r.Context()
+		// Forward Range for video/media seeking and partial content.
+		for _, k := range []string{"Range", "If-Range"} {
+			if v := r.Header.Get(k); v != "" {
+				h.Set(k, v)
+			}
 		}
 	}
-
-	resp, err := companionClient(60 * time.Minute).Do(req)
+	resp, err := companionDo(ctx, dev, companionRequest{Method: http.MethodGet, Path: "/download", Query: q, Header: h, Timeout: 6 * time.Hour})
 	if err != nil {
-		return companionDirectErr(dev, err)
+		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return fmt.Errorf("companion device returned status %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		if cr := resp.Header.Get("Content-Range"); cr != "" {
+			w.Header().Set("Content-Range", cr)
+		}
+		w.WriteHeader(resp.StatusCode)
+		return nil
 	}
-
-	markCompanionSeen(dev)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return &companionStatusErr{status: resp.StatusCode}
+	}
 
 	// Forward critical media/streaming headers
-	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
-		if val := resp.Header.Get(h); val != "" {
-			w.Header().Set(h, val)
+	for _, k := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if val := resp.Header.Get(k); val != "" {
+			w.Header().Set(k, val)
 		}
 	}
+	w.Header().Set("X-Companion-Route", resp.Route)
 
 	fileName := filepath.Base(phonePath)
 	disposition := "inline; filename*=utf-8''" + url.PathEscape(fileName)
-	if r != nil && r.URL.Query().Get("download") == "1" {
+	if download {
 		disposition = "attachment; filename*=utf-8''" + url.PathEscape(fileName)
 	}
 	w.Header().Set("Content-Disposition", disposition)
@@ -970,56 +980,20 @@ func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo
 	return ProxyCompanionStream(dev, phonePath, ctx.Response().Writer, ctx.Request())
 }
 
-// ProxyCompanionFileDelete sends a delete request to the companion device
+// ProxyCompanionFileDelete deletes phonePath on the companion device. The
+// error says when the phone couldn't be reached or refused - a move from
+// the phone must not look done when the original is still there.
 func ProxyCompanionFileDelete(dev *CompanionDevice, phonePath string) error {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return nil
-	}
-
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/delete?path=%s", devIP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequest("DELETE", urlStr, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-
-	resp, err := companionClient(5 * time.Second).Do(req)
-	if err == nil {
-		resp.Body.Close()
-	}
-	return nil
+	return companionSimple(dev, http.MethodDelete, "/delete", url.Values{"path": {phonePath}}, 30*time.Second)
 }
 
-// ProxyCompanionFileRename sends a rename request to the companion device with fallback to streaming
+// ProxyCompanionFileRename renames on the companion device, with a copy
+// fallback for apps without /rename.
 func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) error {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return companionNoLANIPErr(dev)
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	// Try /rename endpoint first
-	urlStr := fmt.Sprintf("http://%s:%d/rename?old_path=%s&new_path=%s", devIP, port, url.QueryEscape(oldPath), url.QueryEscape(newPath))
-	req, err := http.NewRequest("POST", urlStr, nil)
-	if err == nil {
-		req.Header.Set("X-Companion-Secret", dev.Secret)
-		resp, err := companionClient(5 * time.Second).Do(req)
-		if err != nil {
-			// Not reachable at all: the fallback below would fail the same way.
-			return companionDirectErr(dev, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			markCompanionSeen(dev)
-			return nil
-		}
+	err := companionSimple(dev, http.MethodPost, "/rename", url.Values{"old_path": {oldPath}, "new_path": {newPath}}, 30*time.Second)
+	var se *companionStatusErr
+	if err == nil || !errors.As(err, &se) || se.status != http.StatusNotFound {
+		return err
 	}
 
 	// Fallback: download old -> upload new -> delete old
@@ -1030,145 +1004,67 @@ func ProxyCompanionFileRename(dev *CompanionDevice, oldPath, newPath string) err
 	tmpName := tmpFile.Name()
 	defer os.Remove(tmpName)
 
-	dlUrl := fmt.Sprintf("http://%s:%d/download?path=%s&download=1", devIP, port, url.QueryEscape(oldPath))
-	dlReq, err := http.NewRequest("GET", dlUrl, nil)
+	dl, err := companionDo(context.Background(), dev, companionRequest{Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {oldPath}, "download": {"1"}}, Timeout: 60 * time.Minute})
 	if err != nil {
 		tmpFile.Close()
 		return err
 	}
-	dlReq.Header.Set("X-Companion-Secret", dev.Secret)
-	client := companionClient(60 * time.Minute)
-	dlResp, err := client.Do(dlReq)
-	if err != nil {
+	defer dl.Body.Close()
+	if dl.StatusCode != http.StatusOK {
 		tmpFile.Close()
-		return companionDirectErr(dev, err)
+		return fmt.Errorf("failed to read companion file for rename (status %d)", dl.StatusCode)
 	}
-	defer dlResp.Body.Close()
-	if dlResp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		return fmt.Errorf("failed to read companion file for rename (status %d)", dlResp.StatusCode)
-	}
-	if _, err := io.Copy(tmpFile, dlResp.Body); err != nil {
+	if _, err := io.Copy(tmpFile, dl.Body); err != nil {
 		tmpFile.Close()
 		return err
 	}
 	tmpFile.Close()
 
-	ulSrc, err := os.Open(tmpName)
-	if err != nil {
+	if err := ProxyCompanionUploadFile(dev, tmpName, newPath); err != nil {
 		return err
 	}
-	defer ulSrc.Close()
-	ulStat, _ := ulSrc.Stat()
-
-	ulUrl := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(newPath))
-	ulReq, err := http.NewRequest("POST", ulUrl, ulSrc)
-	if err != nil {
-		return err
-	}
-	ulReq.ContentLength = ulStat.Size()
-	ulReq.Header.Set("X-Companion-Secret", dev.Secret)
-	ulReq.Header.Set("Content-Type", "application/octet-stream")
-	ulResp, err := client.Do(ulReq)
-	if err != nil {
-		return companionDirectErr(dev, err)
-	}
-	defer ulResp.Body.Close()
-	if ulResp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to write companion file for rename (status %d)", ulResp.StatusCode)
-	}
-
-	_ = ProxyCompanionFileDelete(dev, oldPath)
-	markCompanionSeen(dev)
-	return nil
+	return ProxyCompanionFileDelete(dev, oldPath)
 }
 
 // ProxyCompanionMkdir creates a directory on the companion device
 func ProxyCompanionMkdir(dev *CompanionDevice, phonePath string) error {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return companionNoLANIPErr(dev)
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	// Try /mkdir endpoint
-	urlStr := fmt.Sprintf("http://%s:%d/mkdir?path=%s", devIP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequest("POST", urlStr, nil)
-	if err == nil {
-		req.Header.Set("X-Companion-Secret", dev.Secret)
-		resp, err := companionClient(5 * time.Second).Do(req)
-		if err != nil {
-			return companionDirectErr(dev, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			markCompanionSeen(dev)
-			return nil
-		}
-	}
-
-	// Fallback: upload placeholder into path, which forces parent directory creation on phone
-	dummyPath := filepath.Join(phonePath, ".init")
-	ulUrl := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(dummyPath))
-	ulReq, err := http.NewRequest("POST", ulUrl, strings.NewReader(""))
-	if err != nil {
+	err := companionSimple(dev, http.MethodPost, "/mkdir", url.Values{"path": {phonePath}}, 30*time.Second)
+	var se *companionStatusErr
+	if err == nil || !errors.As(err, &se) || se.status != http.StatusNotFound {
 		return err
 	}
-	ulReq.Header.Set("X-Companion-Secret", dev.Secret)
-	ulResp, err := companionClient(5 * time.Second).Do(ulReq)
-	if err != nil {
-		return companionDirectErr(dev, err)
+	// Fallback: upload placeholder into path, which forces parent directory creation on phone
+	dummyPath := filepath.Join(phonePath, ".init")
+	if err := ProxyCompanionUploadStream(dev, dummyPath, strings.NewReader(""), 0); err != nil {
+		return err
 	}
-	defer ulResp.Body.Close()
 	_ = ProxyCompanionFileDelete(dev, dummyPath)
-	markCompanionSeen(dev)
 	return nil
 }
 
 // ProxyCompanionUploadStream streams content to the companion device at phonePath
 func ProxyCompanionUploadStream(dev *CompanionDevice, phonePath string, reader io.Reader, size int64) error {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return companionNoLANIPErr(dev)
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/upload?path=%s", devIP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequest("POST", urlStr, reader)
+	return companionUpload(context.Background(), dev, phonePath, reader, size)
+}
+
+// companionUpload streams reader to phonePath; size -1 when unknown. The
+// phone answers {"success": true} only after the file is fully written.
+func companionUpload(ctx context.Context, dev *CompanionDevice, phonePath string, reader io.Reader, size int64) error {
+	resp, err := companionDo(ctx, dev, companionRequest{
+		Method: http.MethodPost, Path: "/upload", Query: url.Values{"path": {phonePath}},
+		Header: http.Header{"Content-Type": {"application/octet-stream"}},
+		Body:   reader, Size: size, Timeout: 6 * time.Hour,
+	})
 	if err != nil {
 		return err
 	}
-	if size >= 0 {
-		req.ContentLength = size
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := companionClient(60 * time.Minute).Do(req)
-	if err != nil {
-		return companionDirectErr(dev, err)
-	}
 	defer resp.Body.Close()
+	if ackErr := companionAck(resp.Body); ackErr != nil {
+		return ackErr
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
 	}
-	// The phone answers {"success": true} only after the file is fully
-	// written on its side.
-	var ack struct {
-		Success *bool  `json:"success"`
-		Error   string `json:"error"`
-	}
-	if body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10)); len(body) > 0 && json.Unmarshal(body, &ack) == nil && ack.Success != nil && !*ack.Success {
-		if ack.Error == "" {
-			ack.Error = "the device rejected the upload"
-		}
-		return errors.New(ack.Error)
-	}
-	markCompanionSeen(dev)
 	return nil
 }
 
@@ -1200,8 +1096,11 @@ func probeCompanionOnline(dev *CompanionDevice) {
 		return
 	}
 
-	// 2. Proactive LAN check on port 8765
-	if probeCompanionLAN(dev) {
+	// 2. A verified direct address (cached; callers may hold companionMu,
+	// so wait briefly - the probe finishes in the background)
+	pctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	if companionDirectEndpoint(pctx, dev) != nil {
 		dev.LastSeen = time.Now()
 		dev.IsOnline = true
 		return
@@ -1216,41 +1115,29 @@ func probeCompanionOnline(dev *CompanionDevice) {
 	dev.IsOnline = false
 }
 
-// probeCompanionLAN reports whether the phone's file server answers directly.
-func probeCompanionLAN(dev *CompanionDevice) bool {
-	if !companionHasLANIP(dev.IP) {
-		return false
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	client := &http.Client{Timeout: 800 * time.Millisecond, Transport: companionTransport}
-	resp, err := client.Get(fmt.Sprintf("http://%s:%d/status", dev.IP, port))
-	if err != nil {
-		return false
-	}
-	_ = resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
-}
-
-// probeCompanionConnection fills dev.Connection (and IsOnline) for the device
-// list: "lan" when the server can open files on the phone, "remote" when the
-// phone is online but only through the tunnel/heartbeat, else "offline".
+// probeCompanionConnection fills dev.Connection, dev.Route (and IsOnline)
+// for the device list: Connection "lan" on the home network, "remote" away
+// from home (Route says whether directly over Tailscale or through the
+// tunnel), else "offline".
 func probeCompanionConnection(dev *CompanionDevice) {
-	if probeCompanionLAN(dev) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	dev.Route = companionCurrentRoute(ctx, dev)
+	switch {
+	case dev.Route == companionRouteLAN:
 		dev.Connection = "lan"
 		dev.LastSeen = time.Now()
 		dev.IsOnline = true
-		return
-	}
-	if companionOnlineRemotely(dev) {
+	case dev.Route != "" || companionOnlineRemotely(dev):
 		dev.Connection = "remote"
 		dev.IsOnline = true
-		return
+		if dev.Route == companionRouteTailscale {
+			dev.LastSeen = time.Now()
+		}
+	default:
+		dev.Connection = "offline"
+		dev.IsOnline = false
 	}
-	dev.Connection = "offline"
-	dev.IsOnline = false
 }
 
 // IsCompanionFolderVisible returns true if the folder corresponds to an online companion device.
@@ -1532,6 +1419,9 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 		if resolvedIP != "" {
 			matchedDev.IP = resolvedIP
 		}
+		if input.Addresses != nil {
+			matchedDev.Addresses = filterCompanionAddresses(input.Addresses)
+		}
 		matchedDev.Port = resolvedPort
 		matchedDev.SharesStorage = true
 		matchedDev.RootPath = rootPath
@@ -1563,6 +1453,7 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 			OSVersion:     input.OSVersion,
 			AppVersion:    input.AppVersion,
 			IP:            resolvedIP,
+			Addresses:     filterCompanionAddresses(input.Addresses),
 			Port:          resolvedPort,
 			SharesStorage: true,
 			RootPath:      rootPath,
@@ -2082,30 +1973,68 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 
 	logger.Info("Companion WebSocket tunnel connected", zap.String("id", id))
 
+	// A folder listing of thousands of files is a big message; stream
+	// frames are 64 KiB.
+	conn.SetReadLimit(64 << 20)
+	defer func() {
+		if m := tunnel.streams(); m != nil {
+			m.closeAll(errTunnelClosed)
+		}
+	}()
+
 	for {
-		_, message, err := conn.ReadMessage()
+		kind, message, err := conn.ReadMessage()
 		if err != nil {
 			break
+		}
+		if kind == websocket.BinaryMessage {
+			if m := tunnel.streams(); m != nil {
+				m.handleFrame(message)
+			}
+			continue
 		}
 		var msg map[string]interface{}
 		if err := json.Unmarshal(message, &msg); err == nil {
 			action, _ := msg["action"].(string)
 			reqID, _ := msg["id"].(string)
 
+			if typ, _ := msg["type"].(string); typ == "http_head" {
+				if m := tunnel.streams(); m != nil {
+					m.handleHead(message)
+				}
+				continue
+			}
+
 			if action == "register" {
+				// An app that can carry files through the tunnel says so
+				// (streams: 1) with its receive window.
+				if v, _ := msg["streams"].(float64); v >= 1 && tunnel.streams() == nil {
+					w, _ := msg["window"].(float64)
+					tunnel.mux.Store(newTunnelMux(tunnel.sendRaw, int(w)))
+				}
 				companionMu.Lock()
 				if dev, ok := companionDevices[id]; ok {
-					if port, ok := msg["port"].(float64); ok && port > 0 {
+					if port, ok := msg["port"].(float64); ok && port > 0 && port < 65536 {
 						dev.Port = int(port)
 					}
 					if ip, ok := msg["ip"].(string); ok && companionHasLANIP(ip) {
 						dev.IP = ip
+					}
+					if raw, ok := msg["addresses"].([]interface{}); ok {
+						addrs := make([]string, 0, len(raw))
+						for _, a := range raw {
+							if s, ok := a.(string); ok {
+								addrs = append(addrs, s)
+							}
+						}
+						dev.Addresses = filterCompanionAddresses(addrs)
 					}
 					dev.SharesStorage = true
 					dev.IsOnline = true
 					dev.LastSeen = time.Now()
 				}
 				companionMu.Unlock()
+				forgetCompanionRoute(id) // addresses may have changed
 			} else if reqID != "" {
 				companionPendingMu.Lock()
 				if ch, ok := companionPendingReqs[companionPendingKey(id, reqID)]; ok {
@@ -2122,6 +2051,25 @@ func GetCompanionDeviceWS(ctx echo.Context) error {
 	return nil
 }
 
+// filterCompanionAddresses keeps the reported addresses the server may
+// dial (LAN, Tailscale, MagicDNS), at most 8.
+func filterCompanionAddresses(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, a := range in {
+		a = strings.TrimSpace(a)
+		if a == "" || seen[a] || companionAddrKind(a) == "" {
+			continue
+		}
+		seen[a] = true
+		out = append(out, a)
+		if len(out) == 8 {
+			break
+		}
+	}
+	return out
+}
+
 type companionIOHandlerImpl struct{}
 
 func (h *companionIOHandlerImpl) IsCompanionPath(p string) bool {
@@ -2136,12 +2084,8 @@ func (h *companionIOHandlerImpl) IsCompanionPath(p string) bool {
 
 func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, error) {
 	dev, phonePath := GetCompanionDeviceByStoragePath(p)
-	if dev == nil || dev.IP == "" {
+	if dev == nil {
 		return 0, fmt.Errorf("companion device not found or offline")
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
 	}
 	items, err := FetchCompanionFilesFromDevice(dev, phonePath)
 	if err == nil && len(items) > 0 {
@@ -2151,53 +2095,40 @@ func (h *companionIOHandlerImpl) GetSize(ctx context.Context, p string) (int64, 
 		}
 		return total, nil
 	}
-	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", dev.IP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	size, _, err := companionFileSize(ctx, dev, phonePath)
+	return size, err
+}
+
+// companionFileSize asks the phone for one byte of phonePath: ok is false
+// when it isn't a file there.
+func companionFileSize(ctx context.Context, dev *CompanionDevice, phonePath string) (int64, bool, error) {
+	resp, err := companionDo(ctx, dev, companionRequest{
+		Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {phonePath}},
+		Header: http.Header{"Range": {"bytes=0-0"}}, Timeout: 15 * time.Second,
+	})
 	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	req.Header.Set("Range", "bytes=0-0")
-	resp, err := companionClient(5 * time.Second).Do(req)
-	if err != nil {
-		return 0, companionDirectErr(dev, err)
+		return 0, false, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return 0, false, nil
+	}
 	if cr := resp.Header.Get("Content-Range"); cr != "" {
 		if idx := strings.LastIndex(cr, "/"); idx != -1 {
 			if s, err := strconv.ParseInt(cr[idx+1:], 10, 64); err == nil {
-				return s, nil
+				return s, true, nil
 			}
 		}
 	}
 	if resp.ContentLength > 0 {
-		return resp.ContentLength, nil
+		return resp.ContentLength, true, nil
 	}
-	return 0, nil
+	return 0, true, nil
 }
 
 func isCompanionFile(dev *CompanionDevice, phonePath string) bool {
-	devIP := dev.IP
-	if !companionHasLANIP(devIP) {
-		return false
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	req.Header.Set("Range", "bytes=0-0")
-	resp, err := companionClient(3 * time.Second).Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent
+	_, ok, _ := companionFileSize(context.Background(), dev, phonePath)
+	return ok
 }
 
 func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companionSrc, dst, style string, onProgress func(int64)) error {
@@ -2243,10 +2174,10 @@ func (h *companionIOHandlerImpl) CopyFromCompanion(ctx context.Context, companio
 			} else {
 				childDst := filepath.Join(targetDir, it.Name)
 				if err := h.downloadFileFromCompanion(ctx, dev, it.Path, childDst, style, onProgress); err != nil {
-					// Listing works through the tunnel, file transfer doesn't:
-					// say so once instead of once per file.
-					var nl *errCompanionNotOnLAN
-					if errors.As(err, &nl) {
+					// The phone can't be reached at all: say so once
+					// instead of once per file.
+					var ue *errCompanionUnreachable
+					if errors.As(err, &ue) {
 						return err
 					}
 					errs = append(errs, fmt.Errorf("%s: %w", it.Name, err))
@@ -2276,19 +2207,11 @@ func (h *companionIOHandlerImpl) downloadFileFromCompanion(ctx context.Context, 
 	if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
 		return err
 	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s&download=1", dev.IP, port, url.QueryEscape(phonePath))
-	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	resp, err := companionDo(ctx, dev, companionRequest{
+		Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {phonePath}, "download": {"1"}}, Timeout: 6 * time.Hour,
+	})
 	if err != nil {
 		return err
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	resp, err := companionClient(60 * time.Minute).Do(req)
-	if err != nil {
-		return companionDirectErr(dev, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -2391,71 +2314,29 @@ func (h *companionIOHandlerImpl) uploadFileToCompanion(ctx context.Context, dev 
 	srcStat, _ := srcFile.Stat()
 	fileSize := srcStat.Size()
 
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/upload?path=%s", dev.IP, port, url.QueryEscape(targetPhonePath))
-
-	pr, pw := io.Pipe()
-	go func() {
-		defer pw.Close()
-		buf := make([]byte, 64*1024)
-		var sent int64
-		for {
-			if ctx.Err() != nil {
-				pw.CloseWithError(ctx.Err())
-				return
-			}
-			n, rErr := srcFile.Read(buf)
-			if n > 0 {
-				if _, wErr := pw.Write(buf[:n]); wErr != nil {
-					return
-				}
-				sent += int64(n)
-				if onProgress != nil {
-					onProgress(sent)
-				}
-			}
-			if rErr != nil {
-				// A read error must abort the upload, not look like a
-				// clean end of file to the phone.
-				if rErr != io.EOF {
-					pw.CloseWithError(rErr)
-				}
-				return
-			}
+	var sent int64
+	body := &progressReader{r: srcFile, fn: func(n int64) {
+		sent += n
+		if onProgress != nil {
+			onProgress(sent)
 		}
-	}()
+	}}
+	return companionUpload(ctx, dev, targetPhonePath, body, fileSize)
+}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", urlStr, pr)
-	if err != nil {
-		return err
-	}
-	req.ContentLength = fileSize
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	req.Header.Set("Content-Type", "application/octet-stream")
+// progressReader reports every read, so a copy to the phone shows progress
+// on any route.
+type progressReader struct {
+	r  io.Reader
+	fn func(int64)
+}
 
-	resp, err := companionClient(60 * time.Minute).Do(req)
-	if err != nil {
-		return companionDirectErr(dev, err)
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.fn(int64(n))
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("companion upload failed with status %d", resp.StatusCode)
-	}
-	var ack struct {
-		Success *bool  `json:"success"`
-		Error   string `json:"error"`
-	}
-	if body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10)); len(body) > 0 && json.Unmarshal(body, &ack) == nil && ack.Success != nil && !*ack.Success {
-		if ack.Error == "" {
-			ack.Error = "the device rejected the upload"
-		}
-		return errors.New(ack.Error)
-	}
-	markCompanionSeen(dev)
-	return nil
+	return n, err
 }
 
 func (h *companionIOHandlerImpl) DeleteCompanionPath(ctx context.Context, p string) error {

@@ -30,8 +30,9 @@
 					</span>
 					<span class="banner-subtext">{{ companionDeviceInfo.model }} · {{ companionDeviceInfo.platform }} · {{ $t('Companion Sync Folder') }}</span>
 				</div>
-				<div v-if="companionDeviceInfo.isRemote" class="banner-subtext banner-remote-hint">
-					{{ $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') }}
+				<div v-if="companionDeviceInfo.route" class="banner-subtext banner-route" :class="'is-' + companionDeviceInfo.route.tone">
+					<i class="mdi mr-1" :class="'mdi-' + companionDeviceInfo.route.icon"></i>{{ $t(companionDeviceInfo.route.label) }}
+					<template v-if="companionDeviceInfo.route.hint"> - {{ $t(companionDeviceInfo.route.hint) }}</template>
 				</div>
 				<div v-if="companionDeviceInfo.storageTotal > 0" class="banner-storage-row">
 					<span class="banner-storage-label">{{ $t('Device Internal Storage') }}:</span>
@@ -151,6 +152,7 @@ import UploadTray from './UploadTray.vue'
 import { toggleSelect, selectRange, summarize } from '@/utils/files/selection'
 import { isFilesDragEvent, getFilesDragData, setFilesDragData } from '@/utils/files/dragDrop'
 import events from '@/events/events'
+import { companionRouteInfo } from '@/utils/companionRoute'
 
 // Minimum drag distance (px) before a mousedown+move is treated as a
 // selection-rectangle drag rather than a plain click on empty space.
@@ -240,8 +242,9 @@ export default {
 						platform: dev.platform || '',
 						icon,
 						isOnline: !!dev.is_online,
-						// Online but not directly reachable (S-04): listing works, opening doesn't.
-						isRemote: dev.connection === 'remote',
+						// How its files travel right now (S-04): direct at home or
+						// over Tailscale, or through the server tunnel.
+						route: companionRouteInfo(dev),
 						batteryLevel: dev.battery_level || 0,
 						storageUsed,
 						storageTotal,
@@ -928,6 +931,9 @@ export default {
 .banner-subtext {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, #94a3b8);
+}
+.banner-route.is-warn {
+	color: var(--color-warning-fg, #b45309);
 }
 .banner-storage-row {
 	display: flex;

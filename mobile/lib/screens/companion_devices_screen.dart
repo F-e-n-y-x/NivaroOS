@@ -294,6 +294,8 @@ class _CompanionDevicesScreenState extends State<CompanionDevicesScreen> with Wi
         CompanionConnection.offline => dev.lastSeen == null ? 'Offline' : 'Offline · seen ${seenPhrase(dev.lastSeen!)}',
         CompanionConnection.unknown => dev.isOnline ? 'Online' : 'Offline',
       },
+      // Away from home: directly over Tailscale, or through the server.
+      if (dev.connection == CompanionConnection.remote) ?dev.route.label,
       if (dev.battery != null && dev.connection != CompanionConnection.offline) '${dev.battery}% battery',
     ];
     return parts.join(' · ');

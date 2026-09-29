@@ -79,13 +79,13 @@
 							{{ dev.battery_level }}%
 						</span>
 						<span
-							v-if="dev.connection === 'lan' || dev.connection === 'remote'"
+							v-if="routeInfo(dev)"
 							class="companion-meta-pill ml-2"
-							:class="{ 'is-remote': dev.connection === 'remote' }"
-							:title="dev.connection === 'remote' ? $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') : ''"
+							:class="{ 'is-remote': routeInfo(dev).tone === 'warn', 'is-tunnel': routeInfo(dev).tone === 'info' }"
+							:title="routeInfo(dev).hint ? $t(routeInfo(dev).hint) : ''"
 						>
-							<b-icon :icon="dev.connection === 'remote' ? 'web' : 'lan-connect'" pack="mdi" size="is-small" class="mr-1"></b-icon>
-							{{ dev.connection === 'remote' ? $t('Other network') : $t('Same network') }}
+							<b-icon :icon="routeInfo(dev).icon" pack="mdi" size="is-small" class="mr-1"></b-icon>
+							{{ $t(routeInfo(dev).label) }}
 						</span>
 						<span class="companion-meta-pill ml-2" v-if="dev.ip">
 							IP: {{ dev.ip }}
@@ -94,8 +94,8 @@
 					<div class="setting-desc">
 						{{ dev.model }} &middot; {{ dev.platform }}<template v-if="dev.os_version"> &middot; {{ dev.os_version }}</template> &middot; {{ dev.app_version || 'v1.0' }} &middot; {{ dev.is_online ? $t('Active now') : ($t('Last seen ') + formatTime(dev.last_seen)) }}
 					</div>
-					<div v-if="dev.connection === 'remote'" class="setting-desc companion-remote-hint">
-						{{ $t('Not on the server\'s network - files can be listed, but open them from the phone or when both are on the same network') }}
+					<div v-if="routeInfo(dev) && routeInfo(dev).hint" class="setting-desc companion-remote-hint" :class="{ 'is-info': routeInfo(dev).tone === 'info' }">
+						{{ $t(routeInfo(dev).hint) }}
 					</div>
 					<div v-if="dev.storage_total > 0" class="companion-storage-strip mt-2">
 						<div class="is-flex is-align-items-center is-size-7 text-muted mb-1">
@@ -143,6 +143,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
+import { companionRouteInfo } from '@/utils/companionRoute'
 import { applyRename, cleanDeviceName, removalMessage, withoutDevice } from '@/utils/companionDevices'
 
 dayjs.extend(relativeTime)
@@ -181,6 +182,10 @@ export default {
 		this.fetchDevices()
 	},
 	methods: {
+		// How the phone's files travel right now (S-04).
+		routeInfo(dev) {
+			return companionRouteInfo(dev)
+		},
 		async fetchDevices() {
 			this.loading = true
 			try {
@@ -373,6 +378,15 @@ export default {
 
 .companion-remote-hint {
 	color: var(--color-warning-fg, #b45309);
+}
+
+.companion-meta-pill.is-tunnel {
+	color: var(--color-info-fg, #1d4ed8);
+	background: rgba(59, 130, 246, 0.12);
+}
+
+.companion-remote-hint.is-info {
+	color: var(--text-secondary, #64748b);
 }
 
 .companion-storage-strip {

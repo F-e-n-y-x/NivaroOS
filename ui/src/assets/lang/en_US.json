@@ -3121,5 +3121,13 @@
   "Reopen closed tab": "Reopen closed tab",
   "Ad blocker settings": "Ad blocker settings",
   "Clear browsing data & sign out of sites": "Clear browsing data & sign out of sites",
-  "Switch to Lite mode": "Switch to Lite mode"
+  "Switch to Lite mode": "Switch to Lite mode",
+  "Direct · home network": "Direct · home network",
+  "Direct · Tailscale": "Direct · Tailscale",
+  "Through the server tunnel · slower": "Through the server tunnel · slower",
+  "Away from home without Tailscale - files open and copy through the phone's connection to the server, more slowly. Turn on Tailscale on the phone for full speed.": "Away from home without Tailscale - files open and copy through the phone's connection to the server, more slowly. Turn on Tailscale on the phone for full speed.",
+  "Folders only": "Folders only",
+  "The NivaroOS app on this phone is too old to send files away from home - update it, or turn on Tailscale on the phone.": "The NivaroOS app on this phone is too old to send files away from home - update it, or turn on Tailscale on the phone.",
+  "Files unavailable": "Files unavailable",
+  "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing.": "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing."
 }
