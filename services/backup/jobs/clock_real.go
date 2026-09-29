@@ -3,6 +3,9 @@ package jobs
 import (
 	"context"
 	"log"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,20 +59,41 @@ func NewRealClock(loc *time.Location) *RealClock {
 	}
 }
 
-// kernelTimeSynced reports whether the kernel considers the system clock
-// synchronised: adjtimex(2) without modes (read only, no privilege
-// needed) clears STA_UNSYNC once an NTP client (systemd-timesyncd,
-// chrony, ntpd) disciplines the clock. This is what timedatectl's
-// NTPSynchronized property reads, without depending on timedatectl being
-// installed.
+// kernelTimeSynced reports whether the system clock is NTP-synchronised.
+//
+// First choice: adjtimex(2) without modes (read only), which clears
+// STA_UNSYNC once an NTP client (systemd-timesyncd, chrony, ntpd)
+// disciplines the clock - what timedatectl's NTPSynchronized reads.
+// But the backup unit runs with ProtectClock=true, whose seccomp filter
+// denies the whole @clock group, read-only adjtimex included: that call
+// failed with EPERM, so the service always said "Not synchronised" and
+// held schedules for clockGateTimeout after every start. When adjtimex is
+// denied, fall back to what the NTP clients themselves publish:
+// systemd-timesyncd's flag file, then timedatectl (chrony and ntpd are
+// seen through timedated).
 func kernelTimeSynced() bool {
 	var tx unix.Timex
-	state, err := unix.Adjtimex(&tx)
-	if err != nil {
-		return false
+	state, err := adjtimexFn(&tx)
+	if err == nil {
+		return state != unix.TIME_ERROR && tx.Status&unix.STA_UNSYNC == 0
 	}
-	return state != unix.TIME_ERROR && tx.Status&unix.STA_UNSYNC == 0
+	if _, err := os.Stat(timesyncFlag); err == nil {
+		return true
+	}
+	out, err := timedatectlFn()
+	return err == nil && strings.TrimSpace(string(out)) == "yes"
 }
+
+// Replaceable in tests.
+var (
+	adjtimexFn    = unix.Adjtimex
+	timesyncFlag  = "/run/systemd/timesync/synchronized"
+	timedatectlFn = func() ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, "timedatectl", "show", "-p", "NTPSynchronized", "--value").Output()
+	}
+)
 
 // Start runs the gate in the background until it opens or ctx ends, then
 // starts the cron scheduler. Stop it with Stop.
