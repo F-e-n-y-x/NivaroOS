@@ -70,7 +70,7 @@
 							<span class="ds-state-badge" :class="'is-' + d.state">{{ stateLabel(d) }}</span>
 						</div>
 						<div class="ds-progress" :class="progressClass(d)">
-							<div class="ds-progress-fill" :style="{ width: percent(d) + '%' }"></div>
+							<div class="ds-progress-fill" :style="{ transform: `translateX(${percent(d) - 100}%)` }"></div>
 						</div>
 						<div class="row-meta">
 							<span v-if="d.state === 'failed'" class="ds-error-text one-line" :title="d.error">{{ d.error }}</span>

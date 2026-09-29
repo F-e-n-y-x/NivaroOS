@@ -139,11 +139,13 @@ textarea.ds-input {
 	overflow: hidden;
 
 	.ds-progress-fill {
+		// Full width, slid in from the left by the templates' translateX, so
+		// progress animates on the compositor and the rounded end keeps its shape.
 		position: absolute;
-		inset: 0 auto 0 0;
+		inset: 0;
 		border-radius: inherit;
 		background: var(--color-primary, #2563eb);
-		transition: width 0.4s ease;
+		transition: transform 0.4s ease;
 	}
 	&.is-paused .ds-progress-fill {
 		background: var(--color-text-muted-light, #94a3b8);
@@ -156,17 +158,21 @@ textarea.ds-input {
 	}
 	// Unknown total size: an indeterminate shimmer instead of a fake %.
 	&.is-indeterminate .ds-progress-fill {
-		width: 35% !important;
+		right: auto;
+		width: 35%;
+		transition: none;
 		animation: ds-indeterminate 1.2s ease-in-out infinite;
 	}
 }
 
+// Percentages are of the 35%-wide bar: -100% starts it just off the left
+// edge, 286% (100 / 35 * 100) just off the right.
 @keyframes ds-indeterminate {
 	0% {
-		left: -35%;
+		transform: translateX(-100%);
 	}
 	100% {
-		left: 100%;
+		transform: translateX(286%);
 	}
 }
 

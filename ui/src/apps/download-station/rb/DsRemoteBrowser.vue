@@ -176,7 +176,7 @@
 					<p class="dialog-origin">{{ active ? hostOf(active.url) : '' }}</p>
 					<p class="dialog-message">{{ chooser.multiple ? $t('This page wants you to choose files to upload.') : $t('This page wants you to choose a file to upload.') }}</p>
 					<p class="dialog-note">{{ $t('Files are sent from this computer to the browser on your NivaroOS box, then to the page.') }}</p>
-					<div v-if="chooser.progress !== null" class="ds-progress"><div class="ds-progress-fill" :style="{ width: Math.round(chooser.progress * 100) + '%' }"></div></div>
+					<div v-if="chooser.progress !== null" class="ds-progress"><div class="ds-progress-fill" :style="{ transform: `translateX(${Math.round(chooser.progress * 100) - 100}%)` }"></div></div>
 					<input ref="fileInput" type="file" class="is-hidden-input" :multiple="chooser.multiple" @change="uploadChosen" />
 					<div class="dialog-actions">
 						<button class="ds-secondary-btn" type="button" :disabled="chooser.progress !== null" @click="cancelChooser">{{ $t('Cancel') }}</button>
