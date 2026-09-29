@@ -1,6 +1,10 @@
 <template>
 	<div id="login-page" class="is-flex is-justify-content-center is-align-items-center ">
 		<div v-if="!isLoading" class="login-panel step4 is-shadow">
+			<div class="login-brand">
+				<img :src="$assetUrl(require('@/assets/img/logo/logo.svg'))" alt="NivaroOS" class="login-brand-img is-on-light"/>
+				<img :src="$assetUrl(require('@/assets/img/logo/logo-white.svg'))" alt="NivaroOS" class="login-brand-img is-on-dark"/>
+			</div>
 			<div class="is-flex is-justify-content-center pb-3 ">
 				<div class="has-text-centered">
 					<b-image :src-fallback="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" src="/v1/users/image?path=/var/lib/nivaroos/1/avatar.png" class="is-128x128" rounded></b-image>
@@ -149,10 +153,35 @@ export default {
 </script>
 
 <style lang="scss">
+html[data-theme="dark"] #login-page .login-brand-img {
+	&.is-on-light {
+		display: none;
+	}
+
+	&.is-on-dark {
+		display: block;
+	}
+}
+
 #login-page {
 	height: calc(100% - 5.5rem);
 	position: relative;
 	z-index: 500;
+
+	.login-brand {
+		display: flex;
+		justify-content: center;
+		margin-bottom: var(--space-6);
+	}
+
+	.login-brand-img {
+		height: 2rem;
+		width: auto;
+
+		&.is-on-dark {
+			display: none;
+		}
+	}
 
 	.login-panel {
 		text-align: left;

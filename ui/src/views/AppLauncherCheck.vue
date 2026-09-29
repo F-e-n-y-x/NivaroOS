@@ -16,7 +16,7 @@
       <a @click="openThirdApp(appDetailData);">{{ $t('Click here') }}
       </a> {{ $t('to open the app. If it does not work, please restart or try again later.') }}
     </span>
-		<img :src="$assetUrl(require('@/assets/img/logo/logo.svg'))" alt="" class="is-absolute position"/>
+		<img :src="$assetUrl(require('@/assets/img/logo/logo-white.svg'))" alt="NivaroOS" class="is-absolute position"/>
 	</div>
 </template>
 
@@ -105,5 +105,7 @@ export default {
 .position {
 	left: 2rem;
 	bottom: 1.25rem;
+	height: 1.75rem;
+	width: auto;
 }
 </style>

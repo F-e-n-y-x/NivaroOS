@@ -1,8 +1,10 @@
-<p align="center">
-  <img src="ui/src/assets/img/logo/casa-white.svg" width="96" height="96" alt="NivaroOS Logo" style="filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.4));">
-</p>
-
-<h1 align="center">NivaroOS</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/nivaroos-logo-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/nivaroos-logo.svg">
+    <img src="docs/brand/nivaroos-logo.svg" height="72" alt="NivaroOS">
+  </picture>
+</h1>
 
 <p align="center">
   <strong>A modern, self-hosted personal cloud OS, container platform, and companion mobile ecosystem.</strong><br>

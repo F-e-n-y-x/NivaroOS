@@ -3,6 +3,7 @@
 		<div v-if="!isLoading" v-animate-css="initAni" :class="'step' + step" class="login-panel is-shadow">
 
 			<div v-if="step == 1" class="has-text-centered">
+				<img v-animate-css="s2Ani" :src="$assetUrl(require('@/assets/img/logo/icon.svg'))" alt="" class="welcome-mark"/>
 				<h2 v-animate-css="s2Ani" class="title is-2 mb-5 has-text-centered __attached_title">{{
 						$t('Welcome to NivaroOS')
 					}}</h2>
@@ -194,6 +195,13 @@ export default {
 </script>
 
 <style lang="scss">
+.welcome-mark {
+	display: block;
+	width: 4.5rem;
+	height: 4.5rem;
+	margin: 0 auto var(--space-6);
+}
+
 .animation {
 	width: 120px;
 	height: 120px;

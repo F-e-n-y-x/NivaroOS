@@ -114,7 +114,8 @@
 			<!-- New tab / blank page -->
 			<div v-if="showStart" class="rb-start">
 				<div class="start-inner">
-					<b-icon icon="web" custom-size="mdi-48px" class="start-logo"></b-icon>
+					<img :src="$assetUrl(require('@/assets/img/logo/glyph.svg'))" alt="" class="start-logo is-on-light" />
+					<img :src="$assetUrl(require('@/assets/img/logo/glyph-white.svg'))" alt="" class="start-logo is-on-dark" />
 					<form class="start-form" @submit.prevent="submitStart">
 						<b-icon icon="magnify" custom-size="mdi-20px" class="start-icon"></b-icon>
 						<input ref="startInput" v-model="startText" class="start-input" :aria-label="$t('Search or enter address')" :placeholder="$t('Search DuckDuckGo or type an address')" />
@@ -1602,8 +1603,22 @@ export default {
 }
 
 .start-logo {
-	color: var(--color-primary, #2563eb);
-	opacity: 0.85;
+	width: 3.5rem;
+	height: 3.5rem;
+
+	&.is-on-dark {
+		display: none;
+	}
+}
+
+html[data-theme="dark"] .start-logo {
+	&.is-on-light {
+		display: none;
+	}
+
+	&.is-on-dark {
+		display: block;
+	}
 }
 
 .start-form {

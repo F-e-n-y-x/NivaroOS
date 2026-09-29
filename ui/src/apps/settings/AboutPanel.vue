@@ -56,6 +56,10 @@
 		<!-- Authors & Contributors -->
 		<h3 class="setting-card-title">{{ $t('Authors & Project Info') }}</h3>
 		<div class="setting-card">
+			<div class="setting-row about-brand">
+				<img :src="$assetUrl(require('@/assets/img/logo/logo.svg'))" alt="NivaroOS" class="about-brand-img is-on-light"/>
+				<img :src="$assetUrl(require('@/assets/img/logo/logo-white.svg'))" alt="NivaroOS" class="about-brand-img is-on-dark"/>
+			</div>
 			<div class="setting-row">
 				<b-icon class="row-icon" icon="account-circle-outline" pack="mdi" size="is-20"></b-icon>
 				<div class="row-label">Ayush</div>
@@ -220,6 +224,25 @@ export default {
 .about-panel {
 	display: flex;
 	flex-direction: column;
+}
+
+.about-brand-img {
+	height: 1.75rem;
+	width: auto;
+
+	&.is-on-dark {
+		display: none;
+	}
+}
+
+html[data-theme="dark"] .about-brand-img {
+	&.is-on-light {
+		display: none;
+	}
+
+	&.is-on-dark {
+		display: block;
+	}
 }
 
 .setting-card {
