@@ -185,11 +185,8 @@ class CompanionShareService : Service() {
         return builder.build()
     }
 
-    /** A monochrome status-bar icon: the one the old background plugin shipped, else a system one. */
-    private fun smallIcon(): Icon {
-        val id = resources.getIdentifier("ic_bg_service_small", "drawable", packageName)
-        return if (id != 0) Icon.createWithResource(this, id) else Icon.createWithResource(this, android.R.drawable.stat_notify_sync)
-    }
+    /** The monochrome status-bar icon: the NivaroOS glyph (res/drawable/ic_stat_nivaroos.xml). */
+    private fun smallIcon(): Icon = Icon.createWithResource(this, R.drawable.ic_stat_nivaroos)
 
     private fun startEngine() {
         try {

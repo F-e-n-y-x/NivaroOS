@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the NivaroOS "Ni" glyph (docs/brand), one colour, the
+     system tints it. Same 256-grid geometry, shifted so it fills the icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="180"
+    android:viewportHeight="180">
+    <group android:translateX="-38" android:translateY="-38">
+        <path
+            android:pathData="M80,194V110L176,194V110"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="32"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M176,45a17,17 0,1 1,0 34a17,17 0,1 1,0 -34z"
+            android:fillColor="#FFFFFFFF" />
+    </group>
+</vector>
