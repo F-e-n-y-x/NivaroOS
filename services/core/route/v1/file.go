@@ -630,28 +630,16 @@ func resolveRemuxSource(ctx echo.Context, filePath string) (string, func(), erro
 	if dev == nil {
 		return "", noop, fmt.Errorf("file does not exist: %s", filePath)
 	}
-	devIP := dev.IP
-	if devIP == "" || devIP == "Local Device" || devIP == "Local" || strings.HasPrefix(devIP, "127.") {
-		return "", noop, fmt.Errorf("companion device has no direct LAN IP")
-	}
-	port := dev.Port
-	if port <= 0 {
-		port = 8765
-	}
-	urlStr := fmt.Sprintf("http://%s:%d/download?path=%s", devIP, port, url.QueryEscape(phonePath))
 	// Not ctx.Request().Context() - this download can significantly outlive
 	// the original request once produceRemux's own remuxInFlight dedup lets
 	// other concurrent requests for the same file wait on it rather than
 	// each downloading their own copy; tying it to whichever one of those
 	// requests happened to be first would let anyone else's disconnect kill
-	// the fetch out from under all of them.
-	req, err := http.NewRequestWithContext(context.Background(), "GET", urlStr, nil)
-	if err != nil {
-		return "", noop, err
-	}
-	req.Header.Set("X-Companion-Secret", dev.Secret)
-	client := &http.Client{Timeout: 30 * time.Minute}
-	resp, err := client.Do(req)
+	// the fetch out from under all of them. Any route: LAN, Tailscale or
+	// the phone's tunnel (S-04).
+	resp, err := companionDo(context.Background(), dev, companionRequest{
+		Method: http.MethodGet, Path: "/download", Query: url.Values{"path": {phonePath}}, Timeout: 30 * time.Minute,
+	})
 	if err != nil {
 		return "", noop, err
 	}

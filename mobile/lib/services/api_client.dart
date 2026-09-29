@@ -6,6 +6,7 @@ import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'server_routes.dart';
 import 'storage_service.dart';
 
 /// What kind of failure an [ApiException] is, so screens can pick the
@@ -76,6 +77,17 @@ enum RefreshResult {
   unavailable,
 }
 
+/// Why the server ended the session, when it said.
+enum SessionEndReason {
+  /// The tokens expired or were refused (a password change, a deleted
+  /// account): sign in again.
+  ended,
+
+  /// This phone was removed from the server's companion devices (on the
+  /// web, or from another phone): the server ended the phone's session.
+  companionRemoved,
+}
+
 /// A server address that answered as NivaroOS (see [ApiClient.probe]).
 class ServerProbe {
   const ServerProbe({required this.url, required this.initialized});
@@ -111,6 +123,14 @@ class ApiClient {
   /// listens and asks the user to sign in again.
   static final ValueNotifier<bool> sessionExpiredNotifier = ValueNotifier(false);
 
+  /// Why the session last ended ([SessionEndReason.ended] unless the
+  /// server said more). Set before [sessionExpiredNotifier] turns true.
+  static SessionEndReason sessionEndReason = SessionEndReason.ended;
+
+  /// The `data.reason` a server sends with the 401 of a session it ended
+  /// because the phone was removed (services/common/utils/jwt).
+  static const companionRemovedReason = 'companion_removed';
+
   /// How long a plain JSON request may take before it counts as
   /// unreachable. Long server jobs (installs, updates) answer at once and
   /// are polled, so this only catches dead connections.
@@ -129,12 +149,31 @@ class ApiClient {
     _baseUrl = await StorageService.instance.getServerUrl();
     _accessToken = await StorageService.instance.getAccessToken();
     _refreshToken = await StorageService.instance.getRefreshToken();
+    // Start on the address the server was last reached on (Tailscale when
+    // away), not the home one that would time out first.
+    try {
+      await ServerRoutes.instance.load();
+    } catch (e) {
+      debugPrint('[ApiClient] routes not loaded: ${e.runtimeType}');
+    }
   }
 
+  /// Points the client at another server (sign-in, switching): its routes
+  /// start over from [url].
   void setBaseUrl(String url) {
+    _baseUrl = url;
+    ServerRoutes.instance.reset();
+  }
+
+  /// Switches to another address of the same server (ServerRoutes): the
+  /// session stays.
+  void useRoute(String url) {
     _baseUrl = url;
   }
 
+  /// The address in use: one of the current server's addresses (see
+  /// ServerRoutes). Everything - requests, WebSockets, downloads, images -
+  /// builds its URL from it when it starts.
   String get baseUrl => _baseUrl ?? '';
   String? get accessToken => _accessToken;
   bool get hasSession => _accessToken != null && _accessToken!.isNotEmpty;
@@ -142,6 +181,7 @@ class ApiClient {
   void setSession(String accessToken, String refreshToken) {
     _accessToken = accessToken;
     _refreshToken = refreshToken;
+    sessionEndReason = SessionEndReason.ended;
     sessionExpiredNotifier.value = false;
   }
 
@@ -318,61 +358,52 @@ class ApiClient {
   // ---------------------------------------------------------------------
 
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _send('GET', uri, () => http.get(uri, headers: _headers()));
+    return _send('GET', () => _uri(path, query), (uri) => http.get(uri, headers: _headers()));
   }
 
   /// [timeout] replaces [requestTimeout] for a request the server takes
   /// long over (freeing memory while swap is emptied).
   Future<Map<String, dynamic>> post(String path, {Object? body, Map<String, String>? headers, Duration? timeout}) async {
-    final uri = _uri(path);
-    return _send('POST', uri, () => http.post(uri, headers: {..._headers(), ...?headers}, body: jsonEncode(body ?? {})), timeout: timeout);
+    return _send('POST', () => _uri(path), (uri) => http.post(uri, headers: {..._headers(), ...?headers}, body: jsonEncode(body ?? {})), timeout: timeout);
   }
 
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
-    final uri = _uri(path);
-    return _send('PUT', uri, () => http.put(uri, headers: _headers(), body: jsonEncode(body ?? {})));
+    return _send('PUT', () => _uri(path), (uri) => http.put(uri, headers: _headers(), body: jsonEncode(body ?? {})));
   }
 
   Future<Map<String, dynamic>> delete(String path, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _send('DELETE', uri, () => http.delete(uri, headers: _headers()));
+    return _send('DELETE', () => _uri(path, query), (uri) => http.delete(uri, headers: _headers()));
   }
 
   /// A handful of endpoints (bulk file delete being the one this app
   /// actually calls) expect DELETE with a JSON array/object body rather
   /// than query params.
   Future<Map<String, dynamic>> deleteWithBody(String path, Object body) async {
-    final uri = _uri(path);
-    return _send('DELETE', uri, () => http.delete(uri, headers: _headers(), body: jsonEncode(body)));
+    return _send('DELETE', () => _uri(path), (uri) => http.delete(uri, headers: _headers(), body: jsonEncode(body)));
   }
 
   /// POST with a raw non-JSON body and an explicit content type - used for
   /// installing a compose app, which the backend reads as raw YAML text
   /// rather than a JSON-encoded object.
   Future<Map<String, dynamic>> postBody(String path, String body, String contentType, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _send('POST', uri, () => http.post(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
+    return _send('POST', () => _uri(path, query), (uri) => http.post(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
   }
 
   /// PUT with a raw non-JSON body - saving an installed compose app's
   /// settings, which the backend reads as raw YAML (Edit app).
   Future<Map<String, dynamic>> putBody(String path, String body, String contentType, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _send('PUT', uri, () => http.put(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
+    return _send('PUT', () => _uri(path, query), (uri) => http.put(uri, headers: {..._headers(json: false), 'Content-Type': contentType}, body: body));
   }
 
   Future<http.Response> getRaw(String path, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _sendRaw('GET', uri, () => http.get(uri, headers: _headers(json: false)));
+    return _sendRaw('GET', () => _uri(path, query), (uri) => http.get(uri, headers: _headers(json: false)));
   }
 
   /// A GET request that needs a specific `Accept` header to get a raw
   /// non-JSON body back (app-management's "give me the compose YAML, not
   /// the JSON description" convention: same route, different Accept).
   Future<http.Response> getWithAccept(String path, String accept, {Map<String, dynamic>? query}) async {
-    final uri = _uri(path, query);
-    return _sendRaw('GET', uri, () => http.get(uri, headers: {..._headers(json: false), 'Accept': accept}));
+    return _sendRaw('GET', () => _uri(path, query), (uri) => http.get(uri, headers: {..._headers(json: false), 'Accept': accept}));
   }
 
   /// Sends a request this client can't express with the helpers above - a
@@ -418,8 +449,29 @@ class ApiClient {
       rethrow;
     } catch (e) {
       if (client == null) c.close();
-      throw describeError(e, Uri.tryParse(baseUrl));
+      final err = describeError(e, Uri.tryParse(baseUrl));
+      // The caller retries (a resumable upload, the user); its next
+      // attempt builds its URL on whichever address answers now.
+      if (err.isUnreachable) await _failover(baseUrl);
+      throw err;
     }
+  }
+
+  /// Asks ServerRoutes for another address after [failedBase] didn't
+  /// answer; the new one, or null.
+  Future<String?> _failover(String failedBase) async {
+    try {
+      return await ServerRoutes.instance.failover(failedBase);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Tells the client something that talks to the server by itself (a
+  /// WebSocket) couldn't reach it: the next attempt may use another
+  /// address. Quiet; never throws.
+  Future<void> reportUnreachable() async {
+    await _failover(baseUrl);
   }
 
   /// Streams download of a remote file chunk-by-chunk directly into [targetFile],
@@ -461,36 +513,77 @@ class ApiClient {
 
   /// Sends [request], refreshing and retrying once on a 401, and returns
   /// the raw response (any status) - for the non-JSON helpers.
-  Future<http.Response> _sendRaw(String method, Uri uri, Future<http.Response> Function() request) async {
-    var res = await _attempt(method, uri, request);
-    if (res.statusCode == 401) {
+  Future<http.Response> _sendRaw(String method, Uri Function() uriOf, Future<http.Response> Function(Uri uri) request) async {
+    var attempt = await _attempt(method, uriOf, request);
+    if (attempt.response.statusCode == 401) {
       final result = await refresh();
       if (result != RefreshResult.refreshed) throw _refreshFailure(result);
-      res = await _attempt(method, uri, request);
+      attempt = await _attempt(method, uriOf, request);
     }
-    return res;
+    return attempt.response;
   }
 
-  Future<http.Response> _attempt(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
+  /// One request, on the address in use. When the server can't be reached
+  /// there, ServerRoutes checks the other addresses and the request is sent
+  /// once more on the one that answers - always for a GET, and for other
+  /// methods only when the connection itself failed (so nothing the server
+  /// may have received is sent twice). A GET that hangs for
+  /// [ServerRoutes.stallAfter] makes the client check the address still
+  /// answers, and moves to another one if not.
+  Future<_Attempt> _attempt(String method, Uri Function() uriOf, Future<http.Response> Function(Uri uri) request, {Duration? timeout}) async {
+    final base = baseUrl;
+    final uri = uriOf();
+    final limit = timeout ?? requestTimeout;
     try {
-      return await request().timeout(timeout ?? requestTimeout);
+      final res = await _watch(method, base, request(uri)).timeout(limit);
+      return _Attempt(res, uri);
     } catch (e) {
-      throw describeError(e, uri, method: method);
+      final err = e is _RouteChanged ? null : describeError(e, uri, method: method);
+      if (err != null && !err.isUnreachable) throw err;
+      final safe = method == 'GET' || method == 'HEAD' || err?.kind == ApiErrorKind.network;
+      final next = e is _RouteChanged ? baseUrl : (safe ? await _failover(base) : null);
+      if (next == null) {
+        if (err == null) throw describeError(TimeoutException('route changed'), uri, method: method);
+        if (!safe) unawaited(_failover(base));
+        throw err;
+      }
+      final retry = uriOf();
+      try {
+        return _Attempt(await request(retry).timeout(limit), retry);
+      } catch (e2) {
+        throw describeError(e2, retry, method: method);
+      }
     }
   }
 
-  Future<Map<String, dynamic>> _send(String method, Uri uri, Future<http.Response> Function() request, {Duration? timeout}) async {
-    var res = await _attempt(method, uri, request, timeout: timeout);
+  /// [response], but for a GET on a server with other addresses: after
+  /// [ServerRoutes.stallAfter] without an answer, checks [base] still
+  /// works, and ends with [_RouteChanged] when the client moved to another
+  /// address (the caller then sends the GET there).
+  Future<http.Response> _watch(String method, String base, Future<http.Response> response) {
+    if (method != 'GET' || !ServerRoutes.instance.hasAlternatives) return response;
+    final moved = Completer<http.Response>();
+    final timer = Timer(ServerRoutes.stallAfter, () async {
+      final next = await ServerRoutes.instance.checkStalled(base).catchError((_) => null);
+      if (next != null && !moved.isCompleted) moved.completeError(const _RouteChanged());
+    });
+    return Future.any([response, moved.future]).whenComplete(timer.cancel);
+  }
 
-    if (res.statusCode == 401) {
+  Future<Map<String, dynamic>> _send(String method, Uri Function() uriOf, Future<http.Response> Function(Uri uri) request, {Duration? timeout}) async {
+    var attempt = await _attempt(method, uriOf, request, timeout: timeout);
+
+    if (attempt.response.statusCode == 401) {
       final result = await refresh();
       if (result != RefreshResult.refreshed) throw _refreshFailure(result);
-      res = await _attempt(method, uri, request, timeout: timeout);
+      attempt = await _attempt(method, uriOf, request, timeout: timeout);
       // Still 401 with a token the server just issued: this route refuses
       // the request for its own reasons. Report it, but the session stays -
       // only /users/refresh decides that.
     }
 
+    final res = attempt.response;
+    final uri = attempt.uri;
     final route = '$method ${uri.path}';
     Map<String, dynamic> decoded;
     try {
@@ -631,7 +724,16 @@ class ApiClient {
   /// Throws an [ApiException] with a message fit for the login form (wrong
   /// password, too many attempts, unreachable).
   Future<({String accessToken, String refreshToken})> login(String username, String password) async {
-    final tokens = await requestTokens(baseUrl, username, password);
+    final base = baseUrl;
+    ({String accessToken, String refreshToken}) tokens;
+    try {
+      tokens = await requestTokens(base, username, password);
+    } on ApiException catch (e) {
+      // Away from home: sign in on the address that answers.
+      final next = e.isUnreachable ? await _failover(base) : null;
+      if (next == null) rethrow;
+      tokens = await requestTokens(next, username, password);
+    }
     setSession(tokens.accessToken, tokens.refreshToken);
     return tokens;
   }
@@ -726,25 +828,39 @@ class ApiClient {
 
     final refreshToken = _refreshToken;
     if (refreshToken == null || refreshToken.isEmpty) {
-      // Nothing to renew with: the session can't continue.
-      _handleAuthFailure();
+      // Nothing to renew with: the session can't continue (another engine
+      // may have ended it because the phone was removed - it says so).
+      await _handleAuthFailure(
+          reason: await StorageService.instance.getCompanionRemoved() ? SessionEndReason.companionRemoved : SessionEndReason.ended);
       return RefreshResult.rejected;
     }
 
-    final http.Response res;
+    // No Authorization header: the expired access token isn't needed.
+    Future<http.Response> post() => http
+        .post(_uri('/users/refresh'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'refresh_token': refreshToken}))
+        .timeout(const Duration(seconds: 20));
+    http.Response res;
+    final base = baseUrl;
     try {
-      // No Authorization header: the expired access token isn't needed.
-      final uri = _uri('/users/refresh');
-      res = await http
-          .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'refresh_token': refreshToken}))
-          .timeout(const Duration(seconds: 20));
+      res = await post();
     } catch (e) {
-      debugPrint('[ApiClient] refresh unavailable: ${e.runtimeType}');
-      return RefreshResult.unavailable;
+      // Can't reach this address: another one may answer (a refresh never
+      // reached the server, so sending it again is safe).
+      final next = await _failover(base);
+      if (next == null) {
+        debugPrint('[ApiClient] refresh unavailable: ${e.runtimeType}');
+        return RefreshResult.unavailable;
+      }
+      try {
+        res = await post();
+      } catch (e2) {
+        debugPrint('[ApiClient] refresh unavailable: ${e2.runtimeType}');
+        return RefreshResult.unavailable;
+      }
     }
 
     if (res.statusCode == 401) {
-      _handleAuthFailure();
+      await _handleAuthFailure(reason: _endReasonOf(res));
       return RefreshResult.rejected;
     }
     if (res.statusCode != 200) {
@@ -777,19 +893,53 @@ class ApiClient {
     }
   }
 
-  void _handleAuthFailure() {
+  static SessionEndReason _endReasonOf(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      final data = body is Map ? body['data'] : null;
+      if (data is Map && data['reason'] == companionRemovedReason) return SessionEndReason.companionRemoved;
+    } catch (_) {}
+    return SessionEndReason.ended;
+  }
+
+  /// Ends the session here because the server ended it (or the phone
+  /// learned it was removed): the tokens go, from storage too, and the
+  /// shell is told to ask for a sign-in.
+  Future<void> endSession({SessionEndReason reason = SessionEndReason.ended}) => _handleAuthFailure(reason: reason);
+
+  Future<void> _handleAuthFailure({SessionEndReason reason = SessionEndReason.ended}) async {
     _accessToken = null;
     _refreshToken = null;
+    sessionEndReason = reason;
+    // Remembered per server, so the sign-in screen says why even after a
+    // restart, and so no engine registers the phone again on its own.
+    if (reason == SessionEndReason.companionRemoved) {
+      try {
+        await StorageService.instance.setCompanionRemoved(true);
+      } catch (_) {}
+    }
     sessionExpiredNotifier.value = true;
-    StorageService.instance.clearSession();
+    await StorageService.instance.clearSession();
   }
 
   // --- apps additions ---
   /// PATCH with an optional JSON body: app-management's "update this
   /// compose app to the store's version" (`PATCH /v2/app_management/compose/{id}`).
   Future<Map<String, dynamic>> patch(String path, {Map<String, dynamic>? query, Object? body}) async {
-    final uri = _uri(path, query);
-    return _send('PATCH', uri, () => http.patch(uri, headers: _headers(), body: body == null ? null : jsonEncode(body)));
+    return _send('PATCH', () => _uri(path, query), (uri) => http.patch(uri, headers: _headers(), body: body == null ? null : jsonEncode(body)));
   }
   // --- end apps additions ---
+}
+
+/// A response and the URL it came from (the address may have changed
+/// between tries).
+class _Attempt {
+  const _Attempt(this.response, this.uri);
+  final http.Response response;
+  final Uri uri;
+}
+
+/// The client moved to another address while a GET hung on the old one.
+class _RouteChanged implements Exception {
+  const _RouteChanged();
 }

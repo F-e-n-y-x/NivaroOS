@@ -7,6 +7,7 @@ import 'ui/theme/app_theme.dart';
 import 'ui/theme/scaled_icons.dart';
 import 'ui/theme/theme_controller.dart';
 import 'services/api_client.dart';
+import 'services/server_routes.dart';
 import 'services/storage_service.dart';
 import 'services/widget_refresh.dart';
 import 'screens/discovery_screen.dart';
@@ -47,6 +48,11 @@ Future<Widget> startScreen() async {
     await ThemeController.instance.load();
     await WidgetRefreshController.instance.load();
     await ApiClient.instance.init();
+    // Which of the server's addresses answers from here (home, Tailscale,
+    // public), checked in the background and again on resume and network
+    // changes; the app starts on the one that worked last.
+    ServerRoutes.instance.startWatching();
+    unawaited(ServerRoutes.instance.select());
     final serverUrl = await StorageService.instance.getServerUrl();
     if (serverUrl != null && serverUrl.trim().isNotEmpty) {
       // HomeShell starts this server's background work (the heartbeat)

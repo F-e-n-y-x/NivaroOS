@@ -68,7 +68,7 @@ YES=""
 DEBUG=""
 CLI_WIDTH=""
 CLI_HEIGHT=""
-BASE_STEPS=11
+BASE_STEPS=12
 STEP_NUM=0
 TOTAL_STEPS=$BASE_STEPS
 CURRENT_STEP_TITLE=""
@@ -1539,6 +1539,22 @@ install_core_services() {
 		cd \"$SRC_DIR\"
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
 
+		# Safety net (see install_safety_net): keep the build that is running
+		# now as <binary>.prev before anything is replaced, so a bad update can
+		# be undone with nivaroos-rollback - or is undone by the watchdog when
+		# a service keeps failing right after it. The watchdog stays out of
+		# the way while binaries are being replaced (the pause expires on its
+		# own if the installer dies).
+		mkdir -p /run/nivaroos
+		echo \$(( \$(date +%s) + 7200 )) > /run/nivaroos/watchdog.pause
+		for b in /usr/bin/nivaroos /usr/bin/nivaroos-*; do
+			[ -f \"\$b\" ] || continue
+			case \"\$b\" in *.prev|*.bad.*|*.new|*.new.*|*.bak|*.tmp|*.tmp.*|*/nivaroos-uninstall) continue ;; esac
+			if [ ! -f \"\$b.prev\" ] || ! cmp -s \"\$b\" \"\$b.prev\"; then
+				cp -p \"\$b\" \"\$b.prev.tmp\" && mv -f \"\$b.prev.tmp\" \"\$b.prev\" || true
+			fi
+		done
+
 		# Stop existing background services before replacing binaries if upgrading
 		active_units=(
 			nivaroos.service
@@ -2189,6 +2205,11 @@ install_ui() {
 		fi
 
 		if [ -n \"\$ui_source_dir\" ]; then
+			# Keep the dashboard being replaced (nivaroos-rollback www).
+			if [ -f /var/lib/nivaroos/www/index.html ]; then
+				rm -rf /var/lib/nivaroos/www.prev.tmp
+				cp -a /var/lib/nivaroos/www /var/lib/nivaroos/www.prev.tmp && rm -rf /var/lib/nivaroos/www.prev && mv /var/lib/nivaroos/www.prev.tmp /var/lib/nivaroos/www.prev || true
+			fi
 			cp -rf \"\$ui_source_dir\"/* /var/lib/nivaroos/www/
 		elif [ -f /var/lib/nivaroos/www/index.html ]; then
 			echo 'Preserving existing installed web dashboard in /var/lib/nivaroos/www.'
@@ -2292,6 +2313,54 @@ MDNSEOF
 		else
 			echo 'avahi-daemon not available on this system - the mobile app will still work, just via manually entering this server'\''s address instead of auto-discovery.'
 		fi
+	"
+}
+
+# ------------------------------------------------------------------------------
+# Safety Net: restart limits, watchdog, rollback & recovery tools
+# ------------------------------------------------------------------------------
+# For a box that is looked after remotely (Tailscale/SSH) or not at all:
+#  - every nivaroos*.service gets a drop-in with sane restart limits;
+#  - nivaroos-watchdog.timer (every 2 min) restarts failed units, rolls a
+#    binary that keeps failing right after an update back to <binary>.prev,
+#    keeps tailscaled/sshd up and probes the gateway over HTTP;
+#  - nivaroos-rollback / nivaroos-deploy / nivaroos-recover for a shell.
+install_safety_net() {
+	run_step "Installing Safety Net (watchdog, rollback & recovery tools)" "
+		mkdir -p /usr/local/lib/nivaroos /usr/local/bin /var/lib/nivaroos/watchdog /var/log/nivaroos
+		install -m 644 \"${SRC_DIR}/installer/nivaroos-safety-lib.sh\" /usr/local/lib/nivaroos/safety-lib.sh
+		install -m 755 \"${SRC_DIR}/installer/nivaroos-watchdog.sh\" /usr/local/lib/nivaroos/nivaroos-watchdog
+		install -m 755 \"${SRC_DIR}/installer/nivaroos-rollback.sh\" /usr/local/bin/nivaroos-rollback
+		install -m 755 \"${SRC_DIR}/installer/nivaroos-deploy.sh\" /usr/local/bin/nivaroos-deploy
+		install -m 755 \"${SRC_DIR}/installer/nivaroos-recover.sh\" /usr/local/bin/nivaroos-recover
+		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-watchdog.service\" /usr/lib/systemd/system/nivaroos-watchdog.service
+		install -m 644 \"${SRC_DIR}/installer/systemd/nivaroos-watchdog.timer\" /usr/lib/systemd/system/nivaroos-watchdog.timer
+		for f in /usr/local/lib/nivaroos /usr/local/bin/nivaroos-rollback /usr/local/bin/nivaroos-deploy /usr/local/bin/nivaroos-recover \\
+			/usr/lib/systemd/system/nivaroos-watchdog.service /usr/lib/systemd/system/nivaroos-watchdog.timer /var/lib/nivaroos/watchdog /var/log/nivaroos/watchdog.log; do
+			grep -qxF \"\$f\" \"$MANIFEST_FILE\" 2>/dev/null || echo \"\$f\" >> \"$MANIFEST_FILE\"
+		done
+
+		# Restart limits for every NivaroOS service unit, whichever step
+		# installed it (explicit per-unit drop-ins: prefix drop-ins need a
+		# newer systemd than some supported distros ship).
+		for unit_file in /usr/lib/systemd/system/nivaroos*.service /etc/systemd/system/nivaroos*.service; do
+			[ -f \"\$unit_file\" ] || continue
+			unit=\$(basename \"\$unit_file\")
+			case \"\$unit\" in nivaroos-watchdog.service) continue ;; esac
+			mkdir -p \"/etc/systemd/system/\$unit.d\"
+			install -m 644 \"${SRC_DIR}/installer/systemd/10-nivaroos-resilience.conf\" \"/etc/systemd/system/\$unit.d/10-nivaroos-resilience.conf\"
+		done
+		systemctl daemon-reload
+		systemctl enable --now nivaroos-watchdog.timer >/dev/null 2>&1 || true
+
+		# Tailscale is how this box is reached from outside the LAN: make
+		# sure it comes back after a reboot.
+		if systemctl list-unit-files tailscaled.service >/dev/null 2>&1 && [ -x \"\$(command -v tailscaled 2>/dev/null)\" ]; then
+			systemctl enable tailscaled >/dev/null 2>&1 || true
+		fi
+
+		# Installation is over: the watchdog may act again.
+		rm -f /run/nivaroos/watchdog.pause
 	"
 }
 
@@ -2543,6 +2612,7 @@ main() {
 	start_core_services
 	verify_health
 	install_uninstall_wrapper
+	install_safety_net
 	install_mdns_advertisement
 
 	print_summary

@@ -43,6 +43,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Network changes and "Open Tailscale" (NetworkChannels.kt).
+        NetworkChannels.register(this, flutterEngine)
+
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->
             if (call.method == "getBatteryLevel") {

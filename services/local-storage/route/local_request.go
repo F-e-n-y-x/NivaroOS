@@ -4,6 +4,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 )
 
 // IsTrustedLocalRequest: a request may skip JWT only when it comes straight
@@ -16,6 +18,12 @@ import (
 // implemented here locally so this service doesn't depend on that landing.
 func IsTrustedLocalRequest(r *http.Request) bool {
 	if r == nil {
+		return false
+	}
+	// Relays on this box (cloudflared, `tailscale serve`) and a
+	// userspace-networking tailscaled all dial from loopback on behalf of
+	// remote clients - see common/middleware.LoopbackUntrusted.
+	if middleware.LoopbackUntrusted() || middleware.HasProxyMarks(r) {
 		return false
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/server_profile.dart';
 import 'api_client.dart';
 import 'device_sync_service.dart';
+import 'server_routes.dart';
 import 'storage_service.dart';
 import 'tailscale_service.dart';
 
@@ -12,9 +15,12 @@ import 'tailscale_service.dart';
 abstract final class SessionService {
   /// After a successful sign-in on the current server: keeps the session.
   /// The shell then calls [started].
+  /// Signing in on the phone is also how it is paired again after the
+  /// server removed it: its first registration says so.
   static Future<void> signedIn({required String accessToken, required String refreshToken, required String username}) async {
     ApiClient.instance.setSession(accessToken, refreshToken);
     await StorageService.instance.setSession(accessToken: accessToken, refreshToken: refreshToken, username: username);
+    DeviceSyncService.instance.pairAfterSignIn();
   }
 
   /// Once the shell is on screen with a session (launch, sign-in, switch):
@@ -22,10 +28,19 @@ abstract final class SessionService {
   /// clean-ups. Failures are quiet; the heartbeat tries again.
   static Future<void> started() async {
     try {
+      // The profile may be new (a first sign-in): pick up its addresses.
+      await ServerRoutes.instance.load();
       await DeviceSyncService.instance.onSignedIn();
       await TailscaleService.instance.removeLegacyAuthKey();
     } catch (e) {
       debugPrint('[session] start notice: ${e.runtimeType}');
+    }
+    // Learn the server's Tailscale and other addresses, so the app keeps
+    // working away from home.
+    try {
+      await ServerRoutes.instance.learn();
+    } catch (e) {
+      debugPrint('[session] learning addresses: ${e.runtimeType}');
     }
   }
 
@@ -43,6 +58,10 @@ abstract final class SessionService {
     await DeviceSyncService.instance.onSigningOut();
     await StorageService.instance.switchProfile(profile);
     ApiClient.instance.setBaseUrl(profile.url);
+    // Start on the address it was last reached on, then check which
+    // answers from here.
+    await ServerRoutes.instance.load();
+    unawaited(ServerRoutes.instance.select());
     if (profile.hasSession) {
       ApiClient.instance.setSession(profile.accessToken!, profile.refreshToken!);
       return true;
@@ -61,6 +80,7 @@ abstract final class SessionService {
     }
     await StorageService.instance.setServerUrl(url);
     ApiClient.instance.setBaseUrl(url);
+    await ServerRoutes.instance.load();
     if (current != url) ApiClient.instance.clearSession();
   }
 }

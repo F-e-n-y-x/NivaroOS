@@ -813,7 +813,10 @@ func (i *rbInstance) newTab(ctx context.Context, rawURL, context string, opener 
 	}
 	conn := i.cdp
 	i.mu.Unlock()
-	params := map[string]interface{}{"url": u, "background": true}
+	// Each tab gets its own (headless) window: a page in a window's
+	// background tab is hidden, and a hidden page stops painting, so two
+	// viewers could not watch two tabs. Idle tabs are frozen instead.
+	params := map[string]interface{}{"url": u, "newWindow": true}
 	if context != "" {
 		params["browserContextId"] = context
 	}
@@ -850,7 +853,7 @@ func (i *rbInstance) wake(ctx context.Context, t *rbTab) error {
 	if u == "" {
 		u = "about:blank"
 	}
-	params := map[string]interface{}{"url": u, "background": true}
+	params := map[string]interface{}{"url": u, "newWindow": true}
 	if t.Context != "" {
 		params["browserContextId"] = t.Context
 	}
@@ -1454,7 +1457,11 @@ func (i *rbInstance) onAttached(parent, session string, ti cdpTargetInfo, waitin
 		}
 		if isExt {
 			// uBO Lite's own pages (first-run, our settings call) are never
-			// shown as tabs; a stray one is closed.
+			// shown as tabs; a stray one is closed. Our own explicit attach
+			// to the settings page (not waiting) is left alone.
+			if !waiting {
+				return
+			}
 			run()
 			if ubolPage == "" || !strings.HasPrefix(ti.URL, ubolPage) {
 				conn.Send("", "Target.closeTarget", map[string]interface{}{"targetId": ti.TargetID})
@@ -2180,10 +2187,20 @@ func (i *rbInstance) updateCasts() {
 		if t.casting && t.castW == wt.w && t.castH == wt.h && t.castDPR == wt.dpr && t.castQ == wt.q {
 			continue
 		}
+		// Chromium keeps a running screencast's size and quality: restart it.
+		restart := t.casting
 		t.casting, t.castW, t.castH, t.castDPR, t.castQ = true, wt.w, wt.h, wt.dpr, wt.q
 		s := t.Session
 		params := map[string]interface{}{"format": "jpeg", "quality": wt.q, "maxWidth": int(float64(wt.w) * wt.dpr), "maxHeight": int(float64(wt.h) * wt.dpr), "everyNthFrame": 1}
-		start = append(start, func() { conn.Send(s, "Page.startScreencast", params) })
+		if rbDebug {
+			log.Printf("cast tab=%d %dx%d@%v q=%d restart=%v", t.ID, wt.w, wt.h, wt.dpr, wt.q, restart)
+		}
+		start = append(start, func() {
+			if restart {
+				conn.Send(s, "Page.stopScreencast", nil)
+			}
+			conn.Send(s, "Page.startScreencast", params)
+		})
 	}
 	i.mu.Unlock()
 	for _, f := range start {

@@ -41,8 +41,7 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 			ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
 				valid, claims, err := Validate(token, publicKeyFunc)
 				if err != nil || !valid {
-					message := "token is invalid"
-					c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: message})
+					c.JSON(http.StatusUnauthorized, UnauthorizedResult(err))
 					return nil, echo.ErrUnauthorized
 				}
 				c.Request().Header.Set("user_id", strconv.Itoa(claims.ID))
@@ -59,6 +58,20 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 			},
 		},
 	)
+}
+
+// UnauthorizedResult is the body of a 401 for a token Validate refused. A
+// revoked session says so, with its reason in data.reason, so a client can
+// tell "this phone was removed" from an expired token.
+func UnauthorizedResult(err error) model.Result {
+	if reason, ok := RevocationReason(err); ok {
+		msg := "this session was ended - sign in again"
+		if reason == ReasonCompanionRemoved {
+			msg = "this phone was removed from NivaroOS - sign in again to reconnect it"
+		}
+		return model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: msg, Data: map[string]string{"reason": reason}}
+	}
+	return model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: "token is invalid"}
 }
 
 func GenerateKeyPair() (*ecdsa.PrivateKey, *ecdsa.PublicKey, error) {

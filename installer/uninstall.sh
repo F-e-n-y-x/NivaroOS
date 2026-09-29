@@ -13,7 +13,7 @@ set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
@@ -530,6 +530,8 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-host-desktop.service \
 			/usr/lib/systemd/system/rclone.service \
 			/usr/lib/systemd/system/usb-mount@.service \
+			/usr/lib/systemd/system/nivaroos-watchdog.service \
+			/usr/lib/systemd/system/nivaroos-watchdog.timer \
 			/etc/systemd/system/nivaroos* \
 			/etc/udev/rules.d/11-usb-mount.rules \
 			/etc/sysctl.d/99-nivaroos.conf \
@@ -589,6 +591,10 @@ remove_binaries() {
 			/run/nivaroos/hostvnc.sock /run/nivaroos/host-desktop.env /run/nivaroos/host-desktop.xauth \
 			/usr/bin/casaos-cli /usr/bin/casaos /usr/bin/casaos-gateway /usr/bin/casaos-user-service \
 			/usr/bin/casaos-app-management /usr/bin/casaos-local-storage /usr/bin/casaos-message-bus 2>/dev/null || true
+		# Safety net: previous/rolled-back builds and its tools.
+		rm -f /usr/bin/nivaroos*.prev /usr/bin/nivaroos*.bad.* \
+			/usr/local/bin/nivaroos-rollback /usr/local/bin/nivaroos-deploy /usr/local/bin/nivaroos-recover 2>/dev/null || true
+		rm -rf /usr/local/lib/nivaroos /var/log/nivaroos/watchdog.log
 		rm -rf /var/lib/nivaroos /var/lib/casaos /var/run/nivaroos /etc/nivaroos /usr/share/nivaroos
 	"
 }
