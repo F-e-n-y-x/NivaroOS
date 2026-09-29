@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../phone_backup/pb_service.dart' show runPhoneBackupJob;
 import 'api_client.dart';
 import 'companion_file_server.dart';
 import 'device_sync_service.dart';
@@ -75,4 +76,14 @@ Future<void> heartbeatMain() async {
       await channel.invokeMethod('done');
     } catch (_) {}
   }
+}
+
+/// One run (or slice) of "Back up this phone" (PhoneBackupJobService).
+/// The device token, not the app's session, signs every call.
+@pragma('vm:entry-point')
+Future<void> phoneBackupMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  await StorageService.instance.init();
+  await runPhoneBackupJob();
 }

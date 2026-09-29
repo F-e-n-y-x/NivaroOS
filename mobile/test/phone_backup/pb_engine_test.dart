@@ -202,4 +202,34 @@ void main() {
     expect(store.loadState().nextRunAt, isNull);
     expect(phone.cancels, 1);
   });
+
+  test('most files vanishing at once is not reported as deleted', () async {
+    for (var i = 0; i < 30; i++) {
+      phone.addMedia('DCIM/Camera/IMG_$i.jpg', 'img $i');
+    }
+    await run();
+    // A lost permission (Android returns only the app's own files) or an
+    // unmounted card: 30 of 34 gone.
+    phone.media.removeWhere((k, _) => k.contains('IMG_'));
+    final r = await run(at: now.add(const Duration(days: 1)));
+    expect(server.deletedMarks, isEmpty);
+    expect(r.outcome, 'partial');
+    expect(store.loadState().errors.single['message'], contains('not reporting them as deleted'));
+    expect(store.loadManifest('media').entries.length, 34, reason: 'kept, so they are checked again next time');
+    expect(suspiciousDeletes(19, 20), isFalse);
+    expect(suspiciousDeletes(20, 30), isTrue);
+    expect(suspiciousDeletes(20, 50), isFalse);
+  });
+
+  test('photos without the permission: the category fails, the rest goes on', () async {
+    phone.denied.add(AndroidPermissions.readMediaVideo);
+    phone.contactsVcf = 'BEGIN:VCARD\nVERSION:3.0\nFN:A\nEND:VCARD\n';
+    final r = await run(settings: const PhoneBackupSettings(categories: {PhoneCategory.media, PhoneCategory.contacts}));
+    expect(r.outcome, 'partial');
+    final st = store.loadState();
+    expect(st.categories['media']!.status, 'failed');
+    expect(st.categories['media']!.message, contains('Allow access'));
+    expect(st.categories['contacts']!.status, 'success');
+    expect(server.files['media'], isNull);
+  });
 }

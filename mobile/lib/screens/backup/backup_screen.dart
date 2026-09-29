@@ -15,6 +15,7 @@ import 'backup_job_form_screen.dart';
 import 'backup_job_screen.dart';
 import 'backup_restore_screen.dart';
 import 'backup_widgets.dart';
+import '../phone_backup/phone_backup_screen.dart';
 
 /// Backup & Sync, the overview (backup plan WP1-1; the web's Overview and
 /// Jobs sections): how the backups are doing, what needs the owner first,
@@ -177,6 +178,16 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
 
   Future<void> _newJob() => _open(BackupJobFormScreen(api: widget.api));
 
+  // "Back up this phone" (lib/phone_backup): the phone's own backup, next
+  // to the server's jobs.
+  Widget _phoneRow() => ListTile(
+        leading: const Icon(Icons.phone_android_outlined),
+        title: const Text('Back up this phone'),
+        subtitle: const Text('Photos, contacts, messages and more, to this server'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _open(const PhoneBackupScreen()),
+      );
+
   @override
   Widget build(BuildContext context) {
     final health = _health;
@@ -213,6 +224,7 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
       slivers = const [SliverLoadingList(rows: 6)];
     } else if (jobs.isEmpty) {
       slivers = [
+        SliverToBoxAdapter(child: TileGroup(children: [_phoneRow()])),
         EmptyState(
           icon: Icons.backup_outlined,
           title: bt('backup.empty.title'),
@@ -271,6 +283,7 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
             ],
           ),
           TileGroup(children: [
+            _phoneRow(),
             ListTile(
               leading: const Icon(Icons.restore_outlined),
               title: Text(bt('backup.nav.restore')),

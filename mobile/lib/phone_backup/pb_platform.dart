@@ -251,10 +251,6 @@ class ChannelPhoneSources implements PhoneSources {
   static Future<Map<String, int>> restoreCallLog(String path) async => _counts(await _call<Map<Object?, Object?>>('restoreCallLog', {'path': path}));
 
   static Map<String, int> _counts(Map<Object?, Object?>? m) => {for (final e in (m ?? const {}).entries) e.key.toString(): e.value is num ? (e.value as num).toInt() : 0};
-
-  /// Opens [path] with the app that imports its type (contacts for .vcf,
-  /// the calendar for .ics).
-  static Future<bool> openForImport(String path, String mime) async => await _call<bool>('openForImport', {'path': path, 'mime': mime}) ?? false;
 }
 
 class _ChannelSource implements ByteSource {

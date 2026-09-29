@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var phoneBackup: PhoneBackupBridge? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +43,12 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // "Back up this phone" (PhoneBackupBridge, PhoneBackupJobService,
+        // lib/phone_backup).
+        phoneBackup = PhoneBackupBridge(applicationContext, this).also {
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PhoneBackupBridge.CHANNEL).setMethodCallHandler(it)
+        }
 
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->
@@ -245,6 +252,17 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             -1
         }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (phoneBackup?.onPermissions(requestCode) == true) return
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (phoneBackup?.onActivityResult(requestCode, resultCode, data) == true) return
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {

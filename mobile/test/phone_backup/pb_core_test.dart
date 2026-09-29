@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_manifest.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_messages.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_models.dart';
+import 'package:nivaroos_mobile/phone_backup/pb_restore.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_schedule.dart';
 import 'package:nivaroos_mobile/phone_backup/pb_store.dart';
 
@@ -205,6 +206,18 @@ void main() {
       expect(c.categories, ['media']);
       expect(c.retention.summary, 'The newest 5 backups. Files you delete on the phone are kept for 90 days.');
       expect(const PhoneRetention().summary, 'The newest 10 backups, and one a day for 30 days. Files you delete on the phone are kept.');
+    });
+  });
+
+  group('restore targets', () {
+    test('media goes back to its album; a second volume to the same album here', () {
+      expect(mediaTarget('DCIM/Camera/PXL_1.jpg'), (relativePath: 'DCIM/Camera', name: 'PXL_1.jpg'));
+      expect(mediaTarget('1234-ABCD/DCIM/Camera/a.jpg'), (relativePath: 'DCIM/Camera', name: 'a.jpg'));
+      expect(mediaTarget('IMG_0001.jpg'), (relativePath: 'Pictures/Restored', name: 'IMG_0001.jpg'));
+    });
+    test('folders and APKs go to Download/NivaroOS restore', () {
+      expect(downloadTarget('files', 'Documents/Work/a.pdf'), (subPath: 'Folders/Documents/Work', name: 'a.pdf'));
+      expect(downloadTarget('apks', 'org.example/3/base.apk'), (subPath: 'Apps/org.example/3', name: 'base.apk'));
     });
   });
 }

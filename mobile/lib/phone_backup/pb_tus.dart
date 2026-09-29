@@ -89,7 +89,25 @@ class TusUploader {
     int? offset,
     bool Function()? shouldStop,
     void Function(int confirmed, int total)? onProgress,
+  }) =>
+      _upload(source, meta, uploadId: uploadId, offset: offset, shouldStop: shouldStop, onProgress: onProgress, restarts: 0);
+
+  Future<UploadOutcome> _upload(
+    ByteSource source,
+    UploadMeta meta, {
+    String uploadId = '',
+    int? offset,
+    bool Function()? shouldStop,
+    void Function(int confirmed, int total)? onProgress,
+    required int restarts,
   }) async {
+    Future<UploadOutcome> restart() {
+      // Gone on the server (expired, or void after a location change):
+      // create it again, a few times at most.
+      if (restarts >= 3) throw PhoneBackupError('internal', message: 'The upload kept disappearing on the server');
+      return _upload(source, meta, shouldStop: shouldStop, onProgress: onProgress, restarts: restarts + 1);
+    }
+
     final length = source.length;
     var uid = uploadId;
     int? at = offset;
@@ -127,19 +145,19 @@ class TusUploader {
           case 'io_error':
             // The server says where it is; continue from there.
             final o = e.offset ?? await client.headUpload(uid);
-            if (o == null) return _restart(source, meta, shouldStop, onProgress);
+            if (o == null) return restart();
             pos = o;
             continue;
           case 'checksum_mismatch':
             throw const ChecksumMismatch();
           case 'not_found':
             // Expired, or void after a location change: start over.
-            return _restart(source, meta, shouldStop, onProgress);
+            return restart();
           case 'invalid_state':
             // Another PATCH of this upload is still running (a lost answer).
             await _sleep(retryDelay);
             final o = await client.headUpload(uid);
-            if (o == null) return _restart(source, meta, shouldStop, onProgress);
+            if (o == null) return restart();
             pos = o;
             continue;
         }
@@ -147,7 +165,7 @@ class TusUploader {
           failures++;
           await _sleep(retryDelay * failures);
           final o = await _retrying(() => client.headUpload(uid));
-          if (o == null) return _restart(source, meta, shouldStop, onProgress);
+          if (o == null) return restart();
           pos = o;
           continue;
         }
@@ -155,13 +173,6 @@ class TusUploader {
       }
     }
     return UploadOutcome(result.isEmpty ? 'stored' : result, bytesSent: pos - start);
-  }
-
-  int _restarts = 0;
-
-  Future<UploadOutcome> _restart(ByteSource source, UploadMeta meta, bool Function()? shouldStop, void Function(int, int)? onProgress) {
-    if (++_restarts > 3) throw PhoneBackupError('internal', message: 'The upload kept disappearing on the server');
-    return upload(source, meta, shouldStop: shouldStop, onProgress: onProgress);
   }
 
   Future<T> _retrying<T>(Future<T> Function() call) async {

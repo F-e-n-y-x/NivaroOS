@@ -80,8 +80,11 @@ class FakePhone implements PhoneSources {
   @override
   Future<Map<String, Object?>> readSettings() async => {'screen_off_timeout': 30000};
 
+  /// Refused permissions.
+  final Set<String> denied = {};
+
   @override
-  Future<Map<String, bool>> permissions(List<String> names) async => {for (final n in names) n: true};
+  Future<Map<String, bool>> permissions(List<String> names) async => {for (final n in names) n: !denied.contains(n)};
 
   @override
   Future<void> progress({required String title, required String text, int done = 0, int total = 0, bool ongoing = true}) async => notifications.add(text);

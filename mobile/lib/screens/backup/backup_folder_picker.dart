@@ -13,18 +13,22 @@ import 'backup_widgets.dart';
 /// web's wizard and restore use, so what can be picked is what the
 /// service can reach. [role] "source" also offers the server's shared
 /// folders and app data as shortcuts; "dest" hides read-only places.
-Future<BackupEndpoint?> pickBackupFolder(BuildContext context, {required String role, String? title, BackupApi? api}) {
+///
+/// [kinds] keeps only those kinds of location (a phone's backups go to a
+/// volume, a USB drive or merged storage: {'volume', 'usb', 'merge'}).
+Future<BackupEndpoint?> pickBackupFolder(BuildContext context, {required String role, String? title, BackupApi? api, Set<String>? kinds}) {
   return Navigator.of(context).push<BackupEndpoint>(MaterialPageRoute(
-    builder: (_) => BackupLocationPickerScreen(role: role, title: title, api: api),
+    builder: (_) => BackupLocationPickerScreen(role: role, title: title, api: api, kinds: kinds),
   ));
 }
 
 class BackupLocationPickerScreen extends StatefulWidget {
-  const BackupLocationPickerScreen({super.key, required this.role, this.title, this.api});
+  const BackupLocationPickerScreen({super.key, required this.role, this.title, this.api, this.kinds});
 
   final String role;
   final String? title;
   final BackupApi? api;
+  final Set<String>? kinds;
 
   @override
   State<BackupLocationPickerScreen> createState() => _BackupLocationPickerScreenState();
@@ -47,7 +51,9 @@ class _BackupLocationPickerScreenState extends State<BackupLocationPickerScreen>
       _error = null;
     });
     try {
-      final l = await _api.locations(widget.role);
+      final all = await _api.locations(widget.role);
+      final kinds = widget.kinds;
+      final l = kinds == null ? all : all.where((x) => kinds.contains(x.kind)).toList();
       if (mounted) setState(() => _locations = l);
     } catch (e) {
       if (mounted) setState(() => _error = e);

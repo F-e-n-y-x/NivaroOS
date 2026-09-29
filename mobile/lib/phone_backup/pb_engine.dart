@@ -337,10 +337,14 @@ class PhoneBackupEngine {
     await _report(force: true);
     switch (cat) {
       case 'media':
-        return _files(cat, await _platform(() => phone.scanMedia(), 'Photos and videos can’t be read. Allow access to them in the app’s settings.'));
+        const denied = 'Photos and videos can’t be read. Allow access to all of them in the app’s settings.';
+        final perms = await _platform(() => phone.permissions(const [AndroidPermissions.readMediaImages, AndroidPermissions.readMediaVideo]), denied);
+        if (perms.values.any((v) => !v)) throw const PlatformReadError(denied);
+        return _files(cat, await _platform(() => phone.scanMedia(), denied));
       case 'files':
         final all = <ScannedFile>[];
         final labels = <String>{};
+        final unreadable = <String>{};
         for (final f in settings.folders) {
           var label = safeSegment(f.label);
           for (var n = 2; labels.contains(label); n++) {
@@ -350,10 +354,11 @@ class PhoneBackupEngine {
           try {
             all.addAll(await phone.scanTree(f.uri, label));
           } catch (e) {
+            unreadable.add('$label/');
             _error(cat, label, 'This folder can’t be read any more. Pick it again.');
           }
         }
-        return _files(cat, all);
+        return _files(cat, all, keepPrefixes: unreadable);
       case 'apks':
         final apps = await _platform(() => phone.installedApps(), 'The app list can’t be read.');
         return _files(cat, [
@@ -423,7 +428,9 @@ class PhoneBackupEngine {
   }
 
   // Files kinds: media, files, apks.
-  Future<CategoryRun> _files(String cat, List<ScannedFile> scanned) async {
+  /// [keepPrefixes]: paths not to report deleted (a folder that couldn't
+  /// be read this time).
+  Future<CategoryRun> _files(String cat, List<ScannedFile> scanned, {Set<String> keepPrefixes = const {}}) async {
     final manifest = store.loadManifest(cat);
     final files = <ScannedFile>[];
     final seen = <String>{};
@@ -436,7 +443,13 @@ class PhoneBackupEngine {
     }
     // Gone from the phone since the last backup: kept on the server,
     // marked deleted there.
-    final gone = manifest.gone(seen);
+    var gone = manifest.gone(seen).where((p) => !keepPrefixes.any(p.startsWith)).toList();
+    // A scan that suddenly misses most files is a lost permission or an
+    // unmounted card, not the owner deleting them: don't report it.
+    if (suspiciousDeletes(gone.length, manifest.entries.length)) {
+      _error(cat, '', 'Most files seem to be gone from the phone; not reporting them as deleted. Check that NivaroOS may still read them.');
+      gone = const [];
+    }
     for (var i = 0; i < gone.length; i += _limits.deletedBatch) {
       _checkpoint();
       final batch = gone.sublist(i, (i + _limits.deletedBatch).clamp(0, gone.length));
@@ -743,6 +756,9 @@ class PhoneBackupEngine {
         _ => r.end == RunEnd.done ? 'Phone backup' : 'Phone backup failed',
       };
 }
+
+/// Whether [gone] of [known] files missing at once is too many to trust.
+bool suspiciousDeletes(int gone, int known) => gone >= 20 && gone * 2 > known;
 
 /// A category the phone couldn't read (a permission, a vanished folder).
 class PlatformReadError implements Exception {

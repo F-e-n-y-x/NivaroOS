@@ -14,6 +14,7 @@ import '../ui/ui.dart';
 import '../widgets/server_power.dart';
 import 'login_screen.dart';
 import 'system_updates_screen.dart';
+import 'phone_backup/phone_backup_screen.dart';
 
 /// The app's own settings: how often Home refreshes, this phone's
 /// permissions, server power, about, and sign out. The account and the theme live on More (one home each);
@@ -184,6 +185,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             TileGroup(
               title: 'This phone',
               children: [
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Back up this phone'),
+                  subtitle: const Text('Photos, contacts, messages and more, to your server'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneBackupScreen())),
+                ),
                 ListTile(
                   leading: Icon(_notifications == PermissionState.granted ? Icons.notifications_outlined : Icons.notifications_off_outlined),
                   title: const Text('Notifications'),
