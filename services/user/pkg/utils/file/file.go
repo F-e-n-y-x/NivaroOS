@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -31,11 +32,13 @@ func IsNotExistMkDir(src string) error {
 
 // MkDir create a directory
 func MkDir(src string) error {
-	err := os.MkdirAll(src, os.ModePerm)
+	// 0755, not 0777: these are per-user settings, avatars and the
+	// database directory - no other local account may write there.
+	err := os.MkdirAll(src, 0o755)
 	if err != nil {
 		return err
 	}
-	os.Chmod(src, 0o777)
+	os.Chmod(src, 0o755)
 
 	return nil
 }
@@ -142,4 +145,24 @@ func WriteToPath(data []byte, path, name string) error {
 	_, err = file.Write(data)
 
 	return err
+}
+
+// RestrictWorldWritable makes dir and the directories directly in it no
+// longer writable by group or others (they were created 0777). Idempotent.
+func RestrictWorldWritable(dir string) {
+	fix := func(p string) {
+		if fi, err := os.Lstat(p); err == nil && fi.IsDir() && fi.Mode().Perm()&0o022 != 0 {
+			_ = os.Chmod(p, fi.Mode().Perm()&^0o022)
+		}
+	}
+	fix(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			fix(filepath.Join(dir, e.Name()))
+		}
+	}
 }

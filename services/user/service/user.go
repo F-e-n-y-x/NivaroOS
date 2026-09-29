@@ -20,6 +20,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
+	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -121,6 +122,11 @@ func (u *userService) GetKeyPair() (*ecdsa.PrivateKey, *ecdsa.PublicKey) {
 
 // 获取用户Service
 func NewUserService(db *gorm.DB) UserService {
+	// Per-user settings folders were created 0777 (any local account could
+	// plant settings for another user); repaired on every start.
+	if config.AppInfo.UserDataPath != "" {
+		file.RestrictWorldWritable(config.AppInfo.UserDataPath)
+	}
 	keyPath := filepath.Join(config.AppInfo.DBPath, "jwt_key.pem")
 	if config.AppInfo.DBPath == "" {
 		keyPath = "/var/lib/nivaroos/db/jwt_key.pem"

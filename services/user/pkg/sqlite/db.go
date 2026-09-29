@@ -9,6 +9,7 @@
 package sqlite
 
 import (
+	"os"
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
@@ -28,10 +29,15 @@ func GetDb(dbPath string) *gorm.DB {
 	}
 
 	file.IsNotExistMkDir(dbPath)
+	// Root only (it was 0777 / 0644): user.db holds the password hashes,
+	// and whoever can write the directory can replace jwt_key.pem - and
+	// sign tokens for any account. Repaired on every start.
+	_ = os.Chmod(dbPath, 0o700)
 	db, err := gorm.Open(sqlite.Open(dbPath+"/user.db"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
+	_ = os.Chmod(dbPath+"/user.db", 0o600)
 
 	c, _ := db.DB()
 	c.SetMaxIdleConns(10)

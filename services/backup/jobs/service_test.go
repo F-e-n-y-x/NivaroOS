@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/secret"
 	"os"
 	"path/filepath"
 	"strings"
@@ -432,6 +433,49 @@ func TestCoreDBSMB(t *testing.T) {
 	}
 	if _, err := h.svc.smbCredsFor(context.Background(), []Endpoint{{Kind: EPSMB, RefID: "9", SubPath: "x"}}); engine.CodeOf(err) != ErrEndpointUnknown {
 		t.Errorf("deleted connection: %v", err)
+	}
+}
+
+// core seals saved passwords with the host key; the backup service opens
+// them (read-only key), and a password it can't open fails the job with a
+// clear error instead of sending ciphertext to the share.
+func TestCoreDBSMBOpensSealedPasswords(t *testing.T) {
+	dir := t.TempDir()
+	box, err := secret.LoadOrCreate(filepath.Join(dir, "secret.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, _ := box.Seal("s3cret", secret.ConnectionPassword)
+	dbPath := filepath.Join(dir, "casaOS.db")
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec("CREATE TABLE o_connections (id integer primary key, username text, password text, host text, port text, status text, directories text, mount_point text)")
+	db.Exec("INSERT INTO o_connections (id, username, password, host, port, directories, mount_point) VALUES (1, 'u', ?, 'nas', '445', 'share', '/mnt/nas'), (2, 'v', 'legacy', 'nas2', '445', 'share', '/mnt/nas2')", sealed)
+	sqlDB, _ := db.DB()
+	sqlDB.Close()
+
+	src := &CoreDBSMB{Path: dbPath, Key: func() (*secret.Box, error) { return box, nil }}
+	conns, err := src.Connections(context.Background())
+	if err != nil || len(conns) != 2 {
+		t.Fatalf("connections: %+v %v", conns, err)
+	}
+	if conns[0].Password != "s3cret" || conns[0].PasswordErr != nil {
+		t.Fatalf("sealed password: %q %v", conns[0].Password, conns[0].PasswordErr)
+	}
+	if conns[1].Password != "legacy" {
+		t.Fatalf("plaintext row: %q", conns[1].Password)
+	}
+
+	// Without the host key: the job fails, naming the share, and the
+	// ciphertext is never handed to the engine.
+	noKey := &CoreDBSMB{Path: dbPath, Key: func() (*secret.Box, error) { return nil, secret.ErrNoKey }}
+	h := newHarness(t, false)
+	h.svc.smb = noKey
+	creds, err := h.svc.smbCredsFor(context.Background(), []Endpoint{{Kind: EPSMB, RefID: "1", SubPath: "share"}})
+	if err == nil || !strings.Contains(err.Error(), `\\nas`) || creds != nil {
+		t.Fatalf("no key: creds %+v err %v", creds, err)
 	}
 }
 

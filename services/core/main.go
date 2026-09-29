@@ -16,6 +16,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/command"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/secret"
 
 	util_http "github.com/F-e-n-y-x/NivaroOS/services/common/utils/http"
 
@@ -76,6 +77,11 @@ func init() {
 	// gredis.GetRedisConn(config.RedisInfo),
 
 	service.MyService = service.NewService(sqliteDB, config.CommonInfo.RuntimePath)
+	// Saved network-share passwords are sealed with the host key (before
+	// InitFunction's boot-time remount reads them).
+	if err := service.InitConnectionSecrets(secret.DefaultKeyPath); err != nil {
+		logger.Error("connection passwords", zap.Error(err))
+	}
 	service.InitTransfers(config.AppInfo.DBPath)
 	service.InitTrash(config.AppInfo.DBPath)
 	service.InitAptJobs(config.AppInfo.DBPath)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/backup/engine"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/constants"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/secret"
 )
 
 // SMB network shares (endpoint kind smb): RefID is the id of a connection
@@ -56,13 +57,16 @@ func CoreDBPath(confFile string) string {
 
 // SMBConnection is one saved network-share connection.
 type SMBConnection struct {
-	ID         string
-	Host       string
-	Port       string
-	User       string
-	Password   string
-	Shares     []string // browsable shares, as core mounted them
-	MountPoint string   // /mnt/<host>; each share at MountPoint/<share>
+	ID       string
+	Host     string
+	Port     string
+	User     string
+	Password string
+	// PasswordErr: the stored password is sealed and couldn't be opened
+	// (no host key, or a different one); Password is empty then.
+	PasswordErr error
+	Shares      []string // browsable shares, as core mounted them
+	MountPoint  string   // /mnt/<host>; each share at MountPoint/<share>
 }
 
 // Label is how the UI names the server: \\host.
@@ -77,6 +81,9 @@ type SMBSource interface {
 // database (core never started, or a different layout) means none.
 type CoreDBSMB struct {
 	Path string // "" = CoreDBPath(/etc/nivaroos/casaos.conf)
+	// Key opens core's sealed passwords; nil = the host key
+	// (secret.Default, read-only - core creates it).
+	Key func() (*secret.Box, error)
 
 	mu sync.Mutex
 	db *gorm.DB
@@ -138,12 +145,31 @@ func (c *CoreDBSMB) Connections(ctx context.Context) ([]SMBConnection, error) {
 				shares = append(shares, s)
 			}
 		}
-		out = append(out, SMBConnection{
+		conn := SMBConnection{
 			ID: strconv.FormatUint(uint64(r.ID), 10), Host: r.Host, Port: r.Port, User: r.Username,
-			Password: r.Password, Shares: shares, MountPoint: r.MountPoint,
-		})
+			Shares: shares, MountPoint: r.MountPoint,
+		}
+		conn.Password, conn.PasswordErr = c.openPassword(r.Password)
+		out = append(out, conn)
 	}
 	return out, nil
+}
+
+// openPassword opens a password core sealed; one stored before sealing
+// existed passes through.
+func (c *CoreDBSMB) openPassword(stored string) (string, error) {
+	if !secret.IsSealed(stored) {
+		return stored, nil
+	}
+	key := c.Key
+	if key == nil {
+		key = secret.Default
+	}
+	box, err := key()
+	if err != nil {
+		return "", err
+	}
+	return box.Open(stored, secret.ConnectionPassword)
 }
 
 // smbCredsFor returns the credentials of every smb endpoint in eps, keyed
@@ -174,6 +200,9 @@ func (s *Service) smbCredsFor(ctx context.Context, eps []Endpoint) (map[string]e
 		c, ok := byID[ep.RefID]
 		if !ok {
 			return nil, engine.Errorf(engine.CodeEndpointUnknown, "network share connection %s no longer exists", ep.RefID)
+		}
+		if c.PasswordErr != nil {
+			return nil, engine.Errorf(engine.CodeEndpointUnknown, "the saved password of %s can't be read (%v) - remove and add the connection again", c.Label(), c.PasswordErr)
 		}
 		share, _, _ := strings.Cut(ep.SubPath, "/")
 		out[ep.RefID] = engine.SMBCreds{Host: c.Host, Share: share, User: c.User, Password: c.Password}

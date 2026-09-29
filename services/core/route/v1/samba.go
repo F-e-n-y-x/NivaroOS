@@ -328,10 +328,20 @@ func PostSambaConnectionsCreate(ctx echo.Context) error {
 	}
 	connectionDBModel.Directories = strings.Join(mountedDirs, ",")
 
-	service.MyService.Connections().CreateConnection(&connectionDBModel)
+	if err := service.MyService.Connections().CreateConnection(&connectionDBModel); err != nil {
+		// e.g. the host key is missing: never store the password in the
+		// clear - undo the mounts and say why.
+		for _, v := range mountedDirs {
+			_ = service.MyService.Connections().UnmountSmaba(baseHostPath + "/" + v)
+			_ = os.Remove(baseHostPath + "/" + v)
+		}
+		_ = os.Remove(baseHostPath)
+		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: "the connection could not be saved: " + err.Error()})
+	}
 
 	connection.ID = connectionDBModel.ID
 	connection.Directories = connectionDBModel.Directories
+	connection.Password = "" // never echoed back
 	msg := common_err.GetMsg(common_err.SUCCESS)
 	if len(failed) > 0 {
 		msg = "connected, but some shares could not be mounted: " + strings.Join(failed, "; ")
