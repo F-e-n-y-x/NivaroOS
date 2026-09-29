@@ -4,11 +4,12 @@ import 'dart:convert';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/dashboard_stats.dart';
 import '../models/gpu_stats.dart';
 import '../services/api_client.dart';
+import '../services/background_service.dart';
+import '../services/tailscale_service.dart';
 import '../services/vm_client.dart';
 import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
@@ -17,7 +18,7 @@ import '../widgets/free_memory_sheet.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
 import '../widgets/vm_console_preview.dart';
-import 'system_updates_screen.dart';
+import 'server_health_screen.dart';
 import 'vm_console_screen.dart';
 import 'vm_list_screen.dart' show VmStateChip;
 
@@ -32,12 +33,21 @@ export '../widgets/monitor_modals.dart' show LiveHistory;
 /// on its own and just leaves its part out; only the live reading decides
 /// whether Home shows an error or the offline banner.
 class HomeController extends ChangeNotifier {
-  HomeController({ApiClient? api, VmClient? vmClient})
+  HomeController({ApiClient? api, VmClient? vmClient, Future<SharingBrief?> Function()? sharing})
       : _api = api ?? ApiClient.instance,
-        _vm = vmClient;
+        _vm = vmClient,
+        _sharing = sharing ?? _phoneSharing;
 
   final ApiClient _api;
   final VmClient? _vm;
+  final Future<SharingBrief?> Function() _sharing;
+
+  // This phone's storage sharing; nothing to say off Android.
+  static Future<SharingBrief?> _phoneSharing() async {
+    if (!BackgroundService.isAndroid) return null;
+    final s = await BackgroundService.instance.sharingStatus();
+    return SharingBrief(running: s.running, stopReason: s.lastStopReason);
+  }
   VmClient get vmClient => _vm ?? VmClient();
 
   /// The latest utilization reading, shared with the detail screens.
@@ -59,7 +69,23 @@ class HomeController extends ChangeNotifier {
   HostInfo? host;
   UpdateSummary? updates;
   List<BackupJobBrief> backups = const [];
+
+  /// False when Backup & Sync isn't installed, null when it couldn't be
+  /// asked.
+  bool? backupsInstalled = false;
   AppCounts? apps;
+
+  /// Each drive's own health; null when the drive list couldn't be read.
+  List<DriveHealth>? drives;
+
+  /// The server's Tailscale; null when it couldn't be asked.
+  TailnetState? tailnet;
+  String tailnetIp = '';
+  SharingBrief? sharing;
+
+  /// When the slow checks (updates, backups, apps, drives, Tailscale) last
+  /// answered, for the Server health page's "Checked 2 min ago".
+  DateTime? checkedAt;
 
   /// Every VM; null when the VM manager didn't answer.
   List<Vm>? vmList;
@@ -88,12 +114,21 @@ class HomeController extends ChangeNotifier {
   /// console preview can take a new picture with it.
   int refreshes = 0;
 
-  List<AttentionItem> get attention => buildAttention(
+  /// Every check (server_health.dart): the one source for Home's status
+  /// header, its "Needs attention" group and the Server health page.
+  ServerHealth get health => buildHealth(
+        stats: live.value?.stats,
         updates: updates,
-        disks: live.value?.stats.disks ?? const [],
         backups: backups,
+        backupsInstalled: backupsInstalled,
         apps: apps,
+        drives: drives,
+        tailnet: tailnet,
+        tailnetIp: tailnetIp,
+        sharing: sharing,
       );
+
+  List<AttentionItem> get attention => health.attention;
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -217,7 +252,11 @@ class HomeController extends ChangeNotifier {
       _loadBackups(),
       _loadApps(),
       _loadVms(),
+      _loadDrives(),
+      _loadTailscale(),
+      _loadSharing(),
     ]);
+    if (live.value != null && !live.value!.stale) checkedAt = clock.now();
     _notify();
   }
 
@@ -270,15 +309,83 @@ class HomeController extends ChangeNotifier {
       final health = await _api.get('/backup/health');
       if (health['installed'] == false) {
         backups = const [];
+        backupsInstalled = false;
         return;
       }
+    } catch (_) {
+      // No answer: the module isn't installed (or its route is gone).
+      backups = const [];
+      backupsInstalled = false;
+      return;
+    }
+    try {
       final res = await _api.get('/backup/jobs');
       backups = (res['data'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map((e) => BackupJobBrief.fromJson(Map<String, dynamic>.from(e)))
           .toList();
+      backupsInstalled = true;
     } catch (_) {
+      // Installed but its jobs couldn't be read: say so rather than
+      // showing no backups as if all were fine.
       backups = const [];
+      backupsInstalled = null;
+    }
+  }
+
+  // Each drive's SMART health, as the server last read it (it caches the
+  // reading and doesn't wake a sleeping drive for it).
+  Future<void> _loadDrives() async {
+    try {
+      final res = await _api.get('/disks');
+      drives = DriveHealth.fromDisksApi(res['data']);
+    } catch (_) {
+      drives = null;
+    }
+  }
+
+  Future<void> _loadTailscale() async {
+    try {
+      final res = await _api.get('/tailscale/status');
+      final s = TailscaleStatus.fromJson(res['data'] as Map<String, dynamic>? ?? const {});
+      var state = s.state;
+      if (state == TailscaleState.noDaemon) {
+        try {
+          final inst = await _api.get('/tailscale/installed');
+          final d = inst['data'];
+          if (d is Map && d['installed'] == false) state = TailscaleState.notInstalled;
+        } catch (_) {}
+      }
+      tailnetIp = s.selfIp;
+      tailnet = switch (state) {
+        TailscaleState.running => TailnetState.connected,
+        TailscaleState.starting => TailnetState.connecting,
+        TailscaleState.needsLogin => TailnetState.signedOut,
+        TailscaleState.stopped || TailscaleState.noDaemon => TailnetState.off,
+        TailscaleState.notInstalled => TailnetState.notInstalled,
+      };
+    } catch (_) {
+      tailnet = null;
+    }
+  }
+
+  /// Tailscale again, after its sheet closes.
+  Future<void> recheckTailscale() async {
+    await _loadTailscale();
+    _notify();
+  }
+
+  /// This phone's sharing again, after Companion devices closes.
+  Future<void> recheckSharing() async {
+    await _loadSharing();
+    _notify();
+  }
+
+  Future<void> _loadSharing() async {
+    try {
+      sharing = await _sharing();
+    } catch (_) {
+      sharing = null;
     }
   }
 
@@ -421,11 +528,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
   void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history));
 
-  Future<void> _openUpdates(UpdatesPage page) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SystemUpdatesScreen(page: page)));
-    _c.loadUpdates();
-  }
-
   Future<void> _openConsole(Vm vm) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => VmConsoleScreen(vmName: vm.name, client: _c.vmClient)));
     if (mounted) _c.refreshAll();
@@ -448,17 +550,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _power(String state) => confirmServerPower(context, restart: state == 'restart');
+  late final HealthActions _actions = HealthActions(
+    controller: _c,
+    pushDetail: _openDetail,
+    onOpenApps: widget.onOpenApps,
+    onOpenFiles: widget.onOpenFiles,
+  );
 
-  // Backups are managed in the web UI (the app has no backup screen yet),
-  // so the row opens it in the browser rather than doing nothing.
-  Future<void> _openWebUi() async {
-    final url = ApiClient.instance.baseUrl;
-    if (url.isEmpty) return;
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {}
-  }
+  void _openHealth() => _openDetail(ServerHealthScreen(controller: _c, actions: _actions));
+
+  Future<void> _power(String state) => confirmServerPower(context, restart: state == 'restart');
 
   @override
   Widget build(BuildContext context) {
@@ -514,11 +615,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Widget> _content(BuildContext context, LiveStats live) {
-    final attention = _c.attention;
+    final health = _c.health;
+    final attention = health.attention;
     final apps = _c.apps;
     final vms = _c.vmList;
 
-    final header = ServerHeader(attention: attention, host: _c.host);
+    final header = ServerHeader(health: health, host: _c.host, onTap: _openHealth);
     final metrics = MetricCards(
       live: live,
       history: _c.history,
@@ -533,7 +635,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     final needs = attention.isEmpty
         ? null
-        : TileGroup(title: 'Needs attention', children: [for (final a in attention) _attentionTile(context, a)]);
+        : TileGroup(title: 'Needs attention', children: [
+            for (final a in attention) AttentionTile(item: a, security: _c.updates?.security ?? 0, onTap: () => _actions.open(context, a)),
+          ]);
     final machines = vms == null ? null : _vmGroup(context, vms);
     final appsGroup = apps == null
         ? null
@@ -654,93 +758,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onTap: running ? () => _openConsole(vm) : widget.onOpenVms,
     );
   }
-
-  Widget _attentionTile(BuildContext context, AttentionItem a) {
-    final scheme = Theme.of(context).colorScheme;
-    final status = switch (a.severity) {
-      AttentionSeverity.error => Status.error,
-      AttentionSeverity.warning => Status.warning,
-      AttentionSeverity.info => Status.neutral,
-    };
-    final icon = switch (a.kind) {
-      AttentionKind.serverUpdate => Icons.update_outlined,
-      AttentionKind.packages => Icons.update_outlined,
-      AttentionKind.disk => Icons.storage_outlined,
-      AttentionKind.backup => Icons.backup_outlined,
-      AttentionKind.apps => Icons.apps_outlined,
-    };
-    final VoidCallback? onTap = switch (a.kind) {
-      AttentionKind.serverUpdate => () => _openUpdates(UpdatesPage.nivaroos),
-      AttentionKind.packages => () => _openUpdates(UpdatesPage.packages),
-      AttentionKind.disk => _openStorage,
-      AttentionKind.apps => widget.onOpenApps,
-      // The app has no backup screen yet: the web UI fixes it.
-      AttentionKind.backup => _openWebUi,
-    };
-    final security = a.kind == AttentionKind.packages ? (_c.updates?.security ?? 0) : 0;
-    final color = status == Status.neutral ? scheme.onSurfaceVariant : StatusColors.toneOf(context, status).color;
-
-    return MergeSemantics(
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(a.title),
-        subtitle: security > 0
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Debian packages'),
-                  const SizedBox(height: Space.xs),
-                  StatusChip(label: '$security security', status: Status.warning, icon: Icons.shield_outlined),
-                ],
-              )
-            : Text(a.detail),
-        isThreeLine: security > 0,
-        trailing: onTap == null
-            ? null
-            : Icon(a.kind == AttentionKind.backup ? Icons.open_in_new_outlined : Icons.chevron_right),
-        onTap: onTap,
-      ),
-    );
-  }
 }
 
 /// The one-second answer under the server's name (the app bar's title):
-/// whether it is fine, what it runs and how long it has been up.
+/// whether it is fine, what it runs and how long it has been up. The whole
+/// row opens Server health, where the answer is explained.
+///
+/// The icon says the state without the colour: a check (calm) when all is
+/// good, a triangle (amber) for warnings, a circled "!" (red) for
+/// problems, an "i" for things worth a look - with how many on a badge.
 ///
 /// In a direction with a status panel (Tonal) this sits on a tonal panel
 /// whose colour is the health itself: the status container when
 /// something needs attention, a neutral container when all is clear.
 class ServerHeader extends StatelessWidget {
-  const ServerHeader({super.key, required this.attention, required this.host});
+  const ServerHeader({super.key, required this.health, required this.host, this.onTap});
 
-  final List<AttentionItem> attention;
+  final ServerHealth health;
   final HostInfo? host;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final t = DesignTokens.of(context);
-    final worst = attention.isEmpty ? null : attention.first.severity;
-    final status = switch (worst) {
-      null => Status.success,
-      AttentionSeverity.error => Status.error,
-      AttentionSeverity.warning => Status.warning,
-      AttentionSeverity.info => Status.info,
-    };
-    final n = attention.length;
-    final verdict = switch (worst) {
-      null => 'Everything looks fine',
-      AttentionSeverity.info => n == 1 ? '1 thing to look at' : '$n things to look at',
-      _ => n == 1 ? '1 thing needs attention' : '$n things need attention',
-    };
-    final icon = switch (status) {
-      Status.success => Icons.check_circle_outline,
-      Status.error => Icons.error_outline,
-      Status.warning => Icons.warning_amber_outlined,
-      _ => Icons.info_outline,
-    };
+    final status = healthStatus(health.worst);
+    final n = health.attention.length;
+    final verdict = health.verdict;
+    final icon = healthIcon(status);
     final h = host;
     final facts = [
       if (h != null && h.osName.isNotEmpty) h.osName,
@@ -763,43 +809,83 @@ class ServerHeader extends StatelessWidget {
     final on = panel == null || calm ? scheme.onSurface : tone.onContainer;
     final muted = panel == null || calm ? scheme.onSurfaceVariant : tone.onContainer;
 
-    final Widget content = Semantics(
-      container: true,
-      liveRegion: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (panel == null) StatusDisc(status: status, icon: icon, size: 40) else ExcludeSemantics(child: Icon(icon, size: 28, color: calm ? tone.color : on)),
-          const SizedBox(width: Space.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AnimatedSwitcher(
-                  duration: Motion.of(context).short,
-                  child: Text(verdict, key: ValueKey(verdict), style: theme.textTheme.titleMedium?.copyWith(color: on)),
-                ),
-                if (facts.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  FactLine.plain(facts, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
-                ],
+    final Widget glyph = panel == null ? StatusDisc(status: status, icon: icon, size: 40) : Icon(icon, size: 28, color: calm ? tone.color : on);
+    final Widget badged = n == 0
+        ? glyph
+        : Badge(
+            label: Text('$n'),
+            backgroundColor: tone.color,
+            textColor: tone.onColor,
+            offset: panel == null ? const Offset(2, -2) : const Offset(6, -6),
+            child: glyph,
+          );
+
+    final Widget row = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        badged,
+        const SizedBox(width: Space.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AnimatedSwitcher(
+                duration: Motion.of(context).short,
+                child: Text(verdict, key: ValueKey(verdict), style: theme.textTheme.titleMedium?.copyWith(color: on)),
+              ),
+              if (facts.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                FactLine.plain(facts, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
               ],
-            ),
+            ],
           ),
+        ),
+        if (onTap != null) ...[
+          const SizedBox(width: Space.sm),
+          Icon(Icons.chevron_right, color: muted),
         ],
-      ),
+      ],
     );
 
+    // One button for TalkBack: "Server health, 3 things need attention,
+    // Debian 12, Up 4 days".
+    Widget semantics(Widget child) => Semantics(
+          container: true,
+          liveRegion: true,
+          button: onTap != null,
+          onTap: onTap,
+          label: ['Server health', verdict, ...facts].join(', '),
+          onTapHint: onTap == null ? null : 'see what was checked',
+          child: ExcludeSemantics(child: child),
+        );
+
+    final radius = BorderRadius.circular(t.cardRadius);
     if (panel == null) {
-      return Padding(padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, Space.lg), child: content);
+      // No panel: the row itself is the target, its ripple as wide as
+      // the content and rounded like a card.
+      return Padding(
+        padding: EdgeInsets.fromLTRB(gutter - Space.sm, Space.xs, gutter - Space.sm, Space.md),
+        child: semantics(Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: radius,
+            child: Padding(padding: const EdgeInsets.all(Space.sm), child: row),
+          ),
+        )),
+      );
     }
     return Padding(
       padding: EdgeInsets.fromLTRB(gutter, Space.sm, gutter, t.gap),
-      child: Material(
+      child: semantics(Material(
         color: panel,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(t.cardRadius)),
-        child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: content),
-      ),
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: row),
+        ),
+      )),
     );
   }
 }

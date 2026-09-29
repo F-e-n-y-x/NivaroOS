@@ -35,7 +35,7 @@ Captured 2026-09-25 with read-only `curl` GETs against a real NivaroOS box
   (the real one is 4 MB). `v1/sys/logs.json` keeps the last 80 lines.
 
 Written by hand, in the shape the server returns, because they need a
-session token or this box has no data for them: `v1/cloud`, `v1/disks/usb`,
+session token or this box has no data for them: `v1/cloud`, `v1/disks` (drive health, the same drives as `v1/sys/disks-usage`), `v1/disks/usb`,
 `v1/storage`, `v1/users/current/custom/{shortcut,link,legacy_app_overrides}`,
 `v1/vm-sidecar/host/display`, `v1/vm-sidecar/host/desktop/installed`, `v2/app_management/compose/jellyfin/logs` and the
 terminal session lists `v1/sys/terminal-sessions` and `v1/container/terminal-sessions`.

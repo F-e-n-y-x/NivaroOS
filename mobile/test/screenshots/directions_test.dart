@@ -19,6 +19,7 @@ import 'package:nivaroos_mobile/screens/apps_screen.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
 import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
+import 'package:nivaroos_mobile/screens/server_health_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/screens/terminal_screen.dart';
 import 'package:nivaroos_mobile/screens/terminal_sessions_screen.dart';
@@ -28,7 +29,7 @@ import 'package:nivaroos_mobile/widgets/monitor_modals.dart';
 import 'apps_screens_test.dart' show FakeTerminal, buildBox;
 import 'files_screens_test.dart' show copyThenWorkTab, docsAndWork;
 import 'harness.dart';
-import 'home_test.dart' show HistoryController, fillHistory, openFreeMemory, runningVms, scrollToVms;
+import 'home_test.dart' show HistoryController, allClear, fillHistory, openFreeMemory, runningVms, scrollToVms;
 
 const _jellyfin = InstalledApp(
   id: 'jellyfin',
@@ -102,6 +103,12 @@ final Map<String, _Screen> _screens = {
     modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black],
     before: scrollToVms,
   ),
+  // Server health, from Home's status header: what needs attention and
+  // what is fine, and the calm "All good".
+  'health': _Screen(() => ServerHealthScreen(controller: HistoryController()),
+      pushed: true, modes: const [AppThemeMode.light, AppThemeMode.black], extra: const [(smallPhone, 1), (phone, 2)]),
+  'health_all_good': _Screen(() => ServerHealthScreen(controller: HistoryController()),
+      pushed: true, overrides: allClear, modes: const [AppThemeMode.light, AppThemeMode.black], extra: const [(smallPhone, 1), (phone, 2)]),
   'cpu': _Screen(() {
     final h = LiveHistory();
     fillHistory(h);

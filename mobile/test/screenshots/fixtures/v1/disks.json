@@ -1,0 +1,58 @@
+{
+ "success": 200,
+ "message": "ok",
+ "data": {
+  "disks": [
+   {
+    "name": "sda",
+    "size": 480103981056,
+    "model": "System",
+    "health": "true",
+    "temperature": 34,
+    "disk_type": "SSD",
+    "need_format": false,
+    "serial": "2029EF000001",
+    "path": "/dev/sda",
+    "children_number": 2
+   },
+   {
+    "name": "sdd",
+    "size": 2000398934016,
+    "model": "WDC WD20EZAZ-00G",
+    "health": "true",
+    "temperature": 36,
+    "disk_type": "HDD",
+    "need_format": false,
+    "serial": "WD-WX12A0000002",
+    "path": "/dev/sdd",
+    "children_number": 1
+   },
+   {
+    "name": "sdc",
+    "size": 1000204886016,
+    "model": "TOSHIBA MQ04ABF1",
+    "health": "true",
+    "temperature": 33,
+    "disk_type": "HDD",
+    "need_format": false,
+    "serial": "Z9F0000003",
+    "path": "/dev/sdc",
+    "children_number": 1
+   },
+   {
+    "name": "sdb",
+    "size": 4000787030016,
+    "model": "WDC WD40PURZ-85A",
+    "health": "true",
+    "temperature": 0,
+    "disk_type": "HDD",
+    "need_format": false,
+    "serial": "ZW60000004",
+    "path": "/dev/sdb",
+    "children_number": 1,
+    "sleeping": true
+   }
+  ],
+  "avail": []
+ }
+}

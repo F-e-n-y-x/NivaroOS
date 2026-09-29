@@ -220,7 +220,8 @@ class _Shot {
   final bool tab;
 }
 
-final _allClear = <String, Object>{
+/// Nothing to fix: no updates, no backup jobs, every app running.
+final allClear = <String, Object>{
   'GET /v1/sys/packages/check': _packages(count: 0),
   'GET /v1/backup/jobs': {'success': 200, 'message': 'ok', 'data': []},
   'GET /v2/app_management/web/appgrid': {
@@ -264,7 +265,7 @@ final Map<String, _Shot> _shots = {
     before: scrollToVms,
   ),
   'home_gpu': _Shot(() => GpuDetailScreen(gpu: ValueNotifier(GpuStats.tryParse(fixture('v1/gpu/gpu-stats'))), history: _filled()), dense: true),
-  'home_all_clear': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, overrides: _allClear),
+  'home_all_clear': _Shot(() => DashboardScreen(controller: HistoryController()), tab: true, overrides: allClear),
   'home_loading': _Shot(() => DashboardScreen(controller: _LoadingController()), tab: true),
   'home_offline': _Shot(() => DashboardScreen(controller: _OfflineController()), tab: true),
   'home_stale': _Shot(() => DashboardScreen(controller: _StaleController()), tab: true),

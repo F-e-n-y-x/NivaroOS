@@ -1,10 +1,13 @@
 // What Home shows about the server: live utilization, drives, and the list
 // of things that need attention. Parsing and the attention rules live here,
 // away from the widgets, so they can be unit tested
-// (test/models/dashboard_stats_test.dart).
+// (test/models/dashboard_stats_test.dart). What needs attention and what
+// was checked is server_health.dart, exported from here.
 //
 // Unknown values stay unknown: a field the server didn't send is null (or
 // 0 where the old API needs an int), never a plausible-looking default.
+
+export 'server_health.dart';
 
 int _safeInt(dynamic val) {
   if (val == null) return 0;
@@ -473,13 +476,16 @@ class UpdateSummary {
 
 /// One backup job as Home needs it (`GET /v1/backup/jobs`).
 class BackupJobBrief {
-  const BackupJobBrief({required this.name, required this.health, this.lastStatus, this.destLabel = '', this.destOnline = true});
+  const BackupJobBrief({required this.name, required this.health, this.lastStatus, this.lastEndedAt, this.destLabel = '', this.destOnline = true});
 
   final String name;
 
   /// problem | offline | warning | ok | disabled
   final String health;
   final String? lastStatus;
+
+  /// When the last run ended; null while none has.
+  final DateTime? lastEndedAt;
   final String destLabel;
   final bool destOnline;
 
@@ -487,6 +493,7 @@ class BackupJobBrief {
         name: j['name']?.toString() ?? '',
         health: j['health']?.toString() ?? '',
         lastStatus: (j['last_run'] as Map?)?['status']?.toString(),
+        lastEndedAt: DateTime.tryParse((j['last_run'] as Map?)?['ended_at']?.toString() ?? ''),
         destLabel: (j['dest'] as Map?)?['label']?.toString() ?? '',
         destOnline: j['dest_online'] != false,
       );
@@ -518,118 +525,4 @@ class AppCounts {
     }
     return AppCounts(running: running, stopped: stopped);
   }
-}
-
-enum AttentionSeverity { error, warning, info }
-
-enum AttentionKind { serverUpdate, packages, disk, backup, apps }
-
-/// One row of Home's "Needs attention" list.
-class AttentionItem {
-  const AttentionItem({required this.kind, required this.severity, required this.title, required this.detail, this.disk});
-
-  final AttentionKind kind;
-  final AttentionSeverity severity;
-  final String title;
-  final String detail;
-
-  /// For [AttentionKind.disk]: the drive.
-  final DiskUsage? disk;
-}
-
-/// Drive fill levels that need attention (the same thresholds UsageBar
-/// colours at).
-const diskWarnAt = 0.8;
-const diskCriticalAt = 0.9;
-
-/// Everything that needs the owner, worst first. Each input is optional: a
-/// check that failed or a module that isn't installed adds nothing.
-List<AttentionItem> buildAttention({
-  UpdateSummary? updates,
-  List<DiskUsage> disks = const [],
-  List<BackupJobBrief> backups = const [],
-  AppCounts? apps,
-}) {
-  final items = <AttentionItem>[];
-
-  for (final d in disks) {
-    if (d.isSystemPartition || !d.sizeKnown) continue;
-    final f = d.fraction;
-    if (f < diskWarnAt) continue;
-    final pct = (f * 100).round();
-    items.add(AttentionItem(
-      kind: AttentionKind.disk,
-      severity: f >= diskCriticalAt ? AttentionSeverity.error : AttentionSeverity.warning,
-      title: f >= diskCriticalAt ? '${d.label} is almost full' : '${d.label} is filling up',
-      detail: '$pct% used',
-      disk: d,
-    ));
-  }
-
-  for (final b in backups) {
-    switch (b.health) {
-      case 'problem':
-        items.add(AttentionItem(
-          kind: AttentionKind.backup,
-          severity: AttentionSeverity.error,
-          title: b.lastStatus == 'waiting_user' ? '${b.name} is waiting for you' : "${b.name} didn't finish",
-          detail: b.lastStatus == 'waiting_user' ? 'Backup · A decision is needed' : 'Backup · The last run failed',
-        ));
-      case 'offline':
-        items.add(AttentionItem(
-          kind: AttentionKind.backup,
-          severity: AttentionSeverity.warning,
-          title: '${b.name} is paused',
-          detail: b.destLabel.isEmpty ? 'Backup · The destination is not connected' : 'Backup · ${b.destLabel} is not connected',
-        ));
-      case 'warning':
-        items.add(AttentionItem(
-          kind: AttentionKind.backup,
-          severity: AttentionSeverity.warning,
-          title: '${b.name} needs a look',
-          detail: 'Backup · Partly done or overdue',
-        ));
-    }
-  }
-
-  if (updates?.serverUpdate == true) {
-    final v = updates!.serverVersion;
-    items.add(AttentionItem(
-      kind: AttentionKind.serverUpdate,
-      severity: AttentionSeverity.info,
-      title: v == null || v.isEmpty ? 'NivaroOS update available' : 'NivaroOS $v is available',
-      detail: 'Server update',
-    ));
-  }
-  final pkgs = updates?.packages ?? 0;
-  if (pkgs > 0) {
-    final sec = updates!.security;
-    items.add(AttentionItem(
-      kind: AttentionKind.packages,
-      severity: sec > 0 ? AttentionSeverity.warning : AttentionSeverity.info,
-      title: pkgs == 1 ? '1 system update' : '$pkgs system updates',
-      detail: sec > 0 ? '$sec security' : 'Debian packages',
-    ));
-  }
-
-  final stopped = apps?.stopped ?? const [];
-  if (stopped.isNotEmpty) {
-    items.add(AttentionItem(
-      kind: AttentionKind.apps,
-      severity: AttentionSeverity.info,
-      title: stopped.length == 1 ? '1 app is stopped' : '${stopped.length} apps are stopped',
-      detail: _nameList(stopped),
-    ));
-  }
-
-  items.sort((a, b) => a.severity.index.compareTo(b.severity.index));
-  return items;
-}
-
-/// "searxng, comfyui and 6 more".
-String _nameList(List<String> names) {
-  final shown = names.where((n) => n.isNotEmpty).take(2).toList();
-  final rest = names.length - shown.length;
-  if (rest <= 0) return shown.join(' and ');
-  return '${shown.join(', ')} and $rest more';
 }
