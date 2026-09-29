@@ -287,11 +287,19 @@ func (h *rbHost) instance(uid string, start bool) (*rbInstance, error) {
 }
 
 func (h *rbHost) dropInstance(in *rbInstance) {
+	in.mu.Lock()
+	lastView := in.lastView
+	in.mu.Unlock()
 	h.mu.Lock()
 	if h.instances[in.uid] == in {
 		delete(h.instances, in.uid)
 	}
-	h.lastUse = time.Now()
+	// The host's own quiet period counts from when the last viewer left,
+	// not from when its browser was closed for being idle (that would
+	// double the time an unused browser service stays up).
+	if lastView.After(h.lastUse) {
+		h.lastUse = lastView
+	}
 	h.mu.Unlock()
 }
 

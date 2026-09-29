@@ -725,3 +725,19 @@ func mustURL(s string) *url.URL {
 	u, _ := url.Parse(s)
 	return u
 }
+
+func TestHostQuietPeriodCountsFromLastViewer(t *testing.T) {
+	h := &rbHost{stateDir: t.TempDir(), instances: map[string]*rbInstance{}, idle: 10 * time.Minute}
+	left := time.Now().Add(-11 * time.Minute)
+	h.lastUse = left.Add(-time.Minute)
+	in := newRBInstance(h, "1")
+	in.lastView = left
+	h.instances["1"] = in
+	if in.idleFor(time.Now()) < h.idle {
+		t.Fatal("instance should be idle")
+	}
+	h.dropInstance(in)
+	if time.Since(h.lastUse) < h.idle {
+		t.Fatalf("host would wait another %s after closing an idle browser", h.idle-time.Since(h.lastUse))
+	}
+}
