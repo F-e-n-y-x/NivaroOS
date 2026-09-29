@@ -88,6 +88,8 @@ func InitV1Router() *gin.Engine {
 			v1CloudGroup.PUT("/accounts/:name", v1.PatchCloudAccount)
 			v1CloudGroup.POST("/accounts/:name/reconnect", v1.PostCloudAccountReconnect)
 			v1CloudGroup.POST("/accounts/:name/speedtest", v1.PostCloudAccountSpeedTest)
+			v1CloudGroup.GET("/accounts/:name/speedtest", v1.GetCloudAccountSpeedTest)
+			v1CloudGroup.DELETE("/accounts/:name/speedtest", v1.DeleteCloudAccountSpeedTest)
 		}
 		v1DriverGroup := v1Group.Group("/driver")
 		v1DriverGroup.Use()

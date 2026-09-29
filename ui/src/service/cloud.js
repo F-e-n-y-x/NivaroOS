@@ -48,9 +48,16 @@ const cloud = {
 		return api.post(`${PREFIX}/accounts/${name}/reconnect`, { params })
 	},
 
-	// quick real upload/download throughput check against the account
+	// real upload/download throughput check against the account: POST
+	// starts a background run, GET polls it, DELETE stops it
 	speedTest(name) {
 		return api.post(`${PREFIX}/accounts/${name}/speedtest`, {})
+	},
+	speedTestStatus(name) {
+		return api.get(`${PREFIX}/accounts/${name}/speedtest`)
+	},
+	speedTestCancel(name) {
+		return api.delete(`${PREFIX}/accounts/${name}/speedtest`)
 	}
 }
 export default cloud;

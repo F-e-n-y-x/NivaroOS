@@ -11,11 +11,19 @@
 						<div class="setting-title">{{ a.name || a.fs }}</div>
 						<div class="setting-desc">
 							{{ a.mount_point }}
-							<span v-if="speedResults[a.mount_point]" class="speed-result">
-								&middot; &uarr; {{ speedResults[a.mount_point].upload_mbps.toFixed(1) }} {{ $t('MB/s') }}
-								&middot; &darr; {{ speedResults[a.mount_point].download_mbps.toFixed(1) }} {{ $t('MB/s') }}
+							<span v-if="speedLive[a.mount_point]" class="speed-result is-live">
+								&middot; {{ speedPhaseLabel(speedLive[a.mount_point]) }}<template v-if="speedLive[a.mount_point].live_mbps > 0"> {{ fmtMbps(speedLive[a.mount_point].live_mbps) }} Mbps</template>
+								<a class="speed-stop" @click="stopSpeedTest(a)">{{ $t('Stop') }}</a>
+							</span>
+							<span v-else-if="speedResults[a.mount_point]" class="speed-result" :title="speedDetail(speedResults[a.mount_point])">
+								&middot; &darr; {{ fmtMbps(speedResults[a.mount_point].download.mbps) }} Mbps ({{ speedResults[a.mount_point].download.mb_per_s.toFixed(1) }} {{ $t('MB/s') }})
+								&middot; &uarr; {{ fmtMbps(speedResults[a.mount_point].upload.mbps) }} Mbps ({{ speedResults[a.mount_point].upload.mb_per_s.toFixed(1) }} {{ $t('MB/s') }})
+								&middot; {{ $t('{time} setup', { time: fmtMs(speedResults[a.mount_point].download.latency_ms) }) }}
 							</span>
 							<span v-if="speedErrors[a.mount_point]" class="speed-result is-error">&middot; {{ speedErrors[a.mount_point] }}</span>
+							<span v-for="(note, i) in (!speedLive[a.mount_point] && speedResults[a.mount_point] && speedResults[a.mount_point].notes) || []" :key="i" class="speed-note">
+								<i class="mdi mdi-information-outline"></i> {{ note }}
+							</span>
 						</div>
 					</template>
 				</div>
@@ -138,8 +146,13 @@ export default {
 			icloud: { appleId: '', password: '', sessionId: '', question: null, answer: '' },
 			speedTestingKey: null,
 			speedResults: {},
-			speedErrors: {}
+			speedErrors: {},
+			speedLive: {},
+			speedTimers: {}
 		}
+	},
+	beforeDestroy() {
+		Object.values(this.speedTimers).forEach(t => clearTimeout(t))
 	},
 	created() {
 		this.refresh()
@@ -292,20 +305,90 @@ export default {
 			this.icloud.question = step.question
 			this.icloud.answer = ''
 		},
+		// The test runs in the background on the server (upload that grows
+		// until it lasts a few seconds, then time-boxed single- and
+		// multi-stream downloads); POST starts it, GET polls it.
 		runSpeedTest(a) {
-			this.$set(this.speedErrors, a.mount_point, null)
-			this.speedTestingKey = a.mount_point
+			const key = a.mount_point
+			this.$set(this.speedErrors, key, null)
+			this.speedTestingKey = key
 			this.$api.cloud.speedTest(a.fs).then(res => {
 				if (res.data.success === 200) {
-					this.$set(this.speedResults, a.mount_point, res.data.data)
+					this.onSpeedState(a, res.data.data)
 				} else {
-					this.$set(this.speedErrors, a.mount_point, res.data.message)
+					this.speedFailed(key, res.data.message)
 				}
 			}).catch(e => {
-				this.$set(this.speedErrors, a.mount_point, (e.response && e.response.data && e.response.data.data) || this.$t('Speed test failed'))
-			}).finally(() => {
-				this.speedTestingKey = null
+				this.speedFailed(key, (e.response && e.response.data && e.response.data.data) || this.$t('Speed test failed'))
 			})
+		},
+		pollSpeedTest(a) {
+			const key = a.mount_point
+			this.$set(this.speedTimers, key, setTimeout(() => {
+				this.$api.cloud.speedTestStatus(a.fs).then(res => {
+					if (res.data.success === 200 && res.data.data) {
+						this.onSpeedState(a, res.data.data)
+					} else {
+						this.speedFailed(key, this.$t('Speed test failed'))
+					}
+				}).catch(() => {
+					// A dropped poll isn't a failed test - try again.
+					this.pollSpeedTest(a)
+				})
+			}, 800))
+		},
+		onSpeedState(a, st) {
+			const key = a.mount_point
+			if (st.running) {
+				this.$set(this.speedLive, key, st)
+				this.pollSpeedTest(a)
+				return
+			}
+			this.$delete(this.speedLive, key)
+			if (this.speedTestingKey === key) this.speedTestingKey = null
+			if (st.result) {
+				this.$set(this.speedResults, key, st.result)
+			} else if (st.cancelled) {
+				// Stopped on request - keep whatever was shown before.
+			} else {
+				this.speedFailed(key, st.error || this.$t('Speed test failed'))
+			}
+		},
+		speedFailed(key, msg) {
+			this.$delete(this.speedLive, key)
+			if (this.speedTestingKey === key) this.speedTestingKey = null
+			this.$set(this.speedErrors, key, msg)
+		},
+		stopSpeedTest(a) {
+			this.$api.cloud.speedTestCancel(a.fs).catch(() => {})
+		},
+		speedPhaseLabel(st) {
+			const labels = {
+				prepare: this.$t('Preparing'),
+				upload: this.$t('Uploading'),
+				download: this.$t('Downloading'),
+				download_parallel: this.$t('Downloading on several connections'),
+				cleanup: this.$t('Cleaning up')
+			}
+			return labels[st.phase] || this.$t('Testing')
+		},
+		fmtMbps(v) {
+			return v < 10 ? v.toFixed(1) : Math.round(v).toString()
+		},
+		fmtMs(v) {
+			return v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`
+		},
+		speedDetail(r) {
+			const d = r.download
+			const u = r.upload
+			const lines = [
+				this.$t('Download: {single} Mbps on one connection', { single: this.fmtMbps(d.single_mbps) }) +
+					(d.parallel_mbps ? ', ' + this.$t('{mbps} Mbps on {n} connections', { mbps: this.fmtMbps(d.parallel_mbps), n: d.parallel_streams }) : ''),
+				this.$t('Upload: {mbps} Mbps', { mbps: this.fmtMbps(u.mbps) }),
+				this.$t('Setup before the first byte: {down} download, {up} upload', { down: this.fmtMs(d.latency_ms), up: this.fmtMs(u.latency_ms) }),
+				this.$t('Test file: {size} MB', { size: Math.round(r.file_bytes / 1e6) })
+			]
+			return lines.join('\n')
 		},
 		openTerminal(a) {
 			const host = window.location.hostname
@@ -402,6 +485,22 @@ export default {
 	&.is-error {
 		color: var(--color-danger-fg);
 	}
+
+	&.is-live {
+		color: var(--theme-text-secondary, #475569);
+		font-variant-numeric: tabular-nums;
+	}
+}
+
+.speed-stop {
+	margin-left: var(--space-2);
+}
+
+.speed-note {
+	display: block;
+	margin-top: var(--space-1);
+	font-size: var(--font-xs);
+	color: var(--theme-text-secondary, #475569);
 }
 
 .reconnect-form {

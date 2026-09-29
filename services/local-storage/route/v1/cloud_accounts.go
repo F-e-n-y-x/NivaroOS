@@ -1,12 +1,10 @@
 package v1
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +18,6 @@ import (
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/configmap"
 	"github.com/rclone/rclone/fs/config/obscure"
-	"github.com/rclone/rclone/fs/operations"
 	"github.com/rclone/rclone/fs/rc"
 	"go.uber.org/zap"
 )
@@ -360,7 +357,7 @@ func PostICloudVerify(c *gin.Context) {
 	runICloudConfig(c, sess, fs.ConfigIn{State: sess.state, Result: req.Code})
 }
 
-// --- Manage an existing account: rename, reconnect, and a quick speed test.
+// --- Manage an existing account: rename, reconnect (speed test: cloud_speedtest.go).
 
 type renameAccountRequest struct {
 	Label string `json:"label" binding:"required"`
@@ -436,68 +433,4 @@ func PostCloudAccountReconnect(c *gin.Context) {
 		return
 	}
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{"name": name, "mount_point": mountPoint}})
-}
-
-// PostCloudAccountSpeedTest uploads a small random test file, times the
-// upload, reads it back timed, then deletes it - a quick real-world
-// throughput check against the actual remote, not a synthetic benchmark.
-func PostCloudAccountSpeedTest(c *gin.Context) {
-	name := c.Param("name")
-	if service.MyService.Storage().GetAttributeValueByName(name, "type") == "" {
-		c.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.CLIENT_ERROR), Data: "no such account"})
-		return
-	}
-
-	ctx := context.Background()
-	f, err := fs.NewFs(ctx, name+":")
-	if err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		return
-	}
-
-	const testSize = 8 * 1024 * 1024 // 8MB - enough for a meaningful number, small enough to be quick
-	payload := make([]byte, testSize)
-	if _, err := rand.Read(payload); err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
-		return
-	}
-	testFileName := ".nivaroos-speedtest-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-
-	uploadStart := time.Now()
-	obj, err := operations.Rcat(ctx, f, testFileName, io.NopCloser(bytes.NewReader(payload)), time.Now(), nil)
-	uploadElapsed := time.Since(uploadStart)
-	if err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("upload failed: %v", err)})
-		return
-	}
-	defer func() {
-		if err := obj.Remove(ctx); err != nil {
-			logger.Error("speedtest: failed to remove test file", zap.Error(err), zap.String("name", name))
-		}
-	}()
-
-	downloadStart := time.Now()
-	rc, err := obj.Open(ctx)
-	if err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("download failed: %v", err)})
-		return
-	}
-	written, err := io.Copy(io.Discard, rc)
-	rc.Close()
-	downloadElapsed := time.Since(downloadStart)
-	if err != nil {
-		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: fmt.Sprintf("download failed: %v", err)})
-		return
-	}
-
-	mbpsUp := float64(testSize) / uploadElapsed.Seconds() / (1024 * 1024)
-	mbpsDown := float64(written) / downloadElapsed.Seconds() / (1024 * 1024)
-
-	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: gin.H{
-		"upload_mbps":      mbpsUp,
-		"download_mbps":    mbpsDown,
-		"upload_seconds":   uploadElapsed.Seconds(),
-		"download_seconds": downloadElapsed.Seconds(),
-		"test_size_bytes":  testSize,
-	}})
 }
