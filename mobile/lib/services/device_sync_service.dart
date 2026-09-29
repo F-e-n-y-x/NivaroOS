@@ -108,9 +108,15 @@ class CompanionDevice {
   /// What this phone tells the server when it registers. Unknown numbers
   /// are left out, so the server keeps what it had instead of showing a
   /// made-up value. [sharing] says whether the file server is running.
-  Map<String, dynamic> toRegistration({required bool sharing, int? port}) => {
+  ///
+  /// [name] is only a suggestion: the server keeps the name a user gave
+  /// the phone (from the web or here) and answers with it. [nameIsUsers]
+  /// says [name] is such a name the app learned from the server, so a
+  /// phone paired again after it was removed gets it back.
+  Map<String, dynamic> toRegistration({required bool sharing, int? port, bool nameIsUsers = false}) => {
         'id': id,
         'name': name,
+        if (nameIsUsers) 'name_source': 'user',
         'model': model,
         'os_version': osVersion,
         'app_version': appVersion,
@@ -186,16 +192,12 @@ class CompanionDevice {
 /// Why the last registration with the server failed, for the companion
 /// screen. Null after a successful one.
 class RegistrationProblem {
-  const RegistrationProblem(this.message, {this.otherAccount = false, this.removed = false});
+  const RegistrationProblem(this.message, {this.otherAccount = false});
 
   final String message;
 
   /// The server says this phone belongs to another NivaroOS account.
   final bool otherAccount;
-
-  /// The phone was removed from the server's device list; it stays
-  /// disconnected until the user pairs it again.
-  final bool removed;
 }
 
 /// This phone as a companion device of the server: registration (the
@@ -215,6 +217,14 @@ class DeviceSyncService {
 
   String? _cachedDeviceId;
   Timer? _shareTimer;
+
+  /// This phone's own name (brand and model), from the last
+  /// [getLocalDeviceInfo].
+  String? _defaultName;
+
+  /// Set by [pairAfterSignIn]: the next registration pairs the phone
+  /// again even if the server removed it - the user just signed in on it.
+  bool _pairOnSignIn = false;
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   static const MethodChannel _platformChannel = MethodChannel('com.fenyx.nivaroos/device_info');
 
@@ -304,9 +314,13 @@ class DeviceSyncService {
     return null;
   }
 
+  /// This phone as the app sees it. Its name is the one the server holds
+  /// for it (kept from the last registration or device list - the server
+  /// is the source of truth, whether the user renamed it on the web or
+  /// here), or the phone's own brand and model before it has one.
   Future<CompanionDevice> getLocalDeviceInfo() async {
     final devId = await getDeviceId();
-    final customName = await StorageService.instance.getCompanionDeviceName();
+    final serverName = (await StorageService.instance.getCompanionDeviceName())?.trim();
     final packageInfo = await PackageInfo.fromPlatform();
 
     String brand = '';
@@ -336,7 +350,6 @@ class DeviceSyncService {
     final batteryPct = await getRealBatteryLevel();
     final storage = getRealStorageMetrics();
 
-    final bool isUserRenamed = customName != null && customName.trim().isNotEmpty;
     final String defaultName;
     if (model.isEmpty) {
       defaultName = 'This phone';
@@ -346,9 +359,10 @@ class DeviceSyncService {
       defaultName = '$brand $model';
     }
 
+    _defaultName = defaultName;
     final device = CompanionDevice(
       id: devId,
-      name: isUserRenamed ? customName.trim() : defaultName,
+      name: serverName != null && serverName.isNotEmpty ? serverName : defaultName,
       model: model,
       osVersion: osVer,
       appVersion: 'v${packageInfo.version}+${packageInfo.buildNumber}',
@@ -360,7 +374,7 @@ class DeviceSyncService {
       isCurrentDevice: true,
       isOnline: true,
       lastSeen: clock.now(),
-      customProps: isUserRenamed ? {'user_renamed': true} : {},
+      customProps: const {},
     );
 
     _currentDevice = device;
@@ -372,19 +386,48 @@ class DeviceSyncService {
     return s[0].toUpperCase() + s.substring(1);
   }
 
+  /// Renames this phone on the server - the same rename the web does - and
+  /// shows the name the server kept. Throws an [ApiException] when the
+  /// server can't be reached: the name is the server's, so it isn't
+  /// changed here only (it used to be, and then overwrote renames made on
+  /// the web).
   Future<void> setDeviceCustomName(String newName) async {
     final trimmed = newName.trim();
-    await StorageService.instance.setCompanionDeviceName(trimmed);
     final devId = await getDeviceId();
-    await ApiClient.instance.put('/companion/devices/$devId', body: {'name': trimmed});
-    await syncWithServer();
+    final res = await ApiClient.instance.put('/companion/devices/$devId', body: {'name': trimmed});
+    final data = res['data'];
+    final kept = data is Map ? (data['name'] as String?)?.trim() : null;
+    await _adoptServerName(kept != null && kept.isNotEmpty ? kept : trimmed);
   }
 
-  /// After sign-in, on the phone's screen: registers once and schedules the
-  /// 15-minute heartbeat.
+  /// Keeps the server's name for this phone, to show and to suggest when
+  /// it is paired again.
+  Future<void> _adoptServerName(String? name) async {
+    final n = name?.trim();
+    if (n == null || n.isEmpty) return;
+    if (await StorageService.instance.getCompanionDeviceName() != n) {
+      await StorageService.instance.setCompanionDeviceName(n);
+    }
+    final current = _currentDevice;
+    if (current != null && current.name != n) _currentDevice = current.copyWith(name: n);
+  }
+
+  /// Called right after the user signed in on this phone: its first
+  /// registration pairs it again, even if the server removed it (signing
+  /// in on it is how a removed phone is paired again).
+  void pairAfterSignIn() => _pairOnSignIn = true;
+
+  /// After sign-in or launch with a session, on the phone's screen:
+  /// registers once and schedules the 15-minute heartbeat.
   Future<void> onSignedIn() async {
+    if (!_pairOnSignIn && await StorageService.instance.getCompanionRemoved()) {
+      // Removed by an app version that stayed signed in afterwards: finish
+      // what removal means now - sign out, and pair again by signing in.
+      await markRemoved();
+      return;
+    }
     await BackgroundService.instance.scheduleHeartbeat();
-    await syncWithServer();
+    await syncWithServer(repair: _pairOnSignIn);
   }
 
   /// Before sign-out or a server switch: stops sharing and the heartbeat,
@@ -413,73 +456,55 @@ class DeviceSyncService {
   static void Function()? onRemovedByServer;
 
   /// The server removed this phone from its device list (a 410 from
-  /// register, or "removed" over the tunnel): forget the pairing, stop
-  /// sharing and the heartbeat, and stay quiet until [pairAgain].
+  /// register, or "removed" over the tunnel; the server also ended the
+  /// app's session, see [ApiClient]): the app signs out of that server.
+  /// Sharing and the heartbeat stop, the pairing secret and this server's
+  /// saved state go, and the sign-in screen says why. Signing in again
+  /// pairs the phone again.
   Future<void> markRemoved() async {
+    _pairOnSignIn = false;
     await StorageService.instance.setCompanionRemoved(true);
-    await StorageService.instance.clearCompanionSecret();
+    await forgetServerState();
     stopSharingHeartbeat();
-    registrationProblem.value = RegistrationProblem(
-      'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
-      "It won't connect again until you pair it again.",
-      removed: true,
-    );
+    registrationProblem.value = null;
     final hook = onRemovedByServer;
     if (hook != null) {
       hook();
     } else {
       await BackgroundService.instance.stopAll();
     }
+    await ApiClient.instance.endSession(reason: SessionEndReason.companionRemoved);
   }
 
-  /// Shows the "removed" problem again after a restart (the flag is
-  /// stored; the notifier isn't).
-  Future<void> restoreRemovedState() async {
-    if (registrationProblem.value?.removed == true) return;
-    if (await StorageService.instance.getCompanionRemoved()) {
-      registrationProblem.value = RegistrationProblem(
-        'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
-        "It won't connect again until you pair it again.",
-        removed: true,
-      );
-    }
-  }
-
-  /// The user chose to pair a removed phone again.
-  Future<bool> pairAgain() async {
-    final ok = await syncWithServer(repair: true);
-    if (ok) {
-      await StorageService.instance.setCompanionRemoved(false);
-      registrationProblem.value = null;
-      await BackgroundService.instance.scheduleHeartbeat();
-    }
-    return ok;
+  /// What the app keeps for the current server that a removed phone must
+  /// not keep: the file-server secret and the open Files tabs.
+  Future<void> forgetServerState() async {
+    await StorageService.instance.clearCompanionSecret();
+    await StorageService.instance.setFilesTabs(null);
   }
 
   /// Registers this phone with the server (id only; the secret proves it
   /// is this phone). With [sharing], the file server's port goes with it.
   /// A phone the server removed isn't registered again unless [repair]
-  /// (the user's "Pair again"). Returns true when the server accepted it.
+  /// (the first registration after the user signed in on it). Returns true
+  /// when the server accepted it.
   Future<bool> syncWithServer({bool sharing = false, bool repair = false}) async {
     if (!ApiClient.instance.hasSession) return false;
-    if (!repair && await StorageService.instance.getCompanionRemoved()) {
-      // Removed earlier (maybe before a restart): say so, don't retry.
-      if (registrationProblem.value?.removed != true) {
-        registrationProblem.value = RegistrationProblem(
-          'This phone was removed from ${ApiClient.displayHost(ApiClient.instance.baseUrl)}. '
-          "It won't connect again until you pair it again.",
-          removed: true,
-        );
-      }
-      return false;
-    }
+    // Removed, and not yet signed in again (another engine's heartbeat in
+    // the moment between the sign-in and its first registration): quiet.
+    if (!repair && await StorageService.instance.getCompanionRemoved()) return false;
     try {
       final device = await getLocalDeviceInfo();
       final heldSecret = await StorageService.instance.getCompanionSecret();
+      final nameIsUsers = device.name != _defaultName;
       final res = await ApiClient.instance.post(
         '/companion/register',
         body: {
-          ...device.toRegistration(sharing: sharing, port: CompanionFileServer.instance.isRunning ? CompanionFileServer.instance.port : null),
+          ...device.toRegistration(
+            sharing: sharing,
+            port: CompanionFileServer.instance.isRunning ? CompanionFileServer.instance.port : null,
+            nameIsUsers: nameIsUsers,
+          ),
           if (repair) 'repair': true,
         },
         headers: (heldSecret != null && heldSecret.isNotEmpty) ? {'X-Companion-Secret': heldSecret} : null,
@@ -496,10 +521,11 @@ class DeviceSyncService {
         registrationProblem.value = RegistrationProblem(res['message']?.toString() ?? 'The server kept an older pairing of this phone.');
       }
       final serverDev = data['device'] is Map<String, dynamic> ? data['device'] as Map<String, dynamic> : null;
-      final serverName = (serverDev?['name'] as String?)?.trim();
-      if (serverName != null && serverName.isNotEmpty) {
-        final currentCustom = await StorageService.instance.getCompanionDeviceName();
-        if (currentCustom != serverName) await StorageService.instance.setCompanionDeviceName(serverName);
+      // The server's name wins (a rename on the web shows here).
+      await _adoptServerName(serverDev?['name'] as String?);
+      if (repair) {
+        _pairOnSignIn = false;
+        await StorageService.instance.setCompanionRemoved(false);
       }
       return true;
     } on ApiException catch (e) {
@@ -551,11 +577,13 @@ class DeviceSyncService {
     final matchIndex = list.indexWhere((d) => d.id == currentDev.id);
     if (matchIndex >= 0) {
       final matched = list.removeAt(matchIndex);
+      // The name is the server's (renamed on the web: shown here too).
+      await _adoptServerName(matched.name);
       list.insert(
         0,
         CompanionDevice(
           id: matched.id,
-          name: currentDev.name,
+          name: matched.name,
           model: currentDev.model.isNotEmpty ? currentDev.model : matched.model,
           osVersion: currentDev.osVersion,
           appVersion: currentDev.appVersion,
@@ -598,6 +626,7 @@ class DeviceSyncService {
     await ApiClient.instance.put('/companion/devices/$id', body: {'name': newName.trim()});
   }
 
+  /// Removes another device from the server; its app is signed out.
   Future<void> deleteCompanionDevice(String id) async {
     await ApiClient.instance.delete('/companion/devices/$id');
   }

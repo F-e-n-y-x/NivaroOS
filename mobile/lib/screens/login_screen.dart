@@ -13,6 +13,10 @@ import 'home_shell.dart';
 /// server ended the session ([isReauth]): it then returns true to whoever
 /// pushed it, so the screen underneath carries on.
 ///
+/// When the server ended the session because this phone was removed from
+/// its companion devices, the screen says so ("Signed out") and signing in
+/// pairs the phone again, into a fresh shell.
+///
 /// Username and password are an autofill group, so password managers fill
 /// and save them.
 class LoginScreen extends StatefulWidget {
@@ -39,9 +43,17 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   String? _errorDetails;
 
+  /// This phone was removed from the server (see [ApiClient.sessionEndReason]).
+  bool _removed = false;
+
   @override
   void initState() {
     super.initState();
+    _removed = ApiClient.sessionEndReason == SessionEndReason.companionRemoved;
+    // Also after a restart: the removal is remembered per server.
+    StorageService.instance.getCompanionRemoved().then((removed) {
+      if (mounted && removed && !_removed) setState(() => _removed = true);
+    });
     if (widget.initialUsername != null && widget.initialUsername!.isNotEmpty) {
       _usernameController.text = widget.initialUsername!;
     } else {
@@ -78,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await SessionService.signedIn(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, username: username);
       TextInput.finishAutofillContext();
       if (!mounted) return;
-      if (widget.isReauth && Navigator.canPop(context)) {
+      if (widget.isReauth && !_removed && Navigator.canPop(context)) {
         Navigator.of(context).pop(true);
       } else {
         // The shell becomes the only route, so discovery, a server switch
@@ -134,12 +146,44 @@ class _LoginScreenState extends State<LoginScreen> {
     final large = MediaQuery.textScalerOf(context).scale(10) > 13;
 
     return AppScaffold(
-      title: widget.isReauth ? 'Sign in again' : 'Sign in',
+      title: _removed ? 'Signed out' : (widget.isReauth ? 'Sign in again' : 'Sign in'),
       leading: Navigator.canPop(context) ? null : const BrandMark(),
       body: ListView(
         padding: const EdgeInsets.only(bottom: Space.xl),
         children: [
-          if (widget.isReauth)
+          if (_removed)
+            Padding(
+              padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.md),
+              child: Card.filled(
+                color: scheme.secondaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(Space.lg),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.link_off_outlined, color: scheme.onSecondaryContainer),
+                      const SizedBox(width: Space.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('This phone was removed from ${host.isEmpty ? 'the server' : host}',
+                                style: theme.textTheme.titleMedium?.copyWith(color: scheme.onSecondaryContainer)),
+                            const SizedBox(height: Space.xs),
+                            Text(
+                              'It was taken off the server’s companion devices, so the app signed out and stopped sharing. '
+                              'Sign in again to reconnect it.',
+                              style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSecondaryContainer),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (widget.isReauth)
             Padding(
               padding: EdgeInsets.fromLTRB(gutter, 0, gutter, Space.sm),
               child: Text(
@@ -280,7 +324,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text('Signing in…'),
                       ],
                     )
-                  : const Text('Sign in'),
+                  : Text(_removed ? 'Sign in again' : 'Sign in'),
             ),
           ),
         ],

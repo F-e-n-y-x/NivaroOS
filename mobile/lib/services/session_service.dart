@@ -12,9 +12,12 @@ import 'tailscale_service.dart';
 abstract final class SessionService {
   /// After a successful sign-in on the current server: keeps the session.
   /// The shell then calls [started].
+  /// Signing in on the phone is also how it is paired again after the
+  /// server removed it: its first registration says so.
   static Future<void> signedIn({required String accessToken, required String refreshToken, required String username}) async {
     ApiClient.instance.setSession(accessToken, refreshToken);
     await StorageService.instance.setSession(accessToken: accessToken, refreshToken: refreshToken, username: username);
+    DeviceSyncService.instance.pairAfterSignIn();
   }
 
   /// Once the shell is on screen with a session (launch, sign-in, switch):

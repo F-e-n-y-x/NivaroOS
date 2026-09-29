@@ -163,6 +163,12 @@ final Map<String, _Shot> _shots = {
     before: _submit('Username', 'alex', 'Sign in', passwordLabel: 'Password', password: 'hunter2'),
   ),
   'login_reauth': _Shot(() => const LoginScreen(isReauth: true, initialUsername: 'alex'), dense: false),
+  // Signed out because the phone was removed from the server (on the web).
+  'login_removed': _Shot(
+    () => const LoginScreen(isReauth: true, initialUsername: 'alex'),
+    dense: false,
+    setup: () async => ApiClient.sessionEndReason = SessionEndReason.companionRemoved,
+  ),
   'login_new_server': _Shot(() => const LoginScreen(serverInitialized: false), dense: false, root: true),
   'server_profiles': _Shot(() => const ServerProfilesScreen()),
   'server_profile_form': _Shot(() => const ServerProfileForm(), dense: false),

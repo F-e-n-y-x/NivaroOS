@@ -143,6 +143,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 import { mixin } from '@/mixins/mixin'
+import { applyRename, cleanDeviceName, removalMessage, withoutDevice } from '@/utils/companionDevices'
 
 dayjs.extend(relativeTime)
 
@@ -228,12 +229,18 @@ export default {
 			this.renameModalActive = true
 		},
 		async saveDeviceName() {
-			if (!this.selectedDevice || !this.newDeviceName.trim()) return
+			if (!this.selectedDevice) return
+			const name = cleanDeviceName(this.newDeviceName)
+			if (!name) {
+				this.$buefy.toast.open({ message: this.$t('Enter a name of up to 100 characters'), type: 'is-warning' })
+				return
+			}
 			this.saving = true
 			try {
-				await this.$api.companion.updateDevice(this.selectedDevice.id, {
-					name: this.newDeviceName.trim()
-				})
+				// The server keeps this name - the phone's app adopts it and
+				// its check-ins no longer change it.
+				const res = await this.$api.companion.updateDevice(this.selectedDevice.id, { name })
+				this.devices = applyRename(this.devices, this.selectedDevice.id, res?.data?.data, name)
 				this.$buefy.toast.open({
 					message: this.$t('Device renamed successfully!'),
 					type: 'is-success'
@@ -255,15 +262,17 @@ export default {
 				title: this.$t('Remove Companion Device'),
 				// Its backups are kept (removing used to delete them silently);
 				// deleting that folder in Files goes through the Trash.
-				message: escapeHtml(this.$t('Remove "{name}"? It will need to pair again to reconnect. Its backups stay in Files - delete that folder there if you no longer need them.', { name: dev.name || dev.model })),
+				message: escapeHtml(this.$t('Remove "{name}"? Its NivaroOS app is signed out of this server; signing in on it again reconnects it. Its backups stay in Files - delete that folder there if you no longer need them.', { name: dev.name || dev.model })),
 				confirmText: this.$t('Remove'),
 				type: 'is-danger',
 				hasIcon: true,
 				onConfirm: async () => {
 					try {
-						await this.$api.companion.deleteDevice(dev.id)
+						const res = await this.$api.companion.deleteDevice(dev.id)
+						// Gone at once: no "offline" row until the next refresh.
+						this.devices = withoutDevice(this.devices, dev.id)
 						this.$buefy.toast.open({
-							message: this.$t('Device removed - its backups were kept'),
+							message: removalMessage(res?.data?.data, this.$t.bind(this)),
 							type: 'is-success'
 						})
 						this.fetchDevices()

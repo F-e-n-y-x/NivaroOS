@@ -76,6 +76,17 @@ enum RefreshResult {
   unavailable,
 }
 
+/// Why the server ended the session, when it said.
+enum SessionEndReason {
+  /// The tokens expired or were refused (a password change, a deleted
+  /// account): sign in again.
+  ended,
+
+  /// This phone was removed from the server's companion devices (on the
+  /// web, or from another phone): the server ended the phone's session.
+  companionRemoved,
+}
+
 /// A server address that answered as NivaroOS (see [ApiClient.probe]).
 class ServerProbe {
   const ServerProbe({required this.url, required this.initialized});
@@ -111,6 +122,14 @@ class ApiClient {
   /// listens and asks the user to sign in again.
   static final ValueNotifier<bool> sessionExpiredNotifier = ValueNotifier(false);
 
+  /// Why the session last ended ([SessionEndReason.ended] unless the
+  /// server said more). Set before [sessionExpiredNotifier] turns true.
+  static SessionEndReason sessionEndReason = SessionEndReason.ended;
+
+  /// The `data.reason` a server sends with the 401 of a session it ended
+  /// because the phone was removed (services/common/utils/jwt).
+  static const companionRemovedReason = 'companion_removed';
+
   /// How long a plain JSON request may take before it counts as
   /// unreachable. Long server jobs (installs, updates) answer at once and
   /// are polled, so this only catches dead connections.
@@ -142,6 +161,7 @@ class ApiClient {
   void setSession(String accessToken, String refreshToken) {
     _accessToken = accessToken;
     _refreshToken = refreshToken;
+    sessionEndReason = SessionEndReason.ended;
     sessionExpiredNotifier.value = false;
   }
 
@@ -726,8 +746,10 @@ class ApiClient {
 
     final refreshToken = _refreshToken;
     if (refreshToken == null || refreshToken.isEmpty) {
-      // Nothing to renew with: the session can't continue.
-      _handleAuthFailure();
+      // Nothing to renew with: the session can't continue (another engine
+      // may have ended it because the phone was removed - it says so).
+      await _handleAuthFailure(
+          reason: await StorageService.instance.getCompanionRemoved() ? SessionEndReason.companionRemoved : SessionEndReason.ended);
       return RefreshResult.rejected;
     }
 
@@ -744,7 +766,7 @@ class ApiClient {
     }
 
     if (res.statusCode == 401) {
-      _handleAuthFailure();
+      await _handleAuthFailure(reason: _endReasonOf(res));
       return RefreshResult.rejected;
     }
     if (res.statusCode != 200) {
@@ -777,11 +799,33 @@ class ApiClient {
     }
   }
 
-  void _handleAuthFailure() {
+  static SessionEndReason _endReasonOf(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      final data = body is Map ? body['data'] : null;
+      if (data is Map && data['reason'] == companionRemovedReason) return SessionEndReason.companionRemoved;
+    } catch (_) {}
+    return SessionEndReason.ended;
+  }
+
+  /// Ends the session here because the server ended it (or the phone
+  /// learned it was removed): the tokens go, from storage too, and the
+  /// shell is told to ask for a sign-in.
+  Future<void> endSession({SessionEndReason reason = SessionEndReason.ended}) => _handleAuthFailure(reason: reason);
+
+  Future<void> _handleAuthFailure({SessionEndReason reason = SessionEndReason.ended}) async {
     _accessToken = null;
     _refreshToken = null;
+    sessionEndReason = reason;
+    // Remembered per server, so the sign-in screen says why even after a
+    // restart, and so no engine registers the phone again on its own.
+    if (reason == SessionEndReason.companionRemoved) {
+      try {
+        await StorageService.instance.setCompanionRemoved(true);
+      } catch (_) {}
+    }
     sessionExpiredNotifier.value = true;
-    StorageService.instance.clearSession();
+    await StorageService.instance.clearSession();
   }
 
   // --- apps additions ---
