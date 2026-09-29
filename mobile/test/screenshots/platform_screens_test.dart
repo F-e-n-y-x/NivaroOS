@@ -12,8 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nivaroos_mobile/models/server_profile.dart';
 import 'package:nivaroos_mobile/screens/companion_devices_screen.dart';
 import 'package:nivaroos_mobile/screens/discovery_screen.dart';
+import 'package:nivaroos_mobile/screens/home_shell.dart';
 import 'package:nivaroos_mobile/screens/login_screen.dart';
 import 'package:nivaroos_mobile/screens/more_screen.dart';
+import 'package:nivaroos_mobile/screens/server_addresses_screen.dart';
 import 'package:nivaroos_mobile/screens/server_profiles_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
@@ -21,7 +23,9 @@ import 'package:nivaroos_mobile/services/app_update_service.dart';
 import 'package:nivaroos_mobile/services/background_service.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
+import 'package:nivaroos_mobile/services/server_routes.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
+import 'package:nivaroos_mobile/widgets/connection_banner.dart';
 import 'package:nivaroos_mobile/widgets/tailscale_modal.dart';
 
 import 'harness.dart';
@@ -65,6 +69,34 @@ Future<void> _signIn({bool updateAvailable = false}) async {
   DeviceSyncService.instance.registrationProblem.value = null;
   BackgroundService.debugIsAndroid = true;
   DeviceSyncService.deviceInfoOverride = ('Google', 'Pixel 8', 'Android 16 (SDK 36)');
+}
+
+/// The home server's addresses: its home-network address, the Tailscale
+/// address learned from it, and a public URL the user added.
+const _addresses = [
+  ServerAddress('http://192.168.1.20'),
+  ServerAddress('http://100.64.0.1', learned: true),
+  ServerAddress('https://nas.example.com'),
+];
+
+/// Away from home: the home server has three addresses, and [up] of them
+/// answer this phone (on mobile data, with Tailscale [tailscaleOn]).
+Future<void> _away({Set<String> up = const {'http://100.64.0.1', 'https://nas.example.com'}, bool tailscaleOn = true}) async {
+  final profiles = (await StorageService.instance.getProfiles())
+      .map((p) => p.id == 'srv_home' ? p.copyWith(addresses: _addresses, hostName: 'atom', subnetRoutes: ['192.168.1.0/24']) : p)
+      .toList();
+  for (final p in profiles) {
+    await StorageService.instance.saveProfile(p);
+  }
+  ServerRoutes.probe = (base, timeout) async => RouteProbe(base, up.contains(base), ms: up.contains(base) ? (base.startsWith('https') ? 48 : 21) : null);
+  ServerRoutes.readNetwork = () async => PhoneNetwork(localIps: const ['10.44.0.7'], tailscaleUp: tailscaleOn);
+}
+
+/// Connected to the home server through Tailscale (for Settings).
+Future<void> _viaTailscale() async {
+  await _away();
+  await ServerRoutes.instance.load();
+  await ServerRoutes.instance.select();
 }
 
 /// The native sharing channel: sharing on until 15:03, or off.
@@ -172,18 +204,42 @@ final Map<String, _Shot> _shots = {
   'login_new_server': _Shot(() => const LoginScreen(serverInitialized: false), dense: false, root: true),
   'server_profiles': _Shot(() => const ServerProfilesScreen()),
   'server_profile_form': _Shot(() => const ServerProfileForm(), dense: false),
-  'settings': _Shot(() => const SettingsScreen(), tablet: true),
+  'settings': _Shot(() => const SettingsScreen(), tablet: true, setup: _viaTailscale),
+  // Settings > Server > Connection: the home server's addresses, reached
+  // through Tailscale away from home.
+  'server_addresses': _Shot(() => const ServerAddressesScreen(), setup: _away),
+  // Nothing answers and Tailscale is off on the phone.
+  'server_addresses_unreachable': _Shot(
+    () => const ServerAddressesScreen(),
+    dense: false,
+    setup: () => _away(up: const {}, tailscaleOn: false),
+  ),
+  // The banner over every screen when the server can't be reached away
+  // from home, with the button that opens Tailscale.
+  'connection_banner': _Shot(
+    () => ConnectionBannerHost(child: ShellFrame(selectedIndex: 4, onDestinationSelected: (_) {}, body: const MoreScreen())),
+    root: true,
+    setup: () async {
+      await _away(up: const {}, tailscaleOn: false);
+      await ServerRoutes.instance.load();
+      await ServerRoutes.instance.select();
+    },
+  ),
   // Settings > Home > Refresh widgets: the interval choices.
   'settings_refresh_sheet': _Shot(
     () => const SettingsScreen(),
     dense: false,
+    setup: _viaTailscale,
     before: (tester) async {
       await tester.tap(find.text('Refresh widgets'));
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
     },
   ),
-  'settings_update': _Shot(() => const SettingsScreen(), dense: false, setup: () => _signIn(updateAvailable: true)),
+  'settings_update': _Shot(() => const SettingsScreen(), dense: false, setup: () async {
+    await _signIn(updateAvailable: true);
+    await _viaTailscale();
+  }),
   'companion_devices': _Shot(() => const CompanionDevicesScreen()),
   'companion_devices_loading': _Shot(
     () => const CompanionDevicesScreen(),
@@ -249,6 +305,8 @@ void main() {
     _stubSharing();
   });
   tearDown(() {
+    ServerRoutes.probe = ServerRoutes.ping;
+    ServerRoutes.readNetwork = PhoneNetwork.read;
     BackgroundService.debugIsAndroid = null;
     DiscoveryService.debugDiscover = null;
     DeviceSyncService.debugFetchDevices = null;

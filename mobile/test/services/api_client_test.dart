@@ -185,9 +185,14 @@ void main() {
   group('addresses', () {
     test('LAN addresses get http, names get https first', () {
       expect(ApiClient.candidateUrls('192.168.1.20'), ['http://192.168.1.20']);
+      expect(ApiClient.candidateUrls('10.0.0.2:8080'), ['http://10.0.0.2:8080']);
+      expect(ApiClient.candidateUrls('100.101.102.103'), ['http://100.101.102.103']);
       expect(ApiClient.candidateUrls('nas.local/'), ['http://nas.local']);
       expect(ApiClient.candidateUrls('nas'), ['http://nas']);
-      expect(ApiClient.candidateUrls('nas.example.com:8080'), ['http://nas.example.com:8080']);
+      // Anything on the internet tries https first, a port or not (sign-in
+      // refuses plain http there).
+      expect(ApiClient.candidateUrls('nas.example.com:8080'), ['https://nas.example.com:8080', 'http://nas.example.com:8080']);
+      expect(ApiClient.candidateUrls('203.0.113.7'), ['https://203.0.113.7', 'http://203.0.113.7']);
       expect(ApiClient.candidateUrls('nas.example.com'), ['https://nas.example.com', 'http://nas.example.com']);
       expect(ApiClient.candidateUrls(' HTTPS://Nas.Example.com// '), ['https://Nas.Example.com']);
       expect(ApiClient.candidateUrls(''), isEmpty);

@@ -59,6 +59,10 @@ class StorageService {
   static const _keyUpdateCheck = 'app_update_check';
   // Per server, like the secret: the tabs open in Files there.
   static const _keyFilesTabsPrefix = 'files_tabs@';
+  // Per server: the address the app last reached it on (ServerRoutes), so
+  // a launch away from home starts on the Tailscale or public address
+  // instead of waiting for the home one to time out.
+  static const _keyActiveRoutePrefix = 'active_route@';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
   static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked};
@@ -256,6 +260,51 @@ class StorageService {
     } else if (_cache[key] != json) {
       await _set(key, json);
     }
+  }
+
+  /// The address the current server was last reached on (one of its
+  /// profile's addresses), or null.
+  Future<String?> getActiveRoute() async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return null;
+    return _cache['$_keyActiveRoutePrefix${_serverKey(url)}'];
+  }
+
+  Future<void> setActiveRoute(String? route) async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    final key = '$_keyActiveRoutePrefix${_serverKey(url)}';
+    if (route == null || route.isEmpty) {
+      if (_cache.containsKey(key)) await _remove(key);
+    } else if (_cache[key] != route) {
+      await _set(key, route);
+    }
+  }
+
+  /// The saved profile of the server in use (the active id when it matches
+  /// the current URL, else the first profile for that URL), read fresh.
+  Future<ServerProfile?> getActiveProfile() async {
+    if (!_initialized) await init();
+    final currentUrl = _cache[_keyServerUrl];
+    if (currentUrl == null || currentUrl.isEmpty) return null;
+    await _freshProfilesRaw();
+    final profiles = await getProfiles();
+    final activeId = _cache[_keyActiveProfileId];
+    return profiles.where((p) => p.id == activeId && _sameUrl(p.url, currentUrl)).firstOrNull ??
+        profiles.where((p) => _sameUrl(p.url, currentUrl)).firstOrNull;
+  }
+
+  /// Changes the active server's saved profile with [change] (applied to a
+  /// fresh read, so another engine's edit isn't lost). Returns the saved
+  /// profile, or null when there is none.
+  Future<ServerProfile?> updateActiveProfile(ServerProfile Function(ServerProfile p) change) async {
+    final current = await getActiveProfile();
+    if (current == null) return null;
+    final updated = change(current);
+    await saveProfile(updated);
+    return updated;
   }
 
   /// The last app-update check (JSON written by AppUpdateService).

@@ -11,11 +11,13 @@ import android.app.NotificationManager
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// A FragmentActivity: the app lock's system prompt (local_auth, androidx
+// BiometricPrompt) is a fragment.
+class MainActivity : FlutterFragmentActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,6 +44,12 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // FLAG_SECURE and the recent-apps preview (SecureWindowChannel.kt).
+        SecureWindowChannel.register(this, flutterEngine)
+
+        // Network changes and "Open Tailscale" (NetworkChannels.kt).
+        NetworkChannels.register(this, flutterEngine)
 
         // Device Info channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/device_info").setMethodCallHandler { call, result ->

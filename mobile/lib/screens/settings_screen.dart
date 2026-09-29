@@ -4,14 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/app_lock.dart';
 import '../services/app_update_service.dart';
 import '../services/background_service.dart';
 import '../services/permission_service.dart';
+import '../services/server_routes.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
+import '../widgets/connection_banner.dart';
 import '../widgets/server_power.dart';
+import 'security_settings_screen.dart';
+import 'server_addresses_screen.dart';
 import 'login_screen.dart';
 import 'system_updates_screen.dart';
 
@@ -152,6 +157,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     if (picked != null) await _refresh.set(picked);
   }
 
+  /// "Tailscale · 100.64.0.1", "Can't reach the server".
+  String _routeSummary(RouteState r) {
+    final url = r.url ?? ApiClient.instance.baseUrl;
+    final host = url.isEmpty ? '' : ApiClient.displayHost(url);
+    return switch (r.status) {
+      RouteStatus.unreachable => "Can't reach the server · Addresses",
+      RouteStatus.checking => 'Checking… · $host',
+      _ => '${(r.kind ?? RouteRules.kindOf(url)).label} · $host',
+    };
+  }
+
   String _versionLine() => _build.isEmpty ? _version : '$_version (build $_build)';
 
   @override
@@ -164,6 +180,22 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       title: 'Settings',
       slivers: [
         SliverList.list(children: [
+          if (host != null)
+            TileGroup(
+              title: 'Server',
+              children: [
+                ValueListenableBuilder<RouteState>(
+                  valueListenable: ServerRoutes.instance.state,
+                  builder: (context, route, _) => ListTile(
+                    leading: Icon(route.status == RouteStatus.unreachable ? Icons.cloud_off_outlined : routeIcon(route.kind)),
+                    title: const Text('Connection'),
+                    subtitle: Text(_routeSummary(route)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ServerAddressesScreen())),
+                  ),
+                ),
+              ],
+            ),
           TileGroup(
             title: 'Home',
             footer: 'Faster refreshes use more battery and data. Drive usage refreshes at most every 30 seconds and the VM preview at most every 5 seconds.',
@@ -213,6 +245,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   ),
               ],
             ),
+          TileGroup(title: 'Privacy & security', children: [
+            ListenableBuilder(
+              listenable: AppLock.instance,
+              builder: (context, _) => ListTile(
+                leading: const Icon(Icons.shield_outlined),
+                title: const Text('Privacy & security'),
+                subtitle: Text(SecuritySettingsScreen.summary(AppLock.instance)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SecuritySettingsScreen())),
+              ),
+            ),
+          ]),
           TileGroup(title: 'Server power', children: [
             ListTile(
               leading: const Icon(Icons.restart_alt_outlined),

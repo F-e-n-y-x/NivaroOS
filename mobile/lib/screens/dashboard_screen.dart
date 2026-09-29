@@ -9,14 +9,17 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/dashboard_stats.dart';
 import '../models/gpu_stats.dart';
 import '../services/api_client.dart';
+import '../services/server_routes.dart';
 import '../services/vm_client.dart';
 import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
 import '../utils/format.dart';
+import '../widgets/connection_banner.dart';
 import '../widgets/free_memory_sheet.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/server_power.dart';
 import '../widgets/vm_console_preview.dart';
+import 'server_addresses_screen.dart';
 import 'system_updates_screen.dart';
 import 'vm_console_screen.dart';
 import 'vm_list_screen.dart' show VmStateChip;
@@ -502,6 +505,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onRefresh: _c.refreshAll,
       banner: live != null && live.stale ? OfflineBanner(lastUpdated: live.updatedAt, onRetry: _c.refreshLive) : null,
       actions: [
+        // How the phone reaches the server (Home network, Tailscale,
+        // Internet), once it has more than one way to.
+        ValueListenableBuilder<RouteState>(
+          valueListenable: ServerRoutes.instance.state,
+          builder: (context, route, _) {
+            final kind = route.kind;
+            if (!route.alternatives || kind == null || route.status == RouteStatus.unreachable) return const SizedBox.shrink();
+            return Tooltip(
+              message: kind.through,
+              child: TextButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ServerAddressesScreen())),
+                icon: Icon(routeIcon(kind), size: 18),
+                label: Text(kind.label),
+              ),
+            );
+          },
+        ),
         // Power only once the server has answered; before that it would
         // just fail.
         if (live != null) PopupMenuButton<String>(
