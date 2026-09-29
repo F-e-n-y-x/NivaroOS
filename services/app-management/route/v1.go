@@ -41,7 +41,7 @@ func InitV1Router() http.Handler {
 		// Same-host automation only (direct loopback socket peer, no
 		// proxy/browser headers - common/middleware.IsLocalAutomation);
 		// c.RealIP() trusted spoofable X-Forwarded-For/X-Real-IP.
-		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/container/:id/terminal"),
+		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/container/:id/terminal", v1.ContainerTerminalBase+"/*"),
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
@@ -74,6 +74,9 @@ func InitV1Router() http.Handler {
 			v1ContainerGroup.PUT("/archive/:id", v1.ArchiveContainer)
 
 			v1ContainerGroup.GET("/:id/terminal", v1.DockerTerminal)
+			// Persistent container terminal sessions (list/create/rename/
+			// kill, WebSocket attach with scrollback replay).
+			v1.ContainerTerminalAPI().Register(v1ContainerGroup.Group("/terminal-sessions"))
 			v1ContainerGroup.GET("/:id/shells", v1.ContainerShells)
 			v1ContainerGroup.POST("/:id/update", v1.UpdateContainer)
 			v1ContainerGroup.GET("/:id/update/status", v1.GetContainerUpdateStatus)

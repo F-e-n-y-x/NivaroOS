@@ -52,7 +52,7 @@ func InitV1Router() http.Handler {
 		// Same-host automation (direct loopback socket peer, no proxy or
 		// browser headers - see common/middleware.IsLocalAutomation) may
 		// skip the token; the interactive terminal never may.
-		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm"),
+		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm", v1.HostTerminalBase+"/*"),
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
@@ -104,6 +104,9 @@ func InitV1Router() http.Handler {
 
 			v1SysGroup.POST("/ssh-login", v1.PostSshLogin)
 			v1SysGroup.GET("/wsterm", v1.WsLocalTerm)
+			// Persistent host terminal sessions (list/create/rename/kill,
+			// WebSocket attach with scrollback replay).
+			v1.HostTerminalAPI().Register(v1SysGroup.Group("/terminal-sessions"))
 
 			v1SysGroup.GET("/system-users", v1.GetSystemUsers)
 			v1SysGroup.POST("/system-users", v1.PostSystemUser)

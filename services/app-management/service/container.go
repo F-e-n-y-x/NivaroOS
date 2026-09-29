@@ -365,6 +365,34 @@ type ContainerShellSession struct {
 	cli    *client2.Client
 	execID string
 	once   sync.Once
+
+	mu       sync.Mutex
+	pid      int // host pid of the exec (0 = not known yet)
+	exitCode int // recorded by Close; -1 = unknown
+}
+
+// HostPid is the exec's host pid (looked up once; 0 if unknown).
+func (s *ContainerShellSession) HostPid() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pid != 0 || s.cli == nil {
+		return s.pid
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	info, err := s.cli.ContainerExecInspect(ctx, s.execID)
+	if err == nil && info.Running && info.Pid > 0 {
+		s.pid = info.Pid
+	}
+	return s.pid
+}
+
+// ExitCode is the exec's exit status, known once Close has returned
+// (-1 if it could not be determined).
+func (s *ContainerShellSession) ExitCode() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exitCode
 }
 
 // Resize changes the exec's TTY size.
@@ -388,6 +416,7 @@ func (s *ContainerShellSession) Close() {
 		s.Conn.Close()
 
 		defer s.cli.Close()
+		defer s.recordExit()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -405,6 +434,18 @@ func (s *ContainerShellSession) Close() {
 		}
 		s.waitExit(ctx, time.Second)
 	})
+}
+
+func (s *ContainerShellSession) recordExit() {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	code := -1
+	if info, err := s.cli.ContainerExecInspect(ctx, s.execID); err == nil && !info.Running {
+		code = info.ExitCode
+	}
+	s.mu.Lock()
+	s.exitCode = code
+	s.mu.Unlock()
 }
 
 // waitExit polls the exec until it stops running or d elapses; it returns
@@ -572,7 +613,7 @@ func (ds *dockerService) CreateContainerShellSession(containerID, shell string, 
 		return nil, err
 	}
 
-	s := &ContainerShellSession{Conn: hr, Shell: shellPath, cli: cli, execID: ir.ID}
+	s := &ContainerShellSession{Conn: hr, Shell: shellPath, cli: cli, execID: ir.ID, exitCode: -1}
 	// Daemons older than API 1.42 ignore ConsoleSize.
 	_ = s.Resize(cols, rows)
 	return s, nil

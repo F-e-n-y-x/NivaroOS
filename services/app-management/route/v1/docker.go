@@ -20,8 +20,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/port"
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/ssh"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/termsession"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/mount"
@@ -64,50 +64,22 @@ func ContainerShells(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shells})
 }
 
-// DockerTerminal opens an interactive shell (?shell=, else the default) in a container
-// over the wsterm protocol (services/common/utils/wsterm):
-//   - initial size: ?cols=N&rows=N
+// DockerTerminal is the original container terminal endpoint
+// (GET /v1/container/:id/terminal?shell=&cols=&rows=), kept for older apps:
+// a plain connect creates a new persistent container session (listed with
+// legacy=true) and attaches to it over the wsterm protocol
+// (services/common/utils/wsterm) without server control frames:
 //   - client BINARY frames = raw input; client TEXT frames starting with
 //     0x00 = JSON control, e.g. "\x00{\"type\":\"resize\",\"cols\":120,\"rows\":40}"
 //   - server BINARY frames = output; server TEXT frames = status/error text,
 //     followed by a CLOSE frame (1011) when the session could not start.
+//
+// New clients use /v1/container/terminal-sessions.
 func DockerTerminal(ctx echo.Context) error {
 	cols, rows := wsterm.ParseSize(ctx.QueryParam("cols"), ctx.QueryParam("rows"), 100, 30)
-	conn, err := upgrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
-	if err != nil {
-		// Upgrade already wrote the HTTP error; the connection may be hijacked.
-		logger.Error("container terminal upgrade failed", zap.Error(err))
-		return nil
-	}
-	defer conn.Close()
-
-	// ?shell=bash|zsh|fish|ash|dash|sh picks the shell; empty = the default.
-	sess, err := service.MyService.Docker().CreateContainerShellSession(ctx.Param("id"), ctx.QueryParam("shell"), cols, rows)
-	if err != nil {
-		// ctx.JSON would be lost on the hijacked connection.
-		wsterm.SendError(conn, "failed to open container shell: "+err.Error())
-		return nil
-	}
-	// Ends the exec cleanly (closes stdin/stream, then signals it only if
-	// it is still running) and closes the docker client.
-	defer sess.Close()
-
-	outputDone := make(chan struct{})
-	go func() {
-		ssh.WsWriterCopy(sess.Conn.Reader, conn)
-		// Shell exited (or stream broke): tell the client, which also
-		// unblocks the read loop below.
-		wsterm.Close(conn, websocket.CloseNormalClosure, "")
-		close(outputDone)
-	}()
-	ssh.WsReaderCopy(conn, sess.Conn.Conn, func(c, r uint16) {
-		if err := sess.Resize(c, r); err != nil {
-			logger.Error("container terminal resize failed", zap.Error(err))
-		}
+	return ContainerTerminalAPI().ServeLegacy(ctx, termsession.CreateRequest{
+		Container: ctx.Param("id"), Shell: ctx.QueryParam("shell"), Cols: int(cols), Rows: int(rows),
 	})
-	sess.Close()
-	<-outputDone
-	return nil
 }
 
 // @Summary 安装app(该接口需要post json数据)

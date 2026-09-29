@@ -4,20 +4,14 @@ import (
 	"bufio"
 	"io"
 	"os"
-	"os/exec"
 	"os/user"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
 
-	"github.com/creack/pty"
-	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
 
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/termsession"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 )
@@ -131,115 +125,12 @@ func resolveTerminalUser() (*user.User, string, error) {
 	}, reason, nil
 }
 
-// WsLocalTerm serves the host terminal over the wsterm protocol (see
-// services/common/utils/wsterm): BINARY frames carry input/output, TEXT
-// frames starting with 0x00 carry JSON control ({"type":"resize",...}),
-// initial size from ?cols=&rows=.
+// WsLocalTerm is the original host terminal endpoint (GET /v1/sys/wsterm),
+// kept for older apps: a plain connect creates a new persistent session
+// (listed with legacy=true) and attaches to it over the wsterm protocol
+// (services/common/utils/wsterm) without server control frames. Initial
+// size from ?cols=&rows=. New clients use /v1/sys/terminal-sessions.
 func WsLocalTerm(ctx echo.Context) error {
-	wsConn, err := upgrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
-	if err != nil {
-		// Upgrade has already written an HTTP error response.
-		return nil
-	}
-	defer wsConn.Close()
-
 	cols, rows := wsterm.ParseSize(ctx.QueryParam("cols"), ctx.QueryParam("rows"), 120, 32)
-
-	u, reason, err := resolveTerminalUser()
-	if err != nil {
-		wsterm.SendError(wsConn, "local terminal user not found: "+err.Error())
-		return nil
-	}
-	logger.Info("local terminal session", zap.String("user", u.Username), zap.String("reason", reason))
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
-
-	var groupIds []uint32
-	if gids, gErr := u.GroupIds(); gErr == nil {
-		for _, gidStr := range gids {
-			if gidInt, convErr := strconv.Atoi(gidStr); convErr == nil {
-				groupIds = append(groupIds, uint32(gidInt))
-			}
-		}
-	}
-	if len(groupIds) == 0 {
-		groupIds = []uint32{uint32(gid)}
-	}
-
-	shell := "/bin/bash"
-	if _, statErr := os.Stat(shell); statErr != nil {
-		shell = "/bin/sh"
-	}
-
-	cmd := exec.Command(shell, "-l")
-	cmd.Dir = u.HomeDir
-	cmd.Env = []string{
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		"LANG=C.UTF-8",
-		"LC_ALL=C.UTF-8",
-		"LANGUAGE=en_US:en",
-		"HOME=" + u.HomeDir,
-		"USER=" + u.Username,
-		"LOGNAME=" + u.Username,
-		"SHELL=" + shell,
-		"PATH=" + u.HomeDir + "/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games",
-	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid:    uint32(uid),
-			Gid:    uint32(gid),
-			Groups: groupIds,
-		},
-		Setsid: true,
-	}
-
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
-	if err != nil {
-		wsterm.SendError(wsConn, "failed to start terminal: "+err.Error())
-		return nil
-	}
-
-	waitDone := make(chan struct{})
-	go func() {
-		_ = cmd.Wait() // always reap - no zombie shells
-		close(waitDone)
-	}()
-	defer func() {
-		_ = ptmx.Close()
-		// Hang up the whole session (Setsid made the shell its leader), give
-		// it a moment to exit, then force it; the Wait goroutine reaps it.
-		// (Never signal after the shell was reaped - its pid/pgid could
-		// already belong to something else.)
-		pid := cmd.Process.Pid
-		select {
-		case <-waitDone:
-			return
-		default:
-		}
-		_ = syscall.Kill(-pid, syscall.SIGHUP)
-		select {
-		case <-waitDone:
-		case <-time.After(2 * time.Second):
-			_ = cmd.Process.Kill() // os.Process guards against a reaped pid
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
-			<-waitDone
-		}
-	}()
-
-	quit := make(chan struct{}, 2)
-	go func() {
-		_ = wsterm.CopyOutput(ptmx, wsConn) // ends when the shell exits (EIO)
-		quit <- struct{}{}
-	}()
-	go func() {
-		_ = wsterm.Pump(wsConn, ptmx, func(c, r uint16) {
-			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: r, Cols: c})
-		})
-		quit <- struct{}{}
-	}()
-
-	<-quit
-	wsterm.Close(wsConn, websocket.CloseNormalClosure, "")
-	return nil
+	return HostTerminalAPI().ServeLegacy(ctx, termsession.CreateRequest{Cols: int(cols), Rows: int(rows)})
 }
