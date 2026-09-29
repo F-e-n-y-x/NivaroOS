@@ -3129,5 +3129,12 @@
   "Folders only": "Folders only",
   "The NivaroOS app on this phone is too old to send files away from home - update it, or turn on Tailscale on the phone.": "The NivaroOS app on this phone is too old to send files away from home - update it, or turn on Tailscale on the phone.",
   "Files unavailable": "Files unavailable",
-  "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing.": "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing."
+  "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing.": "The phone is online, but its files can't be reached right now - open the NivaroOS app on it and turn on file sharing.",
+  "Sign-in didn't stick?": "Sign-in didn't stick?",
+  "Copy details": "Copy details",
+  "The browser refused some of the cookies {provider} sets while signing in, so the login page starts over.": "The browser refused some of the cookies {provider} sets while signing in, so the login page starts over.",
+  "The browser refused some of the cookies {provider} sets while signing in.": "The browser refused some of the cookies {provider} sets while signing in.",
+  "{provider} signed this window out again right after signing in.": "{provider} signed this window out again right after signing in.",
+  "{provider} did not accept the sign-in when it was checked.": "{provider} did not accept the sign-in when it was checked.",
+  "The {provider} login page keeps reloading without signing in.": "The {provider} login page keeps reloading without signing in."
 }

@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -49,14 +51,85 @@ type rbSignin struct {
 	provider rbProvider
 	viewer   *rbViewer
 
-	mu       sync.Mutex
-	state    string // waiting | verifying | signed_in
-	account  string
-	checked  string // auth cookie value last verified
-	cookie   string // export form, once verified
-	domain   string
-	stop     chan struct{}
-	stopOnce sync.Once
+	mu        sync.Mutex
+	state     string // waiting | verifying | signed_in
+	account   string
+	checked   string // auth cookie value last verified
+	lastStuck bool
+	cookie    string // export form, once verified
+	domain    string
+	stop      chan struct{}
+	stopOnce  sync.Once
+
+	diag rbSigninDiag
+}
+
+// rbSigninDiag is what a sign-in window noticed, for "Sign-in didn't
+// stick?" and the service log. It holds cookie names and domains only -
+// never a cookie's value.
+type rbSigninDiag struct {
+	started  time.Time
+	loads    int                        // main-frame navigations
+	seen     map[string]map[string]bool // domain -> cookie names in the jar
+	blocked  map[string]bool            // "name@domain: reason" Chrome refused
+	fails    int                        // auth cookie present but the provider said no
+	lostAuth bool                       // the auth cookie appeared, then went away
+	hadAuth  bool
+	logged   bool
+}
+
+// stuck: the signs of a login loop - the provider rejected the cookie
+// twice, it vanished after appearing, Chrome refused one of the provider's
+// cookies, or the login page kept reloading for a while without one.
+func (d *rbSigninDiag) stuck(now time.Time) bool {
+	if d.fails >= 2 || d.lostAuth || len(d.blocked) > 0 {
+		return true
+	}
+	return !d.hadAuth && d.loads >= 4 && now.Sub(d.started) > 45*time.Second
+}
+
+func (d *rbSigninDiag) report(now time.Time) map[string]interface{} {
+	seen := make([]string, 0, len(d.seen))
+	for dom, names := range d.seen {
+		ns := make([]string, 0, len(names))
+		for n := range names {
+			ns = append(ns, n)
+		}
+		sort.Strings(ns)
+		seen = append(seen, dom+": "+strings.Join(ns, ", "))
+	}
+	sort.Strings(seen)
+	blocked := make([]string, 0, len(d.blocked))
+	for b := range d.blocked {
+		blocked = append(blocked, b)
+	}
+	sort.Strings(blocked)
+	return map[string]interface{}{
+		"stuck": d.stuck(now), "seen": seen, "blocked": blocked, "loads": d.loads,
+		"rejected": d.fails, "lost": d.lostAuth, "seconds": int(now.Sub(d.started).Seconds()),
+	}
+}
+
+// noteCookies records the jar's cookie names per domain (values dropped).
+func (d *rbSigninDiag) noteCookies(all []cdpCookie) {
+	if d.seen == nil {
+		d.seen = map[string]map[string]bool{}
+	}
+	for _, c := range all {
+		dom := strings.TrimPrefix(strings.ToLower(c.Domain), ".")
+		if dom == "" || c.Name == "" {
+			continue
+		}
+		if d.seen[dom] == nil {
+			if len(d.seen) >= 40 {
+				continue
+			}
+			d.seen[dom] = map[string]bool{}
+		}
+		if len(d.seen[dom]) < 40 {
+			d.seen[dom][rbText(c.Name, 60)] = true
+		}
+	}
 }
 
 func cookieInDomains(c cdpCookie, domains []string) (string, bool) {
@@ -123,6 +196,7 @@ func (i *rbInstance) startSignin(v *rbViewer, provider string) error {
 		return err
 	}
 	s := &rbSignin{context: bc.BrowserContextID, provider: p, viewer: v, state: "waiting", stop: make(chan struct{})}
+	s.diag.started = time.Now()
 	i.mu.Lock()
 	i.signins[s.context] = s
 	i.mu.Unlock()
@@ -168,6 +242,11 @@ func (i *rbInstance) endSignin(ctxID string) {
 	i.mu.Unlock()
 	if s != nil {
 		s.stopOnce.Do(func() { close(s.stop) })
+		s.mu.Lock()
+		if s.state != "signed_in" && (s.diag.loads > 0 || len(s.diag.seen) > 0) {
+			log.Printf("ds-browser: %s sign-in window closed without a sign-in: %v", s.provider.Name, s.diag.report(time.Now()))
+		}
+		s.mu.Unlock()
 	}
 	if conn != nil && ctxID != "" {
 		conn.Send("", "Target.disposeBrowserContext", map[string]interface{}{"browserContextId": ctxID})
@@ -208,16 +287,33 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 		return
 	}
 	cookie, domain, auth := providerCookie(s.provider, all)
+	now := time.Now()
 	s.mu.Lock()
+	s.diag.noteCookies(all)
 	if auth == "" {
 		was := s.state
+		if s.diag.hadAuth {
+			s.diag.lostAuth = true
+		}
 		s.state, s.cookie, s.checked = "waiting", "", ""
+		wasStuck := s.lastStuck
+		s.lastStuck = s.diag.stuck(now)
+		nowStuck := s.lastStuck
+		diag := s.diag.report(now)
+		logIt := s.lastStuck && !s.diag.logged
+		if logIt {
+			s.diag.logged = true
+		}
 		s.mu.Unlock()
-		if was != "waiting" {
-			s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "waiting", "context": s.context})
+		if logIt {
+			log.Printf("ds-browser: %s sign-in looks stuck: %v", s.provider.Name, diag)
+		}
+		if was != "waiting" || nowStuck != wasStuck {
+			s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "waiting", "context": s.context, "diag": diag})
 		}
 		return
 	}
+	s.diag.hadAuth = true
 	if auth == s.checked && !force {
 		s.mu.Unlock()
 		return
@@ -233,10 +329,13 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 	} else {
 		s.state = "waiting"
 		s.checked = "" // try again on the next poll: the site may still be setting cookies
+		s.diag.fails++
 	}
 	state := s.state
+	s.lastStuck = s.diag.stuck(time.Now())
+	diag := s.diag.report(time.Now())
 	s.mu.Unlock()
-	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": state, "account": account, "domain": domain, "context": s.context})
+	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": state, "account": account, "domain": domain, "context": s.context, "diag": diag})
 }
 
 var providerClient = &http.Client{Transport: newTransport(false), Timeout: 12 * time.Second}
@@ -353,4 +452,110 @@ func (i *rbInstance) exportCookies(ctx context.Context, provider, ctxID string) 
 		return nil, errors.New(p.Name + " says that sign-in has expired - sign in again")
 	}
 	return &rbCookieExport{Cookie: cookie, AccountHint: account, Domains: []string{domain}}, nil
+}
+
+// signinOf returns the sign-in window a tab belongs to, if any.
+func (i *rbInstance) signinOf(t *rbTab) *rbSignin {
+	if t == nil || t.Context == "" {
+		return nil
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.signins[t.Context]
+}
+
+// noteSigninNetwork records, for a sign-in window, cookies Chrome refused to
+// store (Network.responseReceivedExtraInfo) or send
+// (Network.requestWillBeSentExtraInfo) - the usual cause of a login that
+// "just reloads". Only names, domains and Chrome's reasons are kept.
+func (i *rbInstance) noteSigninNetwork(t *rbTab, method string, raw json.RawMessage) {
+	s := i.signinOf(t)
+	if s == nil {
+		return
+	}
+	var p struct {
+		Blocked []struct {
+			Reasons []string `json:"blockedReasons"`
+			Line    string   `json:"cookieLine"`
+			Cookie  *struct {
+				Name   string `json:"name"`
+				Domain string `json:"domain"`
+			} `json:"cookie"`
+		} `json:"blockedCookies"`
+		Associated []struct {
+			Reasons []struct {
+				Reason string `json:"exclusionReason"`
+			} `json:"blockedReasons"`
+			Cookie struct {
+				Name   string `json:"name"`
+				Domain string `json:"domain"`
+			} `json:"cookie"`
+		} `json:"associatedCookies"`
+	}
+	if json.Unmarshal(raw, &p) != nil {
+		return
+	}
+	var add []string
+	for _, b := range p.Blocked {
+		name, dom := "", ""
+		if b.Cookie != nil {
+			name, dom = b.Cookie.Name, b.Cookie.Domain
+		} else if j := strings.IndexByte(b.Line, '='); j > 0 {
+			name = b.Line[:j]
+		}
+		if name != "" && len(b.Reasons) > 0 {
+			add = append(add, rbText(name, 60)+"@"+rbText(strings.TrimPrefix(dom, "."), 80)+" (set): "+strings.Join(b.Reasons, ","))
+		}
+	}
+	for _, a := range p.Associated {
+		var rs []string
+		for _, r := range a.Reasons {
+			// A cookie simply not matching this URL is not a problem.
+			if r.Reason != "" && r.Reason != "ExcludeDomainMismatch" && r.Reason != "ExcludeNotOnPath" {
+				rs = append(rs, r.Reason)
+			}
+		}
+		if a.Cookie.Name != "" && len(rs) > 0 {
+			add = append(add, rbText(a.Cookie.Name, 60)+"@"+rbText(strings.TrimPrefix(a.Cookie.Domain, "."), 80)+" (send): "+strings.Join(rs, ","))
+		}
+	}
+	if len(add) == 0 {
+		return
+	}
+	s.mu.Lock()
+	if s.diag.blocked == nil {
+		s.diag.blocked = map[string]bool{}
+	}
+	for _, a := range add {
+		// Only the provider's own cookies matter for the sign-in.
+		dom := a[strings.IndexByte(a, '@')+1:]
+		if j := strings.IndexByte(dom, ' '); j >= 0 {
+			dom = dom[:j]
+		}
+		if dom != "" && !anyDomainMatch(dom, s.provider.Domains) {
+			continue
+		}
+		if len(s.diag.blocked) < 40 {
+			s.diag.blocked[a] = true
+		}
+	}
+	s.mu.Unlock()
+}
+
+func anyDomainMatch(host string, domains []string) bool {
+	for _, d := range domains {
+		if hostMatchesDomain(strings.ToLower(host), d) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteSigninLoad counts a sign-in window's main-frame navigations.
+func (i *rbInstance) noteSigninLoad(t *rbTab) {
+	if s := i.signinOf(t); s != nil {
+		s.mu.Lock()
+		s.diag.loads++
+		s.mu.Unlock()
+	}
 }

@@ -1387,6 +1387,13 @@ func (i *rbInstance) onEvent(ev cdpEvent) {
 	case "Fetch.requestPaused":
 		i.onRequestPaused(ev.SessionID, tab, owner, ev.Params)
 		return
+	case "Network.responseReceivedExtraInfo", "Network.requestWillBeSentExtraInfo":
+		t := tab
+		if t == nil {
+			t = owner
+		}
+		i.noteSigninNetwork(t, ev.Method, ev.Params)
+		return
 	case "Fetch.authRequired":
 		i.onAuthRequired(ev.SessionID, tab, owner, ev.Params)
 		return
@@ -1627,8 +1634,12 @@ func (i *rbInstance) onRequestPaused(session string, tab, owner *rbTab, raw json
 		pageURL = page.URL
 	}
 	mainDoc := tab != nil && p.ResourceType == "Document" && p.FrameID == tab.TargetID
+	signin := i.signinTabLocked(page)
 	i.mu.Unlock()
-	if !mainDoc && i.shouldBlock(p.Request.URL, pageURL, p.ResourceType) {
+	// A sign-in window is passed through untouched: no ad-filtering decisions,
+	// so nothing NivaroOS does can block a request the provider's login needs
+	// or let the page notice a rewritten response.
+	if !signin && !mainDoc && i.shouldBlock(p.Request.URL, pageURL, p.ResourceType) {
 		conn.Send(session, "Fetch.failRequest", map[string]interface{}{"requestId": p.RequestID, "errorReason": "BlockedByClient"})
 		return
 	}
@@ -1822,6 +1833,7 @@ func (i *rbInstance) onPageEvent(t *rbTab, ev cdpEvent) {
 		}
 		i.mu.Unlock()
 		if main {
+			i.noteSigninLoad(t)
 			i.tabsChanged()
 			go i.refreshHistory(t)
 			go i.injectCosmetics(t)
@@ -1985,6 +1997,9 @@ func (i *rbInstance) watchTitles(stop <-chan struct{}) {
 // afterLoad fetches the page's favicon (through the netguarded transport,
 // as a data: URL the UI can show without contacting the site itself).
 func (i *rbInstance) afterLoad(t *rbTab) {
+	if i.signinTab(t) {
+		return // no page scripts in a sign-in window, not even a favicon probe
+	}
 	i.mu.Lock()
 	conn, session, pageURL := i.cdp, t.Session, t.URL
 	have := t.Favicon != "" && urlHost(t.iconFor) == urlHost(pageURL)
@@ -2063,6 +2078,9 @@ func fetchFavicon(ctx context.Context, raw string, allowPrivate bool) string {
 
 // injectCosmetics adds the element-hiding CSS for the page's host.
 func (i *rbInstance) injectCosmetics(t *rbTab) {
+	if i.signinTab(t) {
+		return // never add a <style> to a sign-in page; anti-tamper could see it
+	}
 	st := i.host.adblock.Load()
 	if st == nil || !st.enabled || st.engine == nil {
 		return
@@ -2351,6 +2369,36 @@ func jpegSize(b []byte) (int, int) {
 
 // ---- page helpers used by viewer actions ----
 
+// errSigninNoScript is returned instead of running script in a provider
+// sign-in window: on those tabs NivaroOS injects nothing into the page.
+var errSigninNoScript = errors.New("scripts are not run in a sign-in window")
+
+// signinTab reports whether t belongs to a provider sign-in window
+// (Target.createBrowserContext'd for e.g. TeraBox login). On those tabs
+// NivaroOS runs no page scripts and rewrites no responses, so a site's
+// anti-tamper / anti-DevTools traps can never fire: the login cookie is read
+// only at the browser level (Storage.getCookies), never from the page. We
+// also never enable the Runtime/Debugger/Console/Log CDP domains anywhere,
+// and typing/clicking reach the page through the Input domain, not scripts,
+// so the whole capture path stays invisible to the page.
+func (i *rbInstance) signinTab(t *rbTab) bool {
+	if t == nil {
+		return false
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.signinTabLocked(t)
+}
+
+// signinTabLocked is signinTab for callers already holding i.mu.
+func (i *rbInstance) signinTabLocked(t *rbTab) bool {
+	if t == nil || t.Context == "" {
+		return false
+	}
+	_, ok := i.signins[t.Context]
+	return ok
+}
+
 // eval runs expr in the tab's page. It never counts as a user gesture, so
 // our own probes (cursor, title, context menu) cannot give the page the
 // right to open pop-ups; evalGesture is only for actions the user asked
@@ -2364,6 +2412,12 @@ func (i *rbInstance) evalGesture(ctx context.Context, t *rbTab, expr string, out
 }
 
 func (i *rbInstance) evalOpts(ctx context.Context, t *rbTab, expr string, out interface{}, gesture bool) error {
+	// A sign-in window's page is never scripted (see signinTab): cursor
+	// probes, hit-tests and the clipboard bridge all go through here, and all
+	// no-op there so nothing we do can trip the provider's login page.
+	if i.signinTab(t) {
+		return errSigninNoScript
+	}
 	i.mu.Lock()
 	conn, session := i.cdp, t.Session
 	i.mu.Unlock()

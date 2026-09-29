@@ -266,6 +266,84 @@ func nextMsg(t *testing.T, v *rbViewer, pred func(m map[string]interface{}, bin 
 	}
 }
 
+// attachPageInContext attaches a page target that belongs to a specific
+// browser context (a sign-in window uses its own throwaway context).
+func attachPageInContext(f *fakeChrome, session, target, ctxID, url string) {
+	f.emit("", "Target.attachedToTarget", map[string]interface{}{
+		"sessionId":          session,
+		"waitingForDebugger": true,
+		"targetInfo":         map[string]interface{}{"targetId": target, "type": "page", "url": url, "browserContextId": ctxID},
+	})
+}
+
+// TestSigninTabIsNeverScripted proves the TeraBox cookie-capture window is
+// invisible to the page: NivaroOS runs no script in it and rewrites none of
+// its responses, so the site's anti-DevTools / anti-tamper traps cannot fire.
+// The only way a login cookie leaves the browser is Storage.getCookies at the
+// browser level, which the page cannot observe.
+func TestSigninTabIsNeverScripted(t *testing.T) {
+	in, f := testInstance(t, "||ads.example^\n") // a filter that WOULD block
+	v := testViewer(in)
+
+	// A registered sign-in context, and a page attached inside it.
+	in.mu.Lock()
+	in.signins["SIGN1"] = &rbSignin{context: "SIGN1", provider: rbProviders["terabox"], viewer: v, state: "waiting"}
+	in.mu.Unlock()
+	attachPageInContext(f, "P1", "T1", "SIGN1", "https://www.terabox.com/")
+	f.waitCall("P1", "Runtime.runIfWaitingForDebugger")
+	waitFor(t, "sign-in tab", func() bool { return in.tabForTarget("T1") != nil })
+	tab := in.tabForTarget("T1")
+	if !in.signinTab(tab) {
+		t.Fatal("a tab in a sign-in context must be a sign-in tab")
+	}
+	if tab.Context != "SIGN1" {
+		t.Fatalf("sign-in tab lost its context: %q", tab.Context)
+	}
+	v.mu.Lock()
+	v.active, v.context = tab.ID, "SIGN1"
+	v.mu.Unlock()
+
+	// Loading the page: on a normal tab this triggers the favicon probe
+	// (afterLoad) and the cosmetic-CSS injection (injectCosmetics), both of
+	// which run Runtime.evaluate. Here they must do nothing.
+	in.mu.Lock()
+	in.bySession["P1"].URL = "https://www.terabox.com/"
+	in.mu.Unlock()
+	f.emit("P1", "Page.frameNavigated", map[string]interface{}{"frame": map[string]string{"id": "T1", "url": "https://www.terabox.com/"}})
+	f.emit("P1", "Page.frameStoppedLoading", map[string]interface{}{"frameId": "T1"})
+
+	// A request the ad filter would block must be passed through, not failed.
+	pause(f, "P1", "r1", "Script", "T1", "https://ads.example/x.js")
+	f.waitCall("P1", "Fetch.continueRequest")
+
+	// Probing the cursor (what a mouse move does) must not script the page.
+	v.maybeProbeCursor(tab, 40, 40)
+
+	// A normal tab in the same instance is the positive control: its ad
+	// request IS failed, proving the filter is genuinely active.
+	attachPageInContext(f, "P2", "T2", "", "https://news.example/")
+	f.waitCall("P2", "Runtime.runIfWaitingForDebugger")
+	in.mu.Lock()
+	in.bySession["P2"].URL = "https://news.example/"
+	in.mu.Unlock()
+	pause(f, "P2", "r2", "Script", "T2", "https://ads.example/x.js")
+	f.waitCall("P2", "Fetch.failRequest") // the filter works on a normal tab
+	// Give any (wrongly) queued sign-in-tab work time to surface.
+	time.Sleep(150 * time.Millisecond)
+
+	// Nothing was ever scripted on, or blocked for, the sign-in tab (P1).
+	for _, m := range []string{"Runtime.evaluate", "Runtime.enable", "Runtime.addBinding",
+		"Debugger.enable", "Console.enable", "Log.enable", "Page.addScriptToEvaluateOnNewDocument",
+		"Fetch.failRequest"} {
+		for _, c := range f.callsOf(m) {
+			if c.SessionID == "P1" {
+				t.Errorf("%s was sent to the sign-in tab (page must stay untouched)", m)
+				break
+			}
+		}
+	}
+}
+
 func TestAttachSetsUpPageBeforeItRuns(t *testing.T) {
 	in, f := testInstance(t, "")
 	attachPage(f, "P1", "T1", "")
@@ -417,7 +495,9 @@ func TestDownloadHandedToDownloadStationWithCookies(t *testing.T) {
 	// blob: downloads finish inside the browser, into staging.
 	f.emit("", "Browser.downloadWillBegin", map[string]interface{}{"frameId": "T1", "guid": "g2", "url": "blob:https://files.example/uuid", "suggestedFilename": "../../etc/x.txt"})
 	f.emit("", "Browser.downloadProgress", map[string]interface{}{"guid": "g2", "receivedBytes": 5, "totalBytes": 5, "state": "completed"})
-	m, _ = nextMsg(t, v, func(m map[string]interface{}, _ []byte) bool { return m != nil && m["t"] == "download" && m["staged"] == "g2" })
+	m, _ = nextMsg(t, v, func(m map[string]interface{}, _ []byte) bool {
+		return m != nil && m["t"] == "download" && m["staged"] == "g2"
+	})
 	d, ok := in.staged("g2")
 	if !ok || d.Filename == "" || strings.Contains(d.Filename, "/") || filepath.Dir(d.Path) != in.staging {
 		t.Fatalf("staged %+v", d)
@@ -739,5 +819,68 @@ func TestHostQuietPeriodCountsFromLastViewer(t *testing.T) {
 	h.dropInstance(in)
 	if time.Since(h.lastUse) < h.idle {
 		t.Fatalf("host would wait another %s after closing an idle browser", h.idle-time.Since(h.lastUse))
+	}
+}
+
+// TestSigninDiagnosticsExplainALoginLoop: when a login "just reloads", the
+// sign-in window says why - cookies Chrome refused for the provider, the
+// cookie domains it did get - without ever holding a cookie value.
+func TestSigninDiagnosticsExplainALoginLoop(t *testing.T) {
+	in, f := testInstance(t, "")
+	v := testViewer(in)
+	s := &rbSignin{context: "SIGN1", provider: rbProviders["terabox"], viewer: v, state: "waiting", stop: make(chan struct{})}
+	s.diag.started = time.Now()
+	in.mu.Lock()
+	in.signins["SIGN1"] = s
+	in.mu.Unlock()
+	attachPageInContext(f, "P1", "T1", "SIGN1", "https://www.terabox.com/")
+	f.waitCall("P1", "Runtime.runIfWaitingForDebugger")
+	waitFor(t, "tab", func() bool { return in.tabForTarget("T1") != nil })
+
+	f.emit("P1", "Network.responseReceivedExtraInfo", map[string]interface{}{"requestId": "a", "blockedCookies": []interface{}{
+		map[string]interface{}{"blockedReasons": []string{"ThirdPartyPhaseout"}, "cookieLine": "ndus=TOPSECRET; Domain=.1024terabox.com",
+			"cookie": map[string]string{"name": "ndus", "value": "TOPSECRET", "domain": ".1024terabox.com"}},
+		map[string]interface{}{"blockedReasons": []string{"SameSiteLax"}, "cookieLine": "NID=x",
+			"cookie": map[string]string{"name": "NID", "value": "x", "domain": ".google.com"}},
+	}})
+	f.emit("P1", "Network.requestWillBeSentExtraInfo", map[string]interface{}{"requestId": "b", "associatedCookies": []interface{}{
+		map[string]interface{}{"blockedReasons": []map[string]string{{"exclusionReason": "ExcludeDomainMismatch"}}, "cookie": map[string]string{"name": "lang", "domain": ".terabox.com"}},
+		map[string]interface{}{"blockedReasons": []map[string]string{{"exclusionReason": "ExcludeSameSiteStrict"}}, "cookie": map[string]string{"name": "csrfToken", "domain": "www.1024terabox.com"}},
+	}})
+	waitFor(t, "blocked cookies noted", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return len(s.diag.blocked) == 2
+	})
+	s.mu.Lock()
+	s.diag.noteCookies([]cdpCookie{{Name: "browserid", Value: "VALUE1", Domain: ".1024terabox.com"}, {Name: "lang", Value: "en", Domain: ".1024terabox.com"}})
+	rep := s.diag.report(time.Now())
+	s.mu.Unlock()
+	b, _ := json.Marshal(rep)
+	js := string(b)
+	for _, want := range []string{"ndus@1024terabox.com (set): ThirdPartyPhaseout", "csrfToken@www.1024terabox.com (send): ExcludeSameSiteStrict", "1024terabox.com: browserid, lang"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("report lacks %q: %s", want, js)
+		}
+	}
+	if strings.Contains(js, "TOPSECRET") || strings.Contains(js, "VALUE1") || strings.Contains(js, "google") || strings.Contains(js, "ExcludeDomainMismatch") {
+		t.Fatalf("report leaked a value or noise: %s", js)
+	}
+	if rep["stuck"] != true {
+		t.Fatal("a refused provider cookie means the sign-in cannot stick")
+	}
+
+	// The loop heuristics on their own.
+	d := rbSigninDiag{started: time.Now().Add(-time.Minute), loads: 5}
+	if !d.stuck(time.Now()) {
+		t.Error("login page reloading for a minute without a cookie is a loop")
+	}
+	d = rbSigninDiag{started: time.Now(), loads: 5}
+	if d.stuck(time.Now()) {
+		t.Error("a few quick page loads are not a loop yet")
+	}
+	d = rbSigninDiag{started: time.Now(), fails: 2}
+	if !d.stuck(time.Now()) {
+		t.Error("the provider rejecting the cookie twice is a loop")
 	}
 }

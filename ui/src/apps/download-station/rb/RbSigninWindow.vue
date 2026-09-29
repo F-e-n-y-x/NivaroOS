@@ -36,6 +36,16 @@
 				<b-icon icon="loading" custom-class="mdi-spin" custom-size="mdi-20px"></b-icon>
 				<span class="status-text">{{ $t('Checking your sign-in with {provider}...', { provider: providerName }) }}</span>
 			</template>
+			<template v-else-if="phase === 'stuck'">
+				<b-icon icon="alert-outline" custom-size="mdi-20px"></b-icon>
+				<span class="status-text">
+					<strong>{{ $t('Sign-in didn\'t stick?') }}</strong>
+					{{ stuckText }}
+					<button class="link-btn" type="button" :aria-expanded="String(showDiag)" @click="showDiag = !showDiag">{{ showDiag ? $t('Hide details') : $t('Details') }}</button>
+				</span>
+				<button class="ds-secondary-btn" type="button" @click="copyDiag">{{ diagCopied ? $t('Copied') : $t('Copy details') }}</button>
+				<button class="ds-primary-btn" type="button" @click="restart">{{ $t('Try again') }}</button>
+			</template>
 			<template v-else-if="phase === 'error'">
 				<b-icon icon="alert-circle-outline" custom-size="mdi-20px"></b-icon>
 				<span class="status-text">{{ error }}</span>
@@ -46,6 +56,8 @@
 				<span class="status-text">{{ $t('Sign in to {provider} below - with your email, Google, or the QR code (scan it with the {provider} app). This window notices when you are signed in.', { provider: providerName }) }}</span>
 			</template>
 		</div>
+
+		<pre v-if="phase === 'stuck' && showDiag" class="signin-diag">{{ diagText }}</pre>
 
 		<div class="signin-frame">
 			<ds-browser-viewport ref="viewport" :class="{ 'is-offstage': state !== 'open' && state !== 'reconnecting' }" :send="send" :tab="tab ? tab.id : 0"
@@ -80,6 +92,7 @@ import { downloadSidecar } from '@/api/downloadSidecar'
 import DsBrowserViewport from './DsBrowserViewport.vue'
 import DsBrowserMenu from './DsBrowserMenu.vue'
 import { RbSession, wsUrl, hostOf, copyText } from './rbClient'
+import { isStuck, stuckReason, diagReport } from './signinDiag'
 
 const PROVIDER_NAMES = { terabox: 'TeraBox' }
 
@@ -102,7 +115,9 @@ export default {
 			fatal: null,
 			tabs: [],
 			activeId: 0,
-			signin: { state: 'waiting', account: '', context: '' },
+			signin: { state: 'waiting', account: '', context: '', diag: null },
+			showDiag: false,
+			diagCopied: false,
 			connecting: false,
 			error: '',
 			menu: null,
@@ -128,7 +143,14 @@ export default {
 		},
 		phase() {
 			if (this.error) return 'error'
+			if (this.signin.state === 'waiting' && isStuck(this.signin.diag)) return 'stuck'
 			return this.signin.state
+		},
+		stuckText() {
+			return stuckReason(this.signin.diag, this.providerName, (s, p) => this.$t(s, p))
+		},
+		diagText() {
+			return diagReport(this.signin.diag, this.providerName)
 		}
 	},
 	mounted() {
@@ -144,7 +166,8 @@ export default {
 			if (this.session) this.session.close()
 			this.error = ''
 			this.fatal = null
-			this.signin = { state: 'waiting', account: '', context: '' }
+			this.signin = { state: 'waiting', account: '', context: '', diag: null }
+			this.showDiag = false
 			const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches
 			this.session = new RbSession({
 				url: () => wsUrl(window.location, downloadSidecar.authToken),
@@ -170,6 +193,11 @@ export default {
 			})
 			this.session.connect()
 		},
+		copyDiag() {
+			copyText(this.diagText)
+			this.diagCopied = true
+			setTimeout(() => (this.diagCopied = false), 1500)
+		},
 		restart() {
 			this.everOpen = false
 			this.start()
@@ -188,7 +216,7 @@ export default {
 					if (this.$refs.viewport) this.$refs.viewport.setCursor(m.css)
 					break
 				case 'signin':
-					this.signin = { state: m.state, account: m.account || '', context: m.context || this.signin.context }
+					this.signin = { state: m.state, account: m.account || '', context: m.context || this.signin.context, diag: m.diag || this.signin.diag }
 					break
 				case 'dialog':
 					this.dialog = m
@@ -362,6 +390,35 @@ export default {
 		background: var(--color-danger-soft, #fee2e2);
 		color: var(--color-danger-fg, #b91c1c);
 	}
+
+	&.is-stuck {
+		flex-wrap: wrap;
+		background: var(--color-warning-soft, #fef3c7);
+		color: var(--color-warning-fg, #92400e);
+	}
+
+	.link-btn {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+}
+
+.signin-diag {
+	flex-shrink: 0;
+	max-height: 10rem;
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	overflow: auto;
+	font-size: var(--font-2xs);
+	white-space: pre-wrap;
+	background: var(--theme-card-subtle, #f1f5f9);
+	color: var(--theme-text-secondary, #475569);
+	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
 }
 
 .signin-frame {
