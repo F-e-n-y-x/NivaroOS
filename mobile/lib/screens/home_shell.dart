@@ -17,7 +17,7 @@ import '../ui/widgets/floating_nav_bar.dart';
 typedef ShellDestination = ({String label, IconData icon, IconData selectedIcon});
 
 /// The app shell (design brief §5): five destinations in a floating
-/// NavigationBar on phones, or a NavigationRail from 600dp, with each tab
+/// navigation bar on phones, or a NavigationRail from 600dp, with each tab
 /// kept alive in an IndexedStack so switching doesn't reload it.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -149,8 +149,11 @@ class ShellFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final useRail = MediaQuery.sizeOf(context).width >= Space.mediumWidth;
     if (useRail) {
-      return Scaffold(
-        body: Row(
+      // Not a Scaffold, like the floating bar's shell: the tab's own
+      // Scaffold shows snack bars, clear of its FAB.
+      return Material(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Row(
           children: [
             // The rail sits on the leading edge, so it takes the status
             // bar, cutout and gesture insets on that side; the tab's own

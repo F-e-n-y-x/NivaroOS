@@ -253,6 +253,9 @@ func (v *rbViewer) activate(id uint32) {
 	if w > 0 {
 		in.applyMetrics(t, w, h, dpr)
 	}
+	// A page a site opened as a tab of its opener's window is that window's
+	// front tab and hides the opener: showing a tab brings it to the front.
+	in.send(t, "Page.bringToFront", nil)
 	in.updateCasts()
 	v.sendTabs()
 	// A still page sends no screencast frames; make sure there is a picture.
@@ -390,6 +393,9 @@ func clampViewport(w, h int, dpr float64) (int, int, float64) {
 
 func (v *rbViewer) handle(m rbClientMsg, raw []byte) {
 	in := v.inst
+	if rbDebug && m.T != "ack" {
+		log.Printf("viewer> %s", rbText(string(raw), 200))
+	}
 	switch m.T {
 	case "hello":
 		if v.mode != "" {

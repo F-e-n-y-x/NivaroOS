@@ -2,13 +2,14 @@
 <!-- "Add Download" - a real desktop window (OPEN_WINDOW), so it never
      blocks Download Station or anything else on the desktop. Opened blank
      (Add URL), with pasted/dropped links, or pre-filled from a link the
-     lite browser captured (the sidecar keeps that link's cookies/referer
-     and applies them itself; they never pass through here). -->
+     browser captured (the sidecar - or, for the full browser, its browser
+     service - keeps that link's cookies/referer and applies them itself;
+     they never pass through here). -->
 <template>
 	<div class="ds-add-window" ref="root">
 		<div class="add-body scrollbars-light">
 			<label class="ds-field-label">{{ isBatch ? $t('Links (one per line)') : $t('Link') }}</label>
-			<textarea v-if="isBatch || !captureId" ref="urlInput" v-model="urlText" class="ds-input url-area" :rows="isBatch ? 5 : 2"
+			<textarea v-if="isBatch || (!captureId && !rbCapture)" ref="urlInput" v-model="urlText" class="ds-input url-area" :rows="isBatch ? 5 : 2"
 				spellcheck="false" :aria-label="isBatch ? $t('Links (one per line)') : $t('Link')" :placeholder="'https://example.com/file.zip'" @input="onUrlInput"></textarea>
 			<ul v-if="batchErrors.length" class="batch-errors" role="alert">
 				<li v-for="(b, i) in batchErrors" :key="i" class="ds-error-text">
@@ -103,7 +104,11 @@ export default {
 		winId: { type: String, default: '' },
 		url: { type: String, default: '' },
 		captureSession: { type: String, default: '' },
-		captureId: { type: String, default: '' }
+		captureId: { type: String, default: '' },
+		// A link the full browser handed over (its id in the browser
+		// service), with the name the site suggested.
+		rbCapture: { type: String, default: '' },
+		suggestedName: { type: String, default: '' }
 	},
 	data() {
 		return {
@@ -170,6 +175,11 @@ export default {
 				this.error = this.$t('The captured link has expired - copy the link from the page instead.')
 			}
 		}
+		if (this.rbCapture) {
+			this.capture = { has_cookies: true }
+			if (this.suggestedName) this.filename = this.suggestedName
+			else if (this.urls[0]) this.filename = guessName(this.urls[0])
+		}
 		if (this.urls.length === 1) this.runProbe()
 	},
 	mounted() {
@@ -200,7 +210,7 @@ export default {
 			this.probing = true
 			this.probeError = ''
 			try {
-				const res = await downloadSidecar.probe({ url: u, capture_session: this.captureSession, capture_id: this.captureId })
+				const res = await downloadSidecar.probe({ url: u, capture_session: this.captureSession, capture_id: this.captureId, rb_capture: this.rbCapture })
 				if (this.urls[0] !== u) return
 				this.probe = res
 				if (!this.filenameTouched && res.filename) this.filename = res.filename
@@ -256,7 +266,8 @@ export default {
 						start,
 						checksum: this.checksum.trim(),
 						capture_session: this.captureSession,
-						capture_id: this.captureId
+						capture_id: this.captureId,
+						rb_capture: this.rbCapture
 					})
 				}
 				this.close()

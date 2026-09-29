@@ -359,6 +359,9 @@ abstract final class AppTheme {
           height: StyleComponents.navBar(DesignDirection.v2, s, black: black).height,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
+          // One indicator behind the selected icon and label.
+          indicatorShape: StyleComponents.navBarIndicator(DesignDirection.v2, s),
+          indicatorColor: StyleComponents.navBarIndicatorColor(DesignDirection.v2, s, black: black),
         ),
         // The current M3 look for progress and sliders; see StyleComponents.
         // ignore: deprecated_member_use

@@ -76,6 +76,11 @@ func InitV2Router() http.Handler {
 		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
+				if _, revoked := jwt.RevocationReason(err); revoked {
+					// The session was ended (its phone removed): say so,
+					// with the reason, instead of a bare 401.
+					_ = c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(err))
+				}
 				return nil, echo.ErrUnauthorized
 			}
 			c.Request().Header.Set("user_id", strconv.Itoa(claims.ID))

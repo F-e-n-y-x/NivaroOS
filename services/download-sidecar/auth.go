@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 )
 
@@ -131,7 +132,10 @@ func isLoopbackAutomation(r *http.Request) bool {
 	// A request relayed by a reverse proxy on this box (the gateway's
 	// /v1/download-station route) also arrives from loopback, but on behalf
 	// of some remote browser - it always needs the token.
-	if viaGateway(r) || r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Forwarded") != "" || r.Header.Get("X-Real-Ip") != "" {
+	// middleware.HasProxyMarks also covers cloudflared / `tailscale serve`
+	// relays; LoopbackUntrusted is set while a userspace-networking
+	// tailscaled re-dials tailnet peers from 127.0.0.1.
+	if viaGateway(r) || middleware.HasProxyMarks(r) || middleware.LoopbackUntrusted() {
 		return false
 	}
 	return r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Site") == ""

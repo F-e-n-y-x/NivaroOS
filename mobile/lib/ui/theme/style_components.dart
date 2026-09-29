@@ -67,6 +67,35 @@ abstract final class StyleComponents {
     };
   }
 
+  /// The floating bar's selected indicator in [d]: concentric with the
+  /// bar ([FloatingNavigationBar.indicatorInset] in from its corners), so
+  /// Rack's is precise, Tonal's a pill and Console's tight and ruled by the
+  /// accent. v2 keeps the M3 pill.
+  static ShapeBorder navBarIndicator(DesignDirection d, ColorScheme s) {
+    const inset = 6.0; // FloatingNavigationBar.indicatorInset
+    final bar = navBar(d, s, black: false);
+    final outer = bar.radius.clamp(0.0, bar.height / 2);
+    if (d == DesignDirection.v2 || outer >= bar.height / 2) return const StadiumBorder();
+    final radius = BorderRadius.circular((outer - inset).clamp(2.0, outer));
+    return d == DesignDirection.console
+        ? RoundedRectangleBorder(borderRadius: radius, side: BorderSide(color: s.primary))
+        : RoundedRectangleBorder(borderRadius: radius);
+  }
+
+  /// The floating bar's indicator fill in [d]: the style's selected fill
+  /// (ink in Rack, the primary container in Console), and in Tonal and v2
+  /// the secondary container - except in light, where that container is a
+  /// step off the bar's own tone (1.1:1) and the indicator all but
+  /// vanished, so there it is the secondary colour at 24% over the bar
+  /// (about 1.4:1), still a soft tonal pill.
+  static Color navBarIndicatorColor(DesignDirection d, ColorScheme s, {required bool black}) => switch (d) {
+        DesignDirection.rack => s.onSurface,
+        DesignDirection.console => s.primaryContainer,
+        _ => s.brightness == Brightness.light
+            ? Color.alphaBlend(s.secondary.withValues(alpha: .24), navBar(d, s, black: black).color)
+            : s.secondaryContainer,
+      };
+
   /// The component themes of [d] on [base], whose [ThemeData.textTheme]
   /// carries the style's faces; [text] is that theme with real sizes.
   static ThemeData apply(ThemeData base, DesignDirection d, TextTheme text, {required bool black, required String? mono}) {
@@ -218,27 +247,34 @@ abstract final class StyleComponents {
         // bar; the others let content scroll under a clean edge.
         shape: console ? Border(bottom: hairline) : null,
       ),
+      // The floating bar (FloatingNavigationBar): one indicator behind the
+      // selected icon and its label, in the style's selected fill (ink in
+      // Rack, the secondary container in Tonal, the primary container in
+      // Console, where the accent also rules it as a line), with corners
+      // concentric with the bar's.
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: bar.color,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         height: bar.height,
-        indicatorShape: navIndicator,
-        indicatorColor: s.secondaryContainer,
+        indicatorShape: navBarIndicator(d, s),
+        indicatorColor: navBarIndicatorColor(d, s, black: black),
         labelTextStyle: WidgetStateProperty.resolveWith((st) => navLabel.copyWith(
-              color: st.contains(WidgetState.selected) ? s.onSurface : s.onSurfaceVariant,
+              color: st.contains(WidgetState.selected) ? onSelected : s.onSurfaceVariant,
               fontWeight: st.contains(WidgetState.selected) ? (tonal ? FontWeight.w700 : FontWeight.w600) : FontWeight.w500,
             )),
         iconTheme: WidgetStateProperty.resolveWith(
-            (st) => IconThemeData(color: st.contains(WidgetState.selected) ? s.onSecondaryContainer : s.onSurfaceVariant)),
+            (st) => IconThemeData(size: 24, color: st.contains(WidgetState.selected) ? onSelected : s.onSurfaceVariant)),
       ),
+      // The rail keeps the M3 layout (the label under the indicator, on the
+      // rail), in the same selected fill.
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: navBackground,
         indicatorShape: navIndicator,
-        indicatorColor: s.secondaryContainer,
+        indicatorColor: selectedFill,
         selectedLabelTextStyle: navLabel.copyWith(color: s.onSurface, fontWeight: tonal ? FontWeight.w700 : FontWeight.w600),
         unselectedLabelTextStyle: navLabel.copyWith(color: s.onSurfaceVariant, fontWeight: FontWeight.w500),
-        selectedIconTheme: IconThemeData(color: s.onSecondaryContainer),
+        selectedIconTheme: IconThemeData(color: onSelected),
         unselectedIconTheme: IconThemeData(color: s.onSurfaceVariant),
       ),
       // Symmetric padding so trailing values line up with the 16dp phone
