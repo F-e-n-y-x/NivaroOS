@@ -261,6 +261,12 @@ class FilesScreenState extends State<FilesScreen> {
     }
   }
 
+  static String? _phoneDetail(CompanionDevice d) {
+    final route = d.isOnline && d.route != CompanionRoute.lan ? d.route.label : null;
+    final parts = [if (d.model.isNotEmpty) d.model, ?route];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   Future<void> _loadPhones() async {
     List<FileLocation> phones = const [];
     FileLocation? me;
@@ -273,7 +279,8 @@ class FilesScreenState extends State<FilesScreen> {
               label: d.name,
               path: d.storagePath.isNotEmpty ? d.storagePath : '/DATA/Companion/${d.name}',
               kind: LocationKind.phone,
-              detail: d.model.isEmpty ? null : d.model,
+              // How its files travel when it's away from home (S-04).
+              detail: _phoneDetail(d),
               online: d.isOnline,
               // What the phone last reported, so an offline phone still shows it.
               usedBytes: d.totalStorageBytes > 0 ? d.usedStorageBytes : null,

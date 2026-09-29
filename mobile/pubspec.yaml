@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.9
   http: ^1.6.0
+  crypto: ^3.0.7
   # Held on 10.x for one release: 10 migrates the EncryptedSharedPreferences
   # data that 9.x wrote, and 11 removed that migration, so a user jumping
   # straight from a 9.x build to 11 would lose every stored token (plan M-38).

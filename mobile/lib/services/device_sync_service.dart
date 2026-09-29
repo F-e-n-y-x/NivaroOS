@@ -13,8 +13,11 @@ import 'package:battery_plus/battery_plus.dart';
 import 'api_client.dart';
 import 'storage_service.dart';
 import 'companion_file_server.dart';
+import 'companion_route.dart';
 import 'background_service.dart';
 import '../models/file_entry.dart';
+
+export 'companion_route.dart';
 
 // POSIX struct statvfs on 64-bit Linux / Android / iOS
 final class StatVfs64 extends Struct {
@@ -74,6 +77,9 @@ class CompanionDevice {
   final int serverStorageUsed; // bytes backed up on the server companion folder
   final DateTime? lastSeen;
   final CompanionConnection connection;
+
+  /// How files travel to the server right now (the server's `route`).
+  final CompanionRoute route;
   final Map<String, dynamic>? customProps;
 
   CompanionDevice({
@@ -93,6 +99,7 @@ class CompanionDevice {
     this.serverStorageUsed = 0,
     this.lastSeen,
     this.connection = CompanionConnection.unknown,
+    this.route = CompanionRoute.none,
     this.customProps,
   });
 
@@ -122,6 +129,9 @@ class CompanionDevice {
         'app_version': appVersion,
         'platform': platform,
         'ip': ipAddress,
+        // Every address the file server listens on (Wi-Fi, Tailscale), so
+        // the server can reach it away from home (S-04).
+        if (sharing && port != null) 'addresses': CompanionFileServer.instance.reachableAddresses,
         if (sharing && port != null) 'port': port,
         'shares_storage': sharing,
         'root_path': CompanionFileServer.defaultRootPath,
@@ -164,6 +174,7 @@ class CompanionDevice {
       serverStorageUsed: (json['server_storage_used'] as num?)?.toInt() ?? 0,
       lastSeen: DateTime.tryParse(json['last_seen'] as String? ?? json['last_active'] as String? ?? ''),
       connection: connection,
+      route: CompanionRoute.parse(json['route']),
       customProps: json['custom_props'] as Map<String, dynamic>?,
     );
   }
@@ -185,6 +196,7 @@ class CompanionDevice {
         serverStorageUsed: serverStorageUsed,
         lastSeen: lastSeen,
         connection: connection ?? this.connection,
+        route: route,
         customProps: customProps,
       );
 }

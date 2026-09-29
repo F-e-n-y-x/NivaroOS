@@ -515,9 +515,9 @@ func TestRegisterMintsTheSecret(t *testing.T) {
 	}
 }
 
-// S-04: a phone that is online but not on the server's network can be
-// listed through the tunnel but its files can't be opened - say so.
-func TestCompanionDownloadOffLANSaysWhy(t *testing.T) {
+// S-04: a phone that is online but can't be reached (no address answers,
+// no streaming tunnel) says why - no "same network" wording any more.
+func TestCompanionDownloadUnreachableSaysWhy(t *testing.T) {
 	useTempCompanionState(t)
 	companionMu.Lock()
 	companionLoaded = true
@@ -531,34 +531,30 @@ func TestCompanionDownloadOffLANSaysWhy(t *testing.T) {
 	}
 	var res struct{ Message string }
 	json.Unmarshal(rec.Body.Bytes(), &res)
-	want := "Anna's Pixel isn't on the same network as the server - open it from the phone, or when both are on the same network"
+	want := "Anna's Pixel is online but can't be reached right now - open the NivaroOS app on it and turn on file sharing"
 	if res.Message != want {
 		t.Fatalf("message %q", res.Message)
 	}
 
 	rec = companionReq(t, GetCompanionDeviceDownload, http.MethodGet, "/?path=/storage/emulated/0/a.jpg", 1, "gone", nil)
 	json.Unmarshal(rec.Body.Bytes(), &res)
-	if rec.Code != http.StatusServiceUnavailable || strings.Contains(res.Message, "isn't on the same network") {
+	if rec.Code != http.StatusServiceUnavailable || strings.Contains(res.Message, "same network") {
 		t.Fatalf("offline phone: %d %q", rec.Code, res.Message)
 	}
 }
 
-func TestCompanionDirectErr(t *testing.T) {
+func TestCompanionUnreachableErr(t *testing.T) {
 	online := &CompanionDevice{ID: "on", Name: "P", LastSeen: time.Now()}
 	offline := &CompanionDevice{ID: "off", Name: "P"}
-	dial := errors.New("dial tcp 192.168.1.5:8765: i/o timeout")
-	var nl *errCompanionNotOnLAN
-	if err := companionDirectErr(online, dial); !errors.As(err, &nl) || !errors.Is(err, dial) {
+	var ue *errCompanionUnreachable
+	if err := companionUnreachableErr(online, nil); !errors.As(err, &ue) || !strings.Contains(err.Error(), "online") {
 		t.Fatalf("online phone: %v", err)
 	}
-	if err := companionDirectErr(offline, dial); errors.As(err, &nl) {
+	if err := companionUnreachableErr(offline, nil); !strings.Contains(err.Error(), "offline") {
 		t.Fatalf("offline phone: %v", err)
 	}
-	if companionDirectErr(online, nil) != nil {
-		t.Fatal("nil error changed")
-	}
-	// Upload to a phone without a LAN address.
-	if err := ProxyCompanionUploadStream(online, "/storage/emulated/0/a", strings.NewReader("x"), 1); !errors.As(err, &nl) {
+	// Upload to a phone without any address or tunnel.
+	if err := ProxyCompanionUploadStream(online, "/storage/emulated/0/a", strings.NewReader("x"), 1); !errors.As(err, &ue) {
 		t.Fatalf("upload: %v", err)
 	}
 }

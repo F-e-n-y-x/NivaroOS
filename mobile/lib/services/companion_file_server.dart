@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
+import 'package:nivaroos_mobile/services/companion_tunnel_streams.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
 
@@ -100,16 +102,25 @@ abstract final class SharedStoragePolicy {
 /// The phone's file server for its server (plan M-20): runs only during a
 /// storage-sharing session (CompanionShareService), serves shared storage
 /// only ([SharedStoragePolicy]), requires the X-Companion-Secret the server
-/// was given at registration (compared in constant time), listens on the
-/// Wi-Fi address only, and keeps a reverse WebSocket tunnel to the server
-/// for listing when the server can't reach the phone directly. Tokens never
-/// go into a URL or a log line.
+/// was given at registration (compared in constant time), and listens on
+/// the Wi-Fi address and the phone's Tailscale addresses only (never mobile
+/// data or other VPNs), plus loopback for the tunnel. Away from home the
+/// server reaches it directly over Tailscale, or - without Tailscale -
+/// through the reverse WebSocket tunnel this keeps to the server, which
+/// carries every file request as a stream ([TunnelStreams], S-04). Tokens
+/// never go into a URL or a log line.
 class CompanionFileServer {
   CompanionFileServer._();
   static final CompanionFileServer instance = CompanionFileServer._();
 
   HttpServer? _server;
+  // The tunnel's way in: loopback, an ephemeral port (null when the main
+  // server is on loopback already, with no Wi-Fi).
+  HttpServer? _loopback;
+  final List<HttpServer> _tailnetServers = [];
+  List<String> _tailnetIps = const [];
   WebSocket? _ws;
+  TunnelStreams? _tunnelStreams;
   Timer? _reconnectTimer;
   bool _isRunning = false;
   int _port = 8765;
@@ -118,6 +129,16 @@ class CompanionFileServer {
   bool get isRunning => _isRunning;
   int get port => _port;
   String? get localIp => _localIp;
+
+  /// Every address the server may reach this file server on, best first:
+  /// the Wi-Fi address, then the Tailscale ones the server could bind.
+  List<String> get reachableAddresses => [?_localIp, ..._tailnetServers.map((s) => s.address.address)];
+
+  /// Where the tunnel replays the server's requests.
+  Uri? get _tunnelTarget {
+    final lo = _loopback ?? (_localIp == null ? _server : null);
+    return lo == null ? null : Uri(scheme: 'http', host: '127.0.0.1', port: lo.port);
+  }
   String get baseUrl => _localIp != null ? 'http://$_localIp:$_port' : 'http://127.0.0.1:$_port';
 
   static const String defaultRootPath = '/storage/emulated/0';
@@ -139,6 +160,7 @@ class CompanionFileServer {
       _server!.listen(_handleRequest, onError: (e) {
         debugPrint('[CompanionFileServer] Server error: ${e.runtimeType}');
       });
+      await _bindExtras();
 
       connectWebSocketTunnel();
     } catch (e) {
@@ -146,23 +168,94 @@ class CompanionFileServer {
     }
   }
 
+  /// The loopback listener for the tunnel and one listener per Tailscale
+  /// address (same port as the Wi-Fi one), each optional: a failure here
+  /// never stops sharing over Wi-Fi.
+  Future<void> _bindExtras() async {
+    if (_localIp != null) {
+      try {
+        _loopback = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        _loopback!.listen(_handleRequest, onError: (_) {});
+      } catch (e) {
+        debugPrint('[CompanionFileServer] Loopback listener failed: ${e.runtimeType}');
+      }
+    }
+    _tailnetIps = await detectTailnetIps();
+    for (final ip in _tailnetIps) {
+      try {
+        final s = await HttpServer.bind(InternetAddress(ip), _port);
+        s.listen(_handleRequest, onError: (_) {});
+        _tailnetServers.add(s);
+      } catch (e) {
+        debugPrint('[CompanionFileServer] Tailscale listener failed: ${e.runtimeType}');
+      }
+    }
+    if (_tailnetServers.isNotEmpty) debugPrint('[CompanionFileServer] Also reachable over Tailscale');
+  }
+
+  /// Tailscale's addresses on this phone (100.64.0.0/10 and
+  /// fd7a:115c:a1e0::/48), when Tailscale is connected.
+  static Future<List<String>> detectTailnetIps() async {
+    try {
+      final interfaces = await NetworkInterface.list(includeLinkLocal: false, includeLoopback: false);
+      return [
+        for (final iface in interfaces)
+          for (final addr in iface.addresses)
+            if (isTailnetAddress(addr.address)) addr.address,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Tailscale's CGNAT range (100.64.0.0/10) or its IPv6 ULA prefix.
+  @visibleForTesting
+  static bool isTailnetAddress(String ip) {
+    final a = InternetAddress.tryParse(ip);
+    if (a == null) return false;
+    final b = a.rawAddress;
+    if (a.type == InternetAddressType.IPv4) return b[0] == 100 && (b[1] & 0xC0) == 64;
+    if (a.type == InternetAddressType.IPv6) {
+      return b[0] == 0xfd && b[1] == 0x7a && b[2] == 0x11 && b[3] == 0x5c && b[4] == 0xa1 && b[5] == 0xe0;
+    }
+    return false;
+  }
+
+  /// The answer to the server's /hello: proof that this phone holds the
+  /// secret for [deviceId], without sending the secret (see the server's
+  /// companionHelloProof).
+  @visibleForTesting
+  static String helloProof(String secret, String deviceId, String nonce) =>
+      Hmac(sha256, utf8.encode(secret)).convert(utf8.encode('nivaroos-companion-hello\n$deviceId\n$nonce')).toString();
+
   Future<void> stop() async {
     _isRunning = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _tunnelStreams?.closeAll();
+    _tunnelStreams = null;
     await _ws?.close();
     _ws = null;
     await _server?.close(force: true);
     _server = null;
+    await _loopback?.close(force: true);
+    _loopback = null;
+    for (final s in _tailnetServers) {
+      await s.close(force: true);
+    }
+    _tailnetServers.clear();
+    _tailnetIps = const [];
     debugPrint('[CompanionFileServer] Server stopped');
   }
 
-  /// Restarts the listener when the phone's Wi-Fi address changed (a new
-  /// network, a new lease) during a session.
+  /// Restarts the listeners when the phone's Wi-Fi address changed (a new
+  /// network, a new lease) or Tailscale came up or went down during a
+  /// session.
   Future<void> refreshAddress() async {
     if (!_isRunning) return;
     final ip = await _detectLocalIp();
-    if (ip == _localIp) return;
+    final tailnet = await detectTailnetIps();
+    if (ip == _localIp && listEquals(tailnet, _tailnetIps)) return;
     await stop();
     await start(port: _port);
   }
@@ -253,6 +346,10 @@ class CompanionFileServer {
         await _reply(req, HttpStatus.ok, {'success': true, 'shares_storage': true});
         return;
       }
+      if (path == '/hello') {
+        await _handleHello(req);
+        return;
+      }
       if (!await _checkAuth(req)) return;
       switch (path) {
         case '/files':
@@ -276,6 +373,20 @@ class CompanionFileServer {
         await _reply(req, HttpStatus.internalServerError, {'success': false, 'message': 'The phone could not complete the request'});
       } catch (_) {}
     }
+  }
+
+  /// The server checks an address really is this phone before sending the
+  /// secret to it: it sends a fresh nonce, this answers an HMAC of it with
+  /// the secret. Unauthenticated by design; reveals nothing reusable.
+  Future<void> _handleHello(HttpRequest req) async {
+    final nonce = req.uri.queryParameters['nonce'] ?? '';
+    final secret = await StorageService.instance.getCompanionSecret();
+    final id = await StorageService.instance.getCompanionDeviceId();
+    if (nonce.length < 16 || nonce.length > 128 || secret == null || secret.isEmpty || id == null || id.isEmpty) {
+      await _reply(req, HttpStatus.serviceUnavailable, {'success': false});
+      return;
+    }
+    await _reply(req, HttpStatus.ok, {'success': true, 'id': id, 'proof': helloProof(secret, id, nonce)});
   }
 
   static List<Map<String, dynamic>> _listDir(Directory dir) {
@@ -611,23 +722,40 @@ class CompanionFileServer {
       final ws = await WebSocket.connect(wsUri.toString(), headers: headers).timeout(const Duration(seconds: 10));
       ws.pingInterval = const Duration(seconds: 15);
       _ws = ws;
+      final streams = TunnelStreams(
+        send: (m) {
+          if (identical(_ws, ws)) ws.add(m);
+        },
+        localBase: () => _tunnelTarget,
+        secret: StorageService.instance.getCompanionSecret,
+      );
+      _tunnelStreams = streams;
+
+      void closed() {
+        streams.closeAll();
+        if (identical(_tunnelStreams, streams)) _tunnelStreams = null;
+        if (identical(_ws, ws)) {
+          _ws = null;
+          _scheduleReconnect();
+        }
+      }
 
       ws.listen(_handleWebSocketMessage, onDone: () {
         debugPrint('[CompanionFileServer] Tunnel closed (${ws.closeCode ?? '-'})');
-        _ws = null;
-        _scheduleReconnect();
+        closed();
       }, onError: (e) {
         debugPrint('[CompanionFileServer] Tunnel error: ${e.runtimeType}');
-        _ws = null;
-        _scheduleReconnect();
+        closed();
       });
 
       ws.add(jsonEncode({
         'action': 'register',
         'port': _port,
         'ip': _localIp,
+        'addresses': reachableAddresses,
         'shares_storage': true,
         'root': defaultRootPath,
+        ...streams.registerFields,
       }));
     } catch (e) {
       debugPrint('[CompanionFileServer] Tunnel connection failed: ${e.runtimeType}');
@@ -645,9 +773,14 @@ class CompanionFileServer {
   }
 
   void _handleWebSocketMessage(dynamic message) {
+    if (message is List<int>) {
+      _tunnelStreams?.handleFrame(message);
+      return;
+    }
     if (message is! String) return;
     try {
       final data = jsonDecode(message) as Map<String, dynamic>;
+      if (_tunnelStreams?.handleText(data) ?? false) return;
       final reqId = data['id'];
       final action = data['action'];
       if (data['type'] == 'removed') {
