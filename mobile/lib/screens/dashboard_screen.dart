@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../models/dashboard_stats.dart';
 import '../models/gpu_stats.dart';
+import 'fans/fans_screen.dart';
 import '../services/api_client.dart';
 import '../services/background_service.dart';
 import '../services/tailscale_service.dart';
@@ -521,12 +522,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _detailsOpen--;
   }
 
-  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
+  void _openCpu() => _openDetail(CpuDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history, onOpenFans: _openFans));
   void _openMemory() => _openDetail(MemoryDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
   void _freeMemory() => showFreeMemorySheet(context, swapUsed: _c.live.value?.stats.swapUsed ?? 0, onDone: _c.refreshLive);
   void _openStorage() => _openDetail(StorageDetailScreen(live: _c.live, onRetry: _c.refreshLive, onOpenFiles: widget.onOpenFiles));
   void _openNetwork() => _openDetail(NetworkDetailScreen(live: _c.live, onRetry: _c.refreshLive, history: _c.history));
-  void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history));
+  void _openGpu() => _openDetail(GpuDetailScreen(gpu: _c.gpu, history: _c.history, onOpenFans: _openFans));
+  void _openFans() => _openDetail(const FansScreen());
 
   Future<void> _openConsole(Vm vm) async {
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => VmConsoleScreen(vmName: vm.name, client: _c.vmClient)));
@@ -557,7 +559,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     onOpenFiles: widget.onOpenFiles,
   );
 
-  void _openHealth() => _openDetail(ServerHealthScreen(controller: _c, actions: _actions));
+  void _openHealth() => _openDetail(ServerHealthScreen(controller: _c, actions: _actions, onOpenFans: _openFans));
 
   Future<void> _power(String state) => confirmServerPower(context, restart: state == 'restart');
 

@@ -1,0 +1,49 @@
+{
+  "controllable": false,
+  "emergency": false,
+  "critical_cpu_c": 85,
+  "critical_gpu_c": 83,
+  "limits": {
+    "min_pct": 20,
+    "min_critical_c": 60,
+    "max_critical_cpu_c": 95,
+    "max_critical_gpu_c": 90,
+    "max_points": 8,
+    "min_points": 2,
+    "min_temp_c": 20,
+    "max_temp_c": 100,
+    "max_hysteresis_c": 10
+  },
+  "preset": "auto",
+  "presets": [
+    "auto",
+    "quiet",
+    "balanced",
+    "performance"
+  ],
+  "fans": [],
+  "temps": [
+    {
+      "id": "cpu",
+      "label": "CPU",
+      "c": 44.5,
+      "critical_c": 85,
+      "hot": false,
+      "detail": "coretemp Package id 0"
+    }
+  ],
+  "sources": [
+    {
+      "id": "cpu",
+      "label": "CPU"
+    }
+  ],
+  "notes": [
+    {
+      "level": "warn",
+      "code": "acpi_conflict",
+      "message": "The motherboard's firmware (ACPI) reserves the fan controller (it87 driver), so Linux won't drive it and motherboard fans are read-only (the BIOS keeps controlling them).",
+      "guidance": "Advanced, at your own risk: adding acpi_enforce_resources=lax to the kernel command line (GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then update-grub and a reboot) lets the driver use the chip anyway. The firmware may be using the chip too, so readings or control can misbehave. NivaroOS never changes the kernel command line for you."
+    }
+  ]
+}

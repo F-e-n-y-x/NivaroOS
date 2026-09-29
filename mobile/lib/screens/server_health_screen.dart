@@ -184,9 +184,12 @@ class AttentionTile extends StatelessWidget {
 /// refresh checks everything again. Offline, it keeps the last answer with
 /// its age.
 class ServerHealthScreen extends StatefulWidget {
-  const ServerHealthScreen({super.key, required this.controller, this.actions});
+  const ServerHealthScreen({super.key, required this.controller, this.actions, this.onOpenFans});
 
   final HomeController controller;
+
+  /// Opens the Fans page; null leaves the Cooling group out.
+  final VoidCallback? onOpenFans;
 
   /// Where the rows go; Home passes its own so detail screens keep its
   /// polling. Null: plain pushes.
@@ -261,6 +264,7 @@ class _ServerHealthScreenState extends State<ServerHealthScreen> {
             ),
           if (health.unchecked.isNotEmpty)
             TileGroup(title: 'Not checked', children: [for (final c in health.unchecked) _CheckTile(check: c, ok: false)]),
+          if (widget.onOpenFans != null) TileGroup(title: 'Cooling', children: [FansRow(onTap: widget.onOpenFans!)]),
           const SizedBox(height: Space.lg),
         ]),
       ];

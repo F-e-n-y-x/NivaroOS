@@ -59,8 +59,10 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeErr: "error" for the web client, "message" for the app's
+// ApiClient (which reads every NivaroOS service's message field).
 func writeErr(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	writeJSON(w, status, map[string]string{"error": msg, "message": msg})
 }
 
 func (a *api) handler() http.Handler {

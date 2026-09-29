@@ -1,0 +1,321 @@
+{
+  "controllable": true,
+  "emergency": true,
+  "critical_cpu_c": 85,
+  "critical_gpu_c": 83,
+  "limits": {
+    "min_pct": 20,
+    "min_critical_c": 60,
+    "max_critical_cpu_c": 95,
+    "max_critical_gpu_c": 90,
+    "max_points": 8,
+    "min_points": 2,
+    "min_temp_c": 20,
+    "max_temp_c": 100,
+    "max_hysteresis_c": 10
+  },
+  "preset": "custom",
+  "presets": [
+    "auto",
+    "quiet",
+    "balanced",
+    "performance"
+  ],
+  "fans": [
+    {
+      "id": "hw-nct6793-nct6775-656-pwm1",
+      "label": "Rear case",
+      "default_label": "Fan header 1",
+      "kind": "hwmon",
+      "class": "motherboard",
+      "chip": "nct6793",
+      "channel": "pwm1",
+      "rpm": 1900,
+      "pct": 100,
+      "mode": "fixed",
+      "state": "emergency",
+      "fixed_pct": 45,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 40
+        },
+        {
+          "t": 65,
+          "p": 55
+        },
+        {
+          "t": 75,
+          "p": 80
+        },
+        {
+          "t": 82,
+          "p": 100
+        }
+      ],
+      "source": "cpu",
+      "min_pct": 20,
+      "floor_pct": 20,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": true,
+      "tach": "fan1",
+      "can_identify": true
+    },
+    {
+      "id": "hw-nct6793-nct6775-656-pwm2",
+      "label": "CPU fan",
+      "default_label": "Fan header 2",
+      "kind": "hwmon",
+      "class": "motherboard",
+      "chip": "nct6793",
+      "channel": "pwm2",
+      "rpm": 2400,
+      "pct": 100,
+      "mode": "curve",
+      "state": "emergency",
+      "fixed_pct": 100,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 40
+        },
+        {
+          "t": 65,
+          "p": 55
+        },
+        {
+          "t": 75,
+          "p": 80
+        },
+        {
+          "t": 82,
+          "p": 100
+        }
+      ],
+      "source": "cpu",
+      "min_pct": 20,
+      "floor_pct": 20,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": true,
+      "tach": "fan2",
+      "can_identify": true
+    },
+    {
+      "id": "hw-nct6793-nct6775-656-pwm3",
+      "label": "Fan header 3",
+      "default_label": "Fan header 3",
+      "kind": "hwmon",
+      "class": "motherboard",
+      "chip": "nct6793",
+      "channel": "pwm3",
+      "rpm": 0,
+      "pct": 50,
+      "mode": "auto",
+      "state": "auto",
+      "fixed_pct": 70,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 40
+        },
+        {
+          "t": 65,
+          "p": 55
+        },
+        {
+          "t": 75,
+          "p": 80
+        },
+        {
+          "t": 82,
+          "p": 100
+        }
+      ],
+      "source": "cpu",
+      "min_pct": 20,
+      "floor_pct": 20,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": false,
+      "tach": "fan3",
+      "can_identify": true
+    },
+    {
+      "id": "hw-nct6793-nct6775-656-pwm4",
+      "label": "Fan header 4",
+      "default_label": "Fan header 4",
+      "kind": "hwmon",
+      "class": "motherboard",
+      "chip": "nct6793",
+      "channel": "pwm4",
+      "rpm": 0,
+      "pct": 50,
+      "mode": "auto",
+      "state": "auto",
+      "fixed_pct": 50,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 40
+        },
+        {
+          "t": 65,
+          "p": 55
+        },
+        {
+          "t": 75,
+          "p": 80
+        },
+        {
+          "t": 82,
+          "p": 100
+        }
+      ],
+      "source": "cpu",
+      "min_pct": 20,
+      "floor_pct": 20,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": false,
+      "tach": "fan4",
+      "can_identify": true
+    },
+    {
+      "id": "hw-nct6793-nct6775-656-pwm5",
+      "label": "Fan header 5",
+      "default_label": "Fan header 5",
+      "kind": "hwmon",
+      "class": "motherboard",
+      "chip": "nct6793",
+      "channel": "pwm5",
+      "rpm": 0,
+      "pct": 50,
+      "mode": "auto",
+      "state": "auto",
+      "fixed_pct": 50,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 40
+        },
+        {
+          "t": 65,
+          "p": 55
+        },
+        {
+          "t": 75,
+          "p": 80
+        },
+        {
+          "t": 82,
+          "p": 100
+        }
+      ],
+      "source": "cpu",
+      "min_pct": 20,
+      "floor_pct": 20,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": false,
+      "tach": "fan5",
+      "can_identify": true
+    },
+    {
+      "id": "nv-gpu-00000000-0000-0000-0000-000000001080-fan0",
+      "label": "NVIDIA GeForce GTX 1080 Ti fan",
+      "default_label": "NVIDIA GeForce GTX 1080 Ti fan",
+      "kind": "nvidia",
+      "class": "gpu",
+      "chip": "NVIDIA GeForce GTX 1080 Ti",
+      "channel": "fan0",
+      "rpm": null,
+      "pct": 27,
+      "mode": "auto",
+      "state": "auto",
+      "fixed_pct": 40,
+      "curve": [
+        {
+          "t": 40,
+          "p": 30
+        },
+        {
+          "t": 55,
+          "p": 45
+        },
+        {
+          "t": 65,
+          "p": 60
+        },
+        {
+          "t": 74,
+          "p": 80
+        },
+        {
+          "t": 80,
+          "p": 100
+        }
+      ],
+      "source": "gpu:nv-gpu-00000000-0000-0000-0000-000000001080",
+      "min_pct": 23,
+      "floor_pct": 23,
+      "hysteresis_c": 3,
+      "controllable": true,
+      "has_tach": false,
+      "can_identify": false
+    }
+  ],
+  "temps": [
+    {
+      "id": "cpu",
+      "label": "CPU",
+      "c": 86.2,
+      "critical_c": 85,
+      "hot": true,
+      "detail": "k10temp Tctl"
+    },
+    {
+      "id": "gpu:nv-gpu-00000000-0000-0000-0000-000000001080",
+      "label": "NVIDIA GeForce GTX 1080 Ti",
+      "c": 47.0,
+      "critical_c": 83,
+      "hot": false
+    }
+  ],
+  "sources": [
+    {
+      "id": "cpu",
+      "label": "CPU"
+    },
+    {
+      "id": "gpu:nv-gpu-00000000-0000-0000-0000-000000001080",
+      "label": "NVIDIA GeForce GTX 1080 Ti"
+    },
+    {
+      "id": "max",
+      "label": "Hottest of CPU and GPU"
+    }
+  ],
+  "notes": []
+}

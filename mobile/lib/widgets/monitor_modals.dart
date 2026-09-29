@@ -364,6 +364,23 @@ class UsageTile extends StatelessWidget {
   }
 }
 
+/// "Fans ›" on the Processor and Graphics pages (the Fans page is
+/// screens/fans/fans_screen.dart).
+class FansRow extends StatelessWidget {
+  const FansRow({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: const Icon(Icons.air_outlined),
+    title: const Text('Fans'),
+    subtitle: const Text('Speeds, profiles and fan curves'),
+    trailing: ExcludeSemantics(child: Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    onTap: onTap,
+  );
+}
+
 /// A fact as a settings-style row: what it is, and its value under it.
 class FactTile extends StatelessWidget {
   const FactTile({super.key, required this.icon, required this.label, required this.value});
@@ -413,10 +430,13 @@ String _cores(DashboardStats s) {
 
 /// Processor: load, model, cores, clock, temperature, and each thread.
 class CpuDetailScreen extends StatelessWidget {
-  const CpuDetailScreen({super.key, required this.live, required this.onRetry, this.history});
+  const CpuDetailScreen({super.key, required this.live, required this.onRetry, this.history, this.onOpenFans});
 
   final ValueListenable<LiveStats?> live;
   final VoidCallback onRetry;
+
+  /// Opens the Fans page; null leaves the row out.
+  final VoidCallback? onOpenFans;
 
   /// Home's readings so far, for the chart; null leaves the chart out.
   final LiveHistory? history;
@@ -470,6 +490,7 @@ class CpuDetailScreen extends StatelessWidget {
                 unit: s.cpuTemperature == null ? null : '°C',
                 supporting: s.cpuTemperature == null ? 'No temperature sensor found' : null,
               ),
+              if (onOpenFans != null) FansRow(onTap: onOpenFans!),
             ],
           ),
           if (s.cpuPerCore.isNotEmpty)
@@ -890,10 +911,13 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
 /// Graphics: the GPU's load, video memory, temperature and power, and what
 /// is using it - the facts the web UI's GPU widget shows.
 class GpuDetailScreen extends StatelessWidget {
-  const GpuDetailScreen({super.key, required this.gpu, this.history});
+  const GpuDetailScreen({super.key, required this.gpu, this.history, this.onOpenFans});
 
   final ValueListenable<GpuStats?> gpu;
   final LiveHistory? history;
+
+  /// Opens the Fans page; null leaves the row out.
+  final VoidCallback? onOpenFans;
 
   @override
   Widget build(BuildContext context) {
@@ -940,6 +964,7 @@ class GpuDetailScreen extends StatelessWidget {
                         supporting: g.powerLimitW == null ? null : 'Limit ${g.powerLimitW!.toStringAsFixed(0)} W',
                       ),
                       if (g.driverVersion.isNotEmpty) FactTile(icon: Icons.extension_outlined, label: 'Driver', value: g.driverVersion),
+                      if (onOpenFans != null) FansRow(onTap: onOpenFans!),
                     ],
                   ),
                   TileGroup(
