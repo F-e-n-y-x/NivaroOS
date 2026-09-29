@@ -20,6 +20,11 @@ import (
 	"github.com/rclone/rclone/fs/config"
 )
 
+// Progress, when set, is called while a cache is copied between
+// filesystems, so a long first move (gigabytes out of /tmp) can keep the
+// service's start from timing out.
+var Progress func()
+
 // Dir is where cloud mounts cache: on disk, one place for every mount.
 const Dir = "/var/cache/nivaroos/rclone"
 
@@ -117,6 +122,9 @@ func copyTree(src, dst string) error {
 		case info.IsDir():
 			return os.MkdirAll(target, 0o700)
 		case info.Mode().IsRegular():
+			if Progress != nil {
+				Progress()
+			}
 			return copyFile(p, target, info)
 		default:
 			return nil // rclone keeps only files and dirs here
@@ -134,7 +142,7 @@ func copyFile(src, dst string, info os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	if _, err := io.Copy(out, progressReader{in}); err != nil {
 		out.Close()
 		return err
 	}
@@ -146,4 +154,19 @@ func copyFile(src, dst string, info os.FileInfo) error {
 		return err
 	}
 	return os.Chtimes(dst, info.ModTime(), info.ModTime())
+}
+
+// progressReader calls Progress about every 256 MiB copied.
+type progressReader struct{ r io.Reader }
+
+var sinceProgress int64
+
+func (p progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	sinceProgress += int64(n)
+	if sinceProgress >= 256<<20 && Progress != nil {
+		sinceProgress = 0
+		Progress()
+	}
+	return n, err
 }

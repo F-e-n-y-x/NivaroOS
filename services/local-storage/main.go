@@ -105,6 +105,9 @@ func init() {
 	service.MountLists = make(map[string]*mountlib.MountPoint)
 	configfile.Install()
 	// Cloud mounts cache on disk, not in /tmp (RAM on most installs).
+	// Moving a big cache off tmpfs the first time can take minutes; keep
+	// systemd's start timeout from killing the service meanwhile.
+	vfscachedir.Progress = func() { _, _ = daemon.SdNotify(false, "EXTEND_TIMEOUT_USEC=120000000") }
 	if moved, err := vfscachedir.Setup(vfscachedir.Dir, vfscachedir.Legacy()); err != nil {
 		logger.Error("cloud cache: couldn't move to disk; mounts keep the old cache place", zap.Error(err), zap.Strings("moved", moved))
 	} else if len(moved) > 0 {
