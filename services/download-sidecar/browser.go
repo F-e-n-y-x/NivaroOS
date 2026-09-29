@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -650,21 +651,55 @@ func (b *Browser) proxy(w http.ResponseWriter, r *http.Request, s *BrowserSessio
 		out := b.rewriteHTML(s, resp.Request.URL, raw, isNavigation(dest), adblockOn)
 		h.Set("Content-Length", strconv.Itoa(len(out)))
 		h.Set("Cache-Control", "no-store")
+		body, done := gzipBody(w, r, mediaType)
 		w.WriteHeader(resp.StatusCode)
-		w.Write(out)
+		body.Write(out)
+		done()
 	case mediaType == "text/css":
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 		out := rewriteCSS(string(raw), func(u string) string { return s.rewriteURL(resp.Request.URL, u) })
 		h.Set("Content-Length", strconv.Itoa(len(out)))
+		body, done := gzipBody(w, r, mediaType)
 		w.WriteHeader(resp.StatusCode)
-		io.WriteString(w, out)
+		io.WriteString(body, out)
+		done()
 	default:
 		if resp.ContentLength >= 0 && !resp.Uncompressed {
 			h.Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 		}
+		body, done := gzipBody(w, r, mediaType)
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		io.Copy(body, resp.Body)
+		done()
 	}
+}
+
+// gzipBody compresses a text response for the browser. Upstream bodies
+// arrive decompressed (the transport negotiates its own encoding), so
+// without this every page, script and stylesheet crossed the network 3-5x
+// larger than the site sent it - the main reason Lite mode loaded slowly.
+// Headers must not have been written yet; done() finishes the stream.
+func gzipBody(w http.ResponseWriter, r *http.Request, mediaType string) (io.Writer, func()) {
+	h := w.Header()
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || h.Get("Content-Encoding") != "" || !compressibleType(mediaType) || r.Method == http.MethodHead {
+		return w, func() {}
+	}
+	h.Del("Content-Length")
+	h.Set("Content-Encoding", "gzip")
+	h.Add("Vary", "Accept-Encoding")
+	gz, _ := gzip.NewWriterLevel(w, 5)
+	return gz, func() { _ = gz.Close() }
+}
+
+func compressibleType(mt string) bool {
+	switch {
+	case strings.HasPrefix(mt, "text/"):
+		return true
+	case mt == "application/javascript", mt == "application/x-javascript", mt == "application/json", mt == "application/manifest+json",
+		mt == "image/svg+xml", mt == "application/xml", mt == "application/xhtml+xml", mt == "application/wasm", strings.HasSuffix(mt, "+json"):
+		return true
+	}
+	return false
 }
 
 var inlineTypes = []string{"text/", "image/", "application/json", "application/javascript", "application/x-javascript",

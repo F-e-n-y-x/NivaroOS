@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -212,5 +213,52 @@ func TestDriveWarningPageIsCapturedDirectly(t *testing.T) {
 		if !strings.Contains(c.URL, "confirm=t") || !strings.Contains(c.URL, "id=X") {
 			t.Errorf("capture url %s", c.URL)
 		}
+	}
+}
+
+func TestProxyCompressesTextForTheBrowser(t *testing.T) {
+	big := strings.Repeat("<p>hello lite browser</p>", 400)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html")
+			io.WriteString(w, "<!doctype html><html><body>"+big+"</body></html>")
+		case "/app.js":
+			w.Header().Set("Content-Type", "application/javascript")
+			io.WriteString(w, strings.Repeat("console.log(1);", 500))
+		case "/img.png":
+			w.Header().Set("Content-Type", "image/png")
+			w.Write([]byte("\x89PNG....."))
+		}
+	}))
+	defer upstream.Close()
+	_, s, h := testBrowser(t, "")
+	u, _ := url.Parse(upstream.URL)
+	get := func(path string) *httptest.ResponseRecorder {
+		pu, _ := url.Parse(upstream.URL + path)
+		req := httptest.NewRequest("GET", s.proxyPath(pu), nil)
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		req.Header.Set("Sec-Fetch-Dest", "iframe")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	_ = u
+	for _, p := range []string{"/", "/app.js"} {
+		rec := get(p)
+		if rec.Header().Get("Content-Encoding") != "gzip" {
+			t.Fatalf("%s not compressed: %v", p, rec.Header())
+		}
+		zr, err := gzip.NewReader(rec.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plain, _ := io.ReadAll(zr)
+		if len(plain) < 5000 || rec.Body.Len() > len(plain)/4 {
+			t.Errorf("%s: %d compressed vs %d plain", p, rec.Body.Len(), len(plain))
+		}
+	}
+	if rec := get("/img.png"); rec.Header().Get("Content-Encoding") != "" {
+		t.Error("images must not be recompressed")
 	}
 }

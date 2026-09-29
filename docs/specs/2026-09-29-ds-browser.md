@@ -1,6 +1,6 @@
 # Download Station browser v2: a real browser on the server
 
-Status: design, not built yet (2026-09-29). Replaces the rewriting proxy as the
+Status: built (2026-09-29; see "Built" at the end). Replaces the rewriting proxy as the
 default Download Station browser. The proxy stays in the product as "Lite mode".
 
 What the owner asked for:
@@ -613,3 +613,64 @@ to WP4 only, since it reuses the viewport component.
   its RAM is back to 0. When the window reopens, the tabs are restored.
 - TeraBox: signing in with the browser and pressing Connect gives a mounted
   account with no copy-paste. "Sign in again" fixes an expired account.
+
+## 13. Built (2026-09-29)
+
+What shipped, and where it differs from the plan above:
+
+- **Host** (`services/download-sidecar/cdp.go`, `rb_host.go`, `rb_instance.go`,
+  `rb_viewer.go`, `rb_egress.go`, `rb_signin.go`, `rb_proto.go`): as designed.
+  Differences found while building:
+  - Chromium writes an unpacked extension's indexed DNR rules into the
+    extension folder, so the host copies the vendored uBO Lite into its own
+    state dir (`/var/lib/nivaroos/ds-browser/ubol`) and loads it from there.
+  - `navigator.webdriver` is true under the pipe unless
+    `--disable-blink-features=AutomationControlled` is passed; it is.
+  - A tab in the background of a headless window stops painting, so every
+    tab gets its own window (`newWindow`), and a shown tab is brought to front.
+  - A running screencast keeps its size/quality: changing either restarts it.
+  - Headless Chromium does not always report title changes: titles are read
+    from the page (load, DOMContentLoaded, and every 2 s for shown tabs).
+  - uBO Lite's global switch and trusted sites are set through its own
+    `setFilteringModeDetails` message from one of its extension pages
+    (`none` for trusted sites / everything when off, `optimal` otherwise).
+  - The Go engine gets the lists and My filters pushed from the sidecar
+    (`PUT /adblock`, only when their hash changed) - the browser user can't
+    read Download Station's state.
+- **Sidecar** (`rb_sidecar.go`): `/rb/status`, `/rb/ws`, `/rb/typed`,
+  `/rb/profile`, `/rb/cookies/export`, `/rb/upload/{id}`,
+  `/rb/staged/{guid}/save`, `/rb/install`, and `rb_capture` on `POST
+  /downloads` and `/probe`. Uploads come from the user's computer (a file
+  input in the UI), not the NivaroOS file picker.
+- **UI** (`ui/src/apps/download-station/rb/`, `DsBrowser.vue`): as §6, plus
+  history suggestions in the address bar and a start page with recent
+  sites. Lite mode (`DsLiteBrowser.vue`) got gzip for text responses only.
+- **TeraBox (web)**: Online Accounts > TeraBox > "Sign in with the browser",
+  and "Sign in again" on a connected account (`RbSigninWindow.vue`).
+- **Installer**: `services/download-sidecar/build/scripts/install-ds-browser.sh`,
+  run by `install_download_station` on every install/update
+  (`--without-ds-browser` skips it) and by `nivaroos-ds-browser-install.service`
+  (the "Install full browser" button). uBO Lite 2026.926.2202 and Chrome
+  for Testing 154.0.8037.57 are pinned by sha256.
+
+Measured on this box after deploy (loopback, warm browser, 1064x710,
+cache on): example.com 0.29 s, en.wikipedia.org/wiki/Linux 0.8-2.5 s,
+google.com 1.2 s (10 blocked), youtube.com 1.3-2.1 s, github.com 1.4-1.9 s,
+bbc.com/news 1.3 s (17 blocked), cnn.com 1.7 s (25 blocked). Wikipedia's
+first screen arrives as ~440 KB of pictures; scrolling runs at ~20 fps.
+Cold start (service not running) to first picture: about 2 s. A right-click
+menu appears in about 50 ms; a download link reaches Add Download in under
+1 s with the tab's cookies.
+
+Google search from this box's IP still answers with a reCAPTCHA page
+("unusual traffic from your computer network") after a day of automated
+tests - unlike the proxy's dead end, that page is a normal captcha the user
+can solve in the real browser.
+
+Not built yet:
+- WP8, the Android WebView sign-in for TeraBox (the web flow covers phones
+  through the web UI too).
+- The rest of WP9 for Lite mode: a stable per-user proxy prefix (cache),
+  `allow-popups` as DS tabs and a proxied right-click menu.
+- Blocked counts from the egress proxy's own refusals (only Chromium's
+  "blocked by client" failures are counted), and the per-tab audible icon.
