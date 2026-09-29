@@ -47,6 +47,9 @@ type addBody struct {
 	// round-trip through the UI.
 	CaptureSession string `json:"capture_session"`
 	CaptureID      string `json:"capture_id"`
+	// Set when the download came from the full browser (rb_*.go): the
+	// cookies/Referer/UA it recorded are fetched from the browser service.
+	RBCapture string `json:"rb_capture"`
 }
 
 func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblocker, br *Browser, hist *History) {
@@ -110,6 +113,12 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 			return
 		}
 		req := body.AddRequest
+		if body.RBCapture != "" && rbCaptureLookup != nil {
+			if err := applyRBCapture(r, body.RBCapture, &req); err != nil {
+				writeErr(w, 400, err)
+				return
+			}
+		}
 		if body.CaptureSession != "" && body.CaptureID != "" {
 			if s := br.Session(body.CaptureSession); s != nil {
 				if c, ok := s.Capture(body.CaptureID); ok {
@@ -208,10 +217,19 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 			Headers        map[string]string `json:"headers"`
 			CaptureSession string            `json:"capture_session"`
 			CaptureID      string            `json:"capture_id"`
+			RBCapture      string            `json:"rb_capture"`
 		}
 		if err := readJSON(r, &body); err != nil {
 			writeErr(w, 400, err)
 			return
+		}
+		if body.RBCapture != "" && rbCaptureLookup != nil {
+			req := AddRequest{URL: body.URL}
+			if err := applyRBCapture(r, body.RBCapture, &req); err != nil {
+				writeErr(w, 400, err)
+				return
+			}
+			body.Headers = req.Headers
 		}
 		if body.CaptureSession != "" {
 			if s := br.Session(body.CaptureSession); s != nil {

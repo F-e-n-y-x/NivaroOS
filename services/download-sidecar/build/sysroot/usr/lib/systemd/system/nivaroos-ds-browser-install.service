@@ -1,0 +1,11 @@
+[Unit]
+Description=NivaroOS - install or repair the Download Station browser
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Started by Download Station's "Install full browser" button; the same
+# step installer/install.sh runs on every install and update.
+Type=oneshot
+ExecStart=/usr/share/nivaroos/ds-browser/src/services/download-sidecar/build/scripts/install-ds-browser.sh --src /usr/share/nivaroos/ds-browser/src
+TimeoutStartSec=30min

@@ -24,11 +24,19 @@ const version = "1.0.0"
 var serverCtx context.Context
 
 func main() {
+	// The Download Station browser runs from this same binary, in its own
+	// unit and as its own user (see rb_host.go).
+	if len(os.Args) > 1 && os.Args[1] == "browser-host" {
+		runBrowserHost(os.Args[2:])
+		return
+	}
 	addr := flag.String("addr", ":28642", "address to listen on")
 	dataDir := flag.String("data-dir", "/var/lib/nivaroos/download-station", "where download state, settings and filter lists are kept")
 	defaultDir := flag.String("download-dir", "/DATA/Downloads", "default folder new downloads are saved to")
 	runtimePath := flag.String("runtime-path", "/var/run/nivaroos", "NivaroOS runtime directory (for locating user-service's JWKS endpoint)")
 	storageRoots := flag.String("storage-roots", "/DATA,/media,/mnt", "comma-separated folders downloads may be saved under (mounted data drives are added automatically)")
+	browserSocket := flag.String("browser-socket", rbDefaultSocket, "socket of the Download Station browser service (nivaroos-ds-browser)")
+	browserStaging := flag.String("browser-staging", rbDefaultState+"/staging", "where that browser leaves downloads only it could fetch")
 	flag.Parse()
 	pathPolicy.SetBase(strings.Split(*storageRoots, ","))
 
@@ -45,9 +53,11 @@ func main() {
 	adblock := NewAdblocker(*dataDir, settings, transport)
 	browser := NewBrowser(transport, adblock, settings)
 	history := NewHistory(*dataDir)
+	rb := newRBClient(*browserSocket, *browserStaging, adblock, settings)
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, manager, settings, adblock, browser, history)
+	registerRBRoutes(mux, rb, manager)
 
 	manager.Start(ctx)
 	adblock.Start(ctx)

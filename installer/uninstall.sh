@@ -13,7 +13,7 @@ set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
@@ -523,6 +523,9 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-download-sidecar.service \
+			/usr/lib/systemd/system/nivaroos-ds-browser.socket \
+			/usr/lib/systemd/system/nivaroos-ds-browser.service \
+			/usr/lib/systemd/system/nivaroos-ds-browser-install.service \
 			/usr/lib/systemd/system/nivaroos-backup.service \
 			/usr/lib/systemd/system/nivaroos-host-desktop.service \
 			/usr/lib/systemd/system/rclone.service \
@@ -533,6 +536,35 @@ remove_unit_files() {
 			/etc/systemd/system/docker.service.d/override.conf
 		systemctl daemon-reload
 		udevadm control --reload-rules >/dev/null 2>&1 || true
+	"
+}
+
+# The Download Station browser: its user, and the Chromium/Chrome package
+# only if install-ds-browser.sh installed it (a browser the box already had
+# stays). Runs before remove_binaries deletes the record of that.
+remove_ds_browser() {
+	run_step "Removing the Download Station browser" "
+		rec=/usr/share/nivaroos/ds-browser/installed.txt
+		if [ -f \"\$rec\" ]; then
+			while IFS= read -r line; do
+				case \"\$line\" in
+					package:*)
+						pkg=\"\${line#package:}\"
+						if command -v apt-get >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get remove -y \"\$pkg\" >/dev/null 2>&1 || true
+						elif command -v dnf >/dev/null 2>&1; then dnf remove -y \"\$pkg\" >/dev/null 2>&1 || true
+						elif command -v pacman >/dev/null 2>&1; then pacman -R --noconfirm \"\$pkg\" >/dev/null 2>&1 || true
+						elif command -v zypper >/dev/null 2>&1; then zypper -n rm \"\$pkg\" >/dev/null 2>&1 || true
+						fi ;;
+					file:*) rm -f \"\${line#file:}\" ;;
+					user:*) userdel \"\${line#user:}\" >/dev/null 2>&1 || true ;;
+				esac
+			done < \"\$rec\"
+		fi
+		rm -rf /opt/nivaroos/chromium /usr/share/nivaroos/ds-browser /var/lib/nivaroos/ds-browser /etc/sysctl.d/60-nivaroos-ds-browser.conf
+		if [ -f /etc/apparmor.d/nivaroos-ds-browser ]; then
+			apparmor_parser -R /etc/apparmor.d/nivaroos-ds-browser >/dev/null 2>&1 || true
+			rm -f /etc/apparmor.d/nivaroos-ds-browser
+		fi
 	"
 }
 
@@ -785,6 +817,7 @@ main() {
 		TOTAL_STEPS=$((TOTAL_STEPS + 1))
 	fi
 	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # verify_teardown
+	TOTAL_STEPS=$((TOTAL_STEPS + 1)) # remove_ds_browser
 	if [ -x /usr/bin/nivaroos-backup ]; then
 		TOTAL_STEPS=$((TOTAL_STEPS + 1)) # release_backup_tasks
 	fi
@@ -798,6 +831,7 @@ main() {
 	stop_services
 	remove_unit_files
 	revert_host_desktop_changes
+	remove_ds_browser
 	remove_binaries
 	purge_data_if_requested
 	remove_provisioned_desktop_if_requested

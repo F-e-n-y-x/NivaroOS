@@ -1,0 +1,15 @@
+[Unit]
+Description=NivaroOS Download Station browser (socket)
+
+[Socket]
+# Only root (nivaroos-download-sidecar, which checks the user's token
+# first) may connect. The first connection starts the browser service.
+ListenStream=/run/nivaroos/ds-browser.sock
+SocketUser=root
+SocketGroup=root
+SocketMode=0600
+DirectoryMode=0755
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

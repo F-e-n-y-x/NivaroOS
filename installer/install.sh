@@ -61,6 +61,7 @@ IS_UPGRADE="false"
 WITH_VM=""
 WITH_HOST_DESKTOP=""
 WITH_DOWNLOAD_STATION=""
+WITH_DS_BROWSER=yes
 WITH_BACKUP=""
 FORCE=""
 YES=""
@@ -645,6 +646,7 @@ parse_args() {
 			--without-host-desktop) WITH_HOST_DESKTOP=no ;;
 			--with-download-station) WITH_DOWNLOAD_STATION=yes ;;
 			--without-download-station) WITH_DOWNLOAD_STATION=no ;;
+			--without-ds-browser) WITH_DS_BROWSER=no ;;
 			--with-backup) WITH_BACKUP=yes ;;
 			--without-backup) WITH_BACKUP=no ;;
 			--force) FORCE=yes ;;
@@ -677,6 +679,7 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--without-host-desktop${COLOR_RESET}       Skip Host Desktop streaming installation"
 				printf '%b\n' "  ${COLOR_CYAN}--with-download-station${COLOR_RESET}      Install Download Station (multi-connection downloads, lite browser, ad blocker) [default]"
 				printf '%b\n' "  ${COLOR_CYAN}--without-download-station${COLOR_RESET}   Skip Download Station installation"
+				printf '%b\n' "  ${COLOR_CYAN}--without-ds-browser${COLOR_RESET}         Keep Download Station's browser in Lite mode (no Chromium)"
 				printf '%b\n' "  ${COLOR_CYAN}--with-backup${COLOR_RESET}                Install Backup & Sync (scheduled backups and sync to any storage or cloud) [default]"
 				printf '%b\n' "  ${COLOR_CYAN}--without-backup${COLOR_RESET}             Skip Backup & Sync installation"
 				printf '%b\n' "  ${COLOR_CYAN}--force${COLOR_RESET}                      Upgrade even while a backup is running (it is stopped and retried after the upgrade)"
@@ -1809,12 +1812,13 @@ VMEOF
 
 # ------------------------------------------------------------------------------
 # Download Station Installation (Optional Add-on, on by default). One pure-Go
-# service (no cgo, no system packages): the multi-connection download engine,
-# the lite browser's rewriting proxy, and its uBlock Origin filter-list ad
-# blocker. Filter lists are fetched by the service itself on first start.
+# service: the multi-connection download engine, the ad blocker, and the
+# browser - a sandboxed Chromium run on demand by nivaroos-ds-browser
+# (install-ds-browser.sh), with the rewriting proxy kept as its Lite mode.
+# Filter lists are fetched by the service itself on first start.
 # ------------------------------------------------------------------------------
 install_download_station() {
-	run_step "Installing Download Station (Downloader, Lite Browser & Ad Blocker)" "
+	run_step "Installing Download Station (Downloader, Browser & Ad Blocker)" "
 		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
 		systemctl stop nivaroos-download-sidecar.service >/dev/null 2>&1 || true
 
@@ -1825,6 +1829,15 @@ install_download_station() {
 
 		mkdir -p /DATA/Downloads /var/lib/nivaroos/download-station
 		chmod 700 /var/lib/nivaroos/download-station
+
+		# The full browser (a sandboxed Chromium in its own unit and user,
+		# plus uBlock Origin Lite). Same script on install and update, so an
+		# existing box gains it when it updates; it never fails the install -
+		# without it Download Station keeps its Lite browser. Runs before the
+		# sidecar starts: the sidecar's unit needs the staging folder to exist.
+		if [ \"${WITH_DS_BROWSER}\" != \"no\" ]; then
+			bash \"${SRC_DIR}/services/download-sidecar/build/scripts/install-ds-browser.sh\" --src \"${SRC_DIR}\" --manifest \"$MANIFEST_FILE\" || echo 'The Download Station browser could not be set up - its Lite browser is used instead.'
+		fi
 
 		# The unit lives in the project (hardened: read-only system, writable
 		# storage roots only) - one copy, updated with every install.

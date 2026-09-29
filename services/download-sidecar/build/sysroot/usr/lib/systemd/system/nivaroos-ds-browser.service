@@ -1,0 +1,53 @@
+[Unit]
+Description=NivaroOS Download Station browser (Chromium, started on demand)
+Requires=nivaroos-ds-browser.socket
+After=nivaroos-ds-browser.socket network-online.target
+
+[Service]
+# Started by its socket when Download Station's browser is opened; exits by
+# itself after 10 minutes nobody is using it, so an unused browser costs no
+# memory. Never enabled on its own.
+ExecStart=/usr/bin/nivaroos-download-sidecar browser-host
+User=nivaroos-browser
+Group=nivaroos-browser
+StateDirectory=nivaroos/ds-browser
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/nivaroos/ds-browser
+WorkingDirectory=/var/lib/nivaroos/ds-browser
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+KillMode=mixed
+
+# Chromium runs its own sandbox (user namespaces) inside this unit, so
+# RestrictNamespaces and MemoryDenyWriteExecute (which would break it and
+# V8's JIT) are deliberately not set. Everything else is locked down: the
+# browser user sees none of NivaroOS's state or the user's files.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+TemporaryFileSystem=/var/lib/nivaroos:ro
+BindPaths=/var/lib/nivaroos/ds-browser
+InaccessiblePaths=-/DATA -/media -/mnt -/srv -/etc/nivaroos -/run/nivaroos -/var/lib/casaos -/var/log/nivaroos
+
+# Resource limits (the installer writes a drop-in sized to this box's RAM).
+MemoryHigh=1536M
+MemoryMax=2G
+MemorySwapMax=512M
+CPUQuota=200%
+Nice=5
+TasksMax=512
