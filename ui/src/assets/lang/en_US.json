@@ -3146,5 +3146,8 @@
   "The browser refused some of the cookies {provider} sets while signing in.": "The browser refused some of the cookies {provider} sets while signing in.",
   "{provider} signed this window out again right after signing in.": "{provider} signed this window out again right after signing in.",
   "{provider} did not accept the sign-in when it was checked.": "{provider} did not accept the sign-in when it was checked.",
-  "The {provider} login page keeps reloading without signing in.": "The {provider} login page keeps reloading without signing in."
+  "The {provider} login page keeps reloading without signing in.": "The {provider} login page keeps reloading without signing in.",
+  "Frame rate": "Frame rate",
+  "Capture whole frames (no boxes on motion, more CPU)": "Capture whole frames (no boxes on motion, more CPU)",
+  "Auto": "Auto"
 }

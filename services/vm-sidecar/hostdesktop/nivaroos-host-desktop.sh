@@ -44,14 +44,20 @@ XORG_HEADLESS_CONF=/etc/X11/xorg.conf.d/10-nivaroos-headless.conf
 # sourced, so a malformed file can never run code as root.
 #   FIXSCREEN=<seconds>  periodic full re-read of the framebuffer (0 = off)
 #   NOXDAMAGE=0|1        ignore the X DAMAGE extension (poll instead)
+#   FPS=0|1-60           frames per second to aim for (0 = x11vnc's default)
+#   SNAPFB=0|1           capture whole frames instead of tile by tile
 # ------------------------------------------------------------------------------
 FIXSCREEN=0
 NOXDAMAGE=1
+FPS=0
+SNAPFB=0
 if [ -r "$CONF" ]; then
 	while IFS='=' read -r key val; do
 		case "$key" in
 			FIXSCREEN) [[ "$val" =~ ^[0-9]{1,4}$ ]] && FIXSCREEN="$val" ;;
 			NOXDAMAGE) [[ "$val" =~ ^[01]$ ]] && NOXDAMAGE="$val" ;;
+			FPS) [[ "$val" =~ ^[0-9]{1,2}$ ]] && [ "$val" -le 60 ] && FPS="$val" ;;
+			SNAPFB) [[ "$val" =~ ^[01]$ ]] && SNAPFB="$val" ;;
 		esac
 	done < "$CONF"
 fi
@@ -476,6 +482,16 @@ fi
 # (it costs a full-screen update each time); enable from the panel when a
 # compositor still leaves stale rectangles.
 [ "$FIXSCREEN" -gt 0 ] 2>/dev/null && args+=(-fixscreen "X=${FIXSCREEN}")
+# FPS: -wait is how often x11vnc looks for changes, -defer how long it
+# gathers them before sending; both one frame long.
+if [ "$FPS" -gt 0 ] 2>/dev/null; then
+	frame_ms=$((1000 / FPS))
+	args+=(-wait "$frame_ms" -defer "$frame_ms")
+fi
+# -snapfb: copy the whole framebuffer each poll and diff that, instead of
+# reading it tile by tile while it changes - no half-old/half-new boxes
+# on motion, at the cost of more CPU and memory bandwidth.
+[ "$SNAPFB" = "1" ] && args+=(-snapfb)
 
 mkdir -p "$RUN_DIR"
 rm -f "$SOCK"

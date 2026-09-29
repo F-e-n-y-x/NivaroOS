@@ -517,6 +517,10 @@ type HostDesktopSettings struct {
 	FixScreen int `json:"fixscreen"`
 	// NoXDamage: ignore the X DAMAGE extension and poll instead.
 	NoXDamage bool `json:"noxdamage"`
+	// FPS: frames per second x11vnc aims for (0 = its default, ~50).
+	FPS int `json:"fps"`
+	// SnapFB: capture whole frames instead of tile by tile (-snapfb).
+	SnapFB bool `json:"snapfb"`
 }
 
 func parseHostDesktopSettings(content string) HostDesktopSettings {
@@ -531,6 +535,10 @@ func parseHostDesktopSettings(content string) HostDesktopSettings {
 	case "1":
 		s.NoXDamage = true
 	}
+	if v, err := strconv.Atoi(kv["FPS"]); err == nil && v >= 0 && v <= 60 {
+		s.FPS = v
+	}
+	s.SnapFB = kv["SNAPFB"] == "1"
 	return s
 }
 
@@ -539,7 +547,11 @@ func (s HostDesktopSettings) render() string {
 	if s.NoXDamage {
 		nx = "1"
 	}
-	return fmt.Sprintf("# NivaroOS Host Desktop x11vnc settings (managed by the dashboard)\nFIXSCREEN=%d\nNOXDAMAGE=%s\n", s.FixScreen, nx)
+	snap := "0"
+	if s.SnapFB {
+		snap = "1"
+	}
+	return fmt.Sprintf("# NivaroOS Host Desktop x11vnc settings (managed by the dashboard)\nFIXSCREEN=%d\nNOXDAMAGE=%s\nFPS=%d\nSNAPFB=%s\n", s.FixScreen, nx, s.FPS, snap)
 }
 
 func readHostDesktopSettings() HostDesktopSettings {
@@ -610,6 +622,8 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 		var req struct {
 			FixScreen *int  `json:"fixscreen"`
 			NoXDamage *bool `json:"noxdamage"`
+			FPS       *int  `json:"fps"`
+			SnapFB    *bool `json:"snapfb"`
 		}
 		if err := decodeJSONBody(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -624,6 +638,16 @@ func RegisterHostDesktopInstallRoutes(mux *http.ServeMux) {
 		}
 		if req.NoXDamage != nil {
 			s.NoXDamage = *req.NoXDamage
+		}
+		if req.FPS != nil {
+			if *req.FPS < 0 || *req.FPS > 60 {
+				writeError(w, http.StatusBadRequest, errors.New("fps must be 0 (default) to 60"))
+				return
+			}
+			s.FPS = *req.FPS
+		}
+		if req.SnapFB != nil {
+			s.SnapFB = *req.SnapFB
 		}
 		if _, err := writeFileIfChanged(hostDesktopConfPath, []byte(s.render()), 0o644); err != nil {
 			writeError(w, http.StatusInternalServerError, err)

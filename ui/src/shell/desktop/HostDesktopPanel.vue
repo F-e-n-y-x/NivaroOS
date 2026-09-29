@@ -431,6 +431,17 @@
 										<input id="hd-noxdamage" v-model="streamSettings.noxdamage" type="checkbox" :disabled="savingSettings" />
 										<span>{{ $t('Disable X damage (for compositors)') }}</span>
 									</label>
+									<label class="stream-setting-row" for="hd-fps">
+										<span>{{ $t('Frame rate') }}</span>
+										<select id="hd-fps" v-model.number="streamSettings.fps" class="stream-setting-select" :disabled="savingSettings">
+											<option :value="0">{{ $t('Auto') }}</option>
+											<option v-for="f in [15, 24, 30, 45, 60]" :key="f" :value="f">{{ f }} fps</option>
+										</select>
+									</label>
+									<label class="stream-setting-row" for="hd-snapfb">
+										<input id="hd-snapfb" v-model="streamSettings.snapfb" type="checkbox" :disabled="savingSettings" />
+										<span>{{ $t('Capture whole frames (no boxes on motion, more CPU)') }}</span>
+									</label>
 									<label class="stream-setting-row" for="hd-fixscreen">
 										<span>{{ $t('Periodic full refresh (fixes stale patches)') }}</span>
 										<select id="hd-fixscreen" v-model.number="streamSettings.fixscreen" class="stream-setting-select" :disabled="savingSettings">
@@ -938,7 +949,7 @@ export default {
 			serviceStatus: null,
 			connectError: '',
 			restartingService: false,
-			streamSettings: { fixscreen: 0, noxdamage: true },
+			streamSettings: { fixscreen: 0, noxdamage: true, fps: 0, snapfb: false },
 			savingSettings: false,
 			connectedThisAttempt: false,
 		}
@@ -1472,6 +1483,8 @@ export default {
 					this.streamSettings = {
 						fixscreen: Number(res.data.fixscreen) || 0,
 						noxdamage: res.data.noxdamage !== false,
+						fps: Number(res.data.fps) || 0,
+						snapfb: !!res.data.snapfb,
 					}
 				}
 			} catch (e) {}
@@ -1483,11 +1496,15 @@ export default {
 				const res = await this.sidecarPut('/host/desktop/settings', {
 					fixscreen: Number(this.streamSettings.fixscreen) || 0,
 					noxdamage: !!this.streamSettings.noxdamage,
+					fps: Number(this.streamSettings.fps) || 0,
+					snapfb: !!this.streamSettings.snapfb,
 				})
 				if (res && res.data) {
 					this.streamSettings = {
 						fixscreen: Number(res.data.fixscreen) || 0,
 						noxdamage: res.data.noxdamage !== false,
+						fps: Number(res.data.fps) || 0,
+						snapfb: !!res.data.snapfb,
 					}
 				}
 				this.qualityMenuOpen = false

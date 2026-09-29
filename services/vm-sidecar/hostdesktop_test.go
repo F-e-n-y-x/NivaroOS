@@ -86,18 +86,18 @@ func TestHostDesktopSettingsRoundTrip(t *testing.T) {
 	if def.FixScreen != 0 || !def.NoXDamage {
 		t.Fatalf("defaults wrong: %+v", def)
 	}
-	s := HostDesktopSettings{FixScreen: 5, NoXDamage: false}
+	s := HostDesktopSettings{FixScreen: 5, NoXDamage: false, FPS: 30, SnapFB: true}
 	if got := parseHostDesktopSettings(s.render()); got != s {
 		t.Fatalf("round trip: %+v != %+v", got, s)
 	}
-	if got := parseHostDesktopSettings("FIXSCREEN=-3\nFIXSCREEN=abc\nNOXDAMAGE=maybe\n"); got != def {
+	if got := parseHostDesktopSettings("FIXSCREEN=-3\nFIXSCREEN=abc\nNOXDAMAGE=maybe\nFPS=90\nSNAPFB=yes\n"); got != def {
 		t.Fatalf("invalid values must fall back to defaults, got %+v", got)
 	}
 }
 
 func TestEmbeddedHostDesktopFiles(t *testing.T) {
 	script := string(hostDesktopScriptContent)
-	for _, want := range []string{"-unixsock", "-rfbport 0", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "--resolve"} {
+	for _, want := range []string{"-unixsock", "-rfbport 0", "-noprimary", "-add_keysyms", "-nowf", "-noscr", "-snapfb", "-wait", "-defer", "--resolve"} {
 		if !strings.Contains(script, want) {
 			t.Errorf("wrapper script lacks %q", want)
 		}
