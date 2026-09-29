@@ -58,6 +58,24 @@ const cloud = {
 	},
 	speedTestCancel(name) {
 		return api.delete(`${PREFIX}/accounts/${name}/speedtest`)
+	},
+
+	// Settings > Online storage > Cache: settings, per-account usage and
+	// uploads that can't finish
+	cacheGet() {
+		return api.get(`${PREFIX}/cache`)
+	},
+	// Saving remounts the online drives; it can take a while when a cache
+	// with uploads waiting moves to another disk.
+	cacheSave(settings, dryRun = false) {
+		return api.put(`${PREFIX}/cache${dryRun ? '?dry_run=1' : ''}`, settings, { timeout: 30 * 60 * 1000 })
+	},
+	cacheClear(name) {
+		return api.post(`${PREFIX}/cache/clear`, { name: name || '' }, { timeout: 5 * 60 * 1000 })
+	},
+	// action: save | retry | discard; data: {account, file, folder?}
+	cacheStuck(action, data) {
+		return api.post(`${PREFIX}/cache/stuck/${action}`, data, { timeout: 30 * 60 * 1000 })
 	}
 }
 export default cloud;

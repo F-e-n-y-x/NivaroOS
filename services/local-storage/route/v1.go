@@ -80,6 +80,10 @@ func InitV1Router() *gin.Engine {
 		{
 			v1CloudGroup.GET("", v1.ListStorages)
 			v1CloudGroup.DELETE("", v1.UmountStorage)
+			v1CloudGroup.GET("/cache", v1.GetCloudCache)
+			v1CloudGroup.PUT("/cache", v1.PutCloudCache)
+			v1CloudGroup.POST("/cache/clear", v1.PostCloudCacheClear)
+			v1CloudGroup.POST("/cache/stuck/:action", v1.PostCloudCacheStuck)
 			v1CloudGroup.GET("/providers", v1.GetCloudProviders)
 			v1CloudGroup.GET("/providers/:type/options", v1.GetCloudProviderOptions)
 			v1CloudGroup.POST("/accounts", v1.PostCloudAccount)

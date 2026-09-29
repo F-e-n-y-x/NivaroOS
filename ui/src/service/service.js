@@ -127,9 +127,9 @@ const api = {
 		url = testVisionNum(url)
 		return instance.post(url, data, config)
 	},
-	put(url, data) {
+	put(url, data, config) {
 		url = testVisionNum(url)
-		return instance.put(url, data)
+		return instance.put(url, data, config)
 	},
 	delete(url, data) {
 		url = testVisionNum(url)

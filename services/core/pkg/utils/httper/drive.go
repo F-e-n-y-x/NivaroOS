@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
+	"github.com/go-ini/ini"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )
@@ -77,18 +78,44 @@ func GetMountList() (MountList, error) {
 	return result, err
 }
 
+// LocalStorageConf holds the [cloud_cache] settings local-storage writes.
+var LocalStorageConf = "/etc/nivaroos/local-storage.conf"
+
+// CacheVFSOpt builds the rclone daemon's vfsOpt from [cloud_cache]
+// (Mode off|writes|full, MaxSize bytes, MaxAge seconds). Missing or bad
+// values use the defaults: full cache (random-access writes work), 20 GiB,
+// 1 hour. WriteBack 5s is rclone's default, spelled out because
+// service/cloudsync.go waits on it. The cache directory is the daemon's
+// --cache-dir (rclone.service, RCLONE_CACHE_DIR from
+// /etc/nivaroos/rclone-cache.env).
+func CacheVFSOpt(confPath string) string {
+	mode, size, age := 3, int64(20)<<30, int64(3600)
+	if cfg, err := ini.Load(confPath); err == nil && cfg.HasSection("cloud_cache") {
+		sec := cfg.Section("cloud_cache")
+		switch sec.Key("Mode").String() {
+		case "off":
+			mode = 0
+		case "writes":
+			mode = 2
+		}
+		if n, err := sec.Key("MaxSize").Int64(); err == nil && n > 0 {
+			size = n
+		}
+		if n, err := sec.Key("MaxAge").Int64(); err == nil && n > 0 {
+			age = n
+		}
+	}
+	return fmt.Sprintf(`{"CacheMode": %d, "CacheMaxSize": %d, "CacheMaxAge": %d, "WriteBack": 5000000000}`, mode, size, age*int64(time.Second))
+}
+
 func Mount(mountPoint string, fs string) error {
 	res, err := NewRestyClient().R().SetFormData(map[string]string{
 		"mountPoint": mountPoint,
 		"fs":         fs,
 		"mountOpt":   `{"AllowOther": true}`,
-		// Full cache (random-access writes work), capped at 20 GiB so it
-		// can't fill the disk; WriteBack 5s is rclone's default, spelled out
-		// because service/cloudsync.go waits on it. The cache directory
-		// itself is set on the rclone daemon (--cache-dir, see
-		// rclone.service) - it used to default to /tmp, which is RAM on
-		// many systems.
-		"vfsOpt":     `{"CacheMode": 3, "CacheMaxSize": 21474836480, "WriteBack": 5000000000}`,
+		// Settings > Online storage > Cache (mode, size, age), shared with
+		// the mounts local-storage makes; see CacheVFSOpt.
+		"vfsOpt": CacheVFSOpt(LocalStorageConf),
 	}).Post("/mount/mount")
 	if err != nil {
 		return err

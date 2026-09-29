@@ -108,10 +108,12 @@ func init() {
 	// Moving a big cache off tmpfs the first time can take minutes; keep
 	// systemd's start timeout from killing the service meanwhile.
 	vfscachedir.Progress = func() { _, _ = daemon.SdNotify(false, "EXTEND_TIMEOUT_USEC=120000000") }
-	if moved, err := vfscachedir.Setup(vfscachedir.Dir, vfscachedir.Legacy()); err != nil {
+	// Settings > Online storage > Cache (default: vfscachedir.Dir).
+	cacheSettings := service.InitCloudCache(context.Background())
+	if moved, err := vfscachedir.Setup(cacheSettings.Dir, vfscachedir.Legacy()); err != nil {
 		logger.Error("cloud cache: couldn't move to disk; mounts keep the old cache place", zap.Error(err), zap.Strings("moved", moved))
 	} else if len(moved) > 0 {
-		logger.Info("cloud cache moved to disk", zap.String("dir", vfscachedir.Dir), zap.Strings("from", moved))
+		logger.Info("cloud cache moved to disk", zap.String("dir", cacheSettings.Dir), zap.Strings("from", moved))
 	}
 	oauthproxy.Start()
 	if err := service.MyService.Storage().CheckAndMountAll(); err != nil {

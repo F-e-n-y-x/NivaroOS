@@ -100,9 +100,13 @@ func MountFn(VFS *vfs.VFS, mountpoint string, opt *mountlib.Options) (<-chan err
 	}()
 
 	unmount := func() error {
-		// Shutdown the VFS
+		// Unmount first: if the drive is busy this fails and the mount
+		// keeps working. Shutting the VFS down first left a dead mount.
+		if err := fuse.Unmount(mountpoint); err != nil {
+			return err
+		}
 		filesys.VFS.Shutdown()
-		return fuse.Unmount(mountpoint)
+		return nil
 	}
 
 	return errChan, unmount, mountpoint, nil

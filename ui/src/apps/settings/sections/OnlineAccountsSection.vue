@@ -14,23 +14,30 @@
 		<div class="setting-card">
 			<cloud-accounts-panel @added="$refs.list.refresh()"></cloud-accounts-panel>
 		</div>
+
+		<h3 class="setting-card-title">{{ $t('Cache') }}</h3>
+		<div class="setting-card">
+			<cloud-cache-panel></cloud-cache-panel>
+		</div>
 	</section>
 </template>
 
 <script>
 import CloudAccountsList from '@/apps/settings/CloudAccountsList.vue'
 import CloudAccountsPanel from '@/apps/settings/CloudAccountsPanel.vue'
+import CloudCachePanel from '@/apps/settings/CloudCachePanel.vue'
 
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
 export const ROWS = [
 	{ label: 'Connected', keywords: 'cloud google drive dropbox onedrive terabox' },
-	{ label: 'Add an account', keywords: 'cloud google drive dropbox onedrive terabox connect' }
+	{ label: 'Add an account', keywords: 'cloud google drive dropbox onedrive terabox connect' },
+	{ label: 'Cache', keywords: 'cloud cache vfs disk space upload pending stuck clear location size' }
 ]
 
 export default {
 	name: 'online-accounts-section',
-	components: { CloudAccountsList, CloudAccountsPanel }
+	components: { CloudAccountsList, CloudAccountsPanel, CloudCachePanel }
 }
 </script>
 

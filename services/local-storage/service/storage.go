@@ -58,6 +58,7 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		logger.Error("when CheckAndMountAll then", zap.Error(err))
 		return err
 	}
+	cacheSettings := CloudCacheSettings()
 	mountOptin := mountlib.Options{
 		MaxReadAhead:  128 * 1024,
 		AttrTimeout:   fs.Duration(30 * time.Minute),
@@ -79,14 +80,14 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		GID:               0,
 		DirPerms:          vfscommon.FileMode(0777),
 		FilePerms:         vfscommon.FileMode(0666),
-		CacheMode:         3,
-		CacheMaxAge:       fs.Duration(3600 * time.Second),
+		CacheMode:         vfscommon.CacheMode(cacheSettings.VFSCacheMode()),
+		CacheMaxAge:       fs.Duration(cacheSettings.MaxAge),
 		CachePollInterval: fs.Duration(60 * time.Second),
 		ChunkSize:         32 * fs.Mebi,
 		ChunkSizeLimit:    -1,
 		// Capped so the read cache can't fill the disk (files still waiting
-		// to upload are never evicted).
-		CacheMaxSize:       20 * fs.Gibi,
+		// to upload are never evicted). Settings > Online storage > Cache.
+		CacheMaxSize:       fs.SizeSuffix(cacheSettings.MaxSize),
 		CaseInsensitive:    runtime.GOOS == "windows" || runtime.GOOS == "darwin", // default to true on Windows and Mac, false otherwise
 		WriteWait:          fs.Duration(1000 * time.Millisecond),
 		ReadWait:           fs.Duration(20 * time.Millisecond),
@@ -109,9 +110,13 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		}
 		mountMu.Lock()
 		defer mountMu.Unlock()
-		delete(MountLists, mountPoint)
+		// Only if it's still this mount: a remount may already be there.
+		if MountLists[mountPoint] == mnt {
+			delete(MountLists, mountPoint)
+		}
 	}()
 	MountLists[mountPoint] = mnt
+	parkKnownStuck(cloudMount{Name: deviceName, MountPoint: mountPoint, VFS: mnt.VFS})
 	return nil
 }
 func (s *storageStruct) UnmountStorage(mountPoint string) error {
