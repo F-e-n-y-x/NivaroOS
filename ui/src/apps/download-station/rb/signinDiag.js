@@ -26,6 +26,7 @@ export function diagReport(diag, provider) {
 	const lines = [
 		`${provider} sign-in diagnostics`,
 		`page loads: ${d.loads || 0}, seconds: ${d.seconds || 0}, rejected by ${provider}: ${d.rejected || 0}, signed out again: ${d.lost ? 'yes' : 'no'}`,
+		`last refusal: ${d.reject_reason || '(none)'}`,
 		'refused cookies:'
 	]
 	for (const b of d.blocked || []) lines.push('  ' + b)

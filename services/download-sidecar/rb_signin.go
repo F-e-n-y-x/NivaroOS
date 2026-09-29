@@ -16,7 +16,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,10 +28,11 @@ type rbProvider struct {
 	ID         string
 	Name       string
 	LoginURL   string
-	Domains    []string // registrable domains whose cookies may be exported
-	AuthCookie string   // the cookie that means "signed in"
-	CheckPath  string   // GET on https://www.<domain>, errno 0 when signed in
-	InfoPath   string   // optional: account name
+	Domains    []string          // registrable domains whose cookies may be exported
+	AuthCookie string            // the cookie that means "signed in"
+	CheckPath  string            // GET on https://www.<domain>, errno 0 when signed in
+	Query      map[string]string // added to every API call, as the provider's web client does
+	InfoPath   string            // optional: account name
 }
 
 var rbProviders = map[string]rbProvider{
@@ -42,6 +45,7 @@ var rbProviders = map[string]rbProvider{
 			"4funbox.com", "mirrobox.com", "nephobox.com", "momerybox.com", "tibibox.com", "teraboxlink.com", "terafileshare.com"},
 		AuthCookie: "ndus",
 		CheckPath:  "/api/check/login",
+		Query:      map[string]string{"app_id": "250528", "channel": "dubox", "clienttype": "0"},
 		InfoPath:   "/passport/get_info",
 	},
 }
@@ -76,6 +80,8 @@ type rbSigninDiag struct {
 	lostAuth bool                       // the auth cookie appeared, then went away
 	hadAuth  bool
 	logged   bool
+	// why the provider last refused the login cookie ("errno -6 on www.…")
+	lastReject string
 }
 
 // stuck: the signs of a login loop - the provider rejected the cookie
@@ -106,7 +112,7 @@ func (d *rbSigninDiag) report(now time.Time) map[string]interface{} {
 	sort.Strings(blocked)
 	return map[string]interface{}{
 		"stuck": d.stuck(now), "seen": seen, "blocked": blocked, "loads": d.loads,
-		"rejected": d.fails, "lost": d.lostAuth, "seconds": int(now.Sub(d.started).Seconds()),
+		"rejected": d.fails, "reject_reason": d.lastReject, "lost": d.lostAuth, "seconds": int(now.Sub(d.started).Seconds()),
 	}
 }
 
@@ -322,7 +328,7 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 	s.state = "verifying"
 	s.mu.Unlock()
 	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "verifying", "context": s.context})
-	ok, account := verifyProviderLogin(ctx, s.provider, domain, cookie)
+	ok, account, why := verifyProviderLogin(ctx, s.provider, domain, cookie)
 	s.mu.Lock()
 	if ok {
 		s.state, s.cookie, s.domain, s.account = "signed_in", cookie, domain, account
@@ -330,6 +336,7 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 		s.state = "waiting"
 		s.checked = "" // try again on the next poll: the site may still be setting cookies
 		s.diag.fails++
+		s.diag.lastReject = why
 	}
 	state := s.state
 	s.lastStuck = s.diag.stuck(time.Now())
@@ -341,38 +348,122 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 var providerClient = &http.Client{Transport: newTransport(false), Timeout: 12 * time.Second}
 
 // verifyProviderLogin asks the provider (through the netguarded transport)
-// whether cookie is a signed-in session, and for the account's name.
-func verifyProviderLogin(ctx context.Context, p rbProvider, domain, cookie string) (bool, string) {
-	get := func(path string) map[string]interface{} {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www."+domain+path, nil)
+// whether cookie is a signed-in session, and for the account's name. It
+// calls the API the way the TeraBox storage backend does
+// (services/local-storage/backend/terabox/api.go), because a bare GET is
+// refused even with a good cookie:
+//   - the web client's query (app_id, channel, clienttype) and XHR headers;
+//   - errno 4000023 / 450016: the call needs the page's jsToken - fetch the
+//     home page, read it, and ask again;
+//   - errno -6 with a Url-Domain-Prefix header: the account lives on another
+//     host of the same domain (e.g. dm.1024terabox.com) - ask that one.
+//
+// detail says why a check failed ("errno -6 on www.1024terabox.com"), for
+// the sign-in diagnostics; it never holds a cookie value.
+func verifyProviderLogin(ctx context.Context, p rbProvider, domain, cookie string) (ok bool, account, detail string) {
+	host := "www." + domain
+	jsToken := ""
+	call := func(path string) (map[string]interface{}, http.Header) {
+		q := url.Values{}
+		for k, v := range p.Query {
+			q.Set(k, v)
+		}
+		if jsToken != "" {
+			q.Set("jsToken", jsToken)
+		}
+		u := "https://" + host + path
+		if len(q) > 0 {
+			u += "?" + q.Encode()
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
-			return nil
+			return nil, nil
 		}
 		req.Header.Set("Cookie", cookie)
 		req.Header.Set("User-Agent", defaultUserAgent)
-		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept", "application/json, text/plain, */*")
+		req.Header.Set("Referer", "https://"+host+"/")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		resp, err := providerClient.Do(req)
 		if err != nil {
-			return nil
+			return nil, nil
 		}
 		defer resp.Body.Close()
 		var out map[string]interface{}
 		if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out) != nil {
-			return nil
+			return nil, resp.Header
 		}
-		return out
+		return out, resp.Header
 	}
-	res := get(p.CheckPath)
-	if res == nil || !errnoZero(res["errno"]) {
-		return false, ""
+	var res map[string]interface{}
+	for attempt := 0; attempt < 4; attempt++ {
+		var hdr http.Header
+		res, hdr = call(p.CheckPath)
+		if res == nil {
+			return false, "", "no answer from " + host
+		}
+		if errnoZero(res["errno"]) {
+			break
+		}
+		n := errnoString(res["errno"])
+		switch {
+		case (n == "4000023" || n == "450016") && jsToken == "":
+			if jsToken = fetchJSToken(ctx, host, cookie); jsToken == "" {
+				return false, "", "errno " + n + " on " + host + " (no jsToken on its home page)"
+			}
+		case n == "-6" && hdr.Get("Url-Domain-Prefix") != "" && !strings.HasPrefix(host, hdr.Get("Url-Domain-Prefix")+"."):
+			host = rbText(hdr.Get("Url-Domain-Prefix"), 40) + "." + domain
+		default:
+			return false, "", "errno " + n + " on " + host
+		}
 	}
-	account := ""
+	if !errnoZero(res["errno"]) {
+		return false, "", "errno " + errnoString(res["errno"]) + " on " + host
+	}
 	if p.InfoPath != "" {
-		if info := get(p.InfoPath); info != nil {
+		if info, _ := call(p.InfoPath); info != nil {
 			account = findAccountName(info)
 		}
 	}
-	return true, account
+	return true, account, ""
+}
+
+// fetchJSToken reads the jsToken TeraBox's home page hands its own scripts.
+func fetchJSToken(ctx context.Context, host, cookie string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+"/", nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Cookie", cookie)
+	req.Header.Set("User-Agent", defaultUserAgent)
+	resp, err := providerClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	const open, end = "fn%28%22", "%22%29"
+	page := string(body)
+	i := strings.Index(page, "window.jsToken%20%3D%20a%7D%3B"+open)
+	if i < 0 {
+		return ""
+	}
+	rest := page[i+len("window.jsToken%20%3D%20a%7D%3B"+open):]
+	j := strings.Index(rest, end)
+	if j <= 0 || j > 512 {
+		return ""
+	}
+	return rest[:j]
+}
+
+func errnoString(v interface{}) string {
+	switch n := v.(type) {
+	case float64:
+		return strconv.FormatFloat(n, 'f', -1, 64)
+	case string:
+		return n
+	}
+	return "?"
 }
 
 func errnoZero(v interface{}) bool {
@@ -447,7 +538,7 @@ func (i *rbInstance) exportCookies(ctx context.Context, provider, ctxID string) 
 	if cookie == "" {
 		return nil, errors.New("you are not signed in to " + p.Name + " in the browser")
 	}
-	okLogin, account := verifyProviderLogin(ctx, p, domain, cookie)
+	okLogin, account, _ := verifyProviderLogin(ctx, p, domain, cookie)
 	if !okLogin {
 		return nil, errors.New(p.Name + " says that sign-in has expired - sign in again")
 	}
