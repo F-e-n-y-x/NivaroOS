@@ -20,9 +20,12 @@ import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
 import 'package:nivaroos_mobile/screens/files/trash_screen.dart';
 import 'package:nivaroos_mobile/screens/files_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
+import 'package:nivaroos_mobile/screens/terminal_screen.dart';
+import 'package:nivaroos_mobile/screens/terminal_sessions_screen.dart';
 import 'package:nivaroos_mobile/ui/ui.dart';
 import 'package:nivaroos_mobile/widgets/monitor_modals.dart';
 
+import 'apps_screens_test.dart' show FakeTerminal, buildBox;
 import 'files_screens_test.dart' show copyThenWorkTab, docsAndWork;
 import 'harness.dart';
 import 'home_test.dart' show HistoryController, fillHistory, openFreeMemory, runningVms, scrollToVms;
@@ -132,6 +135,11 @@ final Map<String, _Screen> _screens = {
     await tester.pump(const Duration(seconds: 1));
   }),
   'appearance': _Screen(() => const SizedBox(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black], extra: const [(phone, 2)]),
+  // The terminal takes the style's dark theme (black with true black),
+  // whatever the app's mode; and the list of running terminals.
+  'terminal': _Screen(() => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()),
+      pushed: true, modes: const [AppThemeMode.light, AppThemeMode.black]),
+  'terminal_sessions': _Screen(() => const TerminalSessionsScreen(), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark, AppThemeMode.black]),
   'app_info': _Screen(() => const AppDetailScreen(app: _jellyfin), pushed: true, modes: const [AppThemeMode.light, AppThemeMode.dark], overrides: {
     'GET /v2/app_management/compose/jellyfin': {
       'data': {

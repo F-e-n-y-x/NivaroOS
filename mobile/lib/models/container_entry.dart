@@ -298,10 +298,6 @@ class InstalledApp {
   ({String path, Map<String, String> query}) logsRequest(int lines) => kind == AppKind.compose
       ? (path: '/v2/app_management/compose/${Uri.encodeComponent(id)}/logs', query: {'lines': '$lines'})
       : (path: '/v1/container/${Uri.encodeComponent(id)}/logs', query: {'tail': '$lines', 'timestamps': 'true'});
-
-  /// The container shell WebSocket path (wsterm framing). Compose apps
-  /// need their main container's id first (`/compose/{id}/containers`).
-  String terminalPath([String? container]) => '/v1/container/${Uri.encodeComponent(container ?? containerId ?? id)}/terminal';
 }
 
 /// One Docker container from `GET /v1/container/all`.

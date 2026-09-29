@@ -37,7 +37,8 @@ Captured 2026-09-25 with read-only `curl` GETs against a real NivaroOS box
 Written by hand, in the shape the server returns, because they need a
 session token or this box has no data for them: `v1/cloud`, `v1/disks/usb`,
 `v1/storage`, `v1/users/current/custom/{shortcut,link,legacy_app_overrides}`,
-`v1/vm-sidecar/host/display`, `v1/vm-sidecar/host/desktop/installed` and `v2/app_management/compose/jellyfin/logs`.
+`v1/vm-sidecar/host/display`, `v1/vm-sidecar/host/desktop/installed`, `v2/app_management/compose/jellyfin/logs` and the
+terminal session lists `v1/sys/terminal-sessions` and `v1/container/terminal-sessions`.
 `v1/vm-sidecar/vms/Ghost-Windows-11/screenshot.png` is a drawn stand-in for
 a VM's desktop (no real screen captured).
 

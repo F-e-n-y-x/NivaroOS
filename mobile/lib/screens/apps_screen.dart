@@ -14,7 +14,7 @@ import 'app_edit_screen.dart';
 import 'app_store_screen.dart';
 import 'container_logs_screen.dart';
 import 'custom_install_screen.dart';
-import 'terminal_screen.dart';
+import 'terminal_sessions_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Data: what the Apps tab loads and the calls it makes
@@ -1059,7 +1059,6 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
 
   Future<void> _openTerminal() async {
     final messenger = ScaffoldMessenger.of(context);
-    final nav = Navigator.of(context);
     String? container;
     try {
       container = await AppsApi.mainContainer(_app);
@@ -1068,9 +1067,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
       messenger.showSnackBar(SnackBar(content: Text("${_app.title} has no running container to open a shell in")));
       return;
     }
-    nav.push(MaterialPageRoute(
-      builder: (_) => TerminalScreen(title: _app.title, path: _app.terminalPath(container), subtitle: 'Shell in the app’s container'),
-    ));
+    if (!mounted) return;
+    // Back to a shell already running there, or a new one.
+    await openContainerTerminal(context, container: container, title: _app.title);
   }
 
   @override

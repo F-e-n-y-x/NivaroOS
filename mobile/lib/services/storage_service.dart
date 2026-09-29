@@ -47,6 +47,7 @@ class StorageService {
   static const _keyThemeWallpaper = 'theme_wallpaper';
   static const _keyDesignDirection = 'design_direction';
   static const _keyWidgetRefresh = 'widget_refresh';
+  static const _keyTerminalFontSize = 'terminal_font_size';
   // Per server: the secret the server gave this phone, keyed by server URL
   // ("companion_secret@http://nas.local"), so switching servers never sends
   // one server's secret to another (plan M-17).
@@ -60,7 +61,7 @@ class StorageService {
   static const _keyFilesTabsPrefix = 'files_tabs@';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
-  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyNotificationsAsked};
+  static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked};
 
   Future<void> init() async {
     if (_initialized) return;
@@ -331,6 +332,18 @@ class StorageService {
   Future<void> setWidgetRefresh(String refresh) async {
     if (!_initialized) await init();
     await _set(_keyWidgetRefresh, refresh);
+  }
+
+  /// The terminal's text size in dp (pinch or Larger/Smaller text); null
+  /// for the default.
+  Future<double?> getTerminalFontSize() async {
+    if (!_initialized) await init();
+    return double.tryParse(_cache[_keyTerminalFontSize] ?? '');
+  }
+
+  Future<void> setTerminalFontSize(double size) async {
+    if (!_initialized) await init();
+    await _set(_keyTerminalFontSize, size.toString());
   }
 
   Future<String?> getServerUrl() async {

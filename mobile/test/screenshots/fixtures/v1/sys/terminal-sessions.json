@@ -1,0 +1,13 @@
+{
+  "success": 200,
+  "message": "OK",
+  "data": {
+    "sessions": [
+      {"id": "5f0c1e9a2b7d4c3e8a1f6b21", "title": "Terminal 1", "kind": "host", "user": "alex", "shell": "/bin/bash", "state": "running", "exit_code": null, "exit_reason": "", "exited_at": null, "created_at": "2026-09-25T09:12:00", "last_activity_at": "2026-09-25T14:02:30", "clients": 1, "cols": 120, "rows": 32, "cwd": "/home/alex", "command": "htop", "scrollback_bytes": 48213, "legacy": false, "attach_path": "/v1/sys/terminal-sessions/5f0c1e9a2b7d4c3e8a1f6b21/attach"},
+      {"id": "5f0c1e9a2b7d4c3e8a1f6b20", "title": "build box", "kind": "host", "user": "alex", "shell": "/bin/bash", "state": "running", "exit_code": null, "exit_reason": "", "exited_at": null, "created_at": "2026-09-25T11:40:00", "last_activity_at": "2026-09-25T13:51:00", "clients": 0, "cols": 80, "rows": 40, "cwd": "/home/alex/src/nivaroos", "command": "make -j8", "scrollback_bytes": 1048576, "legacy": false, "attach_path": "/v1/sys/terminal-sessions/5f0c1e9a2b7d4c3e8a1f6b20/attach"},
+      {"id": "5f0c1e9a2b7d4c3e8a1f6b22", "title": "Terminal 2", "kind": "host", "user": "alex", "shell": "/bin/bash", "state": "exited", "exit_code": 0, "exit_reason": "exited", "exited_at": "2026-09-25T13:56:00", "created_at": "2026-09-25T13:20:00", "last_activity_at": "2026-09-25T13:56:00", "clients": 0, "cols": 80, "rows": 40, "scrollback_bytes": 2310, "legacy": false, "attach_path": "/v1/sys/terminal-sessions/5f0c1e9a2b7d4c3e8a1f6b22/attach"}
+    ],
+    "running": 2,
+    "limits": {"max_sessions": 12, "scrollback_bytes": 2097152, "detached_timeout_seconds": 86400, "exited_retention_seconds": 600}
+  }
+}

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/storage_service.dart';
+import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
 import '../widgets/tailscale_modal.dart';
 import 'companion_devices_screen.dart';
@@ -10,7 +13,7 @@ import 'server_profiles_screen.dart';
 import 'settings_screen.dart';
 import 'system_logs_screen.dart';
 import 'system_updates_screen.dart';
-import 'terminal_screen.dart';
+import 'terminal_sessions_screen.dart';
 
 /// The fifth tab: everything that isn't Home, Files, Apps or VMs - server
 /// tools, this phone, and the app's own settings. Built on the v2 design
@@ -41,6 +44,7 @@ class _MoreScreenState extends State<MoreScreen> {
     super.initState();
     _loadAccount();
     _loadUpdates();
+    unawaited(TerminalSessionsApi.instance.refreshCount());
   }
 
   Future<void> _loadAccount() async {
@@ -158,11 +162,19 @@ class _MoreScreenState extends State<MoreScreen> {
               subtitle: const Text('Gateway, hypervisor and kernel'),
               onTap: () => _push(const SystemLogsScreen()),
             ),
-            ListTile(
-              leading: const Icon(Icons.terminal_outlined),
-              title: const Text('Terminal'),
-              subtitle: const Text('A shell on the server'),
-              onTap: () => _push(const TerminalScreen()),
+            // Terminals keep running when closed; the count says there is
+            // something to go back to.
+            ValueListenableBuilder<int?>(
+              valueListenable: TerminalSessionsApi.instance.runningCount,
+              builder: (context, running, _) => ListTile(
+                leading: const Icon(Icons.terminal_outlined),
+                title: const Text('Terminal'),
+                subtitle: const Text('A shell on the server'),
+                trailing: running == null || running == 0 ? null : StatusChip(label: '$running running', status: Status.success, icon: Icons.play_arrow_rounded),
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const TerminalSessionsScreen()))
+                    .then((_) => TerminalSessionsApi.instance.refreshCount()),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.screen_share_outlined),

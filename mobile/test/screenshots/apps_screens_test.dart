@@ -1,8 +1,10 @@
 // Screenshots of the Apps area: the Apps tab and its states, an app's
 // page, logs, the app store, a store app's page, custom install and the
 // terminal. Same harness as screens_test.dart; PNGs in goldens/apps/.
+// ignore_for_file: implementation_imports
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +14,11 @@ import 'package:nivaroos_mobile/screens/apps_screen.dart';
 import 'package:nivaroos_mobile/screens/container_logs_screen.dart';
 import 'package:nivaroos_mobile/screens/custom_install_screen.dart';
 import 'package:nivaroos_mobile/screens/terminal_screen.dart';
+import 'package:nivaroos_mobile/screens/terminal_sessions_screen.dart';
+import 'package:nivaroos_mobile/services/terminal_sessions.dart';
+import 'package:nivaroos_mobile/widgets/terminal_surface.dart';
+import 'package:xterm/src/ui/render.dart';
+import 'package:xterm/xterm.dart' show CellOffset;
 
 import 'harness.dart';
 
@@ -43,21 +50,37 @@ const searxng = InstalledApp(
 
 const jellyfinContainer = InstalledApp(id: 'jellyfin', title: 'jellyfin', kind: AppKind.container, status: 'running');
 
-/// A terminal session that prints a prompt and some output, with a
-/// multi-byte character split across two frames (plan M-07).
+/// The "build box" session from fixtures/v1/sys/terminal-sessions.json.
+final buildBox = TerminalSession.fromJson(
+  (fixture('v1/sys/terminal-sessions')['data']['sessions'] as List).firstWhere((s) => s['title'] == 'build box') as Map<String, dynamic>,
+);
+
+/// A terminal session that reattaches: hello, the replayed output (a
+/// build, a prompt, a multi-byte character split across two frames - plan
+/// M-07), then live.
 class FakeTerminal implements TerminalTransport {
   final _frames = StreamController<dynamic>();
   final sent = <Object>[];
 
   FakeTerminal() {
-    final line = utf8.encode('\x1b[1;32malex@atom\x1b[0m:\x1b[1;34m~\x1b[0m\$ docker ps --format "{{.Names}}\\t{{.Status}}"\r\n');
+    _frames.add('\u0000${jsonEncode({'type': 'hello', 'session': fixture('v1/sys/terminal-sessions')['data']['sessions'][1], 'replay_bytes': 900})}');
+    final line = utf8.encode('\x1b[1;32malex@atom\x1b[0m:\x1b[1;34m~/src/nivaroos\x1b[0m\$ docker ps --format "{{.Names}}\\t{{.Status}}"\r\n');
     final out = utf8.encode('jellyfin        Up 10 hours\r\nnextcloud       Up 10 hours\r\nhomeassistant   Up 3 days\r\n'
-        'Grüße aus Köln, café crème\r\n\x1b[1;32malex@atom\x1b[0m:\x1b[1;34m~\x1b[0m\$ ');
+        'Grüße aus Köln, café crème\r\n'
+        '\x1b[1;32malex@atom\x1b[0m:\x1b[1;34m~/src/nivaroos\x1b[0m\$ make -j8\r\n'
+        'go build -o build/nivaroos ./services/core\r\n'
+        'go build -o build/nivaroos-app-management ./services/app-management\r\n'
+        'pnpm --dir ui build\r\n'
+        '\x1b[32m✓\x1b[0m 1843 modules transformed.\r\n'
+        'build/sysroot/var/lib/nivaroos/www/index.html   \x1b[2m2.31 kB\x1b[0m\r\n'
+        '\x1b[33mwarning\x1b[0m: chunk vendor.js is larger than 500 kB\r\n'
+        '\x1b[1;32malex@atom\x1b[0m:\x1b[1;34m~/src/nivaroos\x1b[0m\$ ');
     _frames.add(line);
     // Split inside the 'ü' (C3 BC): the screen must not show U+FFFD.
     final cut = out.indexOf(0xBC);
     _frames.add(out.sublist(0, cut));
     _frames.add(out.sublist(cut));
+    _frames.add('\u0000{"type":"live"}');
   }
 
   @override
@@ -76,7 +99,23 @@ class FakeTerminal implements TerminalTransport {
   String? get closeReason => null;
 }
 
+/// Long-presses "nextcloud" in the terminal, for the selection shot.
+Future<void> selectInTerminal(WidgetTester tester) async {
+  final r = tester.allRenderObjects.whereType<RenderTerminal>().first;
+  final buffer = tester.widget<TerminalSurface>(find.byType(TerminalSurface)).terminal.buffer;
+  final y = [for (var i = 0; i < buffer.height; i++) buffer.lines[i].getText()].indexWhere((l) => l.startsWith('nextcloud'));
+  final at = r.localToGlobal(r.getOffset(CellOffset(3, y)) + Offset(r.cellSize.width / 2, r.cellSize.height / 2));
+  await tester.longPressAt(at);
+  await tester.pump(const Duration(seconds: 1));
+}
+
 enum Size2 { phone, small, text2x }
+
+const _noSessions = {
+  'success': 200,
+  'message': 'OK',
+  'data': {'sessions': [], 'running': 0, 'limits': {'max_sessions': 12, 'detached_timeout_seconds': 86400}},
+};
 
 void main() {
   setUp(() async {
@@ -192,7 +231,18 @@ void main() {
   shots('custom_install', () => const CustomInstallScreen(), extra: {Size2.text2x});
   shots('custom_install_template', () => CustomInstallScreen(initialYaml: CustomInstallScreen.templates[2].yaml));
 
-  // The terminal (dark in both themes).
-  shots('terminal', () => TerminalScreen(connector: (uri, headers) async => FakeTerminal()), extra: {Size2.small}, fixedDark: true);
-  shots('terminal_closed', () => TerminalScreen(connector: (uri, headers) async => throw Exception('refused')), fixedDark: true);
+  // The terminal (dark in both themes): reattached to a running session,
+  // with a selection, a lost connection, and a session the server no
+  // longer has.
+  shots('terminal', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()), extra: {Size2.small}, fixedDark: true);
+  shots('terminal_selection', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => FakeTerminal()), fixedDark: true, before: selectInTerminal);
+  shots('terminal_reconnecting', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => throw const SocketException('unreachable')), fixedDark: true);
+  shots('terminal_closed', () => TerminalScreen(session: buildBox, connector: (uri, headers) async => throw const TerminalHandshakeException(404)), fixedDark: true);
+
+  // More > Terminal: the running terminals, and none.
+  shots('terminal_sessions', () => const TerminalSessionsScreen(), extra: {Size2.small, Size2.text2x});
+  shots('terminal_sessions_empty', () => const TerminalSessionsScreen(), overrides: {
+    'GET /v1/sys/terminal-sessions': _noSessions,
+    'GET /v1/container/terminal-sessions': _noSessions,
+  });
 }
