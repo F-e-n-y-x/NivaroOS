@@ -7,6 +7,10 @@
 </h1>
 
 <p align="center">
+  <img src="docs/images/nivaroos-fetch.svg" width="760" alt="nivarofetch: NivaroOS at a glance - os NivaroOS on Debian/Ubuntu, amd64/arm64; windowed web desktop; App Store; KVM virtual machines; files across drives, cloud and phones; Backup &amp; Sync; Tailscale and Cloudflare remote access; Android companion app; Apache-2.0">
+</p>
+
+<p align="center">
   <strong>A modern, self-hosted personal cloud OS, container platform, and companion mobile ecosystem.</strong><br>
   Desktop-class windowed multitasking, Docker container studio, KVM virtual machines, unified file management with companion device integration, and a rich ZimaOS-inspired App Store — seamlessly bridged with a native mobile companion app.
 </p>

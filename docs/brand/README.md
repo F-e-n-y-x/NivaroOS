@@ -74,3 +74,9 @@ tracking -1.2%, outlined to paths so no font is needed.
 - Set "NivaroOS" in another font next to the mark in place of the wordmark.
 - Put the blue tile on a blue background of a similar shade.
 - Bring back the old three-circle CasaOS cloud mark.
+
+## README "fetch" card
+
+`docs/images/nivaroos-fetch.svg` is the neofetch-style card under the logo in the README: a terminal running `nivarofetch`, the mark as an LED matrix, facts on the right and the palette underneath. The text is outlined (Geist Mono), so it looks the same on every machine. To change the facts, edit the `facts` list in `gen-fetch.js` and run it from this folder (it needs `opentype.js`, as `gen.js` does):
+
+    node gen-fetch.js ../../mobile/assets/fonts ../images/nivaroos-fetch.svg
