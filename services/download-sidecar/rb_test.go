@@ -884,3 +884,67 @@ func TestSigninDiagnosticsExplainALoginLoop(t *testing.T) {
 		t.Error("the provider rejecting the cookie twice is a loop")
 	}
 }
+
+// What decides whether turning the blocker on/off or trusting a site
+// reloads the page being viewed.
+func TestAdblockBlocksOn(t *testing.T) {
+	on := &rbAdblockState{enabled: true, allowed: []string{"example.com"}}
+	off := &rbAdblockState{enabled: false}
+	var none *rbAdblockState
+	if !on.blocksOn("news.site") || on.blocksOn("www.example.com") || off.blocksOn("news.site") || none.blocksOn("news.site") {
+		t.Fatal("blocksOn")
+	}
+}
+
+// /rb/ws: another site's page can't open it (Origin must be this host), and
+// what reaches the browser service carries no token or cookie - only the
+// user the sidecar worked out, whatever the client claimed.
+func TestRBWebSocketChecksOriginAndStripsCredentials(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "b.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(chan *http.Request, 4)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r
+		w.WriteHeader(204)
+	})}
+	go srv.Serve(ln)
+	defer srv.Close()
+	c := newRBClient(sock, dir, nil, nil)
+	mux := http.NewServeMux()
+	c.register(mux, nil)
+
+	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"id":7}`))
+	token := "x." + claims + ".y"
+
+	req := httptest.NewRequest("GET", "http://nas.local/rb/ws?token="+token, nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Fatalf("cross-origin: %d", rec.Code)
+	}
+	select {
+	case r := <-seen:
+		t.Fatalf("cross-origin request reached the host: %s", r.URL)
+	default:
+	}
+
+	req = httptest.NewRequest("GET", "http://nas.local/rb/ws?token="+token, nil)
+	req.Header.Set("Origin", "http://nas.local")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Cookie", "session=abc")
+	req.Header.Set(rbUserHeader, "1") // a client can't pick the profile
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != 204 {
+		t.Fatalf("same-origin: %d %s", rec.Code, rec.Body)
+	}
+	r := <-seen
+	if r.URL.Path != "/ws" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" || r.Header.Get(rbUserHeader) != "7" {
+		t.Fatalf("host saw %s?%s auth=%q cookie=%q user=%q", r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization"), r.Header.Get("Cookie"), r.Header.Get(rbUserHeader))
+	}
+}

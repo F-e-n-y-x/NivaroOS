@@ -20,7 +20,8 @@
 </template>
 
 <script>
-import { InputCoalescer, keyMessage, modsOf, shortcutOf, wheelDelta } from './rbClient'
+import { InputCoalescer, keyMessage, macChordToLinux, modsOf, shortcutOf, wheelDelta } from './rbClient'
+import { isMacPlatform } from '../../terminal/termKeys'
 
 const LONG_PRESS_MS = 550
 
@@ -55,6 +56,7 @@ export default {
 		this.bitmapInfo = null
 		this.buttons = 0
 		this.lastKeyWas229 = false
+		this.mac = isMacPlatform()
 		this.coalescer = new InputCoalescer(m => this.send({ t: 'mouse', ...m }))
 		this.raf = 0
 		this.resizeTimer = null
@@ -282,7 +284,7 @@ export default {
 			// Ctrl+V: let the paste event deliver the text (no permission
 			// prompt), but still tell the page the keys went down.
 			const isPaste = (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')
-			const msg = keyMessage(e, 'down')
+			const msg = this.pageKey(e, 'down')
 			if (!msg) return
 			if (isPaste) return
 			e.preventDefault()
@@ -292,10 +294,14 @@ export default {
 		onKeyUp(e) {
 			if (this.inert) return
 			if (shortcutOf(e)) return
-			const msg = keyMessage(e, 'up')
+			const msg = this.pageKey(e, 'up')
 			if (!msg) return
 			e.preventDefault()
 			this.send(msg)
+		},
+		pageKey(e, type) {
+			const msg = keyMessage(e, type)
+			return this.mac ? macChordToLinux(msg) : msg
 		},
 		onCompositionUpdate(e) {
 			const text = e.data || ''

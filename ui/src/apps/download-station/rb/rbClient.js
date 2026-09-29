@@ -95,6 +95,31 @@ export function keyMessage(e, type) {
 	}
 }
 
+// The remote Chromium runs on Linux, where the editing shortcuts are Ctrl
+// chords: a Mac viewer's Cmd chords are turned into what they mean there
+// (Cmd+A/Z/Shift+Z -> Ctrl+..., Cmd+Left/Right -> Home/End, Cmd+Up/Down ->
+// Ctrl+Home/End, Cmd+Backspace/Delete -> delete to line start/end).
+// Returns msg itself when nothing needs translating.
+const CDP_ALT = 1
+const CDP_CTRL = 2
+const CDP_META = 4
+const LINUX_KEYS = { Home: 36, End: 35 }
+export function macChordToLinux(msg) {
+	if (!msg || msg.t !== 'key' || !(msg.mods & CDP_META) || msg.mods & CDP_CTRL) return msg
+	const base = msg.mods & ~CDP_META
+	const as = (key, mods, keyCode = LINUX_KEYS[key]) => ({ ...msg, key, code: key in LINUX_KEYS ? key : msg.code, keyCode, mods, text: '' })
+	switch (msg.key) {
+		case 'ArrowLeft': return as('Home', base)
+		case 'ArrowRight': return as('End', base)
+		case 'ArrowUp': return as('Home', base | CDP_CTRL)
+		case 'ArrowDown': return as('End', base | CDP_CTRL)
+		case 'Backspace': return as('Backspace', (base & ~CDP_ALT) | CDP_CTRL | 8, msg.keyCode)
+		case 'Delete': return as('Delete', (base & ~CDP_ALT) | CDP_CTRL | 8, msg.keyCode)
+	}
+	if (msg.key && msg.key.length === 1) return { ...msg, mods: base | CDP_CTRL, text: '' }
+	return msg
+}
+
 // Wheel deltas in CSS pixels (line and page modes converted).
 export function wheelDelta(e, pageH) {
 	const mul = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? pageH || 800 : 1

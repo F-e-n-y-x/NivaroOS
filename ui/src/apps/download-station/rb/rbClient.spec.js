@@ -5,6 +5,7 @@ import {
 	modsOf,
 	shortcutOf,
 	keyMessage,
+	macChordToLinux,
 	wheelDelta,
 	InputCoalescer,
 	looksLikeUrl,
@@ -118,6 +119,20 @@ describe('keyboard', () => {
 		expect(keyMessage(key({ key: 'Process', keyCode: 229 }), 'down')).toBe(null)
 		expect(keyMessage(key({ key: 'x', isComposing: true }), 'down')).toBe(null)
 		expect(modsOf(key({ altKey: true, ctrlKey: true, metaKey: true, shiftKey: true }))).toBe(15)
+	})
+	it('turns a Mac viewer\'s Cmd chords into the Linux ones the remote Chromium knows', () => {
+		const cmd = (o, type = 'down') => macChordToLinux(keyMessage(key({ metaKey: true, ...o }), type))
+		expect(cmd({ key: 'a', code: 'KeyA', keyCode: 65 })).toMatchObject({ key: 'a', mods: 2, text: '' })
+		expect(cmd({ key: 'z', keyCode: 90, shiftKey: true })).toMatchObject({ key: 'z', mods: 10 })
+		expect(cmd({ key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 })).toMatchObject({ key: 'Home', code: 'Home', keyCode: 36, mods: 0 })
+		expect(cmd({ key: 'ArrowRight', keyCode: 39, shiftKey: true }, 'up')).toMatchObject({ type: 'up', key: 'End', keyCode: 35, mods: 8 })
+		expect(cmd({ key: 'ArrowUp', keyCode: 38 })).toMatchObject({ key: 'Home', mods: 2 })
+		expect(cmd({ key: 'Backspace', keyCode: 8 })).toMatchObject({ key: 'Backspace', keyCode: 8, mods: 10 })
+		// No Cmd, or a real Ctrl chord: untouched.
+		const plain = keyMessage(key({ key: 'ArrowLeft', keyCode: 37 }), 'down')
+		expect(macChordToLinux(plain)).toBe(plain)
+		const ctrl = keyMessage(key({ key: 'a', keyCode: 65, ctrlKey: true, metaKey: true }), 'down')
+		expect(macChordToLinux(ctrl)).toBe(ctrl)
 	})
 })
 

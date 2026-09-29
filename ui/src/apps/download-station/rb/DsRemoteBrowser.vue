@@ -5,22 +5,24 @@
      ours; the page itself never runs in NivaroOS's origin. -->
 <template>
 	<div class="rb-browser" @keydown.capture="onGlobalKey">
-		<div class="tab-strip" role="tablist" :aria-label="$t('Tabs')" @dblclick.self="newTab()">
-			<div v-for="(t, i) in tabs" :key="t.id" class="tab" role="tab" :aria-selected="t.id === activeId ? 'true' : 'false'"
-				:class="{ active: t.id === activeId, dragging: dragId === t.id, 'drop-before': dropIndex === i && dragId !== t.id }"
-				:title="t.title || t.url" draggable="true"
-				@click="activate(t.id)" @mousedown.middle.prevent="closeTab(t.id)" @contextmenu.prevent="openTabMenu(t, $event)"
-				@dragstart="onDragStart(t, $event)" @dragover.prevent="dropIndex = i" @drop.prevent="onDrop(i)" @dragend="onDragEnd">
-				<span class="tab-icon">
-					<b-icon v-if="t.loading" icon="loading" custom-class="mdi-spin" custom-size="mdi-14px"></b-icon>
-					<b-icon v-else-if="t.crashed" icon="emoticon-sad-outline" custom-size="mdi-14px"></b-icon>
-					<img v-else-if="t.favicon" :src="t.favicon" alt="" />
-					<b-icon v-else icon="web" custom-size="mdi-14px"></b-icon>
-				</span>
-				<span class="tab-title">{{ tabTitle(t) }}</span>
-				<button class="tab-close" type="button" :title="$t('Close tab') + ' (Alt+W)'" :aria-label="$t('Close tab')" @click.stop="closeTab(t.id)">
-					<b-icon icon="close" custom-size="mdi-14px"></b-icon>
-				</button>
+		<div class="tab-strip" @dblclick.self="newTab()">
+			<div ref="tabScroller" class="tab-scroller" role="tablist" :aria-label="$t('Tabs')" @dblclick.self="newTab()" @wheel="onTabWheel">
+				<div v-for="(t, i) in tabs" :key="t.id" class="tab" role="tab" :aria-selected="t.id === activeId ? 'true' : 'false'"
+					:class="{ active: t.id === activeId, dragging: dragId === t.id, 'drop-before': dropIndex === i && dragId !== t.id }"
+					:title="t.title || t.url" draggable="true"
+					@click="activate(t.id)" @mousedown.middle.prevent="closeTab(t.id)" @contextmenu.prevent="openTabMenu(t, $event)"
+					@dragstart="onDragStart(t, $event)" @dragover.prevent="dropIndex = i" @drop.prevent="onDrop(i)" @dragend="onDragEnd">
+					<span class="tab-icon">
+						<b-icon v-if="t.loading" icon="loading" custom-class="mdi-spin" custom-size="mdi-14px"></b-icon>
+						<b-icon v-else-if="t.crashed" icon="emoticon-sad-outline" custom-size="mdi-14px"></b-icon>
+						<img v-else-if="t.favicon" :src="t.favicon" alt="" />
+						<b-icon v-else icon="web" custom-size="mdi-14px"></b-icon>
+					</span>
+					<span class="tab-title">{{ tabTitle(t) }}</span>
+					<button class="tab-close" type="button" :title="$t('Close tab') + ' (Alt+W)'" :aria-label="$t('Close tab')" @click.stop="closeTab(t.id)">
+						<b-icon icon="close" custom-size="mdi-14px"></b-icon>
+					</button>
+				</div>
 			</div>
 			<button class="tab-new" type="button" :title="$t('New tab') + ' (Alt+T)'" :aria-label="$t('New tab')" :disabled="tabs.length >= maxTabs" @click="newTab()">
 				<b-icon icon="plus" custom-size="mdi-16px"></b-icon>
@@ -310,7 +312,13 @@ export default {
 		activeId() {
 			this.syncAddress()
 			this.findOpen = false
-			this.$nextTick(() => this.focusPage())
+			this.$nextTick(() => {
+				this.focusPage()
+				this.revealActiveTab()
+			})
+		},
+		'tabs.length'() {
+			this.$nextTick(() => this.revealActiveTab())
 		},
 		'active.url'() {
 			this.syncAddress()
@@ -1002,6 +1010,18 @@ export default {
 		},
 
 		// ---- menus in the bar ----
+		// The tab strip scrolls sideways once the tabs no longer fit: keep the
+		// current tab in view, and let a mouse wheel scroll it.
+		revealActiveTab() {
+			const el = this.$refs.tabScroller && this.$refs.tabScroller.querySelector('.tab.active')
+			if (el && el.scrollIntoView) el.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+		},
+		onTabWheel(e) {
+			const el = this.$refs.tabScroller
+			if (!el || el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return
+			e.preventDefault()
+			el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY
+		},
 		openShieldMenu(e) {
 			const host = this.activeHost
 			const r = e.currentTarget.getBoundingClientRect()
@@ -1119,13 +1139,25 @@ export default {
 	flex-shrink: 0;
 	display: flex;
 	align-items: flex-end;
-	gap: 2px;
 	padding: var(--space-2) var(--space-2) 0;
 	background: var(--theme-card-subtle, #f1f5f9);
 	border-bottom: 1px solid var(--theme-card-border, rgba(0, 0, 0, 0.08));
+	user-select: none;
+}
+
+/* The tabs scroll; "+" stays put after them. */
+.tab-scroller {
+	flex: 0 1 auto;
+	min-width: 0;
+	display: flex;
+	align-items: flex-end;
+	gap: 2px;
 	overflow-x: auto;
 	scrollbar-width: none;
-	user-select: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
 }
 
 .tab {

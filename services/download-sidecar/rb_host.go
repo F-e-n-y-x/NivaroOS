@@ -603,6 +603,14 @@ func (h *rbHost) applyAdblock(cfg rbAdblockConfig) {
 	}
 	h.mu.Unlock()
 	for _, in := range list {
-		go in.applyUBOLModes()
+		go func(in *rbInstance) {
+			in.applyUBOLModes()
+			in.reloadForAdblock(cur, st)
+		}(in)
 	}
+}
+
+// blocksOn reports whether the blocker applies to pages on host.
+func (s *rbAdblockState) blocksOn(host string) bool {
+	return s != nil && s.enabled && !s.siteTrusted(host)
 }

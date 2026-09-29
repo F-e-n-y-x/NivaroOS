@@ -157,13 +157,13 @@ ensure_chrome() {
 	say "no usable Chrome/Chromium found - installing one"
 	case "$(os_family)" in
 		debian) apt-get update >/dev/null 2>&1; apt_install chromium && record "package:chromium" ;;
-		ubuntu) install_google_chrome_repo ;;
+		ubuntu) install_google_chrome_repo || { [ "$(dpkg --print-architecture 2>/dev/null)" = "amd64" ] || say "Ubuntu on $(dpkg --print-architecture 2>/dev/null) has no Chromium outside the snap (which the service can't run) and Google builds Chrome for amd64 only"; } ;;
 		fedora) dnf install -y chromium && record "package:chromium" ;;
 		arch) pacman -S --noconfirm --needed chromium && record "package:chromium" ;;
 		suse) zypper -n in chromium && record "package:chromium" ;;
 	esac
 	if ! find_chrome >/dev/null; then
-		install_chrome_for_testing || true
+		install_chrome_for_testing || { [ "$(uname -m)" = "x86_64" ] || say "Chrome for Testing is x86_64 only (this box is $(uname -m))"; }
 	fi
 	if c="$(find_chrome)"; then
 		say "installed $c"
@@ -186,6 +186,7 @@ ensure_user() {
 		fi
 		record "user:nivaroos-browser"
 	fi
+	[ -d "$STATE_DIR/staging" ] || STAGING_NEW=1
 	mkdir -p "$STATE_DIR/profiles" "$STATE_DIR/staging"
 	chown -R nivaroos-browser:nivaroos-browser "$STATE_DIR"
 	chmod 700 "$STATE_DIR" "$STATE_DIR/profiles"
@@ -320,6 +321,12 @@ main() {
 	ensure_userns
 	ensure_ubol
 	install_units
+	# Download Station's unit only makes the staging folder writable if it
+	# existed when the service started: restart it once when it is new (it
+	# is already running when "Install full browser" was pressed).
+	if [ "${STAGING_NEW:-0}" = 1 ]; then
+		systemctl try-restart nivaroos-download-sidecar.service >/dev/null 2>&1 || true
+	fi
 	say "ready"
 }
 

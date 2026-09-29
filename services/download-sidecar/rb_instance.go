@@ -152,6 +152,7 @@ type rbInstance struct {
 
 	mu        sync.Mutex
 	cmd       *exec.Cmd
+	cmdDone   chan struct{} // closed once cmd has been waited for
 	cdp       *CDPConn
 	egress    *rbEgress
 	ubolID    string
@@ -253,6 +254,7 @@ func (i *rbInstance) run() {
 	if err := i.launch(); err != nil {
 		log.Printf("ds-browser: %s: %v", i.uid, err)
 		i.setReady(err)
+		i.teardown() // the egress proxy launch opened
 		i.host.dropInstance(i)
 		return
 	}
@@ -262,11 +264,12 @@ func (i *rbInstance) run() {
 	defer close(stopTitles)
 	for {
 		i.mu.Lock()
-		conn := i.cdp
+		conn, cmd, cmdDone := i.cdp, i.cmd, i.cmdDone
 		i.mu.Unlock()
 		<-conn.Done()
-		if i.cmd != nil {
-			_ = i.cmd.Wait()
+		if cmd != nil {
+			_ = cmd.Wait()
+			close(cmdDone)
 		}
 		i.mu.Lock()
 		closing := i.closing
@@ -350,8 +353,10 @@ func (i *rbInstance) launch() error {
 	cmdR.Close()
 	resW.Close()
 	conn := NewCDPConn(resR, cmdW, multiCloser{cmdW, resR}, i.onEvent)
+	cmdDone := make(chan struct{})
 	i.mu.Lock()
 	i.cmd = cmd
+	i.cmdDone = cmdDone
 	i.cdp = conn
 	i.mu.Unlock()
 
@@ -361,7 +366,11 @@ func (i *rbInstance) launch() error {
 		Product string `json:"product"`
 	}
 	if err := conn.Call(ctx, "", "Browser.getVersion", nil, &ver); err != nil {
-		_ = cmd.Process.Kill()
+		// Kill the whole group and reap it: a failed start must not leave a
+		// zombie or open pipes behind (run() only waits on a started browser).
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = conn.Close()
+		go func() { _ = cmd.Wait(); close(cmdDone) }()
 		msg := i.stderr.String()
 		if strings.Contains(msg, "sandbox") || strings.Contains(msg, "namespace") {
 			i.host.setLaunchErr("sandbox")
@@ -513,6 +522,27 @@ func (i *rbInstance) applyUBOLModes() {
 
 // ---- lifecycle ----
 
+// reloadForAdblock reloads the page a viewer is looking at when turning the
+// blocker on or off, or trusting its site, changed whether it is blocked -
+// otherwise the ads (or the breakage) stay on screen until the user
+// reloads. Background tabs and sign-in windows are left alone.
+func (i *rbInstance) reloadForAdblock(old, cur *rbAdblockState) {
+	var reload []*rbTab
+	i.mu.Lock()
+	for t := range i.watchedTabs() {
+		if t.Context != "" || t.Internal || t.Discarded || t.Crashed || !strings.HasPrefix(t.URL, "http") {
+			continue
+		}
+		if h := urlHost(t.URL); h != "" && old.blocksOn(h) != cur.blocksOn(h) {
+			reload = append(reload, t)
+		}
+	}
+	i.mu.Unlock()
+	for _, t := range reload {
+		i.send(t, "Page.reload", map[string]interface{}{"ignoreCache": false})
+	}
+}
+
 func (i *rbInstance) idleFor(now time.Time) time.Duration {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -529,7 +559,7 @@ func (i *rbInstance) close() {
 		return
 	}
 	i.closing = true
-	conn, cmd := i.cdp, i.cmd
+	conn, cmd, cmdDone := i.cdp, i.cmd, i.cmdDone
 	vs := i.viewerList()
 	i.mu.Unlock()
 	i.saveTabsNow()
@@ -547,10 +577,9 @@ func (i *rbInstance) close() {
 		}
 	}
 	if cmd != nil && cmd.Process != nil {
-		done := make(chan struct{})
-		go func() { _, _ = cmd.Process.Wait(); close(done) }()
+		// run() is the one waiting on the process; it closes cmdDone after.
 		select {
-		case <-done:
+		case <-cmdDone:
 		case <-time.After(5 * time.Second):
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}

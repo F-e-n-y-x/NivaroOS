@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -411,8 +412,8 @@ func verifyProviderLogin(ctx context.Context, p rbProvider, domain, cookie strin
 			if jsToken = fetchJSToken(ctx, host, cookie); jsToken == "" {
 				return false, "", "errno " + n + " on " + host + " (no jsToken on its home page)"
 			}
-		case n == "-6" && hdr.Get("Url-Domain-Prefix") != "" && !strings.HasPrefix(host, hdr.Get("Url-Domain-Prefix")+"."):
-			host = rbText(hdr.Get("Url-Domain-Prefix"), 40) + "." + domain
+		case n == "-6" && rbDomainPrefix(hdr) != "" && !strings.HasPrefix(host, rbDomainPrefix(hdr)+"."):
+			host = rbDomainPrefix(hdr) + "." + domain
 		default:
 			return false, "", "errno " + n + " on " + host
 		}
@@ -426,6 +427,20 @@ func verifyProviderLogin(ctx context.Context, p rbProvider, domain, cookie strin
 		}
 	}
 	return true, account, ""
+}
+
+// rbDomainLabel is one DNS label: what Url-Domain-Prefix must be.
+var rbDomainLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// rbDomainPrefix is the response's Url-Domain-Prefix when it is a single DNS
+// label (e.g. "dm"), else "". Anything else ("evil.example/x?") could point
+// the next call - which carries the account's cookie - at another host.
+func rbDomainPrefix(hdr http.Header) string {
+	p := strings.ToLower(strings.TrimSpace(hdr.Get("Url-Domain-Prefix")))
+	if !rbDomainLabel.MatchString(p) {
+		return ""
+	}
+	return p
 }
 
 // fetchJSToken reads the jsToken TeraBox's home page hands its own scripts.

@@ -82,3 +82,24 @@ func TestVerifyLoginReportsWhy(t *testing.T) {
 		t.Fatalf("ok=%v why=%q", ok, why)
 	}
 }
+
+// A Url-Domain-Prefix that isn't one DNS label is ignored: the cookie never
+// goes to a host outside the provider's domain.
+func TestVerifyLoginIgnoresAHostilePrefix(t *testing.T) {
+	for _, prefix := range []string{"evil.example/x?", "evil.example#", "a@evil.example", "evil.example:443", "a.b", "-x", ""} {
+		var hosts []string
+		withFakeProvider(t, func(r *http.Request) *http.Response {
+			hosts = append(hosts, r.URL.Hostname())
+			return jsonResp(`{"errno":-6}`, map[string]string{"Url-Domain-Prefix": prefix})
+		})
+		ok, _, why := verifyProviderLogin(context.Background(), rbProviders["terabox"], "1024terabox.com", "ndus=x")
+		if ok || why != "errno -6 on www.1024terabox.com" {
+			t.Fatalf("prefix %q: ok=%v why=%q", prefix, ok, why)
+		}
+		for _, h := range hosts {
+			if h != "www.1024terabox.com" {
+				t.Fatalf("prefix %q: called %s", prefix, h)
+			}
+		}
+	}
+}

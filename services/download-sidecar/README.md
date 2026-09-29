@@ -41,7 +41,9 @@ no cgo, no system packages. State lives in
   QUIC and non-proxied WebRTC off). `install-ds-browser.sh` (run by
   `installer/install.sh` on every install/update) sets it all up.
 - **Lite browser** - the fallback when Chromium can't be installed or run
-  (or the box has < 2 GB RAM): a rewriting proxy under
+  (or the box has < 2 GB RAM; also Ubuntu on arm64, whose only Chromium is
+  the snap and where Google/Chrome for Testing ship no build - Debian,
+  Raspberry Pi OS, Fedora, Arch and openSUSE on arm64 use their chromium): a rewriting proxy under
   `/b/<session>/<scheme>/<host>/...` so any site can be shown in an iframe.
   HTML/CSS URLs are rewritten server-side, `inject.js` keeps runtime URLs
   in the proxy, a per-session cookie jar keeps sites signed in, and

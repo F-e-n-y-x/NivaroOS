@@ -545,7 +545,11 @@ func (c *rbClient) moveStaged(uid string, d rbStaged, dir string) (string, error
 		os.Remove(dest)
 		return "", err
 	}
-	_ = os.Remove(src)
+	if err := os.Remove(src); err != nil && !os.IsNotExist(err) {
+		// e.g. the staging folder appeared after this service started and is
+		// still read-only to it (a restart fixes that).
+		log.Printf("ds-browser: could not remove the staged copy of %s: %v", name, err)
+	}
 	return dest, nil
 }
 
