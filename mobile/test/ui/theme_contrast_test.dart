@@ -95,7 +95,8 @@ Color _on(Color c, Color bg) => Color.alphaBlend(c, bg);
       ('unselected chip label', chipIdleLabel, chipIdle),
       ('selected segment label', segLabel, segFill),
       ('FAB label', fabFg, fabBg),
-      ('navigation label, selected', navSelected, navBg),
+      // The floating bar's indicator holds the selected label and icon.
+      ('navigation label, selected', navSelected, nav.indicatorColor!),
       ('navigation label', navIdle, navBg),
       ('snack bar text', snack.contentTextStyle!.color!, snack.backgroundColor!),
       ('snack bar action', snack.actionTextColor!, snack.backgroundColor!),
@@ -257,20 +258,36 @@ void main() {
       nonText.addAll(c.nonText);
     }
 
-    // The floating navigation bar in every style, v2 included: its labels
-    // and icons on its own fill (the theme's navigation bar colour is the
-    // bar's), and the selected icon on its indicator.
+    // The floating navigation bar in every style, v2 included: the idle
+    // labels and icons on its own fill (the theme's navigation bar colour
+    // is the bar's), the selected ones on the indicator that holds them.
     final bar = tk.navBar;
     final nav = theme.navigationBarTheme;
     final navIndicator = nav.indicatorColor ?? s.secondaryContainer;
     text.addAll([
-      ('floating bar label, selected', nav.labelTextStyle?.resolve(_selected)?.color ?? s.onSurface, bar.color),
+      ('floating bar label, selected', nav.labelTextStyle?.resolve(_selected)?.color ?? s.onSecondaryContainer, navIndicator),
       ('floating bar label', nav.labelTextStyle?.resolve(_none)?.color ?? s.onSurfaceVariant, bar.color),
     ]);
     nonText.addAll([
       ('floating bar icon', nav.iconTheme?.resolve(_none)?.color ?? s.onSurfaceVariant, bar.color),
       ('floating bar icon, selected', nav.iconTheme?.resolve(_selected)?.color ?? s.onSecondaryContainer, navIndicator),
     ]);
+
+    // The indicator is the owner's "fully highlighted" destination: it must
+    // read as a shape on the bar in every style x mode x accent - by its
+    // fill, or (Console) by its accent edge at 3:1. The filled icon and
+    // bolder label carry the state too, so this is not the only cue.
+    test('$name: the floating bar\'s indicator stands out on the bar', () {
+      final shape = nav.indicatorShape;
+      final edge = shape is OutlinedBorder && shape.side.style != BorderStyle.none ? shape.side.color : null;
+      final fill = contrast(navIndicator, bar.color);
+      if (edge != null) {
+        final r = contrast(edge, bar.color);
+        expect(r, greaterThanOrEqualTo(3), reason: 'indicator edge on the bar is ${r.toStringAsFixed(3)}:1');
+      } else {
+        expect(fill, greaterThanOrEqualTo(1.25), reason: 'indicator on the bar is ${fill.toStringAsFixed(3)}:1');
+      }
+    });
 
     // Not a WCAG pair (the bar is a container, not a control): pins that
     // the floating bar stays visibly apart from the page and from the

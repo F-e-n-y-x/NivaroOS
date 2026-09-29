@@ -9,6 +9,7 @@ import 'package:nivaroos_mobile/screens/home_shell.dart';
 import 'package:nivaroos_mobile/screens/more_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
+import 'package:nivaroos_mobile/ui/widgets/floating_nav_bar.dart';
 
 import '../screenshots/harness.dart';
 
@@ -41,17 +42,17 @@ bool _onStage(WidgetTester tester, Type screen) {
 void main() {
   setUp(signIn);
 
-  testWidgets('phones get a five-destination NavigationBar that switches tabs', (tester) async {
+  testWidgets('phones get a five-destination floating bar that switches tabs', (tester) async {
     await _withShell(tester, phone, () async {
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(FloatingNavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
       for (final label in ['Home', 'Files', 'Apps', 'VMs', 'More']) {
-        expect(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)), findsOneWidget);
+        expect(find.descendant(of: find.byType(FloatingNavigationBar), matching: find.text(label)), findsOneWidget);
       }
       expect(_onStage(tester, DashboardScreen), isTrue);
       final tabs = {'Files': FilesScreen, 'Apps': AppsScreen, 'VMs': VmListScreen, 'More': MoreScreen};
       for (final e in tabs.entries) {
-        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(e.key)));
+        await tester.tap(find.descendant(of: find.byType(FloatingNavigationBar), matching: find.text(e.key)));
         await tester.pump();
         expect(_onStage(tester, e.value), isTrue, reason: e.key);
       }
@@ -61,7 +62,7 @@ void main() {
   testWidgets('600dp and wider get a NavigationRail with the same destinations', (tester) async {
     await _withShell(tester, tablet, () async {
       expect(find.byType(NavigationRail), findsOneWidget);
-      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.byType(FloatingNavigationBar), findsNothing);
       expect(tester.widget<NavigationRail>(find.byType(NavigationRail)).destinations, hasLength(5));
       await tester.tap(find.descendant(of: find.byType(NavigationRail), matching: find.text('VMs')));
       await tester.pump();
@@ -76,7 +77,7 @@ void main() {
       return null;
     });
     await _withShell(tester, phone, () async {
-      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Apps')));
+      await tester.tap(find.descendant(of: find.byType(FloatingNavigationBar), matching: find.text('Apps')));
       await tester.pump();
       // Off Home the shell holds back; on Home it lets the pop through to
       // the system, so Android can animate back-to-home.
@@ -95,7 +96,7 @@ void main() {
 
   testWidgets('More keeps settings reachable', (tester) async {
     await _withShell(tester, phone, () async {
-      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('More')));
+      await tester.tap(find.descendant(of: find.byType(FloatingNavigationBar), matching: find.text('More')));
       await tester.pump();
       final settings = find.descendant(of: find.byType(MoreScreen), matching: find.text('Settings'));
       await tester.scrollUntilVisible(settings, 200,

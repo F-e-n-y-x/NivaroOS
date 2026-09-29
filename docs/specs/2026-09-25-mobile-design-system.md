@@ -852,9 +852,8 @@ Match wallpaper removed (2026-09-26); Monochrome is the monotone choice; old wal
 
 "Make the bottom bar a floating bar in mobile." On phones the navigation
 bar is a rounded surface a gutter in from the sides and a gap above the
-gesture bar (`FloatingNavigationBar`, `lib/ui/widgets/floating_nav_bar.dart`),
-still a stock `NavigationBar` inside (labels, indicator, 48dp targets,
-semantics). Its look is `DesignTokens.navBar` (`StyleComponents.navBar`):
+gesture bar (`FloatingNavigationBar`, `lib/ui/widgets/floating_nav_bar.dart`;
+its destinations are its own since 2026-09-29, see below). Its look is `DesignTokens.navBar` (`StyleComponents.navBar`):
 Rack a paper / graphite panel with the card hairline and 14dp corners (a
 soft shadow in light); Tonal a tonal pill (stadium, shadow in light, a step
 above the cards in dark); Console a ruled panel with 8dp corners and no
@@ -862,8 +861,7 @@ shadow; v2 the M3 pill. On true black every style draws its edge (Console's
 bar is #000 inside its hairline). It is always shown (no hide on scroll).
 Tablets and landscape keep the NavigationRail.
 
-Content scrolls behind the bar. `FloatingBarScaffold` (the shell's
-Scaffold, `extendBody`) hands the bar's room (height + gap + inset) to the
+Content scrolls behind the bar. `FloatingBarScaffold` (the shell) hands the bar's room (height + gap + inset) to the
 tabs as their MediaQuery bottom padding **and** view padding, so the one
 mechanism covers every screen: `AppScaffold` ends its slivers above the
 bar, and a tab's FAB (Files' New and paste bar, VMs' New VM) floats above
@@ -872,5 +870,36 @@ dialogs open over it. With the keyboard up the room is zero. The contrast
 test checks the bar's labels and icons on its fill and pins that it stands
 apart from the page and the cards in every style × mode × accent; the
 screenshot harness draws tabs in the real shell frame (`ShellFrame`).
-**Open:** a snack bar shown while a tab's FAB is up can overlap the FAB (the
-two live on different Scaffolds; it did before too).
+Snack bars and the FAB (fixed 2026-09-29): the shell is no longer a
+`Scaffold` (`FloatingBarScaffold` is a `Stack` on a `Material`, and the
+tablet rail layout a `Material` too), so each tab's own Scaffold is the
+root one under the app's `ScaffoldMessenger` and draws the snack bars. It
+knows its FAB, so a snack bar floats above the FAB (end or centre) and
+above the bar (the bar's room is its view padding). They used to be drawn
+on the shell's Scaffold, which did not know the tab's FAB and covered it.
+`test/shell/floating_bar_test.dart` pins both FAB locations.
+
+## Owner request (2026-09-29): highlight the whole destination
+
+"In the app bottom bar it only highlights the icon and not the full thing
+with the name; it doesn't look good half highlighted." The floating bar
+is no longer a stock `NavigationBar`: `FloatingNavigationBar` lays out its
+own destinations, and the selected one sits in one indicator behind both
+its icon and its label, `FloatingNavigationBar.indicatorInset` (6dp) in
+from the bar on every side, its corners concentric with the bar's
+(`StyleComponents.navBarIndicator`): Rack an 8dp ink key (the selected
+chip's ink, paper label), Tonal a stadium in the secondary container,
+Console a 2dp rectangle in the primary container ruled by a 1dp accent
+line, v2 the M3 stadium. In light Tonal and v2 the secondary container is
+only 1.1:1 on the bar, so there the fill is the secondary colour at 24%
+over the bar (`StyleComponents.navBarIndicatorColor`, about 1.4:1). The
+colours stay in `navigationBarTheme` (indicator, label and icon), so the
+contrast test checks the selected label and icon on the indicator, the idle
+ones on the bar, and that the indicator reads on the bar (1.25:1 fill, or
+3:1 for Console's edge) in every style x mode x accent. Each destination is
+a full-height target (at least 48dp), announced as a button with a
+selected state in a mutually exclusive group and "Tab n of 5"; the label
+keeps the M3 1.3x text-scale cap so the bar keeps its height; switching
+fades the old indicator out and grows the new one from 60% width
+(`Motion.short`, off with "remove animations"). The tablet rail keeps
+the M3 layout, in the same selected fill.
