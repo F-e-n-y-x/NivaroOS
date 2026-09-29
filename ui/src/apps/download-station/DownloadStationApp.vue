@@ -46,8 +46,8 @@
 				<!-- Kept mounted (v-show, not v-if) so open tabs and their pages
 				     survive switching to another section and back. -->
 				<ds-browser v-if="browserStarted" v-show="activeSection === 'browser'" ref="browser"
-					:visible="activeSection === 'browser'" :adblock-enabled="adblockEnabled"
-					@toggle-adblock="toggleAdblock"></ds-browser>
+					:visible="activeSection === 'browser' && !isMinimized" :adblock-enabled="adblockEnabled" :allowed-sites="allowedSites"
+					@toggle-adblock="toggleAdblock" @trust-site="trustSite" @open-adblock="activeSection = 'adblock'"></ds-browser>
 				<ds-adblock-panel v-if="activeSection === 'adblock'" @changed="loadSettings"></ds-adblock-panel>
 				<ds-settings-panel v-if="activeSection === 'settings'" @changed="loadSettings"></ds-settings-panel>
 			</template>
@@ -114,6 +114,9 @@ export default {
 		},
 		adblockEnabled() {
 			return !!(this.settings && this.settings.adblock_enabled)
+		},
+		allowedSites() {
+			return (this.settings && this.settings.allowed_sites) || []
 		},
 		isMinimized() {
 			const win = this.$store.state.windows.find(w => w.id === 'download-station')
@@ -223,6 +226,19 @@ export default {
 			if (!this.settings) return
 			try {
 				this.settings = await downloadSidecar.updateSettings({ adblock_enabled: !this.settings.adblock_enabled })
+			} catch (e) {
+				this.toastError(this.$t('Could not change the ad blocker: {error}', { error: e.message }))
+			}
+		},
+		// The browser's shield menu: "Don't block anything on <host>" (uBO's
+		// trusted sites), or undo it.
+		async trustSite(host, trusted) {
+			if (!this.settings || !host) return
+			const h = host.replace(/^www\./, '')
+			// Undoing trust removes whatever entry covers this host.
+			const cur = this.allowedSites.filter(s => !(host === s || host.endsWith('.' + s)))
+			try {
+				this.settings = await downloadSidecar.updateSettings({ allowed_sites: trusted ? [...cur, h] : cur })
 			} catch (e) {
 				this.toastError(this.$t('Could not change the ad blocker: {error}', { error: e.message }))
 			}

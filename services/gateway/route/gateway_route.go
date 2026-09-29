@@ -71,19 +71,27 @@ func isDownloadStationBrowserPath(p string) bool {
 	return rest == "/b" || strings.HasPrefix(rest, "/b/")
 }
 
-var dsProxy = &httputil.ReverseProxy{
-	Director: func(r *http.Request) {
-		r.URL.Scheme = "http"
-		r.URL.Host = dsSidecarAddr
-		if _, ok := r.Header["User-Agent"]; !ok {
-			r.Header.Set("User-Agent", "")
-		}
-	},
-	ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"error":"download station unavailable"}`))
-	},
+// Its full browser streams over a WebSocket (/v1/download-station/rb/ws),
+// which the reverse proxy carries as an upgraded connection.
+var dsProxy = newDSProxy(dsSidecarAddr)
+
+func newDSProxy(addr string) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
+		Director: func(r *http.Request) {
+			r.URL.Scheme = "http"
+			r.URL.Host = addr
+			if _, ok := r.Header["User-Agent"]; !ok {
+				r.Header.Set("User-Agent", "")
+			}
+		},
+		// Uploads to a page in the browser stream through.
+		FlushInterval: -1,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"download station unavailable"}`))
+		},
+	}
 }
 
 // Backup & Sync (nivaroos-backup, an optional module), same-origin at

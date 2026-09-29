@@ -54,6 +54,25 @@
 				<p v-if="reconnectError" class="error-note">{{ reconnectError }}</p>
 			</div>
 
+			<!-- Reconnect: cookie-login (TeraBox) - sign in again in the browser,
+			     or paste a fresh cookie -->
+			<div v-if="reconnectingKey === a.mount_point && reconnectableKinds[a.type] === 'browser'" class="reconnect-form">
+				<p class="field-help">{{ $t('Sign in to {provider} again - the new sign-in replaces the old one, and the account keeps its name and place in Files.', { provider: a.name || a.type }) }}</p>
+				<div class="form-actions">
+					<b-button rounded size="is-small" type="is-primary" icon-left="login" :loading="browserSignin.checking" :disabled="!browserSignin.available" @click="reconnectWithBrowser(a)">{{ $t('Sign in again') }}</b-button>
+					<b-button rounded size="is-small" @click="reconnectingKey = null">{{ $t('Cancel') }}</b-button>
+				</div>
+				<p v-if="browserSignin.hint" class="field-help">{{ browserSignin.hint }}</p>
+				<a class="advanced-toggle" @click="pasteCookie = !pasteCookie">{{ pasteCookie ? $t('Hide') : $t('Paste a cookie instead (advanced)') }}</a>
+				<template v-if="pasteCookie">
+					<b-input v-model="reconnectToken" type="textarea" size="is-small" rows="3" :placeholder="$t('ndus=...')"></b-input>
+					<div class="form-actions">
+						<b-button rounded size="is-small" type="is-primary" :loading="reconnecting" :disabled="!reconnectToken.trim()" @click="submitReconnectCookie(a, reconnectToken.trim())">{{ $t('Reconnect') }}</b-button>
+					</div>
+				</template>
+				<p v-if="reconnectError" class="error-note">{{ reconnectError }}</p>
+			</div>
+
 			<!-- Reconnect: iCloud - Apple ID + password, then a 2FA code -->
 			<div v-if="reconnectingKey === a.mount_point && reconnectableKinds[a.type] === 'interactive'" class="reconnect-form">
 				<template v-if="!icloud.sessionId">
@@ -93,6 +112,11 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import { apiError } from '@/utils/apiError'
 import events from '@/events/events'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import { browserSigninAvailability, openBrowserSignin } from '@/apps/download-station/rb/browserSignin'
+
+// Cookie-login providers: reconnecting means signing in again in Download
+// Station's browser (rb/RbSigninWindow.vue).
+const BROWSER_SIGNIN_TYPES = ['terabox']
 
 export default {
 	name: 'cloud-accounts-list',
@@ -109,6 +133,8 @@ export default {
 			reconnectToken: '',
 			reconnecting: false,
 			reconnectError: '',
+			pasteCookie: false,
+			browserSignin: { available: false, checking: false, hint: '' },
 			icloud: { appleId: '', password: '', sessionId: '', question: null, answer: '' },
 			speedTestingKey: null,
 			speedResults: {},
@@ -126,6 +152,8 @@ export default {
 					// (an OAuth token, an Apple session) - form-kind server
 					// details are edited directly instead, not "reconnected".
 					if (p.auth_kind === 'token' || p.auth_kind === 'interactive') kinds[p.type] = p.auth_kind
+					// A cookie sign-in expires too; it is renewed by signing in again.
+					if (BROWSER_SIGNIN_TYPES.includes(p.type)) kinds[p.type] = 'browser'
 				})
 				this.reconnectableKinds = kinds
 			}
@@ -164,7 +192,46 @@ export default {
 			}
 			this.reconnectingKey = a.mount_point
 			this.reconnectToken = ''
+			this.pasteCookie = false
 			this.icloud = { appleId: '', password: '', sessionId: '', question: null, answer: '' }
+			if (this.reconnectableKinds[a.type] === 'browser') {
+				this.browserSignin = { available: false, checking: true, hint: '' }
+				browserSigninAvailability(k => this.$t(k)).then(av => {
+					this.browserSignin = { checking: false, ...av }
+					if (!av.available) this.pasteCookie = true
+				})
+			}
+		},
+		reconnectWithBrowser(a) {
+			openBrowserSignin(this.$store, {
+				provider: a.type,
+				purpose: 'reconnect',
+				title: this.$t('Sign in to {provider} again', { provider: a.name || a.type }),
+				onConnected: cookie => this.submitReconnectCookie(a, cookie, true)
+			})
+		},
+		// fromWindow: errors go back to the sign-in window (which shows them)
+		// instead of this form.
+		async submitReconnectCookie(a, cookie, fromWindow) {
+			this.reconnectError = ''
+			this.reconnecting = true
+			try {
+				let res
+				try {
+					res = await this.$api.cloud.reconnect(a.fs, { cookie })
+				} catch (e) {
+					throw new Error((e.response && e.response.data && e.response.data.data) || this.$t('Failed to reconnect'))
+				}
+				if (res.data.success !== 200) throw new Error(res.data.message || this.$t('Failed to reconnect'))
+				this.reconnectingKey = null
+				this.refresh()
+				this.$buefy.toast.open({ message: this.$t('Reconnected'), type: 'is-success' })
+			} catch (e) {
+				if (fromWindow) throw e
+				this.reconnectError = e.message
+			} finally {
+				this.reconnecting = false
+			}
 		},
 		submitReconnectToken(a) {
 			this.reconnectError = ''

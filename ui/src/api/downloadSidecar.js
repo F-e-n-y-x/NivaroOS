@@ -7,10 +7,13 @@
 // LAN, over https (the sidecar itself speaks plain http) and behind a
 // reverse proxy or tunnel that only publishes the dashboard's port.
 //
-// The lite browser is different: its proxied pages must run on the
-// sidecar's own origin (never the UI's, where page scripts could read the
-// user's token), so it is only available when that origin is loadable -
-// i.e. not from an https page. See browserAvailable().
+// The browser is a real Chromium on the server, reached over the same
+// gateway route (/rb/..., a WebSocket for the picture stream - see
+// apps/download-station/rb/). Its fallback, the Lite browser, is different:
+// its proxied pages must run on the sidecar's own origin (never the UI's,
+// where page scripts could read the user's token), so Lite mode is only
+// available when that origin is loadable - i.e. not from an https page.
+// See browserAvailable().
 export const SIDECAR_PORT = 28642
 export const GATEWAY_PREFIX = '/v1/download-station'
 
@@ -153,6 +156,43 @@ export const downloadSidecar = {
 	getNav: (sid, nav) => request(`/browser/sessions/${enc(sid)}/navs/${enc(nav)}`),
 	captureUrl: (sid, url, referer) => request(`/browser/sessions/${enc(sid)}/captures`, jsonBody({ url, referer })),
 	getCapture: (sid, cid) => request(`/browser/sessions/${enc(sid)}/captures/${enc(cid)}`),
+
+	// ---- the full browser (server-side Chromium) ----
+	rbStatus: () => request('/rb/status'),
+	// Runs the installer's browser step (Chromium + uBlock Origin Lite).
+	rbInstall: () => request('/rb/install', { method: 'POST' }),
+	// Signs out of every site: stops the browser and deletes its profile.
+	rbClearProfile: () => request('/rb/profile', { method: 'DELETE' }),
+	// A provider's sign-in from a sign-in window (context) - only that
+	// provider's cookies, for Online Accounts.
+	rbExportCookies: (provider, context) => request('/rb/cookies/export', jsonBody({ provider, context })),
+	// Moves a download only the browser could fetch (blob: links) into dir.
+	rbSaveStaged: (guid, dir) => request(`/rb/staged/${enc(guid)}/save`, jsonBody({ dir: dir || '' })),
+	// Sends files the user picked to a page's file input. onProgress(0..1).
+	rbUpload(chooserId, files, onProgress) {
+		return new Promise((resolve, reject) => {
+			const fd = new FormData()
+			for (const f of files) fd.append('file', f, f.name)
+			const xhr = new XMLHttpRequest()
+			xhr.open('POST', `${apiBase()}/rb/upload/${enc(chooserId)}`)
+			const token = authToken()
+			if (token) xhr.setRequestHeader('Authorization', token)
+			xhr.upload.onprogress = e => onProgress && e.lengthComputable && onProgress(e.loaded / e.total)
+			xhr.onload = () => {
+				let body = {}
+				try {
+					body = JSON.parse(xhr.responseText || '{}')
+				} catch (e) {}
+				if (xhr.status >= 200 && xhr.status < 300) resolve(body)
+				else reject(makeError(body.error || `upload failed: ${xhr.status}`, 'http', xhr.status))
+			}
+			xhr.onerror = () => reject(makeError('upload failed', 'unreachable'))
+			xhr.send(fd)
+		})
+	},
+	get authToken() {
+		return authToken()
+	},
 
 	// Absolute URL of a page as served through the lite-browser proxy. Kept
 	// in sync with BrowserSession.proxyPath on the Go side.

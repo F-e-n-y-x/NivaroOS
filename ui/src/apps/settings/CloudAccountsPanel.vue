@@ -24,6 +24,23 @@
 			<b-field :label="$t('Label')">
 				<b-input v-model="form.label" size="is-small" :placeholder="activeProvider.label"></b-input>
 			</b-field>
+			<!-- Cookie-login providers (TeraBox): sign in on the provider's own
+			     page in Download Station's browser; the cookie is picked up
+			     automatically. Pasting it stays available below. -->
+			<div v-if="browserSignin.provider === addingType" class="browser-signin">
+				<div class="step">
+					<span class="step-number"><i class="mdi mdi-web"></i></span>
+					<div class="step-body">
+						<p class="step-title">{{ $t('Sign in with the browser (recommended)') }}</p>
+						<p class="step-help">{{ $t('Opens {provider}\'s own sign-in page. Sign in with your email, Google or the QR code and NivaroOS picks up the sign-in by itself - no cookie copying.', { provider: activeProvider.label }) }}</p>
+						<b-button rounded size="is-small" type="is-primary" icon-left="login" :loading="browserSignin.checking" :disabled="!browserSignin.available" @click="signInWithBrowser">
+							{{ $t('Sign in with the browser') }}
+						</b-button>
+						<p v-if="browserSignin.hint" class="step-help hint">{{ browserSignin.hint }}</p>
+					</div>
+				</div>
+				<p class="or-divider"><span>{{ $t('or paste the cookie yourself (advanced)') }}</span></p>
+			</div>
 			<b-field v-for="opt in visibleFormOptions" :key="opt.Name" :label="opt.Help || opt.Name">
 				<b-select v-if="opt.Examples && opt.Examples.length" v-model="form.values[opt.Name]" size="is-small" expanded>
 					<option value="">{{ $t('Choose...') }}</option>
@@ -131,6 +148,12 @@
 </template>
 
 <script>
+import { browserSigninAvailability, openBrowserSignin } from '@/apps/download-station/rb/browserSignin'
+
+// Providers whose sign-in is a site cookie, which Download Station's
+// browser can pick up after a normal sign-in.
+const BROWSER_SIGNIN_TYPES = ['terabox']
+
 // Genuine grouping, not decoration: these two categories need different
 // things from the user (sign in vs. enter server details), which is why
 // they get different add-flows below (token/interactive vs form).
@@ -161,7 +184,8 @@ export default {
 			submitting: false,
 			error: '',
 			form: { label: '', values: {}, token: '' },
-			icloud: { appleId: '', password: '', sessionId: '', question: null, answer: '' }
+			icloud: { appleId: '', password: '', sessionId: '', question: null, answer: '' },
+			browserSignin: { provider: '', available: false, checking: false, hint: '' }
 		}
 	},
 	computed: {
@@ -203,6 +227,13 @@ export default {
 			this.icloud = { appleId: '', password: '', sessionId: '', question: null, answer: '' }
 			this.formOptions = []
 			this.showAdvanced = false
+			this.browserSignin = { provider: '', available: false, checking: false, hint: '' }
+			if (BROWSER_SIGNIN_TYPES.includes(provider.type)) {
+				this.browserSignin = { provider: provider.type, available: false, checking: true, hint: '' }
+				browserSigninAvailability(k => this.$t(k)).then(a => {
+					if (this.browserSignin.provider === provider.type) this.browserSignin = { provider: provider.type, checking: false, ...a }
+				})
+			}
 			if (provider.auth_kind === 'form') {
 				this.$api.cloud.providerOptions(provider.type).then(res => {
 					if (res.data.success === 200) {
@@ -246,6 +277,36 @@ export default {
 				.finally(() => {
 					this.submitting = false
 				})
+		},
+		signInWithBrowser() {
+			const type = this.addingType
+			const provider = this.activeProvider
+			openBrowserSignin(this.$store, {
+				provider: type,
+				purpose: 'add',
+				title: this.$t('Sign in to {provider}', { provider: provider.label }),
+				// Straight from the sign-in window to the new account: the
+				// cookie is never put in this form.
+				onConnected: async (cookie, account) => {
+					const params = {}
+					Object.keys(this.form.values).forEach(k => {
+						const v = this.form.values[k]
+						if (k !== 'cookie' && v !== '' && v !== null && v !== undefined) params[k] = String(v)
+					})
+					params.cookie = cookie
+					const label = this.form.label || (account ? `${provider.label} (${account})` : provider.label)
+					let res
+					try {
+						res = await this.$api.cloud.createAccount({ type, label, params })
+					} catch (e) {
+						throw new Error((e.response && e.response.data && e.response.data.data) || this.$t('Failed to add account'))
+					}
+					if (res.data.success !== 200) throw new Error(res.data.message || this.$t('Failed to add account'))
+					this.cancelAdd()
+					this.$emit('added')
+					this.$buefy.toast.open({ message: this.$t('Connected'), type: 'is-success' })
+				}
+			})
 		},
 		submitToken() {
 			this.error = ''
@@ -474,5 +535,31 @@ export default {
 	color: var(--color-danger-fg);
 	font-size: var(--font-xs);
 	margin-top: var(--space-2);
+}
+
+.browser-signin {
+	margin: var(--space-3) 0 var(--space-2);
+
+	.step-help.hint {
+		margin: var(--space-2) 0 0;
+		color: var(--theme-text-muted, #64748b);
+	}
+}
+
+.or-divider {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: var(--space-4) 0 var(--space-2);
+	font-size: var(--font-2xs);
+	color: var(--theme-text-muted, #94a3b8);
+
+	&::before,
+	&::after {
+		content: '';
+		flex: 1 1 auto;
+		height: 1px;
+		background: var(--theme-card-border, rgba(0, 0, 0, 0.08));
+	}
 }
 </style>

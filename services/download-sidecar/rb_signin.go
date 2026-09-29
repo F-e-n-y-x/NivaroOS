@@ -135,7 +135,7 @@ func (i *rbInstance) startSignin(v *rbViewer, provider string) error {
 		return err
 	}
 	v.activate(t.ID)
-	v.sendJSON(map[string]interface{}{"t": "signin", "provider": p.ID, "state": "waiting"})
+	v.sendJSON(map[string]interface{}{"t": "signin", "provider": p.ID, "state": "waiting", "context": s.context})
 	go func() {
 		tk := time.NewTicker(1500 * time.Millisecond)
 		defer tk.Stop()
@@ -214,7 +214,7 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 		s.state, s.cookie, s.checked = "waiting", "", ""
 		s.mu.Unlock()
 		if was != "waiting" {
-			s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "waiting"})
+			s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "waiting", "context": s.context})
 		}
 		return
 	}
@@ -225,7 +225,7 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 	s.checked = auth
 	s.state = "verifying"
 	s.mu.Unlock()
-	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "verifying"})
+	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": "verifying", "context": s.context})
 	ok, account := verifyProviderLogin(ctx, s.provider, domain, cookie)
 	s.mu.Lock()
 	if ok {
@@ -236,7 +236,7 @@ func (i *rbInstance) checkSignin(ctxID string, force bool) {
 	}
 	state := s.state
 	s.mu.Unlock()
-	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": state, "account": account, "domain": domain})
+	s.viewer.sendJSON(map[string]interface{}{"t": "signin", "provider": s.provider.ID, "state": state, "account": account, "domain": domain, "context": s.context})
 }
 
 var providerClient = &http.Client{Transport: newTransport(false), Timeout: 12 * time.Second}
