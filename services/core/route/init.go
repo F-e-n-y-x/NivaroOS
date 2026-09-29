@@ -24,7 +24,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/samba"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/encryption"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
-	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"go.uber.org/zap"
 )
@@ -32,7 +31,6 @@ import (
 func InitFunction() {
 	go InitNetworkMount()
 	go InitInfo()
-	//go InitZerotier()
 }
 
 func InitInfo() {
@@ -96,7 +94,4 @@ func InitNetworkMount() {
 	if err != nil {
 		logger.Error("mount storage err", zap.Any("err", err))
 	}
-}
-func InitZerotier() {
-	v1.CheckNetwork()
 }

@@ -47,7 +47,6 @@ func InitV1Router() http.Handler {
 	// generated server-side by the authenticated create endpoint below.
 	e.GET("/v1/qs/:id", v1.GetQuickShareRedeem)
 	v1Group := e.Group("/v1")
-	//	e.Any("/v1/test", v1.CheckNetwork)
 	v1Group.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
 		// Same-host automation (direct loopback socket peer, no proxy or
 		// browser headers - see common/middleware.IsLocalAutomation) may
@@ -264,12 +263,6 @@ func InitV1Router() http.Handler {
 		{
 			v1OtherGroup.GET("/search", v1.GetSearchResult)
 		}
-		v1ZerotierGroup := v1Group.Group("/zt")
-		v1ZerotierGroup.Use()
-		{
-			v1ZerotierGroup.Any("/*url", v1.ZerotierProxy)
-		}
-
 		v1TailscaleGroup := v1Group.Group("/tailscale")
 		v1TailscaleGroup.Use()
 		{

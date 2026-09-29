@@ -151,7 +151,6 @@ func main() {
 		// race the gateway's routes.json between the two services.
 		"/v1/recover",
 		"/v1/other",
-		"/v1/zt",
 		"/v1/tailscale",
 		"/v1/schedules",
 		"/v1/companion",

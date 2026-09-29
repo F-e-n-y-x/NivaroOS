@@ -4,7 +4,6 @@
 package nivaroos
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,12 +18,6 @@ import (
 
 const (
 	Access_tokenScopes = "access_token.Scopes"
-)
-
-// Defines values for SetZerotierNetworkStatusJSONBodyStatus.
-const (
-	Offline SetZerotierNetworkStatusJSONBodyStatus = "offline"
-	Online  SetZerotierNetworkStatusJSONBodyStatus = "online"
 )
 
 // BaseResponse defines model for BaseResponse.
@@ -54,13 +47,6 @@ type SuccessResponseString struct {
 	Message *string `json:"message,omitempty"`
 }
 
-// ZTInfo defines model for ZTInfo.
-type ZTInfo struct {
-	Id     *string `json:"id,omitempty"`
-	Name   *string `json:"name,omitempty"`
-	Status *string `json:"status,omitempty"`
-}
-
 // GetHealthPortsOK defines model for GetHealthPortsOK.
 type GetHealthPortsOK struct {
 	Data *HealthPorts `json:"data,omitempty"`
@@ -76,9 +62,6 @@ type GetHealthServicesOK struct {
 	// Message message returned by server side if there is any
 	Message *string `json:"message,omitempty"`
 }
-
-// GetZTInfoOK defines model for GetZTInfoOK.
-type GetZTInfoOK = ZTInfo
 
 // ResponseClientError defines model for ResponseClientError.
 type ResponseClientError = BaseResponse
@@ -124,19 +107,8 @@ type PostUploadFileMultipartBody struct {
 	TotalSize        *string             `json:"totalSize,omitempty"`
 }
 
-// SetZerotierNetworkStatusJSONBody defines parameters for SetZerotierNetworkStatus.
-type SetZerotierNetworkStatusJSONBody struct {
-	Status *SetZerotierNetworkStatusJSONBodyStatus `json:"status,omitempty"`
-}
-
-// SetZerotierNetworkStatusJSONBodyStatus defines parameters for SetZerotierNetworkStatus.
-type SetZerotierNetworkStatusJSONBodyStatus string
-
 // PostUploadFileMultipartRequestBody defines body for PostUploadFile for multipart/form-data ContentType.
 type PostUploadFileMultipartRequestBody PostUploadFileMultipartBody
-
-// SetZerotierNetworkStatusJSONRequestBody defines body for SetZerotierNetworkStatus for application/json ContentType.
-type SetZerotierNetworkStatusJSONRequestBody SetZerotierNetworkStatusJSONBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -228,14 +200,6 @@ type ClientInterface interface {
 
 	// GetHealthServices request
 	GetHealthServices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetZerotierInfo request
-	GetZerotierInfo(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// SetZerotierNetworkStatus request with any body
-	SetZerotierNetworkStatusWithBody(ctx context.Context, networkId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	SetZerotierNetworkStatus(ctx context.Context, networkId string, body SetZerotierNetworkStatusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetFileTest(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -300,42 +264,6 @@ func (c *Client) GetHealthPorts(ctx context.Context, reqEditors ...RequestEditor
 
 func (c *Client) GetHealthServices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthServicesRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetZerotierInfo(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetZerotierInfoRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) SetZerotierNetworkStatusWithBody(ctx context.Context, networkId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSetZerotierNetworkStatusRequestWithBody(c.Server, networkId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) SetZerotierNetworkStatus(ctx context.Context, networkId string, body SetZerotierNetworkStatusJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSetZerotierNetworkStatusRequest(c.Server, networkId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -574,80 +502,6 @@ func NewGetHealthServicesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewGetZerotierInfoRequest generates requests for GetZerotierInfo
-func NewGetZerotierInfoRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/zt/info")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewSetZerotierNetworkStatusRequest calls the generic SetZerotierNetworkStatus builder with application/json body
-func NewSetZerotierNetworkStatusRequest(server string, networkId string, body SetZerotierNetworkStatusJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewSetZerotierNetworkStatusRequestWithBody(server, networkId, "application/json", bodyReader)
-}
-
-// NewSetZerotierNetworkStatusRequestWithBody generates requests for SetZerotierNetworkStatus with any type of body
-func NewSetZerotierNetworkStatusRequestWithBody(server string, networkId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "network_id", runtime.ParamLocationPath, networkId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/zt/%s/status", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -708,14 +562,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetHealthServices request
 	GetHealthServicesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthServicesResponse, error)
-
-	// GetZerotierInfo request
-	GetZerotierInfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetZerotierInfoResponse, error)
-
-	// SetZerotierNetworkStatus request with any body
-	SetZerotierNetworkStatusWithBodyWithResponse(ctx context.Context, networkId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetZerotierNetworkStatusResponse, error)
-
-	SetZerotierNetworkStatusWithResponse(ctx context.Context, networkId string, body SetZerotierNetworkStatusJSONRequestBody, reqEditors ...RequestEditorFn) (*SetZerotierNetworkStatusResponse, error)
 }
 
 type GetFileTestResponse struct {
@@ -867,52 +713,6 @@ func (r GetHealthServicesResponse) StatusCode() int {
 	return 0
 }
 
-type GetZerotierInfoResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ZTInfo
-	JSON500      *BaseResponse
-}
-
-// Status returns HTTPResponse.Status
-func (r GetZerotierInfoResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetZerotierInfoResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type SetZerotierNetworkStatusResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ZTInfo
-	JSON500      *BaseResponse
-}
-
-// Status returns HTTPResponse.Status
-func (r SetZerotierNetworkStatusResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r SetZerotierNetworkStatusResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 // GetFileTestWithResponse request returning *GetFileTestResponse
 func (c *ClientWithResponses) GetFileTestWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFileTestResponse, error) {
 	rsp, err := c.GetFileTest(ctx, reqEditors...)
@@ -965,32 +765,6 @@ func (c *ClientWithResponses) GetHealthServicesWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseGetHealthServicesResponse(rsp)
-}
-
-// GetZerotierInfoWithResponse request returning *GetZerotierInfoResponse
-func (c *ClientWithResponses) GetZerotierInfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetZerotierInfoResponse, error) {
-	rsp, err := c.GetZerotierInfo(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetZerotierInfoResponse(rsp)
-}
-
-// SetZerotierNetworkStatusWithBodyWithResponse request with arbitrary body returning *SetZerotierNetworkStatusResponse
-func (c *ClientWithResponses) SetZerotierNetworkStatusWithBodyWithResponse(ctx context.Context, networkId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetZerotierNetworkStatusResponse, error) {
-	rsp, err := c.SetZerotierNetworkStatusWithBody(ctx, networkId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseSetZerotierNetworkStatusResponse(rsp)
-}
-
-func (c *ClientWithResponses) SetZerotierNetworkStatusWithResponse(ctx context.Context, networkId string, body SetZerotierNetworkStatusJSONRequestBody, reqEditors ...RequestEditorFn) (*SetZerotierNetworkStatusResponse, error) {
-	rsp, err := c.SetZerotierNetworkStatus(ctx, networkId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseSetZerotierNetworkStatusResponse(rsp)
 }
 
 // ParseGetFileTestResponse parses an HTTP response from a GetFileTestWithResponse call
@@ -1191,72 +965,6 @@ func ParseGetHealthServicesResponse(rsp *http.Response) (*GetHealthServicesRespo
 			// Message message returned by server side if there is any
 			Message *string `json:"message,omitempty"`
 		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest BaseResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetZerotierInfoResponse parses an HTTP response from a GetZerotierInfoWithResponse call
-func ParseGetZerotierInfoResponse(rsp *http.Response) (*GetZerotierInfoResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetZerotierInfoResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ZTInfo
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest BaseResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseSetZerotierNetworkStatusResponse parses an HTTP response from a SetZerotierNetworkStatusWithResponse call
-func ParseSetZerotierNetworkStatusResponse(rsp *http.Response) (*SetZerotierNetworkStatusResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &SetZerotierNetworkStatusResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ZTInfo
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

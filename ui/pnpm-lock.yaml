@@ -161,9 +161,6 @@ importers:
       recasa-appmanagement-openapi:
         specifier: link:./vendor/api-clients/recasa-appmanagement-openapi
         version: link:vendor/api-clients/recasa-appmanagement-openapi
-      recasa-core-openapi:
-        specifier: link:./vendor/api-clients/recasa-core-openapi
-        version: link:vendor/api-clients/recasa-core-openapi
       remove:
         specifier: ^0.1.5
         version: 0.1.5

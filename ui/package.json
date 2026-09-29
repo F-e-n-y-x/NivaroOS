@@ -64,7 +64,6 @@
     "nanoid": "^4.0.2",
     "qs": "^6.11.2",
     "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
-    "recasa-core-openapi": "link:./vendor/api-clients/recasa-core-openapi",
     "remove": "^0.1.5",
     "simple-uploader.js": "^0.6.0",
     "socket.io-client": "^2.5.0",

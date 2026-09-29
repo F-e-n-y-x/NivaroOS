@@ -111,31 +111,6 @@ func Post(url string, data []byte, contentType string, head map[string]string) (
 	return
 }
 
-// 发送POST请求
-// url:请求地址，data:POST请求提交的数据,contentType:请求体格式，如：application/json
-// content:请求放回的内容
-func ZeroTierGet(url string, head map[string]string) (content string, code int) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	for k, v := range head {
-		req.Header.Add(k, v)
-	}
-	if err != nil {
-		panic(err)
-	}
-
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, error := client.Do(req)
-
-	if error != nil {
-		panic(error)
-	}
-	defer resp.Body.Close()
-	code = resp.StatusCode
-	result, _ := ioutil.ReadAll(resp.Body)
-	content = string(result)
-	return
-}
-
 // 发送GET请求
 // url:请求地址
 // response:请求返回的内容

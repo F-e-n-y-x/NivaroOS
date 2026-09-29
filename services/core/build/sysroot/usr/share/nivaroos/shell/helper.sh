@@ -76,12 +76,6 @@ DelAppConfigDir() {
   fi
 }
 
-#zerotier本机已加入的网络
-#result start,end,sectors
-GetLocalJoinNetworks() {
-  zerotier-cli listnetworks -j
-}
-
 #格式化fat32磁盘
 #param 需要格式化的目录 /dev/sda1
 #param 格式
