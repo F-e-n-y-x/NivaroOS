@@ -20,6 +20,7 @@
   <a href="https://github.com/F-e-n-y-x/NivaroOS/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Android-orange?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
+  <a href="#-support-nivaroos"><img src="https://img.shields.io/badge/Support-UPI-7DF9C5?style=flat-square&labelColor=0F1115" alt="Support NivaroOS"></a>
 </p>
 
 ---
@@ -233,6 +234,24 @@ flutter pub get
 flutter build apk --release
 ```
 The output APK will be generated at `mobile/build/app/outputs/flutter-apk/app-release.apk`.
+
+---
+
+## 💚 Support NivaroOS
+
+NivaroOS is free, open source and built in spare time. If it runs your home server, saves you a subscription, or you just like where it's going, you can chip in — every contribution goes into development time and test hardware.
+
+<p align="center">
+  <img src="docs/images/nivaroos-support-upi.svg" width="640" alt="Support NivaroOS by UPI. Scan the QR code with any UPI app, or pay to the UPI ID ayushsoni2911@okaxis (Ayush Soni).">
+</p>
+
+| | |
+| :--- | :--- |
+| **UPI ID** | `ayushsoni2911@okaxis` |
+| **Name** | Ayush Soni |
+| **Apps** | Google Pay, PhonePe, Paytm, BHIM or any UPI app (India) |
+
+Can't send money? Starring the repo, [reporting a bug](https://github.com/F-e-n-y-x/NivaroOS/issues) or sharing NivaroOS with a friend helps just as much.
 
 ---
 

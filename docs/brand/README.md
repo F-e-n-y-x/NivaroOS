@@ -80,3 +80,9 @@ tracking -1.2%, outlined to paths so no font is needed.
 `docs/images/nivaroos-fetch.svg` is the neofetch-style card under the logo in the README: a terminal running `nivarofetch`, the mark as an LED matrix, facts on the right and the palette underneath. The text is outlined (Geist Mono), so it looks the same on every machine. To change the facts, edit the `facts` list in `gen-fetch.js` and run it from this folder (it needs `opentype.js`, as `gen.js` does):
 
     node gen-fetch.js ../../mobile/assets/fonts ../images/nivaroos-fetch.svg
+
+## README support card
+
+`docs/images/nivaroos-support-upi.svg` is the UPI card in the README's "Support NivaroOS" section: a vector QR (dark on paper, so every scanner reads it) carrying the exact payload of the owner's Google Pay QR, next to the UPI ID. Regenerate it with `gen-support.js` (needs `opentype.js` and `qrcode`) after changing `PAYLOAD` / `UPI_ID`, and check that the QR decodes to the new payload before committing:
+
+    node gen-support.js ../../mobile/assets/fonts ../images/nivaroos-support-upi.svg
