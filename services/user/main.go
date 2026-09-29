@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -23,9 +24,8 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/user/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/sqlite"
-	v1 "github.com/F-e-n-y-x/NivaroOS/services/user/route/v1"
-	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/utils/random"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/route"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/user/route/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"github.com/coreos/go-systemd/daemon"
 	"go.uber.org/zap"
@@ -73,28 +73,45 @@ func init() {
 	}
 
 	sqliteDB := sqlite.GetDb(*dbFlag)
-	service.MyService = service.NewService(sqliteDB, config.CommonInfo.RuntimePath)
 
 	if *resetUserFlag {
+		// A one-shot command (nivaroos-recover reset-password, run over SSH
+		// when nobody can sign in). It only needs the database - not the
+		// gateway, which may be the thing that's down - and must exit here
+		// rather than fall through into main() and start a second user
+		// service next to the running one.
+		users := service.NewUserService(sqliteDB)
 		if userFlag == nil || len(*userFlag) == 0 {
 			fmt.Println("user is empty")
-			return
+			for _, u := range users.GetAllUserName() {
+				fmt.Println("User:" + u.Username)
+			}
+			os.Exit(1)
 		}
 
-		userData := service.MyService.User().GetUserAllInfoByName(*userFlag)
+		userData := users.GetUserAllInfoByName(*userFlag)
 
 		if userData.Id == 0 {
 			fmt.Println("user not exist")
-			return
+			for _, u := range users.GetAllUserName() {
+				fmt.Println("User:" + u.Username)
+			}
+			os.Exit(1)
 		}
 
-		password := random.RandomString(6, false)
+		password := recoveryPassword()
 		userData.Password = v1.HashPassword(password)
-		service.MyService.User().UpdateUserPassword(userData)
+		users.UpdateUserPassword(userData)
+		// Same as a password change in Settings: every session signed in
+		// with the old password ends.
+		users.SetTokensValidAfter(userData.Id, time.Now().Unix())
 		fmt.Println("User reset successful")
 		fmt.Println("UserName:" + userData.Username)
 		fmt.Println("Password:" + password)
+		os.Exit(0)
 	}
+
+	service.MyService = service.NewService(sqliteDB, config.CommonInfo.RuntimePath)
 }
 
 func main() {
@@ -192,4 +209,19 @@ func writeAddressFile(runtimePath string, filename string, address string) (stri
 
 	filepath := filepath.Join(runtimePath, filename)
 	return filepath, os.WriteFile(filepath, []byte(address), 0o600)
+}
+
+// recoveryPassword: 16 characters from crypto/rand (the old 6-character
+// math/rand one, seeded with the clock, was guessable) without look-alike
+// characters, since it is read off a terminal and typed on a phone.
+func recoveryPassword() string {
+	const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"
+	buf := make([]byte, 16)
+	if _, err := crand.Read(buf); err != nil {
+		panic(err)
+	}
+	for i, b := range buf {
+		buf[i] = alphabet[int(b)%len(alphabet)]
+	}
+	return string(buf)
 }

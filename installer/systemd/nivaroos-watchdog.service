@@ -1,0 +1,11 @@
+[Unit]
+Description=NivaroOS watchdog (restart failed services, roll back a bad update)
+Documentation=file:/usr/local/lib/nivaroos/nivaroos-watchdog
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/nivaroos/nivaroos-watchdog
+# Never let the watchdog itself hang the next run.
+TimeoutStartSec=5min
+Nice=5
