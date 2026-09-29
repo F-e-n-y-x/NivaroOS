@@ -1,9 +1,14 @@
 package service
 
 import (
+	"path/filepath"
+
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/codegen/message_bus"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/pkg/config"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -23,9 +28,18 @@ func NewService(db *gorm.DB, RuntimePath string) Repository {
 		panic(err)
 	}
 
+	user := NewUserService(db)
+	// Every service checks tokens against the session state published
+	// here; it is there before this service answers anything.
+	SetSessionsFile(filepath.Join(RuntimePath, jwt.SessionsFilename))
+	if err := user.PublishSessions(); err != nil {
+		logger.Error("publishing session state", zap.Error(err))
+	}
+	go KeepSessionsPublished(user, nil)
+
 	return &store{
 		gateway: gatewayManagement,
-		user:    NewUserService(db),
+		user:    user,
 		event:   NewEventService(db),
 	}
 }

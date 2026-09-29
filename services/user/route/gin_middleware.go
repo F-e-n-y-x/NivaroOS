@@ -18,12 +18,11 @@ package route
 
 import (
 	"crypto/ecdsa"
+	v1 "github.com/F-e-n-y-x/NivaroOS/services/user/route/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
 	"net/http"
 	"strconv"
 
-	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/gin-gonic/gin"
 )
@@ -54,6 +53,9 @@ func ginCors() gin.HandlerFunc {
 	}
 }
 
+// ClaimsKey is the gin context key of the request's validated *jwt.Claims.
+const ClaimsKey = v1.ClaimsKey
+
 func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
@@ -70,14 +72,21 @@ func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 			return
 		}
 
-		// A deleted account, or a session older than the last password
-		// change, is over here right away (other services see the same
-		// through the 3 h access-token lifetime and the refresh check).
-		if owner := service.MyService.User().GetUserAllInfoById(strconv.Itoa(claims.ID)); owner.Id == 0 || claims.IssuedAt == nil || claims.IssuedAt.Unix() < owner.TokensValidAfter {
-			c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: "this session has ended - sign in again"})
+		// The same account rule every service applies (through the
+		// published session state), straight from the database here: a
+		// deleted account, or a session from before a password change or
+		// "sign out everywhere", is over.
+		if owner := service.MyService.User().GetUserAllInfoById(strconv.Itoa(claims.ID)); !service.SessionAllows(owner, claims) {
+			reason := owner.TokenRevokeReason
+			if owner.Id == 0 {
+				reason = jwt.ReasonAccountDeleted
+			}
+			c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: reason}))
 			c.Abort()
 			return
 		}
+		// Handlers that re-issue this session's tokens need its claims.
+		c.Set(ClaimsKey, claims)
 		// Set, not Add: with Add, a user_id header sent by the client came
 		// first and handlers (GetHeader) read that one.
 		c.Request.Header.Set("user_id", strconv.Itoa(claims.ID))

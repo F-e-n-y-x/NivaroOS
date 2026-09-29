@@ -176,7 +176,7 @@ func PostUserLogin(c *gin.Context) {
 
 	// A new session: its tokens share one id, so it can be ended on its own
 	// (a companion phone removed from the device list is signed out).
-	accessToken, refreshToken, err := jwt.GetSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID())
+	accessToken, refreshToken, err := jwt.IssueSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID(), user.TokenGeneration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return
@@ -409,16 +409,17 @@ func PutUserPassword(c *gin.Context) {
 	}
 	user.Password = hashPassword(pwd)
 	service.MyService.User().UpdateUserPassword(user)
-	// Every session from before the change ends (they used to keep
-	// working); tokens issued from now on are valid.
-	service.MyService.User().SetTokensValidAfter(user.Id, time.Now().Unix())
 	user.Password = ""
-	// The session making the change continues with fresh tokens.
-	privateKey, _ := service.MyService.User().GetKeyPair()
-	access, refresh, _ := jwt.GetSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID())
+	// Every other session of the account ends, in every service (they kept
+	// working in the others for up to 3 h); this one continues.
+	token, err := revokeAllButThisSession(c, user, jwt.ReasonPasswordChanged)
+	if err != nil {
+		c.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: "the password was changed, but other sessions could not be signed out: " + err.Error()})
+		return
+	}
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: map[string]interface{}{
 		"user":  user,
-		"token": system_model.VerifyInformation{AccessToken: access, RefreshToken: refresh, ExpiresAt: time.Now().Add(3 * time.Hour).Unix()},
+		"token": token,
 	}})
 }
 
@@ -875,11 +876,16 @@ func PostUserRefreshToken(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE)})
 		return
 	}
-	// The account must still exist, and the session must be newer than the
-	// last password change (deleted users and old sessions refreshed forever).
+	// The account must still exist, and the session must be of its current
+	// token generation (a password change or "sign out everywhere" ends
+	// the refresh tokens too; deleted users used to refresh forever).
 	owner := service.MyService.User().GetUserAllInfoById(strconv.Itoa(claims.ID))
-	if owner.Id == 0 || claims.IssuedAt == nil || claims.IssuedAt.Unix() < owner.TokensValidAfter {
-		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: "this session has ended - sign in again"})
+	if !service.SessionAllows(owner, claims) {
+		reason := owner.TokenRevokeReason
+		if owner.Id == 0 {
+			reason = jwt.ReasonAccountDeleted
+		}
+		c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: reason}))
 		return
 	}
 
@@ -895,7 +901,7 @@ func PostUserRefreshToken(c *gin.Context) {
 	if sid == "" {
 		sid = jwt.NewSessionID()
 	}
-	newAccessToken, newRefreshToken, err := jwt.GetSessionTokens(claims.Username, privateKey, claims.ID, sid)
+	newAccessToken, newRefreshToken, err := jwt.IssueSessionTokens(claims.Username, privateKey, claims.ID, sid, owner.TokenGeneration)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return

@@ -49,6 +49,8 @@ func InitRouter() *gin.Engine {
 			v1UsersGroup.GET("/current", v1.GetUserInfo)
 			v1UsersGroup.PUT("/current", v1.PutUserInfo)
 			v1UsersGroup.PUT("/current/password", v1.PutUserPassword)
+			// Sign out everywhere else (every other session, every service).
+			v1UsersGroup.DELETE("/current/sessions", v1.DeleteUserSessions)
 
 			v1UsersGroup.GET("/current/custom/:key", v1.GetUserCustomConf)
 			v1UsersGroup.POST("/current/custom/:key", v1.PostUserCustomConf)

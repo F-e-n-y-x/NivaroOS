@@ -17,18 +17,24 @@ type Claims struct {
 	// the whole session can be ended at once (see RevokeSessions). Empty in
 	// tokens issued before sessions had ids.
 	SessionID string `json:"sid,omitempty"`
+	// Generation ("gen") is the account's token generation when the token
+	// was issued (see sessions.go): revoking all of an account's sessions
+	// increments it. Tokens from before generations existed have none,
+	// which reads as 0 - every account's starting generation.
+	Generation int64 `json:"gen,omitempty"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(username string, privateKey *ecdsa.PrivateKey, id int, issuer string, t time.Duration) (string, error) {
-	return generateSessionToken(username, privateKey, id, "", issuer, t)
+	return generateSessionToken(username, privateKey, id, "", 0, issuer, t)
 }
 
-func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid, issuer string, t time.Duration) (string, error) {
+func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64, issuer string, t time.Duration) (string, error) {
 	claims := Claims{
 		username,
 		id,
 		sid,
+		gen,
 		jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(t)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -71,12 +77,20 @@ func GetRefreshToken(username string, private *ecdsa.PrivateKey, id int) (string
 
 // GetSessionTokens issues the access and refresh tokens of session sid (a
 // new one from NewSessionID at sign-in, the same one on a refresh).
+// They carry generation 0; the user service uses IssueSessionTokens with
+// the account's current generation.
 func GetSessionTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid string) (access, refresh string, err error) {
-	access, err = generateSessionToken(username, privateKey, id, sid, "nivaroos", 3*time.Hour)
+	return IssueSessionTokens(username, privateKey, id, sid, 0)
+}
+
+// IssueSessionTokens issues the access and refresh tokens of session sid for
+// an account whose token generation is gen.
+func IssueSessionTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid string, gen int64) (access, refresh string, err error) {
+	access, err = generateSessionToken(username, privateKey, id, sid, gen, "nivaroos", 3*time.Hour)
 	if err != nil {
 		return "", "", err
 	}
-	refresh, err = generateSessionToken(username, privateKey, id, sid, "refresh", 7*24*time.Hour)
+	refresh, err = generateSessionToken(username, privateKey, id, sid, gen, "refresh", 7*24*time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -96,6 +110,11 @@ func Validate(token string, publicKeyFunc func() (*ecdsa.PublicKey, error)) (boo
 		// expire (up to 3 hours later).
 		if rec, ok := SessionRevoked(claims.SessionID); ok {
 			return false, nil, &SessionRevokedError{Reason: rec.Reason}
+		}
+		// And every session of an account ends at once on a password
+		// change, "sign out everywhere" or its deletion.
+		if err := CheckSession(claims); err != nil {
+			return false, nil, err
 		}
 		return true, claims, nil
 	}

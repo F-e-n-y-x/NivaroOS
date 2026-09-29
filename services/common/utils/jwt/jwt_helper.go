@@ -66,8 +66,15 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 func UnauthorizedResult(err error) model.Result {
 	if reason, ok := RevocationReason(err); ok {
 		msg := "this session was ended - sign in again"
-		if reason == ReasonCompanionRemoved {
+		switch reason {
+		case ReasonCompanionRemoved:
 			msg = "this phone was removed from NivaroOS - sign in again to reconnect it"
+		case ReasonPasswordChanged:
+			msg = "the password was changed - sign in again"
+		case ReasonSignedOutEverywhere:
+			msg = "you were signed out everywhere - sign in again"
+		case ReasonAccountDeleted:
+			msg = "this account no longer exists"
 		}
 		return model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: msg, Data: map[string]string{"reason": reason}}
 	}
