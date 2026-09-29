@@ -13,7 +13,7 @@ set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
@@ -521,6 +521,8 @@ remove_unit_files() {
 			/usr/lib/systemd/system/nivaroos-app-management.service.buildroot \
 			/usr/lib/systemd/system/nivaroos-local-storage.service \
 			/usr/lib/systemd/system/nivaroos-gpu-sidecar.service \
+			/usr/lib/systemd/system/nivaroos-fans.service \
+			/etc/modules-load.d/nivaroos-fans.conf \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-download-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-ds-browser.socket \
@@ -580,7 +582,7 @@ remove_binaries() {
 		rm -f \
 			/usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
-			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
+			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-fans \
 			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli /usr/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos /usr/local/bin/nivaroos-cli /usr/local/bin/nivaroos-uninstall \
 			/usr/local/bin/nivaroos-host-desktop.sh \
@@ -722,7 +724,7 @@ verify_teardown() {
 		done
 		for b in /usr/bin/nivaroos /usr/bin/nivaroos-gateway /usr/bin/nivaroos-user \
 			/usr/bin/nivaroos-app-management /usr/bin/nivaroos-local-storage \
-			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar \
+			/usr/bin/nivaroos-message-bus /usr/bin/nivaroos-gpu-sidecar /usr/bin/nivaroos-fans \
 			/usr/bin/nivaroos-vm-sidecar /usr/bin/nivaroos-download-sidecar /usr/bin/nivaroos-backup /usr/bin/nivaroos-cli \
 			/usr/local/bin/nivaroos-host-desktop.sh /usr/local/bin/nivaroos-host-desktop-de-install.sh \
 			/etc/X11/xorg.conf.d/10-nivaroos-headless.conf; do

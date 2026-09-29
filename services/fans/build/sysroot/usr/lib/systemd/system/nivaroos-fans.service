@@ -1,0 +1,34 @@
+[Unit]
+Description=NivaroOS Fan Control
+# The fans are the firmware's until this service takes one over, and they
+# go back to the firmware whenever it stops for any reason:
+#  - on SIGTERM (stop, restart, shutdown) the service hands every fan back
+#    itself;
+#  - ExecStopPost runs `nivaroos-fans restore` after every stop, crash and
+#    watchdog kill, from the originals it saved in /run before touching
+#    anything;
+#  - at start it restores whatever a previous run left behind first.
+After=systemd-modules-load.service nvidia-persistenced.service
+Wants=systemd-modules-load.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/nivaroos-fans
+ExecStopPost=/usr/bin/nivaroos-fans restore
+# The control loop pings the watchdog every 2 s; a hung loop is killed
+# (and the fans handed back by ExecStopPost) after 20 s.
+WatchdogSec=20
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+# Root is required: pwm writes in /sys, modprobe of the fan driver and
+# NVML's fan calls. Hardening that doesn't get in the way of those:
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=-/etc/modules-load.d
+StateDirectory=nivaroos/fans
+
+[Install]
+WantedBy=multi-user.target

@@ -22,4 +22,6 @@ use ./services/download-sidecar
 
 use ./services/backup
 
+use ./services/fans
+
 use ./cli

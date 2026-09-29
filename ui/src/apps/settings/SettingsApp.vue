@@ -7,6 +7,7 @@
 
 			<div ref="content" class="settings-content" :class="{ 'is-narrow': narrow }">
 				<system-section v-if="activeSection === 'system'"></system-section>
+				<fans-section v-else-if="activeSection === 'fans'"></fans-section>
 				<packages-section v-else-if="activeSection === 'packages'"></packages-section>
 				<containers-section v-else-if="activeSection === 'containers'"></containers-section>
 				<scheduled-tasks-section v-else-if="activeSection === 'schedules'"></scheduled-tasks-section>
@@ -36,10 +37,12 @@ import PackagesSection, { ROWS as PACKAGES_ROWS } from '@/apps/settings/sections
 import ContainersSection, { ROWS as CONTAINERS_ROWS } from '@/apps/settings/sections/ContainersSection.vue'
 import ScheduledTasksSection, { ROWS as SCHEDULES_ROWS } from '@/apps/settings/sections/ScheduledTasksSection.vue'
 import CompanionSection, { ROWS as COMPANION_ROWS } from '@/apps/settings/sections/CompanionSection.vue'
+import FansSection, { ROWS as FANS_ROWS } from '@/apps/settings/sections/FansSection.vue'
 import { classifyWidth } from '@/utils/settings/breakpoints'
 
 const SECTIONS = [
 	{ id: 'system', label: 'System', icon: 'system-outline', pack: 'casa', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.12)', rows: SYSTEM_ROWS },
+	{ id: 'fans', label: 'Fans & Cooling', icon: 'fan', pack: 'mdi', color: '#0d9488', bg: 'rgba(13, 148, 136, 0.12)', rows: FANS_ROWS },
 	{ id: 'packages', label: 'Package Manager', icon: 'cube-outline', pack: 'mdi', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.12)', rows: PACKAGES_ROWS },
 	{ id: 'containers', label: 'Container', icon: 'docker', pack: 'mdi', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.12)', rows: CONTAINERS_ROWS },
 	{ id: 'schedules', label: 'Scheduled Tasks', icon: 'clock-outline', pack: 'mdi', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)', rows: SCHEDULES_ROWS },
@@ -80,7 +83,8 @@ export default {
 		PackagesSection,
 		ContainersSection,
 		ScheduledTasksSection,
-		CompanionSection
+		CompanionSection,
+		FansSection
 	},
 	props: {
 		section: {

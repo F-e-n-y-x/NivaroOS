@@ -124,6 +124,34 @@ var backupProxy = &httputil.ReverseProxy{
 	},
 }
 
+// Fan control (nivaroos-fans), same-origin at /v1/fans/*. Like Backup &
+// Sync it listens on loopback only, gets the full prefixed path, checks
+// the JWT itself (admins only for changes) and answers /v1/fans/health
+// without one.
+const (
+	fansPathPrefix  = "/v1/fans"
+	fansServiceAddr = "127.0.0.1:28644"
+)
+
+func isFansPath(p string) bool {
+	return p == fansPathPrefix || strings.HasPrefix(p, fansPathPrefix+"/")
+}
+
+var fansProxy = &httputil.ReverseProxy{
+	Director: func(r *http.Request) {
+		r.URL.Scheme = "http"
+		r.URL.Host = fansServiceAddr
+		if _, ok := r.Header["User-Agent"]; !ok {
+			r.Header.Set("User-Agent", "")
+		}
+	},
+	ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"fan service unavailable"}`))
+	},
+}
+
 // VM Manager and Host Desktop (nivaroos-vm-sidecar), same-origin at
 // /v1/vm-sidecar/* - REST and the VNC console WebSockets - proxied to
 // http://127.0.0.1:28641 with the prefix stripped. The UI used to talk to
@@ -304,6 +332,13 @@ func (g *GatewayRoute) GetRoute() *http.ServeMux {
 			nivaroos_middleware.MarkLocalAutomation(r)
 			rewriteRequestSourceIP(r)
 			backupProxy.ServeHTTP(w, r)
+			return
+		}
+
+		if isFansPath(r.URL.Path) {
+			nivaroos_middleware.MarkLocalAutomation(r)
+			rewriteRequestSourceIP(r)
+			fansProxy.ServeHTTP(w, r)
 			return
 		}
 

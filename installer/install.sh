@@ -1346,6 +1346,8 @@ install_core_dependencies() {
 	#   ntfs-3g, exfatprogs, dosfstools, e2fsprogs  format/mount NTFS, exFAT, FAT, ext4
 	#   fdisk       sfdisk (own package on Debian/Ubuntu; part of util-linux elsewhere)
 	#   mergerfs    optional storage pooling
+	#   lm-sensors  `sensors`/sensors-detect for fan control troubleshooting
+	#               (nivaroos-fans finds and loads the fan driver itself)
 	# Known gaps: udevil is not in Fedora/RHEL, Arch (AUR only) or openSUSE
 	# repos; mergerfs is not in Fedora/RHEL repos (upstream RPMs/COPR);
 	# dmidecode doesn't exist on 32-bit ARM. Those features degrade
@@ -1354,19 +1356,19 @@ install_core_dependencies() {
 		pkg_update
 		if command -v apt-get >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs lm-sensors
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools e2fsprogs mergerfs
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools e2fsprogs mergerfs lm_sensors
 		elif command -v pacman >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd util-linux pciutils smartmontools parted base-devel rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs lm_sensors
 		elif command -v zypper >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted make gcc rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs sensors
 		elif command -v apk >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-base rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g ntfs-3g-progs exfatprogs dosfstools sfdisk e2fsprogs mergerfs
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g ntfs-3g-progs exfatprogs dosfstools sfdisk e2fsprogs mergerfs lm-sensors
 		fi
 	"
 }
@@ -1727,6 +1729,45 @@ GWCONF
 		fi
 
 		sort -u -o \"$MANIFEST_FILE\" \"$MANIFEST_FILE\" 2>/dev/null || true
+	"
+}
+
+# ------------------------------------------------------------------------------
+# Fan control (services/fans, nivaroos-fans.service - every install). Built
+# with cgo so NVIDIA fans work through NVML (the library is loaded at run
+# time; a box without the driver just lists no NVIDIA fans); without a C
+# compiler it falls back to a pure-Go build (motherboard/AMD fans only).
+# `detect-modules` finds the motherboard fan controller driver (the kernel
+# drivers probe the super-I/O chip themselves) and persists it in
+# /etc/modules-load.d/nivaroos-fans.conf. Stopping the service hands every
+# fan back to the BIOS, so an upgrade never leaves a fan at a fixed speed.
+# ------------------------------------------------------------------------------
+install_fan_control() {
+	run_step "Installing Fan Control" "
+		export PATH=\"/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:\$PATH\"
+		systemctl stop nivaroos-fans.service >/dev/null 2>&1 || true
+		cd \"${SRC_DIR}/services/fans\"
+		export GOWORK=off
+		if ! CGO_ENABLED=1 go build -o /usr/bin/nivaroos-fans.new . ; then
+			echo 'Fan control: cgo build failed - building without NVIDIA support.' >&2
+			if ! CGO_ENABLED=0 go build -o /usr/bin/nivaroos-fans.new . ; then
+				rm -f /usr/bin/nivaroos-fans.new
+				echo 'Fan control failed to build (see the log above). The previous version, if any, is kept.' >&2
+				systemctl start nivaroos-fans.service >/dev/null 2>&1 || true
+				exit 0
+			fi
+		fi
+		mv -f /usr/bin/nivaroos-fans.new /usr/bin/nivaroos-fans
+		echo '/usr/bin/nivaroos-fans' >> \"$MANIFEST_FILE\"
+
+		mkdir -p /etc/modules-load.d /var/lib/nivaroos/fans /run/nivaroos
+		chmod 700 /var/lib/nivaroos/fans
+		/usr/bin/nivaroos-fans detect-modules || echo 'Fan driver detection failed - motherboard fans stay under BIOS control.' >&2
+
+		cp -f \"${SRC_DIR}/services/fans/build/sysroot/usr/lib/systemd/system/nivaroos-fans.service\" /usr/lib/systemd/system/nivaroos-fans.service
+		echo '/usr/lib/systemd/system/nivaroos-fans.service' >> \"$MANIFEST_FILE\"
+		systemctl daemon-reload >/dev/null 2>&1 || true
+		systemctl enable --now nivaroos-fans >/dev/null 2>&1 || true
 	"
 }
 
@@ -2233,6 +2274,7 @@ start_core_services() {
 			nivaroos-local-storage
 			nivaroos-app-management
 			nivaroos-gpu-sidecar
+			nivaroos-fans
 			nivaroos
 		)
 
@@ -2500,9 +2542,12 @@ print_summary() {
 	if ! systemctl is-active --quiet nivaroos-local-storage.service 2>/dev/null; then s_ls="${COLOR_RED}✖ Local Storage${COLOR_RESET}"; fi
 	if ! systemctl is-active --quiet nivaroos-user-service.service 2>/dev/null; then s_usr="${COLOR_RED}✖ User Service${COLOR_RESET}"; fi
 	if ! systemctl is-active --quiet nivaroos-gpu-sidecar.service 2>/dev/null; then s_gpu="${COLOR_RED}✖ GPU Sidecar${COLOR_RESET}"; fi
+	local s_fans="${COLOR_GREEN}✔ Fan Control${COLOR_RESET}"
+	if ! systemctl is-active --quiet nivaroos-fans.service 2>/dev/null; then s_fans="${COLOR_RED}✖ Fan Control${COLOR_RESET}"; fi
 
 	render_sum_line "${s_core}    ${s_gw}    ${s_mb}"
 	render_sum_line "${s_app}    ${s_ls}    ${s_usr}"
+	render_sum_line "${s_fans}"
 
 	if [ "$WITH_VM" = "yes" ]; then
 		local s_vm="${COLOR_GREEN}✔ VM Virtualization${COLOR_RESET}"
@@ -2590,6 +2635,7 @@ main() {
 	check_docker
 	clone_or_update_repo
 	install_core_services
+	install_fan_control
 	install_samba
 
 	if [ "$WITH_VM" = "yes" ]; then
