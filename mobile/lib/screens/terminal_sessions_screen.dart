@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
+import 'terminal_route.dart';
 import 'terminal_screen.dart';
 
 /// Every terminal running on the server - shells on the server itself and
@@ -64,12 +65,12 @@ class _TerminalSessionsScreenState extends State<TerminalSessionsScreen> {
   }
 
   Future<void> _open(TerminalSession s) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TerminalScreen(session: s, connector: widget.connector)));
+    await pushTerminal(Navigator.of(context), (_) => TerminalScreen(session: s, connector: widget.connector));
     if (mounted) unawaited(_load(quiet: true));
   }
 
   Future<void> _new() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TerminalScreen(connector: widget.connector)));
+    await pushTerminal(Navigator.of(context), (_) => TerminalScreen(connector: widget.connector));
     if (mounted) unawaited(_load(quiet: true));
   }
 
@@ -342,7 +343,7 @@ Future<void> openContainerTerminal(BuildContext context, {required String contai
     final list = await TerminalSessionsApi.instance.list(container: container);
     running = list.running;
   } catch (_) {}
-  void openNew() => nav.push(MaterialPageRoute(builder: (_) => TerminalScreen(container: container, title: title, connector: connector)));
+  void openNew() => pushTerminal(nav, (_) => TerminalScreen(container: container, title: title, connector: connector));
   if (running.isEmpty || !context.mounted) {
     openNew();
     return;
@@ -377,7 +378,7 @@ Future<void> openContainerTerminal(BuildContext context, {required String contai
   );
   if (!context.mounted) return;
   if (picked is TerminalSession) {
-    nav.push(MaterialPageRoute(builder: (_) => TerminalScreen(session: picked, title: title, connector: connector)));
+    pushTerminal(nav, (_) => TerminalScreen(session: picked, title: title, connector: connector));
   } else if (picked == _newShell) {
     openNew();
   }

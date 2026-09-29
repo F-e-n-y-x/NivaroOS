@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/api_client.dart';
+import '../services/app_lock.dart';
 import '../services/vm_client.dart';
 import '../ui/ui.dart';
 import 'vm_console_screen.dart';
@@ -245,6 +246,7 @@ class _VmListScreenState extends State<VmListScreen> with WidgetsBindingObserver
   Future<void> _delete(Vm vm) async {
     final wipe = await DeleteVmDialog.show(context, vm);
     if (wipe == null || !mounted) return;
+    if (!await AppLock.instance.confirm('Confirm it’s you to delete ${vm.name}') || !mounted) return;
     setState(() => _busy[vm.name] = 'Deleting');
     try {
       await _client.deleteVm(vm.name, wipeDisk: wipe);

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/app_lock.dart';
 import '../ui/ui.dart';
 
 /// Restart or shut down the server, after a confirmation that names it:
 /// core's `PUT /v1/sys/state/:state` (restart | off), as the web UI uses
 /// (plan M-09). Home's power menu and Settings both call this, so the
-/// wording and the route are the same everywhere.
-Future<void> confirmServerPower(BuildContext context, {required bool restart}) async {
+/// wording and the route are the same everywhere. With the app lock on,
+/// the owner also confirms it's them ([AppLock.confirm]).
+Future<void> confirmServerPower(BuildContext context, {required bool restart, AppLock? lock}) async {
   final url = ApiClient.instance.baseUrl;
   final host = url.isEmpty ? 'the server' : ApiClient.displayHost(url);
   final ok = await ConfirmDialog.destructive(
@@ -21,6 +23,7 @@ Future<void> confirmServerPower(BuildContext context, {required bool restart}) a
   );
   if (!ok || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
+  if (!await (lock ?? AppLock.instance).confirm(restart ? 'Confirm it’s you to restart $host' : 'Confirm it’s you to shut down $host')) return;
   try {
     await ApiClient.instance.put('/v1/sys/state/${restart ? 'restart' : 'off'}');
     messenger.showSnackBar(SnackBar(content: Text(restart ? '$host is restarting' : '$host is shutting down')));
