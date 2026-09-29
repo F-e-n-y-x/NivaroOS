@@ -301,6 +301,33 @@ echo live >"$T/www/index.html"; echo fresh >"$T/newui/index.html"
 bash "$HERE/nivaroos-deploy.sh" --www "$T/newui" >/dev/null
 check '[ "$(cat "$T/www/index.html")" = fresh ] && [ "$(cat "$T/www.prev/index.html")" = live ]' "www deployed with previous kept"
 
+# ---------------------------------------------------------------------------
+echo "recover: reset-password runs the user binary with a private runtime dir"
+reset_env
+mkdir -p "$T/run"; echo "http://127.0.0.1:1" >"$T/run/management.url"
+printf '[common]\nRuntimePath=/var/run/nivaroos\n\n[app]\nDBPath = /var/lib/nivaroos/db\n' >"$T/user.conf"
+cat >"$T/fake-user" <<'EOF2'
+#!/bin/bash
+# args: -c CONF -ru -user NAME
+conf="$2"; name="$5"
+grep '^RuntimePath=' "$conf" >"$FAKE_SD/user-runtime"
+ls "$(sed -n 's/^RuntimePath=//p' "$conf")" >"$FAKE_SD/user-runtime-files"
+if [ "$name" = owner ]; then echo "User reset successful"; echo "UserName:owner"; echo "Password:Abc123Abc123Abc1"; exit 0; fi
+echo "user not exist"; echo "User:owner"; exit 1
+EOF2
+chmod +x "$T/fake-user"
+unit nivaroos-user-service.service nivaroos-user active
+out="$(NIVAROOS_USER_BIN="$T/fake-user" NIVAROOS_USER_CONF="$T/user.conf" NIVAROOS_RUNTIME_DIR="$T/run" bash "$HERE/nivaroos-recover.sh" reset-password owner 2>&1)"
+check 'printf "%s" "$out" | grep -q "^Password:Abc123Abc123Abc1"' "recover prints the new password"
+check '! grep -q "/var/run/nivaroos" "$FAKE_SD/user-runtime"' "recover must not hand the real runtime dir to the reset"
+check 'grep -q management.url "$FAKE_SD/user-runtime-files"' "private runtime dir carries management.url"
+check 'calls | grep -q "^restart nivaroos-user-service.service"' "user service restarted after reset"
+check 'grep -q "password of .owner. reset" "$T/log"' "reset logged (without the password)"
+check '! grep -q Abc123 "$T/log"' "password never logged"
+out="$(NIVAROOS_USER_BIN="$T/fake-user" NIVAROOS_USER_CONF="$T/user.conf" NIVAROOS_RUNTIME_DIR="$T/run" bash "$HERE/nivaroos-recover.sh" reset-password ghost 2>&1)"
+rc=$?
+check '[ $rc -ne 0 ] && printf "%s" "$out" | grep -q "User:owner"' "unknown user fails and lists users"
+
 echo
 echo "passed: $PASS  failed: $FAIL"
 [ "$FAIL" -eq 0 ]

@@ -67,11 +67,21 @@ print("  node key expiry:", s.get("KeyExpiry") or "disabled (never expires)")' 2
 		user="${1:-}"
 		[ -n "$user" ] || { echo "usage: nivaroos-recover reset-password <username>" >&2; exit 2; }
 		[ -x "$USER_BIN" ] || { echo "$USER_BIN not found" >&2; exit 1; }
-		out="$("$USER_BIN" -c "$USER_CONF" -ru -user "$user" 2>/dev/null)"
-		rc=$?
+		# Current builds of the user service reset the password and exit.
+		# Older ones then went on to start a second user service; give them
+		# a private runtime directory (so it can't replace the running
+		# service's address file) and a time limit, and restart the real
+		# service afterwards (it re-registers its routes with the gateway).
+		rt="$(mktemp -d)"
+		trap 'rm -rf "$rt"' EXIT
+		cp -f "${NIVAROOS_RUNTIME_DIR:-/var/run/nivaroos}/management.url" "$rt/" 2>/dev/null || true
+		sed "s#^[[:space:]]*RuntimePath[[:space:]]*=.*#RuntimePath=$rt#" "$USER_CONF" >"$rt/user-service.conf"
+		out="$(timeout 30 "$USER_BIN" -c "$rt/user-service.conf" -ru -user "$user" 2>/dev/null)"
+		rc=0
 		if ! printf '%s\n' "$out" | grep -q '^Password:'; then
 			printf '%s\n' "$out" | grep -v '^git commit\|^build date' >&2
 			echo "password reset failed" >&2
+			nv_restart "$USER_UNIT" >/dev/null 2>&1 || true
 			exit 1
 		fi
 		printf '%s\n' "$out" | grep '^UserName:\|^Password:'
