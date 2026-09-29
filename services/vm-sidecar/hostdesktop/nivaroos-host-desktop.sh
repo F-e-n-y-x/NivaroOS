@@ -453,6 +453,15 @@ args=(
 	# on every text selection and would spam the browser with clipboard
 	# updates.
 	-noprimary
+	# -nowf: no "wireframe". x11vnc's default draws a window's outline while
+	# it is dragged and repaints it only when you let go - on the viewer
+	# that looks like stray boxes and lines on anything that moves.
+	-nowf
+	# -noscr: no scroll-copyrect guessing. It moves blocks of the old
+	# picture to fake a scroll before the real pixels arrive; on anything
+	# but a plain terminal (browsers, video, animations) the guesses leave
+	# smeared lines and patches, worse the more a quality preset sends.
+	-noscr
 )
 if [ -n "$R_AUTH" ] && [ -f "$R_AUTH" ]; then
 	args+=(-auth "$R_AUTH")
