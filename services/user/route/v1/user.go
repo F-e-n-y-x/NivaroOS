@@ -174,16 +174,14 @@ func PostUserLogin(c *gin.Context) {
 
 	token := system_model.VerifyInformation{}
 
-	accessToken, err := jwt.GetAccessToken(user.Username, privateKey, user.Id)
+	// A new session: its tokens share one id, so it can be ended on its own
+	// (a companion phone removed from the device list is signed out).
+	accessToken, refreshToken, err := jwt.GetSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+		return
 	}
 	token.AccessToken = accessToken
-
-	refreshToken, err := jwt.GetRefreshToken(user.Username, privateKey, user.Id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-	}
 	token.RefreshToken = refreshToken
 
 	token.ExpiresAt = time.Now().Add(3 * time.Hour * time.Duration(1)).Unix()
@@ -417,8 +415,7 @@ func PutUserPassword(c *gin.Context) {
 	user.Password = ""
 	// The session making the change continues with fresh tokens.
 	privateKey, _ := service.MyService.User().GetKeyPair()
-	access, _ := jwt.GetAccessToken(user.Username, privateKey, user.Id)
-	refresh, _ := jwt.GetRefreshToken(user.Username, privateKey, user.Id)
+	access, refresh, _ := jwt.GetSessionTokens(user.Username, privateKey, user.Id, jwt.NewSessionID())
 	c.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: map[string]interface{}{
 		"user":  user,
 		"token": system_model.VerifyInformation{AccessToken: access, RefreshToken: refresh, ExpiresAt: time.Now().Add(3 * time.Hour).Unix()},
@@ -886,13 +883,19 @@ func PostUserRefreshToken(c *gin.Context) {
 		return
 	}
 
-	newAccessToken, err := jwt.GetAccessToken(claims.Username, privateKey, claims.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+	// An ended session (its phone was removed) can't be renewed either.
+	if rec, revoked := jwt.SessionRevoked(claims.SessionID); revoked {
+		c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: rec.Reason}))
 		return
 	}
 
-	newRefreshToken, err := jwt.GetRefreshToken(claims.Username, privateKey, claims.ID)
+	// The session keeps its id across refreshes. A refresh token from before
+	// sessions had ids starts one now, so that session can be ended too.
+	sid := claims.SessionID
+	if sid == "" {
+		sid = jwt.NewSessionID()
+	}
+	newAccessToken, newRefreshToken, err := jwt.GetSessionTokens(claims.Username, privateKey, claims.ID, sid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 		return

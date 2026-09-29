@@ -63,8 +63,9 @@ func ginJWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) gin.HandlerFunc {
 
 		valid, claims, err := jwt.Validate(token, publicKeyFunc)
 		if err != nil || !valid {
-			message := "token is invalid"
-			c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.ERROR_AUTH_TOKEN, Message: message})
+			// A revoked session says why (data.reason), so the app can
+			// tell "this phone was removed" from an expired token.
+			c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(err))
 			c.Abort()
 			return
 		}

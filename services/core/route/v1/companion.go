@@ -32,8 +32,18 @@ import (
 )
 
 type CompanionDevice struct {
-	ID                string                 `json:"id"`
-	Name              string                 `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// NameSource says who chose Name: companionNameUser once someone renamed
+	// the device (from the web or from the app - both go through
+	// PutUpdateCompanionDevice), companionNameDevice while it is the name the
+	// phone reported. The server is the source of truth for a user's name:
+	// the phone's heartbeat never changes it, and the app shows what the
+	// server says. (It used to be custom_props.user_renamed, which the app
+	// also sent with its own locally kept name on every heartbeat - so a
+	// rename from the web was undone within a minute.)
+	NameSource    string    `json:"name_source,omitempty"`
+	NameUpdatedAt time.Time `json:"name_updated_at,omitempty"`
 	Model             string                 `json:"model"`
 	Platform          string                 `json:"platform"` // android, ios, macos, windows, linux, web
 	OSVersion         string                 `json:"os_version"`
@@ -99,9 +109,26 @@ type CompanionRegistrationDTO struct {
 	CreatedAt     interface{}            `json:"created_at,omitempty"`
 	StoragePath   string                 `json:"storage_path,omitempty"`
 	CustomProps   map[string]interface{} `json:"custom_props,omitempty"`
-	// Repair is true only when the user tapped "Pair again" on a phone the
-	// server removed; the app's automatic heartbeat never sets it.
+	// Repair is true only for the first registration after the user signed
+	// in to the app again (or, in older apps, tapped "Pair again") on a
+	// phone the server removed; the automatic heartbeat never sets it.
 	Repair bool `json:"repair,omitempty"`
+	// NameSource "user" says Name is a name the user gave this phone (the
+	// app's last known name from the server), used only when the server has
+	// no name of a user's for the device - a phone paired again after it
+	// was removed gets its name back. The phone can't override a name the
+	// user set; renaming goes through PUT /companion/devices/:id.
+	NameSource string `json:"name_source,omitempty"`
+}
+
+const (
+	companionNameUser   = "user"
+	companionNameDevice = "device"
+)
+
+// companionUserRenamed reports whether a user chose dev's name.
+func companionUserRenamed(dev *CompanionDevice) bool {
+	return dev.NameSource == companionNameUser
 }
 
 type CompanionFileItem struct {
@@ -292,6 +319,90 @@ type companionKeptFolder struct {
 
 var companionKeptFolders = map[string]companionKeptFolder{}
 
+// companionSessions binds each phone to the login sessions (the JWT "sid"
+// claim) its app registered with (companion_sessions.json, by device id).
+// Removing the phone revokes exactly those sessions, so the app is signed
+// out - its access and refresh tokens stop working in every service - while
+// the user's other sessions (the web UI doing the removing) carry on.
+var companionSessions = map[string][]string{}
+
+// companionMaxSessions: a phone keeps a handful of recent sessions (a new
+// one per sign-in; a refresh keeps its session).
+const companionMaxSessions = 8
+
+func getCompanionSessionsPath() string {
+	os.MkdirAll(companionStateDir, 0755)
+	return filepath.Join(companionStateDir, "companion_sessions.json")
+}
+
+func saveCompanionSessionsLocked() {
+	data, err := json.MarshalIndent(companionSessions, "", "  ")
+	if err == nil {
+		err = os.WriteFile(getCompanionSessionsPath(), data, 0600)
+	}
+	if err != nil {
+		logger.Error("companion: saving device sessions failed", zap.Error(err))
+	}
+}
+
+// bindCompanionSessionLocked records that session sid belongs to device id.
+// A session belongs to one phone only: the same sign-in registering as
+// another device id (the app reinstalled with a new id) moves it.
+func bindCompanionSessionLocked(id, sid string) {
+	if sid == "" {
+		return
+	}
+	for _, have := range companionSessions[id] {
+		if have == sid {
+			return
+		}
+	}
+	for other, sids := range companionSessions {
+		if other == id {
+			continue
+		}
+		for i, have := range sids {
+			if have == sid {
+				companionSessions[other] = append(sids[:i:i], sids[i+1:]...)
+				if len(companionSessions[other]) == 0 {
+					delete(companionSessions, other)
+				}
+				break
+			}
+		}
+	}
+	sids := append(companionSessions[id], sid)
+	if len(sids) > companionMaxSessions {
+		sids = sids[len(sids)-companionMaxSessions:]
+	}
+	companionSessions[id] = sids
+	saveCompanionSessionsLocked()
+}
+
+// endCompanionSessionsLocked signs the removed phone's app out: its
+// sessions are revoked for every service. The caller's own session is
+// among them only when a phone removes itself.
+func endCompanionSessionsLocked(id string) {
+	sids := companionSessions[id]
+	delete(companionSessions, id)
+	saveCompanionSessionsLocked()
+	if len(sids) == 0 {
+		return
+	}
+	if err := jwt.RevokeSessions(sids, jwt.ReasonCompanionRemoved); err != nil {
+		logger.Error("companion: signing out the removed phone failed", zap.String("device", id), zap.Error(err))
+	}
+}
+
+// companionSessionOf returns the caller's login session id ("" for local
+// automation or a token from before sessions had ids).
+func companionSessionOf(ctx echo.Context) string {
+	if claims, ok := ctx.Get("user").(*jwt.Claims); ok && claims != nil {
+		return claims.SessionID
+	}
+	return ""
+}
+
 // companionRemoved remembers phones a user removed (companion_removed.json,
 // by device id), so the app's automatic re-registration can't silently add
 // them back: it gets 410 until the user pairs the phone again from the app.
@@ -365,6 +476,17 @@ func loadCompanionDevicesLocked() {
 			}
 		}
 	}
+	companionSessions = map[string][]string{}
+	if data, err := os.ReadFile(getCompanionSessionsPath()); err == nil {
+		var sessions map[string][]string
+		if json.Unmarshal(data, &sessions) == nil {
+			for id, sids := range sessions {
+				if len(sids) > 0 {
+					companionSessions[id] = sids
+				}
+			}
+		}
+	}
 	filePath := getCompanionConfigPath()
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -381,6 +503,7 @@ func loadCompanionDevicesLocked() {
 			}
 			dev.SharesStorage = true
 			dev.Connection = ""
+			migrateCompanionNameSource(dev)
 			companionDevices[dev.ID] = dev
 		}
 	}
@@ -437,19 +560,29 @@ func mergeDuplicateCompanionDevices(list []*CompanionDevice) []*CompanionDevice 
 		if keep.CreatedAt.IsZero() || (!other.CreatedAt.IsZero() && other.CreatedAt.Before(keep.CreatedAt)) {
 			keep.CreatedAt = other.CreatedAt
 		}
-		if ur, _ := other.CustomProps["user_renamed"].(bool); ur {
-			if kr, _ := keep.CustomProps["user_renamed"].(bool); !kr {
-				// The user's chosen name (and its folder) beats a default one.
-				keep.Name, keep.StoragePath = other.Name, other.StoragePath
-				if keep.CustomProps == nil {
-					keep.CustomProps = map[string]interface{}{}
-				}
-				keep.CustomProps["user_renamed"] = true
-			}
+		migrateCompanionNameSource(keep)
+		migrateCompanionNameSource(other)
+		if companionUserRenamed(other) && !companionUserRenamed(keep) {
+			// The user's chosen name (and its folder) beats a default one.
+			keep.Name, keep.StoragePath = other.Name, other.StoragePath
+			keep.NameSource, keep.NameUpdatedAt = other.NameSource, other.NameUpdatedAt
 		}
 		out[i] = keep
 	}
 	return out
+}
+
+// migrateCompanionNameSource moves the old custom_props.user_renamed flag
+// to NameSource (once; idempotent). Whoever set it - the web or the app -
+// it was a user's rename.
+func migrateCompanionNameSource(dev *CompanionDevice) {
+	if ur, _ := dev.CustomProps["user_renamed"].(bool); ur && dev.NameSource == "" {
+		dev.NameSource = companionNameUser
+	}
+	delete(dev.CustomProps, "user_renamed")
+	if dev.NameSource == "" {
+		dev.NameSource = companionNameDevice
+	}
 }
 
 func saveCompanionDevicesLocked() error {
@@ -1263,6 +1396,13 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	// The pairing secret travels in the response only; never keep it in
 	// custom_props, which every device list returns.
 	delete(input.CustomProps, "secret")
+	// Older apps flagged their locally kept name as the user's on every
+	// heartbeat; it only counts where NameSource would (see below).
+	if ur, _ := input.CustomProps["user_renamed"].(bool); ur && input.NameSource == "" {
+		input.NameSource = companionNameUser
+	}
+	delete(input.CustomProps, "user_renamed")
+	input.Name = strings.TrimSpace(input.Name)
 
 	uid := companionCaller(ctx)
 	realIP := ctx.RealIP()
@@ -1354,51 +1494,28 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	}
 
 	if matchedDev != nil {
-
-		inputIsUserRenamed := false
-		if input.CustomProps != nil {
-			if ur, ok := input.CustomProps["user_renamed"].(bool); ok && ur {
-				inputIsUserRenamed = true
-			}
-		}
-
-		devIsUserRenamed := false
-		if matchedDev.CustomProps != nil {
-			if ur, ok := matchedDev.CustomProps["user_renamed"].(bool); ok && ur {
-				devIsUserRenamed = true
-			}
-		}
-
-		// Only rename the existing device if:
-		// 1) The incoming request was explicitly user_renamed from client, OR
-		// 2) The existing device was never user-renamed and incoming has a different non-empty name
-		shouldRename := false
-		if inputIsUserRenamed && input.Name != "" && input.Name != matchedDev.Name {
-			shouldRename = true
-		} else if !devIsUserRenamed && input.Name != "" && input.Name != matchedDev.Name {
-			shouldRename = true
-		}
-
-		if shouldRename {
+		// The server keeps the name. A heartbeat changes it only while no
+		// user has named the device - then it follows what the phone reports
+		// (its default name, or a name the app still holds from before the
+		// server tracked who chose it). A user's name, set from the web or
+		// the app, is never overwritten by the phone.
+		if !companionUserRenamed(matchedDev) && input.Name != "" && input.Name != matchedDev.Name {
 			if err := relocateDeviceFolder(getCompanionStorageBasePath(), companionDevices, matchedDev, input.Name); err != nil {
 				// Keep the old name with its folder rather than split them.
 				logger.Error("companion: renaming backup folder failed", zap.String("device", matchedDev.ID), zap.Error(err))
 			} else {
 				matchedDev.Name = input.Name
-			}
-			if inputIsUserRenamed {
-				if matchedDev.CustomProps == nil {
-					matchedDev.CustomProps = make(map[string]interface{})
+				if input.NameSource == companionNameUser {
+					matchedDev.NameSource, matchedDev.NameUpdatedAt = companionNameUser, now
 				}
-				matchedDev.CustomProps["user_renamed"] = true
 			}
-		} else {
-			// Device name is preserved! Ensure its existing storage path exists.
-			if matchedDev.StoragePath == "" {
-				assignCompanionFolder(getCompanionStorageBasePath(), companionDevices, matchedDev, matchedDev.Name)
-			}
-			os.MkdirAll(matchedDev.StoragePath, 0755)
+		} else if !companionUserRenamed(matchedDev) && input.NameSource == companionNameUser && input.Name == matchedDev.Name {
+			matchedDev.NameSource, matchedDev.NameUpdatedAt = companionNameUser, now
 		}
+		if matchedDev.StoragePath == "" {
+			assignCompanionFolder(getCompanionStorageBasePath(), companionDevices, matchedDev, matchedDev.Name)
+		}
+		os.MkdirAll(matchedDev.StoragePath, 0755)
 
 		if input.Model != "" {
 			matchedDev.Model = input.Model
@@ -1457,6 +1574,11 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 			CreatedAt:     now,
 			CustomProps:   input.CustomProps,
 			OwnerUserID:   uid,
+			NameSource:    companionNameDevice,
+		}
+		if input.NameSource == companionNameUser {
+			// Paired again after a removal: the name the user gave it.
+			newDev.NameSource, newDev.NameUpdatedAt = companionNameUser, now
 		}
 		// Its own folder: a second phone with the same default name gets
 		// "Pixel 8 (2)", never the first one's backups.
@@ -1465,6 +1587,8 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 	}
 
 	registered := companionDevices[input.ID]
+	// This sign-in is now the phone's: removing the phone ends it.
+	bindCompanionSessionLocked(registered.ID, companionSessionOf(ctx))
 	if registered.Secret == "" {
 		// Always minted here, never taken from the request's
 		// X-Companion-Secret: a caller must not choose the credential the
@@ -1511,6 +1635,14 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 		})
 	}
 	delete(update.CustomProps, "secret")
+	delete(update.CustomProps, "user_renamed")
+	update.Name = strings.TrimSpace(update.Name)
+	if len(update.Name) > 100 {
+		return ctx.JSON(http.StatusBadRequest, model.Result{
+			Success: common_err.CLIENT_ERROR,
+			Message: "device name is too long (100 characters at most)",
+		})
+	}
 
 	uid := companionCaller(ctx)
 	companionMu.Lock()
@@ -1522,16 +1654,17 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 		return companionNotFound(ctx)
 	}
 
-	// Rename storage path if name changed
-	if update.Name != "" && update.Name != dev.Name {
-		if err := relocateDeviceFolder(getCompanionStorageBasePath(), companionDevices, dev, update.Name); err != nil {
-			return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+	// A rename - from the web or from the app - is the user's: it sticks
+	// until the next rename (the phone's heartbeat can't undo it), and the
+	// app adopts it from its next registration.
+	if update.Name != "" {
+		if update.Name != dev.Name {
+			if err := relocateDeviceFolder(getCompanionStorageBasePath(), companionDevices, dev, update.Name); err != nil {
+				return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
+			}
+			dev.Name = update.Name
 		}
-		dev.Name = update.Name
-		if dev.CustomProps == nil {
-			dev.CustomProps = make(map[string]interface{})
-		}
-		dev.CustomProps["user_renamed"] = true
+		dev.NameSource, dev.NameUpdatedAt = companionNameUser, time.Now()
 	}
 
 	if update.StorageTotal > 0 {
@@ -1552,12 +1685,14 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 		}
 	}
 
-	saveCompanionDevicesLocked()
+	if err := saveCompanionDevicesLocked(); err != nil {
+		return ctx.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: "couldn't save the device: " + err.Error()})
+	}
 
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "companion device updated",
-		Data:    dev,
+		Data:    dev.snapshot(),
 	})
 }
 
@@ -1628,15 +1763,21 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 	companionRemoved[id] = companionRemovedRec{OwnerUserID: dev.OwnerUserID, RemovedAt: time.Now()}
 	saveCompanionRemovedLocked()
 
-	// 3. Tell a connected phone it was removed (it unpairs itself at once),
-	// then close its tunnel.
+	// 3. Sign the phone's app out: its sessions end in every service, so
+	// it can't keep using the server (or quietly re-register) with the
+	// tokens it holds. The user's other sessions are untouched.
+	signedOut := len(companionSessions[id]) > 0
+	endCompanionSessionsLocked(id)
+
+	// 4. Tell a connected phone it was removed (it signs out at once
+	// instead of on its next request), then close its tunnel.
 	notifyCompanionRemoved(id)
 	closeCompanionTunnel(id)
 
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "companion device removed",
-		Data:    map[string]string{"kept_backups": keptData},
+		Data:    map[string]interface{}{"kept_backups": keptData, "signed_out": signedOut},
 	})
 }
 

@@ -12,13 +12,23 @@ import (
 type Claims struct {
 	Username string `json:"username"`
 	ID       int    `json:"id"`
+	// SessionID ("sid") is the login this token belongs to: the access and
+	// refresh tokens of one sign-in share it, and a refresh keeps it, so
+	// the whole session can be ended at once (see RevokeSessions). Empty in
+	// tokens issued before sessions had ids.
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
 func GenerateToken(username string, privateKey *ecdsa.PrivateKey, id int, issuer string, t time.Duration) (string, error) {
+	return generateSessionToken(username, privateKey, id, "", issuer, t)
+}
+
+func generateSessionToken(username string, privateKey *ecdsa.PrivateKey, id int, sid, issuer string, t time.Duration) (string, error) {
 	claims := Claims{
 		username,
 		id,
+		sid,
 		jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(t)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -59,6 +69,20 @@ func GetRefreshToken(username string, private *ecdsa.PrivateKey, id int) (string
 	return GenerateToken(username, private, id, "refresh", 7*24*time.Hour)
 }
 
+// GetSessionTokens issues the access and refresh tokens of session sid (a
+// new one from NewSessionID at sign-in, the same one on a refresh).
+func GetSessionTokens(username string, privateKey *ecdsa.PrivateKey, id int, sid string) (access, refresh string, err error) {
+	access, err = generateSessionToken(username, privateKey, id, sid, "nivaroos", 3*time.Hour)
+	if err != nil {
+		return "", "", err
+	}
+	refresh, err = generateSessionToken(username, privateKey, id, sid, "refresh", 7*24*time.Hour)
+	if err != nil {
+		return "", "", err
+	}
+	return access, refresh, nil
+}
+
 func Validate(token string, publicKeyFunc func() (*ecdsa.PublicKey, error)) (bool, *Claims, error) {
 	claims, err := ParseToken(token, publicKeyFunc)
 	if err != nil {
@@ -68,6 +92,11 @@ func Validate(token string, publicKeyFunc func() (*ecdsa.PublicKey, error)) (boo
 	// Only access tokens: the refresh token (7 days, issuer "refresh") was
 	// accepted here too.
 	if claims != nil && claims.Issuer == "nivaroos" {
+		// An ended session's tokens stop working at once, not when they
+		// expire (up to 3 hours later).
+		if rec, ok := SessionRevoked(claims.SessionID); ok {
+			return false, nil, &SessionRevokedError{Reason: rec.Reason}
+		}
 		return true, claims, nil
 	}
 

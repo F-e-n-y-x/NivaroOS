@@ -33,7 +33,11 @@ func useTempCompanionState(t *testing.T) (state, base string) {
 	companionMu.Lock()
 	oldState, oldBase, oldNoData := companionStateDir, companionBaseDir, companionBaseNoDATA
 	oldDevs, oldLoaded, oldKept, oldRemoved := companionDevices, companionLoaded, companionKeptFolders, companionRemoved
+	oldSessions, oldRevoked := companionSessions, jwt.RevokedSessionsPath
 	companionStateDir, companionBaseDir, companionBaseNoDATA = state, base, filepath.Join(root, "nodata")
+	// Removing a phone revokes its sessions: never in this machine's list.
+	jwt.RevokedSessionsPath = filepath.Join(root, "revoked_sessions.json")
+	companionSessions = map[string][]string{}
 	companionDevices = map[string]*CompanionDevice{}
 	companionKeptFolders = map[string]companionKeptFolder{}
 	companionRemoved = map[string]companionRemovedRec{}
@@ -44,6 +48,7 @@ func useTempCompanionState(t *testing.T) (state, base string) {
 		companionMu.Lock()
 		companionStateDir, companionBaseDir, companionBaseNoDATA = oldState, oldBase, oldNoData
 		companionDevices, companionLoaded, companionKeptFolders, companionRemoved = oldDevs, oldLoaded, oldKept, oldRemoved
+		companionSessions, jwt.RevokedSessionsPath = oldSessions, oldRevoked
 		companionMu.Unlock()
 	})
 	return state, base
