@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"image"
 	"image/color"
 	"image/png"
@@ -40,6 +41,8 @@ type fixture struct {
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
+	// Handlers log (a refused refresh logs why); the logger needs a sink.
+	logger.LogInitConsoleOnly()
 	dir := t.TempDir()
 	// Keep the JWT key and user data inside the test directory - never the
 	// real /var/lib/nivaroos.

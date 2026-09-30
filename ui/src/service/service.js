@@ -2,6 +2,7 @@ import axios from 'axios'
 import router from '@/router'
 import store from '@/store'
 import { makeUnauthorizedHandler } from './authRefresh'
+import { createRefreshCoordinator, AUTH_CHANNEL, TOKEN_KEYS } from './tokenCoordinator'
 // import { ToastProgrammatic as Toast } from 'buefy'
 
 
@@ -49,7 +50,8 @@ instance.interceptors.request.use(
 
 // Response interception
 
-function logout() {
+function logout(why) {
+	if (why && why.reason) console.warn('[auth] signed out:', why.reason)
 	store.commit("SET_ACCESS_TOKEN", "");
 	store.commit("SET_REFRESH_TOKEN", "");
 	router.replace({ //Jump to the logout page
@@ -57,23 +59,50 @@ function logout() {
 	}).catch(() => {})
 }
 
+// Tokens another tab stored (its refresh): keep this tab's copy current.
+const adoptStoredTokens = () => {
+	try {
+		const access = localStorage.getItem(TOKEN_KEYS.access)
+		if (access) {
+			store.commit("SET_ACCESS_TOKEN", access);
+			store.commit("SET_REFRESH_TOKEN", localStorage.getItem(TOKEN_KEYS.refresh) || "");
+		}
+	} catch (e) {}
+}
+let authChannel = null
+try {
+	if (typeof BroadcastChannel !== 'undefined') {
+		authChannel = new BroadcastChannel(AUTH_CHANNEL)
+		authChannel.onmessage = (e) => { if (e && e.data && e.data.type === 'tokens') adoptStoredTokens() }
+	}
+} catch (e) {
+	authChannel = null
+}
+if (typeof window !== 'undefined') {
+	window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEYS.access) adoptStoredTokens() })
+}
+
+// One refresh for the whole browser (every tab), always with the newest
+// stored tokens; see tokenCoordinator.js for why one tab's refused
+// refresh used to sign every tab out.
+const coordinator = createRefreshCoordinator({
+	storage: localStorage,
+	// validateStatus: every HTTP answer resolves - a 401 here is judged by
+	// the coordinator, not by the 401 interceptor below.
+	post: (refreshToken) => instance.post("/v1/users/refresh", { refresh_token: refreshToken }, { validateStatus: () => true }),
+	locks: (typeof navigator !== 'undefined' && navigator.locks) || null,
+	channel: authChannel,
+	onTokens: (access, refresh) => {
+		store.commit("SET_ACCESS_TOKEN", access);
+		store.commit("SET_REFRESH_TOKEN", refresh);
+	},
+})
+
 // One token refresh for however many requests got a 401, then retry them;
-// if it fails, they are all rejected and the user is logged out (see
-// authRefresh.js for what the old queue got wrong).
+// if the session ended they are all rejected and the user is logged out
+// (see authRefresh.js for what the old queue got wrong).
 const handleUnauthorized = makeUnauthorizedHandler({
-	refresh: () => instance.post("/v1/users/refresh", {
-		refresh_token: localStorage.getItem("refresh_token"),
-	}).then(tokenRes => {
-		if (!(tokenRes.data && tokenRes.data.success == 200)) throw new Error("refresh refused")
-		const d = tokenRes.data.data
-		localStorage.setItem("access_token", d.access_token);
-		localStorage.setItem("refresh_token", d.refresh_token);
-		localStorage.setItem("expires_at", d.expires_at);
-		store.commit("SET_ACCESS_TOKEN", d.access_token);
-		store.commit("SET_REFRESH_TOKEN", d.refresh_token);
-		instance.defaults.headers.Authorization = d.access_token
-		return d.access_token
-	}),
+	refresh: (sentToken) => coordinator.refresh(sentToken),
 	retry: (config) => instance(config),
 	logout,
 })
@@ -81,7 +110,7 @@ const handleUnauthorized = makeUnauthorizedHandler({
 // Refresh the access token now (single-flight with the 401 handler above);
 // resolves to the new token. Used by the message-bus socket
 // (messageBusSocket.js) when its handshake is refused.
-const refreshAccessToken = () => handleUnauthorized.refreshNow()
+const refreshAccessToken = (sentToken) => handleUnauthorized.refreshNow(sentToken)
 
 instance.interceptors.response.use(
 	(response) => response,

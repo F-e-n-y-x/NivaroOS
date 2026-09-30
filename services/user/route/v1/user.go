@@ -869,11 +869,18 @@ func PostUserRefreshToken(c *gin.Context) {
 			return publicKey, nil
 		})
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE), Data: err.Error()})
+		reason := parseRefusal(refresh, err)
+		logRefreshRefused(c, reason, nil, nil, err)
+		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE), Data: map[string]string{"refused": reason}})
 		return
 	}
 	if !claims.VerifyExpiresAt(time.Now(), true) || !claims.VerifyIssuer("refresh", true) {
-		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE)})
+		reason := refuseExpired
+		if !claims.VerifyIssuer("refresh", true) {
+			reason = refuseWrongIssuer
+		}
+		logRefreshRefused(c, reason, claims, nil, nil)
+		c.JSON(http.StatusUnauthorized, model.Result{Success: common_err.VERIFICATION_FAILURE, Message: common_err.GetMsg(common_err.VERIFICATION_FAILURE), Data: map[string]string{"refused": reason}})
 		return
 	}
 	// The account must still exist, and the session must be of its current
@@ -885,12 +892,14 @@ func PostUserRefreshToken(c *gin.Context) {
 		if owner.Id == 0 {
 			reason = jwt.ReasonAccountDeleted
 		}
+		logRefreshRefused(c, sessionRefusal(owner, claims), claims, &owner, nil)
 		c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: reason}))
 		return
 	}
 
 	// An ended session (its phone was removed) can't be renewed either.
 	if rec, revoked := jwt.SessionRevoked(claims.SessionID); revoked {
+		logRefreshRefused(c, refuseSessionRevoked+":"+rec.Reason, claims, &owner, nil)
 		c.JSON(http.StatusUnauthorized, jwt.UnauthorizedResult(&jwt.SessionRevokedError{Reason: rec.Reason}))
 		return
 	}

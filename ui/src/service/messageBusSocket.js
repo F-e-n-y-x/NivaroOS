@@ -77,8 +77,11 @@ export function createMessageBusSocket({ io, getToken, refreshToken, watchToken,
 		if (refreshedThisStreak || refreshing || !refreshToken || !getToken()) return
 		refreshedThisStreak = true
 		refreshing = true
+		const refused = openedWith
 		Promise.resolve()
-			.then(refreshToken)
+			// The refused token: if another tab already refreshed, its
+			// tokens are used instead of refreshing again.
+			.then(() => refreshToken(refused))
 			.then(
 				() => {
 					refreshing = false

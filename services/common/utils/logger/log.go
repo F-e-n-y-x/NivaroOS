@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -54,16 +55,33 @@ func LogInit(logPath string, logFileName string, logFileExt string) {
 	)
 }
 
+var (
+	fallbackOnce sync.Once
+	fallback     *zap.Logger
+)
+
+// current: the configured logger, or stderr before LogInit* ran (a test
+// calling a handler that logs used to panic on a nil logger).
+func current() *zap.Logger {
+	if l := loggers; l != nil {
+		return l
+	}
+	fallbackOnce.Do(func() {
+		fallback = zap.New(zapcore.NewCore(getEncoder(), zapcore.AddSync(os.Stderr), zapcore.InfoLevel))
+	})
+	return fallback
+}
+
 func Info(message string, fields ...zap.Field) {
 	callerFields := getCallerInfoForLog()
 	fields = append(fields, callerFields...)
-	loggers.Info(message, fields...)
+	current().Info(message, fields...)
 }
 
 func Error(message string, fields ...zap.Field) {
 	callerFields := getCallerInfoForLog()
 	fields = append(fields, callerFields...)
-	loggers.Error(message, fields...)
+	current().Error(message, fields...)
 }
 
 func getCallerInfoForLog() (callerFields []zap.Field) {
