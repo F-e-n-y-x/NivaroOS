@@ -90,8 +90,8 @@ func InitNetworkMount() {
 		connection.Directories = strings.Join(directories, ",")
 		service.MyService.Connections().UpdateConnection(&connection)
 	}
-	err := service.MyService.Storage().CheckAndMountAll()
-	if err != nil {
-		logger.Error("mount storage err", zap.Any("err", err))
-	}
+	// Cloud drives are mounted by nivaroos-local-storage only. Core used to
+	// ask the rclone daemon to mount every remote here as well, on the same
+	// /mnt/<remote> paths; a daemon mount closing late then unmounted
+	// local-storage's fresh mount (2026-09-30).
 }

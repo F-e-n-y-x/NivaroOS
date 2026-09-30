@@ -8,35 +8,9 @@ import (
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/go-ini/ini"
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )
-
-type MountList struct {
-	MountPoints []MountPoints `json:"mountPoints"`
-}
-type MountPoints struct {
-	MountPoint string `json:"MountPoint"`
-	Fs         string `json:"Fs"`
-	Icon       string `json:"Icon"`
-	Name       string `json:"Name"`
-}
-type MountPoint struct {
-	MountPoint string `json:"mount_point"`
-	Fs         string `json:"fs"`
-	Icon       string `json:"icon"`
-	Name       string `json:"name"`
-}
-type MountResult struct {
-	Error string `json:"error"`
-	Input struct {
-		Fs         string `json:"fs"`
-		MountPoint string `json:"mountPoint"`
-	} `json:"input"`
-	Path   string `json:"path"`
-	Status int    `json:"status"`
-}
 
 type RemotesResult struct {
 	Remotes []string `json:"remotes"`
@@ -62,86 +36,10 @@ func NewRestyClient() *resty.Client {
 	return client
 }
 
-func GetMountList() (MountList, error) {
-	var result MountList
-	res, err := NewRestyClient().R().Post("/mount/listmounts")
-	if err != nil {
-		return result, err
-	}
-	if res.StatusCode() != 200 {
-		return result, fmt.Errorf("get mount list failed")
-	}
-	json.Unmarshal(res.Body(), &result)
-	for i := 0; i < len(result.MountPoints); i++ {
-		result.MountPoints[i].Fs = result.MountPoints[i].Fs[:len(result.MountPoints[i].Fs)-1]
-	}
-	return result, err
-}
-
-// LocalStorageConf holds the [cloud_cache] settings local-storage writes.
-var LocalStorageConf = "/etc/nivaroos/local-storage.conf"
-
-// CacheVFSOpt builds the rclone daemon's vfsOpt from [cloud_cache]
-// (Mode off|writes|full, MaxSize bytes, MaxAge seconds). Missing or bad
-// values use the defaults: full cache (random-access writes work), 20 GiB,
-// 1 hour. WriteBack 5s is rclone's default, spelled out because
-// service/cloudsync.go waits on it. The cache directory is the daemon's
-// --cache-dir (rclone.service, RCLONE_CACHE_DIR from
-// /etc/nivaroos/rclone-cache.env).
-func CacheVFSOpt(confPath string) string {
-	mode, size, age := 3, int64(20)<<30, int64(3600)
-	if cfg, err := ini.Load(confPath); err == nil && cfg.HasSection("cloud_cache") {
-		sec := cfg.Section("cloud_cache")
-		switch sec.Key("Mode").String() {
-		case "off":
-			mode = 0
-		case "writes":
-			mode = 2
-		}
-		if n, err := sec.Key("MaxSize").Int64(); err == nil && n > 0 {
-			size = n
-		}
-		if n, err := sec.Key("MaxAge").Int64(); err == nil && n > 0 {
-			age = n
-		}
-	}
-	return fmt.Sprintf(`{"CacheMode": %d, "CacheMaxSize": %d, "CacheMaxAge": %d, "WriteBack": 5000000000}`, mode, size, age*int64(time.Second))
-}
-
-func Mount(mountPoint string, fs string) error {
-	res, err := NewRestyClient().R().SetFormData(map[string]string{
-		"mountPoint": mountPoint,
-		"fs":         fs,
-		"mountOpt":   `{"AllowOther": true}`,
-		// Settings > Online storage > Cache (mode, size, age), shared with
-		// the mounts local-storage makes; see CacheVFSOpt.
-		"vfsOpt": CacheVFSOpt(LocalStorageConf),
-	}).Post("/mount/mount")
-	if err != nil {
-		return err
-	}
-	if res.StatusCode() != 200 {
-		return fmt.Errorf("mount failed")
-	}
-	logger.Info("mount then", zap.Any("res", res.Body()))
-	return nil
-}
-func Unmount(mountPoint string) error {
-	res, err := NewRestyClient().R().SetFormData(map[string]string{
-		"mountPoint": mountPoint,
-	}).Post("/mount/unmount")
-	if err != nil {
-		logger.Error("when unmount", zap.Error(err))
-		return err
-	}
-	if res.StatusCode() != 200 {
-		logger.Error("then unmount failed", zap.Any("res", res.Body()))
-		return fmt.Errorf("unmount failed")
-	}
-
-	logger.Info("unmount then", zap.Any("res", res.Body()))
-	return nil
-}
+// No mount calls here on purpose: cloud drives are mounted only by
+// nivaroos-local-storage. Mounting through this daemon too put two
+// mounts on the same /mnt/<remote> path, and the older one closing
+// unmounted the newer (2026-09-30).
 
 func CreateConfig(data map[string]string, name, t string) error {
 	data["config_is_local"] = "false"

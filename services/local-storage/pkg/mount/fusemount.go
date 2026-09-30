@@ -85,6 +85,9 @@ func MountFn(VFS *vfs.VFS, mountpoint string, opt *mountlib.Options) (<-chan err
 		return nil, nil, "", err
 	}
 
+	// Which mount is ours: see mountid.go.
+	dev, _ := TopMountDevice(mountpoint)
+
 	filesys := NewFS(VFS, opt)
 	filesys.server = fusefs.New(c, nil)
 
@@ -102,6 +105,14 @@ func MountFn(VFS *vfs.VFS, mountpoint string, opt *mountlib.Options) (<-chan err
 	unmount := func() error {
 		// Unmount first: if the drive is busy this fails and the mount
 		// keeps working. Shutting the VFS down first left a dead mount.
+		// Only if this mount is still the one at the path: after it
+		// vanished, a by-path unmount would hit whatever is there now
+		// (a newer mount of the same drive).
+		if !StillOurs(mountpoint, dev) {
+			fs.Logf(mountpoint, "this mount is already gone (another mount is at the path now); not unmounting it")
+			filesys.VFS.Shutdown()
+			return nil
+		}
 		if err := fuse.Unmount(mountpoint); err != nil {
 			return err
 		}

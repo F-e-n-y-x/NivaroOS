@@ -181,12 +181,7 @@ func InitV1Router() http.Handler {
 			v1FileGroup.GET("/ws", v1.ConnectWebSocket)
 			v1FileGroup.GET("/peers", v1.GetPeers)
 		}
-		v1CloudGroup := v1Group.Group("/cloud")
-		v1CloudGroup.Use()
-		{
-			v1CloudGroup.GET("", v1.ListStorages)
-			v1CloudGroup.DELETE("", v1.UmountStorage)
-		}
+		// /v1/cloud is nivaroos-local-storage's (it owns cloud mounts).
 		v1DriverGroup := v1Group.Group("/driver")
 		v1DriverGroup.Use()
 		{

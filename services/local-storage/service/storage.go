@@ -53,6 +53,8 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 	file.IsNotExistMkDir(mountPoint)
 	mountMu.Lock()
 	defer mountMu.Unlock()
+	// Wanted mounted again (even if this try fails: the watcher retries).
+	delete(heldMounts, mountPoint)
 	currentFS, err := fs.NewFs(context.TODO(), deviceName+":")
 	if err != nil {
 		logger.Error("when CheckAndMountAll then", zap.Error(err))
@@ -103,25 +105,41 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		logger.Error("when MountStorage then", zap.Error(err), zap.String("mountPoint", mountPoint), zap.String("device", deviceName))
 		return err
 	}
+	dev, _ := mount.TopMountDevice(mountPoint)
 	go func() {
-		if err = mnt.Wait(); err != nil {
-			log.Printf("unmount FAILED: %v", err)
-			return
+		werr := mnt.Wait()
+		if werr != nil {
+			log.Printf("unmount FAILED: %v", werr)
 		}
 		mountMu.Lock()
 		defer mountMu.Unlock()
 		// Only if it's still this mount: a remount may already be there.
-		if MountLists[mountPoint] == mnt {
-			delete(MountLists, mountPoint)
+		if MountLists[mountPoint] != mnt {
+			return
+		}
+		if werr != nil {
+			// Still listed: the watcher checks whether it's really gone.
+			mountExit[mountPoint] = "the mount's FUSE connection failed: " + werr.Error()
+			return
+		}
+		delete(MountLists, mountPoint)
+		delete(mountDevs, mountPoint)
+		if !heldMounts[mountPoint] {
+			mountExit[mountPoint] = "the mount ended by itself (unmounted outside NivaroOS, or its FUSE connection closed)"
 		}
 	}()
 	MountLists[mountPoint] = mnt
+	mountDevs[mountPoint] = dev
+	delete(mountExit, mountPoint)
 	parkKnownStuck(cloudMount{Name: deviceName, MountPoint: mountPoint, VFS: mnt.VFS})
 	return nil
 }
 func (s *storageStruct) UnmountStorage(mountPoint string) error {
 	mountMu.Lock()
 	mnt := MountLists[mountPoint]
+	// On purpose: the mount watcher leaves it unmounted until the next
+	// MountStorage for it.
+	heldMounts[mountPoint] = true
 	mountMu.Unlock()
 	if mnt == nil {
 		// Never mounted in this process (expired token, failed mount, or a
@@ -136,11 +154,16 @@ func (s *storageStruct) UnmountStorage(mountPoint string) error {
 	}
 	if err := mnt.Unmount(); err != nil {
 		logger.Error("when umount then", zap.Error(err))
+		// Still mounted (busy): keep watching it.
+		mountMu.Lock()
+		delete(heldMounts, mountPoint)
+		mountMu.Unlock()
 		return err
 	}
 	return nil
 }
 func (s *storageStruct) UnmountAllStorage() {
+	cloudWatchStopping.Store(true)
 	for _, v := range MountLists {
 		err := v.Unmount()
 		if err != nil {
@@ -225,73 +248,39 @@ func (s *storageStruct) CheckAndMountByName(name string) error {
 	return MyService.Storage().MountStorage(mountPoint, name)
 }
 
+// CheckAndMountAll mounts every configured account at startup. A drive
+// the rclone daemon still mounts is left to the mount watcher, which takes
+// it over once the daemon has no uploads pending for it; failed mounts are
+// retried by the watcher too (cloud_mount_watch.go).
 func (s *storageStruct) CheckAndMountAll() error {
 	section := rconfig.LoadedData().GetSectionList()
 
 	logger.Info("when CheckAndMountAll section", zap.Any("section", section))
-	var failedRemotes []string
+	daemonAt, known := newMountWatcher(processMountEnv{}, cloudDaemon).daemonMounts()
 	for _, v := range section {
-		lazyUmountStaleRemote(v)
 		mountPoint, found := rconfig.LoadedData().GetValue(v, "mount_point")
 
 		if !found || len(mountPoint) == 0 {
 			logger.Info("when CheckAndMountAll then mountpoint is empty", zap.String("mountPoint", mountPoint), zap.String("fs", v))
 			continue
 		}
+		if _, ok := daemonAt[filepath.Clean(mountPoint)]; ok {
+			logger.Info("cloud mounts: the rclone daemon still mounts this drive; taking it over in the background", zap.String("mountPoint", mountPoint), zap.String("fs", v))
+			continue
+		}
+		if !known {
+			// Can't tell whether a mount there is the daemon's: detaching
+			// it blind is what unmounted a fresh mount on 2026-09-30.
+			logger.Info("cloud mounts: rclone daemon didn't answer; the watcher mounts this drive shortly", zap.String("mountPoint", mountPoint), zap.String("fs", v))
+			continue
+		}
+		lazyUmountStaleRemote(v)
 		err := MyService.Storage().MountStorage(mountPoint, v)
 		if err != nil {
 			logger.Error("when CheckAndMountAll failed to mount remote, will retry in background", zap.String("mountPoint", mountPoint), zap.String("fs", v), zap.Error(err))
-			failedRemotes = append(failedRemotes, v)
 		}
-	}
-	if len(failedRemotes) > 0 {
-		go s.retryMountFailedRemotes(failedRemotes)
 	}
 	return nil
-}
-
-func (s *storageStruct) retryMountFailedRemotes(remotes []string) {
-	backoffs := []time.Duration{4 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second}
-	pending := make(map[string]bool)
-	for _, r := range remotes {
-		pending[r] = true
-	}
-
-	for _, d := range backoffs {
-		time.Sleep(d)
-		if len(pending) == 0 {
-			break
-		}
-		for v := range pending {
-			mountMu.Lock()
-			mountPoint, found := rconfig.LoadedData().GetValue(v, "mount_point")
-			alreadyMounted := false
-			if found && mountPoint != "" {
-				_, alreadyMounted = MountLists[mountPoint]
-			}
-			mountMu.Unlock()
-
-			if alreadyMounted {
-				delete(pending, v)
-				continue
-			}
-
-			if !found || len(mountPoint) == 0 {
-				delete(pending, v)
-				continue
-			}
-
-			logger.Info("retrying background mount for remote", zap.String("remote", v), zap.String("mountPoint", mountPoint))
-			lazyUmountStaleRemote(v)
-			err := MyService.Storage().MountStorage(mountPoint, v)
-			if err == nil {
-				logger.Info("successfully mounted remote on retry", zap.String("remote", v), zap.String("mountPoint", mountPoint))
-				delete(pending, v)
-			} else {
-				logger.Error("retry mount failed", zap.String("remote", v), zap.Error(err))
-			}
-		}
-	}
 }
 
 func (s *storageStruct) GetConfigByName(name string) []string {
@@ -350,7 +339,17 @@ func lazyUmountStaleRemote(name string) {
 		logger.Info("skipping stale-mount cleanup for remote with unusual name", zap.String("remote", name))
 		return
 	}
+	lazyUmountPath(filepath.Join("/mnt", name))
+}
+
+// lazyUmountPath detaches a stale mount at a /mnt/<name> path. Never call
+// it for a path the rclone daemon serves: its mount would finish closing
+// later and unmount whatever is mounted there by then.
+func lazyUmountPath(mp string) {
+	if !cloudMountPointOK(mp) || !model.IsSafeMountName(filepath.Base(mp)) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_ = exec.CommandContext(ctx, "umount", "-l", filepath.Join("/mnt", name)).Run()
+	_ = exec.CommandContext(ctx, "umount", "-l", mp).Run()
 }

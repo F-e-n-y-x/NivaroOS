@@ -119,6 +119,9 @@ func init() {
 	if err := service.MyService.Storage().CheckAndMountAll(); err != nil {
 		logger.Error("failed to remount previously configured cloud accounts", zap.Error(err))
 	}
+	// Keeps every cloud drive mounted from here on: remounts one that
+	// vanished, takes over drives the rclone daemon still mounts.
+	service.StartCloudMountWatcher(context.Background())
 }
 
 func checkToken2_11() {

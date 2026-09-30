@@ -3,10 +3,9 @@
 // cache directory: usage, pending uploads, clearing and migrating it.
 //
 // There is one setting set, stored in local-storage.conf ([cloud_cache]).
-// nivaroos-local-storage mounts in-process with it; nivaroos-core reads the
-// same section for the mounts it asks the rclone daemon (rclone.service)
-// for, and the daemon's --cache-dir comes from EnvFile, which this package
-// writes.
+// nivaroos-local-storage mounts in-process with it (it is the only owner
+// of cloud mounts; the rclone daemon, rclone.service, mounts nothing), and
+// the daemon's --cache-dir comes from EnvFile, which this package writes.
 //
 // rclone's cache layout, for a cache dir D and a remote R:
 //

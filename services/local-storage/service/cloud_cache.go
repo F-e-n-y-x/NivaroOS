@@ -688,8 +688,8 @@ func remountAll(mounts []cloudMount) (errs []string) {
 			continue
 		}
 		if err := MyService.Storage().MountStorage(m.MountPoint, m.Name); err != nil {
+			// The mount watcher retries it (cloud_mount_watch.go).
 			errs = append(errs, fmt.Sprintf("%s didn't reconnect (%v); it retries in the background.", accountLabel(m.Name), err))
-			go func(name string) { MyService.Storage().(*storageStruct).retryMountFailedRemotes([]string{name}) }(m.Name)
 		}
 	}
 	return errs

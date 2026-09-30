@@ -66,10 +66,6 @@ func GetRecoverStorage(ctx echo.Context) error {
 				continue
 			}
 			if cf["type"] == "drive" && cf["username"] == dmap["username"] {
-				err := service.MyService.Storage().CheckAndMountByName(v)
-				if err != nil {
-					logger.Error("check and mount by name error: ", zap.Error(err), zap.Any("name", cf["username"]))
-				}
 				notify["status"] = "warn"
 				notify["message"] = "The same configuration has been added"
 				service.MyService.Notify().SendNotify(event, notify)
@@ -89,7 +85,9 @@ func GetRecoverStorage(ctx echo.Context) error {
 		dmap["mount_point"] = "/mnt/" + username
 		dmap["token"] = `{"access_token":"` + google_drive.AccessToken + `","token_type":"Bearer","refresh_token":"` + google_drive.RefreshToken + `","expiry":"` + currentDate + `T` + currentTime.Add(time.Hour*1).Add(time.Minute*50).Format("15:04:05") + `Z"}`
 		service.MyService.Storage().CreateConfig(dmap, username, "drive")
-		service.MyService.Storage().MountStorage("/mnt/"+username, username+":")
+		// nivaroos-local-storage mounts it (its mount watcher picks new
+		// rclone.conf sections up within seconds); the rclone daemon never
+		// mounts cloud drives, see local-storage/service/cloud_mount_watch.go.
 		notify := make(map[string]interface{})
 		notify["status"] = "success"
 		notify["message"] = "Success"
@@ -141,9 +139,6 @@ func GetRecoverStorage(ctx echo.Context) error {
 				continue
 			}
 			if cf["type"] == "dropbox" && cf["username"] == dmap["username"] {
-				if err := service.MyService.Storage().CheckAndMountByName(v); err != nil {
-					logger.Error("check and mount by name error: ", zap.Error(err), zap.Any("name", cf["username"]))
-				}
 
 				notify["status"] = "warn"
 				notify["message"] = "The same configuration has been added"
@@ -162,7 +157,9 @@ func GetRecoverStorage(ctx echo.Context) error {
 		dmap["token"] = `{"access_token":"` + dropbox.AccessToken + `","token_type":"bearer","refresh_token":"` + dropbox.Addition.RefreshToken + `","expiry":"` + currentDate + `T` + currentTime.Add(time.Hour*3).Add(time.Minute*50).Format("15:04:05") + `.780385354Z"}`
 		dmap["mount_point"] = "/mnt/" + username
 		service.MyService.Storage().CreateConfig(dmap, username, "dropbox")
-		service.MyService.Storage().MountStorage("/mnt/"+username, username+":")
+		// nivaroos-local-storage mounts it (its mount watcher picks new
+		// rclone.conf sections up within seconds); the rclone daemon never
+		// mounts cloud drives, see local-storage/service/cloud_mount_watch.go.
 
 		notify["status"] = "success"
 		notify["message"] = "Success"
@@ -212,9 +209,6 @@ func GetRecoverStorage(ctx echo.Context) error {
 				continue
 			}
 			if cf["type"] == "onedrive" && cf["username"] == dmap["username"] {
-				if err := service.MyService.Storage().CheckAndMountByName(v); err != nil {
-					logger.Error("check and mount by name error: ", zap.Error(err), zap.Any("name", cf["username"]))
-				}
 
 				notify["status"] = "warn"
 				notify["message"] = "The same configuration has been added"
@@ -235,7 +229,9 @@ func GetRecoverStorage(ctx echo.Context) error {
 		dmap["drive_id"] = driveId
 		dmap["drive_type"] = driveType
 		service.MyService.Storage().CreateConfig(dmap, username, "onedrive")
-		service.MyService.Storage().MountStorage("/mnt/"+username, username+":")
+		// nivaroos-local-storage mounts it (its mount watcher picks new
+		// rclone.conf sections up within seconds); the rclone daemon never
+		// mounts cloud drives, see local-storage/service/cloud_mount_watch.go.
 
 		notify["status"] = "success"
 		notify["message"] = "Success"
