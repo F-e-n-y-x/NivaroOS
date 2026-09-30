@@ -171,7 +171,35 @@ class ActivityService {
 		this.notify()
 	}
 
-	add({ title, message = '', type = 'system', status = 'info', action = null, icon = '' }) {
+	// Called with the local items a remove()/clear() took away, so whoever
+	// raised them (e.g. a transfer that finished with problems) can forget
+	// the thing itself too - a cleared notification must not come back.
+	onRemoved(fn) {
+		if (!this._removedListeners) this._removedListeners = new Set()
+		this._removedListeners.add(fn)
+		return () => this._removedListeners.delete(fn)
+	}
+
+	_emitRemoved(items) {
+		if (!items.length || !this._removedListeners) return
+		this._removedListeners.forEach(fn => {
+			try { fn(items) } catch (e) { console.error(e) }
+		})
+	}
+
+	// Removes local items raised for [ref] (see add's ref) without telling
+	// onRemoved listeners - the caller is the one forgetting it.
+	removeByRef(ref) {
+		if (!ref) return
+		this._sync()
+		const prevLen = this._activities.length
+		this._activities = this._activities.filter(a => a.ref !== ref)
+		if (this._activities.length !== prevLen) this.save()
+	}
+
+	// ref: an id of the thing this is about (e.g. 'transfer:<job id>'), so
+	// clearing the notification can dismiss the thing and vice versa.
+	add({ title, message = '', type = 'system', status = 'info', action = null, icon = '', ref = '' }) {
 		if (!title) return
 		this._sync()
 		const item = {
@@ -183,7 +211,8 @@ class ActivityService {
 			timestamp: new Date().toISOString(),
 			read: false,
 			action,
-			icon: icon ? String(icon) : ''
+			icon: icon ? String(icon) : '',
+			ref: ref ? String(ref) : ''
 		}
 
 		// Prevent exact duplicates within 2 seconds
@@ -246,15 +275,17 @@ class ActivityService {
 			this._callRemote('dismiss', [remote.feedId])
 			return
 		}
-		const prevLen = this._activities.length
+		const gone = this._activities.filter(a => a.id === id)
 		this._activities = this._activities.filter(a => a.id !== id)
-		if (this._activities.length !== prevLen) {
+		if (gone.length) {
 			this.save()
+			this._emitRemoved(gone)
 		}
 	}
 
 	clear() {
 		this._sync()
+		const gone = this._activities
 		this._activities = []
 		if (this._remote.length) {
 			const upTo = this._maxFeedId()
@@ -262,6 +293,7 @@ class ActivityService {
 			this._callRemote('dismissAll', upTo)
 		}
 		this.save()
+		this._emitRemoved(gone)
 	}
 }
 

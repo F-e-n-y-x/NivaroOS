@@ -32,6 +32,28 @@ export const isActive = (job) => job && !isTerminal(job)
 
 const announced = new Set()
 
+// Jobs the user dismissed, remembered across reloads (and the server is
+// told to forget them - see hide), so a closed transfer never comes back.
+const DISMISSED_KEY = 'nivaroos_transfers_dismissed'
+const DISMISSED_MAX = 300
+function loadDismissed() {
+	try {
+		const ids = JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]')
+		return Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : []
+	} catch (e) {
+		return []
+	}
+}
+function saveDismissed() {
+	try {
+		const ids = Object.keys(state.hidden).filter((id) => state.hidden[id] === 'dismissed').slice(-DISMISSED_MAX)
+		localStorage.setItem(DISMISSED_KEY, JSON.stringify(ids))
+	} catch (e) {
+		// Private mode / full storage: the server-side dismiss still holds.
+	}
+}
+for (const id of loadDismissed()) Vue.set(state.hidden, id, 'dismissed')
+
 function normalize(raw) {
 	if (!raw || !raw.id) return null
 	return {
@@ -176,16 +198,27 @@ export async function retry(id) {
 	return state.jobs[res.data.data.id]
 }
 
+// Dismiss: gone from the list for good - remembered here and forgotten by
+// the server (its per-job history delete), so reloads, other tabs and
+// other browsers don't bring it back.
 export function hide(id) {
-	Vue.set(state.hidden, id, true)
+	const job = state.jobs[id]
+	Vue.set(state.hidden, id, 'dismissed')
+	saveDismissed()
+	if (!job || isTerminal(job)) batch.dismiss(id).catch(() => {})
+}
+
+// A clean success fading out of the panel: hidden here only; the server
+// keeps it in the history until the user clears it.
+export function fade(id) {
+	if (!state.hidden[id]) Vue.set(state.hidden, id, true)
 }
 
 export async function clearFinished() {
 	for (const id of state.order.slice()) {
-		if (isTerminal(state.jobs[id])) {
-			hide(id)
-		}
+		if (isTerminal(state.jobs[id])) Vue.set(state.hidden, id, 'dismissed')
 	}
+	saveDismissed()
 	try {
 		await batch.dismiss('0')
 	} catch (e) {}

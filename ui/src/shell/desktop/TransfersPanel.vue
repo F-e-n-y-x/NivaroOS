@@ -66,7 +66,7 @@
 </template>
 
 <script>
-import transfers, { applyEvent, sync, isTerminal, isActive, retry, cancel, hide, clearFinished, bus } from '@/service/transfers'
+import transfers, { applyEvent, sync, isTerminal, isActive, retry, cancel, hide, fade, clearFinished, bus } from '@/service/transfers'
 import { startClipboardSync } from '@/service/filesClipboard'
 import { renderSize } from '@/mixins/file_utils'
 import { baseName } from '@/utils/files/path'
@@ -166,9 +166,14 @@ export default {
 			if (active && Date.now() - Math.max(transfers.state.lastEventAt, transfers.state.lastSyncAt) > QUIET_MS) sync()
 		}, POLL_MS)
 		bus.$on('finished', this.onFinished)
+		// Clearing that notification dismisses the transfer too.
+		this.offRemoved = activityService.onRemoved((items) => {
+			for (const a of items) if (a.ref && a.ref.startsWith('transfer:')) hide(a.ref.slice(9))
+		})
 	},
 	beforeDestroy() {
 		clearInterval(this.poller)
+		if (this.offRemoved) this.offRemoved()
 		bus.$off('finished', this.onFinished)
 		Object.values(this.timers).forEach(clearTimeout)
 	},
@@ -265,6 +270,8 @@ export default {
 		},
 		hide(id) {
 			hide(id)
+			// Its "finished with problems" notification goes with it.
+			activityService.removeByRef('transfer:' + id)
 		},
 		scheduleHide(id) {
 			this.$set(this.timers, id, setTimeout(() => {
@@ -272,7 +279,7 @@ export default {
 					this.$delete(this.timers, id)
 					return
 				}
-				hide(id)
+				fade(id)
 			}, SUCCESS_LINGER_MS))
 		},
 		onLeave() {
@@ -318,6 +325,7 @@ export default {
 					message: `${this.title(job)} - ${this.meta(job)}`,
 					type: 'system',
 					status: 'error',
+					ref: 'transfer:' + job.id,
 				})
 			}
 		},

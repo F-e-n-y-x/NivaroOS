@@ -52,3 +52,34 @@ describe('activityService', () => {
 		expect(seen).toContain(2)
 	})
 })
+
+describe('activityService refs (clearing a notification forgets its thing)', () => {
+	let service
+	beforeEach(async () => {
+		vi.resetModules()
+		const data = {}
+		globalThis.localStorage = { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v) }, removeItem: k => { delete data[k] } }
+		globalThis.window = { addEventListener: () => {} }
+		service = (await import('./activity.js')).default
+	})
+
+	test('remove() and clear() report the items they took, with their ref', () => {
+		const seen = []
+		service.onRemoved(items => seen.push(...items.map(i => i.ref)))
+		const a = service.add({ title: 'Transfer finished with problems', ref: 'transfer:j1' })
+		service.add({ title: 'Other', ref: 'transfer:j2' })
+		service.remove(a.id)
+		expect(seen).toEqual(['transfer:j1'])
+		service.clear()
+		expect(seen).toEqual(['transfer:j1', 'transfer:j2'])
+	})
+
+	test('removeByRef drops the notification quietly', () => {
+		const seen = []
+		service.onRemoved(items => seen.push(...items))
+		service.add({ title: 'Transfer finished with problems', ref: 'transfer:j1' })
+		service.removeByRef('transfer:j1')
+		expect(service.getAll()).toHaveLength(0)
+		expect(seen).toHaveLength(0)
+	})
+})
