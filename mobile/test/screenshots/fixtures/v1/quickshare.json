@@ -1,0 +1,5 @@
+{"success":200,"message":"ok","data":[
+ {"id":"jtsbrbeapucqq4tfjj2l26pk","name":"Holiday 2026","path":"/DATA/Photos/Holiday 2026","url":"https://nas.example.net/v1/qs/jtsbrbeapucqq4tfjj2l26pk","expires_at":1790847180,"created":1790321580,"max_downloads":0,"downloads":2,"has_password":true,"is_dir":true},
+ {"id":"q7mbn3w2xhtd5k4rlz6p2a9e","name":"tax-return-2025.pdf","path":"/DATA/Documents/tax-return-2025.pdf","url":"http://192.168.1.20/v1/qs/q7mbn3w2xhtd5k4rlz6p2a9e","expires_at":1790328180,"created":1790321580,"max_downloads":1,"downloads":0,"has_password":false,"is_dir":false},
+ {"id":"z2k9p4m7w3c8v6b1n5x0l3qa","name":"slides.pptx","path":"/DATA/Work/slides.pptx","url":"https://nas.example.net/v1/qs/z2k9p4m7w3c8v6b1n5x0l3qa","expires_at":0,"created":1790238780,"max_downloads":0,"downloads":0,"has_password":false,"is_dir":false}
+]}

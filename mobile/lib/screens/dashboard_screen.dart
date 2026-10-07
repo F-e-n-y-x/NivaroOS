@@ -10,6 +10,7 @@ import '../models/gpu_stats.dart';
 import 'fans/fans_screen.dart';
 import '../services/api_client.dart';
 import '../services/background_service.dart';
+import '../services/download_station_api.dart';
 import '../services/tailscale_service.dart';
 import '../services/vm_client.dart';
 import '../services/widget_refresh.dart';
@@ -84,6 +85,9 @@ class HomeController extends ChangeNotifier {
   String tailnetIp = '';
   SharingBrief? sharing;
 
+  /// Download Station's failed downloads; 0 when it isn't installed.
+  int failedDownloads = 0;
+
   /// When the slow checks (updates, backups, apps, drives, Tailscale) last
   /// answered, for the Server health page's "Checked 2 min ago".
   DateTime? checkedAt;
@@ -127,6 +131,7 @@ class HomeController extends ChangeNotifier {
         tailnet: tailnet,
         tailnetIp: tailnetIp,
         sharing: sharing,
+        failedDownloads: failedDownloads,
       );
 
   List<AttentionItem> get attention => health.attention;
@@ -256,6 +261,7 @@ class HomeController extends ChangeNotifier {
       _loadDrives(),
       _loadTailscale(),
       _loadSharing(),
+      _loadDownloads(),
     ]);
     if (live.value != null && !live.value!.stale) checkedAt = clock.now();
     _notify();
@@ -301,6 +307,15 @@ class HomeController extends ChangeNotifier {
     ]);
     updates = UpdateSummary(serverUpdate: serverUpdate, serverVersion: serverVersion, packages: packages, security: security);
     _notify();
+  }
+
+  // Download Station is optional too: no answer, nothing to say.
+  Future<void> _loadDownloads() async {
+    try {
+      failedDownloads = (await DownloadStationApi(_api).downloads()).where((d) => d.state == DsState.failed).length;
+    } catch (_) {
+      failedDownloads = 0;
+    }
   }
 
   // Backup & Sync is optional: ask its health route first and show nothing

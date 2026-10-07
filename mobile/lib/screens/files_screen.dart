@@ -22,6 +22,7 @@ import 'files/file_ops.dart';
 import 'files/file_sheets.dart';
 import 'files/file_tabs.dart';
 import 'files/file_widgets.dart';
+import 'files/share_link.dart';
 import 'files/transfers.dart';
 import 'files/trash_api.dart';
 import 'files/trash_screen.dart';
@@ -1056,6 +1057,7 @@ class FilesScreenState extends State<FilesScreen> {
       if (server && e.isExtractable) EntryAction.extract,
       if (server && e.isDir && !_isFavoriteFolder(e)) EntryAction.favorite,
       if (server && e.isDir && _customFavorites.contains(e.path)) EntryAction.unfavorite,
+      if (server) EntryAction.shareLink,
       EntryAction.info,
       EntryAction.delete,
     };
@@ -1080,6 +1082,8 @@ class FilesScreenState extends State<FilesScreen> {
         _extract(e);
       case EntryAction.favorite || EntryAction.unfavorite:
         await _toggleFavorite(e);
+      case EntryAction.shareLink:
+        await showShareLinkSheet(context, e);
       case EntryAction.info:
         await showInfoSheet(context, entry: e, isLocal: _isLocal, locationLabel: _location?.label);
       case EntryAction.openWith:
@@ -1356,6 +1360,12 @@ class FilesScreenState extends State<FilesScreen> {
         title: const Text('Trash'),
         subtitle: Text(t == null ? 'Deleted files, kept for 30 days' : TrashApi.summary(t)),
         onTap: _openTrash,
+      ),
+      ListTile(
+        leading: const Icon(Icons.link),
+        title: const Text('Shared links'),
+        subtitle: const Text('Links to your files, and revoking them'),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SharedLinksScreen())),
       ),
     ]);
   }

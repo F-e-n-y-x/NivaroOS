@@ -85,3 +85,16 @@ types - with ids, names and times moved to this shot's day (+05:30) and a
 longer run history, version list and plan written in the same shapes. This
 box has no backup jobs, so there was nothing real to capture beyond
 `GET /v1/backup/health` and an empty `GET /v1/backup/jobs`.
+
+Download Station and share links (2026-10-07): `ds/downloads.json` keeps
+the exact field set of a real `GET /downloads` from this box's
+download-sidecar (`DownloadView`, services/download-sidecar/engine.go),
+with the entries rewritten to public sample files in each state
+(downloading, queued, paused, failed, completed) and the segments dropped;
+`ds/settings.json` is the real `GET /settings`, `ds/roots.json` a trimmed
+`GET /storage/roots`. They are not served by URL (Home would then show a
+failed download in every shot); the shots pass them as overrides.
+`v1/quickshare.json` is in the shape of the core's `GET /v1/quickshare`
+(`quickShareItem`, services/core/route/v1/quickshare.go), taken from a
+real create on this box with names, paths and hosts replaced; its times
+are relative to the shot time.

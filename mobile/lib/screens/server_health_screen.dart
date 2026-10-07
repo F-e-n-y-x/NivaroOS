@@ -9,6 +9,7 @@ import '../ui/ui.dart';
 import '../widgets/monitor_modals.dart';
 import '../widgets/tailscale_modal.dart';
 import 'companion_devices_screen.dart';
+import 'download_station/download_station_screen.dart';
 import 'dashboard_screen.dart';
 import 'system_updates_screen.dart';
 
@@ -51,6 +52,7 @@ IconData _kindIcon(AttentionKind kind) => switch (kind) {
       AttentionKind.memory => Icons.memory_outlined,
       AttentionKind.tailscale => Icons.vpn_key_outlined,
       AttentionKind.sharing => Icons.phone_android_outlined,
+      AttentionKind.downloads => Icons.download_outlined,
     };
 
 /// Where each thing that needs attention is fixed, the same from Home and
@@ -82,6 +84,7 @@ class HealthActions {
         AttentionKind.memory => 'open memory',
         AttentionKind.tailscale => 'open Tailscale',
         AttentionKind.sharing => 'open companion devices',
+        AttentionKind.downloads => 'open Download Station',
       };
 
   Future<void> _push(BuildContext context, Widget screen) async {
@@ -123,6 +126,9 @@ class HealthActions {
       case AttentionKind.sharing:
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CompanionDevicesScreen()));
         await c.recheckSharing();
+      case AttentionKind.downloads:
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DownloadStationScreen(initialFilter: DsFilter.failed)));
+        await c.refreshAll();
     }
   }
 }

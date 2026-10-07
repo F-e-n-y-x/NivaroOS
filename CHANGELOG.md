@@ -20,6 +20,20 @@ inherited CasaOS history and is not kept up to date.)
   whenever the service stops, crashes or the machine shuts down. Fans that
   can't be driven (ACPI resource conflict, no driver, read-only driver) are
   shown read-only with the reason.
+- Download Station in the Android app (More > Download Station): every
+  download with live progress, speed and time left, filters and search,
+  pause / resume / retry / remove (with or without the file), open a
+  finished file or show it in Files, add links with a save folder and name,
+  and the download settings. Share a link from Chrome or any app to
+  NivaroOS ("Download on server") to queue it on the server. Home lists
+  failed downloads under Needs attention.
+- Share links from the app (Files > a file or folder > Share link…):
+  one-time links, 1 hour / 1 day / 7 days / never, an optional password,
+  then copy, share or show a QR code; a link made over the home network or
+  Tailscale says it only works there. Files > Shared links lists them with
+  Revoke. On the server, Quick Share links can now be one-time, password
+  protected (asked on a small page before the download), last 7 days, and
+  share folders as a ZIP.
 
 ### Changed
 

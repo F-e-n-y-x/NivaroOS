@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import 'files_screen.dart';
@@ -9,6 +11,9 @@ import 'login_screen.dart';
 import '../services/storage_service.dart';
 import '../services/session_service.dart';
 import '../services/api_client.dart';
+import '../services/share_intent.dart';
+import 'download_station/download_station_screen.dart';
+import 'download_station/ds_add_sheet.dart';
 import '../ui/theme/spacing.dart';
 import '../ui/widgets/floating_nav_bar.dart';
 
@@ -60,18 +65,52 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
+    ShareIntent.pending.addListener(_onShared);
     // After the first frame, not during the route transition: registers
     // the phone and schedules the 15-minute heartbeat. Nothing here asks
     // for a permission; features ask when they need one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && ApiClient.instance.hasSession) SessionService.started();
+      ShareIntent.listen().then((_) => _onShared());
     });
   }
 
   @override
   void dispose() {
     ApiClient.sessionExpiredNotifier.removeListener(_onSessionExpired);
+    ShareIntent.pending.removeListener(_onShared);
     super.dispose();
+  }
+
+  bool _showingShare = false;
+
+  // A link shared to "Download on server" (also the one that started the
+  // app): offer to queue it in Download Station.
+  Future<void> _onShared() async {
+    final text = ShareIntent.pending.value;
+    if (text == null || !mounted || _showingShare || !ApiClient.instance.hasSession) return;
+    _showingShare = true;
+    ShareIntent.pending.value = null;
+    final server = ApiClient.instance.baseUrl;
+    try {
+      final added = await showAddDownloadSheet(context, text: text, pickServer: true);
+      if (!mounted) return;
+      final nav = Navigator.of(context);
+      final messenger = ScaffoldMessenger.of(context);
+      // Picking another server in the sheet switched the app to it: start
+      // over on that one, as the server list does.
+      if (ApiClient.instance.baseUrl != server) nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (_) => false);
+      if (added != null && added > 0) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(added == 1 ? 'Added to Download Station' : '$added downloads added to Download Station'),
+          action: SnackBarAction(label: 'Open', onPressed: () => nav.push(MaterialPageRoute<void>(builder: (_) => const DownloadStationScreen()))),
+        ));
+      }
+    } finally {
+      _showingShare = false;
+    }
+    // Another link shared while the sheet was open.
+    if (ShareIntent.pending.value != null) unawaited(_onShared());
   }
 
   // Only a real 401 from /users/refresh gets here (ApiClient keeps the

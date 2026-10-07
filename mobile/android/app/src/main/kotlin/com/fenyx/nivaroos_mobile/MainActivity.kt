@@ -19,8 +19,15 @@ class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var phoneBackup: PhoneBackupBridge? = null
 
+    // "Download on server": a link shared to the app, until Dart takes it
+    // (lib/services/share_intent.dart).
+    private var shareChannel: MethodChannel? = null
+    private var pendingShare: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only on a fresh start: a re-created activity would offer it again.
+        if (savedInstanceState == null) pendingShare = sharedText(intent)
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         multicastLock = wifi?.createMulticastLock("nivaroos-mdns-discovery")?.apply {
             setReferenceCounted(true)
@@ -41,8 +48,46 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        sharedText(intent)?.let {
+            pendingShare = it
+            shareChannel?.invokeMethod("shared", null)
+        }
+    }
+
+    // Plain text only (a URL from a browser's Share): no streams or URIs
+    // are read, so nothing another app grants or names is touched.
+    private fun sharedText(i: Intent?): String? {
+        if (i?.action != Intent.ACTION_SEND || i.type?.startsWith("text/") != true) return null
+        return i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.take(64 * 1024)?.takeIf { it.isNotBlank() }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.fenyx.nivaroos/share_intent").also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "take" -> {
+                        result.success(pendingShare)
+                        pendingShare = null
+                    }
+                    "shareText" -> {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text") ?: "")
+                        try {
+                            startActivity(Intent.createChooser(send, call.argument<String>("title")))
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // "Back up this phone" (PhoneBackupBridge, PhoneBackupJobService,
         // lib/phone_backup).

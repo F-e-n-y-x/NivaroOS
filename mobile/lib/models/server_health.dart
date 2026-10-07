@@ -14,7 +14,7 @@ import 'dashboard_stats.dart';
 
 enum AttentionSeverity { error, warning, info }
 
-enum AttentionKind { serverUpdate, packages, disk, driveHealth, backup, apps, temperature, memory, tailscale, sharing }
+enum AttentionKind { serverUpdate, packages, disk, driveHealth, backup, apps, temperature, memory, tailscale, sharing, downloads }
 
 /// One row of "Needs attention" (Home and the Server health page).
 class AttentionItem {
@@ -168,6 +168,7 @@ ServerHealth buildHealth({
   TailnetState? tailnet,
   String tailnetIp = '',
   SharingBrief? sharing,
+  int failedDownloads = 0,
 }) {
   final items = <AttentionItem>[];
   final fine = <HealthCheck>[];
@@ -394,6 +395,17 @@ ServerHealth buildHealth({
         detail: sharing.stopReason == 'timeout' ? "Android's daily limit for it was reached" : "Android didn't let it start",
       ));
     }
+  }
+
+  // Download Station: only failures are worth a line (it is optional, and
+  // running downloads are not a problem).
+  if (failedDownloads > 0) {
+    items.add(AttentionItem(
+      kind: AttentionKind.downloads,
+      severity: AttentionSeverity.warning,
+      title: failedDownloads == 1 ? '1 download failed' : '$failedDownloads downloads failed',
+      detail: 'Download Station · Retry or remove them',
+    ));
   }
 
   items.sort((a, b) => a.severity.index.compareTo(b.severity.index));

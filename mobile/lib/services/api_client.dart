@@ -538,7 +538,8 @@ class ApiClient {
       return decoded;
     }
 
-    final serverMessage = decoded['message']?.toString();
+    // The sidecars (Download Station, VMs) answer {"error": "..."}.
+    final serverMessage = (decoded['message'] ?? decoded['error'])?.toString();
     final details = '$route → HTTP ${res.statusCode}: ${_excerpt(res.body)}';
     if (res.statusCode == 401) {
       throw ApiException(serverMessage ?? 'The server refused the request.', statusCode: 401, details: details);

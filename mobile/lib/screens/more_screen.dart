@@ -12,6 +12,7 @@ import '../ui/ui.dart';
 import '../widgets/tailscale_modal.dart';
 import 'backup/backup_screen.dart';
 import 'companion_devices_screen.dart';
+import 'download_station/download_station_screen.dart';
 import 'host_desktop_screen.dart';
 import 'server_profiles_screen.dart';
 import 'settings_screen.dart';
@@ -190,6 +191,12 @@ class _MoreScreenState extends State<MoreScreen> {
               title: const Text('Backup & Sync'),
               subtitle: Text(_backup?.summary ?? 'Copies of your files on other drives and clouds'),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BackupScreen())).then((_) => _loadBackup()),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Download Station'),
+              subtitle: const Text('Downloads the server makes for you'),
+              onTap: () => _push(const DownloadStationScreen()),
             ),
             ListTile(
               leading: const Icon(Icons.receipt_long_outlined),

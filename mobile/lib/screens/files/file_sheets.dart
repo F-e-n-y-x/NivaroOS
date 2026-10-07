@@ -191,7 +191,7 @@ class _ConflictSheetState extends State<ConflictSheet> {
 // Item actions
 
 /// What the actions sheet can do; the screen decides which apply.
-enum EntryAction { open, openInNewTab, select, copy, move, rename, compress, extract, favorite, unfavorite, info, openWith, delete }
+enum EntryAction { open, openInNewTab, select, copy, move, rename, compress, extract, favorite, unfavorite, shareLink, info, openWith, delete }
 
 /// The menu for one item: its name and size at the top, then actions.
 Future<EntryAction?> showEntryActions(
@@ -230,6 +230,7 @@ Future<EntryAction?> showEntryActions(
           if (actions.contains(EntryAction.extract)) tile(EntryAction.extract, Icons.unarchive_outlined, 'Extract here'),
           if (actions.contains(EntryAction.favorite)) tile(EntryAction.favorite, Icons.star_outline, 'Add to favorites'),
           if (actions.contains(EntryAction.unfavorite)) tile(EntryAction.unfavorite, Icons.star_outlined, 'Remove from favorites'),
+          if (actions.contains(EntryAction.shareLink)) tile(EntryAction.shareLink, Icons.link, 'Share link…'),
           if (actions.contains(EntryAction.info)) tile(EntryAction.info, Icons.info_outline, 'Details'),
           if (actions.contains(EntryAction.delete))
             tile(EntryAction.delete, Icons.delete_outline, deleteIsPermanent ? 'Delete' : 'Move to Trash', danger: true),
