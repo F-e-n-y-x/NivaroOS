@@ -283,6 +283,21 @@ func (e *Engine) runPurgeDest(ctx context.Context, j *job) (Result, error) {
 		if err != nil && !errors.Is(err, fs.ErrorDirNotFound) {
 			return res, engineErr(err, "counting the backup")
 		}
+		if t.encrypted() {
+			// The folder as it is on disk: crypt's files, which crypt
+			// alone would delete, and beside them the marker and key
+			// file, which it can't see. Same guard, same marker check.
+			pf, err := t.plainFsAt(rctx, "", fsOpts{})
+			if err != nil {
+				return res, engineErr(err, "opening the destination")
+			}
+			g := e.newGuard(j, t)
+			g.beforeDelete = func(ctx context.Context) error {
+				_, err := e.checkMarker(ctx, t, j.req.DestFolderID, false)
+				return err
+			}
+			f = newGuardFs(rctx, pf, g)
+		}
 		if err := operations.Purge(rctx, f, ""); err != nil && !errors.Is(err, fs.ErrorDirNotFound) {
 			return res, engineErr(err, "removing the backup")
 		}

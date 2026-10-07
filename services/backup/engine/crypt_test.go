@@ -145,6 +145,13 @@ func TestEncryptedFolderMirrorVersionsRestoreAndCheck(t *testing.T) {
 	if st := runJob(t, e, withRun(JobRequest{Op: OpCopy, JobID: req.JobID, Sources: req.Sources, Dest: locked, DestFolderID: testFolderID}, "run_c6")); resultCode(st) != CodeEncryptionLocked {
 		t.Fatalf("copy without keys: %s", resultCode(st))
 	}
+
+	// Deleting the job with its data removes the whole folder.
+	st = runJob(t, e, JobRequest{Op: OpPurgeDest, RunID: "run_c7", JobID: req.JobID, Dest: d, DestFolderID: testFolderID})
+	expectState(t, st, JobDone, "")
+	if _, err := os.Stat(destDir); !os.IsNotExist(err) || st.Result.Counts.Deleted != 4 {
+		t.Fatalf("purge: %v, deleted %d (current 2 + recycled 2)", err, st.Result.Counts.Deleted)
+	}
 }
 
 func TestEncryptedFolderOnCloudRemote(t *testing.T) {
