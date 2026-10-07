@@ -9,6 +9,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.app.NotificationManager
 import android.os.Bundle
+import android.os.Parcelable
 import android.os.PowerManager
 import android.provider.OpenableColumns
 import android.provider.Settings
@@ -22,8 +23,9 @@ class MainActivity : FlutterActivity() {
     private var phoneBackup: PhoneBackupBridge? = null
 
     // "Download on server": a link shared to the app, a magnet: link or a
-    // .torrent file ({name, data}) opened with it, until Dart takes it
-    // (lib/services/share_intent.dart).
+    // .torrent file ({name, data}) opened with it; "Upload to NivaroOS":
+    // files shared to it ({files}); a finished upload's notification
+    // ({open}), until Dart takes it (lib/services/share_intent.dart).
     private var shareChannel: MethodChannel? = null
     private var pendingShare: Any? = null
 
@@ -60,7 +62,51 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun incoming(i: Intent?): Any? = if (i?.action == Intent.ACTION_VIEW) viewed(i) else sharedText(i)
+    private fun incoming(i: Intent?): Any? = if (i == null) null else when (i.action) {
+        Intent.ACTION_VIEW -> viewed(i)
+        ShareUploadJobService.ACTION_OPEN -> mapOf(
+            "open" to (i.getStringExtra("batch") ?: "").filter { it.isLetterOrDigit() || it == '-' },
+            "folder" to i.getStringExtra("folder"),
+        )
+        else -> if (sharedFiles(i)) null else sharedText(i)
+    }
+
+    // ACTION_SEND / SEND_MULTIPLE with content:// streams (any type): read
+    // their names and sizes off the main thread, then offer them. The read
+    // grant came with the intent; a persistable one is kept when offered.
+    // False when there are none (a plain text share).
+    private fun sharedFiles(i: Intent): Boolean {
+        if (i.action != Intent.ACTION_SEND && i.action != Intent.ACTION_SEND_MULTIPLE) return false
+        val uris = LinkedHashSet<Uri>()
+        // Whatever another app put there: only Uris count, and a bad
+        // parcel is no share.
+        try {
+            if (i.action == Intent.ACTION_SEND) {
+                @Suppress("DEPRECATION")
+                (i.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri)?.let { uris.add(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                i.getParcelableArrayListExtra<Parcelable>(Intent.EXTRA_STREAM)?.forEach { p -> (p as? Uri)?.let { uris.add(it) } }
+            }
+            i.clipData?.let { c -> for (n in 0 until c.itemCount) c.getItemAt(n).uri?.let { uris.add(it) } }
+        } catch (e: Exception) {
+            return false
+        }
+        if (uris.isEmpty()) return false
+        val persistable = i.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0
+        val app = applicationContext
+        Thread {
+            val files = uris.mapNotNull { u ->
+                if (persistable) try { contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+                SharedFiles.describe(app, u)
+            }
+            runOnUiThread {
+                pendingShare = mapOf("files" to files, "rejected" to uris.size - files.size)
+                shareChannel?.invokeMethod("shared", null)
+            }
+        }.start()
+        return true
+    }
 
     // ACTION_VIEW (manifest filters): a magnet: link, or a .torrent file a
     // file manager or browser hands over as a content:// URI it granted us
@@ -107,6 +153,20 @@ class MainActivity : FlutterActivity() {
                         result.success(pendingShare)
                         pendingShare = null
                     }
+                    "thumbnail" -> {
+                        val uri = Uri.parse(call.argument<String>("uri") ?: "")
+                        val px = (call.argument<Number>("px") ?: 128).toInt()
+                        Thread {
+                            val bytes = SharedFiles.thumbnail(applicationContext, uri, px)
+                            runOnUiThread { result.success(bytes) }
+                        }.start()
+                    }
+                    "startUpload" -> result.success(ShareUploadJobService.start(
+                        this,
+                        call.argument<String>("batch") ?: "",
+                        call.argument<List<String>>("uris") ?: emptyList(),
+                        (call.argument<Number>("bytes") ?: 0).toLong(),
+                    ))
                     "shareText" -> {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
                             .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text") ?: "")

@@ -59,6 +59,8 @@ class StorageService {
   static const _keyUpdateCheck = 'app_update_check';
   // Per server, like the secret: the tabs open in Files there.
   static const _keyFilesTabsPrefix = 'files_tabs@';
+  // Per server: where "Upload to NivaroOS" sent files last.
+  static const _keyShareUploadDirPrefix = 'share_upload_dir@';
   // "Back up this phone": the device credential (server, device id and
   // token, shown once at enrolment). Kept on sign out: the phone keeps
   // backing up with its own token until it is unlinked.
@@ -290,6 +292,22 @@ class StorageService {
     } else if (_cache[key] != json) {
       await _set(key, json);
     }
+  }
+
+  /// The folder "Upload to NivaroOS" last sent files to on the current
+  /// server.
+  Future<String?> getShareUploadDir() async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return null;
+    return _cache['$_keyShareUploadDirPrefix${_serverKey(url)}'];
+  }
+
+  Future<void> setShareUploadDir(String dir) async {
+    if (!_initialized) await init();
+    final url = _cache[_keyServerUrl];
+    if (url == null || url.isEmpty) return;
+    await _set('$_keyShareUploadDirPrefix${_serverKey(url)}', dir);
   }
 
   /// The last app-update check (JSON written by AppUpdateService).

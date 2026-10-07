@@ -14,11 +14,20 @@ import '../files/file_sheets.dart';
 Future<String?> pickDownloadFolder(BuildContext context, {String? start, DownloadStationApi? api}) =>
     Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => DsFolderPickerScreen(start: start, api: api)));
 
+/// The same picker over any server folder: [roots] is the top level
+/// (the server's disks), and new folders are made with Files' call.
+Future<String?> pickServerFolder(BuildContext context, {String? start, required Future<List<String>> Function() roots, String confirmLabel = 'Save here'}) =>
+    Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => DsFolderPickerScreen(start: start, roots: roots, confirmLabel: confirmLabel)));
+
 class DsFolderPickerScreen extends StatefulWidget {
-  const DsFolderPickerScreen({super.key, this.start, this.api});
+  const DsFolderPickerScreen({super.key, this.start, this.api, this.roots, this.confirmLabel = 'Save here'});
 
   final String? start;
   final DownloadStationApi? api;
+
+  /// The top level when not Download Station's storage roots.
+  final Future<List<String>> Function()? roots;
+  final String confirmLabel;
 
   @override
   State<DsFolderPickerScreen> createState() => _DsFolderPickerScreenState();
@@ -44,7 +53,7 @@ class _DsFolderPickerScreenState extends State<DsFolderPickerScreen> {
   Future<void> _loadRoots() async {
     setState(() => _error = null);
     try {
-      final roots = await _api.roots();
+      final roots = await (widget.roots ?? _api.roots)();
       if (!mounted) return;
       _roots = roots;
       final start = widget.start ?? '';
@@ -85,7 +94,14 @@ class _DsFolderPickerScreenState extends State<DsFolderPickerScreen> {
     final name = await showNameDialog(context, title: 'New folder', confirmLabel: 'Create', taken: {for (final d in _dirs ?? const <FileEntry>[]) d.name});
     if (name == null || !mounted) return;
     try {
-      final created = await _api.createFolder(_path, name);
+      final String created;
+      if (widget.roots == null) {
+        created = await _api.createFolder(_path, name);
+      } else {
+        created = joinPath(_path, name);
+        final res = await ApiClient.instance.post('/folder', body: {'path': created});
+        if (res['success'] is num && res['success'] != 200) throw Exception(res['message'] ?? 'The server refused');
+      }
       if (mounted) _go(created);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Couldn't create the folder: $e")));
@@ -110,7 +126,7 @@ class _DsFolderPickerScreenState extends State<DsFolderPickerScreen> {
           ListTile(leading: const Icon(Icons.storage_outlined), title: Text(r), trailing: const Icon(Icons.chevron_right), onTap: () => _go(r)),
       ]);
     } else if (dirs!.isEmpty) {
-      list = const EmptyState(icon: Icons.folder_open_outlined, title: 'No folders here', message: 'Save here, or make a new folder.');
+      list = EmptyState(icon: Icons.folder_open_outlined, title: 'No folders here', message: '${widget.confirmLabel}, or make a new folder.');
     } else {
       final color = Theme.of(context).colorScheme.primary;
       list = ListView(children: [
@@ -124,7 +140,7 @@ class _DsFolderPickerScreenState extends State<DsFolderPickerScreen> {
         if (!didPop) _up();
       },
       child: AppScaffold(
-        title: _path.isEmpty ? 'Save to' : baseName(_path),
+        title: _path.isEmpty ? (widget.roots == null ? 'Save to' : 'Upload to') : baseName(_path),
         actions: [
           if (_path.isNotEmpty) IconButton(icon: const Icon(Icons.create_new_folder_outlined), tooltip: 'New folder', onPressed: _newFolder),
         ],
@@ -139,7 +155,7 @@ class _DsFolderPickerScreenState extends State<DsFolderPickerScreen> {
                   padding: EdgeInsets.fromLTRB(Space.gutter(context), Space.md, Space.gutter(context), Space.md),
                   child: SizedBox(
                     width: double.infinity,
-                    child: FilledButton(onPressed: () => Navigator.of(context).pop(_path), child: const Text('Save here')),
+                    child: FilledButton(onPressed: () => Navigator.of(context).pop(_path), child: Text(widget.confirmLabel)),
                   ),
                 ),
               ),

@@ -12,6 +12,8 @@ import '../services/storage_service.dart';
 import '../services/session_service.dart';
 import '../services/api_client.dart';
 import '../services/share_intent.dart';
+import '../services/share_upload.dart';
+import 'share_upload_sheet.dart';
 import 'download_station/download_station_screen.dart';
 import 'download_station/ds_add_sheet.dart';
 import 'download_station/ds_add_torrent_sheet.dart';
@@ -70,6 +72,8 @@ class _HomeShellState extends State<HomeShell> {
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
     ShareIntent.pending.addListener(_onShared);
     ShareIntent.pendingTorrent.addListener(_onShared);
+    ShareIntent.pendingFiles.addListener(_onShared);
+    ShareIntent.pendingOpen.addListener(_onShared);
     // After the first frame, not during the route transition: registers
     // the phone and schedules the 15-minute heartbeat. Nothing here asks
     // for a permission; features ask when they need one.
@@ -84,6 +88,8 @@ class _HomeShellState extends State<HomeShell> {
     ApiClient.sessionExpiredNotifier.removeListener(_onSessionExpired);
     ShareIntent.pending.removeListener(_onShared);
     ShareIntent.pendingTorrent.removeListener(_onShared);
+    ShareIntent.pendingFiles.removeListener(_onShared);
+    ShareIntent.pendingOpen.removeListener(_onShared);
     super.dispose();
   }
 
@@ -92,6 +98,7 @@ class _HomeShellState extends State<HomeShell> {
   // A link shared to "Download on server" (also the one that started the
   // app): offer to queue it in Download Station.
   Future<void> _onShared() async {
+    if (ShareIntent.pendingFiles.value != null || ShareIntent.pendingOpen.value != null) return _onSharedFiles();
     var text = ShareIntent.pending.value;
     final file = ShareIntent.pendingTorrent.value;
     if ((text == null && file == null) || !mounted || _showingShare || !ApiClient.instance.hasSession) return;
@@ -135,7 +142,47 @@ class _HomeShellState extends State<HomeShell> {
       _showingShare = false;
     }
     // Another link shared while the sheet was open.
-    if (ShareIntent.pending.value != null || ShareIntent.pendingTorrent.value != null) unawaited(_onShared());
+    if (_anyShared) unawaited(_onShared());
+  }
+
+  bool get _anyShared =>
+      ShareIntent.pending.value != null || ShareIntent.pendingTorrent.value != null || ShareIntent.pendingFiles.value != null || ShareIntent.pendingOpen.value != null;
+
+  // Files shared to "Upload to NivaroOS": offer the upload. A tapped
+  // upload notification: its folder in Files, or how each file went.
+  Future<void> _onSharedFiles() async {
+    if (!mounted || _showingShare || !ApiClient.instance.hasSession) return;
+    final files = ShareIntent.pendingFiles.value;
+    final open = ShareIntent.pendingOpen.value;
+    _showingShare = true;
+    ShareIntent.pendingFiles.value = null;
+    ShareIntent.pendingOpen.value = null;
+    final server = ApiClient.instance.baseUrl;
+    try {
+      if (files != null) {
+        final b = await showShareUploadSheet(context, shared: files);
+        if (!mounted || b == null) return;
+        final messenger = ScaffoldMessenger.of(context);
+        if (ApiClient.instance.baseUrl != server) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeShell()), (_) => false);
+        messenger.showSnackBar(SnackBar(content: Text('Uploading ${b.items.length == 1 ? '1 file' : '${b.items.length} files'} to ${b.destDir}. Progress is in your notifications.')));
+      } else if (open != null) {
+        final folder = open.folder;
+        if (folder != null) {
+          setState(() => _index = _filesIndex);
+          _filesKey.currentState?.openServerFolder(folder);
+          return;
+        }
+        final b = (await ShareUploadStore.open()).load(open.batch);
+        if (b == null || !mounted) return;
+        final again = await showShareUploadSheet(context, batch: b);
+        if (again != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Trying again. Progress is in your notifications.')));
+        }
+      }
+    } finally {
+      _showingShare = false;
+    }
+    if (_anyShared) unawaited(_onShared());
   }
 
   // Only a real 401 from /users/refresh gets here (ApiClient keeps the

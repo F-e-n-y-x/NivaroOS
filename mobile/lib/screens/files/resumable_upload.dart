@@ -30,9 +30,13 @@ const int uploadChunkSize = 8 * 1024 * 1024;
 /// An upload that can't succeed by retrying (a bad path, a folder where
 /// the file should go, no permission), or that ran out of retries.
 class UploadException implements Exception {
-  UploadException(this.message, {this.statusCode});
+  UploadException(this.message, {this.statusCode, this.unreachable = false});
   final String message;
   final int? statusCode;
+
+  /// The server couldn't be reached at all (no network, or it's down):
+  /// worth trying again later, from where it stopped.
+  final bool unreachable;
 
   @override
   String toString() => message;
@@ -141,38 +145,60 @@ class ResumableUploader {
     void Function(int sent, int total)? onProgress,
     TransferCancel? cancel,
   }) async {
-    final total = await file.length();
-    final chunks = uploadTotalChunks(total, chunkSize);
     final raf = await file.open();
-    var done = 0; // bytes in completed chunks
-    var complete = false;
     try {
-      for (var n = 1; n <= chunks; n++) {
-        cancel?.throwIfCancelled();
-        final fields = uploadChunkFields(
-          destDir: destDir,
-          relativePath: relativePath,
-          totalSize: total,
-          chunkNumber: n,
-          chunkSize: chunkSize,
-        );
-        final length = int.parse(fields['currentChunkSize']!);
-        if (await _hasChunk(fields, cancel)) {
-          done += length;
-          onProgress?.call(done, total);
-          continue;
-        }
-        await raf.setPosition((n - 1) * chunkSize);
-        final bytes = await raf.read(length);
-        if (bytes.length != length) {
-          throw UploadException('The file changed while it was being uploaded. Try again.');
-        }
-        if (await _sendChunk(fields, bytes, cancel, (sent) => onProgress?.call(done + sent, total))) complete = true;
-        done += length;
-        onProgress?.call(done, total);
-      }
+      await uploadFrom(
+        size: await raf.length(),
+        read: (offset, length) async {
+          await raf.setPosition(offset);
+          return raf.read(length);
+        },
+        destDir: destDir,
+        relativePath: relativePath,
+        onProgress: onProgress,
+        cancel: cancel,
+      );
     } finally {
       await raf.close();
+    }
+  }
+
+  /// [upload] from anything that reads [size] bytes by offset (a file
+  /// another app shared, read through Android).
+  Future<void> uploadFrom({
+    required int size,
+    required Future<List<int>> Function(int offset, int length) read,
+    required String destDir,
+    required String relativePath,
+    void Function(int sent, int total)? onProgress,
+    TransferCancel? cancel,
+  }) async {
+    final total = size;
+    final chunks = uploadTotalChunks(total, chunkSize);
+    var done = 0; // bytes in completed chunks
+    var complete = false;
+    for (var n = 1; n <= chunks; n++) {
+      cancel?.throwIfCancelled();
+      final fields = uploadChunkFields(
+        destDir: destDir,
+        relativePath: relativePath,
+        totalSize: total,
+        chunkNumber: n,
+        chunkSize: chunkSize,
+      );
+      final length = int.parse(fields['currentChunkSize']!);
+      if (await _hasChunk(fields, cancel)) {
+        done += length;
+        onProgress?.call(done, total);
+        continue;
+      }
+      final bytes = await read((n - 1) * chunkSize, length);
+      if (bytes.length != length) {
+        throw UploadException('The file changed while it was being uploaded. Try again.');
+      }
+      if (await _sendChunk(fields, bytes, cancel, (sent) => onProgress?.call(done + sent, total))) complete = true;
+      done += length;
+      onProgress?.call(done, total);
     }
     // The server finalizes (and forgets) an upload on the chunk that
     // completes it, so one of this run's chunks must have said so.
@@ -247,7 +273,7 @@ class ResumableUploader {
       }
     }
     if (lastError is UploadException) throw lastError;
-    throw UploadException("Couldn't reach the server. Check the connection and try again.");
+    throw UploadException("Couldn't reach the server. Check the connection and try again.", unreachable: true);
   }
 
   Future<Map<String, String>> _headers() async {

@@ -7,6 +7,14 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Added
 
+- App: "Upload to NivaroOS" in Android's Share sheet. Share photos,
+  videos, documents or any files from Gallery, Files, WhatsApp, Chrome and
+  the like, pick the server and folder (Downloads, Gallery, Documents, a
+  per-phone folder, the last one used, or any folder), choose keep both /
+  replace / skip for names already there, and the upload runs in the
+  background with one progress notification and Cancel. It resumes after
+  the network drops, ends with "Uploaded 3 files · Open" (opens the
+  folder in Files), and shows why any file failed, with Retry.
 - Torrents in Download Station (web and app): add magnet links, .torrent
   files or links to them (with folder, category and "start paused"), or
   drop .torrent files in a watch folder. Each torrent shows progress,

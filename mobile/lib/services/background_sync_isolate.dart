@@ -8,6 +8,7 @@ import '../phone_backup/pb_service.dart' show runPhoneBackupJob;
 import 'api_client.dart';
 import 'companion_file_server.dart';
 import 'device_sync_service.dart';
+import 'share_upload.dart' show runShareUploadJob;
 import 'storage_service.dart';
 
 /// Entry points for the headless Flutter engines the native side starts
@@ -86,4 +87,12 @@ Future<void> phoneBackupMain() async {
   DartPluginRegistrant.ensureInitialized();
   await StorageService.instance.init();
   await runPhoneBackupJob();
+}
+
+/// One run of a shared-files upload (ShareUploadJobService), signed in
+/// with the app's session.
+@pragma('vm:entry-point')
+Future<void> shareUploadMain() async {
+  await _bootHeadless();
+  await runShareUploadJob();
 }

@@ -476,6 +476,13 @@ class FilesScreenState extends State<FilesScreen> {
 
   void _open(String path, {required bool isLocal}) => _go(FilesPlace.folder(path, isLocal: isLocal));
 
+  /// Opens a server folder from outside (a finished upload's
+  /// notification), fresh from the server.
+  void openServerFolder(String path) {
+    _cache.remove(_key(path, false));
+    _open(path, isLocal: false);
+  }
+
   Future<void> _openLocation(FileLocation l) async {
     if (l.kind == LocationKind.trash) return _openTrash();
     if (l.isLocal) {

@@ -105,6 +105,16 @@
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false" />
 
+        <!-- "Upload to NivaroOS" (ShareUploadJobService): one job per batch
+             of shared files, and its notification's Cancel button. -->
+        <service
+            android:name=".ShareUploadJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver
+            android:name=".ShareUploadJobService$CancelReceiver"
+            android:exported="false" />
+
         <!-- The four parts Android requires of a default SMS app, used only
              while restoring messages (SmsRestoreRole.kt). Each is protected
              by a system-only permission; none sends anything. -->
@@ -188,6 +198,20 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Share files (photos, videos, documents, anything) from another
+                 app: "Upload to NivaroOS" sends them to a folder on the
+                 server (lib/services/share_upload.dart). Text with no file
+                 still goes to "Download on server". -->
+            <intent-filter android:label="Upload to NivaroOS">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter android:label="Upload to NivaroOS">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <!-- Open magnet links and .torrent files with NivaroOS: "Add
                  torrent" on the server's Download Station (MainActivity.viewed). -->
