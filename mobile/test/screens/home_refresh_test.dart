@@ -4,8 +4,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 import 'package:nivaroos_mobile/screens/dashboard_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
+import 'package:nivaroos_mobile/services/utilization_feed.dart';
 import 'package:nivaroos_mobile/services/widget_refresh.dart';
 import 'package:nivaroos_mobile/widgets/vm_console_preview.dart';
 
@@ -47,6 +48,9 @@ Future<FakeServer> _home(
   Future<void> Function(FakeServer server) body, {
   Map<String, Object> overrides = const {},
   List<(String, Map<String, String>)>? headers,
+  BusConnect? bus,
+  ValueListenable<bool>? visible,
+  Duration latency = Duration.zero,
 }) async {
   tester.view.physicalSize = const Size(412, 915) * 3;
   tester.view.devicePixelRatio = 3;
@@ -54,6 +58,7 @@ Future<FakeServer> _home(
   final server = FakeServer(overrides: overrides);
   final client = MockClient((req) async {
     headers?.add((req.url.path, req.headers));
+    if (latency > Duration.zero) await Future<void>.delayed(latency);
     // A fresh copy: the one handed in here is already finalized.
     final copy = http.Request(req.method, req.url)
       ..headers.addAll(req.headers)
@@ -61,7 +66,10 @@ Future<FakeServer> _home(
     return http.Response.fromStream(await server.client.send(copy));
   });
   await http.runWithClient(() async {
-    await tester.pumpWidget(testApp(Scaffold(body: DashboardScreen(refresh: refresh))));
+    final home = DashboardScreen(refresh: refresh, feed: bus == null ? null : (onReading) => UtilizationFeed(onReading: onReading, connect: bus));
+    await tester.pumpWidget(testApp(Scaffold(
+      body: visible == null ? home : ValueListenableBuilder<bool>(valueListenable: visible, builder: (_, v, _) => TickerMode(enabled: v, child: home)),
+    )));
     await _settle(tester);
     await body(server);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -132,7 +140,7 @@ void main() {
       });
     });
 
-    testWidgets('the chart history follows the interval', (tester) async {
+    testWidgets('a new interval keeps the chart readings: they are placed by time', (tester) async {
       final refresh = WidgetRefreshController(WidgetRefresh.s30);
       final controller = HomeController();
       tester.view.physicalSize = const Size(412, 915) * 3;
@@ -142,18 +150,129 @@ void main() {
       await http.runWithClient(() async {
         await tester.pumpWidget(testApp(Scaffold(body: DashboardScreen(controller: controller, refresh: refresh))));
         await _settle(tester);
-        expect(controller.history.capacity, 5);
-        expect(controller.history.cpu, isNotEmpty);
+        final before = controller.history.cpu.length;
+        expect(before, isNonZero);
         await refresh.set(WidgetRefresh.s2);
         await tester.pump();
-        expect(controller.history.capacity, 61);
-        // The readings 30 s apart are gone; the chart doesn't draw them
-        // 2 s apart.
-        expect(controller.history.cpu, isEmpty);
-        expect(controller.history.memory, isEmpty);
+        expect(controller.history.cpu, hasLength(before));
+        expect(controller.history.window, '2 min');
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(minutes: 1));
       }, () => server.client);
+    });
+
+    testWidgets('1 s polls every second and skips a tick while a reading is on its way', (tester) async {
+      await _home(tester, WidgetRefreshController(WidgetRefresh.s1), (server) async {
+        final before = _count(server, 'GET /v1/sys/utilization');
+        await _wait(tester, const Duration(seconds: 10));
+        expect(_count(server, 'GET /v1/sys/utilization') - before, 10);
+      });
+      // Every answer takes 2.5 s: a request at most every 3 s, never two at once.
+      await _home(tester, WidgetRefreshController(WidgetRefresh.s1), latency: const Duration(milliseconds: 2500), (server) async {
+        final before = _count(server, 'GET /v1/sys/utilization');
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
+        expect(_count(server, 'GET /v1/sys/utilization') - before, inInclusiveRange(3, 5));
+      });
+    });
+  });
+
+  group('Home in real time', () {
+    String frame(double cpu) => jsonEncode({
+          'sourceID': 'nivaroos',
+          'name': 'nivaroos:system:utilization:live',
+          'properties': {
+            'sys_cpu': jsonEncode({'percent': cpu, 'num': 4}),
+            'sys_mem': jsonEncode({'total': 1000, 'used': 400}),
+          },
+        });
+
+    testWidgets('readings come over the bus: no utilization polls but a full one every 30 s, the GPU still every second', (tester) async {
+      final sockets = <StreamController<Object?>>[];
+      final uris = <Uri>[];
+      final auth = <String?>[];
+      var closed = 0;
+      Future<BusSocket> bus(Uri uri, Map<String, String> headers) async {
+        uris.add(uri);
+        auth.add(headers['Authorization']);
+        final c = StreamController<Object?>();
+        sockets.add(c);
+        return (frames: c.stream, close: () => closed++);
+      }
+
+      final visible = ValueNotifier(true);
+      await _home(tester, WidgetRefreshController(WidgetRefresh.live), bus: bus, visible: visible, (server) async {
+        await tester.pump(const Duration(seconds: 1));
+        expect(sockets, hasLength(1));
+        expect(uris.single.path, '/v2/message_bus/event/nivaroos');
+        expect(uris.single.queryParametersAll['names'], UtilizationFeed.names);
+        expect(auth.single, 'test-token');
+        expect(server.requests, contains('POST /v1/sys/utilization/live'));
+
+        final polls = _count(server, 'GET /v1/sys/utilization');
+        final gpu = _count(server, 'GET /v1/gpu/gpu-stats');
+        for (var i = 0; i < 40; i++) {
+          sockets.single.add(frame(50 + i / 2));
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 1)));
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+        expect(find.bySemanticsLabel(RegExp('^Processor, 70 percent')), findsOneWidget, reason: 'the newest pushed reading shows');
+        // 20 s: no polled readings beyond the full one due 30 s after open.
+        expect(_count(server, 'GET /v1/sys/utilization') - polls, lessThanOrEqualTo(1));
+        expect(_count(server, 'GET /v1/gpu/gpu-stats') - gpu, inInclusiveRange(18, 21));
+        // The lease is renewed every 5 s while it streams.
+        expect(_count(server, 'POST /v1/sys/utilization/live'), inInclusiveRange(4, 6));
+
+        // Home hidden (another tab): the socket closes.
+        visible.value = false;
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
+        expect(closed, 1);
+        visible.value = true;
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(sockets, hasLength(2));
+      });
+      visible.dispose();
+    });
+
+    testWidgets("the bus can't be had: polls every second and retries the socket with backoff", (tester) async {
+      var attempts = 0;
+      Future<BusSocket> bus(Uri uri, Map<String, String> headers) async {
+        attempts++;
+        throw const WebSocketException('400 Bad Request');
+      }
+
+      await _home(tester, WidgetRefreshController(WidgetRefresh.live), bus: bus, (server) async {
+        final polls = _count(server, 'GET /v1/sys/utilization');
+        await _wait(tester, const Duration(seconds: 30));
+        expect(_count(server, 'GET /v1/sys/utilization') - polls, inInclusiveRange(29, 30));
+        // 1, 2, 4, 8, 16 s apart: about 5 tries in 30 s, not 30.
+        expect(attempts, inInclusiveRange(4, 6));
+      });
+    });
+
+    testWidgets('a dropped socket falls back to polling until it is back', (tester) async {
+      final sockets = <StreamController<Object?>>[];
+      Future<BusSocket> bus(Uri uri, Map<String, String> headers) async {
+        final c = StreamController<Object?>();
+        sockets.add(c);
+        return (frames: c.stream, close: () {});
+      }
+
+      await _home(tester, WidgetRefreshController(WidgetRefresh.live), bus: bus, (server) async {
+        await tester.pump(const Duration(seconds: 1));
+        for (var i = 0; i < 6; i++) {
+          sockets.last.add(frame(10));
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+        final polls = _count(server, 'GET /v1/sys/utilization');
+        await sockets.last.close();
+        await _wait(tester, const Duration(seconds: 5));
+        expect(_count(server, 'GET /v1/sys/utilization') - polls, greaterThanOrEqualTo(4));
+        expect(sockets.length, greaterThanOrEqualTo(2), reason: 'reconnected');
+      });
     });
   });
 
@@ -321,9 +440,11 @@ void main() {
 
       await tester.tap(find.text('Refresh widgets'));
       await _settle(tester);
-      for (final choice in ['Every 2 seconds', 'Every 4 seconds (default)', 'Every 10 seconds', 'Every 30 seconds', 'Every minute', 'Only when I pull to refresh']) {
+      for (final choice in ['Real time', 'Every second', 'Every 2 seconds', 'Every 4 seconds (default)', 'Every 10 seconds', 'Every 30 seconds', 'Every minute', 'Only when I pull to refresh']) {
         expect(find.text(choice), findsOneWidget);
       }
+      expect(find.text(WidgetRefresh.live.note!), findsOneWidget);
+      expect(find.text(WidgetRefresh.s1.note!), findsOneWidget);
       await tester.tap(find.text('Every 10 seconds'));
       await _settle(tester);
 
@@ -331,6 +452,14 @@ void main() {
       expect(await StorageService.instance.getWidgetRefresh(), 's10');
       // The row says so without reopening the screen.
       expect(find.text('Every 10 seconds'), findsOneWidget);
+
+      await tester.tap(find.text('Refresh widgets'));
+      await _settle(tester);
+      await tester.tap(find.text('Real time'));
+      await _settle(tester);
+      expect(refresh.value, WidgetRefresh.live);
+      expect(await StorageService.instance.getWidgetRefresh(), 'live');
+      expect(find.text('Real time'), findsOneWidget);
       await refresh.set(WidgetRefresh.defaultValue);
     });
   });

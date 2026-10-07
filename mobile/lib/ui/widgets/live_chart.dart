@@ -1,9 +1,88 @@
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/design_tokens.dart';
+
+/// Readings that remember when each was taken, so a [LiveChart] can
+/// place them by time: with a [span], the chart covers that much time
+/// whatever the pace (two a second in real time, one a minute), and
+/// readings older than it are dropped. Without one (pull-to-refresh only)
+/// they keep the slot spacing and the count cap [record] is given.
+class Readings extends ListBase<double> {
+  final List<double> _values = [];
+
+  /// When each reading was taken, oldest first.
+  final List<DateTime> times = [];
+
+  /// The time the chart covers; null spaces readings evenly.
+  Duration? span;
+
+  /// The gap [add] leaves after the last reading.
+  Duration pace = const Duration(seconds: 4);
+
+  @override
+  int get length => _values.length;
+
+  @override
+  set length(int n) {
+    _values.length = n;
+    times.length = n;
+  }
+
+  @override
+  double operator [](int i) => _values[i];
+
+  @override
+  void operator []=(int i, double v) => _values[i] = v;
+
+  /// Adds a reading [pace] after the last one (the first: now). Tests and
+  /// screenshots fill charts this way; live readings come with their time
+  /// through [record].
+  @override
+  void add(double v) => record(v, times.isEmpty ? clock.now() : times.last.add(pace));
+
+  @override
+  void removeRange(int start, int end) {
+    _values.removeRange(start, end);
+    times.removeRange(start, end);
+  }
+
+  @override
+  void addAll(Iterable<double> iterable) => iterable.forEach(add);
+
+  /// Adds [v] taken [at], then drops what falls out of [span] (or, with
+  /// no span, beyond [keep] readings). A reading no later than the last
+  /// one replaces it, so time only moves forward.
+  void record(double v, DateTime at, {int? keep}) {
+    if (times.isNotEmpty && !at.isAfter(times.last)) {
+      _values.last = v;
+    } else {
+      _values.add(v);
+      times.add(at);
+    }
+    trim(at, keep: keep);
+  }
+
+  /// Drops readings older than [span] before [now], or beyond [keep].
+  void trim(DateTime now, {int? keep}) {
+    final s = span;
+    var drop = 0;
+    if (s != null) {
+      while (drop < times.length && now.difference(times[drop]) > s) {
+        drop++;
+      }
+    }
+    if (keep != null && length - drop > keep) drop = length - keep;
+    if (drop > 0) {
+      _values.removeRange(0, drop);
+      times.removeRange(0, drop);
+    }
+  }
+}
 
 /// One line on a [LiveChart].
 @immutable
@@ -28,7 +107,9 @@ class ChartSeries {
 ///
 /// Readings sit on a fixed time grid of [capacity] slots anchored at the
 /// right edge, so a fresh chart grows in from the right instead of
-/// stretching two readings across the card. With fewer than two readings
+/// stretching two readings across the card. [Readings] with a span are
+/// placed by when they were taken instead: the chart's width is the span,
+/// its right edge the newest reading. With fewer than two readings
 /// it shows only its baseline and "Collecting…" - never a made-up line.
 ///
 /// [max] fixes the top (100 for percentages); without it the scale follows
@@ -229,9 +310,16 @@ class _ChartPainter extends CustomPainter {
     for (var s = series.length - 1; s >= 0; s--) {
       final (raw, color, dashed) = series[s];
       if (raw.length < 2) continue;
-      final values = raw.length > capacity ? raw.sublist(raw.length - capacity) : raw;
-      final start = w - dx * (values.length - 1);
-      final pts = [for (var i = 0; i < values.length; i++) Offset(start + i * dx, yOf(values[i]))];
+      final List<Offset> pts;
+      if (raw is Readings && raw.span != null) {
+        // By time, the newest reading at the right edge.
+        final span = raw.span!.inMicroseconds, newest = raw.times.last;
+        pts = [for (var i = 0; i < raw.length; i++) Offset(w - w * newest.difference(raw.times[i]).inMicroseconds / span, yOf(raw[i]))];
+      } else {
+        final values = raw.length > capacity ? raw.sublist(raw.length - capacity) : raw;
+        final start = w - dx * (values.length - 1);
+        pts = [for (var i = 0; i < values.length; i++) Offset(start + i * dx, yOf(values[i]))];
+      }
       final path = _monotone(pts);
 
       if (s == 0 && tokens.fillAlpha > 0) {

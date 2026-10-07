@@ -68,16 +68,16 @@ void main() {
   });
 
   test("Home's sparkline history keeps the last two minutes", () {
-    final h = LiveHistory(capacity: 3);
+    final h = LiveHistory();
     for (var i = 0; i < 5; i++) {
       h.add(LiveStats(
         stats: DashboardStats.fromUtilization({'cpu': {'percent': i * 10}}),
         rate: NetRate(upBytesPerSec: 0, downBytesPerSec: i.toDouble()),
-        updatedAt: DateTime(2026),
+        updatedAt: DateTime(2026).add(Duration(seconds: 40 * i)),
       ));
     }
-    expect(h.cpu, hasLength(3));
-    expect(h.netDown, [2, 3, 4]);
+    expect(h.cpu, hasLength(4));
+    expect(h.netDown, [1, 2, 3, 4]);
   });
 
   // Stage 3 (design brief §10): tabs no longer open with the medium bar's

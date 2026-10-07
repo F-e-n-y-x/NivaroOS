@@ -12,6 +12,7 @@ import '../services/api_client.dart';
 import '../services/background_service.dart';
 import '../services/download_station_api.dart';
 import '../services/tailscale_service.dart';
+import '../services/utilization_feed.dart';
 import '../services/vm_client.dart';
 import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
@@ -106,8 +107,14 @@ class HomeController extends ChangeNotifier {
   NetSample? _lastNet;
   DateTime? _lastNetAt;
   DateTime? _vmsAt;
+  DateTime? _fullAt;
   bool _liveBusy = false;
+  bool _gpuBusy = false;
   bool _vmsBusy = false;
+
+  // The last polled utilization: what bus readings lack (CPU model and
+  // clock, memory modules) comes from it.
+  Map<String, dynamic> _lastUtil = const {};
 
   /// The newest VM list request ([_loadVms]).
   int _vmsSeq = 0;
@@ -148,14 +155,22 @@ class HomeController extends ChangeNotifier {
     super.dispose();
   }
 
-  /// One utilization reading (plus drives when they're due).
-  Future<void> refreshLive({bool forceDisks = false}) async {
+  /// One utilization reading (plus drives when they're due). Skipped
+  /// while the last one is still on its way.
+  Future<void> refreshLive({bool forceDisks = false}) => _read(forceDisks: forceDisks);
+
+  /// While the bus streams: refreshes only what its readings build on
+  /// ([applyBusReading]) - the next of them shows it, and a polled reading
+  /// between two pushed ones would skew the network rate.
+  Future<void> refreshBase() => _read(show: false);
+
+  Future<void> _read({bool forceDisks = false, bool show = true}) async {
     if (_liveBusy) return;
     _liveBusy = true;
-    if (_gpuPresence.worthPolling) unawaited(_loadGpu());
+    unawaited(pollGpu());
     try {
       final util = await _api.get('/sys/utilization');
-      var stats = DashboardStats.fromUtilization(util['data'] as Map<String, dynamic>? ?? const {});
+      final data = util['data'] as Map<String, dynamic>? ?? const {};
       final now = clock.now();
       if (forceDisks || _disksAt == null || now.difference(_disksAt!) >= disksEvery) {
         try {
@@ -170,18 +185,14 @@ class HomeController extends ChangeNotifier {
           // Keep the last drive list; the next reading tries again.
         }
       }
-      stats = stats.withDisks(_disks);
-      final net = stats.primaryNet;
-      final rate = NetRate.between(_lastNet, _lastNetAt, net, now) ?? (net?.name == _lastNet?.name ? live.value?.rate : null);
-      _lastNet = net;
-      _lastNetAt = now;
       if (_disposed) return;
-      final reading = LiveStats(stats: stats, rate: rate, updatedAt: now);
-      live.value = reading;
-      history.add(reading);
-      liveError = null;
+      _lastUtil = data;
+      _fullAt = now;
+      if (!show) return;
+      _apply(data, now);
     } catch (e) {
-      if (_disposed) return;
+      // The bus's readings say whether the server answers.
+      if (_disposed || !show) return;
       final last = live.value;
       if (last != null) {
         if (!last.stale) live.value = last.copyWith(stale: true);
@@ -194,10 +205,46 @@ class HomeController extends ChangeNotifier {
     _notify();
   }
 
+  /// A full reading (and the drives) is due even while the bus streams:
+  /// the bus leaves out the drives, CPU model and memory modules.
+  bool get fullReadingDue => _fullAt == null || clock.now().difference(_fullAt!) >= disksEvery;
+
+  /// One reading from the message bus ([UtilizationFeed]): its CPU,
+  /// memory and network over the last polled one.
+  void applyBusReading(Map<String, String> properties) {
+    Object? field(String k) {
+      try {
+        return jsonDecode(properties[k] ?? '');
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final cpu = field('sys_cpu'), mem = field('sys_mem'), net = field('sys_net');
+    if (_disposed || cpu is! Map || mem is! Map) return;
+    Map<String, dynamic> over(Object? base, Map top) => {if (base is Map) ...base.cast<String, dynamic>(), ...top.cast<String, dynamic>()};
+    _apply({'cpu': over(_lastUtil['cpu'], cpu), 'mem': over(_lastUtil['mem'], mem), 'net': net is List ? net : _lastUtil['net']}, clock.now());
+    _notify();
+  }
+
+  void _apply(Map<String, dynamic> data, DateTime now) {
+    final stats = DashboardStats.fromUtilization(data).withDisks(_disks);
+    final net = stats.primaryNet;
+    final rate = NetRate.between(_lastNet, _lastNetAt, net, now) ?? (net?.name == _lastNet?.name ? live.value?.rate : null);
+    _lastNet = net;
+    _lastNetAt = now;
+    final reading = LiveStats(stats: stats, rate: rate, updatedAt: now);
+    live.value = reading;
+    history.add(reading);
+    liveError = null;
+  }
+
   // The GPU sidecar, through the gateway like the web UI's GPU widget. It
   // answers raw JSON (no envelope), and an error or no name on a machine
   // without a dedicated GPU.
-  Future<void> _loadGpu() async {
+  Future<void> pollGpu() async {
+    if (_gpuBusy || !_gpuPresence.worthPolling) return;
+    _gpuBusy = true;
     try {
       final res = await _api.getRaw('/v1/gpu/gpu-stats');
       final g = res.statusCode == 200 ? GpuStats.tryParse(jsonDecode(res.body)) : null;
@@ -207,6 +254,8 @@ class HomeController extends ChangeNotifier {
       if (g != null && !g.stale) history.addGpu(g);
     } catch (_) {
       // Keep the last reading; the next poll asks again.
+    } finally {
+      _gpuBusy = false;
     }
   }
 
@@ -455,6 +504,9 @@ class DashboardScreen extends StatefulWidget {
   /// How often the live widgets refresh; the phone's setting by default.
   final ValueListenable<WidgetRefresh>? refresh;
 
+  /// Makes the real-time feed; tests pass one with a fake socket.
+  final UtilizationFeed Function(void Function(Map<String, String>) onReading)? feed;
+
   const DashboardScreen({
     super.key,
     this.onOpenFiles,
@@ -462,6 +514,7 @@ class DashboardScreen extends StatefulWidget {
     this.onOpenApps,
     this.controller,
     this.refresh,
+    this.feed,
   });
 
   @override
@@ -471,6 +524,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late final HomeController _c = widget.controller ?? HomeController();
   late final ValueListenable<WidgetRefresh> _refresh = widget.refresh ?? WidgetRefreshController.instance;
+  late final UtilizationFeed _feed = widget.feed?.call(_c.applyBusReading) ?? UtilizationFeed(onReading: _c.applyBusReading);
   Timer? _timer;
 
   // Detail screens pushed from here that still want live numbers while
@@ -490,6 +544,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _feed.close();
     _refresh.removeListener(_retime);
     _c.removeListener(_changed);
     _c.gpu.removeListener(_changed);
@@ -511,6 +566,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _startPolling() {
     final every = _refresh.value.every;
+    if (_refresh.value != WidgetRefresh.live) _feed.close();
     _timer?.cancel();
     _timer = every == null ? null : Timer.periodic(every, (_) => _tick());
     _c.history.retime(every);
@@ -519,13 +575,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Poll only while someone can see the numbers: Home is the visible tab
   // (a hidden IndexedStack child and a covered route have their tickers
   // off) or one of its detail screens is open, and the app is in front.
+  //
+  // In real time the readings come over the bus while it streams, and
+  // this tick only keeps the socket wanted, polls the GPU (not on the bus)
+  // and takes a full reading every 30 s; until the bus streams it polls
+  // every second like "1 second".
   void _tick() {
     if (!mounted) return;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
     final visible = TickerMode.valuesOf(context).enabled;
-    if (!visible && _detailsOpen == 0) return;
-    _c.refreshLive();
+    final watched = (lifecycle == null || lifecycle == AppLifecycleState.resumed) && (visible || _detailsOpen > 0);
+    final live = _refresh.value == WidgetRefresh.live;
+    if (live) _feed.want(watched);
+    if (!watched) return;
+    if (live && _feed.streaming) {
+      _c.pollGpu();
+      if (_c.fullReadingDue) _c.refreshBase();
+    } else {
+      _c.refreshLive();
+    }
     // The VM rows (and whether there is one to preview) only matter on
     // Home itself.
     if (visible) _c.pollVms();

@@ -5,12 +5,17 @@ import 'storage_service.dart';
 /// How often Home's live widgets - processor, memory, network, graphics,
 /// running VMs - and their detail pages ask the server for a new reading
 /// (Settings > Home > Refresh widgets). [manual] polls nothing: the
-/// numbers move on pull-to-refresh only.
+/// numbers move on pull-to-refresh only. [live] has the server push
+/// readings over the message bus (about two a second); its [every] is
+/// the poll it falls back to while the socket can't be had, and the pace
+/// of everything not on the bus (the GPU, other screens' polls).
 ///
 /// Drive usage keeps its own slower pace ([drivesEvery]) and the VM
 /// console preview never refreshes faster than [previewFloor], whatever
 /// is picked here.
 enum WidgetRefresh {
+  live(Duration(seconds: 1), 'Real time'),
+  s1(Duration(seconds: 1), '1 second'),
   s2(Duration(seconds: 2), '2 seconds'),
   s4(Duration(seconds: 4), '4 seconds'),
   s10(Duration(seconds: 10), '10 seconds'),
@@ -36,11 +41,20 @@ enum WidgetRefresh {
   static const previewFloor = Duration(seconds: 5);
 
   /// The settings row's summary: "Every 4 seconds", "Every minute",
-  /// "Only when I pull to refresh".
+  /// "Real time", "Only when I pull to refresh".
   String get summary => switch (this) {
-        manual => label,
+        manual || live => label,
+        s1 => 'Every second',
         m1 => 'Every minute',
         _ => 'Every $label',
+      };
+
+  /// The picker's word of warning under the fastest choices; null for the
+  /// rest.
+  String? get note => switch (this) {
+        live => 'Readings as they happen, about twice a second. Uses the most battery and data.',
+        s1 => 'Uses more battery and data.',
+        _ => null,
       };
 
   /// The console preview's (and the VM list's) interval: the chosen one,

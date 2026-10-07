@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -16,81 +17,80 @@ import 'free_memory_sheet.dart';
 // open, and shows the offline banner over the last reading when the server
 // stops answering.
 
-/// The last few minutes of live readings (one per poll), for Home's metric
-/// cards and the detail pages' charts. Kept in memory only: the server has
-/// no history endpoint, so the lines start when Home opens and say so
-/// until there are two points.
+/// The last few minutes of live readings, for Home's metric cards and the
+/// detail pages' charts. Kept in memory only: the server has no history
+/// endpoint, so the lines start when Home opens and say so until there
+/// are two points.
+///
+/// While Home refreshes on its own the charts are by time: they cover
+/// [span] whatever the pace - two readings a second in real time, one a
+/// minute - and a change of pace keeps the readings already there. On
+/// pull-to-refresh only they count refreshes instead ([capacity]).
 class LiveHistory {
-  LiveHistory({this.capacity = 31});
+  LiveHistory({this.capacity = 31}) {
+    for (final r in _all) {
+      r
+        ..span = span
+        ..pace = every!;
+    }
+  }
 
-  /// The span the charts cover, whatever the refresh interval: at the
-  /// default 4 s that is 31 readings.
+  /// The span the charts cover, whatever the refresh interval.
   static const span = Duration(minutes: 2);
 
-  /// How many readings the charts hold; [retime] keeps it at [span].
+  /// How many readings a pull-to-refresh-only chart holds: as many as the
+  /// last interval put in [span] (31 at the default 4 s).
   int capacity;
 
-  /// The time between two readings; null when Home only refreshes on
-  /// pull-to-refresh (then [capacity] stays as it was).
+  /// The time between two polls; null when Home only refreshes on
+  /// pull-to-refresh.
   Duration? every = const Duration(seconds: 4);
 
-  final List<double> cpu = [];
-  final List<double> memory = [];
+  final Readings cpu = Readings();
+  final Readings memory = Readings();
 
   /// Download and upload rates in bytes per second.
-  final List<double> netDown = [];
-  final List<double> netUp = [];
+  final Readings netDown = Readings();
+  final Readings netUp = Readings();
 
   /// GPU load in percent, while the server reports a GPU.
-  final List<double> gpu = [];
+  final Readings gpu = Readings();
 
-  /// Follows a new refresh interval: the charts keep covering [span], so
-  /// the number of readings changes (61 at 2 s, 3 at 1 min). Readings
-  /// taken at another interval are dropped, since the charts space their
-  /// points by the new one (three readings 4 s apart must not read as
-  /// "2 min"); the lines start again and show they are collecting. Going
-  /// to pull-to-refresh only keeps them: its charts count refreshes, not
-  /// time.
+  List<Readings> get _all => [cpu, memory, netDown, netUp, gpu];
+
+  /// Follows a new refresh interval. Timed charts keep their readings
+  /// (each is placed by when it was taken); going to pull-to-refresh only
+  /// keeps them too, counted from then on.
   void retime(Duration? every) {
-    final was = this.every;
     this.every = every;
-    if (every == null) return;
-    capacity = math.max(span.inMilliseconds ~/ every.inMilliseconds + 1, 3);
-    for (final list in [cpu, memory, netDown, netUp, gpu]) {
-      if (every != was) {
-        list.clear();
-      } else if (list.length > capacity) {
-        list.removeRange(0, list.length - capacity);
-      }
+    if (every != null) capacity = math.max(span.inMilliseconds ~/ every.inMilliseconds + 1, 3);
+    final now = clock.now();
+    for (final r in _all) {
+      r.span = every == null ? null : span;
+      if (every != null) r.pace = every;
+      r.trim(now, keep: every == null ? capacity : null);
     }
   }
 
   /// What the charts span, for their labels: "2 min"; "30 refreshes" when
   /// readings only come on pull-to-refresh.
-  String get window {
-    final e = every;
-    if (e == null) return '${capacity - 1} refreshes';
-    final s = e.inMilliseconds * (capacity - 1) / 1000;
-    return s >= 90 ? '${(s / 60).round()} min' : '${s.round()} s';
-  }
+  String get window => every == null ? '${capacity - 1} refreshes' : '${span.inMinutes} min';
 
-  void _push(List<double> list, double v) {
-    list.add(v);
-    if (list.length > capacity) list.removeAt(0);
-  }
+  void _push(Readings r, double v, DateTime at) => r.record(v, at, keep: every == null ? capacity : null);
 
   void add(LiveStats live) {
     final s = live.stats;
-    _push(cpu, s.cpuPercent);
-    _push(memory, s.memTotal > 0 ? s.memUsed / s.memTotal * 100 : 0);
+    final at = live.updatedAt;
+    _push(cpu, s.cpuPercent, at);
+    _push(memory, s.memTotal > 0 ? s.memUsed / s.memTotal * 100 : 0, at);
     final rate = live.rate;
     if (rate != null) {
-      _push(netDown, rate.downBytesPerSec);
-      _push(netUp, rate.upBytesPerSec);
+      _push(netDown, rate.downBytesPerSec, at);
+      _push(netUp, rate.upBytesPerSec, at);
     }
   }
 
-  void addGpu(GpuStats g) => _push(gpu, g.utilizationPercent);
+  void addGpu(GpuStats g) => _push(gpu, g.utilizationPercent, clock.now());
 }
 
 /// How busy a processor (or GPU) is, in the web UI's words: light below

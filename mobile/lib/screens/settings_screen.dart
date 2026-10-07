@@ -339,6 +339,7 @@ Future<WidgetRefresh?> showRefreshSheet(BuildContext context, WidgetRefresh curr
                             contentPadding: const EdgeInsets.only(left: Space.xl - 10, right: Space.xl),
                             value: r,
                             title: Text(r == WidgetRefresh.defaultValue ? '${r.summary} (default)' : r.summary),
+                            subtitle: r.note == null ? null : Text(r.note!),
                           ),
                       ],
                     ),
