@@ -21,31 +21,56 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
-func SendAllHardwareStatusBySocket() {
+// The parts of a reading that cost a shell (which NICs are physical, their
+// link state) or a /proc/cpuinfo parse (the CPU vendor), read again at most
+// every 5 s so 500 ms sampling stays cheap. Only the publisher goroutine
+// touches these.
+var (
+	slowFactsAt   time.Time
+	slowNets      []string
+	slowNetStates map[string]string
+	slowCPUModel  string
+)
+
+func refreshSlowFacts(now time.Time) {
+	if !slowFactsAt.IsZero() && now.Sub(slowFactsAt) < utilizationEvery-utilizationFastEvery/2 {
+		return
+	}
+	slowFactsAt = now
+	slowNets = service.MyService.System().GetNet(true)
+	slowNetStates = make(map[string]string, len(slowNets))
+	for _, name := range slowNets {
+		slowNetStates[name] = strings.TrimSpace(service.MyService.System().GetNetState(name))
+	}
+	slowCPUModel = "arm"
+	if cpu := service.MyService.System().GetCpuInfo(); len(cpu) > 0 {
+		if strings.Count(strings.ToLower(strings.TrimSpace(cpu[0].ModelName)), "intel") > 0 {
+			slowCPUModel = "intel"
+		} else if strings.Count(strings.ToLower(strings.TrimSpace(cpu[0].ModelName)), "amd") > 0 {
+			slowCPUModel = "amd"
+		}
+	}
+}
+
+// SendAllHardwareStatusBySocket publishes one reading as event [name].
+func SendAllHardwareStatusBySocket(name string) {
+	now := time.Now()
+	refreshSlowFacts(now)
 	netList := service.MyService.System().GetNetInfo()
 	newNet := []model.IOCountersStat{}
-	nets := service.MyService.System().GetNet(true)
 	for _, n := range netList {
-		for _, netCardName := range nets {
+		for _, netCardName := range slowNets {
 			if n.Name == netCardName {
 				item := *(*model.IOCountersStat)(unsafe.Pointer(&n))
-				item.State = strings.TrimSpace(service.MyService.System().GetNetState(n.Name))
-				item.Time = time.Now().Unix()
+				item.State = slowNetStates[n.Name]
+				item.Time = now.Unix()
 				newNet = append(newNet, item)
 				break
 			}
 		}
 	}
 	cpu := service.MyService.System().GetCpuPercent()
-
-	var cpuModel = "arm"
-	if cpu := service.MyService.System().GetCpuInfo(); len(cpu) > 0 {
-		if strings.Count(strings.ToLower(strings.TrimSpace(cpu[0].ModelName)), "intel") > 0 {
-			cpuModel = "intel"
-		} else if strings.Count(strings.ToLower(strings.TrimSpace(cpu[0].ModelName)), "amd") > 0 {
-			cpuModel = "amd"
-		}
-	}
+	cpuModel := slowCPUModel
 
 	num := service.MyService.System().GetCpuCoreNum()
 	cpuData := make(map[string]interface{})
@@ -70,7 +95,7 @@ func SendAllHardwareStatusBySocket() {
 		body[key.(string)] = value
 		return true
 	})
-	service.MyService.Notify().SendNotify("nivaroos:system:utilization", body)
+	service.MyService.Notify().SendNotify(name, body)
 }
 
 // func MonitoryUSB() {

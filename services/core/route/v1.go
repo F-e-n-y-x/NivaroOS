@@ -134,6 +134,7 @@ func InitV1Router() http.Handler {
 			v1SysGroup.POST("/stop", v1.PostKillNivaroOS)
 
 			v1SysGroup.GET("/utilization", v1.GetSystemUtilization)
+			v1SysGroup.POST("/utilization/live", postUtilizationLive)
 			v1SysGroup.GET("/cpu", v1.GetSystemCupInfo)
 			v1SysGroup.GET("/mem", v1.GetSystemMemInfo)
 			v1SysGroup.POST("/memory/clear", v1.PostSystemMemoryClear)

@@ -30,7 +30,6 @@ import (
 	"github.com/coreos/go-systemd/daemon"
 	"go.uber.org/zap"
 
-	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
 
@@ -127,13 +126,9 @@ func main() {
 		},
 	}
 
-	crontab := cron.New(cron.WithSeconds())
-	if _, err := crontab.AddFunc("@every 5s", route.SendAllHardwareStatusBySocket); err != nil {
-		logger.Error("add crontab error", zap.Error(err))
-	}
-
-	crontab.Start()
-	defer crontab.Stop()
+	stopPublisher := make(chan struct{})
+	go route.RunUtilizationPublisher(stopPublisher)
+	defer close(stopPublisher)
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(LOCALHOST, "0"))
 	if err != nil {
