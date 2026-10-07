@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
+import '../services/avatar_service.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../ui/ui.dart';
@@ -43,6 +44,10 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   String? _errorDetails;
 
+  /// The picture last seen on this phone for the typed account on this
+  /// server (the server shows none before sign-in).
+  Uint8List? _picture;
+
   /// This phone was removed from the server (see [ApiClient.sessionEndReason]).
   bool _removed = false;
 
@@ -54,6 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
     StorageService.instance.getCompanionRemoved().then((removed) {
       if (mounted && removed && !_removed) setState(() => _removed = true);
     });
+    _usernameController.addListener(_lookUpPicture);
     if (widget.initialUsername != null && widget.initialUsername!.isNotEmpty) {
       _usernameController.text = widget.initialUsername!;
     } else {
@@ -63,6 +69,12 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       });
     }
+  }
+
+  Future<void> _lookUpPicture() async {
+    final name = _usernameController.text.trim();
+    final pic = await AvatarService.instance.cachedFor(ApiClient.instance.baseUrl, name);
+    if (mounted && name == _usernameController.text.trim() && pic != _picture) setState(() => _picture = pic);
   }
 
   @override
@@ -273,7 +285,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     decoration: InputDecoration(
                       labelText: 'Username',
-                      prefixIcon: const Icon(Icons.person_outline),
+                      prefixIcon: _picture == null
+                          ? const Icon(Icons.person_outline)
+                          : Padding(
+                              padding: const EdgeInsets.all(Space.md),
+                              child: UserAvatar(username: _usernameController.text, picture: _picture, radius: 12),
+                            ),
                       errorText: _usernameError,
                     ),
                   ),

@@ -1,8 +1,10 @@
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/server_profile.dart';
 import '../services/api_client.dart';
+import '../services/avatar_service.dart';
 import '../services/session_service.dart';
 import '../services/storage_service.dart';
 import '../ui/ui.dart';
@@ -27,6 +29,9 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
   bool _loading = true;
   String? _switching;
 
+  /// Each profile's account picture, as last seen on this phone.
+  Map<String, Uint8List?> _pictures = {};
+
   @override
   void initState() {
     super.initState();
@@ -37,8 +42,10 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
     final profiles = await StorageService.instance.getProfiles();
     final activeUrl = await StorageService.instance.getServerUrl();
     final activeId = await StorageService.instance.getActiveProfileId();
+    final pictures = {for (final p in profiles) p.id: await AvatarService.instance.cachedFor(p.url, p.username)};
     if (!mounted) return;
     setState(() {
+      _pictures = pictures;
       _profiles = profiles;
       _activeUrl = activeUrl;
       _activeId = activeId;
@@ -127,9 +134,14 @@ class _ServerProfilesScreenState extends State<ServerProfilesScreen> {
     final subtitle = parts.isEmpty ? host : parts.join(' · ');
     return MergeSemantics(
       child: ListTile(
-        // Outlined like every other row icon; the "In use" group already says
-        // which server this is.
-        leading: const Icon(Icons.dns_outlined),
+        // The account signed in there (its picture or initials); the
+        // active one follows a change made on this phone straight away.
+        leading: active
+            ? ValueListenableBuilder(
+                valueListenable: AvatarService.instance.current,
+                builder: (context, picture, _) => UserAvatar(username: p.username, picture: picture ?? _pictures[p.id]),
+              )
+            : UserAvatar(username: p.username, picture: _pictures[p.id]),
         title: Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(subtitle),
         onTap: active || _switching != null ? null : () => _switchTo(p),

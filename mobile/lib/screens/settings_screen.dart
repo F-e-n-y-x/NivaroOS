@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_client.dart';
 import '../services/app_update_service.dart';
+import '../services/avatar_service.dart';
 import '../services/background_service.dart';
 import '../services/permission_service.dart';
 import '../services/session_service.dart';
@@ -13,6 +14,7 @@ import '../services/widget_refresh.dart';
 import '../ui/ui.dart';
 import '../widgets/server_power.dart';
 import 'login_screen.dart';
+import 'profile_picture.dart';
 import 'system_updates_screen.dart';
 import 'phone_backup/phone_backup_screen.dart';
 
@@ -74,6 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       _build = v.build;
       _update = cached;
     });
+    if (s != null) unawaited(AvatarService.instance.refresh());
     await _loadPhone();
     _checkForUpdate();
   }
@@ -165,6 +168,19 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       title: 'Settings',
       slivers: [
         SliverList.list(children: [
+          if (host != null)
+            TileGroup(title: 'Account', children: [
+              ValueListenableBuilder(
+                valueListenable: AvatarService.instance.current,
+                builder: (context, picture, _) => ListTile(
+                  leading: UserAvatar(username: _username ?? '', picture: picture),
+                  title: Text(_username ?? 'Unknown user'),
+                  subtitle: Text(picture == null ? 'Add a profile picture' : 'Change or remove your profile picture'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => changeProfilePicture(context),
+                ),
+              ),
+            ]),
           TileGroup(
             title: 'Home',
             footer: 'Faster refreshes use more battery and data. Drive usage refreshes at most every 30 seconds and the VM preview at most every 5 seconds.',

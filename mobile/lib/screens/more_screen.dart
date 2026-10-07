@@ -6,6 +6,7 @@ import '../backup/backup_api.dart';
 import '../backup/backup_state.dart';
 import '../backup/backup_strings.dart';
 import '../services/api_client.dart';
+import '../services/avatar_service.dart';
 import '../services/storage_service.dart';
 import '../services/terminal_sessions.dart';
 import '../ui/ui.dart';
@@ -65,6 +66,7 @@ class _MoreScreenState extends State<MoreScreen> {
       _username = username;
       _serverHost = url == null ? null : (Uri.tryParse(url)?.host ?? url);
     });
+    if (url != null) unawaited(AvatarService.instance.refresh());
   }
 
   Future<void> _loadUpdates() async {
@@ -123,7 +125,6 @@ class _MoreScreenState extends State<MoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final username = _username;
     final known = username != null && username.isNotEmpty;
     final updates = _updateCount;
@@ -137,10 +138,9 @@ class _MoreScreenState extends State<MoreScreen> {
           // Tapping it opens the server list, where switching happens.
           TileGroup(children: [
             ListTile(
-              leading: CircleAvatar(
-                backgroundColor: scheme.primaryContainer,
-                foregroundColor: scheme.onPrimaryContainer,
-                child: known ? Text(username.substring(0, 1).toUpperCase()) : const Icon(Icons.person_outline),
+              leading: ValueListenableBuilder(
+                valueListenable: AvatarService.instance.current,
+                builder: (context, picture, _) => UserAvatar(username: known ? username : '', picture: known ? picture : null),
               ),
               title: Text(known ? username : 'Unknown user'),
               subtitle: Text(_serverHost == null ? 'No server' : '$_serverHost · Switch server'),

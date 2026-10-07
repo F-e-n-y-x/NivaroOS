@@ -31,3 +31,4 @@ export 'widgets/status_chip.dart';
 export 'widgets/appearance_picker.dart';
 export 'widgets/tile_group.dart';
 export 'widgets/usage_bar.dart';
+export 'widgets/user_avatar.dart';

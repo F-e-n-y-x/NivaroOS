@@ -36,6 +36,7 @@ import 'package:nivaroos_mobile/screens/home_shell.dart';
 import 'package:nivaroos_mobile/screens/more_screen.dart';
 import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
+import 'package:nivaroos_mobile/services/avatar_service.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
 import 'package:nivaroos_mobile/services/storage_service.dart';
@@ -263,6 +264,8 @@ Future<void> signIn() async {
   await StorageService.instance.setFilesTabs(null);
   ApiClient.instance.setBaseUrl(fakeServer);
   ApiClient.instance.setSession('test-token', 'test-refresh');
+  // Pictures in memory only: no real file IO racing the fake clock.
+  AvatarService.instance.debugReset();
 }
 
 /// The golden file name for a shot: `name_light|dark_WxH[_text2x].png`.

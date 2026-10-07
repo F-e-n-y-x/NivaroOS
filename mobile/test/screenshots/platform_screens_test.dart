@@ -18,6 +18,7 @@ import 'package:nivaroos_mobile/screens/server_profiles_screen.dart';
 import 'package:nivaroos_mobile/screens/settings_screen.dart';
 import 'package:nivaroos_mobile/services/api_client.dart';
 import 'package:nivaroos_mobile/services/app_update_service.dart';
+import 'package:nivaroos_mobile/services/avatar_service.dart';
 import 'package:nivaroos_mobile/services/background_service.dart';
 import 'package:nivaroos_mobile/services/device_sync_service.dart';
 import 'package:nivaroos_mobile/services/discovery_service.dart';
@@ -62,6 +63,7 @@ Future<void> _signIn({bool updateAvailable = false}) async {
   await StorageService.instance.init();
   ApiClient.instance.setBaseUrl(fakeServer);
   ApiClient.instance.setSession('test-token', 'test-refresh');
+  AvatarService.instance.debugReset();
   DeviceSyncService.instance.registrationProblem.value = null;
   BackgroundService.debugIsAndroid = true;
   DeviceSyncService.deviceInfoOverride = ('Google', 'Pixel 8', 'Android 16 (SDK 36)');
