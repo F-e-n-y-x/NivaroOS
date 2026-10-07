@@ -671,6 +671,15 @@ func (m *ContainerUpdateManager) RunAutoUpdates() {
 			}
 			continue
 		}
+		// An App Store app updates through compose, which recreates the
+		// app and announces "App updated" every time it runs - it used to,
+		// every night, for an app whose image hadn't changed. Only update
+		// when the store moved to another image or the registry has a
+		// newer one for the image it runs.
+		if c.IsAppStoreApp && m.appStoreAppUpToDate(ctx, c) {
+			logger.Info("auto-update: already up to date", zap.String("name", c.Name))
+			continue
+		}
 		_, updated, err := m.UpdateAndRecreateContainer(ctx, c.ID)
 		switch {
 		case err != nil:
@@ -682,6 +691,45 @@ func (m *ContainerUpdateManager) RunAutoUpdates() {
 		}
 	}
 }
+
+// appStoreAppUpToDate: true only when it is sure nothing would change - the
+// store keeps the same images and the registry digest matches what runs.
+// Any error means "not sure", so the update runs as before.
+func (m *ContainerUpdateManager) appStoreAppUpToDate(ctx context.Context, c ContainerUpdateInfo) bool {
+	project := composeProjectOf(ctx, c.ID)
+	if project == "" {
+		return false
+	}
+	app, err := MyService.Compose().Get(ctx, project)
+	if err != nil || app == nil {
+		return false
+	}
+	changed, err := app.StoreImagesChanged()
+	if err != nil || changed {
+		return false
+	}
+	info, err := checkUpdateFn(m, ctx, c.ID)
+	return err == nil && info != nil && !info.HasUpdate
+}
+
+// Replaceable in tests.
+var (
+	checkUpdateFn = func(m *ContainerUpdateManager, ctx context.Context, id string) (*ContainerUpdateInfo, error) {
+		return m.CheckContainerUpdate(ctx, id)
+	}
+	composeProjectOf = func(ctx context.Context, id string) string {
+		cli, err := client2.NewClientWithOpts(client2.FromEnv, client2.WithAPIVersionNegotiation())
+		if err != nil {
+			return ""
+		}
+		defer cli.Close()
+		inspect, err := cli.ContainerInspect(ctx, id)
+		if err != nil || inspect.Config == nil {
+			return ""
+		}
+		return inspect.Config.Labels["com.docker.compose.project"]
+	}
+)
 
 func DemuxDockerLogs(raw []byte) string {
 	if len(raw) < 8 {

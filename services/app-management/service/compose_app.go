@@ -285,6 +285,40 @@ func (a *ComposeApp) Update(ctx context.Context) error {
 	return nil
 }
 
+// StoreImagesChanged reports whether an update from the App Store would
+// change any service's image (the store moved to another tag). Tags checked
+// by digest (latest...) keep the local image, so they never count here -
+// the registry digest check decides those.
+func (a *ComposeApp) StoreImagesChanged() (bool, error) {
+	storeInfo, err := a.StoreInfo(true)
+	if err != nil {
+		return false, err
+	}
+	if storeInfo == nil || storeInfo.StoreAppID == nil || *storeInfo.StoreAppID == "" {
+		return false, ErrStoreInfoNotFound
+	}
+	storeComposeApp, err := MyService.AppStoreManagement().ComposeApp(*storeInfo.StoreAppID)
+	if err != nil {
+		return false, err
+	}
+	if storeComposeApp == nil {
+		return false, ErrNotFoundInAppStore
+	}
+	return imagesChanged(a.Services, updatedServiceImages(a.Services, storeComposeApp.Services)), nil
+}
+
+func imagesChanged(before, after types.Services) bool {
+	if len(before) != len(after) {
+		return true
+	}
+	for i := range before {
+		if before[i].Image != after[i].Image {
+			return true
+		}
+	}
+	return false
+}
+
 // withServices returns a shallow copy of a with its own Services slice.
 func (a *ComposeApp) withServices(services types.Services) *ComposeApp {
 	copied := *a
