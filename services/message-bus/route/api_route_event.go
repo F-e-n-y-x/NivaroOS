@@ -202,7 +202,9 @@ func (r *APIRoute) SubscribeEventWS(c echo.Context, sourceID codegen.SourceID, p
 				continue
 			}
 
-			logger.Info("sending event via websocket", zap.String("remote_addr", conn.RemoteAddr().String()), zap.String("message", string(message)))
+			// No per-event log line: with a phone in Real time this ran twice
+			// a second per socket (thousands of journal lines an hour, each
+			// with the whole reading). Connects and disconnects still log.
 
 			if err := wsutil.WriteServerText(conn, message); err != nil {
 				if _, ok := err.(*net.OpError); ok {
