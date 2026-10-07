@@ -2,12 +2,11 @@
 	<div class="widget network is-relative">
 		<div class="blur-background"></div>
 
-		<div class="network widget-content">
-			<!-- Header Start -->
+		<div class="widget-content">
 			<div class="widget-header">
 				<div class="widget-header-left">
 					<div class="widget-badge is-net">
-						<i class="mdi mdi-swap-vertical"></i>
+						<i class="mdi mdi-swap-vertical" aria-hidden="true"></i>
 					</div>
 					<div class="widget-header-text">
 						<span class="widget-title">{{ $t('Network') }}</span>
@@ -28,209 +27,170 @@
 					<button
 						type="button"
 						class="widget-icon-btn speedtest-btn"
-						:class="{ 'is-active': isTesting || showingResults }"
+						:class="{ 'is-active': speedMode }"
 						:title="speedtestButtonLabel"
 						:aria-label="speedtestButtonLabel"
-						:aria-pressed="isTesting || showingResults ? 'true' : 'false'"
+						:aria-pressed="speedMode ? 'true' : 'false'"
 						@click.stop="toggleSpeedtest"
 					>
-						<i
-							class="mdi"
-							:class="{
-								'mdi-loading mdi-spin': isTesting,
-								'mdi-speedometer': !isTesting
-							}"
-							aria-hidden="true"
-						></i>
+						<i class="mdi" :class="isTesting ? 'mdi-loading mdi-spin' : 'mdi-speedometer'" aria-hidden="true"></i>
 					</button>
-
-					<b-dropdown
-						v-if="initNetwork.length > 1"
-						:value="networkName"
-						@change="selectInterface"
-						:mobile-modal="false"
-						animation="fade1"
-						aria-role="list"
-						class="network-dropdown"
-						position="is-bottom-left"
+					<button
+						type="button"
+						class="widget-icon-btn"
+						:title="$t('Interfaces')"
+						:aria-label="$t('Interfaces')"
+						:aria-expanded="showMore ? 'true' : 'false'"
+						aria-controls="net-more"
+						@click="showMore = !showMore"
 					>
-						<template #trigger="{ active }">
-							<button
-								type="button"
-								class="net-interface-pill"
-								:class="{ 'is-active': active }"
-								:aria-label="$t('Network interface: {name}', { name: activeInterfaceName })"
-							>
-								<span>{{ activeInterfaceName }}</span>
-								<i class="mdi" :class="active ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
-							</button>
-						</template>
-						<b-dropdown-item
-							v-for="item in initNetwork"
-							:key="'net-' + item.name"
-							:value="item.name"
-							aria-role="listitem"
+						<i class="mdi mdi-chevron-right arrow-btn" :class="{ open: showMore }" aria-hidden="true"></i>
+					</button>
+				</div>
+			</div>
+
+			<!-- Hero: the two numbers that matter -->
+			<div class="net-hero">
+				<div class="net-rate is-down" :class="{ 'is-testing': isTesting && testPhase === 'download' }">
+					<span class="net-rate-label"><i class="mdi mdi-arrow-down" aria-hidden="true"></i>{{ downCardLabel }}</span>
+					<span class="net-rate-value">{{ displayDownSpeed }}<span class="unit">{{ displayDownUnit }}</span></span>
+				</div>
+				<div class="net-rate is-up" :class="{ 'is-testing': isTesting && testPhase === 'upload' }">
+					<span class="net-rate-label"><i class="mdi mdi-arrow-up" aria-hidden="true"></i>{{ upCardLabel }}</span>
+					<span class="net-rate-value">{{ displayUpSpeed }}<span class="unit">{{ displayUpUnit }}</span></span>
+				</div>
+			</div>
+
+			<!-- Speedtest panel (replaces the chart while open) -->
+			<div v-if="speedMode" class="net-speedtest">
+				<div class="speedtest-mode-toggle" role="group" :aria-label="$t('Speedtest type')">
+						<button
+							type="button"
+							:class="{ 'is-on': testMode === 'server' }"
+							:aria-pressed="testMode === 'server' ? 'true' : 'false'"
+							:disabled="isTesting"
+							:title="$t('Server ↔ Internet (nearest speedtest.net server)')"
+							@click.stop="setTestMode('server')"
 						>
-							<i class="mdi mdi-circle mr-1 net-state-dot" :class="'is-' + stateClass(item.state)" aria-hidden="true"></i>
-							{{ item.name }}
-						</b-dropdown-item>
-					</b-dropdown>
-				</div>
-			</div>
-			<!-- Header End -->
-
-			<!-- Speed Metrics Bento Grid -->
-			<div class="network-stats-grid">
-				<div
-					class="net-stat-card"
-					:class="{
-						'is-active-test is-down-active': isTesting && testPhase === 'download',
-						'is-test-result': showingResults && !isTesting
-					}"
-				>
-					<div class="net-stat-header">
-						<div class="net-stat-icon is-down">
-							<i class="mdi mdi-arrow-down-bold"></i>
-						</div>
-						<span class="net-stat-label">{{ downCardLabel }}</span>
-					</div>
-					<div class="net-stat-value">
-						{{ displayDownSpeed }}<span class="unit">{{ displayDownUnit }}</span>
-					</div>
+							<i class="mdi mdi-web" aria-hidden="true"></i> {{ $t('Internet') }}
+						</button>
+						<button
+							type="button"
+							:class="{ 'is-on': testMode === 'device' }"
+							:aria-pressed="testMode === 'device' ? 'true' : 'false'"
+							:disabled="isTesting"
+							:title="$t('This device ↔ NivaroOS (LAN)')"
+							@click.stop="setTestMode('device')"
+						>
+							<i class="mdi mdi-lan" aria-hidden="true"></i> {{ $t('LAN') }}
+						</button>
 				</div>
 
-				<div
-					class="net-stat-card"
-					:class="{
-						'is-active-test is-up-active': isTesting && testPhase === 'upload',
-						'is-test-result': showingResults && !isTesting
-					}"
-				>
-					<div class="net-stat-header">
-						<div class="net-stat-icon is-up">
-							<i class="mdi mdi-arrow-up-bold"></i>
-						</div>
-						<span class="net-stat-label">{{ upCardLabel }}</span>
-					</div>
-					<div class="net-stat-value">
-						{{ displayUpSpeed }}<span class="unit">{{ displayUpUnit }}</span>
-					</div>
+				<div class="net-speedtest-row">
+					<span class="speedtest-status-line" role="status">
+						<span v-if="isTesting" class="test-pulse-dot" aria-hidden="true"></span>
+						<i v-else-if="testPhase === 'done'" class="mdi mdi-check-circle done-icon" aria-hidden="true"></i>
+						<i v-else-if="testPhase === 'error'" class="mdi mdi-alert-circle error-icon" aria-hidden="true"></i>
+						<span class="status-msg">{{ phaseStatusText }}</span>
+					</span>
+					<button v-if="!isTesting" type="button" class="speedtest-start-btn" @click.stop="startInlineSpeedtest">
+						<i :class="['mdi', hasTestRun ? 'mdi-refresh' : 'mdi-play']" aria-hidden="true"></i>
+						<span>{{ hasTestRun ? $t('Test again') : $t('Start test') }}</span>
+					</button>
+					<button v-else type="button" class="speedtest-start-btn is-stop" @click.stop="cancelSpeedtest">
+						<i class="mdi mdi-stop" aria-hidden="true"></i>
+						<span>{{ $t('Stop') }}</span>
+					</button>
+				</div>
+
+				<div class="speedtest-meta">
+					{{ $t('Ping') }}
+					<b>{{ testResults.ping !== null ? testResults.ping + ' ms' : '--' }}</b>
+					<span v-if="testResults.jitter !== null" :title="$t('Jitter')">±{{ testResults.jitter }}</span>
+					<template v-if="testServer"> · {{ testServer }}</template>
+				</div>
+
+				<div v-if="isTesting" class="speedtest-progress-bar" aria-hidden="true">
+					<div class="speedtest-progress-fill" :style="{ width: testProgressPercent + '%' }"></div>
 				</div>
 			</div>
 
-			<!-- Bottom Area: Live Sparkline or Inline Speedtest Dashboard -->
-			<div class="net-sparkline-box" :class="{ 'is-speedtest-mode': isTesting || showingResults }">
-				<div v-if="isTesting || showingResults" class="net-speedtest-inline">
-					<!-- Top Row: Ping & Target Mode -->
-					<div class="net-speedtest-meta-row">
-						<div class="speedtest-meta-item">
-							<i class="mdi mdi-access-point ping-icon"></i>
-							<span class="ping-lbl">{{ $t('Ping') }}:</span>
-							<span class="ping-val">{{ testResults.ping !== null ? testResults.ping + ' ms' : '--' }}</span>
-							<span v-if="testResults.jitter !== null" class="ping-lbl ml-1" :title="$t('Jitter')">±{{ testResults.jitter }}</span>
-						</div>
-						<div class="speedtest-mode-toggle" role="group" :aria-label="$t('Speedtest type')">
-							<button
-								type="button"
-								:class="{ 'is-on': testMode === 'server' }"
-								:disabled="isTesting"
-								:title="$t('Server ↔ Internet (nearest speedtest.net server)')"
-								@click.stop="setTestMode('server')"
-							>
-								<i class="mdi mdi-web"></i> {{ $t('Internet') }}
-							</button>
-							<button
-								type="button"
-								:class="{ 'is-on': testMode === 'device' }"
-								:disabled="isTesting"
-								:title="$t('This device ↔ NivaroOS (LAN)')"
-								@click.stop="setTestMode('device')"
-							>
-								<i class="mdi mdi-lan"></i> {{ $t('LAN') }}
-							</button>
-						</div>
-					</div>
+			<!-- No interface reported at all (e.g. a container host whose only
+			     NIC the backend could not classify). -->
+			<div v-else-if="!initNetwork.length" class="net-empty-state">
+				<i class="mdi mdi-lan-disconnect" aria-hidden="true"></i>
+				<span>{{ $t('No network interface detected') }}</span>
+			</div>
 
-					<!-- Middle Row: Status & Quick Actions -->
-					<div class="net-speedtest-ctrl-row">
-						<div class="speedtest-status-line">
-							<span v-if="isTesting" class="test-pulse-dot"></span>
-							<i v-else-if="testPhase === 'done'" class="mdi mdi-check-circle done-icon"></i>
-							<i v-else-if="testPhase === 'error'" class="mdi mdi-alert-circle error-icon"></i>
-							<span class="status-msg">{{ phaseStatusText }}</span>
-						</div>
-
-						<div v-if="testServer" class="speedtest-server" :title="testServer">{{ testServer }}</div>
-						<div class="speedtest-actions">
-							<button
-								v-if="!isTesting"
-								type="button"
-								class="speedtest-start-btn"
-								@click.stop="startInlineSpeedtest"
-							>
-								<i :class="['mdi', hasTestRun ? 'mdi-refresh' : 'mdi-play']" aria-hidden="true"></i>
-								<span>{{ hasTestRun ? $t('Test again') : $t('Start test') }}</span>
-							</button>
-							<button
-								v-else
-								type="button"
-								class="speedtest-start-btn is-stop"
-								@click.stop="cancelSpeedtest"
-							>
-								<i class="mdi mdi-stop" aria-hidden="true"></i>
-								<span>{{ $t('Stop') }}</span>
-							</button>
-							<button
-								type="button"
-								class="speedtest-mini-btn"
-								:title="$t('Back to live traffic chart')"
-								:aria-label="$t('Back to live traffic chart')"
-								@click.stop="exitSpeedtest"
-							>
-								<i class="mdi mdi-chart-bell-curve-cumulative"></i>
-							</button>
-						</div>
-					</div>
-
-					<!-- Bottom Progress Indicator -->
-					<div v-if="isTesting" class="speedtest-progress-bar">
-						<div class="speedtest-progress-fill" :style="{ width: testProgressPercent + '%' }"></div>
-					</div>
-				</div>
-
-				<!-- Empty state: no interface reported at all (e.g. a container
-				     host whose only NIC the backend could not classify). -->
-				<div v-else-if="!initNetwork.length" class="net-empty-state">
-					<i class="mdi mdi-lan-disconnect" aria-hidden="true"></i>
-					<span>{{ $t('No network interface detected') }}</span>
-				</div>
-
+			<template v-else>
 				<!-- Live traffic sparkline. Plain SVG on purpose: the previous
-				     apexcharts area chart with a gradient fill appended a new
-				     <linearGradient> (+3 <stop>) to its <defs> on every
-				     updateSeries() and never removed the old ones, so the widget
-				     grew by ~90 DOM nodes every 90s forever. Two <path>s whose
-				     `d` attribute changes keep the node count constant. -->
+				     apexcharts area chart appended a new <linearGradient> to its
+				     <defs> on every updateSeries() and never removed the old
+				     ones (~90 DOM nodes every 90s). Paths whose `d` changes keep
+				     the node count constant. -->
 				<svg
-					v-else
 					class="net-sparkline"
 					:viewBox="`0 0 ${SPARK_W} ${SPARK_H}`"
 					preserveAspectRatio="none"
 					role="img"
 					:aria-label="sparklineLabel"
 				>
-					<path class="net-spark-area is-down" :d="sparkPaths.downArea"></path>
-					<path class="net-spark-area is-up" :d="sparkPaths.upArea"></path>
+					<path class="net-spark-area" :d="sparkPaths.downArea"></path>
 					<path class="net-spark-line is-down" :d="sparkPaths.downLine" vector-effect="non-scaling-stroke"></path>
 					<path class="net-spark-line is-up" :d="sparkPaths.upLine" vector-effect="non-scaling-stroke"></path>
 				</svg>
+
+				<dl class="net-facts">
+					<template v-if="lanIp">
+						<dt>{{ $t('LAN') }}</dt>
+						<dd><button type="button" class="net-copy" :title="$t('Copy {ip}', { ip: lanIp })" :aria-label="$t('Copy LAN IP {ip}', { ip: lanIp })" @click="copyIp(lanIp)">{{ lanIp }}<i class="mdi mdi-content-copy" aria-hidden="true"></i></button></dd>
+					</template>
+					<template v-if="tailscaleIp">
+						<dt>{{ $t('Tailscale') }}</dt>
+						<dd><button type="button" class="net-copy" :title="$t('Copy {ip}', { ip: tailscaleIp })" :aria-label="$t('Copy Tailscale IP {ip}', { ip: tailscaleIp })" @click="copyIp(tailscaleIp)">{{ tailscaleIp }}<i class="mdi mdi-content-copy" aria-hidden="true"></i></button></dd>
+					</template>
+					<template v-if="activeInterface">
+						<dt>{{ $t('Since boot') }}</dt>
+						<dd :title="$t('Received and sent on {name} since the last boot', { name: activeInterfaceName })">
+							↓ {{ renderSize(Number(activeInterface.bytesRecv) || 0) }} · ↑ {{ renderSize(Number(activeInterface.bytesSent) || 0) }}
+						</dd>
+					</template>
+				</dl>
+			</template>
+
+			<!-- Every interface; pick the one the widget follows -->
+			<div v-if="showMore" id="net-more" class="more-info">
+				<div class="process-section-title">{{ $t('Interfaces') }}</div>
+				<div v-if="!initNetwork.length" class="has-text-centered is-size-7 py-2 text-muted">{{ $t('No interface') }}</div>
+				<button
+					v-for="item in initNetwork"
+					:key="'net-' + item.name"
+					type="button"
+					class="process-row net-iface-row"
+					:class="{ 'is-selected': item.name === networkName }"
+					:aria-pressed="item.name === networkName ? 'true' : 'false'"
+					:title="$t('Show {name} in the widget', { name: item.name })"
+					@click="selectInterface(item.name)"
+				>
+					<i class="mdi mdi-circle net-state-dot" :class="'is-' + stateClass(item.state)" aria-hidden="true"></i>
+					<span class="net-iface-name">
+						<span class="process-name">{{ item.name }}</span>
+						<span v-if="ipOf(item.name)" class="net-iface-ip">{{ ipOf(item.name) }}</span>
+					</span>
+					<span class="process-usage">
+						<span>↓ {{ rateText(rates[item.name] && rates[item.name].down) }}</span>
+						<span>↑ {{ rateText(rates[item.name] && rates[item.name].up) }}</span>
+					</span>
+				</button>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script>
+import copy from 'clipboard-copy';
 import { mixin } from '@/mixins/mixin';
+import { formatRate, stateClass, defaultInterface, ipOf, sparkPath } from '@/utils/netWidget';
 
 const LAN_STREAMS = 6;
 const LAN_DURATION = 10000;
@@ -308,7 +268,7 @@ function lanUploadStream(origin, blob, signal, count, stop) {
 
 // Sparkline geometry (viewBox units; the SVG stretches to the box).
 const SPARK_W = 200;
-const SPARK_H = 54;
+const SPARK_H = 40;
 const SPARK_POINTS = 40;
 const NETWORK_KEY = 'networkName';
 const LEGACY_NETWORK_KEY = 'networkId';
@@ -319,26 +279,6 @@ function readStoredInterface() {
 	} catch (e) {
 		return '';
 	}
-}
-
-// Builds a line + closed-area path for `values` scaled to `max`.
-function sparkPath(values, max) {
-	const n = values.length;
-	if (n < 2 || !max) {
-		return { line: `M0 ${SPARK_H - 1} L${SPARK_W} ${SPARK_H - 1}`, area: '' };
-	}
-	// Spread whatever history exists over the full width (as the old
-	// apexcharts sparkline did) instead of leaving the box mostly empty.
-	const step = SPARK_W / (n - 1);
-	const x0 = 0;
-	let line = '';
-	for (let i = 0; i < n; i++) {
-		const x = (x0 + step * i).toFixed(1);
-		const y = (SPARK_H - 1 - (values[i] / max) * (SPARK_H - 4)).toFixed(1);
-		line += (i ? ' L' : 'M') + x + ' ' + y;
-	}
-	const area = `${line} L${SPARK_W} ${SPARK_H} L${x0.toFixed(1)} ${SPARK_H} Z`;
-	return { line, area };
 }
 
 export default {
@@ -354,6 +294,7 @@ export default {
 		return {
 			SPARK_W,
 			SPARK_H,
+			showMore: false,
 			isTesting: false,
 			showingResults: false,
 			testPhase: 'idle', // 'idle' | 'ping' | 'download' | 'upload' | 'server_running' | 'done' | 'error'
@@ -379,7 +320,12 @@ export default {
 			downSeries: [],
 			upSeries: [],
 			currentUpSpeed: 0,
-			currentDownSpeed: 0
+			currentDownSpeed: 0,
+			// name -> { down, up } latest KB/s, for the interface list.
+			rates: {},
+			// GET /sys/network-interfaces: [{ interface, ip }], fetched once.
+			netIfaces: [],
+			tailscaleIp: ''
 		};
 	},
 	computed: {
@@ -389,6 +335,13 @@ export default {
 		activeInterfaceName() {
 			if (this.activeInterface) return this.activeInterface.name;
 			return this.initNetwork.length ? this.$t('Interface') : this.$t('No interface');
+		},
+		speedMode() {
+			return this.isTesting || this.showingResults;
+		},
+		lanIp() {
+			const ip = this.ipOf(this.networkName);
+			return ip === this.tailscaleIp ? '' : ip;
 		},
 		activeInterfaceStateClass() {
 			return this.stateClass(this.activeInterface && this.activeInterface.state);
@@ -409,15 +362,15 @@ export default {
 		},
 		sparkPaths() {
 			const max = Math.max(1, ...this.downSeries, ...this.upSeries);
-			const down = sparkPath(this.downSeries, max);
-			const up = sparkPath(this.upSeries, max);
-			return { downLine: down.line, downArea: down.area, upLine: up.line, upArea: up.area };
+			const down = sparkPath(this.downSeries, max, SPARK_W, SPARK_H);
+			const up = sparkPath(this.upSeries, max, SPARK_W, SPARK_H);
+			return { downLine: down.line, downArea: down.area, upLine: up.line };
 		},
 		sparklineLabel() {
 			return this.$t('Live traffic on {name}: {down} down, {up} up', {
 				name: this.activeInterfaceName,
-				down: `${this.formatSpeed(this.currentDownSpeed)} ${this.speedUnit(this.currentDownSpeed)}`,
-				up: `${this.formatSpeed(this.currentUpSpeed)} ${this.speedUnit(this.currentUpSpeed)}`
+				down: this.rateText(this.currentDownSpeed),
+				up: this.rateText(this.currentUpSpeed)
 			});
 		},
 		displayDownSpeed() {
@@ -433,13 +386,13 @@ export default {
 			if (this.showingResults) {
 				return this.testResults.download !== null ? this.testResults.download.toFixed(1) : '--';
 			}
-			return this.formatSpeed(this.currentDownSpeed);
+			return formatRate(this.currentDownSpeed).value;
 		},
 		displayDownUnit() {
 			if (this.isTesting || this.showingResults) {
 				return 'Mbps';
 			}
-			return this.speedUnit(this.currentDownSpeed);
+			return formatRate(this.currentDownSpeed).unit;
 		},
 		displayUpSpeed() {
 			if (this.isTesting) {
@@ -454,13 +407,13 @@ export default {
 			if (this.showingResults) {
 				return this.testResults.upload !== null ? this.testResults.upload.toFixed(1) : '--';
 			}
-			return this.formatSpeed(this.currentUpSpeed);
+			return formatRate(this.currentUpSpeed).value;
 		},
 		displayUpUnit() {
 			if (this.isTesting || this.showingResults) {
 				return 'Mbps';
 			}
-			return this.speedUnit(this.currentUpSpeed);
+			return formatRate(this.currentUpSpeed).unit;
 		},
 		downCardLabel() {
 			if (this.isTesting && this.testPhase === 'download') return this.$t('Testing...');
@@ -500,6 +453,15 @@ export default {
 		const initial = this.$store.state.hardwareInfo.net || [];
 		this.setInterfaces(initial);
 		this.buildDatas(initial);
+		// Addresses for the facts lines / interface list. One-shot: they
+		// rarely change, and both endpoints already serve Settings.
+		this.$api.sys.getNetworkInterfaces().then(res => {
+			if (res.data.success === 200) this.netIfaces = res.data.data || [];
+		}).catch(() => {});
+		this.$api.tailscale.getStatus().then(res => {
+			const ips = (res.data.success === 200 && res.data.data && res.data.data.TailscaleIPs) || [];
+			this.tailscaleIp = ips.find(ip => !ip.includes(':')) || ips[0] || '';
+		}).catch(() => { /* Tailscale not installed or not running */ });
 	},
 	beforeDestroy() {
 		if (this.abortController) {
@@ -507,11 +469,18 @@ export default {
 		}
 	},
 	methods: {
-		stateClass(state) {
-			const st = String(state || '').trim().toLowerCase();
-			if (st === 'up') return 'up';
-			if (st === 'down' || st === 'lowerlayerdown' || st === 'notpresent') return 'down';
-			return 'unknown';
+		stateClass,
+		ipOf(name) {
+			return ipOf(this.netIfaces, name);
+		},
+		rateText(kb) {
+			const r = formatRate(kb);
+			return r.value + ' ' + r.unit;
+		},
+		copyIp(ip) {
+			copy(ip).then(() => {
+				this.$buefy.toast.open({ message: this.$t('Copied {ip}', { ip }), type: 'is-info', duration: 1500 });
+			}).catch(() => {});
 		},
 		// Takes the backend list, migrates the old index-based selection
 		// and picks a sensible default (first interface whose link is up).
@@ -535,8 +504,7 @@ export default {
 				// Stored NIC is gone (unplugged/renamed): show another one
 				// without overwriting the stored choice, so it comes back
 				// when the NIC does.
-				const up = this.initNetwork.find(n => this.stateClass(n.state) === 'up');
-				this.networkName = (up || this.initNetwork[0]).name;
+				this.networkName = defaultInterface(this.initNetwork).name;
 				this.syncSeries();
 			}
 		},
@@ -552,23 +520,12 @@ export default {
 			this.upSeries = h ? h.up.slice() : [];
 			this.currentDownSpeed = this.downSeries.length ? this.downSeries[this.downSeries.length - 1] : 0;
 			this.currentUpSpeed = this.upSeries.length ? this.upSeries[this.upSeries.length - 1] : 0;
-		},
-		formatSpeed(kb) {
-			const bytes = (parseFloat(kb) || 0) * 1024;
-			if (bytes <= 0) return '0';
-			if (bytes < 1024) return bytes.toFixed(0);
-			const k = 1024;
-			const i = Math.min(4, Math.floor(Math.log(bytes) / Math.log(k)));
-			const val = parseFloat((bytes / Math.pow(k, i)).toFixed(1));
-			return isNaN(val) ? '0' : val;
-		},
-		speedUnit(kb) {
-			const bytes = (parseFloat(kb) || 0) * 1024;
-			if (bytes < 1024) return 'B/s';
-			const k = 1024;
-			const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'];
-			const i = Math.floor(Math.log(bytes) / Math.log(k));
-			return sizes[Math.min(i, sizes.length - 1)] || 'KB/s';
+			const rates = {};
+			for (const name in this.history) {
+				const h = this.history[name];
+				rates[name] = { down: h.down[h.down.length - 1] || 0, up: h.up[h.up.length - 1] || 0 };
+			}
+			this.rates = rates;
 		},
 		// Samples are cumulative byte counters + a unix-seconds timestamp;
 		// the rate is the delta between two samples of the SAME interface.
@@ -804,398 +761,395 @@ export default {
 </script>
 
 <style lang="scss">
-.speedtest-btn {
-	color: var(--theme-desktop-glass-icon, #475569);
-	font-size: 0.95rem;
+.widget.network {
+	--net-down: var(--color-primary-fg, #1d4ed8);
+	--net-up: var(--color-success-fg, #047857);
 
-	&.is-active {
-		color: var(--color-primary-fg, #1d4ed8) !important;
-		background: rgba(37, 99, 235, 0.12) !important;
-	}
+	.arrow-btn {
+		display: inline-block;
+		transition: transform 0.25s ease;
 
-	&:hover {
-		color: var(--color-primary-fg, #1d4ed8) !important;
-		background: rgba(37, 99, 235, 0.1) !important;
-	}
-}
-
-.net-state-dot {
-	font-size: 7px;
-	vertical-align: middle;
-
-	&.is-up { color: var(--color-success-fg, #047857); }
-	&.is-down { color: var(--color-danger-fg, #b91c1c); }
-	&.is-unknown { color: var(--theme-desktop-glass-text-sub, #475569); }
-}
-
-.net-sparkline {
-	display: block;
-	width: 100%;
-	height: 54px;
-	overflow: visible;
-
-	.net-spark-area {
-		stroke: none;
-		&.is-down { fill: rgba(37, 99, 235, 0.16); }
-		&.is-up { fill: rgba(16, 185, 129, 0.14); }
-	}
-
-	.net-spark-line {
-		fill: none;
-		stroke-width: 1.5;
-		stroke-linejoin: round;
-		stroke-linecap: round;
-		&.is-down { stroke: var(--color-primary-fg, #1d4ed8); }
-		&.is-up { stroke: var(--color-success-fg, #047857); }
-	}
-}
-
-.net-empty-state {
-	height: 54px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	font-size: 0.68rem;
-	color: var(--theme-desktop-glass-text-sub, #475569);
-
-	.mdi {
-		font-size: 0.95rem;
-	}
-}
-
-.net-interface-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 2px 7px;
-	border-radius: 6px;
-	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
-	border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
-	color: var(--theme-desktop-glass-text, #0f172a);
-	font-size: 0.72rem;
-	font-weight: 600;
-	cursor: pointer;
-	transition: all 0.15s ease;
-
-	&:focus-visible {
-		outline: 2px solid var(--color-primary-fg, #1d4ed8);
-		outline-offset: 1px;
-	}
-
-	&:hover,
-	&.is-active {
-		background: var(--theme-card-hover, rgba(0, 0, 0, 0.08));
-		color: var(--theme-desktop-glass-text, #0f172a);
-	}
-
-	.mdi {
-		font-size: 0.9rem;
-		color: var(--theme-desktop-glass-text-sub, #475569);
-	}
-}
-
-.network-dropdown {
-	.dropdown-menu {
-		min-width: 6.5rem;
-
-		.dropdown-content {
-			max-width: 8.5rem;
-			border-radius: var(--radius-card, 10px);
-			padding: 0.35rem !important;
-			background: var(--theme-dropdown-bg, #ffffff);
-			backdrop-filter: blur(16px);
-			-webkit-backdrop-filter: blur(16px);
-			box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 0 0 1px var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
-
-			.dropdown-item {
-				padding: 0.35rem 0.6rem;
-				border-radius: var(--radius-sm, 6px);
-				transition: all 0.15s ease;
-				overflow: hidden;
-				white-space: nowrap;
-				text-overflow: ellipsis;
-				color: var(--theme-desktop-glass-text, #0f172a);
-				font-size: 0.75rem;
-				font-weight: 500;
-				margin-bottom: 2px;
-
-				&:hover {
-					background: var(--theme-card-hover, rgba(0, 0, 0, 0.06)) !important;
-					color: var(--theme-desktop-glass-text, #0f172a);
-				}
-
-				&.is-active {
-					background: rgba(37, 99, 235, 0.1) !important;
-					color: var(--color-primary-fg, #1d4ed8) !important;
-					font-weight: 600;
-				}
-			}
-		}
-	}
-}
-
-/* ── Inline Speedtest Styling ─────────────────────────────────────── */
-.net-stat-card {
-	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-
-	&.is-active-test {
-		transform: translateY(-1px);
-
-		&.is-down-active {
-			border-color: rgba(37, 99, 235, 0.5) !important;
-			box-shadow: 0 0 10px rgba(37, 99, 235, 0.2), inset 0 0 8px rgba(37, 99, 235, 0.08);
-			background: rgba(37, 99, 235, 0.06) !important;
-		}
-
-		&.is-up-active {
-			border-color: rgba(16, 185, 129, 0.5) !important;
-			box-shadow: 0 0 10px rgba(16, 185, 129, 0.2), inset 0 0 8px rgba(16, 185, 129, 0.08);
-			background: rgba(16, 185, 129, 0.06) !important;
+		&.open {
+			transform: rotate(90deg);
 		}
 	}
 
-	&.is-test-result {
-		border-color: var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.1));
-		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.04));
-	}
-}
+	.net-state-dot {
+		font-size: 7px;
+		vertical-align: middle;
 
-.net-sparkline-box {
-	&.is-speedtest-mode {
-		background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
-		border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.07));
-		border-radius: 8px;
+		&.is-up { color: var(--color-success-fg, #047857); }
+		&.is-down { color: var(--color-danger-fg, #b91c1c); }
+		&.is-unknown { color: var(--theme-desktop-glass-text-sub, #475569); }
+	}
+
+	/* ── Hero: down / up ── */
+	.net-hero {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+		margin-bottom: 0.45rem;
+	}
+
+	.net-rate {
 		display: flex;
 		flex-direction: column;
-		justify-content: space-between;
-		padding: 5px 8px 4px;
+		gap: 2px;
+		min-width: 0;
+
+		&.is-down .mdi { color: var(--net-down); }
+		&.is-up .mdi { color: var(--net-up); }
+		&.is-testing.is-down .net-rate-value { color: var(--net-down); }
+		&.is-testing.is-up .net-rate-value { color: var(--net-up); }
 	}
-}
 
-.net-speedtest-inline {
-	display: flex;
-	flex-direction: column;
-	justify-content: space-between;
-	height: 100%;
-	width: 100%;
-	position: relative;
-}
-
-.net-speedtest-meta-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	line-height: 1;
-
-	.speedtest-meta-item {
+	.net-rate-label {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		font-size: 0.68rem;
+		gap: 3px;
+		font-size: 0.62rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--theme-desktop-glass-text-sub, #475569);
+		line-height: 1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+
+		.mdi {
+			font-size: 0.8rem;
+		}
+	}
+
+	.net-rate-value {
+		font-size: 1.45rem;
 		font-weight: 600;
+		letter-spacing: -0.02em;
+		font-variant-numeric: tabular-nums;
 		color: var(--theme-desktop-glass-text, #0f172a);
+		line-height: 1.1;
 
-		.ping-icon {
-			font-size: 0.75rem;
-			color: var(--color-primary-fg, #1d4ed8);
-		}
-
-		.ping-lbl {
-			font-size: 0.62rem;
+		.unit {
+			font-size: 0.7rem;
 			font-weight: 500;
-			color: var(--theme-desktop-glass-text-sub, #64748b);
+			letter-spacing: 0;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+			margin-left: 3px;
+		}
+	}
+
+	/* ── Live chart ── */
+	.net-sparkline {
+		display: block;
+		width: 100%;
+		height: 40px;
+		overflow: visible;
+
+		.net-spark-area {
+			stroke: none;
+			fill: var(--net-down);
+			opacity: 0.1;
 		}
 
-		.ping-val {
-			font-size: 0.68rem;
-			font-weight: 700;
-			color: var(--theme-desktop-glass-text, #0f172a);
+		.net-spark-line {
+			fill: none;
+			stroke-width: 1.5;
+			stroke-linejoin: round;
+			stroke-linecap: round;
+			&.is-down { stroke: var(--net-down); }
+			&.is-up { stroke: var(--net-up); }
 		}
+	}
+
+	.net-empty-state {
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		font-size: 0.68rem;
+		color: var(--theme-desktop-glass-text-sub, #475569);
+
+		.mdi {
+			font-size: 0.95rem;
+		}
+	}
+
+	/* ── Secondary facts: one muted line each ── */
+	.net-facts {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: 0.75rem;
+		row-gap: 1px;
+		margin: 0.45rem 0 0;
+		font-size: 0.68rem;
+		line-height: 1.5;
+
+		dt {
+			color: var(--theme-desktop-glass-text-sub, #475569);
+		}
+
+		dd {
+			margin: 0;
+			min-width: 0;
+			text-align: right;
+			font-variant-numeric: tabular-nums;
+			color: var(--theme-desktop-glass-text, #0f172a);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+
+	.net-copy {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		max-width: 100%;
+		padding: 0 2px;
+		border: 0;
+		border-radius: var(--radius-xs, 4px);
+		background: none;
+		font: inherit;
+		color: inherit;
+		cursor: copy;
+
+		.mdi {
+			font-size: 0.7rem;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+			opacity: 0.6;
+		}
+
+		&:hover .mdi,
+		&:focus-visible .mdi {
+			opacity: 1;
+		}
+
+		&:hover {
+			background: var(--theme-card-hover, rgba(0, 0, 0, 0.06));
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-fg, #1d4ed8);
+			outline-offset: 1px;
+		}
+	}
+
+	/* ── Interface list (More) ── */
+	.net-iface-row {
+		width: 100%;
+		gap: 0.5rem;
+		border: 0;
+		background: none;
+		font: inherit;
+		font-size: 0.72rem;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+
+		&.is-selected {
+			background: var(--color-primary-soft, rgba(37, 99, 235, 0.1));
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-fg, #1d4ed8);
+			outline-offset: -2px;
+		}
+
+		.net-iface-name {
+			display: flex;
+			flex-direction: column;
+			flex: 1 1 auto;
+			min-width: 0;
+			line-height: 1.3;
+			overflow-wrap: anywhere;
+		}
+
+		.net-iface-ip {
+			font-size: 0.64rem;
+			color: var(--theme-desktop-glass-text-sub, #475569);
+		}
+
+		.process-usage {
+			display: flex;
+			flex-direction: column;
+			align-items: flex-end;
+			flex-shrink: 0;
+			font-size: 0.64rem;
+			font-weight: 500;
+			line-height: 1.3;
+			white-space: nowrap;
+		}
+	}
+
+	/* ── Speedtest panel ── */
+	.speedtest-btn.is-active .mdi {
+		color: inherit;
+	}
+
+	.net-speedtest {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		padding-top: 0.55rem;
+		border-top: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
+	}
+
+	.net-speedtest-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-size: 0.68rem;
+		color: var(--theme-desktop-glass-text-sub, #475569);
 	}
 
 	.speedtest-mode-toggle {
-		display: inline-flex;
-		border-radius: 6px;
-		overflow: hidden;
-		background: rgba(37, 99, 235, 0.08);
+		display: flex;
+		padding: 2px;
+		border-radius: 8px;
+		background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.07));
 
 		button {
+			flex: 1 1 0;
 			display: inline-flex;
 			align-items: center;
+			justify-content: center;
 			gap: 3px;
-			padding: 2px 7px;
+			padding: 3px 8px;
 			border: 0;
+			border-radius: 6px;
 			background: transparent;
 			color: var(--theme-desktop-glass-text-sub, #475569);
-			font-size: 0.62rem;
-			font-weight: 700;
+			font: inherit;
+			font-size: 0.68rem;
+			font-weight: 600;
 			cursor: pointer;
 
 			&.is-on {
-				background: #1d4ed8;
-				color: #fff;
+				background: var(--theme-desktop-glass-bg, #fff);
+				color: var(--theme-desktop-glass-text, #0f172a);
+				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 			}
 
 			&:disabled {
 				cursor: default;
+				opacity: 0.7;
 			}
 
 			&:focus-visible {
 				outline: 2px solid var(--color-primary-fg, #1d4ed8);
-				outline-offset: -2px;
+				outline-offset: 1px;
 			}
 		}
 	}
 
-	.speedtest-mode-badge {
+	.speedtest-start-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 3px;
-		padding: 1px 6px;
-		border-radius: 4px;
-		background: rgba(37, 99, 235, 0.1);
-		color: var(--color-primary-fg, #1d4ed8);
-		font-size: 0.6rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-}
-
-.net-speedtest-ctrl-row {
-	.speedtest-server {
-		flex: 1 1 auto;
-		min-width: 0;
-		overflow: hidden;
+		gap: 0.25rem;
+		height: 26px;
+		padding: 0 0.7rem;
+		border-radius: var(--radius-pill, 999px);
+		border: 1px solid transparent;
+		background: var(--color-primary, #2563eb);
+		color: #ffffff;
+		font: inherit;
+		font-size: 0.72rem;
+		font-weight: 600;
+		cursor: pointer;
 		white-space: nowrap;
-		text-overflow: ellipsis;
-		text-align: right;
-		font-size: 0.6rem;
-		color: var(--theme-desktop-glass-text-sub, #64748b);
-	}
+		flex-shrink: 0;
 
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 6px;
+		.mdi {
+			font-size: 0.85rem;
+		}
+
+		&:hover {
+			background: var(--color-primary-hover, #1d4ed8);
+		}
+
+		&.is-stop {
+			background: transparent;
+			color: var(--color-danger-fg, #b91c1c);
+			border-color: currentColor;
+
+			&:hover {
+				background: var(--color-danger-soft, rgba(239, 68, 68, 0.1));
+			}
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--color-primary-fg, #1d4ed8);
+			outline-offset: 2px;
+		}
+	}
 
 	.speedtest-status-line {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		font-size: 0.64rem;
-		font-weight: 500;
-		color: var(--theme-desktop-glass-text-sub, #64748b);
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		max-width: 180px;
+		gap: 5px;
+		flex: 1 1 auto;
+		min-width: 0;
+		line-height: 1.3;
+
 
 		.test-pulse-dot {
 			width: 6px;
 			height: 6px;
 			border-radius: 50%;
-			background: #3b82f6;
+			background: var(--color-primary, #2563eb);
 			animation: testPulse 1.2s infinite ease-in-out;
 			flex-shrink: 0;
 		}
 
-		.done-icon {
-			color: var(--color-success-fg, #047857);
-			font-size: 0.78rem;
-			flex-shrink: 0;
-		}
-
+		.done-icon,
 		.error-icon {
-			color: var(--color-danger-fg, #b91c1c);
-			font-size: 0.78rem;
+			font-size: 0.8rem;
 			flex-shrink: 0;
 		}
+
+		.done-icon { color: var(--color-success-fg, #047857); }
+		.error-icon { color: var(--color-danger-fg, #b91c1c); }
 	}
 
-	.speedtest-actions {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		flex-shrink: 0;
+	.speedtest-meta {
+		font-size: 0.66rem;
+		line-height: 1.4;
+		font-variant-numeric: tabular-nums;
+		color: var(--theme-desktop-glass-text-sub, #475569);
+		overflow-wrap: anywhere;
 
-		.speedtest-mini-btn {
-			width: 20px;
-			height: 20px;
-			border-radius: 4px;
-			border: 1px solid var(--theme-desktop-glass-border, rgba(0, 0, 0, 0.08));
-			background: var(--theme-card-subtle, rgba(0, 0, 0, 0.04));
-			color: var(--theme-desktop-glass-icon, #475569);
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			cursor: pointer;
-			font-size: 0.78rem;
-			padding: 0;
-			transition: all 0.15s ease;
-
-			&:hover {
-				background: rgba(37, 99, 235, 0.12);
-				color: var(--color-primary-fg, #1d4ed8);
-				border-color: rgba(37, 99, 235, 0.3);
-			}
-		}
-
-		.speedtest-start-btn {
-			display: inline-flex;
-			align-items: center;
-			gap: 0.25rem;
-			height: 22px;
-			padding: 0 0.55rem;
-			border-radius: var(--radius-pill, 999px);
-			border: 1px solid transparent;
-			background: var(--color-primary, #2563eb);
-			color: #ffffff;
-			font: inherit;
-			font-size: 0.72rem;
+		b {
 			font-weight: 600;
-			cursor: pointer;
-			white-space: nowrap;
-
-			.mdi {
-				font-size: 0.85rem;
-			}
-
-			&:hover {
-				background: var(--color-primary-hover, #1d4ed8);
-			}
-
-			&.is-stop {
-				background: transparent;
-				color: var(--color-danger-fg, #b91c1c);
-				border-color: currentColor;
-
-				&:hover {
-					background: rgba(220, 38, 38, 0.1);
-				}
-			}
-
-			&:focus-visible {
-				outline: 2px solid var(--color-primary-fg, #1d4ed8);
-				outline-offset: 2px;
-			}
+			color: var(--theme-desktop-glass-text, #0f172a);
 		}
 	}
-}
 
-.speedtest-progress-bar {
-	width: 100%;
-	height: 2px;
-	background: rgba(0, 0, 0, 0.06);
-	border-radius: 1px;
-	overflow: hidden;
-	margin-top: 1px;
+	.speedtest-progress-bar {
+		height: 3px;
+		border-radius: 2px;
+		background: var(--theme-desktop-glass-track, rgba(0, 0, 0, 0.07));
+		overflow: hidden;
 
-	.speedtest-progress-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #2563eb, #10b981);
-		transition: width 0.3s ease;
+		.speedtest-progress-fill {
+			height: 100%;
+			background: linear-gradient(90deg, var(--net-down), var(--net-up));
+			transition: width 0.3s ease;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.arrow-btn,
+		.speedtest-progress-fill {
+			transition: none;
+		}
+
+		.test-pulse-dot,
+		.mdi-spin {
+			animation: none;
+		}
 	}
 }
 
