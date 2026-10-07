@@ -34,6 +34,8 @@ type UserService interface {
 	UpdateUser(m model.UserDBModel)
 	UpdateUserPassword(m model.UserDBModel)
 	SetTokensValidAfter(id int, unix int64)
+	// SetAvatar stores the picture path and version ("", "" removes it).
+	SetAvatar(id int, path, version string)
 	GetUserInfoById(id string) (m model.UserDBModel)
 	GetUserAllInfoById(id string) (m model.UserDBModel)
 	GetUserAllInfoByName(userName string) (m model.UserDBModel)
@@ -103,6 +105,10 @@ func (u *userService) SetTokensValidAfter(id int, unix int64) {
 	u.publishSessions()
 }
 
+func (u *userService) SetAvatar(id int, path, version string) {
+	u.db.Model(&model.UserDBModel{}).Where("id = ?", id).Updates(map[string]any{"avatar": path, "avatar_version": version})
+}
+
 func (u *userService) UpdateUserPassword(m model.UserDBModel) {
 	u.db.Model(&m).Update("password", m.Password)
 }
@@ -118,12 +124,12 @@ func (u *userService) GetUserAllInfoByName(userName string) (m model.UserDBModel
 }
 
 func (u *userService) GetUserInfoById(id string) (m model.UserDBModel) {
-	u.db.Select("username", "id", "role", "nickname", "description", "avatar", "email").Where("id= ?", id).First(&m)
+	u.db.Select("username", "id", "role", "nickname", "description", "avatar", "avatar_version", "email").Where("id= ?", id).First(&m)
 	return
 }
 
 func (u *userService) GetUserInfoByUserName(userName string) (m model.UserDBModel) {
-	u.db.Select("username", "id", "role", "nickname", "description", "avatar", "email").Where("username= ?", userName).First(&m)
+	u.db.Select("username", "id", "role", "nickname", "description", "avatar", "avatar_version", "email").Where("username= ?", userName).First(&m)
 	return
 }
 

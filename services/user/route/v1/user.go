@@ -3,11 +3,8 @@ package v1
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/base64"
 	json2 "encoding/json"
 	"errors"
-	"image"
-	"image/png"
 	"io"
 	"net/http"
 	url2 "net/url"
@@ -198,127 +195,6 @@ func PostUserLogin(c *gin.Context) {
 			Message: common_err.GetMsg(common_err.SUCCESS),
 			Data:    data,
 		})
-}
-
-// @Summary edit user head
-// @Produce  application/json
-// @Accept multipart/form-data
-// @Tags user
-// @Param file formData file true "用户头像"
-// @Security ApiKeyAuth
-// @Success 200 {string} string "ok"
-// @Router /users/avatar [put]
-func PutUserAvatar(c *gin.Context) {
-	id := c.GetHeader("user_id")
-	user := service.MyService.User().GetUserInfoById(id)
-	if user.Id == 0 {
-		c.JSON(common_err.SERVICE_ERROR,
-			model.Result{Success: common_err.USER_NOT_EXIST, Message: common_err.GetMsg(common_err.USER_NOT_EXIST)})
-		return
-	}
-	json := make(map[string]string)
-	c.ShouldBind(&json)
-
-	data := json["file"]
-	if len(data) > 8<<20 {
-		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "image too large (max 6 MB)"})
-		return
-	}
-	// Any data:image/...;base64, prefix (not only PNG).
-	if i := strings.Index(data, ";base64,"); strings.HasPrefix(data, "data:image/") && i > 0 {
-		data = data[i+len(";base64,"):]
-	}
-	decodeData, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "not a valid image"})
-		return
-	}
-	// A picture that doesn't decode is the client's mistake - this used to
-	// call log.Fatal and stop the whole user service.
-	img, _, err := image.Decode(strings.NewReader(string(decodeData)))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "not a supported image (PNG, JPEG or GIF)"})
-		return
-	}
-
-	dir := filepath.Join(config.AppInfo.UserDataPath, strconv.Itoa(user.Id))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		return
-	}
-	avatarPath := filepath.Join(dir, "avatar.png")
-	tmp := avatarPath + ".tmp"
-	outFile, err := os.Create(tmp)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		return
-	}
-	encErr := png.Encode(outFile, img)
-	closeErr := outFile.Close()
-	if encErr != nil || closeErr != nil {
-		os.Remove(tmp)
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: "could not save the image"})
-		return
-	}
-	if err := os.Rename(tmp, avatarPath); err != nil {
-		c.JSON(http.StatusInternalServerError, model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
-		return
-	}
-	user.Avatar = avatarPath
-	service.MyService.User().UpdateUser(user)
-	c.JSON(http.StatusOK,
-		model.Result{
-			Success: common_err.SUCCESS,
-			Message: common_err.GetMsg(common_err.SUCCESS),
-			Data:    user,
-		})
-}
-
-// ownAvatar reports whether p is a file inside the user's own data folder
-// (the only place PutUserAvatar writes) - anything else stored in the
-// database is never served.
-func ownAvatar(p string, userID int) bool {
-	if p == "" {
-		return false
-	}
-	base := filepath.Join(config.AppInfo.UserDataPath, strconv.Itoa(userID))
-	rel, err := filepath.Rel(base, filepath.Clean(p))
-	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
-}
-
-// @Summary get user head
-// @Produce  application/json
-// @Tags user
-// @Param file formData file true "用户头像"
-// @Security ApiKeyAuth
-// @Success 200 {string} string "ok"
-// @Router /users/avatar [get]
-func GetUserAvatar(c *gin.Context) {
-	id := c.GetHeader("user_id")
-	user := service.MyService.User().GetUserInfoById(id)
-	if user.Id == 0 {
-		c.JSON(common_err.SERVICE_ERROR,
-			model.Result{Success: common_err.USER_NOT_EXIST, Message: common_err.GetMsg(common_err.USER_NOT_EXIST)})
-		return
-	}
-
-	if ownAvatar(user.Avatar, user.Id) && file.Exists(user.Avatar) {
-		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(path.Base(user.Avatar)))
-		c.Header("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate, value")
-		c.File(user.Avatar)
-		return
-	}
-	user.Avatar = "/usr/share/nivaroos/www/avatar.svg"
-	if file.Exists(user.Avatar) {
-		c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(path.Base(user.Avatar)))
-		c.Header("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate, value")
-		c.File(user.Avatar)
-		return
-	}
-	user.Avatar = "/var/lib/nivaroos/www/avatar.svg"
-	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(path.Base(user.Avatar)))
-	c.Header("Cache-Control", "no-cache, no-store, max-age=0, must-revalidate, value")
-	c.File(user.Avatar)
 }
 
 // @Summary edit user name
@@ -817,10 +693,28 @@ func GetUserImage(c *gin.Context) {
 	}
 
 	fileName := path.Base(absFilePath)
+	// Public route: pictures only (wallpapers). It served any file in a
+	// user's folder - settings JSON included - to anyone. The profile
+	// picture is private too (GET /v1/users/avatar, signed in).
+	if strings.HasPrefix(fileName, "avatar") || !isImageFile(absFilePath) {
+		c.JSON(http.StatusNotFound, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
+		return
+	}
 
 	// @tiger - RESTful 规范下不应该返回文件本身内容，而是返回文件的静态URL，由前端去解析
 	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
 	c.File(absFilePath)
+}
+
+func isImageFile(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(f, head)
+	return strings.HasPrefix(http.DetectContentType(head[:n]), "image/")
 }
 
 func DeleteUserImage(c *gin.Context) {

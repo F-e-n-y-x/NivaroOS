@@ -12,14 +12,18 @@ import "time"
 
 // Soon to be removed
 type UserDBModel struct {
-	Id          int    `gorm:"column:id;primary_key" json:"id"`
-	Username    string `json:"username"`
-	Password    string `json:"password,omitempty"`
-	Role        string `json:"role"`
-	Email       string `json:"email"`
-	Nickname    string `json:"nickname"`
-	Avatar      string `json:"avatar"`
-	Description string `json:"description"`
+	Id       int    `gorm:"column:id;primary_key" json:"id"`
+	Username string `json:"username"`
+	Password string `json:"password,omitempty"`
+	Role     string `json:"role"`
+	Email    string `json:"email"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	// AvatarVersion: hash of the stored picture, "" when none is set.
+	// Clients show the initials fallback for "" and add it as ?v= to the
+	// avatar URL, so a new picture is a new (long-cacheable) URL.
+	AvatarVersion string `gorm:"column:avatar_version" json:"avatar_version"`
+	Description   string `json:"description"`
 	// Sessions (tokens) issued before this unix time are no longer valid:
 	// set when the password changes.
 	TokensValidAfter int64 `gorm:"column:tokens_valid_after" json:"-"`

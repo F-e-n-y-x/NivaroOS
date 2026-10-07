@@ -63,6 +63,7 @@ func InitRouter() *gin.Engine {
 
 			v1UsersGroup.PUT("/avatar", v1.PutUserAvatar)
 			v1UsersGroup.GET("/avatar", v1.GetUserAvatar)
+			v1UsersGroup.DELETE("/avatar", v1.DeleteUserAvatar)
 
 			v1UsersGroup.DELETE("/:id", v1.DeleteUser)
 			v1UsersGroup.GET("/:username", v1.GetUserInfoByUsername)
