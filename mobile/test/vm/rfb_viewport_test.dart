@@ -104,10 +104,4 @@ void main() {
     v.layout(box: const Size(412, 900), remote: const Size(1280, 720), dpr: 2.625, fit: RfbFit.fill);
     expect(v.zoom, 1);
   });
-
-  test('the drawn pointer follows the zoom, within readable limits', () {
-    expect(cursorSizeFor(0.12), const Size(8, 12)); // a 3392 px desktop fitted to a phone
-    expect(cursorSizeFor(1).width, 12);
-    expect(cursorSizeFor(4), const Size(13, 19.5));
-  });
 }

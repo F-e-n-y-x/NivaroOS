@@ -431,7 +431,6 @@ class RfbViewState extends State<RfbView> {
   Offset _scroll = Offset.zero;
   Offset? _edgeAt;
   double _lift = 0;
-  bool _mouse = false;
 
   static const _slop = 10.0;
   static const _trackpadSpeed = 1.6;
@@ -508,7 +507,6 @@ class RfbViewState extends State<RfbView> {
 
   void _down(PointerDownEvent e) {
     if (e.kind == PointerDeviceKind.mouse) return _mouseEvent(e.localPosition, e.buttons);
-    _mouse = false;
     _pointers[e.pointer] = _at(e.localPosition);
     if (_pointers.length == 1) {
       _g = _Gesture.pending;
@@ -677,7 +675,6 @@ class RfbViewState extends State<RfbView> {
 
   /// A real mouse: the pointer goes where it points; its buttons are its own.
   void _mouseEvent(Offset local, int buttons) {
-    _mouse = true;
     _cursor = viewport.toRemote(_at(local));
     _buttons = (buttons & kPrimaryButton != 0 ? 1 : 0) |
         (buttons & kMiddleMouseButton != 0 ? 2 : 0) |
@@ -723,7 +720,6 @@ class RfbViewState extends State<RfbView> {
         viewport.layout(box: constraints.biggest, remote: remote, dpr: dpr, fit: widget.fit);
         final caret = viewport.toLocal(_cursor);
         _lift = widget.bottomInset > 0 ? viewport.keepInSight(_lift, caret, viewport.box.height - widget.bottomInset) : 0;
-        final showCursor = widget.inputMode == RfbInputMode.trackpad && !_mouse && image != null;
         return Semantics(
           label: widget.label,
           hint: widget.inputMode == RfbInputMode.trackpad
@@ -752,12 +748,6 @@ class RfbViewState extends State<RfbView> {
                         filterQuality: viewport.scale < 1 ? FilterQuality.medium : FilterQuality.low,
                       ),
                     ),
-                  if (showCursor)
-                    Positioned(
-                      left: caret.dx - 1,
-                      top: caret.dy - 1,
-                      child: IgnorePointer(child: CustomPaint(size: cursorSizeFor(viewport.scale), painter: const _CursorPainter())),
-                    ),
                 ]),
               ),
             ),
@@ -768,45 +758,6 @@ class RfbViewState extends State<RfbView> {
   }
 }
 
-/// The drawn pointer's size at [scale] (view points per remote pixel): about
-/// a real 12 x 18 px desktop cursor as it would look at this zoom, kept
-/// between 8 and 13 points wide so it is never lost on a fitted wide
-/// desktop nor bigger than a fingertip. It used to be a fixed 14 x 21,
-/// several times the remote cursor's size on a scaled-down screen.
-Size cursorSizeFor(double scale) {
-  final w = (12 * scale).clamp(8.0, 13.0);
-  return Size(w, w * 1.5);
-}
-
-/// The mouse pointer mode's cursor: a white arrow with a dark edge, legible
-/// on any picture.
-class _CursorPainter extends CustomPainter {
-  const _CursorPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(0, h * 0.82)
-      ..lineTo(w * 0.3, h * 0.6)
-      ..lineTo(w * 0.52, h)
-      ..lineTo(w * 0.68, h * 0.93)
-      ..lineTo(w * 0.47, h * 0.55)
-      ..lineTo(w, h * 0.55)
-      ..close();
-    canvas.drawPath(path, Paint()..color = Colors.white);
-    canvas.drawPath(
-        path,
-        Paint()
-          ..color = Colors.black
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2);
-  }
-
-  @override
-  bool shouldRepaint(_CursorPainter oldDelegate) => false;
-}
 
 // ---------------------------------------------------------------------------
 // The session
