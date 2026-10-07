@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nivaroos_mobile/widgets/rfb_viewport.dart';
+import 'package:nivaroos_mobile/widgets/rfb_view.dart';
 
 RfbViewport _vp(RfbFit fit, {Size box = const Size(412, 915), double dpr = 2.625}) =>
     RfbViewport()..layout(box: box, remote: const Size(1280, 720), dpr: dpr, fit: fit);
@@ -103,5 +103,11 @@ void main() {
     expect((v.toRemote(const Offset(206, 450)) - centre).distance, lessThan(1));
     v.layout(box: const Size(412, 900), remote: const Size(1280, 720), dpr: 2.625, fit: RfbFit.fill);
     expect(v.zoom, 1);
+  });
+
+  test('the drawn pointer follows the zoom, within readable limits', () {
+    expect(cursorSizeFor(0.12), const Size(8, 12)); // a 3392 px desktop fitted to a phone
+    expect(cursorSizeFor(1).width, 12);
+    expect(cursorSizeFor(4), const Size(13, 19.5));
   });
 }

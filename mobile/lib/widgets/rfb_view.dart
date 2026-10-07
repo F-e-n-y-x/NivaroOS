@@ -756,7 +756,7 @@ class RfbViewState extends State<RfbView> {
                     Positioned(
                       left: caret.dx - 1,
                       top: caret.dy - 1,
-                      child: const IgnorePointer(child: CustomPaint(size: Size(14, 21), painter: _CursorPainter())),
+                      child: IgnorePointer(child: CustomPaint(size: cursorSizeFor(viewport.scale), painter: const _CursorPainter())),
                     ),
                 ]),
               ),
@@ -766,6 +766,16 @@ class RfbViewState extends State<RfbView> {
       }),
     );
   }
+}
+
+/// The drawn pointer's size at [scale] (view points per remote pixel): about
+/// a real 12 x 18 px desktop cursor as it would look at this zoom, kept
+/// between 8 and 13 points wide so it is never lost on a fitted wide
+/// desktop nor bigger than a fingertip. It used to be a fixed 14 x 21,
+/// several times the remote cursor's size on a scaled-down screen.
+Size cursorSizeFor(double scale) {
+  final w = (12 * scale).clamp(8.0, 13.0);
+  return Size(w, w * 1.5);
 }
 
 /// The mouse pointer mode's cursor: a white arrow with a dark edge, legible
