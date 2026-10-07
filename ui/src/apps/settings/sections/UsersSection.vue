@@ -4,14 +4,12 @@
 
 		<div class="setting-card">
 			<div class="profile-row">
-				<div class="profile-avatar" @click="triggerAvatarPick">
-					<img :src="avatarUrl" :alt="$t('Profile picture')" @error="avatarBroken = true" v-show="!avatarBroken" />
-					<span v-show="avatarBroken">{{ (username || '?').charAt(0).toUpperCase() }}</span>
-					<div class="profile-avatar-overlay">
+				<button type="button" class="profile-avatar" :title="$t('Change profile picture')" :aria-label="$t('Change profile picture')" @click="editingAvatar = !editingAvatar">
+					<user-avatar :username="username" :version="me.avatar_version || ''" size="4rem"></user-avatar>
+					<span class="profile-avatar-overlay">
 						<b-icon icon="edit-outline" pack="casa" size="is-16"></b-icon>
-					</div>
-					<input ref="avatarInput" type="file" accept="image/*" class="avatar-input" @change="onAvatarPicked" />
-				</div>
+					</span>
+				</button>
 
 				<div class="profile-main">
 					<template v-if="!editingName">
@@ -60,15 +58,7 @@
 				<b-button rounded size="is-small" :loading="signingOutOthers" @click="confirmSignOutOthers">{{ $t('Sign out other devices') }}</b-button>
 			</div>
 
-			<div v-if="cropping" class="avatar-crop">
-				<div class="cropper-wrap">
-					<cropper :src="cropImage" :stencil-props="{ aspectRatio: 1 }" :canvas="{ width: 200, height: 200 }" @change="onCropChange"></cropper>
-				</div>
-				<div class="avatar-crop-actions">
-					<b-button rounded size="is-small" @click="cancelCrop">{{ $t('Cancel') }}</b-button>
-					<b-button rounded size="is-small" type="is-primary" :loading="savingAvatar" @click="saveAvatar">{{ $t('Save') }}</b-button>
-				</div>
-			</div>
+			<avatar-editor v-if="editingAvatar" :has-avatar="!!me.avatar_version" @close="editingAvatar = false" @saved="onAvatarSaved"></avatar-editor>
 		</div>
 
 		<h3 class="setting-card-title">{{ $t('Other Admin Accounts') }}</h3>
@@ -89,8 +79,9 @@
 </template>
 
 <script>
-import { Cropper } from 'vue-advanced-cropper'
-import 'vue-advanced-cropper/dist/style.css'
+import AvatarEditor from '@/apps/settings/account/AvatarEditor.vue'
+import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
+import { currentUser, forgetAvatar, rememberAvatar, saveCurrentUser } from '@/utils/avatar'
 import NivaroosUsersPanel from '@/apps/settings/NivaroOSUsersPanel.vue'
 import SystemUsersPanel from '@/apps/settings/SystemUsersPanel.vue'
 import SmbUsersPanel from '@/apps/settings/SmbUsersPanel.vue'
@@ -98,7 +89,7 @@ import SmbUsersPanel from '@/apps/settings/SmbUsersPanel.vue'
 // Search index: labels are the titles this section renders (the search
 // jumps to them); keywords are other words people type for them.
 export const ROWS = [
-	{ label: 'Account', keywords: 'my account password avatar name profile' },
+	{ label: 'Account', keywords: 'my account password avatar profile picture photo name' },
 	{ label: 'Other Admin Accounts', keywords: 'admin users' },
 	{ label: 'System Users', keywords: 'linux users sudo docker' },
 	{ label: 'SMB Users', keywords: 'samba smb password' }
@@ -106,10 +97,10 @@ export const ROWS = [
 
 export default {
 	name: 'users-section',
-	components: { Cropper, NivaroosUsersPanel, SystemUsersPanel, SmbUsersPanel },
+	components: { AvatarEditor, UserAvatar, NivaroosUsersPanel, SystemUsersPanel, SmbUsersPanel },
 	data() {
 		return {
-			avatarBroken: false,
+			editingAvatar: false,
 			editingName: false,
 			nameInput: '',
 			editingPassword: false,
@@ -119,23 +110,15 @@ export default {
 			savingPassword: false,
 			signingOutOthers: false,
 			passwordError: '',
-			cropping: false,
-			cropImage: null,
-			cropResult: null,
-			savingAvatar: false
 		}
 	},
 	computed: {
-		username() {
-			return this.$store.state.user.username
+		me() {
+			return currentUser(this.$store)
 		},
-		avatarUrl() {
-			const token = this.$store.state.access_token || localStorage.getItem('access_token')
-			return `v1/users/avatar?token=${token}&t=${this.avatarCacheBust || 0}`
+		username() {
+			return this.me.username
 		}
-	},
-	created() {
-		this.avatarCacheBust = Date.now()
 	},
 	methods: {
 		startEditName() {
@@ -148,7 +131,7 @@ export default {
 				return
 			}
 			this.$api.users.setUserInfo({ ...this.$store.state.user, username: this.nameInput }).then(res => {
-				this.$store.commit('SET_USER', res.data.data)
+				saveCurrentUser(this.$store, res.data.data)
 				this.editingName = false
 			})
 		},
@@ -214,40 +197,13 @@ export default {
 				this.signingOutOthers = false
 			})
 		},
-		triggerAvatarPick() {
-			this.$refs.avatarInput.click()
-		},
-		onAvatarPicked(event) {
-			const file = event.target.files && event.target.files[0]
-			if (!file) return
-			if (this.cropImage) URL.revokeObjectURL(this.cropImage)
-			this.cropImage = URL.createObjectURL(file)
-			this.cropping = true
-			event.target.value = ''
-		},
-		onCropChange({ canvas }) {
-			this.cropResult = canvas
-		},
-		cancelCrop() {
-			this.cropping = false
-			if (this.cropImage) URL.revokeObjectURL(this.cropImage)
-			this.cropImage = null
-			this.cropResult = null
-		},
-		saveAvatar() {
-			if (!this.cropResult) return
-			this.savingAvatar = true
-			const imageData = this.cropResult.toDataURL()
-			this.$api.users.saveAvatar({ file: imageData }).then(() => {
-				this.avatarBroken = false
-				this.avatarCacheBust = Date.now()
-				this.$buefy.toast.open({ message: this.$t('Update successful'), type: 'is-success' })
-				this.cancelCrop()
-			}).catch(() => {
-				this.$buefy.toast.open({ message: this.$t('Update failure'), type: 'is-danger' })
-			}).finally(() => {
-				this.savingAvatar = false
-			})
+		onAvatarSaved(user, canvas) {
+			if (!user) return
+			saveCurrentUser(this.$store, { ...this.me, ...user })
+			if (canvas) rememberAvatar(user.username, canvas)
+			else forgetAvatar()
+			this.editingAvatar = false
+			this.$buefy.toast.open({ message: this.$t(canvas ? 'Profile picture updated' : 'Profile picture removed'), type: 'is-success' })
 		},
 		logout() {
 			this.$store.commit('SET_DEFAULT_WALLPAPER')
@@ -269,30 +225,13 @@ export default {
 .profile-avatar {
 	flex-shrink: 0;
 	position: relative;
-	width: 4rem;
-	height: 4rem;
+	display: flex;
+	padding: 0;
+	border: 0;
 	border-radius: 50%;
 	overflow: hidden;
-	background: hsla(208, 100%, 50%, 0.1);
-	color: var(--color-primary-fg);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-weight: 500;
-	font-size: var(--font-xl);
+	background: none;
 	cursor: pointer;
-
-	img {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-	}
-
-	.avatar-input {
-		display: none;
-	}
 }
 
 .profile-avatar-overlay {
@@ -307,7 +246,8 @@ export default {
 	transition: opacity 0.15s ease;
 }
 
-.profile-avatar:hover .profile-avatar-overlay {
+.profile-avatar:hover .profile-avatar-overlay,
+.profile-avatar:focus-visible .profile-avatar-overlay {
 	opacity: 1;
 }
 
@@ -382,8 +322,7 @@ export default {
 	font-weight: 500;
 }
 
-.password-form,
-.avatar-crop {
+.password-form {
 	padding: 0 var(--space-5) var(--space-5);
 	display: flex;
 	flex-direction: column;
@@ -391,18 +330,10 @@ export default {
 	max-width: 22rem;
 }
 
-.password-form-actions,
-.avatar-crop-actions {
+.password-form-actions {
 	display: flex;
 	justify-content: flex-end;
 	gap: var(--space-2);
-}
-
-.cropper-wrap {
-	height: 16rem;
-	background: var(--theme-card-subtle, rgba(0, 0, 0, 0.03));
-	border-radius: var(--radius-control);
-	overflow: hidden;
 }
 
 .error-note {

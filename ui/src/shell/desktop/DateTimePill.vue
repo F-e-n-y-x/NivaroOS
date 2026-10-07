@@ -19,7 +19,7 @@
 				<!-- Top Header: User Profile + System Actions -->
 				<div class="menu-top-header">
 					<div class="user-profile-left">
-						<div class="user-avatar">{{ userInitial }}</div>
+						<user-avatar :username="userName" :version="me.avatar_version || ''" size="2.1rem" class="user-avatar"></user-avatar>
 						<div class="user-meta">
 							<span class="user-name">{{ userName || $t('User') }}</span>
 							<span class="user-badge">{{ $t('Signed in') }}</span>
@@ -131,10 +131,13 @@
 <script>
 import { formatTime, formatDate, formatStrftime } from '@/utils/dateTimeFormat'
 import systemPower from '@/mixins/systemPower'
+import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
+import { currentUser } from '@/utils/avatar'
 
 export default {
 	name: 'date-time-pill',
 	mixins: [systemPower],
+	components: { UserAvatar },
 	data() {
 		return {
 			timer: 0,
@@ -167,18 +170,11 @@ export default {
 		},
 		// Vuex's user is empty again after a page reload; Login stores the
 		// signed-in user in localStorage too.
-		userName() {
-			const u = this.$store.state.user
-			if (u && u.username) return u.username
-			try {
-				const stored = JSON.parse(localStorage.getItem('user') || 'null')
-				return (stored && stored.username) || ''
-			} catch (e) {
-				return ''
-			}
+		me() {
+			return currentUser(this.$store)
 		},
-		userInitial() {
-			return (this.userName || this.$t('User')).charAt(0).toUpperCase()
+		userName() {
+			return this.me.username || ''
 		},
 		// 0 = Sunday ... 6 = Saturday, from the locale where the browser
 		// knows it (Intl.Locale weekInfo), else Sunday.
@@ -482,18 +478,7 @@ export default {
 }
 
 .user-avatar {
-	width: 2.1rem;
-	height: 2.1rem;
-	border-radius: 50%;
-	background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-	color: #ffffff;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-weight: 700;
-	font-size: var(--font-base);
 	box-shadow: 0 2px 5px rgba(37, 99, 235, 0.25);
-	flex-shrink: 0;
 }
 
 .user-meta {

@@ -17,7 +17,7 @@
 		<p v-if="error" class="error-note">{{ error }}</p>
 
 		<div v-for="u in otherUsers" :key="u" class="account-row">
-			<div class="account-avatar">{{ u.charAt(0).toUpperCase() }}</div>
+			<user-avatar :username="u" size="2.4rem"></user-avatar>
 			<div class="account-main">
 				<div class="account-name">{{ u }}</div>
 			</div>
@@ -36,10 +36,12 @@
 <script>
 import { escapeHtml } from '@/utils/escapeHtml'
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
+import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
 
 export default {
 	name: 'nivaroos-users-panel',
 	mixins: [confirmWindowMixin],
+	components: { UserAvatar },
 	data() {
 		return {
 			users: [],

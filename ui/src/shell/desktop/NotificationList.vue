@@ -90,8 +90,8 @@
 			</div>
 			<div class="notif-account-row">
 				<span class="notif-account-name">
-					<b-icon icon="account-circle-outline" pack="mdi" custom-size="mdi-20px"></b-icon>
-					{{ userName || $t('User') }}
+					<user-avatar :username="userName" :version="me.avatar_version || ''" size="1.75rem"></user-avatar>
+					<span class="notif-account-label">{{ userName || $t('User') }}</span>
 				</span>
 				<button type="button" class="acct-btn" @click="logout">
 					<b-icon icon="logout" pack="mdi" custom-size="mdi-18px"></b-icon>
@@ -115,6 +115,8 @@
 <script>
 import { activityService } from '@/service/activity'
 import systemPower from '@/mixins/systemPower'
+import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
+import { currentUser } from '@/utils/avatar'
 
 const SYSTEM_TYPES = ['schedule', 'vm', 'system', 'maintenance', 'backup']
 
@@ -124,6 +126,7 @@ const SEEN_AFTER_MS = 1500
 export default {
 	name: 'notification-list',
 	mixins: [systemPower],
+	components: { UserAvatar },
 	props: {
 		// Rendered as its own window (phone) rather than in the tray popover.
 		isWindow: { type: Boolean, default: false },
@@ -155,15 +158,11 @@ export default {
 			if (this.currentFilter === 'system') return this.activities.filter(a => SYSTEM_TYPES.includes(a.type))
 			return this.activities
 		},
+		me() {
+			return currentUser(this.$store)
+		},
 		userName() {
-			const u = this.$store.state.user
-			if (u && u.username) return u.username
-			try {
-				const stored = JSON.parse(localStorage.getItem('user') || 'null')
-				return (stored && stored.username) || ''
-			} catch (e) {
-				return ''
-			}
+			return this.me.username || ''
 		}
 	},
 	created() {
@@ -610,8 +609,12 @@ export default {
 	gap: var(--space-2);
 	font-weight: 600;
 	min-width: 0;
+}
+
+.notif-account-label {
 	overflow: hidden;
 	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .acct-btn {

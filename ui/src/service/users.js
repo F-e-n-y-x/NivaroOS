@@ -150,6 +150,10 @@ const users = {
 		return api.put(`${PREFIX}/avatar`, data);
 	},
 
+	deleteAvatar() {
+		return api.delete(`${PREFIX}/avatar`);
+	},
+
 }
 
 export default users;

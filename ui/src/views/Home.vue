@@ -29,6 +29,7 @@ import { THEME_MODES, getStoredThemeMode, applyTheme } from '@/utils/theme'
 import { escapeHtml } from '@/utils/escapeHtml'
 import { formatSize } from '@/utils/formatSize'
 import activityService from '@/service/activity'
+import { saveCurrentUser, syncRememberedAvatar } from '@/utils/avatar'
 import { isFormatting } from '@/apps/storage/storageJobs'
 
 const wallpaperConfig = 'wallpaper'
@@ -72,6 +73,7 @@ export default {
 		this.getHardwareInfo()
 		this.getConfig()
 		this.getWallpaperConfig()
+		this.refreshCurrentUser()
 		this.getAppearanceConfig()
 		this.getDateTimeConfig()
 	},
@@ -139,6 +141,17 @@ export default {
 
 		openHomeContaxtMenu(e) {
 			this.$EventBus.$emit(events.SHOW_HOME_CONTEXT_MENU, e)
+		},
+
+		// The copy Login stored goes stale when the account changes elsewhere
+		// (a new profile picture set from the phone).
+		refreshCurrentUser() {
+			this.$api.users.getUserInfo().then(res => {
+				const me = res.data.data
+				if (res.data.success !== 200 || !me || !me.username) return
+				saveCurrentUser(this.$store, me)
+				syncRememberedAvatar(me, this.$store.state.access_token || localStorage.getItem('access_token'))
+			}).catch(() => {})
 		},
 
 		getWallpaperConfig() {

@@ -7,7 +7,8 @@
 			</div>
 			<div class="is-flex is-justify-content-center pb-3 ">
 				<div class="has-text-centered">
-					<b-image :src-fallback="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" src="/v1/users/image?path=/var/lib/nivaroos/1/avatar.png" class="is-128x128" rounded></b-image>
+					<user-avatar v-if="username" :username="username" :src="rememberedPicture" version="" size="96px"></user-avatar>
+					<b-image v-else :src="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" class="is-128x128" rounded></b-image>
 				</div>
 
 			</div>
@@ -40,6 +41,8 @@
 <script>
 import {ValidationObserver, ValidationProvider} from "vee-validate";
 import "@/plugins/vee-validate";
+import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
+import { rememberedAvatar, syncRememberedAvatar } from '@/utils/avatar'
 
 const wallpaperConfig = "wallpaper"
 
@@ -56,8 +59,16 @@ export default {
 		}
 	},
 	components: {
+		UserAvatar,
 		ValidationObserver,
 		ValidationProvider,
+	},
+	computed: {
+		// Only the account last signed in on this browser has a picture
+		// here (kept locally - the server never shows one before sign-in).
+		rememberedPicture() {
+			return rememberedAvatar(this.username)
+		}
 	},
 	beforeMount(){
 		let userString = localStorage.getItem('user')
@@ -124,6 +135,7 @@ export default {
 				localStorage.setItem("user", JSON.stringify(userRes.data.data.user));
 
 				this.$store.commit("SET_USER", userRes.data.data.user);
+				syncRememberedAvatar(userRes.data.data.user, userRes.data.data.token.access_token)
 				this.$store.commit("SET_ACCESS_TOKEN", userRes.data.data.token.access_token);
 				this.$store.commit("SET_REFRESH_TOKEN", userRes.data.data.token.refresh_token);
 
