@@ -1348,6 +1348,8 @@ install_core_dependencies() {
 	#   mergerfs    optional storage pooling
 	#   lm-sensors  `sensors`/sensors-detect for fan control troubleshooting
 	#               (nivaroos-fans finds and loads the fan driver itself)
+	#   7zip        7z for Backup & Sync's encrypted archives (p7zip on older
+	#               distros); without it "Encrypted archive" is unavailable
 	# Known gaps: udevil is not in Fedora/RHEL, Arch (AUR only) or openSUSE
 	# repos; mergerfs is not in Fedora/RHEL repos (upstream RPMs/COPR);
 	# dmidecode doesn't exist on 32-bit ARM. Those features degrade
@@ -1356,19 +1358,19 @@ install_core_dependencies() {
 		pkg_update
 		if command -v apt-get >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-essential rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs lm-sensors
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools fdisk e2fsprogs mergerfs lm-sensors '7zip|p7zip-full'
 		elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd-udev util-linux pciutils smartmontools parted make gcc rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools e2fsprogs mergerfs lm_sensors
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g 'exfatprogs|exfat-utils' dosfstools e2fsprogs mergerfs lm_sensors '7zip|p7zip-plugins'
 		elif command -v pacman >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates systemd util-linux pciutils smartmontools parted base-devel rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs lm_sensors
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs lm_sensors '7zip|p7zip'
 		elif command -v zypper >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted make gcc rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs sensors
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g exfatprogs dosfstools e2fsprogs mergerfs sensors '7zip|p7zip-full'
 		elif command -v apk >/dev/null 2>&1; then
 			pkg_install curl wget git tar ca-certificates udev util-linux pciutils smartmontools parted build-base rsync
-			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g ntfs-3g-progs exfatprogs dosfstools sfdisk e2fsprogs mergerfs lm-sensors
+			pkg_install_each dmidecode sudo hdparm udevil ntfs-3g ntfs-3g-progs exfatprogs dosfstools sfdisk e2fsprogs mergerfs lm-sensors '7zip|p7zip'
 		fi
 	"
 }

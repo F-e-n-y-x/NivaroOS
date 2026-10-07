@@ -16,6 +16,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/secret"
 )
 
 // Store is the job store (spec §4): <data dir>/backup.db, a pure-Go
@@ -30,6 +32,9 @@ import (
 type Store struct {
 	db      *gorm.DB
 	dataDir string
+	// Secrets opens the host key that seals encryption passwords; nil =
+	// secret.LoadOrCreate(secret.DefaultKeyPath). Tests set their own.
+	Secrets func() (*secret.Box, error)
 	// mu serialises read-modify-write sequences (revision checks,
 	// coalescing) inside this process; SQLite's own locking covers other
 	// processes (the release-scheduled-tasks subcommand).
@@ -268,6 +273,7 @@ func (s *Store) ListJobs() ([]Job, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.unlock(&j)
 		out = append(out, j)
 	}
 	return out, nil
@@ -283,7 +289,11 @@ func (s *Store) GetJob(id string) (Job, error) {
 	if err != nil {
 		return Job{}, fmt.Errorf("store: get job %s: %w", id, err)
 	}
-	return r.ToJob()
+	j, err := r.ToJob()
+	if err == nil {
+		s.unlock(&j)
+	}
+	return j, err
 }
 
 // JobByMigratedFrom returns the job imported from a Scheduled Task.
@@ -296,7 +306,11 @@ func (s *Store) JobByMigratedFrom(taskID string) (Job, error) {
 	if err != nil {
 		return Job{}, fmt.Errorf("store: job by task %s: %w", taskID, err)
 	}
-	return r.ToJob()
+	j, err := r.ToJob()
+	if err == nil {
+		s.unlock(&j)
+	}
+	return j, err
 }
 
 // CreateJob stores a new job: it gets a fresh id, revision 1, a new
@@ -313,7 +327,11 @@ func (s *Store) createJobs(jobs []Job, now time.Time, extra func(tx *gorm.DB) er
 	var last Job
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, j := range jobs {
-			j.ID = NewJobID()
+			if j.ID == "" {
+				// A preset id is kept: an encrypted job's keys are
+				// stored under it first.
+				j.ID = NewJobID()
+			}
 			j.Revision = 1
 			if j.DestFolderID == "" {
 				j.DestFolderID = NewUUID4()
@@ -416,6 +434,9 @@ func (s *Store) mutateJob(id string, fn func(j *Job) error, now time.Time, bump 
 		out = j
 		return nil
 	})
+	if err == nil {
+		s.unlock(&out)
+	}
 	return out, err
 }
 
@@ -438,6 +459,12 @@ func (s *Store) DeleteJob(id, keepRunID string) ([]RunRow, error) {
 		}
 		if err := tx.Where("job_id = ? AND id <> ?", id, keepRunID).Delete(&RunRow{}).Error; err != nil {
 			return fmt.Errorf("store: delete runs of %s: %w", id, err)
+		}
+		if keepRunID == "" {
+			// A purge run still needs the keys; it drops them when done.
+			if err := tx.Where("key = ?", metaCryptPrefix+id).Delete(&MetaRow{}).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Where("key = ?", jobStateKey(id)).Delete(&MetaRow{}).Error
 	})

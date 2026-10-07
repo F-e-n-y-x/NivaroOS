@@ -35,8 +35,16 @@ const (
 	archiveIndexSuffix = ".index.zst"
 )
 
-func archiveName(jobID string, t time.Time) string {
-	return archivePrefix + jobID + "_" + t.UTC().Format(VersionTimeLayout) + archiveExt
+func archiveName(jobID string, t time.Time, ext string) string {
+	return archivePrefix + jobID + "_" + t.UTC().Format(VersionTimeLayout) + ext
+}
+
+// archiveExtOf is the archive name suffix at a destination.
+func (t *target) archiveExtOf() string {
+	if t.sevenZip() {
+		return sevenZipExt
+	}
+	return archiveExt
 }
 
 // parseArchiveName returns the timestamp of one of jobID's archives; ok
@@ -44,10 +52,14 @@ func archiveName(jobID string, t time.Time) string {
 // The time comes from the name, never the file's modtime.
 func parseArchiveName(jobID, name string) (time.Time, bool) {
 	pre := archivePrefix + jobID + "_"
-	if !strings.HasPrefix(name, pre) || !strings.HasSuffix(name, archiveExt) {
+	ext := archiveExt
+	if strings.HasSuffix(name, sevenZipExt) {
+		ext = sevenZipExt // a 7z set's name (its volumes are <name>.001, ...)
+	}
+	if !strings.HasPrefix(name, pre) || !strings.HasSuffix(name, ext) {
 		return time.Time{}, false
 	}
-	ts := strings.TrimSuffix(strings.TrimPrefix(name, pre), archiveExt)
+	ts := strings.TrimSuffix(strings.TrimPrefix(name, pre), ext)
 	t, err := time.Parse(VersionTimeLayout, ts)
 	if err != nil {
 		return time.Time{}, false
@@ -83,6 +95,12 @@ func (e *Engine) listArchives(ctx context.Context, t *target, jobID string) ([]a
 		}
 		if ts, ok := parseArchiveName(jobID, path.Base(o.Remote())); ok {
 			out = append(out, archiveInfo{name: path.Base(o.Remote()), t: ts, size: o.Size()})
+		}
+	}
+	sizes, _, finished := sevenZipSets(entries)
+	for set, size := range sizes {
+		if ts, ok := parseArchiveName(jobID, set); ok && finished[set] {
+			out = append(out, archiveInfo{name: set, t: ts, size: size})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].t.After(out[j].t) })
@@ -414,7 +432,10 @@ func (e *Engine) runArchive(ctx context.Context, j *job, dry bool) (Result, erro
 	e.removePartials(dctx, j, dst, r.JobID)
 
 	j.phase(stepTransfer, "backup.phase.transfer")
-	name := archiveName(r.JobID, j.startedAt())
+	name := archiveName(r.JobID, j.startedAt(), dest.archiveExtOf())
+	if dest.sevenZip() {
+		return e.finish7z(dctx, j, dest, dst, name, srcs, res)
+	}
 	// Written as .partial and renamed when complete. A remote that can't
 	// rename server-side would download and re-upload the whole archive
 	// to rename it; there the upload goes to the final name directly
@@ -448,7 +469,7 @@ func (e *Engine) runArchive(ctx context.Context, j *job, dry bool) (Result, erro
 
 	if r.Options.Verify {
 		j.phase(stepVerify, "backup.phase.verify")
-		n, err := verifyArchive(dctx, dst, name)
+		n, err := e.verifyArchive(dctx, dst, name, "")
 		if err != nil {
 			return res, err
 		}
@@ -483,7 +504,7 @@ func (e *Engine) streamArchive(ctx context.Context, j *job, dst rfs.Fs, name str
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		err := w.writeAll(ctx, pw, srcs, conc)
+		err := w.writeTar(ctx, pw, srcs, conc, true)
 		pw.CloseWithError(err)
 		done <- err
 	}()
@@ -516,7 +537,7 @@ func (e *Engine) stageArchive(ctx context.Context, w *tarWriter, dst rfs.Fs, nam
 		tmp.Close()
 		_ = os.Remove(tmp.Name())
 	}()
-	if err := w.writeAll(ctx, tmp, srcs, conc); err != nil {
+	if err := w.writeTar(ctx, tmp, srcs, conc, true); err != nil {
 		if ctx.Err() != nil {
 			return nil, 0, context.Cause(ctx)
 		}
@@ -540,14 +561,20 @@ func (e *Engine) stageArchive(ctx context.Context, w *tarWriter, dst rfs.Fs, nam
 	return w.result(e.now()), o.Size(), nil
 }
 
-// writeAll writes the whole archive of srcs to out: tar through zstd.
-func (w *tarWriter) writeAll(ctx context.Context, out io.Writer, srcs []archiveSource, conc int) error {
+// writeTar writes the whole archive of srcs to out: a tar, through zstd
+// when compress is set (7z compresses its own).
+func (w *tarWriter) writeTar(ctx context.Context, out io.Writer, srcs []archiveSource, conc int, compress bool) error {
 	bw := bufio.NewWriterSize(out, 1<<20)
-	enc, err := zstd.NewWriter(bw, zstd.WithEncoderLevel(zstd.SpeedDefault), zstd.WithEncoderConcurrency(conc))
-	if err != nil {
-		return Errorf(CodeInternal, "zstd: %w", err)
+	var enc io.WriteCloser = nopWriteCloser{bw}
+	if compress {
+		z, err := zstd.NewWriter(bw, zstd.WithEncoderLevel(zstd.SpeedDefault), zstd.WithEncoderConcurrency(conc))
+		if err != nil {
+			return Errorf(CodeInternal, "zstd: %w", err)
+		}
+		enc = z
 	}
 	w.tw = tar.NewWriter(enc)
+	var err error
 	for _, s := range srcs {
 		if s.t.local {
 			err = w.writeLocal(s)
@@ -607,8 +634,16 @@ func writeIndex(ctx context.Context, dst rfs.Fs, name string, idx *archiveIndex,
 	return err
 }
 
-// readIndex loads an archive's index; ok=false when there is none.
-func readIndex(ctx context.Context, f rfs.Fs, archive string) (*archiveIndex, bool, error) {
+type nopWriteCloser struct{ io.Writer }
+
+func (nopWriteCloser) Close() error { return nil }
+
+// readIndex loads an archive's index; ok=false when there is none. pw
+// opens a 7z set's index.
+func (e *Engine) readIndex(ctx context.Context, f rfs.Fs, archive, pw string) (*archiveIndex, bool, error) {
+	if strings.HasSuffix(archive, sevenZipExt) {
+		return e.read7zIndex(ctx, f, archive, pw)
+	}
 	o, err := f.NewObject(ctx, archive+archiveIndexSuffix)
 	if err != nil {
 		if errIsNotFound(err) {
@@ -626,25 +661,37 @@ func readIndex(ctx context.Context, f rfs.Fs, archive string) (*archiveIndex, bo
 		return nil, false, Errorf(CodeIOError, "reading the archive index: %w", err)
 	}
 	defer dec.Close()
-	jd := json.NewDecoder(dec)
-	idx := &archiveIndex{}
-	if err := jd.Decode(&idx.header); err != nil {
+	idx, err := decodeIndex(dec)
+	if err != nil {
 		return nil, false, Errorf(CodeIOError, "reading the archive index: %w", err)
-	}
-	for {
-		var en indexEntry
-		if err := jd.Decode(&en); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, false, Errorf(CodeIOError, "reading the archive index: %w", err)
-		}
-		idx.entries = append(idx.entries, en)
 	}
 	return idx, true, nil
 }
 
-// openArchive opens an archive at f for reading its members in order.
-func openArchive(ctx context.Context, f rfs.Fs, name string) (*tar.Reader, func(), error) {
+// decodeIndex reads index NDJSON: the header, then one entry per line.
+func decodeIndex(r io.Reader) (*archiveIndex, error) {
+	jd := json.NewDecoder(r)
+	idx := &archiveIndex{}
+	if err := jd.Decode(&idx.header); err != nil {
+		return nil, err
+	}
+	for {
+		var en indexEntry
+		if err := jd.Decode(&en); err == io.EOF {
+			return idx, nil
+		} else if err != nil {
+			return nil, err
+		}
+		idx.entries = append(idx.entries, en)
+	}
+}
+
+// openArchive opens an archive at f for reading its members in order;
+// pw opens a 7z set.
+func (e *Engine) openArchive(ctx context.Context, f rfs.Fs, name, pw string) (*tar.Reader, func(), error) {
+	if strings.HasSuffix(name, sevenZipExt) {
+		return e.open7zArchive(ctx, f, name, pw)
+	}
 	o, err := f.NewObject(ctx, name)
 	if err != nil {
 		if errIsNotFound(err) {
@@ -670,8 +717,8 @@ func openArchive(ctx context.Context, f rfs.Fs, name string) (*tar.Reader, func(
 
 // scanArchiveIndex builds an index by reading the whole archive (when
 // its index file is missing).
-func scanArchiveIndex(ctx context.Context, f rfs.Fs, name string) (*archiveIndex, error) {
-	tr, closer, err := openArchive(ctx, f, name)
+func (e *Engine) scanArchiveIndex(ctx context.Context, f rfs.Fs, name, pw string) (*archiveIndex, error) {
+	tr, closer, err := e.openArchive(ctx, f, name, pw)
 	if err != nil {
 		return nil, err
 	}
@@ -686,7 +733,7 @@ func scanArchiveIndex(ctx context.Context, f rfs.Fs, name string) (*archiveIndex
 			break
 		}
 		if err != nil {
-			return nil, Errorf(CodeIOError, "reading the archive: %w", err)
+			return nil, damaged(err, "")
 		}
 		idx.entries = append(idx.entries, indexEntry{P: strings.TrimSuffix(h.Name, "/"), D: h.Typeflag == tar.TypeDir, S: h.Size, M: h.ModTime.Unix(), L: h.Linkname})
 		if h.Typeflag == tar.TypeReg {
@@ -699,8 +746,8 @@ func scanArchiveIndex(ctx context.Context, f rfs.Fs, name string) (*archiveIndex
 
 // verifyArchive decodes a whole archive (every checksum zstd carries is
 // checked) and returns how many files it holds.
-func verifyArchive(ctx context.Context, f rfs.Fs, name string) (int64, error) {
-	tr, closer, err := openArchive(ctx, f, name)
+func (e *Engine) verifyArchive(ctx context.Context, f rfs.Fs, name, pw string) (int64, error) {
+	tr, closer, err := e.openArchive(ctx, f, name, pw)
 	if err != nil {
 		return 0, err
 	}
@@ -715,15 +762,28 @@ func verifyArchive(ctx context.Context, f rfs.Fs, name string) (int64, error) {
 			return n, nil
 		}
 		if err != nil {
-			return 0, Errorf(CodeIOError, "the archive is damaged: %w", err)
+			return 0, damaged(err, "")
 		}
 		if _, err := io.Copy(io.Discard, tr); err != nil {
-			return 0, Errorf(CodeIOError, "the archive is damaged at %s: %w", h.Name, err)
+			return 0, damaged(err, h.Name)
 		}
 		if h.Typeflag == tar.TypeReg {
 			n++
 		}
 	}
+}
+
+// damaged reports an archive that can't be read through; a 7z error
+// (wrong password, missing volume) keeps its own code.
+func damaged(err error, at string) error {
+	var ee *Error
+	if errors.As(err, &ee) {
+		return err
+	}
+	if at != "" {
+		return Errorf(CodeIOError, "the archive is damaged at %s: %w", at, err)
+	}
+	return Errorf(CodeIOError, "the archive is damaged: %w", err)
 }
 
 // removePartials deletes half-written archives a crash left behind
@@ -745,6 +805,51 @@ func (e *Engine) removePartials(ctx context.Context, j *job, dst rfs.Fs, jobID s
 			}
 		}
 	}
+	// 7z sets without their index never finished uploading.
+	_, vols, finished := sevenZipSets(entries)
+	for set, names := range vols {
+		if _, ok := parseArchiveName(jobID, set); !ok || finished[set] {
+			continue
+		}
+		for _, n := range names {
+			if o, err := dst.NewObject(ctx, n); err == nil {
+				if err := o.Remove(ctx); err != nil {
+					j.logRaw(LogWarn, "could not remove the unfinished archive "+n+": "+err.Error())
+				}
+			}
+		}
+	}
+}
+
+// finish7z is runArchive's transfer and verify for an encrypted 7z set.
+func (e *Engine) finish7z(ctx context.Context, j *job, dest *target, dst rfs.Fs, set string, srcs []archiveSource, res Result) (Result, error) {
+	conc := 2
+	if j.req.Options.LowPriority {
+		conc = 1
+	}
+	w := &tarWriter{ctx: ctx, j: j, links: map[[2]uint64]string{}, log: func(lvl, msg string) { j.logRaw(lvl, msg) }}
+	idx, written, err := e.build7z(ctx, w, dst, set, srcs, dest.archivePassword(), dest.volumeBytes(), conc)
+	if err != nil {
+		return res, err
+	}
+	res.ArchiveName = set
+	res.Counts.Added = idx.header.Files
+	res.Counts.BytesTransferred = written
+	if archives, err := e.listArchives(ctx, dest, j.req.JobID); err == nil {
+		res.Counts.DestFiles = int64(len(archives))
+	}
+	j.logLine(LogInfo, "archive_done", "backup.log.archive_done", map[string]interface{}{"name": set, "bytes": written})
+	if j.req.Options.Verify {
+		j.phase(stepVerify, "backup.phase.verify")
+		n, err := e.verifyArchive(ctx, dst, set, dest.archivePassword())
+		if err != nil {
+			return res, err
+		}
+		if n != idx.header.Files {
+			return res, Errorf(CodeIOError, "the archive holds %d files, %d were written", n, idx.header.Files)
+		}
+	}
+	return res, nil
 }
 
 func (e *Engine) removeQuietly(ctx context.Context, dst rfs.Fs, name string) {

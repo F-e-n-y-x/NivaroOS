@@ -266,8 +266,13 @@
         "installed": {
           "app_management": true,
           "vm_manager": false
+        },
+        "sevenzip": {
+          "available": true,
+          "path": "/usr/bin/7z"
         }
-      }
+      },
+      "notes": "sevenzip: the 7z program encrypted archives need (package 7zip or p7zip-full); the wizard disables \"Encrypted archive\" without it."
     },
     {
       "id": "locations",
@@ -732,7 +737,11 @@
             "size_bytes": 128035676160
           },
           "sub_path": "NivaroOS Backups/Photos",
-          "label": "Sandisk 128G"
+          "label": "Sandisk 128G",
+          "encryption": {
+            "mode": "folder",
+            "recovery_key": false
+          }
         },
         "triggers": [
           {
@@ -788,7 +797,11 @@
           "stale_after_hours": 336
         },
         "needs_attention": "",
-        "migrated_from": null
+        "migrated_from": null,
+        "encryption_secret": {
+          "password": "correct horse battery staple",
+          "make_recovery_key": true
+        }
       },
       "response_type": "JobDetail",
       "response": {
@@ -813,7 +826,11 @@
             "size_bytes": 128035676160
           },
           "sub_path": "NivaroOS Backups/Photos",
-          "label": "Sandisk 128G"
+          "label": "Sandisk 128G",
+          "encryption": {
+            "mode": "folder",
+            "recovery_key": true
+          }
         },
         "triggers": [
           {
@@ -895,13 +912,15 @@
           "size_bytes": 210000000000,
           "versions_count": 6,
           "last_success": "2026-09-24T03:12:40+02:00"
-        }
+        },
+        "recovery_key": "K7Q2MZ-3XWPLA-N4R8TD-YB6EJC-H2FVQS-9GUKAW-PM5RXE-T3LZ7N"
       },
       "errors": [
         "validation (400, field_errors)",
-        "rate_limited (429)"
+        "rate_limited (429)",
+        "validation: encryption_secret.password required | out_of_range (8..1024 characters) | invalid (line breaks) | wrong_password (an encrypted backup is already there and this password or recovery key doesn't open it); dest.encryption.mode invalid | sevenzip_missing"
       ],
-      "notes": "id, revision, needs_attention, migrated_from, created_at and updated_at are server-owned and ignored."
+      "notes": "id, revision, needs_attention, migrated_from, created_at and updated_at are server-owned and ignored. dest.encryption (spec §18): mode \"folder\" (rclone crypt: contents and names encrypted, file by file; incremental, versions and per-file restore keep working) or \"archive\" (type archive only: one full 7z per run, AES-256 with encrypted headers, split into volume_bytes volumes, default 3900000000). recovery_key is server-owned. encryption_secret is write-only: the password is stored sealed under the host key and never returned. With make_recovery_key, recovery_key is in this response once and stored nowhere; it unlocks the backup too. When the destination already holds an encrypted backup (its .nivaroos-encryption.json), its salt is reused and the password (or encryption_secret.recovery_key) must open it. dest.encryption can't be changed by PUT (validation dest.encryption invalid): changing the password means a new encrypted backup."
     },
     {
       "id": "jobs_get",
@@ -1383,7 +1402,7 @@
       "response": {
         "run_id": "run_01J8Z3Q4K5M6N7P8Q9R0S1T2V3"
       },
-      "notes": "Coalesces: when the job already has a queued/running run, that run's id is returned and its coalesced count grows. preview:true queues a kind=preview run."
+      "notes": "Coalesces: when the job already has a queued/running run, that run's id is returned and its coalesced count grows. preview:true queues a kind=preview run. check:true queues a kind=verify run (\"Check backup\"): copy/mirror compare source and destination (rclone cryptcheck for an encrypted folder; a destination without hashes gets 20 files decrypted in full and the rest compared by size), archive jobs decrypt and read their newest archive through."
     },
     {
       "id": "jobs_reconnect_dest",
@@ -1504,6 +1523,28 @@
         }
       },
       "notes": "Re-adopts the folder at the destination: rewrites its marker with this job's dest_folder_id and clears needs_attention dest_changed. The UI confirms first."
+    },
+    {
+      "id": "jobs_encryption_test",
+      "method": "POST",
+      "path": "/jobs/:id/encryption/test",
+      "auth": "jwt",
+      "envelope": true,
+      "status": 200,
+      "request_type": "EncryptionTestRequest",
+      "request": {
+        "password": "correct horse battery staple"
+      },
+      "response_type": "EncryptionTestResult",
+      "response": {
+        "ok": true
+      },
+      "errors": [
+        "invalid_state (409: the job isn't encrypted)",
+        "encryption_locked (409)",
+        "rate_limited (429)"
+      ],
+      "notes": "\"Test password\": whether the password (or the recovery key) unlocks this job's encrypted backup. Compared in constant time; the stored password is never returned."
     },
     {
       "id": "validate",

@@ -141,7 +141,7 @@ func (e *Engine) downloadArchive(ctx context.Context, t *target, archive string,
 	}
 	single := ""
 	if len(paths) == 1 {
-		if idx, ok, err := readIndex(ctx, f, archive); err == nil && ok {
+		if idx, ok, err := e.readIndex(ctx, f, archive, t.archivePassword()); err == nil && ok {
 			for _, en := range idx.entries {
 				if en.P == paths[0] && !en.D && en.L == "" {
 					single = en.P
@@ -149,7 +149,7 @@ func (e *Engine) downloadArchive(ctx context.Context, t *target, archive string,
 			}
 		}
 	}
-	tr, closer, err := openArchive(ctx, f, archive)
+	tr, closer, err := e.openArchive(ctx, f, archive, t.archivePassword())
 	if err != nil {
 		return nil, err
 	}

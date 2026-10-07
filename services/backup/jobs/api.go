@@ -87,6 +87,7 @@ func (s *Service) routes(m *http.ServeMux) {
 	m.HandleFunc("POST /jobs/{id}/toggle", s.handleJobToggle)
 	m.HandleFunc("POST /jobs/{id}/run", s.handleJobRun)
 	m.HandleFunc("POST /jobs/{id}/reconnect-dest", s.handleReconnectDest)
+	m.HandleFunc("POST /jobs/{id}/encryption/test", s.handleEncryptionTest)
 	m.HandleFunc("GET /jobs/{id}/versions", s.handleVersions)
 	m.HandleFunc("GET /jobs/{id}/versions/{vid}/browse", s.handleVersionBrowse)
 	m.HandleFunc("POST /jobs/{id}/restore", s.handleRestore)
@@ -235,6 +236,9 @@ func (s *Service) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		Version: s.cfg.Version, Timezone: tz, UTCOffset: off, ClockArmed: isArmed(s.clock),
 		MaxConcurrent: settings.MaxConcurrent,
 		Restic:        ResticCap{Path: "/usr/lib/nivaroos/bin/restic", Min: "0.14.0"},
+	}
+	if p := engine.SevenZip(); p != "" {
+		caps.SevenZip = SevenZipCap{Available: true, Path: p}
 	}
 	if cs, ok := s.clock.(ClockStatus); ok {
 		caps.ClockSynced = cs.Synced()
@@ -514,15 +518,43 @@ func (s *Service) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		writeValidation(w, fe)
 		return
 	}
+	recovery := ""
+	if norm.Dest.Encryption != nil {
+		efe := fieldErrors{}
+		keys, rk, err := s.prepareCryptKeys(r.Context(), &norm, in.EncryptionSecret, efe)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if len(efe) > 0 {
+			writeValidation(w, efe)
+			return
+		}
+		norm.ID, recovery = NewJobID(), rk
+		if err := s.store.SaveCryptKeys(norm.ID, keys); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	norm.EncryptionSecret = nil
 	j, err := s.store.CreateJob(norm, s.now())
+	if err != nil {
+		if norm.ID != "" {
+			_ = s.store.DropCryptKeys(norm.ID)
+		}
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, "create", j.ID, fmt.Sprintf("encrypted=%v", j.Dest.Encryption != nil))
+	s.rememberDrives(j, nil)
+	s.jobChanged(j, JobChangeCreated)
+	d, err := s.jobDetail(r.Context(), j)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	s.audit(r, "create", j.ID, "")
-	s.rememberDrives(j, nil)
-	s.jobChanged(j, JobChangeCreated)
-	s.respondJob(w, r, http.StatusCreated, j)
+	d.RecoveryKey = recovery
+	writeOK(w, http.StatusCreated, d)
 }
 
 func (s *Service) handleJobUpdate(w http.ResponseWriter, r *http.Request) {
@@ -543,6 +575,13 @@ func (s *Service) handleJobUpdate(w http.ResponseWriter, r *http.Request) {
 		writeValidation(w, fe)
 		return
 	}
+	norm.EncryptionSecret = nil
+	if prev, err := s.store.GetJob(id); err == nil && encryptionMode(prev.Dest) != encryptionMode(norm.Dest) {
+		// The keys are derived from the password the backup was made
+		// with; encrypting (or decrypting) it means a new backup.
+		writeValidation(w, map[string]string{"dest.encryption": string(FieldInvalid)})
+		return
+	}
 	destChanged, wasUnresolved := false, false
 	j, err := s.store.UpdateJob(id, in.Revision, norm, s.now(), func(prev Job, stored *Job) {
 		// An edit clears the "imported" badge, and a now valid imported
@@ -553,6 +592,9 @@ func (s *Service) handleJobUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		// A new destination is a new backup folder with its own marker;
 		// the old folder's "changed" warning no longer applies.
+		if prev.Dest.Encryption != nil && stored.Dest.Encryption != nil {
+			stored.Dest.Encryption.RecoveryKey = prev.Dest.Encryption.RecoveryKey
+		}
 		if !sameEndpoint(prev.Dest, stored.Dest) {
 			destChanged = true
 			stored.DestFolderID = NewUUID4()
@@ -684,7 +726,10 @@ func (s *Service) handleJobRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := KindBackup
-	if req.Preview {
+	switch {
+	case req.Check:
+		kind = KindVerify
+	case req.Preview:
 		kind = KindPreview
 	}
 	runID, _, err := s.queue.Enqueue(j, EnqueueOptions{Kind: kind, Trigger: RunByManual})
@@ -791,6 +836,30 @@ func (s *Service) handleValidate(w http.ResponseWriter, r *http.Request) {
 // engine's prechecks. It never saves.
 func (s *Service) validate(ctx context.Context, in Job) ValidateResult {
 	norm, fe := s.normalizeJob(ctx, in, in.ID)
+	if norm.Dest.Encryption != nil {
+		if sec := in.EncryptionSecret; in.ID == "" && (sec == nil || sec.RecoveryKey == "") {
+			pw := ""
+			if sec != nil {
+				pw = sec.Password
+			}
+			if code := checkPassword(pw); code != "" {
+				if fe == nil {
+					fe = map[string]string{}
+				}
+				fe["encryption_secret.password"] = string(code)
+			}
+		}
+		// The prechecks write nothing and read only the marker, free
+		// space and quirks; stand-in keys do for them.
+		enc := *norm.Dest.Encryption
+		enc.Keys = &engine.CryptKeys{Password: "precheck", Salt: "precheck"}
+		if in.ID != "" {
+			if stored, err := s.store.GetJob(in.ID); err == nil && stored.Dest.Encryption != nil && stored.Dest.Encryption.Keys != nil {
+				enc.Keys = stored.Dest.Encryption.Keys
+			}
+		}
+		norm.Dest.Encryption = &enc
+	}
 	res := ValidateResult{OK: len(fe) == 0, Checks: []Check{}, FieldErrors: fe}
 	add := func(id string, st engine.CheckStatus, code ErrorCode) {
 		c := Check{ID: id, Status: st, Code: code, MsgKey: "backup.check." + id}

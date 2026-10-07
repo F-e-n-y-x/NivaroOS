@@ -15,6 +15,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -148,7 +149,61 @@ type Endpoint struct {
 	// as FolderPreset.ID). It drives hook defaults, the
 	// AppData/VM-to-cloud rule and the UI; it never changes resolution.
 	Preset string `json:"preset,omitempty"`
+	// Encryption is only ever set on a job's destination: the backup is
+	// written encrypted (spec §18). Nil = plain files.
+	Encryption *Encryption `json:"encryption,omitempty"`
 }
+
+// Encryption modes (Encryption.Mode).
+const (
+	// EncryptFolder is rclone crypt over the destination: every file's
+	// contents (NaCl secretbox, XSalsa20-Poly1305, 256-bit key) and every
+	// file and folder name are encrypted, file by file, so incremental
+	// runs, versions and single-file restores keep working.
+	EncryptFolder = "folder"
+	// EncryptArchive makes archive jobs write one 7z per run (AES-256,
+	// headers encrypted so names are hidden too), split into volumes.
+	EncryptArchive = "archive"
+)
+
+// DefaultVolumeBytes is the default 7z volume size: under the 4 GB file
+// limit of TeraBox's free plan (and FAT32).
+const DefaultVolumeBytes int64 = 3_900_000_000
+
+// KeyFileName is the encryption key file beside the marker at an
+// encrypted destination. It holds no key: only the salt (rclone's
+// password2), a password check and the recovery-key slot, so the backup
+// can be opened again after a reinstall.
+const KeyFileName = ".nivaroos-encryption.json"
+
+// Encryption says how a destination is encrypted.
+type Encryption struct {
+	Mode string `json:"mode"` // EncryptFolder | EncryptArchive
+	// VolumeBytes is the 7z volume size (archive mode; 0 = default).
+	VolumeBytes int64 `json:"volume_bytes,omitempty"`
+	// RecoveryKey: a recovery key was made when the job was created
+	// (server-owned).
+	RecoveryKey bool `json:"recovery_key"`
+	// Keys are attached by the job side for each call. They are never
+	// stored with the job, sent to a client or logged. An Encryption
+	// without Keys fails closed (encryption_locked): nothing is ever
+	// written unencrypted.
+	Keys *CryptKeys `json:"-"`
+}
+
+// CryptKeys unlock an encrypted destination.
+type CryptKeys struct {
+	Password string // the user's password: rclone crypt "password", the 7z password
+	Salt     string // rclone crypt "password2" (folder mode)
+	// KeyFile is KeyFileName's content, written with the marker.
+	KeyFile []byte
+}
+
+// String never includes the secrets, so keys are safe in %v logs.
+func (k CryptKeys) String() string { return "crypt keys (redacted)" }
+
+// GoString keeps %#v from printing them too.
+func (k CryptKeys) GoString() string { return k.String() }
 
 // DevMatch pins a removable drive beyond its filesystem UUID.
 type DevMatch struct {
@@ -276,6 +331,9 @@ type Resolved struct {
 	// Marker is the destination identity marker found at Root/SubPath
 	// (spec §6.2), or null when there is none.
 	Marker *Marker `json:"marker"`
+	// KeyFile is the destination's KeyFileName content, when there is
+	// one (an encrypted backup already lives there).
+	KeyFile json.RawMessage `json:"key_file,omitempty"`
 	// LocalPath is the absolute, symlink-free folder of an online local
 	// endpoint (volume, usb, merge), checked against the allowed roots
 	// - the one path the job side may write into directly (phone
@@ -542,7 +600,7 @@ const (
 	OpSync          Op = "sync"           // mirror with the recycle folder (job type mirror)
 	OpArchive       Op = "archive"        // one .tar.zst of all sources (job type archive)
 	OpPlan          Op = "plan"           // dry run of copy/sync/archive: counts + preview list, no writes
-	OpCheck         Op = "check"          // one-way verify of source against destination
+	OpCheck         Op = "check"          // one-way verify of source against destination (PlanOp archive: read the newest archive through)
 	OpPurgeVersions Op = "purge_versions" // drop recycle folders older than Retention.VersionsDays
 	OpPurgeArchives Op = "purge_archives" // keep Retention.KeepLast archives
 	OpRestore       Op = "restore"        // copy paths of a version (any kind) to a target

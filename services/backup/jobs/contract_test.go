@@ -48,6 +48,8 @@ var apiTypes = map[string]func() interface{}{
 	"ReconnectRequest":      func() interface{} { return new(ReconnectRequest) },
 	"RunRequest":            func() interface{} { return new(RunRequest) },
 	"RunStarted":            func() interface{} { return new(RunStarted) },
+	"EncryptionTestRequest": func() interface{} { return new(EncryptionTestRequest) },
+	"EncryptionTestResult":  func() interface{} { return new(EncryptionTestResult) },
 	"ValidateResult":        func() interface{} { return new(ValidateResult) },
 	"CronPreviewRequest":    func() interface{} { return new(CronPreviewRequest) },
 	"CronPreview":           func() interface{} { return new(CronPreview) },

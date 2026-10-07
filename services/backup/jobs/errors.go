@@ -66,6 +66,9 @@ const (
 	ErrCloudAuth                          = engine.CodeCloudAuth
 	ErrNoSpace                            = engine.CodeNoSpace
 	ErrInvalidFilter                      = engine.CodeInvalidFilter
+	ErrEncryptionLocked                   = engine.CodeEncryptionLocked
+	ErrWrongPassword                      = engine.CodeWrongPassword
+	ErrSevenZipMissing                    = engine.CodeSevenZipMissing
 	ErrAppdataCloudNeedsArchive ErrorCode = "appdata_cloud_needs_archive"
 	ErrWindowClosed             ErrorCode = "window_closed" // outside the time window (skip/fail)
 	// hook
@@ -152,6 +155,9 @@ var codeTable = map[ErrorCode]CodeInfo{
 	ErrCloudAuth:                {ClassConfig, []Action{ActFixSignIn}},
 	ErrNoSpace:                  {ClassConfig, []Action{ActOpenStorage, ActChangeDest}},
 	ErrInvalidFilter:            {ClassConfig, []Action{ActEditFilters}},
+	ErrEncryptionLocked:         {ClassConfig, []Action{ActViewLog}},
+	ErrWrongPassword:            {ClassConfig, []Action{ActViewLog}},
+	ErrSevenZipMissing:          {ClassConfig, []Action{ActViewLog}},
 	ErrAppdataCloudNeedsArchive: {ClassConfig, []Action{ActSwitchArchive}},
 	ErrWindowClosed:             {ClassConfig, []Action{ActEditJob}},
 

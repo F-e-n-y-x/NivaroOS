@@ -29,19 +29,20 @@ var CronHumanKeys = map[string][]string{
 
 // RunSummaryKeys are Run.Summary keys.
 var RunSummaryKeys = map[string][]string{
-	"backup.run.summary.ok":          {"added", "changed", "deleted", "bytes"},
-	"backup.run.summary.ok_nothing":  nil, // nothing had changed
-	"backup.run.summary.partial":     {"added", "changed", "errors"},
-	"backup.run.summary.failed":      {"reason_key"},
-	"backup.run.summary.skipped":     {"reason_key"},
-	"backup.run.summary.deferred":    {"reason_key", "retry_at"},
-	"backup.run.summary.waiting":     {"guard_key", "pct"},
-	"backup.run.summary.cancelled":   {"reason_key"},
-	"backup.run.summary.interrupted": nil,
-	"backup.run.summary.preview":     {"add", "update", "delete"},
-	"backup.run.summary.restored":    {"files", "bytes"},
-	"backup.run.summary.verified":    {"files"},
-	"backup.run.summary.pruned":      {"removed"},
+	"backup.run.summary.ok":             {"added", "changed", "deleted", "bytes"},
+	"backup.run.summary.ok_nothing":     nil, // nothing had changed
+	"backup.run.summary.partial":        {"added", "changed", "errors"},
+	"backup.run.summary.failed":         {"reason_key"},
+	"backup.run.summary.skipped":        {"reason_key"},
+	"backup.run.summary.deferred":       {"reason_key", "retry_at"},
+	"backup.run.summary.waiting":        {"guard_key", "pct"},
+	"backup.run.summary.cancelled":      {"reason_key"},
+	"backup.run.summary.interrupted":    nil,
+	"backup.run.summary.preview":        {"add", "update", "delete"},
+	"backup.run.summary.restored":       {"files", "bytes"},
+	"backup.run.summary.verified":       {"files"},
+	"backup.run.summary.check_problems": {"files", "problems"},
+	"backup.run.summary.pruned":         {"removed"},
 }
 
 // RunStepKeys are RunStep.Key values.
@@ -63,28 +64,29 @@ var RunStepKeys = map[string][]string{
 // the LogLine.Code ("backup.log.copied" -> "copied"). Engine rclone lines
 // use Code "raw" with no key.
 var LogKeys = map[string][]string{
-	"backup.log.copied":         {"path"},
-	"backup.log.updated":        {"path"},
-	"backup.log.recycled":       {"path"},
-	"backup.log.skipped":        {"path", "reason_key"},
-	"backup.log.file_error":     {"path", "reason_key"},
-	"backup.log.phase":          {"phase_key"},
-	"backup.log.check":          {"check_key", "status"},
-	"backup.log.app_stopped":    {"app"},
-	"backup.log.app_started":    {"app"},
-	"backup.log.app_was_off":    {"app"},
-	"backup.log.vm_shutdown":    {"vm"},
-	"backup.log.vm_started":     {"vm"},
-	"backup.log.vm_was_off":     {"vm"},
-	"backup.log.guard_tripped":  {"guard_key", "pct", "limit"},
-	"backup.log.decision":       {"decision"},
-	"backup.log.retry":          {"attempt", "max", "retry_at"},
-	"backup.log.marker_written": nil,
-	"backup.log.archive_done":   {"name", "bytes"},
-	"backup.log.pruned":         {"name"},
-	"backup.log.replayed":       nil, // post hooks replayed after a crash
-	"backup.log.finished":       {"status_key"},
-	"backup.log.lines_omitted":  {"count"}, // per-file lines past the engine's cap
+	"backup.log.copied":          {"path"},
+	"backup.log.updated":         {"path"},
+	"backup.log.recycled":        {"path"},
+	"backup.log.skipped":         {"path", "reason_key"},
+	"backup.log.file_error":      {"path", "reason_key"},
+	"backup.log.phase":           {"phase_key"},
+	"backup.log.check":           {"check_key", "status"},
+	"backup.log.app_stopped":     {"app"},
+	"backup.log.app_started":     {"app"},
+	"backup.log.app_was_off":     {"app"},
+	"backup.log.vm_shutdown":     {"vm"},
+	"backup.log.vm_started":      {"vm"},
+	"backup.log.vm_was_off":      {"vm"},
+	"backup.log.guard_tripped":   {"guard_key", "pct", "limit"},
+	"backup.log.decision":        {"decision"},
+	"backup.log.retry":           {"attempt", "max", "retry_at"},
+	"backup.log.marker_written":  nil,
+	"backup.log.archive_done":    {"name", "bytes"},
+	"backup.log.archive_checked": {"name", "files"},
+	"backup.log.pruned":          {"name"},
+	"backup.log.replayed":        nil, // post hooks replayed after a crash
+	"backup.log.finished":        {"status_key"},
+	"backup.log.lines_omitted":   {"count"}, // per-file lines past the engine's cap
 }
 
 // NotifyKeys are notification texts (spec §10.4). The service renders the

@@ -14,7 +14,7 @@ import (
 )
 
 // hiddenNames are never shown in a listing: the engine's own bookkeeping.
-var hiddenNames = map[string]bool{VersionsDir: true, MarkerFile: true}
+var hiddenNames = map[string]bool{VersionsDir: true, MarkerFile: true, KeyFileName: true}
 
 // Browse lists one directory of an endpoint, or of a version of a job's
 // destination, never above the endpoint root.
@@ -38,7 +38,7 @@ func (e *Engine) Browse(ctx context.Context, req BrowseRequest) (BrowseResult, e
 	switch {
 	case archive != "":
 		entries, err = e.browseArchive(ctx, t, archive, rel)
-	case t.local:
+	case t.local && !t.encrypted():
 		entries, err = browseLocal(t, joinSub(dir, rel), e.policy)
 	default:
 		entries, err = browseRemote(ctx, t, joinSub(dir, rel))
@@ -153,12 +153,12 @@ func (e *Engine) browseArchive(ctx context.Context, t *target, archive, rel stri
 	if err != nil {
 		return nil, engineErr(err, "opening the destination")
 	}
-	idx, ok, err := readIndex(ctx, f, archive)
+	idx, ok, err := e.readIndex(ctx, f, archive, t.archivePassword())
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		idx, err = scanArchiveIndex(ctx, f, archive)
+		idx, err = e.scanArchiveIndex(ctx, f, archive, t.archivePassword())
 		if err != nil {
 			return nil, err
 		}

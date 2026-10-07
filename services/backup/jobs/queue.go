@@ -155,6 +155,12 @@ func locksFor(job Job, run RunRow) []lockKey {
 		}
 	case KindPrune:
 		locks = append(locks, writeLock(job.Dest))
+	case KindVerify:
+		locks = append(locks, jobLock(job.ID), readLock(job.Dest))
+		for _, s := range job.Sources {
+			locks = append(locks, readLock(s))
+		}
+		return locks // no hooks around a check
 	default:
 		locks = append(locks, jobLock(job.ID), writeLock(job.Dest))
 		for _, s := range job.Sources {

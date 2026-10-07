@@ -173,7 +173,7 @@ func (e *Engine) runRestore(ctx context.Context, j *job) (Result, error) {
 		if err != nil {
 			return res, engineErr(err, "opening the backup")
 		}
-		err = e.restoreArchive(rctx, j, src, archive, paths, tgt, tf, guard, spec, c)
+		err = e.restoreArchive(rctx, j, src, archive, dest.archivePassword(), paths, tgt, tf, guard, spec, c)
 		fillRestoreResult(&res, c)
 		return res, err
 	}
@@ -354,8 +354,8 @@ func (e *Engine) restoreOne(ctx context.Context, j *job, o fs.Object, tf fs.Fs, 
 }
 
 // restoreArchive extracts the selected members of an archive.
-func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive string, paths []string, tgt *target, tf fs.Fs, guard *mountGuard, spec RestoreSpec, c *restoreCounter) error {
-	if idx, ok, err := readIndex(ctx, src, archive); err == nil && ok {
+func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive, pw string, paths []string, tgt *target, tf fs.Fs, guard *mountGuard, spec RestoreSpec, c *restoreCounter) error {
+	if idx, ok, err := e.readIndex(ctx, src, archive, pw); err == nil && ok {
 		var files, bytes int64
 		for _, en := range idx.entries {
 			if !en.D && selected(paths, en.P) {
@@ -368,7 +368,7 @@ func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive 
 			return Errorf(CodeNoSpace, "restoring needs %d bytes, the folder has %d free", bytes, *free)
 		}
 	}
-	tr, closer, err := openArchive(ctx, src, archive)
+	tr, closer, err := e.openArchive(ctx, src, archive, pw)
 	if err != nil {
 		return err
 	}
@@ -383,7 +383,7 @@ func (e *Engine) restoreArchive(ctx context.Context, j *job, src fs.Fs, archive 
 			break
 		}
 		if err != nil {
-			return Errorf(CodeIOError, "reading the archive: %w", err)
+			return damaged(err, "")
 		}
 		rel, err := cleanSubPath(strings.TrimSuffix(h.Name, "/"))
 		if err != nil || rel == "" {

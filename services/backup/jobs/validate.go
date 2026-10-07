@@ -108,6 +108,7 @@ func NormalizeJob(in Job, env ValidateEnv) (Job, map[string]string) {
 		normalizeEndpoint(&j.Sources[i], fmt.Sprintf("sources[%d]", i), fe)
 	}
 	normalizeEndpoint(&j.Dest, "dest", fe)
+	normalizeEncryption(&j, fe)
 	for i, src := range j.Sources {
 		checkNotInside(src, j.Dest, j.Filters, fmt.Sprintf("sources[%d]", i), fe)
 	}

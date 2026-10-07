@@ -27,6 +27,7 @@ export const ERROR_CODES = Object.freeze({
 	dest_offline: Object.freeze({ class: 'transient', actions: Object.freeze(['how_to_run', 'change_dest']) }),
 	device_failed: Object.freeze({ class: 'lifecycle', actions: Object.freeze(['view_log']) }),
 	empty_source: Object.freeze({ class: 'guard', actions: Object.freeze(['review', 'edit_job']) }),
+	encryption_locked: Object.freeze({ class: 'config', actions: Object.freeze(['view_log']) }),
 	endpoint_unknown: Object.freeze({ class: 'config', actions: Object.freeze(['edit_job']) }),
 	engine_unavailable: Object.freeze({ class: 'transient', actions: Object.freeze(['view_log']) }),
 	fat32_file_too_large: Object.freeze({ class: 'config', actions: Object.freeze(['edit_filters', 'change_dest']) }),
@@ -45,6 +46,7 @@ export const ERROR_CODES = Object.freeze({
 	rate_limited: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	revision_conflict: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	session_closed: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
+	sevenzip_missing: Object.freeze({ class: 'config', actions: Object.freeze(['view_log']) }),
 	source_offline: Object.freeze({ class: 'transient', actions: Object.freeze(['how_to_run', 'edit_job']) }),
 	store_unavailable: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	system_disk_full: Object.freeze({ class: 'transient', actions: Object.freeze(['open_storage', 'retry']) }),
@@ -54,7 +56,8 @@ export const ERROR_CODES = Object.freeze({
 	validation: Object.freeze({ class: 'api', actions: Object.freeze([]) }),
 	vm_shutdown_timeout: Object.freeze({ class: 'hook', actions: Object.freeze(['view_log', 'edit_hooks']) }),
 	vm_start_failed: Object.freeze({ class: 'hook', actions: Object.freeze(['view_log']) }),
-	window_closed: Object.freeze({ class: 'config', actions: Object.freeze(['edit_job']) })
+	window_closed: Object.freeze({ class: 'config', actions: Object.freeze(['edit_job']) }),
+	wrong_password: Object.freeze({ class: 'config', actions: Object.freeze(['view_log']) })
 })
 
 export const ERROR_CLASSES = Object.freeze(['transient', 'deferred', 'guard', 'config', 'hook', 'lifecycle', 'api'])

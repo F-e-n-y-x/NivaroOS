@@ -38,41 +38,9 @@ func machineHost(path string) string {
 // §6.2). No marker is (nil, nil); a marker that can't be parsed is an
 // error, because it means someone else's file sits where ours should.
 func (e *Engine) readMarker(ctx context.Context, t *target) (*Marker, error) {
-	var raw []byte
-	if t.local {
-		f, err := os.Open(filepath.Join(t.path, MarkerFile))
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, Errorf(CodeIOError, "reading the destination marker: %w", err)
-		}
-		defer f.Close()
-		raw, err = io.ReadAll(io.LimitReader(f, maxMarkerSize+1))
-		if err != nil {
-			return nil, Errorf(CodeIOError, "reading the destination marker: %w", err)
-		}
-	} else {
-		f, err := t.fsAt(ctx, "", fsOpts{})
-		if err != nil {
-			return nil, &Error{Code: classifyError(err), Detail: "opening the destination: " + redact(err.Error(), t.smb), Err: err}
-		}
-		o, err := f.NewObject(ctx, MarkerFile)
-		if errors.Is(err, fs.ErrorObjectNotFound) || errors.Is(err, fs.ErrorDirNotFound) || errors.Is(err, fs.ErrorIsDir) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, &Error{Code: classifyError(err), Detail: "reading the destination marker: " + redact(err.Error(), t.smb), Err: err}
-		}
-		rc, err := o.Open(ctx)
-		if err != nil {
-			return nil, &Error{Code: classifyError(err), Detail: "reading the destination marker: " + redact(err.Error(), t.smb), Err: err}
-		}
-		raw, err = io.ReadAll(io.LimitReader(rc, maxMarkerSize+1))
-		_ = rc.Close()
-		if err != nil {
-			return nil, &Error{Code: classifyError(err), Detail: "reading the destination marker: " + redact(err.Error(), t.smb), Err: err}
-		}
+	raw, err := readSmallFile(ctx, t, MarkerFile)
+	if raw == nil || err != nil {
+		return nil, err
 	}
 	if len(raw) > maxMarkerSize {
 		return nil, Errorf(CodeDestMarkerMismatch, "%s at %s is not a NivaroOS backup marker (too large)", MarkerFile, t.display)
@@ -82,6 +50,62 @@ func (e *Engine) readMarker(ctx context.Context, t *target) (*Marker, error) {
 		return nil, Errorf(CodeDestMarkerMismatch, "%s at %s is not a NivaroOS backup marker", MarkerFile, t.display)
 	}
 	return &m, nil
+}
+
+// readKeyFile reads an encrypted destination's key file (nil when there
+// is none). It is checked for shape only; the job side reads it.
+func (e *Engine) readKeyFile(ctx context.Context, t *target) (json.RawMessage, error) {
+	raw, err := readSmallFile(ctx, t, KeyFileName)
+	if raw == nil || err != nil {
+		return nil, err
+	}
+	if len(raw) > maxMarkerSize || !json.Valid(raw) {
+		return nil, Errorf(CodeDestMarkerMismatch, "%s at %s is not a NivaroOS key file", KeyFileName, t.display)
+	}
+	return json.RawMessage(raw), nil
+}
+
+// readSmallFile reads one of the engine's own files at the root of a
+// target, as it is on disk (never through crypt): nil when missing, at
+// most maxMarkerSize+1 bytes.
+func readSmallFile(ctx context.Context, t *target, name string) ([]byte, error) {
+	var raw []byte
+	if t.local {
+		f, err := os.Open(filepath.Join(t.path, name))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, Errorf(CodeIOError, "reading %s: %w", name, err)
+		}
+		defer f.Close()
+		raw, err = io.ReadAll(io.LimitReader(f, maxMarkerSize+1))
+		if err != nil {
+			return nil, Errorf(CodeIOError, "reading %s: %w", name, err)
+		}
+		return raw, nil
+	}
+	f, err := t.plainFsAt(ctx, "", fsOpts{})
+	if err != nil {
+		return nil, &Error{Code: classifyError(err), Detail: "opening the destination: " + redact(err.Error(), t.smb), Err: err}
+	}
+	o, err := f.NewObject(ctx, name)
+	if errors.Is(err, fs.ErrorObjectNotFound) || errors.Is(err, fs.ErrorDirNotFound) || errors.Is(err, fs.ErrorIsDir) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, &Error{Code: classifyError(err), Detail: "reading " + name + ": " + redact(err.Error(), t.smb), Err: err}
+	}
+	rc, err := o.Open(ctx)
+	if err != nil {
+		return nil, &Error{Code: classifyError(err), Detail: "reading " + name + ": " + redact(err.Error(), t.smb), Err: err}
+	}
+	raw, err = io.ReadAll(io.LimitReader(rc, maxMarkerSize+1))
+	_ = rc.Close()
+	if err != nil {
+		return nil, &Error{Code: classifyError(err), Detail: "reading " + name + ": " + redact(err.Error(), t.smb), Err: err}
+	}
+	return raw, nil
 }
 
 // checkMarker is the identity check before any write (spec §6.2): the
@@ -120,15 +144,28 @@ func (e *Engine) writeMarker(ctx context.Context, t *target, jobID, destFolderID
 		return Errorf(CodeInternal, "encoding the marker: %w", err)
 	}
 	raw = append(raw, '\n')
-	if t.local {
-		return writeFileAtomic(filepath.Join(t.path, MarkerFile), raw, 0o600)
+	if t.enc != nil && len(t.enc.Keys.KeyFile) > 0 {
+		// The key file first: a marker without it would let a later run
+		// of a job with other keys write into this folder.
+		if err := e.writeSmallFile(ctx, t, KeyFileName, t.enc.Keys.KeyFile); err != nil {
+			return err
+		}
 	}
-	f, err := t.fsAt(ctx, "", fsOpts{})
+	return e.writeSmallFile(ctx, t, MarkerFile, raw)
+}
+
+// writeSmallFile writes one of the engine's own files at the root of a
+// target, as it is on disk (never through crypt).
+func (e *Engine) writeSmallFile(ctx context.Context, t *target, name string, raw []byte) error {
+	if t.local {
+		return writeFileAtomic(filepath.Join(t.path, name), raw, 0o600)
+	}
+	f, err := t.plainFsAt(ctx, "", fsOpts{})
 	if err != nil {
 		return &Error{Code: classifyError(err), Detail: redact(err.Error(), t.smb), Err: err}
 	}
-	if _, err := operations.Rcat(ctx, f, MarkerFile, io.NopCloser(bytes.NewReader(raw)), e.now(), nil); err != nil {
-		return &Error{Code: classifyError(err), Detail: "writing the destination marker: " + redact(err.Error(), t.smb), Err: err}
+	if _, err := operations.Rcat(ctx, f, name, io.NopCloser(bytes.NewReader(raw)), e.now(), nil); err != nil {
+		return &Error{Code: classifyError(err), Detail: "writing " + name + ": " + redact(err.Error(), t.smb), Err: err}
 	}
 	return nil
 }

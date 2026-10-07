@@ -146,7 +146,17 @@ func validateRequest(req JobRequest) error {
 		return Errorf(CodeInternal, "run_id is required")
 	}
 	switch req.Op {
-	case OpCopy, OpSync, OpCheck:
+	case OpCheck:
+		if req.PlanOp == OpArchive {
+			if req.JobID == "" {
+				return Errorf(CodeInternal, "check of archives needs job_id")
+			}
+			break
+		}
+		if len(req.Sources) != 1 {
+			return Errorf(CodeInternal, "%s takes exactly one source, got %d", req.Op, len(req.Sources))
+		}
+	case OpCopy, OpSync:
 		if len(req.Sources) != 1 {
 			return Errorf(CodeInternal, "%s takes exactly one source, got %d", req.Op, len(req.Sources))
 		}

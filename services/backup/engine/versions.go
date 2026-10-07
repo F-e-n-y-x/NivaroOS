@@ -105,7 +105,7 @@ func (e *Engine) ListVersions(ctx context.Context, req VersionsRequest) ([]Versi
 		for _, a := range archives {
 			ts := a.t
 			v := Version{ID: versionArchivePrefix + a.name, Kind: VersionArchive, Time: &ts, LabelKey: "backup.ver.archive", Bytes: a.size}
-			if idx, ok, err := readIndex(ctx, f, a.name); err == nil && ok {
+			if idx, ok, err := e.readIndex(ctx, f, a.name, t.archivePassword()); err == nil && ok {
 				v.Files = idx.header.Files
 			}
 			out = append(out, v)
@@ -130,7 +130,7 @@ func versionRoot(id string) (dir string, archive string, err error) {
 		return VersionsDir + "/" + ts, "", nil
 	case strings.HasPrefix(id, versionArchivePrefix):
 		name := strings.TrimPrefix(id, versionArchivePrefix)
-		if name == "" || strings.ContainsAny(name, "/\x00") || !strings.HasSuffix(name, archiveExt) {
+		if name == "" || strings.ContainsAny(name, "/\x00") || !strings.HasSuffix(name, archiveExt) && !strings.HasSuffix(name, sevenZipExt) {
 			return "", "", Errorf(CodeNotFound, "unknown version %q", id)
 		}
 		return "", name, nil
@@ -225,11 +225,19 @@ func (e *Engine) runPurgeArchives(ctx context.Context, j *job) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	entries, _ := f.List(rctx, "")
+	_, vols, _ := sevenZipSets(entries)
 	for i, a := range archives {
 		if i < keep {
 			continue
 		}
-		for _, name := range []string{a.name, a.name + archiveIndexSuffix} {
+		names := []string{a.name, a.name + archiveIndexSuffix}
+		if strings.HasSuffix(a.name, sevenZipExt) {
+			// The index first: without it the set no longer counts, so
+			// an interrupted prune leaves no half set listed.
+			names = append([]string{sevenZipIndexName(a.name)}, vols[a.name]...)
+		}
+		for _, name := range names {
 			o, err := f.NewObject(rctx, name)
 			if errIsNotFound(err) {
 				continue
@@ -313,6 +321,11 @@ func (e *Engine) runPurgeDest(ctx context.Context, j *job) (Result, error) {
 		}
 		name := path.Base(o.Remote())
 		base := strings.TrimSuffix(strings.TrimSuffix(name, archiveIndexSuffix), archivePartial)
+		if m := volumeRe.FindStringSubmatch(name); m != nil {
+			base = m[1]
+		} else if strings.HasSuffix(name, sevenZipIndex) {
+			base = strings.TrimSuffix(name, sevenZipIndex) + sevenZipExt
+		}
 		if _, ok := parseArchiveName(j.req.JobID, base); !ok {
 			continue
 		}
@@ -322,12 +335,21 @@ func (e *Engine) runPurgeDest(ctx context.Context, j *job) (Result, error) {
 		res.Counts.Deleted++
 		j.logLine(LogInfo, "pruned", "backup.log.pruned", map[string]interface{}{"name": name})
 	}
-	if o, err := f.NewObject(rctx, MarkerFile); err == nil {
-		if err := o.Remove(rctx); err != nil {
-			return res, engineErr(err, "removing "+MarkerFile)
+	plain := f
+	if t.encrypted() {
+		// The marker and key file sit beside crypt's files, unencrypted.
+		if plain, err = t.plainFsAt(rctx, "", fsOpts{}); err != nil {
+			return res, engineErr(err, "opening the destination")
 		}
-	} else if !errIsNotFound(err) {
-		return res, engineErr(err, "removing "+MarkerFile)
+	}
+	for _, name := range []string{KeyFileName, MarkerFile} {
+		if o, err := plain.NewObject(rctx, name); err == nil {
+			if err := o.Remove(rctx); err != nil {
+				return res, engineErr(err, "removing "+name)
+			}
+		} else if !errIsNotFound(err) {
+			return res, engineErr(err, "removing "+name)
+		}
 	}
 	j.logRaw(LogInfo, "the backup is at the root of its drive: only its own files were removed, the rest was left in place")
 	return res, nil

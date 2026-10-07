@@ -41,6 +41,13 @@ const (
 	CodeCloudAuth         ErrorCode = "cloud_auth"
 	CodeNoSpace           ErrorCode = "no_space"
 	CodeInvalidFilter     ErrorCode = "invalid_filter"
+	// CodeEncryptionLocked: an encrypted destination without its keys
+	// (the host secret key is missing or different); nothing is written.
+	CodeEncryptionLocked ErrorCode = "encryption_locked"
+	// CodeWrongPassword: the password doesn't open the encrypted backup.
+	CodeWrongPassword ErrorCode = "wrong_password"
+	// CodeSevenZipMissing: an encrypted archive needs the 7z program.
+	CodeSevenZipMissing ErrorCode = "sevenzip_missing"
 	// lifecycle
 	CodeCancelledByUser    ErrorCode = "cancelled_by_user"
 	CodeCancelledUnmounted ErrorCode = "cancelled_unmounted"
@@ -57,6 +64,7 @@ var EngineCodes = []ErrorCode{
 	CodeDeleteGuard, CodeChangeGuard, CodeEmptySource, CodeDestMarkerMismatch,
 	CodeDestInsideSource, CodePathNotAllowed, CodeFat32FileTooLarge, CodeCaseCollision, CodeEndpointUnknown,
 	CodeAmbiguousDevice, CodeCloudAuth, CodeNoSpace, CodeInvalidFilter,
+	CodeEncryptionLocked, CodeWrongPassword, CodeSevenZipMissing,
 	CodeCancelledByUser, CodeCancelledUnmounted, CodeMaxDuration,
 	CodeNotFound, CodeInternal,
 }

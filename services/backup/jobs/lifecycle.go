@@ -127,6 +127,7 @@ func (s *Service) loadRunJob(r RunRow) (Job, error) {
 			return Job{}, fmt.Errorf("purge run %s: %w", r.ID, err)
 		}
 		ps.Job.DestFolderID = ps.DestFolderID
+		s.store.unlock(&ps.Job) // the keys outlive the job row until the purge ends
 		return ps.Job, nil
 	}
 	return s.store.GetJob(r.JobID)
@@ -278,6 +279,8 @@ func (x *runExec) do(ctx context.Context) execOutcome {
 		return x.doPurge(ctx)
 	case KindRestore:
 		return x.doRestore(ctx)
+	case KindVerify:
+		return x.doVerify(ctx)
 	default:
 		return x.doBackup(ctx, firstStart)
 	}
@@ -987,10 +990,47 @@ func (x *runExec) doPurge(ctx context.Context) execOutcome {
 	req.FirstRun = false
 	res, code := x.runEngine(ctx, req, true)
 	x.applyCounts(res)
+	if _, err := x.s.store.GetJob(x.job.ID); isNoRecord(err) {
+		// The job is gone: its encryption keys go with this last run.
+		if err := x.s.store.DropCryptKeys(x.job.ID); err != nil {
+			log.Printf("backup: run %s: %v", x.run.ID, err)
+		}
+	}
 	if code != "" {
 		return x.finishFailure(code)
 	}
 	x.finish(StatusSuccess, "", Message{Key: "backup.run.summary.pruned", Args: map[string]interface{}{"removed": res.Counts.Deleted}})
+	return execOutcome{}
+}
+
+// doVerify is "Check backup": copy and mirror jobs compare the source
+// with the destination (rclone cryptcheck for an encrypted folder),
+// archive jobs read their newest archive through (7z decrypts and checks
+// it). No hooks: nothing is written.
+func (x *runExec) doVerify(ctx context.Context) execOutcome {
+	x.setPhase(PhaseVerify)
+	req := x.baseRequest(engine.OpCheck, x.job.Sources)
+	if x.job.Type == TypeArchive {
+		req.Sources, req.PlanOp = nil, engine.OpArchive
+	}
+	req.FirstRun = false
+	res, code := x.runEngine(ctx, req, true)
+	x.applyCounts(res)
+	if code != "" {
+		return x.finishFailure(code)
+	}
+	status := StatusSuccess
+	if res.Counts.Errored > 0 || len(res.FileErrors) > 0 {
+		status = StatusPartial
+	}
+	summary := Message{Key: "backup.run.summary.verified", Args: map[string]interface{}{"files": res.Counts.Skipped}}
+	if status == StatusPartial {
+		summary = Message{Key: "backup.run.summary.check_problems", Args: map[string]interface{}{"files": res.Counts.Skipped, "problems": res.Counts.Errored}}
+	}
+	x.finish(status, "", summary)
+	if status == StatusPartial {
+		x.notifyPartial(res)
+	}
 	return execOutcome{}
 }
 

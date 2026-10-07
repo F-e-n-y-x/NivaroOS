@@ -1606,9 +1606,33 @@ Order of merge:
 - Two-way bisync (Advanced, "not a backup").
 - `on_change` inotify with the sysctl drop-in and a scan fallback.
 - Database-dump hooks, and `vm_snapshot` through vm-sidecar.
-- Encrypted crypt mirror, and a NivaroOS peer target (append-only restic REST).
+- A NivaroOS peer target (append-only restic REST). (The encrypted crypt
+  mirror shipped: see "Encrypted backups" below.)
 - 3-2-1 coverage view, 14-day strip, weekly digest, desktop widget, companion
   app status, compare with current.
+
+**Encrypted backups (shipped 2026-10).** For storage you don't trust
+(TeraBox and the like), the wizard's Where step offers "Encrypt backups":
+- *Encrypted folder* (recommended, any job type): rclone crypt over the
+  destination - contents (NaCl secretbox) and file and folder names
+  (standard encryption, base32) encrypted file by file, so incremental runs,
+  the recycle folder and single-file restores keep working. crypt wraps the
+  destination through an in-process backend (`nivaroosfs`): keys never go
+  into rclone.conf or a connection string. Verify and "Check backup" use
+  cryptcheck, or decrypt 20 files in full where the destination has no hashes.
+- *Encrypted archive* (archive jobs): one full 7z per run, AES-256 with
+  `-mhe=on` (names hidden), split into volumes (default 3.9 GB, under the
+  TeraBox free plan's 4 GB file limit), its index encrypted the same way and
+  uploaded last (a set without it is unfinished and removed). The tar is
+  staged and 7z reads the password from stdin, never argv. A password ZIP is
+  not offered: ZipCrypto is broken and AES ZIPs still show every name.
+- The password is the key (the backup opens with stock rclone or 7-Zip). The
+  server keeps it sealed under the host key (`common/utils/secret`), never
+  returns it, and fails closed (`encryption_locked`) when it can't be opened.
+  `.nivaroos-encryption.json` beside the marker holds the salt, a password
+  check and an optional recovery-key slot (scrypt + AES-GCM); a new job on a
+  folder that has one reuses it after the password or recovery key opens it.
+  The password can't be changed (a new encrypted copy is the way).
 
 **Separate fix (Schedules):** the container "update" task should wait for
 app-management's update to finish before it reports success.

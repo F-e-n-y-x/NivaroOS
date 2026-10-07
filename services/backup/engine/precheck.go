@@ -334,7 +334,7 @@ func (e *Engine) checkQuirks(p *prepared) Check {
 	}
 	if p.in.jobType == jobTypeArchive {
 		// One archive file: only its size matters on FAT32.
-		if hasQuirk(p.dest.q.Quirks, QuirkMaxFile4G) && p.scan.Bytes > fat32MaxFile {
+		if hasQuirk(p.dest.q.Quirks, QuirkMaxFile4G) && p.scan.Bytes > fat32MaxFile && !(p.dest.sevenZip() && p.dest.volumeBytes() <= fat32MaxFile) {
 			return newCheck(CheckFSQuirks, CheckFail, CodeFat32FileTooLarge, map[string]interface{}{"count": 1, "bytes": p.scan.Bytes})
 		}
 		return newCheck(CheckFSQuirks, CheckPass, "", nil)
@@ -412,11 +412,16 @@ func (e *Engine) checkFreeSpace(ctx context.Context, p *prepared, delta int64) C
 // that folder needs room for all of it. staged is false when no staging
 // is involved.
 func (e *Engine) stagingCheck(ctx context.Context, p *prepared, need int64) (c Check, staged bool) {
-	if p.in.jobType != jobTypeArchive || p.dest.local {
+	if p.in.jobType != jobTypeArchive {
 		return Check{}, false
 	}
-	f, err := p.dest.fsAt(ctx, "", fsOpts{})
-	if err != nil || f.Features().PutStream != nil {
+	if p.dest.sevenZip() {
+		// An encrypted archive is always staged: the whole tar, plus the
+		// volumes 7z writes before each is uploaded.
+		need = int64(math.Ceil(float64(p.scan.Bytes)*1.05)) + 2*p.dest.volumeBytes()
+	} else if p.dest.local {
+		return Check{}, false
+	} else if f, err := p.dest.fsAt(ctx, "", fsOpts{}); err != nil || f.Features().PutStream != nil {
 		return Check{}, false
 	}
 	free := statfsFree(e.cfg.StagingDir)

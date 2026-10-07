@@ -42,6 +42,8 @@ type target struct {
 	provider string
 
 	display string // Resolved.Root
+
+	enc *Encryption // set on an encrypted destination (keys checked)
 }
 
 // fsOpts says how a local endpoint is opened for one use.
@@ -50,8 +52,18 @@ type fsOpts struct {
 	oneFileSystem bool // sources: don't descend into other mounts
 }
 
-// fsAt opens the endpoint (or rel below it) as an rclone filesystem.
+// fsAt opens the endpoint (or rel below it) as an rclone filesystem; an
+// encrypted folder destination through crypt.
 func (t *target) fsAt(ctx context.Context, rel string, o fsOpts) (fs.Fs, error) {
+	if t.encrypted() {
+		return t.cryptFsAt(ctx, rel, o)
+	}
+	return t.plainFsAt(ctx, rel, o)
+}
+
+// plainFsAt opens the endpoint as it is on disk (encrypted names and
+// all): for the marker, the key file and connectivity probes.
+func (t *target) plainFsAt(ctx context.Context, rel string, o fsOpts) (fs.Fs, error) {
 	if t.local {
 		return newBackendFs(ctx, "local", ":local", filepath.Join(t.path, filepath.FromSlash(rel)), localFsOptions(t.q, o.links, o.oneFileSystem))
 	}
@@ -77,16 +89,24 @@ func (e *Engine) resolve(ctx context.Context, ep Endpoint, creds *SMBCreds) (*ta
 	if err != nil {
 		return nil, err
 	}
-	t := &target{ep: ep, sub: sub}
+	if err := checkKeys(ep.Encryption); err != nil {
+		return nil, err
+	}
+	t := &target{ep: ep, sub: sub, enc: ep.Encryption}
 	switch ep.Kind {
 	case EPVolume, EPUSB, EPMerge:
-		return t, e.resolveLocal(t)
+		err = e.resolveLocal(t)
 	case EPCloud:
-		return t, e.resolveCloud(ctx, t)
+		err = e.resolveCloud(ctx, t)
 	case EPSMB:
-		return t, e.resolveSMB(ctx, t, creds)
+		err = e.resolveSMB(ctx, t, creds)
+	default:
+		return nil, Errorf(CodeEndpointUnknown, "unknown endpoint kind %q", ep.Kind)
 	}
-	return nil, Errorf(CodeEndpointUnknown, "unknown endpoint kind %q", ep.Kind)
+	if err == nil && t.encrypted() {
+		t.q = cryptQuirks(t.q)
+	}
+	return t, err
 }
 
 func (e *Engine) resolveLocal(t *target) error {
@@ -216,7 +236,7 @@ func (e *Engine) resolveSMB(ctx context.Context, t *target, creds *SMBCreds) err
 func (e *Engine) probeRemote(ctx context.Context, t *target) error {
 	ctx, cancel := context.WithTimeout(ctx, resolveTimeout)
 	defer cancel()
-	f, err := t.fsAt(ctx, "", fsOpts{})
+	f, err := t.plainFsAt(ctx, "", fsOpts{})
 	if err == nil {
 		// Listing the root proves the credentials and the network; a
 		// destination folder that doesn't exist yet is fine.
@@ -268,6 +288,9 @@ func (e *Engine) Resolve(ctx context.Context, req ResolveRequest) (Resolved, err
 		return Resolved{}, err
 	}
 	out.Marker = m
+	if out.KeyFile, err = e.readKeyFile(ctx, t); err != nil {
+		return Resolved{}, err
+	}
 	return out, nil
 }
 
@@ -282,7 +305,7 @@ func (e *Engine) freeSpace(ctx context.Context, t *target) *int64 {
 		return statfsFree(t.path)
 	}
 	free, _ := e.about.get(t.fsName+"|"+t.fsRoot, e.now(), func(ctx context.Context) (*int64, *int64, error) {
-		f, err := t.fsAt(ctx, "", fsOpts{})
+		f, err := t.plainFsAt(ctx, "", fsOpts{})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -294,7 +317,7 @@ func (e *Engine) freeSpace(ctx context.Context, t *target) *int64 {
 	// First ask: wait briefly for the answer instead of reporting unknown.
 	ctx, cancel := context.WithTimeout(ctx, aboutTimeout)
 	defer cancel()
-	f, err := t.fsAt(ctx, "", fsOpts{})
+	f, err := t.plainFsAt(ctx, "", fsOpts{})
 	if err != nil {
 		return nil
 	}

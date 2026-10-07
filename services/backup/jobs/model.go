@@ -178,6 +178,9 @@ type Job struct {
 	Hooks      []Hook      `json:"hooks"`
 	Retry      Retry       `json:"retry"`
 	Notify     NotifyPrefs `json:"notify"`
+	// EncryptionSecret is write-only (POST /jobs, POST /validate) for an
+	// encrypted destination: never stored as sent, never returned.
+	EncryptionSecret *EncryptionSecret `json:"encryption_secret,omitempty"`
 	// Server-owned: ignored on create/update.
 	DestFolderID   string    `json:"-"`
 	NeedsAttention string    `json:"needs_attention"`

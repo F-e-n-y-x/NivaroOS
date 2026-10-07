@@ -70,6 +70,14 @@ type Capabilities struct {
 	RAMBytes      int64        `json:"ram_bytes"`
 	MaxConcurrent int          `json:"max_concurrent"`
 	Installed     InstalledCap `json:"installed"`
+	// SevenZip is the 7z program encrypted archives need.
+	SevenZip SevenZipCap `json:"sevenzip"`
+}
+
+// SevenZipCap reports the 7z program (package 7zip or p7zip-full).
+type SevenZipCap struct {
+	Available bool   `json:"available"`
+	Path      string `json:"path"`
 }
 
 // EngineCap is the engine block of Capabilities.
@@ -155,6 +163,9 @@ type JobStats struct {
 type JobDetail struct {
 	JobListItem
 	Stats JobStats `json:"stats"`
+	// RecoveryKey is only in POST /jobs's answer, once, when an
+	// encrypted job asked for one (spec §18). It is not kept anywhere.
+	RecoveryKey string `json:"recovery_key,omitempty"`
 }
 
 // DeleteJobResult is DELETE /jobs/:id; it names the purge run, if any.
@@ -178,6 +189,8 @@ type ToggleRequest struct {
 // RunRequest is POST /jobs/:id/run.
 type RunRequest struct {
 	Preview bool `json:"preview"`
+	// Check starts a "Check backup" run (kind verify) instead.
+	Check bool `json:"check,omitempty"`
 }
 
 // RunStarted is the 202 response of run and restore.

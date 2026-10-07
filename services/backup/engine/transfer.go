@@ -769,7 +769,13 @@ func (e *Engine) verifyAfter(ctx context.Context, j *job, p *prepared, src, dst 
 	if !j.req.Options.Verify {
 		return res, nil
 	}
-	if p.dest.q.NoHash {
+	if p.dest.encrypted() {
+		// cryptcheck needs the crypt layer, which the write guard hides.
+		var err error
+		if dst, err = p.dest.fsAt(ctx, "", fsOpts{links: p.meta}); err != nil {
+			return res, engineErr(err, "opening the destination")
+		}
+	} else if p.dest.q.NoHash {
 		j.logRaw(LogWarn, "verify skipped: the destination has no checksums to compare")
 		return res, nil
 	}
@@ -779,7 +785,7 @@ func (e *Engine) verifyAfter(ctx context.Context, j *job, p *prepared, src, dst 
 		return res, err
 	}
 	vctx, _ := transferConfig(fctx, p, j.req.Options)
-	diffs, _, err := verifyTrees(vctx, src, dst)
+	diffs, _, err := p.dest.verify(vctx, src, dst)
 	if err != nil {
 		return res, engineErr(err, "verifying")
 	}
@@ -792,6 +798,14 @@ func (e *Engine) verifyAfter(ctx context.Context, j *job, p *prepared, src, dst 
 			Args: map[string]interface{}{"path": d.Path, "reason_key": "backup.err.io_error.title"}, Raw: d.Detail})
 	}
 	return res, nil
+}
+
+// verify is verifyTrees, or cryptCheckTrees for an encrypted folder.
+func (t *target) verify(ctx context.Context, src, dst fs.Fs) ([]FileError, int64, error) {
+	if t.encrypted() {
+		return cryptCheckTrees(ctx, src, dst)
+	}
+	return verifyTrees(ctx, src, dst)
 }
 
 // verifyTrees checks every source file against the destination, one way
@@ -857,13 +871,19 @@ func (w *sigilWriter) flush() {
 	w.buf = nil
 }
 
-// runCheck is a standalone one-way verify (run kind "verify").
+// runCheck is a standalone one-way verify (run kind "verify"): the
+// source against the destination (cryptcheck for an encrypted folder),
+// or for archive jobs (PlanOp archive) the newest archive read through
+// and decrypted end to end.
 func (e *Engine) runCheck(ctx context.Context, j *job) (Result, error) {
+	if j.req.PlanOp == OpArchive {
+		return e.checkNewestArchive(ctx, j)
+	}
 	p, res, err := e.prepareRun(ctx, j, jobTypeCopy)
 	if err != nil {
 		return res, err
 	}
-	if p.dest.q.NoHash {
+	if p.dest.q.NoHash && !p.dest.encrypted() {
 		j.logRaw(LogWarn, "verify skipped: the destination has no checksums to compare")
 		res.Counts.SourceFiles = p.scan.Files
 		return res, nil
@@ -883,7 +903,7 @@ func (e *Engine) runCheck(ctx context.Context, j *job) (Result, error) {
 	}
 	j.phase(stepVerify, "backup.phase.verify")
 	j.setTotals(p.scan.Files, p.scan.Bytes)
-	diffs, checked, err := verifyTrees(vctx, src, dst)
+	diffs, checked, err := p.dest.verify(vctx, src, dst)
 	if err != nil {
 		return res, engineErr(err, "verifying")
 	}
@@ -897,6 +917,33 @@ func (e *Engine) runCheck(ctx context.Context, j *job) (Result, error) {
 		j.appendLine(LogLine{T: time.Now(), Lvl: LogError, Code: "file_error", MsgKey: "backup.log.file_error",
 			Args: map[string]interface{}{"path": d.Path, "reason_key": "backup.err.io_error.title"}, Raw: d.Detail})
 	}
+	return res, nil
+}
+
+func (e *Engine) checkNewestArchive(ctx context.Context, j *job) (Result, error) {
+	var res Result
+	t, err := e.prepareDestOp(ctx, j)
+	if err != nil {
+		return res, err
+	}
+	j.phase(stepVerify, "backup.phase.verify")
+	archives, err := e.listArchives(ctx, t, j.req.JobID)
+	if err != nil {
+		return res, err
+	}
+	if len(archives) == 0 {
+		return res, Errorf(CodeNotFound, "there is no archive to check yet")
+	}
+	f, err := t.fsAt(ctx, "", fsOpts{})
+	if err != nil {
+		return res, engineErr(err, "opening the backup")
+	}
+	n, err := e.verifyArchive(ctx, f, archives[0].name, t.archivePassword())
+	if err != nil {
+		return res, err
+	}
+	res.Counts.Skipped, res.Counts.DestFiles = n, int64(len(archives))
+	j.logLine(LogInfo, "archive_checked", "backup.log.archive_checked", map[string]interface{}{"name": archives[0].name, "files": n})
 	return res, nil
 }
 

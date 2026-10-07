@@ -183,8 +183,8 @@ func TestArchiveMultipleSourcesAndPartials(t *testing.T) {
 	// A crash left a half-written archive of this job, and another job's
 	// file sits in the folder too.
 	dir := filepath.Join(dst.MountPoint, "arch")
-	stale := archiveName("bk_arch0000001", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) + archivePartial
-	foreign := archiveName("bk_other000001", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	stale := archiveName("bk_arch0000001", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), archiveExt) + archivePartial
+	foreign := archiveName("bk_other000001", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), archiveExt)
 	writeTree(t, dir, map[string]string{stale: "half", foreign: "theirs"})
 
 	req := archiveReq(ep(a, "Photos"), ep(dst, "arch"))
@@ -265,13 +265,13 @@ func TestArchiveKeepLastByName(t *testing.T) {
 	// mtime. Retention goes by the name only.
 	var made []string
 	for i, day := range []int{1, 2, 3, 4} {
-		n := archiveName("bk_arch0000001", time.Date(2025, 6, day, 3, 0, 0, 0, time.UTC))
+		n := archiveName("bk_arch0000001", time.Date(2025, 6, day, 3, 0, 0, 0, time.UTC), archiveExt)
 		must(t, os.WriteFile(filepath.Join(dir, n), []byte("old"), 0o600))
 		mt := time.Now().Add(-time.Duration(i) * time.Hour)
 		must(t, os.Chtimes(filepath.Join(dir, n), mt, mt))
 		made = append(made, n)
 	}
-	partial := archiveName("bk_arch0000001", time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)) + archivePartial
+	partial := archiveName("bk_arch0000001", time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC), archiveExt) + archivePartial
 	must(t, os.WriteFile(filepath.Join(dir, partial), []byte("in progress"), 0o600))
 
 	vers, err := e.ListVersions(context.Background(), VersionsRequest{JobID: "bk_arch0000001", JobType: jobTypeArchive, Dest: ep(dst, "a")})
