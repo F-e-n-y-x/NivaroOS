@@ -44,6 +44,8 @@ func InitV1Router() http.Handler {
 	// share link. It never accepts a raw path, only a token that was
 	// generated server-side by the authenticated create endpoint below.
 	e.GET("/v1/qs/:id", v1.GetQuickShareRedeem)
+	// The landing page's Download button for one-time and password links.
+	e.POST("/v1/qs/:id", v1.PostQuickShareRedeem)
 	v1Group := e.Group("/v1")
 	v1Group.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
 		// Same-host automation (direct loopback socket peer, no proxy or
