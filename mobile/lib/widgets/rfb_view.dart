@@ -722,7 +722,7 @@ class RfbViewState extends State<RfbView> {
         final remote = Size((_c.width > 0 ? _c.width : 1280).toDouble(), (_c.height > 0 ? _c.height : 720).toDouble());
         viewport.layout(box: constraints.biggest, remote: remote, dpr: dpr, fit: widget.fit);
         final caret = viewport.toLocal(_cursor);
-        _lift = widget.bottomInset > 0 ? viewport.liftFor(caret, viewport.box.height - widget.bottomInset) : 0;
+        _lift = widget.bottomInset > 0 ? viewport.keepInSight(_lift, caret, viewport.box.height - widget.bottomInset) : 0;
         final showCursor = widget.inputMode == RfbInputMode.trackpad && !_mouse && image != null;
         return Semantics(
           label: widget.label,

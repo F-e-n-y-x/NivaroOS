@@ -117,6 +117,21 @@ class RfbViewport {
     return (caret.dy + margin - visibleBottom).clamp(0.0, covered);
   }
 
+  /// The slide to keep [caret] (a view point, before sliding) in sight above
+  /// [visibleBottom], starting from the [current] slide and changing it only
+  /// when the caret would leave the visible band - then by just enough.
+  /// [liftFor] recomputed from the caret moved the whole view with every
+  /// pointer move while the keyboard was up, so the screen raced along
+  /// with the cursor.
+  double keepInSight(double current, Offset caret, double visibleBottom, {double margin = 32}) {
+    final covered = math.max(0.0, box.height - visibleBottom);
+    var lift = current.clamp(0.0, covered);
+    final onScreen = caret.dy - lift;
+    if (onScreen > visibleBottom - margin) lift += onScreen - (visibleBottom - margin);
+    if (onScreen < margin) lift -= margin - onScreen;
+    return lift.clamp(0.0, covered);
+  }
+
   /// While a drag is held near an edge: the pan for one frame (about
   /// 16 ms), faster the closer to the edge, zero away from the edges.
   Offset edgePan(Offset local, {double edge = 40, double speed = 14}) {

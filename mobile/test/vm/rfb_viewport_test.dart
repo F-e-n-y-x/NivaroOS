@@ -78,6 +78,24 @@ void main() {
     expect(v.liftFor(const Offset(0, 914), 600), 315);
   });
 
+  test('with the keyboard up the view only slides when the caret would leave sight, and only as far as needed', () {
+    final v = _vp(RfbFit.fit); // 412 x 915 box, keyboard top at 600
+    // Caret well inside the visible band: no slide, and small moves keep it.
+    expect(v.keepInSight(0, const Offset(0, 300), 600), 0);
+    expect(v.keepInSight(0, const Offset(0, 500), 600), 0);
+    // Caret moves under the keyboard: slide just enough (32 margin).
+    final lift = v.keepInSight(0, const Offset(0, 700), 600);
+    expect(lift, 132);
+    // Moving back up inside the band keeps that slide - the screen no
+    // longer races along with every pointer move.
+    expect(v.keepInSight(lift, const Offset(0, 650), 600), lift);
+    expect(v.keepInSight(lift, const Offset(0, 400), 600), lift);
+    // Up past the top margin of what's visible: slides back down.
+    expect(v.keepInSight(lift, const Offset(0, 140), 600), 108);
+    // Never more than the keyboard covers.
+    expect(v.keepInSight(0, const Offset(0, 914), 600), 315);
+  });
+
   test('a new fit starts unzoomed; a resize keeps the centre point', () {
     final v = _vp(RfbFit.fit)..zoomAt(const Offset(300, 457), 2);
     final centre = v.toRemote(const Offset(206, 457.5));
