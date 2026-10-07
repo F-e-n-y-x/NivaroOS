@@ -6,6 +6,7 @@ import '../../services/download_station_api.dart';
 import '../../services/session_service.dart';
 import '../../services/storage_service.dart';
 import '../../ui/ui.dart';
+import 'ds_add_torrent_sheet.dart';
 import 'ds_folder_picker.dart';
 
 /// "Add download" (and, from Android's share sheet, "Download on server"):
@@ -157,9 +158,18 @@ class _AddDownloadSheetState extends State<AddDownloadSheet> {
               const SizedBox(height: Space.md),
             ],
             if (_onlyTorrent)
-              const Padding(
-                padding: EdgeInsets.only(bottom: Space.md),
-                child: Notice(message: "Download Station downloads http and https links. Torrents and magnet links aren't supported."),
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.md),
+                child: Notice(
+                  status: Status.info,
+                  message: 'Magnet links and .torrent files are added as torrents.',
+                  actionLabel: 'Add as torrent',
+                  onAction: () {
+                    final nav = Navigator.of(context);
+                    nav.pop();
+                    showAddTorrentSheet(nav.context, text: widget.text, api: widget.api);
+                  },
+                ),
               ),
             TextField(
               controller: _links,

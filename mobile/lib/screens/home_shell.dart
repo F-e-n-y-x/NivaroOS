@@ -14,6 +14,9 @@ import '../services/api_client.dart';
 import '../services/share_intent.dart';
 import 'download_station/download_station_screen.dart';
 import 'download_station/ds_add_sheet.dart';
+import 'download_station/ds_add_torrent_sheet.dart';
+import 'download_station/torrents_screen.dart';
+import '../services/download_station_api.dart' show extractLinks, extractTorrentSources;
 import '../ui/theme/spacing.dart';
 import '../ui/widgets/floating_nav_bar.dart';
 
@@ -66,6 +69,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     ApiClient.sessionExpiredNotifier.addListener(_onSessionExpired);
     ShareIntent.pending.addListener(_onShared);
+    ShareIntent.pendingTorrent.addListener(_onShared);
     // After the first frame, not during the route transition: registers
     // the phone and schedules the 15-minute heartbeat. Nothing here asks
     // for a permission; features ask when they need one.
@@ -79,6 +83,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     ApiClient.sessionExpiredNotifier.removeListener(_onSessionExpired);
     ShareIntent.pending.removeListener(_onShared);
+    ShareIntent.pendingTorrent.removeListener(_onShared);
     super.dispose();
   }
 
@@ -87,13 +92,33 @@ class _HomeShellState extends State<HomeShell> {
   // A link shared to "Download on server" (also the one that started the
   // app): offer to queue it in Download Station.
   Future<void> _onShared() async {
-    final text = ShareIntent.pending.value;
-    if (text == null || !mounted || _showingShare || !ApiClient.instance.hasSession) return;
+    var text = ShareIntent.pending.value;
+    final file = ShareIntent.pendingTorrent.value;
+    if ((text == null && file == null) || !mounted || _showingShare || !ApiClient.instance.hasSession) return;
     _showingShare = true;
     ShareIntent.pending.value = null;
+    ShareIntent.pendingTorrent.value = null;
     final server = ApiClient.instance.baseUrl;
     try {
-      final added = await showAddDownloadSheet(context, text: text, pickServer: true);
+      // Magnets and .torrent files (links or opened) go to the torrent
+      // engine; any other links left then go to the downloader.
+      final torrents = text == null ? const <String>[] : extractTorrentSources(text);
+      if (file != null || torrents.isNotEmpty) {
+        final n = await showAddTorrentSheet(context, text: text ?? '', files: [?file]);
+        if (!mounted) return;
+        if (n != null && n > 0) {
+          final nav = Navigator.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(n == 1 ? 'Torrent added to Download Station' : '$n torrents added to Download Station'),
+            action: SnackBarAction(label: 'Open', onPressed: () => nav.push(MaterialPageRoute<void>(builder: (_) => const TorrentsScreen()))),
+          ));
+        }
+        for (final t in torrents) {
+          text = text!.replaceAll(t, ' ');
+        }
+        if (text == null || extractLinks(text).isEmpty) return;
+      }
+      final added = await showAddDownloadSheet(context, text: text!, pickServer: true);
       if (!mounted) return;
       final nav = Navigator.of(context);
       final messenger = ScaffoldMessenger.of(context);
@@ -110,7 +135,7 @@ class _HomeShellState extends State<HomeShell> {
       _showingShare = false;
     }
     // Another link shared while the sheet was open.
-    if (ShareIntent.pending.value != null) unawaited(_onShared());
+    if (ShareIntent.pending.value != null || ShareIntent.pendingTorrent.value != null) unawaited(_onShared());
   }
 
   // Only a real 401 from /users/refresh gets here (ApiClient keeps the

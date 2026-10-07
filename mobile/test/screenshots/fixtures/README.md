@@ -94,6 +94,13 @@ with the entries rewritten to public sample files in each state
 `ds/settings.json` is the real `GET /settings`, `ds/roots.json` a trimmed
 `GET /storage/roots`. They are not served by URL (Home would then show a
 failed download in every shot); the shots pass them as overrides.
+Torrents (2026-10-08): `ds/torrents.json` and `ds/torrent.json` keep the
+field set of a real `GET /torrents` and `GET /torrents/<hash>` from this
+box (`TorrentInfo` / `TorrentDetail`, services/download-sidecar/torrent.go,
+qBittorrent engine) with a Debian netinst added paused, the list expanded
+to one torrent per state with public sample names; `ds/torrent_trackers.json`
+is the real `GET /torrents/trackers`. `ds/settings.json` now carries the
+real `torrent` section (two categories and the alternative limits added).
 `v1/quickshare.json` is in the shape of the core's `GET /v1/quickshare`
 (`quickShareItem`, services/core/route/v1/quickshare.go), taken from a
 real create on this box with names, paths and hosts replaced; its times

@@ -1,16 +1,23 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'download_station_api.dart' show TorrentFile;
+
 /// Android's share sheet, both ways (MainActivity.kt):
 /// - in: text another app shared to "Download on server" (a link from
-///   Chrome) waits in [pending] until the shell offers to download it,
-///   also when the share is what started the app;
+///   Chrome, or a magnet link) waits in [pending] until the shell offers
+///   to download it, also when the share is what started the app; a
+///   magnet: link or .torrent file opened with NivaroOS (ACTION_VIEW)
+///   arrives the same way, the file in [pendingTorrent];
 /// - out: [shareText] opens the share sheet with a link.
 abstract final class ShareIntent {
   static const _channel = MethodChannel('com.fenyx.nivaroos/share_intent');
 
   /// Shared text not handled yet; the shell clears it once it has.
   static final ValueNotifier<String?> pending = ValueNotifier(null);
+
+  /// A .torrent file opened with the app, not handled yet.
+  static final ValueNotifier<TorrentFile?> pendingTorrent = ValueNotifier(null);
 
   static bool _listening = false;
 
@@ -27,8 +34,9 @@ abstract final class ShareIntent {
 
   static Future<void> _take() async {
     try {
-      final text = await _channel.invokeMethod<String>('take');
-      if (text != null && text.trim().isNotEmpty) pending.value = text;
+      final v = await _channel.invokeMethod<Object>('take');
+      if (v is String && v.trim().isNotEmpty) pending.value = v;
+      if (v is Map && v['data'] is Uint8List) pendingTorrent.value = TorrentFile(v['name']?.toString() ?? 'file.torrent', v['data'] as Uint8List);
     } catch (_) {
       // Not on Android (tests, iOS): nothing is ever shared in.
     }

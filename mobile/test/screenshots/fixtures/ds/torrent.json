@@ -1,0 +1,81 @@
+{
+ "hash": "7acf8fb590b2060dd9c3146ef770169d593433b0",
+ "name": "debian-13.7.0-amd64-netinst.iso",
+ "state": "downloading",
+ "progress": 0.412,
+ "size": 792723456,
+ "done": 326602063,
+ "downloaded": 340871086,
+ "uploaded": 12582912,
+ "dl_speed": 6501171,
+ "up_speed": 317440,
+ "seeds": 24,
+ "seeds_total": 212,
+ "peers": 3,
+ "peers_total": 18,
+ "ratio": 0.04,
+ "eta": 72,
+ "dir": "/DATA/Downloads",
+ "category": "Linux",
+ "private": false,
+ "has_metadata": true,
+ "sequential": false,
+ "first_last": true,
+ "added_at": 1790322000,
+ "completed_at": 0,
+ "seeding_time": 0,
+ "files": [
+  {
+   "index": 0,
+   "name": "debian-13.7.0-amd64-netinst.iso",
+   "size": 792723456,
+   "progress": 0.412,
+   "priority": 6
+  },
+  {
+   "index": 1,
+   "name": "SHA256SUMS",
+   "size": 1210,
+   "progress": 1,
+   "priority": 1
+  },
+  {
+   "index": 2,
+   "name": "SHA256SUMS.sign",
+   "size": 833,
+   "progress": 0,
+   "priority": 0
+  }
+ ],
+ "trackers": [
+  {
+   "url": "http://bttracker.debian.org:6969/announce",
+   "status": "working",
+   "tier": 0,
+   "peers": 180,
+   "seeds": 170
+  },
+  {
+   "url": "udp://tracker.opentrackr.org:1337/announce",
+   "status": "working",
+   "tier": 1,
+   "peers": 44,
+   "seeds": 40
+  },
+  {
+   "url": "udp://open.stealth.si:80/announce",
+   "status": "not_working",
+   "tier": 1,
+   "peers": 0,
+   "seeds": 0,
+   "message": "Connection timed out"
+  },
+  {
+   "url": "udp://tracker.torrent.eu.org:451/announce",
+   "status": "updating",
+   "tier": 1,
+   "peers": 0,
+   "seeds": 0
+  }
+ ]
+}

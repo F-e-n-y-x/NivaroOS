@@ -10,24 +10,27 @@ import android.os.Build
 import android.app.NotificationManager
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.OpenableColumns
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var phoneBackup: PhoneBackupBridge? = null
 
-    // "Download on server": a link shared to the app, until Dart takes it
+    // "Download on server": a link shared to the app, a magnet: link or a
+    // .torrent file ({name, data}) opened with it, until Dart takes it
     // (lib/services/share_intent.dart).
     private var shareChannel: MethodChannel? = null
-    private var pendingShare: String? = null
+    private var pendingShare: Any? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Only on a fresh start: a re-created activity would offer it again.
-        if (savedInstanceState == null) pendingShare = sharedText(intent)
+        if (savedInstanceState == null) pendingShare = incoming(intent)
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         multicastLock = wifi?.createMulticastLock("nivaroos-mdns-discovery")?.apply {
             setReferenceCounted(true)
@@ -51,9 +54,39 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        sharedText(intent)?.let {
+        incoming(intent)?.let {
             pendingShare = it
             shareChannel?.invokeMethod("shared", null)
+        }
+    }
+
+    private fun incoming(i: Intent?): Any? = if (i?.action == Intent.ACTION_VIEW) viewed(i) else sharedText(i)
+
+    // ACTION_VIEW (manifest filters): a magnet: link, or a .torrent file a
+    // file manager or browser hands over as a content:// URI it granted us
+    // for this one intent. Nothing else is opened, and at most 16 MB is read.
+    private fun viewed(i: Intent): Any? {
+        val uri = i.data ?: return null
+        if (uri.scheme.equals("magnet", ignoreCase = true)) return uri.toString().take(64 * 1024)
+        if (uri.scheme != "content") return null
+        return try {
+            val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            } ?: "file.torrent"
+            val data = contentResolver.openInputStream(uri)?.use { input ->
+                val out = ByteArrayOutputStream()
+                val chunk = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    out.write(chunk, 0, n)
+                    if (out.size() > 16 * 1024 * 1024) return null
+                }
+                out.toByteArray()
+            } ?: return null
+            mapOf("name" to name, "data" to data)
+        } catch (e: Exception) {
+            null
         }
     }
 

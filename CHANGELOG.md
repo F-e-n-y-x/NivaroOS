@@ -7,6 +7,20 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Added
 
+- Torrents in Download Station (web and app): add magnet links, .torrent
+  files or links to them (with folder, category and "start paused"), or
+  drop .torrent files in a watch folder. Each torrent shows progress,
+  speeds, peers/seeds, ratio and time left, its files (pick which to
+  download and their priority) and trackers, with pause / resume / recheck
+  / remove (with or without files) and sequential download. Settings
+  modelled on qBittorrent - speed limits with an alternative schedule,
+  queueing, seeding limits, port and UPnP, DHT/PeX/LSD, encryption,
+  connection limits, incomplete and category folders - plus an
+  auto-updated public trackers list that is never added to private
+  torrents. Runs on qbittorrent-nox (installed with Download Station,
+  started only while a torrent is active), your own qBittorrent, or a
+  built-in engine. The app opens magnet links and .torrent files, and
+  "Download on server" accepts shared magnet links.
 - Fan control (Settings > Fans & Cooling, and a Fans page in the app): live
   fan speeds and CPU/GPU temperatures, per-fan Auto / Fixed / Curve modes
   with a drag-to-edit curve, Quiet / Balanced / Performance / Auto

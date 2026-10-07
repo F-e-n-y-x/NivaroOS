@@ -22,6 +22,7 @@ import '../file_viewer_screen.dart';
 import '../files_screen.dart';
 import 'ds_add_sheet.dart';
 import 'ds_settings_screen.dart';
+import 'torrents_screen.dart';
 
 enum DsFilter { all, active, completed, failed }
 
@@ -217,6 +218,8 @@ class _DownloadStationScreenState extends State<DownloadStationScreen> with Widg
     }
   }
 
+  void _openTorrents() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TorrentsScreen(api: _api)));
+
   void _openSettings() => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DsSettingsScreen(api: _api)));
 
   @override
@@ -239,8 +242,10 @@ class _DownloadStationScreenState extends State<DownloadStationScreen> with Widg
           onSelected: (v) async {
             if (v == 'clear') await _run(_api.clearCompleted, "Couldn't clear the completed downloads");
             if (v == 'settings') _openSettings();
+            if (v == 'torrents') _openTorrents();
           },
           itemBuilder: (_) => [
+            const PopupMenuItem(value: 'torrents', child: Text('Torrents')),
             PopupMenuItem(value: 'clear', enabled: hasCompleted, child: const Text('Clear completed from list')),
             const PopupMenuItem(value: 'settings', child: Text('Settings')),
           ],
