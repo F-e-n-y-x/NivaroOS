@@ -67,6 +67,23 @@ void main() {
     });
   });
 
+  testWidgets('a frame rate cap waits before asking for the next picture', (tester) async {
+    await tester.runAsync(() async {
+      final server = FakeRfbServer(width: 64, height: 36);
+      final client = RfbClient(vmName: 'mint', session: FakeSession(currentToken: 'tok'), channelFactory: server.factory)
+        ..maxFps = 5;
+      await client.connect();
+      bool asked() => server.messages(3).any((m) => m[1] == 1);
+      for (var i = 0; i < 5; i++) {
+        await settle();
+      }
+      expect(asked(), isFalse, reason: 'within 200 ms of the last request');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(asked(), isTrue);
+      client.dispose();
+    });
+  });
+
   test('keys and pointer go out as RFB messages', () async {
     final server = FakeRfbServer(sendFrame: false);
     final client = await connected(server);

@@ -2,24 +2,32 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:clock/clock.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/rfb_client.dart';
+import '../services/storage_service.dart';
 import '../ui/ui.dart';
+import 'rfb_viewport.dart';
+
+export 'rfb_viewport.dart' show RfbFit, RfbViewport;
 
 // The remote console UI shared by the VM console and the host desktop:
-// the framebuffer view with touch and trackpad input, the frame around it
-// (app bar, special keys, mouse buttons, full screen), and the clipboard
-// sheet with its history. The two screens only add their own menu items
-// and the state to show before a connection makes sense.
+// the framebuffer view with touch and mouse pointer input, the session
+// around it (immersive, with a floating toolbar and the extra keys row,
+// after Microsoft's Windows App), and the clipboard sheet with its
+// history. The two screens only add their own menu items and the state to
+// show before a connection makes sense.
 
-/// How touches on the remote screen become pointer input.
+/// How touches on the remote screen become pointer input: Windows App's
+/// two mouse modes.
 enum RfbInputMode {
-  /// Like a laptop trackpad: drag moves the pointer, tap clicks where it is.
+  /// Mouse pointer: a cursor moved like a laptop trackpad; tap clicks
+  /// where it is.
   trackpad,
 
-  /// Tap where you want to click; drag pans a zoomed screen.
+  /// Touch: tap where you want to click.
   touch,
 }
 
@@ -371,16 +379,35 @@ class _RemoteClipboardSheetState extends State<RemoteClipboardSheet> {
 // The framebuffer view
 // ---------------------------------------------------------------------------
 
-/// The remote screen, fitted to the space it gets, with pinch zoom and
-/// touch or trackpad pointer input.
+enum _Gesture { none, pending, drag, move, held, two, pinch, pan, scroll, done }
+
+/// The remote screen, placed by an [RfbViewport] (fit, pinch zoom, pan),
+/// with Windows App's two input modes and a real mouse:
+///
+/// * Touch: tap clicks there, hold right-clicks, drag drags.
+/// * Mouse pointer: a cursor moved like a trackpad; tap clicks where it
+///   is, hold then drag drags.
+/// * Both: two-finger tap right-clicks, two-finger double-tap zooms in or
+///   out, pinch zooms around the fingers, two-finger drag scrolls (or pans
+///   a zoomed screen; hold the fingers still first to scroll instead).
+/// * A mouse, on DeX or a tablet: moves, clicks and scrolls as itself.
 class RfbView extends StatefulWidget {
-  const RfbView({super.key, required this.client, required this.inputMode, this.dragLocked = false, this.label});
+  const RfbView({
+    super.key,
+    required this.client,
+    required this.inputMode,
+    this.fit = RfbFit.fit,
+    this.bottomInset = 0,
+    this.label,
+  });
 
   final RfbClient client;
   final RfbInputMode inputMode;
+  final RfbFit fit;
 
-  /// Trackpad mode: the left button is held down while the pointer moves.
-  final bool dragLocked;
+  /// How much of the view is covered from below (the keyboard and the
+  /// keys row): the view slides up so the cursor stays above it.
+  final double bottomInset;
 
   /// What TalkBack calls the screen ("Screen of mint").
   final String? label;
@@ -390,180 +417,389 @@ class RfbView extends StatefulWidget {
 }
 
 class RfbViewState extends State<RfbView> {
-  final _transform = TransformationController();
+  final viewport = RfbViewport();
   final Map<int, Offset> _pointers = {};
-  double _cursorX = 0;
-  double _cursorY = 0;
-  Offset? _downAt;
-  DateTime? _downTime;
+  Offset? _cursorAt;
+  int _buttons = 0;
+  _Gesture _g = _Gesture.none;
+  Offset _downAt = Offset.zero;
   int _maxPointers = 0;
-  bool _moved = false;
-  double _scrollAccumulator = 0;
-  Timer? _longPress;
+  Timer? _longPress, _twoHold, _rightClick, _edgeTimer;
+  bool _twoHeld = false;
+  double _startSpan = 1, _startZoom = 1;
+  Offset _startFocal = Offset.zero, _lastFocal = Offset.zero;
+  Offset _scroll = Offset.zero;
+  Offset? _edgeAt;
+  double _lift = 0;
+  bool _mouse = false;
+
+  static const _slop = 10.0;
+  static const _trackpadSpeed = 1.6;
+  static const _scrollStep = 20.0;
+  static const _longPressTime = Duration(milliseconds: 500);
+  static const _doubleTapTime = Duration(milliseconds: 300);
 
   RfbClient get _c => widget.client;
-  int get _w => _c.width > 0 ? _c.width : 1280;
-  int get _h => _c.height > 0 ? _c.height : 720;
 
-  static const _trackpadSpeed = 1.6;
+  // The pointer starts in the middle of the remote screen.
+  Offset get _cursor => _cursorAt ?? viewport.remote.center(Offset.zero);
+  set _cursor(Offset p) => _cursorAt = p;
+
+  /// Where the remote pointer is, in remote pixels.
+  Offset get cursor => _cursor;
+
+  /// How far the view is slid up to keep the cursor above the keyboard.
+  double get lift => _lift;
+
+  @override
+  void didUpdateWidget(RfbView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.inputMode != widget.inputMode) _reset();
+  }
 
   @override
   void dispose() {
-    _longPress?.cancel();
-    _transform.dispose();
+    _reset();
+    _rightClick?.cancel();
     super.dispose();
   }
 
-  void resetZoom() => _transform.value = Matrix4.identity();
+  void _reset() {
+    _longPress?.cancel();
+    _twoHold?.cancel();
+    _stopEdgePan();
+    _pointers.clear();
+    _g = _Gesture.none;
+    if (_buttons != 0) {
+      _buttons = 0;
+      _send();
+    }
+  }
 
-  int get _held => widget.dragLocked ? 1 : 0;
+  void resetZoom() => setState(() => viewport.zoomAt(viewport.box.center(Offset.zero), 1));
+
+  void _send([int? mask]) => _c.sendPointer(_cursor.dx.round(), _cursor.dy.round(), mask ?? _buttons);
 
   /// Presses and releases [button] (1 left, 2 middle, 4 right) where the
   /// pointer is. Two taps in quick succession arrive as two clicks, which
   /// the remote system reads as a double-click.
   void click(int button) {
-    final x = _cursorX.round(), y = _cursorY.round();
-    _c.sendPointer(x, y, button | _held);
-    _c.sendPointer(x, y, _held);
+    _send(button | _buttons);
+    _send();
   }
 
-  void scroll({required bool up}) {
-    final x = _cursorX.round(), y = _cursorY.round();
-    _c.sendPointer(x, y, (up ? 8 : 16) | _held);
-    _c.sendPointer(x, y, _held);
+  void _wheel(int mask) {
+    _send(mask | _buttons);
+    _send();
   }
 
-  /// Presses or releases the left button where the pointer is.
-  void setDrag(bool down) => _c.sendPointer(_cursorX.round(), _cursorY.round(), down ? 1 : 0);
+  // View points from events: the view is drawn slid up by [_lift].
+  Offset _at(Offset local) => local + Offset(0, _lift);
 
-  Rect _screenRect(Size box) {
-    final aspect = _w / _h;
-    final boxAspect = box.width / (box.height > 0 ? box.height : 1);
-    if (boxAspect > aspect) {
-      final w = box.height * aspect;
-      return Rect.fromLTWH((box.width - w) / 2, 0, w, box.height);
-    }
-    final h = box.width / aspect;
-    return Rect.fromLTWH(0, (box.height - h) / 2, box.width, h);
+  Offset get _focal {
+    final p = _pointers.values.take(2).toList();
+    return (p[0] + p[1]) / 2;
   }
 
-  bool _moveToTouch(Offset local, Size box) {
-    final scene = _transform.toScene(local);
-    final rect = _screenRect(box);
-    if (!rect.contains(scene)) return false;
-    _cursorX = ((scene.dx - rect.left) / rect.width * _w).clamp(0, _w - 1).toDouble();
-    _cursorY = ((scene.dy - rect.top) / rect.height * _h).clamp(0, _h - 1).toDouble();
-    return true;
+  double get _span {
+    final p = _pointers.values.take(2).toList();
+    return (p[0] - p[1]).distance;
   }
 
-  void _down(PointerDownEvent e, Size box) {
-    _pointers[e.pointer] = e.localPosition;
+  void _down(PointerDownEvent e) {
+    if (e.kind == PointerDeviceKind.mouse) return _mouseEvent(e.localPosition, e.buttons);
+    _mouse = false;
+    _pointers[e.pointer] = _at(e.localPosition);
     if (_pointers.length == 1) {
-      _downAt = e.localPosition;
-      _downTime = DateTime.now();
+      _g = _Gesture.pending;
+      _downAt = _pointers[e.pointer]!;
       _maxPointers = 1;
-      _moved = false;
-      _scrollAccumulator = 0;
-      if (widget.inputMode == RfbInputMode.touch) {
-        _longPress = Timer(const Duration(milliseconds: 550), () {
-          if (_moved || _pointers.length != 1) return;
-          if (_moveToTouch(e.localPosition, box)) {
-            HapticFeedback.mediumImpact();
-            click(4);
-            _downAt = null; // consumed
-          }
-        });
-      }
-    } else {
-      _maxPointers = _pointers.length > _maxPointers ? _pointers.length : _maxPointers;
-      _longPress?.cancel();
-    }
-  }
-
-  void _move(PointerMoveEvent e, Size box) {
-    _pointers[e.pointer] = e.localPosition;
-    final start = _downAt;
-    if (start != null && (e.localPosition - start).distance > 12) {
-      _moved = true;
-      _longPress?.cancel();
-    }
-    if (widget.inputMode != RfbInputMode.trackpad) return;
-    if (_pointers.length == 1) {
-      final rect = _screenRect(box);
-      final zoom = _transform.value.getMaxScaleOnAxis();
-      final perPixel = (_w / (rect.width > 0 ? rect.width : 1)) / (zoom > 0 ? zoom : 1);
-      _cursorX = (_cursorX + e.delta.dx * perPixel * _trackpadSpeed).clamp(0, _w - 1).toDouble();
-      _cursorY = (_cursorY + e.delta.dy * perPixel * _trackpadSpeed).clamp(0, _h - 1).toDouble();
-      _c.sendPointer(_cursorX.round(), _cursorY.round(), _held);
+      _longPress = Timer(_longPressTime, _onLongPress);
     } else if (_pointers.length == 2) {
-      _scrollAccumulator += e.delta.dy / 2;
-      if (_scrollAccumulator.abs() >= 24) {
-        scroll(up: _scrollAccumulator > 0);
-        _scrollAccumulator = 0;
+      _longPress?.cancel();
+      _stopEdgePan();
+      if (_buttons != 0) {
+        _buttons = 0;
+        _send();
       }
+      _g = _Gesture.two;
+      _maxPointers = 2;
+      _startSpan = _span > 0 ? _span : 1;
+      _startZoom = viewport.zoom;
+      _startFocal = _lastFocal = _focal;
+      _scroll = Offset.zero;
+      _twoHeld = false;
+      _twoHold?.cancel();
+      _twoHold = Timer(const Duration(milliseconds: 250), () => _twoHeld = true);
+    } else {
+      _maxPointers = _pointers.length;
     }
   }
 
-  void _up(PointerUpEvent e, Size box) {
-    _pointers.remove(e.pointer);
-    if (_pointers.isNotEmpty) return;
-    _longPress?.cancel();
-    final start = _downAt, time = _downTime;
-    _downAt = null;
-    if (start == null || time == null || _moved) return;
-    if (DateTime.now().difference(time) > const Duration(milliseconds: 350)) return;
-    if (_maxPointers >= 2) {
-      click(4); // two-finger tap: right click
+  void _onLongPress() {
+    if (_g != _Gesture.pending || _pointers.length != 1) return;
+    HapticFeedback.mediumImpact();
+    if (widget.inputMode == RfbInputMode.touch) {
+      _cursor = viewport.toRemote(_downAt);
+      _send();
+      click(4);
+      _g = _Gesture.done;
+    } else {
+      // Mouse pointer: the left button goes down; moving now drags.
+      _buttons = 1;
+      _send();
+      _g = _Gesture.held;
+      setState(() {});
+    }
+  }
+
+  void _move(PointerMoveEvent e) {
+    if (e.kind == PointerDeviceKind.mouse) return _mouseEvent(e.localPosition, e.buttons);
+    final prev = _pointers[e.pointer];
+    if (prev == null) return;
+    final p = _at(e.localPosition);
+    _pointers[e.pointer] = p;
+    if (_pointers.length == 1) {
+      if (_g == _Gesture.pending && (p - _downAt).distance > _slop) {
+        _longPress?.cancel();
+        if (widget.inputMode == RfbInputMode.touch) {
+          // Touch: press where the finger went down, then drag from there.
+          _cursor = viewport.toRemote(_downAt);
+          _send();
+          _buttons = 1;
+          _send();
+          _g = _Gesture.drag;
+          _startEdgePan();
+        } else {
+          _g = _Gesture.move;
+        }
+      }
+      if (_g == _Gesture.drag) {
+        _edgeAt = p;
+        _cursor = viewport.toRemote(p);
+        _send();
+      } else if (_g == _Gesture.move || _g == _Gesture.held) {
+        _moveCursor(p - prev);
+      }
       return;
     }
-    if (widget.inputMode == RfbInputMode.touch && !_moveToTouch(e.localPosition, box)) return;
-    click(1);
+    if (_pointers.length != 2) return;
+    final focal = _focal, span = _span;
+    if (_g == _Gesture.two) {
+      if ((span - _startSpan).abs() > 24) {
+        _g = _Gesture.pinch;
+      } else if ((focal - _startFocal).distance > _slop) {
+        _g = viewport.pannable && !_twoHeld ? _Gesture.pan : _Gesture.scroll;
+      }
+    }
+    switch (_g) {
+      case _Gesture.pinch:
+        setState(() {
+          viewport.panBy(focal - _lastFocal);
+          viewport.zoomAt(focal, _startZoom * span / _startSpan);
+        });
+      case _Gesture.pan:
+        setState(() => viewport.panBy(focal - _lastFocal));
+      case _Gesture.scroll:
+        // Natural scrolling, as on the phone: fingers up scrolls down.
+        _scroll += focal - _lastFocal;
+        while (_scroll.dy.abs() >= _scrollStep) {
+          _wheel(_scroll.dy > 0 ? 8 : 16);
+          _scroll -= Offset(0, _scroll.dy.sign * _scrollStep);
+        }
+        while (_scroll.dx.abs() >= _scrollStep) {
+          _wheel(_scroll.dx > 0 ? 32 : 64);
+          _scroll -= Offset(_scroll.dx.sign * _scrollStep, 0);
+        }
+      default:
+        break;
+    }
+    _lastFocal = focal;
+  }
+
+  /// Mouse pointer mode: moves the cursor like a trackpad, and keeps it
+  /// in view on a zoomed screen.
+  void _moveCursor(Offset delta) {
+    final perPixel = _trackpadSpeed / viewport.scale;
+    _cursor = Offset(
+      (_cursor.dx + delta.dx * perPixel).clamp(0.0, viewport.remote.width - 1),
+      (_cursor.dy + delta.dy * perPixel).clamp(0.0, viewport.remote.height - 1),
+    );
+    _send();
+    setState(() => viewport.reveal(viewport.toLocal(_cursor)));
+  }
+
+  void _up(PointerUpEvent e) {
+    if (e.kind == PointerDeviceKind.mouse) return _mouseEvent(e.localPosition, e.buttons);
+    final p = _pointers.remove(e.pointer);
+    if (p == null || _pointers.isNotEmpty) return;
+    _longPress?.cancel();
+    _twoHold?.cancel();
+    _stopEdgePan();
+    switch (_g) {
+      case _Gesture.pending:
+        if (widget.inputMode == RfbInputMode.touch) {
+          if (!viewport.rect.contains(_downAt)) break;
+          _cursor = viewport.toRemote(_downAt);
+          _send();
+          setState(() {});
+        }
+        click(1);
+      case _Gesture.drag || _Gesture.held:
+        _buttons = 0;
+        _send();
+        setState(() {});
+      case _Gesture.two when _maxPointers == 2:
+        if (_rightClick?.isActive ?? false) {
+          // The second two-finger tap: zoom, not a right-click.
+          _rightClick!.cancel();
+          setState(() => viewport.toggleZoom(_startFocal));
+        } else {
+          final at = _startFocal;
+          _rightClick = Timer(_doubleTapTime, () {
+            if (widget.inputMode == RfbInputMode.touch) {
+              _cursor = viewport.toRemote(at);
+              _send();
+            }
+            click(4);
+          });
+        }
+      default:
+        break;
+    }
+    _g = _Gesture.none;
   }
 
   void _cancel(PointerCancelEvent e) {
     _pointers.remove(e.pointer);
-    _longPress?.cancel();
-    if (_pointers.isEmpty) _downAt = null;
+    if (_pointers.isEmpty) _reset();
+  }
+
+  /// A real mouse: the pointer goes where it points; its buttons are its own.
+  void _mouseEvent(Offset local, int buttons) {
+    _mouse = true;
+    _cursor = viewport.toRemote(_at(local));
+    _buttons = (buttons & kPrimaryButton != 0 ? 1 : 0) |
+        (buttons & kMiddleMouseButton != 0 ? 2 : 0) |
+        (buttons & kSecondaryButton != 0 ? 4 : 0);
+    _send();
+  }
+
+  void _signal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    _cursor = viewport.toRemote(_at(e.localPosition));
+    if (e.scrollDelta.dy != 0) _wheel(e.scrollDelta.dy < 0 ? 8 : 16);
+    if (e.scrollDelta.dx != 0) _wheel(e.scrollDelta.dx < 0 ? 32 : 64);
+  }
+
+  // Touch drag near an edge of a zoomed screen pans it, so a window can
+  // be dragged further than the view shows.
+  void _startEdgePan() {
+    _edgeTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      final at = _edgeAt;
+      if (at == null || !mounted) return;
+      final before = viewport.offset;
+      viewport.panBy(viewport.edgePan(at));
+      if (viewport.offset == before) return;
+      _cursor = viewport.toRemote(at);
+      _send();
+      setState(() {});
+    });
+  }
+
+  void _stopEdgePan() {
+    _edgeTimer?.cancel();
+    _edgeTimer = null;
+    _edgeAt = null;
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final box = constraints.biggest;
-      return Semantics(
-        label: widget.label,
-        hint: widget.inputMode == RfbInputMode.trackpad
-            ? 'Drag to move the pointer, tap to click, tap with two fingers to right-click'
-            : 'Tap to click, hold to right-click, pinch to zoom',
-        child: Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (e) => _down(e, box),
-          onPointerMove: (e) => _move(e, box),
-          onPointerUp: (e) => _up(e, box),
-          onPointerCancel: _cancel,
-          child: InteractiveViewer(
-            transformationController: _transform,
-            minScale: 1,
-            maxScale: 6,
-            panEnabled: widget.inputMode == RfbInputMode.touch,
-            child: SizedBox.fromSize(
-              size: box,
-              child: ValueListenableBuilder<ui.Image?>(
-                valueListenable: _c.frame,
-                builder: (context, image, _) => image == null
-                    ? const SizedBox.expand()
-                    : RawImage(image: image, fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return ValueListenableBuilder<ui.Image?>(
+      valueListenable: _c.frame,
+      builder: (context, image, _) => LayoutBuilder(builder: (context, constraints) {
+        final remote = Size((_c.width > 0 ? _c.width : 1280).toDouble(), (_c.height > 0 ? _c.height : 720).toDouble());
+        viewport.layout(box: constraints.biggest, remote: remote, dpr: dpr, fit: widget.fit);
+        final caret = viewport.toLocal(_cursor);
+        _lift = widget.bottomInset > 0 ? viewport.liftFor(caret, viewport.box.height - widget.bottomInset) : 0;
+        final showCursor = widget.inputMode == RfbInputMode.trackpad && !_mouse && image != null;
+        return Semantics(
+          label: widget.label,
+          hint: widget.inputMode == RfbInputMode.trackpad
+              ? 'Mouse pointer. Drag to move the pointer, tap to click, hold then drag to drag, tap with two fingers to right-click'
+              : 'Touch. Tap to click, hold to right-click, drag to drag, pinch to zoom, drag two fingers to scroll',
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _down,
+            onPointerMove: _move,
+            onPointerUp: _up,
+            onPointerCancel: _cancel,
+            onPointerHover: (e) {
+              if (e.kind == PointerDeviceKind.mouse) _mouseEvent(e.localPosition, 0);
+            },
+            onPointerSignal: _signal,
+            child: ClipRect(
+              child: Transform.translate(
+                offset: Offset(0, -_lift),
+                child: Stack(children: [
+                  if (image != null)
+                    Positioned.fromRect(
+                      rect: viewport.rect,
+                      child: RawImage(
+                        image: image,
+                        fit: BoxFit.fill,
+                        filterQuality: viewport.scale < 1 ? FilterQuality.medium : FilterQuality.low,
+                      ),
+                    ),
+                  if (showCursor)
+                    Positioned(
+                      left: caret.dx - 1,
+                      top: caret.dy - 1,
+                      child: const IgnorePointer(child: CustomPaint(size: Size(14, 21), painter: _CursorPainter())),
+                    ),
+                ]),
               ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      }),
+    );
   }
 }
 
+/// The mouse pointer mode's cursor: a white arrow with a dark edge, legible
+/// on any picture.
+class _CursorPainter extends CustomPainter {
+  const _CursorPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(0, h * 0.82)
+      ..lineTo(w * 0.3, h * 0.6)
+      ..lineTo(w * 0.52, h)
+      ..lineTo(w * 0.68, h * 0.93)
+      ..lineTo(w * 0.47, h * 0.55)
+      ..lineTo(w, h * 0.55)
+      ..close();
+    canvas.drawPath(path, Paint()..color = Colors.white);
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2);
+  }
+
+  @override
+  bool shouldRepaint(_CursorPainter oldDelegate) => false;
+}
+
 // ---------------------------------------------------------------------------
-// The console frame
+// The session
 // ---------------------------------------------------------------------------
 
 /// An item for the console's overflow menu.
@@ -578,13 +814,31 @@ class ConsoleMenuItem {
   final void Function(BuildContext context)? onPressed;
 }
 
-/// The page around a remote screen: app bar with keyboard, clipboard and
-/// menu; the screen; and, below it, mouse buttons and special keys. It is
-/// always drawn in the dark theme, like a video player, so the remote
-/// picture keeps its own colours whatever the app's theme.
+/// How many pictures a second the console asks for.
+enum RfbQuality {
+  best('Best picture', 0),
+  balanced('Balanced · 20 fps', 20),
+  saver('Data saver · 5 fps', 5);
+
+  const RfbQuality(this.label, this.fps);
+  final String label;
+  final int fps;
+}
+
+/// A remote screen session, laid out like Microsoft's Windows App: the
+/// remote screen full screen and immersive (the system bars come back
+/// with a swipe), with a small session toolbar - a pill at the top that
+/// can be slid along the edge and hides itself after a few seconds,
+/// leaving a tab to bring it back. It is drawn in the dark (or true
+/// black) theme of the app's style, like a video player, so the remote
+/// picture keeps its own colours.
+///
+/// The input mode, the stay-in-landscape choice, and per [clipboardTarget]
+/// the fit and the quality, are remembered.
 ///
 /// The screen that owns it connects [client]; until it wants a connection
-/// (a stopped VM, a desktop that isn't installed) it passes [placeholder].
+/// (a stopped VM, a desktop that isn't installed) it passes [placeholder],
+/// shown in an ordinary page with an app bar.
 class RemoteConsoleFrame extends StatefulWidget {
   const RemoteConsoleFrame({
     super.key,
@@ -597,16 +851,18 @@ class RemoteConsoleFrame extends StatefulWidget {
     this.placeholderStatus,
     this.screenLabel,
     this.history,
+    this.onMatchPhone,
   });
 
   final RfbClient client;
   final String title;
 
-  /// Who the clipboard sheet sends to ("mint", "the server").
+  /// Who the clipboard sheet sends to ("mint", "the server"); also the
+  /// key the fit and quality are remembered under.
   final String clipboardTarget;
   final String? clipboardHint;
 
-  /// The screen's own items, shown first in the menu.
+  /// The screen's own items, shown first in the More menu.
   final List<ConsoleMenuItem> menuItems;
 
   /// Shown instead of the console while there is nothing to connect to.
@@ -617,23 +873,46 @@ class RemoteConsoleFrame extends StatefulWidget {
   final String? screenLabel;
   final RemoteClipboardHistory? history;
 
+  /// Resizes the remote screen to this phone's shape, for "Match this
+  /// phone". Null where the remote screen can't be resized from here.
+  final Future<void> Function(BuildContext context)? onMatchPhone;
+
   @override
   State<RemoteConsoleFrame> createState() => RemoteConsoleFrameState();
 }
 
 class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
   final _viewKey = GlobalKey<RfbViewState>();
+  final _pillKey = GlobalKey();
+  final _sessionFocus = FocusNode(debugLabel: 'remote session');
   final _keyboardFocus = FocusNode(debugLabel: 'remote keyboard');
   final _keyboardText = TextEditingController(text: _sentinel);
   final _keyScroll = ScrollController();
   StreamSubscription<String>? _clipSub;
 
-  RfbInputMode _inputMode = RfbInputMode.trackpad;
+  RfbInputMode _inputMode = RfbInputMode.touch;
+  RfbFit _fit = RfbFit.fit;
+  RfbQuality _quality = RfbQuality.best;
   bool _showKeys = false;
-  bool _fullscreen = false;
   bool _landscapeLocked = false;
-  bool _dragLocked = false;
+  bool _immersive = false;
   final Set<int> _latched = {};
+  final Map<PhysicalKeyboardKey, int> _downKeys = {};
+
+  // The toolbar: shown, where along the top edge, and when it hides.
+  bool _toolbarShown = true;
+  double _toolbarX = 0;
+  int _menusOpen = 0;
+  Timer? _hideTimer;
+  static const toolbarHideAfter = Duration(seconds: 4);
+
+  // Reconnecting after a lost connection: up to [_maxReconnects] tries,
+  // 1, 2 then 4 seconds apart, over the last picture dimmed.
+  int _reconnects = 0;
+  Timer? _reconnectTimer;
+  static const _maxReconnects = 3;
+
+  static const keysRowHeight = 56.0;
 
   // The hidden field always holds this, so a backspace on an "empty"
   // field still arrives as a change.
@@ -641,6 +920,10 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
 
   RfbClient get _client => widget.client;
   RemoteClipboardHistory get _history => widget.history ?? RemoteClipboardHistory.instance;
+  bool get _session => widget.placeholder == null;
+
+  /// Whether the session toolbar is showing (rather than its tab).
+  bool get toolbarShown => _toolbarShown;
 
   @override
   void initState() {
@@ -648,6 +931,8 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
     _client.status.addListener(_statusChanged);
     _clipSub = _client.remoteClipboard.listen(_remoteCopied);
     _keyboardFocus.addListener(() => setState(() {}));
+    _poke();
+    _loadPrefs();
   }
 
   @override
@@ -659,29 +944,96 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
       _client.status.addListener(_statusChanged);
       _clipSub = _client.remoteClipboard.listen(_remoteCopied);
     }
+    // The host desktop learns it can resize only once it has checked.
+    if (oldWidget.onMatchPhone == null && widget.onMatchPhone != null && _fit == RfbFit.matchPhone) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onMatchPhone?.call(context);
+      });
+    }
   }
 
   @override
   void dispose() {
     _client.status.removeListener(_statusChanged);
     _clipSub?.cancel();
+    _hideTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _sessionFocus.dispose();
     _keyboardFocus.dispose();
     _keyboardText.dispose();
     _keyScroll.dispose();
-    if (_fullscreen || _landscapeLocked) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      SystemChrome.setPreferredOrientations(const []);
-    }
+    if (_immersive) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (_landscapeLocked) SystemChrome.setPreferredOrientations(const []);
     super.dispose();
   }
 
+  // --- remembered choices ---
+
+  static Future<String?> _pref(String name) async {
+    try {
+      return await StorageService.instance.getConsolePref(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _savePref(String name, String value) async {
+    try {
+      await StorageService.instance.setConsolePref(name, value);
+    } catch (e) {
+      debugPrint('[console] Could not save $name: $e');
+    }
+  }
+
+  Future<void> _loadPrefs() async {
+    final target = widget.clipboardTarget;
+    final input = RfbInputMode.values.asNameMap()[await _pref('input')];
+    final fit = RfbFit.values.asNameMap()[await _pref('fit@$target')];
+    final quality = RfbQuality.values.asNameMap()[await _pref('quality@$target')];
+    final landscape = await _pref('landscape') == 'true';
+    if (!mounted) return;
+    setState(() {
+      _inputMode = input ?? _inputMode;
+      _fit = fit ?? _fit;
+      _quality = quality ?? _quality;
+    });
+    _client.maxFps = _quality.fps;
+    if (landscape) _setLandscape(true, save: false);
+    if (_fit == RfbFit.matchPhone) await widget.onMatchPhone?.call(context);
+  }
+
+  // --- connection ---
+
   void _statusChanged() {
     if (!mounted) return;
+    final s = _client.status.value;
     if (!_client.isConnected) {
       _latched.clear();
-      _dragLocked = false;
+      _downKeys.clear();
+    }
+    if (s == RfbStatus.connected) {
+      _reconnects = 0;
+      _client.maxFps = _quality.fps;
+      _poke();
+    } else if (_session &&
+        (s == RfbStatus.disconnected || (s == RfbStatus.failed && _reconnects > 0)) &&
+        _reconnects < _maxReconnects) {
+      _reconnects++;
+      _reconnectTimer?.cancel();
+      _reconnectTimer = Timer(Duration(seconds: 1 << (_reconnects - 1)), () {
+        if (mounted && _session) _client.connect();
+      });
     }
     setState(() {});
+  }
+
+  bool get _reconnecting =>
+      _reconnects > 0 && ((_reconnectTimer?.isActive ?? false) || _client.status.value == RfbStatus.connecting);
+
+  void _retry() {
+    _reconnectTimer?.cancel();
+    setState(() => _reconnects = 0);
+    _client.connect();
   }
 
   void _remoteCopied(String text) {
@@ -691,6 +1043,37 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
       content: Text('$who copied text'),
       action: SnackBarAction(label: 'Copy here', onPressed: () => Clipboard.setData(ClipboardData(text: text))),
     ));
+  }
+
+  // --- toolbar ---
+
+  /// Shows the toolbar and restarts its hide timer. It stays while a menu
+  /// is open, and for good while TalkBack or Switch Access is on.
+  void _poke() {
+    _hideTimer?.cancel();
+    if (!_toolbarShown) setState(() => _toolbarShown = true);
+    _hideTimer = Timer(toolbarHideAfter, () {
+      if (!mounted || _menusOpen > 0 || MediaQuery.maybeAccessibleNavigationOf(context) == true) return;
+      setState(() => _toolbarShown = false);
+    });
+  }
+
+  void _menuOpened() {
+    _menusOpen++;
+    _hideTimer?.cancel();
+  }
+
+  void _menuClosed() {
+    _menusOpen = _menusOpen > 0 ? _menusOpen - 1 : 0;
+    _poke();
+  }
+
+  void _slideToolbar(DragUpdateDetails d) {
+    final width = MediaQuery.sizeOf(context).width;
+    final pill = _pillKey.currentContext?.size?.width ?? width;
+    final room = ((width - pill) / 2 - Space.sm).clamp(0.0, double.infinity);
+    setState(() => _toolbarX = (_toolbarX + d.delta.dx).clamp(-room, room));
+    _poke();
   }
 
   // --- keyboard ---
@@ -703,7 +1086,7 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
       return;
     }
     if (open) {
-      _keyboardFocus.unfocus();
+      _sessionFocus.requestFocus();
     } else {
       _keyboardFocus.requestFocus();
       setState(() => _showKeys = true);
@@ -729,15 +1112,52 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
     _keyboardText.value = const TextEditingValue(text: _sentinel, selection: TextSelection.collapsed(offset: 2));
   }
 
+  static final Map<LogicalKeyboardKey, int> _modifierKeys = {
+    LogicalKeyboardKey.shiftLeft: Keysym.shift,
+    LogicalKeyboardKey.shiftRight: 0xffe2,
+    LogicalKeyboardKey.controlLeft: Keysym.control,
+    LogicalKeyboardKey.controlRight: 0xffe4,
+    LogicalKeyboardKey.altLeft: Keysym.alt,
+    LogicalKeyboardKey.altRight: 0xffea,
+    LogicalKeyboardKey.metaLeft: Keysym.superKey,
+    LogicalKeyboardKey.metaRight: 0xffec,
+  };
+
+  // Keys that also arrive through the soft keyboard field as text.
+  static final Map<LogicalKeyboardKey, int> _textKeys = {
+    LogicalKeyboardKey.enter: Keysym.enter,
+    LogicalKeyboardKey.numpadEnter: Keysym.enter,
+    LogicalKeyboardKey.backspace: Keysym.backspace,
+  };
+
+  /// A hardware keyboard (DeX, a tablet's keyboard cover): every key goes
+  /// to the remote as itself, modifiers and shortcuts included. While the
+  /// soft keyboard's field has focus, plain text still comes through it
+  /// (so the phone's input methods keep working).
   KeyEventResult _onHardwareKey(FocusNode node, KeyEvent event) {
-    final keysym = Keysym.hardware[event.logicalKey];
-    if (keysym == null) return KeyEventResult.ignored;
-    if (event is KeyDownEvent || event is KeyRepeatEvent) {
-      _client.sendKey(keysym, true);
-    } else if (event is KeyUpEvent) {
-      _client.sendKey(keysym, false);
-      _releaseLatches();
+    if (!_client.isConnected) return KeyEventResult.ignored;
+    final physical = event.physicalKey;
+    if (event is KeyUpEvent) {
+      final sym = _downKeys.remove(physical);
+      if (sym == null) return KeyEventResult.ignored;
+      _client.sendKey(sym, false);
+      if (!_modifierKeys.containsValue(sym)) _releaseLatches();
+      return KeyEventResult.handled;
     }
+    final hw = HardwareKeyboard.instance;
+    final shortcut = hw.isControlPressed || hw.isAltPressed || hw.isMetaPressed;
+    final viaIme = _keyboardFocus.hasFocus && !shortcut;
+    var sym = _downKeys[physical] ?? _modifierKeys[event.logicalKey] ?? Keysym.hardware[event.logicalKey];
+    if (sym == null && !viaIme) sym = _textKeys[event.logicalKey];
+    if (sym == null) {
+      if (viaIme) return KeyEventResult.ignored;
+      final label = event.logicalKey.keyLabel;
+      final text = shortcut && label.runes.length == 1 ? label.toLowerCase() : event.character;
+      if (text == null || text.isEmpty) return KeyEventResult.ignored;
+      sym = RfbClient.keysymForRune(text.runes.first);
+    }
+    _downKeys[physical] = sym;
+    _client.sendKey(sym, true);
     return KeyEventResult.handled;
   }
 
@@ -761,23 +1181,38 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
     setState(_latched.clear);
   }
 
-  // --- modes ---
+  // --- choices ---
 
-  void _setFullscreen(bool on) {
-    setState(() => _fullscreen = on);
-    SystemChrome.setEnabledSystemUIMode(on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+  void _setInputMode(RfbInputMode mode) {
+    HapticFeedback.selectionClick();
+    setState(() => _inputMode = mode);
+    _savePref('input', mode.name);
+    _poke();
   }
 
-  void _setLandscape(bool on) {
+  Future<void> _setFit(RfbFit fit) async {
+    setState(() => _fit = fit);
+    await _savePref('fit@${widget.clipboardTarget}', fit.name);
+    if (fit == RfbFit.matchPhone && mounted) await widget.onMatchPhone?.call(context);
+  }
+
+  void _setQuality(RfbQuality q) {
+    setState(() => _quality = q);
+    _client.maxFps = q.fps;
+    _savePref('quality@${widget.clipboardTarget}', q.name);
+  }
+
+  void _setLandscape(bool on, {bool save = true}) {
     setState(() => _landscapeLocked = on);
     SystemChrome.setPreferredOrientations(
         on ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : const []);
+    if (save) _savePref('landscape', '$on');
   }
 
-  void _toggleDrag() {
-    HapticFeedback.selectionClick();
-    setState(() => _dragLocked = !_dragLocked);
-    _viewKey.currentState?.setDrag(_dragLocked);
+  void _setImmersive(bool on) {
+    if (on == _immersive) return;
+    _immersive = on;
+    SystemChrome.setEnabledSystemUIMode(on ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
   }
 
   Future<void> _openClipboard(BuildContext context) => RemoteClipboardSheet.show(context,
@@ -785,57 +1220,77 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
 
   Future<void> _onBack(bool didPop, Object? result) async {
     if (didPop) return;
-    if (_fullscreen) {
-      _setFullscreen(false);
-      return;
-    }
     final close = await ConfirmDialog.confirm(
       context,
-      title: 'Close the console?',
+      title: 'Disconnect?',
       message: widget.clipboardTarget == RemoteClipboardHistory.hostTarget
           ? 'The server keeps running. You can open it again from More.'
           : '${widget.clipboardTarget} keeps running. You can open the console again from the VM list.',
-      confirmLabel: 'Close',
+      confirmLabel: 'Disconnect',
     );
     if (close && mounted) Navigator.of(context).pop();
+  }
+
+  void _disconnect() {
+    _reconnectTimer?.cancel();
+    _client.close();
+    Navigator.of(context).pop();
   }
 
   String _statusText() => widget.placeholder != null && widget.placeholderStatus != null
       ? widget.placeholderStatus!
       : switch (_client.status.value) {
-        RfbStatus.connected => 'Connected · ${_client.width} × ${_client.height}',
-        RfbStatus.connecting => 'Connecting…',
-        RfbStatus.disconnected => 'Disconnected',
-        RfbStatus.failed => 'Not connected',
-        RfbStatus.idle => widget.placeholder != null ? 'Not connected' : 'Connecting…',
-      };
+          RfbStatus.connected => 'Connected · ${_client.width} × ${_client.height}',
+          RfbStatus.connecting => 'Connecting…',
+          RfbStatus.disconnected => 'Disconnected',
+          RfbStatus.failed => 'Not connected',
+          RfbStatus.idle => widget.placeholder != null ? 'Not connected' : 'Connecting…',
+        };
+
+  /// The console's theme: the app's style, always dark - true black when
+  /// the app is in true black.
+  static ThemeData _theme(BuildContext context) {
+    final app = Theme.of(context);
+    return AppTheme.build(
+      brightness: Brightness.dark,
+      black: app.brightness == Brightness.dark && app.colorScheme.surface == const Color(0xFF000000),
+      accent: ThemeController.instance.value.accent,
+      direction: DesignTokens.of(context).direction,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final dark = AppTheme.dark();
+    final theme = _theme(context);
+    _setImmersive(_session);
     return Theme(
-      data: dark,
+      data: theme,
       child: Builder(builder: (context) {
-        final connected = _client.isConnected && widget.placeholder == null;
+        final connected = _client.isConnected && _session;
         return PopScope(
-          canPop: !connected && !_fullscreen,
+          canPop: !connected,
           onPopInvokedWithResult: _onBack,
-          child: Scaffold(
-            backgroundColor: dark.colorScheme.surfaceContainerLowest,
-            appBar: _fullscreen ? null : _appBar(context, connected),
-            body: Column(
-              children: [
-                Expanded(child: _screen(context, connected)),
-                if (connected && !_fullscreen) _controls(context),
-              ],
-            ),
-          ),
+          child: _session
+              ? AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: AppTheme.systemBarsStyle(Brightness.dark),
+                  child: Scaffold(
+                    backgroundColor: Colors.black,
+                    resizeToAvoidBottomInset: false,
+                    body: _sessionView(context, connected),
+                  ),
+                )
+              : Scaffold(
+                  backgroundColor: theme.colorScheme.surfaceContainerLowest,
+                  appBar: _appBar(context),
+                  body: widget.placeholder,
+                ),
         );
       }),
     );
   }
 
-  PreferredSizeWidget _appBar(BuildContext context, bool connected) {
+  /// Before a session: the title, its state and the screen's own menu.
+  PreferredSizeWidget _appBar(BuildContext context) {
     final theme = Theme.of(context);
     return AppBar(
       backgroundColor: theme.colorScheme.surfaceContainer,
@@ -856,115 +1311,38 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
           ),
         ],
       ),
-      actions: [
-        if (connected) ...[
-          IconButton(
-            tooltip: _keyboardFocus.hasFocus ? 'Hide keyboard' : 'Show keyboard',
-            isSelected: _keyboardFocus.hasFocus,
-            icon: const Icon(Icons.keyboard_outlined),
-            selectedIcon: const Icon(Icons.keyboard_hide_outlined),
-            onPressed: _toggleKeyboard,
-          ),
-          IconButton(
-            tooltip: 'Clipboard',
-            icon: const Icon(Icons.content_paste_outlined),
-            onPressed: () => _openClipboard(context),
-          ),
-        ],
-        _menu(context, connected),
-      ],
+      actions: [if (widget.menuItems.isNotEmpty) _moreMenu(context, connected: false)],
     );
   }
 
-  Widget _menu(BuildContext context, bool connected) {
-    return MenuAnchor(
-      builder: (context, controller, _) => IconButton(
-        tooltip: 'More options',
-        icon: const Icon(Icons.more_vert),
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-      ),
-      menuChildren: [
-        for (final item in widget.menuItems)
-          MenuItemButton(
-            leadingIcon: Icon(item.icon),
-            onPressed: item.onPressed == null ? null : () => item.onPressed!(context),
-            child: Text(item.label),
+  Widget _sessionView(BuildContext context, bool connected) {
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final keysShown = _showKeys && connected;
+    return Focus(
+      focusNode: _sessionFocus,
+      autofocus: true,
+      onKeyEvent: _onHardwareKey,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          RfbView(
+            key: _viewKey,
+            client: _client,
+            inputMode: _inputMode,
+            fit: _fit,
+            bottomInset: keyboard + (keysShown ? keysRowHeight : 0),
+            label: widget.screenLabel ?? 'Screen of ${widget.title}',
           ),
-        if (widget.menuItems.isNotEmpty) const Divider(),
-        if (connected) ...[
-          MenuItemButton(
-            leadingIcon: Icon(_inputMode == RfbInputMode.trackpad ? Icons.touch_app_outlined : Icons.mouse_outlined),
-            onPressed: () => setState(() {
-              _inputMode = _inputMode == RfbInputMode.trackpad ? RfbInputMode.touch : RfbInputMode.trackpad;
-              if (_dragLocked) _toggleDrag();
-            }),
-            child: Text(_inputMode == RfbInputMode.trackpad ? 'Use touch mode' : 'Use trackpad mode'),
-          ),
-          CheckboxMenuButton(
-            value: _showKeys,
-            onChanged: (v) => setState(() => _showKeys = v ?? false),
-            child: const Text('Special keys'),
-          ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.zoom_out_map_outlined),
-            onPressed: () => _viewKey.currentState?.resetZoom(),
-            child: const Text('Fit to screen'),
-          ),
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.fullscreen),
-            onPressed: () => _setFullscreen(true),
-            child: const Text('Full screen'),
-          ),
-        ],
-        CheckboxMenuButton(
-          value: _landscapeLocked,
-          onChanged: (v) => _setLandscape(v ?? false),
-          child: const Text('Stay in landscape'),
-        ),
-        if (widget.placeholder == null)
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.refresh),
-            onPressed: _client.status.value == RfbStatus.connecting
-                ? null
-                : () {
-                    _client.close();
-                    _client.connect();
-                  },
-            child: const Text('Reconnect'),
-          ),
-      ],
-    );
-  }
-
-  Widget _screen(BuildContext context, bool connected) {
-    final scheme = Theme.of(context).colorScheme;
-    final placeholder = widget.placeholder;
-    if (placeholder != null) return placeholder;
-    final status = _client.status.value;
-    final hasFrame = _client.frame.value != null;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        RfbView(
-          key: _viewKey,
-          client: _client,
-          inputMode: _inputMode,
-          dragLocked: _dragLocked,
-          label: widget.screenLabel ?? 'Screen of ${widget.title}',
-        ),
-        // The hidden field that brings up the soft keyboard and receives
-        // its text. It must be on screen (1x1) for the IME to attach.
-        Positioned(
-          left: 0,
-          top: 0,
-          width: 1,
-          height: 1,
-          child: ExcludeSemantics(
-            child: Opacity(
-              opacity: 0,
-              child: Focus(
-                onKeyEvent: _onHardwareKey,
-                skipTraversal: true,
+          // The hidden field that brings up the soft keyboard and receives
+          // its text. It must be on screen (1x1) for the IME to attach.
+          Positioned(
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            child: ExcludeSemantics(
+              child: Opacity(
+                opacity: 0,
                 child: TextField(
                   focusNode: _keyboardFocus,
                   controller: _keyboardText,
@@ -980,113 +1358,271 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
               ),
             ),
           ),
-        ),
-        if (status == RfbStatus.connecting)
-          const Align(alignment: Alignment.topCenter, child: LinearProgressIndicator()),
-        if (!connected)
-          ColoredBox(
-            color: hasFrame ? scheme.scrim.withValues(alpha: 0.7) : scheme.surfaceContainerLowest,
-            child: _ConsoleMessage(
-              status: status,
-              title: widget.title,
-              error: _client.error.value,
-              onRetry: () => _client.connect(),
-            ),
-          ),
-        if (_fullscreen)
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + Space.sm,
-            right: Space.sm,
-            child: FloatingActionButton.small(
-              heroTag: null,
-              tooltip: 'Exit full screen',
-              backgroundColor: scheme.secondaryContainer.withValues(alpha: 0.85),
-              foregroundColor: scheme.onSecondaryContainer,
-              elevation: 0,
-              onPressed: () => _setFullscreen(false),
-              child: const Icon(Icons.fullscreen_exit),
-            ),
-          ),
-      ],
+          if (!connected) _overlay(context),
+          if (keysShown)
+            Positioned(left: 0, right: 0, bottom: keyboard, child: _keyBar(context)),
+          if (connected) _toolbar(context),
+        ],
+      ),
     );
   }
 
-  Widget _controls(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final gutter = Space.gutter(context);
-    return Material(
-      color: scheme.surfaceContainer,
+  /// Connecting, reconnecting over the last picture, or lost.
+  Widget _overlay(BuildContext context) {
+    final status = _client.status.value;
+    final hasFrame = _client.frame.value != null;
+    final reconnecting = _reconnecting;
+    final connecting = reconnecting || status == RfbStatus.connecting || status == RfbStatus.idle;
+    return ColoredBox(
+      color: hasFrame ? Colors.black.withValues(alpha: 0.6) : Colors.black,
       child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: Space.xs),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_showKeys) _keyBar(context),
-              if (_inputMode == RfbInputMode.trackpad) ...[
-                // A caption, so "Left", "Right", the arrows and the hand
-                // read as one set of mouse controls.
-                Padding(
-                  padding: EdgeInsets.fromLTRB(gutter, Space.xs, gutter, 0),
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text('Mouse', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  ),
+        child: _SessionMessage(
+          heading: reconnecting
+              ? 'Reconnecting to ${widget.title}'
+              : switch (status) {
+                  RfbStatus.disconnected => 'Connection lost',
+                  RfbStatus.failed => _reconnects > 0 ? 'Connection lost' : "Couldn't connect",
+                  _ => 'Connecting to ${widget.title}',
+                },
+          detail: reconnecting
+              ? 'Try $_reconnects of $_maxReconnects'
+              : connecting
+                  ? null
+                  : _client.error.value,
+          busy: connecting,
+          onRetry: connecting ? null : _retry,
+          onClose: _disconnect,
+        ),
+      ),
+    );
+  }
+
+  Widget _toolbar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final top = MediaQuery.paddingOf(context).top + Space.sm;
+    final Widget child;
+    if (_toolbarShown) {
+      child = Material(
+        key: _pillKey,
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.94),
+        shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
+        elevation: 3,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // The grip: slide the toolbar along the top edge.
+            ExcludeSemantics(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: _slideToolbar,
+                child: SizedBox(
+                  width: 24,
+                  height: 48,
+                  child: Icon(Icons.drag_indicator, size: 20, color: scheme.onSurfaceVariant),
                 ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: gutter),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => _viewKey.currentState?.click(1),
-                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.md)),
-                          child: const Tooltip(message: 'Left click', child: Text('Left', maxLines: 1, overflow: TextOverflow.ellipsis)),
-                        ),
-                      ),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => _viewKey.currentState?.click(4),
-                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.md)),
-                          child: const Tooltip(message: 'Right click', child: Text('Right', maxLines: 1, overflow: TextOverflow.ellipsis)),
-                        ),
-                      ),
-                      const SizedBox(width: Space.xs),
-                      IconButton(
-                        tooltip: 'Scroll up',
-                        icon: const Icon(Icons.keyboard_arrow_up),
-                        onPressed: () => _viewKey.currentState?.scroll(up: true),
-                      ),
-                      IconButton(
-                        tooltip: 'Scroll down',
-                        icon: const Icon(Icons.keyboard_arrow_down),
-                        onPressed: () => _viewKey.currentState?.scroll(up: false),
-                      ),
-                      IconButton(
-                        tooltip: _dragLocked ? 'Release the held button' : 'Hold the left button to drag',
-                        isSelected: _dragLocked,
-                        icon: const Icon(Icons.pan_tool_outlined),
-                        selectedIcon: const Icon(Icons.pan_tool),
-                        style: IconButton.styleFrom(
-                          backgroundColor: _dragLocked ? scheme.secondaryContainer : null,
-                          foregroundColor: _dragLocked ? scheme.onSecondaryContainer : null,
-                        ),
-                        onPressed: _toggleDrag,
-                      ),
-                    ],
+              ),
+            ),
+            // 48dp targets whatever the style's density. On a narrow
+            // screen (or at large text) the middle scrolls; Disconnect stays.
+            Flexible(
+              child: IconButtonTheme(
+                data: IconButtonThemeData(style: IconButton.styleFrom(minimumSize: const Size.square(48))),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Flexible(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: _toolbarButtons(context)),
+                    ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: Space.xs),
+                    child: IconButton(
+                      tooltip: 'Disconnect',
+                      icon: Icon(Icons.close, color: scheme.error),
+                      onPressed: _disconnect,
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      child = Semantics(
+        button: true,
+        label: 'Show session toolbar',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: _poke,
+          customBorder: const StadiumBorder(),
+          child: SizedBox(
+            width: 64,
+            height: 48,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                width: 48,
+                height: 20,
+                decoration: ShapeDecoration(
+                  color: scheme.surfaceContainerHigh.withValues(alpha: 0.7),
+                  shape: StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
                 ),
-              ],
-            ],
+                child: Icon(Icons.expand_more, size: 18, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return Positioned(
+      top: top - (_toolbarShown ? 0 : Space.sm),
+      left: Space.sm,
+      right: Space.sm,
+      child: Center(
+        child: Transform.translate(
+          offset: Offset(_toolbarX, 0),
+          child: Semantics(
+            container: true,
+            label: 'Session toolbar',
+            explicitChildNodes: true,
+            child: AnimatedSwitcher(duration: Motion.of(context).short, child: child),
           ),
         ),
       ),
     );
   }
 
+  List<Widget> _toolbarButtons(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final mouse = _inputMode == RfbInputMode.trackpad;
+    ButtonStyle selected(bool on) => IconButton.styleFrom(
+          backgroundColor: on ? scheme.secondaryContainer : null,
+          foregroundColor: on ? scheme.onSecondaryContainer : null,
+        );
+    return [
+      IconButton(
+        tooltip: _keyboardFocus.hasFocus ? 'Hide keyboard' : 'Show keyboard',
+        isSelected: _keyboardFocus.hasFocus,
+        icon: const Icon(Icons.keyboard_outlined),
+        selectedIcon: const Icon(Icons.keyboard_hide_outlined),
+        style: selected(_keyboardFocus.hasFocus),
+        onPressed: () {
+          _toggleKeyboard();
+          _poke();
+        },
+      ),
+      IconButton(
+        tooltip: mouse ? 'Input: mouse pointer. Switch to touch' : 'Input: touch. Switch to mouse pointer',
+        icon: Icon(mouse ? Icons.mouse_outlined : Icons.touch_app_outlined),
+        onPressed: () => _setInputMode(mouse ? RfbInputMode.touch : RfbInputMode.trackpad),
+      ),
+      _displayMenu(context),
+      IconButton(
+        tooltip: _showKeys ? 'Hide extra keys' : 'Extra keys',
+        isSelected: _showKeys,
+        icon: const Icon(Icons.keyboard_command_key),
+        style: selected(_showKeys),
+        onPressed: () {
+          setState(() => _showKeys = !_showKeys);
+          _poke();
+        },
+      ),
+      IconButton(
+        tooltip: 'Clipboard',
+        icon: const Icon(Icons.content_paste_outlined),
+        onPressed: () {
+          _hideTimer?.cancel();
+          _openClipboard(context).whenComplete(() {
+            if (mounted) _poke();
+          });
+        },
+      ),
+      _moreMenu(context, connected: true),
+    ];
+  }
+
+  /// Fit, zoom, quality and orientation.
+  Widget _displayMenu(BuildContext context) {
+    final zoomed = (_viewKey.currentState?.viewport.zoom ?? 1) > 1.01;
+    return MenuAnchor(
+      onOpen: _menuOpened,
+      onClose: _menuClosed,
+      builder: (context, controller, _) => IconButton(
+        tooltip: 'Display',
+        icon: const Icon(Icons.aspect_ratio_outlined),
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+      menuChildren: [
+        MenuItemButton(
+          onPressed: null,
+          child: Text('${_client.width} × ${_client.height}', style: Theme.of(context).textTheme.labelMedium?.tabular),
+        ),
+        for (final f in RfbFit.values)
+          if (f != RfbFit.matchPhone || widget.onMatchPhone != null)
+            RadioMenuButton<RfbFit>(
+              value: f,
+              groupValue: _fit,
+              onChanged: (v) => _setFit(v!),
+              child: Text(f.label),
+            ),
+        if (zoomed)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.zoom_out_map_outlined),
+            onPressed: () => _viewKey.currentState?.resetZoom(),
+            child: const Text('Reset zoom'),
+          ),
+        const Divider(),
+        for (final q in RfbQuality.values)
+          RadioMenuButton<RfbQuality>(
+            value: q,
+            groupValue: _quality,
+            onChanged: (v) => _setQuality(v!),
+            child: Text(q.label),
+          ),
+        const Divider(),
+        CheckboxMenuButton(
+          value: _landscapeLocked,
+          onChanged: (v) => _setLandscape(v ?? false),
+          child: const Text('Stay in landscape'),
+        ),
+      ],
+    );
+  }
+
+  Widget _moreMenu(BuildContext context, {required bool connected}) {
+    return MenuAnchor(
+      onOpen: _menuOpened,
+      onClose: _menuClosed,
+      builder: (context, controller, _) => IconButton(
+        tooltip: 'More options',
+        icon: const Icon(Icons.more_vert),
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+      menuChildren: [
+        for (final item in widget.menuItems)
+          MenuItemButton(
+            leadingIcon: Icon(item.icon),
+            onPressed: item.onPressed == null ? null : () => item.onPressed!(context),
+            child: Text(item.label),
+          ),
+        if (connected) ...[
+          if (widget.menuItems.isNotEmpty) const Divider(),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.refresh),
+            onPressed: () {
+              _client.close();
+              _retry();
+            },
+            child: const Text('Reconnect'),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _keyBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final gutter = Space.gutter(context);
     Widget key(String label, int keysym, {String? semantics}) => Padding(
           padding: const EdgeInsets.only(right: Space.sm),
@@ -1125,62 +1661,60 @@ class RemoteConsoleFrameState extends State<RemoteConsoleFrame> {
             },
           ),
         );
-    return SizedBox(
-      height: 56,
-      child: FadingEdges(
-        controller: _keyScroll,
-        child: ListView(
-        controller: _keyScroll,
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: gutter),
-        children: [
-          key('Esc', Keysym.escape, semantics: 'Escape'),
-          key('Tab', Keysym.tab),
-          latch('Ctrl', Keysym.control),
-          latch('Alt', Keysym.alt),
-          latch('Shift', Keysym.shift),
-          latch('Win', Keysym.superKey),
-          iconKey(Icons.arrow_back, 'Left arrow', Keysym.left),
-          iconKey(Icons.arrow_upward, 'Up arrow', Keysym.up),
-          iconKey(Icons.arrow_downward, 'Down arrow', Keysym.down),
-          iconKey(Icons.arrow_forward, 'Right arrow', Keysym.right),
-          key('Del', Keysym.delete, semantics: 'Delete'),
-          key('Home', Keysym.home),
-          key('End', Keysym.end),
-          key('PgUp', Keysym.pageUp, semantics: 'Page up'),
-          key('PgDn', Keysym.pageDown, semantics: 'Page down'),
-          combo('Ctrl+Alt+Del', const [Keysym.control, Keysym.alt, Keysym.delete]),
-          for (var i = 1; i <= 12; i++) key('F$i', Keysym.f(i)),
-        ],
+    return Material(
+      color: scheme.surfaceContainer.withValues(alpha: 0.94),
+      child: SizedBox(
+        height: keysRowHeight,
+        child: FadingEdges(
+          controller: _keyScroll,
+          child: ListView(
+            controller: _keyScroll,
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: gutter, vertical: Space.sm),
+            children: [
+              key('Esc', Keysym.escape, semantics: 'Escape'),
+              key('Tab', Keysym.tab),
+              latch('Ctrl', Keysym.control),
+              latch('Alt', Keysym.alt),
+              latch('Shift', Keysym.shift),
+              latch('Win', Keysym.superKey),
+              iconKey(Icons.arrow_back, 'Left arrow', Keysym.left),
+              iconKey(Icons.arrow_upward, 'Up arrow', Keysym.up),
+              iconKey(Icons.arrow_downward, 'Down arrow', Keysym.down),
+              iconKey(Icons.arrow_forward, 'Right arrow', Keysym.right),
+              key('Del', Keysym.delete, semantics: 'Delete'),
+              key('Home', Keysym.home),
+              key('End', Keysym.end),
+              key('PgUp', Keysym.pageUp, semantics: 'Page up'),
+              key('PgDn', Keysym.pageDown, semantics: 'Page down'),
+              combo('Ctrl+Alt+Del', const [Keysym.control, Keysym.alt, Keysym.delete]),
+              for (var i = 1; i <= 12; i++) key('F$i', Keysym.f(i)),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Connecting, failed or lost, over the console area.
-class _ConsoleMessage extends StatelessWidget {
-  const _ConsoleMessage({required this.status, required this.title, required this.error, required this.onRetry});
+/// Connecting, reconnecting or lost, over the session.
+class _SessionMessage extends StatelessWidget {
+  const _SessionMessage({required this.heading, this.detail, required this.busy, this.onRetry, required this.onClose});
 
-  final RfbStatus status;
-  final String title;
-  final String? error;
-  final VoidCallback onRetry;
+  final String heading;
+  final String? detail;
+  final bool busy;
+  final VoidCallback? onRetry;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final connecting = status == RfbStatus.connecting || status == RfbStatus.idle;
-    final heading = switch (status) {
-      RfbStatus.disconnected => 'Connection lost',
-      RfbStatus.failed => "Couldn't connect",
-      _ => 'Connecting to $title',
-    };
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(horizontal: Space.gutter(context), vertical: Space.xl),
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height / 2),
+        constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height * 0.6),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
@@ -1189,20 +1723,29 @@ class _ConsoleMessage extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(connecting ? Icons.desktop_windows_outlined : Icons.desktop_access_disabled_outlined,
-                      size: 48, color: scheme.onSurfaceVariant),
+                  if (busy)
+                    const SizedBox.square(dimension: 40, child: CircularProgressIndicator())
+                  else
+                    Icon(Icons.desktop_access_disabled_outlined, size: 48, color: scheme.onSurfaceVariant),
                   const SizedBox(height: Space.lg),
                   Text(heading, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-                  if (!connecting && error != null) ...[
+                  if (detail != null) ...[
                     const SizedBox(height: Space.sm),
-                    Text(error!,
+                    Text(detail!,
                         style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                         textAlign: TextAlign.center),
                   ],
-                  if (!connecting) ...[
-                    const SizedBox(height: Space.xl),
-                    FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reconnect')),
-                  ],
+                  const SizedBox(height: Space.xl),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: Space.sm,
+                    runSpacing: Space.sm,
+                    children: [
+                      OutlinedButton(onPressed: onClose, child: Text(busy ? 'Cancel' : 'Close')),
+                      if (onRetry != null)
+                        FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reconnect')),
+                    ],
+                  ),
                 ],
               ),
             ),

@@ -99,6 +99,23 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
     }
   }
 
+  /// "Match this phone": the server's screen gets this phone's shape at
+  /// its full sharpness (the first of [phoneFitSizes]), unless it has it.
+  Future<void> _matchPhone(BuildContext context) async {
+    final media = MediaQuery.of(context);
+    final fits = phoneFitSizes(media.size * media.devicePixelRatio);
+    if (fits.isEmpty) return;
+    final f = fits.first;
+    try {
+      final d = _display ?? await _client.getHostDisplay();
+      if (!mounted || (d.width == f.width && d.height == f.height)) return;
+      final next = await _client.setHostDisplay(f.width, f.height);
+      if (mounted) setState(() => _display = next);
+    } on VmException catch (e) {
+      if (mounted) ScaffoldMessenger.maybeOf(this.context)?.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Widget? _placeholder() {
     if (_checking && _installed == null) {
       return const ConsolePlaceholder(icon: Icons.screen_share_outlined, title: '', message: '', loading: true);
@@ -134,6 +151,7 @@ class _HostDesktopScreenState extends State<HostDesktopScreen> {
       clipboardTarget: RemoteClipboardHistory.hostTarget,
       history: widget.history,
       placeholder: _placeholder(),
+      onMatchPhone: _installed == true ? _matchPhone : null,
       menuItems: [
         if (_installed == true)
           ConsoleMenuItem(icon: Icons.aspect_ratio_outlined, label: 'Screen resolution', onPressed: _resolution),

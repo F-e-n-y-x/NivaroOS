@@ -81,6 +81,11 @@ class RfbClient {
   int width = 0;
   int height = 0;
 
+  /// The most pictures a second to ask for; 0 is as many as the server
+  /// sends. Lower saves data on a slow or metered connection.
+  int maxFps = 0;
+  final Stopwatch _sinceRequest = Stopwatch()..start();
+
   /// The server offered the Extended Clipboard (UTF-8 copy and paste).
   bool get extendedClipboard => _serverCaps != 0;
 
@@ -399,7 +404,7 @@ class RfbClient {
       final type = (await _reader.read(1))[0];
       switch (type) {
         case 0:
-          await _framebufferUpdate();
+          await _framebufferUpdate(gen);
         case 1: // SetColourMapEntries: not used with true colour; skip.
           final hdr = await _reader.read(5);
           await _reader.read(((hdr[3] << 8) | hdr[4]) * 6);
@@ -487,7 +492,7 @@ class RfbClient {
     }
   }
 
-  Future<void> _framebufferUpdate() async {
+  Future<void> _framebufferUpdate(int gen) async {
     final hdr = await _reader.read(3);
     final rects = (hdr[1] << 8) | hdr[2];
     for (var i = 0; i < rects; i++) {
@@ -513,8 +518,16 @@ class RfbClient {
           throw RfbException('The console used a picture format the app does not support.');
       }
     }
-    _requestUpdate(incremental: true);
     _schedulePublish();
+    // The server sends the next picture only when asked, so waiting here
+    // caps the frame rate (and the bandwidth) at [maxFps].
+    if (maxFps > 0) {
+      final wait = Duration(microseconds: 1000000 ~/ maxFps) - _sinceRequest.elapsed;
+      if (wait > Duration.zero) await Future<void>.delayed(wait);
+      if (gen != _generation) return;
+    }
+    _sinceRequest.reset();
+    _requestUpdate(incremental: true);
   }
 
   void _blitRaw(int rx, int ry, int rw, int rh, Uint8List data) {

@@ -63,6 +63,8 @@ class StorageService {
   // token, shown once at enrolment). Kept on sign out: the phone keeps
   // backing up with its own token until it is unlinked.
   static const _keyPhoneBackup = 'phone_backup_credential';
+  // Remote console choices ("console.input", "console.fit@the server").
+  static const _keyConsolePrefix = 'console.';
 
   // Display preferences, not account data: clearAll() (sign out) keeps them.
   static const _preservedKeys = {_keyThemeMode, _keyThemeAccent, _keyThemeWallpaper, _keyDesignDirection, _keyWidgetRefresh, _keyTerminalFontSize, _keyNotificationsAsked, _keyPhoneBackup};
@@ -378,6 +380,18 @@ class StorageService {
     await _set(_keyTerminalFontSize, size.toString());
   }
 
+  /// A remote console display preference (input mode, fit, quality);
+  /// kept on sign out like the theme.
+  Future<String?> getConsolePref(String name) async {
+    if (!_initialized) await init();
+    return _cache['$_keyConsolePrefix$name'];
+  }
+
+  Future<void> setConsolePref(String name, String value) async {
+    if (!_initialized) await init();
+    await _set('$_keyConsolePrefix$name', value);
+  }
+
   Future<String?> getServerUrl() async {
     if (!_initialized) await init();
     return _cache[_keyServerUrl];
@@ -651,6 +665,8 @@ class StorageService {
     final kept = {
       for (final key in _preservedKeys)
         if (_cache[key] != null) key: _cache[key]!,
+      for (final e in _cache.entries)
+        if (e.key.startsWith(_keyConsolePrefix)) e.key: e.value,
     };
     _cache.clear();
     await _secureStorage.deleteAll();

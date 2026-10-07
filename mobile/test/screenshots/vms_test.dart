@@ -15,6 +15,8 @@ import 'package:nivaroos_mobile/screens/vm_form_screen.dart';
 import 'package:nivaroos_mobile/screens/vm_list_screen.dart';
 import 'package:nivaroos_mobile/services/rfb_client.dart';
 import 'package:nivaroos_mobile/services/vm_client.dart';
+import 'package:nivaroos_mobile/services/storage_service.dart';
+import 'package:nivaroos_mobile/ui/ui.dart';
 import 'package:nivaroos_mobile/widgets/rfb_view.dart';
 
 import '../vm/vm_fakes.dart';
@@ -172,7 +174,7 @@ final Map<String, _Shot> _shots = {
     () => VmConsoleScreen(vmName: 'win11', client: VmClient(), rfb: _rfb('win11'), history: _history()),
     overrides: {'GET $_api/vms/win11': _win11},
     dark: false,
-    before: (tester) => _menu(tester, 'Special keys'),
+    before: (tester) => _tapTooltip(tester, 'Extra keys'),
   ),
   'vm_console_clipboard': _Shot(
     () => VmConsoleScreen(vmName: 'win11', client: VmClient(), rfb: _rfb('win11'), history: _history()),
@@ -216,6 +218,15 @@ final Map<String, _Shot> _shots = {
   ),
 };
 
+/// The session in every style (Rack, Tonal, Console), light and true
+/// black, phone portrait and landscape: goldens/vms/<style>/.
+final Map<String, Future<void> Function(WidgetTester tester)?> _sessionShots = {
+  'host_desktop_session': null,
+  'host_desktop_display_menu': (tester) => _tapTooltip(tester, 'Display'),
+  'host_desktop_keys': (tester) => _tapTooltip(tester, 'Extra keys'),
+  'host_desktop_mouse': (tester) => _tapTooltip(tester, 'Input: touch. Switch to mouse pointer'),
+};
+
 /// A client whose list never answers: the first-load skeleton.
 class _NeverClient extends PictureVmClient {
   _NeverClient() : super(null);
@@ -232,6 +243,32 @@ void main() {
     VmListScreen.clearCache();
     await signIn();
   });
+
+  const styles = [DesignDirection.rack, DesignDirection.tonal, DesignDirection.console];
+  for (final d in styles) {
+    for (final MapEntry(key: name, value: before) in _sessionShots.entries) {
+      for (final m in const [AppThemeMode.light, AppThemeMode.black]) {
+        for (final size in const [phone, Size(915, 412)]) {
+          testWidgets('${d.name} $name ${m.name} ${size.width.toInt()}', (tester) async {
+            await shoot(
+              tester,
+              dir: 'vms/${d.name}',
+              name: name,
+              screen: HostDesktopScreen(client: VmClient(), rfb: _rfb(null, extended: false), history: RemoteClipboardHistory()),
+              brightness: m == AppThemeMode.light ? Brightness.light : Brightness.dark,
+              themeName: m.name,
+              appearance: Appearance(mode: m, direction: d),
+              size: size,
+              pushed: true,
+              before: before,
+            );
+            // Back to the default for the next shot.
+            await StorageService.instance.setConsolePref('input', 'touch');
+          });
+        }
+      }
+    }
+  }
 
   for (final MapEntry(key: name, value: s) in _shots.entries) {
     Future<void> shot(WidgetTester tester, Brightness b, {Size size = phone, double textScale = 1}) => shoot(
