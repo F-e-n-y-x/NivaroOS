@@ -349,16 +349,25 @@ ServerHealth buildHealth({
   // Apps.
   if (apps == null) {
     notChecked(HealthArea.apps, 'Apps', "Couldn't read the apps");
-  } else if (apps.stopped.isNotEmpty) {
-    final stopped = apps.stopped;
+  } else if (apps.failed.isNotEmpty) {
+    // Only apps that crashed or keep restarting need attention - a
+    // container the owner stopped is their choice, not a problem.
+    final failed = apps.failed;
     items.add(AttentionItem(
       kind: AttentionKind.apps,
-      severity: AttentionSeverity.info,
-      title: stopped.length == 1 ? '1 app is stopped' : '${stopped.length} apps are stopped',
-      detail: _nameList(stopped),
+      severity: AttentionSeverity.warning,
+      title: failed.length == 1 ? '1 app failed' : '${failed.length} apps failed',
+      detail: _nameList(failed),
     ));
   } else if (apps.total > 0) {
-    fine.add(HealthCheck(area: HealthArea.apps, title: 'Apps', detail: apps.total == 1 ? 'The app is running' : 'All ${apps.total} running'));
+    final stopped = apps.stopped.length;
+    fine.add(HealthCheck(
+      area: HealthArea.apps,
+      title: 'Apps',
+      detail: stopped == 0
+          ? (apps.total == 1 ? 'The app is running' : 'All ${apps.total} running')
+          : '${apps.running} running · $stopped stopped',
+    ));
   }
 
   // Tailscale.

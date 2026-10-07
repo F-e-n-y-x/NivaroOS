@@ -101,6 +101,7 @@ func (a *AppManagement) GetAppGrid(ctx echo.Context) error {
 	appGridItems = append(appGridItems, v2AppGridItems...)
 	appGridItems = append(appGridItems, v1AppGridItems...)
 	appGridItems = append(appGridItems, containerAppGridItems...)
+	markFailed(appGridItems, listContainers(ctx.Request().Context()))
 
 	return ctx.JSON(http.StatusOK, codegen.GetWebAppGridOK{
 		Message: utils.Ptr("This data is for internal use ONLY - will not be supported for public use."),

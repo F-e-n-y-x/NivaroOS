@@ -507,28 +507,38 @@ class BackupJobBrief {
 
 /// Installed apps by state, from the app grid.
 class AppCounts {
-  const AppCounts({required this.running, required this.stopped});
+  const AppCounts({required this.running, required this.stopped, this.failed = const []});
 
   final int running;
 
-  /// Names of apps that aren't running.
+  /// Names of apps that aren't running because someone stopped them.
   final List<String> stopped;
 
-  int get total => running + stopped.length;
+  /// Names of apps that aren't running because they crashed or keep
+  /// restarting (the server's `failed`, or a restarting/dead status) -
+  /// only these need attention; a stopped container is the owner's choice.
+  final List<String> failed;
+
+  int get total => running + stopped.length + failed.length;
 
   factory AppCounts.fromAppGrid(List<dynamic> grid) {
     var running = 0;
     final stopped = <String>[];
+    final failed = <String>[];
     for (final item in grid.whereType<Map>()) {
       final status = item['status']?.toString().toLowerCase() ?? '';
       if (status == 'running') {
         running++;
+        continue;
+      }
+      final title = item['title'];
+      final name = (title is Map ? title['en_us']?.toString() : null) ?? item['name']?.toString() ?? '';
+      if (item['failed'] == true || status == 'restarting' || status == 'dead') {
+        failed.add(name);
       } else {
-        final title = item['title'];
-        final name = (title is Map ? title['en_us']?.toString() : null) ?? item['name']?.toString() ?? '';
         stopped.add(name);
       }
     }
-    return AppCounts(running: running, stopped: stopped);
+    return AppCounts(running: running, stopped: stopped, failed: failed);
   }
 }

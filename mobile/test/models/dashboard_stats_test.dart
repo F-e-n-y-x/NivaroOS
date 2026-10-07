@@ -111,14 +111,14 @@ void main() {
         updates: const UpdateSummary(serverUpdate: false, packages: 12, security: 2),
         disks: [_disk('tank', 95, 100), _disk('blue', 85, 100), _disk('ok', 10, 100)],
         backups: const [BackupJobBrief(name: 'Photos', health: 'problem', lastStatus: 'failed'), BackupJobBrief(name: 'Docs', health: 'ok')],
-        apps: const AppCounts(running: 3, stopped: ['a', 'b', 'c', 'd']),
+        apps: const AppCounts(running: 3, stopped: [], failed: ['a', 'b', 'c', 'd']),
       );
       expect(items.map((e) => e.title), [
         'tank is almost full',
         "Photos didn't finish",
         'blue is filling up',
         '12 system updates',
-        '4 apps are stopped',
+        '4 apps failed',
       ]);
       expect(items.first.severity, AttentionSeverity.error);
       expect(items[2].severity, AttentionSeverity.warning);

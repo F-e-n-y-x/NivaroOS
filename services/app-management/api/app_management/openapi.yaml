@@ -1731,6 +1731,12 @@ components:
         status:
           type: string
           example: running
+        failed:
+          type: boolean
+          description: The app isn't running because it crashed or keeps restarting (a container exited with an error code, was killed for memory, is restarting or dead) - not because someone stopped it. Absent while the app runs.
+        exit_code:
+          type: integer
+          description: For an exited app, the exit code of its first stopped container (0, 137 or 143 after a normal stop).
         name:
           type: string
         title:

@@ -61,11 +61,11 @@ void main() {
   testWidgets('the status header is one button that says what it is for', (tester) async {
     final semantics = tester.ensureSemantics();
     await _run(tester, const DashboardScreen(), () async {
-      final header = find.bySemanticsLabel(RegExp('^Server health, 3 things need attention'));
+      final header = find.bySemanticsLabel(RegExp('^Server health, 2 things need attention'));
       expect(header, findsOneWidget);
       expect(tester.getSemantics(header), isSemantics(isButton: true, hasTapAction: true));
       // The count is on the icon too.
-      expect(find.descendant(of: find.byType(Badge), matching: find.text('3')), findsOneWidget);
+      expect(find.descendant(of: find.byType(Badge), matching: find.text('2')), findsOneWidget);
     });
     semantics.dispose();
   });
@@ -73,11 +73,11 @@ void main() {
   testWidgets('with issues: tap opens the page with the same items as Home, then what is fine', (tester) async {
     await _run(tester, const DashboardScreen(), () async {
       final onHome = [for (final t in tester.widgetList<AttentionTile>(find.byType(AttentionTile))) t.item.title];
-      expect(onHome, hasLength(3));
+      expect(onHome, hasLength(2), reason: 'stopped apps are fine now; only failed ones need attention');
       await _openHealth(tester);
       expect(find.byType(ServerHealthScreen), findsOneWidget);
       final page = find.byType(ServerHealthScreen);
-      expect(find.descendant(of: page, matching: find.text('3 things need attention')), findsOneWidget);
+      expect(find.descendant(of: page, matching: find.text('2 things need attention')), findsOneWidget);
       expect(find.descendant(of: page, matching: find.text('Needs attention')), findsOneWidget);
       expect([for (final t in tester.widgetList<AttentionTile>(find.descendant(of: page, matching: find.byType(AttentionTile)))) t.item.title], onHome);
       expect(find.text('Everything else is fine'), findsOneWidget);
@@ -136,7 +136,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.textContaining('Offline · last updated'), findsOneWidget);
       expect(find.bySemanticsLabel(RegExp('Last checked just now')), findsOneWidget);
-      expect(find.text('3 things need attention'), findsOneWidget);
+      expect(find.text('2 things need attention'), findsOneWidget);
     });
   });
 }

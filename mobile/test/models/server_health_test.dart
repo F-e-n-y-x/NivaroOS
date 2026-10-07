@@ -208,9 +208,28 @@ void main() {
       expect(_titles(h.unchecked), containsAll(['NivaroOS updates', 'System updates']));
     });
 
-    test('stopped apps are worth a look', () {
-      final a = _health(apps: const AppCounts(running: 1, stopped: ['searxng', 'comfyui', 'x'])).attention.single;
-      expect((a.kind, a.title, a.detail), (AttentionKind.apps, '3 apps are stopped', 'searxng, comfyui and 1 more'));
+    test('stopped apps are the owner\'s choice, not a problem', () {
+      final h = _health(apps: const AppCounts(running: 1, stopped: ['searxng', 'comfyui', 'x']));
+      expect(h.attention.where((a) => a.kind == AttentionKind.apps), isEmpty);
+      expect(h.fine.singleWhere((c) => c.area == HealthArea.apps).detail, '1 running · 3 stopped');
+    });
+
+    test('apps that crashed or keep restarting need attention', () {
+      final a = _health(apps: const AppCounts(running: 1, stopped: ['x'], failed: ['searxng', 'comfyui'])).attention.single;
+      expect((a.kind, a.severity, a.title, a.detail), (AttentionKind.apps, AttentionSeverity.warning, '2 apps failed', 'searxng and comfyui'));
+    });
+
+    test('the app grid: failed, restarting and dead are failed; exited is stopped', () {
+      final c = AppCounts.fromAppGrid([
+        {'name': 'a', 'status': 'running'},
+        {'name': 'b', 'status': 'exited', 'failed': false, 'exit_code': 137},
+        {'name': 'c', 'status': 'exited', 'failed': true, 'exit_code': 1},
+        {'name': 'd', 'status': 'restarting'},
+        {'name': 'e', 'status': 'exited'}, // an older server: no failed field
+      ]);
+      expect(c.running, 1);
+      expect(c.stopped, ['b', 'e']);
+      expect(c.failed, ['c', 'd']);
     });
   });
 

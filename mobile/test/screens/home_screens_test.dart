@@ -45,7 +45,7 @@ void main() {
   group('Home', () {
     testWidgets('shows what needs attention and the health meters, no shortcut grid', (tester) async {
       final server = await _run(tester, const DashboardScreen(), () async {
-        expect(find.text('3 things need attention'), findsOneWidget);
+        expect(find.text('2 things need attention'), findsOneWidget);
         expect(find.text("Photos to Sandisk didn't finish"), findsOneWidget);
         expect(find.text('112 system updates'), findsOneWidget);
         expect(find.text('Processor'), findsOneWidget);
