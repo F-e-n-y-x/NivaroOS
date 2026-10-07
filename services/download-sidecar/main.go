@@ -1,5 +1,5 @@
 // nivaroos-download-sidecar backs the Download Station windowed app: an
-// IDM-style multi-connection download manager, plus the rewriting proxy
+// IDM-style multi-connection download manager, torrents (torrent*.go), plus the rewriting proxy
 // behind its built-in lite browser and that browser's ad blocker (uBlock
 // Origin filter lists and syntax).
 package main
@@ -54,13 +54,16 @@ func main() {
 	browser := NewBrowser(transport, adblock, settings)
 	history := NewHistory(*dataDir)
 	rb := newRBClient(*browserSocket, *browserStaging, adblock, settings)
+	torrents := NewTorrents(*dataDir, settings, transport, manager.events)
 
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, manager, settings, adblock, browser, history)
 	registerRBRoutes(mux, rb, manager)
+	registerTorrentRoutes(mux, torrents)
 
 	manager.Start(ctx)
 	adblock.Start(ctx)
+	torrents.Start(ctx)
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -79,6 +82,7 @@ func main() {
 	}
 	// Let the ticker's final save run.
 	manager.Wait()
+	torrents.Shutdown()
 	history.flush()
 }
 

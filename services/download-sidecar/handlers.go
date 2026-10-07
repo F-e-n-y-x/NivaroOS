@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime"
 	"net/http"
 	"os"
@@ -28,12 +29,14 @@ var errNeedJSON = errors.New("request body must be sent as application/json")
 // be sent cross-origin without a CORS preflight, so a form or a
 // text/plain fetch() from some other web page (a "simple request", which
 // skips the preflight) can never reach a JSON endpoint.
-func readJSON(r *http.Request, v interface{}) error {
+func readJSON(r *http.Request, v interface{}) error { return readJSONLimit(r, v, 1<<20) }
+
+func readJSONLimit(r *http.Request, v interface{}, limit int64) error {
 	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "application/json" {
 		return errNeedJSON
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, limit))
 	if err := dec.Decode(v); err != nil {
 		return errors.New("invalid JSON body: " + err.Error())
 	}
@@ -65,7 +68,7 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 	})
 
 	mux.HandleFunc("GET /settings", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, st.Get())
+		writeJSON(w, 200, st.Get().masked())
 	})
 	mux.HandleFunc("PUT /settings", func(w http.ResponseWriter, r *http.Request) {
 		var patch map[string]json.RawMessage
@@ -80,7 +83,7 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 		var merged map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &merged)
 		for k, v := range patch {
-			merged[k] = v
+			merged[k] = mergeObject(merged[k], v)
 		}
 		raw, _ = json.Marshal(merged)
 		var next Settings
@@ -95,12 +98,26 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 				return
 			}
 		}
+		// (A torrent patch without external_password keeps the stored one -
+		// the merge above starts from it; the UI never sees it.)
+		if _, changed := patch["torrent"]; changed {
+			if err := next.Torrent.validate(); err != nil {
+				writeErr(w, 400, err)
+				return
+			}
+			for _, d := range next.Torrent.folders() {
+				if _, err := pathPolicy.MkdirAll(filepath.Clean(d)); err != nil {
+					writeErr(w, 400, fmt.Errorf("%s: %w", d, err))
+					return
+				}
+			}
+		}
 		s, err := st.Update(func(s *Settings) { *s = next })
 		if err != nil {
 			writeErr(w, 500, err)
 			return
 		}
-		writeJSON(w, 200, s)
+		writeJSON(w, 200, s.masked())
 	})
 
 	mux.HandleFunc("GET /downloads", func(w http.ResponseWriter, r *http.Request) {
@@ -430,4 +447,18 @@ func RegisterRoutes(mux *http.ServeMux, m *Manager, st *SettingsStore, ab *Adblo
 		}
 		writeJSON(w, 200, c)
 	})
+}
+
+// mergeObject merges a patch onto a JSON object one level deep, so a PUT
+// can send just {"torrent": {"dl_limit": 1000}}; anything else is replaced.
+func mergeObject(cur, patch json.RawMessage) json.RawMessage {
+	var a, b map[string]json.RawMessage
+	if json.Unmarshal(cur, &a) != nil || json.Unmarshal(patch, &b) != nil || a == nil || b == nil {
+		return patch
+	}
+	for k, v := range b {
+		a[k] = v
+	}
+	out, _ := json.Marshal(a)
+	return out
 }

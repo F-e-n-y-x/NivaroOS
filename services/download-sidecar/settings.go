@@ -26,6 +26,8 @@ type Settings struct {
 	AllowedSites []string `json:"allowed_sites"`
 	// The lite browser's start page.
 	HomePage string `json:"home_page"`
+
+	Torrent TorrentSettings `json:"torrent"`
 }
 
 const (
@@ -41,6 +43,7 @@ func defaultSettings(defaultDir string) Settings {
 		AdblockEnabled:     true,
 		EnabledLists:       defaultEnabledLists(),
 		HomePage:           "https://duckduckgo.com/",
+		Torrent:            defaultTorrentSettings(defaultDir),
 	}
 }
 
@@ -64,6 +67,7 @@ func (s *Settings) normalize(defaultDir string) {
 	if s.AllowedSites == nil {
 		s.AllowedSites = []string{}
 	}
+	s.Torrent.normalize(s.DefaultDir)
 }
 
 type SettingsStore struct {
@@ -88,6 +92,9 @@ func NewSettingsStore(dataDir, defaultDir string) *SettingsStore {
 	if _, err := pathPolicy.Check(st.s.DefaultDir); err != nil {
 		st.s.DefaultDir = defaultDir
 	}
+	if _, err := pathPolicy.Check(st.s.Torrent.SaveDir); err != nil {
+		st.s.Torrent.SaveDir = st.s.DefaultDir
+	}
 	return st
 }
 
@@ -97,6 +104,7 @@ func (st *SettingsStore) Get() Settings {
 	out := st.s
 	out.EnabledLists = append([]string(nil), st.s.EnabledLists...)
 	out.AllowedSites = append([]string(nil), st.s.AllowedSites...)
+	out.Torrent.Categories = append([]TorrentCategory{}, st.s.Torrent.Categories...)
 	return out
 }
 
@@ -112,6 +120,7 @@ func (st *SettingsStore) Update(mutate func(*Settings)) (Settings, error) {
 	next := st.s
 	next.EnabledLists = append([]string(nil), st.s.EnabledLists...)
 	next.AllowedSites = append([]string(nil), st.s.AllowedSites...)
+	next.Torrent.Categories = append([]TorrentCategory{}, st.s.Torrent.Categories...)
 	mutate(&next)
 	next.normalize(st.defaultDir)
 	if err := writeJSONAtomic(st.path, next); err != nil {
@@ -153,4 +162,12 @@ func clampInt(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+// masked is what the API returns: the external qBittorrent's password
+// never leaves the box (the UI only learns whether one is set).
+func (s Settings) masked() Settings {
+	s.Torrent.ExternalPasswordSet = s.Torrent.ExternalPassword != ""
+	s.Torrent.ExternalPassword = ""
+	return s
 }

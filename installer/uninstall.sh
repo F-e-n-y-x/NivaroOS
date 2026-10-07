@@ -13,7 +13,7 @@ set -Eeuo pipefail
 shopt -s checkwinsize 2>/dev/null || true
 
 SRC_DIR="/opt/nivaroos/src"
-ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
+ALL_UNITS="nivaroos-watchdog.timer nivaroos-watchdog.service nivaroos-gateway.service nivaroos-message-bus.service nivaroos.service nivaroos-user-service.service nivaroos-app-management.service nivaroos-local-storage.service nivaroos-gpu-sidecar.service nivaroos-fans.service nivaroos-vm-sidecar.service nivaroos-download-sidecar.service nivaroos-torrent.service nivaroos-ds-browser.socket nivaroos-ds-browser.service nivaroos-backup.service nivaroos-host-desktop.service rclone.service usb-mount@.service"
 MANIFEST_FILE="/var/lib/nivaroos/manifest"
 DESKTOP_PROVISION_MARKER="/var/lib/nivaroos/provisioned-desktop"
 LEFTOVER_FILE="/tmp/nivaroos-uninstall-leftovers.$$"
@@ -525,6 +525,7 @@ remove_unit_files() {
 			/etc/modules-load.d/nivaroos-fans.conf \
 			/usr/lib/systemd/system/nivaroos-vm-sidecar.service \
 			/usr/lib/systemd/system/nivaroos-download-sidecar.service \
+			/usr/lib/systemd/system/nivaroos-torrent.service \
 			/usr/lib/systemd/system/nivaroos-ds-browser.socket \
 			/usr/lib/systemd/system/nivaroos-ds-browser.service \
 			/usr/lib/systemd/system/nivaroos-ds-browser-install.service \
@@ -564,6 +565,16 @@ remove_ds_browser() {
 				esac
 			done < \"\$rec\"
 		fi
+		# The torrent engine: its package only if we installed it.
+		if grep -qx 'package:qbittorrent-nox' /usr/share/nivaroos/torrent/installed.txt 2>/dev/null; then
+			if command -v apt-get >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get remove -y qbittorrent-nox >/dev/null 2>&1 || true
+			elif command -v dnf >/dev/null 2>&1; then dnf remove -y qbittorrent-nox >/dev/null 2>&1 || true
+			elif command -v pacman >/dev/null 2>&1; then pacman -R --noconfirm qbittorrent-nox >/dev/null 2>&1 || true
+			elif command -v zypper >/dev/null 2>&1; then zypper -n rm qbittorrent-nox >/dev/null 2>&1 || true
+			elif command -v apk >/dev/null 2>&1; then apk del qbittorrent-nox >/dev/null 2>&1 || true
+			fi
+		fi
+		rm -rf /usr/share/nivaroos/torrent /var/lib/nivaroos/torrent
 		rm -rf /opt/nivaroos/chromium /usr/share/nivaroos/ds-browser /var/lib/nivaroos/ds-browser /etc/sysctl.d/60-nivaroos-ds-browser.conf
 		if [ -f /etc/apparmor.d/nivaroos-ds-browser ]; then
 			apparmor_parser -R /etc/apparmor.d/nivaroos-ds-browser >/dev/null 2>&1 || true

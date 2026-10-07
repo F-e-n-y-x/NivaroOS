@@ -16,7 +16,7 @@ Restart=always
 #   [Service]
 #   ReadWritePaths=/srv/disk1
 ProtectSystem=strict
-ReadWritePaths=-/DATA -/media -/mnt /var/lib/nivaroos/download-station -/var/lib/nivaroos/ds-browser/staging
+ReadWritePaths=-/DATA -/media -/mnt /var/lib/nivaroos/download-station -/var/lib/nivaroos/ds-browser/staging -/var/lib/nivaroos/torrent
 StateDirectory=nivaroos/download-station
 StateDirectoryMode=0700
 ProtectHome=true

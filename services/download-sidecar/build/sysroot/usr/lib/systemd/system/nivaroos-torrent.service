@@ -1,0 +1,52 @@
+[Unit]
+Description=NivaroOS Download Station torrent engine (qBittorrent, started on demand)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Started by nivaroos-download-sidecar when a torrent needs it and stopped
+# by it once nothing is downloading or seeding - never enabled on its own.
+# The sidecar writes the profile (WebUI on 127.0.0.1:28646 only, a random
+# password only it knows) and re-applies its settings on every start; only
+# the torrent listening port is reachable from outside.
+ExecStart=/usr/bin/qbittorrent-nox --profile=/var/lib/nivaroos/torrent --confirm-legal-notice
+StateDirectory=nivaroos/torrent
+StateDirectoryMode=0700
+Environment=HOME=/var/lib/nivaroos/torrent
+WorkingDirectory=/var/lib/nivaroos/torrent
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+
+# Root only so downloads can land in any folder the user picks on the
+# shares (the sidecar root-checks every save folder first, like its own
+# downloads). Everything else is shut: read-only system, no home dirs, no
+# NivaroOS state but its own profile, and it can execute nothing but
+# itself (no "run external program", no search plugins).
+ProtectSystem=strict
+ReadWritePaths=-/DATA -/media -/mnt
+TemporaryFileSystem=/var/lib/nivaroos:ro
+BindPaths=/var/lib/nivaroos/torrent
+InaccessiblePaths=-/etc/nivaroos -/run/nivaroos -/var/lib/casaos -/var/log/nivaroos
+NoExecPaths=/
+ExecPaths=/usr/bin/qbittorrent-nox /usr/lib /usr/lib64 /lib /lib64
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_CHOWN
+UMask=0022
+Nice=5
+IOSchedulingClass=idle

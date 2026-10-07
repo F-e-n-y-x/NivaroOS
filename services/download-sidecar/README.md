@@ -18,6 +18,36 @@ no cgo, no system packages. State lives in
   a queue (max simultaneous downloads), and "refresh link" for expired
   URLs that keeps the bytes already fetched. Servers without range
   support fall back to one connection.
+- **Torrents** (`torrent*.go`) - magnet links, `.torrent` uploads, http(s)
+  links to a `.torrent` (LAN indexers allowed, the user typed them) and a
+  watch folder. One manager drives a `TorrentEngine` interface, so the UI
+  is the same whichever engine runs (Settings > Torrents > Engine):
+  - **qBittorrent** (default when installed): libtorrent through
+    `qbittorrent-nox`, as `nivaroos-torrent.service` - never enabled; this
+    service starts it when a torrent needs it and stops it 2 minutes after
+    nothing is downloading or seeding. Its WebUI listens on
+    `127.0.0.1:28646` only, with a random password written into its
+    profile (`/var/lib/nivaroos/torrent`) by this service; every start
+    re-applies the settings and the lock-down (no external programs, no
+    WebUI UPnP, no localhost bypass). The unit may execute nothing but
+    itself and sees no NivaroOS state but its profile.
+  - **My qBittorrent**: the user's own instance (URL + login); torrents
+    are driven, its preferences are never changed.
+  - **Built-in** (anacrolix/torrent, in this process): the fallback when
+    `qbittorrent-nox` isn't packaged; no LSD, preallocation or global
+    connection cap.
+  Settings follow qBittorrent: global and alternative speed limits with a
+  schedule, queueing, seeding ratio/time limits (pause or remove), port,
+  UPnP/NAT-PMP, DHT/PeX/LSD, encryption, connection limits, save /
+  incomplete / per-category folders, preallocation, per-torrent file
+  priorities, sequential and first/last piece. From qBittorrent Enhanced
+  only the public tracker list: fetched from a URL (default ngosang
+  `trackers_best.txt`) daily or on demand and added to public torrents only
+  - never to a torrent whose metadata has the private flag (or isn't known
+  yet). Every save folder passes the same storage-root checks as downloads.
+  Benchmark on the dev box (Debian netinst, first 32 MB, 2 runs each):
+  qbittorrent-nox 5.3-7.1 MB/s, ~19 ms CPU/MB; anacrolix 3.8-4.0 MB/s,
+  ~30 ms CPU/MB - hence the default.
 - **Google Drive links** - `drive.google.com/file/d/<id>/view`, `uc?id=`
   and `open?id=` share links are rewritten to Drive's direct download
   endpoint, and its "can't scan for viruses - Download anyway" page is

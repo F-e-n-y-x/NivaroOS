@@ -62,6 +62,7 @@ WITH_VM=""
 WITH_HOST_DESKTOP=""
 WITH_DOWNLOAD_STATION=""
 WITH_DS_BROWSER=yes
+WITH_DS_TORRENT=yes
 WITH_BACKUP=""
 FORCE=""
 YES=""
@@ -647,6 +648,7 @@ parse_args() {
 			--with-download-station) WITH_DOWNLOAD_STATION=yes ;;
 			--without-download-station) WITH_DOWNLOAD_STATION=no ;;
 			--without-ds-browser) WITH_DS_BROWSER=no ;;
+			--without-ds-torrent) WITH_DS_TORRENT=no ;;
 			--with-backup) WITH_BACKUP=yes ;;
 			--without-backup) WITH_BACKUP=no ;;
 			--force) FORCE=yes ;;
@@ -680,6 +682,7 @@ parse_args() {
 				printf '%b\n' "  ${COLOR_CYAN}--with-download-station${COLOR_RESET}      Install Download Station (multi-connection downloads, lite browser, ad blocker) [default]"
 				printf '%b\n' "  ${COLOR_CYAN}--without-download-station${COLOR_RESET}   Skip Download Station installation"
 				printf '%b\n' "  ${COLOR_CYAN}--without-ds-browser${COLOR_RESET}         Keep Download Station's browser in Lite mode (no Chromium)"
+				printf '%b\n' "  ${COLOR_CYAN}--without-ds-torrent${COLOR_RESET}         Don't install qbittorrent-nox (torrents then use the built-in engine)"
 				printf '%b\n' "  ${COLOR_CYAN}--with-backup${COLOR_RESET}                Install Backup & Sync (scheduled backups and sync to any storage or cloud) [default]"
 				printf '%b\n' "  ${COLOR_CYAN}--without-backup${COLOR_RESET}             Skip Backup & Sync installation"
 				printf '%b\n' "  ${COLOR_CYAN}--force${COLOR_RESET}                      Upgrade even while a backup is running (it is stopped and retried after the upgrade)"
@@ -865,7 +868,7 @@ select_components() {
 			vm_desc="No KVM acceleration detected - VMs would use slower software emulation."
 		fi
 		hd_desc="Requires VM Manager (shares its vm-sidecar). Streams this machine's own physical desktop."
-		ds_desc="IDM-style downloader with a built-in lite browser and uBlock Origin filter lists. No extra packages."
+		ds_desc="IDM-style downloader and torrents (qbittorrent-nox, started only while a torrent is active), a browser and uBlock Origin filter lists."
 		bk_desc="Scheduled and plug-in backups, mirrors and archives to any drive, share or cloud account. No extra packages."
 
 		CBM_LABELS=(
@@ -1900,6 +1903,27 @@ install_download_station() {
 		# sidecar starts: the sidecar's unit needs the staging folder to exist.
 		if [ \"${WITH_DS_BROWSER}\" != \"no\" ]; then
 			bash \"${SRC_DIR}/services/download-sidecar/build/scripts/install-ds-browser.sh\" --src \"${SRC_DIR}\" --manifest \"$MANIFEST_FILE\" || echo 'The Download Station browser could not be set up - its Lite browser is used instead.'
+		fi
+
+		# Torrents: qbittorrent-nox (libtorrent - the fastest engine in our
+		# benchmark) as nivaroos-torrent.service, a sandboxed unit the
+		# sidecar starts only while a torrent is active. Never fails the
+		# install: without the package Download Station uses its built-in
+		# engine. Its profile folder must exist before the sidecar starts
+		# (the sidecar's unit lists it as writable).
+		mkdir -p /var/lib/nivaroos/torrent
+		chmod 700 /var/lib/nivaroos/torrent
+		if [ \"${WITH_DS_TORRENT}\" != \"no\" ]; then
+			if ! command -v qbittorrent-nox >/dev/null 2>&1; then
+				if pkg_install qbittorrent-nox && command -v qbittorrent-nox >/dev/null 2>&1; then
+					mkdir -p /usr/share/nivaroos/torrent
+					echo 'package:qbittorrent-nox' > /usr/share/nivaroos/torrent/installed.txt
+				else
+					echo 'qbittorrent-nox is not packaged for this system - torrents use the built-in engine.'
+				fi
+			fi
+			cp -f \"${SRC_DIR}/services/download-sidecar/build/sysroot/usr/lib/systemd/system/nivaroos-torrent.service\" /usr/lib/systemd/system/nivaroos-torrent.service
+			echo '/usr/lib/systemd/system/nivaroos-torrent.service' >> \"$MANIFEST_FILE\"
 		fi
 
 		# The unit lives in the project (hardened: read-only system, writable
