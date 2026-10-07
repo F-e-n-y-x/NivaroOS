@@ -33,7 +33,7 @@ body += `<line x1="1" y1="42" x2="${W - 1}" y2="42" stroke="${C.edge}" stroke-wi
   const w = [...t].reduce((a, ch) => a + mono.charToGlyph(ch).advanceWidth * size / mono.unitsPerEm, 0)
   text((W - w) / 2, 27, t, size, C.dim) }
 // Prompt
-let px = text(36, 80, 'ayush@atom:~$ ', 15, C.dim)
+let px = text(36, 80, 'you@nivaroos:~$ ', 15, C.dim)
 text(px, 80, 'nivarofetch', 15, C.mint, monoB)
 // The mark as an LED matrix: N strokes 2 wide, the i's dot in mint.
 const cell = 14, gap = 3, ox = 40, oy = Math.round(118 - 15 + (26 * 9) / 2 - (12 * 14) / 2)
