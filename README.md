@@ -23,6 +23,51 @@
   <a href="#-support-nivaroos"><img src="https://img.shields.io/badge/Support-UPI-7DF9C5?style=flat-square&labelColor=0F1115" alt="Support NivaroOS"></a>
 </p>
 
+## 📸 Screenshots
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshots/web/desktop-dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/screenshots/web/desktop-light.webp">
+    <img src="docs/images/screenshots/web/desktop-light.webp" width="100%" alt="The NivaroOS web desktop: app icons, the App Store and Files windows, live CPU, memory, GPU, network and storage widgets, and the dock">
+  </picture>
+  <br><sub>The web desktop: windowed apps, live hardware widgets and a dock, in light and dark.</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/settings.webp" width="100%" alt="Settings window"><br><sub><b>Settings</b>: system, fans, packages, storage, users and updates in one place</sub></td>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/backup.webp" width="100%" alt="Backup and Sync overview"><br><sub><b>Backup &amp; Sync</b>: jobs to drives, clouds and phones, with clear problems and schedules</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/downloads.webp" width="100%" alt="Download Station download list"><br><sub><b>Download Station</b>: multi-connection downloads straight to your drives</sub></td>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/download-browser.webp" width="100%" alt="Download Station built-in browser"><br><sub><b>Download Station browser</b>: browse on the server, downloads land on the server</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/vms.webp" width="100%" alt="Virtual machine manager"><br><sub><b>Virtual machines</b>: KVM guests with live previews, consoles and snapshots</sub></td>
+    <td width="50%" align="center"><img src="docs/images/screenshots/web/terminal.webp" width="100%" alt="Web terminal"><br><sub><b>Terminal</b>: persistent shell sessions in the browser</sub></td>
+  </tr>
+</table>
+
+### 📱 Android app
+
+<table>
+  <tr>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/home-rack-light.webp" width="100%" alt="App home screen"><br><sub><b>Home</b></sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/files-rack-light.webp" width="100%" alt="App files screen"><br><sub><b>Files</b></sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/app-store-light.webp" width="100%" alt="App store screen"><br><sub><b>App Store</b></sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/backup-rack-light.webp" width="100%" alt="Backup and Sync screen"><br><sub><b>Backup &amp; Sync</b></sub></td>
+  </tr>
+  <tr>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/home-tonal-black.webp" width="100%" alt="App home screen, Tonal style, true black"><br><sub><b>Home</b> · Tonal, true black</sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/health-console-black.webp" width="100%" alt="Server health screen, Console style"><br><sub><b>Server health</b> · Console</sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/fans-console-black.webp" width="100%" alt="Fans screen, Console style"><br><sub><b>Fans</b> · Console</sub></td>
+    <td width="25%" align="center"><img src="docs/images/screenshots/app/downloads-tonal-black.webp" width="100%" alt="Download Station screen, Tonal style"><br><sub><b>Download Station</b> · Tonal</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>The app ships three looks (Rack, Tonal, Console), each in light, dark and true black. All screenshots use made-up demo data; see <a href="docs/images/screenshots/README.md">how they are made</a>.</sub></p>
+
 ---
 
 ## ⚡ Quick Install (Host OS)
