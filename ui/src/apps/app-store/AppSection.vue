@@ -193,6 +193,9 @@ const CELL_W = 88
 const CELL_H = 96
 const GAP = 8
 const SNAP = CELL_W + GAP
+// How many times a fresh desktop retries an app list that failed or came back
+// empty (see scheduleListRetry: about a minute in all).
+const LIST_RETRY_MAX = 7
 
 export default {
 	name: 'app-section',
@@ -346,6 +349,7 @@ export default {
 		window.removeEventListener('resize', this.getSkCount)
 		document.removeEventListener('visibilitychange', this.onVisibilityChange)
 		clearInterval(this.ListRefreshTimer)
+		clearTimeout(this.listRetryTimer)
 		if (this.canvasObserver) this.canvasObserver.disconnect()
 		Object.values(this.failedInstallTimers || {}).forEach(clearTimeout)
 	},
@@ -401,9 +405,26 @@ export default {
 			return this.listInFlight
 		},
 
+		// Right after the server (re)starts, app management may not answer
+		// yet, or answer an empty grid while it's still loading: the desktop
+		// used to show only the widgets until a manual reload (often more
+		// than one). Keep the skeleton and try again, 1 s doubling to 15 s,
+		// for about a minute; a server that really has no apps settles empty.
+		scheduleListRetry() {
+			if (this.listRetryTimer || this.retryCount >= LIST_RETRY_MAX) return false
+			const delay = Math.min(15000, 1000 * Math.pow(2, this.retryCount))
+			this.retryCount++
+			this.listRetryTimer = setTimeout(() => {
+				this.listRetryTimer = null
+				this.getList()
+			}, delay)
+			return true
+		},
+
 		async loadList() {
 			try {
 				const orgAppList = await this.$openAPI.appGrid.getAppGrid().then(res => res.data.data || [])
+				if (!orgAppList.length && !this.appList.length && this.scheduleListRetry()) return
 				let legacyOverrides
 				try {
 					legacyOverrides = await this.getLegacyAppOverrides()
@@ -572,11 +593,15 @@ export default {
 				await this.$nextTick()
 				this.syncPositions(savedPositions !== null)
 
-				this.retryCount = 0
+				// A real grid ends the retry run; an empty one that used them all
+				// up stays settled (no retry loop on a server with no apps).
+				if (orgAppList.length) this.retryCount = 0
 				this.appListErrorMessage = ''
 			} catch (error) {
 				console.error(error)
-				this.isLoading = false
+				// Keep the skeleton while retrying a fresh desktop; give up
+				// quietly (as before) once the retries are spent.
+				if (this.appList.length || !this.scheduleListRetry()) this.isLoading = false
 			}
 		},
 
