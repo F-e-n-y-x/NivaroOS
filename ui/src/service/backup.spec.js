@@ -47,7 +47,7 @@ describe('backup client against the WP-0 fixtures', () => {
 			c.health(), c.capabilities(),
 			c.locations('dest'), c.browseLocation({ kind: 'usb', ref_id: 'x' }), c.resolvePath('/DATA/Photos'),
 			c.listJobs(), c.createJob(job), c.getJob('bk_1'), c.updateJob(job), c.deleteJob('bk_1'),
-			c.toggleJob('bk_1', true), c.runJob('bk_1'), c.reconnectDest('bk_1'), c.validate(job), c.cronPreview('0 3 * * *'),
+			c.toggleJob('bk_1', true), c.runJob('bk_1'), c.reconnectDest('bk_1'), c.testEncryption('bk_1', 'pw'), c.validate(job), c.cronPreview('0 3 * * *'),
 			c.listRuns(), c.getRun('run_1'), c.getRunLog('run_1'), c.cancelRun('run_1'), c.decideRun('run_1', { proceed: false }), c.getRunPreview('run_1', { op: 'delete' }),
 			c.listVersions('bk_1'), c.browseVersion('bk_1', 'current'), c.restore('bk_1', fixture('POST', '/jobs/:id/restore').request),
 			c.createDownload({ jobId: 'bk_1', versionId: 'current', paths: [] }),

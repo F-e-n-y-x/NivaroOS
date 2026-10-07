@@ -38,7 +38,7 @@ func TestEncryptedJobKeysNeverLeave(t *testing.T) {
 
 	rec := doRequest(h.svc, "POST", "/v1/backup/jobs", encryptedJob("short", "2short", false), reqOpts{})
 	wantStatus(t, rec, 400)
-	if b := errorBody(t, rec); b.FieldErrors["encryption_secret.password"] != string(FieldOutOfRange) {
+	if b := errorBody(t, rec); b.FieldErrors["encryption_secret.password"] != string(FieldPasswordShort) {
 		t.Fatalf("short password: %+v", b)
 	}
 	src := encryptedJob("archive-mode", pw, false)
@@ -211,7 +211,7 @@ func TestKeyFileSlots(t *testing.T) {
 	if p, err := kf.Recovery.open(normRecoveryKey(rk)); err != nil || string(p) != "pässwörd ok" {
 		t.Fatalf("recovery slot: %q %v", p, err)
 	}
-	for pw, want := range map[string]FieldCode{"": FieldRequired, "1234567": FieldOutOfRange, "12345678": "", "two\nlines!": FieldInvalid} {
+	for pw, want := range map[string]FieldCode{"": FieldRequired, "1234567": FieldPasswordShort, "12345678": "", "two\nlines!": FieldInvalid} {
 		if got := checkPassword(pw); got != want {
 			t.Errorf("checkPassword(%q) = %q, want %q", pw, got, want)
 		}

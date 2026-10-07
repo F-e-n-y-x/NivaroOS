@@ -141,7 +141,10 @@ export function createBackupClient(transport = axiosTransport) {
 		updateJob: (job, opts) => put(`/jobs/${enc(job.id)}`, job, opts),
 		deleteJob: (id, { purgeData = false } = {}, opts) => del(`/jobs/${enc(id)}`, { purge_data: purgeData ? 'true' : undefined }, opts),
 		toggleJob: (id, enabled, opts) => post(`/jobs/${enc(id)}/toggle`, { enabled: !!enabled }, opts),
-		runJob: (id, { preview = false } = {}, opts) => post(`/jobs/${enc(id)}/run`, { preview: !!preview }, opts),
+		// check: "Check backup" (a kind=verify run) instead of a backup.
+		runJob: (id, { preview = false, check = false } = {}, opts) => post(`/jobs/${enc(id)}/run`, check ? { preview: false, check: true } : { preview: !!preview }, opts),
+		// "Test password" of an encrypted job: { ok } (a recovery key works too).
+		testEncryption: (id, password, opts) => post(`/jobs/${enc(id)}/encryption/test`, { password }, opts),
 		// adoptOtherJob confirms taking over a folder whose marker names
 		// another job (409 dest_marker_mismatch without it).
 		reconnectDest: (id, opts, { adoptOtherJob = false } = {}) => post(`/jobs/${enc(id)}/reconnect-dest`, { adopt_other_job: adoptOtherJob }, opts),

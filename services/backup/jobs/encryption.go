@@ -167,7 +167,7 @@ func checkPassword(pw string) FieldCode {
 	case pw == "":
 		return FieldRequired
 	case utf8.RuneCountInString(pw) < minPasswordLen, len(pw) > maxPasswordLen:
-		return FieldOutOfRange
+		return FieldPasswordShort
 	case !utf8.ValidString(pw) || strings.ContainsAny(pw, "\x00\r\n"):
 		// 7z reads the password as one line from its stdin.
 		return FieldInvalid

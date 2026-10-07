@@ -241,6 +241,12 @@ class _BackupJobScreenState extends State<BackupJobScreen> with WidgetsBindingOb
               title: Text(bt('backup.jobs.fact.where')),
               subtitle: Text(job.destOnline ? job.dest.display : '${job.dest.display} · ${bt('backup.health.offline')}'),
             ),
+            if (job.dest.encryptionMode.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: Text(bt('backup.jobs.fact.encryption')),
+                subtitle: Text(bt('backup.encrypt.mode_${job.dest.encryptionMode}')),
+              ),
             ListTile(
               leading: Icon(jobTypeIcon(job.type)),
               title: Text(bt('backup.jobs.fact.how')),

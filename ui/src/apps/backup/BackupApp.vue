@@ -398,6 +398,21 @@ export default {
 				this.busyJobId = ''
 			}
 		},
+		// "Check backup": a verify run (cryptcheck / decrypting the newest
+		// archive for encrypted jobs), shown in the run window.
+		async checkRun(job) {
+			if (this.busyJobId) return
+			this.busyJobId = job.id
+			try {
+				const { run_id: runId } = await this.bkApi.runJob(job.id, { check: true })
+				this.openRun(runId, job)
+				this.scheduleReload()
+			} catch (e) {
+				this.toastError(e)
+			} finally {
+				this.busyJobId = ''
+			}
+		},
 		async previewRun(job) {
 			if (this.busyJobId) return
 			this.busyJobId = job.id
@@ -454,7 +469,13 @@ export default {
 				case 'edit':
 					return this.openWizard({ jobId: job.id, startStep: 'review' })
 				case 'duplicate':
+					// An encrypted job needs a new password (and its own folder).
+					if (job.dest && job.dest.encryption) return this.openBackupWindow('wizard', { copyOf: job })
 					return this.duplicateJob(job)
+				case 'new_copy':
+					return this.openBackupWindow('wizard', { copyOf: job })
+				case 'check':
+					return this.checkRun(job)
 				case 'preview':
 					return this.previewRun(job)
 				case 'pause':

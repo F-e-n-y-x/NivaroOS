@@ -27,6 +27,31 @@
 			</div>
 		</div>
 
+		<div v-else-if="recoveryKey" class="bw-recovery" role="region" :aria-labelledby="idp + '-h-recovery'">
+			<h2 :id="idp + '-h-recovery'" ref="heading" class="bw-title" tabindex="-1">{{ $t('backup.encrypt.recovery_title') }}</h2>
+			<p class="wz-sub">{{ $t('backup.encrypt.recovery_text') }}</p>
+			<code class="bw-recovery-key" aria-live="off">{{ recoveryKey }}</code>
+			<div class="wz-row">
+				<button type="button" class="wz-secondary" @click="copyRecoveryKey">
+					<b-icon icon="content-copy" custom-size="mdi-16px" aria-hidden="true"></b-icon><span>{{ $t('backup.encrypt.copy') }}</span>
+				</button>
+				<button type="button" class="wz-secondary" @click="downloadRecoveryKey">
+					<b-icon icon="download-outline" custom-size="mdi-16px" aria-hidden="true"></b-icon><span>{{ $t('backup.encrypt.download') }}</span>
+				</button>
+			</div>
+			<p class="wz-note tone-danger" role="note">
+				<b-icon icon="alert-octagon-outline" custom-size="mdi-16px" aria-hidden="true"></b-icon>
+				<span><strong>{{ $t('backup.encrypt.warning_title') }}</strong> {{ $t('backup.encrypt.recovery_once') }}</span>
+			</p>
+			<label class="wz-check">
+				<input type="checkbox" :checked="recoverySaved" @change="recoverySaved = $event.target.checked" />
+				<span>{{ $t('backup.encrypt.recovery_saved') }}</span>
+			</label>
+			<div class="wz-row bw-recovery-done">
+				<button type="button" class="wz-primary" :disabled="!recoverySaved" @click="finishRecovery">{{ $t('backup.encrypt.recovery_done') }}</button>
+			</div>
+		</div>
+
 		<template v-else-if="draft">
 			<header class="bw-head">
 				<wizard-stepper :steps="steps" :current="step" :reached="reached" :error-counts="stepperErrors" @go="goStep"></wizard-stepper>
@@ -110,6 +135,8 @@
 					<p v-if="destHint" class="wz-sub">{{ destHint }}</p>
 					<location-card :dest="draft.dest" :location="destLocation" :idp="idp" :errors="shownErrors" :fmt="fmt"
 						@choose="chooseDest" @browse="browseDest" @sub-path="setSubPath"></location-card>
+					<encryption-options v-if="draft.dest" :mode="draft.encryptMode" :type="draft.type" :volume-bytes="draft.volumeBytes" :secret="secret"
+						:is-edit="isEdit" :seven-zip="sevenZip" :idp="idp" :errors="shownErrors" @patch="applyPatch" @secret="setSecret" @new-copy="newEncryptedCopy"></encryption-options>
 					<p v-if="allErrors['dest.type']" :id="fieldDomId('dest.type')" class="wz-note tone-danger" tabindex="-1">
 						<b-icon icon="alert-circle-outline" custom-size="mdi-16px" aria-hidden="true"></b-icon>
 						<span>
@@ -209,7 +236,7 @@ import { visiblePresets, presetById, autoTypeForDest, safeTypes, isAppOrVmSource
 import { plugTarget } from '../summaries'
 import {
 	STEPS, FIELD_STEP, newDraft, draftFromJob, draftToJob, validateDraft, errorsForStep, firstStepWithErrors, mapServerFieldErrors,
-	blockingCheckErrors, defaultName, destFolderSubPath, effectiveWhenUnmet, syncHookChoices, hasAppOrVmSource
+	blockingCheckErrors, defaultName, destFolderSubPath, effectiveWhenUnmet, syncHookChoices, hasAppOrVmSource, newSecret, secretToJob
 } from '../wizard/draft'
 import { fieldId, describedBy } from '../wizard/fields'
 import { windowFocusMixin } from '@/shared/storage/windowFocus'
@@ -229,6 +256,7 @@ import KeepEditor from '../components/KeepEditor.vue'
 import AdvancedOptions from '../components/AdvancedOptions.vue'
 import JobSummary from '../components/JobSummary.vue'
 import FieldError from '../components/FieldError.vue'
+import EncryptionOptions from '../components/EncryptionOptions.vue'
 
 const AUTOSAVE_PREFIX = 'nivaroos_backup_wizard_draft:'
 const AUTOSAVE_MAX_AGE_MS = 7 * 24 * 3600 * 1000
@@ -243,7 +271,7 @@ const PATCH_FIELD = {
 	plugOn: 'plug.volume', plugGapHours: 'plug.min_gap_hours', windowStart: 'window.start', windowEnd: 'window.end', windowOn: 'window.end',
 	waitMaxMin: 'wait_max_min', retryMax: 'retry.max', versionsDays: 'retention.versions_days', keepLast: 'retention.keep_last',
 	deletePct: 'guards.delete_pct', changePct: 'guards.change_pct', emptySourcePct: 'guards.empty_source_pct', name: 'name',
-	maxDurationHours: 'options.max_duration_sec'
+	maxDurationHours: 'options.max_duration_sec', encryptMode: 'dest.encryption', volumeBytes: 'dest.encryption.volume_bytes'
 }
 
 let seq = 0
@@ -273,7 +301,7 @@ export default {
 	name: 'BackupJobWizardWindow',
 	components: {
 		WizardStepper, PresetGrid, JobTypePicker, SourcePicker, ExcludeEditor, AppConsistencyOptions, LocationCard, SpaceEstimate,
-		TriggerEditor, ConditionEditor, RetryPolicy, KeepEditor, AdvancedOptions, JobSummary, FieldError
+		TriggerEditor, ConditionEditor, RetryPolicy, KeepEditor, AdvancedOptions, JobSummary, FieldError, EncryptionOptions
 	},
 	mixins: [backupMixin, windowFocusMixin],
 	props: {
@@ -283,7 +311,10 @@ export default {
 		preset: { type: String, default: '' },
 		sourceEndpoint: { type: Object, default: null },
 		destEndpoint: { type: Object, default: null },
-		startStep: { type: String, default: '' }
+		startStep: { type: String, default: '' },
+		// A stored job to start a new job from ("Start a new encrypted
+		// copy": same sources, a new folder and a new password).
+		copyOf: { type: Object, default: null }
 	},
 	data() {
 		return {
@@ -310,7 +341,14 @@ export default {
 			conflict: null,
 			restoreOffer: null,
 			autoTypeNote: '',
-			closing: false
+			closing: false,
+			// The new encrypted job's password: never in the draft (which
+			// is autosaved), only sent with POST /jobs.
+			secret: newSecret(),
+			sevenZip: true,
+			recoveryKey: '',
+			recoverySaved: false,
+			created: null
 		}
 	},
 	computed: {
@@ -339,7 +377,7 @@ export default {
 			return !!this.draft && this.jobJson !== this.initialJson
 		},
 		clientErrors() {
-			return validateDraft(this.draft)
+			return validateDraft(this.draft, this.isEdit ? null : this.secret)
 		},
 		allErrors() {
 			return { ...this.serverErrors, ...blockingCheckErrors(this.validateResult), ...this.clientErrors }
@@ -448,12 +486,15 @@ export default {
 		async init() {
 			this.loading = true
 			this.loadError = null
-			const [locations, settings, job] = await Promise.all([
+			const [locations, settings, job, caps] = await Promise.all([
 				this.bkApi.locations().catch(() => []),
 				this.isEdit ? Promise.resolve(null) : this.bkApi.getSettings().catch(() => null),
-				this.isEdit ? this.bkApi.getJob(this.jobId).catch(e => ({ __error: e })) : Promise.resolve(null)
+				this.isEdit ? this.bkApi.getJob(this.jobId).catch(e => ({ __error: e })) : Promise.resolve(null),
+				this.bkApi.capabilities().catch(() => null)
 			])
 			this.locations = Array.isArray(locations) ? locations : []
+			// Unknown (older service, no answer): allowed, the server decides.
+			this.sevenZip = !(caps && caps.sevenzip && caps.sevenzip.available === false)
 			this.settings = settings
 			if (job && job.__error) {
 				this.loadError = explainError(this.$t.bind(this), job.__error.code)
@@ -464,6 +505,8 @@ export default {
 				this.draft = draftFromJob(job, { settings })
 				// Opened by id alone (Files, a notification) the title has no name yet.
 				if (this.winId && job && job.name) this.$store.commit('UPDATE_WINDOW_PROPS', { id: this.winId, title: this.$t('backup.window.wizard_edit', { name: job.name }) })
+			} else if (this.copyOf) {
+				this.draft = this.copyDraft(this.copyOf)
 			} else {
 				this.appliedPreset = this.preset && presetById(this.preset) ? this.preset : ''
 				this.draft = this.freshDraft(this.appliedPreset)
@@ -479,6 +522,15 @@ export default {
 		},
 		freshDraft(presetId) {
 			const d = newDraft({ settings: this.settings, preset: presetById(presetId), locations: this.locations, sourceEndpoint: this.sourceEndpoint, destEndpoint: this.destEndpoint })
+			this.fillDefaults(d)
+			return d
+		},
+		// A new job from a stored one: everything but its identity, a new
+		// name and a folder of its own (the old folder's backup keeps its
+		// own password).
+		copyDraft(job) {
+			const d = draftFromJob(job, { settings: this.settings })
+			Object.assign(d, { id: '', revision: 0, name: this.$t('backup.jobs.copy_name', { name: job.name }), destPathTouched: false, needsAttention: '', migratedFrom: null, runNow: false, encryptionRecovery: false })
 			this.fillDefaults(d)
 			return d
 		},
@@ -581,10 +633,51 @@ export default {
 			if ('sources' in patch) syncHookChoices(d)
 			if ('sources' in patch || 'dest' in patch || 'name' in patch) this.fillDefaults(d)
 		},
+		setSecret(s) {
+			for (const [k, f] of [['password', 'encryption.password'], ['confirm', 'encryption.confirm'], ['recoveryKey', 'encryption.recovery_key']]) {
+				if (s[k] !== this.secret[k]) {
+					this.$set(this.touched, f, true)
+					if (this.serverErrors[f]) this.$delete(this.serverErrors, f)
+				}
+			}
+			this.secret = s
+		},
+		newEncryptedCopy() {
+			this.openBackupWindow('wizard', { copyOf: this.job })
+		},
+		async copyRecoveryKey() {
+			try {
+				await navigator.clipboard.writeText(this.recoveryKey)
+				this.toast(this.$t('backup.encrypt.copied'))
+			} catch (e) {
+				this.toastError(e)
+			}
+		},
+		downloadRecoveryKey() {
+			const name = (this.created && this.created.name) || 'backup'
+			const text = this.$t('backup.encrypt.recovery_file', { name, key: this.recoveryKey, folder: this.created ? (this.created.dest.label || '') + ' / ' + this.created.dest.sub_path : '' })
+			const url = URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain' }))
+			const a = document.createElement('a')
+			a.href = url
+			a.download = `NivaroOS recovery key - ${name.replace(/[\\/:*?"<>|]+/g, '-')}.txt`
+			document.body.appendChild(a)
+			a.click()
+			a.remove()
+			setTimeout(() => URL.revokeObjectURL(url), 1000)
+		},
+		finishRecovery() {
+			const { job, runNow, previewFirst } = this.created
+			this.recoveryKey = ''
+			this.closeWindow()
+			if (runNow) this.startFirstRun(job, previewFirst)
+		},
 		setType(t) {
 			const d = this.draft
 			this.autoTypeNote = ''
 			const patch = { type: t, typeTouched: true }
+			// Encrypted archives are archive jobs; another type keeps the
+			// files encrypted as a folder.
+			if (!this.isEdit && t !== 'archive' && d.encryptMode === 'archive') patch.encryptMode = 'folder'
 			// Mirror previews its first run unless the user said otherwise.
 			if (!d.previewTouched && !this.isEdit) patch.previewFirst = t === 'mirror'
 			this.applyPatch(patch)
@@ -762,13 +855,23 @@ export default {
 			}
 			this.saving = true
 			const job = this.job
+			const secret = secretToJob(this.draft, this.secret)
 			try {
-				const saved = this.isEdit ? await this.bkApi.updateJob(job) : await this.bkApi.createJob(job)
+				const saved = this.isEdit ? await this.bkApi.updateJob(job) : await this.bkApi.createJob(secret ? { ...job, encryption_secret: secret } : job)
 				this.closing = true
+				this.secret = newSecret()
 				writeSaved(this.autosaveKey, null)
 				this.toast(this.$t(this.isEdit ? 'backup.wizard.saved' : 'backup.wizard.created', { name: saved.name || job.name }))
 				const runNow = !this.isEdit && this.draft.runNow
 				const previewFirst = job.options.preview_first
+				if (saved.recovery_key) {
+					// Shown once: the server keeps no copy.
+					this.created = { job: saved, name: saved.name, dest: saved.dest, runNow, previewFirst }
+					this.recoveryKey = saved.recovery_key
+					this.recoverySaved = false
+					this.focusHeading()
+					return
+				}
 				this.closeWindow()
 				if (runNow) this.startFirstRun(saved, previewFirst)
 			} catch (e) {
@@ -816,6 +919,21 @@ export default {
 		// Called by the window's close button and Esc (DesktopWindow asks
 		// requestClose() first when a component has one).
 		requestClose() {
+			if (this.recoveryKey) {
+				this.confirmWindow({
+					title: this.$t('backup.encrypt.recovery_title'),
+					message: this.$t('backup.encrypt.recovery_close'),
+					confirmText: this.$t('backup.encrypt.recovery_close_anyway'),
+					cancelText: this.$t('backup.wizard.close_keep'),
+					type: 'is-danger',
+					icon: 'key-alert-outline',
+					onConfirm: () => {
+						this.recoveryKey = ''
+						this.closeWindow()
+					}
+				})
+				return
+			}
 			if (!this.dirty || !this.draft) {
 				this.closing = true
 				// An unanswered "Restore your unsaved job?" keeps the draft
@@ -865,6 +983,32 @@ export default {
 	min-width: 0;
 	background: var(--theme-bg-window);
 	color: var(--theme-text-primary);
+}
+
+.bw-recovery {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-5);
+	overflow: auto;
+}
+
+.bw-recovery-key {
+	display: block;
+	padding: var(--space-3);
+	border: 1px solid var(--theme-card-border);
+	border-radius: var(--radius-sm);
+	background: var(--theme-card-subtle);
+	color: var(--theme-text-primary);
+	font-size: var(--font-md);
+	letter-spacing: 0.04em;
+	word-break: break-all;
+	user-select: all;
+}
+
+.bw-recovery-done {
+	justify-content: flex-end;
 }
 
 .bw-state {

@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import {
 	newDraft, draftFromJob, draftToJob, validateDraft, errorsForStep, firstStepWithErrors, mapServerFieldErrors,
-	blockingCheckErrors, defaultName, defaultDestSubPath, staleHours, syncHookChoices
+	blockingCheckErrors, defaultName, defaultDestSubPath, staleHours, syncHookChoices, newSecret, secretToJob, passwordStrength
 } from '../wizard/draft'
 import { PRESETS, visiblePresets, presetById, safeTypes, autoTypeForDest } from '../presets'
 import { jobSummary } from '../summaries'
@@ -174,6 +174,72 @@ describe('validation matches the server rules', () => {
 		expect(Object.keys(errorsForStep(errors, 'keep'))).toEqual(['guards.delete_pct'])
 		expect(firstStepWithErrors(errors)).toBe('what')
 		expect(firstStepWithErrors({})).toBeNull()
+	})
+})
+
+describe('encrypted backups', () => {
+	const secret = over => Object.assign(newSecret(), { password: 'correct horse battery', confirm: 'correct horse battery' }, over)
+
+	test('off by default; an encrypted folder goes on the destination', () => {
+		expect(draftToJob(validDraft()).dest.encryption).toBeUndefined()
+		const job = draftToJob(validDraft({ encryptMode: 'folder' }))
+		expect(job.dest.encryption).toEqual({ mode: 'folder', recovery_key: false })
+		expect(JSON.stringify(job)).not.toContain('correct horse')
+	})
+
+	test('an encrypted archive is an archive job with parts under 4 GB', () => {
+		expect(validateDraft(validDraft({ encryptMode: 'archive' }), secret())['dest.encryption']).toBe('invalid')
+		const d = validDraft({ type: 'archive', encryptMode: 'archive' })
+		expect(validateDraft(d, secret())).toEqual({})
+		expect(draftToJob(d).dest.encryption).toEqual({ mode: 'archive', volume_bytes: 3900000000, recovery_key: false })
+		expect(validateDraft({ ...d, volumeBytes: 5e9 }, secret())['dest.encryption.volume_bytes']).toBe('out_of_range')
+		expect(validateDraft({ ...d, volumeBytes: 5e7 }, secret())['dest.encryption.volume_bytes']).toBe('out_of_range')
+		expect(validateDraft({ ...d, encryptMode: 'zip' }, secret())['dest.encryption']).toBe('invalid')
+	})
+
+	test('password: required, 8+ characters, one line, typed twice', () => {
+		const d = validDraft({ encryptMode: 'folder' })
+		expect(validateDraft(d, secret({ password: '', confirm: '' }))['encryption.password']).toBe('required')
+		expect(validateDraft(d, secret({ password: 'short12', confirm: 'short12' }))['encryption.password']).toBe('password_short')
+		expect(validateDraft(d, secret({ password: 'two\nlines!!', confirm: 'two\nlines!!' }))['encryption.password']).toBe('invalid')
+		expect(validateDraft(d, secret({ confirm: 'correct horse batterie' }))['encryption.confirm']).toBe('mismatch')
+		expect(validateDraft(d, secret())).toEqual({})
+		expect(errorsForStep(validateDraft(d, secret({ confirm: '' })), 'where')).toEqual({ 'encryption.confirm': 'mismatch' })
+		// Unlocking an existing backup takes its recovery key instead.
+		expect(validateDraft(d, secret({ useRecoveryKey: true, password: '' }))['encryption.recovery_key']).toBe('required')
+		expect(validateDraft(d, secret({ useRecoveryKey: true, recoveryKey: 'ABCDEF-GHIJKL' }))).toEqual({})
+		// An edit never has (or sends) a password.
+		expect(validateDraft({ ...d, id: 'bk_1' }, null)).toEqual({})
+	})
+
+	test('only POST /jobs gets the secret', () => {
+		const d = validDraft({ encryptMode: 'folder' })
+		expect(secretToJob(d, secret())).toEqual({ password: 'correct horse battery', make_recovery_key: true })
+		expect(secretToJob(d, secret({ useRecoveryKey: true, recoveryKey: ' K7Q2MZ-3XWPLA ' }))).toEqual({ recovery_key: 'K7Q2MZ-3XWPLA' })
+		expect(secretToJob(validDraft(), secret())).toBeUndefined()
+		expect(secretToJob({ ...d, id: 'bk_1' }, secret())).toBeUndefined()
+	})
+
+	test('a stored encrypted job round-trips and keeps its server-owned recovery flag', () => {
+		const job = asJob(endpoint('jobs_create').response)
+		delete job.recovery_key
+		expect(job.dest.encryption).toEqual({ mode: 'folder', recovery_key: true })
+		expect(draftToJob(draftFromJob(job))).toEqual(job)
+		const archive = { ...job, type: 'archive', retention: { keep_last: 8 }, dest: { ...job.dest, encryption: { mode: 'archive', volume_bytes: 2000000000, recovery_key: false } } }
+		expect(draftToJob(draftFromJob(archive)).dest.encryption).toEqual(archive.dest.encryption)
+	})
+
+	test('strength meter', () => {
+		expect(passwordStrength('')).toBe(0)
+		expect(passwordStrength('password1')).toBe(0)
+		expect(passwordStrength('aaaaaaaaaaaa')).toBe(0)
+		expect(passwordStrength('Tr0ub4dor&3')).toBeGreaterThanOrEqual(2)
+		expect(passwordStrength('correct horse battery staple')).toBe(4)
+	})
+
+	test('server password errors land on the password field', () => {
+		const job = draftToJob(validDraft({ encryptMode: 'folder' }))
+		expect(mapServerFieldErrors({ 'encryption_secret.password': 'wrong_password', 'dest.encryption.mode': 'sevenzip_missing' }, job)).toEqual({ 'encryption.password': 'wrong_password', 'dest.encryption': 'sevenzip_missing' })
 	})
 })
 

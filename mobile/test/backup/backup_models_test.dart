@@ -18,6 +18,16 @@ Object? _example(String id) => (_contract['endpoints'] as List).cast<Map<String,
 
 void main() {
   group('the contract examples parse', () {
+    test('an encrypted destination is shown and sent back as it came', () {
+      final job = BackupJob.fromJson(_example('jobs_create'));
+      expect(job.dest.encryptionMode, 'folder');
+      expect(job.dest.toJson()['encryption'], {'mode': 'folder', 'recovery_key': true});
+      expect(job.dest.withSubPath('x').encryptionMode, 'folder');
+      expect(bt('backup.encrypt.mode_folder'), 'Encrypted folder');
+      final plain = BackupJob.fromJson((_example('jobs_list') as List).first);
+      expect((plain.dest.encryptionMode, plain.dest.toJson().containsKey('encryption')), ('', false));
+    });
+
     test('health', () {
       final h = BackupHealth.fromJson(_example('health'));
       expect((h.installed, h.running, h.version), (true, true, '1.0.0'));

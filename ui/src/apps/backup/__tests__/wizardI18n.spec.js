@@ -22,7 +22,7 @@ const FILES = [
 	'apps/backup/windows/BackupPreviewWindow.vue',
 	'apps/backup/summaries.js',
 	...['WizardStepper', 'PresetGrid', 'JobTypePicker', 'SourcePicker', 'ExcludeEditor', 'AppConsistencyOptions', 'LocationCard', 'SpaceEstimate',
-		'TriggerEditor', 'ConditionEditor', 'RetryPolicy', 'KeepEditor', 'AdvancedOptions', 'JobSummary', 'FieldError'].map(c => `apps/backup/components/${c}.vue`),
+		'TriggerEditor', 'ConditionEditor', 'RetryPolicy', 'KeepEditor', 'AdvancedOptions', 'JobSummary', 'FieldError', 'EncryptionOptions'].map(c => `apps/backup/components/${c}.vue`),
 	'apps/settings/ScheduledTaskWindow.vue',
 	'apps/settings/ScheduledTaskLogWindow.vue',
 	'apps/settings/sections/ScheduledTasksSection.vue'
@@ -46,6 +46,8 @@ const DYNAMIC = {
 	'backup.wizard.when.unmet_hint.': ['skip', 'wait', 'fail'],
 	'backup.wizard.where.hint_': ['usb', 'cloud', 'local'],
 	'backup.health.': ['problem', 'offline', 'warning', 'ok', 'disabled'],
+	'backup.encrypt.mode_': ['off', 'folder', 'archive', 'off_hint', 'folder_hint', 'archive_hint'],
+	'backup.encrypt.strength_': ['0', '1', '2', '3', '4'],
 	'schedule.builder.kind.': ['every_n_minutes', 'hourly', 'every_n_hours', 'daily', 'weekdays', 'weekly', 'monthly', 'custom'],
 	'schedule.cron_field.': ['minute', 'hour', 'dom', 'month', 'dow'],
 	'schedule.status.': ['done', 'success', 'running', 'error', 'interrupted']

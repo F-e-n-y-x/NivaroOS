@@ -35,6 +35,46 @@ export const DEFAULTS = Object.freeze({
 
 export const BACKUPS_FOLDER = 'NivaroOS Backups'
 
+// Encrypted backups (spec §18). The password itself never enters the
+// draft (the draft is autosaved to localStorage); the wizard keeps it in
+// a separate secret object that only POST /jobs gets.
+export const ENCRYPT_MODES = Object.freeze(['', 'folder', 'archive'])
+export const DEFAULT_VOLUME_BYTES = 3900000000 // under TeraBox's (free plan) and FAT32's 4 GB file limit
+export const MIN_VOLUME_BYTES = 100000000
+export const MAX_VOLUME_BYTES = 4 * 1024 ** 3 - 1024 ** 2
+export const MIN_PASSWORD_LEN = 8
+export const MAX_PASSWORD_LEN = 1024
+
+export function newSecret() {
+	return { password: '', confirm: '', makeRecoveryKey: true, useRecoveryKey: false, recoveryKey: '' }
+}
+
+const COMMON_PASSWORDS = ['password', 'passwort', 'qwerty', 'letmein', 'welcome', 'admin', 'iloveyou', 'monkey', 'dragon', 'sunshine', 'football', 'nivaroos', 'terabox', 'backup']
+
+// passwordStrength scores 0 (very weak) .. 4 (strong) from a rough
+// entropy estimate: character classes and length, minus repeats,
+// sequences and common words. Only a hint; the rule is the length.
+export function passwordStrength(pw) {
+	const p = String(pw || '')
+	if (!p) return 0
+	let pool = 0
+	if (/[a-z]/.test(p)) pool += 26
+	if (/[A-Z]/.test(p)) pool += 26
+	if (/[0-9]/.test(p)) pool += 10
+	if (/[^a-zA-Z0-9]/.test(p)) pool += 33
+	let len = [...p].length
+	len -= (p.match(/(.)\1{2,}/g) || []).reduce((n, m) => n + m.length - 1, 0)
+	const lower = p.toLowerCase()
+	for (const w of COMMON_PASSWORDS) if (lower.includes(w)) len -= w.length - 1
+	if (/(?:0123|1234|2345|3456|4567|5678|6789|abcd|bcde|cdef|qwer|asdf|zxcv)/.test(lower)) len -= 3
+	const bits = Math.max(0, len) * Math.log2(Math.max(pool, 1))
+	if (bits < 30) return 0
+	if (bits < 45) return 1
+	if (bits < 60) return 2
+	if (bits < 80) return 3
+	return 4
+}
+
 function clone(v) {
 	return v === undefined ? undefined : JSON.parse(JSON.stringify(v))
 }
@@ -152,6 +192,9 @@ export function newDraft({ settings = null, preset = null, locations = [], sourc
 		extraHooks: [],
 		notifyOnSuccess: false,
 		staleAfterHours: 0,
+		encryptMode: '',
+		volumeBytes: DEFAULT_VOLUME_BYTES,
+		encryptionRecovery: false,
 		runNow: true,
 		needsAttention: '',
 		migratedFrom: null
@@ -204,6 +247,9 @@ export function draftFromJob(job, { settings = null } = {}) {
 		sources: clone(job.sources || []),
 		dest: job.dest ? clone(job.dest) : null,
 		destPathTouched: true,
+		encryptMode: job.dest && job.dest.encryption && ENCRYPT_MODES.includes(job.dest.encryption.mode) ? job.dest.encryption.mode : '',
+		volumeBytes: (job.dest && job.dest.encryption && job.dest.encryption.volume_bytes) || DEFAULT_VOLUME_BYTES,
+		encryptionRecovery: !!(job.dest && job.dest.encryption && job.dest.encryption.recovery_key),
 		scheduleOn: !!sched,
 		cron: sched ? sched.cron : '0 3 * * *',
 		plugOn: !!plug,
@@ -246,6 +292,7 @@ export function draftFromJob(job, { settings = null } = {}) {
 	})
 	// A mirror stored with versions_days 0 keeps versions forever; any
 	// other type falls back to the default if switched to Mirror.
+	if (d.dest) delete d.dest.encryption // kept as encryptMode / volumeBytes
 	if (job.type !== 'mirror' && r.versions_days === undefined) d.versionsDays = settings && settings.default_versions_days !== undefined ? settings.default_versions_days : DEFAULTS.versionsDays
 
 	// Hooks: the stop/start pairs the wizard shows as boxes; anything else
@@ -355,12 +402,19 @@ export function draftToJob(d, { now = new Date() } = {}) {
 	if (d.type === 'archive') retention.keep_last = Math.round(Number(d.keepLast) || DEFAULTS.keepLast)
 
 	const name = d.name.trim() || defaultName(d)
+	const dest = d.dest ? clone(d.dest) : { kind: '', ref_id: '', sub_path: '', label: '' }
+	delete dest.encryption
+	if (d.encryptMode) {
+		dest.encryption = { mode: d.encryptMode }
+		if (d.encryptMode === 'archive') dest.encryption.volume_bytes = Math.round(Number(d.volumeBytes) || DEFAULT_VOLUME_BYTES)
+		dest.encryption.recovery_key = !!d.encryptionRecovery
+	}
 	const job = {
 		name,
 		type: d.type,
 		enabled: !!d.enabled,
 		sources: clone(d.sources),
-		dest: d.dest ? clone(d.dest) : { kind: '', ref_id: '', sub_path: '', label: '' },
+		dest,
 		triggers,
 		conditions,
 		filters,
@@ -398,6 +452,11 @@ export const FIELD_STEP = Object.freeze({
 	dest: 'where',
 	'dest.sub_path': 'where',
 	'dest.type': 'where',
+	'dest.encryption': 'where',
+	'dest.encryption.volume_bytes': 'where',
+	'encryption.password': 'where',
+	'encryption.confirm': 'where',
+	'encryption.recovery_key': 'where',
 	cron: 'when',
 	'plug.min_gap_hours': 'when',
 	'plug.volume': 'when',
@@ -427,8 +486,10 @@ function sameLocation(a, b) {
 
 // validateDraft returns { field: code } (codes are FIELD_CODES or error
 // codes, rendered with fieldErrorKey()). `plugDrive` is the endpoint a
-// plug-in trigger would watch (plugTarget()).
-export function validateDraft(d) {
+// plug-in trigger would watch (plugTarget()). secret (newSecret()) is the
+// password of a new encrypted job; the server never gets it back, so an
+// edit has none.
+export function validateDraft(d, secret = null) {
 	const e = {}
 	if (!JOB_TYPES.includes(d.type)) e.type = 'invalid'
 
@@ -448,6 +509,24 @@ export function validateDraft(d) {
 		if (sp.error) e['dest.sub_path'] = 'path_not_allowed'
 		else if (d.sources.some(s => sameLocation(s, d.dest) && (isSameOrInside(s.sub_path, sp.path) || isSameOrInside(sp.path, s.sub_path)))) e.dest = 'dest_inside_source'
 		if (!safeTypes(d.sources, d.dest.kind).includes(d.type)) e['dest.type'] = 'appdata_cloud_needs_archive'
+	}
+
+	if (!ENCRYPT_MODES.includes(d.encryptMode)) e['dest.encryption'] = 'invalid'
+	else if (d.encryptMode === 'archive') {
+		if (d.type !== 'archive') e['dest.encryption'] = 'invalid'
+		const v = Number(d.volumeBytes)
+		if (!(v >= MIN_VOLUME_BYTES && v <= MAX_VOLUME_BYTES)) e['dest.encryption.volume_bytes'] = 'out_of_range'
+	}
+	if (d.encryptMode && !d.id && secret) {
+		if (secret.useRecoveryKey) {
+			if (!String(secret.recoveryKey || '').trim()) e['encryption.recovery_key'] = 'required'
+		} else {
+			const pw = String(secret.password || '')
+			if (!pw) e['encryption.password'] = 'required'
+			else if ([...pw].length < MIN_PASSWORD_LEN || pw.length > MAX_PASSWORD_LEN) e['encryption.password'] = 'password_short'
+			else if (/[\0\r\n]/.test(pw)) e['encryption.password'] = 'invalid'
+			else if (secret.confirm !== pw) e['encryption.confirm'] = 'mismatch'
+		}
 	}
 
 	if (d.scheduleOn && validateCron(d.cron)) e.cron = 'invalid_cron'
@@ -507,6 +586,10 @@ export function serverFieldToUi(path, job) {
 	if (/^filters\.exclude/.test(p)) return 'filters.exclude'
 	if (/^filters\.include/.test(p)) return 'filters.include'
 	if (p === 'type') return 'dest.type'
+	if (p === 'encryption_secret.recovery_key') return 'encryption.recovery_key'
+	if (/^encryption_secret/.test(p)) return 'encryption.password'
+	if (p === 'dest.encryption.volume_bytes') return p
+	if (/^dest\.encryption/.test(p)) return 'dest.encryption'
 	if (p === 'dest.sub_path') return 'dest.sub_path'
 	if (/^dest/.test(p)) return 'dest'
 	if (/^conditions\.window\.start/.test(p)) return 'window.start'
@@ -549,4 +632,11 @@ export { sourcesLabel }
 // hasAppOrVmSource: shows the "Keep apps consistent" block.
 export function hasAppOrVmSource(d) {
 	return d.sources.some(isAppOrVmSource) || Object.keys(d.stopApps).length > 0 || Object.keys(d.shutdownVms).length > 0
+}
+
+// secretToJob is what POST /jobs adds for a new encrypted job.
+export function secretToJob(d, secret) {
+	if (!d.encryptMode || d.id || !secret) return undefined
+	if (secret.useRecoveryKey) return { recovery_key: String(secret.recoveryKey || '').trim() }
+	return { password: secret.password, make_recovery_key: !!secret.makeRecoveryKey }
 }

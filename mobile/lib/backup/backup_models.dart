@@ -42,7 +42,7 @@ class BackupMessage {
 /// Where a job reads or writes: a drive, a USB stick, merged storage, a
 /// network share or a cloud account, plus a folder inside it.
 class BackupEndpoint {
-  const BackupEndpoint({required this.kind, required this.refId, this.subPath = '', this.label = '', this.preset = '', this.match});
+  const BackupEndpoint({required this.kind, required this.refId, this.subPath = '', this.label = '', this.preset = '', this.match, this.encryption});
 
   /// volume | usb | merge | smb | cloud
   final String kind;
@@ -54,6 +54,14 @@ class BackupEndpoint {
   /// usb only: {serial, size_bytes}, sent back as it came.
   final Map<String, Object?>? match;
 
+  /// A job's destination only: {mode: folder | archive, ...} when its
+  /// backups are encrypted. Shown, and sent back as it came (the app
+  /// can't set it up or change it; the web wizard does).
+  final Map<String, Object?>? encryption;
+
+  /// "folder", "archive" or "" (not encrypted).
+  String get encryptionMode => encryption == null ? '' : _str(encryption!['mode']);
+
   factory BackupEndpoint.fromJson(Object? j) {
     final m = _map(j);
     return BackupEndpoint(
@@ -63,6 +71,7 @@ class BackupEndpoint {
       label: _str(m['label']),
       preset: _str(m['preset']),
       match: m['match'] is Map ? _map(m['match']) : null,
+      encryption: m['encryption'] is Map ? _map(m['encryption']) : null,
     );
   }
 
@@ -73,9 +82,10 @@ class BackupEndpoint {
         'sub_path': subPath,
         'label': label,
         if (preset.isNotEmpty) 'preset': preset,
+        if (encryption != null) 'encryption': encryption,
       };
 
-  BackupEndpoint withSubPath(String path) => BackupEndpoint(kind: kind, refId: refId, subPath: path, label: label, preset: '', match: match);
+  BackupEndpoint withSubPath(String path) => BackupEndpoint(kind: kind, refId: refId, subPath: path, label: label, preset: '', match: match, encryption: encryption);
 
   /// "tower › photos", as the web writes it.
   String get display {

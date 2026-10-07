@@ -22,6 +22,8 @@ const LINE_META = {
 	'backup.summary.mirror': ['what', 'mirror'],
 	'backup.summary.copy': ['what', 'content-copy'],
 	'backup.summary.archive': ['what', 'archive-outline'],
+	'backup.summary.encrypted_folder': ['where', 'lock-outline'],
+	'backup.summary.encrypted_archive': ['where', 'lock-outline'],
 	'backup.summary.when_schedule': ['when', 'calendar-clock'],
 	'backup.summary.when_plug': ['when', 'usb-flash-drive-outline'],
 	'backup.summary.when_plug_gap': ['when', 'usb-flash-drive-outline'],
@@ -81,6 +83,8 @@ export default {
 					args[k] = this.fmt.list(v)
 				} else if ((k === 'start' || k === 'end') && /^\d{1,2}:\d{2}$/.test(v)) {
 					args[k] = formatClock(v, opts.locale, opts.hour12)
+				} else if (typeof v === 'number' && (k === 'bytes' || k.endsWith('_bytes'))) {
+					args[k] = this.fmt.bytes(v)
 				} else if (typeof v === 'number') {
 					args[k] = this.fmt.number(v)
 				} else {

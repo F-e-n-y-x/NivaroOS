@@ -66,7 +66,7 @@ export const ACTIONS = Object.freeze(['change_dest', 'edit_filters', 'edit_hooks
 
 // Values of a 400 response's field_errors besides error codes; label
 // them with backup.field.<code>.
-export const FIELD_CODES = Object.freeze(['required', 'invalid', 'out_of_range', 'too_many', 'invalid_cron', 'invalid_time', 'unknown_app', 'unknown_vm', 'mirror_needs_dest', 'not_resolvable', 'dest_overlaps_job'])
+export const FIELD_CODES = Object.freeze(['required', 'invalid', 'out_of_range', 'too_many', 'invalid_cron', 'invalid_time', 'unknown_app', 'unknown_vm', 'mirror_needs_dest', 'not_resolvable', 'dest_overlaps_job', 'password_short', 'mismatch'])
 
 // errorInfo returns {class, actions} for a code; unknown codes are
 // treated as internal, like the backend does.

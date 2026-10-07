@@ -35,6 +35,9 @@ export function jobSummary(job) {
 	const dest = epLabel(job.dest)
 	const what = { mirror: 'backup.summary.mirror', copy: 'backup.summary.copy', archive: 'backup.summary.archive' }[job.type]
 	if (what) out.push({ key: what, args: { source, dest } })
+	const enc = job.dest && job.dest.encryption
+	if (enc && enc.mode === 'archive') out.push({ key: 'backup.summary.encrypted_archive', args: { volume_bytes: enc.volume_bytes || 3900000000 } })
+	else if (enc && enc.mode === 'folder') out.push({ key: 'backup.summary.encrypted_folder', args: {} })
 
 	const triggers = job.triggers || []
 	const schedules = triggers.filter(t => t.kind === 'schedule' && t.cron)

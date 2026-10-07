@@ -47,6 +47,10 @@
 						<dd>{{ endpointText(job.dest) }}</dd>
 					</div>
 					<div>
+						<dt>{{ $t('backup.jobs.fact.encryption') }}</dt>
+						<dd>{{ encryptionText }}</dd>
+					</div>
+					<div>
 						<dt>{{ $t('backup.jobs.fact.how') }}</dt>
 						<dd>{{ $t(`backup.type.${job.type}.label`) }}: {{ $t(`backup.type.${job.type}.promise`) }}</dd>
 					</div>
@@ -74,6 +78,7 @@
 					</button>
 					<button v-if="activeRun" type="button" class="bk-btn" @click="$emit('open-run', job)">{{ $t('backup.jobs.open_progress') }}</button>
 					<button type="button" class="bk-btn" :disabled="!!activeRun" @click="$emit('menu', 'preview', job)">{{ $t('backup.jobs.menu.preview') }}</button>
+					<button type="button" class="bk-btn" :disabled="!!activeRun" :title="$t('backup.jobs.check_hint')" @click="$emit('menu', 'check', job)">{{ $t('backup.jobs.menu.check') }}</button>
 					<button type="button" class="bk-btn" @click="$emit('menu', 'edit', job)">{{ $t('backup.jobs.menu.edit') }}</button>
 				</div>
 			</div>
@@ -127,6 +132,19 @@
 						<dd>{{ job.options.verify ? $t('backup.jobs.yes') : $t('backup.jobs.no') }}</dd>
 					</div>
 				</dl>
+				<div v-if="job.dest && job.dest.encryption" class="bk-encryption">
+					<h4 class="bk-encryption-title">{{ $t('backup.jobs.fact.encryption') }}: {{ encryptionText }}</h4>
+					<form class="bk-encryption-test" @submit.prevent="testPassword">
+						<label :for="uid + '-pw'">{{ $t('backup.encrypt.test_label') }}</label>
+						<input :id="uid + '-pw'" v-model="testPw" class="bk-input" type="password" autocomplete="current-password" spellcheck="false" :aria-describedby="uid + '-pw-result'" />
+						<button type="submit" class="bk-btn" :disabled="!testPw || testing">{{ $t('backup.encrypt.test') }}</button>
+					</form>
+					<p :id="uid + '-pw-result'" class="bk-secondary" role="status">{{ testResult }}</p>
+					<p class="bk-secondary">{{ $t('backup.encrypt.cant_change') }}</p>
+					<div class="bk-detail-actions">
+						<button type="button" class="bk-btn" @click="$emit('menu', 'new_copy', job)">{{ $t('backup.encrypt.new_copy') }}</button>
+					</div>
+				</div>
 				<div class="bk-detail-actions">
 					<button type="button" class="bk-btn is-primary" @click="$emit('menu', 'edit', job)">{{ $t('backup.jobs.menu.edit') }}</button>
 					<button type="button" class="bk-btn" @click="$emit('menu', job.enabled ? 'pause' : 'resume', job)">{{ job.enabled ? $t('backup.jobs.menu.pause') : $t('backup.jobs.menu.resume') }}</button>
@@ -170,13 +188,22 @@ export default {
 			nextBefore: '',
 			runsLoading: false,
 			versions: [],
-			versionsLoading: false
+			versionsLoading: false,
+			testPw: '',
+			testing: false,
+			testResult: ''
 		}
 	},
 	computed: {
 		activeRun() {
 			const r = this.job.active_run
 			return r && isActiveStatus(r.status) ? r : null
+		},
+		encryptionText() {
+			const e = this.job.dest && this.job.dest.encryption
+			if (!e) return this.$t('backup.encrypt.mode_off')
+			if (e.mode === 'archive') return this.$t('backup.encrypt.fact_archive', { size: this.fmt.bytes(e.volume_bytes || 3900000000) })
+			return this.$t('backup.encrypt.mode_' + e.mode)
 		},
 		sourcesText() {
 			return this.fmt.list((this.job.sources || []).map(s => this.endpointText(s)))
@@ -227,6 +254,8 @@ export default {
 			immediate: true,
 			handler() {
 				this.active = 'summary'
+				this.testPw = ''
+				this.testResult = ''
 				this.detail = null
 				this.runs = []
 				this.versions = []
@@ -248,6 +277,20 @@ export default {
 		else if (this.$refs.title) this.$refs.title.focus()
 	},
 	methods: {
+		async testPassword() {
+			if (!this.testPw || this.testing) return
+			this.testing = true
+			this.testResult = ''
+			try {
+				const res = await this.bkApi.testEncryption(this.job.id, this.testPw)
+				this.testResult = this.$t(res && res.ok ? 'backup.encrypt.test_ok' : 'backup.encrypt.test_bad')
+				if (res && res.ok) this.testPw = ''
+			} catch (e) {
+				this.testResult = this.errText(e)
+			} finally {
+				this.testing = false
+			}
+		},
 		endpointText(ep) {
 			if (!ep) return ''
 			const where = ep.label || this.$t('backup.ep.' + ep.kind)
@@ -423,6 +466,35 @@ export default {
 	align-self: center;
 	margin-top: var(--space-3);
 }
+.bk-encryption {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: var(--space-4) 0;
+	padding-top: var(--space-4);
+	border-top: 1px solid var(--theme-card-border);
+}
+
+.bk-encryption-title {
+	margin: 0;
+	font-size: var(--font-sm);
+	font-weight: 600;
+	color: var(--theme-text-primary);
+}
+
+.bk-encryption-test {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--font-sm);
+
+	.bk-input {
+		flex: 1 1 12rem;
+		min-width: 0;
+	}
+}
+
 .bk-inline-error {
 	color: var(--color-danger-fg);
 	font-size: var(--font-sm);

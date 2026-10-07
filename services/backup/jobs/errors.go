@@ -261,10 +261,17 @@ const (
 	// FieldDestOverlapsJob: the destination is, holds or lies inside
 	// another job's destination (a mirror would recycle the other backup).
 	FieldDestOverlapsJob FieldCode = "dest_overlaps_job"
+	// FieldPasswordShort: an encryption password under 8 characters (or
+	// over 1024 bytes).
+	FieldPasswordShort FieldCode = "password_short"
+	// FieldMismatch: two entries that must match don't (the wizard's
+	// password confirmation; never sent by the server).
+	FieldMismatch FieldCode = "mismatch"
 )
 
 // AllFieldCodes lists every field code, in declaration order.
 var AllFieldCodes = []FieldCode{
 	FieldRequired, FieldInvalid, FieldOutOfRange, FieldTooMany, FieldInvalidCron, FieldInvalidTime,
 	FieldUnknownApp, FieldUnknownVM, FieldMirrorNeedsDest, FieldNotResolvable, FieldDestOverlapsJob,
+	FieldPasswordShort, FieldMismatch,
 }

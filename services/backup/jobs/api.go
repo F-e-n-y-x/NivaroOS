@@ -837,12 +837,10 @@ func (s *Service) handleValidate(w http.ResponseWriter, r *http.Request) {
 func (s *Service) validate(ctx context.Context, in Job) ValidateResult {
 	norm, fe := s.normalizeJob(ctx, in, in.ID)
 	if norm.Dest.Encryption != nil {
-		if sec := in.EncryptionSecret; in.ID == "" && (sec == nil || sec.RecoveryKey == "") {
-			pw := ""
-			if sec != nil {
-				pw = sec.Password
-			}
-			if code := checkPassword(pw); code != "" {
+		// The wizard checks the password itself and sends it only to
+		// POST /jobs; one sent here is checked too.
+		if sec := in.EncryptionSecret; in.ID == "" && sec != nil && sec.RecoveryKey == "" {
+			if code := checkPassword(sec.Password); code != "" {
 				if fe == nil {
 					fe = map[string]string{}
 				}

@@ -49,6 +49,7 @@ const DYNAMIC = {
 	'backup.ep.': ['volume', 'usb', 'merge', 'smb', 'cloud'],
 	'backup.exclude.': ['caches', 'trash', 'temp', 'thumbs', 'node_modules'],
 	'backup.health.': HEALTH_ORDER,
+	'backup.encrypt.mode_': ['off', 'folder', 'archive'],
 	'backup.jobs.filter_': JOB_FILTERS,
 	'backup.jobs.sort_': JOB_SORTS,
 	'backup.jobs.tab.': ['summary', 'history', 'versions', 'settings'],
