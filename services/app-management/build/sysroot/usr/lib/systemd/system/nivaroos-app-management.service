@@ -6,7 +6,7 @@ Description=NivaroOS App Management Service
 [Service]
 ExecStartPre=/usr/bin/nivaroos-app-management -v
 ExecStart=/usr/bin/nivaroos-app-management -c /etc/nivaroos/app-management.conf
-PIDFile=/var/run/nivaroos/app-management.pid
+PIDFile=/run/nivaroos/app-management.pid
 Restart=always
 Type=notify
 # Defense-in-depth hardening that's safe regardless of this service's exact

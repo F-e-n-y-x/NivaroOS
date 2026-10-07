@@ -5,7 +5,7 @@ Description=NivaroOS Gateway
 [Service]
 ExecStartPre=/usr/bin/nivaroos-gateway -v
 ExecStart=/usr/bin/nivaroos-gateway
-PIDFile=/var/run/nivaroos/gateway.pid
+PIDFile=/run/nivaroos/gateway.pid
 Restart=always
 Type=notify
 # Defense-in-depth hardening that's safe regardless of this service's exact

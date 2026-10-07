@@ -5,7 +5,7 @@ Description=NivaroOS Message Bus Service
 [Service]
 ExecStartPre=/usr/bin/nivaroos-message-bus -v
 ExecStart=/usr/bin/nivaroos-message-bus -c /etc/nivaroos/message-bus.conf
-PIDFile=/var/run/nivaroos/message-bus.pid
+PIDFile=/run/nivaroos/message-bus.pid
 Restart=always
 Type=notify
 # Defense-in-depth hardening that's safe regardless of this service's exact

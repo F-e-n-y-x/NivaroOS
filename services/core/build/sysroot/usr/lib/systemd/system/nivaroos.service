@@ -5,7 +5,7 @@ Description=NivaroOS Main Service
 
 [Service]
 ExecStart=/usr/bin/nivaroos -c /etc/nivaroos/casaos.conf
-PIDFile=/var/run/nivaroos/casaos.pid
+PIDFile=/run/nivaroos/casaos.pid
 Restart=always
 Type=notify
 # Deliberately NOT hardened like the other 5 core services' units - this

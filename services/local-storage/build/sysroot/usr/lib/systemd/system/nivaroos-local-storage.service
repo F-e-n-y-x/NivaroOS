@@ -10,7 +10,7 @@ Description=NivaroOS Local Storage Service
 [Service]
 ExecStartPre=/usr/bin/nivaroos-local-storage -v
 ExecStart=/usr/bin/nivaroos-local-storage -c /etc/nivaroos/local-storage.conf
-PIDFile=/var/run/nivaroos/local-storage.pid
+PIDFile=/run/nivaroos/local-storage.pid
 Restart=always
 Type=notify
 # Defense-in-depth hardening that's safe regardless of this service's exact

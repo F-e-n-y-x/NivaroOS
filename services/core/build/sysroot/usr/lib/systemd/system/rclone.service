@@ -2,7 +2,7 @@
 Description=rclone
 
 [Service]
-ExecStartPre=/usr/bin/mkdir -p /var/run/rclone 
+ExecStartPre=/usr/bin/mkdir -p /run/rclone
 ExecStartPre=/usr/bin/rm -f /var/run/rclone/rclone.sock
 # The VFS write cache holds everything copied to a cloud drive until it
 # has uploaded - on disk, not /tmp (RAM on many installs).
