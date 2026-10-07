@@ -240,7 +240,7 @@ const BUILTIN_DEFS = {
 
 const VIEWER_COMPONENTS = ['ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer']
 const VM_ICON_COMPONENTS = ['VmConsolePanel', 'CreateVmModal', 'EditVmModal']
-const DS_COMPONENTS = ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow']
+const DS_COMPONENTS = ['DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow', 'DsAddTorrentWindow', 'DsTorrentDetailWindow']
 const isDsComponent = c => DS_COMPONENTS.includes(c)
 // Backup & Sync windows (the job wizard, run, preview, browse, restore)
 // show the app's icon; the shared storage pickers don't - Scheduled Tasks

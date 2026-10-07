@@ -12,6 +12,8 @@ import DownloadStationApp from '@/apps/download-station/DownloadStationApp.vue'
 import DsAddDownloadWindow from '@/apps/download-station/DsAddDownloadWindow.vue'
 import DsDownloadDetailWindow from '@/apps/download-station/DsDownloadDetailWindow.vue'
 import DsFolderPickerWindow from '@/apps/download-station/DsFolderPickerWindow.vue'
+import DsAddTorrentWindow from '@/apps/download-station/torrent/DsAddTorrentWindow.vue'
+import DsTorrentDetailWindow from '@/apps/download-station/torrent/DsTorrentDetailWindow.vue'
 import RbSigninWindow from '@/apps/download-station/rb/RbSigninWindow.vue'
 // Backup & Sync (optional module; its launcher entries only show when
 // installed - utils/backupInstalled.js). Window ids/sizes: apps/backup/windows.js.
@@ -74,6 +76,8 @@ export const COMPONENT_REGISTRY = {
 	DsAddDownloadWindow,
 	DsDownloadDetailWindow,
 	DsFolderPickerWindow,
+	DsAddTorrentWindow,
+	DsTorrentDetailWindow,
 	RbSigninWindow,
 	BackupApp,
 	BackupRunWindow,
@@ -125,7 +129,7 @@ export const OWN_TITLEBAR_COMPONENTS = ['FilesApp', 'TerminalPanel', 'ContainerC
 // already uses.
 export const DARK_WINDOW_COMPONENTS = ['TerminalPanel', 'ContainerConsolePanel', 'SystemUpdateWindow', 'ImageViewer', 'VideoPlayer', 'CodeEditor', 'DocViewer', 'ExcelViewer', 'PdfViewer', 'MarkdownEditor', 'UnsupportedViewer', 'VmConsolePanel', 'HostDesktopPanel', 'ScheduledTaskLogWindow']
 
-export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel', 'DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow', 'RbSigninWindow', 'BackupBrowseWindow', 'BackupPreviewWindow', 'StoragePickerWindow', 'FolderPickerWindow']
+export const NO_SCROLL_COMPONENTS = ['VideoPlayer', 'ImageViewer', 'VmConsolePanel', 'HostDesktopPanel', 'DownloadStationApp', 'DsAddDownloadWindow', 'DsDownloadDetailWindow', 'DsFolderPickerWindow', 'DsAddTorrentWindow', 'DsTorrentDetailWindow', 'RbSigninWindow', 'BackupBrowseWindow', 'BackupPreviewWindow', 'StoragePickerWindow', 'FolderPickerWindow']
 
 export function resolveComponent(name) {
 	return COMPONENT_REGISTRY[name]

@@ -64,6 +64,8 @@
 					</div>
 				</div>
 			</div>
+
+			<ds-torrent-settings @changed="$emit('changed')"></ds-torrent-settings>
 		</template>
 	</div>
 </template>
@@ -71,12 +73,14 @@
 <script>
 import { downloadSidecar, formatBytes, MIB } from '@/api/downloadSidecar'
 import { escapeHtml } from '@/utils/escapeHtml'
+import DsTorrentSettings from './torrent/DsTorrentSettings.vue'
 
 // Same bound the sidecar clamps to (settings.go normalize).
 const MAX_CONCURRENT = 20
 
 export default {
 	name: 'ds-settings-panel',
+	components: { DsTorrentSettings },
 	data() {
 		return { s: null, limitMB: 0, diskFree: 0, MAX_CONCURRENT }
 	},

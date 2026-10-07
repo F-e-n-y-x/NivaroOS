@@ -43,6 +43,7 @@
 			<template v-else>
 				<ds-download-list v-show="activeSection === 'downloads'" :downloads="downloads" :loading="loading"
 					@refresh="refresh" @open-browser="openBrowserAt"></ds-download-list>
+				<ds-torrent-list v-if="activeSection === 'torrents'"></ds-torrent-list>
 				<!-- Kept mounted (v-show, not v-if) so open tabs and their pages
 				     survive switching to another section and back. -->
 				<ds-browser v-if="browserStarted" v-show="activeSection === 'browser'" ref="browser"
@@ -60,6 +61,7 @@ import DsDownloadList from './DsDownloadList.vue'
 import DsBrowser from './DsBrowser.vue'
 import DsAdblockPanel from './DsAdblockPanel.vue'
 import DsSettingsPanel from './DsSettingsPanel.vue'
+import DsTorrentList from './torrent/DsTorrentList.vue'
 import { openFolderWindow } from '@/utils/files/openFolder'
 import { downloadSidecar, formatSpeed } from '@/api/downloadSidecar'
 import { activityService } from '@/service/activity'
@@ -72,7 +74,7 @@ const IDLE_POLL_MS = 4000
 
 export default {
 	name: 'download-station-app',
-	components: { DsDownloadList, DsBrowser, DsAdblockPanel, DsSettingsPanel },
+	components: { DsDownloadList, DsTorrentList, DsBrowser, DsAdblockPanel, DsSettingsPanel },
 	props: {
 		// Lets other code open the app straight into the browser at a URL.
 		initialUrl: { type: String, default: '' },
@@ -86,6 +88,7 @@ export default {
 			activeSection: this.initialSection || (this.initialUrl ? 'browser' : 'downloads'),
 			sections: [
 				{ id: 'downloads', label: 'Downloads', icon: 'tray-arrow-down' },
+				{ id: 'torrents', label: 'Torrents', icon: 'magnet' },
 				{ id: 'browser', label: 'Browser', icon: 'web' },
 				{ id: 'adblock', label: 'Ad Blocker', icon: 'shield-check-outline' },
 				{ id: 'settings', label: 'Settings', icon: 'cog-outline' }

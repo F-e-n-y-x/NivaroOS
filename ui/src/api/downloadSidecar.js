@@ -134,6 +134,19 @@ export const downloadSidecar = {
 	probe: payload => request('/probe', jsonBody(payload)),
 	events: after => request(`/events?after=${after || 0}`),
 
+	// ---- torrents (same API whichever engine runs) ----
+	listTorrents: () => request('/torrents'),
+	// payload: { source: magnet or http(s) link to a .torrent } or
+	// { torrent: base64 .torrent }, plus dir, category, paused, sequential, first_last.
+	addTorrent: payload => request('/torrents', jsonBody(payload)),
+	getTorrent: hash => request(`/torrents/${enc(hash)}`),
+	torrentAction: (hash, action) => request(`/torrents/${enc(hash)}/${enc(action)}`, { method: 'POST' }),
+	removeTorrent: (hash, deleteFiles) => request(`/torrents/${enc(hash)}${deleteFiles ? '?delete_files=true' : ''}`, { method: 'DELETE' }),
+	setTorrentFiles: (hash, ids, priority) => request(`/torrents/${enc(hash)}/files`, jsonBody({ ids, priority }, 'PUT')),
+	setTorrentOptions: (hash, sequential, firstLast) => request(`/torrents/${enc(hash)}/options`, jsonBody({ sequential, first_last: firstLast }, 'PUT')),
+	trackerList: () => request('/torrents/trackers'),
+	refreshTrackerList: () => request('/torrents/trackers/refresh', { method: 'POST' }),
+
 	storageRoots: () => request('/storage/roots'),
 	createFolder: (parent, name) => request('/storage/folders', jsonBody({ parent, name })),
 
