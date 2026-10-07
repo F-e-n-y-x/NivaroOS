@@ -118,6 +118,9 @@ import systemPower from '@/mixins/systemPower'
 
 const SYSTEM_TYPES = ['schedule', 'vm', 'system', 'maintenance', 'backup']
 
+// How long the list has to be open before what it shows counts as seen.
+const SEEN_AFTER_MS = 1500
+
 export default {
 	name: 'notification-list',
 	mixins: [systemPower],
@@ -174,9 +177,19 @@ export default {
 		this.ticker = setInterval(() => {
 			this.now = Date.now()
 		}, 30000)
+		// Opening the list is seeing it: mark what's there as read (here and
+		// on the server) after a moment on screen, as phone and desktop
+		// notification centres do. Before, only a click on each entry or
+		// "Mark all as read" did - the server heard 'read' once in a week -
+		// so the same notifications came back as new in every tab and
+		// after every reload.
+		this.seenTimer = setTimeout(() => {
+			if (typeof document === 'undefined' || !document.hidden) activityService.markAllAsRead()
+		}, SEEN_AFTER_MS)
 	},
 	beforeDestroy() {
 		clearInterval(this.ticker)
+		clearTimeout(this.seenTimer)
 		if (this.unsubscribe) this.unsubscribe()
 	},
 	methods: {
