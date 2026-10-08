@@ -31,14 +31,26 @@ func runNvidiaSMI(args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// queryNVIDIA reads NVML in-process (nvml_cgo.go) and falls back to
+// nvidia-smi when NVML can't be loaded or fails.
 func queryNVIDIA() (gpuStats, error) {
+	gpus, err := queryNVML()
+	if err != nil {
+		if gpus, err = querySMI(); err != nil {
+			return gpuStats{}, err
+		}
+	}
+	return summarizeGPUs(gpus), nil
+}
+
+func querySMI() ([]gpuStats, error) {
 	out, err := runNvidiaSMI("--query-gpu="+nvidiaQueryFields, "--format=csv,noheader,nounits")
 	if err != nil {
-		return gpuStats{}, err
+		return nil, err
 	}
 	gpus, err := parseNvidiaQuery(string(out))
 	if err != nil {
-		return gpuStats{}, err
+		return nil, err
 	}
 	if pmon, err := runNvidiaSMI("pmon", "-c", "1", "-s", "u"); err == nil {
 		procs := parsePmon(string(pmon))
@@ -50,7 +62,7 @@ func queryNVIDIA() (gpuStats, error) {
 			}
 		}
 	}
-	return summarizeGPUs(gpus), nil
+	return gpus, nil
 }
 
 // summarizeGPUs returns the first GPU's stats at top level (the shape the
@@ -124,6 +136,23 @@ func numOrZero(s string) float64 {
 		return *v
 	}
 	return 0
+}
+
+// pmonName shortens NVML's process name (the command line) the way
+// nvidia-smi pmon prints it: program basename plus arguments, 15 characters.
+func pmonName(cmdline string) string {
+	prog, args, _ := strings.Cut(cmdline, " ")
+	if i := strings.LastIndexByte(prog, '/'); i >= 0 {
+		prog = prog[i+1:]
+	}
+	s := prog
+	if args != "" {
+		s += " " + args
+	}
+	if r := []rune(s); len(r) > 15 {
+		s = string(r[:15])
+	}
+	return s
 }
 
 // parsePmon parses `nvidia-smi pmon -c 1 -s u`. Column positions are taken

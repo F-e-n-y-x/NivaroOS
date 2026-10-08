@@ -168,6 +168,10 @@ inherited CasaOS history and is not kept up to date.)
   with the track's cover, title and artist (read by `music-metadata`, which
   replaces the deprecated `music-metadata-browser`). 20 unused UI
   dependencies removed.
+- The GPU widget's stats come from NVML inside the GPU sidecar instead of
+  starting `nvidia-smi` twice per refresh (about 29 ms of CPU per refresh
+  down to about 4 ms on a GTX 1080 Ti). Same JSON; `nvidia-smi` is still
+  used when NVML can't be loaded.
 - CI: GitHub Actions moved to their Node 24 versions (checkout v7,
   setup-java v6, upload-artifact v7, docker/* latest).
 - New NivaroOS logo, "Ni": an N whose last stroke doubles as an i, with a

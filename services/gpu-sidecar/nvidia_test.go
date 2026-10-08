@@ -111,3 +111,16 @@ func TestDriverInstallRejectsBadVendor(t *testing.T) {
 		t.Fatal("no CORS header expected")
 	}
 }
+
+func TestPmonName(t *testing.T) {
+	for in, want := range map[string]string{
+		"/usr/lib/xorg/Xorg": "Xorg",
+		"cinnamon":           "cinnamon",
+		"/opt/google/chrome/chrome --type=gpu-process --x=/a/b": "chrome --type=g",
+		"": "",
+	} {
+		if got := pmonName(in); got != want {
+			t.Errorf("pmonName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
