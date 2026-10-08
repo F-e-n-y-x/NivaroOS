@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/errdefs"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
@@ -36,7 +36,7 @@ func ContainerTerminalAPI() *termsession.API {
 			M:        termsession.NewManager(opts),
 			Upgrader: &upgrader,
 			Start:    startContainerTerminal,
-			Filter: func(ctx echo.Context, s *termsession.Session) bool {
+			Filter: func(ctx *echo.Context, s *termsession.Session) bool {
 				want := strings.TrimPrefix(ctx.QueryParam("container"), "/")
 				return want == "" || want == s.Container() || want == s.ContainerID() ||
 					(len(want) >= 12 && strings.HasPrefix(s.ContainerID(), want))
@@ -57,7 +57,7 @@ func containerTerminalConfigKey(key string) string {
 	return sec.Key(key).String()
 }
 
-func startContainerTerminal(_ echo.Context, req termsession.CreateRequest) (termsession.Spec, func(cols, rows uint16) (termsession.Process, error), error) {
+func startContainerTerminal(_ *echo.Context, req termsession.CreateRequest) (termsession.Spec, func(cols, rows uint16) (termsession.Process, error), error) {
 	name := strings.TrimSpace(req.Container)
 	if name == "" {
 		return termsession.Spec{}, nil, &termsession.StartError{Status: http.StatusBadRequest, Err: errors.New("container is required")}

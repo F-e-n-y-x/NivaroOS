@@ -13,12 +13,12 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/docker/compose/v2/pkg/api"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
 
-func (a *AppManagement) GetAppGrid(ctx echo.Context) error {
+func (a *AppManagement) GetAppGrid(ctx *echo.Context) error {
 	// v2 Apps
 	composeAppsWithStoreInfo, containersByApp, err := composeAppsWithStoreInfoAndContainers(ctx.Request().Context(), composeAppsWithStoreInfoOpts{
 		checkIsUpdateAvailable: false,

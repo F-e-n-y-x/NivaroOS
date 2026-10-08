@@ -17,7 +17,7 @@ import (
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -85,13 +85,13 @@ type GetEventsParams struct {
 type ServerInterface interface {
 	// Delete an event
 	// (DELETE /event/local_storage/{serial})
-	DeleteEventBySerial(ctx echo.Context, serial Serial) error
+	DeleteEventBySerial(ctx *echo.Context, serial Serial) error
 	// Delete an event
 	// (DELETE /event/{event_uuid})
-	DeleteEvent(ctx echo.Context, eventUuid EventUuid) error
+	DeleteEvent(ctx *echo.Context, eventUuid EventUuid) error
 	// Get all events
 	// (GET /events)
-	GetEvents(ctx echo.Context, params GetEventsParams) error
+	GetEvents(ctx *echo.Context, params GetEventsParams) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -100,7 +100,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // DeleteEventBySerial converts echo context to params.
-func (w *ServerInterfaceWrapper) DeleteEventBySerial(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) DeleteEventBySerial(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "serial" -------------
 	var serial Serial
@@ -118,7 +118,7 @@ func (w *ServerInterfaceWrapper) DeleteEventBySerial(ctx echo.Context) error {
 }
 
 // DeleteEvent converts echo context to params.
-func (w *ServerInterfaceWrapper) DeleteEvent(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) DeleteEvent(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "event_uuid" -------------
 	var eventUuid EventUuid
@@ -136,7 +136,7 @@ func (w *ServerInterfaceWrapper) DeleteEvent(ctx echo.Context) error {
 }
 
 // GetEvents converts echo context to params.
-func (w *ServerInterfaceWrapper) GetEvents(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetEvents(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -159,15 +159,15 @@ func (w *ServerInterfaceWrapper) GetEvents(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlers adds each server route to the EchoRouter.

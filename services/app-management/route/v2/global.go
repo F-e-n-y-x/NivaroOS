@@ -16,10 +16,10 @@ import (
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (a *AppManagement) GetGlobalSettings(ctx echo.Context) error {
+func (a *AppManagement) GetGlobalSettings(ctx *echo.Context) error {
 	global := config.GlobalSnapshot()
 
 	keys := lo.Keys(global)
@@ -39,7 +39,7 @@ func (a *AppManagement) GetGlobalSettings(ctx echo.Context) error {
 	})
 }
 
-func (a *AppManagement) GetGlobalSetting(ctx echo.Context, key codegen.GlobalSettingKey) error {
+func (a *AppManagement) GetGlobalSetting(ctx *echo.Context, key codegen.GlobalSettingKey) error {
 	value, ok := config.GetGlobal(string(key))
 	if !ok {
 		message := "the key is not exist"
@@ -55,7 +55,7 @@ func (a *AppManagement) GetGlobalSetting(ctx echo.Context, key codegen.GlobalSet
 	})
 }
 
-func (a *AppManagement) UpdateGlobalSetting(ctx echo.Context, key codegen.GlobalSettingKey) error {
+func (a *AppManagement) UpdateGlobalSetting(ctx *echo.Context, key codegen.GlobalSettingKey) error {
 	var action codegen.GlobalSetting
 	if err := ctx.Bind(&action); err != nil {
 		message := err.Error()
@@ -75,7 +75,7 @@ func (a *AppManagement) UpdateGlobalSetting(ctx echo.Context, key codegen.Global
 	})
 }
 
-func updateGlobalEnv(ctx echo.Context, key string, value string) error {
+func updateGlobalEnv(ctx *echo.Context, key string, value string) error {
 	if key == "" {
 		return fmt.Errorf("openai api key is required")
 	}
@@ -96,7 +96,7 @@ func updateGlobalEnv(ctx echo.Context, key string, value string) error {
 	return nil
 }
 
-func deleteGlobalEnv(ctx echo.Context, key string) error {
+func deleteGlobalEnv(ctx *echo.Context, key string) error {
 	if err := service.MyService.AppStoreManagement().DeleteGlobal(key); err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func reapplyGlobalEnv(properties map[string]string) {
 	}
 }
 
-func (a *AppManagement) DeleteGlobalSetting(ctx echo.Context, key codegen.GlobalSettingKey) error {
+func (a *AppManagement) DeleteGlobalSetting(ctx *echo.Context, key codegen.GlobalSettingKey) error {
 	var action codegen.GlobalSetting
 	if err := ctx.Bind(&action); err != nil {
 		message := err.Error()

@@ -11,9 +11,9 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 type ManagementRoute struct {
@@ -29,19 +29,12 @@ func NewManagementRoute(management *service.Management) *ManagementRoute {
 func (m *ManagementRoute) GetRoute() http.Handler {
 	e := echo.New()
 
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	e.Use(nivaroos_middleware.Cors())
 
 	e.Use(echo_middleware.Gzip())
 
-	e.GET("/ping", func(ctx echo.Context) error {
-		return ctx.JSON(http.StatusOK, echo.Map{
+	e.GET("/ping", func(ctx *echo.Context) error {
+		return ctx.JSON(http.StatusOK, map[string]any{
 			"message": "pong from management service",
 		})
 	})
@@ -65,12 +58,12 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 
 	v1GatewayGroup.Use()
 	{
-		v1GatewayGroup.GET("/routes", func(ctx echo.Context) error {
+		v1GatewayGroup.GET("/routes", func(ctx *echo.Context) error {
 			return ctx.JSON(http.StatusOK, m.management.GetRoutes())
 		})
 
 		v1GatewayGroup.POST("/routes",
-			func(ctx echo.Context) error {
+			func(ctx *echo.Context) error {
 				var route *model.Route
 				err := ctx.Bind(&route)
 				if err != nil {
@@ -93,7 +86,7 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 				// socket-peer loopback check; c.RealIP() trusted spoofable
 				// X-Forwarded-For/X-Real-IP headers
 				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+				ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {
 						return nil, echo.ErrUnauthorized
@@ -103,16 +96,16 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 					return claims, nil
 				},
 				TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-					func(c echo.Context) ([]string, error) {
+					func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
+							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 						}
-						return []string{c.QueryParam("token")}, nil
+						return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 					},
 				},
 			}))
 
-		v1GatewayGroup.GET("/port", func(ctx echo.Context) error {
+		v1GatewayGroup.GET("/port", func(ctx *echo.Context) error {
 			return ctx.JSON(http.StatusOK, model.Result{
 				Success: common_err.SUCCESS,
 				Message: common_err.GetMsg(common_err.SUCCESS),
@@ -121,7 +114,7 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 		})
 
 		v1GatewayGroup.PUT("/port",
-			func(ctx echo.Context) error {
+			func(ctx *echo.Context) error {
 				var request *model.ChangePortRequest
 
 				if err := ctx.Bind(&request); err != nil {
@@ -147,7 +140,7 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 				// socket-peer loopback check; c.RealIP() trusted spoofable
 				// X-Forwarded-For/X-Real-IP headers
 				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+				ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {
 						return nil, echo.ErrUnauthorized
@@ -157,11 +150,11 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 					return claims, nil
 				},
 				TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-					func(c echo.Context) ([]string, error) {
+					func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 						if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
+							return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 						}
-						return []string{c.QueryParam("token")}, nil
+						return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 					},
 				},
 			}))

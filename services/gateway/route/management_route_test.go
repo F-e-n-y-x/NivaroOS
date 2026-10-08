@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"

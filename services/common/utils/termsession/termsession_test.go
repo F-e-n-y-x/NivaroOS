@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // ---- ring ----
@@ -159,7 +159,7 @@ func newHarness(t *testing.T, o Options) *harness {
 	h := &harness{t: t, m: NewManager(o)}
 	e := echo.New()
 	g := e.Group(base, func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			// Stand-in for the JWT middleware.
 			c.Request().Header.Del("user_id")
 			if u := c.QueryParam("as"); u != "" {
@@ -168,7 +168,7 @@ func newHarness(t *testing.T, o Options) *harness {
 			return next(c)
 		}
 	})
-	api := &API{M: h.m, Upgrader: &websocket.Upgrader{}, Start: func(ctx echo.Context, req CreateRequest) (Spec, func(uint16, uint16) (Process, error), error) {
+	api := &API{M: h.m, Upgrader: &websocket.Upgrader{}, Start: func(ctx *echo.Context, req CreateRequest) (Spec, func(uint16, uint16) (Process, error), error) {
 		if req.Shell == "nope" {
 			return Spec{}, nil, &StartError{Status: http.StatusBadRequest, Err: errors.New("unknown shell")}
 		}
@@ -181,7 +181,7 @@ func newHarness(t *testing.T, o Options) *harness {
 		}, nil
 	}}
 	api.Register(g)
-	e.GET("/legacy", func(c echo.Context) error {
+	e.GET("/legacy", func(c *echo.Context) error {
 		c.Request().Header.Set("user_id", c.QueryParam("as"))
 		return api.ServeLegacy(c, CreateRequest{Cols: atoi(c.QueryParam("cols")), Rows: atoi(c.QueryParam("rows"))})
 	})

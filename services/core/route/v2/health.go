@@ -9,10 +9,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (s *NivaroOS) GetHealthServices(ctx echo.Context) error {
+func (s *NivaroOS) GetHealthServices(ctx *echo.Context) error {
 	services, err := service.MyService.Health().Services()
 	if err != nil {
 		message := err.Error()
@@ -29,7 +29,7 @@ func (s *NivaroOS) GetHealthServices(ctx echo.Context) error {
 	})
 }
 
-func (s *NivaroOS) GetHealthPorts(ctx echo.Context) error {
+func (s *NivaroOS) GetHealthPorts(ctx *echo.Context) error {
 	tcpPorts, udpPorts, err := service.MyService.Health().Ports()
 	if err != nil {
 		message := err.Error()
@@ -45,7 +45,7 @@ func (s *NivaroOS) GetHealthPorts(ctx echo.Context) error {
 		},
 	})
 }
-func (c *NivaroOS) GetHealthlogs(ctx echo.Context) error {
+func (c *NivaroOS) GetHealthlogs(ctx *echo.Context) error {
 	var name, currentPath, commonDir, extension string
 	var err error
 	var ar *file.Archive
@@ -64,7 +64,7 @@ func (c *NivaroOS) GetHealthlogs(ctx echo.Context) error {
 			Message: &message,
 		})
 	}
-	err = ar.Create(ctx.Response().Writer)
+	err = ar.Create(ctx.Response())
 	if err != nil {
 		ctx.Response().Header().Set("Content-Type", "application/json")
 		message := err.Error()

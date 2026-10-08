@@ -11,7 +11,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/repository"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/goleak"
 	"gotest.tools/assert"
 )

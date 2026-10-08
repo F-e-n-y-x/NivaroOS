@@ -14,7 +14,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/compose-spec/compose-go/types"
 	"github.com/docker/compose/v2/pkg/api"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
@@ -22,7 +22,7 @@ import (
 
 var ErrComposeAppIDNotProvided = errors.New("compose AppID (compose project name) is not provided")
 
-func (a *AppManagement) MyComposeAppList(ctx echo.Context) error {
+func (a *AppManagement) MyComposeAppList(ctx *echo.Context) error {
 	composeAppsWithStoreInfo, err := composeAppsWithStoreInfo(ctx.Request().Context(), composeAppsWithStoreInfoOpts{
 		checkIsUpdateAvailable: true,
 	})
@@ -37,7 +37,7 @@ func (a *AppManagement) MyComposeAppList(ctx echo.Context) error {
 	})
 }
 
-func (a *AppManagement) MyComposeApp(ctx echo.Context, id codegen.ComposeAppID) error {
+func (a *AppManagement) MyComposeApp(ctx *echo.Context, id codegen.ComposeAppID) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -140,7 +140,7 @@ func (a *AppManagement) IsNewComposeUncontrolled(newComposeApp *service.ComposeA
 	return StableTag != newTag, nil
 }
 
-func (a *AppManagement) ApplyComposeAppSettings(ctx echo.Context, id codegen.ComposeAppID, params codegen.ApplyComposeAppSettingsParams) error {
+func (a *AppManagement) ApplyComposeAppSettings(ctx *echo.Context, id codegen.ComposeAppID, params codegen.ApplyComposeAppSettingsParams) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -273,7 +273,7 @@ func (a *AppManagement) ApplyComposeAppSettings(ctx echo.Context, id codegen.Com
 	})
 }
 
-func (a *AppManagement) InstallComposeApp(ctx echo.Context, params codegen.InstallComposeAppParams) error {
+func (a *AppManagement) InstallComposeApp(ctx *echo.Context, params codegen.InstallComposeAppParams) error {
 	buf, err := YAMLfromRequest(ctx)
 	if err != nil {
 		message := err.Error()
@@ -369,7 +369,7 @@ func (a *AppManagement) InstallComposeApp(ctx echo.Context, params codegen.Insta
 	})
 }
 
-func (a *AppManagement) UninstallComposeApp(ctx echo.Context, id codegen.ComposeAppID, params codegen.UninstallComposeAppParams) error {
+func (a *AppManagement) UninstallComposeApp(ctx *echo.Context, id codegen.ComposeAppID, params codegen.UninstallComposeAppParams) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -407,7 +407,7 @@ func (a *AppManagement) UninstallComposeApp(ctx echo.Context, id codegen.Compose
 	})
 }
 
-func (a *AppManagement) UpdateComposeApp(ctx echo.Context, id codegen.ComposeAppID, params codegen.UpdateComposeAppParams) error {
+func (a *AppManagement) UpdateComposeApp(ctx *echo.Context, id codegen.ComposeAppID, params codegen.UpdateComposeAppParams) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -448,7 +448,7 @@ func (a *AppManagement) UpdateComposeApp(ctx echo.Context, id codegen.ComposeApp
 	})
 }
 
-func (a *AppManagement) SetComposeAppStatus(ctx echo.Context, id codegen.ComposeAppID) error {
+func (a *AppManagement) SetComposeAppStatus(ctx *echo.Context, id codegen.ComposeAppID) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -489,7 +489,7 @@ func (a *AppManagement) SetComposeAppStatus(ctx echo.Context, id codegen.Compose
 	})
 }
 
-func (a *AppManagement) ComposeAppLogs(ctx echo.Context, id codegen.ComposeAppID, params codegen.ComposeAppLogsParams) error {
+func (a *AppManagement) ComposeAppLogs(ctx *echo.Context, id codegen.ComposeAppID, params codegen.ComposeAppLogsParams) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -518,7 +518,7 @@ func (a *AppManagement) ComposeAppLogs(ctx echo.Context, id codegen.ComposeAppID
 	return ctx.JSON(http.StatusOK, codegen.ComposeAppLogsOK{Data: utils.Ptr(string(logs))})
 }
 
-func (a *AppManagement) ComposeAppContainers(ctx echo.Context, id codegen.ComposeAppID) error {
+func (a *AppManagement) ComposeAppContainers(ctx *echo.Context, id codegen.ComposeAppID) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -574,7 +574,7 @@ func (a *AppManagement) ComposeAppContainers(ctx echo.Context, id codegen.Compos
 	})
 }
 
-func (a *AppManagement) CheckComposeAppHealthByID(ctx echo.Context, id codegen.ComposeAppID) error {
+func (a *AppManagement) CheckComposeAppHealthByID(ctx *echo.Context, id codegen.ComposeAppID) error {
 	if id == "" {
 		message := ErrComposeAppIDNotProvided.Error()
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{
@@ -609,7 +609,7 @@ func (a *AppManagement) CheckComposeAppHealthByID(ctx echo.Context, id codegen.C
 	})
 }
 
-func YAMLfromRequest(ctx echo.Context) ([]byte, error) {
+func YAMLfromRequest(ctx *echo.Context) ([]byte, error) {
 	var buf []byte
 
 	switch ctx.Request().Header.Get(echo.HeaderContentType) {

@@ -4,26 +4,26 @@ import (
 	"net/http"
 
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (r *APIRoute) SubscribeSIO(ctx echo.Context) error {
+func (r *APIRoute) SubscribeSIO(ctx *echo.Context) error {
 	r.serveSIO(ctx)
 	return nil
 }
 
 // unfortunately need to duplicate the func to support both `/socket.io` and `/socket.io/` (with a trailing slash) API endpoints
-func (r *APIRoute) SubscribeSIO2(ctx echo.Context) error {
+func (r *APIRoute) SubscribeSIO2(ctx *echo.Context) error {
 	return r.SubscribeSIO(ctx)
 }
 
-func (r *APIRoute) PollSIO(ctx echo.Context) error {
+func (r *APIRoute) PollSIO(ctx *echo.Context) error {
 	r.serveSIO(ctx)
 	return nil
 }
 
 // unfortunately need to duplicate the func to support both `/socket.io` and `/socket.io/` (with a trailing slash) API endpoints
-func (r *APIRoute) PollSIO2(ctx echo.Context) error {
+func (r *APIRoute) PollSIO2(ctx *echo.Context) error {
 	return r.PollSIO(ctx)
 }
 
@@ -32,7 +32,7 @@ func (r *APIRoute) PollSIO2(ctx echo.Context) error {
 // router's CORS policy is same-host pages only, so those headers are
 // dropped for any other page (a browser then won't let that page read the
 // answer). WebSocket upgrades are passed through untouched.
-func (r *APIRoute) serveSIO(ctx echo.Context) {
+func (r *APIRoute) serveSIO(ctx *echo.Context) {
 	server := r.services.SocketIOService.Server()
 	req := ctx.Request()
 	var w http.ResponseWriter = ctx.Response()

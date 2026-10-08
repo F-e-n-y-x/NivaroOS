@@ -1,4 +1,4 @@
-//go:generate bash -c "mkdir -p codegen && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,server,spec -package codegen api/nivaroos/openapi.yaml > codegen/nivaroos_api.go"
+//go:generate bash -c "mkdir -p codegen && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,server,spec -package codegen api/nivaroos/openapi.yaml | sed -E -f ../oapi-echo5.sed > codegen/nivaroos_api.go"
 //go:generate bash -c "mkdir -p codegen/message_bus && go run github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.12.4 -generate types,client -package message_bus ../message-bus/api/message_bus/openapi.yaml > codegen/message_bus/api.go"
 package main
 

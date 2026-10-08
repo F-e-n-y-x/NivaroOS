@@ -1,8 +1,8 @@
 package utils
 
-import "github.com/labstack/echo/v4"
+import "github.com/labstack/echo/v5"
 
-func DefaultPostForm(ctx echo.Context, key, defaultValue string) string {
+func DefaultPostForm(ctx *echo.Context, key, defaultValue string) string {
 	value := ctx.Request().Form.Get(key)
 	if value == "" {
 		return defaultValue

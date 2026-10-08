@@ -12,11 +12,11 @@ import (
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/app-management/service/v1"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
-func (a *AppManagement) PullImages(ctx echo.Context, params codegen.PullImagesParams) error {
+func (a *AppManagement) PullImages(ctx *echo.Context, params codegen.PullImagesParams) error {
 	// attach context key/value pairs from upstream
 	backgroundCtx := context.Background()
 

@@ -18,12 +18,12 @@ import (
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2/fs"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 var MessageMergerFSNotEnabled = "mergerfs is not enabled - either it is not enabled in configuration file; merge point is not empty before mounting; or mergerfs is not installed"
 
-func (s *LocalStorage) GetMerges(ctx echo.Context, params codegen.GetMergesParams) error {
+func (s *LocalStorage) GetMerges(ctx *echo.Context, params codegen.GetMergesParams) error {
 	if strings.ToLower(config.ServerInfo.EnableMergerFS) != "true" {
 		return ctx.JSON(http.StatusServiceUnavailable, codegen.ResponseServiceUnavailable{Message: &MessageMergerFSNotEnabled})
 	}
@@ -42,7 +42,7 @@ func (s *LocalStorage) GetMerges(ctx echo.Context, params codegen.GetMergesParam
 
 }
 
-func (s *LocalStorage) SetMerge(ctx echo.Context) error {
+func (s *LocalStorage) SetMerge(ctx *echo.Context) error {
 	var m codegen.Merge
 	if err := ctx.Bind(&m); err != nil {
 		message := err.Error()
@@ -131,7 +131,7 @@ func (s *LocalStorage) SetMerge(ctx echo.Context) error {
 		Data: &result,
 	})
 }
-func (s *LocalStorage) GetMergeInitStatus(ctx echo.Context) error {
+func (s *LocalStorage) GetMergeInitStatus(ctx *echo.Context) error {
 	if strings.ToLower(config.ServerInfo.EnableMergerFS) != "true" {
 		status := codegen.Uninitialized
 		return ctx.JSON(http.StatusOK, codegen.GetMergeInitStatusResponseOK{Data: &status})
@@ -195,7 +195,7 @@ func dirState(path string) (exists, realDir, empty bool) {
 	return true, true, err == nil && len(entries) == 0
 }
 
-func (s *LocalStorage) InitMerge(ctx echo.Context) error {
+func (s *LocalStorage) InitMerge(ctx *echo.Context) error {
 	var m codegen.MountPoint
 	if err := ctx.Bind(&m); err != nil {
 		message := err.Error()

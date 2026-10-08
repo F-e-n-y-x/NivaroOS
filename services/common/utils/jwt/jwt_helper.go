@@ -14,9 +14,9 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 type JWK struct {
@@ -38,7 +38,7 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 			// socket-peer based, not c.RealIP() (which trusts
 			// X-Forwarded-For/X-Real-IP headers anyone can send)
 			Skipper: middleware.LocalAutomationSkipper(),
-			ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+			ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 				valid, claims, err := Validate(token, publicKeyFunc)
 				if err != nil || !valid {
 					c.JSON(http.StatusUnauthorized, UnauthorizedResult(err))
@@ -49,11 +49,11 @@ func JWT(publicKeyFunc func() (*ecdsa.PublicKey, error)) echo.MiddlewareFunc {
 				return claims, nil
 			},
 			TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-				func(c echo.Context) ([]string, error) {
+				func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 					if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-						return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
+						return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 					}
-					return []string{c.QueryParam("token")}, nil
+					return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 				},
 			},
 		},

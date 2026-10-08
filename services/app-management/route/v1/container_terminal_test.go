@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 )
@@ -16,9 +16,9 @@ func TestContainerTerminalSessionRoutesDontClashWithContainerRoutes(t *testing.T
 	e := echo.New()
 	g := e.Group("/v1/container")
 	hit := ""
-	g.GET("/:id", func(c echo.Context) error { hit = "container:" + c.Param("id"); return nil })
-	g.GET("/:id/terminal", func(c echo.Context) error { hit = "legacy:" + c.Param("id"); return nil })
-	g.DELETE("/:id", func(c echo.Context) error { hit = "uninstall:" + c.Param("id"); return nil })
+	g.GET("/:id", func(c *echo.Context) error { hit = "container:" + c.Param("id"); return nil })
+	g.GET("/:id/terminal", func(c *echo.Context) error { hit = "legacy:" + c.Param("id"); return nil })
+	g.DELETE("/:id", func(c *echo.Context) error { hit = "uninstall:" + c.Param("id"); return nil })
 	ContainerTerminalAPI().Register(g.Group("/terminal-sessions"))
 
 	do := func(method, path string) int {

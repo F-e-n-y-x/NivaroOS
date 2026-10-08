@@ -20,7 +20,7 @@ import (
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/user/service/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -74,7 +74,7 @@ func newWorld(t *testing.T) *world {
 	_, pub := us.GetKeyPair()
 	e := echo.New()
 	e.Use(jwt.JWT(func() (*ecdsa.PublicKey, error) { return pub, nil }))
-	e.GET("/v1/sys/whoami", func(c echo.Context) error { return c.String(http.StatusOK, c.Request().Header.Get("user_id")) })
+	e.GET("/v1/sys/whoami", func(c *echo.Context) error { return c.String(http.StatusOK, c.Request().Header.Get("user_id")) })
 	return &world{users: InitRouter(), other: e, state: state, db: db}
 }
 

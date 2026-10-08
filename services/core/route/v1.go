@@ -11,32 +11,25 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 func InitV1Router() http.Handler {
-	e := echo.New()
+	e := v1.NewEcho()
 
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	e.Use(nivaroos_middleware.Cors())
 	e.Use(echo_middleware.Gzip())
 	e.Use(echo_middleware.Recover())
 	// path-only request log: WebSocket URLs carry ?token=
 	e.Use(nivaroos_middleware.RequestLogger())
 
 	e.GET("/v1/sys/version/check", v1.GetSystemCheckVersion)
-	e.GET("/v1/sys/version/current", func(ctx echo.Context) error {
+	e.GET("/v1/sys/version/current", func(ctx *echo.Context) error {
 		return ctx.String(200, common.VERSION)
 	})
-	e.GET("/ping", func(ctx echo.Context) error {
+	e.GET("/ping", func(ctx *echo.Context) error {
 		return ctx.String(200, "pong")
 	})
 	// Quick Share redemption is deliberately public (no JWT) - the opaque,
@@ -52,7 +45,7 @@ func InitV1Router() http.Handler {
 		// browser headers - see common/middleware.IsLocalAutomation) may
 		// skip the token; the interactive terminal never may.
 		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm", v1.HostTerminalBase+"/*"),
-		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
 				if _, revoked := jwt.RevocationReason(err); revoked {
@@ -68,11 +61,11 @@ func InitV1Router() http.Handler {
 			return claims, nil
 		},
 		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-			func(ctx echo.Context) ([]string, error) {
+			func(ctx *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 				if len(ctx.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, nil
+					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 				}
-				return []string{ctx.QueryParam("token")}, nil
+				return []string{ctx.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 			},
 		},
 	}))
@@ -143,8 +136,6 @@ func InitV1Router() http.Handler {
 			v1SysGroup.GET("/network", v1.GetSystemNetInfo)
 			v1SysGroup.GET("/network-interfaces", v1.GetSystemNetworkInterfaces)
 
-			v1SysGroup.GET("/server-info", nil)
-			v1SysGroup.PUT("/server-info", nil)
 			// v1SysGroup.GET("/port", v1.GetNivaroOSPort)
 			// v1SysGroup.PUT("/port", v1.PutNivaroOSPort)
 			v1SysGroup.GET("/proxy", v1.GetSystemProxy)

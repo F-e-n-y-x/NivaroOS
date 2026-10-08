@@ -28,7 +28,7 @@ import (
 	"github.com/docker/docker/errdefs"
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	uuid "github.com/satori/go.uuid"
 	"go.uber.org/zap"
@@ -53,7 +53,7 @@ var upgrader = websocket.Upgrader{
 
 // ContainerShells lists the shells the container terminal can start in
 // this container (first = the default), for the terminal's shell picker.
-func ContainerShells(ctx echo.Context) error {
+func ContainerShells(ctx *echo.Context) error {
 	shells, err := service.MyService.Docker().ListContainerShells(ctx.Param("id"))
 	if err != nil {
 		return ctx.JSON(http.StatusNotFound, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
@@ -75,7 +75,7 @@ func ContainerShells(ctx echo.Context) error {
 //     followed by a CLOSE frame (1011) when the session could not start.
 //
 // New clients use /v1/container/terminal-sessions.
-func DockerTerminal(ctx echo.Context) error {
+func DockerTerminal(ctx *echo.Context) error {
 	cols, rows := wsterm.ParseSize(ctx.QueryParam("cols"), ctx.QueryParam("rows"), 100, 30)
 	return ContainerTerminalAPI().ServeLegacy(ctx, termsession.CreateRequest{
 		Container: ctx.Param("id"), Shell: ctx.QueryParam("shell"), Cols: int(cols), Rows: int(rows),
@@ -94,7 +94,7 @@ func DockerTerminal(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/install [post]
-func InstallApp(ctx echo.Context) error {
+func InstallApp(ctx *echo.Context) error {
 	m := model.CustomizationPostData{}
 	if err := ctx.Bind(&m); err != nil {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
@@ -219,14 +219,14 @@ func InstallApp(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/uninstall/{id} [delete]
-func UninstallApp(ctx echo.Context) error {
+func UninstallApp(ctx *echo.Context) error {
 	containerID := ctx.Param("id")
 	if len(containerID) == 0 {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS)})
 	}
 
 	j := make(map[string]bool)
-	if err := (&echo.DefaultBinder{}).BindBody(ctx, &j); err != nil {
+	if err := echo.BindBody(ctx, &j); err != nil {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
 	}
 
@@ -274,7 +274,7 @@ func UninstallApp(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/state/{id} [put]
-func ChangAppState(ctx echo.Context) error {
+func ChangAppState(ctx *echo.Context) error {
 	appID := ctx.Param("id")
 	if len(appID) == 0 {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: "id should not be empty"})
@@ -330,7 +330,7 @@ func ChangAppState(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/logs/{id} [get]
-func ContainerLog(ctx echo.Context) error {
+func ContainerLog(ctx *echo.Context) error {
 	appID := ctx.Param("id")
 	tail := ctx.QueryParam("tail")
 	timestamps := ctx.QueryParam("timestamps") == "true"
@@ -352,7 +352,7 @@ func ContainerLog(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/state/{id} [get]
-func GetContainerState(ctx echo.Context) error {
+func GetContainerState(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	// t := v2.DefaultQuery(ctx, "type", "0")
 	containerInfo, e := service.MyService.Docker().GetContainer(id)
@@ -380,7 +380,7 @@ func GetContainerState(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/update/{id}/setting [put]
-func UpdateSetting(ctx echo.Context) error {
+func UpdateSetting(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if len(id) == 0 {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: "id should not be empty"})
@@ -432,7 +432,7 @@ func UpdateSetting(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
-func GetDockerNetworks(ctx echo.Context) error {
+func GetDockerNetworks(ctx *echo.Context) error {
 	networks := service.MyService.Docker().GetNetworkList()
 	list := []map[string]string{}
 	for _, network := range networks {
@@ -444,7 +444,7 @@ func GetDockerNetworks(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: list})
 }
 
-func ToComposeYAML(ctx echo.Context) error {
+func ToComposeYAML(ctx *echo.Context) error {
 	appID := ctx.Param("id")
 
 	httpCtx := common.WithProperties(context.Background(), v2.PropertiesFromQueryParams(ctx))
@@ -466,7 +466,7 @@ func ToComposeYAML(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/update/{id}/info [get]
-func ContainerUpdateInfo(ctx echo.Context) error {
+func ContainerUpdateInfo(ctx *echo.Context) error {
 	appID := ctx.Param("id")
 
 	httpCtx := common.WithProperties(context.Background(), v2.PropertiesFromQueryParams(ctx))
@@ -491,7 +491,7 @@ func ContainerUpdateInfo(ctx echo.Context) error {
 // @Param  position query bool false "是否是首页应用"
 // @Success 200 {string} string "ok"
 // @Router /app/my/list [get]
-func MyAppList(ctx echo.Context) error {
+func MyAppList(ctx *echo.Context) error {
 	name := ctx.QueryParam("name")
 	image := ctx.QueryParam("image")
 	state := ctx.QueryParam("state")
@@ -506,7 +506,7 @@ func MyAppList(ctx echo.Context) error {
 
 // NOTE: the API is a temporary and internal API. It will be deleted in the future.
 // the API is for archive v1 app for rebuilt v2 app.
-func ArchiveContainer(ctx echo.Context) error {
+func ArchiveContainer(ctx *echo.Context) error {
 	appID := ctx.Param("id")
 
 	if err := service.MyService.Docker().StopContainer(appID); err != nil {
@@ -533,13 +533,13 @@ func ArchiveContainer(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/usage [get]
-func AppUsageList(ctx echo.Context) error {
+func AppUsageList(ctx *echo.Context) error {
 	list := service.MyService.Docker().GetContainerStats()
 	return ctx.JSON(common_err.SUCCESS, &modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: list})
 	// return ctx.JSON(common_err.SUCCESS, &modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: nil})
 }
 
-func GetDockerDaemonConfiguration(ctx echo.Context) error {
+func GetDockerDaemonConfiguration(ctx *echo.Context) error {
 	// info, err := service.MyService.Docker().GetServerInfo()
 	// if err != nil {
 	// 	return ctx.JSON(common_err.SERVICE_ERROR, &modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
@@ -557,7 +557,7 @@ func GetDockerDaemonConfiguration(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, &modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
 }
 
-func PutDockerDaemonConfiguration(ctx echo.Context) error {
+func PutDockerDaemonConfiguration(ctx *echo.Context) error {
 	request := make(map[string]interface{})
 	if err := ctx.Bind(&request); err != nil {
 		return ctx.JSON(http.StatusBadRequest, &modelCommon.Result{Success: common_err.CLIENT_ERROR, Message: common_err.GetMsg(common_err.INVALID_PARAMS), Data: err})
@@ -775,7 +775,7 @@ func uninstall(ctx context.Context, container *types.ContainerJSON, isDelete boo
 	return nil
 }
 
-func GetAllContainersWithUpdates(ctx echo.Context) error {
+func GetAllContainersWithUpdates(ctx *echo.Context) error {
 	mgr := service.GetContainerUpdateManager()
 	list, err := mgr.GetAllContainersWithUpdates(ctx.Request().Context())
 	if err != nil {
@@ -791,7 +791,7 @@ func GetAllContainersWithUpdates(ctx echo.Context) error {
 	})
 }
 
-func CheckContainerUpdate(ctx echo.Context) error {
+func CheckContainerUpdate(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	mgr := service.GetContainerUpdateManager()
 	info, err := mgr.CheckContainerUpdate(ctx.Request().Context(), id)
@@ -811,7 +811,7 @@ func CheckContainerUpdate(ctx echo.Context) error {
 // UpdateContainer starts an update in the background (registry pull +
 // recreate, or git pull + rebuild for compose-built containers) and returns
 // the job; poll GET /:id/update/status.
-func UpdateContainer(ctx echo.Context) error {
+func UpdateContainer(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	job, err := service.GetContainerUpdateManager().StartUpdate(id)
 	if err != nil {
@@ -824,7 +824,7 @@ func UpdateContainer(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, modelCommon.Result{Success: common_err.SUCCESS, Message: "update started", Data: job})
 }
 
-func GetContainerUpdateStatus(ctx echo.Context) error {
+func GetContainerUpdateStatus(ctx *echo.Context) error {
 	job := service.GetContainerUpdateManager().UpdateStatus(ctx.Request().Context(), ctx.Param("id"))
 	if job == nil {
 		return ctx.JSON(http.StatusNotFound, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: "no update has run for this container"})
@@ -837,7 +837,7 @@ type setAutoUpdateReq struct {
 	Schedule string `json:"schedule"`
 }
 
-func SetContainerAutoUpdate(ctx echo.Context) error {
+func SetContainerAutoUpdate(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	var req setAutoUpdateReq
 	if err := ctx.Bind(&req); err != nil {
@@ -861,7 +861,7 @@ func SetContainerAutoUpdate(ctx echo.Context) error {
 	})
 }
 
-func GetAutoUpdateConfig(ctx echo.Context) error {
+func GetAutoUpdateConfig(ctx *echo.Context) error {
 	mgr := service.GetContainerUpdateManager()
 	cfg := mgr.GetGlobalConfig()
 	return ctx.JSON(http.StatusOK, modelCommon.Result{
@@ -871,7 +871,7 @@ func GetAutoUpdateConfig(ctx echo.Context) error {
 	})
 }
 
-func SetAutoUpdateConfig(ctx echo.Context) error {
+func SetAutoUpdateConfig(ctx *echo.Context) error {
 	var cfg service.GlobalAutoUpdateConfig
 	if err := ctx.Bind(&cfg); err != nil {
 		return ctx.JSON(http.StatusBadRequest, modelCommon.Result{
@@ -895,7 +895,7 @@ func SetAutoUpdateConfig(ctx echo.Context) error {
 	})
 }
 
-func CheckAllContainersUpdate(ctx echo.Context) error {
+func CheckAllContainersUpdate(ctx *echo.Context) error {
 	mgr := service.GetContainerUpdateManager()
 	containers, err := mgr.CheckAllContainersUpdate(ctx.Request().Context())
 	if err != nil {

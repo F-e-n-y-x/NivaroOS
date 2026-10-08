@@ -10,7 +10,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,7 +114,7 @@ func TestJWTMiddlewareWithValidToken(t *testing.T) {
 	// Create a Gin test context and a response recorder.
 	router := echo.New()
 	router.Use(jwt.JWT(mockPublicKeyFunc))
-	router.GET("/test", func(c echo.Context) error {
+	router.GET("/test", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, model.Result{
 			Success: common_err.SUCCESS,
 			Message: "success",
@@ -153,12 +153,12 @@ func TestJWTMiddlewareWithInvalidToken(t *testing.T) {
 	router.Use(jwt.JWT(mockPublicKeyFunc))
 
 	router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			c.JSON(http.StatusOK, echo.Map{"message": "success"})
+		return func(c *echo.Context) error {
+			c.JSON(http.StatusOK, map[string]any{"message": "success"})
 			return next(c)
 		}
 	})
-	router.GET("/test", func(c echo.Context) error {
+	router.GET("/test", func(c *echo.Context) error {
 		assert.Fail(t, "this handler should not be called")
 		return nil
 	})
@@ -177,4 +177,29 @@ func TestJWTMiddlewareWithInvalidToken(t *testing.T) {
 
 	assert.Equal(t, result.Success, common_err.ERROR_AUTH_TOKEN)
 	require.NoError(t, err)
+}
+
+// Auth behaviour the echo v5 migration must keep: no token at all is a 401
+// with the NivaroOS body, and ?token= (WebSocket clients) is accepted.
+func TestJWTMiddlewareMissingAndQueryToken(t *testing.T) {
+	privateKey, publicKey, err := jwt.GenerateKeyPair()
+	require.NoError(t, err)
+	accessToken, err := jwt.GetAccessToken("testuser", privateKey, 7)
+	require.NoError(t, err)
+
+	router := echo.New()
+	router.Use(jwt.JWT(func() (*ecdsa.PublicKey, error) { return publicKey, nil }))
+	router.GET("/test", func(c *echo.Context) error { return c.String(http.StatusOK, c.Request().Header.Get("user_id")) })
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	result := model.Result{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &result))
+	assert.Equal(t, common_err.ERROR_AUTH_TOKEN, result.Success)
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test?token="+accessToken, nil))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "7", rec.Body.String())
 }

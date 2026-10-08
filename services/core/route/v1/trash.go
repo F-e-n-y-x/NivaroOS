@@ -7,14 +7,14 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/trash"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type trashIDs struct {
 	IDs []string `json:"ids"`
 }
 
-func trashOK(ctx echo.Context, data interface{}) error {
+func trashOK(ctx *echo.Context, data interface{}) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
 }
 
@@ -22,7 +22,7 @@ func trashOK(ctx echo.Context, data interface{}) error {
 // network shares and cloud drives, and the caller's phones (an offline
 // phone's items marked unavailable). bytes counts this server's own disks
 // only - a share's, cloud drive's or phone's trash takes no space here.
-func GetTrash(ctx echo.Context) error {
+func GetTrash(ctx *echo.Context) error {
 	items := append(service.Trash.List(), companionTrashList(companionCaller(ctx))...)
 	sortTrash(items)
 	var bytes int64
@@ -34,7 +34,7 @@ func GetTrash(ctx echo.Context) error {
 	return trashOK(ctx, map[string]interface{}{"items": items, "count": len(items), "bytes": bytes, "retention_days": int(service.TrashRetention.Hours() / 24)})
 }
 
-func PostTrashRestore(ctx echo.Context) error {
+func PostTrashRestore(ctx *echo.Context) error {
 	var req trashIDs
 	if err := ctx.Bind(&req); err != nil || len(req.IDs) == 0 {
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "no items given"})
@@ -70,7 +70,7 @@ func deleteFromTrash(uid string, ids []string) []trash.Failure {
 }
 
 // DeleteTrashItems removes items from the Trash for good.
-func DeleteTrashItems(ctx echo.Context) error {
+func DeleteTrashItems(ctx *echo.Context) error {
 	var req trashIDs
 	if err := ctx.Bind(&req); err != nil || len(req.IDs) == 0 {
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "no items given"})
@@ -78,7 +78,7 @@ func DeleteTrashItems(ctx echo.Context) error {
 	return trashOK(ctx, map[string]interface{}{"failed": deleteFromTrash(companionCaller(ctx), req.IDs)})
 }
 
-func DeleteTrashAll(ctx echo.Context) error {
+func DeleteTrashAll(ctx *echo.Context) error {
 	uid := companionCaller(ctx)
 	failed := service.Trash.Empty()
 	var ids []string
@@ -93,7 +93,7 @@ func DeleteTrashAll(ctx echo.Context) error {
 
 // GetTrashSupport tells the UI what deleting in a folder does: into the
 // Trash, into a cloud provider's own trash, or permanently (and why).
-func GetTrashSupport(ctx echo.Context) error {
+func GetTrashSupport(ctx *echo.Context) error {
 	p := ctx.QueryParam("path")
 	if p == "" {
 		return trashOK(ctx, trash.Support{Kind: trash.KindDisk, Reason: trash.ReasonNoTrash})

@@ -18,7 +18,7 @@ import (
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	api "github.com/docker/compose/v2/pkg/api"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -739,97 +739,97 @@ func (t *ComposeAppValidationErrors) UnmarshalJSON(b []byte) error {
 type ServerInterface interface {
 	// Get app list from registered app stores
 	// (GET /apps)
-	ComposeAppStoreInfoList(ctx echo.Context, params ComposeAppStoreInfoListParams) error
+	ComposeAppStoreInfoList(ctx *echo.Context, params ComposeAppStoreInfoListParams) error
 	// Get the list of upgradable apps from installed app.
 	// (GET /apps/upgradable)
-	UpgradableAppList(ctx echo.Context) error
+	UpgradableAppList(ctx *echo.Context) error
 	// Get app info from registered app stores
 	// (GET /apps/{id})
-	ComposeAppStoreInfo(ctx echo.Context, id StoreAppIDString) error
+	ComposeAppStoreInfo(ctx *echo.Context, id StoreAppIDString) error
 	// Get compose details of an app from registered app stores
 	// (GET /apps/{id}/compose)
-	ComposeApp(ctx echo.Context, id StoreAppIDString) error
+	ComposeApp(ctx *echo.Context, id StoreAppIDString) error
 	// Get app stable version from registered app stores
 	// (GET /apps/{id}/stable)
-	ComposeAppMainStableTag(ctx echo.Context, id StoreAppIDString) error
+	ComposeAppMainStableTag(ctx *echo.Context, id StoreAppIDString) error
 	// Get server of app stable version from registered app stores
 	// (GET /apps/{id}/stable/{serviceName})
-	ComposeAppServiceStableTag(ctx echo.Context, id StoreAppIDString, serviceName string) error
+	ComposeAppServiceStableTag(ctx *echo.Context, id StoreAppIDString, serviceName string) error
 	// Get the list of registered app stores
 	// (GET /appstore)
-	AppStoreList(ctx echo.Context) error
+	AppStoreList(ctx *echo.Context) error
 	// Register an app store
 	// (POST /appstore)
-	RegisterAppStore(ctx echo.Context, params RegisterAppStoreParams) error
+	RegisterAppStore(ctx *echo.Context, params RegisterAppStoreParams) error
 	// Unregister an app store
 	// (DELETE /appstore/{id})
-	UnregisterAppStore(ctx echo.Context, id AppStoreID) error
+	UnregisterAppStore(ctx *echo.Context, id AppStoreID) error
 	// Get the list of app categories
 	// (GET /categories)
-	CategoryList(ctx echo.Context) error
+	CategoryList(ctx *echo.Context) error
 	// Get the list of installed compose apps
 	// (GET /compose)
-	MyComposeAppList(ctx echo.Context) error
+	MyComposeAppList(ctx *echo.Context) error
 	// Install a compose app
 	// (POST /compose)
-	InstallComposeApp(ctx echo.Context, params InstallComposeAppParams) error
+	InstallComposeApp(ctx *echo.Context, params InstallComposeAppParams) error
 	// Uninstall a compose app
 	// (DELETE /compose/{id})
-	UninstallComposeApp(ctx echo.Context, id ComposeAppID, params UninstallComposeAppParams) error
+	UninstallComposeApp(ctx *echo.Context, id ComposeAppID, params UninstallComposeAppParams) error
 	// Get compose details of a locally installed app
 	// (GET /compose/{id})
-	MyComposeApp(ctx echo.Context, id ComposeAppID) error
+	MyComposeApp(ctx *echo.Context, id ComposeAppID) error
 	// Update container images of compose app to match the compose app in AppStore.
 	// (PATCH /compose/{id})
-	UpdateComposeApp(ctx echo.Context, id ComposeAppID, params UpdateComposeAppParams) error
+	UpdateComposeApp(ctx *echo.Context, id ComposeAppID, params UpdateComposeAppParams) error
 	// Apply settings to a compose app
 	// (PUT /compose/{id})
-	ApplyComposeAppSettings(ctx echo.Context, id ComposeAppID, params ApplyComposeAppSettingsParams) error
+	ApplyComposeAppSettings(ctx *echo.Context, id ComposeAppID, params ApplyComposeAppSettingsParams) error
 	// Get the list of containers of a compose app
 	// (GET /compose/{id}/containers)
-	ComposeAppContainers(ctx echo.Context, id ComposeAppID) error
+	ComposeAppContainers(ctx *echo.Context, id ComposeAppID) error
 	// Check if the compose app is running healthy
 	// (GET /compose/{id}/healthcheck)
-	CheckComposeAppHealthByID(ctx echo.Context, id ComposeAppID) error
+	CheckComposeAppHealthByID(ctx *echo.Context, id ComposeAppID) error
 	// Get the logs of a compose app
 	// (GET /compose/{id}/logs)
-	ComposeAppLogs(ctx echo.Context, id ComposeAppID, params ComposeAppLogsParams) error
+	ComposeAppLogs(ctx *echo.Context, id ComposeAppID, params ComposeAppLogsParams) error
 	// Start/restart/stop a compose app
 	// (PUT /compose/{id}/status)
-	SetComposeAppStatus(ctx echo.Context, id ComposeAppID) error
+	SetComposeAppStatus(ctx *echo.Context, id ComposeAppID) error
 	// Recreate the container app
 	// (PATCH /container/{id})
-	RecreateContainerByID(ctx echo.Context, id ContainerID, params RecreateContainerByIDParams) error
+	RecreateContainerByID(ctx *echo.Context, id ContainerID, params RecreateContainerByIDParams) error
 	// Check if the container app is running healthy
 	// (GET /container/{id}/healthcheck)
-	CheckContainerHealthByID(ctx echo.Context, id ContainerID) error
+	CheckContainerHealthByID(ctx *echo.Context, id ContainerID) error
 	// Convert to compose app from another file format
 	// (POST /convert)
-	Convert(ctx echo.Context, params ConvertParams) error
+	Convert(ctx *echo.Context, params ConvertParams) error
 	// Get all global settings
 	// (GET /global)
-	GetGlobalSettings(ctx echo.Context) error
+	GetGlobalSettings(ctx *echo.Context) error
 	// Delete a global setting
 	// (DELETE /global/{key})
-	DeleteGlobalSetting(ctx echo.Context, key GlobalSettingKey) error
+	DeleteGlobalSetting(ctx *echo.Context, key GlobalSettingKey) error
 	// Get a global setting
 	// (GET /global/{key})
-	GetGlobalSetting(ctx echo.Context, key GlobalSettingKey) error
+	GetGlobalSetting(ctx *echo.Context, key GlobalSettingKey) error
 	// Update a global setting
 	// (PUT /global/{key})
-	UpdateGlobalSetting(ctx echo.Context, key GlobalSettingKey) error
+	UpdateGlobalSetting(ctx *echo.Context, key GlobalSettingKey) error
 	// Post a batch pull request specified images
 	// (POST /image)
-	PullImages(ctx echo.Context, params PullImagesParams) error
+	PullImages(ctx *echo.Context, params PullImagesParams) error
 	// Get certain common information
 	// (GET /info)
-	Info(ctx echo.Context) error
+	Info(ctx *echo.Context) error
 	// (internal use ONLY)
 	// (GET /web/appgrid)
-	GetAppGrid(ctx echo.Context) error
+	GetAppGrid(ctx *echo.Context) error
 	// Register an app store in Sync.
 	// (POST /web/sync/appstore)
-	RegisterAppStoreSync(ctx echo.Context, params RegisterAppStoreSyncParams) error
+	RegisterAppStoreSync(ctx *echo.Context, params RegisterAppStoreSyncParams) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -838,7 +838,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // ComposeAppStoreInfoList converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppStoreInfoList(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppStoreInfoList(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -872,7 +872,7 @@ func (w *ServerInterfaceWrapper) ComposeAppStoreInfoList(ctx echo.Context) error
 }
 
 // UpgradableAppList converts echo context to params.
-func (w *ServerInterfaceWrapper) UpgradableAppList(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UpgradableAppList(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -883,7 +883,7 @@ func (w *ServerInterfaceWrapper) UpgradableAppList(ctx echo.Context) error {
 }
 
 // ComposeAppStoreInfo converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppStoreInfo(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppStoreInfo(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id StoreAppIDString
@@ -901,7 +901,7 @@ func (w *ServerInterfaceWrapper) ComposeAppStoreInfo(ctx echo.Context) error {
 }
 
 // ComposeApp converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeApp(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeApp(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id StoreAppIDString
@@ -919,7 +919,7 @@ func (w *ServerInterfaceWrapper) ComposeApp(ctx echo.Context) error {
 }
 
 // ComposeAppMainStableTag converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppMainStableTag(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppMainStableTag(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id StoreAppIDString
@@ -937,7 +937,7 @@ func (w *ServerInterfaceWrapper) ComposeAppMainStableTag(ctx echo.Context) error
 }
 
 // ComposeAppServiceStableTag converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppServiceStableTag(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppServiceStableTag(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id StoreAppIDString
@@ -963,7 +963,7 @@ func (w *ServerInterfaceWrapper) ComposeAppServiceStableTag(ctx echo.Context) er
 }
 
 // AppStoreList converts echo context to params.
-func (w *ServerInterfaceWrapper) AppStoreList(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) AppStoreList(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -974,7 +974,7 @@ func (w *ServerInterfaceWrapper) AppStoreList(ctx echo.Context) error {
 }
 
 // RegisterAppStore converts echo context to params.
-func (w *ServerInterfaceWrapper) RegisterAppStore(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) RegisterAppStore(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -994,7 +994,7 @@ func (w *ServerInterfaceWrapper) RegisterAppStore(ctx echo.Context) error {
 }
 
 // UnregisterAppStore converts echo context to params.
-func (w *ServerInterfaceWrapper) UnregisterAppStore(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UnregisterAppStore(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id AppStoreID
@@ -1012,7 +1012,7 @@ func (w *ServerInterfaceWrapper) UnregisterAppStore(ctx echo.Context) error {
 }
 
 // CategoryList converts echo context to params.
-func (w *ServerInterfaceWrapper) CategoryList(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) CategoryList(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1023,7 +1023,7 @@ func (w *ServerInterfaceWrapper) CategoryList(ctx echo.Context) error {
 }
 
 // MyComposeAppList converts echo context to params.
-func (w *ServerInterfaceWrapper) MyComposeAppList(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) MyComposeAppList(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1034,7 +1034,7 @@ func (w *ServerInterfaceWrapper) MyComposeAppList(ctx echo.Context) error {
 }
 
 // InstallComposeApp converts echo context to params.
-func (w *ServerInterfaceWrapper) InstallComposeApp(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) InstallComposeApp(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1068,7 +1068,7 @@ func (w *ServerInterfaceWrapper) InstallComposeApp(ctx echo.Context) error {
 }
 
 // UninstallComposeApp converts echo context to params.
-func (w *ServerInterfaceWrapper) UninstallComposeApp(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UninstallComposeApp(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1095,7 +1095,7 @@ func (w *ServerInterfaceWrapper) UninstallComposeApp(ctx echo.Context) error {
 }
 
 // MyComposeApp converts echo context to params.
-func (w *ServerInterfaceWrapper) MyComposeApp(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) MyComposeApp(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1113,7 +1113,7 @@ func (w *ServerInterfaceWrapper) MyComposeApp(ctx echo.Context) error {
 }
 
 // UpdateComposeApp converts echo context to params.
-func (w *ServerInterfaceWrapper) UpdateComposeApp(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UpdateComposeApp(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1140,7 +1140,7 @@ func (w *ServerInterfaceWrapper) UpdateComposeApp(ctx echo.Context) error {
 }
 
 // ApplyComposeAppSettings converts echo context to params.
-func (w *ServerInterfaceWrapper) ApplyComposeAppSettings(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ApplyComposeAppSettings(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1181,7 +1181,7 @@ func (w *ServerInterfaceWrapper) ApplyComposeAppSettings(ctx echo.Context) error
 }
 
 // ComposeAppContainers converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppContainers(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppContainers(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1199,7 +1199,7 @@ func (w *ServerInterfaceWrapper) ComposeAppContainers(ctx echo.Context) error {
 }
 
 // CheckComposeAppHealthByID converts echo context to params.
-func (w *ServerInterfaceWrapper) CheckComposeAppHealthByID(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) CheckComposeAppHealthByID(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1217,7 +1217,7 @@ func (w *ServerInterfaceWrapper) CheckComposeAppHealthByID(ctx echo.Context) err
 }
 
 // ComposeAppLogs converts echo context to params.
-func (w *ServerInterfaceWrapper) ComposeAppLogs(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) ComposeAppLogs(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1244,7 +1244,7 @@ func (w *ServerInterfaceWrapper) ComposeAppLogs(ctx echo.Context) error {
 }
 
 // SetComposeAppStatus converts echo context to params.
-func (w *ServerInterfaceWrapper) SetComposeAppStatus(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SetComposeAppStatus(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ComposeAppID
@@ -1262,7 +1262,7 @@ func (w *ServerInterfaceWrapper) SetComposeAppStatus(ctx echo.Context) error {
 }
 
 // RecreateContainerByID converts echo context to params.
-func (w *ServerInterfaceWrapper) RecreateContainerByID(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) RecreateContainerByID(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ContainerID
@@ -1296,7 +1296,7 @@ func (w *ServerInterfaceWrapper) RecreateContainerByID(ctx echo.Context) error {
 }
 
 // CheckContainerHealthByID converts echo context to params.
-func (w *ServerInterfaceWrapper) CheckContainerHealthByID(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) CheckContainerHealthByID(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id ContainerID
@@ -1314,7 +1314,7 @@ func (w *ServerInterfaceWrapper) CheckContainerHealthByID(ctx echo.Context) erro
 }
 
 // Convert converts echo context to params.
-func (w *ServerInterfaceWrapper) Convert(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) Convert(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1334,7 +1334,7 @@ func (w *ServerInterfaceWrapper) Convert(ctx echo.Context) error {
 }
 
 // GetGlobalSettings converts echo context to params.
-func (w *ServerInterfaceWrapper) GetGlobalSettings(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetGlobalSettings(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1345,7 +1345,7 @@ func (w *ServerInterfaceWrapper) GetGlobalSettings(ctx echo.Context) error {
 }
 
 // DeleteGlobalSetting converts echo context to params.
-func (w *ServerInterfaceWrapper) DeleteGlobalSetting(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) DeleteGlobalSetting(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "key" -------------
 	var key GlobalSettingKey
@@ -1363,7 +1363,7 @@ func (w *ServerInterfaceWrapper) DeleteGlobalSetting(ctx echo.Context) error {
 }
 
 // GetGlobalSetting converts echo context to params.
-func (w *ServerInterfaceWrapper) GetGlobalSetting(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetGlobalSetting(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "key" -------------
 	var key GlobalSettingKey
@@ -1381,7 +1381,7 @@ func (w *ServerInterfaceWrapper) GetGlobalSetting(ctx echo.Context) error {
 }
 
 // UpdateGlobalSetting converts echo context to params.
-func (w *ServerInterfaceWrapper) UpdateGlobalSetting(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UpdateGlobalSetting(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "key" -------------
 	var key GlobalSettingKey
@@ -1399,7 +1399,7 @@ func (w *ServerInterfaceWrapper) UpdateGlobalSetting(ctx echo.Context) error {
 }
 
 // PullImages converts echo context to params.
-func (w *ServerInterfaceWrapper) PullImages(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) PullImages(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1419,7 +1419,7 @@ func (w *ServerInterfaceWrapper) PullImages(ctx echo.Context) error {
 }
 
 // Info converts echo context to params.
-func (w *ServerInterfaceWrapper) Info(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) Info(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1430,7 +1430,7 @@ func (w *ServerInterfaceWrapper) Info(ctx echo.Context) error {
 }
 
 // GetAppGrid converts echo context to params.
-func (w *ServerInterfaceWrapper) GetAppGrid(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetAppGrid(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1441,7 +1441,7 @@ func (w *ServerInterfaceWrapper) GetAppGrid(ctx echo.Context) error {
 }
 
 // RegisterAppStoreSync converts echo context to params.
-func (w *ServerInterfaceWrapper) RegisterAppStoreSync(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) RegisterAppStoreSync(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -1464,15 +1464,15 @@ func (w *ServerInterfaceWrapper) RegisterAppStoreSync(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlers adds each server route to the EchoRouter.

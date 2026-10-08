@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // The utilization publisher's pace. Normally a reading every 5 s on
@@ -70,7 +70,7 @@ func RunUtilizationPublisher(stop <-chan struct{}) {
 	}
 }
 
-func postUtilizationLive(c echo.Context) error {
+func postUtilizationLive(c *echo.Context) error {
 	lease := RequestFastUtilization(time.Now())
 	return c.JSON(http.StatusOK, model.Result{Success: http.StatusOK, Message: "ok", Data: map[string]int64{"lease_ms": lease.Milliseconds(), "every_ms": utilizationFastEvery.Milliseconds()}})
 }

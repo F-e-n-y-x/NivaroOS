@@ -6,10 +6,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func PostNotifyMessage(ctx echo.Context) error {
+func PostNotifyMessage(ctx *echo.Context) error {
 	name := ctx.Param("name")
 	message := make(map[string]interface{})
 	if err := ctx.Bind(&message); err != nil {
@@ -20,7 +20,7 @@ func PostNotifyMessage(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
-func PostSystemStatusNotify(ctx echo.Context) error {
+func PostSystemStatusNotify(ctx *echo.Context) error {
 	message := make(map[string]interface{})
 	if err := ctx.Bind(&message); err != nil {
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})

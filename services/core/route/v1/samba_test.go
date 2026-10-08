@@ -16,7 +16,6 @@ import (
 
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	"github.com/golang/mock/gomock"
-	"github.com/labstack/echo/v4"
 	"gotest.tools/assert"
 )
 
@@ -60,7 +59,7 @@ func TestGetSambaSharesList(t *testing.T) {
 	executeWithContext := func() *httptest.ResponseRecorder {
 		response := httptest.NewRecorder()
 		// con, ginEngine := gin.CreateTestContext(response)
-		e := echo.New()
+		e := v1.NewEcho()
 
 		requestUrl := "/v1/samba/shares"
 		httpRequest, _ := http.NewRequest("GET", requestUrl, nil)

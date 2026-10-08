@@ -18,7 +18,7 @@ import (
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/aptjob"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // The UI's Package Manager (search/install/uninstall arbitrary APT packages,
@@ -64,7 +64,7 @@ type aptPackageInfo struct {
 
 // GetAptSearch searches the local APT cache (apt-cache search, no network
 // access needed) and marks which hits are already installed.
-func GetAptSearch(ctx echo.Context) error {
+func GetAptSearch(ctx *echo.Context) error {
 	q := strings.TrimSpace(ctx.QueryParam("q"))
 	if q == "" {
 		return badParams(ctx, "missing search query")
@@ -167,7 +167,7 @@ type installedPackage struct {
 
 // GetAptInstalled lists installed packages, optionally filtered by a
 // case-insensitive substring match on the package name.
-func GetAptInstalled(ctx echo.Context) error {
+func GetAptInstalled(ctx *echo.Context) error {
 	q := strings.ToLower(strings.TrimSpace(ctx.QueryParam("q")))
 
 	out, err := runAptCommand(15*time.Second, "dpkg-query", "-W",
@@ -212,7 +212,7 @@ type aptUpgradablePackage struct {
 // GetAptUpgradable lists packages with a newer version available, for the
 // Package Manager's own Upgrades tab (see pkg_updates.go's GetSystemPackageUpdates
 // for the equivalent used by the Settings > Updates section).
-func GetAptUpgradable(ctx echo.Context) error {
+func GetAptUpgradable(ctx *echo.Context) error {
 	pkgs, err := getUpgradablePackages()
 	if err != nil {
 		return serviceError(ctx, fmt.Errorf("failed to list upgradable packages: %w", err))
@@ -242,7 +242,7 @@ type aptInstallReq struct {
 
 // aptJobStarted answers a job start: the job (poll GET /sys/apt/job), or
 // 409 when another package operation is still running.
-func aptJobStarted(ctx echo.Context, j aptjob.Job, err error) error {
+func aptJobStarted(ctx *echo.Context, j aptjob.Job, err error) error {
 	if errors.Is(err, aptjob.ErrBusy) {
 		return ctx.JSON(http.StatusConflict, modelCommon.Result{Success: http.StatusConflict, Message: err.Error(), Data: j})
 	}
@@ -253,7 +253,7 @@ func aptJobStarted(ctx echo.Context, j aptjob.Job, err error) error {
 }
 
 // PostAptInstall installs (or reinstalls) packages as a background job.
-func PostAptInstall(ctx echo.Context) error {
+func PostAptInstall(ctx *echo.Context) error {
 	req := new(aptInstallReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
@@ -268,7 +268,7 @@ type aptUninstallReq struct {
 }
 
 // PostAptUninstall removes (or purges) packages as a background job.
-func PostAptUninstall(ctx echo.Context) error {
+func PostAptUninstall(ctx *echo.Context) error {
 	req := new(aptUninstallReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
@@ -283,7 +283,7 @@ type aptUpgradeReq struct {
 
 // PostAptUpgrade upgrades the given packages, or everything (dist-upgrade -
 // the same job the Updates section runs) when none are given.
-func PostAptUpgrade(ctx echo.Context) error {
+func PostAptUpgrade(ctx *echo.Context) error {
 	req := new(aptUpgradeReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
@@ -297,13 +297,13 @@ func PostAptUpgrade(ctx echo.Context) error {
 }
 
 // PostAptUpdate refreshes the repository indexes as a background job.
-func PostAptUpdate(ctx echo.Context) error {
+func PostAptUpdate(ctx *echo.Context) error {
 	j, err := service.AptJobs.Update()
 	return aptJobStarted(ctx, j, err)
 }
 
 // GetAptJob is the latest package operation with its log tail.
-func GetAptJob(ctx echo.Context) error {
+func GetAptJob(ctx *echo.Context) error {
 	return ok(ctx, service.AptJobs.Status())
 }
 
@@ -408,7 +408,7 @@ func parseSourceLines(path string) []aptSourceEntry {
 
 // GetAptSources lists every deb/deb-src line across /etc/apt/sources.list and
 // /etc/apt/sources.list.d/*.list.
-func GetAptSources(ctx echo.Context) error {
+func GetAptSources(ctx *echo.Context) error {
 	entries := parseSourceLines(aptSourcesFile)
 	matches, _ := filepath.Glob(filepath.Join(aptSourcesDir, "*.list"))
 	sort.Strings(matches)
@@ -461,7 +461,7 @@ var validSourceLine = regexp.MustCompile(`^deb(-src)?[ \t]+(\[[^\]\r\n]*\][ \t]+
 
 // PostAptSources appends a new "deb ..." / "deb-src ..." line to a file under
 // /etc/apt/sources.list.d/ (creating it if needed).
-func PostAptSources(ctx echo.Context) error {
+func PostAptSources(ctx *echo.Context) error {
 	req := new(aptAddSourceReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
@@ -498,7 +498,7 @@ type aptDeleteSourceReq struct {
 
 // DeleteAptSources removes a single line (by 1-based line number) from a
 // sources file.
-func DeleteAptSources(ctx echo.Context) error {
+func DeleteAptSources(ctx *echo.Context) error {
 	req := new(aptDeleteSourceReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid request body")
@@ -561,7 +561,7 @@ func parseRemovalSimulation(out string) []string {
 // GetAptRemovePreview: what uninstalling the given packages would remove
 // in total (a simulation - nothing changes), so the confirmation can say
 // "this also removes docker-ce" instead of naming only one package.
-func GetAptRemovePreview(ctx echo.Context) error {
+func GetAptRemovePreview(ctx *echo.Context) error {
 	pkgs := strings.Split(ctx.QueryParam("packages"), ",")
 	if err := validatePackageNames(pkgs); err != nil {
 		return badParams(ctx, err.Error())

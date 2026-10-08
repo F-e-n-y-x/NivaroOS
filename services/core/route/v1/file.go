@@ -29,7 +29,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/mholt/archives"
 	"github.com/robfig/cron/v3"
 	"github.com/tidwall/gjson"
@@ -94,7 +94,7 @@ var (
 // @Param path query string true "路径"
 // @Success 200 {string} string "ok"
 // @Router /file/read [get]
-func GetFilerContent(ctx echo.Context) error {
+func GetFilerContent(ctx *echo.Context) error {
 	filePath := ctx.QueryParam("path")
 	if len(filePath) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
@@ -153,7 +153,7 @@ func GetFilerContent(ctx echo.Context) error {
 	})
 }
 
-func GetLocalFile(ctx echo.Context) error {
+func GetLocalFile(ctx *echo.Context) error {
 	path := ctx.QueryParam("path")
 	if len(path) == 0 {
 		return ctx.JSON(http.StatusOK, model.Result{
@@ -190,8 +190,8 @@ func GetLocalFile(ctx echo.Context) error {
 // @Router /file/download [get]
 // companionUnreachable answers a download from a phone that couldn't be
 // reached (headers are still unsent at this point).
-func companionUnreachable(ctx echo.Context, dev *CompanionDevice, err error) error {
-	if ctx.Response().Committed {
+func companionUnreachable(ctx *echo.Context, dev *CompanionDevice, err error) error {
+	if r, _ := echo.UnwrapResponse(ctx.Response()); r != nil && r.Committed {
 		return nil
 	}
 	return ctx.JSON(http.StatusServiceUnavailable, model.Result{
@@ -216,7 +216,7 @@ type downloadTicket struct {
 }
 
 // PostDownloadTicket registers a multi-file/folder download.
-func PostDownloadTicket(ctx echo.Context) error {
+func PostDownloadTicket(ctx *echo.Context) error {
 	var req struct {
 		Files  []string `json:"files"`
 		Format string   `json:"format"`
@@ -237,7 +237,7 @@ func PostDownloadTicket(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }
 
-func GetDownloadFile(ctx echo.Context) error {
+func GetDownloadFile(ctx *echo.Context) error {
 	t := ctx.QueryParam("format")
 	var list []string
 	if ticket := ctx.QueryParam("ticket"); ticket != "" {
@@ -338,7 +338,7 @@ func GetDownloadFile(ctx echo.Context) error {
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(name+extension))
 
-	if err := ar.Create(ctx.Response().Writer); err != nil {
+	if err := ar.Create(ctx.Response()); err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 	}
 	defer ar.Close()
@@ -392,7 +392,7 @@ func extensionMIMEType(fileName string) string {
 	return mime.TypeByExtension(ext)
 }
 
-func GetDownloadSingleFile(ctx echo.Context) error {
+func GetDownloadSingleFile(ctx *echo.Context) error {
 	filePath := ctx.QueryParam("path")
 	if len(filePath) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
@@ -478,7 +478,7 @@ func GetDownloadSingleFile(ctx echo.Context) error {
 	}
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url2.PathEscape(fileName))
 
-	http.ServeContent(ctx.Response().Writer, ctx.Request(), fileName, node.ModTime(), fi)
+	http.ServeContent(ctx.Response(), ctx.Request(), fileName, node.ModTime(), fi)
 	return nil
 }
 
@@ -532,7 +532,7 @@ func remuxCacheKey(filePath string, info os.FileInfo) string {
 // case, and reusing ServeContent for it also means seeking/scrubbing works
 // on a remuxed video now, which the old live-pipe version never supported
 // at all.
-func GetStreamRemuxVideo(ctx echo.Context) error {
+func GetStreamRemuxVideo(ctx *echo.Context) error {
 	filePath := ctx.QueryParam("path")
 	if len(filePath) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
@@ -602,7 +602,7 @@ func GetStreamRemuxVideo(ctx echo.Context) error {
 	}
 
 	ctx.Response().Header().Set("Content-Type", "video/mp4")
-	http.ServeContent(ctx.Response().Writer, ctx.Request(), filepath.Base(filePath)+".mp4", cacheInfo.ModTime(), cacheFile)
+	http.ServeContent(ctx.Response(), ctx.Request(), filepath.Base(filePath)+".mp4", cacheInfo.ModTime(), cacheFile)
 	return nil
 }
 
@@ -617,7 +617,7 @@ func GetStreamRemuxVideo(ctx echo.Context) error {
 // an option here). The returned cleanup func removes that temp download
 // once the remux is done reading it - the actual cache entry this exists to
 // produce (produceRemux's cachePath) is what persists, not this.
-func resolveRemuxSource(ctx echo.Context, filePath string) (string, func(), error) {
+func resolveRemuxSource(ctx *echo.Context, filePath string) (string, func(), error) {
 	noop := func() {}
 	if _, err := os.Stat(filePath); err == nil {
 		return filePath, noop, nil
@@ -668,7 +668,7 @@ func resolveRemuxSource(ctx echo.Context, filePath string) (string, func(), erro
 // instead of starting a duplicate. Writes to a .tmp sibling and renames
 // into place atomically, so a request that reads the cache directory never
 // sees (or serves) a partially-written file.
-func produceRemux(ctx echo.Context, sourcePath, cachePath string) error {
+func produceRemux(ctx *echo.Context, sourcePath, cachePath string) error {
 	cacheKey := filepath.Base(cachePath)
 
 	wgIface, alreadyRunning := remuxInFlight.LoadOrStore(cacheKey, &sync.WaitGroup{})
@@ -768,7 +768,7 @@ func trimRemuxCache() {
 // @Param path query string false "路径"
 // @Success 200 {string} string "ok"
 // @Router /file/dirpath [get]
-func DirPath(ctx echo.Context) error {
+func DirPath(ctx *echo.Context) error {
 	var req ListReq
 	path := ctx.QueryParam("path")
 	req.Path = path
@@ -929,7 +929,7 @@ func DirPath(ctx echo.Context) error {
 // @Param newpath body string true "path of new"
 // @Success 200 {string} string "ok"
 // @Router /file/rename [put]
-func RenamePath(ctx echo.Context) error {
+func RenamePath(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	op := json["old_path"]
@@ -970,7 +970,7 @@ func RenamePath(ctx echo.Context) error {
 // @Param path body string true "path of folder"
 // @Success 200 {string} string "ok"
 // @Router /file/mkdir [post]
-func MkdirAll(ctx echo.Context) error {
+func MkdirAll(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	path := json["path"]
@@ -1002,7 +1002,7 @@ func MkdirAll(ctx echo.Context) error {
 // @Param path body string true "path of folder (path need to url encode)"
 // @Success 200 {string} string "ok"
 // @Router /file/create [post]
-func PostCreateFile(ctx echo.Context) error {
+func PostCreateFile(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	path := json["path"]
@@ -1036,7 +1036,7 @@ func PostCreateFile(ctx echo.Context) error {
 // @Param destination body string true "destination .zip path - must not already exist"
 // @Success 200 {string} string "ok"
 // @Router /file/archive [post]
-func PostArchiveFiles(ctx echo.Context) error {
+func PostArchiveFiles(ctx *echo.Context) error {
 	req := struct {
 		Files       []string `json:"files"`
 		Destination string   `json:"destination"`
@@ -1089,7 +1089,7 @@ func zipToFile(ctx context.Context, sources []string, dest string) error {
 // @Param destination body string true "destination folder - must not already exist"
 // @Success 200 {string} string "ok"
 // @Router /file/unarchive [post]
-func PostUnarchiveFile(ctx echo.Context) error {
+func PostUnarchiveFile(ctx *echo.Context) error {
 	req := struct {
 		Path        string `json:"path"`
 		Destination string `json:"destination"`
@@ -1122,7 +1122,7 @@ func PostUnarchiveFile(ctx echo.Context) error {
 // @Param file formData file true "file"
 // @Success 200 {string} string "ok"
 // @Router /file/upload [get]
-func GetFileUpload(ctx echo.Context) error {
+func GetFileUpload(ctx *echo.Context) error {
 	relative := ctx.QueryParam("relativePath")
 	fileName := ctx.QueryParam("filename")
 	chunkNumber := ctx.QueryParam("chunkNumber")
@@ -1156,7 +1156,7 @@ func GetFileUpload(ctx echo.Context) error {
 // @Param file formData file true "file"
 // @Success 200 {string} string "ok"
 // @Router /file/upload [post]
-func PostFileUpload(ctx echo.Context) error {
+func PostFileUpload(ctx *echo.Context) error {
 	f, h, _ := ctx.Request().FormFile("file")
 	if f == nil {
 		return ctx.JSON(http.StatusBadRequest, model.Result{Success: common_err.INVALID_PARAMS, Message: "missing file"})
@@ -1204,7 +1204,7 @@ func PostFileUpload(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: res.Path})
 }
 
-func PostFileOctet(ctx echo.Context) error {
+func PostFileOctet(ctx *echo.Context) error {
 	content_length := ctx.Request().ContentLength
 	if content_length <= 0 || content_length > 1024*1024*1024*2*1024 {
 		log.Printf("content_length error\n")
@@ -1269,7 +1269,7 @@ func PostFileOctet(ctx echo.Context) error {
 // @Param body body model.FileOperate true "type:move,copy"
 // @Success 200 {string} string "ok"
 // @Router /file/operate [post]
-func PostOperateFileOrDir(ctx echo.Context) error {
+func PostOperateFileOrDir(ctx *echo.Context) error {
 	list := model.FileOperate{}
 	ctx.Bind(&list)
 
@@ -1305,7 +1305,7 @@ func PostOperateFileOrDir(ctx echo.Context) error {
 // submitTransfer queues a job and answers with its first snapshot (the
 // client tracks it by id from then on). The response used to carry
 // nothing, so a client couldn't tell its own job apart from others.
-func submitTransfer(ctx echo.Context, spec transfer.Spec) error {
+func submitTransfer(ctx *echo.Context, spec transfer.Spec) error {
 	switch spec.Conflict {
 	case transfer.ConflictOverwrite, transfer.ConflictSkip, transfer.ConflictRename:
 	default:
@@ -1318,15 +1318,15 @@ func submitTransfer(ctx echo.Context, spec transfer.Spec) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: service.ToTransferEvent(j)})
 }
 
-func PostFileCopy(ctx echo.Context) error {
+func PostFileCopy(ctx *echo.Context) error {
 	return handleDirectCopyOrMove(ctx, "copy")
 }
 
-func PostFileMove(ctx echo.Context) error {
+func PostFileMove(ctx *echo.Context) error {
 	return handleDirectCopyOrMove(ctx, "move")
 }
 
-func handleDirectCopyOrMove(ctx echo.Context, opType string) error {
+func handleDirectCopyOrMove(ctx *echo.Context, opType string) error {
 	type DirectReq struct {
 		From string `json:"from"`
 		To   string `json:"to"`
@@ -1348,7 +1348,7 @@ func handleDirectCopyOrMove(ctx echo.Context, opType string) error {
 // GetTransferTasks returns every recent copy/move/delete job (active and
 // finished, with failures) so a client that missed live events - a new
 // tab, another device, a reconnect - can resync.
-func GetTransferTasks(ctx echo.Context) error {
+func GetTransferTasks(ctx *echo.Context) error {
 	jobs := service.Transfers.List()
 	out := make([]service.TransferEvent, 0, len(jobs))
 	for _, j := range jobs {
@@ -1358,7 +1358,7 @@ func GetTransferTasks(ctx echo.Context) error {
 }
 
 // PostRetryTask re-runs what didn't complete in a finished job.
-func PostRetryTask(ctx echo.Context) error {
+func PostRetryTask(ctx *echo.Context) error {
 	j, err := service.Transfers.Retry(ctx.Param("id"))
 	if err != nil {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INVALID_PARAMS, Message: err.Error()})
@@ -1368,7 +1368,7 @@ func PostRetryTask(ctx echo.Context) error {
 
 // DeleteTransferHistory removes a finished job from the list ("0" = all
 // finished jobs).
-func DeleteTransferHistory(ctx echo.Context) error {
+func DeleteTransferHistory(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "0" {
 		for _, j := range service.Transfers.List() {
@@ -1390,7 +1390,7 @@ func DeleteTransferHistory(ctx echo.Context) error {
 // @Param body body string true "paths eg ["/a/b/c","/d/e/f"]"
 // @Success 200 {string} string "ok"
 // @Router /file/delete [delete]
-func DeleteFile(ctx echo.Context) error {
+func DeleteFile(ctx *echo.Context) error {
 	paths := []string{}
 	body, err := io.ReadAll(ctx.Request().Body)
 	if err == nil && len(body) > 0 {
@@ -1580,7 +1580,7 @@ func DeleteFile(ctx echo.Context) error {
 // @Param content body string true "content"
 // @Success 200 {string} string "ok"
 // @Router /file/update [put]
-func PutFileContent(ctx echo.Context) error {
+func PutFileContent(ctx *echo.Context) error {
 	fi := model.FileUpdate{}
 	ctx.Bind(&fi)
 
@@ -1615,12 +1615,12 @@ func PutFileContent(ctx echo.Context) error {
 // @Param type query string false "original,thumbnail" Enums(original,thumbnail)
 // @Success 200 {string} string "ok"
 // @Router /file/image [get]
-func GetFileImage(ctx echo.Context) error {
+func GetFileImage(ctx *echo.Context) error {
 	t := ctx.QueryParam("type")
 	path := ctx.QueryParam("path")
 	if dev, phonePath := GetCompanionDeviceByStoragePath(path); dev != nil {
 		if !file.Exists(path) {
-			if err := ProxyCompanionStream(dev, phonePath, ctx.Response().Writer, ctx.Request()); err == nil {
+			if err := ProxyCompanionStream(dev, phonePath, ctx.Response(), ctx.Request()); err == nil {
 				return nil
 			}
 		}
@@ -1636,7 +1636,7 @@ func GetFileImage(ctx echo.Context) error {
 		if kind, _ := filetype.Match(f); kind != filetype.Unknown {
 			ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
 		}
-		ctx.Response().Writer.Write(f)
+		ctx.Response().Write(f)
 		// Without this, execution fell through into the full-image path
 		// below on every thumbnail request - re-reading and appending the
 		// entire original file's bytes right after the thumbnail into the
@@ -1657,11 +1657,11 @@ func GetFileImage(ctx echo.Context) error {
 	if kind, _ := filetype.Match(data); kind != filetype.Unknown {
 		ctx.Response().Header().Set("Content-Type", kind.MIME.Value)
 	}
-	ctx.Response().Writer.Write(data)
+	ctx.Response().Write(data)
 	return nil
 }
 
-func DeleteOperateFileOrDir(ctx echo.Context) error {
+func DeleteOperateFileOrDir(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "0" {
 		for _, j := range service.Transfers.List() {
@@ -1675,7 +1675,7 @@ func DeleteOperateFileOrDir(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
 }
 
-func GetSize(ctx echo.Context) error {
+func GetSize(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	path := json["path"]
@@ -1686,7 +1686,7 @@ func GetSize(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: size})
 }
 
-func GetFileCount(ctx echo.Context) error {
+func GetFileCount(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	path := json["path"]
@@ -1731,9 +1731,9 @@ type PeerModel struct {
 	RtcSupported bool         `json:"rtcSupported"`
 }
 
-func ConnectWebSocket(ctx echo.Context) error {
+func ConnectWebSocket(ctx *echo.Context) error {
 	peerId := ctx.QueryParam("peer")
-	writer := ctx.Response().Writer
+	writer := ctx.Response()
 	request := ctx.Request()
 	key := uuid.NewString()
 	// peerModel := service.MyService.Peer().GetPeerByUserAgent(ctx.Request().UserAgent())
@@ -2003,7 +2003,7 @@ func (ch *CenterHandler) monitoring() {
 	}
 }
 
-func GetPeers(ctx echo.Context) error {
+func GetPeers(ctx *echo.Context) error {
 	peers := service.MyService.Peer().GetPeers()
 	handler.clientsMu.RLock()
 	for i := 0; i < len(peers); i++ {

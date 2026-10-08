@@ -8,7 +8,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/service"
 	v2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/service/v2"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type MountError interface {
@@ -17,7 +17,7 @@ type MountError interface {
 	Unwrap() error
 }
 
-func (s *LocalStorage) GetMounts(ctx echo.Context, params codegen.GetMountsParams) error {
+func (s *LocalStorage) GetMounts(ctx *echo.Context, params codegen.GetMountsParams) error {
 	mounts, err := service.MyService.LocalStorage().GetMounts(params)
 	if err != nil {
 		message := err.Error()
@@ -32,7 +32,7 @@ func (s *LocalStorage) GetMounts(ctx echo.Context, params codegen.GetMountsParam
 	})
 }
 
-func (s *LocalStorage) Mount(ctx echo.Context) error {
+func (s *LocalStorage) Mount(ctx *echo.Context) error {
 	var request codegen.Mount
 	if err := ctx.Bind(&request); err != nil {
 		message := err.Error()
@@ -53,7 +53,7 @@ func (s *LocalStorage) Mount(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, codegen.AddMountResponseOK{Data: mount})
 }
 
-func (s *LocalStorage) Umount(ctx echo.Context, params codegen.UmountParams) error {
+func (s *LocalStorage) Umount(ctx *echo.Context, params codegen.UmountParams) error {
 	if err := service.MyService.LocalStorage().Umount(params.MountPoint); err != nil {
 		message := err.Error()
 
@@ -70,7 +70,7 @@ func (s *LocalStorage) Umount(ctx echo.Context, params codegen.UmountParams) err
 	return ctx.JSON(http.StatusOK, codegen.UmountResponseOK{})
 }
 
-func (s *LocalStorage) UpdateMount(ctx echo.Context, params codegen.UpdateMountParams) error {
+func (s *LocalStorage) UpdateMount(ctx *echo.Context, params codegen.UpdateMountParams) error {
 	var request codegen.Mount
 	if err := ctx.Bind(&request); err != nil {
 		message := err.Error()

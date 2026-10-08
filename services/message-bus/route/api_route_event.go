@@ -17,11 +17,11 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
-func (r *APIRoute) GetEventTypes(ctx echo.Context) error {
+func (r *APIRoute) GetEventTypes(ctx *echo.Context) error {
 	eventTypes, err := r.services.EventTypeService.GetEventTypes()
 	if err != nil {
 		message := err.Error()
@@ -37,7 +37,7 @@ func (r *APIRoute) GetEventTypes(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, results)
 }
 
-func (r *APIRoute) RegisterEventTypes(ctx echo.Context) error {
+func (r *APIRoute) RegisterEventTypes(ctx *echo.Context) error {
 	var eventTypes []codegen.EventType
 	if err := ctx.Bind(&eventTypes); err != nil {
 		message := err.Error()
@@ -55,7 +55,7 @@ func (r *APIRoute) RegisterEventTypes(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, codegen.ResponseOK{})
 }
 
-func (r *APIRoute) GetEventTypesBySourceID(ctx echo.Context, sourceID codegen.SourceID) error {
+func (r *APIRoute) GetEventTypesBySourceID(ctx *echo.Context, sourceID codegen.SourceID) error {
 	results, err := r.services.EventTypeService.GetEventTypesBySourceID(sourceID)
 	if err != nil {
 		message := err.Error()
@@ -65,7 +65,7 @@ func (r *APIRoute) GetEventTypesBySourceID(ctx echo.Context, sourceID codegen.So
 	return ctx.JSON(http.StatusOK, results)
 }
 
-func (r *APIRoute) GetEventType(ctx echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
+func (r *APIRoute) GetEventType(ctx *echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
 	result, err := r.services.EventTypeService.GetEventType(sourceID, name)
 	if err != nil {
 		message := err.Error()
@@ -79,7 +79,7 @@ func (r *APIRoute) GetEventType(ctx echo.Context, sourceID codegen.SourceID, nam
 	return ctx.JSON(http.StatusOK, result)
 }
 
-func (r *APIRoute) PublishEvent(ctx echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
+func (r *APIRoute) PublishEvent(ctx *echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
 	eventType, err := r.services.EventTypeService.GetEventType(sourceID, name)
 	if err != nil {
 		message := err.Error()
@@ -123,7 +123,7 @@ func (r *APIRoute) PublishEvent(ctx echo.Context, sourceID codegen.SourceID, nam
 	return ctx.JSON(http.StatusOK, out.EventAdapter(event))
 }
 
-func (r *APIRoute) SubscribeEventWS(c echo.Context, sourceID codegen.SourceID, params codegen.SubscribeEventWSParams) error {
+func (r *APIRoute) SubscribeEventWS(c *echo.Context, sourceID codegen.SourceID, params codegen.SubscribeEventWSParams) error {
 	var eventNames []string
 	if params.Names != nil {
 		for _, eventName := range *params.Names {

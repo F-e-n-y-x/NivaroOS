@@ -6,20 +6,20 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // Path: route/v2/file.go
 
-func (s *NivaroOS) GetFileTest(ctx echo.Context) error {
+func (s *NivaroOS) GetFileTest(ctx *echo.Context) error {
 
 	//http.ServeFile(w, r, r.URL.Path[1:])
-	http.ServeFile(ctx.Response().Writer, ctx.Request(), "/DATA/test.img")
+	http.ServeFile(ctx.Response(), ctx.Request(), "/DATA/test.img")
 
 	return ctx.String(200, "pong")
 }
 
-func (c *NivaroOS) CheckUploadChunk(ctx echo.Context, params codegen.CheckUploadChunkParams) error {
+func (c *NivaroOS) CheckUploadChunk(ctx *echo.Context, params codegen.CheckUploadChunkParams) error {
 	chunkNumber, err := strconv.ParseInt(ctx.QueryParam("chunkNumber"), 10, 64)
 	if err != nil {
 		return ctx.NoContent(http.StatusBadRequest)
@@ -51,7 +51,7 @@ type uploadError struct {
 	Message string `json:"message"`
 }
 
-func (c *NivaroOS) PostUploadFile(ctx echo.Context) error {
+func (c *NivaroOS) PostUploadFile(ctx *echo.Context) error {
 	num := func(k string) (int64, bool) {
 		v, err := strconv.ParseInt(ctx.FormValue(k), 10, 64)
 		return v, err == nil

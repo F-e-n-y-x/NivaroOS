@@ -5,21 +5,21 @@ import (
 
 	codegen "github.com/F-e-n-y-x/NivaroOS/services/user/codegen/user_service"
 	"github.com/F-e-n-y-x/NivaroOS/services/user/service"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (s *UserService) DeleteEvent(ctx echo.Context, params codegen.EventUuid) error {
+func (s *UserService) DeleteEvent(ctx *echo.Context, params codegen.EventUuid) error {
 	m := service.MyService.Event().GetEventByUUID(params.String())
 	service.MyService.Event().DeleteEvent(params.String())
 	return ctx.JSON(http.StatusOK, m)
 }
 
-func (s *UserService) GetEvents(ctx echo.Context, params codegen.GetEventsParams) error {
+func (s *UserService) GetEvents(ctx *echo.Context, params codegen.GetEventsParams) error {
 	list := service.MyService.Event().GetEvents()
 	return ctx.JSON(http.StatusOK, list)
 }
 
-func (s *UserService) DeleteEventBySerial(ctx echo.Context, serial codegen.Serial) error {
+func (s *UserService) DeleteEventBySerial(ctx *echo.Context, serial codegen.Serial) error {
 	service.MyService.Event().DeleteEventBySerial(serial)
 	return ctx.JSON(http.StatusOK, serial)
 }

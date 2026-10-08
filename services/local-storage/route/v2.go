@@ -8,16 +8,17 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware/oapi"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/local-storage/pkg/config"
 	v2 "github.com/F-e-n-y-x/NivaroOS/services/local-storage/route/v2"
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 var (
@@ -49,26 +50,20 @@ func InitV2Router() http.Handler {
 
 	e := echo.New()
 
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	e.Use(nivaroos_middleware.Cors())
 
 	e.Use(echo_middleware.Gzip())
 
-	e.Use(echo_middleware.Logger())
+	// Logs the path only: tokens can ride in query strings.
+	e.Use(nivaroos_middleware.RequestLogger())
 
 	e.Use(echojwt.WithConfig(echojwt.Config{
-		Skipper: func(c echo.Context) bool {
+		Skipper: func(c *echo.Context) bool {
 			// was c.RealIP() == loopback - RealIP trusts X-Forwarded-For /
 			// X-Real-IP, so any client could skip auth with one header.
 			return IsTrustedLocalRequest(c.Request())
 		},
-		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 			// claims, code := jwt.Validate(token)
 			// if code != common_err.SUCCESS {
 			// 	return nil, echo.ErrUnauthorized
@@ -83,13 +78,13 @@ func InitV2Router() http.Handler {
 			return claims, nil
 		},
 		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-			func(c echo.Context) ([]string, error) {
-				return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
+			func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
+				return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 			},
 		},
 	}))
 
-	e.Use(middleware.OapiRequestValidatorWithOptions(_swagger, &middleware.Options{Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}))
+	e.Use(oapi.RequestValidator(_swagger, oapi.Options{Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}))
 
 	codegen.RegisterHandlersWithBaseURL(e, localStorage, V2APIPath)
 

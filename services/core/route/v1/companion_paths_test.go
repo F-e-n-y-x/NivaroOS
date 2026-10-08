@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func TestCompanionSubdirStaysInsideTheDeviceFolder(t *testing.T) {
@@ -74,9 +74,8 @@ func TestCompanionUploadCannotLeaveTheDeviceFolder(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/v1/companion/devices/t1/upload?"+query, &body)
 		req.Header.Set("Content-Type", mw.FormDataContentType())
 		rec := httptest.NewRecorder()
-		c := echo.New().NewContext(req, rec)
-		c.SetParamNames("id")
-		c.SetParamValues("t1")
+		c := NewEcho().NewContext(req, rec)
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: "t1"}})
 		if err := PostCompanionDeviceUpload(c); err != nil {
 			t.Fatal(err)
 		}

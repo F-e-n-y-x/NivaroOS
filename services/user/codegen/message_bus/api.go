@@ -19,7 +19,7 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -2585,58 +2585,58 @@ func ParseDeleteYskCardResponse(rsp *http.Response) (*DeleteYskCardResponse, err
 type ServerInterface interface {
 	// Subscribe to actions by source ID (WebSocket)
 	// (GET /action/{source_id})
-	SubscribeActionWS(ctx echo.Context, sourceId SourceID, params SubscribeActionWSParams) error
+	SubscribeActionWS(ctx *echo.Context, sourceId SourceID, params SubscribeActionWSParams) error
 	// Trigger an action
 	// (POST /action/{source_id}/{name})
-	TriggerAction(ctx echo.Context, sourceId SourceID, name ActionName) error
+	TriggerAction(ctx *echo.Context, sourceId SourceID, name ActionName) error
 	// List action types
 	// (GET /action_type)
-	GetActionTypes(ctx echo.Context) error
+	GetActionTypes(ctx *echo.Context) error
 	// Register one or more action types
 	// (POST /action_type)
-	RegisterActionTypes(ctx echo.Context) error
+	RegisterActionTypes(ctx *echo.Context) error
 	// Get action types by source ID
 	// (GET /action_type/{source_id})
-	GetActionTypesBySourceID(ctx echo.Context, sourceId SourceID) error
+	GetActionTypesBySourceID(ctx *echo.Context, sourceId SourceID) error
 	// Get an action type by source ID and name
 	// (GET /action_type/{source_id}/{name})
-	GetActionType(ctx echo.Context, sourceId SourceID, name ActionName) error
+	GetActionType(ctx *echo.Context, sourceId SourceID, name ActionName) error
 	// Subscribe to events by source ID (WebSocket)
 	// (GET /event/{source_id})
-	SubscribeEventWS(ctx echo.Context, sourceId SourceID, params SubscribeEventWSParams) error
+	SubscribeEventWS(ctx *echo.Context, sourceId SourceID, params SubscribeEventWSParams) error
 	// Publish an event
 	// (POST /event/{source_id}/{name})
-	PublishEvent(ctx echo.Context, sourceId SourceID, name EventName) error
+	PublishEvent(ctx *echo.Context, sourceId SourceID, name EventName) error
 	// List event types
 	// (GET /event_type)
-	GetEventTypes(ctx echo.Context) error
+	GetEventTypes(ctx *echo.Context) error
 	// Register one or more event types
 	// (POST /event_type)
-	RegisterEventTypes(ctx echo.Context) error
+	RegisterEventTypes(ctx *echo.Context) error
 	// Get event types by source ID
 	// (GET /event_type/{source_id})
-	GetEventTypesBySourceID(ctx echo.Context, sourceId SourceID) error
+	GetEventTypesBySourceID(ctx *echo.Context, sourceId SourceID) error
 	// Get an event type by source ID and name
 	// (GET /event_type/{source_id}/{name})
-	GetEventType(ctx echo.Context, sourceId SourceID, name EventName) error
+	GetEventType(ctx *echo.Context, sourceId SourceID, name EventName) error
 	// Subscribe to events and actions (SocketIO)
 	// (GET /socket.io)
-	SubscribeSIO(ctx echo.Context) error
+	SubscribeSIO(ctx *echo.Context) error
 	// Poll events and actions (SocketIO)
 	// (POST /socket.io)
-	PollSIO(ctx echo.Context) error
+	PollSIO(ctx *echo.Context) error
 	// Subscribe to events and actions (SocketIO)
 	// (GET /socket.io/)
-	SubscribeSIO2(ctx echo.Context) error
+	SubscribeSIO2(ctx *echo.Context) error
 	// Poll events and actions (SocketIO)
 	// (POST /socket.io/)
-	PollSIO2(ctx echo.Context) error
+	PollSIO2(ctx *echo.Context) error
 
 	// (GET /ysk)
-	GetYskCard(ctx echo.Context) error
+	GetYskCard(ctx *echo.Context) error
 
 	// (DELETE /ysk/{id})
-	DeleteYskCard(ctx echo.Context, id string) error
+	DeleteYskCard(ctx *echo.Context, id string) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -2645,7 +2645,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // SubscribeActionWS converts echo context to params.
-func (w *ServerInterfaceWrapper) SubscribeActionWS(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SubscribeActionWS(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2672,7 +2672,7 @@ func (w *ServerInterfaceWrapper) SubscribeActionWS(ctx echo.Context) error {
 }
 
 // TriggerAction converts echo context to params.
-func (w *ServerInterfaceWrapper) TriggerAction(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) TriggerAction(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2698,7 +2698,7 @@ func (w *ServerInterfaceWrapper) TriggerAction(ctx echo.Context) error {
 }
 
 // GetActionTypes converts echo context to params.
-func (w *ServerInterfaceWrapper) GetActionTypes(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetActionTypes(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2709,7 +2709,7 @@ func (w *ServerInterfaceWrapper) GetActionTypes(ctx echo.Context) error {
 }
 
 // RegisterActionTypes converts echo context to params.
-func (w *ServerInterfaceWrapper) RegisterActionTypes(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) RegisterActionTypes(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2720,7 +2720,7 @@ func (w *ServerInterfaceWrapper) RegisterActionTypes(ctx echo.Context) error {
 }
 
 // GetActionTypesBySourceID converts echo context to params.
-func (w *ServerInterfaceWrapper) GetActionTypesBySourceID(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetActionTypesBySourceID(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2738,7 +2738,7 @@ func (w *ServerInterfaceWrapper) GetActionTypesBySourceID(ctx echo.Context) erro
 }
 
 // GetActionType converts echo context to params.
-func (w *ServerInterfaceWrapper) GetActionType(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetActionType(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2764,7 +2764,7 @@ func (w *ServerInterfaceWrapper) GetActionType(ctx echo.Context) error {
 }
 
 // SubscribeEventWS converts echo context to params.
-func (w *ServerInterfaceWrapper) SubscribeEventWS(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SubscribeEventWS(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2791,7 +2791,7 @@ func (w *ServerInterfaceWrapper) SubscribeEventWS(ctx echo.Context) error {
 }
 
 // PublishEvent converts echo context to params.
-func (w *ServerInterfaceWrapper) PublishEvent(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) PublishEvent(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2817,7 +2817,7 @@ func (w *ServerInterfaceWrapper) PublishEvent(ctx echo.Context) error {
 }
 
 // GetEventTypes converts echo context to params.
-func (w *ServerInterfaceWrapper) GetEventTypes(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetEventTypes(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2828,7 +2828,7 @@ func (w *ServerInterfaceWrapper) GetEventTypes(ctx echo.Context) error {
 }
 
 // RegisterEventTypes converts echo context to params.
-func (w *ServerInterfaceWrapper) RegisterEventTypes(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) RegisterEventTypes(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2839,7 +2839,7 @@ func (w *ServerInterfaceWrapper) RegisterEventTypes(ctx echo.Context) error {
 }
 
 // GetEventTypesBySourceID converts echo context to params.
-func (w *ServerInterfaceWrapper) GetEventTypesBySourceID(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetEventTypesBySourceID(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2857,7 +2857,7 @@ func (w *ServerInterfaceWrapper) GetEventTypesBySourceID(ctx echo.Context) error
 }
 
 // GetEventType converts echo context to params.
-func (w *ServerInterfaceWrapper) GetEventType(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetEventType(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "source_id" -------------
 	var sourceId SourceID
@@ -2883,7 +2883,7 @@ func (w *ServerInterfaceWrapper) GetEventType(ctx echo.Context) error {
 }
 
 // SubscribeSIO converts echo context to params.
-func (w *ServerInterfaceWrapper) SubscribeSIO(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SubscribeSIO(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2894,7 +2894,7 @@ func (w *ServerInterfaceWrapper) SubscribeSIO(ctx echo.Context) error {
 }
 
 // PollSIO converts echo context to params.
-func (w *ServerInterfaceWrapper) PollSIO(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) PollSIO(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2905,7 +2905,7 @@ func (w *ServerInterfaceWrapper) PollSIO(ctx echo.Context) error {
 }
 
 // SubscribeSIO2 converts echo context to params.
-func (w *ServerInterfaceWrapper) SubscribeSIO2(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SubscribeSIO2(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2916,7 +2916,7 @@ func (w *ServerInterfaceWrapper) SubscribeSIO2(ctx echo.Context) error {
 }
 
 // PollSIO2 converts echo context to params.
-func (w *ServerInterfaceWrapper) PollSIO2(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) PollSIO2(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2927,7 +2927,7 @@ func (w *ServerInterfaceWrapper) PollSIO2(ctx echo.Context) error {
 }
 
 // GetYskCard converts echo context to params.
-func (w *ServerInterfaceWrapper) GetYskCard(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetYskCard(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -2938,7 +2938,7 @@ func (w *ServerInterfaceWrapper) GetYskCard(ctx echo.Context) error {
 }
 
 // DeleteYskCard converts echo context to params.
-func (w *ServerInterfaceWrapper) DeleteYskCard(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) DeleteYskCard(ctx *echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id string
@@ -2959,15 +2959,15 @@ func (w *ServerInterfaceWrapper) DeleteYskCard(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlers adds each server route to the EchoRouter.

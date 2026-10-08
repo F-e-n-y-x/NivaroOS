@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // companionReqAs runs handler as user uid in login session sid.
@@ -21,11 +21,10 @@ func companionReqAs(t *testing.T, h echo.HandlerFunc, method, target string, uid
 	req := httptest.NewRequest(method, target, bytes.NewReader(b))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(req, rec)
+	c := NewEcho().NewContext(req, rec)
 	c.Set("user", &jwt.Claims{ID: uid, Username: "u", SessionID: sid})
 	if id != "" {
-		c.SetParamNames("id")
-		c.SetParamValues(id)
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: id}})
 	}
 	if err := h(c); err != nil {
 		t.Fatal(err)

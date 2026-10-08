@@ -7,7 +7,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 var upGrader = websocket.Upgrader{
@@ -22,9 +22,9 @@ var upGrader = websocket.Upgrader{
 // @Param token path string true "token"
 // @Success 200 {string} string "ok"
 // @Router /notify/ws [get]
-func NotifyWS(ctx echo.Context) error {
+func NotifyWS(ctx *echo.Context) error {
 	// 升级get请求为webSocket协议
-	ws, err := upGrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
+	ws, err := upGrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		return nil
 	}
@@ -48,7 +48,7 @@ func NotifyWS(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /notify/read/{id} [put]
-func PutNotifyRead(ctx echo.Context) error {
+func PutNotifyRead(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	// if len(id) == 0 {
 	// 	return ctx.JSON(http.StatusOK, model.Result{Success: oasis_err.INVALID_PARAMS, Message: oasis_err.GetMsg(oasis_err.INVALID_PARAMS)})

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // "Free up memory" (POST /v1/sys/memory/clear): flushes dirty pages, asks
@@ -341,7 +341,7 @@ var sysMemClearer = &memClearer{env: realMemClearEnv(), interval: 30 * time.Seco
 // a role claim is an admin; once a role/roles claim exists it must say
 // admin/administrator/owner. Same-host automation that the JWT
 // middleware let through without a token is root on this host already.
-func requestIsAdmin(ctx echo.Context) bool {
+func requestIsAdmin(ctx *echo.Context) bool {
 	token := ctx.Request().Header.Get(echo.HeaderAuthorization)
 	if token == "" {
 		token = ctx.QueryParam("token")
@@ -399,13 +399,13 @@ func tokenClaimsAdmin(token string) bool {
 	return !checked
 }
 
-func memClearFail(ctx echo.Context, status int, msg string, data interface{}) error {
+func memClearFail(ctx *echo.Context, status int, msg string, data interface{}) error {
 	return ctx.JSON(status, modelCommon.Result{Success: status, Message: msg, Data: data})
 }
 
 // PostSystemMemoryClear frees the server's RAM now.
 // Body (all optional): {"level": 1|3, "compact": true, "swap": false}.
-func PostSystemMemoryClear(ctx echo.Context) error {
+func PostSystemMemoryClear(ctx *echo.Context) error {
 	if !requestIsAdmin(ctx) {
 		return memClearFail(ctx, http.StatusForbidden, "Freeing memory needs an administrator account", nil)
 	}

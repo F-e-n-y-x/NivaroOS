@@ -8,7 +8,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	sshHelper "github.com/F-e-n-y-x/NivaroOS/services/common/utils/ssh"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
@@ -30,7 +30,7 @@ var upgrader = websocket.Upgrader{
 	HandshakeTimeout: time.Duration(time.Second * 5),
 }
 
-func PostSshLogin(ctx echo.Context) error {
+func PostSshLogin(ctx *echo.Context) error {
 	j := make(map[string]string)
 	ctx.Bind(&j)
 	userName := j["username"]

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // LocalAutomationHeader is set by the gateway (and only the gateway - it
@@ -140,8 +140,8 @@ func MatchRoute(pattern, path string) bool {
 // IsLocalAutomation requests, and never for any route matching one of
 // neverSkip (echo route patterns - e.g. interactive terminals, which must
 // always carry a real user token even from loopback).
-func LocalAutomationSkipper(neverSkip ...string) func(echo.Context) bool {
-	return func(c echo.Context) bool {
+func LocalAutomationSkipper(neverSkip ...string) func(*echo.Context) bool {
+	return func(c *echo.Context) bool {
 		r := c.Request()
 		path := r.URL.Path
 		for _, p := range neverSkip {

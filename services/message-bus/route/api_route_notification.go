@@ -9,7 +9,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/model"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
@@ -23,18 +23,18 @@ const (
 // its access token (the JWT middleware stores the parsed claims under
 // "user"). Same-host automation skips the JWT and gets user 0, a viewer of
 // its own. Never a header: a skipped request could set any header.
-func notificationUserID(ctx echo.Context) int {
+func notificationUserID(ctx *echo.Context) int {
 	if claims, ok := ctx.Get("user").(*jwt.Claims); ok && claims != nil {
 		return claims.ID
 	}
 	return 0
 }
 
-func (r *APIRoute) notificationsUnavailable(ctx echo.Context) error {
+func (r *APIRoute) notificationsUnavailable(ctx *echo.Context) error {
 	return ctx.JSON(http.StatusServiceUnavailable, codegen.BaseResponse{Message: utils.Ptr("the notification feed is not available")})
 }
 
-func (r *APIRoute) GetNotifications(ctx echo.Context, params codegen.GetNotificationsParams) error {
+func (r *APIRoute) GetNotifications(ctx *echo.Context, params codegen.GetNotificationsParams) error {
 	feed := r.services.NotificationService
 	if feed == nil {
 		return r.notificationsUnavailable(ctx)
@@ -106,7 +106,7 @@ func notificationOut(item model.NotificationView) codegen.Notification {
 
 // notificationSelection reads a read/dismiss body: ids, or all (+ up_to).
 // problem is non-empty when the body is unusable.
-func notificationSelection(ctx echo.Context) (ids []int64, all bool, upTo int64, problem string) {
+func notificationSelection(ctx *echo.Context) (ids []int64, all bool, upTo int64, problem string) {
 	var body codegen.NotificationSelection
 	if err := ctx.Bind(&body); err != nil {
 		return nil, false, 0, "invalid body"
@@ -132,15 +132,15 @@ func notificationSelection(ctx echo.Context) (ids []int64, all bool, upTo int64,
 	return ids, all, upTo, ""
 }
 
-func (r *APIRoute) MarkNotificationsRead(ctx echo.Context) error {
+func (r *APIRoute) MarkNotificationsRead(ctx *echo.Context) error {
 	return r.changeNotifications(ctx, "read")
 }
 
-func (r *APIRoute) DismissNotifications(ctx echo.Context) error {
+func (r *APIRoute) DismissNotifications(ctx *echo.Context) error {
 	return r.changeNotifications(ctx, "dismiss")
 }
 
-func (r *APIRoute) changeNotifications(ctx echo.Context, change string) error {
+func (r *APIRoute) changeNotifications(ctx *echo.Context, change string) error {
 	feed := r.services.NotificationService
 	if feed == nil {
 		return r.notificationsUnavailable(ctx)

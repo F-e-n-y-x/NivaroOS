@@ -6,14 +6,14 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type smbUserInfo struct {
 	Username string `json:"username"`
 }
 
-func GetSmbUsers(ctx echo.Context) error {
+func GetSmbUsers(ctx *echo.Context) error {
 	out, err := exec.Command("pdbedit", "-L").Output()
 	if err != nil {
 		// No SMB users yet (pdbedit exits non-zero on an empty database) -
@@ -51,7 +51,7 @@ type smbUserReq struct {
 	Password string `json:"password"`
 }
 
-func PostSmbUser(ctx echo.Context) error {
+func PostSmbUser(ctx *echo.Context) error {
 	req := new(smbUserReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid body")
@@ -68,7 +68,7 @@ func PostSmbUser(ctx echo.Context) error {
 	return ok(ctx, "created")
 }
 
-func PutSmbUserPassword(ctx echo.Context) error {
+func PutSmbUserPassword(ctx *echo.Context) error {
 	username := ctx.Param("username")
 	if !validUsername.MatchString(username) {
 		return badParams(ctx, "invalid username")
@@ -83,7 +83,7 @@ func PutSmbUserPassword(ctx echo.Context) error {
 	return ok(ctx, "updated")
 }
 
-func DeleteSmbUser(ctx echo.Context) error {
+func DeleteSmbUser(ctx *echo.Context) error {
 	username := ctx.Param("username")
 	if !validUsername.MatchString(username) {
 		return badParams(ctx, "invalid username")

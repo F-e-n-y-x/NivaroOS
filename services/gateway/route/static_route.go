@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 type StaticRoute struct {
@@ -96,7 +96,7 @@ func (s *StaticRoute) GetRoute() http.Handler {
 
 	// Prevent browser from permanently caching index.html so changes are immediately visible
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			path := c.Request().URL.Path
 			if path == "" || path == "/" || path == "/index.html" || strings.HasSuffix(path, ".html") {
 				c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")

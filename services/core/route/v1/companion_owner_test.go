@@ -16,7 +16,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // useTempCompanionState points every companion file (device list, secrets,
@@ -67,13 +67,12 @@ func companionReq(t *testing.T, h echo.HandlerFunc, method, target string, uid i
 	req := httptest.NewRequest(method, target, rd)
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(req, rec)
+	c := NewEcho().NewContext(req, rec)
 	if uid != 0 {
 		c.Set("user", &jwt.Claims{ID: uid, Username: "u"})
 	}
 	if id != "" {
-		c.SetParamNames("id")
-		c.SetParamValues(id)
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: id}})
 	}
 	if err := h(c); err != nil {
 		t.Fatal(err)
@@ -97,7 +96,7 @@ func registerWithSecret(t *testing.T, uid int, secret string, dto CompanionRegis
 		req.Header.Set("X-Companion-Secret", secret)
 	}
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(req, rec)
+	c := NewEcho().NewContext(req, rec)
 	if uid != 0 {
 		c.Set("user", &jwt.Claims{ID: uid})
 	}
@@ -297,10 +296,9 @@ func TestCompanionDevicesAreScopedToTheirOwner(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/", &body)
 			req.Header.Set("Content-Type", mw.FormDataContentType())
 			rec := httptest.NewRecorder()
-			c := echo.New().NewContext(req, rec)
+			c := NewEcho().NewContext(req, rec)
 			c.Set("user", &jwt.Claims{ID: 2})
-			c.SetParamNames("id")
-			c.SetParamValues("alice_phone")
+			c.SetPathValues(echo.PathValues{{Name: "id", Value: "alice_phone"}})
 			if err := PostCompanionDeviceUpload(c); err != nil {
 				t.Fatal(err)
 			}
@@ -502,7 +500,7 @@ func TestRegisterMintsTheSecret(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/companion/register", bytes.NewReader(b))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	req.Header.Set("X-Companion-Secret", "chosen")
-	c := echo.New().NewContext(req, httptest.NewRecorder())
+	c := NewEcho().NewContext(req, httptest.NewRecorder())
 	c.Set("user", &jwt.Claims{ID: 1})
 	if err := PostRegisterCompanionDevice(c); err != nil {
 		t.Fatal(err)
@@ -590,9 +588,9 @@ func TestCompanionTunnelList(t *testing.T) {
 	companionDevices["q"] = &CompanionDevice{ID: "q", Name: "Q", OwnerUserID: "1"}
 	companionMu.Unlock()
 
-	e := echo.New()
+	e := NewEcho()
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			c.Set("user", &jwt.Claims{ID: 1})
 			return next(c)
 		}
@@ -652,9 +650,9 @@ func TestCompanionTunnelList(t *testing.T) {
 
 	// Another user can't open (or replace) the tunnel.
 	h := http.Header{}
-	e2 := echo.New()
+	e2 := NewEcho()
 	e2.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			c.Set("user", &jwt.Claims{ID: 2})
 			return next(c)
 		}

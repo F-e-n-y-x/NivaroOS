@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/termsession"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
@@ -130,7 +130,7 @@ func resolveTerminalUser() (*user.User, string, error) {
 // (listed with legacy=true) and attaches to it over the wsterm protocol
 // (services/common/utils/wsterm) without server control frames. Initial
 // size from ?cols=&rows=. New clients use /v1/sys/terminal-sessions.
-func WsLocalTerm(ctx echo.Context) error {
+func WsLocalTerm(ctx *echo.Context) error {
 	cols, rows := wsterm.ParseSize(ctx.QueryParam("cols"), ctx.QueryParam("rows"), 120, 32)
 	return HostTerminalAPI().ServeLegacy(ctx, termsession.CreateRequest{Cols: int(cols), Rows: int(rows)})
 }

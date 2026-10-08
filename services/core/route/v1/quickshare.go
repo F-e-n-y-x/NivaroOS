@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/h2non/filetype"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
@@ -48,7 +48,7 @@ type quickShareItem struct {
 	IsDir        bool   `json:"is_dir"`
 }
 
-func newQuickShareItem(ctx echo.Context, s model2.QuickShareDBModel) quickShareItem {
+func newQuickShareItem(ctx *echo.Context, s model2.QuickShareDBModel) quickShareItem {
 	fi, err := os.Stat(s.Path)
 	return quickShareItem{
 		ID:           s.ID,
@@ -64,7 +64,7 @@ func newQuickShareItem(ctx echo.Context, s model2.QuickShareDBModel) quickShareI
 	}
 }
 
-func quickShareURL(ctx echo.Context, id string) string {
+func quickShareURL(ctx *echo.Context, id string) string {
 	scheme := "http"
 	if ctx.Request().TLS != nil || ctx.Request().Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
@@ -83,7 +83,7 @@ func quickShareURL(ctx echo.Context, id string) string {
 // @Param password body string false "asked before the download when set"
 // @Success 200 {string} string "ok"
 // @Router /quickshare [post]
-func PostCreateQuickShare(ctx echo.Context) error {
+func PostCreateQuickShare(ctx *echo.Context) error {
 	req := struct {
 		Path         string `json:"path"`
 		Expiry       string `json:"expiry"`
@@ -131,7 +131,7 @@ func PostCreateQuickShare(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /quickshare [get]
-func GetQuickSharesList(ctx echo.Context) error {
+func GetQuickSharesList(ctx *echo.Context) error {
 	service.MyService.QuickShares().PurgeExpiredQuickShares()
 	shares := service.MyService.QuickShares().GetQuickSharesList()
 	list := make([]quickShareItem, 0, len(shares))
@@ -148,7 +148,7 @@ func GetQuickSharesList(ctx echo.Context) error {
 // @Param id path string true "share id"
 // @Success 200 {string} string "ok"
 // @Router /quickshare/{id} [delete]
-func DeleteQuickShare(ctx echo.Context) error {
+func DeleteQuickShare(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if len(id) == 0 {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{
@@ -170,7 +170,7 @@ func DeleteQuickShare(ctx echo.Context) error {
 // whose Download button POSTs (PostQuickShareRedeem): chat apps fetch
 // every link they see for a preview, and that must neither use up a
 // one-time link nor try a password.
-func GetQuickShareRedeem(ctx echo.Context) error {
+func GetQuickShareRedeem(ctx *echo.Context) error {
 	share, ok := liveQuickShare(ctx)
 	if !ok {
 		return nil
@@ -183,7 +183,7 @@ func GetQuickShareRedeem(ctx echo.Context) error {
 
 // PostQuickShareRedeem is the landing page's Download button: checks the
 // password, counts the download, then serves it.
-func PostQuickShareRedeem(ctx echo.Context) error {
+func PostQuickShareRedeem(ctx *echo.Context) error {
 	share, ok := liveQuickShare(ctx)
 	if !ok {
 		return nil
@@ -204,7 +204,7 @@ func PostQuickShareRedeem(ctx echo.Context) error {
 
 // liveQuickShare finds :id; false when it is gone, expired or its file is,
 // and the 404/410 has been sent.
-func liveQuickShare(ctx echo.Context) (model2.QuickShareDBModel, bool) {
+func liveQuickShare(ctx *echo.Context) (model2.QuickShareDBModel, bool) {
 	fail := func(status, code int) (model2.QuickShareDBModel, bool) {
 		_ = ctx.JSON(status, model.Result{Success: code, Message: common_err.GetMsg(code)})
 		return model2.QuickShareDBModel{}, false
@@ -238,7 +238,7 @@ button{background:#18181b;color:#fff;border:0;cursor:pointer}
 <form method="post">{{if .Password}}<input type="password" name="password" placeholder="Password" autocomplete="off" required autofocus>{{end}}<button type="submit">Download</button></form>
 </main></body></html>`))
 
-func quickSharePage(ctx echo.Context, status int, share model2.QuickShareDBModel, errText string) error {
+func quickSharePage(ctx *echo.Context, status int, share model2.QuickShareDBModel, errText string) error {
 	name := share.Name
 	if fi, err := os.Stat(share.Path); err == nil && fi.IsDir() {
 		name += ".zip"
@@ -249,7 +249,7 @@ func quickSharePage(ctx echo.Context, status int, share model2.QuickShareDBModel
 	h.Set("X-Robots-Tag", "noindex")
 	h.Set("Referrer-Policy", "no-referrer")
 	ctx.Response().WriteHeader(status)
-	return quickSharePageTmpl.Execute(ctx.Response().Writer, map[string]interface{}{
+	return quickSharePageTmpl.Execute(ctx.Response(), map[string]interface{}{
 		"Name":     name,
 		"OneTime":  share.MaxDownloads == 1,
 		"Password": share.PasswordHash != "",
@@ -258,7 +258,7 @@ func quickSharePage(ctx echo.Context, status int, share model2.QuickShareDBModel
 }
 
 // serveQuickShare sends the shared file, or a folder as a ZIP stream.
-func serveQuickShare(ctx echo.Context, share model2.QuickShareDBModel) error {
+func serveQuickShare(ctx *echo.Context, share model2.QuickShareDBModel) error {
 	notFound := func() error {
 		return ctx.JSON(http.StatusNotFound, model.Result{
 			Success: common_err.FILE_DOES_NOT_EXIST,
@@ -275,7 +275,7 @@ func serveQuickShare(ctx echo.Context, share model2.QuickShareDBModel) error {
 		h.Set("Content-Type", "application/zip")
 		h.Set("Cache-Control", "no-store")
 		h.Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(path.Base(share.Path)+".zip"))
-		if err := ar.Create(ctx.Response().Writer); err != nil {
+		if err := ar.Create(ctx.Response()); err != nil {
 			return err
 		}
 		defer ar.Close()
@@ -297,6 +297,6 @@ func serveQuickShare(ctx echo.Context, share model2.QuickShareDBModel) error {
 	}
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(fileName))
 
-	http.ServeContent(ctx.Response().Writer, ctx.Request(), fileName, node.ModTime(), fi)
+	http.ServeContent(ctx.Response(), ctx.Request(), fileName, node.ModTime(), fi)
 	return nil
 }

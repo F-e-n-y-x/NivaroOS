@@ -6,11 +6,11 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/model"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gopkg.in/yaml.v3"
 )
 
-func (a *AppManagement) Convert(ctx echo.Context, params codegen.ConvertParams) error {
+func (a *AppManagement) Convert(ctx *echo.Context, params codegen.ConvertParams) error {
 	fileType := codegen.Appfile
 	if params.Type != nil {
 		fileType = *params.Type

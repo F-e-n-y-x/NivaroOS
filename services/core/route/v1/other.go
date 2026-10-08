@@ -6,10 +6,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func GetSearchResult(ctx echo.Context) error {
+func GetSearchResult(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	url := json["url"]

@@ -6,10 +6,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/docker"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func (a *AppManagement) Info(ctx echo.Context) error {
+func (a *AppManagement) Info(ctx *echo.Context) error {
 	architecture, err := docker.CurrentArchitecture()
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, codegen.ResponseInternalServerError{

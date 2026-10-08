@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -57,7 +57,7 @@ func terminalConfigKey(key string) string {
 	return sec.Key(key).String()
 }
 
-func startHostTerminal(_ echo.Context, _ termsession.CreateRequest) (termsession.Spec, func(cols, rows uint16) (termsession.Process, error), error) {
+func startHostTerminal(_ *echo.Context, _ termsession.CreateRequest) (termsession.Spec, func(cols, rows uint16) (termsession.Process, error), error) {
 	u, reason, err := resolveTerminalUser()
 	if err != nil {
 		return termsession.Spec{}, nil, errors.New("local terminal user not found: " + err.Error())

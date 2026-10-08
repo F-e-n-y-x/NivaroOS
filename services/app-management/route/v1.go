@@ -10,9 +10,9 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 const (
@@ -22,14 +22,7 @@ const (
 
 func InitV1Router() http.Handler {
 	e := echo.New()
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	e.Use(nivaroos_middleware.Cors())
 
 	e.Use(echo_middleware.Gzip())
 	e.Use(echo_middleware.Recover())
@@ -43,7 +36,7 @@ func InitV1Router() http.Handler {
 		// proxy/browser headers - common/middleware.IsLocalAutomation);
 		// c.RealIP() trusted spoofable X-Forwarded-For/X-Real-IP.
 		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/container/:id/terminal", v1.ContainerTerminalBase+"/*"),
-		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
 				return nil, echo.ErrUnauthorized
@@ -54,11 +47,11 @@ func InitV1Router() http.Handler {
 			return claims, nil
 		},
 		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-			func(c echo.Context) ([]string, error) {
+			func(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 				if len(c.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-					return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, nil
+					return []string{c.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 				}
-				return []string{c.QueryParam("token")}, nil
+				return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 			},
 		},
 	}))

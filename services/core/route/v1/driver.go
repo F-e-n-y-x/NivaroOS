@@ -6,10 +6,10 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/google_drive"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/drivers/onedrive"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func ListDriverInfo(ctx echo.Context) error {
+func ListDriverInfo(ctx *echo.Context) error {
 	list := []model.Drive{}
 
 	google := google_drive.GetConfig()

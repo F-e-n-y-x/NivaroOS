@@ -16,7 +16,7 @@ import (
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/aptjob"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type PkgUpdateInfo struct {
@@ -74,7 +74,7 @@ func getUpgradablePackages() ([]PkgUpdateInfo, error) {
 }
 
 // GetSystemPackageUpdates returns current list of upgradable apt packages
-func GetSystemPackageUpdates(ctx echo.Context) error {
+func GetSystemPackageUpdates(ctx *echo.Context) error {
 	pkgs, err := getUpgradablePackages()
 	if err != nil {
 		return serviceError(ctx, fmt.Errorf("failed to list upgradable packages: %w", err))
@@ -103,7 +103,7 @@ func GetSystemPackageUpdates(ctx echo.Context) error {
 // list. A failed update (offline, broken repo) is reported, not turned into
 // "everything is up to date". Bounded so the request answers before the
 // UI's 60 s limit; an interrupted `apt-get update` is harmless.
-func PostRefreshPackageUpdates(ctx echo.Context) error {
+func PostRefreshPackageUpdates(ctx *echo.Context) error {
 	if j := service.AptJobs.Status(); j.State == aptjob.StateRunning {
 		return ctx.JSON(http.StatusConflict, modelCommon.Result{Success: http.StatusConflict, Message: aptjob.ErrBusy.Error()})
 	}
@@ -144,7 +144,7 @@ func PostRefreshPackageUpdates(ctx echo.Context) error {
 
 // PostSystemPackageUpgrade starts the dist-upgrade job (the same job
 // Package Manager's "Upgrade all" runs).
-func PostSystemPackageUpgrade(ctx echo.Context) error {
+func PostSystemPackageUpgrade(ctx *echo.Context) error {
 	j, err := service.AptJobs.UpgradeAll()
 	if errors.Is(err, aptjob.ErrBusy) {
 		return badParams(ctx, "a package operation is already running")
@@ -157,7 +157,7 @@ func PostSystemPackageUpgrade(ctx echo.Context) error {
 
 // GetSystemPackageUpgradeStatus reports the latest package job in the shape
 // the updater window reads.
-func GetSystemPackageUpgradeStatus(ctx echo.Context) error {
+func GetSystemPackageUpgradeStatus(ctx *echo.Context) error {
 	j := service.AptJobs.Status()
 	res := map[string]interface{}{
 		"running":     j.State == aptjob.StateRunning,

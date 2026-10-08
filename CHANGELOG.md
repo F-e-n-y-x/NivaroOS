@@ -83,6 +83,11 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Security
 
+- Server: the Go services' HTTP framework moved from Echo v4 (security
+  fixes end 2026-12-31) to Echo v5.4. Routes, status codes, error bodies,
+  sign-in/token checks, CORS and the web UI files behave as before.
+  local-storage's request log now leaves out query strings like the
+  other services' (tokens can ride in them).
 - Web UI dependency advisories cut from 134 to 6 (`pnpm audit --prod`;
   the critical and 42 of 44 highs gone). The app tips editor no longer
   uses `@kangc/v-md-editor`, which bundled mermaid 8 and DOMPurify 2.3:

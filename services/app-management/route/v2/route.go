@@ -2,7 +2,7 @@ package v2
 
 import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/codegen"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type AppManagement struct{}
@@ -11,7 +11,7 @@ func NewAppManagement() codegen.ServerInterface {
 	return &AppManagement{}
 }
 
-func PropertiesFromQueryParams(httpCtx echo.Context) map[string]string {
+func PropertiesFromQueryParams(httpCtx *echo.Context) map[string]string {
 	properties := make(map[string]string)
 
 	for k, values := range httpCtx.QueryParams() {
@@ -23,7 +23,7 @@ func PropertiesFromQueryParams(httpCtx echo.Context) map[string]string {
 	return properties
 }
 
-func DefaultQuery(ctx echo.Context, key string, defaultValue string) string {
+func DefaultQuery(ctx *echo.Context, key string, defaultValue string) string {
 	if value := ctx.QueryParam(key); value != "" {
 		return value
 	}

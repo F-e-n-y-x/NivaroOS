@@ -16,7 +16,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/glebarez/sqlite"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +44,7 @@ func quickShareServer(t *testing.T) *echo.Echo {
 			sqlDB.Close()
 		}
 	})
-	e := echo.New()
+	e := NewEcho()
 	e.GET("/v1/qs/:id", GetQuickShareRedeem)
 	e.POST("/v1/qs/:id", PostQuickShareRedeem)
 	e.POST("/v1/quickshare", PostCreateQuickShare)

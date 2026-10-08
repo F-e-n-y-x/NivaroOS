@@ -22,7 +22,7 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func TestCompanionAddressKinds(t *testing.T) {
@@ -428,9 +428,9 @@ func (r *streamingRecorder) Write(p []byte) (int, error) {
 
 func startTunnelServer(t *testing.T) string {
 	t.Helper()
-	e := echo.New()
+	e := NewEcho()
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			c.Set("user", &jwt.Claims{ID: 1})
 			return next(c)
 		}

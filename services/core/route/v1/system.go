@@ -30,7 +30,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	model2 "github.com/F-e-n-y-x/NivaroOS/services/core/service/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/types"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/tidwall/gjson"
 )
 
@@ -41,7 +41,7 @@ import (
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/version/check [get]
-func GetSystemCheckVersion(ctx echo.Context) error {
+func GetSystemCheckVersion(ctx *echo.Context) error {
 	need, version := version.IsNeedUpdate(service.MyService.Casa().GetNivaroOSVersion())
 	if need {
 		installLog := model2.AppNotify{}
@@ -67,7 +67,7 @@ func GetSystemCheckVersion(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/update [post]
-func SystemUpdate(ctx echo.Context) error {
+func SystemUpdate(ctx *echo.Context) error {
 	need, version := version.IsNeedUpdate(service.MyService.Casa().GetNivaroOSVersion())
 	if !need {
 		// Nothing to install (or no update source configured) - this used
@@ -85,13 +85,13 @@ func SystemUpdate(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/error/logs [get]
-func GetNivaroOSErrorLogs(ctx echo.Context) error {
+func GetNivaroOSErrorLogs(ctx *echo.Context) error {
 	line, _ := strconv.Atoi(utils.DefaultQuery(ctx, "line", "100"))
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: service.MyService.System().GetNivaroOSLogs(line)})
 }
 
 // 系统配置
-func GetSystemConfigDebug(ctx echo.Context) error {
+func GetSystemConfigDebug(ctx *echo.Context) error {
 	array := service.MyService.System().GetSystemConfigDebug()
 	disk := service.MyService.System().GetDiskInfo()
 	sys := service.MyService.System().GetSysInfo()
@@ -119,7 +119,7 @@ func GetSystemConfigDebug(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/port [get]
-func GetNivaroOSPort(ctx echo.Context) error {
+func GetNivaroOSPort(ctx *echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS,
 		model.Result{
 			Success: common_err.SUCCESS,
@@ -136,7 +136,7 @@ func GetNivaroOSPort(ctx echo.Context) error {
 // @Param port json string true "port"
 // @Success 200 {string} string "ok"
 // @Router /sys/port [put]
-func PutNivaroOSPort(ctx echo.Context) error {
+func PutNivaroOSPort(ctx *echo.Context) error {
 	json := make(map[string]string)
 	ctx.Bind(&json)
 	portStr := json["port"]
@@ -172,7 +172,7 @@ func PutNivaroOSPort(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/restart [post]
-func PostKillNivaroOS(ctx echo.Context) error {
+func PostKillNivaroOS(ctx *echo.Context) error {
 	os.Exit(0)
 	return nil
 }
@@ -202,7 +202,7 @@ var validHostname = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-
 // renamed from a terminal) - RFC 1123 label rules enforced client-side
 // isn't enough, since the request could come from anywhere the JWT
 // middleware allows, so it's re-validated here too.
-func PutSystemHostname(ctx echo.Context) error {
+func PutSystemHostname(ctx *echo.Context) error {
 	var body struct {
 		Hostname string `json:"hostname"`
 	}
@@ -244,7 +244,7 @@ func isVirtualInterface(name string) bool {
 // virtual bridges a Docker-heavy box accumulates - GetSystemNetInfo's
 // per-interface IO counters have no IP address at all, which is what a
 // "what network am I actually on" view needs.
-func GetSystemNetworkInterfaces(ctx echo.Context) error {
+func GetSystemNetworkInterfaces(ctx *echo.Context) error {
 	out, err := exec.Command("sh", "-c", "ip -o -4 addr show scope global 2>/dev/null").Output()
 	interfaces := []networkInterfaceEntry{}
 	if err == nil {
@@ -679,7 +679,7 @@ func collectDisksUsage() []diskUsageEntry {
 // GetSystemDisksUsage lists mounted data filesystems (loop/snap/squashfs,
 // container layers and pseudo filesystems filtered out) with bytes, a
 // consistent used/size percentage and the device's media kind.
-func GetSystemDisksUsage(ctx echo.Context) error {
+func GetSystemDisksUsage(ctx *echo.Context) error {
 	disks := collectDisksUsage()
 
 	// Fallback to df when the mount table could not be read at all.
@@ -718,7 +718,7 @@ func GetSystemDisksUsage(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: disks})
 }
 
-func GetSystemHardwareInfo(ctx echo.Context) error {
+func GetSystemHardwareInfo(ctx *echo.Context) error {
 	data := make(map[string]string, 1)
 	data["drive_model"] = service.MyService.System().GetDeviceTree()
 	data["arch"] = runtime.GOARCH
@@ -753,7 +753,7 @@ func GetSystemHardwareInfo(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/utilization [get]
-func GetSystemUtilization(ctx echo.Context) error {
+func GetSystemUtilization(ctx *echo.Context) error {
 	data := make(map[string]interface{})
 	cpu := service.MyService.System().GetCpuPercent()
 	num := service.MyService.System().GetCpuCoreNum()
@@ -816,7 +816,7 @@ func GetSystemUtilization(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/cpu [get]
-func GetSystemCupInfo(ctx echo.Context) error {
+func GetSystemCupInfo(ctx *echo.Context) error {
 	cpu := service.MyService.System().GetCpuPercent()
 	num := service.MyService.System().GetCpuCoreNum()
 	data := make(map[string]interface{})
@@ -832,7 +832,7 @@ func GetSystemCupInfo(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/mem [get]
-func GetSystemMemInfo(ctx echo.Context) error {
+func GetSystemMemInfo(ctx *echo.Context) error {
 	mem := service.MyService.System().GetMemInfo()
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: mem})
 }
@@ -844,7 +844,7 @@ func GetSystemMemInfo(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/disk [get]
-func GetSystemDiskInfo(ctx echo.Context) error {
+func GetSystemDiskInfo(ctx *echo.Context) error {
 	disk := service.MyService.System().GetDiskInfo()
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: disk})
 }
@@ -856,7 +856,7 @@ func GetSystemDiskInfo(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/net [get]
-func GetSystemNetInfo(ctx echo.Context) error {
+func GetSystemNetInfo(ctx *echo.Context) error {
 	netList := service.MyService.System().GetNetInfo()
 	newNet := []model.IOCountersStat{}
 	for _, n := range netList {
@@ -874,7 +874,7 @@ func GetSystemNetInfo(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: newNet})
 }
 
-func GetSystemProxy(ctx echo.Context) error {
+func GetSystemProxy(ctx *echo.Context) error {
 	url := ctx.QueryParam("url")
 	resp, err := http2.Get(url, 30*time.Second)
 	if err != nil {
@@ -887,13 +887,13 @@ func GetSystemProxy(ctx echo.Context) error {
 	rda, _ := ioutil.ReadAll(resp.Body)
 	//	json.NewEncoder(c.Writer).Encode(json.RawMessage(string(rda)))
 	// 响应状态码
-	ctx.Response().Writer.WriteHeader(resp.StatusCode)
+	ctx.Response().WriteHeader(resp.StatusCode)
 	// 复制转发的响应Body到响应Body
-	io.Copy(ctx.Response().Writer, ioutil.NopCloser(bytes.NewBuffer(rda)))
+	io.Copy(ctx.Response(), ioutil.NopCloser(bytes.NewBuffer(rda)))
 	return nil
 }
 
-func PutSystemState(ctx echo.Context) error {
+func PutSystemState(ctx *echo.Context) error {
 	state := ctx.Param("state")
 	if strings.ToLower(state) == "off" {
 		service.MyService.System().SystemShutdown()
@@ -911,7 +911,7 @@ func PutSystemState(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/getport [get]
-func GetPort(ctx echo.Context) error {
+func GetPort(ctx *echo.Context) error {
 	t := utils.DefaultQuery(ctx, "type", "tcp")
 	var p int
 	ok := true
@@ -932,13 +932,13 @@ func GetPort(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /app/check/{port} [get]
-func PortCheck(ctx echo.Context) error {
+func PortCheck(ctx *echo.Context) error {
 	p, _ := strconv.Atoi(ctx.Param("port"))
 	t := utils.DefaultQuery(ctx, "type", "tcp")
 	return ctx.JSON(common_err.SUCCESS, &model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: port.IsPortAvailable(p, t)})
 }
 
-func GetSystemEntry(ctx echo.Context) error {
+func GetSystemEntry(ctx *echo.Context) error {
 	entry := service.MyService.System().GetSystemEntry()
 	str := json.RawMessage(entry)
 	if !gjson.ValidBytes(str) {
@@ -954,7 +954,7 @@ func GetSystemEntry(ctx echo.Context) error {
 // @Security ApiKeyAuth
 // @Success 200 {string} string "ok"
 // @Router /sys/speedtest [get]
-func GetSystemSpeedTest(ctx echo.Context) error {
+func GetSystemSpeedTest(ctx *echo.Context) error {
 	res, err := runSpeedTest(ctx.Request().Context())
 	if err != nil {
 		return ctx.JSON(http.StatusOK, &model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
@@ -967,7 +967,7 @@ func GetSystemSpeedTest(ctx echo.Context) error {
 }
 
 // POST /sys/speedtest - start the internet test in the background.
-func PostSystemSpeedTest(ctx echo.Context) error {
+func PostSystemSpeedTest(ctx *echo.Context) error {
 	if err := StartSpeedTest(); err != nil {
 		return ctx.JSON(http.StatusConflict, &model.Result{Success: common_err.SERVICE_ERROR, Message: err.Error()})
 	}
@@ -975,6 +975,6 @@ func PostSystemSpeedTest(ctx echo.Context) error {
 }
 
 // GET /sys/speedtest/status - phase, live Mbps and the (partial) result.
-func GetSystemSpeedTestStatus(ctx echo.Context) error {
+func GetSystemSpeedTestStatus(ctx *echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, &model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: currentProgress()})
 }

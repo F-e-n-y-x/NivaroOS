@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // GetTailscaleInstalled lets the frontend show an "Install Tailscale"
 // prompt instead of just failing when the other tailscale endpoints error
 // out because the binary isn't there at all.
-func GetTailscaleInstalled(ctx echo.Context) error {
+func GetTailscaleInstalled(ctx *echo.Context) error {
 	_, err := exec.LookPath("tailscale")
 	return ok(ctx, map[string]bool{"installed": err == nil})
 }
@@ -74,7 +74,7 @@ func startTailscaleUpAndCaptureLoginURL() (string, error) {
 // present, then starts `tailscale up` and returns the one-time login link
 // it prints, so the frontend can show it immediately instead of the admin
 // needing to open a terminal to find it.
-func PostTailscaleInstall(ctx echo.Context) error {
+func PostTailscaleInstall(ctx *echo.Context) error {
 	if _, err := exec.LookPath("tailscale"); err == nil {
 		loginURL, upErr := startTailscaleUpAndCaptureLoginURL()
 		return ok(ctx, map[string]string{"login_url": loginURL, "note": errString(upErr)})
@@ -106,7 +106,7 @@ func errString(err error) string {
 // straight through as the Data field - Tailscale's own JSON schema is a
 // stable, documented external contract, not something worth re-modeling
 // into Go structs just to re-serialize it back to JSON for the frontend.
-func GetTailscaleStatus(ctx echo.Context) error {
+func GetTailscaleStatus(ctx *echo.Context) error {
 	// The daemon not running is a state, not an error (the panel used to
 	// say "Failed to reach Tailscale" and the switch could never work).
 	if !tailscaledActive() {
@@ -162,7 +162,7 @@ func commandError(err error, out []byte) error {
 // PutTailscaleState runs `tailscale up` or `tailscale down` depending on
 // the :state path param - mirrors PutSystemState's :state-param shape
 // (route/v1/system.go) used for restart/shutdown.
-func PutTailscaleState(ctx echo.Context) error {
+func PutTailscaleState(ctx *echo.Context) error {
 	state := ctx.Param("state")
 	if state != "up" && state != "down" {
 		return badParams(ctx, "state must be 'up' or 'down'")
@@ -216,7 +216,7 @@ type tailscalePrefs struct {
 
 // GetTailscalePrefs returns the subset of Tailscale's advanced preferences
 // that are safe to show/edit from the web UI.
-func GetTailscalePrefs(ctx echo.Context) error {
+func GetTailscalePrefs(ctx *echo.Context) error {
 	out, err := exec.Command("tailscale", "debug", "prefs").Output()
 	if err != nil {
 		return serviceError(ctx, err)
@@ -255,7 +255,7 @@ type tailscalePrefsUpdate struct {
 // setup, which this box may already have configured by hand and which
 // `tailscale set --advertise-routes=...` would replace wholesale rather
 // than merge.
-func PutTailscalePrefs(ctx echo.Context) error {
+func PutTailscalePrefs(ctx *echo.Context) error {
 	var body tailscalePrefsUpdate
 	if err := ctx.Bind(&body); err != nil {
 		return badParams(ctx, "invalid body")

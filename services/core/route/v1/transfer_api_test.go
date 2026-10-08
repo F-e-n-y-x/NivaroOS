@@ -12,7 +12,6 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service/transfer"
-	"github.com/labstack/echo/v4"
 )
 
 // The exact body the web UI and the mobile app (files_screen.dart) send.
@@ -26,7 +25,7 @@ func TestLegacyBatchTaskRunsOnTheEngineAndIsListed(t *testing.T) {
 	src := filepath.Join(srcDir, "movie.mkv")
 	os.WriteFile(src, []byte("frames"), 0o644)
 
-	e := echo.New()
+	e := NewEcho()
 	body := strings.NewReplacer("%SRC%", src, "%DST%", dst).Replace(legacyPasteBody)
 	req := httptest.NewRequest(http.MethodPost, "/v1/batch/task", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

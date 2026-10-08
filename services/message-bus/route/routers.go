@@ -9,16 +9,16 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware/oapi"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/codegen"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/config"
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/service"
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 func NewAPIRouter(swagger *openapi3.T, services *service.Services) (http.Handler, error) {
@@ -43,11 +43,11 @@ func isSubscription(r *http.Request) bool {
 // can't set headers on a WebSocket, so the web UI's socket.io client
 // sends ?token= (engine.io repeats the query on every polling and
 // websocket request of the session).
-func tokenFromRequest(c echo.Context) ([]string, error) {
+func tokenFromRequest(c *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 	if h := c.Request().Header.Get(echo.HeaderAuthorization); h != "" {
-		return []string{strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))}, nil
+		return []string{strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))}, echo_middleware.ExtractorSourceHeader, nil
 	}
-	return []string{c.QueryParam("token")}, nil
+	return []string{c.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 }
 
 func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc func() (*ecdsa.PublicKey, error)) (http.Handler, error) {
@@ -59,24 +59,18 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 	// the bus same-origin through the gateway; apps on other ports of this
 	// host still qualify). A cross-site page gets no CORS headers, so its
 	// browser won't let it read anything.
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		Skipper: func(c echo.Context) bool {
-			return !nivaroos_middleware.SameHostOrigin(c.Request())
-		},
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	cors := nivaroos_middleware.CorsConfig()
+	cors.Skipper = func(c *echo.Context) bool {
+		return !nivaroos_middleware.SameHostOrigin(c.Request())
+	}
+	e.Use(echo_middleware.CORSWithConfig(cors))
 
 	// Cross-site WebSocket hijacking guard for subscriptions that carry no
 	// token (see service.SubscriptionOriginAllowed): those must come from
 	// a non-browser client or a page on this same host. The /event and
 	// /action upgrades (gobwas/ws) do no origin check of their own.
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			if isSubscription(c.Request()) && !service.SubscriptionOriginAllowed(c.Request()) {
 				return echo.NewHTTPError(http.StatusForbidden, "cross-origin subscription refused")
 			}
@@ -92,7 +86,7 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 	requestLog := nivaroos_middleware.RequestLogger()
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		logged := requestLog(next)
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			if quietRequest(c.Request()) {
 				return next(c)
 			}
@@ -106,10 +100,10 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 	e.Use(echojwt.WithConfig(echojwt.Config{
 		// Same-host automation only (c.RealIP() trusted spoofable
 		// X-Forwarded-For headers).
-		Skipper: func(c echo.Context) bool {
+		Skipper: func(c *echo.Context) bool {
 			return nivaroos_middleware.IsLocalAutomation(c.Request())
 		},
-		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 			if token == "" {
 				return nil, echo.ErrUnauthorized
 			}
@@ -125,7 +119,7 @@ func newAPIRouter(swagger *openapi3.T, services *service.Services, publicKeyFunc
 		TokenLookupFuncs: []echo_middleware.ValuesExtractor{tokenFromRequest},
 	}))
 
-	e.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}))
+	e.Use(oapi.RequestValidator(swagger, oapi.Options{Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}))
 
 	apiPath, err := getAPIPath(getSwaggerURL(swagger))
 	if err != nil {

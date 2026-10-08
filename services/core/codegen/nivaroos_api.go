@@ -16,7 +16,7 @@ import (
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	openapi_types "github.com/deepmap/oapi-codegen/pkg/types"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -117,22 +117,22 @@ type PostUploadFileMultipartRequestBody PostUploadFileMultipartBody
 type ServerInterface interface {
 	// Test file methods
 	// (GET /file/test)
-	GetFileTest(ctx echo.Context) error
+	GetFileTest(ctx *echo.Context) error
 	// Check upload chunk
 	// (GET /file/upload)
-	CheckUploadChunk(ctx echo.Context, params CheckUploadChunkParams) error
+	CheckUploadChunk(ctx *echo.Context, params CheckUploadChunkParams) error
 	// Upload file
 	// (POST /file/upload)
-	PostUploadFile(ctx echo.Context) error
+	PostUploadFile(ctx *echo.Context) error
 	// Get log
 	// (GET /health/logs)
-	GetHealthlogs(ctx echo.Context) error
+	GetHealthlogs(ctx *echo.Context) error
 	// Get port in use
 	// (GET /health/ports)
-	GetHealthPorts(ctx echo.Context) error
+	GetHealthPorts(ctx *echo.Context) error
 	// Get service status
 	// (GET /health/services)
-	GetHealthServices(ctx echo.Context) error
+	GetHealthServices(ctx *echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -141,7 +141,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // GetFileTest converts echo context to params.
-func (w *ServerInterfaceWrapper) GetFileTest(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetFileTest(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -152,7 +152,7 @@ func (w *ServerInterfaceWrapper) GetFileTest(ctx echo.Context) error {
 }
 
 // CheckUploadChunk converts echo context to params.
-func (w *ServerInterfaceWrapper) CheckUploadChunk(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) CheckUploadChunk(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -200,7 +200,7 @@ func (w *ServerInterfaceWrapper) CheckUploadChunk(ctx echo.Context) error {
 }
 
 // PostUploadFile converts echo context to params.
-func (w *ServerInterfaceWrapper) PostUploadFile(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) PostUploadFile(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -211,7 +211,7 @@ func (w *ServerInterfaceWrapper) PostUploadFile(ctx echo.Context) error {
 }
 
 // GetHealthlogs converts echo context to params.
-func (w *ServerInterfaceWrapper) GetHealthlogs(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetHealthlogs(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -222,7 +222,7 @@ func (w *ServerInterfaceWrapper) GetHealthlogs(ctx echo.Context) error {
 }
 
 // GetHealthPorts converts echo context to params.
-func (w *ServerInterfaceWrapper) GetHealthPorts(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetHealthPorts(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -233,7 +233,7 @@ func (w *ServerInterfaceWrapper) GetHealthPorts(ctx echo.Context) error {
 }
 
 // GetHealthServices converts echo context to params.
-func (w *ServerInterfaceWrapper) GetHealthServices(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetHealthServices(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -247,15 +247,15 @@ func (w *ServerInterfaceWrapper) GetHealthServices(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlers adds each server route to the EchoRouter.

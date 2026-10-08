@@ -16,15 +16,15 @@ import (
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/external"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
+	"github.com/F-e-n-y-x/NivaroOS/services/common/middleware/oapi"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
 	v2Route "github.com/F-e-n-y-x/NivaroOS/services/core/route/v2"
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echo_middleware "github.com/labstack/echo/v4/middleware"
+	echojwt "github.com/labstack/echo-jwt/v5"
+	"github.com/labstack/echo/v5"
+	echo_middleware "github.com/labstack/echo/v5/middleware"
 )
 
 var (
@@ -56,14 +56,7 @@ func InitV2Router() http.Handler {
 
 	e := echo.New()
 
-	e.Use((echo_middleware.CORSWithConfig(echo_middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{echo.POST, echo.GET, echo.OPTIONS, echo.PUT, echo.DELETE},
-		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentLength, echo.HeaderXCSRFToken, echo.HeaderContentType, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders, echo.HeaderAccessControlAllowMethods, echo.HeaderConnection, echo.HeaderOrigin, echo.HeaderXRequestedWith},
-		ExposeHeaders:    []string{echo.HeaderContentLength, echo.HeaderAccessControlAllowOrigin, echo.HeaderAccessControlAllowHeaders},
-		MaxAge:           172800,
-		AllowCredentials: true,
-	})))
+	e.Use(nivaroos_middleware.Cors())
 
 	e.Use(echo_middleware.Gzip())
 
@@ -74,7 +67,7 @@ func InitV2Router() http.Handler {
 		// socket-peer based loopback check (c.RealIP() trusted
 		// X-Forwarded-For/X-Real-IP) - see common/middleware.IsLocalAutomation
 		Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
+		ParseTokenFunc: func(c *echo.Context, token string) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
 				if _, revoked := jwt.RevocationReason(err); revoked {
@@ -89,20 +82,20 @@ func InitV2Router() http.Handler {
 			return claims, nil
 		},
 		TokenLookupFuncs: []echo_middleware.ValuesExtractor{
-			func(ctx echo.Context) ([]string, error) {
+			func(ctx *echo.Context) ([]string, echo_middleware.ExtractorSource, error) {
 				if len(ctx.Request().Header.Get(echo.HeaderAuthorization)) > 0 {
-					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, nil
+					return []string{ctx.Request().Header.Get(echo.HeaderAuthorization)}, echo_middleware.ExtractorSourceHeader, nil
 				}
-				return []string{ctx.QueryParam("token")}, nil
+				return []string{ctx.QueryParam("token")}, echo_middleware.ExtractorSourceQuery, nil
 			},
 		},
 	}))
 
 	// e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-	// 	return func(c echo.Context) error {
+	// 	return func(c *echo.Context) error {
 	// 		switch c.Request().Header.Get(echo.HeaderContentType) {
 	// 		case common.MIMEApplicationYAML: // in case request contains a compose content in YAML
-	// 			return middleware.OapiRequestValidatorWithOptions(_swagger, &middleware.Options{
+	// 			return oapi.RequestValidator(_swagger, oapi.Options{
 	// 				Options: openapi3filter.Options{
 	// 					AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 	// 					// ExcludeRequestBody:  true,
@@ -111,7 +104,7 @@ func InitV2Router() http.Handler {
 	// 			})(next)(c)
 
 	// 		default:
-	// 			return middleware.OapiRequestValidatorWithOptions(_swagger, &middleware.Options{
+	// 			return oapi.RequestValidator(_swagger, oapi.Options{
 	// 				Options: openapi3filter.Options{
 	// 					AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 	// 				},
@@ -120,8 +113,8 @@ func InitV2Router() http.Handler {
 	// 	}
 	// })
 
-	e.Use(middleware.OapiRequestValidatorWithOptions(_swagger, &middleware.Options{
-		Skipper: func(c echo.Context) bool {
+	e.Use(oapi.RequestValidator(_swagger, oapi.Options{
+		Skipper: func(c *echo.Context) bool {
 			// jump validate when upload file
 			// because file upload can't pass validate
 			// issue: https://github.com/deepmap/oapi-codegen/issues/514

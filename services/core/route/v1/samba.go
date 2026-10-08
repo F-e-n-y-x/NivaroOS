@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/systemctl"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"golang.org/x/sys/unix"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
@@ -33,7 +33,7 @@ import (
 
 // service
 
-func GetSambaStatus(ctx echo.Context) error {
+func GetSambaStatus(ctx *echo.Context) error {
 	if status, err := systemctl.IsServiceRunning("smbd.service"); err != nil || !status {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{
 			Success: common_err.SERVICE_NOT_RUNNING,
@@ -53,7 +53,7 @@ func GetSambaStatus(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
 }
 
-func GetSambaSharesList(ctx echo.Context) error {
+func GetSambaSharesList(ctx *echo.Context) error {
 	shares := service.MyService.Shares().GetSharesList()
 	shareList := []model.Shares{}
 	for _, v := range shares {
@@ -120,7 +120,7 @@ func isShareRoot(p string) bool {
 	return false
 }
 
-func PostSambaSharesCreate(ctx echo.Context) error {
+func PostSambaSharesCreate(ctx *echo.Context) error {
 	shares := []model.Shares{}
 	ctx.Bind(&shares)
 	for i, v := range shares {
@@ -163,7 +163,7 @@ func PostSambaSharesCreate(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: shares})
 }
 
-func PutSambaShare(ctx echo.Context) error {
+func PutSambaShare(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
@@ -193,7 +193,7 @@ func PutSambaShare(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: id})
 }
 
-func DeleteSambaShares(ctx echo.Context) error {
+func DeleteSambaShares(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
 		return ctx.JSON(common_err.CLIENT_ERROR, model.Result{Success: common_err.INSUFFICIENT_PERMISSIONS, Message: common_err.GetMsg(common_err.INSUFFICIENT_PERMISSIONS)})
@@ -224,7 +224,7 @@ func statfsUsage(path string) (size, avail, used uint64, ok bool) {
 }
 
 // client
-func GetSambaConnectionsList(ctx echo.Context) error {
+func GetSambaConnectionsList(ctx *echo.Context) error {
 	connections := service.MyService.Connections().GetConnectionsList()
 	connectionList := []model.Connections{}
 	for _, v := range connections {
@@ -246,7 +246,7 @@ func GetSambaConnectionsList(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: connectionList})
 }
 
-func PostSambaConnectionsCreate(ctx echo.Context) error {
+func PostSambaConnectionsCreate(ctx *echo.Context) error {
 	connection := model.Connections{}
 	ctx.Bind(&connection)
 	if connection.Port == "" {
@@ -349,7 +349,7 @@ func PostSambaConnectionsCreate(ctx echo.Context) error {
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: msg, Data: connection})
 }
 
-func DeleteSambaConnections(ctx echo.Context) error {
+func DeleteSambaConnections(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	connection := service.MyService.Connections().GetConnectionByID(id)
 	if connection.Username == "" {

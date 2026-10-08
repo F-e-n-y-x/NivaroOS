@@ -13,7 +13,7 @@ import (
 
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // isProtectedSystemUser: the owner's own login account (the one who ran
@@ -87,15 +87,15 @@ type systemUserInfo struct {
 	Protected bool   `json:"protected"`
 }
 
-func badParams(ctx echo.Context, msg string) error {
+func badParams(ctx *echo.Context, msg string) error {
 	return ctx.JSON(common_err.CLIENT_ERROR, modelCommon.Result{Success: common_err.INVALID_PARAMS, Message: common_err.GetMsg(common_err.INVALID_PARAMS), Data: msg})
 }
 
-func serviceError(ctx echo.Context, err error) error {
+func serviceError(ctx *echo.Context, err error) error {
 	return ctx.JSON(common_err.SERVICE_ERROR, modelCommon.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 }
 
-func ok(ctx echo.Context, data interface{}) error {
+func ok(ctx *echo.Context, data interface{}) error {
 	return ctx.JSON(common_err.SUCCESS, modelCommon.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS), Data: data})
 }
 
@@ -117,7 +117,7 @@ func groupMembers(groupName string) map[string]bool {
 	return members
 }
 
-func GetSystemUsers(ctx echo.Context) error {
+func GetSystemUsers(ctx *echo.Context) error {
 	f, err := exec.Command("getent", "passwd").Output()
 	if err != nil {
 		return serviceError(ctx, err)
@@ -158,7 +158,7 @@ type createSystemUserReq struct {
 	Sudo     bool   `json:"sudo"`
 }
 
-func PostSystemUser(ctx echo.Context) error {
+func PostSystemUser(ctx *echo.Context) error {
 	req := new(createSystemUserReq)
 	if err := ctx.Bind(req); err != nil {
 		return badParams(ctx, "invalid body")
@@ -189,7 +189,7 @@ func PostSystemUser(ctx echo.Context) error {
 	return ok(ctx, "created")
 }
 
-func DeleteSystemUser(ctx echo.Context) error {
+func DeleteSystemUser(ctx *echo.Context) error {
 	username := ctx.Param("username")
 	if err := manageableAccount(username, systemUID, isProtectedSystemUser); err != nil {
 		return badParams(ctx, err.Error())
@@ -213,7 +213,7 @@ func setSystemPassword(username, password string) error {
 	return cmd.Run()
 }
 
-func PutSystemUserPassword(ctx echo.Context) error {
+func PutSystemUserPassword(ctx *echo.Context) error {
 	username := ctx.Param("username")
 	if err := manageableAccount(username, systemUID, isProtectedSystemUser); err != nil {
 		return badParams(ctx, err.Error())
@@ -236,7 +236,7 @@ type setGroupsReq struct {
 	Docker *bool `json:"docker"`
 }
 
-func PutSystemUserGroups(ctx echo.Context) error {
+func PutSystemUserGroups(ctx *echo.Context) error {
 	username := ctx.Param("username")
 	if err := manageableAccount(username, systemUID, isProtectedSystemUser); err != nil {
 		return badParams(ctx, err.Error())

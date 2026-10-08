@@ -27,7 +27,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
@@ -365,7 +365,7 @@ func endCompanionSessionsLocked(id string) {
 
 // companionSessionOf returns the caller's login session id ("" for local
 // automation or a token from before sessions had ids).
-func companionSessionOf(ctx echo.Context) string {
+func companionSessionOf(ctx *echo.Context) string {
 	if claims, ok := ctx.Get("user").(*jwt.Claims); ok && claims != nil {
 		return claims.SessionID
 	}
@@ -582,7 +582,7 @@ func saveCompanionDevicesLocked() error {
 // echo context (never from a header a client could send). "" means the
 // request was same-host automation that skipped the token
 // (nivaroos_middleware.LocalAutomationSkipper) - it is not scoped to a user.
-func companionCaller(ctx echo.Context) string {
+func companionCaller(ctx *echo.Context) string {
 	if claims, ok := ctx.Get("user").(*jwt.Claims); ok && claims != nil {
 		return strconv.Itoa(claims.ID)
 	}
@@ -598,7 +598,7 @@ func companionVisibleTo(dev *CompanionDevice, uid string) bool {
 // lookupCompanionDevice returns a snapshot of device id if the caller may
 // use it. A device that belongs to someone else is reported exactly like a
 // missing one.
-func lookupCompanionDevice(ctx echo.Context, id string) (*CompanionDevice, bool) {
+func lookupCompanionDevice(ctx *echo.Context, id string) (*CompanionDevice, bool) {
 	uid := companionCaller(ctx)
 	companionMu.Lock()
 	defer companionMu.Unlock()
@@ -642,7 +642,7 @@ func markCompanionSeen(dev *CompanionDevice) {
 	companionMu.Unlock()
 }
 
-func companionNotFound(ctx echo.Context) error {
+func companionNotFound(ctx *echo.Context) error {
 	return ctx.JSON(http.StatusNotFound, model.Result{
 		Success: common_err.SERVICE_ERROR,
 		Message: "companion device not found",
@@ -988,8 +988,8 @@ func ProxyCompanionStream(dev *CompanionDevice, phonePath string, w http.Respons
 }
 
 // ProxyCompanionFileDownload streams a file from the companion device to the Echo HTTP response
-func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx echo.Context) error {
-	return ProxyCompanionStream(dev, phonePath, ctx.Response().Writer, ctx.Request())
+func ProxyCompanionFileDownload(dev *CompanionDevice, phonePath string, ctx *echo.Context) error {
+	return ProxyCompanionStream(dev, phonePath, ctx.Response(), ctx.Request())
 }
 
 // ProxyCompanionFileDelete deletes phonePath on the companion device. The
@@ -1179,7 +1179,7 @@ func IsCompanionFolderVisible(folderPath string) bool {
 }
 
 // GET /v1/companion/devices
-func GetCompanionDevices(ctx echo.Context) error {
+func GetCompanionDevices(ctx *echo.Context) error {
 	uid := companionCaller(ctx)
 	companionMu.Lock()
 	defer companionMu.Unlock()
@@ -1273,7 +1273,7 @@ func assignCompanionFolder(base string, devs map[string]*CompanionDevice, dev *C
 // the first authenticated register call carrying its id - the phone's own
 // heartbeat, every 30 s - which is the whole (idempotent) migration: it only
 // ever fills an empty owner. A device owned by another user is refused.
-func PostRegisterCompanionDevice(ctx echo.Context) error {
+func PostRegisterCompanionDevice(ctx *echo.Context) error {
 	var input CompanionRegistrationDTO
 	if err := ctx.Bind(&input); err != nil {
 		return ctx.JSON(http.StatusBadRequest, model.Result{
@@ -1521,7 +1521,7 @@ func PostRegisterCompanionDevice(ctx echo.Context) error {
 }
 
 // PUT /v1/companion/devices/:id
-func PutUpdateCompanionDevice(ctx echo.Context) error {
+func PutUpdateCompanionDevice(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
 		return ctx.JSON(http.StatusBadRequest, model.Result{
@@ -1600,7 +1600,7 @@ func PutUpdateCompanionDevice(ctx echo.Context) error {
 }
 
 // DELETE /v1/companion/devices/:id
-func DeleteCompanionDevice(ctx echo.Context) error {
+func DeleteCompanionDevice(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
 		return ctx.JSON(http.StatusBadRequest, model.Result{
@@ -1685,7 +1685,7 @@ func DeleteCompanionDevice(ctx echo.Context) error {
 }
 
 // GET /v1/companion/devices/:id/storage
-func GetCompanionDeviceStorage(ctx echo.Context) error {
+func GetCompanionDeviceStorage(ctx *echo.Context) error {
 	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
 	if !exists {
 		return companionNotFound(ctx)
@@ -1696,7 +1696,7 @@ func GetCompanionDeviceStorage(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "success",
-		Data: echo.Map{
+		Data: map[string]any{
 			"id":            dev.ID,
 			"name":          dev.Name,
 			"storage_path":  dev.StoragePath,
@@ -1709,7 +1709,7 @@ func GetCompanionDeviceStorage(ctx echo.Context) error {
 }
 
 // GET /v1/companion/devices/:id/files
-func GetCompanionDeviceFiles(ctx echo.Context) error {
+func GetCompanionDeviceFiles(ctx *echo.Context) error {
 	subPath := ctx.QueryParam("path")
 
 	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
@@ -1730,7 +1730,7 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 		return ctx.JSON(http.StatusOK, model.Result{
 			Success: common_err.SUCCESS,
 			Message: "success",
-			Data: echo.Map{
+			Data: map[string]any{
 				"device": dev,
 				"path":   phonePath,
 				"files":  items,
@@ -1786,7 +1786,7 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "device unreachable - showing the backup copy on this server",
-		Data: echo.Map{
+		Data: map[string]any{
 			"device":  dev,
 			"path":    targetDir,
 			"files":   items,
@@ -1797,7 +1797,7 @@ func GetCompanionDeviceFiles(ctx echo.Context) error {
 }
 
 // GET /v1/companion/devices/:id/file
-func GetCompanionDeviceDownload(ctx echo.Context) error {
+func GetCompanionDeviceDownload(ctx *echo.Context) error {
 	filePath := ctx.QueryParam("path")
 
 	dev, exists := lookupCompanionDevice(ctx, ctx.Param("id"))
@@ -1842,7 +1842,7 @@ func GetCompanionDeviceDownload(ctx echo.Context) error {
 }
 
 // POST /v1/companion/devices/:id/upload
-func PostCompanionDeviceUpload(ctx echo.Context) error {
+func PostCompanionDeviceUpload(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	destSubPath := ctx.QueryParam("path")
 
@@ -1914,7 +1914,7 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
 		Message: "file uploaded successfully to companion storage",
-		Data: echo.Map{
+		Data: map[string]any{
 			"path": destPath,
 			"name": file.Filename,
 			"size": file.Size,
@@ -1928,10 +1928,10 @@ func PostCompanionDeviceUpload(ctx echo.Context) error {
 // user holding the id could otherwise replace the tunnel and answer the
 // owner's listings), and only for a registered device - the phone registers
 // before (and retries this every 15 s after) so that costs nothing.
-func GetCompanionDeviceWS(ctx echo.Context) error {
+func GetCompanionDeviceWS(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if id == "" {
-		return ctx.JSON(http.StatusBadRequest, echo.Map{"error": "id required"})
+		return ctx.JSON(http.StatusBadRequest, map[string]any{"error": "id required"})
 	}
 	dev, ok := lookupCompanionDevice(ctx, id)
 	if !ok {

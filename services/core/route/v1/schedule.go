@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/tidwall/gjson"
 
 	"github.com/F-e-n-y-x/NivaroOS/services/common/model"
@@ -14,7 +14,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 )
 
-func GetSchedules(ctx echo.Context) error {
+func GetSchedules(ctx *echo.Context) error {
 	tasks := service.MyService.Schedule().GetTasks()
 	return ctx.JSON(http.StatusOK, model.Result{
 		Success: common_err.SUCCESS,
@@ -23,7 +23,7 @@ func GetSchedules(ctx echo.Context) error {
 	})
 }
 
-func GetSchedule(ctx echo.Context) error {
+func GetSchedule(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	task, err := service.MyService.Schedule().GetTask(id)
 	if err != nil {
@@ -39,7 +39,7 @@ func GetSchedule(ctx echo.Context) error {
 	})
 }
 
-func CreateSchedule(ctx echo.Context) error {
+func CreateSchedule(ctx *echo.Context) error {
 	var task service.ScheduleTask
 	if err := ctx.Bind(&task); err != nil {
 		return ctx.JSON(http.StatusBadRequest, model.Result{
@@ -63,7 +63,7 @@ func CreateSchedule(ctx echo.Context) error {
 	})
 }
 
-func UpdateSchedule(ctx echo.Context) error {
+func UpdateSchedule(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	body, err := io.ReadAll(io.LimitReader(ctx.Request().Body, 1<<20))
 	if err != nil {
@@ -110,7 +110,7 @@ func decodeScheduleUpdate(body []byte) (service.ScheduleTask, error) {
 	return task, nil
 }
 
-func DeleteSchedule(ctx echo.Context) error {
+func DeleteSchedule(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	if err := service.MyService.Schedule().DeleteTask(id); err != nil {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{
@@ -128,7 +128,7 @@ type toggleReq struct {
 	Enabled bool `json:"enabled"`
 }
 
-func ToggleSchedule(ctx echo.Context) error {
+func ToggleSchedule(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	var req toggleReq
 	if err := ctx.Bind(&req); err != nil {
@@ -153,7 +153,7 @@ func ToggleSchedule(ctx echo.Context) error {
 	})
 }
 
-func RunScheduleNow(ctx echo.Context) error {
+func RunScheduleNow(ctx *echo.Context) error {
 	id := ctx.Param("id")
 	msg, err := service.MyService.Schedule().RunTaskNow(id)
 	if errors.Is(err, service.ErrTaskMigrated) {
@@ -175,7 +175,7 @@ func RunScheduleNow(ctx echo.Context) error {
 	})
 }
 
-func GetScheduleTargets(ctx echo.Context) error {
+func GetScheduleTargets(ctx *echo.Context) error {
 	targets, err := service.MyService.Schedule().GetTargets()
 	if err != nil {
 		return ctx.JSON(http.StatusInternalServerError, model.Result{

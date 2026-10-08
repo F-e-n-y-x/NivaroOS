@@ -16,7 +16,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/app-management/service"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
@@ -24,7 +24,7 @@ import (
 	pkg_utils "github.com/F-e-n-y-x/NivaroOS/services/app-management/pkg/utils"
 )
 
-func (a *AppManagement) AppStoreList(ctx echo.Context) error {
+func (a *AppManagement) AppStoreList(ctx *echo.Context) error {
 	appStoreList := service.MyService.AppStoreManagement().AppStoreList()
 
 	return ctx.JSON(http.StatusOK, codegen.AppStoreListOK{
@@ -34,7 +34,7 @@ func (a *AppManagement) AppStoreList(ctx echo.Context) error {
 
 // the method should be deprecated
 // but it is used by NivaroOS
-func (a *AppManagement) RegisterAppStore(ctx echo.Context, params codegen.RegisterAppStoreParams) error {
+func (a *AppManagement) RegisterAppStore(ctx *echo.Context, params codegen.RegisterAppStoreParams) error {
 	if params.Url == nil || *params.Url == "" {
 		message := "appstore url is required"
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
@@ -55,7 +55,7 @@ func (a *AppManagement) RegisterAppStore(ctx echo.Context, params codegen.Regist
 	})
 }
 
-func (a *AppManagement) RegisterAppStoreSync(ctx echo.Context, params codegen.RegisterAppStoreSyncParams) error {
+func (a *AppManagement) RegisterAppStoreSync(ctx *echo.Context, params codegen.RegisterAppStoreSyncParams) error {
 	if params.Url == nil || *params.Url == "" {
 		message := "appstore url is required"
 		return ctx.JSON(http.StatusBadRequest, codegen.ResponseBadRequest{Message: &message})
@@ -73,7 +73,7 @@ func (a *AppManagement) RegisterAppStoreSync(ctx echo.Context, params codegen.Re
 	})
 }
 
-func registerAppStoreError(ctx echo.Context, err error) error {
+func registerAppStoreError(ctx *echo.Context, err error) error {
 	message := err.Error()
 
 	switch {
@@ -86,7 +86,7 @@ func registerAppStoreError(ctx echo.Context, err error) error {
 	}
 }
 
-func (a *AppManagement) UnregisterAppStore(ctx echo.Context, id codegen.AppStoreID) error {
+func (a *AppManagement) UnregisterAppStore(ctx *echo.Context, id codegen.AppStoreID) error {
 	// resolve the index to its url once, and remove by url: an index can
 	// point at another store if the list changed in between
 	appStoreList := config.AppStoreList()
@@ -114,7 +114,7 @@ func (a *AppManagement) UnregisterAppStore(ctx echo.Context, id codegen.AppStore
 	})
 }
 
-func (a *AppManagement) ComposeAppStoreInfoList(ctx echo.Context, params codegen.ComposeAppStoreInfoListParams) error {
+func (a *AppManagement) ComposeAppStoreInfoList(ctx *echo.Context, params codegen.ComposeAppStoreInfoListParams) error {
 
 	catalog, err := service.MyService.AppStoreManagement().Catalog()
 	if err != nil {
@@ -207,7 +207,7 @@ func (a *AppManagement) ComposeAppStoreInfoList(ctx echo.Context, params codegen
 	return ctx.JSON(http.StatusOK, codegen.ComposeAppStoreInfoListsOK{Data: data})
 }
 
-func (a *AppManagement) ComposeAppStoreInfo(ctx echo.Context, id codegen.StoreAppIDString) error {
+func (a *AppManagement) ComposeAppStoreInfo(ctx *echo.Context, id codegen.StoreAppIDString) error {
 	composeApp, err := service.MyService.AppStoreManagement().ComposeApp(id)
 	if err != nil {
 		message := err.Error()
@@ -232,7 +232,7 @@ func (a *AppManagement) ComposeAppStoreInfo(ctx echo.Context, id codegen.StoreAp
 	})
 }
 
-func (a *AppManagement) ComposeAppMainStableTag(ctx echo.Context, id codegen.StoreAppIDString) error {
+func (a *AppManagement) ComposeAppMainStableTag(ctx *echo.Context, id codegen.StoreAppIDString) error {
 	composeApp, err := service.MyService.AppStoreManagement().ComposeApp(id)
 	if err != nil {
 		message := err.Error()
@@ -261,7 +261,7 @@ func (a *AppManagement) ComposeAppMainStableTag(ctx echo.Context, id codegen.Sto
 	})
 }
 
-func (a *AppManagement) ComposeAppServiceStableTag(ctx echo.Context, id codegen.StoreAppIDString, serviceName string) error {
+func (a *AppManagement) ComposeAppServiceStableTag(ctx *echo.Context, id codegen.StoreAppIDString, serviceName string) error {
 	composeApp, err := service.MyService.AppStoreManagement().ComposeApp(id)
 	if err != nil {
 		message := err.Error()
@@ -290,7 +290,7 @@ func (a *AppManagement) ComposeAppServiceStableTag(ctx echo.Context, id codegen.
 	})
 }
 
-func (a *AppManagement) ComposeApp(ctx echo.Context, id codegen.StoreAppIDString) error {
+func (a *AppManagement) ComposeApp(ctx *echo.Context, id codegen.StoreAppIDString) error {
 	composeApp, err := service.MyService.AppStoreManagement().ComposeApp(id)
 	if err != nil {
 		message := err.Error()
@@ -335,7 +335,7 @@ func (a *AppManagement) ComposeApp(ctx echo.Context, id codegen.StoreAppIDString
 	})
 }
 
-func (a *AppManagement) CategoryList(ctx echo.Context) error {
+func (a *AppManagement) CategoryList(ctx *echo.Context) error {
 	categoryMap, err := service.MyService.AppStoreManagement().CategoryMap()
 	if err != nil {
 		message := err.Error()
@@ -410,7 +410,7 @@ func FilterCatalogByAppStoreID(catalog map[string]*service.ComposeApp, appStoreI
 	})
 }
 
-func (a *AppManagement) UpgradableAppList(ctx echo.Context) error {
+func (a *AppManagement) UpgradableAppList(ctx *echo.Context) error {
 	composeApps, err := service.MyService.Compose().List(ctx.Request().Context())
 
 	var upgradableAppList []codegen.UpgradableAppInfo = []codegen.UpgradableAppInfo{}

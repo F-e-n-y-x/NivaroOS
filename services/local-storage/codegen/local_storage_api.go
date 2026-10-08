@@ -16,7 +16,7 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/runtime"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -189,28 +189,28 @@ type UpdateMountJSONRequestBody = Mount
 type ServerInterface interface {
 	// Get merges
 	// (GET /merge)
-	GetMerges(ctx echo.Context, params GetMergesParams) error
+	GetMerges(ctx *echo.Context, params GetMergesParams) error
 	// Set a merge
 	// (POST /merge)
-	SetMerge(ctx echo.Context) error
+	SetMerge(ctx *echo.Context) error
 	// Get merge initialization status
 	// (GET /merge/init)
-	GetMergeInitStatus(ctx echo.Context) error
+	GetMergeInitStatus(ctx *echo.Context) error
 	// Initialize a merge
 	// (POST /merge/init)
-	InitMerge(ctx echo.Context) error
+	InitMerge(ctx *echo.Context) error
 	// Umount volume
 	// (DELETE /mount)
-	Umount(ctx echo.Context, params UmountParams) error
+	Umount(ctx *echo.Context, params UmountParams) error
 	// Get mounted volumes
 	// (GET /mount)
-	GetMounts(ctx echo.Context, params GetMountsParams) error
+	GetMounts(ctx *echo.Context, params GetMountsParams) error
 	// Mount a volume
 	// (POST /mount)
-	Mount(ctx echo.Context) error
+	Mount(ctx *echo.Context) error
 	// Update a mount volume
 	// (PUT /mount)
-	UpdateMount(ctx echo.Context, params UpdateMountParams) error
+	UpdateMount(ctx *echo.Context, params UpdateMountParams) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -219,7 +219,7 @@ type ServerInterfaceWrapper struct {
 }
 
 // GetMerges converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMerges(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMerges(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -239,7 +239,7 @@ func (w *ServerInterfaceWrapper) GetMerges(ctx echo.Context) error {
 }
 
 // SetMerge converts echo context to params.
-func (w *ServerInterfaceWrapper) SetMerge(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) SetMerge(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -250,7 +250,7 @@ func (w *ServerInterfaceWrapper) SetMerge(ctx echo.Context) error {
 }
 
 // GetMergeInitStatus converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMergeInitStatus(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMergeInitStatus(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -261,7 +261,7 @@ func (w *ServerInterfaceWrapper) GetMergeInitStatus(ctx echo.Context) error {
 }
 
 // InitMerge converts echo context to params.
-func (w *ServerInterfaceWrapper) InitMerge(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) InitMerge(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -272,7 +272,7 @@ func (w *ServerInterfaceWrapper) InitMerge(ctx echo.Context) error {
 }
 
 // Umount converts echo context to params.
-func (w *ServerInterfaceWrapper) Umount(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) Umount(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -292,7 +292,7 @@ func (w *ServerInterfaceWrapper) Umount(ctx echo.Context) error {
 }
 
 // GetMounts converts echo context to params.
-func (w *ServerInterfaceWrapper) GetMounts(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) GetMounts(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -333,7 +333,7 @@ func (w *ServerInterfaceWrapper) GetMounts(ctx echo.Context) error {
 }
 
 // Mount converts echo context to params.
-func (w *ServerInterfaceWrapper) Mount(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) Mount(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -344,7 +344,7 @@ func (w *ServerInterfaceWrapper) Mount(ctx echo.Context) error {
 }
 
 // UpdateMount converts echo context to params.
-func (w *ServerInterfaceWrapper) UpdateMount(ctx echo.Context) error {
+func (w *ServerInterfaceWrapper) UpdateMount(ctx *echo.Context) error {
 	var err error
 
 	ctx.Set(Access_tokenScopes, []string{""})
@@ -367,15 +367,15 @@ func (w *ServerInterfaceWrapper) UpdateMount(ctx echo.Context) error {
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
 type EchoRouter interface {
-	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
-	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route
+	CONNECT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	DELETE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	HEAD(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	OPTIONS(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PATCH(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	PUT(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
+	TRACE(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) echo.RouteInfo
 }
 
 // RegisterHandlers adds each server route to the EchoRouter.

@@ -14,11 +14,11 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/message-bus/route/adapter/out"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
-func (r *APIRoute) GetActionTypes(c echo.Context) error {
+func (r *APIRoute) GetActionTypes(c *echo.Context) error {
 	actionType, err := r.services.ActionTypeService.GetActionTypes()
 	if err != nil {
 		message := err.Error()
@@ -34,7 +34,7 @@ func (r *APIRoute) GetActionTypes(c echo.Context) error {
 	return c.JSON(http.StatusOK, results)
 }
 
-func (r *APIRoute) RegisterActionTypes(c echo.Context) error {
+func (r *APIRoute) RegisterActionTypes(c *echo.Context) error {
 	var actionTypes []codegen.ActionType
 	if err := c.Bind(&actionTypes); err != nil {
 		message := err.Error()
@@ -52,7 +52,7 @@ func (r *APIRoute) RegisterActionTypes(c echo.Context) error {
 	return c.JSON(http.StatusOK, codegen.ResponseOK{})
 }
 
-func (r *APIRoute) GetActionTypesBySourceID(c echo.Context, sourceID codegen.SourceID) error {
+func (r *APIRoute) GetActionTypesBySourceID(c *echo.Context, sourceID codegen.SourceID) error {
 	results, err := r.services.ActionTypeService.GetActionTypesBySourceID(sourceID)
 	if err != nil {
 		message := err.Error()
@@ -62,7 +62,7 @@ func (r *APIRoute) GetActionTypesBySourceID(c echo.Context, sourceID codegen.Sou
 	return c.JSON(http.StatusOK, results)
 }
 
-func (r *APIRoute) GetActionType(c echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
+func (r *APIRoute) GetActionType(c *echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
 	result, err := r.services.ActionTypeService.GetActionType(sourceID, name)
 	if err != nil {
 		message := err.Error()
@@ -76,7 +76,7 @@ func (r *APIRoute) GetActionType(c echo.Context, sourceID codegen.SourceID, name
 	return c.JSON(http.StatusOK, result)
 }
 
-func (r *APIRoute) TriggerAction(c echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
+func (r *APIRoute) TriggerAction(c *echo.Context, sourceID codegen.SourceID, name codegen.EventName) error {
 	actionType, err := r.services.ActionTypeService.GetActionType(sourceID, name)
 	if err != nil {
 		message := err.Error()
@@ -106,7 +106,7 @@ func (r *APIRoute) TriggerAction(c echo.Context, sourceID codegen.SourceID, name
 	return c.JSON(http.StatusOK, out.ActionAdapter(action))
 }
 
-func (r *APIRoute) SubscribeActionWS(c echo.Context, sourceID codegen.SourceID, params codegen.SubscribeActionWSParams) error {
+func (r *APIRoute) SubscribeActionWS(c *echo.Context, sourceID codegen.SourceID, params codegen.SubscribeActionWSParams) error {
 	var actionNames []string
 	if params.Names != nil {
 		for _, actionName := range *params.Names {

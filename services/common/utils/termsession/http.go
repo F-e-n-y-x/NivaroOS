@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	modelCommon "github.com/F-e-n-y-x/NivaroOS/services/common/model"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/wsterm"
@@ -36,7 +36,7 @@ func (e *StartError) Unwrap() error { return e.Err }
 // Starter validates a create request and returns the session spec (Kind,
 // User/Container/Shell; Owner/Title/Legacy are filled in by the API) and
 // the function that starts the process at a given size.
-type Starter func(ctx echo.Context, req CreateRequest) (Spec, func(cols, rows uint16) (Process, error), error)
+type Starter func(ctx *echo.Context, req CreateRequest) (Spec, func(cols, rows uint16) (Process, error), error)
 
 // API serves the session routes on top of a Manager.
 type API struct {
@@ -44,7 +44,7 @@ type API struct {
 	Upgrader *websocket.Upgrader
 	Start    Starter
 	// Filter optionally narrows GET list results (e.g. ?container=).
-	Filter func(ctx echo.Context, s *Session) bool
+	Filter func(ctx *echo.Context, s *Session) bool
 }
 
 // Register mounts the routes on g, which must be the group at the
@@ -59,13 +59,13 @@ func (a *API) Register(g *echo.Group) {
 }
 
 // Owner is the authenticated user id (set by the JWT middleware).
-func Owner(ctx echo.Context) string { return ctx.Request().Header.Get("user_id") }
+func Owner(ctx *echo.Context) string { return ctx.Request().Header.Get("user_id") }
 
-func respond(ctx echo.Context, status int, data interface{}) error {
+func respond(ctx *echo.Context, status int, data interface{}) error {
 	return ctx.JSON(status, modelCommon.Result{Success: status, Message: http.StatusText(status), Data: data})
 }
 
-func fail(ctx echo.Context, status int, msg string) error {
+func fail(ctx *echo.Context, status int, msg string) error {
 	return ctx.JSON(status, modelCommon.Result{Success: status, Message: msg})
 }
 
@@ -91,7 +91,7 @@ func secs(d time.Duration) int64 {
 	return int64(d / time.Second)
 }
 
-func (a *API) List(ctx echo.Context) error {
+func (a *API) List(ctx *echo.Context) error {
 	owner := Owner(ctx)
 	if owner == "" {
 		return fail(ctx, http.StatusUnauthorized, "unauthorized")
@@ -114,7 +114,7 @@ func (a *API) List(ctx echo.Context) error {
 	return respond(ctx, http.StatusOK, resp)
 }
 
-func (a *API) lookup(ctx echo.Context) (*Session, error) {
+func (a *API) lookup(ctx *echo.Context) (*Session, error) {
 	owner := Owner(ctx)
 	if owner == "" {
 		return nil, fail(ctx, http.StatusUnauthorized, "unauthorized")
@@ -126,7 +126,7 @@ func (a *API) lookup(ctx echo.Context) (*Session, error) {
 	return s, nil
 }
 
-func (a *API) Get(ctx echo.Context) error {
+func (a *API) Get(ctx *echo.Context) error {
 	s, err := a.lookup(ctx)
 	if s == nil {
 		return err
@@ -143,7 +143,7 @@ func clampSize(n int) uint16 {
 
 // create starts a session for the request; the returned status/message
 // describe a failure.
-func (a *API) create(ctx echo.Context, req CreateRequest, legacy bool) (*Session, int, error) {
+func (a *API) create(ctx *echo.Context, req CreateRequest, legacy bool) (*Session, int, error) {
 	owner := Owner(ctx)
 	if owner == "" {
 		return nil, http.StatusUnauthorized, errors.New("unauthorized")
@@ -181,7 +181,7 @@ func (a *API) create(ctx echo.Context, req CreateRequest, legacy bool) (*Session
 	return s, http.StatusCreated, nil
 }
 
-func (a *API) Create(ctx echo.Context) error {
+func (a *API) Create(ctx *echo.Context) error {
 	var req CreateRequest
 	if ctx.Request().ContentLength != 0 {
 		if err := ctx.Bind(&req); err != nil {
@@ -195,7 +195,7 @@ func (a *API) Create(ctx echo.Context) error {
 	return respond(ctx, http.StatusCreated, s.Info())
 }
 
-func (a *API) Rename(ctx echo.Context) error {
+func (a *API) Rename(ctx *echo.Context) error {
 	s, err := a.lookup(ctx)
 	if s == nil {
 		return err
@@ -214,7 +214,7 @@ func (a *API) Rename(ctx echo.Context) error {
 	return respond(ctx, http.StatusOK, s.Info())
 }
 
-func (a *API) Delete(ctx echo.Context) error {
+func (a *API) Delete(ctx *echo.Context) error {
 	owner := Owner(ctx)
 	if owner == "" {
 		return fail(ctx, http.StatusUnauthorized, "unauthorized")
@@ -226,7 +226,7 @@ func (a *API) Delete(ctx echo.Context) error {
 }
 
 // Attach upgrades to a WebSocket viewer of an existing session.
-func (a *API) Attach(ctx echo.Context) error {
+func (a *API) Attach(ctx *echo.Context) error {
 	s, err := a.lookup(ctx)
 	if s == nil {
 		return err
@@ -236,7 +236,7 @@ func (a *API) Attach(ctx echo.Context) error {
 	if cols == 0 || rows == 0 {
 		cols, rows = 0, 0
 	}
-	ws, err := a.Upgrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
+	ws, err := a.Upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		return nil // Upgrade already wrote the HTTP error
 	}
@@ -247,8 +247,8 @@ func (a *API) Attach(ctx echo.Context) error {
 // ServeLegacy implements an old plain-connect endpoint: upgrade, create a
 // new session from req, attach without control frames. The session keeps
 // running after the socket closes and shows up in the list (legacy=true).
-func (a *API) ServeLegacy(ctx echo.Context, req CreateRequest) error {
-	ws, err := a.Upgrader.Upgrade(ctx.Response().Writer, ctx.Request(), nil)
+func (a *API) ServeLegacy(ctx *echo.Context, req CreateRequest) error {
+	ws, err := a.Upgrader.Upgrade(ctx.Response(), ctx.Request(), nil)
 	if err != nil {
 		return nil
 	}

@@ -11,11 +11,11 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
 	"github.com/docker/docker/errdefs"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/zap"
 )
 
-func (a *AppManagement) CheckContainerHealthByID(ctx echo.Context, id codegen.ContainerID) error {
+func (a *AppManagement) CheckContainerHealthByID(ctx *echo.Context, id codegen.ContainerID) error {
 	result, err := service.MyService.Docker().CheckContainerHealth(id)
 	if err != nil {
 		message := err.Error()
@@ -29,7 +29,7 @@ func (a *AppManagement) CheckContainerHealthByID(ctx echo.Context, id codegen.Co
 	return ctx.JSON(http.StatusOK, codegen.ContainerHealthCheckOK{})
 }
 
-func (a *AppManagement) RecreateContainerByID(ctx echo.Context, id codegen.ContainerID, params codegen.RecreateContainerByIDParams) error {
+func (a *AppManagement) RecreateContainerByID(ctx *echo.Context, id codegen.ContainerID, params codegen.RecreateContainerByIDParams) error {
 	// attach context key/value pairs from upstream
 	backgroundCtx := common.WithProperties(context.Background(), PropertiesFromQueryParams(ctx))
 
