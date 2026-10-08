@@ -255,6 +255,14 @@ describe('server errors land on the wizard fields', () => {
 		const res = { checks: [{ id: 'free_space', status: 'fail', code: 'no_space' }, { id: 'not_inside', status: 'fail', code: 'dest_inside_source' }, { id: 'type_for_dest', status: 'fail' }] }
 		expect(blockingCheckErrors(res)).toEqual({ dest: 'dest_inside_source', 'dest.type': 'appdata_cloud_needs_archive' })
 		expect(blockingCheckErrors(endpoint('validate').response)).toEqual({})
+		const refused = side => ({ checks: [
+			{ id: 'source_resolves', status: side === 'source' ? 'fail' : 'pass', code: side === 'source' ? 'path_not_allowed' : '' },
+			{ id: 'dest_resolves', status: 'fail', code: side === 'dest' ? 'path_not_allowed' : 'dest_offline' },
+			{ id: 'allowed_roots', status: 'fail', code: 'path_not_allowed' }
+		] })
+		// A refused source is shown on the sources, not the destination folder.
+		expect(blockingCheckErrors(refused('source'))).toEqual({ sources: 'path_not_allowed' })
+		expect(blockingCheckErrors(refused('dest'))).toEqual({ dest: 'path_not_allowed' })
 	})
 })
 

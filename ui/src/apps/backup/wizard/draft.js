@@ -617,11 +617,18 @@ export const BLOCKING_CHECKS = Object.freeze(['not_inside', 'allowed_roots', 'ty
 
 export function blockingCheckErrors(result) {
 	const out = {}
-	for (const c of (result && result.checks) || []) {
+	const checks = (result && result.checks) || []
+	// allowed_roots repeats a resolution failure; pin it on the side that
+	// failed (a refused source is not the destination folder's fault).
+	const refused = id => checks.some(c => c.id === id && c.status === 'fail' && c.code === 'path_not_allowed')
+	for (const c of checks) {
 		if (c.status !== 'fail' || !BLOCKING_CHECKS.includes(c.id)) continue
 		if (c.id === 'type_for_dest') out['dest.type'] = c.code || 'appdata_cloud_needs_archive'
 		else if (c.id === 'not_inside') out.dest = c.code || 'dest_inside_source'
-		else out.dest = c.code || 'path_not_allowed'
+		else {
+			if (refused('source_resolves')) out.sources = c.code || 'path_not_allowed'
+			if (refused('dest_resolves') || !refused('source_resolves')) out.dest = c.code || 'path_not_allowed'
+		}
 	}
 	return out
 }
