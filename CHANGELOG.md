@@ -81,6 +81,26 @@ inherited CasaOS history and is not kept up to date.)
   protected (asked on a small page before the download), last 7 days, and
   share folders as a ZIP.
 
+### Security
+
+- Files > Extract can no longer write outside the folder it extracts into.
+  A crafted zip or tar could use `../` names, absolute paths, or a symlink
+  followed by a file "inside" it to write anywhere on the server
+  (CVE-2025-3445 in the old, unmaintained archiver library). Extraction now
+  uses `mholt/archives` and writes only through a folder-confined handle:
+  such an archive is refused (and the half-made folder removed), and
+  symlinks, hardlinks and device entries inside archives are skipped. 7z
+  archives can now be extracted too. Downloading folders as zip/tar and
+  Compress use the same new library.
+- Go dependency security pass across all services: golang.org/x/crypto,
+  net, text, image and sys to current; golang-jwt v4.5.2 (login-header
+  DoS, CVE-2025-30204); gorilla/websocket v1.5.3; kin-openapi v0.149
+  (request-validation DoS fixes); Echo v4.16 (its old JWT middleware, the
+  last user of the never-fixed jwt v3, is replaced by echo-jwt); xz, runc
+  and spdystream patch releases. The installer now installs Go 1.27.1.
+  govulncheck: every service is clean except App Management's Docker /
+  Compose / containerd advisories, which need the Docker SDK move.
+
 ### Changed
 
 - New NivaroOS logo, "Ni": an N whose last stroke doubles as an i, with a

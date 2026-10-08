@@ -1,6 +1,7 @@
 package file
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -19,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mholt/archiver/v3"
+	"github.com/mholt/archives"
 )
 
 // GetSize get the file size
@@ -484,30 +485,117 @@ func SpliceFiles(dir, path string, length int, startPoint int) error {
 	return file.Close()
 }
 
-func GetCompressionAlgorithm(t string) (string, archiver.Writer, error) {
+func GetCompressionAlgorithm(t string) (string, *Archive, error) {
+	tarWith := func(c archives.Compression) *Archive {
+		return &Archive{format: archives.CompressedArchive{Archival: archives.Tar{}, Compression: c}}
+	}
 	switch t {
 	case "zip", "":
-		return ".zip", archiver.NewZip(), nil
+		return ".zip", &Archive{format: archives.Zip{Compression: zip.Deflate, SelectiveCompression: true}}, nil
 	case "tar":
-		return ".tar", archiver.NewTar(), nil
+		return ".tar", &Archive{format: archives.Tar{}}, nil
 	case "targz":
-		return ".tar.gz", archiver.NewTarGz(), nil
+		return ".tar.gz", tarWith(archives.Gz{}), nil
 	case "tarbz2":
-		return ".tar.bz2", archiver.NewTarBz2(), nil
+		return ".tar.bz2", tarWith(archives.Bz2{}), nil
 	case "tarxz":
-		return ".tar.xz", archiver.NewTarXz(), nil
+		return ".tar.xz", tarWith(archives.Xz{}), nil
 	case "tarlz4":
-		return ".tar.lz4", archiver.NewTarLz4(), nil
+		return ".tar.lz4", tarWith(archives.Lz4{}), nil
 	case "tarsz":
-		return ".tar.sz", archiver.NewTarSz(), nil
+		return ".tar.sz", tarWith(archives.Sz{}), nil
 	default:
 		return "", nil, errors.New("format not implemented")
 	}
 }
 
+// Archive streams files into one archive as they are added (Create, Add...,
+// Close), on top of mholt/archives' ArchiveAsync.
+type Archive struct {
+	format archives.ArchiverAsync
+	jobs   chan archives.ArchiveAsyncJob
+	done   chan error
+}
+
+func (a *Archive) Create(w io.Writer) error {
+	a.jobs, a.done = make(chan archives.ArchiveAsyncJob), make(chan error, 1)
+	go func() { a.done <- a.format.ArchiveAsync(context.Background(), w, a.jobs) }()
+	return nil
+}
+
+// Add writes one entry; open is nil for directories.
+func (a *Archive) Add(info fs.FileInfo, nameInArchive string, open func() (fs.File, error)) error {
+	res := make(chan error, 1)
+	job := archives.ArchiveAsyncJob{File: archives.FileInfo{FileInfo: info, NameInArchive: filepath.ToSlash(nameInArchive), Open: open}, Result: res}
+	select {
+	case a.jobs <- job:
+		return <-res
+	case err := <-a.done: // writer gave up early (e.g. compressor failed)
+		a.done <- err
+		return err
+	}
+}
+
+func (a *Archive) Close() error {
+	close(a.jobs)
+	return <-a.done
+}
+
+// Unarchive extracts every directory and regular file of archive (any format
+// mholt/archives identifies) into dest. Writes go through os.Root, so no
+// entry - "..", absolute path, or a path through an earlier entry - can land
+// outside dest; an entry that tries fails the whole extraction. Symlinks,
+// hardlinks and device entries are skipped, never created.
+func Unarchive(ctx context.Context, archive, dest string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	format, stream, err := archives.Identify(ctx, archive, f)
+	if err != nil {
+		return err
+	}
+	ex, ok := format.(archives.Extractor)
+	if !ok {
+		return fmt.Errorf("%s is not an archive", filepath.Base(archive))
+	}
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return ex.Extract(ctx, stream, func(ctx context.Context, e archives.FileInfo) error {
+		name := filepath.FromSlash(e.NameInArchive)
+		if e.IsDir() {
+			return root.MkdirAll(name, 0o755)
+		}
+		if !e.Mode().IsRegular() || e.LinkTarget != "" {
+			return nil
+		}
+		if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			return err
+		}
+		in, err := e.Open()
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, e.Mode().Perm()|0o600)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
+	})
+}
+
 // AddFile adds path (recursively) to the archive. Failures inside folders
 // are logged and skipped - use AddFileReport to learn about them.
-func AddFile(ar archiver.Writer, path, commonPath string) error {
+func AddFile(ar *Archive, path, commonPath string) error {
 	return AddFileReport(ar, path, commonPath, func(p string, err error) {
 		log.Printf("Failed to archive %s: %v", p, err)
 	})
@@ -516,7 +604,7 @@ func AddFile(ar archiver.Writer, path, commonPath string) error {
 // AddFileReport is AddFile with every skipped entry reported to onErr, so a
 // download can tell the user what's missing instead of silently shipping a
 // partial archive.
-func AddFileReport(ar archiver.Writer, path, commonPath string, onErr func(path string, err error)) error {
+func AddFileReport(ar *Archive, path, commonPath string, onErr func(path string, err error)) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -537,14 +625,11 @@ func AddFileReport(ar archiver.Writer, path, commonPath string, onErr func(path 
 		//filename := info.Name()
 		filename := strings.TrimPrefix(path, commonPath)
 		filename = strings.TrimPrefix(filename, string(filepath.Separator))
-		err = ar.Write(archiver.File{
-			FileInfo: archiver.FileInfo{
-				FileInfo:   info,
-				CustomName: filename,
-			},
-			ReadCloser: file,
-		})
-		if err != nil {
+		var open func() (fs.File, error)
+		if !info.IsDir() {
+			open = func() (fs.File, error) { return os.Open(path) }
+		}
+		if err := ar.Add(info, filename, open); err != nil {
 			return err
 		}
 	}
@@ -863,4 +948,3 @@ func GenerateDuplicatePath(dir, baseName string) string {
 	}
 	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", nameWithoutExt, time.Now().Unix(), ext))
 }
-

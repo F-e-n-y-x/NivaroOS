@@ -11,6 +11,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/common"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/config"
 	v1 "github.com/F-e-n-y-x/NivaroOS/services/core/route/v1"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echo_middleware "github.com/labstack/echo/v4/middleware"
 )
@@ -47,12 +48,12 @@ func InitV1Router() http.Handler {
 	// The landing page's Download button for one-time and password links.
 	e.POST("/v1/qs/:id", v1.PostQuickShareRedeem)
 	v1Group := e.Group("/v1")
-	v1Group.Use(echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
+	v1Group.Use(echojwt.WithConfig(echojwt.Config{
 		// Same-host automation (direct loopback socket peer, no proxy or
 		// browser headers - see common/middleware.IsLocalAutomation) may
 		// skip the token; the interactive terminal never may.
 		Skipper: nivaroos_middleware.LocalAutomationSkipper("/v1/sys/wsterm", v1.HostTerminalBase+"/*"),
-		ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
+		ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
 			valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(config.CommonInfo.RuntimePath) })
 			if err != nil || !valid {
 				if _, revoked := jwt.RevocationReason(err); revoked {

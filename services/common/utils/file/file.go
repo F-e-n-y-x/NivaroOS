@@ -13,9 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/logger"
-	"github.com/mholt/archiver/v3"
-	"go.uber.org/zap"
 )
 
 // GetSize get the file size
@@ -380,113 +377,6 @@ func SpliceFiles(dir, path string, length int, startPoint int) error {
 	}
 
 	return file.Close()
-}
-
-func GetCompressionAlgorithm(t string) (string, archiver.Writer, error) {
-	switch t {
-	case "zip", "":
-		return ".zip", archiver.NewZip(), nil
-	case "tar":
-		return ".tar", archiver.NewTar(), nil
-	case "targz":
-		return ".tar.gz", archiver.NewTarGz(), nil
-	case "tarbz2":
-		return ".tar.bz2", archiver.NewTarBz2(), nil
-	case "tarxz":
-		return ".tar.xz", archiver.NewTarXz(), nil
-	case "tarlz4":
-		return ".tar.lz4", archiver.NewTarLz4(), nil
-	case "tarsz":
-		return ".tar.sz", archiver.NewTarSz(), nil
-	default:
-		return "", nil, errors.New("format not implemented")
-	}
-}
-func IsBrokenSymlink(path string) (bool, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return false, fmt.Errorf("error getting file info: %w", err)
-	}
-
-	// file is not a symlink
-	if info.Mode()&os.ModeSymlink == 0 {
-		return false, nil
-	}
-
-	target, err := os.Readlink(path)
-	if err != nil {
-		return false, fmt.Errorf("error reading symlink: %w", err)
-	}
-
-	_, err = os.Stat(target)
-	if os.IsNotExist(err) {
-		return true, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("error checking target: %w", err)
-	}
-
-	return false, nil
-}
-
-func AddFile(ar archiver.Writer, path, commonPath string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-
-	if !info.IsDir() && !info.Mode().IsRegular() {
-		return nil
-	}
-
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if path != commonPath {
-		//filename := info.Name()
-		fpath := strings.Replace(path, commonPath, "", 1)
-		fpath = filepath.Join(filepath.Base(commonPath), fpath)
-		//filename := info.Name()
-		err = ar.Write(archiver.File{
-			FileInfo: archiver.FileInfo{
-				FileInfo:   info,
-				CustomName: fpath,
-			},
-			ReadCloser: file,
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	if info.IsDir() {
-		names, err := file.Readdirnames(0)
-		if err != nil {
-			return err
-		}
-
-		for _, name := range names {
-			filePath := filepath.Join(path, name)
-			isBroken, err := IsBrokenSymlink(filePath)
-			if err != nil {
-				logger.Error("Failed to check symlink", zap.Any("name", filePath), zap.Error(err))
-				continue
-			}
-			if isBroken {
-				continue
-			}
-
-			err = AddFile(ar, filePath, commonPath)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func CommonPrefix(sep byte, paths ...string) string {

@@ -11,6 +11,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/common_err"
 	"github.com/F-e-n-y-x/NivaroOS/services/common/utils/jwt"
 	"github.com/F-e-n-y-x/NivaroOS/services/gateway/service"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echo_middleware "github.com/labstack/echo/v4/middleware"
 )
@@ -88,11 +89,11 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 
 				return ctx.NoContent(http.StatusCreated)
 			},
-			echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
+			echojwt.WithConfig(echojwt.Config{
 				// socket-peer loopback check; c.RealIP() trusted spoofable
 				// X-Forwarded-For/X-Real-IP headers
 				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
+				ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {
 						return nil, echo.ErrUnauthorized
@@ -142,11 +143,11 @@ func (m *ManagementRoute) buildV1RouteGroup(v1Group *echo.Group) {
 					Message: common_err.GetMsg(common_err.SUCCESS),
 				})
 			},
-			echo_middleware.JWTWithConfig(echo_middleware.JWTConfig{
+			echojwt.WithConfig(echojwt.Config{
 				// socket-peer loopback check; c.RealIP() trusted spoofable
 				// X-Forwarded-For/X-Real-IP headers
 				Skipper: nivaroos_middleware.LocalAutomationSkipper(),
-				ParseTokenFunc: func(token string, c echo.Context) (interface{}, error) {
+				ParseTokenFunc: func(c echo.Context, token string) (interface{}, error) {
 					valid, claims, err := jwt.Validate(token, func() (*ecdsa.PublicKey, error) { return external.GetPublicKey(m.management.State.GetRuntimePath()) })
 					if err != nil || !valid {
 						return nil, echo.ErrUnauthorized

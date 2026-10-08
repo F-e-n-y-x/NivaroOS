@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	nivaroos_middleware "github.com/F-e-n-y-x/NivaroOS/services/common/middleware"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -28,7 +30,7 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/model"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"github.com/mholt/archiver/v3"
+	"github.com/mholt/archives"
 	"github.com/robfig/cron/v3"
 	"github.com/tidwall/gjson"
 
@@ -355,15 +357,10 @@ func GetDownloadFile(ctx echo.Context) error {
 		if tmp, err := os.CreateTemp("", "nv-dl-report-*"); err == nil {
 			tmp.WriteString(report)
 			tmp.Close()
-			dir := filepath.Dir(tmp.Name())
-			named := filepath.Join(dir, "DOWNLOAD-ERRORS.txt-"+filepath.Base(tmp.Name()))
-			_ = os.Rename(tmp.Name(), named)
-			if fi, err := os.Stat(named); err == nil {
-				f, _ := os.Open(named)
-				_ = ar.Write(archiver.File{FileInfo: archiver.FileInfo{FileInfo: fi, CustomName: "DOWNLOAD-ERRORS.txt"}, ReadCloser: f})
-				f.Close()
+			if fi, err := os.Stat(tmp.Name()); err == nil {
+				_ = ar.Add(fi, "DOWNLOAD-ERRORS.txt", func() (fs.File, error) { return os.Open(tmp.Name()) })
 			}
-			_ = os.Remove(named)
+			_ = os.Remove(tmp.Name())
 		}
 		logger.Error("download archive incomplete", zap.Strings("failures", failures))
 	}
@@ -1055,10 +1052,32 @@ func PostArchiveFiles(ctx echo.Context) error {
 	if file.Exists(req.Destination) {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_ALREADY_EXISTS, Message: common_err.GetMsg(common_err.FILE_ALREADY_EXISTS)})
 	}
-	if err := archiver.DefaultZip.Archive(req.Files, req.Destination); err != nil {
+	if err := zipToFile(context.Background(), req.Files, req.Destination); err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})
+}
+
+// zipToFile zips each source (file or folder) under its base name into dest.
+func zipToFile(ctx context.Context, sources []string, dest string) error {
+	m := make(map[string]string, len(sources))
+	for _, src := range sources {
+		m[src] = filepath.Base(src)
+	}
+	files, err := archives.FilesFromDisk(ctx, nil, m)
+	if err != nil {
+		return err
+	}
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	if err := (archives.Zip{Compression: zip.Deflate, SelectiveCompression: true}).Archive(ctx, out, files); err != nil {
+		out.Close()
+		os.Remove(dest)
+		return err
+	}
+	return out.Close()
 }
 
 // @Summary extract an archive (zip/tar/tar.gz/tar.bz2/...) into a destination folder
@@ -1087,7 +1106,8 @@ func PostUnarchiveFile(ctx echo.Context) error {
 	if err := os.MkdirAll(req.Destination, 0o755); err != nil {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 	}
-	if err := archiver.Unarchive(req.Path, req.Destination); err != nil {
+	if err := file.Unarchive(context.Background(), req.Path, req.Destination); err != nil {
+		_ = os.RemoveAll(req.Destination) // it didn't exist before; don't leave half an extraction
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.SERVICE_ERROR, Message: common_err.GetMsg(common_err.SERVICE_ERROR), Data: err.Error()})
 	}
 	return ctx.JSON(common_err.SUCCESS, model.Result{Success: common_err.SUCCESS, Message: common_err.GetMsg(common_err.SUCCESS)})

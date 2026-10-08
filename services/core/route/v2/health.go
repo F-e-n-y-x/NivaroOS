@@ -10,7 +10,6 @@ import (
 	"github.com/F-e-n-y-x/NivaroOS/services/core/pkg/utils/file"
 	"github.com/F-e-n-y-x/NivaroOS/services/core/service"
 	"github.com/labstack/echo/v4"
-	"github.com/mholt/archiver/v3"
 )
 
 func (s *NivaroOS) GetHealthServices(ctx echo.Context) error {
@@ -49,7 +48,7 @@ func (s *NivaroOS) GetHealthPorts(ctx echo.Context) error {
 func (c *NivaroOS) GetHealthlogs(ctx echo.Context) error {
 	var name, currentPath, commonDir, extension string
 	var err error
-	var ar archiver.Writer
+	var ar *file.Archive
 	fileList, err := os.ReadDir("/var/log/nivaroos")
 	if err != nil {
 		message := err.Error()
