@@ -365,6 +365,7 @@ func (processMountEnv) Drop(mp string) {
 	mnt := MountLists[mp]
 	delete(MountLists, mp)
 	delete(mountDevs, mp)
+	writeCloudTrash()
 	mountMu.Unlock()
 	if mnt != nil {
 		// Only tidies up: its unmount won't touch another mount at mp

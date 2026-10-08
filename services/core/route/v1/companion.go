@@ -790,6 +790,18 @@ func GetCompanionDeviceByStoragePath(p string) (*CompanionDevice, string) {
 // (companionDo), else - an older app's tunnel - with the tunnel's "list"
 // message.
 func FetchCompanionFilesFromDevice(dev *CompanionDevice, phonePath string) ([]CompanionFileItem, error) {
+	items, err := fetchCompanionFiles(dev, phonePath)
+	// The phone's Trash (companion_trash.go) is never shown or copied.
+	out := items[:0]
+	for _, it := range items {
+		if it.Name != phoneTrashDir {
+			out = append(out, it)
+		}
+	}
+	return out, err
+}
+
+func fetchCompanionFiles(dev *CompanionDevice, phonePath string) ([]CompanionFileItem, error) {
 	if phonePath == "" {
 		phonePath = "/storage/emulated/0"
 	}

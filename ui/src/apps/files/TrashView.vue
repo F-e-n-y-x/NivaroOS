@@ -1,7 +1,9 @@
 <!-- src/apps/files/TrashView.vue -->
 <!--
 	The Trash section (sidebar → Trash): everything deleted from any drive
-	that's currently connected, newest first. Select to Restore (back to
+	that's currently connected, network share, cloud drive or phone, newest
+	first, each saying where it lives (a phone that's offline: unavailable
+	until it's back). Select to Restore (back to
 	where it was) or Delete forever; Empty Trash clears it all. Items are
 	removed automatically after the retention period.
 -->
@@ -11,7 +13,8 @@
 			<div>
 				<h3 class="title is-6 mb-0">{{ $t('Trash') }}</h3>
 				<p v-if="items.length" class="trash-sub">
-					{{ items.length === 1 ? $t('1 item') : $t('{n} items', { n: items.length }) }} · {{ renderSize(totalBytes) }} ·
+					{{ items.length === 1 ? $t('1 item') : $t('{n} items', { n: items.length }) }} ·
+					<template v-if="totalBytes">{{ $t('{size} on this server', { size: renderSize(totalBytes) }) }} ·</template>
 					{{ $t('deleted forever after {n} days', { n: retentionDays }) }}
 				</p>
 			</div>
@@ -44,13 +47,19 @@
 				<span class="col-when">{{ $t('Deleted') }}</span>
 				<span class="col-size">{{ $t('Size') }}</span>
 			</label>
-			<label v-for="it in items" :key="it.id" class="trash-row" :class="{ selected: isSelected(it.id) }">
-				<b-checkbox :value="isSelected(it.id)" size="is-small" @input="toggle(it.id)"></b-checkbox>
+			<label v-for="it in items" :key="it.id" class="trash-row" :class="{ selected: isSelected(it.id), unavailable: it.unavailable }" :title="it.unavailable ? $t('{place} is offline - restore or delete this once it is back', { place: it.location || $t('The phone') }) : ''">
+				<b-checkbox :value="isSelected(it.id)" :disabled="it.unavailable" size="is-small" @input="toggle(it.id)"></b-checkbox>
 				<span class="col-name one-line" :title="it.name">
 					<b-icon :icon="it.is_dir ? 'folder' : 'file-outline'" custom-size="mdi-18px" :class="it.is_dir ? 'folder-glyph' : 'file-glyph'"></b-icon>
 					{{ it.name }}
 				</span>
-				<span class="col-from one-line" :title="it.original_path">{{ parentOf(it.original_path) }}</span>
+				<span class="col-from one-line" :title="it.original_path">
+					<span v-if="place(it)" class="trash-place">
+						<b-icon :icon="place(it).icon" custom-size="mdi-14px"></b-icon>
+						{{ place(it).label }}<template v-if="it.unavailable"> · {{ $t('offline') }}</template>
+					</span>
+					{{ parentOf(it.original_path) }}
+				</span>
 				<span class="col-when" :title="new Date(it.deleted_at).toLocaleString()">{{ ago(it.deleted_at) }}</span>
 				<span class="col-size">
 					<template v-if="it.measuring">{{ $t('counting…') }}</template>
@@ -76,6 +85,7 @@ import { renderSize } from '@/mixins/file_utils'
 import { escapeHtml } from '@/utils/escapeHtml'
 import events from '@/events/events'
 import ConfirmDialog from './dialogs/ConfirmDialog.vue'
+import { trashPlace } from '@/utils/files/trashWhere'
 
 export default {
 	name: 'files-trash-view',
@@ -87,8 +97,11 @@ export default {
 		return { items: [], selected: [], loading: false, busy: '', retentionDays: 30, totalBytes: 0, pendingConfirm: null }
 	},
 	computed: {
+		available() {
+			return this.items.filter((i) => !i.unavailable)
+		},
 		allSelected() {
-			return this.items.length > 0 && this.selected.length === this.items.length
+			return this.available.length > 0 && this.selected.length === this.available.length
 		},
 	},
 	watch: {
@@ -104,6 +117,7 @@ export default {
 	},
 	methods: {
 		renderSize,
+		place: trashPlace,
 		parentOf(p) {
 			return p.split('/').slice(0, -1).join('/') || '/'
 		},
@@ -140,7 +154,7 @@ export default {
 			this.selected = this.isSelected(id) ? this.selected.filter((x) => x !== id) : [...this.selected, id]
 		},
 		toggleAll() {
-			this.selected = this.allSelected ? [] : this.items.map((i) => i.id)
+			this.selected = this.allSelected ? [] : this.available.map((i) => i.id)
 		},
 		async restore(ids) {
 			this.busy = 'restore'
@@ -210,7 +224,9 @@ export default {
 		async empty() {
 			this.busy = 'empty'
 			try {
-				await this.$api.trash.empty()
+				const res = await this.$api.trash.empty()
+				const failed = (res.data && res.data.data && res.data.data.failed) || []
+				if (failed.length) this.$buefy.toast.open({ message: escapeHtml(failed.map((f) => `${f.name}: ${f.error}`).join('; ')), type: 'is-danger', duration: 6000 })
 			} catch (e) {
 				this.$buefy.toast.open({ message: this.$t("Couldn't empty the Trash"), type: 'is-danger' })
 			} finally {
@@ -291,6 +307,10 @@ export default {
 	&.selected {
 		background: var(--theme-card-selected, rgba(37, 99, 235, 0.1));
 	}
+	&.unavailable {
+		opacity: 0.55;
+		cursor: default;
+	}
 	::v-deep .checkbox {
 		margin: 0;
 	}
@@ -320,6 +340,13 @@ export default {
 .col-size {
 	font-size: var(--font-xs);
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.6));
+}
+.trash-place {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	margin-right: 0.3rem;
+	font-weight: 600;
 }
 .col-size {
 	text-align: right;

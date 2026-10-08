@@ -43,6 +43,13 @@ type Item struct {
 	// counted (that walk happens after the move, not before it).
 	Measuring bool   `json:"measuring,omitempty"`
 	Root      string `json:"root"`
+	// Kind is where it lives: disk, share, cloud or phone (KindDisk...);
+	// Location names the share, cloud drive or phone.
+	Kind     string `json:"kind"`
+	Location string `json:"location,omitempty"`
+	// Unavailable: listed but can't be restored or deleted right now (its
+	// phone is offline).
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 type Options struct {
@@ -58,9 +65,16 @@ type Bin struct {
 	mu    sync.Mutex
 	opts  Options
 	roots map[string]bool
+	// Roots whose listing is still running (see rootItems).
+	reading sync.Map
 
-	beforeMeasure func() // test hook
+	beforeMeasure func()            // test hook
+	beforeRead    func(root string) // test hook
 }
+
+// How long one trash root may take to list before the Trash is shown
+// without it (a share whose server is gone, a stuck cloud mount).
+var rootTimeout = 10 * time.Second
 
 var (
 	ErrNoTrashHere = errors.New("this location has no Trash")
@@ -88,6 +102,9 @@ func New(opts Options) *Bin {
 	}
 	return b
 }
+
+// NewID is a fresh trash item id.
+func NewID() string { return newID() }
 
 func newID() string {
 	b := make([]byte, 8)
@@ -254,30 +271,61 @@ func (b *Bin) List() []Item {
 func (b *Bin) listLocked() []Item {
 	var out []Item
 	for root := range b.roots {
-		entries, err := os.ReadDir(filepath.Join(trashDir(root), "info"))
+		out = append(out, b.rootItems(root)...)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].DeletedAt.After(out[j].DeletedAt) })
+	return out
+}
+
+// rootItems lists one root, giving up after rootTimeout: a hung network
+// mount must not hang the whole Trash (and every delete with it). The
+// root is skipped until that read finishes.
+func (b *Bin) rootItems(root string) []Item {
+	if _, busy := b.reading.LoadOrStore(root, true); busy {
+		return nil
+	}
+	ch := make(chan []Item, 1)
+	go func() {
+		items := b.readRoot(root)
+		b.reading.Delete(root)
+		ch <- items
+	}()
+	select {
+	case items := <-ch:
+		return items
+	case <-time.After(rootTimeout):
+		return nil
+	}
+}
+
+func (b *Bin) readRoot(root string) []Item {
+	if b.beforeRead != nil {
+		b.beforeRead(root)
+	}
+	entries, err := os.ReadDir(filepath.Join(trashDir(root), "info"))
+	if err != nil {
+		return nil
+	}
+	kind, location := where(root)
+	var out []Item
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(trashDir(root), "info", e.Name()))
 		if err != nil {
 			continue
 		}
-		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), ".json") {
-				continue
-			}
-			raw, err := os.ReadFile(filepath.Join(trashDir(root), "info", e.Name()))
-			if err != nil {
-				continue
-			}
-			var it Item
-			if json.Unmarshal(raw, &it) != nil {
-				continue
-			}
-			it.Root = root
-			if _, err := os.Lstat(b.pathOf(it)); err != nil {
-				continue // record without data (removed by hand)
-			}
-			out = append(out, it)
+		var it Item
+		if json.Unmarshal(raw, &it) != nil {
+			continue
 		}
+		it.Root, it.Kind, it.Location = root, kind, location
+		if _, err := os.Lstat(b.pathOf(it)); err != nil {
+			continue // record without data (removed by hand)
+		}
+		out = append(out, it)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].DeletedAt.After(out[j].DeletedAt) })
 	return out
 }
 
@@ -338,19 +386,25 @@ func (b *Bin) Restore(ids []string) RestoreResult {
 }
 
 func restoredName(p string) string {
-	dir, name := filepath.Split(p)
-	ext := filepath.Ext(name)
-	stem := strings.TrimSuffix(name, ext)
 	for i := 1; ; i++ {
-		suffix := " (restored)"
-		if i > 1 {
-			suffix = fmt.Sprintf(" (restored %d)", i)
-		}
-		c := filepath.Join(dir, stem+suffix+ext)
+		c := RestoredName(p, i)
 		if _, err := os.Lstat(c); os.IsNotExist(err) {
 			return c
 		}
 	}
+}
+
+// RestoredName is the i-th name (1, 2, ...) to restore p as when its name
+// is taken: "a (restored).txt", "a (restored 2).txt".
+func RestoredName(p string, i int) string {
+	dir, name := filepath.Split(p)
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	suffix := " (restored)"
+	if i > 1 {
+		suffix = fmt.Sprintf(" (restored %d)", i)
+	}
+	return filepath.Join(dir, stem+suffix+ext)
 }
 
 // Delete removes items from the trash permanently.
@@ -415,15 +469,6 @@ func (b *Bin) backdate(id string, d time.Duration) {
 	it.DeletedAt = it.DeletedAt.Add(-d)
 	raw, _ := json.Marshal(it)
 	_ = os.WriteFile(b.infoPath(it.Root, it.ID), raw, 0o600)
-}
-
-// Size of everything in the trash.
-func (b *Bin) Usage() (count int, bytes int64) {
-	for _, it := range b.List() {
-		count++
-		bytes += it.Size
-	}
-	return
 }
 
 func sameDevice(a, b string) bool {

@@ -210,6 +210,9 @@ class TrashItem {
     required this.isDir,
     this.items = 0,
     this.measuring = false,
+    this.kind = 'disk',
+    this.location = '',
+    this.unavailable = false,
   });
 
   final String id;
@@ -227,6 +230,19 @@ class TrashItem {
   /// A folder's size is still being counted (that happens after the move).
   final bool measuring;
 
+  /// Where it lives: 'disk' (the server's own drives), 'share' (a network
+  /// share), 'cloud' (a cloud drive) or 'phone'; [location] names the
+  /// share, cloud drive or phone.
+  final String kind;
+  final String location;
+
+  /// Listed but out of reach right now (its phone is offline): it can't be
+  /// restored or deleted until it's back.
+  final bool unavailable;
+
+  /// The share, cloud drive or phone it's on; null for the server's disks.
+  String? get place => kind == 'disk' || location.isEmpty ? null : location;
+
   factory TrashItem.fromJson(Map<String, dynamic> j) {
     final path = j['original_path'] as String? ?? '';
     var name = j['name'] as String? ?? '';
@@ -241,6 +257,9 @@ class TrashItem {
       isDir: j['is_dir'] as bool? ?? false,
       items: (j['items'] as num?)?.toInt() ?? 0,
       measuring: j['measuring'] as bool? ?? false,
+      kind: j['kind'] as String? ?? 'disk',
+      location: j['location'] as String? ?? '',
+      unavailable: j['unavailable'] as bool? ?? false,
     );
   }
 

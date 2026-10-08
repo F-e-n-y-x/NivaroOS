@@ -92,6 +92,67 @@ void main() {
     });
   });
 
+  group('shares, cloud drives and phones', () {
+    test('items say where they live; an offline phone\'s are unavailable', () {
+      final t = TrashListing.fromJson({
+        'items': [
+          {'id': 'p', 'name': 'a.jpg', 'original_path': '/DATA/Companion/Pixel/DCIM/a.jpg', 'kind': 'phone', 'location': 'Pixel 8', 'unavailable': true},
+          {'id': 's', 'name': 'film.mkv', 'original_path': '/mnt/nas/media/film.mkv', 'kind': 'share', 'location': '//nas/media'},
+          {'id': 'd', 'name': 'cv.pdf', 'original_path': '/DATA/Documents/cv.pdf', 'kind': 'disk'},
+          {'id': 'o', 'name': 'old.txt', 'original_path': '/DATA/old.txt'},
+        ],
+        'bytes': 0,
+      });
+      final byId = {for (final i in t.items) i.id: i};
+      expect(byId['p']!.place, 'Pixel 8');
+      expect(byId['p']!.unavailable, isTrue);
+      expect(byId['s']!.place, '//nas/media');
+      expect(byId['s']!.unavailable, isFalse);
+      expect(byId['d']!.place, isNull);
+      expect(byId['o']!.kind, 'disk'); // an older server
+    });
+
+    test('the delete prompt says what happens where', () {
+      final trash = TrashSupport.fromJson({'supported': true, 'kind': 'share'}).prompt('“a.jpg”', 1);
+      expect((trash.title, trash.confirm, trash.permanent), ('Move “a.jpg” to Trash?', 'Move to Trash', false));
+
+      final phone = TrashSupport.fromJson({'supported': true, 'kind': 'phone'}).prompt('2 items', 2);
+      expect(phone.message, contains('on the phone, hidden'));
+
+      final gd = TrashSupport.fromJson({'supported': false, 'kind': 'cloud', 'provider': 'Google Drive'}).prompt('“a.jpg”', 1);
+      expect(gd.title, "Move “a.jpg” to Google Drive's trash?");
+      expect(gd.permanent, isFalse);
+
+      final s3 = TrashSupport.fromJson({'supported': false, 'kind': 'cloud', 'reason': 'no_server_move'}).prompt('“a.jpg”', 1, place: 'Backups');
+      expect((s3.title, s3.permanent), ('Delete “a.jpg”?', true));
+      expect(s3.message, "Backups can't move files on its servers, so it has no Trash: it is deleted for good.");
+
+      final ro = TrashSupport.fromJson({'supported': false, 'kind': 'share', 'reason': 'readonly'}).prompt('3 items', 3, place: 'NAS');
+      expect(ro.message, "NAS is read-only for NivaroOS, so it can't keep a Trash: they are deleted for good.");
+
+      final none = TrashSupport.fromJson(null).prompt('“a.jpg”', 1);
+      expect((none.message, none.permanent), ('This location has no trash, so it is deleted for good.', true));
+    });
+
+    testWidgets('a row names the phone and is disabled while it is offline', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(testApp(Material(
+        child: TrashRow(
+          item: TrashItem.fromJson({'id': 'p', 'name': 'a.jpg', 'original_path': '/DATA/Companion/Pixel/DCIM/a.jpg', 'kind': 'phone', 'location': 'Pixel 8', 'unavailable': true}),
+          selected: false,
+          selecting: false,
+          enabled: false,
+          onTap: () => taps++,
+          onLongPress: () => taps++,
+        ),
+      )));
+      await tester.pump();
+      expect(find.textContaining('on Pixel 8 · offline'), findsOneWidget);
+      await tester.tap(find.text('a.jpg'));
+      expect(taps, 0);
+    });
+  });
+
   testWidgets('restore sends the item id and says where it went', (tester) async {
     final server = _Server({
       'GET /v1/folder': fixture('files/documents'),

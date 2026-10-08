@@ -1447,6 +1447,13 @@ func DeleteFile(ctx echo.Context) error {
 		return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.MOUNTED_DIRECTIORIES, Message: "Cannot delete a mounted drive, connected location, or system storage directory. Eject or disconnect it instead.", Data: protected})
 	}
 
+	// Default: into the Trash (an instant rename on the same drive, share,
+	// cloud drive or phone), so a delete can be undone. Locations that
+	// can't keep a Trash and explicit ?permanent=true requests are deleted
+	// for good below.
+	permanent, _ := strconv.ParseBool(ctx.QueryParam("permanent"))
+	trashed := []trash.Item{}
+	phoneDirs := map[string][]CompanionFileItem{}
 	var local []string
 	for _, v := range deletable {
 		cleanV := filepath.Clean(v)
@@ -1458,7 +1465,15 @@ func DeleteFile(ctx echo.Context) error {
 			}
 			// Only proxy delete if NOT the phone root! NEVER wipe the whole phone storage!
 			if cleanPhone != "" && cleanPhone != "/" && cleanPhone != "." && cleanPhone != root {
-				if err := ProxyCompanionFileDelete(dev, phonePath); err != nil {
+				if !permanent && !trash.IsTrashPath(cleanPhone) {
+					it, ok, err := trashOnCompanion(dev, cleanV, cleanPhone, phoneDirs)
+					if err != nil {
+						return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: fmt.Sprintf("Moved %d item(s) to the Trash, then stopped - couldn't move %s to the Trash on %s: %v", len(trashed), filepath.Base(cleanV), companionDisplayName(dev), err), Data: map[string]interface{}{"trashed": trashed}})
+					}
+					if ok {
+						trashed = append(trashed, it)
+					}
+				} else if err := ProxyCompanionFileDelete(dev, phonePath); err != nil {
 					return ctx.JSON(common_err.SERVICE_ERROR, model.Result{Success: common_err.FILE_DELETE_ERROR, Message: "Couldn't delete on the device: " + err.Error(), Data: []string{v}})
 				}
 			}
@@ -1482,28 +1497,23 @@ func DeleteFile(ctx echo.Context) error {
 		}
 	}
 
-	// Default: into the Trash (an instant rename on the same drive), so a
-	// delete can be undone. Locations that can't keep a Trash (cloud
-	// drives, network shares) and explicit ?permanent=true requests are
-	// deleted for good below.
-	var trashed []trash.Item
-	if permanent, _ := strconv.ParseBool(ctx.QueryParam("permanent")); !permanent {
+	if !permanent {
 		var rest []string
 		var toTrash []string
 		for _, p := range local {
-			if !trash.IsTrashPath(p) && trash.SupportsTrash(p) {
+			if trash.SupportsTrash(p).Supported {
 				toTrash = append(toTrash, p)
 			} else {
 				rest = append(rest, p)
 			}
 		}
 		items, err := service.Trash.Trash(toTrash)
-		trashed = items
+		trashed = append(trashed, items...)
 		if err != nil {
 			return ctx.JSON(common_err.SERVICE_ERROR, model.Result{
 				Success: common_err.FILE_DELETE_ERROR,
-				Message: fmt.Sprintf("Moved %d item(s) to the Trash, then stopped - %v", len(items), err),
-				Data:    map[string]interface{}{"trashed": items},
+				Message: fmt.Sprintf("Moved %d item(s) to the Trash, then stopped - %v", len(trashed), err),
+				Data:    map[string]interface{}{"trashed": trashed},
 			})
 		}
 		local = rest

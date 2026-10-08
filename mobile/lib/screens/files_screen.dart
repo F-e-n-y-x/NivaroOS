@@ -906,32 +906,22 @@ class FilesScreenState extends State<FilesScreen> {
   Future<void> _delete(List<FileEntry> items) async {
     if (items.isEmpty) return;
     final dir = _path!;
-    var toTrash = false;
+    var support = const TrashSupport();
     if (!_isLocal) {
       try {
-        final res = await ApiClient.instance.get('/trash/support', query: {'path': dir});
-        final data = res['data'];
-        toTrash = data is Map && data['supported'] == true;
+        support = await TrashApi.support(dir);
       } catch (_) {}
     }
     if (!mounted) return;
     final what = items.length == 1 ? '“${items.first.name}”' : '${items.length} items';
-    final confirmed = toTrash
-        ? await ConfirmDialog.destructive(
-            context,
-            title: 'Move $what to Trash?',
-            message: 'You can undo this right away, or restore ${items.length == 1 ? 'it' : 'them'} later from Trash in Files.',
-            confirmLabel: 'Move to Trash',
-            permanent: false,
-          )
-        : await ConfirmDialog.destructive(
-            context,
-            title: 'Delete $what?',
-            message: _isLocal
-                ? '${items.length == 1 ? 'It is' : 'They are'} deleted from this phone.'
-                : '${_location?.label ?? 'This location'} has no trash, so ${items.length == 1 ? 'it is' : 'they are'} deleted for good.',
-            confirmLabel: 'Delete',
-          );
+    final p = support.prompt(what, items.length, place: _location?.label);
+    final confirmed = await ConfirmDialog.destructive(
+      context,
+      title: p.title,
+      message: _isLocal ? '${items.length == 1 ? 'It is' : 'They are'} deleted from this phone.' : p.message,
+      confirmLabel: p.confirm,
+      permanent: _isLocal || p.permanent,
+    );
     if (!confirmed || !mounted) return;
     try {
       if (_isLocal) {
@@ -957,7 +947,7 @@ class FilesScreenState extends State<FilesScreen> {
       } else if (ids.isNotEmpty) {
         _snack('Moved $what to Trash', action: SnackBarAction(label: 'Undo', onPressed: () => _restore(ids, what)));
       } else {
-        _snack('Deleted $what');
+        _snack(support.provider != null ? "Moved $what to ${support.provider}'s trash" : 'Deleted $what');
       }
     } catch (e) {
       _snack("Couldn't delete $what: ${_plain(e)}", error: true);

@@ -7,6 +7,19 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Added
 
+- Trash for network shares, cloud drives and phones (web and app).
+  Deleting on an SMB/NFS/SSHFS share or a cloud drive that can move files
+  on its servers (WebDAV, Dropbox, local-style remotes...) moves it to a
+  Trash folder on that share or drive - instant, nothing re-uploaded.
+  Google Drive, OneDrive and TeraBox keep their own trash, so a delete
+  there says "Move to Google Drive's trash" instead of trashing twice.
+  Deleting a file on a paired phone moves it to a hidden Trash folder on
+  the phone (no confirmation on the phone, and it leaves the gallery).
+  The Trash lists all of them with where each item lives; restore,
+  delete forever, Empty Trash and the 30-day clean-up work for every
+  kind, and a phone that's offline shows its items as unavailable until
+  it's back. Read-only shares and drives without server-side moves still
+  warn "Delete permanently" and say why.
 - App: "Upload to NivaroOS" in Android's Share sheet. Share photos,
   videos, documents or any files from Gallery, Files, WhatsApp, Chrome and
   the like, pick the server and folder (Downloads, Gallery, Documents, a

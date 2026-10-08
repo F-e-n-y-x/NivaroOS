@@ -13,11 +13,18 @@ var Trash *trash.Bin
 // TrashRetention: items older than this are removed for good.
 const TrashRetention = 30 * 24 * time.Hour
 
+// PurgeMore purges the phones' trash on the same schedule (route/v1 sets
+// it; phones are reached through there).
+var PurgeMore func(maxAge time.Duration)
+
 func InitTrash(dataDir string) {
 	Trash = trash.New(trash.Options{IndexPath: filepath.Join(dataDir, "trash-roots.json")})
 	go func() {
 		for {
 			Trash.Purge(TrashRetention)
+			if PurgeMore != nil {
+				PurgeMore(TrashRetention)
+			}
 			time.Sleep(6 * time.Hour)
 		}
 	}()

@@ -162,6 +162,9 @@ class _TrashScreenState extends State<TrashScreen> {
 
   List<TrashItem> get _selectedItems => [for (final i in _items) if (_selected.contains(i.id)) i];
 
+  /// What can be selected: not the items of a phone that's offline.
+  Iterable<String> get _selectableIds => [for (final i in _items) if (!i.unavailable) i.id];
+
   // -------------------------------------------------------------------------
   // Restore
 
@@ -357,7 +360,7 @@ class _TrashScreenState extends State<TrashScreen> {
         IconButton(
           icon: const Icon(Icons.select_all),
           tooltip: 'Select all',
-          onPressed: _selected.length == _items.length ? null : () => setState(() => _selected.addAll(_items.map((i) => i.id))),
+          onPressed: _selected.length == _selectableIds.length ? null : () => setState(() => _selected.addAll(_selectableIds)),
         ),
       ],
     );
@@ -392,7 +395,7 @@ class _TrashScreenState extends State<TrashScreen> {
             onSelected: (v) {
               switch (v) {
                 case 'select':
-                  setState(() => _selected.addAll(_items.map((i) => i.id)));
+                  setState(() => _selected.addAll(_selectableIds));
                 case 'empty':
                   _empty();
               }
@@ -454,7 +457,7 @@ class _TrashScreenState extends State<TrashScreen> {
               item: i,
               selected: _selected.contains(i.id),
               selecting: selecting,
-              enabled: _busy == null,
+              enabled: _busy == null && !i.unavailable,
               onTap: () => selecting ? _toggle(i) : _showItem(i),
               onLongPress: () {
                 HapticFeedback.selectionClick();
@@ -598,7 +601,8 @@ class TrashRow extends StatelessWidget {
         subtitle: Text(
           _capitalized([
             if (at != null) formatRelative(at),
-            'from ${trashFolderLabel(item.originalFolder)}',
+            'from ${trashFolderLabel(item.originalFolder)}${item.place == null ? '' : ' on ${item.place}'}',
+            if (item.unavailable) 'offline',
             if (big) size,
           ].join(' · ')),
           maxLines: big ? 2 : 1,
@@ -635,6 +639,7 @@ class _TrashItemSheet extends StatelessWidget {
     final left = item.daysLeft(retentionDays, clock.now());
     final facts = <(String, String)>[
       ('From', item.originalFolder),
+      if (item.place != null) ('On', item.place!),
       if (at != null) ('Deleted', formatExact(at)),
       ('Size', item.measuring ? 'Counting…' : [if (item.isDir) formatCount(item.items, 'item'), formatSize(item.size)].join(' · ')),
       if (left != null)

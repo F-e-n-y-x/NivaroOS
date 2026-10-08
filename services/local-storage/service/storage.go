@@ -124,12 +124,14 @@ func (s *storageStruct) MountStorage(mountPoint, deviceName string) error {
 		}
 		delete(MountLists, mountPoint)
 		delete(mountDevs, mountPoint)
+		writeCloudTrash()
 		if !heldMounts[mountPoint] {
 			mountExit[mountPoint] = "the mount ended by itself (unmounted outside NivaroOS, or its FUSE connection closed)"
 		}
 	}()
 	MountLists[mountPoint] = mnt
 	mountDevs[mountPoint] = dev
+	writeCloudTrash()
 	delete(mountExit, mountPoint)
 	parkKnownStuck(cloudMount{Name: deviceName, MountPoint: mountPoint, VFS: mnt.VFS})
 	return nil
