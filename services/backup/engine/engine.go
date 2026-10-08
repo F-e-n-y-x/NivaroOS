@@ -155,7 +155,7 @@ func New(cfg Config) (*Engine, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Engine{
 		cfg:     cfg,
-		policy:  newRootPolicy(cfg.AllowedRoots, cfg.StagingDir),
+		policy:  newRootPolicy(cfg.AllowedRoots, cfg.StagingDir, cfg.SpoolDir),
 		started: cfg.Now(),
 		host:    machineHost(cfg.MachineIDPath),
 		ctx:     ctx,

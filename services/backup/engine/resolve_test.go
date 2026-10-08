@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -91,7 +92,9 @@ func quirkStrings(q []Quirk) []string {
 	return out
 }
 
-func TestResolveRootFilesystemOnlyUnderAllowedRoots(t *testing.T) {
+// The root filesystem can be read anywhere (a source: users' homes,
+// /opt, /srv ...) but written only under the allowed roots.
+func TestResolveRootFilesystemReadAnywhereWriteUnderAllowedRoots(t *testing.T) {
 	s := newTestSys(t)
 	// The "root filesystem" holds the allowed root, like / holds /DATA.
 	root := s.addVolume("system", "77777777-aaaa-4bbb-8ccc-000000000007", "ext4", func(m *fakeMount) { m.MountPoint = s.root })
@@ -103,10 +106,16 @@ func TestResolveRootFilesystemOnlyUnderAllowedRoots(t *testing.T) {
 		t.Fatalf("resolved = %+v", r)
 	}
 	if c := resolveCode(t, e, ep(root, "spool")); c != CodePathNotAllowed {
-		t.Fatalf("outside the allowed roots: %q, want path_not_allowed", c)
+		t.Fatalf("Backup's own spool as a source: %q, want path_not_allowed", c)
 	}
-	if c := resolveCode(t, e, ep(root, "")); c != CodePathNotAllowed {
-		t.Fatalf("the whole root filesystem: %q, want path_not_allowed", c)
+	if r := resolveOK(t, e, ep(root, "")); !r.Online {
+		t.Fatalf("the whole root filesystem as a source = %+v", r)
+	}
+	if _, err := e.resolve(context.Background(), ep(root, ""), nil); CodeOf(err) != CodePathNotAllowed {
+		t.Fatalf("the whole root filesystem as a destination: %v, want path_not_allowed", err)
+	}
+	if _, err := e.resolveRead(context.Background(), ep(root, ""), nil); err != nil {
+		t.Fatalf("the whole root filesystem read: %v", err)
 	}
 }
 
@@ -374,5 +383,28 @@ func TestMountTableShadowed(t *testing.T) {
 		if got := tbl.shadowed(i); got != want[m.ID] {
 			t.Errorf("mount %d at %s: shadowed=%v, want %v", m.ID, m.MountPoint, got, want[m.ID])
 		}
+	}
+}
+
+// Browsing the root filesystem (picking a source like /home) lists its
+// folders but never Backup's own working folders.
+func TestBrowseRootFilesystemHidesBackupsOwnFolders(t *testing.T) {
+	s := newTestSys(t)
+	root := s.addVolume("system", "77777777-aaaa-4bbb-8ccc-000000000017", "ext4", func(m *fakeMount) { m.MountPoint = s.root })
+	e := s.engine()
+	must(t, os.MkdirAll(filepath.Join(s.root, "home", "alex"), 0o755))
+	res, err := e.Browse(context.Background(), BrowseRequest{Endpoint: ep(root, "")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, en := range res.Entries {
+		names = append(names, en.Name)
+	}
+	if !slices.Contains(names, "home") || slices.Contains(names, "spool") {
+		t.Fatalf("root listing = %v, want home and no spool", names)
+	}
+	if _, err := e.Browse(context.Background(), BrowseRequest{Endpoint: ep(root, "spool")}); CodeOf(err) != CodePathNotAllowed {
+		t.Fatalf("browsing the spool: %v, want path_not_allowed", err)
 	}
 }

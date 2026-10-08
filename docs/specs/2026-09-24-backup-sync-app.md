@@ -601,10 +601,13 @@ engine resolves them at the moment of use.
   `fs.NewFs(remote+":"+sub)` directly. Auth errors map to `cloud_auth`.
 - **Sub-path rules:** `filepath.Clean`, then reject `..`, a leading `/` and NUL.
   After joining, run `EvalSymlinks` and require the result to stay under the
-  endpoint root **and** under an allowed root (`/DATA`, `/mnt`, `/media`,
-  `/var/lib/nivaroos/backup/staging`). Denied everywhere: `/proc`, `/sys`,
-  `/dev`, `/boot`, `/etc`, `/run`, and `/var/lib/nivaroos` except staging.
-  Core enforces the same rules again as defence in depth.
+  endpoint root. Writes (destinations, restore targets) must also be under
+  an allowed root (`/DATA`, `/mnt`, `/media`, `/home`, `/root`, `/srv`,
+  `/opt`, `/var/lib/nivaroos/backup/staging`) and never in `/proc`, `/sys`,
+  `/dev`, `/boot`, `/etc`, `/run`, or `/var/lib/nivaroos` except staging.
+  Reads (sources, browsing) may be anywhere except `/proc`, `/sys`, `/dev`,
+  `/run` and Backup's own staging and spool folders (2026-10-08: users'
+  homes and other system-drive folders can be backed up).
 
 **Destination identity marker.** On the first successful run the engine writes
 `<dest>/.nivaroos-backup.json`:

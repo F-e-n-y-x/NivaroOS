@@ -98,7 +98,7 @@ func credsFor(m map[string]SMBCreds, ep Endpoint) *SMBCreds {
 // resolveCheck resolves one endpoint for a check: the target when online,
 // else the failing check.
 func (e *Engine) resolveCheck(ctx context.Context, id string, ep Endpoint, creds *SMBCreds, offline ErrorCode) (*target, Check) {
-	t, err := e.resolve(ctx, ep, creds)
+	t, err := e.resolveAs(ctx, ep, creds, id == CheckSourceResolves)
 	if err != nil {
 		return nil, newCheck(id, CheckFail, CodeOf(err), map[string]interface{}{"detail": err.Error()})
 	}

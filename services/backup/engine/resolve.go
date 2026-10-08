@@ -44,6 +44,11 @@ type target struct {
 	display string // Resolved.Root
 
 	enc *Encryption // set on an encrypted destination (keys checked)
+
+	// read: resolved as a source or for browsing, so the read policy
+	// applies (anywhere but kernel views and Backup's own folders)
+	// instead of the write roots.
+	read bool
 }
 
 // fsOpts says how a local endpoint is opened for one use.
@@ -82,6 +87,16 @@ func (t *target) isCloud() bool { return t.ep.Kind == EPCloud }
 // (drive unplugged, network down) resolves with online=false; errors are
 // for endpoints that can never work as given.
 func (e *Engine) resolve(ctx context.Context, ep Endpoint, creds *SMBCreds) (*target, error) {
+	return e.resolveAs(ctx, ep, creds, false)
+}
+
+// resolveRead is resolve for an endpoint that is only read (a source, a
+// folder being browsed).
+func (e *Engine) resolveRead(ctx context.Context, ep Endpoint, creds *SMBCreds) (*target, error) {
+	return e.resolveAs(ctx, ep, creds, true)
+}
+
+func (e *Engine) resolveAs(ctx context.Context, ep Endpoint, creds *SMBCreds, read bool) (*target, error) {
 	if !ep.Kind.Valid() {
 		return nil, Errorf(CodeEndpointUnknown, "unknown endpoint kind %q", ep.Kind)
 	}
@@ -92,7 +107,7 @@ func (e *Engine) resolve(ctx context.Context, ep Endpoint, creds *SMBCreds) (*ta
 	if err := checkKeys(ep.Encryption); err != nil {
 		return nil, err
 	}
-	t := &target{ep: ep, sub: sub, enc: ep.Encryption}
+	t := &target{ep: ep, sub: sub, enc: ep.Encryption, read: read}
 	switch ep.Kind {
 	case EPVolume, EPUSB, EPMerge:
 		err = e.resolveLocal(t)
@@ -169,7 +184,7 @@ func (e *Engine) resolveLocal(t *target) error {
 	if !pathWithin(real, mv.m.MountPoint) {
 		return Errorf(CodePathNotAllowed, "%s leads outside its drive (to %s) through a symbolic link", p, real)
 	}
-	if err := e.policy.check(real); err != nil {
+	if err := e.policy.checkFor(real, t.read); err != nil {
 		return err
 	}
 	if inner, ok := snap.table.containing(real); ok && inner.ID != mv.m.ID {
@@ -269,7 +284,9 @@ func redact(s string, c *SMBCreds) string {
 
 // Resolve maps an endpoint to where it is right now (spec §6.2).
 func (e *Engine) Resolve(ctx context.Context, req ResolveRequest) (Resolved, error) {
-	t, err := e.resolve(ctx, req.Endpoint, req.SMBCreds)
+	// Read policy: it shows where a picked folder is, source or
+	// destination; precheck holds a destination to the write roots.
+	t, err := e.resolveRead(ctx, req.Endpoint, req.SMBCreds)
 	if err != nil {
 		return Resolved{}, err
 	}
@@ -421,7 +438,7 @@ func (e *Engine) ResolvePath(ctx context.Context, req ResolvePathRequest) (Resol
 		ep := Endpoint{Kind: EPCloud, RefID: r.Name, SubPath: rel, Label: r.Label}
 		return ResolvePathResult{Endpoint: &ep, OK: true}, nil
 	}
-	if err := e.policy.check(real); err != nil {
+	if err := e.policy.checkRead(real); err != nil {
 		return ResolvePathResult{Reason: CodePathNotAllowed}, nil
 	}
 	snap, err := e.fresh()

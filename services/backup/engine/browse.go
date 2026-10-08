@@ -23,7 +23,7 @@ func (e *Engine) Browse(ctx context.Context, req BrowseRequest) (BrowseResult, e
 	if err != nil {
 		return BrowseResult{}, err
 	}
-	t, err := e.resolve(ctx, req.Endpoint, req.SMBCreds)
+	t, err := e.resolveRead(ctx, req.Endpoint, req.SMBCreds)
 	if err != nil {
 		return BrowseResult{}, err
 	}
@@ -90,7 +90,7 @@ func browseLocal(t *target, rel string, policy rootPolicy) ([]Entry, error) {
 	if !pathWithin(real, t.mountPoint) || !pathWithin(real, t.path) {
 		return nil, Errorf(CodePathNotAllowed, "%s leads outside the location", rel)
 	}
-	if err := policy.check(real); err != nil {
+	if err := policy.checkRead(real); err != nil {
 		return nil, err
 	}
 	des, err := os.ReadDir(real)
@@ -102,6 +102,9 @@ func browseLocal(t *target, rel string, policy rootPolicy) ([]Entry, error) {
 	}
 	out := make([]Entry, 0, len(des))
 	for _, d := range des {
+		if policy.checkRead(filepath.Join(real, d.Name())) != nil {
+			continue // /proc, /sys and the like: never a source
+		}
 		fi, err := d.Info()
 		if err != nil {
 			continue // removed while listing

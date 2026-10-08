@@ -9,14 +9,22 @@ import (
 	"strings"
 )
 
-// DefaultAllowedRoots are where backups may read and write (spec §6.2).
-// The staging folder is added from Config.StagingDir.
-var DefaultAllowedRoots = []string{"/DATA", "/mnt", "/media"}
+// DefaultAllowedRoots are where backups may write: destinations and
+// restore targets (spec §6.2). The staging folder is added from
+// Config.StagingDir. Sources may be read from anywhere outside
+// readDeniedRoots (owner request 2026-10-08: back up users' homes and
+// other system-drive folders, not only /DATA).
+var DefaultAllowedRoots = []string{"/DATA", "/mnt", "/media", "/home", "/root", "/srv", "/opt"}
 
-// deniedRoots are never used, even if an allowed root is configured
+// deniedRoots are never written, even if an allowed root is configured
 // below them - except the staging folder, which is under
 // /var/lib/nivaroos on purpose.
 var deniedRoots = []string{"/proc", "/sys", "/dev", "/boot", "/etc", "/run", "/var/lib/nivaroos"}
+
+// readDeniedRoots are never read as a source: kernel and runtime views,
+// not files. Backup's own staging and spool folders are added in
+// newRootPolicy (a job backing them up would chase its own tail).
+var readDeniedRoots = []string{"/proc", "/sys", "/dev", "/run"}
 
 // pathWithin reports whether p is base or below it. Both must be clean
 // and absolute.
@@ -89,13 +97,16 @@ func evalExisting(p string) (string, error) {
 
 // rootPolicy is the allowed/denied roots rule (spec §6.2).
 type rootPolicy struct {
-	allowed []string // clean, absolute, symlinks resolved
-	staging string   // allowed although under /var/lib/nivaroos
-	denied  []string
+	allowed    []string // clean, absolute, symlinks resolved
+	staging    string   // allowed although under /var/lib/nivaroos
+	denied     []string
+	readDenied []string
 }
 
-func newRootPolicy(allowed []string, staging string) rootPolicy {
-	p := rootPolicy{denied: deniedRoots}
+// newRootPolicy: own lists Backup's working folders (staging, spool),
+// which are never a source.
+func newRootPolicy(allowed []string, staging string, own ...string) rootPolicy {
+	p := rootPolicy{denied: deniedRoots, readDenied: append([]string{}, readDeniedRoots...)}
 	for _, a := range allowed {
 		if a == "" {
 			continue
@@ -105,8 +116,33 @@ func newRootPolicy(allowed []string, staging string) rootPolicy {
 	if staging != "" {
 		p.staging = resolveRoot(staging)
 		p.allowed = append(p.allowed, p.staging)
+		p.readDenied = append(p.readDenied, p.staging)
+	}
+	for _, o := range own {
+		if o != "" {
+			p.readDenied = append(p.readDenied, resolveRoot(o))
+		}
 	}
 	return p
+}
+
+// checkRead reports whether a real (symlink-free) path may be read as a
+// source or browsed. The error is path_not_allowed.
+func (p rootPolicy) checkRead(real string) error {
+	for _, d := range p.readDenied {
+		if pathWithin(real, d) {
+			return Errorf(CodePathNotAllowed, "%s is inside %s, which backups never read", real, d)
+		}
+	}
+	return nil
+}
+
+// checkFor is checkRead for a source, check otherwise.
+func (p rootPolicy) checkFor(real string, read bool) error {
+	if read {
+		return p.checkRead(real)
+	}
+	return p.check(real)
 }
 
 // resolveRoot cleans a configured root and resolves symlinks in it when
