@@ -858,7 +858,7 @@ func (x *runExec) checkConditions(ctx context.Context) ErrorCode {
 		}
 	}
 	for _, src := range x.job.Sources {
-		res, err := x.s.engine.Resolve(ctx, engine.ResolveRequest{Endpoint: src, SMBCreds: x.credFor(src)})
+		res, err := x.s.engine.Resolve(ctx, engine.ResolveRequest{Endpoint: src, SMBCreds: x.credFor(src), Source: true})
 		if err != nil {
 			code := engine.CodeOf(err)
 			x.log.Raw(engine.LogError, "source: "+describeErr(err))

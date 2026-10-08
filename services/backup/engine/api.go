@@ -317,6 +317,9 @@ type Volume struct {
 type ResolveRequest struct {
 	Endpoint Endpoint  `json:"endpoint"`
 	SMBCreds *SMBCreds `json:"smb_creds,omitempty"` // required for EPSMB
+	// Source: the endpoint is only read (a job's source), so the read
+	// policy applies; otherwise it must be somewhere backups may write.
+	Source bool `json:"source,omitempty"`
 }
 
 // Resolved is where an endpoint is right now.

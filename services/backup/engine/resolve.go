@@ -284,9 +284,7 @@ func redact(s string, c *SMBCreds) string {
 
 // Resolve maps an endpoint to where it is right now (spec §6.2).
 func (e *Engine) Resolve(ctx context.Context, req ResolveRequest) (Resolved, error) {
-	// Read policy: it shows where a picked folder is, source or
-	// destination; precheck holds a destination to the write roots.
-	t, err := e.resolveRead(ctx, req.Endpoint, req.SMBCreds)
+	t, err := e.resolveAs(ctx, req.Endpoint, req.SMBCreds, req.Source)
 	if err != nil {
 		return Resolved{}, err
 	}

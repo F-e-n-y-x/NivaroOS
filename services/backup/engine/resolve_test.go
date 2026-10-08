@@ -105,11 +105,15 @@ func TestResolveRootFilesystemReadAnywhereWriteUnderAllowedRoots(t *testing.T) {
 	if !r.Online || r.Root != filepath.Join(s.allowed, "DATA", "Documents") {
 		t.Fatalf("resolved = %+v", r)
 	}
-	if c := resolveCode(t, e, ep(root, "spool")); c != CodePathNotAllowed {
-		t.Fatalf("Backup's own spool as a source: %q, want path_not_allowed", c)
+	if _, err := e.Resolve(context.Background(), ResolveRequest{Endpoint: ep(root, "spool"), Source: true}); CodeOf(err) != CodePathNotAllowed {
+		t.Fatalf("Backup's own spool as a source: %v, want path_not_allowed", err)
 	}
-	if r := resolveOK(t, e, ep(root, "")); !r.Online {
-		t.Fatalf("the whole root filesystem as a source = %+v", r)
+	if r, err := e.Resolve(context.Background(), ResolveRequest{Endpoint: ep(root, ""), Source: true}); err != nil || !r.Online {
+		t.Fatalf("the whole root filesystem as a source = %+v, %v", r, err)
+	}
+	// Without Source (a destination, a phone backup folder): write roots.
+	if c := resolveCode(t, e, ep(root, "")); c != CodePathNotAllowed {
+		t.Fatalf("the whole root filesystem as a destination: %q, want path_not_allowed", c)
 	}
 	if _, err := e.resolve(context.Background(), ep(root, ""), nil); CodeOf(err) != CodePathNotAllowed {
 		t.Fatalf("the whole root filesystem as a destination: %v, want path_not_allowed", err)
