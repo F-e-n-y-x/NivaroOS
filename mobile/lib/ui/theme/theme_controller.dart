@@ -8,14 +8,14 @@ import 'appearance.dart';
 /// writes to it.
 class ThemeController extends ValueNotifier<Appearance> {
   /// Use [instance]; separate controllers exist only for tests.
-  ThemeController([super.value = const Appearance()]);
+  ThemeController([super.value = Appearance.firstRun]);
   static final ThemeController instance = ThemeController();
 
   /// Reads the saved choice. Call once after `StorageService.init()`;
   /// anything unreadable keeps its default.
   Future<void> load() async {
     final st = StorageService.instance;
-    final mode = AppThemeMode.values.asNameMap()[await st.getThemeMode()] ?? AppThemeMode.system;
+    final mode = AppThemeMode.values.asNameMap()[await st.getThemeMode()] ?? Appearance.firstRun.mode;
     var accent = AccentColor.values.asNameMap()[await st.getThemeAccent()] ?? AccentColor.blue;
     // "Match wallpaper" was removed (2026-09-26); Monochrome is the
     // monotone choice now, so anyone who had it on moves there once.

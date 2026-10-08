@@ -17,7 +17,11 @@ void main() {
     await StorageService.instance.init();
   });
 
-  test('loads the saved mode, defaulting to System', () async {
+  test('a fresh install starts in Rack on true black', () {
+    expect(ThemeController().value, const Appearance(mode: AppThemeMode.black, direction: DesignDirection.rack));
+  });
+
+  test('loads the saved mode, defaulting to True black', () async {
     await StorageService.instance.setThemeMode('light');
     final c = ThemeController();
     await c.load();
@@ -25,7 +29,7 @@ void main() {
 
     await StorageService.instance.setThemeMode('bogus');
     await c.load();
-    expect(c.value.mode, AppThemeMode.system);
+    expect(c.value.mode, AppThemeMode.black);
   });
 
   test('saves mode, accent and style, and reads them back', () async {

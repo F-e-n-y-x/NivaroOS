@@ -106,6 +106,10 @@ class Appearance {
     this.direction = DesignDirection.defaultDirection,
   });
 
+  /// What a fresh install starts in (owner request, 2026-10-08): Rack on
+  /// true black. A choice the user saves always wins over it.
+  static const firstRun = Appearance(mode: AppThemeMode.black);
+
   final AppThemeMode mode;
   final AccentColor accent;
   final DesignDirection direction;
