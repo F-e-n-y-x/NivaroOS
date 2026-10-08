@@ -433,7 +433,7 @@ export default {
 			const id = this.initialDeviceId || (this.devices[0] && this.devices[0].id)
 			if (id) this.select(id)
 		})
-		this.unsubscribe = subscribe(this.$socket && this.$socket.client, {
+		this.unsubscribe = subscribe(this.$socket, {
 			[BACKUP_EVENTS.DEVICE_CHANGED]: props => this.onChanged(props)
 		})
 	},

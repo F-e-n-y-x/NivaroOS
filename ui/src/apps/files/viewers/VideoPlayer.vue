@@ -3,10 +3,9 @@
 	Ported from src/components/filebrowser/viewers/VideoPlayer.vue. The
 	plan's own Reference note called this a "near-trivial <video>
 	wrapper" - it isn't: it's an Artplayer instance for video and a
-	separate vue-aplayer instance (with music-metadata-browser-derived
-	cover art/title/artist) for audio, since 'video-player' in
-	filePanelMap covers both video AND audio extensions. Ported in full,
-	same libraries, new chrome only.
+	native <audio> player (with music-metadata-derived cover art/title/
+	artist) for audio, since 'video-player' in filePanelMap covers both
+	video AND audio extensions.
 -->
 <template>
 	<files-viewer-chrome :no-overflow="true" @download="downloadFile(item)" @viewer-resize="onViewerResize">
@@ -18,15 +17,14 @@
 		<div v-else class="video-player-body">
 			<div v-if="poster" class="audio-blur-background" :style="{ backgroundImage: `url(${poster})` }"></div>
 			<div v-if="isVideo" ref="artRef" class="player"></div>
-			<aplayer
-				v-if="isAudio"
-				:key="item.path"
-				:autoplay="true"
-				preload="auto"
-				class="player-audio"
-				theme="#41b883"
-				:music="{ title: audioTitle, artist: audioArtist, src: getFileUrl(item), pic: poster }"
-			></aplayer>
+			<div v-if="isAudio" class="player-audio">
+				<img v-if="poster" :src="poster" class="audio-cover" alt="" />
+				<div class="audio-text">
+					<div class="audio-title">{{ audioTitle }}</div>
+					<div class="audio-artist">{{ audioArtist }}</div>
+				</div>
+				<audio :key="item.path" :src="getFileUrl(item)" :aria-label="audioTitle" controls autoplay preload="auto"></audio>
+			</div>
 		</div>
 	</files-viewer-chrome>
 </template>
@@ -34,11 +32,7 @@
 <script>
 import { mixin } from '@/mixins/mixin'
 import ViewerChrome from './ViewerChrome.vue'
-import Aplayer from 'vue-aplayer'
 import Artplayer from 'artplayer'
-import * as mm from 'music-metadata-browser'
-
-Aplayer.disableVersionBadge = true
 
 // Extensions with no native browser support at all, regardless of the
 // codec inside them - Chrome/Firefox only reliably play mp4/m4v/webm
@@ -53,7 +47,7 @@ const NEEDS_REMUX_EXTENSIONS = ['mkv', '3gp', 'avi', 'm2ts', 'flv', 'vob', 'ts',
 export default {
 	name: 'files-video-player',
 	mixins: [mixin],
-	components: { FilesViewerChrome: ViewerChrome, Aplayer },
+	components: { FilesViewerChrome: ViewerChrome },
 	props: {
 		item: { type: Object, required: true },
 	},
@@ -63,7 +57,7 @@ export default {
 			instance: null,
 			poster: '',
 			audioTitle: this.item.name,
-			audioArtist: '...',
+			audioArtist: '',
 			hasError: false,
 			errorMessage: '',
 		}
@@ -132,6 +126,7 @@ export default {
 		})
 	},
 	beforeDestroy() {
+		if (this.poster) URL.revokeObjectURL(this.poster)
 		if (this.instance && this.instance.destroy) {
 			this.instance.destroy(false)
 		}
@@ -153,15 +148,26 @@ export default {
 		onViewerResize() {
 			this.instance && this.instance.emit && this.instance.emit('resize')
 		},
+		// Tags only (skipPostHeaders: nothing after the audio is read); the
+		// rest of the download is cancelled once they are parsed.
 		async loadAudioMetadata() {
-			const fileUrl = this.getFileUrl(this.item)
-			const metadata = await mm.fetchFromUrl(fileUrl)
-			if (metadata.common.picture && metadata.common.picture.length) {
-				const blob = new Blob([metadata.common.picture[0].data], { type: metadata.common.picture[0].format })
-				this.poster = URL.createObjectURL(blob)
+			let body = null
+			try {
+				const res = await fetch(this.getFileUrl(this.item))
+				if (!res.ok || !res.body) return
+				body = res.body
+				const { parseWebStream } = await import('music-metadata')
+				const size = Number(res.headers.get('content-length')) || undefined
+				const metadata = await parseWebStream(body, { mimeType: res.headers.get('content-type') || undefined, size }, { skipPostHeaders: true, duration: false })
+				const pic = metadata.common.picture && metadata.common.picture[0]
+				if (pic) this.poster = URL.createObjectURL(new Blob([pic.data], { type: pic.format }))
+				this.audioTitle = metadata.common.title || this.item.name
+				this.audioArtist = metadata.common.artist || ''
+			} catch (e) {
+				// No tags: the file name stays the title.
+			} finally {
+				if (body) body.cancel().catch(() => {})
 			}
-			this.audioTitle = metadata.common.title || this.item.name
-			this.audioArtist = metadata.common.artist || '...'
 		},
 	},
 }
@@ -224,9 +230,44 @@ export default {
 .player-audio {
 	position: relative;
 	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
 	width: 100%;
-	max-width: 80rem;
-	max-height: 4.125rem;
+	max-width: 40rem;
+	margin: 0 var(--space-4);
+	padding: var(--space-3);
+	border-radius: 0.75rem;
+	background: rgba(0, 0, 0, 0.55);
+	color: #fff;
+
+	audio {
+		flex: 1 1 14rem;
+		min-width: 0;
+	}
+}
+.audio-cover {
+	width: 4rem;
+	height: 4rem;
+	border-radius: 0.5rem;
+	object-fit: cover;
+}
+.audio-text {
+	flex: 0 1 12rem;
+	min-width: 0;
+}
+.audio-title,
+.audio-artist {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.audio-title {
+	font-weight: 600;
+}
+.audio-artist {
+	opacity: 0.75;
+	font-size: 0.8125rem;
 }
 .audio-blur-background {
 	position: absolute;

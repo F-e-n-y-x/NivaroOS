@@ -108,10 +108,6 @@ const handleUnauthorized = makeUnauthorizedHandler({
 	logout,
 })
 
-// Refresh the access token now (single-flight with the 401 handler above);
-// resolves to the new token. Used by the message-bus socket
-// (messageBusSocket.js) when its handshake is refused.
-const refreshAccessToken = (sentToken) => handleUnauthorized.refreshNow(sentToken)
 
 instance.interceptors.response.use(
 	(response) => response,
@@ -170,4 +166,4 @@ const api = {
 		return instance.patch(url, data)
 	},
 }
-export { api, instance, refreshAccessToken }
+export { api, instance }

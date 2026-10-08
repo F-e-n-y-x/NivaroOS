@@ -1,163 +1,147 @@
-import { describe, test, expect, vi } from 'vitest'
-import { createMessageBusSocket, tokenQuery, MESSAGE_BUS_SOCKET_PATH } from './messageBusSocket'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createMessageBusSocket, fromWire, sourcesOf, eventPath } from './messageBusSocket'
 
-// A socket.io-client 2.x stand-in: the socket, its manager (socket.io)
-// with opts/readyState/reconnecting, and a log of the handshake queries
-// each open() would have used.
-function fakeIo() {
-	const handlers = {}
-	const opened = []
-	const socket = {
-		connected: false,
-		on(name, fn) {
-			;(handlers[name] = handlers[name] || []).push(fn)
-		},
-		emit(name, ...args) {
-			;(handlers[name] || []).forEach((fn) => fn(...args))
-		},
-		open: vi.fn(() => {
-			socket.io.readyState = 'opening'
-			opened.push({ ...socket.io.opts.query })
-		}),
-		close: vi.fn(() => {
-			socket.connected = false
-			socket.io.readyState = 'closed'
-			socket.io.reconnecting = false
-		}),
+class FakeWS {
+	static all = []
+	constructor(url) {
+		this.url = url
+		this.closed = false
+		FakeWS.all.push(this)
 	}
-	const io = vi.fn((opts) => {
-		socket.io = { opts, readyState: 'closed', reconnecting: false }
-		return socket
-	})
-	// simulate the server accepting / refusing the handshake
-	socket.accept = () => {
-		socket.connected = true
-		socket.io.readyState = 'open'
-		socket.emit('connect')
+	close() {
+		this.closed = true
 	}
-	socket.refuse = () => {
-		socket.io.readyState = 'closed'
-		socket.io.reconnecting = true
-		socket.emit('connect_error', new Error('websocket error'))
+	// server side
+	accept() {
+		this.onopen && this.onopen()
 	}
-	return { io, socket, opened }
+	send(obj) {
+		this.onmessage && this.onmessage({ data: JSON.stringify(obj) })
+	}
+	drop() {
+		this.closed = true
+		this.onclose && this.onclose()
+	}
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0))
+const flush = async () => {
+	for (let i = 0; i < 5; i++) await Promise.resolve()
+}
+const live = () => FakeWS.all.filter((w) => !w.closed)
 
-function setup({ token = 'T1', refresh } = {}) {
-	const f = fakeIo()
+function setup({ token = 'T1', sources = ['nivaroos', 'app-management'] } = {}) {
 	let current = token
 	let onToken = () => {}
-	const refreshToken = refresh || vi.fn(async () => {
-		current = 'T2'
-	})
-	const socket = createMessageBusSocket({
-		io: f.io,
+	const listSources = vi.fn(async () => sources)
+	const bus = createMessageBusSocket({
 		getToken: () => current,
-		refreshToken,
+		listSources,
+		wsBase: 'ws://box',
 		watchToken: (cb) => (onToken = cb),
+		WebSocketImpl: FakeWS,
 	})
 	return {
-		...f,
-		socket,
-		refreshToken,
+		bus,
+		listSources,
 		setToken(t) {
 			current = t
 			onToken(t)
 		},
-		setStoredToken(t) {
-			current = t
-		},
 	}
 }
 
-describe('message-bus socket', () => {
-	test('connects to the bus path with the token in the handshake query', () => {
-		const { io, socket, opened } = setup()
-		expect(io).toHaveBeenCalledWith(expect.objectContaining({ path: MESSAGE_BUS_SOCKET_PATH, autoConnect: false, transports: ['websocket', 'polling'] }))
-		expect(socket.open).toHaveBeenCalledTimes(1)
-		expect(opened).toEqual([{ token: 'T1' }])
-	})
+beforeEach(() => {
+	FakeWS.all = []
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+})
+afterEach(() => vi.useRealTimers())
 
-	test('without a token it stays disconnected, and connects on login', () => {
-		const t = setup({ token: '' })
-		expect(t.socket.open).not.toHaveBeenCalled()
-		expect(t.socket.io.opts.query).toEqual({})
-		t.setToken('LOGIN')
-		expect(t.opened).toEqual([{ token: 'LOGIN' }])
-	})
-
-	test('each reconnect attempt uses the current token (e.g. after the axios 401 refresh)', () => {
-		const t = setup()
-		t.socket.accept()
-		t.setStoredToken('FRESH') // refreshed elsewhere, not yet seen by the socket
-		t.socket.emit('reconnect_attempt', 1)
-		expect(t.socket.io.opts.query).toEqual({ token: 'FRESH' })
-	})
-
-	test('a refused handshake refreshes the token once per failure streak and reconnects with it', async () => {
-		const t = setup()
-		t.socket.refuse()
+describe('messageBusSocket', () => {
+	test('logged out: no sockets until a token appears', async () => {
+		const s = setup({ token: '' })
 		await flush()
-		expect(t.refreshToken).toHaveBeenCalledTimes(1)
-		expect(t.opened[t.opened.length - 1]).toEqual({ token: 'T2' })
-
-		t.socket.refuse() // still refused (server down): no refresh loop
+		expect(s.listSources).not.toHaveBeenCalled()
+		expect(FakeWS.all).toHaveLength(0)
+		s.setToken('T9')
 		await flush()
-		expect(t.refreshToken).toHaveBeenCalledTimes(1)
+		expect(FakeWS.all.map((w) => w.url)).toEqual(['ws://box/v2/message_bus/event/nivaroos?token=T9', 'ws://box/v2/message_bus/event/app-management?token=T9'])
+	})
 
-		t.socket.accept()
-		t.socket.refuse() // a new streak after a good connection
+	test('one socket per source; connect once all are open; events in the UI shape', async () => {
+		const { bus } = setup()
 		await flush()
-		expect(t.refreshToken).toHaveBeenCalledTimes(2)
+		const onConnect = vi.fn()
+		const onUtil = vi.fn()
+		bus.on('connect', onConnect)
+		bus.on('nivaroos:system:utilization', onUtil)
+		FakeWS.all[0].accept()
+		expect(bus.connected).toBe(false)
+		FakeWS.all[1].accept()
+		expect(bus.connected).toBe(true)
+		expect(onConnect).toHaveBeenCalledTimes(1)
+		FakeWS.all[0].send({ sourceID: 'nivaroos', name: 'nivaroos:system:utilization', properties: { a: '1' }, timestamp: '2026-10-08T00:00:10Z', uuid: 'u' })
+		expect(onUtil).toHaveBeenCalledWith({ SourceID: 'nivaroos', Name: 'nivaroos:system:utilization', Properties: { a: '1' }, Timestamp: Date.parse('2026-10-08T00:00:10Z') / 1000, uuid: 'u' })
+		bus.off('nivaroos:system:utilization', onUtil)
+		FakeWS.all[0].send({ name: 'nivaroos:system:utilization' })
+		expect(onUtil).toHaveBeenCalledTimes(1)
 	})
 
-	test('a failed refresh is swallowed and does not reconnect', async () => {
-		const refresh = vi.fn(() => Promise.reject(new Error('refresh refused')))
-		const t = setup({ refresh })
-		const opens = t.socket.open.mock.calls.length
-		t.socket.refuse()
+	test('a dropped socket closes the rest and reconnects with backoff, listing sources again', async () => {
+		const s = setup()
 		await flush()
-		expect(refresh).toHaveBeenCalledTimes(1)
-		expect(t.socket.open.mock.calls.length).toBe(opens)
-	})
-
-	test('no refresh attempt while logged out', async () => {
-		const t = setup({ token: '' })
-		t.socket.refuse()
+		FakeWS.all.forEach((w) => w.accept())
+		const onDisconnect = vi.fn()
+		s.bus.on('disconnect', onDisconnect)
+		FakeWS.all[1].drop()
+		expect(onDisconnect).toHaveBeenCalledTimes(1)
+		expect(live()).toHaveLength(0)
+		expect(s.listSources).toHaveBeenCalledTimes(1)
+		vi.advanceTimersByTime(1000)
 		await flush()
-		expect(t.refreshToken).not.toHaveBeenCalled()
+		expect(s.listSources).toHaveBeenCalledTimes(2)
+		expect(live()).toHaveLength(2)
+		// fails again before opening: the next try waits longer
+		live()[0].drop()
+		vi.advanceTimersByTime(1000)
+		await flush()
+		expect(s.listSources).toHaveBeenCalledTimes(2)
+		vi.advanceTimersByTime(1000)
+		await flush()
+		expect(s.listSources).toHaveBeenCalledTimes(3)
 	})
 
-	test('a token change while connected keeps the connection but is used next time', () => {
-		const t = setup()
-		t.socket.accept()
-		t.setToken('T9')
-		expect(t.socket.close).not.toHaveBeenCalled()
-		expect(t.socket.io.opts.query).toEqual({ token: 'T9' })
+	test('listing the sources fails: retried', async () => {
+		const s = setup()
+		s.listSources.mockRejectedValueOnce(new Error('502'))
+		s.bus.open()
+		await flush()
+		expect(FakeWS.all).toHaveLength(0)
+		vi.advanceTimersByTime(1000)
+		await flush()
+		expect(live()).toHaveLength(2)
 	})
 
-	test('a new token while an attempt with the old one is pending restarts it', () => {
-		const t = setup()
-		t.setToken('T5')
-		expect(t.socket.close).toHaveBeenCalledTimes(1)
-		expect(t.opened).toEqual([{ token: 'T1' }, { token: 'T5' }])
-		t.setToken('T5') // same token again: leave the pending attempt alone
-		expect(t.opened.length).toBe(2)
+	test('logout disconnects and stops retrying', async () => {
+		const s = setup()
+		await flush()
+		FakeWS.all.forEach((w) => w.accept())
+		s.setToken('')
+		expect(s.bus.connected).toBe(false)
+		expect(live()).toHaveLength(0)
+		vi.advanceTimersByTime(60000)
+		await flush()
+		expect(s.listSources).toHaveBeenCalledTimes(1)
 	})
+})
 
-	test('logout disconnects and drops the token from the query', () => {
-		const t = setup()
-		t.socket.accept()
-		t.setToken('')
-		expect(t.socket.close).toHaveBeenCalledTimes(1)
-		expect(t.socket.io.opts.query).toEqual({})
+describe('helpers', () => {
+	test('sourcesOf dedupes', () => {
+		expect(sourcesOf([{ sourceID: 'a' }, { sourceID: 'b' }, { sourceID: 'a' }, null])).toEqual(['a', 'b'])
 	})
-
-	test('tokenQuery', () => {
-		expect(tokenQuery('')).toEqual({})
-		expect(tokenQuery(null)).toEqual({})
-		expect(tokenQuery('x')).toEqual({ token: 'x' })
+	test('eventPath escapes', () => {
+		expect(eventPath('a b')).toBe('/v2/message_bus/event/a%20b')
+	})
+	test('fromWire without timestamp', () => {
+		expect(fromWire({ name: 'x' })).toEqual({ SourceID: undefined, Name: 'x', Properties: {}, Timestamp: 0, uuid: undefined })
 	})
 })

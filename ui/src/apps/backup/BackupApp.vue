@@ -181,7 +181,7 @@ export default {
 	created() {
 		this.load().then(() => this.applyDeepLink())
 		this.watcher = watchJobs({
-			socket: this.$socket && this.$socket.client,
+			socket: this.$socket,
 			isVisible: this.isVisible,
 			onChange: this.onBusChange,
 			onLive: (runId, live) => this.$set(this.live, runId, live)
@@ -248,7 +248,7 @@ export default {
 			clearTimeout(this.reloadTimer)
 			this.reloadTimer = setTimeout(async () => {
 				await this.load()
-				if (!(this.$socket && this.$socket.client && this.$socket.client.connected)) this.pollLive()
+				if (!this.$socket.connected) this.pollLive()
 			}, RELOAD_DEBOUNCE_MS)
 		},
 		setJobs(jobs) {

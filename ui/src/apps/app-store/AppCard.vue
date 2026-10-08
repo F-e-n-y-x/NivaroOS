@@ -200,7 +200,7 @@ function saveYamlFile(yaml, baseName) {
 const pendingRebuilds = {}
 
 function watchRebuild(vm, name, yaml) {
-	const client = vm.$socket && vm.$socket.client
+	const client = vm.$socket
 	const i18n = vm.$i18n
 	const t = (key, values) => (i18n ? i18n.t(key, values) : key)
 	const buefy = vm.$buefy

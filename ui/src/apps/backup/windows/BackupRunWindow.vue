@@ -161,7 +161,7 @@ export default {
 		this.watcher = watchRun({
 			runId: this.runId,
 			client: this.bkApi,
-			socket: this.$socket && this.$socket.client,
+			socket: this.$socket,
 			isVisible: () => this.visible,
 			onRun: run => {
 				const first = !this.run

@@ -110,7 +110,7 @@ func RenderEventsJS() []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, generatedHeader, "events.go")
 	b.WriteString(`//
-// Message-bus events, received through this.$socket (vue-socket.io-extended)
+// Message-bus events, received through this.$socket (service/messageBusSocket.js)
 // as { Properties: { ... } } with every property a string.
 
 export const BACKUP_EVENTS = Object.freeze({

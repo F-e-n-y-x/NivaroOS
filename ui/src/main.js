@@ -8,14 +8,14 @@ import store from '@/store'
 import i18n from '@/plugins/i18n'
 import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
-import { refreshAccessToken } from '@/service/service.js'
-import { createMessageBusSocket } from '@/service/messageBusSocket'
+import { instance } from '@/service/service.js'
+import { createMessageBusSocket, EVENT_TYPES_PATH, sourcesOf } from '@/service/messageBusSocket'
 import Buefy from 'buefy'
 import A11yLabels from '@/plugins/a11yLabels'
 import VueFullscreen from 'vue-fullscreen'
 import Vue2TouchEvents from 'vue2-touch-events'
 import VueSocialSharing from 'vue-social-sharing'
-import VueSocketIOExt from 'vue-socket.io-extended';
+import BusSockets from '@/plugins/busSockets'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import { purifyConfig } from '@/utils/purifyConfig'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
@@ -51,8 +51,6 @@ import VAnimateCss from 'v-animate-css';
 	window.history.replaceState({}, document.title, newUrl)
 })()
 
-const io = require("socket.io-client");
-
 const isDev = process.env.NODE_ENV === 'dev';
 const protocol = document.location.protocol
 const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
@@ -65,8 +63,9 @@ const baseURL = isDev ? `${devIp}:${devPort}` : `${localhost}`
 const wsURL = `${wsProtocol}//${baseURL}`
 
 // The message bus requires the access token on every subscription:
-// messageBusSocket.js sends it, reconnects with the new one after a
-// refresh, and stays disconnected while logged out.
+// messageBusSocket.js sends it, lists the event sources through the API
+// client (which refreshes an expired token), and stays disconnected while
+// logged out.
 const readAccessToken = () => {
 	try {
 		return localStorage.getItem('access_token') || store.state.access_token || ''
@@ -75,9 +74,9 @@ const readAccessToken = () => {
 	}
 }
 const socket = createMessageBusSocket({
-	io,
 	getToken: readAccessToken,
-	refreshToken: refreshAccessToken,
+	listSources: () => instance.get(EVENT_TYPES_PATH).then((res) => sourcesOf(res.data)),
+	wsBase: wsURL,
 	watchToken: (cb) => {
 		store.watch((state) => state.access_token, (token) => cb(token || ''))
 		// /logout clears localStorage only (the store keeps the old token).
@@ -99,7 +98,7 @@ Vue.component('ConfirmWindow', ConfirmWindow)
 Vue.use(VueFullscreen)
 Vue.use(VAnimateCss, { animateCSSPath: '/css/animate.min.css' });
 Vue.use(Vue2TouchEvents)
-Vue.use(VueSocketIOExt, socket);
+Vue.use(BusSockets, socket);
 Vue.use(VueSocialSharing);
 Vue.use(VueDOMPurifyHTML, purifyConfig);
 

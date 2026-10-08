@@ -3,8 +3,8 @@ package jobs
 // Message-bus events (spec §10.1). The service registers EventTypes() with
 // the message bus at start, the way other services register theirs, and
 // publishes every run transition and job change. The UI receives them over
-// socket.io (path /v2/message_bus/socket.io/) as {Properties: {...}} with
-// every property a string; ui/src/apps/backup/events.js is generated from
+// the bus's WebSocket (/v2/message_bus/event/{source}) as {Properties: {...}}
+// with every property a string; ui/src/apps/backup/events.js is generated from
 // this file.
 
 // EventSourceID is the message-bus source of every backup event.

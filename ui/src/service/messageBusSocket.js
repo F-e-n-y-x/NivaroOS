@@ -1,119 +1,159 @@
-// The web UI's one socket.io connection to the message bus
-// (/v2/message_bus/socket.io/) - every live update (widgets, notifications,
-// file operations, app installs, backup progress) arrives through it.
+// The web UI's live connection to the message bus - every live update
+// (widgets, notifications, file operations, app installs, backup progress)
+// arrives through it.
 //
-// The bus requires an access token on every subscription (a browser can't
-// set headers on a WebSocket, so it rides in ?token=, which engine.io
-// repeats on each polling and websocket request). This keeps that token
-// current:
-//   - no token (login page): stay disconnected instead of being refused
-//     every few seconds;
-//   - every reconnect attempt reads the current token, so after the
-//     axios 401 flow refreshed it, the next reconnect uses the new one;
-//   - a refused handshake (connect_error) with a token in hand refreshes
-//     it once per failure streak and reconnects;
+// Plain WebSockets, one per event source (GET /v2/message_bus/event/{source},
+// the endpoint the phone app uses too); the sources come from the
+// registered event types. The bus requires an access token on every
+// subscription - a browser can't set headers on a WebSocket, so it rides in
+// ?token=. Listing the sources goes through the API client, so an expired
+// token is refreshed there (its 401 handling) before the sockets open.
+//
+//   - no token (login page): stay disconnected;
+//   - any socket drops: close the rest, list the sources again and reopen
+//     all of them, backing off 1 s, 2 s ... 30 s;
 //   - token set (login / refresh) while disconnected: connect right away;
 //     token cleared (logout): disconnect.
 //
-// Written against socket.io-client 2.x (engine.io 3): the handshake query
-// lives in manager.opts.query and is read each time an engine is created.
-// Pure of Vue/axios - everything is passed in (see messageBusSocket.spec.js).
+// Handlers get the event in the shape the UI has always used
+// ({ SourceID, Name, Properties, Timestamp, uuid }). Pure of Vue/axios -
+// everything is passed in (see messageBusSocket.spec.js).
 
-export const MESSAGE_BUS_SOCKET_PATH = '/v2/message_bus/socket.io/'
+export const EVENT_TYPES_PATH = '/v2/message_bus/event_type'
 
-export function tokenQuery(token) {
-	return token ? { token } : {}
+export function eventPath(sourceID) {
+	return `/v2/message_bus/event/${encodeURIComponent(sourceID)}`
+}
+
+// fromWire maps the WebSocket JSON (codegen.Event) to the UI's shape.
+export function fromWire(msg) {
+	const t = msg.timestamp ? Date.parse(msg.timestamp) : NaN
+	return {
+		SourceID: msg.sourceID,
+		Name: msg.name,
+		Properties: msg.properties || {},
+		Timestamp: Number.isNaN(t) ? 0 : Math.floor(t / 1000),
+		uuid: msg.uuid,
+	}
+}
+
+export function sourcesOf(eventTypes) {
+	return [...new Set((eventTypes || []).map((t) => t && t.sourceID).filter(Boolean))]
 }
 
 /**
  * @param {object} opts
- * @param {Function} opts.io            socket.io-client's io()
- * @param {() => string} opts.getToken  current access token ('' when logged out)
- * @param {() => Promise} [opts.refreshToken]  refresh it (single-flight); resolves when stored
+ * @param {() => string} opts.getToken          current access token ('' when logged out)
+ * @param {() => Promise<string[]>} opts.listSources  event source IDs to subscribe to
+ * @param {string} opts.wsBase                  e.g. "ws://host:port"
  * @param {(cb: (token: string) => void) => void} [opts.watchToken]  calls cb when the token changes
- * @returns the socket.io client socket (not yet connected when there's no token)
+ * @returns {{on, off, connected: boolean, open, close}}
  */
-export function createMessageBusSocket({ io, getToken, refreshToken, watchToken, path = MESSAGE_BUS_SOCKET_PATH }) {
-	const initial = getToken() || ''
-	const socket = io({
-		transports: ['websocket', 'polling'],
-		path,
-		autoConnect: false,
-		query: tokenQuery(initial),
-	})
-	const manager = socket.io
-	let openedWith = initial
-	let refreshedThisStreak = false
-	let refreshing = false
+export function createMessageBusSocket({ getToken, listSources, wsBase, watchToken, WebSocketImpl = globalThis.WebSocket, timers = globalThis, maxBackoffMs = 30000 }) {
+	const handlers = {}
+	let sockets = []
+	let generation = 0
+	let attempt = 0
+	let retryTimer = null
+	let connected = false
 
-	const applyToken = () => {
-		const token = getToken() || ''
-		manager.opts.query = tokenQuery(token)
-		openedWith = token
-		return token
-	}
+	const emit = (name, ...args) => (handlers[name] || []).slice().forEach((fn) => fn(...args))
 
-	const busy = () => manager.readyState === 'opening' || manager.reconnecting
-
-	// (Re)connect with the current token. An attempt already under way
-	// with this same token is left alone.
-	const reconnect = () => {
-		if (socket.connected) return
-		const token = getToken() || ''
-		if (!token) return
-		if (busy() && token === openedWith) return
-		applyToken()
-		socket.close()
-		socket.open()
-	}
-
-	socket.on('reconnect_attempt', applyToken)
-
-	socket.on('connect', () => {
-		refreshedThisStreak = false
-	})
-
-	socket.on('connect_error', () => {
-		if (refreshedThisStreak || refreshing || !refreshToken || !getToken()) return
-		refreshedThisStreak = true
-		refreshing = true
-		const refused = openedWith
-		Promise.resolve()
-			// The refused token: if another tab already refreshed, its
-			// tokens are used instead of refreshing again.
-			.then(() => refreshToken(refused))
-			.then(
-				() => {
-					refreshing = false
-					reconnect()
-				},
-				() => {
-					// Refresh refused: keep backing off with what we have; the
-					// next API call's 401 handling logs the user out.
-					refreshing = false
-				}
-			)
-	})
-
-	if (watchToken) {
-		watchToken((token) => {
-			if (!token) {
-				manager.opts.query = {}
-				openedWith = ''
-				if (socket.connected || busy()) socket.close()
-				return
-			}
-			if (socket.connected) {
-				// Already authenticated; the next reconnect picks it up.
-				manager.opts.query = tokenQuery(token)
-				openedWith = token
-				return
-			}
-			reconnect()
+	const closeSockets = () => {
+		const old = sockets
+		sockets = []
+		old.forEach((ws) => {
+			try {
+				ws.close()
+			} catch (e) {}
 		})
 	}
 
-	if (initial) socket.open()
+	// Stop the current cycle; its sockets' late events are ignored.
+	const stop = () => {
+		generation++
+		timers.clearTimeout(retryTimer)
+		retryTimer = null
+		closeSockets()
+		if (connected) {
+			connected = false
+			emit('disconnect')
+		}
+	}
 
-	return socket
+	const scheduleRetry = () => {
+		timers.clearTimeout(retryTimer)
+		if (!getToken()) return
+		const delay = Math.min(maxBackoffMs, 1000 * 2 ** attempt++)
+		retryTimer = timers.setTimeout(connect, delay)
+	}
+
+	async function connect() {
+		stop()
+		const gen = generation
+		if (!getToken()) return
+		let sources
+		try {
+			sources = await listSources()
+		} catch (e) {
+			sources = null
+		}
+		if (gen !== generation) return
+		const token = getToken()
+		if (!sources || !sources.length || !token) return scheduleRetry()
+		let opened = 0
+		sockets = sources.map((source) => {
+			const ws = new WebSocketImpl(`${wsBase}${eventPath(source)}?token=${encodeURIComponent(token)}`)
+			ws.onopen = () => {
+				if (gen !== generation || ++opened < sources.length) return
+				attempt = 0
+				connected = true
+				emit('connect')
+			}
+			ws.onmessage = (e) => {
+				if (gen !== generation) return
+				let msg
+				try {
+					msg = JSON.parse(e.data)
+				} catch (err) {
+					return
+				}
+				if (msg && msg.name) emit(msg.name, fromWire(msg))
+			}
+			ws.onclose = () => {
+				if (gen !== generation) return
+				stop()
+				scheduleRetry()
+			}
+			return ws
+		})
+	}
+
+	const bus = {
+		on(name, fn) {
+			;(handlers[name] = handlers[name] || []).push(fn)
+		},
+		off(name, fn) {
+			handlers[name] = (handlers[name] || []).filter((h) => h !== fn)
+		},
+		get connected() {
+			return connected
+		},
+		open() {
+			attempt = 0
+			return connect()
+		},
+		close: stop,
+	}
+
+	if (watchToken) {
+		watchToken((token) => {
+			if (!token) stop()
+			else if (!connected) bus.open()
+		})
+	}
+
+	if (getToken()) bus.open()
+
+	return bus
 }

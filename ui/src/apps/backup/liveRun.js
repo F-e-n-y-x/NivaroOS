@@ -1,6 +1,6 @@
 // Live updates for Backup & Sync (spec §10.3): message-bus events over
-// the shared socket.io client (this.$socket.client, path
-// /v2/message_bus/socket.io/), with GET polling only as a fallback - while
+// the shared message-bus connection (this.$socket, see
+// service/messageBusSocket.js), with GET polling only as a fallback - while
 // the socket is disconnected AND the window is visible. This replaces the
 // old full-list refetch every 2 s.
 //

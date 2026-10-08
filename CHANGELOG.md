@@ -150,6 +150,13 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Changed
 
+- Web UI: live updates (widgets, notifications, app installs, file
+  operations, backup progress) arrive over the message bus's plain
+  WebSockets instead of socket.io 2 (unmaintained; the client had an open
+  ReDoS advisory). The audio player in Files is the browser's own player
+  with the track's cover, title and artist (read by `music-metadata`, which
+  replaces the deprecated `music-metadata-browser`). 20 unused UI
+  dependencies removed.
 - CI: GitHub Actions moved to their Node 24 versions (checkout v7,
   setup-java v6, upload-artifact v7, docker/* latest).
 - New NivaroOS logo, "Ni": an N whose last stroke doubles as an i, with a
