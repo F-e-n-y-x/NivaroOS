@@ -1,16 +1,22 @@
-name: Build Android app
+name: Android app
 
-# Builds the NivaroOS native Android app (mobile/, a Flutter project) into
-# an installable debug APK on every push that touches it, and publishes it
-# as a downloadable workflow artifact - the Android/Flutter toolchain is
-# heavier than something worth requiring of every contributor's own
-# machine just to get a build.
+# Checks every change to the NivaroOS Android app (mobile/, Flutter):
+# analyze, tests, and a stable (release-mode) APK build, kept as a
+# workflow artifact for 30 days.
+#
+# The official signing key never leaves the build server (owner decision,
+# 2026-10-08), so this APK is signed with a throwaway key: it proves the
+# release build works but can't update an installed NivaroOS app. The
+# signed APK people install is the one on GitHub Releases.
 on:
   push:
     branches: [master]
     paths:
       - 'mobile/**'
       - '.github/workflows/android-build.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
   workflow_dispatch: {}
 
 jobs:
@@ -29,16 +35,26 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.5'
           channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Analyze
+        run: flutter analyze
+
+      # Screenshot goldens are left out: their pixels depend on the
+      # machine that rendered them, so they're checked on the build server.
+      - name: Test
+        run: flutter test $(find test -name '*_test.dart' -not -path 'test/screenshots/*' | sort)
+
+      - name: Build stable APK
+        run: flutter build apk --release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nivaroos-android-debug
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          name: nivaroos-android-check-build
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30

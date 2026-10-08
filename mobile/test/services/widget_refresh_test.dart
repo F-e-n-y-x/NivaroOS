@@ -132,7 +132,9 @@ void main() {
       for (var i = 0; i < 10; i++) {
         h.add(at(Duration(seconds: 4 * i), i.toDouble()));
       }
-      h.retime(const Duration(milliseconds: 500));
+      // Retimed just after the last reading, not at the real clock (which
+      // would age every reading out once the test runs past t0 + 2 min).
+      withClock(Clock.fixed(t0.add(const Duration(seconds: 36))), () => h.retime(const Duration(milliseconds: 500)));
       expect(h.cpu, hasLength(10));
       h.add(at(const Duration(seconds: 36, milliseconds: 500), 10));
       expect(h.cpu, hasLength(11));
