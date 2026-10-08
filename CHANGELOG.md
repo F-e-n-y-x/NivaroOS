@@ -112,6 +112,8 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Changed
 
+- CI: GitHub Actions moved to their Node 24 versions (checkout v7,
+  setup-java v6, upload-artifact v7, docker/* latest).
 - New NivaroOS logo, "Ni": an N whose last stroke doubles as an i, with a
   mint status dot, on a blue (#2563EB) tile. It replaces the old CasaOS
   three-circle cloud mark everywhere: web UI favicon, PWA/home-screen icons,
