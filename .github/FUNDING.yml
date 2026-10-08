@@ -1,5 +1,3 @@
-# GitHub's "Sponsor" button. UPI (India) is on the README; add
-# worldwide options here as they're set up, e.g.:
-#   github: [F-e-n-y-x]        # GitHub Sponsors
-#   ko_fi: <username>          # Ko-fi (PayPal / card)
+# GitHub's "Sponsor" button. UPI (India) is on the README.
+github: [F-e-n-y-x]
 custom: ["https://github.com/F-e-n-y-x/NivaroOS#-support-nivaroos"]

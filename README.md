@@ -20,7 +20,8 @@
   <a href="https://github.com/F-e-n-y-x/NivaroOS/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-emerald.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Android-orange?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-amd64%20%7C%20arm64-blueviolet?style=flat-square" alt="Architecture">
-  <a href="#-support-nivaroos"><img src="https://img.shields.io/badge/Support-UPI-7DF9C5?style=flat-square&labelColor=0F1115" alt="Support NivaroOS"></a>
+  <a href="https://github.com/sponsors/F-e-n-y-x"><img src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=flat-square&logo=githubsponsors&logoColor=white&labelColor=0F1115" alt="Sponsor on GitHub"></a>
+  <a href="#-support-nivaroos"><img src="https://img.shields.io/badge/Support-UPI-7DF9C5?style=flat-square&labelColor=0F1115" alt="Support NivaroOS by UPI"></a>
 </p>
 
 <p align="center">
@@ -233,6 +234,16 @@ cd mobile && flutter pub get && flutter build apk --release
 ## 💚 Support NivaroOS
 
 NivaroOS is free, open source and built in spare time. If it runs your home server, saves you a subscription, or you just like where it's going, you can chip in — every contribution goes into development time and test hardware.
+
+### 🌍 Anywhere in the world — GitHub Sponsors
+
+Monthly or one-time, by card, straight through GitHub (no fee taken by GitHub).
+
+<p align="center">
+  <a href="https://github.com/sponsors/F-e-n-y-x"><img src="https://img.shields.io/badge/Sponsor_on_GitHub-%E2%9D%A4-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white&labelColor=0F1115" alt="Sponsor NivaroOS on GitHub"></a>
+</p>
+
+### 🇮🇳 In India — UPI
 
 <p align="center">
   <img src="docs/images/nivaroos-support-upi.svg" width="640" alt="Support NivaroOS by UPI. Scan the QR code with any UPI app, or pay to the UPI ID ayushsoni2911@okaxis (Ayush Soni).">
