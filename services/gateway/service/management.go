@@ -16,6 +16,10 @@ import (
 
 const RoutesFile = "routes.json"
 
+// retiredRoutes were registered by older builds and are served by nothing
+// now; routes.json outlives the services (it is only cleared at boot).
+var retiredRoutes = []string{"/v1/recover", "/v1/driver"}
+
 type Management struct {
 	pathTargetMap       map[string]string
 	pathReverseProxyMap map[string]*httputil.ReverseProxy
@@ -31,6 +35,9 @@ func NewManagementService(state *State) *Management {
 	if err != nil {
 		logger.Error("Failed to load routes", zap.Any("error", err), zap.Any("filepath", routesFilepath))
 		pathTargetMap = make(map[string]string)
+	}
+	for _, p := range retiredRoutes {
+		delete(pathTargetMap, p)
 	}
 
 	pathReverseProxyMap := make(map[string]*httputil.ReverseProxy)

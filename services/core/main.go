@@ -146,7 +146,6 @@ func main() {
 		"/v1/quickshare",
 		"/v1/qs",
 		"/v1/notify",
-		"/v1/driver",
 		// "/v1/cloud" is served by nivaroos-local-storage's in-process rclone
 		// engine now (Online Accounts feature) - registering it here too would
 		// race the gateway's routes.json between the two services.

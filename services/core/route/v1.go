@@ -176,11 +176,6 @@ func InitV1Router() http.Handler {
 			v1FileGroup.GET("/peers", v1.GetPeers)
 		}
 		// /v1/cloud is nivaroos-local-storage's (it owns cloud mounts).
-		v1DriverGroup := v1Group.Group("/driver")
-		v1DriverGroup.Use()
-		{
-			v1DriverGroup.GET("", v1.ListDriverInfo)
-		}
 
 		v1FolderGroup := v1Group.Group("/folder")
 		v1FolderGroup.Use()

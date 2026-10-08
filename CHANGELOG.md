@@ -168,6 +168,12 @@ inherited CasaOS history and is not kept up to date.)
   with the track's cover, title and artist (read by `music-metadata`, which
   replaces the deprecated `music-metadata-browser`). 20 unused UI
   dependencies removed.
+- Removed dead CasaOS code: core's `/v1/driver` list and its Google
+  Drive / Dropbox / OneDrive OAuth drivers (cloud accounts are
+  local-storage's), the gateway's stale `/v1/recover` and `/v1/driver`
+  routes (dropped from routes.json at start), and helper.sh's SysV
+  `/etc/init.d/smbd` reload (systemd 260 has no SysV scripts; nothing
+  called it). The uninstaller also removes `rclone.service.prev`.
 - The GPU widget's stats come from NVML inside the GPU sidecar instead of
   starting `nvidia-smi` twice per refresh (about 29 ms of CPU per refresh
   down to about 4 ms on a GTX 1080 Ti). Same JSON; `nvidia-smi` is still

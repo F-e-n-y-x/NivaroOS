@@ -314,7 +314,8 @@ remove_units() {
 	fi
 	rm -f /usr/lib/systemd/system/nivaroos*.service /usr/lib/systemd/system/nivaroos*.socket \
 		/usr/lib/systemd/system/nivaroos*.timer /usr/lib/systemd/system/nivaroos*.buildroot \
-		/usr/lib/systemd/system/rclone.service /usr/lib/systemd/system/usb-mount@.service \
+		/usr/lib/systemd/system/rclone.service /usr/lib/systemd/system/rclone.service.prev \
+		/usr/lib/systemd/system/usb-mount@.service \
 		/etc/udev/rules.d/11-usb-mount.rules /etc/sysctl.d/99-nivaroos.conf \
 		/etc/modules-load.d/nivaroos-fans.conf /etc/avahi/services/nivaroos.service \
 		/etc/systemd/system/docker.service.d/override.conf

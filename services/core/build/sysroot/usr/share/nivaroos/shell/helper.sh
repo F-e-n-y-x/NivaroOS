@@ -171,11 +171,6 @@ AutoRemoveUnuseDir() {
   done
 }
 
-#重载samba服务
-ReloadSamba() {
-  /etc/init.d/smbd reload
-}
-
 # $1=sda1
 # $2=volume{1}
 

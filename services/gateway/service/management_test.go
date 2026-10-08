@@ -99,3 +99,15 @@ func TestPathSorting(t *testing.T) {
 		assert.Equal(t, target, req.URL.String())
 	}
 }
+
+func TestRetiredRoutesDropped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/"+RoutesFile, []byte(`{"/v1/recover":"http://127.0.0.1:1","/v1/file":"http://127.0.0.1:2"}`), 0o600)
+	state := NewState()
+	if err := state.SetRuntimePath(dir); err != nil {
+		t.Fatal(err)
+	}
+	routes := NewManagementService(state).GetRoutes()
+	assert.Equal(t, 1, len(routes))
+	assert.Equal(t, "/v1/file", routes[0].Path)
+}
