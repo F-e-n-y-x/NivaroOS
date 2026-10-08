@@ -62,7 +62,7 @@ func TestRemoteQuirks(t *testing.T) {
 	if !gd.Drive || !hasQuirk(gd.Quirks, QuirkDailyQuota) {
 		t.Fatalf("drive = %+v", gd)
 	}
-	if o := cloudFsOptions(gd); o["skip_gdocs"] != "true" || o["stop_on_upload_limit"] != "true" {
+	if o := cloudFsOptions(gd); o["skip_gdocs"] != "true" || o["stop_on_upload_limit"] != "true" || o["chunk_size"] != "64M" {
 		t.Errorf("drive options %v", o)
 	}
 	if od := remoteQuirks("onedrive", nil); !od.CaseInsensitive {

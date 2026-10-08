@@ -153,6 +153,10 @@ func cloudFsOptions(q fsQuirks) configmap.Simple {
 	if q.Drive {
 		o["skip_gdocs"] = "true"           // Google Docs can't be downloaded as files
 		o["stop_on_upload_limit"] = "true" // 750 GB/day: stop cleanly, retry tomorrow
+		// 64 MiB pieces instead of rclone's 8: a big file is far fewer
+		// round trips to Google (measured ~1-1.7 MB/s on a 22 MB/s line
+		// with 8). Each transfer buffers one piece: 4 x 64 MiB.
+		o["chunk_size"] = "64M"
 	}
 	return o
 }
