@@ -1,5 +1,4 @@
-import 'intersection-observer'
-import Vue from 'vue'
+import { createApp } from 'vue'
 import { assetUrl } from '@/utils/assetUrl'
 import { watchForUpdates } from '@/utils/updateWatcher'
 import App from '@/App.vue'
@@ -10,20 +9,17 @@ import api from '@/service/api.js'
 import openAPI from '@/service/index.js'
 import { instance } from '@/service/service.js'
 import { createMessageBusSocket, EVENT_TYPES_PATH, sourcesOf } from '@/service/messageBusSocket'
-import Buefy from 'buefy'
+import Buefy from '@ntohq/buefy-next'
 import A11yLabels from '@/plugins/a11yLabels'
-import VueFullscreen from 'vue-fullscreen'
-import Vue2TouchEvents from 'vue2-touch-events'
-import VueSocialSharing from 'vue-social-sharing'
 import BusSockets from '@/plugins/busSockets'
+import animateCss from '@/plugins/animateCss'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import { purifyConfig } from '@/utils/purifyConfig'
+import { createEventBus } from '@/utils/eventBus'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
-
 
 // Import Styles
 import '@/assets/scss/app.scss'
-import VAnimateCss from 'v-animate-css';
 
 // The NivaroOS mobile app's VM console screen (mobile/lib/screens/
 // vm_console_screen.dart) is the one place that app embeds a webview
@@ -51,11 +47,11 @@ import VAnimateCss from 'v-animate-css';
 	window.history.replaceState({}, document.title, newUrl)
 })()
 
-const isDev = process.env.NODE_ENV === 'dev';
+const isDev = import.meta.env.MODE === 'dev';
 const protocol = document.location.protocol
 const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
-const devIp = process.env.VUE_APP_DEV_IP
-const devPort = process.env.VUE_APP_DEV_PORT
+const devIp = import.meta.env.VUE_APP_DEV_IP
+const devPort = import.meta.env.VUE_APP_DEV_PORT
 const localhost = document.location.host
 const localhostName = document.location.hostname
 const baseIp = isDev ? `${devIp}` : `${localhostName}`
@@ -92,39 +88,29 @@ const socket = createMessageBusSocket({
 	},
 });
 
-Vue.use(Buefy)
-Vue.use(A11yLabels)
-Vue.component('ConfirmWindow', ConfirmWindow)
-Vue.use(VueFullscreen)
-Vue.use(VAnimateCss, { animateCSSPath: '/css/animate.min.css' });
-Vue.use(Vue2TouchEvents)
-Vue.use(BusSockets, socket);
-Vue.use(VueSocialSharing);
-Vue.use(VueDOMPurifyHTML, purifyConfig);
+const app = createApp(App)
+app.use(router)
+app.use(store)
+app.use(i18n)
+app.use(Buefy)
+app.use(A11yLabels)
+app.component('ConfirmWindow', ConfirmWindow)
+app.directive('animate-css', animateCss)
+app.use(BusSockets, socket)
+app.use(VueDOMPurifyHTML, purifyConfig)
 
-Vue.config.productionTip = false
-Vue.prototype.$api = api;
-Vue.prototype.$openAPI = openAPI;
-Vue.prototype.$baseIp = baseIp;
-Vue.prototype.$baseURL = baseURL;
-Vue.prototype.$protocol = protocol;
-Vue.prototype.$wsProtocol = wsProtocol;
-
-
-// Create an EventBus
-Vue.prototype.$EventBus = new Vue();
-// Images require()'d in templates come back from the build as a module
-// namespace ({ default: url }), not the URL - setting that as an <img> src
-// throws and breaks the whole component's update (see utils/assetUrl.js).
-// Templates wrap every asset require() in $assetUrl().
-Vue.prototype.$assetUrl = assetUrl;
-
-const app = new Vue({
-	router,
-	i18n,
-	store,
-	render: h => h(App)
-}).$mount('#app')
+Object.assign(app.config.globalProperties, {
+	$api: api,
+	$openAPI: openAPI,
+	$baseIp: baseIp,
+	$baseURL: baseURL,
+	$protocol: protocol,
+	$wsProtocol: wsProtocol,
+	$EventBus: createEventBus(),
+	// URL of an image under src/assets (see utils/assetUrl.js).
+	$assetUrl: assetUrl,
+})
+const vm = app.mount('#nivaroos')
 
 // After an update the open tab still runs the old build (see
 // utils/updateWatcher.js): offer the reload instead of leaving parts of
@@ -133,9 +119,9 @@ watchForUpdates({
 	router,
 	socket,
 	onUpdate() {
-		app.$buefy.snackbar.open({
-			message: i18n.t('NivaroOS was updated. Reload to use the new version.'),
-			actionText: i18n.t('Reload'),
+		vm.$buefy.snackbar.open({
+			message: i18n.global.t('NivaroOS was updated. Reload to use the new version.'),
+			actionText: i18n.global.t('Reload'),
 			indefinite: true,
 			position: 'is-bottom-right',
 			onAction: () => window.location.reload(),

@@ -46,9 +46,10 @@
 import { DEFAULT_LIMITS, addPoint, curvePath, evalCurve, makeScale, movePoint, removePoint } from '@/utils/fans/curve'
 
 export default {
+	emits: ['change', 'update:modelValue'],
 	name: 'fan-curve-editor',
 	props: {
-		value: { type: Array, required: true },
+		modelValue: { type: Array, required: true },
 		minPct: { type: Number, default: 20 },
 		limits: { type: Object, default: () => DEFAULT_LIMITS },
 		currentTemp: { type: Number, default: null },
@@ -61,7 +62,7 @@ export default {
 			height: 240,
 			tMin: 20,
 			tMax: 100,
-			local: this.value.map((p) => ({ ...p })),
+			local: this.modelValue.map((p) => ({ ...p })),
 			dragging: null,
 			selected: null
 		}
@@ -85,7 +86,7 @@ export default {
 		}
 	},
 	watch: {
-		value(v) {
+		modelValue(v) {
 			if (this.dragging === null) this.local = v.map((p) => ({ ...p }))
 		}
 	},
@@ -113,7 +114,7 @@ export default {
 			if (this.dragging === null) return
 			const { x, y } = this.svgPoint(ev)
 			this.local = movePoint(this.local, this.dragging, this.scale.t(x), this.scale.p(y), this.minPct, this.limits)
-			this.$emit('input', this.local)
+			this.$emit('update:modelValue', this.local)
 		},
 		onUp() {
 			if (this.dragging === null) return

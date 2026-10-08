@@ -1,9 +1,16 @@
-// An image require()'d with a template literal (`require(\`@/assets/...\`)`)
-// comes back from the production build as the ES module namespace
-// ({ default: "/img/x.svg" }) rather than the bare URL string the dev build
-// returned - and Buefy's <b-image> calls src.split() on it, which throws and
-// leaves the tile without an icon. Normalize at every such call site.
-export function assetUrl(mod) {
-	if (mod && typeof mod === 'object' && 'default' in mod) return mod.default
-	return mod
+// URL of an image under src/assets: assetUrl('img/logo/logo.svg'). The build
+// fingerprints these files, so templates can't hard-code their paths.
+// Unknown paths give undefined (b-image then shows its src-fallback).
+const urls = import.meta.glob('../assets/{img,background}/**/*.{svg,png,jpg,jpeg,webp,gif}', { eager: true, query: '?url', import: 'default' })
+
+export function assetUrl(path) {
+	return urls[`../assets/${path}`]
+}
+
+// A saved wallpaper names a built-in image by its URL in the build that
+// saved it (/img/wallpaper01.a4b92b0e.jpg, hash per build): point any
+// build's name at this build's file.
+export function currentBuiltinUrl(url) {
+	const m = /\/img\/(wallpaper01|wallpaper02|default_wallpaper)\.[\w-]+\.jpg$/.exec(url || '')
+	return (m && assetUrl(`background/${m[1]}.jpg`)) || url
 }

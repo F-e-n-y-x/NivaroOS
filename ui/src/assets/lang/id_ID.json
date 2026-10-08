@@ -172,7 +172,7 @@
   "Single Drive Storage": "Tempat penyimpanan drive tunggal",
   "Format": "Format",
   "Remove": "Hapus",
-  "Available Total": "{name} | Ada: {avl} (Dari: {total})",
+  "Available Total": "{name} {'|'} Ada: {avl} (Dari: {total})",
   "Health": "Kondisi",
   "Healthy": "Sehat",
   "Damage": "Rusak",

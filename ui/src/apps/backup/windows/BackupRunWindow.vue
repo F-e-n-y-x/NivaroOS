@@ -90,6 +90,7 @@ import { escapeHtml } from '@/utils/escapeHtml'
 import { openFolderWindow } from '@/utils/files/openFolder'
 
 export default {
+	emits: ['close'],
 	name: 'BackupRunWindow',
 	components: { StatusPill, RunProgress, RunSteps, RunSummary, RunLog },
 	mixins: [backupMixin, windowBehavior, confirmWindowMixin],
@@ -185,7 +186,7 @@ export default {
 		})
 		if (this.jobId) this.loadJob()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.watcher) this.watcher.stop()
 	},
 	methods: {

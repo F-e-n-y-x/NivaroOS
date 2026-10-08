@@ -273,7 +273,7 @@ export default {
 		this.$EventBus.$on(events.RELOAD_MOUNT_LIST, this.getStorageList)
 	},
 
-	beforeDestroy() {
+	beforeUnmount() {
 		// Unlike the legacy singleton sidebar, this component can be destroyed/recreated
 		// whenever the Files sidebar toggles, so the listener must be removed.
 		this.$EventBus.$off(events.RELOAD_MOUNT_LIST, this.getStorageList)

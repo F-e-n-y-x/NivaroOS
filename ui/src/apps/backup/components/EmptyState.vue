@@ -33,6 +33,7 @@ import BackupVsSyncExplainer from './BackupVsSyncExplainer.vue'
 export const EMPTY_STATE_PRESETS = Object.freeze({ photos: 'photos_usb', apps: 'apps' })
 
 export default {
+	emits: ['start'],
 	name: 'EmptyState',
 	components: { BackupVsSyncExplainer },
 	data() {

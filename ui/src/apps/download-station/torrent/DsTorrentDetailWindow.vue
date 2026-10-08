@@ -49,8 +49,8 @@
 				</dl>
 
 				<div class="opts">
-					<b-switch :value="t.sequential" @input="v => setOptions(v, t.first_last)">{{ $t('Download in sequential order') }}</b-switch>
-					<b-switch :value="t.first_last" @input="v => setOptions(t.sequential, v)">{{ $t('Download first and last pieces first') }}</b-switch>
+					<b-switch :model-value="t.sequential" @update:modelValue="v => setOptions(v, t.first_last)">{{ $t('Download in sequential order') }}</b-switch>
+					<b-switch :model-value="t.first_last" @update:modelValue="v => setOptions(t.sequential, v)">{{ $t('Download first and last pieces first') }}</b-switch>
 				</div>
 
 				<div class="segmented-control tabs-ctl">
@@ -66,7 +66,7 @@
 							<button class="ds-secondary-btn" @click="setPrio(t.files.map(f => f.index), 0)">{{ $t('Select none') }}</button>
 						</div>
 						<div v-for="f in t.files" :key="f.index" class="file-row">
-							<b-checkbox :value="f.priority > 0" :aria-label="$t('Download {name}', { name: f.name })" @input="v => setPrio([f.index], v ? 1 : 0)"></b-checkbox>
+							<b-checkbox :model-value="f.priority > 0" :aria-label="$t('Download {name}', { name: f.name })" @update:model-value="v => setPrio([f.index], v ? 1 : 0)"></b-checkbox>
 							<div class="file-main">
 								<div class="one-line file-name" :title="f.name">{{ f.name }}</div>
 								<div class="file-meta">{{ formatBytes(f.size) }} · {{ (f.progress * 100).toFixed(1) }}%</div>
@@ -115,7 +115,7 @@ export default {
 	created() {
 		this.poll()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed = true
 		clearTimeout(this.timer)
 	},

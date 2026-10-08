@@ -172,7 +172,7 @@
   "Single Drive Storage": "Jeden úložný disk",
   "Format": "\nFormátovať",
   "Remove": "Odstrániť",
-  "Available Total": "{meno} | Dostupné: {avl} (celkom: {total})",
+  "Available Total": "{meno} {'|'} Dostupné: {avl} (celkom: {total})",
   "Health": "Zdravie",
   "Healthy": "Zdravý",
   "Damage": "Poškodený",

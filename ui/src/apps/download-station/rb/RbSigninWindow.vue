@@ -97,6 +97,7 @@ import { isStuck, stuckReason, diagReport } from './signinDiag'
 const PROVIDER_NAMES = { terabox: 'TeraBox' }
 
 export default {
+	emits: ['close'],
 	name: 'RbSigninWindow',
 	components: { DsBrowserViewport, DsBrowserMenu },
 	props: {
@@ -156,7 +157,7 @@ export default {
 	mounted() {
 		this.start()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// Closing the window disposes the throwaway cookie jar (the server
 		// does it when this connection ends).
 		if (this.session) this.session.close()
@@ -341,7 +342,7 @@ export default {
 	font-size: var(--font-sm);
 	color: var(--theme-text-secondary, #475569);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		flex-shrink: 0;
 		color: var(--theme-text-muted, #94a3b8);
 	}

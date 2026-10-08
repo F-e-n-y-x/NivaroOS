@@ -172,7 +172,7 @@
   "Single Drive Storage": "Pojedynczy dysk",
   "Format": "Formatuj",
   "Remove": "Usuń",
-  "Available Total": "{name} | Dostępne: {avl} (Razem: {total})",
+  "Available Total": "{name} {'|'} Dostępne: {avl} (Razem: {total})",
   "Health": "Kondycja",
   "Healthy": "Zdrowy",
   "Damage": "Uszkodzony",

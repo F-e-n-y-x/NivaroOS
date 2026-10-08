@@ -92,6 +92,7 @@ import events from '@/events/events'
 //     This component deliberately does not replicate that: an errored file
 //     is just marked and left alone; the rest of the queue keeps going.
 export default {
+	emits: ['uploaded'],
 	name: 'upload-tray',
 	props: {
 		currentPath: {
@@ -231,7 +232,7 @@ export default {
 			// it themselves via the header's close button.
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.uploaderInstance.off('fileAdded')
 		this.uploaderInstance.off('filesSubmitted')
 		this.uploaderInstance.off('uploadStart')
@@ -496,7 +497,7 @@ export default {
 .tray-pop-leave-active {
 	transition: opacity 0.18s ease, transform 0.18s ease;
 }
-.tray-pop-enter,
+.tray-pop-enter-from,
 .tray-pop-leave-to {
 	opacity: 0;
 	transform: translateY(8px);

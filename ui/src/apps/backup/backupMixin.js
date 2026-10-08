@@ -90,7 +90,7 @@ export const windowBehavior = {
 		this.bkOpener = typeof document !== 'undefined' ? document.activeElement : null
 		this.$nextTick(() => this.focusFirst())
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		const o = this.bkOpener
 		if (o && typeof o.focus === 'function' && document.contains(o)) setTimeout(() => o.focus(), 0)
 	},

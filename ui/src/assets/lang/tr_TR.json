@@ -172,7 +172,7 @@
   "Single Drive Storage": "Tekil depolama sürücüsü",
   "Format": "Biçim",
   "Remove": "Çıkar",
-  "Available Total": "{name} | Kullanılabilir: {avl} (Toplam: {total})",
+  "Available Total": "{name} {'|'} Kullanılabilir: {avl} (Toplam: {total})",
   "Health": "Sağlık",
   "Healthy": "Sağlıklı",
   "Damage": "Hasarlı",

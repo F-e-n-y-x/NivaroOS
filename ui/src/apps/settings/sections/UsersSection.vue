@@ -21,7 +21,7 @@
 						</div>
 					</template>
 					<div v-else class="profile-name-edit">
-						<b-input v-model="nameInput" size="is-small" @keyup.enter.native="saveName"></b-input>
+						<b-input v-model="nameInput" size="is-small" @keyup.enter="saveName"></b-input>
 						<button class="icon-button is-confirm" type="button" :title="$t('Apply')" @click="saveName">
 							<b-icon icon="check-outline" pack="casa" size="is-16"></b-icon>
 						</button>
@@ -42,7 +42,7 @@
 				<b-input v-model="oriPassword" :placeholder="$t('Current password')" type="password" password-reveal size="is-small"></b-input>
 				<b-input v-model="newPassword1" :placeholder="$t('New password')" type="password" password-reveal size="is-small"></b-input>
 				<b-input v-model="newPassword2" :placeholder="$t('Confirm new password')" type="password" password-reveal size="is-small"
-					@keyup.enter.native="savePassword"></b-input>
+					@keyup.enter="savePassword"></b-input>
 				<div class="password-form-actions">
 					<b-button rounded size="is-small" @click="cancelPassword">{{ $t('Cancel') }}</b-button>
 					<b-button rounded size="is-small" type="is-primary" :loading="savingPassword" @click="savePassword">{{ $t('Save') }}</b-button>

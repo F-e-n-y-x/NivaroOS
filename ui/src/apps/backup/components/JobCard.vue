@@ -79,6 +79,7 @@ import { renderMessage } from '../messages'
 const INLINE_FIXES_SKIPPED = ['retry', 'review', 'how_to_run', 'view_log']
 
 export default {
+	emits: ['action', 'cancel', 'menu', 'open-run', 'run', 'select', 'toggle'],
 	name: 'JobCard',
 	components: { StatusPill, RunProgress, JobMenu },
 	props: {

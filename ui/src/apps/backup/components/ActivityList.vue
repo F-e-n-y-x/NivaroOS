@@ -32,6 +32,7 @@ import { STATUS_VIEW, groupRunsByDay } from '../state'
 import { renderMessage } from '../messages'
 
 export default {
+	emits: ['open'],
 	name: 'ActivityList',
 	components: { StatusPill },
 	props: {

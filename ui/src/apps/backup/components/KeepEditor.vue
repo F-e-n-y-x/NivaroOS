@@ -91,6 +91,7 @@ import FieldError from './FieldError.vue'
 import { fieldId, describedBy } from '../wizard/fields'
 
 export default {
+	emits: ['patch'],
 	name: 'KeepEditor',
 	components: { FieldError },
 	props: {

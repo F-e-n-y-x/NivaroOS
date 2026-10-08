@@ -6,9 +6,9 @@
 	<div class="ds-folder-picker">
 		<nav class="picker-crumbs" :aria-label="$t('Folder path')">
 			<button class="crumb" :class="{ current: !path }" @click="navigate('')">{{ $t('Storage') }}</button>
-			<template v-for="c in crumbs">
-				<span :key="c.path + '-sep'" class="crumb-sep" aria-hidden="true">/</span>
-				<button :key="c.path" class="crumb" :class="{ current: c.path === path }" @click="navigate(c.path)">{{ c.name }}</button>
+			<template v-for="c in crumbs" :key="c.path">
+				<span class="crumb-sep" aria-hidden="true">/</span>
+				<button class="crumb" :class="{ current: c.path === path }" @click="navigate(c.path)">{{ c.name }}</button>
 			</template>
 		</nav>
 		<div class="picker-list scrollbars-light" role="listbox" :aria-label="$t('Folders')">
@@ -51,6 +51,7 @@ import { downloadSidecar, rootOf } from '@/api/downloadSidecar'
 // /media, /mnt and mounted data drives - the sidecar enforces it), so the
 // picker starts from those and never lets you climb above them.
 export default {
+	emits: ['close'],
 	name: 'DsFolderPickerWindow',
 	props: {
 		winId: { type: String, default: '' },

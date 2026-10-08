@@ -27,6 +27,7 @@
 
 <script>
 export default {
+	emits: ['go'],
 	name: 'WizardStepper',
 	props: {
 		steps: { type: Array, required: true },

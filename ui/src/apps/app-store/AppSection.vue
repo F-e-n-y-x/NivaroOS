@@ -125,7 +125,7 @@ const builtInApplications = [
 		id: '1',
 		name: 'App Store',
 		title: { en_us: 'App Store' },
-		icon: assetUrl(require(`@/assets/img/app-icons/appstore.png`)),
+		icon: assetUrl(`img/app-icons/appstore.png`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -133,7 +133,7 @@ const builtInApplications = [
 		id: '2',
 		name: 'Files',
 		title: { en_us: 'Files' },
-		icon: assetUrl(require(`@/assets/img/app-icons/files.svg`)),
+		icon: assetUrl(`img/app-icons/files.svg`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -141,7 +141,7 @@ const builtInApplications = [
 		id: '3',
 		name: 'Settings',
 		title: { en_us: 'Settings' },
-		icon: assetUrl(require(`@/assets/img/app-icons/settings.png`)),
+		icon: assetUrl(`img/app-icons/settings.png`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -149,7 +149,7 @@ const builtInApplications = [
 		id: '4',
 		name: 'Terminal',
 		title: { en_us: 'Terminal' },
-		icon: assetUrl(require(`@/assets/img/app-icons/terminal.png`)),
+		icon: assetUrl(`img/app-icons/terminal.png`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -157,7 +157,7 @@ const builtInApplications = [
 		id: '5',
 		name: 'VMs',
 		title: { en_us: 'VMs' },
-		icon: assetUrl(require(`@/assets/img/app-icons/vm-manager.png`)),
+		icon: assetUrl(`img/app-icons/vm-manager.png`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -165,7 +165,7 @@ const builtInApplications = [
 		id: '6',
 		name: 'Host Desktop',
 		title: { en_us: 'Host Desktop' },
-		icon: assetUrl(require(`@/assets/img/app-icons/desktop.svg`)),
+		icon: assetUrl(`img/app-icons/desktop.svg`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -173,7 +173,7 @@ const builtInApplications = [
 		id: '7',
 		name: 'Download Station',
 		title: { en_us: 'Download Station' },
-		icon: assetUrl(require(`@/assets/img/app-icons/download-station.svg`)),
+		icon: assetUrl(`img/app-icons/download-station.svg`),
 		status: 'running',
 		app_type: 'system'
 	},
@@ -181,7 +181,7 @@ const builtInApplications = [
 		id: '8',
 		name: 'Backup & Sync',
 		title: { en_us: 'Backup & Sync' },
-		icon: assetUrl(require(`@/assets/img/app-icons/backup.svg`)),
+		icon: assetUrl(`img/app-icons/backup.svg`),
 		status: 'running',
 		app_type: 'system'
 	}
@@ -344,7 +344,7 @@ export default {
 		}
 		document.addEventListener('visibilitychange', this.onVisibilityChange)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		Object.keys(this.busHandlers || {}).forEach(evt => this.$EventBus.$off(evt, this.busHandlers[evt]))
 		window.removeEventListener('resize', this.getSkCount)
 		document.removeEventListener('visibilitychange', this.onVisibilityChange)
@@ -444,7 +444,7 @@ export default {
 
 				orgAppList.forEach(item => {
 					item.hostname = item.hostname || this.$baseIp
-					item.icon = item.icon || assetUrl(require(`@/assets/img/app-icons/default.svg`))
+					item.icon = item.icon || assetUrl(`img/app-icons/default.svg`)
 					applyOverride(item)
 				})
 
@@ -469,7 +469,7 @@ export default {
 				}
 				this.lastLinkAppList = linkAppList
 				linkAppList.forEach(item => {
-					item.icon = item.icon || assetUrl(require(`@/assets/img/app-icons/default.svg`))
+					item.icon = item.icon || assetUrl(`img/app-icons/default.svg`)
 					applyOverride(item)
 				})
 

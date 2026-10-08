@@ -172,7 +172,7 @@
   "Single Drive Storage": "単一のストレージドライブ",
   "Format": "フォーマット",
   "Remove": "削除",
-  "Available Total": "{name} | 利用可能: {avl} (合計: {total})",
+  "Available Total": "{name} {'|'} 利用可能: {avl} (合計: {total})",
   "Health": "健康",
   "Healthy": "健康度",
   "Damage": "破損",

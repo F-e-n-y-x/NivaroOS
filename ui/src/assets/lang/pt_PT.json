@@ -172,7 +172,7 @@
   "Single Drive Storage": "Unidade de armazenamento único",
   "Format": "Formatar",
   "Remove": "Remover",
-  "Available Total": "{name} | Disponível: {avl} (Total: {total})",
+  "Available Total": "{name} {'|'} Disponível: {avl} (Total: {total})",
   "Health": "Saúde",
   "Healthy": "Saudável",
   "Damage": "Corrompido",

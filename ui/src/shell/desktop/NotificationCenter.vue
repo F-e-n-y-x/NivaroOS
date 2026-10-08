@@ -39,6 +39,7 @@ import { activityService } from '@/service/activity'
 import NotificationList from './NotificationList.vue'
 
 export default {
+	emits: ['desktop:close-tray-popovers'],
 	name: 'notification-center',
 	components: { NotificationList },
 	data() {
@@ -63,7 +64,7 @@ export default {
 		}
 		this.$EventBus.$on('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.unsubscribe) this.unsubscribe()
 		document.removeEventListener('click', this.onOutsideClick)
 		document.removeEventListener('keydown', this.onKeydown)

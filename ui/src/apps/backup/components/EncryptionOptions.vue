@@ -103,6 +103,7 @@ import { fieldId, describedBy } from '../wizard/fields'
 import { passwordStrength } from '../wizard/draft'
 
 export default {
+	emits: ['new-copy', 'patch', 'secret'],
 	name: 'EncryptionOptions',
 	components: { FieldError },
 	props: {

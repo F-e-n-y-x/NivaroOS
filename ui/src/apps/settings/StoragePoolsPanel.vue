@@ -47,7 +47,7 @@ export default {
 		this.loadMerges()
 		this.$EventBus.$on(events.STORAGE_CHANGED, this.loadMerges)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.STORAGE_CHANGED, this.loadMerges)
 	},
 	methods: {

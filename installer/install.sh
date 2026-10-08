@@ -1718,18 +1718,26 @@ install_samba() {
 # work, this step always failed outright with "no prebuilt www files
 # found" - it never had a real path to succeed on a first-time install.
 # ------------------------------------------------------------------------------
+# The UI builds with Vite 8: Node 20.19+ or 22.12+.
+node_ok() {
+	local v major minor
+	v="$(node -v 2>/dev/null | sed -E 's/^v//')"
+	major="${v%%.*}"
+	minor="${v#*.}"
+	minor="${minor%%.*}"
+	[ "$major" -ge 23 ] 2>/dev/null && return 0
+	[ "$major" -eq 22 ] 2>/dev/null && [ "$minor" -ge 12 ] 2>/dev/null && return 0
+	[ "$major" -eq 20 ] 2>/dev/null && [ "$minor" -ge 19 ] 2>/dev/null
+}
+
 ensure_node_toolchain() {
-	if command -v pnpm >/dev/null 2>&1; then
+	if command -v pnpm >/dev/null 2>&1 && node_ok; then
 		return 0
 	fi
 
 	echo "No prebuilt web dashboard found - installing Node.js and pnpm to build it from source..."
 
-	local node_major=0
-	if command -v node >/dev/null 2>&1; then
-		node_major="$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/')"
-	fi
-	if [ -z "$node_major" ] || ! [ "$node_major" -ge 18 ] 2>/dev/null; then
+	if ! node_ok; then
 		# Distro-default Node packages are frequently too old (or entirely
 		# absent) for a modern Vite/Vue build - NodeSource's setup script is
 		# the standard way to get a current LTS on apt/dnf/yum systems.

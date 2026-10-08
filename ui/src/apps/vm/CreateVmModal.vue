@@ -226,6 +226,7 @@ const RESOLUTION_OPTIONS = [
 ]
 
 export default {
+	emits: ['close'],
 	name: 'create-vm-modal',
 	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker, VmDropdown },
 	data() {
@@ -369,7 +370,7 @@ export default {
 		})
 		this.resizeObserver.observe(this.$refs.root)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
@@ -505,7 +506,7 @@ export default {
 	// is a real window instead of an overlay dialog, it needs its own
 	// copy so raw <b-button>s don't fall back to Bulma's stock
 	// bordered/white look next to the rest of this app's flat design.
-	::v-deep .button {
+	:deep(.button) {
 		border: none;
 		border-radius: var(--radius-sm);
 		font-weight: 500;
@@ -714,7 +715,7 @@ export default {
 	// 1.5rem (24px) by default - custom-size only scales the glyph's own
 	// font-size, so anything bigger than 24px overflows its own wrapper
 	// unless the wrapper itself is resized to match here.
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2rem;
 		height: 2rem;
 	}
@@ -780,7 +781,7 @@ export default {
 .display-res-select {
 	max-width: 18rem;
 
-	::v-deep select {
+	:deep(select) {
 		width: 100%;
 		height: 2.2rem;
 		border: 1px solid var(--theme-card-border, rgb(228 233 237));
@@ -799,7 +800,7 @@ export default {
 			box-shadow: none;
 		}
 	}
-	::v-deep .select:not(.is-multiple)::after {
+	:deep(.select:not(.is-multiple)::after) {
 		border-color: var(--theme-text-muted, rgba(0, 0, 0, 0.35));
 		right: 0.9em;
 	}

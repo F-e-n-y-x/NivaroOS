@@ -13,10 +13,10 @@
 <template>
 	<files-viewer-chrome @download="downloadFile(item)" @viewer-resize="onViewerResize">
 		<template #actions>
-			<b-icon icon="content-save" custom-size="mdi-18px" class="is-clickable" @click.native="saveFile(false)"></b-icon>
+			<b-icon icon="content-save" custom-size="mdi-18px" class="is-clickable" @click="saveFile(false)"></b-icon>
 		</template>
 		<div class="code-editor-body">
-			<codemirror ref="cmEditor" v-model="code" :options="cmOptions" @input="onCmCodeChange" @ready="onCmReady" />
+			<div ref="cmHost" class="cm-host"></div>
 		</div>
 		<files-dialog-overlay v-if="showUnsavedDialog" :title="$t('Want to save?')" @close="showUnsavedDialog = false">
 			<p>{{ $t('Your changes will be lost if you don’t save them.') }}</p>
@@ -34,7 +34,7 @@ import ViewerChrome from './ViewerChrome.vue'
 import DialogOverlay from '../DialogOverlay.vue'
 
 // Core
-import { codemirror } from 'vue-codemirror'
+import CodeMirror from 'codemirror'
 import 'codemirror/lib/codemirror.css'
 // theme css
 import 'codemirror/theme/monokai.css'
@@ -175,15 +175,15 @@ const EXT_MODE_MAP = {
 }
 
 export default {
+	emits: ['close'],
 	name: 'files-code-editor',
 	mixins: [mixin],
-	components: { FilesViewerChrome: ViewerChrome, FilesDialogOverlay: DialogOverlay, codemirror },
+	components: { FilesViewerChrome: ViewerChrome, FilesDialogOverlay: DialogOverlay },
 	props: {
 		item: { type: Object, required: true },
 	},
 	data() {
 		return {
-			code: '',
 			isChange: false,
 			showUnsavedDialog: false,
 			cmOptions: {
@@ -217,21 +217,15 @@ export default {
 			},
 		}
 	},
-	computed: {
-		codemirror() {
-			return this.$refs.cmEditor.codemirror
-		},
-	},
 	mounted() {
+		// Not reactive: CodeMirror owns this object.
+		this.codemirror = CodeMirror(this.$refs.cmHost, this.cmOptions)
+		this.codemirror.on('change', () => {
+			this.isChange = true
+		})
 		this.readFile()
 	},
 	methods: {
-		onCmCodeChange() {
-			this.isChange = true
-		},
-		onCmReady() {
-			this.isChange = false
-		},
 		// CodeMirror 5 measures character/line dimensions from its wrapper
 		// element once and caches them - its own docs call out exactly this
 		// scenario ("if you...resize it") as needing an explicit refresh().
@@ -246,7 +240,7 @@ export default {
 			const mode = EXT_MODE_MAP[ext] || 'text/plain'
 			this.codemirror.setOption('mode', mode)
 			this.$api.file.download(this.item.path).then((res) => {
-				this.code = typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : String(res.data)
+				this.codemirror.setValue(typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : String(res.data))
 				this.$nextTick(() => {
 					this.isChange = false
 				})
@@ -293,7 +287,8 @@ export default {
 	width: 100%;
 	height: 100%;
 	overflow: auto;
-	::v-deep .CodeMirror {
+	.cm-host,
+	:deep(.CodeMirror) {
 		width: 100%;
 		height: 100%;
 	}

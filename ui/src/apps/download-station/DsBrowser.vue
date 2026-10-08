@@ -51,6 +51,7 @@ function writePref(lite) {
 }
 
 export default {
+	emits: ['open-adblock', 'toggle-adblock', 'trust-site'],
 	name: 'ds-browser',
 	components: { DsLiteBrowser, DsRemoteBrowser },
 	props: {
@@ -103,7 +104,7 @@ export default {
 	async created() {
 		await this.check()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.pollTimer)
 	},
 	methods: {

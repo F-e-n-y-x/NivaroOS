@@ -1,18 +1,17 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest'
-import Vue from 'vue'
+import { createApp, h, resolveDirective, withDirectives } from 'vue'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
 import { marked } from 'marked'
 import { purifyConfig } from './purifyConfig'
 
-Vue.use(VueDOMPurifyHTML, purifyConfig)
-
 // Same pipeline as TipEditorModal's preview: marked -> v-dompurify-html.
 function render(md) {
-	const vm = new Vue({
-		render: h => h('div', { directives: [{ name: 'dompurify-html', value: marked.parse(md) }] }),
-	}).$mount()
-	return vm.$el
+	const host = document.createElement('div')
+	createApp({
+		render: () => withDirectives(h('div'), [[resolveDirective('dompurify-html'), marked.parse(md)]]),
+	}).use(VueDOMPurifyHTML, purifyConfig).mount(host)
+	return host.firstElementChild
 }
 
 describe('markdown preview sanitizing', () => {

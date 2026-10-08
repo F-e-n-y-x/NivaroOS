@@ -172,7 +172,7 @@
   "Single Drive Storage": "Single storage drive",
   "Format": "Formázás",
   "Remove": "Eltávolítás",
-  "Available Total": "{name} | Elérhető: {avl} (Összes: {total})",
+  "Available Total": "{name} {'|'} Elérhető: {avl} (Összes: {total})",
   "Health": "Állapot",
   "Healthy": "Kiváló",
   "Damage": "Sérült",

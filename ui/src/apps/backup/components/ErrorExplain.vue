@@ -34,6 +34,7 @@ import { explainError } from '../messages'
 let seq = 0
 
 export default {
+	emits: ['action'],
 	name: 'ErrorExplain',
 	props: {
 		// An error_code (errorCodes.js) ...

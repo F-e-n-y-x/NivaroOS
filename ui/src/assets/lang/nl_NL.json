@@ -172,7 +172,7 @@
   "Single Drive Storage": "Enkele opslagschijf",
   "Format": "Formatteren",
   "Remove": "Verwijderen",
-  "Available Total": "{name} | Beschikbaar: {avl} (Totaal: {total})",
+  "Available Total": "{name} {'|'} Beschikbaar: {avl} (Totaal: {total})",
   "Health": "Gezondheid",
   "Healthy": "Gezond",
   "Damage": "Beschadigd",

@@ -2,13 +2,13 @@
 	<div id="login-page" class="is-flex is-justify-content-center is-align-items-center ">
 		<div v-if="!isLoading" class="login-panel step4 is-shadow">
 			<div class="login-brand">
-				<img :src="$assetUrl(require('@/assets/img/logo/logo.svg'))" alt="NivaroOS" class="login-brand-img is-on-light"/>
-				<img :src="$assetUrl(require('@/assets/img/logo/logo-white.svg'))" alt="NivaroOS" class="login-brand-img is-on-dark"/>
+				<img :src="$assetUrl('img/logo/logo.svg')" alt="NivaroOS" class="login-brand-img is-on-light"/>
+				<img :src="$assetUrl('img/logo/logo-white.svg')" alt="NivaroOS" class="login-brand-img is-on-dark"/>
 			</div>
 			<div class="is-flex is-justify-content-center pb-3 ">
 				<div class="has-text-centered">
 					<user-avatar v-if="username" :username="username" :src="rememberedPicture" version="" size="96px"></user-avatar>
-					<b-image v-else :src="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" class="is-128x128" rounded></b-image>
+					<b-image v-else :src="$assetUrl('img/account/default-avatar.svg')" class="is-128x128" rounded></b-image>
 				</div>
 
 			</div>
@@ -16,31 +16,20 @@
 							type="is-danger">
 				{{ message }}
 			</b-notification>
-			<ValidationObserver ref="observer" v-slot="{ handleSubmit }">
-				<ValidationProvider v-slot="{ errors, valid }" name="User" rules="required">
-					<b-field :label="$t('Username')" :message="errors"
-							 :type="{ 'is-danger': errors[0], 'is-success': valid }"
-							 class="mt-3">
-						<b-input v-model="username" :autofocus="!username" type="text" v-on:keyup.enter.native="handleSubmit(login)"></b-input>
-					</b-field>
-				</ValidationProvider>
-				<ValidationProvider v-slot="{ errors, valid }" name="Password" rules="required|min:5" vid="password">
-					<b-field :label="$t('Password')" :message="$t(errors)"
-							 :type="{ 'is-danger': errors[0], 'is-success': valid }" class="mt-2">
-						<b-input v-model="password" :autofocus="username" password-reveal
-								 type="password" v-on:keyup.enter.native="handleSubmit(login)"></b-input>
-					</b-field>
-				</ValidationProvider>
-				<b-button class="mt-5" expanded rounded type="is-primary" @click="handleSubmit(login)">{{ $t('Login') }}
-				</b-button>
-			</ValidationObserver>
+			<b-field :label="$t('Username')" :message="fieldMessage('username')" :type="fieldType('username')" class="mt-3">
+				<b-input v-model="username" :autofocus="!username" type="text" @keyup.enter="submit"></b-input>
+			</b-field>
+			<b-field :label="$t('Password')" :message="fieldMessage('password')" :type="fieldType('password')" class="mt-2">
+				<b-input v-model="password" :autofocus="!!username" password-reveal type="password" @keyup.enter="submit"></b-input>
+			</b-field>
+			<b-button class="mt-5" expanded rounded type="is-primary" @click="submit">{{ $t('Login') }}
+			</b-button>
 		</div>
 	</div>
 </template>
 
 <script>
-import {ValidationObserver, ValidationProvider} from "vee-validate";
-import "@/plugins/vee-validate";
+import formChecks, { firstError, minLength, required } from '@/mixins/formChecks'
 import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
 import { rememberedAvatar, syncRememberedAvatar } from '@/utils/avatar'
 
@@ -49,6 +38,7 @@ const wallpaperConfig = "wallpaper"
 export default {
 
 	name: "login-page",
+	mixins: [formChecks],
 	data() {
 		return {
 			username: '',
@@ -60,10 +50,14 @@ export default {
 	},
 	components: {
 		UserAvatar,
-		ValidationObserver,
-		ValidationProvider,
 	},
 	computed: {
+		fieldErrors() {
+			return {
+				username: firstError(this.username, [required]),
+				password: firstError(this.password, [required, minLength(5)]),
+			}
+		},
 		// Only the account last signed in on this browser has a picture
 		// here (kept locally - the server never shows one before sign-in).
 		rememberedPicture() {
@@ -82,7 +76,18 @@ export default {
 		this.refreshWallpaper();
 	},
 
+	watch: {
+		username() {
+			this.markChecked('username')
+		},
+		password() {
+			this.markChecked('password')
+		},
+	},
 	methods: {
+		submit() {
+			if (this.validateAll()) this.login()
+		},
 		// The background here otherwise only ever reflects whatever was
 		// last cached to localStorage the last time this browser fully
 		// loaded the desktop (see state.js) - if the wallpaper was changed

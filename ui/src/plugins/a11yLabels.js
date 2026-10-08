@@ -24,14 +24,15 @@ function nameControl(vm, selector) {
 }
 
 export default {
-	install(Vue) {
+	install(app) {
 		const patch = (id, selector) => {
-			const C = Vue.component(id)
+			const C = app.component(id)
 			if (!C) return
-			const opts = C.options
-			opts.mounted = [].concat(opts.mounted || [], function () {
-				this.$nextTick(() => nameControl(this, selector))
-			})
+			C.mixins = [...(C.mixins || []), {
+				mounted() {
+					this.$nextTick(() => nameControl(this, selector))
+				},
+			}]
 		}
 		patch('BSwitch', 'input[type=checkbox]')
 		patch('BCheckbox', 'input[type=checkbox]')

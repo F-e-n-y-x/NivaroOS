@@ -125,7 +125,7 @@ export default {
 			}
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.poster) URL.revokeObjectURL(this.poster)
 		if (this.instance && this.instance.destroy) {
 			this.instance.destroy(false)
@@ -198,7 +198,7 @@ export default {
 	height: 100%;
 	overflow: hidden;
 
-	::v-deep .art-video-player {
+	:deep(.art-video-player) {
 		width: 100% !important;
 		height: 100% !important;
 		max-width: 100% !important;
@@ -213,7 +213,7 @@ export default {
 	// Re-centering it properly (not just nudging the bottom/right offsets,
 	// which would still be off-center for any player size other than
 	// whatever Artplayer tuned those two numbers for).
-	::v-deep .art-state {
+	:deep(.art-state) {
 		top: 50% !important;
 		left: 50% !important;
 		bottom: auto !important;
@@ -221,7 +221,7 @@ export default {
 		transform: translate(-50%, -50%) !important;
 	}
 
-	::v-deep .art-video-player video {
+	:deep(.art-video-player video) {
 		width: 100% !important;
 		height: 100% !important;
 		object-fit: contain;

@@ -85,6 +85,7 @@ const GRADIENTS = [
 ]
 
 export default {
+	emits: ['customize', 'detail', 'install', 'open'],
 	name: 'store-app-card',
 	props: {
 		item: { type: Object, required: true },

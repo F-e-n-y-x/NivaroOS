@@ -1,7 +1,7 @@
 # How to develop this project
 
 ## Prerequisites
-1. Node 18 ([installation instructions](https://github.com/nvm-sh/nvm?tab=readme-ov-file#usage))
+1. Node 20.19+ or 22.12+ ([installation instructions](https://github.com/nvm-sh/nvm?tab=readme-ov-file#usage))
 2. pnpm@9.0.6 ([installation instructions](https://pnpm.io/installation))
 
 ## Environment variables

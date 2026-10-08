@@ -9,8 +9,8 @@
 						@click="toggleDiskConfig">
 						<b-icon :icon="showDiskConfig ? 'expand-up2' : 'expand-down2'" pack="casa" size="is-16"></b-icon>
 					</button>
-					<b-switch :value="!w.hidden" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-						@input="toggle(w)"></b-switch>
+					<b-switch :model-value="!w.hidden" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+						@update:modelValue="toggle(w)"></b-switch>
 				</div>
 			</div>
 
@@ -36,13 +36,13 @@ import events from '@/events/events'
 const widgetsConfig = "widgets_config"
 const storageWidgetConfigKey = "storage_widget_config"
 
-// Independent of SideBar.vue's own require.context call - this panel only
+// Independent of SideBar.vue's own widget glob - this panel only
 // needs name/title/icon metadata to render the list and doesn't touch
 // SideBar's runtime state directly. SideBar remains the sole writer of
 // widgets_config (see setWidgetHidden there); this panel only reads it
 // once for initial state and sends toggle commands over the EventBus, so
 // there's no risk of two components racing to save the same record.
-const widgetFiles = require.context('@/shell/widgets', false, /\.vue$/)
+const widgetFiles = import.meta.glob('@/shell/widgets/*.vue', { eager: true, import: 'default' })
 
 export default {
 	name: 'widget-visibility-panel',
@@ -56,8 +56,7 @@ export default {
 		}
 	},
 	created() {
-		this.widgets = widgetFiles.keys().map(fileName => {
-			const app = require(`@/shell/widgets/${fileName.replace("./", "")}`).default
+		this.widgets = Object.values(widgetFiles).map(app => {
 			return { name: app.name, title: app.title, icon: app.icon, hidden: false }
 		})
 		this.$api.users.getCustomStorage(widgetsConfig).then(res => {

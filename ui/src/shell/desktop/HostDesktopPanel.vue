@@ -870,6 +870,7 @@ function isUnauthorized(e) {
 }
 
 export default {
+	emits: ['close', 'status-change'],
 	name: 'HostDesktopPanel',
 	components: {
 		RemoteClipboardPanel,
@@ -1085,7 +1086,7 @@ export default {
 			this.panelResizeObserver.observe(this.$refs.root)
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.releaseStickyModifiers()
 		this.intentionalDisconnect = true
 		this.clearReconnectTimer()
@@ -2049,12 +2050,12 @@ export default {
 
 // Keyboard focus ring for everything interactive in the panel (inputs used
 // to set `outline: none` with only a subtle border change).
-.host-desktop-root ::v-deep button:focus-visible,
-.host-desktop-root ::v-deep select:focus-visible,
-.host-desktop-root ::v-deep input:focus-visible,
-.host-desktop-root ::v-deep textarea:focus-visible,
-.host-desktop-root ::v-deep summary:focus-visible,
-.host-desktop-root ::v-deep a:focus-visible {
+.host-desktop-root :deep(button:focus-visible),
+.host-desktop-root :deep(select:focus-visible),
+.host-desktop-root :deep(input:focus-visible),
+.host-desktop-root :deep(textarea:focus-visible),
+.host-desktop-root :deep(summary:focus-visible),
+.host-desktop-root :deep(a:focus-visible) {
 	outline: 2px solid #60a5fa;
 	outline-offset: 2px;
 }
@@ -2322,7 +2323,7 @@ export default {
 		color: #ff3860;
 	}
 
-	::v-deep .icon {
+	:deep(.icon) {
 		margin: 0;
 	}
 }
@@ -2777,7 +2778,7 @@ export default {
 	gap: var(--space-3);
 	color: rgba(255, 255, 255, 0.7);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.25rem;
 		height: 2.25rem;
 	}
@@ -2795,7 +2796,7 @@ export default {
 	color: rgba(255, 255, 255, 0.85);
 	z-index: 5;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.25rem;
 		height: 2.25rem;
 	}
@@ -3048,7 +3049,7 @@ export default {
 	color: rgba(255, 255, 255, 0.55);
 	flex-wrap: wrap;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 1rem;
 		height: 1rem;
 		margin-right: var(--space-1);
@@ -3087,7 +3088,7 @@ export default {
 	font-size: inherit;
 	transition: background 0.14s ease;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		margin-right: var(--space-1);
 	}
 

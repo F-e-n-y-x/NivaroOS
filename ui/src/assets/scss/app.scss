@@ -1,22 +1,22 @@
 
 
 // Import materialdesignicons
-@import "~@mdi/font/css/materialdesignicons.min.css";
+@import "@mdi/font/css/materialdesignicons.min.css";
 
 // Import Swiper Style
 
 // Import NivaroOS IconFont
-@import '~iconfonts-casaos/casaos-iconfonts.css';
+@import 'iconfonts-casaos/casaos-iconfonts.css';
 
-@import "~bulma/sass/utilities/_all";
+@import "bulma/sass/utilities/_all";
 
 // Custom Variables
 @import "common/variables";
 
 // Import Bulma and Buefy styles
 
-@import "~bulma/bulma";
-@import "~buefy/src/scss/buefy";
+@import "bulma/bulma";
+@import "@ntohq/buefy-next/src/scss/buefy";
 
 // Import NivaroOS Styles
 // Commons

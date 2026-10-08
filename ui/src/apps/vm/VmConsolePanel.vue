@@ -685,6 +685,7 @@ const ARROW_ROWS = [
 ]
 
 export default {
+	emits: ['close', 'status-change'],
 	name: 'vm-console-panel',
 	mixins: [confirmWindowMixin],
 	components: {
@@ -899,7 +900,7 @@ export default {
 		})
 		this.panelResizeObserver.observe(this.$el)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed = true
 		clearTimeout(this.connectTimer)
 		this.releaseModifiers()
@@ -2077,7 +2078,7 @@ export default {
 	// 1.5rem (24px) by default - custom-size only scales the glyph's own
 	// font-size, so the mdi-36px icons here overflowed their own wrapper
 	// unless it's resized to match.
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.25rem;
 		height: 2.25rem;
 	}
@@ -2454,7 +2455,7 @@ export default {
 	color: rgba(255, 255, 255, 0.55);
 	flex-wrap: wrap;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 1rem;
 		height: 1rem;
 		margin-right: var(--space-1);

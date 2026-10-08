@@ -43,7 +43,7 @@
 					<b-icon class="row-icon" icon="layers-outline" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Task Type') }}</div>
 					<div class="row-control">
-						<b-select v-model="form.type" size="is-small" expanded @input="onTypeChange">
+						<b-select v-model="form.type" size="is-small" expanded @update:modelValue="onTypeChange">
 							<option v-if="offerBackupType" value="backup">{{ $t('Cloud Sync & Backup') }}</option>
 							<option v-if="backupInstalled && !(task && task.type === 'backup')" :value="backupWizardType">{{ $t('schedule.editor.file_backup') }}</option>
 							<option value="vm">{{ $t('Virtual Machine (VM)') }}</option>
@@ -102,7 +102,7 @@
 						<div class="is-size-7 text-muted">{{ getSyncModeDesc(form.action) }}</div>
 					</div>
 					<div class="row-control">
-						<b-select v-model="form.action" size="is-small" expanded @input="onSyncModeChange">
+						<b-select v-model="form.action" size="is-small" expanded @update:modelValue="onSyncModeChange">
 							<option value="copy">{{ $t('Incremental Backup (Copy)') }}</option>
 							<option value="sync">{{ $t('Exact Mirror / Sync') }}</option>
 							<option value="archive">{{ $t('Timestamped Archive (.tar.gz)') }}</option>
@@ -228,7 +228,7 @@
 					<b-icon class="row-icon" icon="monitor" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Target Virtual Machine') }}</div>
 					<div class="row-control">
-						<b-select v-model="form.target_id" size="is-small" expanded @input="onVmTargetSelected">
+						<b-select v-model="form.target_id" size="is-small" expanded @update:modelValue="onVmTargetSelected">
 							<option v-for="vm in targetVms" :key="vm.name" :value="vm.name">
 								{{ vm.name }} ({{ vm.state }})
 							</option>
@@ -256,7 +256,7 @@
 					<b-icon class="row-icon" icon="docker" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Target Container') }}</div>
 					<div class="row-control">
-						<b-select v-model="form.target_id" size="is-small" expanded @input="onContainerTargetSelected">
+						<b-select v-model="form.target_id" size="is-small" expanded @update:modelValue="onContainerTargetSelected">
 							<option v-for="c in targetContainers" :key="c.id" :value="c.name || c.id">
 								{{ c.name }} ({{ c.image }})
 							</option>
@@ -284,7 +284,7 @@
 					<b-icon class="row-icon" icon="wrench-outline" custom-size="mdi-20px"></b-icon>
 					<div class="row-label">{{ $t('Maintenance Operation') }}</div>
 					<div class="row-control">
-						<b-select v-model="form.action" size="is-small" expanded @input="onMaintenanceActionChange">
+						<b-select v-model="form.action" size="is-small" expanded @update:modelValue="onMaintenanceActionChange">
 							<option value="fstrim">{{ $t('SSD / Disk fstrim (TRIM)') }}</option>
 							<option value="drop_caches">{{ $t('Drop Memory Page Caches (sync & drop)') }}</option>
 							<option value="docker_prune">{{ $t('Docker cleanup (unused images, build cache, networks)') }}</option>
@@ -367,6 +367,7 @@ import { backupWindow } from '@/apps/backup/windows'
 const BACKUP_WIZARD_TYPE = '__backup_wizard'
 
 export default {
+	emits: ['close', 'scheduled-tasks-changed'],
 	name: 'ScheduledTaskWindow',
 	components: { ScheduleBuilder },
 	props: {

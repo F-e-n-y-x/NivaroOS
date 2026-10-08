@@ -29,6 +29,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 
 	props: {
 		initPath: String,
@@ -80,7 +81,6 @@ export default {
 			this.message = ""
 			this.errorType = ""
 			this.$emit('close');
-			this.$emit("reloadPath", path)
 			if (typeof this.onReloadPath === 'function') this.onReloadPath(path)
 		},
 		errorCallBack(message) {

@@ -172,7 +172,7 @@
   "Single Drive Storage": "Адно дыскавае сховішча",
   "Format": "Фармат",
   "Remove": "Выдаліць",
-  "Available Total": "{name} | Даступна: {avl} (Усяго: {total})",
+  "Available Total": "{name} {'|'} Даступна: {avl} (Усяго: {total})",
   "Health": "Стан",
   "Healthy": "Добры",
   "Damage": "Пашкоджана",

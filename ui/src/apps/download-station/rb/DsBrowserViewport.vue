@@ -26,6 +26,7 @@ import { isMacPlatform } from '../../terminal/termKeys'
 const LONG_PRESS_MS = 550
 
 export default {
+	emits: ['contextmenu', 'frame', 'resize', 'shortcut'],
 	name: 'ds-browser-viewport',
 	props: {
 		// send(msg) - delivers a message to the browser (false when offline).
@@ -68,7 +69,7 @@ export default {
 		this.$refs.canvas.addEventListener('wheel', this.onWheel, { passive: false })
 		this.onResize(true)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.ro) this.ro.disconnect()
 		this.$refs.canvas.removeEventListener('wheel', this.onWheel)
 		window.removeEventListener('mousemove', this.onWindowMove, true)

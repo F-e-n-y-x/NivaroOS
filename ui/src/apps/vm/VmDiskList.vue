@@ -19,8 +19,8 @@
 				<div class="vm-disk-size-row">
 					<b-numberinput :aria-minus-label="$t('Decrease')" :aria-plus-label="$t('Increase')"
 						class="vm-disk-size"
-						:value="disk.gib"
-						@input="setField(i, 'gib', $event)"
+						:model-value="disk.gib"
+						@update:modelValue="setField(i, 'gib', $event)"
 						:min="minGiB(disk)"
 						:max="2000"
 						size="is-small"
@@ -71,9 +71,10 @@
 
 <script>
 export default {
+	emits: ['update:modelValue'],
 	name: 'vm-disk-list',
 	props: {
-		value: { type: Array, default: () => [] },
+		modelValue: { type: Array, default: () => [] },
 		// Paths (from the VM's current, already-attached disks) that lock
 		// bus/SSD and floor the size at their current GiB - empty for a
 		// brand-new VM where every disk is new.
@@ -84,7 +85,7 @@ export default {
 	},
 	computed: {
 		disks() {
-			return this.value
+			return this.modelValue
 		},
 	},
 	methods: {
@@ -97,13 +98,13 @@ export default {
 		},
 		setField(index, field, value) {
 			const next = this.disks.map((d, i) => (i === index ? { ...d, [field]: value } : d))
-			this.$emit('input', next)
+			this.$emit('update:modelValue', next)
 		},
 		addDisk() {
-			this.$emit('input', [...this.disks, { gib: 10, bus: 'virtio', ssd: false }])
+			this.$emit('update:modelValue', [...this.disks, { gib: 10, bus: 'virtio', ssd: false }])
 		},
 		removeDisk(index) {
-			this.$emit('input', this.disks.filter((_, i) => i !== index))
+			this.$emit('update:modelValue', this.disks.filter((_, i) => i !== index))
 		},
 	},
 }
@@ -170,15 +171,15 @@ export default {
 	// which is fragile to get right by inspection alone. Explicit height
 	// keeps the input and its flanking buttons the exact same size - a
 	// mismatch there was the second half of what looked "wrong" here.
-	::v-deep input,
-	::v-deep .button {
+	:deep(input),
+	:deep(.button) {
 		height: 2.25rem !important;
 	}
-	::v-deep input {
+	:deep(input) {
 		text-align: center;
 		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 	}
-	::v-deep .button {
+	:deep(.button) {
 		border-color: var(--theme-card-border, rgb(228 233 237)) !important;
 		background: var(--theme-card-hover, rgba(0, 0, 0, 0.04)) !important;
 		color: var(--theme-text-secondary, rgba(0, 0, 0, 0.55)) !important;

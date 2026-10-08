@@ -6,7 +6,7 @@
 // Kept in sessionStorage: it survives a page reload, but not closing the
 // browser tab - clipboards hold passwords often enough that writing them
 // to disk for good isn't a sane default.
-import Vue from 'vue'
+import { reactive } from 'vue'
 
 const STORAGE_KEY = 'nvos_remote_clipboard_v1'
 export const MAX_ITEMS = 50
@@ -26,7 +26,7 @@ function load() {
 	}
 }
 
-const state = Vue.observable({ items: load() })
+const state = reactive({ items: load() })
 
 function save() {
 	try {

@@ -1,23 +1,12 @@
-import Vue       from 'vue'
-import VueRouter from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import api       from '@/service/api'
 import store     from '@/store'
 import route     from './route.js'
 
-Vue.use(VueRouter)
-
-const routes = route
-
-const router = new VueRouter({
-	mode: 'hash',
-	base: process.env.BASE_URL,
-	routes
+const router = createRouter({
+	history: createWebHashHistory(),
+	routes: route
 })
-
-const originalPush = VueRouter.prototype.push
-VueRouter.prototype.push = function push(location) {
-	return originalPush.call(this, location).catch((err) => err)
-}
 
 let hasCheckedInit = false
 

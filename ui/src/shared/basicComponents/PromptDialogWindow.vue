@@ -3,7 +3,7 @@
 		<div class="prompt-dialog-body">
 			<div class="prompt-dialog-message" v-html="message"></div>
 			<b-input ref="input" v-model="value" :type="inputType" :placeholder="placeholder" :maxlength="maxlength"
-				size="is-small" expanded @keyup.native.enter="handleConfirm"></b-input>
+				size="is-small" expanded @keyup.enter="handleConfirm"></b-input>
 		</div>
 		<div class="prompt-dialog-actions">
 			<b-button rounded size="is-small" @click="handleCancel">
@@ -19,6 +19,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 	name: 'PromptDialogWindow',
 	props: {
 		id: { type: String, default: '' },
@@ -83,7 +84,7 @@ export default {
 			this.$emit('close')
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (!this.responded && typeof this.onCancel === 'function') {
 			try {
 				this.onCancel()

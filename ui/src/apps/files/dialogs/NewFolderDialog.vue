@@ -6,8 +6,8 @@
 				<b-input
 					v-model="folderName"
 					ref="input"
-					v-on:keyup.enter.native="createFolder"
-					@input.native="folderName = folderName.replace(/\//g, '')"
+					v-on:keyup.enter="createFolder"
+					@update:modelValue="folderName = folderName.replace(/\//g, '')"
 				></b-input>
 			</b-field>
 			<div class="dialog-actions">
@@ -22,6 +22,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { joinPath } from '@/utils/files/path'
 
 export default {
+	emits: ['close', 'created'],
 	name: 'new-folder-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

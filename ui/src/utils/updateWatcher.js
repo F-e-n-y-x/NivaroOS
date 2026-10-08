@@ -27,7 +27,9 @@ export function currentBuildId(doc = document) {
 export function isChunkLoadError(err) {
 	if (!err) return false
 	const text = `${err.name || ''} ${err.message || err}`
-	return /ChunkLoadError|Loading (CSS )?chunk [\w-]+ failed/i.test(text)
+	// webpack's wording (an older build), then Chrome, Firefox and Safari
+	// failing a dynamic import(), and Vite's CSS preload.
+	return /ChunkLoadError|Loading (CSS )?chunk [\w-]+ failed|Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(text)
 }
 
 function reloadOnce() {

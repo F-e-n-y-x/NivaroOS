@@ -184,7 +184,7 @@ export default {
 			socket: this.$socket,
 			isVisible: this.isVisible,
 			onChange: this.onBusChange,
-			onLive: (runId, live) => this.$set(this.live, runId, live)
+			onLive: (runId, live) => this.live[runId] = live
 		})
 		this.idleTimer = setInterval(() => {
 			if (this.status === 'ready' && this.isVisible()) this.scheduleReload()
@@ -197,7 +197,7 @@ export default {
 			this.resizeObserver.observe(this.$refs.root)
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.watcher) this.watcher.stop()
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 		clearInterval(this.idleTimer)
@@ -256,7 +256,7 @@ export default {
 			this.jobVersion++
 			// Drop live stats of runs that aren't active any more.
 			const active = new Set(this.jobs.filter(j => j.active_run && isActiveStatus(j.active_run.status)).map(j => j.active_run.id))
-			for (const id of Object.keys(this.live)) if (!active.has(id)) this.$delete(this.live, id)
+			for (const id of Object.keys(this.live)) if (!active.has(id)) delete this.live[id]
 			this.loadCronInfo()
 		},
 		// One /cron/preview per distinct expression, cached for the session:
@@ -264,11 +264,11 @@ export default {
 		loadCronInfo() {
 			for (const cron of distinctCrons(this.jobs)) {
 				if (this.cronInfo[cron]) continue
-				this.$set(this.cronInfo, cron, { valid: true, human_key: '', args: {}, pending: true })
+				this.cronInfo[cron] = { valid: true, human_key: '', args: {}, pending: true }
 				this.bkApi
 					.cronPreview(cron)
-					.then(info => this.$set(this.cronInfo, cron, info))
-					.catch(() => this.$delete(this.cronInfo, cron))
+					.then(info => this.cronInfo[cron] = info)
+					.catch(() => delete this.cronInfo[cron])
 			}
 		},
 		// Socket down: fetch progress of running runs directly.
@@ -277,7 +277,7 @@ export default {
 				if (job.active_run.status !== 'running') continue
 				try {
 					const run = await this.bkApi.getRun(job.active_run.id)
-					if (run.live) this.$set(this.live, run.id, run.live)
+					if (run.live) this.live[run.id] = run.live
 				} catch (e) {
 					// The next poll tries again.
 				}
@@ -637,7 +637,7 @@ export default {
 	overflow-y: auto;
 	overflow-x: hidden;
 }
-.bk-w-phone ::v-deep .bk-section {
+.bk-w-phone :deep(.bk-section) {
 	padding: var(--space-3);
 }
 .bk-offline {

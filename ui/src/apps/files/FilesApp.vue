@@ -125,6 +125,7 @@ const VIEWER_WINDOW_CONFIG = {
 const UNSUPPORTED_VIEWER_CONFIG = { component: 'UnsupportedViewer', width: 480, height: 420 }
 
 export default {
+	emits: ['close', 'drag-start', 'minimize'],
 	name: 'files-app',
 	// Added per task-15 (verified NOT already present on this component,
 	// despite the task-15 brief's claim to the contrary): FilesApp.vue is
@@ -210,7 +211,7 @@ export default {
 		}
 		this.refsReady++
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 	computed: {

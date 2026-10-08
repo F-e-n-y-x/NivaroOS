@@ -172,7 +172,7 @@
   "Single Drive Storage": "محرك اقراص واحد",
   "Format": "تهيئة",
   "Remove": "إزالة",
-  "Available Total": "{name} | متاح: {avl} (المجموع: {total})",
+  "Available Total": "{name} {'|'} متاح: {avl} (المجموع: {total})",
   "Health": "السلامة",
   "Healthy": "سليم",
   "Damage": "متضرر",

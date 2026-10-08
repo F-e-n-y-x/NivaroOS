@@ -22,6 +22,7 @@
 
 <script>
 export default {
+	emits: ['cancel', 'confirm'],
 	name: 'confirm-window',
 	props: {
 		active: { type: Boolean, default: false },

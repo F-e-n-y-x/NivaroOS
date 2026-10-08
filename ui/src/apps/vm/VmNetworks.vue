@@ -295,7 +295,7 @@ export default {
 	padding: var(--space-8) 0;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 	}
@@ -421,7 +421,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 		color: var(--theme-text-muted, #cbd5e1);

@@ -28,13 +28,13 @@
 				icon="arrow-left-thin"
 				custom-size="mdi-18px"
 				class="is-clickable"
-				@click.native="prev"
+				@click="prev"
 			></b-icon>
 			<template v-if="!isSvg">
-				<b-icon icon="magnify-plus-outline" custom-size="mdi-18px" class="is-clickable" @click.native="viewer && viewer.zoom(0.1)"></b-icon>
-				<b-icon icon="format-rotate-90" custom-size="mdi-18px" class="is-clickable" @click.native="viewer && viewer.rotate(90)"></b-icon>
-				<b-icon icon="restore" custom-size="mdi-18px" class="is-clickable" @click.native="viewer && viewer.reset()"></b-icon>
-				<b-icon icon="magnify-minus-outline" custom-size="mdi-18px" class="is-clickable" @click.native="viewer && viewer.zoom(-0.1)"></b-icon>
+				<b-icon icon="magnify-plus-outline" custom-size="mdi-18px" class="is-clickable" @click="viewer && viewer.zoom(0.1)"></b-icon>
+				<b-icon icon="format-rotate-90" custom-size="mdi-18px" class="is-clickable" @click="viewer && viewer.rotate(90)"></b-icon>
+				<b-icon icon="restore" custom-size="mdi-18px" class="is-clickable" @click="viewer && viewer.reset()"></b-icon>
+				<b-icon icon="magnify-minus-outline" custom-size="mdi-18px" class="is-clickable" @click="viewer && viewer.zoom(-0.1)"></b-icon>
 			</template>
 			<b-icon
 				v-if="itemList.length > 1"
@@ -42,7 +42,7 @@
 				icon="arrow-right-thin"
 				custom-size="mdi-18px"
 				class="is-clickable"
-				@click.native="next"
+				@click="next"
 			></b-icon>
 		</template>
 		<div class="image-viewer-body" :class="{ 'svg-backdrop': isSvg }">
@@ -67,6 +67,7 @@
 import { mixin } from '@/mixins/mixin'
 import ViewerChrome from './ViewerChrome.vue'
 import 'viewerjs/dist/viewer.css'
+import { markRaw } from 'vue'
 import { component as Viewer } from 'v-viewer'
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'svg', 'tiff']
@@ -119,7 +120,7 @@ export default {
 	mounted() {
 		window.addEventListener('keyup', this.onKeyUp)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		window.removeEventListener('keyup', this.onKeyUp)
 	},
 	methods: {
@@ -128,7 +129,7 @@ export default {
 			else if (e.code === 'ArrowLeft') this.prev()
 		},
 		inited(viewer) {
-			this.viewer = viewer
+			this.viewer = markRaw(viewer)
 			this.viewer.show()
 		},
 		// viewerjs computes its canvas/pan-zoom geometry from the container

@@ -11,7 +11,7 @@
 					<div class="setting-desc">{{ $t('Display language for NivaroOS') }}</div>
 				</div>
 				<div class="row-control">
-					<b-select v-model="barData.lang" class="set-select" size="is-small" @input="saveBarData">
+					<b-select v-model="barData.lang" class="set-select" size="is-small" @update:modelValue="saveBarData">
 						<option v-for="(lang, key) in languages" :key="key" :value="key">{{ lang.lang_name }}</option>
 					</b-select>
 				</div>
@@ -24,7 +24,7 @@
 					<div class="setting-desc">{{ $t('Display unmanaged containers on the home grid') }}</div>
 				</div>
 				<div class="row-control">
-					<b-switch v-model="barData.existing_apps_switch" class="is-flex-direction-row-reverse mr-0" type="is-primary" @input="saveBarData"></b-switch>
+					<b-switch v-model="barData.existing_apps_switch" class="is-flex-direction-row-reverse mr-0" type="is-primary" @update:modelValue="saveBarData"></b-switch>
 				</div>
 			</div>
 
@@ -41,7 +41,7 @@
 					</template>
 					<template v-else>
 						<b-input v-model="portInput" type="number" size="is-small" class="port-input"
-							@keyup.enter.native="savePort"></b-input>
+							@keyup.enter="savePort"></b-input>
 						<b-button class="ml-2" rounded size="is-small" @click="editingPort = false">{{ $t('Cancel') }}</b-button>
 						<b-button class="ml-2" rounded size="is-small" type="is-primary" :loading="savingPort" @click="savePort">
 							{{ $t('Save') }}
@@ -107,8 +107,8 @@
 					<div class="setting-desc">{{ $t('Display real-time seconds ticking') }}</div>
 				</div>
 				<div class="row-control">
-					<b-switch :value="showSeconds" :disabled="!!customDateTimeFormat" class="is-flex-direction-row-reverse mr-0"
-						type="is-primary" @input="setShowSeconds"></b-switch>
+					<b-switch :model-value="showSeconds" :disabled="!!customDateTimeFormat" class="is-flex-direction-row-reverse mr-0"
+						type="is-primary" @update:modelValue="setShowSeconds"></b-switch>
 				</div>
 			</div>
 
@@ -141,7 +141,7 @@
 							size="is-small"
 							class="custom-format-input"
 							:placeholder="$t('e.g. %F %T')"
-							@input="onCustomFormatChange"
+							@update:modelValue="onCustomFormatChange"
 						></b-input>
 						<button
 							v-if="customFormatInput"
@@ -286,7 +286,7 @@ export default {
 			this.now = new Date()
 		}, 1000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.previewTimer)
 	},
 	methods: {

@@ -172,7 +172,7 @@
   "Single Drive Storage": "Unità di archiviazione singola",
   "Format": "Formatta",
   "Remove": "Rimuovi",
-  "Available Total": "{name} | Disponibile: {avl} (Totale: {total})",
+  "Available Total": "{name} {'|'} Disponibile: {avl} (Totale: {total})",
   "Health": "Salute",
   "Healthy": "Sano",
   "Damage": "Danneggiato",

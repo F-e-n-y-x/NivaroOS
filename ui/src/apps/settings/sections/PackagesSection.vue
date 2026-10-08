@@ -507,7 +507,7 @@ export default {
 			if (j && j.state === 'running') this.followAptJob(j, { title: this.jobLabel(j) })
 		}).catch(() => {})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.aptPoll)
 	},
 	methods: {

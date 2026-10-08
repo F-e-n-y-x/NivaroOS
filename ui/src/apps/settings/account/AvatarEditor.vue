@@ -46,6 +46,7 @@ import { AVATAR_OUT, AVATAR_TYPES, checkAvatarFile, clampOffset, coverScale, cro
 const VIEW = 240
 
 export default {
+	emits: ['close', 'saved'],
 	name: 'avatar-editor',
 	props: {
 		hasAvatar: { type: Boolean, default: false }
@@ -69,7 +70,7 @@ export default {
 			this.move(this.x, this.y)
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.img) URL.revokeObjectURL(this.img.src)
 	},
 	methods: {

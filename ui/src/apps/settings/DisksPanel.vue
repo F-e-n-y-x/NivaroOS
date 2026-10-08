@@ -119,7 +119,7 @@
 					<div class="setting-desc">{{ $t('Automatically mount external USB drives when connected') }}</div>
 				</div>
 				<div class="row-control">
-					<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-primary" :aria-label="$t('Automount USB Drive')" @input="toggleAutoMount"></b-switch>
+					<b-switch v-model="autoUsbMount" class="is-flex-direction-row-reverse mr-0" type="is-primary" :aria-label="$t('Automount USB Drive')" @update:modelValue="toggleAutoMount"></b-switch>
 				</div>
 			</div>
 			<div v-for="u in usb" :key="u.name" class="setting-row">
@@ -198,7 +198,7 @@ export default {
 		this.refreshAll()
 		this.$EventBus.$on(events.STORAGE_CHANGED, this.refreshAll)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.isClosed = true
 		clearTimeout(this.hotplugTimer)
 		this.$EventBus.$off(events.STORAGE_CHANGED, this.refreshAll)

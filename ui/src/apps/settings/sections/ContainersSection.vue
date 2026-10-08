@@ -80,7 +80,7 @@
 					</div>
 				</div>
 				<div class="row-control">
-					<b-switch v-model="globalAutoUpdate.enabled" type="is-primary" @input="saveGlobalConfig"></b-switch>
+					<b-switch v-model="globalAutoUpdate.enabled" type="is-primary" @update:modelValue="saveGlobalConfig"></b-switch>
 				</div>
 			</div>
 
@@ -349,7 +349,7 @@
 							v-model="c.auto_update_enabled"
 							size="is-small"
 							type="is-primary"
-							@input="toggleContainerAutoUpdate(c)"
+							@update:modelValue="toggleContainerAutoUpdate(c)"
 						></b-switch>
 					</div>
 
@@ -501,7 +501,7 @@ export default {
 			if (document.visibilityState === 'visible' && !this.updatingAny && !this.restartingId) this.fetchContainers(true)
 		}, 20000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.isDestroyed = true
 		clearInterval(this.refreshTimer)
 		if (this.updateProgressInterval) {
@@ -645,7 +645,7 @@ export default {
 					const updated = res.data.data
 					const idx = this.containers.findIndex(item => item.id === c.id)
 					if (idx !== -1) {
-						this.$set(this.containers, idx, updated)
+						this.containers[idx] = updated
 					}
 					if (updated.has_update) {
 						this.activeNotification = {
@@ -1459,7 +1459,7 @@ export default {
 	transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.fade-enter,
+.fade-enter-from,
 .fade-leave-to {
 	opacity: 0;
 	transform: translateY(-6px);

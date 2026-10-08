@@ -136,6 +136,8 @@ export function createMessageBusSocket({ getToken, listSources, wsBase, watchTok
 		off(name, fn) {
 			handlers[name] = (handlers[name] || []).filter((h) => h !== fn)
 		},
+		// Delivers an event locally, as if it came from the bus (screenshot tooling).
+		emit,
 		get connected() {
 			return connected
 		},

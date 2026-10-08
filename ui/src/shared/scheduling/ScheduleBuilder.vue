@@ -113,10 +113,11 @@ let seq = 0
 const PREVIEW_DELAY_MS = 350
 
 export default {
+	emits: ['update:modelValue', 'validity'],
 	name: 'ScheduleBuilder',
 	props: {
 		// The cron expression (v-model).
-		value: { type: String, default: '' },
+		modelValue: { type: String, default: '' },
 		// async (cron) => CronPreview ({ valid, human_key, args, next[],
 		// timezone, utc_offset, error }), or null for device-time estimates.
 		previewFn: { type: Function, default: null },
@@ -131,8 +132,8 @@ export default {
 	data() {
 		return {
 			uid: `sb-${++seq}`,
-			pattern: this.patternFor(this.value),
-			lastEmitted: this.value,
+			pattern: this.patternFor(this.modelValue),
+			lastEmitted: this.modelValue,
 			preview: null,
 			previewFailed: false,
 			previewSeq: 0,
@@ -236,7 +237,7 @@ export default {
 		}
 	},
 	watch: {
-		value(v) {
+		modelValue(v) {
 			if (v === this.lastEmitted) return
 			this.lastEmitted = v
 			this.pattern = this.patternFor(v)
@@ -254,7 +255,7 @@ export default {
 			}
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.previewTimer)
 	},
 	methods: {
@@ -267,7 +268,7 @@ export default {
 			const c = this.cron
 			if (c === this.lastEmitted) return
 			this.lastEmitted = c
-			this.$emit('input', c)
+			this.$emit('update:modelValue', c)
 		},
 		setKind(kind) {
 			if (kind === this.pattern.kind) return

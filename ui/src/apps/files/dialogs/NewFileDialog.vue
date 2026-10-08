@@ -6,8 +6,8 @@
 				<b-input
 					v-model="fileName"
 					ref="input"
-					v-on:keyup.enter.native="createFile"
-					@input.native="fileName = fileName.replace(/\//g, '')"
+					v-on:keyup.enter="createFile"
+					@update:modelValue="fileName = fileName.replace(/\//g, '')"
 				></b-input>
 			</b-field>
 			<div class="dialog-actions">
@@ -22,6 +22,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { joinPath } from '@/utils/files/path'
 
 export default {
+	emits: ['close', 'created'],
 	name: 'new-file-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

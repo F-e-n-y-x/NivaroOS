@@ -259,7 +259,7 @@ export default {
 		this.loadAptPackages()
 		this.checkUpgradeStatus()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.pollTimer) clearInterval(this.pollTimer)
 	},
 	methods: {

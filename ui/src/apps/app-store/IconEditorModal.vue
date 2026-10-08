@@ -52,6 +52,7 @@ const VIEWPORT_SIZE = 220
 const OUTPUT_SIZE = 256
 
 export default {
+	emits: ['apply', 'close'],
 	name: 'IconEditorModal',
 	mixins: [business_Folders],
 	props: {
@@ -120,7 +121,7 @@ export default {
 	mounted() {
 		this.loadImage()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.stopDrag()
 	},
 	methods: {

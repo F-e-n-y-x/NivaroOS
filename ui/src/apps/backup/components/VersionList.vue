@@ -19,10 +19,10 @@
 				:key="v.id"
 				class="bk-version is-radio"
 				role="radio"
-				:aria-checked="v.id === value ? 'true' : 'false'"
+				:aria-checked="v.id === modelValue ? 'true' : 'false'"
 				:tabindex="v.id === focusId ? 0 : -1"
 				:data-id="v.id"
-				@click="$emit('input', v.id)"
+				@click="$emit('update:modelValue', v.id)"
 			>
 				<span class="bk-radio-dot" aria-hidden="true"></span>
 				<span class="bk-version-label">{{ label(v) }}</span>
@@ -41,6 +41,7 @@
 
 <script>
 export default {
+	emits: ['browse', 'update:modelValue'],
 	name: 'VersionList',
 	props: {
 		versions: { type: Array, required: true },
@@ -49,12 +50,12 @@ export default {
 		// When the current copy was last updated (job stats.last_success).
 		currentAt: { type: String, default: '' },
 		selectable: { type: Boolean, default: false },
-		value: { type: String, default: '' },
+		modelValue: { type: String, default: '' },
 		labelledby: { type: String, default: '' }
 	},
 	computed: {
 		focusId() {
-			return this.versions.some(v => v.id === this.value) ? this.value : this.versions.length ? this.versions[0].id : ''
+			return this.versions.some(v => v.id === this.modelValue) ? this.modelValue : this.versions.length ? this.versions[0].id : ''
 		}
 	},
 	methods: {
@@ -64,13 +65,13 @@ export default {
 		},
 		meta(v) {
 			const parts = []
-			if (v.files) parts.push(this.$tc('backup.ver.files', v.files, { count: this.fmt.number(v.files) }))
+			if (v.files) parts.push(this.$t('backup.ver.files', { count: this.fmt.number(v.files) }, v.files))
 			if (v.bytes) parts.push(this.fmt.bytes(v.bytes))
 			return parts.join(' · ')
 		},
 		onKeydown(e) {
 			const ids = this.versions.map(v => v.id)
-			const cur = Math.max(0, ids.indexOf(this.value || this.focusId))
+			const cur = Math.max(0, ids.indexOf(this.modelValue || this.focusId))
 			let next = -1
 			if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = (cur + 1) % ids.length
 			else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = (cur - 1 + ids.length) % ids.length
@@ -80,13 +81,13 @@ export default {
 				const id = e.target && e.target.dataset && e.target.dataset.id
 				if (id) {
 					e.preventDefault()
-					this.$emit('input', id)
+					this.$emit('update:modelValue', id)
 				}
 				return
 			}
 			if (next < 0) return
 			e.preventDefault()
-			this.$emit('input', ids[next])
+			this.$emit('update:modelValue', ids[next])
 			this.$nextTick(() => {
 				const el = this.$refs.group && this.$refs.group.querySelector(`[data-id="${CSS.escape(ids[next])}"]`)
 				if (el) el.focus()

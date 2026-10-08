@@ -32,6 +32,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 	name: 'ScheduledTaskLogWindow',
 	props: {
 		task: {
@@ -68,7 +69,7 @@ export default {
 	mounted() {
 		if (this.isRunning) this.poll()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.pollTimer)
 	},
 	methods: {

@@ -26,7 +26,7 @@
 
 		<div class="vm-section-toolbar vm-section-toolbar-secondary">
 			<h2 class="vm-section-title">{{ $t('ISOs') }}</h2>
-			<b-upload v-model="fileToUpload" accept=".iso,application/x-iso9660-image" :disabled="!!uploading" @input="upload">
+			<b-upload v-model="fileToUpload" accept=".iso,application/x-iso9660-image" :disabled="!!uploading" @update:modelValue="upload">
 				<a class="create-btn">
 					<b-icon icon="upload-outline" custom-size="mdi-18px"></b-icon>
 					<span>{{ $t('Upload ISO') }}</span>
@@ -245,7 +245,7 @@ export default {
 	padding: var(--space-8) 0;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 	}
@@ -338,7 +338,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 		color: var(--theme-text-muted, #cbd5e1);

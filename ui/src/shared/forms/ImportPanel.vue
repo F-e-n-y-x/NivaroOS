@@ -9,13 +9,13 @@
     <!-- Modal-Card Header End -->
     <!-- Modal-Card Body Start -->
     <section class="modal-card-body">
-      <b-tabs v-model="activeTab" :animated="false" @input="errors = ''">
+      <b-tabs v-model="activeTab" :animated="false" @update:modelValue="errors = ''">
         <b-tab-item label="Docker Compose">
           <b-field :message="errors" :type="{ 'is-danger': !!errors }">
             <b-input v-model="dockerComposeCommands" :aria-label="$t('Docker Compose YAML')" :placeholder="$t('Notice: If there are multiple services, only the first set can be analyzed correctly')" class="import-area" type="textarea"></b-input>
           </b-field>
 
-          <b-upload ref="importUpload" v-model="dropFiles" accept=".yaml,.yml" drag-drop expanded @input="onSelect">
+          <b-upload ref="importUpload" v-model="dropFiles" accept=".yaml,.yml" drag-drop expanded @update:modelValue="onSelect">
             <section class="section">
               <div class="content has-text-centered">
                 <p>
@@ -55,6 +55,7 @@ import { parse, stringify } from "yaml"
 import composerize from "composerize";
 
 export default {
+  emits: ['close'],
   data() {
     return {
       activeTab: 0,
@@ -103,7 +104,6 @@ export default {
         return
       }
       this.dockerComposeCommands = result.yaml
-      this.$emit('update', result.yaml)
       if (typeof this.onUpdate === 'function') this.onUpdate(result.yaml)
       this.$emit('close')
     },
@@ -176,13 +176,13 @@ export default {
 
 <style lang="scss" scoped>
 .import-area {
-	::v-deep .textarea {
+	:deep(.textarea) {
 		height: 22rem;
 	}
 }
 
 .import-area-cli {
-	::v-deep .textarea {
+	:deep(.textarea) {
 		height: 30rem;
 	}
 }

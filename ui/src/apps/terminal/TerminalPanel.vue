@@ -117,6 +117,7 @@ function nextTabKey() {
 }
 
 export default {
+	emits: ['close', 'drag-start', 'minimize'],
 	name: 'terminal-panel',
 	components: {
 		TerminalCard,
@@ -219,7 +220,7 @@ export default {
 		this.resizeObserver.observe(this.$refs.win)
 		this.init()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 		document.removeEventListener('visibilitychange', this.onVisibility)
 		if (this.resizeObserver) this.resizeObserver.disconnect()
@@ -634,12 +635,12 @@ export default {
 	bottom: 0;
 	overflow: hidden;
 
-	::v-deep #logs {
+	:deep(#logs) {
 		height: 100%;
 		min-height: 0;
 	}
 
-	::v-deep .terminal-instance {
+	:deep(.terminal-instance) {
 		height: 100%;
 		min-height: 0;
 	}
@@ -948,7 +949,7 @@ export default {
 	cursor: pointer;
 
 	// Buefy's b-icon ships its own margin, which stacked with the gap.
-	::v-deep .icon {
+	:deep(.icon) {
 		margin: 0 !important;
 	}
 

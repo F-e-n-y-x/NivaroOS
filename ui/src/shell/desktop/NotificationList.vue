@@ -51,7 +51,7 @@
 				<li v-for="item in filteredActivities" :key="item.id" class="notif-item" :class="{ 'is-unread': !item.read }">
 					<button type="button" class="notif-main" :aria-label="itemLabel(item)" @click="markRead(item)">
 						<span class="notif-avatar" :class="[item.type, item.status]" aria-hidden="true">
-							<img v-if="item.icon && !brokenIcons[item.id]" :src="item.icon" alt="" class="notif-app-icon" @error="$set(brokenIcons, item.id, true)">
+							<img v-if="item.icon && !brokenIcons[item.id]" :src="item.icon" alt="" class="notif-app-icon" @error="brokenIcons[item.id] = true">
 							<b-icon v-else :icon="getNotifIcon(item)" pack="mdi" custom-size="mdi-18px"></b-icon>
 						</span>
 						<span class="notif-content">
@@ -124,6 +124,7 @@ const SYSTEM_TYPES = ['schedule', 'vm', 'system', 'maintenance', 'backup']
 const SEEN_AFTER_MS = 1500
 
 export default {
+	emits: ['close'],
 	name: 'notification-list',
 	mixins: [systemPower],
 	components: { UserAvatar },
@@ -186,7 +187,7 @@ export default {
 			if (typeof document === 'undefined' || !document.hidden) activityService.markAllAsRead()
 		}, SEEN_AFTER_MS)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.ticker)
 		clearTimeout(this.seenTimer)
 		if (this.unsubscribe) this.unsubscribe()

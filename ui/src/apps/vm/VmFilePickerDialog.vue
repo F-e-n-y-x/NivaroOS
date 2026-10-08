@@ -13,9 +13,9 @@
 <template>
 	<vm-overlay-panel :active="active" :title="title || (directoryMode ? $t('Select Folder') : $t('Select File'))" width="30rem" height="26rem" @close="$emit('close')">
 		<div class="picker-breadcrumb">
-			<template v-for="(crumb, i) in crumbs">
-				<button :key="crumb.path" class="crumb" @click="navigate(crumb.path)">{{ crumb.name }}</button>
-				<span v-if="i < crumbs.length - 1" :key="crumb.path + '-sep'" class="crumb-sep">/</span>
+			<template v-for="(crumb, i) in crumbs" :key="crumb.path">
+				<button class="crumb" @click="navigate(crumb.path)">{{ crumb.name }}</button>
+				<span v-if="i < crumbs.length - 1" class="crumb-sep">/</span>
 			</template>
 		</div>
 		<div class="picker-list" role="listbox" :aria-label="title || (directoryMode ? $t('Select Folder') : $t('Select File'))" @keydown.down.prevent="moveFocus(1, $event)" @keydown.up.prevent="moveFocus(-1, $event)">
@@ -61,6 +61,7 @@
 import VmOverlayPanel from './VmOverlayPanel.vue'
 
 export default {
+	emits: ['close', 'selected'],
 	name: 'vm-file-picker-dialog',
 	components: { VmOverlayPanel },
 	props: {

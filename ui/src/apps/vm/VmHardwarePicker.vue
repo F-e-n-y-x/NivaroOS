@@ -49,6 +49,7 @@
 import { vmSidecar } from '@/api/vmSidecar'
 
 export default {
+	emits: ['update:pciValue', 'update:usbValue'],
 	name: 'vm-hardware-picker',
 	props: {
 		usbValue: { type: Array, default: () => [] },

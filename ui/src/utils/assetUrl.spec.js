@@ -1,31 +1,35 @@
 import { describe, test, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { assetUrl } from './assetUrl'
+import { assetUrl, currentBuiltinUrl } from './assetUrl'
 
-// The production build turns require()'d images into { default: url }; one
-// reaching an <img src> unwrapped throws inside Vue's patch and freezes the
-// component (the CPU widget's process list once stuck open that way).
-function vueFiles(dir) {
+const src = path.resolve(__dirname, '..')
+function files(dir) {
 	return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
 		const p = path.join(dir, e.name)
-		if (e.isDirectory()) return vueFiles(p)
-		return e.name.endsWith('.vue') && !e.name.startsWith('__') ? [p] : []
+		if (e.isDirectory()) return files(p)
+		return /\.(vue|js)$/.test(e.name) && !e.name.startsWith('__') && !e.name.endsWith('.spec.js') ? [p] : []
 	})
 }
 
 describe('asset URLs', () => {
-	test('unwraps a module namespace and passes a URL through', () => {
-		expect(assetUrl({ default: '/img/x.svg' })).toBe('/img/x.svg')
-		expect(assetUrl('/img/x.svg')).toBe('/img/x.svg')
+	test('resolves an image and gives undefined for anything else', () => {
+		expect(assetUrl('img/logo/logo.svg')).toMatch(/logo.*\.svg/)
+		expect(assetUrl('img/nope.svg')).toBeUndefined()
 	})
 
-	test('every asset require() in a component is wrapped', () => {
-		const bare = /(?<![\w$]\()\brequire\((['"`])@\/assets\//
-		const offenders = vueFiles(path.resolve(__dirname, '..'))
-			.flatMap((f) => fs.readFileSync(f, 'utf8').split('\n').map((line, i) => [f, i + 1, line]))
-			.filter(([, , line]) => bare.test(line) && !/assetUrl\(require\(/.test(line))
-			.map(([f, n]) => `${path.relative(path.resolve(__dirname, '..'), f)}:${n}`)
-		expect(offenders).toEqual([])
+	test('a built-in wallpaper saved by another build maps to this build', () => {
+		expect(currentBuiltinUrl('/img/wallpaper01.a4b92b0e.jpg')).toBe(assetUrl('background/wallpaper01.jpg'))
+		expect(currentBuiltinUrl('/DATA/Gallery/me.jpg')).toBe('/DATA/Gallery/me.jpg')
+		expect(currentBuiltinUrl('')).toBe('')
+	})
+
+	test('every literal assetUrl() path exists', () => {
+		const missing = files(src).flatMap((f) =>
+			[...fs.readFileSync(f, 'utf8').matchAll(/assetUrl\((['"`])([^'"`$]+)\1\)/g)]
+				.map((m) => m[2])
+				.filter((p) => !fs.existsSync(path.join(src, 'assets', p)))
+				.map((p) => `${path.relative(src, f)}: ${p}`))
+		expect(missing).toEqual([])
 	})
 })

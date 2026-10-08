@@ -28,19 +28,19 @@
 	
 	&.is-success {
 		&::before {
-			content: url(../img/common-icons/success.svg);
+			content: url(../../img/common-icons/success.svg);
 		}
 	}
 	
 	&.is-danger {
 		&::before {
-			content: url(../img/common-icons/danger.svg);
+			content: url(../../img/common-icons/danger.svg);
 		}
 	}
 	
 	&.is-warning {
 		&::before {
-			content: url(../img/common-icons/warning.svg);
+			content: url(../../img/common-icons/warning.svg);
 		}
 	}
 }

@@ -16,7 +16,7 @@
 		<div class="unsupported-viewer-body">
 			<img :src="getIconFile(item)" :alt="item.name" class="file-icon" />
 			<p class="file-name" :title="item.name">{{ item.name }}</p>
-			<p class="file-meta">{{ extensionLabel }} · {{ item.size | renderSize }}</p>
+			<p class="file-meta">{{ extensionLabel }} · {{ renderSize(item.size) }}</p>
 			<p class="no-preview-text">{{ $t('No preview available for this file type.') }}</p>
 			<b-button type="is-primary" icon-left="download-outline" @click="downloadFile(item)">{{ $t('Download') }}</b-button>
 		</div>

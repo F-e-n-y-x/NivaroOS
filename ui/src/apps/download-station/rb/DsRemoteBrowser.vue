@@ -114,8 +114,8 @@
 			<!-- New tab / blank page -->
 			<div v-if="showStart" class="rb-start">
 				<div class="start-inner">
-					<img :src="$assetUrl(require('@/assets/img/logo/glyph.svg'))" alt="" class="start-logo is-on-light" />
-					<img :src="$assetUrl(require('@/assets/img/logo/glyph-white.svg'))" alt="" class="start-logo is-on-dark" />
+					<img :src="$assetUrl('img/logo/glyph.svg')" alt="" class="start-logo is-on-light" />
+					<img :src="$assetUrl('img/logo/glyph-white.svg')" alt="" class="start-logo is-on-dark" />
 					<form class="start-form" @submit.prevent="submitStart">
 						<b-icon icon="magnify" custom-size="mdi-20px" class="start-icon"></b-icon>
 						<input ref="startInput" v-model="startText" class="start-input" :aria-label="$t('Search or enter address')" :placeholder="$t('Search DuckDuckGo or type an address')" />
@@ -219,6 +219,7 @@ import { RbSession, wsUrl, normalizeAddress, splitForDisplay, hostOf, buildConte
 const HIDDEN_DISCONNECT_MS = 30000
 
 export default {
+	emits: ['engine', 'fallback', 'open-adblock', 'toggle-adblock', 'trust-site'],
 	name: 'ds-remote-browser',
 	components: { DsBrowserViewport, DsBrowserMenu, DsBrowserHistory },
 	inject: { ds: 'downloadStation' },
@@ -367,7 +368,7 @@ export default {
 	mounted() {
 		this.start()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.hideTimer)
 		clearTimeout(this.copiedTimer)
 		clearTimeout(this.suggestTimer)
@@ -1418,7 +1419,7 @@ export default {
 			background: var(--theme-card-hover, rgba(0, 0, 0, 0.05));
 		}
 
-		::v-deep .icon {
+		:deep(.icon) {
 			flex-shrink: 0;
 			color: var(--theme-text-muted, #94a3b8);
 		}

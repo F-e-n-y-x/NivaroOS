@@ -99,6 +99,7 @@
 import { downloadSidecar, formatBytes, categoryOf, fileIcon } from '@/api/downloadSidecar'
 
 export default {
+	emits: ['close'],
 	name: 'DsAddDownloadWindow',
 	props: {
 		winId: { type: String, default: '' },
@@ -187,7 +188,7 @@ export default {
 			if (!this.urlText && this.$refs.urlInput) this.$refs.urlInput.focus()
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.probeTimer)
 	},
 	methods: {

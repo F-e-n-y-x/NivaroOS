@@ -16,8 +16,8 @@
 <template>
 	<div class="detail-window is-flex is-flex-direction-column is-align-items-center">
 		<div class="cover is-unselectable is-flex is-justify-content-center is-align-items-center">
-			<div :class="item | coverType">
-				<img :class="item | iconType" :src="getIconFile(item)" alt="folder" />
+			<div :class="coverType(item)">
+				<img :class="iconType(item)" :src="getIconFile(item)" alt="folder" />
 			</div>
 		</div>
 		<div class="info mt-3 is-flex is-flex-direction-column is-align-items-center">
@@ -29,7 +29,7 @@
 				</div>
 				<div class="info-row">
 					<span class="label">{{ $t('Date') }}</span>
-					<span class="value">{{ item.date | dateFmt }}</span>
+					<span class="value">{{ dateFmt(item.date) }}</span>
 				</div>
 				<div class="info-row">
 					<span class="label">{{ $t('Path') }}</span>
@@ -40,9 +40,9 @@
 					<span class="value">
 						<template v-if="item.is_dir">
 							<b-icon v-if="sizeLoading" icon="loading" custom-class="mdi-spin" size="is-small"></b-icon>
-							<template v-else-if="folderSize !== null">{{ folderSize | renderSize }}</template>
+							<template v-else-if="folderSize !== null">{{ renderSize(folderSize) }}</template>
 						</template>
-						<template v-else>{{ item.size | renderSize }}</template>
+						<template v-else>{{ renderSize(item.size) }}</template>
 					</span>
 				</div>
 			</div>

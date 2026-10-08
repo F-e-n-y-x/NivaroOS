@@ -210,9 +210,9 @@
 						<template v-if="isFiles">
 							<nav class="bk-crumbs" :aria-label="$t('backup.phones.folder')">
 								<button type="button" class="bk-btn is-link is-small" @click="openDir('')">{{ $t('backup.phones.cat.' + browseCategory) }}</button>
-								<template v-for="c in pathCrumbs">
-									<span :key="c.path + '-sep'" aria-hidden="true">›</span>
-									<button :key="c.path" type="button" class="bk-btn is-link is-small" @click="openDir(c.path)">{{ c.name }}</button>
+								<template v-for="c in pathCrumbs" :key="c.path">
+									<span aria-hidden="true">›</span>
+									<button type="button" class="bk-btn is-link is-small" @click="openDir(c.path)">{{ c.name }}</button>
 								</template>
 							</nav>
 							<p v-if="browseError" class="bk-inline-error" role="alert">{{ errText(browseError) }}</p>
@@ -437,7 +437,7 @@ export default {
 			[BACKUP_EVENTS.DEVICE_CHANGED]: props => this.onChanged(props)
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.unsubscribe) this.unsubscribe()
 		clearTimeout(this.reloadTimer)
 		clearInterval(this.movePoll)

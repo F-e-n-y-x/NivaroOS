@@ -25,6 +25,7 @@
 let seq = 0
 
 export default {
+	emits: ['open-job'],
 	name: 'UpcomingList',
 	props: {
 		items: { type: Array, required: true },

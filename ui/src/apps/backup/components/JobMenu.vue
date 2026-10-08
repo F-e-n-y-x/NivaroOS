@@ -30,6 +30,7 @@
 let seq = 0
 
 export default {
+	emits: ['select'],
 	name: 'JobMenu',
 	props: {
 		job: { type: Object, required: true }
@@ -50,7 +51,7 @@ export default {
 			return list
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		document.removeEventListener('pointerdown', this.onOutside, true)
 	},
 	methods: {

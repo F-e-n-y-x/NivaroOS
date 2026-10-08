@@ -163,6 +163,7 @@ const MENU_WIDTH = 224
 const MENU_HEIGHT = 380
 
 export default {
+	emits: ['compress-request', 'compress-selection', 'copy-selection', 'delete-request', 'delete-selection', 'detail-request', 'download-selection', 'extract-request', 'move-selection', 'new-file', 'new-folder', 'open-new-tab-request', 'open-request', 'paste', 'paste-into', 'reload', 'rename-request', 'select-all', 'share-request', 'upload'],
 	name: 'files-context-menu',
 	mixins: [mixin],
 	inject: ['filesController'],
@@ -193,7 +194,7 @@ export default {
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('resize', this.close)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('resize', this.close)
 	},

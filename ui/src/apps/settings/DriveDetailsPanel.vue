@@ -117,6 +117,7 @@ const STANDBY_OPTIONS = [
 ]
 
 export default {
+	emits: ['close'],
 	name: 'drive-details-panel',
 	props: {
 		disk: { type: Object, required: true }
@@ -158,7 +159,7 @@ export default {
 	created() {
 		this.load()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// A response still in flight when the panel closes must not
 		// schedule another poll on a component that no longer exists.
 		this.isClosed = true

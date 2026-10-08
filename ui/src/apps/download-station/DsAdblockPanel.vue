@@ -24,7 +24,7 @@
 					}) }}
 				</div>
 			</div>
-			<b-switch :value="enabled" :aria-label="$t('Ad blocker')" @input="setEnabled"></b-switch>
+			<b-switch :model-value="enabled" :aria-label="$t('Ad blocker')" @update:modelValue="setEnabled"></b-switch>
 		</div>
 
 		<h3 class="setting-card-title">{{ $t('Filter lists') }}</h3>
@@ -43,7 +43,7 @@
 					</div>
 				</div>
 				<div class="row-control">
-					<b-switch size="is-small" :value="l.enabled" :disabled="!enabled" :aria-label="l.name" @input="v => toggleList(l.id, v)"></b-switch>
+					<b-switch size="is-small" :model-value="l.enabled" :disabled="!enabled" :aria-label="l.name" @update:modelValue="v => toggleList(l.id, v)"></b-switch>
 				</div>
 			</div>
 		</div>
@@ -72,10 +72,10 @@
 		<div class="setting-card">
 			<div class="setting-row filters-row">
 				<div class="row-label">
-					<i18n path="Your own rules, in uBlock Origin syntax - for example {network} or {cosmetic}" tag="div" class="setting-desc">
+					<i18n-t keypath="Your own rules, in uBlock Origin syntax - for example {network} or {cosmetic}" tag="div" class="setting-desc">
 						<template #network><code>||ads.example.com^</code></template>
 						<template #cosmetic><code>example.com##.banner</code></template>
-					</i18n>
+					</i18n-t>
 					<textarea v-model="customFilters" class="ds-input" rows="6" spellcheck="false" :aria-label="$t('My filters')"></textarea>
 					<div class="filters-actions">
 						<button class="ds-primary-btn" :disabled="customFilters === savedCustom" @click="saveCustom">{{ $t('Apply changes') }}</button>
@@ -95,6 +95,7 @@ import { downloadSidecar, formatBytes } from '@/api/downloadSidecar'
 import { escapeHtml } from '@/utils/escapeHtml'
 
 export default {
+	emits: ['changed'],
 	name: 'ds-adblock-panel',
 	data() {
 		return { stats: null, settings: null, newSite: '', customFilters: '', savedCustom: '', timer: null }
@@ -115,7 +116,7 @@ export default {
 		this.customFilters = this.savedCustom = (this.settings && this.settings.custom_filters) || ''
 		this.timer = setInterval(this.loadStats, 3000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 	},
 	methods: {
@@ -238,7 +239,7 @@ export default {
 	background: var(--color-primary, #2563eb);
 	color: var(--color-primary-text, #fff);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2rem;
 		height: 2rem;
 	}

@@ -86,7 +86,7 @@
 	border-radius: var(--radius-pill);
 	cursor: pointer;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 0.9rem;
 		height: 0.9rem;
 	}
@@ -219,7 +219,7 @@
 		padding: var(--space-6) var(--space-4);
 	}
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 3rem;
 		height: 3rem;
 		color: var(--theme-text-muted, #cbd5e1);

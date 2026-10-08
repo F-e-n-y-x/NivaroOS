@@ -248,7 +248,7 @@ export default {
 		this.onResize = () => this.measure()
 		window.addEventListener('resize', this.onResize)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.pollTimer)
 		clearTimeout(this.searchTimer)
 		window.removeEventListener('resize', this.onResize)

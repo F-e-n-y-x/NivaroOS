@@ -42,7 +42,7 @@ export default {
 	created() {
 		this.src = this.getFileUrl(this.item)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.resizeSettleTimer)
 	},
 	methods: {
@@ -88,7 +88,7 @@ export default {
 	overflow: auto;
 	background: var(--theme-bg-window, #fff);
 }
-::v-deep .vue-office-excel {
+:deep(.vue-office-excel) {
 	height: 100%;
 	width: 100%;
 }

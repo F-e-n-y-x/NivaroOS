@@ -172,7 +172,7 @@
   "Single Drive Storage": "Съхранение на едно устройство",
   "Format": "Формат",
   "Remove": "Премахни",
-  "Available Total": "{name} | Налично: {avl} (Общо:{total})",
+  "Available Total": "{name} {'|'} Налично: {avl} (Общо:{total})",
   "Health": "Здраве",
   "Healthy": "Здрав",
   "Damage": "Повреден",

@@ -116,7 +116,7 @@
 					<div class="row-control limits">
 						<label>↓ <input v-model="kib.alt_dl_limit" class="ds-input num" type="number" min="0" :aria-label="$t('Alternative download limit')" @change="saveKiB('alt_dl_limit')" /></label>
 						<label>↑ <input v-model="kib.alt_up_limit" class="ds-input num" type="number" min="0" :aria-label="$t('Alternative upload limit')" @change="saveKiB('alt_up_limit')" /></label>
-						<b-switch :value="t.alt_speed" :aria-label="$t('Use alternative speed limits now')" @input="v => save({ alt_speed: v })"></b-switch>
+						<b-switch :model-value="t.alt_speed" :aria-label="$t('Use alternative speed limits now')" @update:modelValue="v => save({ alt_speed: v })"></b-switch>
 					</div>
 				</div>
 				<div class="setting-row">
@@ -136,7 +136,7 @@
 							</div>
 						</div>
 					</div>
-					<div class="row-control"><b-switch :value="t.schedule" :aria-label="$t('Schedule the alternative limits')" @input="v => save({ schedule: v })"></b-switch></div>
+					<div class="row-control"><b-switch :model-value="t.schedule" :aria-label="$t('Schedule the alternative limits')" @update:modelValue="v => save({ schedule: v })"></b-switch></div>
 				</div>
 			</div>
 
@@ -153,7 +153,7 @@
 							<label>{{ $t('Torrents') }} <input v-model.number="t.max_active_torrents" class="ds-input num" type="number" min="0" @change="save({ max_active_torrents: t.max_active_torrents })" /></label>
 						</div>
 					</div>
-					<div class="row-control"><b-switch :value="t.queueing" :aria-label="$t('Torrent queueing')" @input="v => save({ queueing: v })"></b-switch></div>
+					<div class="row-control"><b-switch :model-value="t.queueing" :aria-label="$t('Torrent queueing')" @update:modelValue="v => save({ queueing: v })"></b-switch></div>
 				</div>
 				<div class="setting-row">
 					<b-icon class="row-icon" icon="sprout-outline" custom-size="mdi-20px"></b-icon>
@@ -184,7 +184,7 @@
 					</div>
 					<div class="row-control limits">
 						<input v-model.number="t.listen_port" class="ds-input num" type="number" min="1024" max="65535" :aria-label="$t('Listening port')" @change="save({ listen_port: t.listen_port })" />
-						<b-switch :value="t.upnp" @input="v => save({ upnp: v })">UPnP</b-switch>
+						<b-switch :model-value="t.upnp" @update:modelValue="v => save({ upnp: v })">UPnP</b-switch>
 					</div>
 				</div>
 				<div class="setting-row">
@@ -192,9 +192,9 @@
 					<div class="row-label">
 						<div class="setting-title">{{ $t('Finding peers') }}</div>
 						<div class="toggles">
-							<b-switch :value="t.dht" @input="v => save({ dht: v })">DHT</b-switch>
-							<b-switch :value="t.pex" @input="v => save({ pex: v })">PeX</b-switch>
-							<b-switch :value="t.lsd" :disabled="!can('lsd')" :title="can('lsd') ? '' : $t('Not available with this engine')" @input="v => save({ lsd: v })">{{ $t('Local peers (LSD)') }}</b-switch>
+							<b-switch :model-value="t.dht" @update:modelValue="v => save({ dht: v })">DHT</b-switch>
+							<b-switch :model-value="t.pex" @update:modelValue="v => save({ pex: v })">PeX</b-switch>
+							<b-switch :model-value="t.lsd" :disabled="!can('lsd')" :title="can('lsd') ? '' : $t('Not available with this engine')" @update:modelValue="v => save({ lsd: v })">{{ $t('Local peers (LSD)') }}</b-switch>
 						</div>
 					</div>
 				</div>
@@ -230,7 +230,7 @@
 						<div class="setting-title">{{ $t('Pre-allocate disk space') }}</div>
 						<div class="setting-desc">{{ $t('Reserve the whole size up front (less fragmentation, slower start).') }}</div>
 					</div>
-					<div class="row-control"><b-switch :value="t.preallocate" :disabled="!can('preallocate')" :aria-label="$t('Pre-allocate disk space')" @input="v => save({ preallocate: v })"></b-switch></div>
+					<div class="row-control"><b-switch :model-value="t.preallocate" :disabled="!can('preallocate')" :aria-label="$t('Pre-allocate disk space')" @update:modelValue="v => save({ preallocate: v })"></b-switch></div>
 				</div>
 			</div>
 		</template>
@@ -243,7 +243,7 @@
 					<div class="setting-title">{{ $t('Add the best public trackers automatically') }}</div>
 					<div class="setting-desc">{{ $t('Fetched from a list and added to public torrents only - never to private ones.') }}</div>
 				</div>
-				<div class="row-control"><b-switch :value="t.trackers_auto" :aria-label="$t('Add the best public trackers automatically')" @input="v => save({ trackers_auto: v })"></b-switch></div>
+				<div class="row-control"><b-switch :model-value="t.trackers_auto" :aria-label="$t('Add the best public trackers automatically')" @update:modelValue="v => save({ trackers_auto: v })"></b-switch></div>
 			</div>
 			<div v-if="t.trackers_auto" class="setting-row">
 				<b-icon class="row-icon" icon="link-variant" custom-size="mdi-20px"></b-icon>
@@ -279,6 +279,7 @@ import { toKiB, fromKiB, supported } from './torrentUtil'
 const KIB_FIELDS = ['dl_limit', 'up_limit', 'alt_dl_limit', 'alt_up_limit']
 
 export default {
+	emits: ['changed'],
 	name: 'ds-torrent-settings',
 	data() {
 		return { t: null, info: null, kib: {}, ext: { url: '', user: '', pass: '' }, newCategory: '', trackers: null, refreshing: false }

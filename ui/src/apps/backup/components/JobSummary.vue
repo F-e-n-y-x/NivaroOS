@@ -50,6 +50,7 @@ const LINE_META = {
 }
 
 export default {
+	emits: ['edit'],
 	name: 'JobSummary',
 	props: {
 		job: { type: Object, required: true },

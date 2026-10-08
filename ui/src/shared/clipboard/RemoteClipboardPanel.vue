@@ -130,6 +130,7 @@ import { record, remove, clear, items, MAX_TYPED_CHARS } from '@/service/remoteC
 let uid = 0
 
 export default {
+	emits: ['close', 'send', 'type'],
 	name: 'remote-clipboard-panel',
 	props: {
 		// Who the text goes to: { kind: 'vm'|'host', name }
@@ -184,7 +185,7 @@ export default {
 		document.addEventListener('pointerdown', this.onOutside, true)
 		this.$nextTick(() => this.$refs.panel && this.$refs.panel.focus())
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.clock)
 		clearTimeout(this.copiedTimer)
 		document.removeEventListener('pointerdown', this.onOutside, true)

@@ -159,6 +159,7 @@ import { companionRouteInfo } from '@/utils/companionRoute'
 const DRAG_THRESHOLD = 5
 
 export default {
+	emits: ['compress-request', 'compress-selection', 'copy-selection', 'delete-request', 'delete-selection', 'detail-request', 'download-selection', 'extract-request', 'move-selection', 'open-file', 'open-new-tab-request', 'rename-request', 'share-request'],
 	name: 'files-content-view',
 	components: { EmptyFolder, ErrorHolder, GridItem, ListRow, FilesContextMenu, UploadTray },
 	inject: ['filesController'],
@@ -314,7 +315,7 @@ export default {
 		this.$EventBus.$on(events.RELOAD_FILE_LIST, this.reload)
 		transferBus.$on('finished', this.onTransferFinished)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.RELOAD_FILE_LIST, this.reload)
 		transferBus.$off('finished', this.onTransferFinished)
 		window.removeEventListener('mousemove', this.onDragSelectionMove)

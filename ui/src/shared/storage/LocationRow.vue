@@ -5,7 +5,7 @@
      §13). Keyboard handling (roving tabindex, arrows) is the parent's. -->
 <template>
 	<div class="loc-row" role="radio" :aria-checked="checked ? 'true' : 'false'" :aria-disabled="disabled ? 'true' : 'false'"
-		:aria-describedby="descId" :tabindex="tabindex" :class="{ 'is-checked': checked, 'is-disabled': disabled }" v-on="$listeners">
+		:aria-describedby="descId" :tabindex="tabindex" :class="{ 'is-checked': checked, 'is-disabled': disabled }">
 		<span class="loc-radio" aria-hidden="true"><span v-if="checked" class="loc-radio-dot"></span></span>
 		<b-icon :icon="icon" custom-size="mdi-20px" class="loc-icon" aria-hidden="true"></b-icon>
 		<span class="loc-main">

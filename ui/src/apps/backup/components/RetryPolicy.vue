@@ -15,6 +15,7 @@
 import { fieldId } from '../wizard/fields'
 
 export default {
+	emits: ['patch'],
 	name: 'RetryPolicy',
 	props: {
 		max: { type: Number, default: 3 },

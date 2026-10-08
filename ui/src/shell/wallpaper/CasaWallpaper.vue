@@ -6,13 +6,12 @@
 </template>
 
 <script>
-// require() of an image can give { default: url }; callers need the URL.
-const __assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
 import ContextMenu from './ContextMenu.vue'
+import { assetUrl as __assetUrl, currentBuiltinUrl } from '@/utils/assetUrl'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
 
-const DEFAULT_LIGHT_WALLPAPER = __assetUrl(require('@/assets/background/wallpaper01.jpg'))
-const DEFAULT_DARK_WALLPAPER = __assetUrl(require('@/assets/background/wallpaper02.jpg'))
+const DEFAULT_LIGHT_WALLPAPER = __assetUrl('background/wallpaper01.jpg')
+const DEFAULT_DARK_WALLPAPER = __assetUrl('background/wallpaper02.jpg')
 
 export default {
 	name: "casa-background",
@@ -100,7 +99,7 @@ export default {
 		}
 		this.$EventBus.$on('desktop:wallpaper-change', this.onWallpaperChange)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.onThemeChange) {
 			window.removeEventListener('nivaroos:theme-change', this.onThemeChange)
 		}
@@ -118,6 +117,7 @@ export default {
 	methods: {
 		parseUrl(serverUrl) {
 			if (!serverUrl) return '';
+			serverUrl = currentBuiltinUrl(serverUrl)
 			if (serverUrl.startsWith('data:') || serverUrl.startsWith('blob:')) {
 				return serverUrl;
 			}

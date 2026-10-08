@@ -129,9 +129,10 @@
 
 <script>
 export default {
+	emits: ['change', 'update:modelValue'],
 	name: 'vm-dropdown',
 	props: {
-		value: { type: [String, Number, Boolean], default: '' },
+		modelValue: { type: [String, Number, Boolean], default: '' },
 		options: { type: Array, default: () => [] },
 		placeholder: { type: String, default: '' },
 		emptyText: { type: String, default: '' },
@@ -186,10 +187,10 @@ export default {
 			})
 		},
 		hasValue() {
-			return this.value !== '' && this.value !== null && this.value !== undefined
+			return this.modelValue !== '' && this.modelValue !== null && this.modelValue !== undefined
 		},
 		selectedOption() {
-			return this.normalizedOptions.find((opt) => opt.value === this.value)
+			return this.normalizedOptions.find((opt) => opt.value === this.modelValue)
 		},
 		selectedLabel() {
 			if (this.selectedOption) return this.selectedOption.label
@@ -227,7 +228,7 @@ export default {
 		document.addEventListener('touchstart', this.onOutsidePointerDown, true)
 		document.addEventListener('keydown', this.onDocumentKeyDown)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		document.removeEventListener('pointerdown', this.onOutsidePointerDown, true)
 		document.removeEventListener('mousedown', this.onOutsidePointerDown, true)
 		document.removeEventListener('touchstart', this.onOutsidePointerDown, true)
@@ -243,12 +244,12 @@ export default {
 		},
 		selectOption(opt) {
 			if (opt.disabled) return
-			this.$emit('input', opt.value)
+			this.$emit('update:modelValue', opt.value)
 			this.$emit('change', opt.value)
 			this.isOpen = false
 		},
 		isSelected(val) {
-			return this.value === val
+			return this.modelValue === val
 		},
 		onOutsidePointerDown(e) {
 			if (!this.isOpen) return
@@ -301,7 +302,7 @@ export default {
 			})
 		},
 		setInitialHighlight() {
-			const idx = this.normalizedOptions.findIndex((opt) => opt.value === this.value)
+			const idx = this.normalizedOptions.findIndex((opt) => opt.value === this.modelValue)
 			this.highlightedIndex = idx >= 0 ? idx : 0
 		},
 		scrollToSelected() {
@@ -798,7 +799,7 @@ export default {
 	transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.dropdown-fade-enter,
+.dropdown-fade-enter-from,
 .dropdown-fade-leave-to {
 	opacity: 0;
 	transform: scale(0.97) translateY(-4px);

@@ -161,6 +161,16 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Changed
 
+- Web UI moved to Vue 3.5 and Vite 8 (from Vue 2.7, end of life since
+  2023, and Vue CLI/webpack). Vuex 4, Vue Router 4, vue-i18n 11,
+  Buefy-next (still on Bulma 0.9), Tiptap 3, xterm.js 6 (`@xterm/xterm`),
+  vuedraggable 4, v-viewer 3, vue-dompurify-html 5. The sign-in and
+  first-run forms use small built-in checks instead of vee-validate; the
+  first-run animation uses lottie-web directly; unused dialogs and form
+  components were removed. Everything looks and works as before; `pnpm
+  run build` still writes to `ui/build/sysroot/var/lib/nivaroos/www`.
+  `pnpm audit --prod` is clean (was 6 advisories). Building the UI from
+  source needs Node 20.19+ or 22.12+ (the installer now checks).
 - Web UI: live updates (widgets, notifications, app installs, file
   operations, backup progress) arrive over the message bus's plain
   WebSockets instead of socket.io 2 (unmaintained; the client had an open

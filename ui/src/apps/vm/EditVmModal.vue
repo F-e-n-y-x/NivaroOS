@@ -151,6 +151,7 @@ const RESOLUTION_OPTIONS = [
 ]
 
 export default {
+	emits: ['close'],
 	name: 'edit-vm-modal',
 	components: { VmFilePickerDialog, VmDiskList, VmNetworkList, VmHardwarePicker, VmDropdown },
 	props: {
@@ -245,7 +246,7 @@ export default {
 		})
 		this.resizeObserver.observe(this.$refs.root)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {
@@ -382,7 +383,7 @@ export default {
 	// Same reasoning as CreateVmModal's own copy of this: it used to come
 	// from VmOverlayPanel's card-wide override, which no longer wraps
 	// this window.
-	::v-deep .button {
+	:deep(.button) {
 		border: none;
 		border-radius: var(--radius-sm);
 		font-weight: 500;
@@ -516,7 +517,7 @@ export default {
 .display-res-select {
 	max-width: 18rem;
 
-	::v-deep select {
+	:deep(select) {
 		width: 100%;
 		height: 2.2rem;
 		border: 1px solid var(--theme-card-border, rgb(228 233 237)); border-radius: var(--radius-control); background: var(--theme-input-bg, #fff); color: var(--theme-text-primary, inherit); padding: 0 var(--space-8) 0 var(--space-3);
@@ -533,7 +534,7 @@ export default {
 			box-shadow: none;
 		}
 	}
-	::v-deep .select:not(.is-multiple)::after {
+	:deep(.select:not(.is-multiple)::after) {
 		border-color: var(--theme-text-muted, rgba(0, 0, 0, 0.35));
 		right: 0.9em;
 	}

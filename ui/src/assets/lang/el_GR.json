@@ -172,7 +172,7 @@
   "Single Drive Storage": "Μονή μονάδα αποθήκευσης",
   "Format": "Επαναδιαμόρφωση",
   "Remove": "Αφαίρεση",
-  "Available Total": "{name} | Διαθέσιμα: {avl} (Σύνολο: {total})",
+  "Available Total": "{name} {'|'} Διαθέσιμα: {avl} (Σύνολο: {total})",
   "Health": "Κατάσταση",
   "Healthy": "Υγιής",
   "Damage": "Κατεστραμμένο",

@@ -7,10 +7,10 @@
 		<div class="bk-status-text">
 			<h2 class="bk-status-title">{{ $t('backup.overview.state.' + overall.state) }}</h2>
 			<p v-if="overall.state !== 'empty'" class="bk-status-sub">
-				<span>{{ $tc('backup.overview.jobs_count', overall.jobs, { count: fmt.number(overall.jobs) }) }}</span>
+				<span>{{ $t('backup.overview.jobs_count', { count: fmt.number(overall.jobs) }, overall.jobs) }}</span>
 				<template v-if="overall.attention">
 					<span aria-hidden="true"> · </span>
-					<span>{{ $tc('backup.overview.attention_count', overall.attention, { count: fmt.number(overall.attention) }) }}</span>
+					<span>{{ $t('backup.overview.attention_count', { count: fmt.number(overall.attention) }, overall.attention) }}</span>
 				</template>
 				<span aria-hidden="true"> · </span>
 				<span v-if="overall.lastSuccess">{{ $t('backup.overview.last_success', { when: fmt.when(overall.lastSuccess) }) }}</span>
@@ -33,6 +33,7 @@ const VIEWS = {
 }
 
 export default {
+	emits: ['new-job'],
 	name: 'StatusHeader',
 	props: {
 		// overallState() from state.js

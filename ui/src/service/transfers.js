@@ -10,10 +10,11 @@
 //     job list current, so a missed event can't leave the UI stale;
 //   - finished jobs announce themselves once on `bus`, with the exact
 //     folders they changed, so listings refresh precisely.
-import Vue from 'vue'
+import { reactive } from 'vue'
+import { createEventBus } from '@/utils/eventBus'
 import batch from './batch'
 
-const state = Vue.observable({
+const state = reactive({
 	jobs: {}, // id -> job (server snapshot, see service/transfer.Job)
 	order: [], // ids, oldest first
 	lastEventAt: 0,
@@ -24,7 +25,7 @@ const state = Vue.observable({
 })
 
 // Emits: 'finished' (job) once per job reaching a terminal state.
-export const bus = new Vue()
+export const bus = createEventBus()
 
 const TERMINAL = ['done', 'done_with_errors', 'failed', 'cancelled', 'interrupted']
 export const isTerminal = (job) => TERMINAL.includes(job && job.state)
@@ -52,7 +53,7 @@ function saveDismissed() {
 		// Private mode / full storage: the server-side dismiss still holds.
 	}
 }
-for (const id of loadDismissed()) Vue.set(state.hidden, id, 'dismissed')
+for (const id of loadDismissed()) state.hidden[id] = 'dismissed'
 
 function normalize(raw) {
 	if (!raw || !raw.id) return null
@@ -93,10 +94,10 @@ function upsert(raw) {
 		if (isTerminal(job)) {
 			const age = Date.now() - (job.finished_at ? Date.parse(job.finished_at) : Date.now())
 			const keep = age < RECENT_MS || (PROBLEM.includes(job.state) && age < PROBLEM_MS)
-			if (!keep) Vue.set(state.hidden, job.id, true)
+			if (!keep) state.hidden[job.id] = true
 		}
 	}
-	Vue.set(state.jobs, job.id, job)
+	state.jobs[job.id] = job
 	if (isTerminal(job) && !announced.has(job.id)) {
 		announced.add(job.id)
 		// Only announce jobs that finished recently - a page load that
@@ -141,7 +142,7 @@ export async function sync() {
 }
 
 function remove(id) {
-	Vue.delete(state.jobs, id)
+	delete state.jobs[id]
 	const i = state.order.indexOf(id)
 	if (i >= 0) state.order.splice(i, 1)
 }
@@ -203,7 +204,7 @@ export async function retry(id) {
 // other browsers don't bring it back.
 export function hide(id) {
 	const job = state.jobs[id]
-	Vue.set(state.hidden, id, 'dismissed')
+	state.hidden[id] = 'dismissed'
 	saveDismissed()
 	if (!job || isTerminal(job)) batch.dismiss(id).catch(() => {})
 }
@@ -211,12 +212,12 @@ export function hide(id) {
 // A clean success fading out of the panel: hidden here only; the server
 // keeps it in the history until the user clears it.
 export function fade(id) {
-	if (!state.hidden[id]) Vue.set(state.hidden, id, true)
+	if (!state.hidden[id]) state.hidden[id] = true
 }
 
 export async function clearFinished() {
 	for (const id of state.order.slice()) {
-		if (isTerminal(state.jobs[id])) Vue.set(state.hidden, id, 'dismissed')
+		if (isTerminal(state.jobs[id])) state.hidden[id] = 'dismissed'
 	}
 	saveDismissed()
 	try {

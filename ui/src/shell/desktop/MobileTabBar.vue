@@ -55,7 +55,7 @@ export default {
 			this.unreadCount = list.filter(a => !a.read).length
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.unsubscribe) this.unsubscribe()
 	},
 	computed: {

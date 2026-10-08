@@ -31,6 +31,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 	name: 'settings-overlay',
 	props: {
 		active: { type: Boolean, default: false },
@@ -81,7 +82,7 @@ export default {
 			if (win) win.title = t
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.closeWindow()
 	},
 	methods: {

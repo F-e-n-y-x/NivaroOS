@@ -42,6 +42,7 @@ import { marked } from 'marked';
 import { ice_i18n } from "@/mixins/base/common-i18n";
 
 export default {
+	emits: ['close'],
 	name: "TipEditorModal",
 	data() {
 		return {
@@ -113,7 +114,7 @@ export default {
 			immediate: true
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// Closed via the window chrome without Next Steps / Cancel.
 		if (!this.name && !this.responded) {
 			this.responded = true
@@ -135,14 +136,12 @@ export default {
 		handleSubmit() {
 			if (this.responded) return
 			this.responded = true
-			this.$emit('submit')
 			this.runCallback(this.onSubmit)
 			this.$emit('close')
 		},
 		handleCancel() {
 			if (this.responded) return
 			this.responded = true
-			this.$emit('cancel')
 			this.runCallback(this.onCancel)
 			this.$emit('close')
 		},

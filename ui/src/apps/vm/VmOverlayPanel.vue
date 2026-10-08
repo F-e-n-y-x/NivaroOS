@@ -26,6 +26,7 @@
 import SettingsOverlay from '@/apps/settings/SettingsOverlay.vue'
 
 export default {
+	emits: ['close'],
 	name: 'vm-overlay-panel',
 	components: { SettingsOverlay },
 	props: {
@@ -50,7 +51,7 @@ export default {
 .vm-dialog-foot {
 	// Flat app-style buttons instead of Bulma's stock bordered white ones,
 	// for body buttons (Browse/Clear) and footer buttons alike.
-	::v-deep .button {
+	:deep(.button) {
 		border: none;
 		border-radius: var(--radius-sm);
 		font-weight: 500;

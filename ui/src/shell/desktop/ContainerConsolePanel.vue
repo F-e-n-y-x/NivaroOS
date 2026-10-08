@@ -249,6 +249,7 @@ function readShell(id) {
 }
 
 export default {
+	emits: ['close', 'drag-start', 'minimize'],
 	name: 'container-console-panel',
 	components: {
 		TerminalCard,
@@ -388,7 +389,7 @@ export default {
 		document.addEventListener('visibilitychange', this.onVisibility)
 		document.addEventListener('pointerdown', this.onDocPointer, true)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.stopLogPolling()
 		clearInterval(this.statusTimer)
 		clearInterval(this.sessionsTimer)
@@ -1199,7 +1200,7 @@ export default {
 	margin: 0;
 	overflow: hidden;
 
-	::v-deep .terminal-instance {
+	:deep(.terminal-instance) {
 		width: 100%;
 		height: 100%;
 		min-height: 0;
@@ -1208,7 +1209,7 @@ export default {
 		box-sizing: border-box;
 	}
 
-	::v-deep .xterm {
+	:deep(.xterm) {
 		width: 100%;
 		height: 100%;
 	}

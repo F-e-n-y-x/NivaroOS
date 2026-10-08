@@ -46,7 +46,7 @@ export default {
 			return this.names.slice(0, 8)
 		},
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// Closed with the window's own close button = Cancel.
 		if (!this.answered && this.onChoose) this.onChoose(null)
 	},

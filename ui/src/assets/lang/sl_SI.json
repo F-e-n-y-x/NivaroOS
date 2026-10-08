@@ -172,7 +172,7 @@
   "Single Drive Storage": "Pogon z eno particijo",
   "Format": "Format",
   "Remove": "Odstrani",
-  "Available Total": "{name} | Uporabno: {avl} (Skupno: {total})",
+  "Available Total": "{name} {'|'} Uporabno: {avl} (Skupno: {total})",
   "Health": "Zdravje",
   "Healthy": "Zdravo",
   "Damage": "Poškodovano",

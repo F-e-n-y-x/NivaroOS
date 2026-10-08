@@ -3,15 +3,15 @@
 <template>
 	<div class="preset-grid" role="radiogroup" :aria-labelledby="labelledby" @keydown="onKeydown">
 		<div v-for="(p, i) in presets" :key="p.id" :ref="'card-' + i" class="preset-card" role="radio"
-			:aria-checked="p.id === value ? 'true' : 'false'" :aria-describedby="idp + '-preset-' + p.id + '-desc'"
-			:tabindex="i === focusIndex ? 0 : -1" :class="{ 'is-checked': p.id === value }"
+			:aria-checked="p.id === modelValue ? 'true' : 'false'" :aria-describedby="idp + '-preset-' + p.id + '-desc'"
+			:tabindex="i === focusIndex ? 0 : -1" :class="{ 'is-checked': p.id === modelValue }"
 			@click="select(i)" @dblclick="$emit('choose', p.id)">
 			<b-icon :icon="p.icon" custom-size="mdi-24px" class="preset-icon" aria-hidden="true"></b-icon>
 			<span class="preset-text">
 				<span class="preset-title">{{ $t('backup.preset.' + p.id + '.title') }}</span>
 				<span :id="idp + '-preset-' + p.id + '-desc'" class="preset-desc">{{ $t('backup.preset.' + p.id + '.desc') }}</span>
 			</span>
-			<b-icon v-if="p.id === value" icon="check-circle" custom-size="mdi-20px" class="preset-check" aria-hidden="true"></b-icon>
+			<b-icon v-if="p.id === modelValue" icon="check-circle" custom-size="mdi-20px" class="preset-check" aria-hidden="true"></b-icon>
 		</div>
 	</div>
 </template>
@@ -20,16 +20,17 @@
 import { radioKeyTarget } from '../wizard/radioKeys'
 
 export default {
+	emits: ['choose', 'update:modelValue'],
 	name: 'PresetGrid',
 	props: {
 		presets: { type: Array, required: true },
-		value: { type: String, default: '' },
+		modelValue: { type: String, default: '' },
 		idp: { type: String, required: true },
 		labelledby: { type: String, default: null }
 	},
 	computed: {
 		focusIndex() {
-			const i = this.presets.findIndex(p => p.id === this.value)
+			const i = this.presets.findIndex(p => p.id === this.modelValue)
 			return i < 0 ? 0 : i
 		}
 	},
@@ -37,7 +38,7 @@ export default {
 		select(i) {
 			const p = this.presets[i]
 			if (!p) return
-			this.$emit('input', p.id)
+			this.$emit('update:modelValue', p.id)
 			this.focusCard(i)
 		},
 		focusCard(i) {
@@ -58,7 +59,7 @@ export default {
 			}
 			if (e.key === 'Enter') {
 				e.preventDefault()
-				if (this.value) this.$emit('choose', this.value)
+				if (this.modelValue) this.$emit('choose', this.modelValue)
 				return
 			}
 			const next = radioKeyTarget(e.key, this.focusIndex, this.presets.length)

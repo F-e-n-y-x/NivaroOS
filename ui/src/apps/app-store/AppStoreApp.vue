@@ -1305,7 +1305,7 @@ export default {
 		this.handleDeepLink()
 		document.addEventListener('visibilitychange', this.startHeroAutoplay)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed = true
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 		if (this.heroTimer) clearInterval(this.heroTimer)
@@ -1574,7 +1574,7 @@ export default {
 		},
 		async installApp(id, item) {
 			if (this.installingMap[id] !== undefined) return
-			this.$set(this.installingMap, id, 5)
+			this.installingMap[id] = 5
 
 			try {
 				const res = await this.$openAPI.appManagement.appStore.composeApp(id, {
@@ -1607,7 +1607,7 @@ export default {
 									await this.executeInstall(res.data, item || { title: id, id })
 								},
 								onCancel: () => {
-									this.$delete(this.installingMap, id)
+									delete this.installingMap[id]
 								}
 							},
 							width: 440,
@@ -1620,7 +1620,7 @@ export default {
 					throw new Error(this.$t('Failed to fetch application compose configuration'))
 				}
 			} catch (e) {
-				this.$delete(this.installingMap, id)
+				delete this.installingMap[id]
 				this.toast(this.$t('Installation failed') + ': ' + this.apiMessage(e))
 			}
 		},
@@ -1630,11 +1630,11 @@ export default {
 				if (installRes.status === 200) {
 					this.toast(this.$t('Installation started for {title}', { title: item?.title || 'app' }), 'is-success', 3000)
 				} else {
-					this.$delete(this.installingMap, item.id)
+					delete this.installingMap[item.id]
 					this.toast(installRes.data?.message || this.$t('Installation failed'), 'is-warning')
 				}
 			} catch (e) {
-				this.$delete(this.installingMap, item.id)
+				delete this.installingMap[item.id]
 				this.toast(this.$t('Installation failed') + ': ' + this.apiMessage(e))
 			}
 		},
@@ -1935,14 +1935,14 @@ export default {
 			const rawProgress = props['app:progress'] || props.progress || '0'
 			const num = parseInt(rawProgress, 10)
 			if (name && !isNaN(num)) {
-				this.$set(this.installingMap, name, num)
+				this.installingMap[name] = num
 			}
 		},
 		'app:install-end'(res) {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name
 			if (name && this.installingMap[name] !== undefined) {
-				this.$delete(this.installingMap, name)
+				delete this.installingMap[name]
 				this.toast(this.$t('{app} is installed.', { app: name }), 'is-success', 3000)
 			}
 			this.scheduleListRefresh()
@@ -1952,7 +1952,7 @@ export default {
 			const props = res.Properties || {}
 			const name = props['app:name'] || props.name
 			if (name && this.installingMap[name] !== undefined) {
-				this.$delete(this.installingMap, name)
+				delete this.installingMap[name]
 				this.toast(this.$t('Installing {app} failed: {reason}', { app: name, reason: props.message || props['message'] || this.$t('see the app logs') }), 'is-danger', 8000)
 			}
 		},
@@ -3986,7 +3986,7 @@ export default {
 	transition: opacity 0.2s ease;
 }
 
-.fade-enter, .fade-leave-to {
+.fade-enter-from, .fade-leave-to {
 	opacity: 0;
 }
 .narrow-nav {

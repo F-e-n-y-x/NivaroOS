@@ -145,6 +145,7 @@ const POLL_INTERVAL_MS = 2000
 const PREVIEW_INTERVAL_MS = 3000
 
 export default {
+	emits: ['open-snapshots'],
 	name: 'vm-list',
 	components: { VmOverlayPanel },
 	mixins: [confirmWindowMixin],
@@ -177,7 +178,7 @@ export default {
 			if (!this.isMinimized && !document.hidden) this.previewTick++
 		}, PREVIEW_INTERVAL_MS)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed = true
 		clearTimeout(this.pollTimer)
 		clearInterval(this.previewTimer)
@@ -222,9 +223,9 @@ export default {
 		onPreviewError(vm) {
 			// A freshly-started VM has no framebuffer yet - show the
 			// placeholder until the retry one interval later.
-			this.$set(this.previewErrors, vm.name, true)
+			this.previewErrors[vm.name] = true
 			clearTimeout(this.previewErrorTimers[vm.name])
-			this.previewErrorTimers[vm.name] = setTimeout(() => this.$set(this.previewErrors, vm.name, false), PREVIEW_INTERVAL_MS)
+			this.previewErrorTimers[vm.name] = setTimeout(() => this.previewErrors[vm.name] = false, PREVIEW_INTERVAL_MS)
 		},
 		osIcon(vm) {
 			return vm.state === 'running' ? 'monitor' : 'monitor-off'
@@ -247,14 +248,14 @@ export default {
 		},
 		async runAction(name, kind, actionFn, done) {
 			if (this.busy[name]) return
-			this.$set(this.busy, name, kind)
+			this.busy[name] = kind
 			try {
 				await actionFn(name)
 				if (done) done()
 			} catch (e) {
 				this.$buefy.toast.open({ message: `${name}: ${e.message}`, type: 'is-danger', duration: 5000 })
 			} finally {
-				this.$delete(this.busy, name)
+				delete this.busy[name]
 				await this.poll(true)
 			}
 		},
@@ -426,7 +427,7 @@ export default {
 	padding: var(--space-8) 0;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 	}
@@ -440,7 +441,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, #94a3b8);
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 		color: var(--theme-text-muted, #cbd5e1);
@@ -475,7 +476,7 @@ export default {
 	cursor: pointer;
 	transition: background 0.15s ease, transform 0.15s ease;
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 1rem;
 		height: 1rem;
 	}
@@ -532,7 +533,7 @@ export default {
 .vm-preview-placeholder {
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 	}

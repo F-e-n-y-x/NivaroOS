@@ -135,6 +135,7 @@ import UserAvatar from '@/shared/basicComponents/UserAvatar.vue'
 import { currentUser } from '@/utils/avatar'
 
 export default {
+	emits: ['desktop:close-tray-popovers'],
 	name: 'date-time-pill',
 	mixins: [systemPower],
 	components: { UserAvatar },
@@ -307,7 +308,7 @@ export default {
 		}
 		this.$EventBus.$on('desktop:close-tray-popovers', this.onCloseTrayPopovers)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 		document.removeEventListener('click', this.closeMenu)
 		document.removeEventListener('keydown', this.onKeydown)
@@ -768,7 +769,7 @@ export default {
 	transition: all 0.12s ease-in;
 }
 
-.pop-up-enter {
+.pop-up-enter-from {
 	opacity: 0;
 	transform: translateY(8px) scale(0.96);
 }

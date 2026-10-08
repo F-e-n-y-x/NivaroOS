@@ -11,7 +11,7 @@
 				:title="isCollapsed ? $t('Expand sidebar') : $t('Collapse sidebar')"
 				custom-size="mdi-18px"
 				class="is-clickable"
-				@click.native="filesController.toggleSidebar()"
+				@click="filesController.toggleSidebar()"
 			></b-icon>
 		</div>
 		<div class="sidebar-body scrollbars-light">
@@ -65,7 +65,7 @@ export default {
 			return this.filesController.sidebarCollapsed || this.filesController.breakpoints.sidebarCollapsed
 		},
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		window.removeEventListener('mousemove', this.onResizeMove)
 		window.removeEventListener('mouseup', this.onResizeEnd)
 	},

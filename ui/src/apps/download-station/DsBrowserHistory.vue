@@ -52,6 +52,7 @@ import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import { escapeHtml } from '@/utils/escapeHtml'
 
 export default {
+	emits: ['open'],
 	name: 'ds-browser-history',
 	mixins: [confirmWindowMixin],
 	data() {
@@ -84,7 +85,7 @@ export default {
 	created() {
 		this.load()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.searchTimer)
 	},
 	methods: {
@@ -268,7 +269,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, #94a3b8);
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 3rem;
 		height: 3rem;
 	}

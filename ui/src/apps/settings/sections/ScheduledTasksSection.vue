@@ -193,7 +193,7 @@
 							type="is-primary"
 							:disabled="isMoved(t)"
 							:aria-label="isMoved(t) ? $t('schedule.migrated_control') : null"
-							@input="toggleTask(t)"
+							@update:modelValue="toggleTask(t)"
 						></b-switch>
 					</div>
 
@@ -406,7 +406,7 @@ export default {
 		this.fetchTargets()
 		this.$EventBus.$on('scheduled-tasks-changed', this.fetchTasks)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off('scheduled-tasks-changed', this.fetchTasks)
 		clearTimeout(this.followTimer)
 	},

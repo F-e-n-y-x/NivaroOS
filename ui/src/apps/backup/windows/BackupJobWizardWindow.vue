@@ -103,7 +103,7 @@
 					<h2 :id="idp + '-h-what'" ref="heading" class="bw-title" tabindex="-1">{{ $t('backup.wizard.what.title') }}</h2>
 					<div class="wz-section">
 						<h3 :id="idp + '-type-h'" class="wz-heading">{{ $t('backup.wizard.what.type_heading') }}</h3>
-						<job-type-picker :value="draft.type" :allowed="allowedTypes" :idp="idp" :labelledby="idp + '-type-h'" @input="setType"></job-type-picker>
+						<job-type-picker :model-value="draft.type" :allowed="allowedTypes" :idp="idp" :labelledby="idp + '-type-h'" @update:model-value="setType"></job-type-picker>
 						<p v-if="autoTypeNote" class="wz-note tone-info" role="status">
 							<b-icon icon="information-outline" custom-size="mdi-16px" aria-hidden="true"></b-icon><span>{{ autoTypeNote }}</span>
 						</p>
@@ -464,7 +464,7 @@ export default {
 	created() {
 		this.init()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.autosaveTimer)
 		clearTimeout(this.validateTimer)
 		// Keep what was typed if the window goes away without Cancel
@@ -622,11 +622,11 @@ export default {
 		applyPatch(patch) {
 			const d = this.draft
 			for (const [k, v] of Object.entries(patch)) {
-				this.$set(d, k, v)
+				d[k] = v
 				const f = PATCH_FIELD[k]
 				if (f) {
-					this.$set(this.touched, f, true)
-					if (this.serverErrors[f]) this.$delete(this.serverErrors, f)
+					this.touched[f] = true
+					if (this.serverErrors[f]) delete this.serverErrors[f]
 				}
 			}
 			this.saveError = null
@@ -636,8 +636,8 @@ export default {
 		setSecret(s) {
 			for (const [k, f] of [['password', 'encryption.password'], ['confirm', 'encryption.confirm'], ['recoveryKey', 'encryption.recovery_key']]) {
 				if (s[k] !== this.secret[k]) {
-					this.$set(this.touched, f, true)
-					if (this.serverErrors[f]) this.$delete(this.serverErrors, f)
+					this.touched[f] = true
+					if (this.serverErrors[f]) delete this.serverErrors[f]
 				}
 			}
 			this.secret = s
@@ -687,7 +687,7 @@ export default {
 		},
 		setSubPath(v) {
 			this.applyPatch({ dest: { ...this.draft.dest, sub_path: v }, destPathTouched: true })
-			this.$set(this.touched, 'dest.sub_path', true)
+			this.touched['dest.sub_path'] = true
 		},
 		// A folder picked by browsing that is one of the location's presets
 		// (AppData/<app>, VMs/<vm>) gets the preset, so hooks and the
@@ -744,14 +744,14 @@ export default {
 				role: 'source',
 				selected: current,
 				onSelect: loc => {
-					if (this._isDestroyed) return
+					if (this.$.isUnmounted) return
 					this.openBackupWindow('folderPicker', {
 						endpoint: endpointFromLocation(loc),
 						startPath: current && current.kind === loc.kind && current.ref_id === loc.ref_id ? current.sub_path : '',
 						allowCreate: false,
 						returnFocus: () => document.getElementById(this.fieldDomId('sources')),
 						onSelect: ep => {
-							if (!this._isDestroyed) this.setSource(index, this.withPreset(ep))
+							if (!this.$.isUnmounted) this.setSource(index, this.withPreset(ep))
 						}
 					})
 				}
@@ -764,7 +764,7 @@ export default {
 				sourceEndpoint: this.draft.sources[0] || null,
 				chooseLabel: this.$t('backup.loc.use_location'),
 				onSelect: loc => {
-					if (this._isDestroyed) return
+					if (this.$.isUnmounted) return
 					const keepPath = this.draft.destPathTouched && this.draft.dest && this.draft.dest.kind === loc.kind && this.draft.dest.ref_id === loc.ref_id
 					const ep = endpointFromLocation(loc, keepPath ? this.draft.dest.sub_path : '')
 					const patch = { dest: ep, destPathTouched: keepPath }
@@ -784,7 +784,7 @@ export default {
 				allowCreate: true,
 				returnFocus: () => document.getElementById(this.fieldDomId('dest.sub_path')),
 				onSelect: ep => {
-					if (!this._isDestroyed) this.setSubPath(ep.sub_path)
+					if (!this.$.isUnmounted) this.setSubPath(ep.sub_path)
 				}
 			})
 		},
@@ -818,11 +818,11 @@ export default {
 				if (this.step === 'where') await this.settleValidate()
 				const errors = errorsForStep(this.allErrors, this.step)
 				if (Object.keys(errors).length) {
-					this.$set(this.showErrors, this.step, true)
+					this.showErrors[this.step] = true
 					this.$nextTick(() => this.$refs.errorSummary && this.$refs.errorSummary.focus())
 					return
 				}
-				this.$set(this.showErrors, this.step, false)
+				this.showErrors[this.step] = false
 			}
 			const nextStep = this.steps[this.stepIndex + 1]
 			if (!nextStep) return
@@ -845,7 +845,7 @@ export default {
 			await this.settleValidate()
 			const bad = firstStepWithErrors(this.allErrors)
 			if (bad) {
-				for (const s of this.steps) this.$set(this.showErrors, s, true)
+				for (const s of this.steps) this.showErrors[s] = true
 				if (bad !== this.step) {
 					this.step = bad
 					this.focusHeading()
@@ -879,7 +879,7 @@ export default {
 					this.conflict = e.current
 				} else if (e.code === 'validation') {
 					this.serverErrors = mapServerFieldErrors(e.fieldErrors, job)
-					for (const s of this.steps) this.$set(this.showErrors, s, true)
+					for (const s of this.steps) this.showErrors[s] = true
 					const s = firstStepWithErrors(this.allErrors)
 					if (s && s !== this.step) {
 						this.step = s

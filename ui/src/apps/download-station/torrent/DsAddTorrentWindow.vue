@@ -69,6 +69,7 @@ import { downloadSidecar } from '@/api/downloadSidecar'
 import { parseSources, isTorrentFile, fileToBase64, magnetName } from './torrentUtil'
 
 export default {
+	emits: ['close'],
 	name: 'DsAddTorrentWindow',
 	props: {
 		winId: { type: String, default: '' },

@@ -30,6 +30,7 @@
 import { stepMenu } from './rbClient'
 
 export default {
+	emits: ['close', 'select'],
 	name: 'ds-browser-menu',
 	props: {
 		sections: { type: Array, required: true },
@@ -65,7 +66,7 @@ export default {
 		window.addEventListener('blur', this.close)
 		window.addEventListener('resize', this.close)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		window.removeEventListener('blur', this.close)
 		window.removeEventListener('resize', this.close)
 		if (this.$el.parentNode) this.$el.parentNode.removeChild(this.$el)

@@ -6,8 +6,8 @@
 				<b-input
 					v-model="zipName"
 					ref="input"
-					v-on:keyup.enter.native="compress"
-					@input.native="zipName = zipName.replace(/\//g, '')"
+					v-on:keyup.enter="compress"
+					@update:modelValue="zipName = zipName.replace(/\//g, '')"
 				></b-input>
 			</b-field>
 			<div class="dialog-actions">
@@ -22,6 +22,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { joinPath } from '@/utils/files/path'
 
 export default {
+	emits: ['close', 'created'],
 	name: 'compress-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

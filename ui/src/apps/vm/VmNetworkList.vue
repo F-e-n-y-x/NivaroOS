@@ -78,9 +78,10 @@
 
 <script>
 export default {
+	emits: ['update:modelValue'],
 	name: 'vm-network-list',
 	props: {
-		value: { type: Array, default: () => [] },
+		modelValue: { type: Array, default: () => [] },
 		bridgeNetworks: { type: Array, default: () => [] },
 		// Basic mode hides the ability to add further adapters - a single
 		// NAT/bridge choice is all that mode edits.
@@ -88,21 +89,21 @@ export default {
 	},
 	computed: {
 		networks() {
-			return this.value
+			return this.modelValue
 		},
 	},
 	methods: {
 		setField(index, field, val) {
-			this.$emit('input', this.networks.map((n, i) => (i === index ? { ...n, [field]: val } : n)))
+			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, [field]: val } : n)))
 		},
 		setBridge(index, bridgeName) {
-			this.$emit('input', this.networks.map((n, i) => (i === index ? { ...n, mode: 'bridge', bridge_name: bridgeName } : n)))
+			this.$emit('update:modelValue', this.networks.map((n, i) => (i === index ? { ...n, mode: 'bridge', bridge_name: bridgeName } : n)))
 		},
 		addNet() {
-			this.$emit('input', [...this.networks, { mode: 'nat', model: 'virtio' }])
+			this.$emit('update:modelValue', [...this.networks, { mode: 'nat', model: 'virtio' }])
 		},
 		removeNet(index) {
-			this.$emit('input', this.networks.filter((_, i) => i !== index))
+			this.$emit('update:modelValue', this.networks.filter((_, i) => i !== index))
 		},
 	},
 }

@@ -172,7 +172,7 @@
   "Single Drive Storage": "Диск з одним сховищем",
   "Format": "Форматувати",
   "Remove": "Видалити",
-  "Available Total": "{name} | Доступно: {avl} (Загалом: {total})",
+  "Available Total": "{name} {'|'} Доступно: {avl} (Загалом: {total})",
   "Health": "Стан",
   "Healthy": "Без пошкоджень",
   "Damage": "Пошкоджено",

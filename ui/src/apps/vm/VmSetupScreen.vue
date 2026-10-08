@@ -46,6 +46,7 @@
 import { vmSidecar } from '@/api/vmSidecar'
 
 export default {
+	emits: ['ready'],
 	name: 'vm-setup-screen',
 	data() {
 		return {
@@ -133,7 +134,7 @@ export default {
 
 // Same flat, borderless button used everywhere else in this app -
 // <b-button> on its own renders Bulma's stock bordered/white look.
-::v-deep .install-btn {
+:deep(.install-btn) {
 	border: none;
 	border-radius: var(--radius-sm);
 	font-weight: 500;
@@ -153,7 +154,7 @@ export default {
 
 // The "open terminal" path is outlined, not filled - it's a detour to a
 // different tool, not the primary action, so it shouldn't compete with it.
-::v-deep .b-button.install-btn.is-outlined {
+:deep(.b-button.install-btn.is-outlined) {
 	background: transparent;
 	color: var(--color-primary-fg);
 	border: 1px solid var(--color-primary);

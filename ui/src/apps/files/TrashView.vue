@@ -41,14 +41,14 @@
 
 		<div v-else class="trash-list scrollbars-light">
 			<label class="trash-row trash-row-head">
-				<b-checkbox :value="allSelected" :indeterminate="selected.length > 0 && !allSelected" size="is-small" @input="toggleAll"></b-checkbox>
+				<b-checkbox :model-value="allSelected" :indeterminate="selected.length > 0 && !allSelected" size="is-small" @update:model-value="toggleAll"></b-checkbox>
 				<span class="col-name">{{ $t('Name') }}</span>
 				<span class="col-from">{{ $t('Original location') }}</span>
 				<span class="col-when">{{ $t('Deleted') }}</span>
 				<span class="col-size">{{ $t('Size') }}</span>
 			</label>
 			<label v-for="it in items" :key="it.id" class="trash-row" :class="{ selected: isSelected(it.id), unavailable: it.unavailable }" :title="it.unavailable ? $t('{place} is offline - restore or delete this once it is back', { place: it.location || $t('The phone') }) : ''">
-				<b-checkbox :value="isSelected(it.id)" :disabled="it.unavailable" size="is-small" @input="toggle(it.id)"></b-checkbox>
+				<b-checkbox :model-value="isSelected(it.id)" :disabled="it.unavailable" size="is-small" @update:modelValue="toggle(it.id)"></b-checkbox>
 				<span class="col-name one-line" :title="it.name">
 					<b-icon :icon="it.is_dir ? 'folder' : 'file-outline'" custom-size="mdi-18px" :class="it.is_dir ? 'folder-glyph' : 'file-glyph'"></b-icon>
 					{{ it.name }}
@@ -112,7 +112,7 @@ export default {
 			},
 		},
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.recount)
 	},
 	methods: {
@@ -277,7 +277,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, rgba(0, 0, 0, 0.6));
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 3rem;
 		height: 3rem;
 	}
@@ -311,7 +311,7 @@ export default {
 		opacity: 0.55;
 		cursor: default;
 	}
-	::v-deep .checkbox {
+	:deep(.checkbox) {
 		margin: 0;
 	}
 }

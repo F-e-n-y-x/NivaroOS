@@ -75,7 +75,7 @@ export default {
 		})
 		this.resizeObserver.observe(this.$refs.root)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.resizeObserver) this.resizeObserver.disconnect()
 	},
 	methods: {

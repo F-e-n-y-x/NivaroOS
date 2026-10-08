@@ -3,7 +3,7 @@
 		<div v-if="!isLoading" v-animate-css="initAni" :class="'step' + step" class="login-panel is-shadow">
 
 			<div v-if="step == 1" class="has-text-centered">
-				<img v-animate-css="s2Ani" :src="$assetUrl(require('@/assets/img/logo/icon.svg'))" alt="" class="welcome-mark"/>
+				<img v-animate-css="s2Ani" :src="$assetUrl('img/logo/icon.svg')" alt="" class="welcome-mark"/>
 				<h2 v-animate-css="s2Ani" class="title is-2 mb-5 has-text-centered __attached_title">{{
 						$t('Welcome to NivaroOS')
 					}}</h2>
@@ -20,46 +20,28 @@
 				<h2 class="title is-3  has-text-centered">{{ $t('Create Account') }}</h2>
 				<div class="is-flex is-justify-content-center ">
 					<div class="has-text-centered">
-						<b-image :src="$assetUrl(require('@/assets/img/account/default-avatar.svg'))" class="is-128x128"
+						<b-image :src="$assetUrl('img/account/default-avatar.svg')" class="is-128x128"
 								 rounded></b-image>
 					</div>
 				</div>
-				<ValidationObserver ref="observer" v-slot="{ handleSubmit }">
-					<ValidationProvider v-slot="{ errors, valid }" name="User" rules="required">
-						<b-field :label="$t('Username')" :message="$t(errors)"
-								 :type="{ 'is-danger': errors[0], 'is-success': valid }">
-							<b-input v-model="username" type="text"
-									 v-on:keyup.enter.native="handleSubmit(register)"></b-input>
-						</b-field>
-					</ValidationProvider>
-					<ValidationProvider v-slot="{ errors, valid }" name="Password" rules="required|min:5"
-										vid="password">
-						<b-field :label="$t('Password')" :message="$t(errors)"
-								 :type="{ 'is-danger': errors[0], 'is-success': valid }"
-								 class="mt-4">
-							<b-input v-model="password" password-reveal type="password"
-									 v-on:keyup.enter.native="handleSubmit(register)"></b-input>
-						</b-field>
-					</ValidationProvider>
-					<ValidationProvider v-slot="{ errors, valid }" name="Password Confirmation"
-										rules="required|confirmed:password">
-						<b-field :label="$t('Confirm Password')" :message="$t(errors)"
-								 :type="{ 'is-danger': errors[0], 'is-success': valid }" class="mt-4">
-							<b-input v-model="confirmation" password-reveal type="password"
-									 v-on:keyup.enter.native="handleSubmit(register)"></b-input>
-						</b-field>
-					</ValidationProvider>
-					<b-button class="mt-5" expanded rounded type="is-primary" @click="handleSubmit(register)">
-						{{ $t('Create') }}
-					</b-button>
-				</ValidationObserver>
+				<b-field :label="$t('Username')" :message="fieldMessage('username')" :type="fieldType('username')">
+					<b-input v-model="username" type="text" @keyup.enter="submit"></b-input>
+				</b-field>
+				<b-field :label="$t('Password')" :message="fieldMessage('password')" :type="fieldType('password')" class="mt-4">
+					<b-input v-model="password" password-reveal type="password" @keyup.enter="submit"></b-input>
+				</b-field>
+				<b-field :label="$t('Confirm Password')" :message="fieldMessage('confirmation')" :type="fieldType('confirmation')" class="mt-4">
+					<b-input v-model="confirmation" password-reveal type="password" @keyup.enter="submit"></b-input>
+				</b-field>
+				<b-button class="mt-5" expanded rounded type="is-primary" @click="submit">
+					{{ $t('Create') }}
+				</b-button>
 			</div>
 
 			<div v-if="step == 3" class="has-text-centered ">
 				<h2 class="title is-3  has-text-centered">{{ $t('All things done!') }}</h2>
 				<div class="is-flex is-align-items-center is-justify-content-center">
-					<lottie-animation :animationData="$assetUrl(require('@/assets/ani/done.json'))" :autoPlay="true" :loop="false"
-									  class="animation" @complete="complete"></lottie-animation>
+					<div ref="doneAnimation" class="animation"></div>
 				</div>
 			</div>
 		</div>
@@ -67,15 +49,15 @@
 </template>
 
 <script>
-import {ValidationObserver, ValidationProvider} from "vee-validate";
-import "@/plugins/vee-validate";
-import LottieAnimation                          from "lottie-web-vue";
-import smoothReflow                             from 'vue-smooth-reflow'
+import lottie from 'lottie-web/build/player/lottie_light'
+import smoothReflow from 'vue-smooth-reflow'
+import formChecks, { firstError, minLength, required, sameAs } from '@/mixins/formChecks'
+import doneAnimation from '@/assets/ani/done.json'
 
 export default {
 
 	name: "welcome-page",
-	mixins: [smoothReflow],
+	mixins: [smoothReflow, formChecks],
 	data() {
 		return {
 			step: 1,
@@ -108,10 +90,35 @@ export default {
 			}
 		}
 	},
-	components: {
-		ValidationObserver,
-		ValidationProvider,
-		LottieAnimation
+	computed: {
+		fieldErrors() {
+			return {
+				username: firstError(this.username, [required]),
+				password: firstError(this.password, [required, minLength(5)]),
+				confirmation: firstError(this.confirmation, [required, sameAs(this.password)]),
+			}
+		},
+	},
+	watch: {
+		username() {
+			this.markChecked('username')
+		},
+		password() {
+			this.markChecked('password')
+		},
+		confirmation() {
+			this.markChecked('confirmation')
+		},
+		step(step) {
+			if (step !== 3) return
+			this.$nextTick(() => {
+				this.animation = lottie.loadAnimation({ container: this.$refs.doneAnimation, renderer: 'svg', loop: false, autoplay: true, animationData: doneAnimation })
+				this.animation.addEventListener('complete', this.complete)
+			})
+		},
+	},
+	beforeUnmount() {
+		if (this.animation) this.animation.destroy()
 	},
 
 	mounted() {
@@ -124,6 +131,9 @@ export default {
 	},
 
 	methods: {
+		submit() {
+			if (this.validateAll()) this.register()
+		},
 		/**
 		 * @description: register
 		 * @return {*}

@@ -35,6 +35,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { deleteOutcome } from '@/utils/files/trashWhere'
 
 export default {
+	emits: ['cancel', 'confirm'],
 	name: 'delete-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

@@ -137,7 +137,7 @@ export default {
 		document.addEventListener('visibilitychange', this.onVisibility)
 	},
 
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.SET_STORAGE_WIDGET_HIDDEN_MOUNTS, this.setHiddenMounts)
 		document.removeEventListener('visibilitychange', this.onVisibility)
 		clearInterval(this.timer)

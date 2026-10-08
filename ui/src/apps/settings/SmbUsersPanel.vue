@@ -30,7 +30,7 @@
 
 			<div v-if="passwordTarget === u.username" class="account-inline-form full-width">
 				<b-input v-model="newPassword" :placeholder="$t('New password')" type="password" size="is-small" expanded
-					@keyup.enter.native="savePassword(u)"></b-input>
+					@keyup.enter="savePassword(u)"></b-input>
 				<b-button rounded size="is-small" @click="passwordTarget = null">{{ $t('Cancel') }}</b-button>
 				<b-button rounded size="is-small" type="is-primary" :loading="savingPassword" @click="savePassword(u)">
 					{{ $t('Save') }}

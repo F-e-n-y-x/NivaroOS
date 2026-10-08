@@ -126,7 +126,7 @@
 					<div class="mount-card-footer">
 						<div class="boot-toggle-wrap" :title="$t('Automatically mount this drive when server starts')">
 							<span class="boot-toggle-label">{{ $t('Boot auto-mount') }}</span>
-							<b-switch :value="m.enabled" size="is-small" type="is-primary" @input="toggleEnabled(m, $event)"></b-switch>
+							<b-switch :model-value="m.enabled" size="is-small" type="is-primary" @update:modelValue="toggleEnabled(m, $event)"></b-switch>
 						</div>
 						<div class="action-buttons-wrap">
 							<!-- Mount / Unmount Toggle -->
@@ -604,7 +604,7 @@ export default {
 		this.refresh()
 		this.$EventBus.$on(events.STORAGE_CHANGED, this.refresh)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.STORAGE_CHANGED, this.refresh)
 		clearTimeout(this.repairPoll)
 	},

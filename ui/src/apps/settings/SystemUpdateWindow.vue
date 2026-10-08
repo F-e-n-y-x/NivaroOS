@@ -74,6 +74,7 @@
 import { confirmWindowMixin } from '@/mixins/confirmWindow'
 
 export default {
+	emits: ['close'],
 	name: 'SystemUpdateWindow',
 	mixins: [confirmWindowMixin],
 	props: {
@@ -148,7 +149,7 @@ export default {
 		// dist-upgrade on the host.)
 		this.checkExistingStatus()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.pollTimer) clearInterval(this.pollTimer)
 	},
 	methods: {

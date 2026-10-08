@@ -172,7 +172,7 @@
   "Single Drive Storage": "단일 저장소 드라이브",
   "Format": "형식",
   "Remove": "제거",
-  "Available Total": "{name} | 사용 가능: {avl} (총: {total})",
+  "Available Total": "{name} {'|'} 사용 가능: {avl} (총: {total})",
   "Health": "상태",
   "Healthy": "정상",
   "Damage": "손상됨",

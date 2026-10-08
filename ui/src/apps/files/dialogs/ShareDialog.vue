@@ -32,7 +32,7 @@
 				</template>
 				<template v-else>
 					<b-field :label="$t('Share Link')">
-						<b-input :value="createdShare.url" readonly expanded></b-input>
+						<b-input :model-value="createdShare.url" readonly expanded></b-input>
 						<p class="control">
 							<b-button :icon-left="copied ? 'check' : 'content-copy'" @click="copyLink"></b-button>
 						</p>
@@ -71,6 +71,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { baseName } from '@/utils/files/path'
 
 export default {
+	emits: ['close'],
 	name: 'share-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

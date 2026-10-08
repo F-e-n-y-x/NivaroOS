@@ -44,6 +44,7 @@ const REPO_URL = 'https://github.com/F-e-n-y-x/NivaroOS'
 const MAX_BODY_CHARS = 6000
 
 export default {
+	emits: ['close'],
 	name: 'feedback-panel',
 	data() {
 		return {

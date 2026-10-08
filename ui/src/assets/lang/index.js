@@ -1,7 +1,7 @@
-const files = require.context("./", false, /\.json$/);
-const langs = {};
-files.keys().forEach((key) => {
-	langs[key.replace(/(\.\/|\.json$)/g, "").toLowerCase()] = files(key);
-});
+const files = import.meta.glob('./*.json', { eager: true, import: 'default' })
+const langs = {}
+for (const [path, messages] of Object.entries(files)) {
+	langs[path.replace(/(\.\/|\.json$)/g, '').toLowerCase()] = messages
+}
 
-export default langs;
+export default langs

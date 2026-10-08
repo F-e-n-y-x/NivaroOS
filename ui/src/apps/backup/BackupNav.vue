@@ -47,6 +47,7 @@ const BADGE_KIND = { activity: 'running' }
 const BADGE_KEY = { attention: 'backup.nav.badge', running: 'backup.nav.badge_running' }
 
 export default {
+	emits: ['select'],
 	name: 'BackupNav',
 	props: {
 		active: { type: String, required: true },

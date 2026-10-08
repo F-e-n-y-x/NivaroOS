@@ -15,7 +15,7 @@
 			</div>
 		</dl>
 		<details v-if="run.file_errors && run.file_errors.length" class="bk-run-errors">
-			<summary>{{ $tc('backup.run.file_errors', run.file_errors.length, { count: fmt.number(run.file_errors.length) }) }}</summary>
+			<summary>{{ $t('backup.run.file_errors', { count: fmt.number(run.file_errors.length) }, run.file_errors.length) }}</summary>
 			<ul>
 				<li v-for="(e, i) in run.file_errors" :key="i">
 					<span class="bk-run-error-path">{{ e.path }}</span>

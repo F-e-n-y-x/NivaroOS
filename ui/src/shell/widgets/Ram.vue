@@ -86,12 +86,12 @@
 							<b-image
 								:lazy="false"
 								:src="item.icon"
-								:src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))"
+								:src-fallback="$assetUrl('img/app-icons/default.svg')"
 								class="is-16x16 mr-2 is-flex-shrink-0"
 							></b-image>
 							<span class="one-line process-name">{{ item.title }}</span>
 						</div>
-						<div class="is-flex-shrink-0 process-usage">{{ item.usage | renderSize }}</div>
+						<div class="is-flex-shrink-0 process-usage">{{ renderSize(item.usage) }}</div>
 					</div>
 				</div>
 			</div>
@@ -183,7 +183,7 @@ export default {
 			property: ["height"],
 		});
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.unsubscribeUsage) {
 			this.unsubscribeUsage();
 		}

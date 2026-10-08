@@ -75,6 +75,7 @@ import { fieldErrorKey } from '../errorCodes'
 const CONFLICTS = ['keep_both', 'overwrite', 'skip']
 
 export default {
+	emits: ['close'],
 	name: 'BackupRestoreWindow',
 	mixins: [backupMixin, windowBehavior],
 	props: {
@@ -98,7 +99,7 @@ export default {
 		},
 		whatText() {
 			if (!this.paths.length) return this.$t('backup.restore.what_all')
-			return this.$tc('backup.restore.what_n', this.paths.length, { count: this.fmt.number(this.paths.length) })
+			return this.$t('backup.restore.what_n', { count: this.fmt.number(this.paths.length) }, this.paths.length)
 		},
 		versionText() {
 			const v = this.version

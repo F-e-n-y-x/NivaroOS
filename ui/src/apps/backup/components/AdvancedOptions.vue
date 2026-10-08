@@ -53,6 +53,7 @@ import FieldError from './FieldError.vue'
 import { fieldId, describedBy } from '../wizard/fields'
 
 export default {
+	emits: ['patch'],
 	name: 'AdvancedOptions',
 	components: { FieldError },
 	props: {

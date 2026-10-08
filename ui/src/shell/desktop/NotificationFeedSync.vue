@@ -25,7 +25,7 @@ export default {
 		)
 		if (this.hasToken()) notificationFeed.load()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.unwatch) this.unwatch()
 	},
 	methods: {

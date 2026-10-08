@@ -1,10 +1,12 @@
 <template>
 	<div v-if="!isLoading" class="side-bar">
 		<draggable v-model="allWidgets" tag="div" class="widgets-column" v-bind="dragOptions"
-			@start="isDragging = true" @end="isDragging = false">
-			<div v-for="w in allWidgets" :key="`widgets_${w.name}`" class="widget-slot">
-				<component :is="w.app"></component>
-			</div>
+			:item-key="(w) => `widgets_${w.name}`" @start="isDragging = true" @end="isDragging = false">
+			<template #item="{ element: w }">
+				<div class="widget-slot">
+					<component :is="w.app"></component>
+				</div>
+			</template>
 		</draggable>
 	</div>
 </template>
@@ -13,19 +15,16 @@
 import lowerFirst from 'lodash/lowerFirst'
 import camelCase from 'lodash/camelCase'
 import find from 'lodash/find'
+import { markRaw } from 'vue'
 import draggable from 'vuedraggable'
 import events from '@/events/events'
 
-const widgetsComponents = require.context(
-	'@/shell/widgets',
-	false,
-	/.vue$/
-)
+const widgetsComponents = import.meta.glob('@/shell/widgets/*.vue', { eager: true, import: 'default' })
 
 const widgetsConfig = "widgets_config"
 
 // The order new widgets appear in before anyone has dragged anything -
-// otherwise it falls out of require.context()'s incidental alphabetical
+// otherwise it falls out of the widget glob's incidental alphabetical
 // file enumeration (Cpu, Disks, Gpu, Network, Ram), which is fragile
 // (renaming a widget's file would silently reorder the default layout)
 // and wasn't the intended default order anyway.
@@ -155,7 +154,7 @@ export default {
 		},
 	},
 	created() {
-		widgetsComponents.keys().forEach(fileName => {
+		Object.entries(widgetsComponents).forEach(([fileName, app]) => {
 			const componentName = lowerFirst(
 				camelCase(
 					fileName
@@ -164,8 +163,7 @@ export default {
 						.replace(/\.\w+$/, '')
 				)
 			)
-			const app = require(`@/shell/widgets/${fileName.replace("./", "")}`).default
-			this.apps.push({ app, componentName })
+			this.apps.push({ app: markRaw(app), componentName })
 		});
 	},
 	mounted() {
@@ -176,7 +174,7 @@ export default {
 		}
 		window.addEventListener('resize', this.onResize);
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.SET_WIDGET_HIDDEN, this.setWidgetHidden);
 		window.removeEventListener('resize', this.onResize);
 	},

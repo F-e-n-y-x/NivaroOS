@@ -172,7 +172,7 @@
   "Single Drive Storage": "單一儲存磁碟",
   "Format": "格式化",
   "Remove": "移除",
-  "Available Total": "{name} | {avl} 可用 (總共 {total})",
+  "Available Total": "{name} {'|'} {avl} 可用 (總共 {total})",
   "Health": "健康狀況",
   "Healthy": "健全",
   "Damage": "已損壞",

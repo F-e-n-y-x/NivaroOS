@@ -6,8 +6,8 @@
 				<b-input
 					v-model="folderName"
 					ref="input"
-					v-on:keyup.enter.native="extract"
-					@input.native="folderName = folderName.replace(/\//g, '')"
+					v-on:keyup.enter="extract"
+					@update:modelValue="folderName = folderName.replace(/\//g, '')"
 				></b-input>
 			</b-field>
 			<div class="dialog-actions">
@@ -27,6 +27,7 @@ import { joinPath } from '@/utils/files/path'
 const COMPOUND_EXTENSIONS = ['tar.gz', 'tar.bz2', 'tar.xz', 'tar.lz4', 'tar.sz', 'tar.zst', 'tar.br']
 
 export default {
+	emits: ['close', 'created'],
 	name: 'extract-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

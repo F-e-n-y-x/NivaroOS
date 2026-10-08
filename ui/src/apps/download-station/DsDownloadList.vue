@@ -116,6 +116,7 @@ import { confirmWindowMixin } from '@/mixins/confirmWindow'
 import { escapeHtml } from '@/utils/escapeHtml'
 
 export default {
+	emits: ['open-browser', 'refresh'],
 	name: 'ds-download-list',
 	mixins: [confirmWindowMixin],
 	inject: { ds: 'downloadStation' },

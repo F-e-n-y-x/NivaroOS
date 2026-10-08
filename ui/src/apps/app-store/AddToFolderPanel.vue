@@ -7,7 +7,7 @@
 					<b-autocomplete ref="input" v-model="name" :data="filteredFolders" :open-on-focus="true"
 						:placeholder="$t('Existing or new folder name')" append-to-body expanded field="name"
 						maxlength="30" @select="option => (name = option ? option.name : name)"
-						@keyup.native.enter="confirm">
+						@keyup.enter="confirm">
 						<template #empty>{{ $t('No matching folders - this will create a new one') }}</template>
 					</b-autocomplete>
 				</b-field>
@@ -43,6 +43,7 @@ import business_Folders from '@/mixins/app/Business_Folders'
 import { apiErrorHtml } from '@/mixins/app/apiError'
 
 export default {
+	emits: ['close', 'confirm'],
 	mixins: [business_Folders],
 	props: {
 		folders: {

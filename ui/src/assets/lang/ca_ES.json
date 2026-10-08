@@ -172,7 +172,7 @@
   "Single Drive Storage": "Unitat d'emmagatzematge individual",
   "Format": "Formata",
   "Remove": "Elimina",
-  "Available Total": "{name} | Disponible: {avl} (Total: {total})",
+  "Available Total": "{name} {'|'} Disponible: {avl} (Total: {total})",
   "Health": "Estat de salut",
   "Healthy": "Saludable",
   "Damage": "Danyat",

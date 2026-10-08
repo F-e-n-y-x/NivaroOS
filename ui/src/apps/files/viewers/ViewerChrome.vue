@@ -19,13 +19,14 @@
 				<slot name="actions"></slot>
 			</div>
 			<span v-if="hasActions" class="toolbar-divider"></span>
-			<b-icon icon="download-outline" custom-size="mdi-18px" class="is-clickable" @click.native="$emit('download')"></b-icon>
+			<b-icon icon="download-outline" custom-size="mdi-18px" class="is-clickable" @click="$emit('download')"></b-icon>
 		</div>
 	</div>
 </template>
 
 <script>
 export default {
+	emits: ['download', 'viewer-resize'],
 	name: 'files-viewer-chrome',
 	props: {
 		noOverflow: {
@@ -79,7 +80,7 @@ export default {
 		})
 		this.resizeObserver.observe(this.$refs.viewerBody)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 }

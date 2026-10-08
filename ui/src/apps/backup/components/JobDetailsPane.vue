@@ -125,7 +125,7 @@
 					</div>
 					<div>
 						<dt>{{ $t('backup.jobs.fact.retry') }}</dt>
-						<dd>{{ $tc('backup.jobs.retry', job.retry.max, { count: job.retry.max }) }}</dd>
+						<dd>{{ $t('backup.jobs.retry', { count: job.retry.max }, job.retry.max) }}</dd>
 					</div>
 					<div>
 						<dt>{{ $t('backup.jobs.fact.verify') }}</dt>
@@ -165,6 +165,7 @@ let seq = 0
 const TABS = ['summary', 'history', 'versions', 'settings']
 
 export default {
+	emits: ['browse', 'close', 'menu', 'open-run', 'open-run-id', 'run'],
 	name: 'JobDetailsPane',
 	components: { ActivityList, VersionList },
 	mixins: [backupMixin],
@@ -223,7 +224,7 @@ export default {
 		sizeText() {
 			const s = this.detail.stats
 			const parts = [s.size_bytes ? this.fmt.bytes(s.size_bytes) : this.$t('backup.jobs.size_unknown')]
-			if (s.versions_count) parts.push(this.$tc('backup.jobs.versions_count', s.versions_count, { count: this.fmt.number(s.versions_count) }))
+			if (s.versions_count) parts.push(this.$t('backup.jobs.versions_count', { count: this.fmt.number(s.versions_count) }, s.versions_count))
 			return parts.join(' · ')
 		},
 		skipText() {

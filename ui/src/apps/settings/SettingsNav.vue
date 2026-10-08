@@ -20,6 +20,7 @@
 
 <script>
 export default {
+	emits: ['select'],
 	name: 'settings-nav',
 	props: {
 		sections: { type: Array, required: true },

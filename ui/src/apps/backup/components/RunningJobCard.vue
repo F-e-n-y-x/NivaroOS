@@ -21,6 +21,7 @@ import RunProgress from './RunProgress.vue'
 import { STATUS_VIEW } from '../state'
 
 export default {
+	emits: ['open', 'review'],
 	name: 'RunningJobCard',
 	components: { StatusPill, RunProgress },
 	props: {

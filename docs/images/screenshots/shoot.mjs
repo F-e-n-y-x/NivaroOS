@@ -44,11 +44,12 @@ page.on(async m => {
 await page.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
 page.on(m => { if (process.env.DEBUG && m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') console.log('console.error', JSON.stringify(m.params.args.map(a => a.value || a.description)).slice(0, 400)); });
 
-// Runs in the page: the Vue root, plus a way to replay socket.io events into
-// every component that listens for them (the widgets' live data).
+// Runs in the page: the app's globals ($store, $socket), plus a way to replay
+// message-bus events into every component that listens for them (the
+// widgets' live data).
 const PRELUDE = `
-  window.$root = document.querySelector('#app').__vue__;
-  window.emit = (ev, data) => { const walk = vm => { const s = vm.$options.sockets; if (s && s[ev]) s[ev].call(vm, data); vm.$children.forEach(walk); }; walk($root); };
+  window.$root = document.querySelector('#nivaroos').__vue_app__.config.globalProperties;
+  window.emit = (ev, data) => $root.$socket.emit(ev, data);
   window.open_ = (w, rect) => { $root.$store.commit('OPEN_WINDOW', w); if (rect) Object.assign($root.$store.state.windows.find(x => x.id === w.id), rect); };
 `;
 

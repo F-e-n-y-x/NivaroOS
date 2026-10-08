@@ -257,7 +257,7 @@
 							icon="web"
 							size="is-small"
 							expanded
-							@keyup.enter.native="applyCustomUrl"
+							@keyup.enter="applyCustomUrl"
 						></b-input>
 						<b-button
 							type="is-primary"
@@ -553,6 +553,7 @@ const BADGE_GRADIENTS = [
 ]
 
 export default {
+	emits: ['close'],
 	name: 'LegacyAppEditPanel',
 	mixins: [business_LegacyAppOverrides, confirmWindowMixin],
 	props: {
@@ -607,7 +608,7 @@ export default {
 				{ label: 'Amber', value: '#d97706' },
 				{ label: 'Red', value: '#dc2626' }
 			],
-			fallbackIcon: assetUrl(require('@/assets/img/app-icons/default.svg'))
+			fallbackIcon: assetUrl('img/app-icons/default.svg')
 		}
 	},
 	computed: {
@@ -708,7 +709,7 @@ export default {
 			}
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.stopDrag()
 	},
 	methods: {

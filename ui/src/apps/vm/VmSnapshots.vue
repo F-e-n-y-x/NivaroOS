@@ -13,7 +13,7 @@
 					:placeholder="$t('Select VM...')"
 					size="small"
 					class="vm-selector-dropdown"
-					@input="onVmChange"
+					@update:model-value="onVmChange"
 				></vm-dropdown>
 				<button
 					class="refresh-icon-btn"
@@ -838,7 +838,7 @@ export default {
 	padding: var(--space-12) 0;
 	color: var(--theme-text-muted, #94a3b8);
 
-	::v-deep .icon {
+	:deep(.icon) {
 		width: 2.5rem;
 		height: 2.5rem;
 	}

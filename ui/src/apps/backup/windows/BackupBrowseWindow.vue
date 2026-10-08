@@ -136,7 +136,7 @@ export default {
 		},
 		selectionText() {
 			if (!this.selected.length) return this.$t('backup.browse.none_selected')
-			return this.$tc('backup.browse.n_selected', this.selected.length, { count: this.fmt.number(this.selected.length) })
+			return this.$t('backup.browse.n_selected', { count: this.fmt.number(this.selected.length) }, this.selected.length)
 		}
 	},
 	created() {

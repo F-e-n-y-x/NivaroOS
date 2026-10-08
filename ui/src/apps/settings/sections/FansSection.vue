@@ -118,7 +118,7 @@
 							<label class="detail-label">{{ $t('Name') }}</label>
 							<div class="detail-control">
 								<b-input v-model="draft.label" size="is-small" maxlength="40" :placeholder="f.default_label" class="name-input"
-									@keyup.enter.native="save(f, { label: draft.label })" @blur="draft.label !== f.label && save(f, { label: draft.label })"></b-input>
+									@keyup.enter="save(f, { label: draft.label })" @blur="draft.label !== f.label && save(f, { label: draft.label })"></b-input>
 							</div>
 
 							<template v-if="f.controllable">
@@ -142,7 +142,7 @@
 								<template v-if="f.mode === 'curve'">
 									<label class="detail-label">{{ $t('Follows') }}</label>
 									<div class="detail-control">
-										<b-select :value="f.source" size="is-small" @input="(v) => save(f, { source: v })">
+										<b-select :model-value="f.source" size="is-small" @update:modelValue="(v) => save(f, { source: v })">
 											<option v-for="s in status.sources" :key="s.id" :value="s.id">{{ $t(s.label) }}</option>
 										</b-select>
 									</div>
@@ -150,7 +150,7 @@
 							</template>
 						</div>
 
-						<fan-curve-editor v-if="f.mode === 'curve' && f.controllable" :value="f.curve" :min-pct="f.min_pct" :limits="limits"
+						<fan-curve-editor v-if="f.mode === 'curve' && f.controllable" :model-value="f.curve" :min-pct="f.min_pct" :limits="limits"
 							:current-temp="sourceTemp(f)" :critical="critFor(f)" :readonly="false"
 							@change="(pts) => save(f, { curve: pts })"></fan-curve-editor>
 
@@ -201,7 +201,7 @@
 						</div>
 						<div class="row-control">
 							<b-input v-model.number="critCPU" type="number" size="is-small" class="crit-input" :min="status.limits.min_critical_c" :max="status.limits.max_critical_cpu_c"
-								@keyup.enter.native="saveCritical" @blur="saveCritical"></b-input>
+								@keyup.enter="saveCritical" @blur="saveCritical"></b-input>
 							<span class="unit">°C</span>
 						</div>
 					</div>
@@ -213,7 +213,7 @@
 						</div>
 						<div class="row-control">
 							<b-input v-model.number="critGPU" type="number" size="is-small" class="crit-input" :min="status.limits.min_critical_c" :max="status.limits.max_critical_gpu_c"
-								@keyup.enter.native="saveCritical" @blur="saveCritical"></b-input>
+								@keyup.enter="saveCritical" @blur="saveCritical"></b-input>
 							<span class="unit">°C</span>
 						</div>
 					</div>
@@ -280,7 +280,7 @@ export default {
 			if (!document.hidden && !this.busy) this.load(true)
 		}, POLL_MS)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 	},
 	methods: {
@@ -344,7 +344,7 @@ export default {
 		},
 		async identify(f) {
 			const res = await this.run('identify:' + f.id, () => this.api.identify(f.id))
-			if (res) this.$set(this.identifyResult, f.id, res.message)
+			if (res) this.identifyResult[f.id] = res.message
 			this.load(true)
 		},
 		saveCritical() {

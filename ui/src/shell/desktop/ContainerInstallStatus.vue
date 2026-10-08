@@ -74,7 +74,7 @@ export default {
 	created() {
 		this.lingerTimers = {}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		Object.values(this.lingerTimers).forEach(clearTimeout)
 		this.lingerTimers = {}
 	},
@@ -584,7 +584,7 @@ export default {
 	transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.install-card-anim-enter {
+.install-card-anim-enter-from {
 	opacity: 0;
 	transform: translateY(16px) scale(0.95);
 }

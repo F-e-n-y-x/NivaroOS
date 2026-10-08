@@ -125,7 +125,7 @@
 		<!-- Rename: a real window (a Buefy modal blocked the whole desktop) -->
 		<settings-overlay :active="renameModalActive" :title="$t('Rename Companion Device')" width="440px" @close="renameModalActive = false">
 			<b-field :label="$t('Device Name')">
-				<b-input v-model="newDeviceName" :placeholder="$t('e.g. My Phone')" required @keyup.native.enter="saveDeviceName"></b-input>
+				<b-input v-model="newDeviceName" :placeholder="$t('e.g. My Phone')" required @keyup.enter="saveDeviceName"></b-input>
 			</b-field>
 			<template #footer>
 				<b-button rounded @click="renameModalActive = false">{{ $t('Cancel') }}</b-button>
@@ -157,6 +157,7 @@ export const ROWS = [
 ]
 
 export default {
+	emits: ['reload-file-list'],
 	name: 'companion-section',
 	components: { SettingsOverlay },
 	mixins: [mixin, confirmWindowMixin],

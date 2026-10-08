@@ -64,6 +64,7 @@ import trimStart from 'lodash/trimStart'
 import dropRight from 'lodash/dropRight'
 
 export default {
+	emits: ['close'],
 	name: "file-panel",
 	components: {
 		ListItem,
@@ -155,7 +156,6 @@ export default {
 		},
 		selectFile() {
 			this.$emit('close');
-			this.$emit('updatePath', this.activePath);
 			if (typeof this.onUpdatePath === 'function') this.onUpdatePath(this.activePath)
 		},
 		activeFile(val) {

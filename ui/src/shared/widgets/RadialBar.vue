@@ -51,6 +51,7 @@
 
 <script>
 export default {
+	emits: ['extendContentClick'],
 	name: "RadialBar",
 	props: {
 		dotDiameter: {
@@ -93,7 +94,7 @@ export default {
 
 	computed: {
 		gradientId() {
-			return `radial-bar-grad-${this._uid}`
+			return `radial-bar-grad-${this.$.uid}`
 		},
 		clampedPercent() {
 			const p = Math.round(this.percent)

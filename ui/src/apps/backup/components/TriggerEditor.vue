@@ -9,7 +9,7 @@
 			<span>{{ $t('backup.wizard.when.on_schedule') }}</span>
 		</label>
 		<div v-if="scheduleOn" :id="cronFieldId" class="te-indent" tabindex="-1">
-			<schedule-builder :value="cron" :preview-fn="previewFn" :legend="$t('backup.wizard.when.on_schedule')" @input="$emit('patch', { cron: $event })"
+			<schedule-builder :model-value="cron" :preview-fn="previewFn" :legend="$t('backup.wizard.when.on_schedule')" @update:model-value="$emit('patch', { cron: $event })"
 				@validity="$emit('validity', $event)"></schedule-builder>
 			<field-error :idp="idp" field="cron" :errors="errors"></field-error>
 		</div>
@@ -49,6 +49,7 @@ import FieldError from './FieldError.vue'
 import { fieldId, describedBy } from '../wizard/fields'
 
 export default {
+	emits: ['patch', 'validity'],
 	name: 'TriggerEditor',
 	components: { ScheduleBuilder, FieldError },
 	props: {

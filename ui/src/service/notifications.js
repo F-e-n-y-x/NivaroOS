@@ -18,7 +18,7 @@ function currentUserId() {
 	}
 }
 
-const t = (key, args) => i18n.t(key, args)
+const t = (key, args) => i18n.global.t(key, args)
 
 export const notificationFeed = createNotificationFeed({
 	transport: instance,
@@ -26,7 +26,7 @@ export const notificationFeed = createNotificationFeed({
 	currentUserId,
 	deps: () => ({
 		t,
-		te: key => i18n.te(key),
+		te: key => i18n.global.te(key),
 		renderBackupMessage: renderMessage,
 		backupWindow,
 		pickI18n: ice_i18n

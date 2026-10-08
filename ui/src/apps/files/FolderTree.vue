@@ -76,6 +76,7 @@ import SidebarContextMenu from './SidebarContextMenu.vue'
 const HOVER_OPEN_DELAY = 700
 
 export default {
+	emits: ['pick'],
 	name: 'folder-tree',
 	inject: ['filesController'],
 	components: {
@@ -218,7 +219,7 @@ export default {
 		this.dataList = [...this.initFolders, ...uniqueShortcuts]
 	},
 
-	beforeDestroy() {
+	beforeUnmount() {
 		// Unlike the legacy singleton sidebar, this component is created/destroyed each time
 		// the sidebar collapses into (and back out of) icon-rail mode, so the listener must be removed.
 		this.$EventBus.$off(events.RELOAD_FILE_LIST, this.getNewList)

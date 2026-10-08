@@ -79,6 +79,7 @@ import DsTorrentSettings from './torrent/DsTorrentSettings.vue'
 const MAX_CONCURRENT = 20
 
 export default {
+	emits: ['changed'],
 	name: 'ds-settings-panel',
 	components: { DsTorrentSettings },
 	data() {

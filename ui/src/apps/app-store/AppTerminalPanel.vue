@@ -3,7 +3,7 @@
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body ">
 			<div class="is-flex-grow-1">
-				<b-tabs :animated="false" @input="onInput">
+				<b-tabs :animated="false" @update:modelValue="onInput">
 					<b-tab-item :label="$t('Terminal')" value="terminal">
 						<terminal-card ref="terminal" :initWsUrl="wsUrl"></terminal-card>
 					</b-tab-item>
@@ -67,7 +67,7 @@ export default {
 			}
 		}
 	},
-	destroyed() {
+	unmounted() {
 		clearInterval(this.timer);
 	}
 }

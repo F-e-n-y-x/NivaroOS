@@ -463,7 +463,7 @@ export default {
 			this.tailscaleIp = ips.find(ip => !ip.includes(':')) || ips[0] || '';
 		}).catch(() => { /* Tailscale not installed or not running */ });
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (this.abortController) {
 			this.abortController.abort();
 		}

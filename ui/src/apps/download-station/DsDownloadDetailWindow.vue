@@ -175,7 +175,7 @@ export default {
 		this.load()
 		this.timer = setInterval(this.load, 1000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 	},
 	methods: {

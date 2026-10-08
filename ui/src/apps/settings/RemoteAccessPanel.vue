@@ -34,7 +34,7 @@
 					<b-icon class="row-icon" icon="internet-outline" pack="casa" size="is-20"></b-icon>
 					<div class="row-label">{{ $t('Tailscale') }}</div>
 					<div class="row-control">
-						<b-switch :key="switchKey" :value="isRunning" class="is-flex-direction-row-reverse mr-0" type="is-primary" :loading="toggling" :aria-label="$t('Tailscale')" @input="toggle"></b-switch>
+						<b-switch :key="switchKey" :model-value="isRunning" class="is-flex-direction-row-reverse mr-0" type="is-primary" :loading="toggling" :aria-label="$t('Tailscale')" @update:modelValue="toggle"></b-switch>
 					</div>
 				</div>
 				<div v-if="backendState === 'NoDaemon' && !toggling" class="setting-row">
@@ -98,8 +98,8 @@
 							<div class="setting-desc">{{ $t('Allow routing traffic through other tailnet nodes') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.accept_routes" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-								:disabled="savingPref === 'accept_routes'" @input="setPref('accept_routes', $event)"></b-switch>
+							<b-switch :model-value="prefs.accept_routes" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:disabled="savingPref === 'accept_routes'" @update:modelValue="setPref('accept_routes', $event)"></b-switch>
 						</div>
 					</div>
 					<div class="setting-row">
@@ -109,8 +109,8 @@
 							<div class="setting-desc">{{ $t('Use MagicDNS and custom tailnet nameservers') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.accept_dns" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-								:disabled="savingPref === 'accept_dns'" @input="setPref('accept_dns', $event)"></b-switch>
+							<b-switch :model-value="prefs.accept_dns" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:disabled="savingPref === 'accept_dns'" @update:modelValue="setPref('accept_dns', $event)"></b-switch>
 						</div>
 					</div>
 					<div class="setting-row">
@@ -120,8 +120,8 @@
 							<div class="setting-desc">{{ $t('Secure SSH access authenticated via Tailscale') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.run_ssh" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-								:disabled="savingPref === 'run_ssh'" @input="setPref('run_ssh', $event)"></b-switch>
+							<b-switch :model-value="prefs.run_ssh" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:disabled="savingPref === 'run_ssh'" @update:modelValue="setPref('run_ssh', $event)"></b-switch>
 						</div>
 					</div>
 					<div class="setting-row">
@@ -131,8 +131,8 @@
 							<div class="setting-desc">{{ $t('Prevent other tailnet devices from initiating connections') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.shields_up" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-								:disabled="savingPref === 'shields_up'" @input="setPref('shields_up', $event)"></b-switch>
+							<b-switch :model-value="prefs.shields_up" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:disabled="savingPref === 'shields_up'" @update:modelValue="setPref('shields_up', $event)"></b-switch>
 						</div>
 					</div>
 					<div class="setting-row">
@@ -142,8 +142,8 @@
 							<div class="setting-desc">{{ $t('Maintain local network access while tunneling traffic') }}</div>
 						</div>
 						<div class="row-control">
-							<b-switch :value="prefs.exit_node_allow_lan_access" class="is-flex-direction-row-reverse mr-0" type="is-primary"
-								:disabled="savingPref === 'exit_node_allow_lan_access'" @input="setPref('exit_node_allow_lan_access', $event)"></b-switch>
+							<b-switch :model-value="prefs.exit_node_allow_lan_access" class="is-flex-direction-row-reverse mr-0" type="is-primary"
+								:disabled="savingPref === 'exit_node_allow_lan_access'" @update:modelValue="setPref('exit_node_allow_lan_access', $event)"></b-switch>
 						</div>
 					</div>
 					<div v-if="prefs.advertise_routes && prefs.advertise_routes.length" class="setting-row">
@@ -300,7 +300,7 @@ export default {
 			this.savingPref = key
 			this.$api.tailscale.setPrefs({ [key]: value }).then(res => {
 				if (res.data.success === 200) {
-					this.$set(this.prefs, key, value)
+					this.prefs[key] = value
 				} else {
 					this.prefError = res.data.message
 				}

@@ -178,7 +178,7 @@ export default {
 		// nowhere (the picker that opened this one may have handed focus
 		// back to the wizard as it closed).
 		focusInitial() {
-			if (this._isDestroyed || !this.$el) return
+			if (this.$.isUnmounted || !this.$el) return
 			const a = document.activeElement
 			const inOtherWindow = a && a !== document.body && !this.$el.contains(a) && a.closest && a.closest('.folder-picker, .storage-picker')
 			if (inOtherWindow) return

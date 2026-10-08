@@ -16,7 +16,7 @@
 						<div class="dual-mode-sub">{{ $t('Automatically switch wallpaper between Light and Dark mode') }}</div>
 					</div>
 				</div>
-				<b-switch v-model="dualMode" size="is-small" type="is-primary" @input="onDualModeToggled"></b-switch>
+				<b-switch v-model="dualMode" size="is-small" type="is-primary" @update:modelValue="onDualModeToggled"></b-switch>
 			</div>
 
 			<!-- Mode Tabs (when dual mode is active) -->
@@ -78,13 +78,12 @@ import Uploader from 'simple-uploader.js'
 import { mixin } from '@/mixins/mixin'
 import { getEffectiveTheme, getStoredThemeMode } from '@/utils/theme'
 
-// require() of an image can give a module object ({ default: url }); an
-// <img src> or a saved wallpaper path needs the URL string.
-const assetUrl = (m) => (m && typeof m === 'object' && m.default) || m
-const DEFAULT_LIGHT = assetUrl(require('@/assets/background/wallpaper01.jpg'))
-const DEFAULT_DARK = assetUrl(require('@/assets/background/wallpaper02.jpg'))
+import { assetUrl, currentBuiltinUrl } from '@/utils/assetUrl'
+const DEFAULT_LIGHT = assetUrl('background/wallpaper01.jpg')
+const DEFAULT_DARK = assetUrl('background/wallpaper02.jpg')
 
 export default {
+	emits: ['close', 'desktop:wallpaper-change'],
 	mixins: [mixin],
 	props: {
 		// Embedded inside Settings - no floating overlay to close, so
@@ -111,15 +110,15 @@ export default {
 			wallpaperItems: [
 				{
 					name: "Daylight Peak (Light)",
-					path: assetUrl(require('@/assets/background/wallpaper01.jpg'))
+					path: assetUrl('background/wallpaper01.jpg')
 				},
 				{
 					name: "Starry Night (Dark)",
-					path: assetUrl(require('@/assets/background/wallpaper02.jpg'))
+					path: assetUrl('background/wallpaper02.jpg')
 				},
 				{
 					name: "Nivaro Landscape",
-					path: assetUrl(require('@/assets/background/default_wallpaper.jpg'))
+					path: assetUrl('background/default_wallpaper.jpg')
 				}
 			],
 			path: currentObj.path || localStorage.getItem('wallpaper') || DEFAULT_DARK,
@@ -139,7 +138,7 @@ export default {
 			query: (file) => ({ path: galleryPath, name: file.name })
 		});
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// Drop the uploader's handlers and its hidden input with the component.
 		if (this.uploader) {
 			this.uploader.cancel()
@@ -317,7 +316,7 @@ export default {
 		},
 		parseUrl(serverUrl) {
 			if (!serverUrl) return ''
-			const newUrl = serverUrl.replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`)
+			const newUrl = currentBuiltinUrl(serverUrl).replace('SERVER_URL', `${this.$protocol}//${this.$baseURL}`)
 			return newUrl;
 		},
 	}

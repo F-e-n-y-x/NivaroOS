@@ -2,7 +2,7 @@
 <template>
 	<header class="files-toolbar">
 		<div v-if="hasSelection" class="selection-bar">
-			<b-icon icon="close" class="is-clickable" @click.native="$emit('clear-selection')"></b-icon>
+			<b-icon icon="close" class="is-clickable" @click="$emit('clear-selection')"></b-icon>
 			<span class="selection-label">{{ selectionSummary.count }} {{ $t('selected') }}</span>
 		</div>
 		<div v-else ref="breadContainer" class="breadcrumb-bar">
@@ -174,6 +174,7 @@ import { buildBreadcrumb } from '@/utils/files/breadcrumb'
 import { isArchive } from '@/utils/files/archive'
 
 export default {
+	emits: ['clear-selection', 'compress-selection', 'copy-selection', 'delete-selection', 'download-selection', 'extract-selection', 'move-selection', 'new-file', 'new-folder', 'open-selection-window', 'paste', 'rename-selection', 'set-view', 'upload', 'upload-folder'],
 	name: 'files-toolbar',
 	inject: ['filesController'],
 	props: {
@@ -273,7 +274,7 @@ export default {
 		this.resizeObserver.observe(this.$refs.breadContainer)
 		this.$nextTick(this.measure)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.resizeObserver && this.resizeObserver.disconnect()
 	},
 	methods: {

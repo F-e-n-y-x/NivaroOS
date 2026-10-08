@@ -63,6 +63,7 @@ const MENU_WIDTH = 224
 const MENU_HEIGHT = 340
 
 export default {
+	emits: ['CLOSE_ALL_CONTEXT_MENUS'],
 	name: 'desktop-context-menu',
 	mixins: [mixin],
 	data() {
@@ -87,7 +88,7 @@ export default {
 		window.addEventListener('blur', this.close)
 		window.addEventListener('resize', this.close)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		document.removeEventListener('keydown', this.onKeyDown)

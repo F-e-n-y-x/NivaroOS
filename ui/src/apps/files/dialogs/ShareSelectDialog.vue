@@ -24,6 +24,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import FolderTree from '../FolderTree.vue'
 
 export default {
+	emits: ['close', 'created'],
 	name: 'share-select-dialog',
 	components: { FilesDialogOverlay: DialogOverlay, FolderTree },
 	data() {

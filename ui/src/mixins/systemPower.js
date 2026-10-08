@@ -31,7 +31,7 @@ export default {
 			powerState: ''
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.stopPowerPolling()
 	},
 	methods: {
@@ -84,7 +84,7 @@ export default {
 		},
 		pollPower(isRestart, startedAt, wentDown, delay) {
 			this.stopPowerPolling()
-			if (this._isDestroyed) return
+			if (this.$.isUnmounted) return
 			const limit = isRestart ? RESTART_LIMIT_MS : SHUTDOWN_LIMIT_MS
 			if (Date.now() - startedAt > limit) {
 				if (isRestart) {

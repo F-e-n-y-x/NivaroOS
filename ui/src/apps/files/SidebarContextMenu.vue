@@ -65,6 +65,7 @@ const MENU_WIDTH = 210
 const MENU_HEIGHT = 280
 
 export default {
+	emits: ['eject'],
 	name: 'sidebar-context-menu',
 	inject: ['filesController'],
 	data() {
@@ -102,7 +103,7 @@ export default {
 		document.addEventListener('mousedown', this.onOutsideClick)
 		window.addEventListener('resize', this.close)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		document.removeEventListener('mousedown', this.onOutsideClick)
 		window.removeEventListener('resize', this.close)
 	},

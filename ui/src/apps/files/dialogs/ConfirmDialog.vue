@@ -25,6 +25,7 @@
 import DialogOverlay from '../DialogOverlay.vue'
 
 export default {
+	emits: ['cancel', 'confirm'],
 	name: 'confirm-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	props: {

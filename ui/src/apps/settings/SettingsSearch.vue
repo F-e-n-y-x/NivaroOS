@@ -31,6 +31,7 @@
 import { filterRows } from '@/utils/settingsSearch'
 
 export default {
+	emits: ['jump'],
 	name: 'settings-search',
 	props: {
 		rows: { type: Array, required: true }

@@ -177,7 +177,7 @@ export default {
 		// usage and uploads change while the page is open
 		this.timer = setInterval(() => this.refresh(false), 15000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 	},
 	methods: {

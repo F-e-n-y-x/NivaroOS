@@ -146,7 +146,7 @@ export default {
 	created() {
 		this.poll()
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed = true
 		clearTimeout(this.timer)
 	},

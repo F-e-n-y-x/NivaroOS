@@ -3,7 +3,7 @@
 		<!-- Top Hero: Link Identity & Live Icon Preview -->
 		<div class="editor-hero-section">
 			<div class="hero-icon-preview">
-				<b-image :key="icon" :src="icon" :src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))"
+				<b-image :key="icon" :src="icon" :src-fallback="$assetUrl('img/app-icons/default.svg')"
 					:alt="$t('Icon preview')" class="hero-img" ratio="1by1"></b-image>
 			</div>
 
@@ -20,7 +20,7 @@
 						:placeholder="$t('Local or public URL')" append-to-body field="hostname" max-height="120px"
 						size="is-small" icon="link-variant" expanded required
 						aria-describedby="weblink-address-hint"
-						@keyup.native.enter="connect">
+						@keyup.enter="connect">
 					</b-autocomplete>
 					<p v-if="hostname && !isHostValid" id="weblink-address-hint" class="field-hint is-error" role="alert">
 						<i class="mdi mdi-alert-circle-outline mr-1" aria-hidden="true"></i>
@@ -91,6 +91,7 @@ function isValidLinkHost(value) {
 }
 
 export default {
+	emits: ['close', 'updateState'],
 	mixins: [Business_ShowNewAppTag, Business_LinkApp, confirmWindowMixin],
 	props: {
 		linkName: {

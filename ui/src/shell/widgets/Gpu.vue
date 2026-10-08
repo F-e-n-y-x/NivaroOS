@@ -207,7 +207,7 @@ export default {
 			property: ["height"],
 		});
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroyed_ = true;
 		clearTimeout(this.timer);
 		window.removeEventListener(TEMPERATURE_EVENT, this.onTemperatureFormat);

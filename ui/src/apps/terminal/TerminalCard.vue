@@ -140,11 +140,11 @@
 </template>
 
 <script>
-import 'xterm/css/xterm.css'
-import { Terminal } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
-import { SearchAddon } from 'xterm-addon-search'
-import { WebLinksAddon } from 'xterm-addon-web-links'
+import '@xterm/xterm/css/xterm.css'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import terminalSessions from '@/service/terminalSessions.js'
 import { apiError } from '@/utils/apiError'
 import { guardTerminalKeydown, shortcutLabel } from './termKeys.js'
@@ -183,6 +183,7 @@ function basename(p) {
 }
 
 export default {
+	emits: ['close', 'create-error', 'end', 'exit', 'gone', 'prefs', 'rename', 'session', 'show-sessions', 'state'],
 	name: "terminal-card",
 	props: {
 		// Attach to this existing session (a Session object from the API).
@@ -322,7 +323,7 @@ export default {
 		else if (this.legacyMode) this.connectLegacy()
 		else this.createAndAttach(this.createSpec || { kind: 'host' })
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.destroying = true
 		this.stopKeepalive()
 		if (this.sock) this.sock.detach()
@@ -360,13 +361,12 @@ export default {
 				rightClickSelectsWord: false,
 				macOptionIsMeta: true,
 				tabStopWidth: 4,
-				windowsMode: false,
 				theme: {
 					background: '#0f1115',
 					foreground: '#f4f4f5',
 					cursor: '#7df9c5',
 					cursorAccent: '#0f1115',
-					selection: 'rgba(214, 219, 228, 0.28)',
+					selectionBackground: 'rgba(214, 219, 228, 0.28)',
 					black: '#0f1115',
 					red: '#ef4444',
 					green: '#22c55e',
@@ -1000,7 +1000,7 @@ export default {
 	width: 100%;
 	height: 100%;
 
-	::v-deep .xterm-viewport {
+	:deep(.xterm-viewport) {
 		overflow-y: auto !important;
 	}
 }
@@ -1010,7 +1010,7 @@ export default {
 	transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.term-fade-enter,
+.term-fade-enter-from,
 .term-fade-leave-to {
 	opacity: 0;
 	transform: translate(-50%, -4px);

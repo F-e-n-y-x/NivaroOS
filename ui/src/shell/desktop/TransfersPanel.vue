@@ -171,7 +171,7 @@ export default {
 			for (const a of items) if (a.ref && a.ref.startsWith('transfer:')) hide(a.ref.slice(9))
 		})
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.poller)
 		if (this.offRemoved) this.offRemoved()
 		bus.$off('finished', this.onFinished)
@@ -266,7 +266,7 @@ export default {
 			return ['done_with_errors', 'failed', 'interrupted', 'cancelled'].includes(job.state)
 		},
 		toggle(id) {
-			this.$set(this.expanded, id, !this.expanded[id])
+			this.expanded[id] = !this.expanded[id]
 		},
 		hide(id) {
 			hide(id)
@@ -274,13 +274,13 @@ export default {
 			activityService.removeByRef('transfer:' + id)
 		},
 		scheduleHide(id) {
-			this.$set(this.timers, id, setTimeout(() => {
+			this.timers[id] = setTimeout(() => {
 				if (this.hovering) {
-					this.$delete(this.timers, id)
+					delete this.timers[id]
 					return
 				}
 				fade(id)
-			}, SUCCESS_LINGER_MS))
+			}, SUCCESS_LINGER_MS)
 		},
 		onLeave() {
 			this.hovering = false
@@ -289,23 +289,23 @@ export default {
 			}
 		},
 		async doRetry(job) {
-			this.$set(this.busy, job.id, true)
+			this.busy[job.id] = true
 			try {
 				await retry(job.id)
 			} catch (e) {
 				this.$buefy.toast.open({ message: escapeHtml(e.message), type: 'is-danger' })
 			} finally {
-				this.$set(this.busy, job.id, false)
+				this.busy[job.id] = false
 			}
 		},
 		async doCancel(job) {
-			this.$set(this.busy, job.id, true)
+			this.busy[job.id] = true
 			try {
 				await cancel(job.id)
 			} catch (e) {
 				this.$buefy.toast.open({ message: this.$t("Couldn't cancel - check the connection"), type: 'is-danger' })
 			} finally {
-				this.$set(this.busy, job.id, false)
+				this.busy[job.id] = false
 			}
 		},
 		clearFinished() {

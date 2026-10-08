@@ -5,8 +5,9 @@
 		</div>
 		<draggable v-model="localApps" class="folder-window-grid" tag="div"
 			:group="{ name: 'apps', pull: true, put: false }"
-			@end="handleDragEnd" @start="handleDragStart" @mousedown.native.self="startMarquee">
-			<div v-for="app in localApps" :key="app.name" :data-app-name="app.name"
+			item-key="name" @end="handleDragEnd" @start="handleDragStart" @mousedown.self="startMarquee">
+			<template #item="{ element: app }">
+			<div :data-app-name="app.name"
 				class="folder-item" :class="{ selected: selectedNames.includes(app.name) }">
 				<app-card :folder-id="folderId" :item="app"
 					@configApp="openConfig" @importApp="openImport"
@@ -14,6 +15,7 @@
 					@editLegacyApp="openLegacyEdit">
 				</app-card>
 			</div>
+			</template>
 		</draggable>
 		<div v-if="marquee" class="marquee-box" :style="marqueeStyle"></div>
 	</div>
@@ -203,7 +205,7 @@ export default {
 	// App cards inside the folder window sit on a white background,
 	// not over a dark wallpaper, so override the white text/shadow that
 	// _card.scss sets globally for the desktop icon look.
-	::v-deep .app-card {
+	:deep(.app-card) {
 		a, p, .app-label {
 			color: var(--theme-text-primary, #1a1a1a) !important;
 			text-shadow: none !important;
@@ -216,7 +218,7 @@ export default {
 	}
 
 	// Folder cards inside a folder (rare but possible)
-	::v-deep .folder-card {
+	:deep(.folder-card) {
 		.app-label {
 			color: var(--theme-text-primary, #1a1a1a) !important;
 			text-shadow: none !important;

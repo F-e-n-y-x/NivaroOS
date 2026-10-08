@@ -19,7 +19,7 @@
 <template>
 	<files-viewer-chrome @download="downloadFile(item)">
 		<template #actions>
-			<b-icon icon="content-save" custom-size="mdi-18px" class="is-clickable" @click.native="saveFile(false)"></b-icon>
+			<b-icon icon="content-save" custom-size="mdi-18px" class="is-clickable" @click="saveFile(false)"></b-icon>
 		</template>
 		<div class="markdown-editor-body">
 			<editor-content :editor="editor" class="mark-container" />
@@ -38,13 +38,15 @@
 import { mixin } from '@/mixins/mixin'
 import ViewerChrome from './ViewerChrome.vue'
 import DialogOverlay from '../DialogOverlay.vue'
-import { Editor, EditorContent } from '@tiptap/vue-2'
+import { markRaw } from 'vue'
+import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Highlight from '@tiptap/extension-highlight'
 import Typography from '@tiptap/extension-typography'
-import { Markdown } from 'tiptap-markdown'
+import { Markdown } from '@tiptap/markdown'
 
 export default {
+	emits: ['close'],
 	name: 'files-markdown-editor',
 	mixins: [mixin],
 	components: { FilesViewerChrome: ViewerChrome, FilesDialogOverlay: DialogOverlay, EditorContent },
@@ -61,7 +63,7 @@ export default {
 	},
 	async mounted() {
 		const content = await this.readFile()
-		this.editor = new Editor({
+		this.editor = markRaw(new Editor({
 			extensions: [
 				StarterKit,
 				Highlight,
@@ -72,21 +74,22 @@ export default {
 				// it rendered as one literal, unformatted paragraph of "#
 				// Heading ** bold **" - and saving wrote getHTML()'s HTML
 				// back into a .md file, corrupting it. This extension makes
-				// `content` parse as real markdown on load, and
-				// editor.storage.markdown.getMarkdown() (used in saveFile()
-				// below) serialize back to markdown on save instead of HTML.
-				// html:false so raw HTML embedded in someone else's .md file
-				// (e.g. a synced/shared note) can't inject into the editor's
-				// DOM - only real markdown syntax renders as formatting.
-				Markdown.configure({ html: false }),
+				// `content` parse as real markdown on load (contentType),
+				// and editor.getMarkdown() (used in saveFile() below)
+				// serialize back to markdown on save instead of HTML. Raw
+				// HTML in someone else's .md file (e.g. a synced/shared
+				// note) never reaches the editor's DOM: it only keeps what
+				// the editor's own schema knows (bold, lists, ...).
+				Markdown,
 			],
 			content,
+			contentType: 'markdown',
 			onUpdate: () => {
 				this.isChange = true
 			},
-		})
+		}))
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.editor && this.editor.destroy()
 	},
 	methods: {
@@ -99,7 +102,7 @@ export default {
 			return this.code
 		},
 		saveFile(leave) {
-			const content = this.editor.storage.markdown.getMarkdown()
+			const content = this.editor.getMarkdown()
 			this.$api.file.update(this.item.path, content).then((res) => {
 				if (res.data.success === 200) {
 					this.isChange = false
@@ -141,9 +144,9 @@ export default {
 }
 // tiptap/ProseMirror renders content into a subtree scoped CSS's own
 // attribute selectors can't reach (it's inserted by the library, not
-// present in this component's template) - ::v-deep is required here,
+// present in this component's template) - :deep(is required here),
 // same as legacy's equivalent (unscoped) block.
-.mark-container::v-deep .ProseMirror {
+.mark-container:deep(.ProseMirror) {
 	width: 100%;
 	height: 100%;
 	outline: none;

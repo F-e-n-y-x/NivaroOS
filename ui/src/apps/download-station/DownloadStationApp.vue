@@ -146,7 +146,7 @@ export default {
 		this.resizeObserver.observe(this.$refs.root)
 		if (this.initialUrl) this.$nextTick(() => this.openBrowserAt(this.initialUrl))
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// A poll that's in flight right now would otherwise re-arm the timer
 		// after this, keeping a zombie loop (and duplicate "Download
 		// complete" notifications) alive after the window closed.
@@ -441,7 +441,7 @@ export default {
 	text-align: center;
 	color: var(--theme-text-muted, #5b6779);
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 3rem;
 		height: 3rem;
 	}

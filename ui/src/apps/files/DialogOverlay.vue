@@ -4,7 +4,7 @@
 		<div class="dialog-card">
 			<header class="dialog-header">
 				<span class="dialog-title">{{ title }}</span>
-				<b-icon icon="close-outline" pack="casa" class="is-clickable" @click.native="$emit('close')"></b-icon>
+				<b-icon icon="close-outline" pack="casa" class="is-clickable" @click="$emit('close')"></b-icon>
 			</header>
 			<div class="dialog-body">
 				<slot></slot>
@@ -15,6 +15,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 	name: 'files-dialog-overlay',
 	props: { title: { type: String, required: true } },
 }

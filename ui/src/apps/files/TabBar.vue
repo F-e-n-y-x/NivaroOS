@@ -17,7 +17,7 @@
 				icon="close"
 				custom-size="mdi-14px"
 				class="tab-close"
-				@click.native.stop="$emit('close', tab.id)"
+				@click.stop="$emit('close', tab.id)"
 			></b-icon>
 		</button>
 		<button class="tab-action" :title="$t('New Tab')" @click="$emit('new-tab')">
@@ -44,6 +44,7 @@ import { isFilesDragEvent, getFilesDragData } from '@/utils/files/dragDrop'
 const HOVER_OPEN_DELAY = 700
 
 export default {
+	emits: ['close', 'close-window', 'drag-start', 'minimize-window', 'new-tab', 'new-window', 'switch'],
 	name: 'files-tab-bar',
 	props: {
 		tabs: { type: Array, required: true },
@@ -52,7 +53,7 @@ export default {
 	data() {
 		return { dragHoverTabId: null, hoverTimer: null }
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearTimeout(this.hoverTimer)
 	},
 	methods: {

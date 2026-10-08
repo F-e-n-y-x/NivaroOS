@@ -35,8 +35,8 @@
 				<b-icon icon="plus" custom-size="mdi-16px" aria-hidden="true"></b-icon>
 				<span>{{ $t('backup.wizard.what.add_folder') }}</span>
 			</button>
-			<template v-for="g in quickGroups">
-				<span :key="g.id" class="sp-quick-field">
+			<template v-for="g in quickGroups" :key="g.id">
+				<span class="sp-quick-field">
 					<label :for="idp + '-quick-' + g.id" class="sr-only">{{ $t('backup.wizard.what.quick.' + g.id) }}</label>
 					<select :id="idp + '-quick-' + g.id" class="wz-select" @change="onQuick(g, $event)">
 						<option value="" disabled selected>{{ $t('backup.wizard.what.quick.' + g.id) }}</option>
@@ -56,6 +56,7 @@ import { fieldId, describedBy } from '../wizard/fields'
 import { MAX_ARCHIVE_SOURCES } from '../wizard/draft'
 
 export default {
+	emits: ['add', 'pick', 'remove'],
 	name: 'SourcePicker',
 	props: {
 		sources: { type: Array, required: true },

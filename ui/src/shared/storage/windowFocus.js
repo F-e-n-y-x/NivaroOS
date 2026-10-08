@@ -16,7 +16,7 @@ export const windowFocusMixin = {
 	created() {
 		this.openerEl = typeof document !== 'undefined' ? document.activeElement : null
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (typeof document === 'undefined') return
 		const own = this.$el
 		// Only give focus back when it is still ours (or lost to <body>);

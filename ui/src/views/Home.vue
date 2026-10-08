@@ -124,9 +124,9 @@ export default {
 		// empty until a reload: retry with backoff 2s, 4s ... capped at 60s.
 		getHardwareInfo(attempt = 0) {
 			const retry = () => {
-				if (this._isDestroyed) return
+				if (this.$.isUnmounted) return
 				setTimeout(() => {
-					if (!this._isDestroyed) this.getHardwareInfo(attempt + 1)
+					if (!this.$.isUnmounted) this.getHardwareInfo(attempt + 1)
 				}, Math.min(60000, 2000 * Math.pow(2, attempt)))
 			}
 			this.$api.sys.getUtilization().then(res => {
@@ -222,7 +222,7 @@ export default {
 			return { model, path, mountPoints, isUsb: tran === 'usb', size, partitions }
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		window.removeEventListener('resize', this.onResize)
 	},
 	sockets: {

@@ -28,6 +28,7 @@ import ErrorExplain from './ErrorExplain.vue'
 let seq = 0
 
 export default {
+	emits: ['action', 'open-job'],
 	name: 'AttentionList',
 	components: { ErrorExplain },
 	props: {

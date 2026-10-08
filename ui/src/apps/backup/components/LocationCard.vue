@@ -54,6 +54,7 @@ import { fieldId, describedBy } from '../wizard/fields'
 import { locationIcon, locationStatus, spaceInfo } from '@/shared/storage/locations'
 
 export default {
+	emits: ['browse', 'choose', 'sub-path'],
 	name: 'LocationCard',
 	components: { FieldError },
 	props: {

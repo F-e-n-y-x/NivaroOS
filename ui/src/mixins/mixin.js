@@ -100,8 +100,36 @@ export const mixin = {
 		this.typeMap = typeMap;
 	},
 
-	methods: {		
+	// Formatters templates call as methods ({{ dateFmt(item.date) }}; Vue 3 has no filters).
+	methods: {
 		renderSize,
+		toFahrenheit: function (value) {
+			return (32 + value * 1.8).toFixed(1);
+		},
+
+		getProgressType(per) {
+			if (per >= 0 && per < 80) {
+				return "is-primary"
+			} else if (per >= 80 && per < 90) {
+				return "is-warning"
+			} else {
+				return "is-danger"
+			}
+		},
+
+		dateFmt: function (value) {
+			if (dayjs().isSame(value, 'year')) {
+				return dayjs(value).format('DD/MM hh:mm')
+			} else {
+				return dayjs(value).format('DD/MM/YYYY hh:mm')
+			}
+		},
+		coverType: function (item) {
+			return item.is_dir ? "folder-cover" : "file-cover"
+		},
+		iconType: function (item) {
+			return item.is_dir ? "folder-icon" : "files-icon"
+		},
 
 		/**
 		 * @description: Get Default Lang from browser
@@ -179,7 +207,7 @@ export const mixin = {
 					}
 				})
 			}
-			return assetUrl(require(`@/assets/img/files/${icon}.svg`))
+			return assetUrl(`img/files/${icon}.svg`)
 		},
 		getPanelType(item) {
 			const ext = this.getFileExt(item);
@@ -553,38 +581,4 @@ export const mixin = {
 		},
 
 	},
-
-
-	filters: {
-		renderSize,
-
-		toFahrenheit: function (value) {
-			return (32 + value * 1.8).toFixed(1);
-		},
-
-		getProgressType(per) {
-			if (per >= 0 && per < 80) {
-				return "is-primary"
-			} else if (per >= 80 && per < 90) {
-				return "is-warning"
-			} else {
-				return "is-danger"
-			}
-		},
-
-		dateFmt: function (value) {
-			if (dayjs().isSame(value, 'year')) {
-				return dayjs(value).format('DD/MM hh:mm')
-			} else {
-				return dayjs(value).format('DD/MM/YYYY hh:mm')
-			}
-		},
-		coverType: function (item) {
-			return item.is_dir ? "folder-cover" : "file-cover"
-		},
-		iconType: function (item) {
-			return item.is_dir ? "folder-icon" : "files-icon"
-		},
-
-	}
 }

@@ -44,7 +44,7 @@
 					<div v-else class="folder-icon-grid is-52x52">
 						<div v-for="i in 4" :key="i" class="folder-icon-cell">
 							<b-image v-if="previewApps[i - 1]" :src="previewApps[i - 1].icon" alt=""
-								:src-fallback="$assetUrl(require('@/assets/img/app-icons/default.svg'))" webp-fallback=".jpg"></b-image>
+								:src-fallback="$assetUrl('img/app-icons/default.svg')" webp-fallback=".jpg"></b-image>
 						</div>
 					</div>
 				</div>
@@ -60,6 +60,7 @@
 const MENU_WIDTH = 224
 
 export default {
+	emits: ['CLOSE_ALL_CONTEXT_MENUS', 'open'],
 	name: 'folder-card',
 	props: {
 		folder: {
@@ -91,7 +92,7 @@ export default {
 		}
 		this.$EventBus.$on('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.closeMenu()
 		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		if (this.$refs.menu && this.$refs.menu.parentNode) {

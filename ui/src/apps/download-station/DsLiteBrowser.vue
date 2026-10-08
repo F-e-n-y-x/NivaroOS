@@ -117,6 +117,7 @@ let tabSeq = 0
 const STATS_POLL_MS = 2500
 
 export default {
+	emits: ['toggle-adblock'],
 	name: 'ds-lite-browser',
 	components: { DsBrowserHistory },
 	inject: { ds: 'downloadStation' },
@@ -179,7 +180,7 @@ export default {
 		if (this.destroyed) return
 		this.statsTimer = setInterval(this.pollStats, STATS_POLL_MS)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		// created() is async: anything it's still awaiting checks this flag,
 		// so a window closed mid-start leaks neither the stats timer nor a
 		// browser session on the sidecar.
@@ -485,7 +486,7 @@ export default {
 		box-shadow: 0 -1px 0 var(--theme-card-border, rgba(0, 0, 0, 0.08)), 1px 0 0 var(--theme-card-border, rgba(0, 0, 0, 0.08)), -1px 0 0 var(--theme-card-border, rgba(0, 0, 0, 0.08));
 	}
 
-	::v-deep .icon {
+	:deep(.icon) {
 		flex-shrink: 0;
 		width: 1rem;
 		height: 1rem;
@@ -636,7 +637,7 @@ export default {
 	background: var(--theme-bg-window, #f8fafc);
 	color: var(--theme-text-muted, #94a3b8);
 
-	> ::v-deep .icon {
+	> :deep(.icon) {
 		width: 3rem;
 		height: 3rem;
 	}
@@ -668,7 +669,7 @@ export default {
 	}
 }
 
-.browser-menu ::v-deep .dropdown-item {
+.browser-menu :deep(.dropdown-item) {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);

@@ -13,20 +13,20 @@
 		@dragleave="isDropTarget = false"
 		@drop="onDrop"
 	>
-		<div :class="item | coverType" class="cover">
+		<div :class="coverType(item)" class="cover">
 			<img
 				v-if="showThumb"
 				:src="getThumbUrl(item)"
-				:class="item | iconType"
+				:class="iconType(item)"
 				alt=""
 				class="thumb"
 				@error="thumbFailed = true"
 			/>
-			<img v-else :src="getIconFile(item)" :class="item | iconType" alt="" class="icon" />
+			<img v-else :src="getIconFile(item)" :class="iconType(item)" alt="" class="icon" />
 		</div>
 		<div class="name one-line" :title="item.name">{{ item.name }}</div>
 		<div class="size">{{ item.is_dir ? '' : renderSize(item.size) }}</div>
-		<div class="date">{{ item.date | dateFmt }}</div>
+		<div class="date">{{ dateFmt(item.date) }}</div>
 	</div>
 </template>
 
@@ -35,6 +35,7 @@ import { mixin } from '@/mixins/mixin'
 import { isFilesDragEvent } from '@/utils/files/dragDrop'
 
 export default {
+	emits: ['contextmenu', 'dragstart', 'drop-item', 'open', 'select'],
 	name: 'files-list-row',
 	mixins: [mixin],
 	props: {

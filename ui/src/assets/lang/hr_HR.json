@@ -172,7 +172,7 @@
   "Single Drive Storage": "Jedan pogon za pohranu",
   "Format": "Oblik",
   "Remove": "Ukloni",
-  "Available Total": "{ime} | Dostupno: {avl} (Ukupno: {total})",
+  "Available Total": "{ime} {'|'} Dostupno: {avl} (Ukupno: {total})",
   "Health": "Zdravlje",
   "Healthy": "Zdrav",
   "Damage": "Oštećeno",

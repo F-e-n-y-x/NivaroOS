@@ -5,10 +5,10 @@
 <template>
 	<div class="job-type-picker">
 		<div class="jt-options" role="radiogroup" :aria-labelledby="labelledby" @keydown="onKeydown">
-			<div v-for="(t, i) in types" :key="t" :ref="'opt-' + i" class="jt-option" role="radio" :aria-checked="t === value ? 'true' : 'false'"
+			<div v-for="(t, i) in types" :key="t" :ref="'opt-' + i" class="jt-option" role="radio" :aria-checked="t === modelValue ? 'true' : 'false'"
 				:aria-disabled="isDisabled(t) ? 'true' : 'false'" :aria-describedby="idp + '-type-' + t + '-desc'" :tabindex="i === focusIndex ? 0 : -1"
-				:class="{ 'is-checked': t === value, 'is-disabled': isDisabled(t) }" @click="select(i)">
-				<span class="jt-radio" aria-hidden="true"><span v-if="t === value" class="jt-dot"></span></span>
+				:class="{ 'is-checked': t === modelValue, 'is-disabled': isDisabled(t) }" @click="select(i)">
+				<span class="jt-radio" aria-hidden="true"><span v-if="t === modelValue" class="jt-dot"></span></span>
 				<b-icon :icon="icons[t]" custom-size="mdi-20px" class="jt-icon" aria-hidden="true"></b-icon>
 				<span class="jt-text">
 					<span class="jt-title">{{ $t('backup.type.' + t + '.label') }}</span>
@@ -23,9 +23,9 @@
 			<summary>{{ $t('backup.wizard.what.explainer_title') }}</summary>
 			<div class="wz-details-body">
 				<dl class="jt-explain-list">
-					<template v-for="t in types">
-						<dt :key="t + '-dt'">{{ $t('backup.type.' + t + '.label') }}</dt>
-						<dd :key="t + '-dd'">{{ $t('backup.type.' + t + '.deleted') }}</dd>
+					<template v-for="t in types" :key="t">
+						<dt>{{ $t('backup.type.' + t + '.label') }}</dt>
+						<dd>{{ $t('backup.type.' + t + '.deleted') }}</dd>
 					</template>
 				</dl>
 				<p class="wz-hint">{{ $t('backup.wizard.what.explainer_sync') }}</p>
@@ -38,9 +38,10 @@
 import { radioKeyTarget } from '../wizard/radioKeys'
 
 export default {
+	emits: ['update:modelValue'],
 	name: 'JobTypePicker',
 	props: {
-		value: { type: String, default: 'copy' },
+		modelValue: { type: String, default: 'copy' },
 		// Types that may be picked (the rest are shown disabled).
 		allowed: { type: Array, default: () => ['mirror', 'copy', 'archive'] },
 		idp: { type: String, required: true },
@@ -54,7 +55,7 @@ export default {
 	},
 	computed: {
 		focusIndex() {
-			const i = this.types.indexOf(this.value)
+			const i = this.types.indexOf(this.modelValue)
 			return i < 0 ? 0 : i
 		}
 	},
@@ -65,7 +66,7 @@ export default {
 		select(i) {
 			const t = this.types[i]
 			if (!t || this.isDisabled(t)) return
-			if (t !== this.value) this.$emit('input', t)
+			if (t !== this.modelValue) this.$emit('update:modelValue', t)
 			this.$nextTick(() => {
 				const r = this.$refs['opt-' + i]
 				const el = Array.isArray(r) ? r[0] : r

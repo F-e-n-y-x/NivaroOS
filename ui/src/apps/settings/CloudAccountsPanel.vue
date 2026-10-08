@@ -174,6 +174,7 @@ const PROVIDER_ACCENTS = {
 }
 
 export default {
+	emits: ['added'],
 	name: 'cloud-accounts-panel',
 	data() {
 		return {

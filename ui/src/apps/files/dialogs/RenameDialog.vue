@@ -3,12 +3,12 @@
 	<files-dialog-overlay :title="$t('Rename')" @close="$emit('close')">
 		<div class="rename-dialog">
 			<div class="cover is-flex is-justify-content-center is-align-items-center">
-				<div :class="item | coverType">
-					<img :class="item | iconType" :src="getIconFile(item)" alt="folder" />
+				<div :class="coverType(item)">
+					<img :class="iconType(item)" :src="getIconFile(item)" alt="folder" />
 				</div>
 			</div>
 			<b-field :message="errors" :type="errorType" class="mt-4" expanded>
-				<b-input ref="input" v-model="fileName" v-on:keyup.enter.native="saveNewName" @input.native="fileName = fileName.replace(/\//g, '')"></b-input>
+				<b-input ref="input" v-model="fileName" v-on:keyup.enter="saveNewName" @update:modelValue="fileName = fileName.replace(/\//g, '')"></b-input>
 			</b-field>
 			<div class="dialog-actions">
 				<b-button :label="$t('Submit')" :loading="isLoading" rounded type="is-primary" @click="saveNewName"></b-button>
@@ -23,6 +23,7 @@ import DialogOverlay from '../DialogOverlay.vue'
 import { parentPath, joinPath } from '@/utils/files/path'
 
 export default {
+	emits: ['close', 'renamed'],
 	name: 'rename-dialog',
 	components: { FilesDialogOverlay: DialogOverlay },
 	mixins: [mixin],

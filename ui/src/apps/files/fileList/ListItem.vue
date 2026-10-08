@@ -1,8 +1,8 @@
 <template>
 	<div :class="[{ active: state }]" class="ficon is-flex is-align-items-center" @click="activeSelf" @dblclick="expandDir">
 		<div class="cover">
-			<div :class="item | coverType">
-				<img :class="item | iconType" :src="getIconFile(item)" alt="folder" />
+			<div :class="coverType(item)">
+				<img :class="iconType(item)" :src="getIconFile(item)" alt="folder" />
 			</div>
 		</div>
 		<div class="one-line">
@@ -16,6 +16,7 @@
 import { mixin } from '@/mixins/mixin';
 
 export default {
+	emits: ['active', 'expand'],
 	name: "list-item",
 	mixins: [mixin],
 	data() {

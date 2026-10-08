@@ -70,6 +70,7 @@
 import { sessionKey, sessionSubtitle, relativeTime, exitSummary, isIdleShell } from './termSessions.js'
 
 export default {
+	emits: ['close', 'kill', 'new', 'open', 'refresh', 'rename'],
 	name: 'terminal-session-list',
 	props: {
 		sessions: { type: Array, default: () => [] },
@@ -121,7 +122,7 @@ export default {
 	mounted() {
 		this.clock = setInterval(() => { this.now = Date.now() }, 30000)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.clock)
 	},
 	methods: {

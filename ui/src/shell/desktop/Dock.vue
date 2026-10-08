@@ -13,11 +13,11 @@
 				ghost-class="dock-item-ghost"
 				chosen-class="dock-item-chosen"
 				drag-class="dock-item-drag"
+				:item-key="(item) => 'dock-' + item.name"
 				@end="onDockDragEnd"
 			>
+				<template #item="{ element: item }">
 				<button
-					v-for="item in dockItems"
-					:key="'dock-' + item.name"
 					type="button"
 					class="dock-item"
 					:title="displayName(item)"
@@ -36,6 +36,7 @@
 					/>
 					<span class="dock-dot" v-if="isItemOpen(item)" :class="{ minimized: isItemMinimized(item) }"></span>
 				</button>
+				</template>
 			</draggable>
 
 			<div v-if="extraWindows.length && dockItems.length" class="dock-sep"></div>
@@ -62,7 +63,7 @@
 				<img v-else-if="isBackupWindow(win)" :src="getBuiltinIcon('Backup & Sync')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="win.component === 'SettingsApp'" :src="getBuiltinIcon('Settings')" class="dock-icon" :alt="win.title" />
 				<img v-else-if="isVmWindow(win) || win.component === 'VmManagerApp'" :src="vmConsoleIconUrl" class="dock-icon" :alt="win.title" />
-				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || $assetUrl(require('@/assets/img/app-icons/default.svg'))" class="dock-icon" :alt="win.title" />
+				<img v-else-if="win.component === 'LegacyAppEditPanel' && win.props && win.props.item" :src="(win.props.override && win.props.override.icon) || win.props.item.icon || $assetUrl('img/app-icons/default.svg')" class="dock-icon" :alt="win.title" />
 				<div v-else class="dock-icon dock-icon-generic">
 					<b-icon icon="display-applications-outline" pack="casa" size="is-20"></b-icon>
 				</div>
@@ -232,7 +233,7 @@ const BUILTIN_DEFS = {
 	Terminal: { id: 'terminal', name: 'Terminal', label: 'Terminal', defaultIcon: terminalIcon, component: 'TerminalPanel', width: 720, height: 480 },
 	'Host Desktop': { id: 'host-desktop', name: 'Host Desktop', label: 'Host Desktop', defaultIcon: desktopIcon, component: 'HostDesktopPanel', width: 1024, height: 680 },
 	'Download Station': { id: 'download-station', name: 'Download Station', label: 'Download Station', defaultIcon: downloadStationIcon, component: 'DownloadStationApp', width: 980, height: 640 },
-	'Backup & Sync': { id: 'backup', name: 'Backup & Sync', label: 'Backup & Sync', defaultIcon: assetUrl(backupIcon), component: 'BackupApp', width: 1040, height: 680 },
+	'Backup & Sync': { id: 'backup', name: 'Backup & Sync', label: 'Backup & Sync', defaultIcon: backupIcon, component: 'BackupApp', width: 1040, height: 680 },
 	VMs: { id: 'vms', name: 'VMs', label: 'VMs', defaultIcon: vmManagerIcon, component: 'VmManagerApp', width: 880, height: 560 },
 	Settings: { id: 'settings', name: 'Settings', label: 'Settings', defaultIcon: settingsIcon, component: 'SettingsApp', width: 760, height: 540 }
 }
@@ -251,6 +252,7 @@ const isBackupComponent = c => BACKUP_COMPONENTS.includes(c)
 const OPTIONAL_BUILTINS = { 'Download Station': 'ds', 'Backup & Sync': 'backup' }
 
 export default {
+	emits: ['CLOSE_ALL_CONTEXT_MENUS'],
 	name: 'dock',
 	components: {
 		draggable
@@ -304,7 +306,7 @@ export default {
 		window.addEventListener('blur', this.closeCtxMenu)
 		window.addEventListener('resize', this.closeCtxMenu)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		this.$EventBus.$off(events.RELOAD_APP_LIST, this.reloadDockItems)
 		this.$EventBus.$off('CLOSE_ALL_CONTEXT_MENUS', this.handleCloseOtherMenus)
 		document.removeEventListener('mousedown', this.onOutsideClick)
@@ -334,7 +336,7 @@ export default {
 		getBuiltinIcon(name) {
 			const override = this.overridesMap[name]
 			if (override && override.icon) return override.icon
-			return (BUILTIN_DEFS[name] && BUILTIN_DEFS[name].defaultIcon) || assetUrl(require('@/assets/img/app-icons/default.svg'))
+			return (BUILTIN_DEFS[name] && BUILTIN_DEFS[name].defaultIcon) || assetUrl('img/app-icons/default.svg')
 		},
 		onOutsideClick(e) {
 			if (this.ctxMenu.visible && this.$refs.dockCtxMenu && !this.$refs.dockCtxMenu.contains(e.target)) {
@@ -445,7 +447,7 @@ export default {
 				} else if (this.isVmWindow(win) || win.component === 'VmManagerApp') {
 					icon = this.vmConsoleIconUrl
 				} else if (win.component === 'LegacyAppEditPanel' && win.props && win.props.item) {
-					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || assetUrl(require('@/assets/img/app-icons/default.svg'))
+					icon = (win.props.override && win.props.override.icon) || win.props.item.icon || assetUrl('img/app-icons/default.svg')
 				}
 			}
 
@@ -503,7 +505,7 @@ export default {
 					const app = allApps.find(a => a.name === pinName)
 					if (app) {
 						const override = overrides[app.name]
-						const icon = (override && override.icon) || app.icon || assetUrl(require('@/assets/img/app-icons/default.svg'))
+						const icon = (override && override.icon) || app.icon || assetUrl('img/app-icons/default.svg')
 						const iconRadius = (override && override.iconRadius) || 0
 						const title = override && override.title ? { ...app.title, custom: override.title } : app.title
 						const overrideUrl = override && override.url

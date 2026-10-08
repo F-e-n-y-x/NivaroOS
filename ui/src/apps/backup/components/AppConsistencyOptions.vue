@@ -42,6 +42,7 @@
 import FieldError from './FieldError.vue'
 
 export default {
+	emits: ['patch'],
 	name: 'AppConsistencyOptions',
 	components: { FieldError },
 	props: {

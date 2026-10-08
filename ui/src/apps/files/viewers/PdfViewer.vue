@@ -95,7 +95,7 @@ export default {
 	overflow: auto;
 	background: var(--theme-bg-window, #fff);
 }
-::v-deep .vue-office-pdf {
+:deep(.vue-office-pdf) {
 	height: 100%;
 	width: 100%;
 }

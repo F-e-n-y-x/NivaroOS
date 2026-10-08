@@ -172,7 +172,7 @@
   "Single Drive Storage": "Ổ đĩa lưu trữ đơn",
   "Format": "Định dạng",
   "Remove": "Xóa",
-  "Available Total": "{name} | Có sẵn: {avl} (Tổng: {total})",
+  "Available Total": "{name} {'|'} Có sẵn: {avl} (Tổng: {total})",
   "Health": "Tình trạng",
   "Healthy": "Sức khỏe",
   "Damage": "Bị hỏng",

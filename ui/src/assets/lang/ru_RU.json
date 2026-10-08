@@ -172,7 +172,7 @@
   "Single Drive Storage": "Одиночный накопитель",
   "Format": "Форматировать",
   "Remove": "Удалить",
-  "Available Total": "{name} | Доступно: {avl} (Всего: {total})",
+  "Available Total": "{name} {'|'} Доступно: {avl} (Всего: {total})",
   "Health": "Состояние",
   "Healthy": "В отличном состоянии",
   "Damage": "Повреждено",

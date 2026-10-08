@@ -28,6 +28,7 @@
 
 <script>
 export default {
+	emits: ['close'],
 	name: 'ConfirmDialogWindow',
 	props: {
 		id: { type: String, default: '' },
@@ -111,7 +112,7 @@ export default {
 			this.$emit('close')
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		if (!this.responded && typeof this.onCancel === 'function') {
 			try {
 				this.onCancel()
@@ -179,13 +180,13 @@ export default {
 	color: var(--theme-text-primary, #1e293b);
 	word-break: break-word;
 
-	::v-deep b,
-	::v-deep strong {
+	:deep(b),
+	:deep(strong) {
 		color: var(--theme-text-primary, #0f172a);
 		font-weight: 600;
 	}
 
-	::v-deep .text-muted {
+	:deep(.text-muted) {
 		color: var(--theme-text-muted, #64748b);
 	}
 }
@@ -193,7 +194,7 @@ export default {
 .confirm-dialog-checkbox {
 	margin-top: var(--space-3);
 
-	::v-deep .b-checkbox.checkbox {
+	:deep(.b-checkbox.checkbox) {
 		color: var(--theme-text-primary, #1e293b);
 		font-size: var(--font-sm, 0.85rem);
 	}

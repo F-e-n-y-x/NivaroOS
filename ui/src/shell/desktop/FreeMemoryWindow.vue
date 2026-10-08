@@ -53,6 +53,7 @@ import { apiError } from "@/utils/apiError"
 import { describeClear, formatBytes } from "@/utils/freeMemory.js"
 
 export default {
+	emits: ['close'],
 	name: "FreeMemoryWindow",
 	props: {
 		id: { type: String, default: "" },
@@ -150,7 +151,7 @@ export default {
 .free-memory-swap {
 	margin-top: var(--space-3);
 
-	::v-deep .b-checkbox.checkbox {
+	:deep(.b-checkbox.checkbox) {
 		color: var(--theme-text-primary, #1e293b);
 		font-size: var(--font-sm, 0.85rem);
 	}

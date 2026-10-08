@@ -5,7 +5,7 @@
 				<i class="row-icon mdi" :class="`mdi-${a.icon || 'cloud-outline'}`"></i>
 				<div class="row-label">
 					<template v-if="editingKey === a.mount_point">
-						<b-input v-model="editLabel" size="is-small" @keyup.enter.native="submitRename(a)"></b-input>
+						<b-input v-model="editLabel" size="is-small" @keyup.enter="submitRename(a)"></b-input>
 					</template>
 					<template v-else>
 						<div class="setting-title">{{ a.name || a.fs }}</div>
@@ -151,7 +151,7 @@ export default {
 			speedTimers: {}
 		}
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		Object.values(this.speedTimers).forEach(t => clearTimeout(t))
 	},
 	created() {
@@ -310,7 +310,7 @@ export default {
 		// multi-stream downloads); POST starts it, GET polls it.
 		runSpeedTest(a) {
 			const key = a.mount_point
-			this.$set(this.speedErrors, key, null)
+			this.speedErrors[key] = null
 			this.speedTestingKey = key
 			this.$api.cloud.speedTest(a.fs).then(res => {
 				if (res.data.success === 200) {
@@ -324,7 +324,7 @@ export default {
 		},
 		pollSpeedTest(a) {
 			const key = a.mount_point
-			this.$set(this.speedTimers, key, setTimeout(() => {
+			this.speedTimers[key] = setTimeout(() => {
 				this.$api.cloud.speedTestStatus(a.fs).then(res => {
 					if (res.data.success === 200 && res.data.data) {
 						this.onSpeedState(a, res.data.data)
@@ -335,19 +335,19 @@ export default {
 					// A dropped poll isn't a failed test - try again.
 					this.pollSpeedTest(a)
 				})
-			}, 800))
+			}, 800)
 		},
 		onSpeedState(a, st) {
 			const key = a.mount_point
 			if (st.running) {
-				this.$set(this.speedLive, key, st)
+				this.speedLive[key] = st
 				this.pollSpeedTest(a)
 				return
 			}
-			this.$delete(this.speedLive, key)
+			delete this.speedLive[key]
 			if (this.speedTestingKey === key) this.speedTestingKey = null
 			if (st.result) {
-				this.$set(this.speedResults, key, st.result)
+				this.speedResults[key] = st.result
 			} else if (st.cancelled) {
 				// Stopped on request - keep whatever was shown before.
 			} else {
@@ -355,9 +355,9 @@ export default {
 			}
 		},
 		speedFailed(key, msg) {
-			this.$delete(this.speedLive, key)
+			delete this.speedLive[key]
 			if (this.speedTestingKey === key) this.speedTestingKey = null
-			this.$set(this.speedErrors, key, msg)
+			this.speedErrors[key] = msg
 		},
 		stopSpeedTest(a) {
 			this.$api.cloud.speedTestCancel(a.fs).catch(() => {})

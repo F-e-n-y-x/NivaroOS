@@ -78,7 +78,7 @@ export default {
 			if (this.active && this.visible && !this.loading) this.fetch()
 		}, POLL_MS)
 	},
-	beforeDestroy() {
+	beforeUnmount() {
 		clearInterval(this.timer)
 		this.stopped = true
 	},
