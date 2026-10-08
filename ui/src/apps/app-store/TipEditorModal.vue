@@ -2,9 +2,9 @@
 	<div class="modal-card">
 		<!-- Modal-Card Body Start -->
 		<section class="modal-card-body">
-			<VMdEditor v-model="tips" :mode="controlEditorState" :placeholder="$t('Something to remember eg. password')"
-				left-toolbar right-toolbar>
-			</VMdEditor>
+			<textarea v-if="isEditing" v-model="tips" class="tips-input"
+				:placeholder="$t('Something to remember eg. password')"></textarea>
+			<div v-else-if="tips" v-dompurify-html="tipsHtml" class="tips-preview content github-markdown-body"></div>
 			<div v-if="name" class="is-flex is-flex-direction-row-reverse mt-2">
 				<button type="button" class="tips-toggle-btn"
 					:class="{ 'is-editing': isEditing, 'is-changed': isDifferentiation }"
@@ -38,29 +38,16 @@ import merge from "lodash/merge";
 import cloneDeep from "lodash/cloneDeep";
 import { apiErrorHtml } from "@/mixins/app/apiError";
 import { escapeHtml } from "@/utils/escapeHtml";
-import VMdEditor from '@kangc/v-md-editor';
-import '@kangc/v-md-editor/lib/style/base-editor.css';
-import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
-import '@kangc/v-md-editor/lib/theme/style/github.css';
-import hljs from 'highlight.js';
+import { marked } from 'marked';
 import { ice_i18n } from "@/mixins/base/common-i18n";
-
-VMdEditor.use(githubTheme, {
-	Hljs: hljs,
-	// extend(md) {},
-});
 
 export default {
 	name: "TipEditorModal",
-	components: {
-		VMdEditor
-	},
 	data() {
 		return {
 			isEditing: false,
 			tips: '',
 			tempTips: '',
-			controlEditorState: 'preview',
 			icon: 'edit-outline',
 			isSaving: false,
 			// Set once the user picked Next Steps or Cancel, so closing the
@@ -102,19 +89,14 @@ export default {
 		isDifferentiation() {
 			return this.tempTips !== this.tips
 		},
+		// Sanitized by v-dompurify-html (config in utils/purifyConfig.js).
+		tipsHtml() {
+			return marked.parse(this.tips || '')
+		},
 	},
 	watch: {
 		isEditing(val) {
-			if (val) {
-				// editor is editable
-				this.controlEditorState = 'edit'
-				this.icon = 'check-outline'
-			} else {
-				// editor is not editable
-				this.controlEditorState = 'preview'
-				this.icon = 'edit-outline'
-			}
-			return this.isEditing
+			this.icon = val ? 'check-outline' : 'edit-outline'
 		},
 		composeData: {
 			handler() {
@@ -288,49 +270,29 @@ export default {
 	.modal-card-body {
 		padding: var(--space-6);
 
-		::v-deep .v-md-editor {
-			box-shadow: none;
+		.tips-input,
+		.tips-preview {
+			display: block;
+			width: 100%;
+			min-height: 5.25rem;
+			max-height: 20.25rem;
+			overflow: auto;
+			padding: var(--space-3) var(--space-4);
 			border: 1px solid var(--theme-card-border);
 			border-radius: var(--radius-sm);
+			font-size: var(--font-base);
+			line-height: 20px;
+		}
 
-			overflow: hidden;
+		.tips-input {
 			resize: vertical;
-			max-height: 20.25rem;
-			min-height: 5.25rem;
+			font-family: $family-sans-serif;
+			color: inherit;
+			background: transparent;
 
-			&.v-md-editor--edit {
-				/* 覆盖上层 */
-				border: 0;
-
-				.scrollbar__wrap {
-					border: 1px solid var(--theme-input-focus);
-					border-radius: var(--radius-control);
-				}
-			}
-
-			.v-md-editor__right-area {
-				.v-md-editor__toolbar {
-					display: none;
-					padding: 0;
-					border: 0;
-				}
-
-				.v-md-editor__main {
-					.v-md-textarea-editor textarea {
-						padding: var(--space-3) var(--space-4);
-						/* Text 400Regular/Text03 */
-
-						font-family: $family-sans-serif;
-						font-style: normal;
-						font-weight: 400;
-						font-size: var(--font-base);
-						line-height: 20px;
-						/* identical to box height, or 143% */
-
-						font-feature-settings: 'pnum' on, 'lnum' on;
-
-					}
-				}
+			&:focus {
+				outline: none;
+				border-color: var(--theme-input-focus);
 			}
 		}
 

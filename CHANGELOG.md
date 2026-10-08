@@ -83,6 +83,16 @@ inherited CasaOS history and is not kept up to date.)
 
 ### Security
 
+- Web UI dependency advisories cut from 134 to 6 (`pnpm audit --prod`;
+  the critical and 42 of 44 highs gone). The app tips editor no longer
+  uses `@kangc/v-md-editor`, which bundled mermaid 8 and DOMPurify 2.3:
+  tips are edited in a plain text box and previewed as Markdown,
+  sanitized by DOMPurify 3 like the update notes. axios is on 1.x;
+  lodash, qs, minimatch, brace-expansion, fast-uri and source-map-js are
+  on patched versions, and unused nanoid, markdown-it and yamljs are
+  removed. What's left needs Vue 3 (vue 2, Tiptap 2, vue-dompurify-html
+  2's braces), a socket.io-client 4 move (parseuri) or replacing
+  music-metadata-browser (music-metadata, file-type).
 - The old CasaOS rclone daemon (`rclone.service`) is gone. It ran a
   separate, outdated rclone (1.61, Jan 2023) with its remote-control API
   open to anything on the box (no auth, any web origin), and nothing in

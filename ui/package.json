@@ -14,7 +14,6 @@
   "packageManager": "pnpm@9.0.6",
   "dependencies": {
     "@fontsource/roboto": "^5.0.5",
-    "@kangc/v-md-editor": "^1.7.11",
     "@mdi/font": "^6.9.96",
     "@novnc/novnc": "1.7.0",
     "@tiptap/core": "^2.0.4",
@@ -29,7 +28,7 @@
     "@vueuse/components": "^10.2.1",
     "@vueuse/core": "^10.2.1",
     "artplayer": "^4.6.2",
-    "axios": "^0.28.1",
+    "axios": "^1.20.0",
     "browser-info": "^1.3.0",
     "buefy": "^0.9.29",
     "bulma": "0.9.4",
@@ -41,7 +40,7 @@
     "dateformat": "^5.0.3",
     "dayjs": "^1.11.9",
     "docx-preview": "^0.3.0",
-    "dompurify": "^3.0.6",
+    "dompurify": "^3.4.16",
     "ejs": "^3.1.5",
     "file-saver": "^2.0.5",
     "gsap": "^3.12.2",
@@ -55,14 +54,12 @@
     "js-yaml": "^4.1.0",
     "jshint": "^2.13.6",
     "jsonlint-mod": "^1.7.6",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "lottie-web-vue": "1.2.1",
-    "markdown-it": "^13.0.1",
     "marked": "^4.3.0",
     "mime": "^3.0.0",
     "music-metadata-browser": "^2.5.10",
-    "nanoid": "^4.0.2",
-    "qs": "^6.11.2",
+    "qs": "^6.16.0",
     "recasa-appmanagement-openapi": "link:./vendor/api-clients/recasa-appmanagement-openapi",
     "remove": "^0.1.5",
     "simple-uploader.js": "^0.6.0",
@@ -101,7 +98,6 @@
     "xterm-addon-fit": "^0.5.0",
     "xterm-addon-search": "0.9.0",
     "xterm-addon-web-links": "0.6.0",
-    "yamljs": "^0.3.0",
     "yargs-parser": "^21.1.1"
   },
   "devDependencies": {
@@ -152,5 +148,17 @@
     "> 1%",
     "last 2 versions",
     "not dead"
-  ]
+  ],
+  "pnpm": {
+    "overrides": {
+      "dompurify": "^3.4.16",
+      "lodash": "^4.18.1",
+      "minimatch@<3.1.3": "^3.1.5",
+      "brace-expansion@<1.1.21": "^1.1.21",
+      "fast-uri": "^3.1.7",
+      "source-map-js": "^1.2.2",
+      "brace-expansion@>=2 <2.1.7": "^2.1.7",
+      "brace-expansion@>=5 <5.0.12": "^5.0.12"
+    }
+  }
 }

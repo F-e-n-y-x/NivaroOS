@@ -33,7 +33,8 @@ const getInitLang = () => {
 // Interception before request initiation
 instance.interceptors.request.use(
 	(config) => {
-		config.headers.common["Language"] = getInitLang()
+		// axios 1.x: headers are already flattened here (no .common).
+		config.headers.Language = getInitLang()
 		const token = localStorage.getItem("access_token")
 		const rtoken = localStorage.getItem("refresh_token")
 		if (token) {

@@ -17,6 +17,7 @@ import Vue2TouchEvents from 'vue2-touch-events'
 import VueSocialSharing from 'vue-social-sharing'
 import VueSocketIOExt from 'vue-socket.io-extended';
 import VueDOMPurifyHTML from 'vue-dompurify-html'
+import { purifyConfig } from '@/utils/purifyConfig'
 import ConfirmWindow from '@/shared/basicComponents/ConfirmWindow.vue'
 
 
@@ -100,11 +101,7 @@ Vue.use(VAnimateCss, { animateCSSPath: '/css/animate.min.css' });
 Vue.use(Vue2TouchEvents)
 Vue.use(VueSocketIOExt, socket);
 Vue.use(VueSocialSharing);
-Vue.use(VueDOMPurifyHTML, {
-	default: {
-		ALLOWED_ATTR: ['target', 'href']
-	}
-});
+Vue.use(VueDOMPurifyHTML, purifyConfig);
 
 Vue.config.productionTip = false
 Vue.prototype.$api = api;
